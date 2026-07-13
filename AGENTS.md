@@ -1,5 +1,9 @@
 # Repository instructions
 
+Read `docs/WORKSPACE_HANDOFF.md` at the start of work in this checkout. It
+records the repository/local-data boundary, current hardware setup, publishing
+workflow, and the decisions that must survive a fresh conversation.
+
 ## Purpose and environment
 
 SHSynth is a Rust TUI appliance around `synthv1_jack`, JACK, ALSA MIDI, and a
