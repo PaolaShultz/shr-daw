@@ -1,0 +1,7 @@
+/target/
+/.cargo-home/
+/.cargo2/
+/.cargo3/
+
+# Private runtime state, saves, recordings, and uncleared/local sounds.
+/user/

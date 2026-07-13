@@ -1,0 +1,21 @@
+[package]
+name = "shsynth"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Terminal synthv1, Yoshimi, and FluidSynth instrument appliance"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+crossterm = "0.26"
+libc = "0.2"
+midir = "0.9"
+quick-xml = "0.27"
+ratatui = "0.20"
+signal-hook = "0.3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

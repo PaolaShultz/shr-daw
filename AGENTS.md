@@ -1,0 +1,61 @@
+# Repository instructions
+
+## Purpose and environment
+
+SHSynth is a Rust TUI appliance around `synthv1_jack`, JACK, ALSA MIDI, and a
+small physical controller. Keep it responsive at 40×20 and safe for live audio.
+The system `cargo` may be too old; use the installed Rust 1.85 toolchain:
+
+```sh
+PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo test --locked
+```
+
+Before handoff, also run `cargo fmt -- --check`, `cargo clippy --locked -- -D
+warnings`, and `cargo build --release --locked` with that PATH.
+
+Install tools required to complete requested setup, validation, or publishing
+work instead of silently skipping the check or substituting a weaker one. On
+Debian/Raspberry Pi OS this includes `libxml2-utils` for `xmllint` preset
+validation and `gh` for GitHub authentication/publishing. Before pushing, use
+the GitHub CLI web/device authorization flow and let the user authorize it;
+do not invent a Git author identity or expose authentication credentials.
+
+## Architecture
+
+- `src/ui.rs`: screens, actions, engine lifecycle, recording workflow.
+- `src/engine.rs`: synthv1 process, JACK/ALSA connections, monitored MIDI route.
+- `src/midi.rs`: routing and pickup/catch state.
+- `src/control.rs`: the 12 canonical controls, ranges, and relative colors.
+- `src/preset.rs`: preset discovery and XML values read by parameter name.
+- `src/recording.rs`: idea snapshots and MIDI encoding/playback.
+- `src/navigation.rs` / `src/pads.rs`: screen-specific command pads and config.
+
+## Invariants
+
+- Never layer managed synth engines. Preserve clean shutdown and All Notes Off.
+- Never terminate synthv1 processes SHSynth does not own.
+- Hardware names, executable/client names, preset paths, and audio/MIDI routes
+  belong in `shsynth.conf` or `controller.conf`, not Rust constants.
+- Block mapped CC messages before synthv1 until pickup reaches/crosses the
+  loaded value. Loading and in-place parameter reset must re-arm pickup.
+- On Playback, the main encoder press resets only the 12 mapped parameters and
+  re-arms pickup without restarting the engine. PLAY and keyboard `P` control
+  MIDI take playback.
+- Indicators are relative to the original preset: green below −0.03, bright
+  yellow within ±0.03, red above +0.03.
+- Command pad note-on and note-off are consumed; musical MIDI passes through.
+- Keep synthv1 0.9.29 indices/ranges in `control.rs`. Parse preset XML by name
+  because legacy files have obsolete indices.
+- Preserve user ideas, controller config, unrelated processes, and existing
+  work. Do not start audible synth/JACK tests unless explicitly requested.
+
+## Presets and documentation
+
+Place sounds in `presets/synthv1/` and follow `docs/NEW_PATCHES.md`. Prefer a
+complete current-schema preset, validate XML and parameter names, and retain
+source/license information for imported patches. Update README when behavior,
+commands, mappings, storage, or hardware assumptions change. Remove stale docs
+instead of leaving conflicting instructions.
+
+Do not publish the legacy preset bank until its provenance is established; see
+`THIRD_PARTY.md`. Project code and newly authored cleared presets use MIT.
