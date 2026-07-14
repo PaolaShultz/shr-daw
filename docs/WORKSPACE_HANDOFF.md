@@ -7,7 +7,7 @@ Do not put credentials, GitHub device codes, or private preset files here.
 ## Repository and publishing
 
 - The checkout is a Git repository on branch `main`.
-- Public remote: <https://github.com/PaolaShultz/shsynth>.
+- Public remote: <https://github.com/PaolaShultz/shr-daw>.
 - `main` tracks `origin/main`; push with `git push` after committing.
 - GitHub CLI is installed and authenticated as `PaolaShultz` using HTTPS.
 - This repository uses the local commit identity `PaolaShultz` with GitHub's
