@@ -22,7 +22,7 @@ restarts JACK. Reboot after installing or removing the isolation settings.
 
 `controller.conf` maps physical notes to controller roles, not screen actions.
 The current screen and context install the four visible menu pages described in
-the [complete README mapping](../README.md#complete-screen-menu-map).
+the [complete controller map](CONTROLLER_INTERFACE.md#complete-controller-map).
 
 Eight-button layout:
 
@@ -70,6 +70,18 @@ Legacy role names from v1 profiles are accepted in physical order. New profiles
 should use `page-1` through `page-4`, `page-cycle`, and `item-1` through
 `item-4`. Command-note on and off remain consumed; unmapped musical notes pass
 through. Disabled (`-`) and planned (`~`) entries never dispatch actions.
+
+List or change controller mappings with:
+
+```sh
+shr pads list
+shr pads input "Controller port name"
+shr pads layout 5
+shr pads cc 20 74
+shr pads set 51 page-cycle
+shr pads set 52 item-1
+shr pads clear 51
+```
 
 ## Tracker pages
 
