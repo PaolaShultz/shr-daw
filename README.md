@@ -41,6 +41,26 @@ Only one managed software synth runs at a time. Changing the synth sends All
 Notes Off, stops the process started by SHR-DAW, and starts the next one.
 SHR-DAW never kills a synth process that it does not own.
 
+## Sound engines and credit
+
+SHR-DAW is a controller and host for three separately installed open-source
+synth engines. Their code and factory sound data are not part of this project:
+
+- [synthv1](https://synthv1.sourceforge.io/) is Rui Nuno Capela's four-oscillator
+  subtractive polyphonic synthesizer. Its upstream source is mirrored on
+  [GitHub](https://github.com/rncbc/synthv1) and is GPL-2.0-or-later.
+- [Yoshimi](https://yoshimi.github.io/) is a Linux software synthesizer that
+  grew from ZynAddSubFX, with Will Godfrey as its current lead developer and
+  maintainer. Its upstream source is on
+  [GitHub](https://github.com/Yoshimi/yoshimi) and is GPL-2.0-or-later.
+- [FluidSynth](https://www.fluidsynth.org/) is the FluidSynth project's
+  real-time SoundFont 2 software synthesizer. Its upstream source is on
+  [GitHub](https://github.com/FluidSynth/fluidsynth) and is LGPL-2.1-or-later.
+
+SHR-DAW starts these programs as external processes and connects to the
+selected engine through configured JACK and MIDI routes. See
+[THIRD_PARTY.md](THIRD_PARTY.md) for redistribution details.
+
 ## Keyboardless and mouseless operation
 
 SHR-DAW is designed to be played and operated as a hardware appliance. After
@@ -427,3 +447,8 @@ legacy preset bank is not in Git because its archive has no clear license note.
 See [THIRD_PARTY.md](THIRD_PARTY.md) when making packages or adding sounds.
 
 For new synthv1 sounds, see [docs/NEW_PATCHES.md](docs/NEW_PATCHES.md).
+
+<p align="center">
+While I was releasing the first version of this software, my uncle died. So I dedicate this project to him.<br>
+Počivao u miru, striče Mile, puno te volim!
+</p>
