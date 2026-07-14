@@ -113,6 +113,7 @@ struct App {
     confirm_song_save: bool,
     confirm_song_delete: Option<String>,
     confirm_pattern_clear: bool,
+    pattern_clear_beats: u8,
     song_previewing: bool,
     sequencer: sequencer::Sequencer,
     tracker_live_input: sequencer::LiveInput,
@@ -189,6 +190,7 @@ impl App {
             confirm_song_save: false,
             confirm_song_delete: None,
             confirm_pattern_clear: false,
+            pattern_clear_beats: 4,
             song_previewing: false,
             sequencer,
             tracker_live_input,
@@ -305,7 +307,8 @@ impl App {
         self.cancel_tracker_gesture();
         if let Some(cell) = self.tracker_cell_mut() {
             *cell = Cell::default();
-            self.status = format!("erased lane {} on current row", self.tracker_track + 1);
+            self.advance_tracker_row();
+            self.status = "ERASE · cell cleared · row advanced".into();
         }
     }
     fn cancel_tracker_gesture(&mut self) {
@@ -595,22 +598,28 @@ impl App {
             Err(error) => self.status = format!("song delete: {error}"),
         }
     }
-    fn clear_pattern(&mut self) {
-        if !self.confirm_pattern_clear {
-            self.confirm_pattern_clear = true;
-            self.status = format!(
-                "confirm CLEAR pattern {}: press CLEAR PAT again",
-                self.tracker_pattern_number()
-            );
-            return;
-        }
+    fn choose_pattern_clear(&mut self) {
+        self.pattern_clear_beats = if self.tracker_rows() == 24 { 3 } else { 4 };
+        self.confirm_pattern_clear = true;
+        self.status = "choose 3/4 or 4/4 · press master rotary to clear".into();
+    }
+    fn apply_pattern_clear(&mut self) {
         self.tracker_stop();
         let number = self.tracker_pattern_number();
+        let rows = if self.pattern_clear_beats == 3 {
+            24
+        } else {
+            32
+        };
         if let Some(pattern) = self.song.patterns.get_mut(&number) {
-            *pattern = sequencer::Pattern::empty(pattern.rows.len(), TOTAL_LANES);
+            *pattern = sequencer::Pattern::empty(rows, TOTAL_LANES);
         }
+        self.tracker_row = 0;
         self.confirm_pattern_clear = false;
-        self.status = format!("cleared pattern {number}");
+        self.status = format!(
+            "cleared pattern {number} · {}/4 · {rows} rows",
+            self.pattern_clear_beats
+        );
     }
     fn new_pattern(&mut self) {
         self.tracker_stop();
@@ -1149,6 +1158,25 @@ fn perform(
     state: &Path,
     tx: Option<&std::sync::mpsc::Sender<MidiEvent>>,
 ) -> bool {
+    if a.screen == Screen::TrackerFiles && a.confirm_pattern_clear {
+        match action {
+            Action::Up => {
+                a.pattern_clear_beats = 3;
+                a.status = "3/4 · 24 rows · press master rotary to clear".into();
+            }
+            Action::Down => {
+                a.pattern_clear_beats = 4;
+                a.status = "4/4 · 32 rows · press master rotary to clear".into();
+            }
+            Action::Activate => a.apply_pattern_clear(),
+            Action::Back => {
+                a.confirm_pattern_clear = false;
+                a.status = "pattern clear cancelled".into();
+            }
+            _ => {}
+        }
+        return false;
+    }
     match action {
         Action::Noop => {}
         Action::Arp => a.status = "ARP · future".into(),
@@ -1302,7 +1330,7 @@ fn perform(
         Action::PreviewSong => a.preview_song(),
         Action::DeleteSong => a.delete_song(),
         Action::NewPattern => a.new_pattern(),
-        Action::ClearPattern => a.clear_pattern(),
+        Action::ClearPattern => a.choose_pattern_clear(),
         Action::TrackerEdit => {
             a.set_tracker_edit(!a.tracker_edit);
             a.status = format!("step edit {}", if a.tracker_edit { "on" } else { "off" });
@@ -1362,9 +1390,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 return false;
             }
             KeyCode::Delete => {
-                if let Some(c) = a.tracker_cell_mut() {
-                    *c = Cell::default();
-                }
+                a.tracker_erase();
                 return false;
             }
             KeyCode::Char('.') | KeyCode::Insert => {
@@ -1468,7 +1494,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             if a.screen == Screen::Ideas {
                 a.idea_selected = a.idea_selected.saturating_sub(1)
             } else if a.screen == Screen::TrackerFiles {
-                a.song_selected = a.song_selected.saturating_sub(1)
+                perform(Action::Up, a, state, Some(tx));
             } else {
                 a.selected = a.selected.saturating_sub(1)
             }
@@ -1477,7 +1503,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             if a.screen == Screen::Ideas {
                 a.idea_selected = (a.idea_selected + 1).min(a.ideas.len().saturating_sub(1))
             } else if a.screen == Screen::TrackerFiles {
-                a.song_selected = (a.song_selected + 1).min(a.song_list.len().saturating_sub(1))
+                perform(Action::Down, a, state, Some(tx));
             } else {
                 a.selected = (a.selected + 1).min(a.presets.len().saturating_sub(1))
             }
@@ -1492,7 +1518,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             if a.screen == Screen::Presets {
                 a.load(state, tx.clone())
             } else if a.screen == Screen::TrackerFiles {
-                a.load_song()
+                perform(Action::Activate, a, state, Some(tx));
             } else {
                 perform(
                     if a.screen == Screen::Ideas {
@@ -1684,7 +1710,13 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         let width = z.width / 4;
         let x0 = z.x + col * width;
         let r = rect(x0, z.y + z.height - 3 + row, width, 1);
-        let label = if a.screen == Screen::Tracker
+        let label = if a.screen == Screen::TrackerFiles && a.confirm_pattern_clear {
+            if assignment.pad == crate::pads::PadAction::Stop {
+                "BACK"
+            } else {
+                ""
+            }
+        } else if a.screen == Screen::Tracker
             && a.tracker_edit
             && assignment.pad == crate::pads::PadAction::TapTempo
         {
@@ -2109,7 +2141,8 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     for (screen_row, row_index) in (start..(start + rows).min(pattern.rows.len())).enumerate() {
         let y = grid.y + 1 + screen_row as u16;
         let selected = row_index == a.tracker_row;
-        let beat_start = row_index % 8 == 0;
+        let beat_stride = if pattern.rows.len() == 24 { 6 } else { 8 };
+        let beat_start = row_index % beat_stride == 0;
         let mut spans = vec![Span::styled(
             format!("{:02X} ", row_index),
             if selected {
@@ -2189,6 +2222,39 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         ),
         rect(z.x, z.y, z.width, 1),
     );
+    if a.confirm_pattern_clear {
+        let choice = |beats| {
+            let selected = a.pattern_clear_beats == beats;
+            Spans::from(Span::styled(
+                format!(
+                    "{} {beats}/4 · {} ROWS",
+                    if selected { "▶" } else { " " },
+                    if beats == 3 { 24 } else { 32 }
+                ),
+                if selected {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else {
+                    Style::default().fg(Color::Gray)
+                },
+            ))
+        };
+        let lines = vec![
+            Spans::from("CLEAR CURRENT PATTERN"),
+            Spans::from(""),
+            choice(3),
+            choice(4),
+            Spans::from(""),
+            Spans::from("Turn master rotary · press to confirm"),
+            Spans::from("STOP/BACK cancels"),
+        ];
+        f.render_widget(
+            Paragraph::new(lines)
+                .alignment(Alignment::Center)
+                .block(Block::default().borders(Borders::ALL)),
+            rect(z.x, z.y + 1, z.width, z.height.saturating_sub(5)),
+        );
+        return;
+    }
     let list = rect(z.x, z.y + 1, z.width, z.height.saturating_sub(5));
     let inner = rect(
         list.x + 1,
@@ -2731,6 +2797,21 @@ mod tests {
         *a.tracker_cell_mut().unwrap() = Cell::default();
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);
     }
+
+    #[test]
+    fn tracker_erase_clears_the_cell_and_advances_one_row() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+
+        a.tracker_erase();
+
+        assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);
+        assert_eq!(a.tracker_row, 1);
+        assert_eq!(a.status, "ERASE · cell cleared · row advanced");
+    }
     #[test]
     fn tracker_file_screen_exposes_confirmed_pattern_clear() {
         let p = presets();
@@ -2743,11 +2824,14 @@ mod tests {
             navigation::pad_action(a.screen, crate::pads::PadAction::Play),
             Some(Action::PreviewSong)
         );
-        a.clear_pattern();
+        perform(Action::ClearPattern, &mut a, Path::new("/none"), None);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::On(60));
         assert!(a.confirm_pattern_clear);
-        a.clear_pattern();
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.pattern_clear_beats, 3);
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);
+        assert_eq!(a.song.patterns[&0].rows.len(), 24);
         assert!(!a.confirm_pattern_clear);
         perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Tracker);
@@ -2797,7 +2881,7 @@ mod tests {
     }
 
     #[test]
-    fn main_press_skips_and_tap_held_encoder_changes_tempo_not_row() {
+    fn main_press_skips_and_tap_erase_advances_before_tempo_change() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
@@ -2818,7 +2902,7 @@ mod tests {
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
         assert_eq!(a.song.tempo, tempo + 1);
-        assert_eq!(a.tracker_row, row);
+        assert_eq!(a.tracker_row, (row + 1) % a.tracker_rows());
         assert_eq!(a.song.patterns[&0].rows[row][0].note, Note::Empty);
         assert!(!a.tap_held);
         let b = TestBackend::new(40, 20);
@@ -2925,6 +3009,41 @@ mod tests {
         assert_eq!(b.get(0, 3).fg, Color::Yellow);
         assert_eq!(b.get(0, 11).fg, Color::Yellow);
         assert_eq!(b.get(0, 10).fg, Color::DarkGray);
+    }
+
+    #[test]
+    fn three_four_pattern_has_24_rows_and_marks_one_seven_thirteen() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerFiles;
+        a.choose_pattern_clear();
+        a.pattern_clear_beats = 3;
+        a.apply_pattern_clear();
+        assert_eq!(a.song.patterns[&0].rows.len(), 24);
+
+        a.screen = Screen::Tracker;
+        a.tracker_row = 4;
+        let b = TestBackend::new(40, 20);
+        let mut t = Terminal::new(b).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let b = t.backend().buffer();
+        assert_eq!(b.get(0, 3).fg, Color::Yellow);
+        assert_eq!(b.get(0, 9).fg, Color::Yellow);
+        assert_eq!(b.get(0, 15).fg, Color::Yellow);
+        assert_eq!(b.get(0, 11).fg, Color::DarkGray);
+    }
+
+    #[test]
+    fn four_four_pattern_clear_has_32_rows() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerFiles;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+        a.choose_pattern_clear();
+        assert_eq!(a.pattern_clear_beats, 4);
+        a.apply_pattern_clear();
+        assert_eq!(a.song.patterns[&0].rows.len(), 32);
+        assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);
     }
 
     #[test]
