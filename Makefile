@@ -18,6 +18,7 @@ install-files:
 	install -Dm755 synth-player $(DESTDIR)$(PREFIX)/bin/synth-player
 	ln -sfn synth-player $(DESTDIR)$(PREFIX)/bin/shs
 	install -Dm755 scripts/setup.sh $(DESTDIR)$(PREFIX)/bin/shr-setup
+	install -Dm755 scripts/audio-performance.sh $(DESTDIR)$(PREFIX)/bin/shr-audio-tune
 	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth-setup
 	install -d $(DESTDIR)$(PREFIX)/share/shsynth/presets/synthv1
 	for preset in \
@@ -37,4 +38,5 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth $(DESTDIR)$(PREFIX)/bin/shr
 	rm -f $(DESTDIR)$(PREFIX)/bin/synth-player $(DESTDIR)$(PREFIX)/bin/shs
 	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth-setup $(DESTDIR)$(PREFIX)/bin/shr-setup
+	rm -f $(DESTDIR)$(PREFIX)/bin/shr-audio-tune
 	rm -rf $(DESTDIR)$(PREFIX)/share/shsynth

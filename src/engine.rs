@@ -6,6 +6,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{mpsc::Sender, Arc, Mutex};
@@ -219,6 +220,7 @@ impl Engine {
             .open(&log_path)?;
         let log_err = log.try_clone()?;
         let mut command = backend_command(preset, state, config)?;
+        set_command_affinity(&mut command, config.audio_engine_cpu);
         let mut child = command
             .stdin(if preset.backend == BackendKind::Synthv1 {
                 Stdio::null()
@@ -395,6 +397,28 @@ impl Engine {
             self.send(&[0xc0 | channel, *program])?;
         }
         Ok(())
+    }
+}
+
+/// Restrict only the managed engine process. The TUI, MIDI routing, and WAV
+/// writer remain on housekeeping CPUs. System setup is responsible for making
+/// the selected CPU available and keeping unrelated work away from it.
+fn set_command_affinity(command: &mut Command, cpu: Option<usize>) {
+    let Some(cpu) = cpu else {
+        return;
+    };
+    unsafe {
+        command.pre_exec(move || {
+            let mut set: libc::cpu_set_t = std::mem::zeroed();
+            libc::CPU_ZERO(&mut set);
+            libc::CPU_SET(cpu, &mut set);
+            let result = libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set);
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::last_os_error())
+            }
+        });
     }
 }
 

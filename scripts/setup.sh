@@ -301,6 +301,32 @@ else
   replace_values "$RUNTIME_CONFIG" external_midi.enabled false
 fi
 
+cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '0')"
+TUNE_TOOL=''
+if command -v shr-audio-tune >/dev/null 2>&1; then
+  TUNE_TOOL="$(command -v shr-audio-tune)"
+elif [[ -x "$ROOT/scripts/audio-performance.sh" ]]; then
+  TUNE_TOOL="$ROOT/scripts/audio-performance.sh"
+fi
+if [[ "$cpu_count" =~ ^[0-9]+$ ]] && ((cpu_count >= 4)) && [[ -n "$TUNE_TOOL" ]]; then
+  if ask_yes_no 'Reserve one CPU for real-time audio (sudo and reboot required)?' no; then
+    default_cpu=$((cpu_count - 1))
+    read -r -p "Zero-based audio CPU [$default_cpu]: " audio_cpu
+    audio_cpu="${audio_cpu:-$default_cpu}"
+    if [[ ! "$audio_cpu" =~ ^[0-9]+$ ]] || ((audio_cpu >= cpu_count)); then
+      printf 'Audio CPU must be an online zero-based CPU number.\n' >&2
+      exit 1
+    fi
+    if ((EUID == 0)); then
+      "$TUNE_TOOL" install "$audio_cpu"
+    else
+      sudo "$TUNE_TOOL" install "$audio_cpu"
+    fi
+    replace_values "$RUNTIME_CONFIG" audio.engine_cpu "$audio_cpu"
+    printf 'The audio CPU becomes isolated after reboot; JACK was not restarted.\n'
+  fi
+fi
+
 printf '\nConfiguration complete.\n'
 printf '  Runtime:    %s\n' "$RUNTIME_CONFIG"
 printf '  Controller: %s\n' "$CONTROLLER_CONFIG"

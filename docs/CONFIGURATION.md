@@ -4,6 +4,20 @@ SHR-DAW is a Raspberry Pi mini DAW and MIDI routing hub. Hardware names belong
 in `shsynth.conf`, `controller.conf`, or a saved song. They are not compiled
 into the program.
 
+## Audio CPU isolation
+
+`audio.engine_cpu` is an optional zero-based CPU number. When set, SHR-DAW pins
+the one synth process it owns to that CPU before the process starts, allowing
+its JACK threads to inherit the same affinity. It deliberately does not pin the
+TUI, MIDI routing, or recording disk writer.
+
+Do not set this key by itself and assume the CPU is reserved: ordinary kernel
+and user work can still run there. On supported Raspberry Pi installations,
+use `sudo shr-audio-tune install CPU` or the opt-in setup-wizard step. That tool
+backs up the boot command line, configures JACK affinity and the performance
+governor, and provides a matching `remove` operation. It never starts or
+restarts JACK. Reboot after installing or removing the isolation settings.
+
 ## Controller menu layouts
 
 `controller.conf` maps physical notes to controller roles, not screen actions.

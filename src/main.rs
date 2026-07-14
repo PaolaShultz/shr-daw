@@ -226,6 +226,32 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
             );
         }
     }
+    if let Some(cpu) = config.audio_engine_cpu {
+        check(
+            Path::new(&format!("/sys/devices/system/cpu/cpu{cpu}")).is_dir(),
+            format!("configured audio CPU is online: {cpu}"),
+        );
+        let cmdline = fs::read_to_string("/proc/cmdline").unwrap_or_default();
+        check(
+            cmdline
+                .split_whitespace()
+                .any(|arg| arg == format!("nohz_full={cpu}")),
+            format!("audio CPU {cpu} is isolated (reboot after shr-audio-tune)"),
+        );
+        let governors = fs::read_dir("/sys/devices/system/cpu/cpufreq")
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("policy"))
+            .map(|entry| fs::read_to_string(entry.path().join("scaling_governor")))
+            .collect::<std::io::Result<Vec<_>>>()
+            .unwrap_or_default();
+        check(
+            !governors.is_empty() && governors.iter().all(|value| value.trim() == "performance"),
+            "CPU frequency governor: performance".into(),
+        );
+    }
     if config.midi_autoconnect {
         let controller = pads::PadConfig::load(&state.join("controller.conf")).unwrap_or_default();
         let wanted = controller

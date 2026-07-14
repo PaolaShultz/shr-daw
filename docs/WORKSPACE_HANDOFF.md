@@ -62,10 +62,28 @@ hardware destination. These are configuration values, not Rust constants.
 Rerun `scripts/setup-local.sh` when hardware or JACK port names change. The
 wizard did not replace `~/.jackdrc` and never starts or restarts JACK.
 
+The optional dedicated-core audio profile is installed for CPU 3. Both
+`user/state/shsynth/shsynth.conf` and the normal per-user runtime configuration
+set `audio.engine_cpu=3`. `/boot/firmware/cmdline.txt` has the tool-owned
+`isolcpus`, `nohz_full`, `rcu_nocbs`, and `irqaffinity` arguments; the
+`shr-audio-performance.service` governor service is enabled and active; and the
+JACK system service has a tool-owned CPU-affinity drop-in. The boot-time parts
+do not become active until the next reboot. The tuner did not restart JACK or
+reboot the Pi. Inspect with `shr-audio-tune status`; reverse only the managed
+settings with `sudo shr-audio-tune remove`, clear `audio.engine_cpu`, and
+reboot. The original boot command line is retained below
+`/var/lib/shr-audio-tune/`.
+
+At installation time the AudioBox USB 96 was disconnected. Consequently the
+pre-existing `jack.service` remained failed because ALSA could not resolve
+`hw:A96`; this is a hardware-availability issue, not a tuning failure. Do not
+start or restart JACK merely to validate the affinity profile.
+
 The product and Cargo package are named `shr-daw`. The regular installer
-provides `shr`, `shr-setup`, and `shs`; the repository helpers above are
-intentionally development/local-checkout commands. The `shsynth` state, data,
-configuration, and shared-data paths remain unchanged for compatibility.
+provides `shr`, `shr-setup`, `shr-audio-tune`, and `shs`; the repository helpers
+above are intentionally development/local-checkout commands. The `shsynth`
+state, data, configuration, and shared-data paths remain unchanged for
+compatibility.
 
 ## Preset provenance decision
 
@@ -102,7 +120,8 @@ The final command must produce no output.
 
 ## Installed tools and validation
 
-On this Raspberry Pi, `gh` and `libxml2-utils` (`xmllint`) are installed. If a
+On this Raspberry Pi, `gh`, `libxml2-utils` (`xmllint`), and `shellcheck` are
+installed. If a
 required validation or publishing tool is missing, install it instead of
 silently weakening or skipping the check. Validate all local and public preset
 XML with:
@@ -123,7 +142,7 @@ cargo build --release --locked
 ```
 
 At the time this handoff was written, all 445 public-plus-private XML files
-validated, 91 Rust tests passed, Clippy passed with warnings denied, formatting
+validated, 124 Rust tests passed, Clippy passed with warnings denied, formatting
 passed, and the release build succeeded. Run the checks again after changes;
 this statement is history, not a substitute for current verification.
 

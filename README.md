@@ -331,6 +331,7 @@ Installed commands:
 
 - `shr`: the SHR-DAW mini DAW;
 - `shr-setup`: the routing wizard;
+- `shr-audio-tune`: reversible Raspberry Pi dedicated-core audio tuning;
 - `shs`: the old synthv1-only shell program.
 
 JACK must be running before SHR-DAW starts. The wizard can write a backed-up
@@ -459,6 +460,31 @@ Important `shsynth.conf` groups:
 | `audio.*` | JACK playback outputs |
 | `external_midi.*` | configured tracker route, timing, program/bank and drum-map defaults |
 | `capture.*` | JACK recording input and output directory |
+
+### Optional dedicated audio CPU
+
+On a Raspberry Pi with at least four cores, the setup wizard can reserve one
+CPU for JACK and SHR-DAW's single managed synth engine. The opt-in profile:
+
+- pins JACK and the managed synth to the selected CPU;
+- keeps normal IRQ handling on the other CPUs;
+- enables full-tickless and RCU offload for the audio CPU at boot;
+- selects the `performance` frequency governor while its systemd service is
+  active;
+- preserves the original boot command line and refuses to replace isolation
+  settings it did not create.
+
+The wizard never restarts JACK or reboots. Inspect or reverse the profile with:
+
+```sh
+shr-audio-tune status
+sudo shr-audio-tune remove
+```
+
+After removal, clear `audio.engine_cpu` in `shsynth.conf` and reboot. CPU
+isolation reduces the machine to three housekeeping cores, so it is optional
+and disabled by default. It improves scheduling isolation but cannot guarantee
+that faulty hardware, firmware, or a too-small JACK buffer will never xrun.
 
 List or change controller mappings with:
 

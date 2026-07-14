@@ -91,6 +91,8 @@ pub struct RuntimeConfig {
     pub midi_input_matches: Vec<String>,
     pub audio_autoconnect: bool,
     pub audio_outputs: Vec<String>,
+    /// Optional zero-based CPU reserved by system setup for the managed engine.
+    pub audio_engine_cpu: Option<usize>,
     pub cpu_temperature_path: Option<PathBuf>,
     pub external_midi: ExternalMidiConfig,
     pub capture: AudioCaptureConfig,
@@ -118,6 +120,7 @@ impl Default for RuntimeConfig {
             midi_input_matches: Vec::new(),
             audio_autoconnect: false,
             audio_outputs: Vec::new(),
+            audio_engine_cpu: None,
             cpu_temperature_path: None,
             external_midi: ExternalMidiConfig {
                 enabled: false,
@@ -274,6 +277,18 @@ impl RuntimeConfig {
                     replace_list_once(&mut self.audio_outputs, &mut saw_audio_output);
                     if !value.is_empty() {
                         self.audio_outputs.push(value.to_owned());
+                    }
+                }
+                "audio.engine_cpu" => {
+                    self.audio_engine_cpu = if value.is_empty() {
+                        None
+                    } else {
+                        Some(bounded_usize(
+                            key,
+                            value,
+                            0,
+                            libc::CPU_SETSIZE as usize - 1,
+                        )?)
                     }
                 }
                 "status.cpu_temperature_path" => {
@@ -470,6 +485,12 @@ impl RuntimeConfig {
             text.push_str(&format!("audio.output={output}\n"));
         }
         text.push_str(&format!(
+            "audio.engine_cpu={}\n",
+            self.audio_engine_cpu
+                .map(|cpu| cpu.to_string())
+                .unwrap_or_default()
+        ));
+        text.push_str(&format!(
             "external_midi.enabled={}\nexternal_midi.client={}\nexternal_midi.output={}\nexternal_midi.max_tracks={}\n",
             self.external_midi.enabled,
             self.external_midi.client_name,
@@ -656,6 +677,23 @@ mod tests {
         let path = std::env::temp_dir().join(format!("shsynth-bad-{}.conf", std::process::id()));
         fs::write(&path, "audio.typo=yes\n").unwrap();
         assert!(RuntimeConfig::load(&path).is_err());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn audio_engine_cpu_is_optional_and_round_trips() {
+        let path =
+            std::env::temp_dir().join(format!("shsynth-audio-cpu-{}.conf", std::process::id()));
+        fs::write(&path, "audio.engine_cpu=3\n").unwrap();
+        let config = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(config.audio_engine_cpu, Some(3));
+        config.save(&path).unwrap();
+        assert_eq!(
+            RuntimeConfig::load(&path).unwrap().audio_engine_cpu,
+            Some(3)
+        );
+        fs::write(&path, "audio.engine_cpu=\n").unwrap();
+        assert_eq!(RuntimeConfig::load(&path).unwrap().audio_engine_cpu, None);
         let _ = fs::remove_file(path);
     }
 }
