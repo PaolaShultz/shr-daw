@@ -10,6 +10,17 @@ const DEFAULT_CONTROLLER_CONFIG: &str = include_str!("../config/controller.conf"
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PadAction {
+    Page1,
+    Page2,
+    Page3,
+    Page4,
+    CyclePage,
+    Item1,
+    Item2,
+    Item3,
+    Item4,
+    // Legacy v1 names retain the physical eight-pad order.  They are
+    // normalized into the new page/item model by `menu_input`.
     Arp,
     Pad,
     Prog,
@@ -18,6 +29,42 @@ pub enum PadAction {
     Play,
     Rec,
     TapTempo,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ControllerLayout {
+    Eight,
+    Five,
+    Four,
+}
+
+impl Default for ControllerLayout {
+    fn default() -> Self {
+        Self::Eight
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MenuInput {
+    SelectPage(usize),
+    CyclePage,
+    ActivateItem(usize),
+}
+
+impl PadAction {
+    pub const fn menu_input(self) -> MenuInput {
+        match self {
+            Self::Page1 | Self::Arp => MenuInput::SelectPage(0),
+            Self::Page2 | Self::Pad => MenuInput::SelectPage(1),
+            Self::Page3 | Self::Prog => MenuInput::SelectPage(2),
+            Self::Page4 | Self::Loop => MenuInput::SelectPage(3),
+            Self::CyclePage => MenuInput::CyclePage,
+            Self::Item1 | Self::Stop => MenuInput::ActivateItem(0),
+            Self::Item2 | Self::Play => MenuInput::ActivateItem(1),
+            Self::Item3 | Self::Rec => MenuInput::ActivateItem(2),
+            Self::Item4 | Self::TapTempo => MenuInput::ActivateItem(3),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,6 +77,15 @@ pub enum EncoderAction {
 impl fmt::Display for PadAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Page1 => "page-1",
+            Self::Page2 => "page-2",
+            Self::Page3 => "page-3",
+            Self::Page4 => "page-4",
+            Self::CyclePage => "page-cycle",
+            Self::Item1 => "item-1",
+            Self::Item2 => "item-2",
+            Self::Item3 => "item-3",
+            Self::Item4 => "item-4",
             Self::Arp => "arp",
             Self::Pad => "pad",
             Self::Prog => "prog",
@@ -46,6 +102,15 @@ impl FromStr for PadAction {
     type Err = anyhow::Error;
     fn from_str(value: &str) -> Result<Self> {
         match value.to_ascii_lowercase().as_str() {
+            "page-1" | "page1" => Ok(Self::Page1),
+            "page-2" | "page2" => Ok(Self::Page2),
+            "page-3" | "page3" => Ok(Self::Page3),
+            "page-4" | "page4" => Ok(Self::Page4),
+            "page-cycle" | "cycle-page" | "cycle" => Ok(Self::CyclePage),
+            "item-1" | "item1" => Ok(Self::Item1),
+            "item-2" | "item2" => Ok(Self::Item2),
+            "item-3" | "item3" => Ok(Self::Item3),
+            "item-4" | "item4" => Ok(Self::Item4),
             "arp" => Ok(Self::Arp),
             "pad" => Ok(Self::Pad),
             "prog" => Ok(Self::Prog),
@@ -69,6 +134,7 @@ pub struct PadConfig {
     pub encoder_press_cc: Option<u8>,
     /// Dedicated toggle control; this uses the raw Shift CC, not its shifted pad layer.
     pub lock_cc: Option<u8>,
+    pub layout: ControllerLayout,
 }
 
 impl Default for PadConfig {
@@ -80,6 +146,7 @@ impl Default for PadConfig {
             encoder_relative_cc: None,
             encoder_press_cc: None,
             lock_cc: None,
+            layout: ControllerLayout::Eight,
         };
         config
             .merge(
@@ -116,6 +183,15 @@ impl PadConfig {
             })?;
             if key.trim() == "input" {
                 self.input_match = (!value.trim().is_empty()).then(|| value.trim().to_owned());
+                continue;
+            }
+            if key.trim() == "menu.layout" {
+                self.layout = match value.trim() {
+                    "8" | "eight" => ControllerLayout::Eight,
+                    "5" | "five" => ControllerLayout::Five,
+                    "4" | "four" => ControllerLayout::Four,
+                    _ => bail!("menu.layout must be 8, 5, or 4"),
+                };
                 continue;
             }
             if key.trim() == "encoder.relative_cc" {
@@ -186,12 +262,17 @@ impl PadConfig {
         }
         let mut entries: Vec<_> = self.pads.iter().collect();
         entries.sort_by_key(|(note, _)| **note);
-        let mut text = String::from("# SHSynth controller profile v1\n");
+        let mut text = String::from("# SHR-DAW controller profile v2\n");
         if let Some(input) = &self.input_match {
             text.push_str(&format!("input={input}\n"));
         }
         text.push_str(&format!(
-            "encoder.relative_cc={}\nencoder.press_cc={}\nlock.cc={}\n",
+            "menu.layout={}\nencoder.relative_cc={}\nencoder.press_cc={}\nlock.cc={}\n",
+            match self.layout {
+                ControllerLayout::Eight => 8,
+                ControllerLayout::Five => 5,
+                ControllerLayout::Four => 4,
+            },
             self.encoder_relative_cc
                 .map(|cc| cc.to_string())
                 .unwrap_or_default(),
@@ -370,6 +451,26 @@ mod tests {
         assert_eq!(config.controls, HashMap::from([(86, 74)]));
         assert_eq!(config.encoder_relative_cc, Some(28));
         assert_eq!(config.encoder_press_cc, Some(118));
+        assert_eq!(config.layout, ControllerLayout::Eight);
+        assert_eq!(PadAction::Arp.menu_input(), MenuInput::SelectPage(0));
+        assert_eq!(PadAction::TapTempo.menu_input(), MenuInput::ActivateItem(3));
+        let _ = fs::remove_file(path);
+    }
+    #[test]
+    fn five_and_four_button_profiles_are_configurable_without_device_constants() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-controller-layout-{}.conf",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            "menu.layout=5\nencoder.relative_cc=12\nencoder.press_cc=13\npad.60=page-cycle\npad.61=item-1\npad.62=item-2\npad.63=item-3\npad.64=item-4\n",
+        )
+        .unwrap();
+        let config = PadConfig::load(&path).unwrap();
+        assert_eq!(config.layout, ControllerLayout::Five);
+        assert_eq!(config.pads[&60].menu_input(), MenuInput::CyclePage);
+        assert_eq!(config.pads[&64].menu_input(), MenuInput::ActivateItem(3));
         let _ = fs::remove_file(path);
     }
     #[test]

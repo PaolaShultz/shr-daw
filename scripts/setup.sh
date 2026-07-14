@@ -15,7 +15,7 @@ usage() {
   cat <<'EOF'
 Usage: setup.sh [--state-dir DIR]
 
-Interactively configure SHSynth's MIDI and JACK routes. The wizard only writes
+Interactively configure SHR-DAW's MIDI and JACK routes. The wizard only writes
 configuration: it does not start JACK, synth engines, or audible tests.
 EOF
 }
@@ -40,12 +40,12 @@ while (($#)); do
 done
 
 if [[ -z "$SHSYNTH_BIN" ]]; then
-  if command -v shsynth >/dev/null 2>&1; then
-    SHSYNTH_BIN="$(command -v shsynth)"
-  elif [[ -x "$ROOT/target/release/shsynth" ]]; then
-    SHSYNTH_BIN="$ROOT/target/release/shsynth"
+  if command -v shr >/dev/null 2>&1; then
+    SHSYNTH_BIN="$(command -v shr)"
+  elif [[ -x "$ROOT/target/release/shr" ]]; then
+    SHSYNTH_BIN="$ROOT/target/release/shr"
   else
-    printf 'Build or install SHSynth before running this wizard.\n' >&2
+    printf 'Build or install SHR-DAW before running this wizard.\n' >&2
     exit 1
   fi
 fi
@@ -163,7 +163,7 @@ alsa_ports() {
     /^[[:space:]]+[0-9]+ / {
       port=$2
       if (client != "System" && client != "Midi Through" &&
-          client !~ /^SHSynth/ && client !~ /^shs-/ && port != "") {
+          client !~ /^SHR-DAW/ && client !~ /^shs-/ && port != "") {
         print client " " port
       }
     }
@@ -200,7 +200,7 @@ alsa_cards() {
   ' /proc/asound/cards
 }
 
-printf 'SHSynth hardware setup\n'
+printf 'SHR-DAW hardware setup\n'
 printf 'No audio server, synth engine, or audible test will be started.\n'
 
 mapfile -t cards < <(alsa_cards)

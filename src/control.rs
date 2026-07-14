@@ -4,6 +4,9 @@
 use std::collections::HashMap;
 
 pub const VOLUME_CC: u8 = 93;
+/// Controller/menu architecture reserves four banks of four controls.  The
+/// synthv1 0.9.29 profile intentionally populates only the verified 12.
+pub const MAPPED_CONTROL_CAPACITY: usize = 16;
 
 /// synthv1 0.9.29 indices/ranges, verified against src/synthv1_param.cpp.
 #[derive(Clone, Copy, Debug)]
@@ -16,7 +19,7 @@ pub struct Control {
     pub max: f32,
 }
 
-pub const CONTROLS: [Control; 12] = [
+pub const CONTROLS: [Control; MAPPED_CONTROL_CAPACITY - 4] = [
     Control {
         cc: 74,
         index: 17,
@@ -162,6 +165,7 @@ mod tests {
 
     #[test]
     fn mapping_has_unique_ccs_and_indices() {
+        assert!(CONTROLS.len() <= MAPPED_CONTROL_CAPACITY);
         for (i, a) in CONTROLS.iter().enumerate() {
             for b in &CONTROLS[i + 1..] {
                 assert_ne!(a.cc, b.cc);

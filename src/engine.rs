@@ -245,7 +245,7 @@ impl Engine {
             connect_audio(&backend_config.client_name, config);
             if config.midi_autoconnect {
                 attach_midi_output(&output, &backend_config.midi_output_match, preset.backend)?;
-                retain_midi_destination("SHSynth MIDI output", &backend_config.client_name);
+                retain_midi_destination("SHR-DAW MIDI output", &backend_config.client_name);
             }
             retain_midi_destination(
                 &config.external_midi.client_name,
@@ -358,7 +358,7 @@ impl Engine {
     pub fn set_mapped_parameters(&self, values: &std::collections::HashMap<u8, f32>) -> Result<()> {
         if !self.supports_parameter_reset() {
             bail!(
-                "{} has no SHSynth mapped-parameter reset",
+                "{} has no SHR-DAW mapped-parameter reset",
                 self.backend.label()
             );
         }
@@ -558,7 +558,7 @@ fn connect_midi_input(
         tracker_route,
         tracker_input,
     } = routing;
-    let mut input = MidiInput::new("SHSynth MIDI input")?;
+    let mut input = MidiInput::new("SHR-DAW MIDI input")?;
     input.ignore(Ignore::None);
     let ports = input.ports();
     let matches = |port: &&midir::MidiInputPort, needles: &[&str]| {
@@ -600,7 +600,7 @@ fn connect_midi_input(
     let connection = input
         .connect(
             port,
-            "SHSynth monitor",
+            "SHR-DAW monitor",
             move |_stamp, message, _| {
                 let backend = backend
                     .lock()
@@ -733,7 +733,7 @@ fn disconnect_direct_midi(source: &str, client_name: &str) {
 }
 
 /// Removes only subscriptions whose source and destination names match the
-/// supplied SHSynth-owned/configured clients. Other clients and routes are
+/// supplied SHR-DAW-owned/configured clients. Other clients and routes are
 /// never reconfigured.
 pub fn disconnect_midi_routes(source_match: &str, destination_matches: &[&str]) {
     let clients = parse_alsa_clients(&command_lines("aconnect", &["-l"]));
@@ -762,7 +762,7 @@ pub fn disconnect_midi_routes(source_match: &str, destination_matches: &[&str]) 
     }
 }
 
-/// Keeps only the configured destination on an SHSynth-owned ALSA source port.
+/// Keeps only the configured destination on an SHR-DAW-owned ALSA source port.
 /// Desktop auto-subscriptions are removed without touching another client's
 /// source routes.
 pub fn retain_midi_destination(source_match: &str, destination_match: &str) {
@@ -838,7 +838,7 @@ fn attach_midi_output(
     output_match: &str,
     backend: BackendKind,
 ) -> Result<()> {
-    let output = MidiOutput::new("SHSynth MIDI output")?;
+    let output = MidiOutput::new("SHR-DAW MIDI output")?;
     let ports = output.ports();
     let port = ports
         .iter()
@@ -855,7 +855,7 @@ fn attach_midi_output(
             )
         })?;
     let connection = output
-        .connect(port, "SHSynth forward")
+        .connect(port, "SHR-DAW forward")
         .map_err(|error| anyhow!("connect {} MIDI output: {error}", backend.label()))?;
     *shared
         .lock()
@@ -1018,11 +1018,11 @@ pub fn status(state: &Path) -> String {
         fs::read_to_string(state.join("current")),
     ) {
         (Some(owner), Ok(name)) if still_owned(&owner) => format!(
-            "Running: {}\nPID: {}\nAudio: JACK\nMIDI: monitored and forwarded by SHSynth",
+            "Running: {}\nPID: {}\nAudio: JACK\nMIDI: monitored and forwarded by SHR-DAW",
             name.trim(),
             owner.pid
         ),
-        _ => "SHSynth is stopped.".to_owned(),
+        _ => "SHR-DAW is stopped.".to_owned(),
     }
 }
 
@@ -1105,7 +1105,7 @@ mod tests {
         let lines = [
             "client 28: 'AudioBox USB 96' [type=kernel]".into(),
             "client 133: 'shs-casio' [type=user]".into(),
-            "    0 'SHSynth accompaniment'".into(),
+            "    0 'SHR-DAW accompaniment'".into(),
             "\tConnecting To: 28:0, 134:0, 28:0[real:0]".into(),
             "client 134: 'yoshimi-shs-yoshimi' [type=user]".into(),
         ];

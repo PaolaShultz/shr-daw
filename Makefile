@@ -13,12 +13,12 @@ test:
 install: build install-files
 
 install-files:
-	install -Dm755 target/release/shsynth $(DESTDIR)$(PREFIX)/bin/shsynth
-	ln -sfn shsynth $(DESTDIR)$(PREFIX)/bin/shr
+	install -Dm755 target/release/shr $(DESTDIR)$(PREFIX)/bin/shr
+	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth
 	install -Dm755 synth-player $(DESTDIR)$(PREFIX)/bin/synth-player
 	ln -sfn synth-player $(DESTDIR)$(PREFIX)/bin/shs
-	install -Dm755 scripts/setup.sh $(DESTDIR)$(PREFIX)/bin/shsynth-setup
-	ln -sfn shsynth-setup $(DESTDIR)$(PREFIX)/bin/shr-setup
+	install -Dm755 scripts/setup.sh $(DESTDIR)$(PREFIX)/bin/shr-setup
+	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth-setup
 	install -d $(DESTDIR)$(PREFIX)/share/shsynth/presets/synthv1
 	for preset in \
 	  "Velvet Tines.synthv1" \

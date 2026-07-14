@@ -40,7 +40,7 @@ Repository-local operation uses:
 
 ```sh
 ./scripts/setup-local.sh  # interactive hardware configuration
-./scripts/local.sh        # run SHSynth with all writable data below user/
+./scripts/local.sh        # run SHR-DAW with all writable data below user/
 ```
 
 `SHSYNTH_USER_DIR` may replace `user/`. The launchers set `XDG_STATE_HOME`,
@@ -62,8 +62,10 @@ hardware destination. These are configuration values, not Rust constants.
 Rerun `scripts/setup-local.sh` when hardware or JACK port names change. The
 wizard did not replace `~/.jackdrc` and never starts or restarts JACK.
 
-The regular installer provides `shr`, `shr-setup`, and `shs`; the repository
-helpers above are intentionally development/local-checkout commands.
+The product and Cargo package are named `shr-daw`. The regular installer
+provides `shr`, `shr-setup`, and `shs`; the repository helpers above are
+intentionally development/local-checkout commands. The `shsynth` state, data,
+configuration, and shared-data paths remain unchanged for compatibility.
 
 ## Preset provenance decision
 
@@ -131,7 +133,7 @@ this statement is history, not a substitute for current verification.
 2. Run `git status -sb`; preserve existing and ignored user data.
 3. Use `scripts/local.sh` for the self-contained checkout.
 4. Never start an audible synth or JACK test without explicit permission.
-5. Never manage, kill, or layer processes outside SHSynth's ownership rules.
+5. Never manage, kill, or layer processes outside SHR-DAW's ownership rules.
 6. Keep hardware routes and executable/client names in configuration.
 7. Keep the 12 mapped synthv1 controls and pickup/reset invariants intact.
 8. Validate XML, run all Rust checks, inspect the staged tree, then push.

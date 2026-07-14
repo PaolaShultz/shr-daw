@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="SHSynth"
+APP_NAME="SHR-DAW"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/shsynth"
 PID_FILE="$STATE_DIR/engine.pid"
@@ -114,7 +114,7 @@ status_text() {
       "${PRESET_LABEL[$current]:-$current}" "$pid" "$audio_status" "$midi_status"
   else
     rm -f "$PID_FILE" "$CURRENT_FILE"
-    printf 'SHSynth is stopped.\n'
+    printf 'SHR-DAW is stopped.\n'
   fi
 }
 

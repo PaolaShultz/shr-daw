@@ -20,9 +20,10 @@ warnings`, and `cargo build --release --locked` with that PATH.
 Install tools required to complete requested setup, validation, or publishing
 work instead of silently skipping the check or substituting a weaker one. On
 Debian/Raspberry Pi OS this includes `libxml2-utils` for `xmllint` preset
-validation and `gh` for GitHub authentication/publishing. Before pushing, use
-the GitHub CLI web/device authorization flow and let the user authorize it;
-do not invent a Git author identity or expose authentication credentials.
+validation and `gh` for GitHub authentication/publishing. Use the existing
+GitHub CLI login when it is valid. If authentication is missing or expired,
+use the web/device authorization flow and let the user authorize it. Do not
+invent a Git author identity or expose authentication credentials.
 
 ## Architecture
 

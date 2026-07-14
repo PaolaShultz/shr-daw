@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 fn main() {
     if let Err(e) = real_main() {
-        eprintln!("shsynth: {e:#}");
+        eprintln!("shr: {e:#}");
         std::process::exit(1);
     }
 }
@@ -64,7 +64,7 @@ fn real_main() -> Result<()> {
         "pads" => pads_command(&args[1..], &state),
         "casio" => casio_command(&args[1..], &runtime),
         "start" => {
-            let arg = args.get(1).context("usage: shsynth start PRESET")?;
+            let arg = args.get(1).context("usage: shr start PRESET")?;
             let p = preset::resolve(&presets, arg)
                 .with_context(|| format!("unknown preset (use ENGINE:NAME): {arg}"))?;
             start_daemon(p, &state, &runtime)
@@ -163,7 +163,7 @@ fn show_log(state: &Path, count: Option<&String>) -> Result<()> {
 }
 
 fn usage() {
-    println!("Usage: shsynth [menu|list|status|doctor|start PRESET|stop|log [LINES]|ideas COMMAND|pads COMMAND|casio diagnostic|config init]\n\nWith no arguments, opens the terminal instrument browser.");
+    println!("Usage: shr [menu|list|status|doctor|start PRESET|stop|log [LINES]|ideas COMMAND|pads COMMAND|casio diagnostic|config init]\n\nWith no arguments, opens the terminal instrument browser.");
 }
 
 fn casio_command(args: &[String], config: &config::RuntimeConfig) -> Result<()> {
@@ -314,7 +314,7 @@ fn ideas_command(
             Ok(())
         }
         "inspect" => {
-            let n = args.get(1).context("usage: shsynth ideas inspect NAME")?;
+            let n = args.get(1).context("usage: shr ideas inspect NAME")?;
             print!(
                 "{}",
                 fs::read_to_string(base.join(recording::safe_name(n)).join("metadata.json"))?
@@ -322,9 +322,7 @@ fn ideas_command(
             Ok(())
         }
         "delete" => {
-            let n = args
-                .get(1)
-                .context("usage: shsynth ideas delete NAME --yes")?;
+            let n = args.get(1).context("usage: shr ideas delete NAME --yes")?;
             if args.get(2).map(String::as_str) != Some("--yes") {
                 bail!("deletion requires --yes");
             }
@@ -332,7 +330,7 @@ fn ideas_command(
             Ok(())
         }
         "play" => {
-            let n = args.get(1).context("usage: shsynth ideas play NAME")?;
+            let n = args.get(1).context("usage: shr ideas play NAME")?;
             let (p, events) = recording::load(&base, n)?;
             let (tx, _) = std::sync::mpsc::channel();
             let router = engine::MidiRouter::start(state, config, tx)?;
@@ -366,6 +364,14 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
         "list" => {
             println!("input: {}", config.input_match.as_deref().unwrap_or("auto"));
             println!(
+                "menu layout: {} buttons",
+                match config.layout {
+                    pads::ControllerLayout::Eight => 8,
+                    pads::ControllerLayout::Five => 5,
+                    pads::ControllerLayout::Four => 4,
+                }
+            );
+            println!(
                 "encoder: turn CC {}, press CC {}; pad lock CC {}",
                 config
                     .encoder_relative_cc
@@ -395,38 +401,42 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
         "set" => {
             let n: u8 = args
                 .get(1)
-                .context("usage: shsynth pads set NOTE ACTION")?
+                .context("usage: shr pads set NOTE ACTION")?
                 .parse()?;
             let a = args
                 .get(2)
-                .context("usage: shsynth pads set NOTE ACTION")?
+                .context("usage: shr pads set NOTE ACTION")?
                 .parse()?;
             config.pads.insert(n, a);
             config.save(&path)
         }
         "clear" => {
-            let n: u8 = args
-                .get(1)
-                .context("usage: shsynth pads clear NOTE")?
-                .parse()?;
+            let n: u8 = args.get(1).context("usage: shr pads clear NOTE")?.parse()?;
             config.pads.remove(&n);
             config.save(&path)
         }
         "input" => {
-            let name = args
-                .get(1)
-                .context("usage: shsynth pads input PORT_MATCH")?;
+            let name = args.get(1).context("usage: shr pads input PORT_MATCH")?;
             config.input_match = Some(name.clone());
+            config.save(&path)
+        }
+        "layout" => {
+            config.layout = match args.get(1).map(String::as_str) {
+                Some("8" | "eight") => pads::ControllerLayout::Eight,
+                Some("5" | "five") => pads::ControllerLayout::Five,
+                Some("4" | "four") => pads::ControllerLayout::Four,
+                _ => bail!("usage: shr pads layout 8|5|4"),
+            };
             config.save(&path)
         }
         "cc" => {
             let incoming: u8 = args
                 .get(1)
-                .context("usage: shsynth pads cc INCOMING TARGET")?
+                .context("usage: shr pads cc INCOMING TARGET")?
                 .parse()?;
             let target: u8 = args
                 .get(2)
-                .context("usage: shsynth pads cc INCOMING TARGET")?
+                .context("usage: shr pads cc INCOMING TARGET")?
                 .parse()?;
             if control::by_cc(target).is_none() {
                 bail!("TARGET must be one of the 12 mapped CC numbers");

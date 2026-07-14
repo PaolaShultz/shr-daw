@@ -18,17 +18,17 @@ for preset in "$ROOT"/presets/synthv1/*.synthv1; do
   [[ -e "$destination" ]] || cp "$preset" "$destination"
 done
 
-if [[ -x "$ROOT/target/release/shsynth" ]]; then
-  SHSYNTH_BIN="$ROOT/target/release/shsynth"
-elif command -v shsynth >/dev/null 2>&1; then
-  SHSYNTH_BIN="$(command -v shsynth)"
+if [[ -x "$ROOT/target/release/shr" ]]; then
+  SHSYNTH_BIN="$ROOT/target/release/shr"
+elif command -v shr >/dev/null 2>&1; then
+  SHSYNTH_BIN="$(command -v shr)"
 else
-  printf 'Build or install SHSynth first.\n' >&2
+  printf 'Build or install SHR-DAW first.\n' >&2
   exit 1
 fi
 
 if [[ ! -f "$XDG_STATE_HOME/shsynth/shsynth.conf" ]]; then
-  printf 'Run scripts/setup-local.sh before starting SHSynth.\n' >&2
+  printf 'Run scripts/setup-local.sh before starting SHR-DAW.\n' >&2
   exit 1
 fi
 

@@ -9,7 +9,7 @@ as a structural template, then change the sound parameters and root `name`.
 
 Use synthv1's current 0.9.29 layout: 145 parameters indexed 0–144. Keep every
 index unique and consecutive, but treat the `name` attribute as authoritative;
-SHSynth deliberately reads values by name so old presets still work.
+SHR-DAW deliberately reads values by name so old presets still work.
 
 ## Design notes
 
@@ -42,7 +42,7 @@ Do not overwrite an existing patch while experimenting. Check that the new
 sound is discoverable and that the project still passes:
 
 ```sh
-target/release/shsynth list
+target/release/shr list
 PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo test --locked
 ```
 
@@ -60,7 +60,7 @@ controls afterward.
 For imported patches, record their origin and license in this document or a
 nearby note. Do not assume a preset found online is redistributable.
 
-## Cleared SHSynth collection
+## Cleared SHR-DAW collection
 
 `Velvet Tines` and the 20 category-focused presets listed in `THIRD_PARTY.md`
 are newly authored/cleared under MIT. Their exact parameter recipes are retained

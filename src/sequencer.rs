@@ -12,7 +12,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 3;
+pub const SONG_VERSION: u8 = 1;
 pub const LANES_PER_PAGE: usize = 4;
 #[cfg(test)]
 const DEFAULT_GESTURE_SETTLE: Duration = Duration::from_millis(45);
@@ -47,18 +47,18 @@ pub struct Page {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum PageTarget {
-    /// The one software instrument currently owned and monitored by SHSynth.
+    /// The one software instrument currently owned and monitored by SHR-DAW.
     ActiveInstrument,
     /// An exact ALSA MIDI output port name selected by the user.
     Midi(String),
-    /// Version 1/2 compatibility route from `external_midi.output`.
+    /// The configured `external_midi.output` route.
     ConfiguredExternal,
 }
 
 impl PageTarget {
     pub fn label(&self) -> &str {
         match self {
-            Self::ActiveInstrument => "SHSynth instrument",
+            Self::ActiveInstrument => "SHR-DAW instrument",
             Self::Midi(name) => name,
             Self::ConfiguredExternal => "Configured MIDI output",
         }
@@ -81,6 +81,9 @@ pub struct Cell {
     pub note: Note,
     pub velocity: Option<u8>,
     pub program: Option<u8>,
+    /// Percentage of one row used as this note's gate. `None` inherits the
+    /// song gate.
+    pub gate: Option<u8>,
     pub command: Command,
 }
 
@@ -100,6 +103,45 @@ pub enum Command {
     Delay(u8),
     Retrigger(u8),
     Tempo(u16),
+}
+
+impl Command {
+    /// Stable one-column FT2 marker. A cell has exactly one command.
+    pub const fn marker(self) -> char {
+        match self {
+            Self::None => ' ',
+            Self::Cut(_) => 'C',
+            Self::Delay(_) => 'D',
+            Self::Retrigger(_) => 'R',
+            Self::Tempo(_) => 'T',
+        }
+    }
+}
+
+impl Cell {
+    pub fn validate(self) -> Result<()> {
+        if self.velocity.is_some_and(|value| value > 127)
+            || self.program.is_some_and(|value| value > 127)
+        {
+            bail!("cell MIDI value out of range");
+        }
+        if self.gate.is_some_and(|gate| !(1..=100).contains(&gate)) {
+            bail!("cell gate must be 1..=100 percent");
+        }
+        if matches!(self.note, Note::On(128..=u8::MAX)) {
+            bail!("cell note out of MIDI range");
+        }
+        match self.command {
+            Command::None => {}
+            Command::Cut(tick) | Command::Delay(tick) if tick <= 15 => {}
+            Command::Retrigger(count) if (1..=8).contains(&count) => {}
+            Command::Tempo(bpm) if (20..=300).contains(&bpm) => {}
+            Command::Cut(_) | Command::Delay(_) => bail!("command tick must be 0..=15"),
+            Command::Retrigger(_) => bail!("retrigger count must be 1..=8"),
+            Command::Tempo(_) => bail!("tempo command must be 20..=300 BPM"),
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -201,8 +243,11 @@ impl Song {
     }
 
     pub fn validate(&self) -> Result<()> {
-        if !(20..=300).contains(&self.tempo) || !(1..=16).contains(&self.steps_per_beat) {
-            bail!("song tempo/steps out of range");
+        if !(20..=300).contains(&self.tempo)
+            || !(1..=16).contains(&self.steps_per_beat)
+            || !(1..=100).contains(&self.gate_percent)
+        {
+            bail!("song tempo/steps/gate out of range");
         }
         if self.order.is_empty() || self.pages.is_empty() || self.pages.len() > 64 {
             bail!("song needs an order and 1..=64 pages");
@@ -231,6 +276,9 @@ impl Song {
                 .any(|row| row.len() != self.pages.len() * LANES_PER_PAGE)
             {
                 bail!("pattern track count mismatch");
+            }
+            for cell in pattern.rows.iter().flatten() {
+                cell.validate()?;
             }
         }
         Ok(())
@@ -393,10 +441,11 @@ pub fn encode(song: &Song) -> Result<String> {
                 .filter(|(_, c)| **c != Cell::default())
             {
                 out.push_str(&format!(
-                    "cell={number}|{row_index}|{track_index}|{}|{}|{}|{}\n",
+                    "cell={number}|{row_index}|{track_index}|{}|{}|{}|{}|{}\n",
                     note_text(cell.note),
                     cell.velocity.map_or("-".into(), |v| v.to_string()),
                     cell.program.map_or("-".into(), |v| v.to_string()),
+                    cell.gate.map_or("-".into(), |v| v.to_string()),
                     command_text(cell.command)
                 ));
             }
@@ -410,20 +459,19 @@ pub fn decode(text: &str) -> Result<Song> {
     let header = lines.next().context("empty song")?;
     let version = header
         .strip_prefix("SHSYNTH-SONG ")
-        .context("not an SHSynth song")?
+        .context("not an SHR-DAW song")?
         .parse::<u8>()?;
-    if !matches!(version, 1 | 2 | SONG_VERSION) {
+    if version != SONG_VERSION {
         bail!("unsupported song version {version}; file was not changed");
     }
     let mut name = None;
     let mut tempo = None;
     let mut steps = None;
-    let mut gate = Some(80);
+    let mut gate = None;
     let mut order = None;
     let mut pages = BTreeMap::new();
     let mut lanes = Vec::new();
     let mut setup = Vec::new();
-    let mut legacy_tracks = BTreeMap::new();
     let mut patterns: BTreeMap<u16, Pattern> = BTreeMap::new();
     let mut cells = Vec::new();
     for line in lines.filter(|line| !line.trim().is_empty() && !line.starts_with('#')) {
@@ -441,32 +489,9 @@ pub fn decode(text: &str) -> Result<Song> {
                         .collect::<std::result::Result<Vec<u16>, _>>()?,
                 )
             }
-            "track" if version == 1 => {
+            "page" => {
                 let f = value.split('|').collect::<Vec<_>>();
-                if f.len() != 9 {
-                    bail!("invalid track");
-                }
-                legacy_tracks.insert(
-                    f[0].parse::<usize>()?,
-                    Page {
-                        name: unescape(f[1])?,
-                        enabled: f[2] == "1",
-                        channel: one_based_channel(f[3])?,
-                        bank_msb: midi_value(f[4])?,
-                        bank_lsb: midi_value(f[5])?,
-                        program: midi_value(f[6])?,
-                        velocity: midi_value(f[7])?,
-                        percussion: f[8] == "1",
-                        target: PageTarget::ConfiguredExternal,
-                        setup: Vec::new(),
-                        lanes: Vec::new(),
-                    },
-                );
-            }
-            "page" if version >= 2 => {
-                let f = value.split('|').collect::<Vec<_>>();
-                let expected = if version == 2 { 9 } else { 10 };
-                if f.len() != expected {
+                if f.len() != 10 {
                     bail!("invalid page");
                 }
                 pages.insert(
@@ -480,18 +505,14 @@ pub fn decode(text: &str) -> Result<Song> {
                         program: midi_value(f[6])?,
                         velocity: midi_value(f[7])?,
                         percussion: f[8] == "1",
-                        target: if version == 2 {
-                            PageTarget::ConfiguredExternal
-                        } else {
-                            parse_target(f[9])?
-                        },
+                        target: parse_target(f[9])?,
                         setup: Vec::new(),
                         lanes: Vec::new(),
                     },
                 );
             }
-            "lane" if version >= 2 => lanes.push(value.to_owned()),
-            "setup" if version == SONG_VERSION => setup.push(value.to_owned()),
+            "lane" => lanes.push(value.to_owned()),
+            "setup" => setup.push(value.to_owned()),
             "pattern" => {
                 let (number, rows) = value.split_once('|').context("invalid pattern")?;
                 patterns.insert(number.parse()?, Pattern::empty(rows.parse()?, 0));
@@ -500,35 +521,26 @@ pub fn decode(text: &str) -> Result<Song> {
             _ => bail!("unknown song field {key}; file was not changed"),
         }
     }
-    if version == 1 && !legacy_tracks.keys().copied().eq(0..legacy_tracks.len()) {
-        bail!("legacy tracks must be contiguous");
-    }
-    if version >= 2 && !pages.keys().copied().eq(0..pages.len()) {
+    if !pages.keys().copied().eq(0..pages.len()) {
         bail!("pages must be contiguous from zero");
     }
-    let (mut pages, legacy_lane_map) = if version == 1 {
-        convert_legacy_pages(&legacy_tracks)
-    } else {
-        (pages.into_values().collect::<Vec<_>>(), Vec::new())
-    };
-    if version >= 2 {
-        for value in lanes {
-            let f = value.split('|').collect::<Vec<_>>();
-            if f.len() != 4 {
-                bail!("invalid lane");
-            }
-            let page = pages
-                .get_mut(f[0].parse::<usize>()?)
-                .context("lane page missing")?;
-            let index = f[1].parse::<usize>()?;
-            if index != page.lanes.len() {
-                bail!("lanes must be contiguous");
-            }
-            page.lanes.push(Lane {
-                name: unescape(f[2])?,
-                enabled: f[3] == "1",
-            });
+    let mut pages = pages.into_values().collect::<Vec<_>>();
+    for value in lanes {
+        let f = value.split('|').collect::<Vec<_>>();
+        if f.len() != 4 {
+            bail!("invalid lane");
         }
+        let page = pages
+            .get_mut(f[0].parse::<usize>()?)
+            .context("lane page missing")?;
+        let index = f[1].parse::<usize>()?;
+        if index != page.lanes.len() {
+            bail!("lanes must be contiguous");
+        }
+        page.lanes.push(Lane {
+            name: unescape(f[2])?,
+            enabled: f[3] == "1",
+        });
     }
     for value in setup {
         let (page, bytes) = value.split_once('|').context("invalid setup")?;
@@ -556,21 +568,14 @@ pub fn decode(text: &str) -> Result<Song> {
     }
     for value in cells {
         let f = value.split('|').collect::<Vec<_>>();
-        if f.len() != 7 {
+        if f.len() != 8 {
             bail!("invalid cell");
         }
         let pattern = patterns
             .get_mut(&f[0].parse()?)
             .context("cell pattern missing")?;
         let row_index = f[1].parse::<usize>()?;
-        let source_index = f[2].parse::<usize>()?;
-        let track_index = if version == 1 {
-            *legacy_lane_map
-                .get(source_index)
-                .context("legacy cell track missing")?
-        } else {
-            source_index
-        };
+        let track_index = f[2].parse::<usize>()?;
         let cell = pattern
             .rows
             .get_mut(row_index)
@@ -580,49 +585,21 @@ pub fn decode(text: &str) -> Result<Song> {
             note: parse_note(f[3])?,
             velocity: optional_midi(f[4])?,
             program: optional_midi(f[5])?,
-            command: parse_command(f[6])?,
+            gate: optional_gate(f[6])?,
+            command: parse_command(f[7])?,
         };
     }
     let song = Song {
         name: name.context("missing name")?,
         tempo: tempo.context("missing tempo")?,
         steps_per_beat: steps.context("missing steps")?,
-        gate_percent: gate.unwrap_or(80),
+        gate_percent: gate.context("missing gate")?,
         order: order.context("missing order")?,
         pages,
         patterns,
     };
     song.validate()?;
     Ok(song)
-}
-
-fn convert_legacy_pages(tracks: &BTreeMap<usize, Page>) -> (Vec<Page>, Vec<usize>) {
-    let mut melody = Page::new("MELODY", 0, false, 0);
-    let mut drums = Page::new("DRUMS", 1, true, 9);
-    let mut melody_lane = 0;
-    let mut drum_lane = 0;
-    let mut map = Vec::new();
-    for track in tracks.values() {
-        let (page, lane, offset) = if track.percussion {
-            let lane = drum_lane.min(LANES_PER_PAGE - 1);
-            drum_lane += 1;
-            (&mut drums, lane, LANES_PER_PAGE)
-        } else {
-            let lane = melody_lane.min(LANES_PER_PAGE - 1);
-            melody_lane += 1;
-            (&mut melody, lane, 0)
-        };
-        if lane == 0 {
-            page.program = track.program;
-            page.bank_msb = track.bank_msb;
-            page.bank_lsb = track.bank_lsb;
-            page.velocity = track.velocity;
-        }
-        page.lanes[lane].name = track.name.clone();
-        page.lanes[lane].enabled = track.enabled;
-        map.push(offset + lane);
-    }
-    (vec![melody, drums], map)
 }
 
 pub fn save(base: &Path, song: &Song, overwrite: bool) -> Result<PathBuf> {
@@ -643,7 +620,7 @@ pub fn save(base: &Path, song: &Song, overwrite: bool) -> Result<PathBuf> {
             .next()
             .and_then(|header| header.strip_prefix("SHSYNTH-SONG "))
             .and_then(|version| version.parse::<u8>().ok())
-            .is_some_and(|version| matches!(version, 1 | 2 | SONG_VERSION));
+            .is_some_and(|version| version == SONG_VERSION);
         if !supported {
             bail!("refusing to overwrite unsupported/newer song file");
         }
@@ -814,30 +791,42 @@ pub fn schedule(
                                 &page.target,
                             );
                         }
-                        push_lane(
-                            &mut result,
-                            event_at,
-                            order_index,
-                            row_index,
-                            vec![
-                                0x90 | page.channel,
-                                note,
-                                cell.velocity.unwrap_or(page.velocity),
-                            ],
-                            lane_index,
-                            &page.target,
-                        );
                         active[lane_index] = Some(note);
-                        let gate = row_duration.mul_f64(f64::from(song.gate_percent) / 100.0);
-                        push_lane(
-                            &mut result,
-                            event_at + gate,
-                            order_index,
-                            row_index,
-                            vec![0x80 | page.channel, note, 0],
-                            lane_index,
-                            &page.target,
-                        );
+                        let pulses = match cell.command {
+                            Command::Retrigger(count) => count,
+                            _ => 1,
+                        };
+                        let pulse_span = row_duration.div_f64(f64::from(pulses));
+                        let remaining = row_duration.saturating_sub(delay);
+                        let gate = pulse_span
+                            .mul_f64(f64::from(cell.gate.unwrap_or(song.gate_percent)) / 100.0)
+                            .min(remaining);
+                        for pulse in 0..pulses {
+                            let pulse_at = event_at
+                                + row_duration.mul_f64(f64::from(pulse) / f64::from(pulses));
+                            push_lane(
+                                &mut result,
+                                pulse_at,
+                                order_index,
+                                row_index,
+                                vec![
+                                    0x90 | page.channel,
+                                    note,
+                                    cell.velocity.unwrap_or(page.velocity),
+                                ],
+                                lane_index,
+                                &page.target,
+                            );
+                            push_lane(
+                                &mut result,
+                                (pulse_at + gate).min(at + row_duration),
+                                order_index,
+                                row_index,
+                                vec![0x80 | page.channel, note, 0],
+                                lane_index,
+                                &page.target,
+                            );
+                        }
                     }
                     Note::Off => {
                         if let Some(note) = active[lane_index].take() {
@@ -862,32 +851,6 @@ pub fn schedule(
                             order_index,
                             row_index,
                             vec![0x80 | page.channel, note, 0],
-                            lane_index,
-                            &page.target,
-                        );
-                    }
-                }
-                if let (Command::Retrigger(count), Note::On(note)) = (cell.command, cell.note) {
-                    for n in 1..count.clamp(1, 8) {
-                        push_lane(
-                            &mut result,
-                            event_at + row_duration.mul_f64(f64::from(n) / f64::from(count)),
-                            order_index,
-                            row_index,
-                            vec![0x80 | page.channel, note, 0],
-                            lane_index,
-                            &page.target,
-                        );
-                        push_lane(
-                            &mut result,
-                            event_at + row_duration.mul_f64(f64::from(n) / f64::from(count)),
-                            order_index,
-                            row_index,
-                            vec![
-                                0x90 | page.channel,
-                                note,
-                                cell.velocity.unwrap_or(page.velocity),
-                            ],
                             lane_index,
                             &page.target,
                         );
@@ -1413,7 +1376,7 @@ impl DestinationPool {
                 .lock()
                 .map_err(|_| "active instrument route lock failed".to_string())?
                 .as_mut()
-                .ok_or_else(|| "active SHSynth instrument is offline".to_string())?
+                .ok_or_else(|| "active SHR-DAW instrument is offline".to_string())?
                 .send(bytes)
                 .map_err(|error| error.to_string());
         }
@@ -1565,7 +1528,7 @@ fn connect_target(
         })
         .with_context(|| format!("MIDI output {wanted:?} is offline"))?;
     output
-        .connect(&port, "SHSynth tracker page")
+        .connect(&port, "SHR-DAW tracker page")
         .map_err(|e| anyhow!(e.to_string()))
 }
 
@@ -1731,6 +1694,16 @@ fn optional_midi(v: &str) -> Result<Option<u8>> {
         midi_value(v).map(Some)
     }
 }
+fn optional_gate(v: &str) -> Result<Option<u8>> {
+    if v == "-" {
+        return Ok(None);
+    }
+    let gate = v.parse::<u8>()?;
+    if !(1..=100).contains(&gate) {
+        bail!("cell gate must be 1..=100 percent");
+    }
+    Ok(Some(gate))
+}
 fn note_text(n: Note) -> String {
     match n {
         Note::Empty => "---".into(),
@@ -1758,11 +1731,15 @@ fn parse_command(v: &str) -> Result<Command> {
     if v == "-" {
         return Ok(Command::None);
     }
-    match &v[..1] {
-        "C" => Ok(Command::Cut(v[1..].parse()?)),
-        "D" => Ok(Command::Delay(v[1..].parse()?)),
-        "R" => Ok(Command::Retrigger(v[1..].parse()?)),
-        "T" => Ok(Command::Tempo(v[1..].parse()?)),
+    let (kind, parameter) = v.split_at(v.char_indices().nth(1).map_or(v.len(), |(i, _)| i));
+    if parameter.is_empty() {
+        bail!("command parameter missing");
+    }
+    match kind {
+        "C" => Ok(Command::Cut(parameter.parse()?)),
+        "D" => Ok(Command::Delay(parameter.parse()?)),
+        "R" => Ok(Command::Retrigger(parameter.parse()?)),
+        "T" => Ok(Command::Tempo(parameter.parse()?)),
         _ => bail!("unknown command"),
     }
 }
@@ -1790,16 +1767,129 @@ mod tests {
         c
     }
     #[test]
-    fn serialization_round_trip_and_old_gate_default() {
+    fn serialization_round_trip_requires_current_schema() {
         let mut s = Song::new(&config());
         s.name = "a|b".into();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
         assert_eq!(decode(&text).unwrap(), s);
+        assert!(decode(&text.replace("gate=80\n", "")).is_err());
+    }
+    #[test]
+    fn song_v1_round_trips_every_cell_field() {
+        let mut song = Song::new(&config());
+        song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(64),
+            velocity: Some(111),
+            program: Some(17),
+            gate: Some(37),
+            command: Command::Delay(6),
+        };
+        let encoded = encode(&song).unwrap();
+        assert!(encoded.starts_with("SHSYNTH-SONG 1\n"));
+        assert!(encoded.contains("|64|111|17|37|D6\n"));
+        assert_eq!(decode(&encoded).unwrap(), song);
+    }
+    #[test]
+    fn cell_gate_and_delay_end_within_the_row() {
+        let c = config();
+        let mut song = Song::new(&c);
+        song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            gate: Some(40),
+            command: Command::Delay(8),
+            ..Cell::default()
+        };
+        let messages = schedule(&song, &c, 0, 0).unwrap();
+        let note_on = messages.iter().find(|m| m.bytes == [0x90, 60, 96]).unwrap();
+        let note_off = messages
+            .iter()
+            .find(|m| m.bytes == [0x80, 60, 0] && m.at > note_on.at)
+            .unwrap();
+        assert_eq!(note_on.at, Duration::from_micros(62_500));
+        assert_eq!(note_off.at, Duration::from_micros(112_500));
+        assert!(note_off.at <= Duration::from_millis(125));
+    }
+    #[test]
+    fn every_command_schedules_deterministically_through_order_boundaries() {
+        let c = config();
+        let mut song = Song::new(&c);
+        song.patterns
+            .insert(0, Pattern::empty(4, song.total_lanes()));
+        song.patterns
+            .insert(1, Pattern::empty(1, song.total_lanes()));
+        song.order = vec![0, 1];
+        song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            command: Command::Cut(4),
+            ..Cell::default()
+        };
+        song.patterns.get_mut(&0).unwrap().rows[1][0] = Cell {
+            note: Note::On(61),
+            command: Command::Delay(8),
+            ..Cell::default()
+        };
+        song.patterns.get_mut(&0).unwrap().rows[2][0] = Cell {
+            note: Note::On(62),
+            command: Command::Retrigger(4),
+            ..Cell::default()
+        };
+        song.patterns.get_mut(&0).unwrap().rows[3][0].command = Command::Tempo(60);
+        song.patterns.get_mut(&1).unwrap().rows[0][0].note = Note::On(63);
+        let messages = schedule(&song, &c, 0, 0).unwrap();
+        assert!(messages
+            .iter()
+            .any(|m| m.bytes == [0x80, 60, 0] && m.at == Duration::from_micros(31_250)));
+        assert!(messages
+            .iter()
+            .any(|m| m.bytes == [0x90, 61, 96] && m.at == Duration::from_micros(187_500)));
+        let retriggers = messages
+            .iter()
+            .filter(|m| m.bytes == [0x90, 62, 96])
+            .map(|m| m.at)
+            .collect::<Vec<_>>();
         assert_eq!(
-            decode(&text.replace("gate=80\n", "")).unwrap().gate_percent,
-            80
+            retriggers,
+            [
+                Duration::from_millis(250),
+                Duration::from_micros(281_250),
+                Duration::from_micros(312_500),
+                Duration::from_micros(343_750),
+            ]
         );
+        let boundary_note = messages.iter().find(|m| m.bytes == [0x90, 63, 96]).unwrap();
+        assert_eq!(
+            (boundary_note.order, boundary_note.at),
+            (1, Duration::from_millis(500))
+        );
+    }
+    #[test]
+    fn invalid_cell_ranges_are_rejected_without_clamping_files() {
+        let mut song = Song::new(&config());
+        song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            gate: Some(0),
+            ..Cell::default()
+        };
+        assert!(song.validate().unwrap_err().to_string().contains("gate"));
+        song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            command: Command::Retrigger(9),
+            ..Cell::default()
+        };
+        assert!(song
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("retrigger"));
+    }
+    #[test]
+    fn effect_markers_are_stable_and_unambiguous() {
+        assert_eq!(Command::None.marker(), ' ');
+        assert_eq!(Command::Cut(0).marker(), 'C');
+        assert_eq!(Command::Delay(0).marker(), 'D');
+        assert_eq!(Command::Retrigger(2).marker(), 'R');
+        assert_eq!(Command::Tempo(120).marker(), 'T');
     }
     #[test]
     fn atomic_save_refuses_overwrite() {
@@ -2056,18 +2146,6 @@ mod tests {
     }
 
     #[test]
-    fn version_one_songs_convert_without_touching_source_roles() {
-        let legacy = "SHSYNTH-SONG 1\nname=old\ntempo=120\nsteps=4\ngate=80\norder=0\ntrack=0|T1|1|1|0|0|0|96|0\ntrack=1|DRUM|1|2|0|0|9|96|1\npattern=0|1\ncell=0|0|0|60|90|-|-\ncell=0|0|1|36|110|-|-\n";
-        let song = decode(legacy).unwrap();
-        assert_eq!(song.patterns[&0].rows[0][0].note, Note::On(60));
-        assert_eq!(song.patterns[&0].rows[0][4].note, Note::On(36));
-        assert_eq!(song.pages[0].channel, 0);
-        assert_eq!(song.pages[1].channel, 1);
-        assert_eq!(song.pages[1].program, 9);
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 3\n"));
-    }
-
-    #[test]
     fn overwrite_refuses_newer_or_unknown_song_files() {
         let base = env::temp_dir().join(format!("shsong-newer-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
@@ -2155,6 +2233,47 @@ mod tests {
     }
 
     #[test]
+    fn per_cell_programs_precede_notes_and_stay_page_scoped() {
+        let mut c = config();
+        c.bank_select = BankSelectMode::Off;
+        let mut song = Song::new(&c);
+        song.pages[0].target = PageTarget::Midi("A".into());
+        song.pages[0].channel = 2;
+        song.pages[1].target = PageTarget::Midi("B".into());
+        song.pages[1].channel = 7;
+        song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            program: Some(11),
+            ..Cell::default()
+        };
+        song.patterns.get_mut(&0).unwrap().rows[0][4] = Cell {
+            note: Note::On(36),
+            program: Some(22),
+            ..Cell::default()
+        };
+        let messages = schedule(&song, &c, 0, 0).unwrap();
+        for (target, program, note_status) in [
+            (PageTarget::Midi("A".into()), vec![0xc2, 11], 0x92),
+            (PageTarget::Midi("B".into()), vec![0xc7, 22], 0x97),
+        ] {
+            let program_at = messages
+                .iter()
+                .position(|message| {
+                    message.target == Some(target.clone()) && message.bytes == program
+                })
+                .unwrap();
+            let note_at = messages
+                .iter()
+                .position(|message| {
+                    message.target == Some(target.clone())
+                        && message.bytes.first() == Some(&note_status)
+                })
+                .unwrap();
+            assert!(program_at < note_at);
+        }
+    }
+
+    #[test]
     fn active_instrument_and_shared_device_channels_remain_distinct() {
         let c = config();
         let mut song = Song::new(&c);
@@ -2194,17 +2313,6 @@ mod tests {
                 m.target == Some(PageTarget::Midi("Missing forever".into()))
                     && m.bytes == [0xb3, 0, 12]
             }));
-    }
-
-    #[test]
-    fn version_two_converts_to_configured_route_and_version_three() {
-        let v2 = "SHSYNTH-SONG 2\nname=v2\ntempo=120\nsteps=4\ngate=80\norder=0\npage=0|MELODY|1|1|0|0|0|96|0\npage=1|DRUMS|1|2|0|0|9|96|1\nlane=0|0|L1|1\nlane=0|1|L2|1\nlane=0|2|L3|1\nlane=0|3|L4|1\nlane=1|0|L1|1\nlane=1|1|L2|1\nlane=1|2|L3|1\nlane=1|3|L4|1\npattern=0|1\ncell=0|0|0|60|96|-|-\n";
-        let song = decode(v2).unwrap();
-        assert!(song
-            .pages
-            .iter()
-            .all(|page| page.target == PageTarget::ConfiguredExternal));
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 3\n"));
     }
 
     #[test]

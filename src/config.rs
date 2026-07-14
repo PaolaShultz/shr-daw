@@ -426,7 +426,7 @@ impl RuntimeConfig {
             fs::create_dir_all(parent)?;
         }
         let mut text = format!(
-            "# SHSynth runtime and routing configuration v3\n\
+            "# SHR-DAW runtime and routing configuration v3\n\
              synthv1.command={}\n\
              synthv1.client={}\n\
              synth.startup_timeout_ms={}\n\

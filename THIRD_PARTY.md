@@ -1,6 +1,6 @@
 # Licensing and redistribution
 
-SHSynth source code, `Velvet Tines.synthv1`, and the 20 newly authored presets
+SHR-DAW source code, `Velvet Tines.synthv1`, and the 20 newly authored presets
 listed below are released under the MIT license in `LICENSE`. MIT permits commercial and non-commercial use,
 modification, and redistribution, but the copyright and license notice must be
 kept. No MIT/Apache/GPL license is literally obligation-free.
@@ -20,7 +20,7 @@ locked target dependency set with a tool such as `cargo-about` or
 
 ## External system software
 
-SHSynth launches these separately installed programs; it does not copy or link
+SHR-DAW launches these separately installed programs; it does not copy or link
 their source into this project:
 
 - synthv1: GPL-2.0-or-later;
@@ -31,13 +31,13 @@ their source into this project:
 - `aconnect` from alsa-utils: GPL-2.0;
 - ALSA library used by the Rust MIDI backend: LGPL-2.1-or-later.
 
-SHSynth indexes Yoshimi `.xiz` banks and FluidSynth `.sf2`/`.sf3` files at
+SHR-DAW indexes Yoshimi `.xiz` banks and FluidSynth `.sf2`/`.sf3` files at
 their configured system/user paths; it does not copy them into this project.
 The Debian `yoshimi-data` package is GPL-2.0-or-later overall (with a few bank
 files under GPL-3), and the packaged TimGM6mb SoundFont is GPL-2-only. Their
 copyright files remain the authority for redistribution of an appliance image.
 
-Using system-installed executables/data does not force SHSynth itself to use GPL.
+Using system-installed executables/data does not force SHR-DAW itself to use GPL.
 Anyone distributing an appliance image or bundling those binaries must comply
 with each package separately and provide their notices/source offers as
 required. This is a practical audit, not legal advice.
@@ -59,7 +59,7 @@ imported. Source: <https://linuxsynths.com/Synthv1PatchesDemos/synthv1.html>.
 
 ## Newly authored cleared synthv1 presets
 
-The following complete synthv1 0.9.29 presets were authored for SHSynth on
+The following complete synthv1 0.9.29 presets were authored for SHR-DAW on
 2026-07-13 from the MIT-cleared `Velvet Tines` schema/template, with new
 parameter designs. They contain no imported samples or third-party preset
 content and are released under this repository's MIT license:
