@@ -2895,7 +2895,9 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
     draw_pad_lock(f, a);
     draw_pad_buttons(f, a);
-    draw_status_bar(f, a);
+    if a.screen != Screen::Playback {
+        draw_status_bar(f, a);
+    }
 }
 fn draw_pad_lock<B: Backend>(f: &mut Frame<B>, a: &App) {
     if !a.pad_locked {
@@ -2926,11 +2928,12 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     // label into a terminal-wide button on larger displays.
     let menu_width = z.width.min(40);
     let menu_x = z.x + z.width.saturating_sub(menu_width) / 2;
+    let footer_rows = if a.screen == Screen::Playback { 2 } else { 3 };
     for (i, page) in pages.iter().enumerate() {
         let col = i as u16;
         let width = menu_width / 4;
         let x0 = menu_x + col * width;
-        let r = rect(x0, z.y + z.height - 3, width, 1);
+        let r = rect(x0, z.y + z.height - footer_rows, width, 1);
         if !page.available() {
             continue;
         }
@@ -2970,7 +2973,7 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     for (i, slot) in pages[a.menu_page()].slots.iter().enumerate() {
         let width = menu_width / 4;
         let x0 = menu_x + i as u16 * width;
-        let r = rect(x0, z.y + z.height - 2, width, 1);
+        let r = rect(x0, z.y + z.height - footer_rows + 1, width, 1);
         if slot.state != SlotState::Enabled {
             continue;
         }
@@ -3117,20 +3120,33 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
 fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let header = rect(z.x, z.y, z.width, 1);
-    let actions = rect(z.x, z.y + z.height - 3, z.width, 3);
-    let params = rect(z.x, z.y + 1, z.width, z.height.saturating_sub(5));
+    let actions = rect(z.x, z.y + z.height - 2, z.width, 2);
+    let params = rect(z.x, z.y + 1, z.width, z.height.saturating_sub(3));
     let name = a
         .playing
         .as_ref()
         .map(|p| format!("{} · {}", p.backend.label(), p.name))
         .unwrap_or_else(|| "none".into());
     f.render_widget(
-        Paragraph::new(name).alignment(Alignment::Center).style(
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ),
-        header,
+        Paragraph::new(truncate(&name, usize::from(z.width.saturating_sub(8))))
+            .alignment(Alignment::Center)
+            .style(
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        rect(header.x + 4, header.y, header.width.saturating_sub(8), 1),
+    );
+    let (mode, color) = if a.pad_locked {
+        ("LCK", Color::Red)
+    } else if a.recorder.is_recording() {
+        ("REC", Color::Red)
+    } else {
+        ("PLY", Color::Green)
+    };
+    f.render_widget(
+        Paragraph::new(mode).style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        rect(z.x + z.width.saturating_sub(3), z.y, z.width.min(3), 1),
     );
     let inner = params;
     if a.playing
@@ -3224,21 +3240,6 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         },
     );
     button(f, a.hits.save, "Save Idea");
-    f.render_widget(
-        Paragraph::new(truncate(&a.status, z.width as usize - 2)).style(Style::default().fg(
-            if a.recorder.is_recording() {
-                Color::Red
-            } else {
-                Color::DarkGray
-            },
-        )),
-        rect(z.x + 12, actions.y + 1, z.width.saturating_sub(13), 1),
-    );
-    f.render_widget(
-        Paragraph::new(truncate(&pad_line(Screen::Playback), z.width as usize - 2))
-            .style(Style::default().fg(Color::DarkGray)),
-        rect(z.x + 1, actions.y + 2, z.width - 2, 1),
-    );
 }
 fn draw_ideas<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
@@ -3889,7 +3890,7 @@ mod tests {
         for label in ["OPS", "SOUND", "NAV", "SYS", "RESET", "FINISH", "TAP"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
-        assert!(text.contains("PLAYBACK P2"));
+        assert!(text.contains("PLY"));
         assert_eq!(a.hits.menu_pages.len(), 4);
         assert_eq!(a.hits.actions.len(), 3);
     }
@@ -4202,7 +4203,7 @@ mod tests {
             .all(|slot| slot.dispatch() != Some(Action::Quit)));
     }
     #[test]
-    fn playback_shows_all_parameters_centered_title_and_status_bar() {
+    fn playback_shows_all_parameters_centered_title_and_compact_mode() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Playback;
@@ -4219,17 +4220,36 @@ mod tests {
             .collect::<String>();
         assert!(text.contains("Sus"));
         assert!(text.contains("Rel"));
-        assert!(text.contains("BPM"));
-        assert!(text.contains("CPU 52°C"));
-        let title = &text[..40];
-        assert_eq!(title.trim(), "synthv1 · Preset 00");
+        assert!(!text.contains("BPM"));
+        assert!(!text.contains("CPU 52°C"));
+        let title = (0..40)
+            .map(|x| b.get(x, 0).symbol.as_str())
+            .collect::<String>();
+        assert!(title.trim_start().starts_with("synthv1 · Preset 00"));
+        assert!(title.ends_with("PLY"));
         let left = title
             .chars()
             .position(|character| character == 's')
             .unwrap();
         let right = 40 - left - "synthv1 · Preset 00".chars().count();
         assert!(left.abs_diff(right) <= 1);
-        assert_eq!(b.get(0, 19).bg, Color::Rgb(32, 32, 32));
+        assert!((37..40).all(|x| b.get(x, 0).fg == Color::Green));
+        let buttons = (18..20)
+            .flat_map(|y| (0..40).map(move |x| b.get(x, y).symbol.as_str()))
+            .collect::<String>();
+        assert!(buttons.contains('['));
+        assert!(!buttons.contains(&a.status));
+
+        a.recorder.start(Instant::now());
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let b = t.backend().buffer();
+        assert_eq!(
+            (37..40)
+                .map(|x| b.get(x, 0).symbol.as_str())
+                .collect::<String>(),
+            "REC"
+        );
+        assert!((37..40).all(|x| b.get(x, 0).fg == Color::Red));
     }
 
     #[test]
