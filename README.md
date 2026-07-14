@@ -121,7 +121,7 @@ and synchronized stop; it is separate from the working stereo recorder.
 
 | Screen/context | Page | Item 1 | Item 2 | Item 3 | Item 4 |
 |---|---|---|---|---|---|
-| Presets | Browse | Up | Down | Page up | Page down |
+| Presets | Browse | Page up | Page down | Disabled | Disabled |
 | Presets | Engine | Engine− | Engine+ | First | Last |
 | Presets | Open | Load | Ideas | FT2 | Audio |
 | Presets | Safety | Panic/stop synth | Exit | Disabled | Disabled |
@@ -129,15 +129,15 @@ and synchronized stop; it is separate from the working stereo recorder.
 | Playback | Sound | Reset 12 controls | Presets | Ideas | Arpeggiator (planned) |
 | Playback | Open | FT2 | Audio | Tap tempo | Back |
 | Playback | Safety | Stop take | Finish + save take | Panic/stop synth | Disabled |
-| Ideas | Browse | Up | Down | First | Last |
+| Ideas | Browse | First | Last | Disabled | Disabled |
 | Ideas | Idea | Inspect | Load/confirm replace | Play | Delete/confirm |
 | Ideas | Capture | Record | Stop recording | Save new | Presets |
 | Ideas | Open | Back/cancel | FT2 | Audio | Panic |
-| FT2 | Cursor | Row− | Row+ | Lane− | Lane+ |
+| FT2 | Cursor | Pattern/order page− | Pattern/order page+ | Lane− | Lane+ |
 | FT2 | Transport | Play here | Play from start | Stop/back | Cell edit |
 | FT2 | Manage | Pages/tracks | Files | Mute lane | Tap tempo |
 | FT2 | Adjust | Program− | Program+ | Tempo− | Tempo+ |
-| FT2 edit | Cursor | Row− | Row+ | Lane− | Lane+ |
+| FT2 edit | Cursor | Pattern/order page− | Pattern/order page+ | Lane− | Lane+ |
 | FT2 edit | Entry | Blank/skip | Erase | Note off | Finish edit |
 | FT2 edit | Transport | Play here | Play from start | Stop | Next visible page |
 | FT2 edit | Adjust | Program− | Program+ | Tempo− | Tempo+ |
@@ -145,7 +145,7 @@ and synchronized stop; it is separate from the working stereo recorder.
 | FT2 cell edit | Effect | Effect type | Effect parameter | Clear selected field | Step entry |
 | FT2 cell edit | Adjust | Previous field | Next field | Value− | Value+ |
 | FT2 cell edit | Finish | Confirm | Cancel/back | Stop | Panic |
-| Files | Browse | Up | Down | Load song | Back/cancel |
+| Files | Browse | Load song | Back/cancel | Disabled | Disabled |
 | Files | Song | Save/confirm overwrite | Preview/stop | Delete/confirm | Panic |
 | Files | Pattern | New | Clone | Clear with meter confirmation | WAV loop (planned) |
 | Files | Order | Previous | Next | Repeat current | Remove current |
@@ -153,11 +153,11 @@ and synchronized stop; it is separate from the working stereo recorder.
 | Pattern-clear context | Current | Clear, keep size | Disabled | Disabled | Disabled |
 | Pattern-clear context | Locked 3 | Disabled | Disabled | Disabled | Disabled |
 | Pattern-clear context | Locked 4 | Disabled | Disabled | Disabled | Disabled |
-| Pages/tracks | Pages | Page− | Page+ | Add four lanes | Cancel/restore |
+| Pages/tracks | Pages | Add four lanes | Cancel/restore | Disabled | Disabled |
 | Pages/tracks | Route | Target | Channel | Done/keep | Files |
 | Pages/tracks | Status | Mute page | Disabled | Disabled | Disabled |
 | Pages/tracks | Future | Disabled | Disabled | Disabled | Disabled |
-| Target/channel context | Edit | Previous | Next | Confirm field | Cancel field |
+| Target/channel context | Edit | Confirm field | Cancel field | Disabled | Disabled |
 | Target/channel context | Locked 2–4 | Field mode (disabled) | Disabled | Disabled | Disabled |
 | Audio recorder | Record | Record/toggle | Stop/finalize | Back | Panic |
 | Audio recorder | Open | Presets | Ideas | FT2 | Disabled |
@@ -255,8 +255,9 @@ order in one readable text file.
 
 The main workflow does not need a computer keyboard or mouse. The complete FT2,
 edit, file, order, and page-management mappings are in the table above. The
-encoder still moves rows and choices and confirms where applicable; all of its
-former operations also have visible menu-item equivalents for four-button mode.
+master rotary moves rows, lists, pages, and choices and confirms where
+applicable. Menu slots are reserved for operations that are not the same
+previous/next selection again.
 
 ### MIDI ideas
 

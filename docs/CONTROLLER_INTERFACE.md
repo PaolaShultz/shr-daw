@@ -12,7 +12,7 @@ implemented.
 | Presets | Select previous/next, page up/down, first/last (keyboard, wheel, encoder); previous/next engine (keyboard/pads); load selected sound (keyboard, mouse, encoder/pad); tracker, ideas, and audio screens (keyboard/pads); stop synth/panic and exit (keyboard/mouse/pad/back). |
 | Playback | Reset the 12 mapped parameters in place (encoder press); record/stop/finish-and-save MIDI, play/stop take, save idea (keyboard/pads/mouse); presets/back, ideas, tracker, audio (keyboard/pads/mouse); tap tempo; stop/panic. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea (keyboard, wheel, encoder); inspect (keyboard/mouse/pad); load with replace confirmation (encoder); play take; delete with repeat confirmation; record/stop MIDI; save timestamped or numbered idea; back/cancel, tracker, audio, presets, panic. |
-| FT2 normal | Previous/next row (keyboard/encoder); previous/next lane and cross-page lane movement (keyboard/pads); visible page switch (Tab); previous/next order position (keyboard); play from cursor or start, stop/back (keyboard/pads); enter edit; lane and page mute; page manager and file manager; program and tempo decrement/increment; tap tempo; save/load/new/clone/clear pattern and repeat/remove order shortcuts. |
+| FT2 normal | Previous/next row (keyboard/encoder); previous/next lane and cross-page lane movement (keyboard/pads); visible page switch (Tab); previous/next order position (keyboard/pads); play from cursor or start, stop/back (keyboard/pads); enter edit; lane and page mute; page manager and file manager; program and tempo decrement/increment; tap tempo; save/load/new/clone/clear pattern and repeat/remove order shortcuts. |
 | FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; blank/skip; erase; note off; leave edit; lane mute; program and tempo adjustment. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 cell edit | Transactional note, gate, velocity, per-note program, single command type/parameter, clear-field, confirm/cancel, step-entry handoff, stop, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved song; load; preview/stop; save with overwrite confirmation; delete with repeat confirmation; new and clone pattern; clear immediately or choose confirmed 3/4 (24 rows) / 4/4 (32 rows); previous/next/repeat/remove order entry; back/cancel and panic. |
@@ -36,8 +36,8 @@ inventory for controller reachability.
   mode and encoder turn changes pages while that mode is visible.
 - Outside four-button page-selection mode, encoder turns retain list, row, and
   field adjustment. Encoder press retains the existing select/confirm action on
-  eight- and five-button layouts. Every such outcome is also a visible menu
-  item, so the four-button layout loses no workflow.
+  eight- and five-button layouts. Menu slots do not duplicate those master
+  rotary selection actions.
 - Each screen remembers its last selected page. Entering/leaving a contextual
   mode resets that context to page 1, preventing stale hidden meanings.
 

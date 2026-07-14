@@ -124,8 +124,8 @@ Songs are stored below
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Release-candidate song
 format v1 stores page targets, setup messages, four lanes per page, and every
 cell field including the optional gate. SHR-DAW reads and writes this schema
-only. Files with another version or shape are refused and are never
-overwritten or deleted.
+only. Files with another version or shape are not loaded or overwritten; they
+can still be removed with the normal confirmed Delete action.
 
 ## FT2 cell fields
 

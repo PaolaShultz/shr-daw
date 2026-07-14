@@ -1172,8 +1172,9 @@ impl App {
         self.tracker_order = self.song.order.len() - 1;
         self.tracker_row = 0;
         self.confirm_pattern_clear = false;
+        self.screen = Screen::Tracker;
         self.status = format!(
-            "new pattern {number} · order {:02}/{:02} · BACK to edit, SAVE stores all patterns",
+            "new pattern {number} · order {:02}/{:02}",
             self.tracker_order + 1,
             self.song.order.len()
         );
@@ -3692,14 +3693,14 @@ mod tests {
         assert_eq!(a.selected, 14);
     }
     #[test]
-    fn wheel_and_equal_pad_button_clicks_work_at_40x20() {
+    fn wheel_and_page_pad_button_clicks_work_at_40x20() {
         let p = presets();
         let mut a = app(&p);
         a.selected = 5;
         let b = TestBackend::new(40, 20);
         let mut t = Terminal::new(b).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
-        assert_eq!(a.hits.actions.len(), 4);
+        assert_eq!(a.hits.actions.len(), 2);
         assert_eq!(a.hits.menu_pages.len(), 4);
         assert!(a.hits.actions.iter().all(|(r, _)| r.width == 10));
         let (tx, _) = mpsc::channel();
@@ -3726,7 +3727,7 @@ mod tests {
             Path::new("/nonexistent"),
             &tx,
         );
-        assert_eq!(a.selected, 7);
+        assert_eq!(a.selected, 0);
     }
     #[test]
     fn playback_shows_all_parameters_centered_title_and_status_bar() {
@@ -4216,9 +4217,10 @@ mod tests {
         assert_eq!(a.tracker_order, 1);
         assert_eq!(a.tracker_pattern_number(), 1);
         assert_eq!(a.tracker_row, 0);
+        assert_eq!(a.screen, Screen::Tracker);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::On(60));
         assert_eq!(a.song.patterns[&1].rows[0][0].note, Note::Empty);
-        assert!(a.status.contains("SAVE stores all patterns"));
+        assert!(a.status.contains("new pattern 1"));
         let saved = sequencer::encode(&a.song).unwrap();
         assert!(saved.contains("order=0,1\n"));
         assert!(saved.contains("pattern=0|"));

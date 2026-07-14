@@ -385,8 +385,8 @@ pub fn list(base: &Path) -> Vec<String> {
     names
 }
 
-/// Versioned line format. Unknown keys are retained only on disk: unsupported
-/// or newer versions are refused, so they can never be destructively rewritten.
+/// Versioned line format. Unsupported or newer versions are refused for load
+/// and overwrite. Explicit deletion is independent of file contents.
 pub fn encode(song: &Song) -> Result<String> {
     song.validate()?;
     let mut out = format!(
@@ -675,7 +675,6 @@ pub fn load(base: &Path, name: &str) -> Result<Song> {
 
 pub fn delete(base: &Path, name: &str) -> Result<()> {
     let path = base.join(format!("{}.shsong", safe_name(name)));
-    decode(&fs::read_to_string(&path)?)?;
     fs::remove_file(path)?;
     Ok(())
 }
@@ -2160,7 +2159,7 @@ mod tests {
         let _ = fs::remove_dir_all(base);
     }
     #[test]
-    fn song_delete_requires_a_supported_file() {
+    fn song_delete_accepts_any_listed_song_version() {
         let base = env::temp_dir().join(format!("shsong-delete-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         let song = Song::new(&config());
@@ -2168,8 +2167,8 @@ mod tests {
         delete(&base, &song.name).unwrap();
         assert!(!path.exists());
         fs::write(&path, "SHSYNTH-SONG 99\nfuture=data\n").unwrap();
-        assert!(delete(&base, &song.name).is_err());
-        assert!(path.exists());
+        delete(&base, &song.name).unwrap();
+        assert!(!path.exists());
         let _ = fs::remove_dir_all(base);
     }
     #[test]

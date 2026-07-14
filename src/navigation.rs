@@ -215,10 +215,10 @@ const PRESETS: [MenuPage; 4] = [
     page(
         "BROWSE",
         [
-            on("UP", Action::Up),
-            on("DOWN", Action::Down),
             on("PG UP", Action::PageUp),
             on("PG DOWN", Action::PageDown),
+            off("--"),
+            off("--"),
         ],
     ),
     page(
@@ -291,10 +291,10 @@ const IDEAS: [MenuPage; 4] = [
     page(
         "BROWSE",
         [
-            on("UP", Action::Up),
-            on("DOWN", Action::Down),
             on("FIRST", Action::Home),
             on("LAST", Action::End),
+            off("--"),
+            off("--"),
         ],
     ),
     page(
@@ -329,8 +329,8 @@ const TRACKER: [MenuPage; 4] = [
     page(
         "CURSOR",
         [
-            on("ROW-", Action::Up),
-            on("ROW+", Action::Down),
+            on("PG-", Action::PreviousOrder),
+            on("PG+", Action::NextOrder),
             on("LANE-", Action::PreviousTrack),
             on("LANE+", Action::NextTrack),
         ],
@@ -427,10 +427,10 @@ const FILES: [MenuPage; 4] = [
     page(
         "BROWSE",
         [
-            on("UP", Action::Up),
-            on("DOWN", Action::Down),
             on("LOAD", Action::LoadSong),
             on("BACK", Action::Back),
+            off("--"),
+            off("--"),
         ],
     ),
     page(
@@ -465,10 +465,10 @@ const PAGES: [MenuPage; 4] = [
     page(
         "PAGES",
         [
-            on("PAGE-", Action::PreviousTrack),
-            on("PAGE+", Action::NextTrack),
             on("ADD", Action::AddPage),
             on("CANCEL", Action::Back),
+            off("--"),
+            off("--"),
         ],
     ),
     page(
@@ -495,10 +495,10 @@ const PAGE_FIELD: [MenuPage; 4] = [
     page(
         "EDIT",
         [
-            on("PREVIOUS", Action::Up),
-            on("NEXT", Action::Down),
             on("CONFIRM", Action::ConfirmPageManager),
             on("CANCEL", Action::Back),
+            off("--"),
+            off("--"),
         ],
     ),
     page(
@@ -650,7 +650,7 @@ mod tests {
             Action::TrackerErase
         );
         assert_eq!(
-            slot(Screen::TrackerPages, MenuContext::PageTarget, 0, 2)
+            slot(Screen::TrackerPages, MenuContext::PageTarget, 0, 0)
                 .unwrap()
                 .action,
             Action::ConfirmPageManager
@@ -660,6 +660,32 @@ mod tests {
                 .unwrap()
                 .action,
             Action::Back
+        );
+    }
+
+    #[test]
+    fn master_rotary_navigation_is_not_duplicated_on_menu_slots() {
+        for (screen, context) in [
+            (Screen::Presets, MenuContext::Normal),
+            (Screen::Ideas, MenuContext::Normal),
+            (Screen::TrackerFiles, MenuContext::Normal),
+            (Screen::TrackerPages, MenuContext::Normal),
+            (Screen::TrackerPages, MenuContext::PageTarget),
+            (Screen::TrackerPages, MenuContext::PageChannel),
+        ] {
+            assert!(pages(screen, context)
+                .iter()
+                .flat_map(|page| page.slots)
+                .all(|slot| !matches!(slot.dispatch(), Some(Action::Up | Action::Down))));
+        }
+        assert_eq!(
+            TRACKER[0].slots.map(|slot| slot.dispatch()),
+            [
+                Some(Action::PreviousOrder),
+                Some(Action::NextOrder),
+                Some(Action::PreviousTrack),
+                Some(Action::NextTrack),
+            ]
         );
     }
 
@@ -686,8 +712,6 @@ mod tests {
             .filter_map(MenuSlot::dispatch)
             .collect::<HashSet<_>>();
         let inventory = [
-            Action::Up,
-            Action::Down,
             Action::PageUp,
             Action::PageDown,
             Action::Home,
