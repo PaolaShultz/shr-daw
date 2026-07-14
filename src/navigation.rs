@@ -141,7 +141,6 @@ pub enum Action {
 pub enum SlotState {
     Enabled,
     Disabled,
-    Planned,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -166,17 +165,10 @@ impl MenuSlot {
             state: SlotState::Disabled,
         }
     }
-    pub const fn planned(label: &'static str) -> Self {
-        Self {
-            label,
-            action: Action::Noop,
-            state: SlotState::Planned,
-        }
-    }
     pub const fn dispatch(self) -> Option<Action> {
         match self.state {
             SlotState::Enabled => Some(self.action),
-            SlotState::Disabled | SlotState::Planned => None,
+            SlotState::Disabled => None,
         }
     }
 }
@@ -185,6 +177,12 @@ impl MenuSlot {
 pub struct MenuPage {
     pub label: &'static str,
     pub slots: [MenuSlot; 4],
+}
+
+impl MenuPage {
+    pub fn available(self) -> bool {
+        self.slots.iter().any(|slot| slot.dispatch().is_some())
+    }
 }
 
 const fn page(label: &'static str, slots: [MenuSlot; 4]) -> MenuPage {
@@ -196,10 +194,6 @@ const fn on(label: &'static str, action: Action) -> MenuSlot {
 const fn off(label: &'static str) -> MenuSlot {
     MenuSlot::disabled(label)
 }
-const fn future(label: &'static str) -> MenuSlot {
-    MenuSlot::planned(label)
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum MenuContext {
     #[default]
@@ -213,12 +207,12 @@ pub enum MenuContext {
 
 const PRESETS: [MenuPage; 4] = [
     page(
-        "BROWSE",
+        "OPS",
         [
+            on("LOAD", Action::Activate),
             on("PG UP", Action::PageUp),
             on("PG DOWN", Action::PageDown),
-            off("--"),
-            off("--"),
+            on("FIRST", Action::Home),
         ],
     ),
     page(
@@ -226,32 +220,27 @@ const PRESETS: [MenuPage; 4] = [
         [
             on("ENGINE-", Action::PreviousEngine),
             on("ENGINE+", Action::NextEngine),
-            on("FIRST", Action::Home),
+            off(""),
             on("LAST", Action::End),
         ],
     ),
     page(
-        "OPEN",
+        "NAV",
         [
-            on("LOAD", Action::Activate),
+            off(""),
             on("IDEAS", Action::OpenIdeas),
             on("FT2", Action::OpenTracker),
             on("AUDIO", Action::OpenAudioRecorder),
         ],
     ),
     page(
-        "SAFETY",
-        [
-            on("PANIC", Action::StopAll),
-            on("EXIT", Action::Quit),
-            off("--"),
-            off("--"),
-        ],
+        "SYS",
+        [on("PANIC", Action::StopAll), off(""), off(""), off("")],
     ),
 ];
 const PLAYBACK: [MenuPage; 4] = [
     page(
-        "IDEA",
+        "OPS",
         [
             on("RECORD", Action::BeginRecord),
             on("STOP REC", Action::StopRecord),
@@ -263,42 +252,33 @@ const PLAYBACK: [MenuPage; 4] = [
         "SOUND",
         [
             on("RESET", Action::ResetParameters),
+            on("FINISH", Action::FinishSaveRecord),
+            on("TAP", Action::TapTempo),
+            off(""),
+        ],
+    ),
+    page(
+        "NAV",
+        [
             on("PRESETS", Action::OpenPresets),
             on("IDEAS", Action::OpenIdeas),
-            future("ARP"),
-        ],
-    ),
-    page(
-        "OPEN",
-        [
             on("FT2", Action::OpenTracker),
             on("AUDIO", Action::OpenAudioRecorder),
-            on("TAP", Action::TapTempo),
-            on("BACK", Action::Back),
         ],
     ),
     page(
-        "SAFETY",
+        "SYS",
         [
-            on("STOP TAKE", Action::StopPlayback),
-            on("FINISH+SAVE", Action::FinishSaveRecord),
             on("PANIC", Action::StopAll),
-            off("--"),
+            on("STOP", Action::StopPlayback),
+            off(""),
+            on("EXIT", Action::Back),
         ],
     ),
 ];
 const IDEAS: [MenuPage; 4] = [
     page(
-        "BROWSE",
-        [
-            on("FIRST", Action::Home),
-            on("LAST", Action::End),
-            off("--"),
-            off("--"),
-        ],
-    ),
-    page(
-        "IDEA",
+        "OPS",
         [
             on("INSPECT", Action::InspectIdea),
             on("LOAD", Action::LoadIdea),
@@ -312,22 +292,40 @@ const IDEAS: [MenuPage; 4] = [
             on("RECORD", Action::BeginRecord),
             on("STOP REC", Action::StopRecord),
             on("SAVE NEW", Action::SaveNew),
-            on("PLAYBACK", Action::OpenPresets),
+            on("FIRST", Action::Home),
         ],
     ),
     page(
-        "OPEN",
+        "NAV",
         [
-            on("BACK", Action::Back),
+            on("PRESETS", Action::OpenPresets),
+            off(""),
             on("FT2", Action::OpenTracker),
             on("AUDIO", Action::OpenAudioRecorder),
+        ],
+    ),
+    page(
+        "SYS",
+        [
             on("PANIC", Action::StopAll),
+            on("STOP", Action::StopPlayback),
+            on("LAST", Action::End),
+            on("EXIT", Action::Back),
         ],
     ),
 ];
 const TRACKER: [MenuPage; 4] = [
     page(
-        "CURSOR",
+        "OPS",
+        [
+            on("PLAY", Action::TrackerPlayCursor),
+            on("START", Action::TrackerPlayStart),
+            on("STEP", Action::TrackerEdit),
+            on("CELL", Action::OpenNoteEditor),
+        ],
+    ),
+    page(
+        "MOVE",
         [
             on("PG-", Action::PreviousOrder),
             on("PG+", Action::NextOrder),
@@ -336,21 +334,41 @@ const TRACKER: [MenuPage; 4] = [
         ],
     ),
     page(
-        "TRANSP",
-        [
-            on("PLAY HERE", Action::TrackerPlayCursor),
-            on("PLAY START", Action::TrackerPlayStart),
-            on("STOP/BACK", Action::TrackerStop),
-            on("CELL EDIT", Action::OpenNoteEditor),
-        ],
-    ),
-    page(
-        "MANAGE",
+        "TOOLS",
         [
             on("PAGES", Action::OpenTrackerPages),
             on("FILES", Action::OpenTrackerFiles),
             on("MUTE LANE", Action::TrackerMute),
             on("TAP", Action::TapTempo),
+        ],
+    ),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            on("PAGE", Action::NextTrackerPage),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const TRACKER_EDIT: [MenuPage; 4] = [
+    page(
+        "OPS",
+        [
+            on("BLANK", Action::TrackerSkip),
+            on("ERASE", Action::TrackerErase),
+            on("NOTE OFF", Action::TrackerNoteOff),
+            on("EDIT DONE", Action::TrackerEdit),
+        ],
+    ),
+    page(
+        "MOVE",
+        [
+            on("PG-", Action::PreviousOrder),
+            on("PG+", Action::NextOrder),
+            on("LANE-", Action::PreviousTrack),
+            on("LANE+", Action::NextTrack),
         ],
     ),
     page(
@@ -362,30 +380,26 @@ const TRACKER: [MenuPage; 4] = [
             on("TEMPO+", Action::TempoUp),
         ],
     ),
-];
-const TRACKER_EDIT: [MenuPage; 4] = [
-    TRACKER[0],
     page(
-        "ENTRY",
+        "SYS",
         [
-            on("BLANK", Action::TrackerSkip),
-            on("ERASE", Action::TrackerErase),
-            on("NOTE OFF", Action::TrackerNoteOff),
-            on("EDIT DONE", Action::TrackerEdit),
-        ],
-    ),
-    page(
-        "TRANSP",
-        [
-            on("PLAY HERE", Action::TrackerPlayCursor),
-            on("PLAY START", Action::TrackerPlayStart),
+            on("PANIC", Action::StopAll),
             on("STOP", Action::TrackerStop),
-            on("NEXT PAGE", Action::NextTrackerPage),
+            on("PAGE", Action::NextTrackerPage),
+            on("EXIT", Action::TrackerEdit),
         ],
     ),
-    TRACKER[3],
 ];
 const TRACKER_NOTE_EDIT: [MenuPage; 4] = [
+    page(
+        "OPS",
+        [
+            on("CONFIRM", Action::NoteEditorConfirm),
+            on("STEP", Action::TrackerEdit),
+            on("CLEAR", Action::NoteEditorClearField),
+            on("EFFECT", Action::EffectField),
+        ],
+    ),
     page(
         "FIELDS",
         [
@@ -396,50 +410,32 @@ const TRACKER_NOTE_EDIT: [MenuPage; 4] = [
         ],
     ),
     page(
-        "EFFECT",
-        [
-            on("EFFECT", Action::EffectField),
-            on("PARAM", Action::EffectParameterField),
-            on("CLEAR FLD", Action::NoteEditorClearField),
-            on("STEP EDIT", Action::TrackerEdit),
-        ],
-    ),
-    page(
         "ADJUST",
         [
-            on("FIELD-", Action::NoteEditorPreviousField),
-            on("FIELD+", Action::NoteEditorNextField),
+            on("PARAM", Action::EffectParameterField),
             on("VALUE-", Action::NoteEditorDecrease),
             on("VALUE+", Action::NoteEditorIncrease),
+            off(""),
         ],
     ),
     page(
-        "FINISH",
+        "SYS",
         [
-            on("CONFIRM", Action::NoteEditorConfirm),
-            on("CANCEL/BACK", Action::NoteEditorCancel),
-            on("STOP", Action::TrackerStop),
             on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            off(""),
+            on("EXIT", Action::Back),
         ],
     ),
 ];
 const FILES: [MenuPage; 4] = [
     page(
-        "BROWSE",
+        "OPS",
         [
             on("LOAD", Action::LoadSong),
-            on("BACK", Action::Back),
-            off("--"),
-            off("--"),
-        ],
-    ),
-    page(
-        "SONG",
-        [
             on("SAVE", Action::SaveSong),
             on("PREVIEW", Action::PreviewSong),
             on("DELETE", Action::DeleteSong),
-            on("PANIC", Action::StopAll),
         ],
     ),
     page(
@@ -448,7 +444,7 @@ const FILES: [MenuPage; 4] = [
             on("NEW", Action::NewPattern),
             on("CLONE", Action::ClonePattern),
             on("CLEAR", Action::ClearPattern),
-            future("WAV LOOP"),
+            off(""),
         ],
     ),
     page(
@@ -460,106 +456,114 @@ const FILES: [MenuPage; 4] = [
             on("REMOVE", Action::DeleteOrder),
         ],
     ),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
 ];
 const PAGES: [MenuPage; 4] = [
     page(
-        "PAGES",
+        "OPS",
         [
             on("ADD", Action::AddPage),
-            on("CANCEL", Action::Back),
-            off("--"),
-            off("--"),
-        ],
-    ),
-    page(
-        "ROUTE",
-        [
             on("TARGET", Action::EditPageTarget),
             on("CHANNEL", Action::EditPageChannel),
             on("DONE", Action::ConfirmPageManager),
+        ],
+    ),
+    page(
+        "PAGE",
+        [
+            on("PAGE-", Action::PreviousTrack),
+            on("PAGE+", Action::NextTrack),
+            on("MUTE PAGE", Action::TrackerPageMute),
             on("FILES", Action::OpenTrackerFiles),
         ],
     ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
-        "STATUS",
+        "SYS",
         [
-            on("MUTE PAGE", Action::TrackerPageMute),
-            off("--"),
-            off("--"),
-            off("--"),
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            off(""),
+            on("EXIT", Action::Back),
         ],
     ),
-    page("FUTURE", [off("--"), off("--"), off("--"), off("--")]),
 ];
 const PAGE_FIELD: [MenuPage; 4] = [
     page(
-        "EDIT",
+        "OPS",
         [
             on("CONFIRM", Action::ConfirmPageManager),
-            on("CANCEL", Action::Back),
-            off("--"),
-            off("--"),
+            off(""),
+            off(""),
+            off(""),
         ],
     ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
-        "LOCKED",
-        [off("FIELD MODE"), off("--"), off("--"), off("--")],
-    ),
-    page(
-        "LOCKED",
-        [off("FIELD MODE"), off("--"), off("--"), off("--")],
-    ),
-    page(
-        "LOCKED",
-        [off("FIELD MODE"), off("--"), off("--"), off("--")],
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
     ),
 ];
 const PATTERN_CLEAR: [MenuPage; 4] = [
     page(
-        "METER",
+        "OPS",
         [
             on("3/4", Action::SelectThreeFour),
             on("4/4", Action::SelectFourFour),
             on("CONFIRM", Action::ConfirmPatternClear),
-            on("CANCEL", Action::Back),
+            on("KEEP", Action::ClearPatternNow),
         ],
     ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
-        "CURRENT",
+        "SYS",
         [
-            on("CLEAR SIZE", Action::ClearPatternNow),
-            off("--"),
-            off("--"),
-            off("--"),
+            on("PANIC", Action::StopAll),
+            off(""),
+            off(""),
+            on("EXIT", Action::Back),
         ],
     ),
-    page("LOCKED", [off("CONFIRM"), off("--"), off("--"), off("--")]),
-    page("LOCKED", [off("CONFIRM"), off("--"), off("--"), off("--")]),
 ];
 const AUDIO: [MenuPage; 4] = [
     page(
-        "RECORD",
-        [
-            on("RECORD", Action::AudioRecord),
-            on("STOP REC", Action::AudioStop),
-            on("BACK", Action::Back),
-            on("PANIC", Action::StopAll),
-        ],
+        "OPS",
+        [on("RECORD", Action::AudioRecord), off(""), off(""), off("")],
     ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
-        "OPEN",
+        "NAV",
         [
             on("PRESETS", Action::OpenPresets),
             on("IDEAS", Action::OpenIdeas),
             on("FT2", Action::OpenTracker),
-            off("--"),
+            off(""),
         ],
     ),
     page(
-        "STATUS",
-        [off("24-BIT WAV"), off("STEREO"), off("--"), off("--")],
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::AudioStop),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
     ),
-    page("FUTURE", [off("--"), off("--"), off("--"), off("--")]),
 ];
 
 pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
@@ -601,50 +605,93 @@ mod tests {
                 let menu = pages(screen, context);
                 assert_eq!(menu.len(), 4);
                 assert!(menu.iter().all(|page| page.slots.len() == 4));
-                assert!(menu.iter().all(|page| !page.label.is_empty()));
                 assert!(menu
                     .iter()
                     .flat_map(|page| page.slots)
-                    .all(|slot| !slot.label.is_empty()));
+                    .all(|slot| slot.state == SlotState::Disabled || !slot.label.is_empty()));
             }
         }
     }
 
     #[test]
-    fn planned_slots_never_dispatch() {
-        let arp = slot(Screen::Playback, MenuContext::Normal, 1, 3).unwrap();
-        let wav = slot(Screen::TrackerFiles, MenuContext::Normal, 2, 3).unwrap();
-        assert_eq!(
-            (arp.label, arp.state, arp.dispatch()),
-            ("ARP", SlotState::Planned, None)
-        );
-        assert_eq!(
-            (wav.label, wav.state, wav.dispatch()),
-            ("WAV LOOP", SlotState::Planned, None)
-        );
+    fn empty_slots_and_pages_do_not_dispatch() {
+        let empty_slot = slot(Screen::Playback, MenuContext::Normal, 1, 3).unwrap();
+        let empty_page = pages(Screen::TrackerPages, MenuContext::Normal)[2];
+        assert_eq!((empty_slot.label, empty_slot.dispatch()), ("", None));
+        assert!(!empty_page.available());
     }
 
     #[test]
-    fn note_editor_is_exactly_four_pages_and_every_item_dispatches() {
+    fn every_menu_uses_the_same_ops_and_system_anchors() {
+        let contexts = [
+            (Screen::Presets, MenuContext::Normal),
+            (Screen::Playback, MenuContext::Normal),
+            (Screen::Ideas, MenuContext::Normal),
+            (Screen::Tracker, MenuContext::Normal),
+            (Screen::Tracker, MenuContext::TrackerEdit),
+            (Screen::Tracker, MenuContext::TrackerNoteEdit),
+            (Screen::TrackerFiles, MenuContext::Normal),
+            (Screen::TrackerFiles, MenuContext::PatternClear),
+            (Screen::TrackerPages, MenuContext::Normal),
+            (Screen::TrackerPages, MenuContext::PageTarget),
+            (Screen::AudioRecorder, MenuContext::Normal),
+        ];
+        for (screen, context) in contexts {
+            let menu = pages(screen, context);
+            assert_eq!(menu[0].label, "OPS", "{screen:?} {context:?}");
+            assert_eq!(menu[3].label, "SYS", "{screen:?} {context:?}");
+            assert_eq!(menu[3].slots[0].label, "PANIC");
+            if screen == Screen::Presets {
+                assert_eq!(menu[3].slots[3].dispatch(), None);
+            } else {
+                assert_eq!(menu[3].slots[3].label, "EXIT");
+                assert!(menu[3].slots[3].dispatch().is_some());
+            }
+            assert!(menu
+                .iter()
+                .flat_map(|page| page.slots)
+                .all(|slot| slot.dispatch() != Some(Action::Quit)));
+        }
+    }
+
+    #[test]
+    fn note_editor_has_direct_access_to_every_field_and_core_operation() {
         let menu = pages(Screen::Tracker, MenuContext::TrackerNoteEdit);
         assert_eq!(menu.len(), 4);
-        assert!(menu.iter().all(|page| page.slots.len() == 4));
-        assert!(menu
+        let actions = menu
             .iter()
             .flat_map(|page| page.slots)
-            .all(|slot| slot.dispatch().is_some()));
+            .filter_map(MenuSlot::dispatch)
+            .collect::<HashSet<_>>();
+        for action in [
+            Action::NoteField,
+            Action::GateField,
+            Action::VelocityField,
+            Action::ProgramField,
+            Action::EffectField,
+            Action::EffectParameterField,
+            Action::NoteEditorDecrease,
+            Action::NoteEditorIncrease,
+            Action::NoteEditorConfirm,
+            Action::TrackerEdit,
+            Action::TrackerStop,
+            Action::StopAll,
+            Action::Back,
+        ] {
+            assert!(actions.contains(&action), "missing {action:?}");
+        }
     }
 
     #[test]
     fn contextual_menus_replace_ambiguous_actions() {
         assert_eq!(
-            slot(Screen::Tracker, MenuContext::TrackerNoteEdit, 3, 0)
+            slot(Screen::Tracker, MenuContext::TrackerNoteEdit, 0, 0)
                 .unwrap()
                 .action,
             Action::NoteEditorConfirm
         );
         assert_eq!(
-            slot(Screen::Tracker, MenuContext::TrackerEdit, 1, 1)
+            slot(Screen::Tracker, MenuContext::TrackerEdit, 0, 1)
                 .unwrap()
                 .action,
             Action::TrackerErase
@@ -656,7 +703,7 @@ mod tests {
             Action::ConfirmPageManager
         );
         assert_eq!(
-            slot(Screen::TrackerFiles, MenuContext::PatternClear, 0, 3)
+            slot(Screen::TrackerFiles, MenuContext::PatternClear, 3, 3)
                 .unwrap()
                 .action,
             Action::Back
@@ -679,7 +726,7 @@ mod tests {
                 .all(|slot| !matches!(slot.dispatch(), Some(Action::Up | Action::Down))));
         }
         assert_eq!(
-            TRACKER[0].slots.map(|slot| slot.dispatch()),
+            TRACKER[1].slots.map(|slot| slot.dispatch()),
             [
                 Some(Action::PreviousOrder),
                 Some(Action::NextOrder),
@@ -720,7 +767,6 @@ mod tests {
             Action::NextEngine,
             Action::Activate,
             Action::Back,
-            Action::Quit,
             Action::StopAll,
             Action::OpenPresets,
             Action::OpenIdeas,
@@ -751,12 +797,9 @@ mod tests {
             Action::EffectField,
             Action::EffectParameterField,
             Action::NoteEditorClearField,
-            Action::NoteEditorPreviousField,
-            Action::NoteEditorNextField,
             Action::NoteEditorDecrease,
             Action::NoteEditorIncrease,
             Action::NoteEditorConfirm,
-            Action::NoteEditorCancel,
             Action::TrackerPlayCursor,
             Action::TrackerPlayStart,
             Action::TrackerStop,

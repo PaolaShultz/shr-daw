@@ -85,6 +85,13 @@ above are intentionally development/local-checkout commands. The `shsynth`
 state, data, configuration, and shared-data paths remain unchanged for
 compatibility.
 
+The controller menu uses a four-page spatial contract on every screen and
+modal context: page 1 is `OPS`; on child screens and editors, `EXIT` is always
+page 4/item 4 and returns one level. MIDI never quits the application. Empty
+items/pages are invisible, silent, and skipped. The visible control strip is
+centered and capped at 40 columns. The full map is in
+`docs/CONTROLLER_INTERFACE.md`; README carries only the overview and link.
+
 ## Preset provenance decision
 
 Only the 21 cleared synthv1 presets listed in `THIRD_PARTY.md` belong in the
@@ -142,7 +149,7 @@ cargo build --release --locked
 ```
 
 At the time this handoff was written, all 445 public-plus-private XML files
-validated, 124 Rust tests passed, Clippy passed with warnings denied, formatting
+validated, 128 Rust tests passed, Clippy passed with warnings denied, formatting
 passed, and the release build succeeded. Run the checks again after changes;
 this statement is history, not a substitute for current verification.
 

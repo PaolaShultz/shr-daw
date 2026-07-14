@@ -69,8 +69,8 @@ the initial routing setup, the main performance and sequencing workflow does
 not require a computer keyboard or mouse. The attached display shows what the
 physical controls do on the current screen:
 
-- four menu-page labels and the selected page's four item labels are always
-  visible; working, disabled, and planned items use different styles;
+- available menu pages and the selected page's working actions are visible;
+  empty positions are omitted;
 - the main encoder moves through menus, presets, rows, pages, and choices, and
   its press selects or confirms;
 - mapped knobs adjust the 12 current synthv1 performance parameters with
@@ -84,9 +84,13 @@ or audio routes change.
 
 ### Controller menu paging
 
-Paging is implemented on every screen and contextual editor. Each screen has
-four named pages of four menu items, for 16 controller-accessible slots. Page
-selection matches the available hardware:
+Every screen uses the same four-page/four-item controller model. Page 1 is the
+main `OPS` page. On child screens and editors, `EXIT` is always page 4/item 4
+and returns one level; it never quits the application. Empty items and pages
+are hidden and skipped. The on-screen controls stay compact at wide terminal
+sizes.
+
+Page selection adapts to the configured controller:
 
 - the current eight-button layout can use four buttons for direct, fast page
   selection and four buttons for the active page's items;
@@ -95,78 +99,9 @@ selection matches the available hardware:
 - a four-button controller can use the rotary encoder to switch pages, leaving
   all four buttons for the active page's items.
 
-Set `menu.layout=8`, `5`, or `4` in `controller.conf`. In four-button mode,
-encoder press enters page-selection mode, turning selects a page, and another
-press returns the encoder to its normal screen-specific operation. This makes
-page selection deterministic without hiding row/list/choice adjustment.
-
-Each screen remembers its last page. Entering or leaving a contextual editor
-(FT2 cell/step entry, page target/channel choice, or pattern-clear confirmation)
-predictably opens that context on page 1. Keyboard and mouse controls remain
-available as secondary inputs.
-
-The 12 verified synthv1 0.9.29 controls remain continuous configured CC
-controls, separate from page selection and menu-item presses. They keep pickup,
-preset-relative colors, and in-place reset behavior. The control architecture
-reserves 16 entries, so four verified controls can be added later without
-changing the four-by-four menu model.
-
-`~` marks planned/unavailable items and `-` marks disabled informational slots.
-Neither kind dispatches an action. `ARP` reserves the future performance
-arpeggiator. `WAV LOOP` reserves future selection of one WAV, BPM detection or
-entry, tempo synchronization, looping beside FT2 MIDI playback, replacement,
-and synchronized stop; it is separate from the working stereo recorder.
-
-### Complete screen menu map
-
-| Screen/context | Page | Item 1 | Item 2 | Item 3 | Item 4 |
-|---|---|---|---|---|---|
-| Presets | Browse | Page up | Page down | Disabled | Disabled |
-| Presets | Engine | Engine− | Engine+ | First | Last |
-| Presets | Open | Load | Ideas | FT2 | Audio |
-| Presets | Safety | Panic/stop synth | Exit | Disabled | Disabled |
-| Playback | Idea | Record MIDI | Stop recording | Play take | Save idea |
-| Playback | Sound | Reset 12 controls | Presets | Ideas | Arpeggiator (planned) |
-| Playback | Open | FT2 | Audio | Tap tempo | Back |
-| Playback | Safety | Stop take | Finish + save take | Panic/stop synth | Disabled |
-| Ideas | Browse | First | Last | Disabled | Disabled |
-| Ideas | Idea | Inspect | Load/confirm replace | Play | Delete/confirm |
-| Ideas | Capture | Record | Stop recording | Save new | Presets |
-| Ideas | Open | Back/cancel | FT2 | Audio | Panic |
-| FT2 | Cursor | Pattern/order page− | Pattern/order page+ | Lane− | Lane+ |
-| FT2 | Transport | Play here | Play from start | Stop/back | Cell edit |
-| FT2 | Manage | Pages/tracks | Files | Mute lane | Tap tempo |
-| FT2 | Adjust | Program− | Program+ | Tempo− | Tempo+ |
-| FT2 edit | Cursor | Pattern/order page− | Pattern/order page+ | Lane− | Lane+ |
-| FT2 edit | Entry | Blank/skip | Erase | Note off | Finish edit |
-| FT2 edit | Transport | Play here | Play from start | Stop | Next visible page |
-| FT2 edit | Adjust | Program− | Program+ | Tempo− | Tempo+ |
-| FT2 cell edit | Fields | Note | Gate | Velocity | Program |
-| FT2 cell edit | Effect | Effect type | Effect parameter | Clear selected field | Step entry |
-| FT2 cell edit | Adjust | Previous field | Next field | Value− | Value+ |
-| FT2 cell edit | Finish | Confirm | Cancel/back | Stop | Panic |
-| Files | Browse | Load song | Back/cancel | Disabled | Disabled |
-| Files | Song | Save/confirm overwrite | Preview/stop | Delete/confirm | Panic |
-| Files | Pattern | New | Clone | Clear with meter confirmation | WAV loop (planned) |
-| Files | Order | Previous | Next | Repeat current | Remove current |
-| Pattern-clear context | Meter | 3/4 | 4/4 | Confirm | Cancel |
-| Pattern-clear context | Current | Clear, keep size | Disabled | Disabled | Disabled |
-| Pattern-clear context | Locked 3 | Disabled | Disabled | Disabled | Disabled |
-| Pattern-clear context | Locked 4 | Disabled | Disabled | Disabled | Disabled |
-| Pages/tracks | Pages | Add four lanes | Cancel/restore | Disabled | Disabled |
-| Pages/tracks | Route | Target | Channel | Done/keep | Files |
-| Pages/tracks | Status | Mute page | Disabled | Disabled | Disabled |
-| Pages/tracks | Future | Disabled | Disabled | Disabled | Disabled |
-| Target/channel context | Edit | Confirm field | Cancel field | Disabled | Disabled |
-| Target/channel context | Locked 2–4 | Field mode (disabled) | Disabled | Disabled | Disabled |
-| Audio recorder | Record | Record/toggle | Stop/finalize | Back | Panic |
-| Audio recorder | Open | Presets | Ideas | FT2 | Disabled |
-| Audio recorder | Status | 24-bit WAV (info) | Stereo (info) | Disabled | Disabled |
-| Audio recorder | Future | Disabled | Disabled | Disabled | Disabled |
-
-Musical controller notes remain the FT2 note/chord-entry mechanism while edit
-is active; they are not menu slots. Command-pad note-on and note-off are
-consumed, while unmapped musical MIDI continues through the configured route.
+Set `menu.layout=8`, `5`, or `4` in `controller.conf`. The complete action map,
+editor behavior, and compatibility rules are in
+[`docs/CONTROLLER_INTERFACE.md`](docs/CONTROLLER_INTERFACE.md).
 
 ## What works now
 
@@ -211,12 +146,12 @@ active SHR-DAW software instrument. A MIDI chord can fill up to four lanes in
 one step. Notes keep their velocity and the cursor moves to the next row.
 
 Choose **CELL EDIT** for the selected cell. Changes stay in a draft until
-**CONFIRM**, while **CANCEL/BACK** restores the whole original cell. Choose a
-field directly or use **FIELD−/FIELD+**, then use **VALUE−/VALUE+** (or the
-encoder on eight- and five-button layouts). **CLEAR FLD** clears only the
-selected field; the step editor's **ERASE** clears the whole cell. **STEP
-EDIT** enters controller-note/chord entry. In four-button layout, encoder
-press/turn remains reserved for selecting the four visible pages.
+**CONFIRM**, while **EXIT** restores the whole original cell. Choose a field
+directly, then use **VALUE−/VALUE+** (or the encoder on eight- and five-button
+layouts). **CLEAR** clears only the selected field; the step editor's
+**ERASE** clears the whole cell. **STEP** enters controller-note/chord entry.
+In four-button layout, encoder press/turn remains reserved for selecting the
+available menu pages.
 
 Editable fields and ranges are:
 

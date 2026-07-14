@@ -292,18 +292,27 @@ impl App {
     }
 
     fn select_menu_page(&mut self, page: usize) {
-        self.menu_page_by_screen[self.screen.index()] = page.min(3);
+        let page = page.min(3);
+        if navigation::pages(self.screen, self.menu_context())[page].available() {
+            self.menu_page_by_screen[self.screen.index()] = page;
+        }
         self.page_select_mode = false;
     }
 
     fn cycle_menu_page(&mut self, direction: i8) {
-        let current = self.menu_page();
-        let next = if direction < 0 {
-            (current + 3) % 4
-        } else {
-            (current + 1) % 4
-        };
-        self.menu_page_by_screen[self.screen.index()] = next;
+        let pages = navigation::pages(self.screen, self.menu_context());
+        let mut next = self.menu_page();
+        for _ in 0..4 {
+            next = if direction < 0 {
+                (next + 3) % 4
+            } else {
+                (next + 1) % 4
+            };
+            if pages[next].available() {
+                self.menu_page_by_screen[self.screen.index()] = next;
+                break;
+            }
+        }
     }
 
     fn reset_context_page(&mut self) {
@@ -1733,14 +1742,6 @@ fn drain(
                             );
                             if let Some(action) = slot.and_then(|slot| slot.dispatch()) {
                                 perform(action, app, state, Some(tx));
-                            } else if let Some(slot) = slot {
-                                app.status = match slot.state {
-                                    SlotState::Planned => {
-                                        format!("{} · planned / unavailable", slot.label)
-                                    }
-                                    SlotState::Disabled => format!("{} · unavailable", slot.label),
-                                    SlotState::Enabled => unreachable!(),
-                                };
                             }
                         }
                     }
@@ -1797,6 +1798,17 @@ fn perform(
     state: &Path,
     tx: Option<&std::sync::mpsc::Sender<MidiEvent>>,
 ) -> bool {
+    // EXIT is the same physical page/item on every normal and contextual
+    // menu, so it must not be swallowed by an active editor or confirmation.
+    if action == Action::Quit {
+        return true;
+    }
+    // PANIC is the other global system action. It remains live even while a
+    // modal confirmation owns the rest of the input dispatch.
+    if action == Action::StopAll {
+        a.stop_all(state);
+        return false;
+    }
     if a.note_editor.is_some() {
         match action {
             Action::Up | Action::NoteEditorDecrease => a.adjust_note_editor(-1),
@@ -1823,7 +1835,7 @@ fn perform(
                 a.cancel_note_editor();
                 a.tracker_stop();
             }
-            Action::StopAll => a.stop_all(state),
+            Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
             _ => {}
         }
         return false;
@@ -1937,8 +1949,8 @@ fn perform(
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::AudioRecorder => a.toggle_audio_recording(),
         },
-        Action::Quit => return true,
-        Action::StopAll => a.stop_all(state),
+        Action::Quit => unreachable!("quit is handled before contextual dispatch"),
+        Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
         Action::OpenPresets => {
             a.set_tracker_edit(false);
             a.screen = Screen::Presets;
@@ -2039,11 +2051,7 @@ fn perform(
         Action::TrackerPlayCursor => a.tracker_play(false),
         Action::TrackerPlayStart => a.tracker_play(true),
         Action::TrackerStop => {
-            if a.sequencer.status().playing {
-                a.tracker_stop();
-            } else {
-                perform(Action::Back, a, state, tx);
-            }
+            a.tracker_stop();
         }
         Action::TrackerMute => {
             let global_lane = a.tracker_page * LANES_PER_PAGE + a.tracker_track;
@@ -2527,11 +2535,18 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     a.hits.actions.clear();
     a.hits.menu_pages.clear();
     let pages = navigation::pages(a.screen, a.menu_context());
+    // The hardware surface is four compact columns.  Do not turn a five-letter
+    // label into a terminal-wide button on larger displays.
+    let menu_width = z.width.min(40);
+    let menu_x = z.x + z.width.saturating_sub(menu_width) / 2;
     for (i, page) in pages.iter().enumerate() {
         let col = i as u16;
-        let width = z.width / 4;
-        let x0 = z.x + col * width;
+        let width = menu_width / 4;
+        let x0 = menu_x + col * width;
         let r = rect(x0, z.y + z.height - 3, width, 1);
+        if !page.available() {
+            continue;
+        }
         let active = i == a.menu_page();
         let marker = if active && a.page_select_mode {
             ">"
@@ -2542,12 +2557,12 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         };
         f.render_widget(
             Paragraph::new(format!(
-                "{}{}:{:^width$}",
+                "{}{i}:{}",
                 marker,
-                i + 1,
                 truncate(page.label, usize::from(r.width.saturating_sub(3))),
-                width = usize::from(r.width.saturating_sub(3))
+                i = i + 1
             ))
+            .alignment(Alignment::Center)
             .style(
                 Style::default()
                     .fg(if active {
@@ -2566,28 +2581,18 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         a.hits.menu_pages.push((r, i));
     }
     for (i, slot) in pages[a.menu_page()].slots.iter().enumerate() {
-        let width = z.width / 4;
-        let x0 = z.x + i as u16 * width;
+        let width = menu_width / 4;
+        let x0 = menu_x + i as u16 * width;
         let r = rect(x0, z.y + z.height - 2, width, 1);
-        let (prefix, color) = match slot.state {
-            SlotState::Enabled => ("", Color::Yellow),
-            SlotState::Disabled => ("-", Color::DarkGray),
-            SlotState::Planned => ("~", Color::Magenta),
-        };
+        if slot.state != SlotState::Enabled {
+            continue;
+        }
+        let color = Color::Yellow;
         let text = truncate(slot.label, usize::from(r.width.saturating_sub(3)));
         f.render_widget(
-            Paragraph::new(format!(
-                "[{}{text:^width$}]",
-                prefix,
-                width = usize::from(r.width.saturating_sub(3))
-            ))
-            .style(Style::default().fg(color).add_modifier(
-                if slot.state == SlotState::Enabled {
-                    Modifier::BOLD
-                } else {
-                    Modifier::empty()
-                },
-            )),
+            Paragraph::new(format!("[{text}]"))
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
             r,
         );
         if let Some(action) = slot.dispatch() {
@@ -3252,7 +3257,7 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             choice(4),
             Spans::from(""),
             Spans::from("Turn master rotary · press to confirm"),
-            Spans::from("STOP/BACK cancels"),
+            Spans::from("EXIT cancels · KEEP preserves size"),
         ];
         f.render_widget(
             Paragraph::new(lines)
@@ -3450,14 +3455,12 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for label in [
-            "IDEA", "SOUND", "OPEN", "SAFETY", "RESET", "PRESETS", "IDEAS", "ARP",
-        ] {
+        for label in ["OPS", "SOUND", "NAV", "SYS", "RESET", "FINISH", "TAP"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
         assert!(text.contains("PLAYBACK P2"));
         assert_eq!(a.hits.menu_pages.len(), 4);
-        assert_eq!(a.hits.actions.len(), 3, "planned ARP is not clickable");
+        assert_eq!(a.hits.actions.len(), 3);
     }
 
     #[test]
@@ -3466,7 +3469,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let mut eight = app(&p);
         eight.screen = Screen::Tracker;
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page2, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page1, true))
             .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
@@ -3481,8 +3484,6 @@ mod tests {
         let mut five = app(&p);
         five.screen = Screen::Tracker;
         five.controller_layout = ControllerLayout::Five;
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::CyclePage, true))
-            .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
         drain(&rx, &mut five, Path::new("/none"), &tx);
@@ -3516,26 +3517,19 @@ mod tests {
         let mut a = app(&p);
         let (tx, rx) = mpsc::channel();
         a.screen = Screen::Tracker;
-        a.select_menu_page(3);
-        for item in [
-            crate::pads::PadAction::Item1,
-            crate::pads::PadAction::Item2,
-            crate::pads::PadAction::Item3,
-            crate::pads::PadAction::Item4,
-        ] {
-            tx.send(MidiEvent::Pad(item, true)).unwrap();
-        }
+        a.select_menu_page(1);
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
+            .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
-        assert_eq!(a.song.pages[0].program, 1);
-        assert_eq!(a.song.tempo, 120);
+        assert_eq!(a.tracker_track, 1);
         perform(Action::OpenIdeas, &mut a, Path::new("/none"), None);
         assert_eq!(a.menu_page(), 0);
         perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
-        assert_eq!(a.menu_page(), 3, "each screen remembers its page");
+        assert_eq!(a.menu_page(), 1, "each screen remembers its page");
     }
 
     #[test]
-    fn planned_and_disabled_controller_items_cannot_dispatch_neighbors() {
+    fn empty_controller_items_are_silent() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Playback;
@@ -3545,15 +3539,15 @@ mod tests {
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
-        assert!(a.status.contains("ARP · planned / unavailable"));
-        assert_ne!(a.status, before);
+        assert_eq!(a.status, before);
         assert!(a.playing.is_none());
         a.screen = Screen::AudioRecorder;
-        a.select_menu_page(2);
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item1, true))
+        a.select_menu_page(0);
+        let before = a.status.clone();
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
-        assert_eq!(a.status, "24-BIT WAV · unavailable");
+        assert_eq!(a.status, before);
         assert!(!a.audio_recorder.status().recording);
     }
     #[test]
@@ -3642,7 +3636,7 @@ mod tests {
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
         assert!(text.contains("OFFLINE"));
-        assert!(text.contains("ROUTE"));
+        assert!(text.contains("OPS"));
         a.cancel_page_manager();
         assert_eq!(a.song, original);
     }
@@ -3700,7 +3694,7 @@ mod tests {
         let b = TestBackend::new(40, 20);
         let mut t = Terminal::new(b).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
-        assert_eq!(a.hits.actions.len(), 2);
+        assert_eq!(a.hits.actions.len(), 4);
         assert_eq!(a.hits.menu_pages.len(), 4);
         assert!(a.hits.actions.iter().all(|(r, _)| r.width == 10));
         let (tx, _) = mpsc::channel();
@@ -3719,7 +3713,7 @@ mod tests {
         mouse(
             MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
-                column: 2,
+                column: 12,
                 row: 18,
                 modifiers: crossterm::event::KeyModifiers::NONE,
             },
@@ -3728,6 +3722,53 @@ mod tests {
             &tx,
         );
         assert_eq!(a.selected, 0);
+    }
+
+    #[test]
+    fn controller_strip_stays_compact_on_wide_terminals() {
+        let p = presets();
+        let mut a = app(&p);
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+
+        assert_eq!(a.hits.menu_pages.len(), 4);
+        assert!(a
+            .hits
+            .menu_pages
+            .iter()
+            .all(|(area, _)| area.width == 10 && area.x >= 20 && area.x < 60));
+        assert!(a
+            .hits
+            .actions
+            .iter()
+            .all(|(area, _)| area.width == 10 && area.x >= 20 && area.x < 60));
+    }
+
+    #[test]
+    fn midi_exit_closes_contexts_but_never_quits_the_app() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.open_note_editor();
+        let exit = navigation::slot(a.screen, a.menu_context(), 3, 3)
+            .and_then(|slot| slot.dispatch())
+            .unwrap();
+        assert!(!perform(exit, &mut a, Path::new("/none"), None));
+        assert!(a.note_editor.is_none());
+
+        a.screen = Screen::TrackerFiles;
+        a.confirm_pattern_clear = true;
+        let exit = navigation::slot(a.screen, a.menu_context(), 3, 3)
+            .and_then(|slot| slot.dispatch())
+            .unwrap();
+        assert!(!perform(exit, &mut a, Path::new("/none"), None));
+        assert!(!a.confirm_pattern_clear);
+
+        assert!(navigation::pages(Screen::ALL[0], MenuContext::Normal)
+            .iter()
+            .flat_map(|page| page.slots)
+            .all(|slot| slot.dispatch() != Some(Action::Quit)));
     }
     #[test]
     fn playback_shows_all_parameters_centered_title_and_status_bar() {
@@ -4009,6 +4050,7 @@ mod tests {
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.open_note_editor();
+        a.select_menu_page(1);
         let (tx, rx) = mpsc::channel();
         for (pad, field) in [
             (crate::pads::PadAction::Item1, NoteEditorField::Note),
@@ -4188,7 +4230,7 @@ mod tests {
         perform(Action::OpenTrackerFiles, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::TrackerFiles);
         assert_eq!(
-            navigation::slot(a.screen, a.menu_context(), 1, 1).and_then(|slot| slot.dispatch()),
+            navigation::slot(a.screen, a.menu_context(), 0, 2).and_then(|slot| slot.dispatch()),
             Some(Action::PreviewSong)
         );
         perform(Action::ClearPattern, &mut a, Path::new("/none"), None);
@@ -4262,11 +4304,11 @@ mod tests {
         let row = a.tracker_row;
         let tempo = a.song.tempo;
         a.tracker_cell_mut().unwrap().note = Note::On(70);
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page2, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page1, true))
             .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
             .unwrap();
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page4, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page3, true))
             .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
@@ -4274,7 +4316,7 @@ mod tests {
         assert_eq!(a.song.tempo, tempo + 1);
         assert_eq!(a.tracker_row, (row + 1) % a.tracker_rows());
         assert_eq!(a.song.patterns[&0].rows[row][0].note, Note::Empty);
-        a.select_menu_page(1);
+        a.select_menu_page(0);
         let b = TestBackend::new(40, 20);
         let mut terminal = Terminal::new(b).unwrap();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
@@ -4356,14 +4398,14 @@ mod tests {
     }
 
     #[test]
-    fn tracker_stop_goes_back_when_transport_is_already_stopped() {
+    fn tracker_stop_never_doubles_as_back() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.set_tracker_edit(true);
         perform(Action::TrackerStop, &mut a, Path::new("/none"), None);
-        assert_eq!(a.screen, Screen::Presets);
-        assert!(!a.tracker_edit);
+        assert_eq!(a.screen, Screen::Tracker);
+        assert!(a.tracker_edit);
     }
 
     #[test]
