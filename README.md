@@ -14,6 +14,20 @@ or dedicated screen when you need one.
   <img src="docs/images/shr-daw-ft2-tracker.png" alt="SHR-DAW four-lane pattern editor" width="480">
 </p>
 
+## Start simple, expand when you want
+
+SHR-DAW can sit at the center of a larger music setup, but the devices in this
+diagram are optional. Begin with a Raspberry Pi and an audio output. Add a MIDI
+controller, external instruments, an audio interface, a mixer, or a dedicated
+screen as your setup grows.
+
+![SHR-DAW connected to an optional controller, display, audio interface, MIDI instruments, mixer, speakers, and headphones](docs/images/shr-daw-physical-connections.png)
+
+The basic signal paths are controller → SHR-DAW, SHR-DAW → software or hardware
+instruments, and audio → speakers or the stereo recorder. See
+[Physical connections](docs/CONNECTIONS.md) for the detailed MIDI and audio
+routes.
+
 ## What it does
 
 - Plays synthv1, Yoshimi, and FluidSynth instruments.
