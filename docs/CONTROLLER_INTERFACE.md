@@ -12,11 +12,12 @@ implemented.
 | Presets | Select previous/next, page up/down, first/last (keyboard, wheel, encoder); previous/next engine (keyboard/pads); load selected sound (keyboard, mouse, encoder/pad); tracker, ideas, and audio screens (keyboard/pads); stop synth/panic. Application exit remains keyboard-only. |
 | Playback | Reset the 12 mapped parameters in place (encoder press); record/stop/finish-and-save MIDI, play/stop take, save idea (keyboard/pads/mouse); presets/back, ideas, tracker, audio (keyboard/pads/mouse); tap tempo; stop/panic. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea (keyboard, wheel, encoder); inspect (keyboard/mouse/pad); load with replace confirmation (encoder); play take; delete with repeat confirmation; record/stop MIDI; save timestamped or numbered idea; back/cancel, tracker, audio, presets, panic. |
-| FT2 normal | Previous/next row (keyboard/encoder); previous/next lane and cross-page lane movement (keyboard/pads); visible page switch (Tab); previous/next order position (keyboard/pads); play from cursor or start; separate stop and back actions; enter edit; lane and page mute; page manager and file manager; program and tempo decrement/increment; tap tempo; save/load/new/clone/clear pattern and repeat/remove order shortcuts. |
+| FT2 normal | Previous/next row (keyboard/encoder); previous/next lane and cross-page lane movement (keyboard/pads); visible page switch (Tab); previous/next order position (keyboard/pads); play from cursor or start; hardware-page real-time record; separate stop and back actions; enter edit; lane and page mute; page manager and file manager; program and tempo decrement/increment; save/load/new/clone/clear pattern and repeat/remove order shortcuts. |
+| FT2 record | Record quantized notes into only the current page/current pattern; route live notes only to that page's hardware MIDI target; stop record, stop, exit, and panic remain available. |
 | FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; blank/skip; erase; note off; leave edit; lane mute; program and tempo adjustment. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 cell edit | Transactional note, gate, velocity, per-note program, single command type/parameter, clear-field, confirm/cancel, step-entry handoff, stop, and panic actions. Four-button encoder page selection remains available. |
-| Tracker files | Select saved song; load; preview/stop; save with overwrite confirmation; delete with repeat confirmation; new and clone pattern; clear immediately or choose confirmed 3/4 (24 rows) / 4/4 (32 rows); previous/next/repeat/remove order entry; back/cancel and panic. |
-| Pattern-clear dialog | Choose 3/4 or 4/4, confirm destructive clear, cancel, or use the existing keep-current-size clear operation. |
+| Tracker files | Select saved song; load; preview/stop; save with overwrite confirmation; delete with repeat confirmation; new and clone pattern; clear immediately or choose 3/4 (6/12/24/48/96 rows) / 4/4 (8/16/32/64/128 rows); previous/next/repeat/remove order entry; back/cancel and panic. |
+| Pattern setup | Choose 3/4 or 4/4 and pattern size; confirm new/destructive resize, cancel, or clear while retaining the current size. |
 | Page/track manager | Select previous/next page; add four-lane page; edit target; edit channel; confirm all changes; cancel and restore the original song; open files; mute current page. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Start/toggle recording, stop/finalize, inspect status, back, open presets/ideas/FT2, and panic. |
@@ -68,8 +69,10 @@ Blank physical positions and wholly empty pages are omitted.
 | Ideas | Sys | Panic | Stop take | Last | Exit |
 | FT2 | Ops | Play here | Play from start | Step edit | Cell edit |
 | FT2 | Move | Order− | Order+ | Lane− | Lane+ |
-| FT2 | Tools | Pages/tracks | Files | Mute lane | Tap tempo |
+| FT2 | Tools | Pages/tracks | Files | Mute lane | Record |
 | FT2 | Sys | Panic | Stop | Next page | Exit |
+| FT2 record | Ops | Stop recording | — | — | — |
+| FT2 record | Sys | Panic | Stop | — | Exit |
 | FT2 step edit | Ops | Blank/skip | Erase | Note off | Finish edit |
 | FT2 step edit | Move | Order− | Order+ | Lane− | Lane+ |
 | FT2 step edit | Adjust | Program− | Program+ | Tempo− | Tempo+ |
@@ -82,8 +85,9 @@ Blank physical positions and wholly empty pages are omitted.
 | Files | Pattern | New | Clone | Clear | — |
 | Files | Order | Previous | Next | Repeat | Remove |
 | Files | Sys | Panic | — | — | Exit |
-| Pattern-clear dialog | Ops | 3/4 | 4/4 | Confirm | Clear, keep size |
-| Pattern-clear dialog | Sys | Panic | — | — | Exit/cancel |
+| Pattern setup | Ops | 3/4 | 4/4 | Size− | Size+ |
+| Pattern setup | Apply | Confirm | Clear, keep size | — | — |
+| Pattern setup | Sys | Panic | — | — | Exit/cancel |
 | Pages/tracks | Ops | Add four lanes | Target | Channel | Done |
 | Pages/tracks | Page | Page− | Page+ | Mute page | Files |
 | Pages/tracks | Sys | Panic | Stop | — | Exit/cancel |

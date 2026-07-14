@@ -48,6 +48,9 @@ pub struct TrackerRoute {
     channel: u8,
     note_map: [u8; 128],
     program: Option<u8>,
+    bank_select: crate::config::BankSelectMode,
+    bank_msb: u8,
+    bank_lsb: u8,
     revision: u64,
 }
 
@@ -67,6 +70,9 @@ impl Default for TrackerRoute {
             channel: 0,
             note_map: std::array::from_fn(|note| note as u8),
             program: None,
+            bank_select: crate::config::BankSelectMode::Off,
+            bank_msb: 0,
+            bank_lsb: 0,
             revision: 0,
         }
     }
@@ -79,7 +85,7 @@ impl TrackerRoute {
         target: crate::sequencer::PageTarget,
         channel: u8,
         percussion: bool,
-        program: u8,
+        selection: (u8, u8, u8),
         config: &crate::config::ExternalMidiConfig,
     ) {
         self.revision = self.revision.wrapping_add(1);
@@ -87,7 +93,9 @@ impl TrackerRoute {
         self.target = target;
         self.channel = channel;
         self.note_map = std::array::from_fn(|note| note as u8);
-        self.program = config.program_changes.then_some(program);
+        self.program = config.program_changes.then_some(selection.0);
+        self.bank_select = config.bank_select;
+        (self.bank_msb, self.bank_lsb) = (selection.1, selection.2);
         if percussion {
             for (offset, &note) in config.percussion_notes.iter().enumerate() {
                 self.note_map[usize::from(config.percussion_input_base) + offset] = note;
@@ -97,6 +105,11 @@ impl TrackerRoute {
 
     fn mapped_note(&self, note: u8) -> u8 {
         self.note_map[usize::from(note)]
+    }
+
+    #[cfg(test)]
+    pub fn preview_state(&self) -> (bool, Option<u8>, u8, u8) {
+        (self.enabled, self.program, self.bank_msb, self.bank_lsb)
     }
 }
 
@@ -705,7 +718,9 @@ fn connect_midi_input(
                                 );
                                 preview_notes[usize::from(source_note)] = Some(destination.clone());
                                 preview = Some(destination);
-                                program = route.program;
+                                program = route.program.map(|program| {
+                                    (program, route.bank_select, route.bank_msb, route.bank_lsb)
+                                });
                             }
                         }
                         if let Some((target, channel, note)) = preview {
@@ -713,10 +728,23 @@ fn connect_midi_input(
                             let _ = tx.send(MidiEvent::Raw(preview_message.to_vec()));
                             if let Ok(input) = tracker_input.lock() {
                                 if let Some(input) = input.as_ref() {
-                                    if let Some(program) = program.filter(|program| {
-                                        preview_programs.get(&(target.clone(), channel))
-                                            != Some(program)
-                                    }) {
+                                    if let Some((program, bank_select, bank_msb, bank_lsb)) =
+                                        program.filter(|(program, _, _, _)| {
+                                            preview_programs.get(&(target.clone(), channel))
+                                                != Some(program)
+                                        })
+                                    {
+                                        match bank_select {
+                                            crate::config::BankSelectMode::Off => {}
+                                            crate::config::BankSelectMode::Cc0 => {
+                                                input.send(&target, &[0xb0 | channel, 0, bank_msb]);
+                                            }
+                                            crate::config::BankSelectMode::Cc0Cc32 => {
+                                                input.send(&target, &[0xb0 | channel, 0, bank_msb]);
+                                                input
+                                                    .send(&target, &[0xb0 | channel, 32, bank_lsb]);
+                                            }
+                                        }
                                         input.send(&target, &[0xc0 | channel, program]);
                                         preview_programs.insert((target.clone(), channel), program);
                                     }
@@ -1091,7 +1119,7 @@ mod tests {
             crate::sequencer::PageTarget::ConfiguredExternal,
             2,
             true,
-            9,
+            (9, 0, 0),
             &config,
         );
         assert!(route.enabled);
@@ -1109,7 +1137,7 @@ mod tests {
             crate::sequencer::PageTarget::ConfiguredExternal,
             2,
             true,
-            9,
+            (9, 0, 0),
             &config,
         );
         assert!(!tracker_edit_consumes_note(Some(&route), &[0x90, 60, 100]));

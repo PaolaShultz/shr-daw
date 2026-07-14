@@ -92,6 +92,19 @@ items/pages are invisible, silent, and skipped. The visible control strip is
 centered and capped at 40 columns. The full map is in
 `docs/CONTROLLER_INTERFACE.md`; README carries only the overview and link.
 
+FT2 real-time REC is hardware-page-only: it refuses `ActiveInstrument`,
+consumes notes before the loaded synth, auditions through the selected page's
+MIDI destination/channel, and writes only that page in the selected looping
+pattern. Pattern setup supports 4/4 sizes 8/16/32/64/128 and corresponding 3/4
+sizes 6/12/24/48/96. Songs retain distinct patterns plus their order list.
+
+External MIDI sound names are data-driven. JSON profiles live in
+`midi-devices/` (installed below `share/shsynth/midi-devices/`), while private
+overrides can live below `${XDG_DATA_HOME}/shsynth/midi-devices/` or
+`SHSYNTH_DEVICE_PROFILE_DIR`. `roland-d-50` is the first bundled profile, not a
+hardcoded tracker mode. FT2 Program cell editing uses the page target/channel
+for named live audition; devices without a profile retain numeric 0–127 access.
+
 ## Preset provenance decision
 
 Only the 21 cleared synthv1 presets listed in `THIRD_PARTY.md` belong in the
@@ -149,8 +162,9 @@ cargo build --release --locked
 ```
 
 At the time this handoff was written, all 445 public-plus-private XML files
-validated, 128 Rust tests passed, Clippy passed with warnings denied, formatting
-passed, and the release build succeeded. Run the checks again after changes;
+validated, 133 Rust tests passed, the bundled MIDI-device JSON parsed and
+installed correctly, Clippy passed with warnings denied, formatting passed,
+and the release build succeeded. Run the checks again after changes;
 this statement is history, not a substitute for current verification.
 
 ## Safety and fresh-session checklist

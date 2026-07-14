@@ -2,6 +2,7 @@ mod audio_recorder;
 mod chord;
 mod config;
 mod control;
+mod device_profile;
 mod engine;
 mod geometry;
 mod midi;

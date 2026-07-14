@@ -118,6 +118,13 @@ These example values are not device requirements. Run `shr-setup` and choose
 the ports present on the Raspberry Pi. The Casiotone profile in the bundled
 example is only the original proof-of-concept profile.
 
+`external_midi.profile` selects named program data for the configured route.
+Use `roland-d-50` for a D-50, or leave an unknown id to retain the numeric
+0–127 browser. JSON profiles are discovered, in override order, from
+`SHSYNTH_DEVICE_PROFILE_DIR`, `${XDG_DATA_HOME}/shsynth/midi-devices/`, the
+installed shared-data directory, and the checkout's `midi-devices/` directory.
+Exact MIDI port targets can also match a profile's `port_matches` entries.
+
 ## Song files
 
 Songs are stored below
@@ -143,6 +150,14 @@ commands in one cell are not supported. Per-cell program overrides use the
 page bank settings and exact page destination/channel, occur before that note,
 and do not mutate the inherited page program.
 
+Choosing **Program** replaces the grid with a named program browser. Controller
+notes are routed to the selected page target/channel for live audition without
+being inserted into the pattern or duplicated through the generic live-thru
+route. Unknown devices still show every numeric MIDI program. The next played
+note receives the current draft bank/program selection, which is transmitted
+as soon as the browser selection changes; confirm commits the cell and cancel
+restores its original value and selection.
+
 ## Note ownership
 
 Tracker events are sent only to their page target and channel. Controller
@@ -150,3 +165,14 @@ command pads, the encoder, and mapped controls stay inside SHR-DAW. STOP, page
 mute, lane mute, song replacement, route changes, and exit release notes only
 on affected destinations. Lanes that share a device/channel keep separate note
 ownership; a shared note is released only after its last lane owner ends.
+
+FT2 **REC** is deliberately hardware-only. It refuses an `ActiveInstrument`
+page, consumes musical controller notes before the loaded synth route, and
+auditions them on the current page's configured/exact MIDI output and channel.
+Recording loops only the selected pattern, writes only the visible page's four
+lanes, and does not advance through or alter other order entries.
+
+Pattern setup offers 4/4 row counts of 8, 16, 32, 64, and 128, or matching 3/4
+counts of 6, 12, 24, 48, and 96. New patterns are distinct pattern records and
+are appended to the song order; clone duplicates the selected pattern, while
+repeat adds another order reference to the same pattern.

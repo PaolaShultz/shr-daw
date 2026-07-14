@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "roland-d-50",
+  "manufacturer": "Roland",
+  "model": "D-50",
+  "port_matches": ["Roland D-50", "D-50", "D50"],
+  "program_change": {
+    "bank_select": "off",
+    "note": "Program Change 0-63 selects internal memory; 64-127 selects the card memory group. Internal and RAM-card slots are writable, so displayed factory names describe the original internal data only."
+  },
+  "banks": [
+    {
+      "id": "internal",
+      "name": "Internal",
+      "program_offset": 0,
+      "writable": true,
+      "slots": [
+        "I-11", "I-12", "I-13", "I-14", "I-15", "I-16", "I-17", "I-18",
+        "I-21", "I-22", "I-23", "I-24", "I-25", "I-26", "I-27", "I-28",
+        "I-31", "I-32", "I-33", "I-34", "I-35", "I-36", "I-37", "I-38",
+        "I-41", "I-42", "I-43", "I-44", "I-45", "I-46", "I-47", "I-48",
+        "I-51", "I-52", "I-53", "I-54", "I-55", "I-56", "I-57", "I-58",
+        "I-61", "I-62", "I-63", "I-64", "I-65", "I-66", "I-67", "I-68",
+        "I-71", "I-72", "I-73", "I-74", "I-75", "I-76", "I-77", "I-78",
+        "I-81", "I-82", "I-83", "I-84", "I-85", "I-86", "I-87", "I-88"
+      ],
+      "names": [
+        "Fantasia", "Metal Harp", "Jazz Guitar Duo", "Arco Strings", "Horn Section", "Living Calliope", "D-50 Voices", "Slow Rotor",
+        "DigitalNativeDance", "Bass Marimba", "Flute-Piano Duo", "Combie Strings", "Harpsichord Stabs", "Griitttarr", "Nylon Atmosphere", "Synthetic Electric",
+        "Breathy Chiffer", "Gamelan Bell", "Slap Brass", "PressureMe Strings", "Rich Brass", "Pipe Solo", "Soundtrack", "Cathedral Organ",
+        "Shamus Theme", "Vibraphone", "Basin Strat Blues", "Pizzagogo", "Flutish Brass", "Pressure Me Lead", "Spacious Sweep", "Piano-Fifty",
+        "Glass Voices", "Hollowed Harp", "Ethnic Session", "Jete Strings", "Stereo Polysynth", "Tine Wave", "Syn-Harmonium", "Rock Organ",
+        "Staccato Heaven", "Oriental Bells", "E-Bass and E-Piano", "Legato Strings", "JX Horns-Strings", "Shakuhachi", "Choir", "Picked Guitar Duo",
+        "Nightmare", "Syn Marimba", "Slap Bass n Brass", "String Ensemble", "Velo-Brass", "Digital Cello", "O K Chorale", "Pianissimo",
+        "Intruder FX", "Steel Pick", "Synth Bass", "Afterthought", "Bones", "Bottle Blower", "Future Pad", "PCM E-Piano"
+      ]
+    },
+    {
+      "id": "card",
+      "name": "Card",
+      "program_offset": 64,
+      "writable": true,
+      "slots": [
+        "C-11", "C-12", "C-13", "C-14", "C-15", "C-16", "C-17", "C-18",
+        "C-21", "C-22", "C-23", "C-24", "C-25", "C-26", "C-27", "C-28",
+        "C-31", "C-32", "C-33", "C-34", "C-35", "C-36", "C-37", "C-38",
+        "C-41", "C-42", "C-43", "C-44", "C-45", "C-46", "C-47", "C-48",
+        "C-51", "C-52", "C-53", "C-54", "C-55", "C-56", "C-57", "C-58",
+        "C-61", "C-62", "C-63", "C-64", "C-65", "C-66", "C-67", "C-68",
+        "C-71", "C-72", "C-73", "C-74", "C-75", "C-76", "C-77", "C-78",
+        "C-81", "C-82", "C-83", "C-84", "C-85", "C-86", "C-87", "C-88"
+      ]
+    }
+  ],
+  "sources": [
+    "https://cdn.roland.com/assets/media/pdf/D-50_MI.pdf",
+    "https://support.roland.com/hc/en-us/articles/201966399-D-50-Technical-Specifications",
+    "https://static.roland.com/assets/media/pdf/D-05_ParameterGuide_eng02_W.pdf"
+  ]
+}

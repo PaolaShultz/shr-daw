@@ -33,6 +33,8 @@ install-files:
 	done
 	install -d $(DESTDIR)$(PREFIX)/share/shsynth/config
 	install -m644 config/*.conf $(DESTDIR)$(PREFIX)/share/shsynth/config/
+	install -d $(DESTDIR)$(PREFIX)/share/shsynth/midi-devices
+	install -m644 midi-devices/*.json $(DESTDIR)$(PREFIX)/share/shsynth/midi-devices/
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth $(DESTDIR)$(PREFIX)/bin/shr

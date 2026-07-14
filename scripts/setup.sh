@@ -4,8 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -d "$ROOT/config" ]]; then
   CONFIG_SOURCE="$ROOT/config"
+  PROFILE_SOURCE="$ROOT/midi-devices"
 else
   CONFIG_SOURCE="$ROOT/share/shsynth/config"
+  PROFILE_SOURCE="$ROOT/share/shsynth/midi-devices"
 fi
 STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}"
 STATE_DIR="$STATE_ROOT/shsynth"
@@ -297,6 +299,16 @@ if ask_yes_no 'Configure an external hardware MIDI output?' no; then
   choose_value 'External MIDI destination' no "${midi_destinations[@]}"
   replace_values "$RUNTIME_CONFIG" external_midi.enabled true
   replace_values "$RUNTIME_CONFIG" external_midi.output "$CHOSEN"
+  profile_ids=(unknown-monophonic-safe)
+  if [[ -d "$PROFILE_SOURCE" ]]; then
+    while IFS= read -r profile_id; do
+      [[ -n "$profile_id" ]] && profile_ids+=("$profile_id")
+    done < <(sed -n 's/^[[:space:]]*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      "$PROFILE_SOURCE"/*.json 2>/dev/null | sort -u)
+  fi
+  choose_value 'External instrument profile (numeric fallback is always available)' no \
+    "${profile_ids[@]}"
+  replace_values "$RUNTIME_CONFIG" external_midi.profile "$CHOSEN"
 else
   replace_values "$RUNTIME_CONFIG" external_midi.enabled false
 fi
@@ -331,4 +343,4 @@ printf '\nConfiguration complete.\n'
 printf '  Runtime:    %s\n' "$RUNTIME_CONFIG"
 printf '  Controller: %s\n' "$CONTROLLER_CONFIG"
 printf '  Backups:    *.bak-%s\n' "$STAMP"
-printf 'Run `shr doctor` after JACK is running, then edit either file for any finer routing.\n'
+printf '%s\n' "Run \`shr doctor\` after JACK is running, then edit either file for any finer routing."
