@@ -78,6 +78,13 @@ pub struct AudioCaptureConfig {
 }
 
 #[derive(Clone, Debug)]
+pub struct LoopPlayerConfig {
+    pub client_name: String,
+    pub outputs: Vec<String>,
+    pub import_directory: PathBuf,
+}
+
+#[derive(Clone, Debug)]
 pub struct RuntimeConfig {
     /// Legacy names remain public so old callers/configurations keep working.
     pub synth_command: String,
@@ -96,6 +103,7 @@ pub struct RuntimeConfig {
     pub cpu_temperature_path: Option<PathBuf>,
     pub external_midi: ExternalMidiConfig,
     pub capture: AudioCaptureConfig,
+    pub loop_player: LoopPlayerConfig,
 }
 
 impl Default for RuntimeConfig {
@@ -150,6 +158,11 @@ impl Default for RuntimeConfig {
                 inputs: Vec::new(),
                 ring_frames: 262_144,
             },
+            loop_player: LoopPlayerConfig {
+                client_name: "shs-loop".into(),
+                outputs: Vec::new(),
+                import_directory: expand_home("~/Music"),
+            },
         };
         config
             .merge(DEFAULT_CONFIG, Path::new("config/shsynth.conf"))
@@ -181,6 +194,7 @@ impl RuntimeConfig {
         let mut saw_external_channels = false;
         let mut saw_percussion_notes = false;
         let mut saw_capture_inputs = false;
+        let mut saw_loop_outputs = false;
         for (line_no, line) in text.lines().enumerate() {
             let line = line.split('#').next().unwrap_or("").trim();
             if line.is_empty() {
@@ -395,6 +409,16 @@ impl RuntimeConfig {
                 "capture.ring_frames" => {
                     self.capture.ring_frames = bounded_usize(key, value, 1024, 4_194_304)?
                 }
+                "loop.client" => self.loop_player.client_name = required(key, value)?.into(),
+                "loop.output" => {
+                    replace_list_once(&mut self.loop_player.outputs, &mut saw_loop_outputs);
+                    if !value.is_empty() {
+                        self.loop_player.outputs.push(value.into());
+                    }
+                }
+                "loop.import_directory" => {
+                    self.loop_player.import_directory = expand_home(required(key, value)?)
+                }
                 _ => bail!("{}:{}: unknown setting {key}", path.display(), line_no + 1),
             }
         }
@@ -532,6 +556,14 @@ impl RuntimeConfig {
             ));
         }
         text.push_str(&format!(
+            "loop.client={}\nloop.import_directory={}\n",
+            self.loop_player.client_name,
+            self.loop_player.import_directory.display()
+        ));
+        for output in &self.loop_player.outputs {
+            text.push_str(&format!("loop.output={output}\n"));
+        }
+        text.push_str(&format!(
             "status.cpu_temperature_path={}\n",
             display_path(self.cpu_temperature_path.as_ref())
         ));
@@ -637,6 +669,27 @@ mod tests {
             config.fluidsynth.soundfonts,
             [PathBuf::from("/sounds/tim.sf2")]
         );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn loop_routing_and_import_inbox_round_trip_without_hardcoded_ports() {
+        let path = std::env::temp_dir().join(format!("shsynth-loop-{}.conf", std::process::id()));
+        fs::write(
+            &path,
+            "loop.client=my-loop\nloop.import_directory=/private/inbox\nloop.output=usb:left\nloop.output=usb:right\n",
+        )
+        .unwrap();
+        let config = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(config.loop_player.client_name, "my-loop");
+        assert_eq!(
+            config.loop_player.import_directory,
+            PathBuf::from("/private/inbox")
+        );
+        assert_eq!(config.loop_player.outputs, ["usb:left", "usb:right"]);
+        config.save(&path).unwrap();
+        let loaded = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(loaded.loop_player.outputs, ["usb:left", "usb:right"]);
         let _ = fs::remove_file(path);
     }
 

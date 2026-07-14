@@ -7,11 +7,13 @@ mod controller_profile;
 mod device_profile;
 mod engine;
 mod geometry;
+mod loop_player;
 mod midi;
 mod navigation;
 mod pads;
 mod preset;
 mod recording;
+mod scale;
 mod sequencer;
 mod ui;
 

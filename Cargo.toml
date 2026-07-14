@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0"
 crossterm = "0.26"
+hound = "3.5"
 libc = "0.2"
 midir = "0.9"
 quick-xml = "0.27"

@@ -148,10 +148,34 @@ Exact MIDI port targets can also match a profile's `port_matches` entries.
 
 Songs are stored below
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Release-candidate song
-format v1 stores page targets, setup messages, four lanes per page, and every
-cell field including the optional gate. SHR-DAW reads and writes this schema
-only. Files with another version or shape are not loaded or overwritten; they
-can still be removed with the normal confirmed Delete action.
+format v1 stores page targets, setup messages, four lanes per page, every cell
+field, and optional meter/WAV-loop settings. Older v1 files without those
+records load as 4/4 with no loop. Files with another version or shape are not
+loaded or overwritten; they can still be removed with confirmed Delete.
+
+## FT2 WAV loop routing and storage
+
+Loop hardware and source locations are configured rather than compiled in:
+
+```text
+loop.client=shs-loop
+loop.import_directory=~/Music
+loop.output=system:playback_1
+loop.output=system:playback_2
+```
+
+Exactly two `loop.output` destinations are required when loading a loop. The
+player owns only its JACK client and output ports; it never starts/restarts
+JACK, layers a synth engine, or disconnects another client. Missing servers or
+ports leave the MIDI tracker usable and produce a useful error.
+
+`loop.import_directory` is only the browseable inbox. A chosen WAV is validated
+and copied without replacement to
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/loops/`, or the matching
+`SHSYNTH_USER_DIR` tree set by the local launcher. Songs retain the private
+filename, source BPM, cut region, and bar placement offset. Disk I/O, decoding,
+allocation, import, and auto-alignment analysis happen outside the JACK
+callback.
 
 ## FT2 cell fields
 

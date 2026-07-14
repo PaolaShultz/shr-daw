@@ -4,6 +4,20 @@ The FT2 screen is a vertical MIDI pattern sequencer. Its quick, top-to-bottom
 editing style is inspired by FastTracker II, but SHR-DAW is not an FT2 clone.
 It does not use FT2 code or read XM files.
 
+## Modes
+
+The normal FT2 screen has a prominent **MODE** controller page. **PLAY** is
+normal performance and playback, **REC** enters the existing hardware-only
+real-time workflow, **EDIT** enters step editing, and **N00B** constrains live
+FT2 MIDI input to a selected root and scale.
+
+N00B supports every chromatic root plus major and natural minor, including
+compact choices such as D# minor. Incoming notes map to the nearest scale tone;
+equal-distance ties map downward, preserving octave position as closely as
+possible. Each output is remembered by input channel/note, including repeated
+notes, so note-off, velocity-zero note-on, mode changes, stop, panic, and exit
+release the note actually played. Command pads remain consumed.
+
 ## Patterns, pages, and lanes
 
 A song contains patterns and an order that says when to play them. Every page
@@ -64,8 +78,38 @@ auditioned only through the page's hardware MIDI target and channel.
 
 Real-time recording is hardware-page-only. A page targeting the active SHR-DAW
 instrument cannot enter **REC**. Choose a configured or exact hardware MIDI
-output first. **STOP REC**, **STOP**, **EXIT**, and **PANIC** release auditioned
+output first. **REC END**, **STOP**, **EXIT**, and **PANIC** release auditioned
 notes.
+
+## WAV loops
+
+Open **TOOLS**, then **LOOP** to import a mono or stereo WAV from the configured
+inbox. Import validates it, estimates the loop length from transient pulses
+when possible, snaps the length to whole song bars, and copies it into private
+storage below
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/loops/`; user audio never enters the
+tracked repository. The song stores only the imported filename, meter, source
+BPM, 1/2x/1x/2x interpretation, non-destructive start/length in beats, and a
+bar-based placement offset.
+
+WAV has no dependable standard BPM metadata, so SHR-DAW does not invent it.
+Import and **AUTO** estimate pulse spacing when the audio has useful
+transients; otherwise they fall back to project tempo and duration. Correct
+**BPM-**/**BPM+** when needed. **BPM x** cycles half, normal, and double
+interpretations (120 gives 60, 120, and 240). **UNIT** changes whether CUT
+controls move one beat or one measure.
+
+The loop screen's **ALIGN** child has **AUTO**, **BAR-**, and **BAR+**. **AUTO**
+re-runs the offline pulse/length estimate and resets placement to bar zero.
+**BAR-** and **BAR+** move the whole WAV placement one song bar left or right
+without changing the cut region.
+
+The loop follows FT2 play-here, play-from-start, stop, restart, order/pattern
+transitions, tempo changes, and looping. This first implementation uses
+real-time rate conversion, so tempo matching and sample-rate conversion are
+safe but pitch changes with tempo; the limitation is explicit on screen. A
+bounded 5 ms fade is applied at cut/loop edges. The 40×20 screen shows text for
+filename, BPMs and ratio, region, state, elapsed/total time, rate, and channels.
 
 ## Pattern and song files
 
@@ -80,7 +124,8 @@ reference to the same pattern.
 Songs are readable text files stored below
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. The current v1 format keeps
 all patterns, the order, page routes, setup messages, four lanes per page, and
-every cell field. Files with another version or shape are not loaded or
+every cell field. Optional meter/loop records default to 4/4 and no loop for
+older v1 songs. Files with another version or shape are not loaded or
 overwritten.
 
 ## Detailed controls and routing

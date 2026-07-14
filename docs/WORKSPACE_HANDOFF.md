@@ -52,6 +52,7 @@ Rust paths. The important local paths are:
 - `user/data/shsynth/ideas/`: recorded MIDI ideas;
 - `user/data/shsynth/songs/`: tracker songs;
 - `user/data/shsynth/recordings/`: stereo WAV recordings;
+- `user/data/shsynth/loops/`: privately imported FT2 WAV loops;
 - `user/presets/synthv1/`: cleared copies plus local/legacy presets;
 - `user/downloads/`: private source archives.
 
@@ -97,6 +98,17 @@ consumes notes before the loaded synth, auditions through the selected page's
 MIDI destination/channel, and writes only that page in the selected looping
 pattern. Pattern setup supports 4/4 sizes 8/16/32/64/128 and corresponding 3/4
 sizes 6/12/24/48/96. Songs retain distinct patterns plus their order list.
+
+FT2 has one Play/Rec/Edit/N00B mode state. N00B maps live input to the nearest
+selected major/natural-minor scale tone with downward tie-breaking and exact
+per-channel/source-note release ownership. The Tools child opens the private
+WAV loop player. Loop imports live below the XDG user-data `loops/` directory;
+songs keep optional meter, filename, BPM interpretation, and beat-region
+settings plus a signed beat offset for one-bar placement shifts. The loop
+ALIGN child can run offline pulse/duration analysis, snap length to song bars,
+and move placement by whole bars. JACK loop client/output names and the import
+inbox are configuration. Tempo matching currently uses rate conversion and
+therefore changes pitch.
 
 External MIDI sound names are data-driven. JSON profiles live in
 `midi-devices/` (installed below `share/shsynth/midi-devices/`), while private

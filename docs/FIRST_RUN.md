@@ -1,8 +1,9 @@
 # First run
 
-You do not need a full hardware studio to start. SHR-DAW can run with software
-instruments and a computer keyboard. A MIDI controller, external synth, audio
-interface, mixer, and dedicated display are optional additions.
+You do not need a full hardware studio to start. SHR-DAW is designed around a
+small paged MIDI control surface, with computer-keyboard controls kept as a
+fallback for setup and development. External synths, an audio interface, mixer,
+and dedicated display are optional additions.
 
 ## Configure and start
 
@@ -23,15 +24,17 @@ already be running; SHR-DAW does not start or restart it.
 
 ## Choose how to play
 
-- With only a computer keyboard, use the full interface and enter tracker notes
-  with `Z S X D C V G B H N J M`.
+- Use the configured control surface for the primary four-page/four-button
+  menus and synth controls.
 - Add a MIDI keyboard to play velocity, chords, and live recordings.
-- Add a control surface for hands-on menus and synthv1 controls.
+- If the controller is not ready yet, use the computer keyboard fallback to
+  navigate setup and enter tracker notes with `Z S X D C V G B H N J M`.
 - Add external MIDI instruments and audio hardware only when useful.
 
-Computer-keyboard step entry is available now. Free live performance of a
-software synth from the computer keyboard, a wider keyboard range, and more
-bindings such as F1–F12 are planned features.
+Computer-keyboard step entry is available, but it is not the primary hardware
+workflow. Free live performance of a software synth from the computer keyboard,
+a wider keyboard range, and more bindings such as F1–F12 are planned fallback
+features.
 
 ## Terminal size
 

@@ -12,9 +12,11 @@ implemented.
 | Presets | Select previous/next, page up/down, first/last (keyboard, wheel, encoder); previous/next engine (keyboard/pads); load selected sound (keyboard, mouse, encoder/pad); tracker, ideas, and audio screens (keyboard/pads); stop synth/panic. Application exit remains keyboard-only. |
 | Playback | Reset the 12 mapped parameters in place (encoder press); record/stop/finish-and-save MIDI, play/stop take, save idea (keyboard/pads/mouse); presets/back, ideas, tracker, audio (keyboard/pads/mouse); tap tempo; stop/panic. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea (keyboard, wheel, encoder); inspect (keyboard/mouse/pad); load with replace confirmation (encoder); play take; delete with repeat confirmation; record/stop MIDI; save timestamped or numbered idea; back/cancel, tracker, audio, presets, panic. |
-| FT2 normal | Previous/next row (keyboard/encoder); previous/next lane and cross-page lane movement (keyboard/pads); visible page switch (Tab); previous/next order position (keyboard/pads); play from cursor or start; hardware-page real-time record; separate stop and back actions; enter edit; lane and page mute; page manager and file manager; program and tempo decrement/increment; save/load/new/clone/clear pattern and repeat/remove order shortcuts. |
+| FT2 normal | Previous/next row (keyboard/encoder); order/lane movement; play here/from start; prominent Play/Rec/Edit/N00B MODE page; child Tools screen for pages, files, loop, mute, and page switching. |
 | FT2 record | Record quantized notes into only the current page/current pattern; route live notes only to that page's hardware MIDI target; stop record, stop, exit, and panic remain available. |
 | FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; blank/skip; erase; note off; leave edit; lane mute; program and tempo adjustment. Command notes are consumed for editing and never doubled through the synth. |
+| FT2 N00B | Choose chromatic root plus major/natural minor; map live notes to the nearest scale tone with downward ties; preserve exact note ownership across releases and mode changes. |
+| FT2 loop | Select/import WAV; play here/from start/stop; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; align child screen for auto bar alignment and one-bar placement shifts. |
 | FT2 cell edit | Transactional note, gate, velocity, per-note program, single command type/parameter, clear-field, confirm/cancel, step-entry handoff, stop, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved song; load; preview/stop; save with overwrite confirmation; delete with repeat confirmation; new and clone pattern; clear immediately or choose 3/4 (6/12/24/48/96 rows) / 4/4 (8/16/32/64/128 rows); previous/next/repeat/remove order entry; back/cancel and panic. |
 | Pattern setup | Choose 3/4 or 4/4 and pattern size; confirm new/destructive resize, cancel, or clear while retaining the current size. |
@@ -59,26 +61,37 @@ Blank physical positions and wholly empty pages are omitted.
 | Presets | Engine | Engine− | Engine+ | — | Last |
 | Presets | Nav | — | Ideas | FT2 | Audio |
 | Presets | Sys | Panic | — | — | — |
-| Playback | Ops | Record MIDI | Stop recording | Play take | Save idea |
+| Playback | Ops | Record MIDI | Rec end | Take | Save |
 | Playback | Sound | Reset controls | Finish + save | Tap tempo | — |
 | Playback | Nav | Presets | Ideas | FT2 | Audio |
 | Playback | Sys | Panic | Stop take | — | Exit |
 | Ideas | Ops | Inspect | Load | Play | Delete |
-| Ideas | Capture | Record | Stop recording | Save new | First |
+| Ideas | Capture | Record | Rec end | Save | First |
 | Ideas | Nav | Presets | — | FT2 | Audio |
 | Ideas | Sys | Panic | Stop take | Last | Exit |
 | FT2 | Ops | Play here | Play from start | Step edit | Cell edit |
+| FT2 | Mode | Play | Record | Edit | N00B |
 | FT2 | Move | Order− | Order+ | Lane− | Lane+ |
-| FT2 | Tools | Pages/tracks | Files | Mute lane | Record |
-| FT2 | Sys | Panic | Stop | Next page | Exit |
-| FT2 record | Ops | Stop recording | — | — | — |
+| FT2 | Sys | Panic | Stop | Tools | Exit |
+| FT2 tools | Ops | Pages/tracks | Files | Loop | Mute lane |
+| FT2 tools | Page | Next page | — | — | — |
+| FT2 tools | Sys | Panic | Stop | — | Exit |
+| N00B setup | Ops | Root− | Root+ | Scale | Done |
+| N00B setup | Sys | Panic | Stop | — | Exit |
+| FT2 loop | Ops | Import | Play here | Start | Stop |
+| FT2 loop | BPM | BPM− | BPM+ | BPM x | Unit |
+| FT2 loop | Cut | Start− | Start+ | Length− | Length+ |
+| FT2 loop | Sys | Panic | Stop | Align | Exit |
+| FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
+| FT2 loop align | Sys | Panic | Stop | — | Exit |
+| FT2 record | Ops | Rec end | — | — | — |
 | FT2 record | Sys | Panic | Stop | — | Exit |
-| FT2 step edit | Ops | Blank/skip | Erase | Note off | Finish edit |
+| FT2 step edit | Ops | Blank/skip | Erase | N-off | Done |
 | FT2 step edit | Move | Order− | Order+ | Lane− | Lane+ |
 | FT2 step edit | Adjust | Program− | Program+ | Tempo− | Tempo+ |
 | FT2 step edit | Sys | Panic | Stop | Next page | Exit edit |
 | FT2 cell edit | Ops | Confirm | Step edit | Clear field | Effect type |
-| FT2 cell edit | Fields | Note | Gate | Velocity | Program |
+| FT2 cell edit | Fields | Note | Gate | Vel | Program |
 | FT2 cell edit | Adjust | Effect parameter | Value− | Value+ | — |
 | FT2 cell edit | Sys | Panic | Stop | — | Exit/cancel |
 | Files | Ops | Load | Save | Preview/stop | Delete |
@@ -86,10 +99,10 @@ Blank physical positions and wholly empty pages are omitted.
 | Files | Order | Previous | Next | Repeat | Remove |
 | Files | Sys | Panic | — | — | Exit |
 | Pattern setup | Ops | 3/4 | 4/4 | Size− | Size+ |
-| Pattern setup | Apply | Confirm | Clear, keep size | — | — |
+| Pattern setup | Apply | Confirm | Keep | — | — |
 | Pattern setup | Sys | Panic | — | — | Exit/cancel |
 | Pages/tracks | Ops | Add four lanes | Target | Channel | Done |
-| Pages/tracks | Page | Page− | Page+ | Mute page | Files |
+| Pages/tracks | Page | Page− | Page+ | Mute pg | Files |
 | Pages/tracks | Sys | Panic | Stop | — | Exit/cancel |
 | Target/channel editor | Ops | Confirm | — | — | — |
 | Target/channel editor | Sys | Panic | Stop | — | Exit/cancel |
@@ -107,7 +120,7 @@ formats or migration paths in the release candidate.
 | Page | Item 1 | Item 2 | Item 3 | Item 4 |
 |---|---|---|---|---|
 | Ops | Confirm | Step entry | Clear selected field | Effect type |
-| Fields | Note | Gate | Velocity | Program |
+| Fields | Note | Gate | Vel | Program |
 | Adjust | Effect parameter | Value− | Value+ | — |
 | Sys | Panic | Stop | — | Exit/cancel |
 

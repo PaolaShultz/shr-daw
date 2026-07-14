@@ -11,19 +11,27 @@ pub enum Screen {
     Tracker,
     TrackerFiles,
     TrackerPages,
+    TrackerTools,
+    TrackerNoob,
+    TrackerLoop,
+    TrackerLoopAlign,
     AudioRecorder,
 }
 
 impl Screen {
-    pub const COUNT: usize = 7;
+    pub const COUNT: usize = 11;
     #[cfg(test)]
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 11] = [
         Self::Presets,
         Self::Playback,
         Self::Ideas,
         Self::Tracker,
         Self::TrackerFiles,
         Self::TrackerPages,
+        Self::TrackerTools,
+        Self::TrackerNoob,
+        Self::TrackerLoop,
+        Self::TrackerLoopAlign,
         Self::AudioRecorder,
     ];
 
@@ -35,7 +43,11 @@ impl Screen {
             Self::Tracker => 3,
             Self::TrackerFiles => 4,
             Self::TrackerPages => 5,
-            Self::AudioRecorder => 6,
+            Self::TrackerTools => 6,
+            Self::TrackerNoob => 7,
+            Self::TrackerLoop => 8,
+            Self::TrackerLoopAlign => 9,
+            Self::AudioRecorder => 10,
         }
     }
 
@@ -47,6 +59,10 @@ impl Screen {
             Self::Tracker => "FT2",
             Self::TrackerFiles => "FILES",
             Self::TrackerPages => "TRACKS",
+            Self::TrackerTools => "FT2 TOOLS",
+            Self::TrackerNoob => "N00B SETUP",
+            Self::TrackerLoop => "FT2 LOOP",
+            Self::TrackerLoopAlign => "LOOP ALIGN",
             Self::AudioRecorder => "AUDIO",
         }
     }
@@ -72,6 +88,9 @@ pub enum Action {
     OpenTracker,
     OpenTrackerFiles,
     OpenTrackerPages,
+    OpenTrackerTools,
+    OpenTrackerLoop,
+    OpenTrackerLoopAlign,
     OpenAudioRecorder,
     TapTempo,
     ResetParameters,
@@ -105,6 +124,26 @@ pub enum Action {
     TrackerPlayCursor,
     TrackerPlayStart,
     TrackerRecord,
+    TrackerModePlay,
+    TrackerModeEdit,
+    TrackerModeNoob,
+    NoobRootDown,
+    NoobRootUp,
+    NoobScale,
+    ConfirmNoob,
+    LoopImport,
+    LoopSourceDown,
+    LoopSourceUp,
+    LoopBpmMode,
+    LoopEditUnit,
+    LoopStartDown,
+    LoopStartUp,
+    LoopLengthDown,
+    LoopLengthUp,
+    LoopAutoAlign,
+    LoopOffsetDown,
+    LoopOffsetUp,
+    LoopAlignDone,
     TrackerStop,
     TrackerMute,
     TrackerPageMute,
@@ -247,9 +286,9 @@ const PLAYBACK: [MenuPage; 4] = [
         "OPS",
         [
             on("RECORD", Action::BeginRecord),
-            on("STOP REC", Action::StopRecord),
-            on("PLAY TAKE", Action::PlaybackRecording),
-            on("SAVE IDEA", Action::SaveNew),
+            on("REC END", Action::StopRecord),
+            on("TAKE", Action::PlaybackRecording),
+            on("SAVE", Action::SaveNew),
         ],
     ),
     page(
@@ -294,8 +333,8 @@ const IDEAS: [MenuPage; 4] = [
         "CAPTURE",
         [
             on("RECORD", Action::BeginRecord),
-            on("STOP REC", Action::StopRecord),
-            on("SAVE NEW", Action::SaveNew),
+            on("REC END", Action::StopRecord),
+            on("SAVE", Action::SaveNew),
             on("FIRST", Action::Home),
         ],
     ),
@@ -329,6 +368,15 @@ const TRACKER: [MenuPage; 4] = [
         ],
     ),
     page(
+        "MODE",
+        [
+            on("PLAY", Action::TrackerModePlay),
+            on("REC", Action::TrackerRecord),
+            on("EDIT", Action::TrackerModeEdit),
+            on("N00B", Action::TrackerModeNoob),
+        ],
+    ),
+    page(
         "MOVE",
         [
             on("PG-", Action::PreviousOrder),
@@ -338,12 +386,93 @@ const TRACKER: [MenuPage; 4] = [
         ],
     ),
     page(
-        "TOOLS",
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            on("TOOLS", Action::OpenTrackerTools),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const TRACKER_TOOLS: [MenuPage; 4] = [
+    page(
+        "OPS",
         [
             on("PAGES", Action::OpenTrackerPages),
             on("FILES", Action::OpenTrackerFiles),
-            on("MUTE LANE", Action::TrackerMute),
-            on("REC", Action::TrackerRecord),
+            on("LOOP", Action::OpenTrackerLoop),
+            on("MUTE", Action::TrackerMute),
+        ],
+    ),
+    page(
+        "PAGE",
+        [
+            on("NEXT", Action::NextTrackerPage),
+            off(""),
+            off(""),
+            off(""),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const TRACKER_NOOB: [MenuPage; 4] = [
+    page(
+        "OPS",
+        [
+            on("ROOT-", Action::NoobRootDown),
+            on("ROOT+", Action::NoobRootUp),
+            on("SCALE", Action::NoobScale),
+            on("DONE", Action::ConfirmNoob),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const TRACKER_LOOP: [MenuPage; 4] = [
+    page(
+        "OPS",
+        [
+            on("IMPORT", Action::LoopImport),
+            on("HERE", Action::TrackerPlayCursor),
+            on("START", Action::TrackerPlayStart),
+            on("STOP", Action::TrackerStop),
+        ],
+    ),
+    page(
+        "BPM",
+        [
+            on("BPM-", Action::LoopSourceDown),
+            on("BPM+", Action::LoopSourceUp),
+            on("BPM x", Action::LoopBpmMode),
+            on("UNIT", Action::LoopEditUnit),
+        ],
+    ),
+    page(
+        "CUT",
+        [
+            on("START-", Action::LoopStartDown),
+            on("START+", Action::LoopStartUp),
+            on("LEN-", Action::LoopLengthDown),
+            on("LEN+", Action::LoopLengthUp),
         ],
     ),
     page(
@@ -351,7 +480,29 @@ const TRACKER: [MenuPage; 4] = [
         [
             on("PANIC", Action::StopAll),
             on("STOP", Action::TrackerStop),
-            on("PAGE", Action::NextTrackerPage),
+            on("ALIGN", Action::OpenTrackerLoopAlign),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const TRACKER_LOOP_ALIGN: [MenuPage; 4] = [
+    page(
+        "OPS",
+        [
+            on("AUTO", Action::LoopAutoAlign),
+            on("BAR-", Action::LoopOffsetDown),
+            on("BAR+", Action::LoopOffsetUp),
+            on("DONE", Action::LoopAlignDone),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("STOP", Action::TrackerStop),
+            off(""),
             on("EXIT", Action::Back),
         ],
     ),
@@ -360,7 +511,7 @@ const TRACKER_RECORD: [MenuPage; 4] = [
     page(
         "OPS",
         [
-            on("STOP REC", Action::TrackerRecord),
+            on("REC END", Action::TrackerRecord),
             off(""),
             off(""),
             off(""),
@@ -384,8 +535,8 @@ const TRACKER_EDIT: [MenuPage; 4] = [
         [
             on("BLANK", Action::TrackerSkip),
             on("ERASE", Action::TrackerErase),
-            on("NOTE OFF", Action::TrackerNoteOff),
-            on("EDIT DONE", Action::TrackerEdit),
+            on("N-OFF", Action::TrackerNoteOff),
+            on("DONE", Action::TrackerEdit),
         ],
     ),
     page(
@@ -431,7 +582,7 @@ const TRACKER_NOTE_EDIT: [MenuPage; 4] = [
         [
             on("NOTE", Action::NoteField),
             on("GATE", Action::GateField),
-            on("VELOCITY", Action::VelocityField),
+            on("VEL", Action::VelocityField),
             on("PROGRAM", Action::ProgramField),
         ],
     ),
@@ -507,7 +658,7 @@ const PAGES: [MenuPage; 4] = [
         [
             on("PAGE-", Action::PreviousTrack),
             on("PAGE+", Action::NextTrack),
-            on("MUTE PAGE", Action::TrackerPageMute),
+            on("MUTE PG", Action::TrackerPageMute),
             on("FILES", Action::OpenTrackerFiles),
         ],
     ),
@@ -558,7 +709,7 @@ const PATTERN_CLEAR: [MenuPage; 4] = [
         "APPLY",
         [
             on("CONFIRM", Action::ConfirmPatternClear),
-            on("KEEP SIZE", Action::ClearPatternNow),
+            on("KEEP", Action::ClearPatternNow),
             off(""),
             off(""),
         ],
@@ -613,6 +764,10 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerFiles, _) => &FILES,
         (Screen::TrackerPages, MenuContext::PageTarget | MenuContext::PageChannel) => &PAGE_FIELD,
         (Screen::TrackerPages, _) => &PAGES,
+        (Screen::TrackerTools, _) => &TRACKER_TOOLS,
+        (Screen::TrackerNoob, _) => &TRACKER_NOOB,
+        (Screen::TrackerLoop, _) => &TRACKER_LOOP,
+        (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
         (Screen::AudioRecorder, _) => &AUDIO,
     }
 }
@@ -658,6 +813,37 @@ mod tests {
     }
 
     #[test]
+    fn forty_column_controller_labels_fit_without_truncation() {
+        const MAX_BUTTON_TEXT: usize = 7;
+        for screen in Screen::ALL {
+            for context in [
+                MenuContext::Normal,
+                MenuContext::TrackerEdit,
+                MenuContext::TrackerRecord,
+                MenuContext::TrackerNoteEdit,
+                MenuContext::PageTarget,
+                MenuContext::PageChannel,
+                MenuContext::PatternClear,
+            ] {
+                for page in pages(screen, context) {
+                    assert!(
+                        page.label.len() <= MAX_BUTTON_TEXT,
+                        "{screen:?} {context:?} page label {:?} is too wide",
+                        page.label
+                    );
+                    for slot in page.slots {
+                        assert!(
+                            slot.label.len() <= MAX_BUTTON_TEXT,
+                            "{screen:?} {context:?} slot label {:?} is too wide",
+                            slot.label
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_menu_uses_the_same_ops_and_system_anchors() {
         let contexts = [
             (Screen::Presets, MenuContext::Normal),
@@ -671,6 +857,10 @@ mod tests {
             (Screen::TrackerFiles, MenuContext::PatternClear),
             (Screen::TrackerPages, MenuContext::Normal),
             (Screen::TrackerPages, MenuContext::PageTarget),
+            (Screen::TrackerTools, MenuContext::Normal),
+            (Screen::TrackerNoob, MenuContext::Normal),
+            (Screen::TrackerLoop, MenuContext::Normal),
+            (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
         ];
         for (screen, context) in contexts {
@@ -763,7 +953,7 @@ mod tests {
                 .all(|slot| !matches!(slot.dispatch(), Some(Action::Up | Action::Down))));
         }
         assert_eq!(
-            TRACKER[1].slots.map(|slot| slot.dispatch()),
+            TRACKER[2].slots.map(|slot| slot.dispatch()),
             [
                 Some(Action::PreviousOrder),
                 Some(Action::NextOrder),
@@ -787,6 +977,10 @@ mod tests {
             (Screen::TrackerPages, MenuContext::Normal),
             (Screen::TrackerPages, MenuContext::PageTarget),
             (Screen::TrackerPages, MenuContext::PageChannel),
+            (Screen::TrackerTools, MenuContext::Normal),
+            (Screen::TrackerNoob, MenuContext::Normal),
+            (Screen::TrackerLoop, MenuContext::Normal),
+            (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
         ];
         let reachable = contexts
@@ -810,6 +1004,9 @@ mod tests {
             Action::OpenTracker,
             Action::OpenTrackerFiles,
             Action::OpenTrackerPages,
+            Action::OpenTrackerTools,
+            Action::OpenTrackerLoop,
+            Action::OpenTrackerLoopAlign,
             Action::OpenAudioRecorder,
             Action::TapTempo,
             Action::ResetParameters,
@@ -840,6 +1037,13 @@ mod tests {
             Action::TrackerPlayCursor,
             Action::TrackerPlayStart,
             Action::TrackerRecord,
+            Action::TrackerModePlay,
+            Action::TrackerModeEdit,
+            Action::TrackerModeNoob,
+            Action::NoobRootDown,
+            Action::NoobRootUp,
+            Action::NoobScale,
+            Action::ConfirmNoob,
             Action::TrackerStop,
             Action::TrackerMute,
             Action::TrackerPageMute,
@@ -871,6 +1075,19 @@ mod tests {
             Action::PatternSizeDown,
             Action::PatternSizeUp,
             Action::ConfirmPatternClear,
+            Action::LoopImport,
+            Action::LoopSourceDown,
+            Action::LoopSourceUp,
+            Action::LoopBpmMode,
+            Action::LoopEditUnit,
+            Action::LoopStartDown,
+            Action::LoopStartUp,
+            Action::LoopLengthDown,
+            Action::LoopLengthUp,
+            Action::LoopAutoAlign,
+            Action::LoopOffsetDown,
+            Action::LoopOffsetUp,
+            Action::LoopAlignDone,
             Action::AudioRecord,
             Action::AudioStop,
         ];

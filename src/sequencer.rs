@@ -23,9 +23,60 @@ pub struct Song {
     pub tempo: u16,
     pub steps_per_beat: u8,
     pub gate_percent: u8,
+    pub meter: u8,
+    pub audio_loop: Option<LoopSettings>,
     pub order: Vec<u16>,
     pub pages: Vec<Page>,
     pub patterns: BTreeMap<u16, Pattern>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum BpmInterpretation {
+    Half,
+    #[default]
+    Normal,
+    Double,
+}
+
+impl BpmInterpretation {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Half => "1/2x",
+            Self::Normal => "1x",
+            Self::Double => "2x",
+        }
+    }
+
+    pub fn apply(self, bpm: f64) -> f64 {
+        match self {
+            Self::Half => bpm / 2.0,
+            Self::Normal => bpm,
+            Self::Double => bpm * 2.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LoopSettings {
+    /// Filename only; imported files always live in the private loop store.
+    pub file: String,
+    /// Hundredths of a BPM. WAV files are not assumed to contain BPM metadata.
+    pub source_bpm_x100: u32,
+    pub interpretation: BpmInterpretation,
+    pub start_beat: u32,
+    pub length_beats: u32,
+    /// Placement offset in song beats. Positive values move the loop later.
+    pub offset_beats: i32,
+}
+
+impl LoopSettings {
+    pub fn source_bpm(&self) -> f64 {
+        f64::from(self.source_bpm_x100) / 100.0
+    }
+
+    pub fn interpreted_bpm(&self) -> f64 {
+        self.interpretation.apply(self.source_bpm())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -236,6 +287,8 @@ impl Song {
             tempo: config.default_tempo,
             steps_per_beat: config.steps_per_beat,
             gate_percent: config.gate_percent,
+            meter: 4,
+            audio_loop: None,
             order: vec![0],
             pages,
             patterns,
@@ -246,11 +299,25 @@ impl Song {
         if !(20..=300).contains(&self.tempo)
             || !(1..=16).contains(&self.steps_per_beat)
             || !(1..=100).contains(&self.gate_percent)
+            || !matches!(self.meter, 3 | 4)
         {
             bail!("song tempo/steps/gate out of range");
         }
         if self.order.is_empty() || self.pages.is_empty() || self.pages.len() > 64 {
             bail!("song needs an order and 1..=64 pages");
+        }
+        if let Some(audio_loop) = &self.audio_loop {
+            if audio_loop.file.is_empty()
+                || Path::new(&audio_loop.file)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    != Some(audio_loop.file.as_str())
+                || !(2_000..=30_000).contains(&audio_loop.source_bpm_x100)
+                || audio_loop.length_beats == 0
+                || !(-16_384..=16_384).contains(&audio_loop.offset_beats)
+            {
+                bail!("invalid private loop settings");
+            }
         }
         if self
             .pages
@@ -390,17 +457,34 @@ pub fn list(base: &Path) -> Vec<String> {
 pub fn encode(song: &Song) -> Result<String> {
     song.validate()?;
     let mut out = format!(
-        "SHSYNTH-SONG {SONG_VERSION}\nname={}\ntempo={}\nsteps={}\ngate={}\norder={}\n",
+        "SHSYNTH-SONG {SONG_VERSION}\nname={}\ntempo={}\nsteps={}\ngate={}\nmeter={}\norder={}\n",
         escape(&song.name),
         song.tempo,
         song.steps_per_beat,
         song.gate_percent,
+        song.meter,
         song.order
             .iter()
             .map(u16::to_string)
             .collect::<Vec<_>>()
             .join(",")
     );
+    if let Some(audio_loop) = &song.audio_loop {
+        let interpretation = match audio_loop.interpretation {
+            BpmInterpretation::Half => "half",
+            BpmInterpretation::Normal => "normal",
+            BpmInterpretation::Double => "double",
+        };
+        out.push_str(&format!(
+            "loop={}|{}|{}|{}|{}|{}\n",
+            escape(&audio_loop.file),
+            audio_loop.source_bpm_x100,
+            interpretation,
+            audio_loop.start_beat,
+            audio_loop.length_beats,
+            audio_loop.offset_beats
+        ));
+    }
     for (page_index, page) in song.pages.iter().enumerate() {
         out.push_str(&format!(
             "page={page_index}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
@@ -468,6 +552,8 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut tempo = None;
     let mut steps = None;
     let mut gate = None;
+    let mut meter = None;
+    let mut audio_loop = None;
     let mut order = None;
     let mut pages = BTreeMap::new();
     let mut lanes = Vec::new();
@@ -481,6 +567,26 @@ pub fn decode(text: &str) -> Result<Song> {
             "tempo" => tempo = Some(value.parse()?),
             "steps" => steps = Some(value.parse()?),
             "gate" => gate = Some(value.parse()?),
+            "meter" => meter = Some(value.parse()?),
+            "loop" => {
+                let f = value.split('|').collect::<Vec<_>>();
+                if !matches!(f.len(), 5 | 6) {
+                    bail!("invalid loop settings");
+                }
+                audio_loop = Some(LoopSettings {
+                    file: unescape(f[0])?,
+                    source_bpm_x100: f[1].parse()?,
+                    interpretation: match f[2] {
+                        "half" => BpmInterpretation::Half,
+                        "normal" => BpmInterpretation::Normal,
+                        "double" => BpmInterpretation::Double,
+                        _ => bail!("invalid loop BPM interpretation"),
+                    },
+                    start_beat: f[3].parse()?,
+                    length_beats: f[4].parse()?,
+                    offset_beats: f.get(5).map_or(Ok(0), |value| value.parse())?,
+                });
+            }
             "order" => {
                 order = Some(
                     value
@@ -594,6 +700,8 @@ pub fn decode(text: &str) -> Result<Song> {
         tempo: tempo.context("missing tempo")?,
         steps_per_beat: steps.context("missing steps")?,
         gate_percent: gate.context("missing gate")?,
+        meter: meter.unwrap_or(4),
+        audio_loop,
         order: order.context("missing order")?,
         pages,
         patterns,
@@ -1034,14 +1142,18 @@ pub struct Sequencer {
     config: ExternalMidiConfig,
 }
 impl Sequencer {
-    pub fn start(config: &ExternalMidiConfig, instrument: crate::engine::SharedOutput) -> Self {
+    pub fn start_with_clock(
+        config: &ExternalMidiConfig,
+        instrument: crate::engine::SharedOutput,
+        clock: Arc<crate::loop_player::TransportClock>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel();
         let status = Arc::new(Mutex::new(SequencerStatus::default()));
         let thread_status = Arc::clone(&status);
         let cfg = config.clone();
         let handle = thread::Builder::new()
             .name("shsynth-sequencer".into())
-            .spawn(move || run_transport(rx, thread_status, cfg, instrument))
+            .spawn(move || run_transport(rx, thread_status, cfg, instrument, clock))
             .ok();
         Self {
             tx,
@@ -1114,6 +1226,7 @@ fn run_transport(
     status: Arc<Mutex<SequencerStatus>>,
     config: ExternalMidiConfig,
     instrument: crate::engine::SharedOutput,
+    clock: Arc<crate::loop_player::TransportClock>,
 ) {
     let mut outputs = DestinationPool::new(config.clone(), instrument);
     let mut messages = Vec::new();
@@ -1126,6 +1239,7 @@ fn run_transport(
     let mut thru_notes: BTreeMap<(PageTarget, u8), BTreeSet<u8>> = BTreeMap::new();
     let mut transport_targets = BTreeSet::new();
     let mut transport_tempo = config.default_tempo;
+    let mut loop_origin_beat = 0.0;
     loop {
         let timeout = messages
             .get(index)
@@ -1168,6 +1282,8 @@ fn run_transport(
                 index = 0;
                 started = Instant::now();
                 transport_tempo = song.tempo;
+                loop_origin_beat = crate::loop_player::song_position_beats(&song, order, row);
+                clock.play(loop_origin_beat, song.tempo);
                 muted.clear();
                 active_notes.clear();
                 note_owners.clear();
@@ -1183,6 +1299,7 @@ fn run_transport(
                 }
             }
             Ok(Transport::Stop) => {
+                clock.stop();
                 messages.clear();
                 index = 0;
                 cleanup_lanes(&mut outputs, &lane_routes, &mut active_notes);
@@ -1254,8 +1371,10 @@ fn run_transport(
                 let elapsed = started.elapsed();
                 rescale_schedule(&mut messages, index, elapsed, transport_tempo, bpm);
                 transport_tempo = bpm;
+                clock.tempo(f64::from(bpm));
             }
             Ok(Transport::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                clock.stop();
                 cleanup_lanes(&mut outputs, &lane_routes, &mut active_notes);
                 note_owners.clear();
                 cleanup_thru(&mut outputs, &mut thru_notes);
@@ -1267,6 +1386,17 @@ fn run_transport(
             .get(index)
             .filter(|m| started + m.at <= Instant::now())
         {
+            if message.bytes.is_empty() {
+                if let Some(next) = messages[index + 1..]
+                    .iter()
+                    .find(|candidate| candidate.bytes.is_empty() && candidate.at > message.at)
+                {
+                    let seconds = (next.at - message.at).as_secs_f64();
+                    if seconds > 0.0 {
+                        clock.tempo(60.0 / seconds / f64::from(config.steps_per_beat));
+                    }
+                }
+            }
             let muted_message = message.lane.is_some_and(|lane| muted.contains(&lane));
             let mut shared_note_off = false;
             if !muted_message {
@@ -1334,6 +1464,7 @@ fn run_transport(
             note_owners.clear();
             index = 0;
             started = Instant::now();
+            clock.play(loop_origin_beat, transport_tempo);
         }
     }
 }
@@ -1773,6 +1904,32 @@ mod tests {
         let text = encode(&s).unwrap();
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
+    }
+    #[test]
+    fn old_v1_defaults_meter_and_loop_and_new_loop_round_trips() {
+        let song = Song::new(&config());
+        let old = encode(&song).unwrap().replace("meter=4\n", "");
+        let decoded = decode(&old).unwrap();
+        assert_eq!(decoded.meter, 4);
+        assert_eq!(decoded.audio_loop, None);
+
+        let mut with_loop = song;
+        with_loop.meter = 3;
+        with_loop.audio_loop = Some(LoopSettings {
+            file: "D-sharp-minor.wav".into(),
+            source_bpm_x100: 12_000,
+            interpretation: BpmInterpretation::Half,
+            start_beat: 3,
+            length_beats: 12,
+            offset_beats: -4,
+        });
+        assert_eq!(decode(&encode(&with_loop).unwrap()).unwrap(), with_loop);
+
+        let old_loop = encode(&with_loop).unwrap().replace("|3|12|-4\n", "|3|12\n");
+        assert_eq!(
+            decode(&old_loop).unwrap().audio_loop.unwrap().offset_beats,
+            0
+        );
     }
     #[test]
     fn song_v1_round_trips_every_cell_field() {

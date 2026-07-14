@@ -41,6 +41,16 @@ pub type SharedBackend = Arc<Mutex<BackendKind>>;
 pub type SharedTrackerRoute = Arc<Mutex<TrackerRoute>>;
 pub type SharedTrackerInput = Arc<Mutex<Option<crate::sequencer::LiveInput>>>;
 
+pub struct TrackerRouteConfig<'a> {
+    pub enabled: bool,
+    pub target: crate::sequencer::PageTarget,
+    pub channel: u8,
+    pub percussion: bool,
+    pub scale: Option<crate::scale::Scale>,
+    pub selection: (u8, u8, u8),
+    pub external: &'a crate::config::ExternalMidiConfig,
+}
+
 #[derive(Clone)]
 pub struct TrackerRoute {
     enabled: bool,
@@ -51,6 +61,7 @@ pub struct TrackerRoute {
     bank_select: crate::config::BankSelectMode,
     bank_msb: u8,
     bank_lsb: u8,
+    scale: Option<crate::scale::Scale>,
     revision: u64,
 }
 
@@ -73,32 +84,34 @@ impl Default for TrackerRoute {
             bank_select: crate::config::BankSelectMode::Off,
             bank_msb: 0,
             bank_lsb: 0,
+            scale: None,
             revision: 0,
         }
     }
 }
 
 impl TrackerRoute {
-    pub fn configure(
-        &mut self,
-        enabled: bool,
-        target: crate::sequencer::PageTarget,
-        channel: u8,
-        percussion: bool,
-        selection: (u8, u8, u8),
-        config: &crate::config::ExternalMidiConfig,
-    ) {
+    pub fn configure(&mut self, config: TrackerRouteConfig<'_>) {
         self.revision = self.revision.wrapping_add(1);
-        self.enabled = enabled;
-        self.target = target;
-        self.channel = channel;
+        self.enabled = config.enabled;
+        self.target = config.target;
+        self.channel = config.channel;
         self.note_map = std::array::from_fn(|note| note as u8);
-        self.program = config.program_changes.then_some(selection.0);
-        self.bank_select = config.bank_select;
-        (self.bank_msb, self.bank_lsb) = (selection.1, selection.2);
-        if percussion {
-            for (offset, &note) in config.percussion_notes.iter().enumerate() {
-                self.note_map[usize::from(config.percussion_input_base) + offset] = note;
+        self.scale = config.scale;
+        self.program = config
+            .external
+            .program_changes
+            .then_some(config.selection.0);
+        self.bank_select = config.external.bank_select;
+        (self.bank_msb, self.bank_lsb) = (config.selection.1, config.selection.2);
+        if config.percussion {
+            for (offset, &note) in config.external.percussion_notes.iter().enumerate() {
+                self.note_map[usize::from(config.external.percussion_input_base) + offset] = note;
+            }
+        }
+        if let Some(scale) = self.scale.filter(|_| !config.percussion) {
+            for note in &mut self.note_map {
+                *note = scale.map(*note);
             }
         }
     }
@@ -630,8 +643,7 @@ fn connect_midi_input(
     let output2 = Arc::clone(&output);
     let mut pad_locked = false;
     let mut lock_pressed = false;
-    let mut preview_notes: [Option<(crate::sequencer::PageTarget, u8, u8)>; 128] =
-        std::array::from_fn(|_| None);
+    let mut preview_notes = crate::scale::NoteLifecycle::default();
     let mut preview_programs = std::collections::BTreeMap::new();
     let mut route_revision = 0;
     let connection = input
@@ -689,6 +701,13 @@ fn connect_midi_input(
                             .as_ref()
                             .is_some_and(|route| route.revision != route_revision)
                         {
+                            if let Ok(input) = tracker_input.lock() {
+                                if let Some(input) = input.as_ref() {
+                                    for (target, channel, note) in preview_notes.drain() {
+                                        input.send(&target, &[0x80 | channel, note, 0]);
+                                    }
+                                }
+                            }
                             route_revision = route.as_ref().map_or(0, |route| route.revision);
                             preview_programs.clear();
                         }
@@ -696,27 +715,21 @@ fn connect_midi_input(
                         let mut program = None;
                         if note_message {
                             let source_note = message[1];
+                            let source_channel = status & 0x0f;
                             let note_off = status & 0xf0 == 0x80 || message[2] == 0;
                             if note_off {
-                                preview =
-                                    preview_notes[usize::from(source_note)].take().or_else(|| {
-                                        route.as_ref().and_then(|route| {
-                                            route.enabled.then(|| {
-                                                (
-                                                    route.target.clone(),
-                                                    route.channel,
-                                                    route.mapped_note(source_note),
-                                                )
-                                            })
-                                        })
-                                    });
+                                preview = preview_notes.note_off(source_channel, source_note);
                             } else if let Some(route) = route.filter(|route| route.enabled) {
                                 let destination = (
                                     route.target.clone(),
                                     route.channel,
                                     route.mapped_note(source_note),
                                 );
-                                preview_notes[usize::from(source_note)] = Some(destination.clone());
+                                preview_notes.note_on(
+                                    source_channel,
+                                    source_note,
+                                    destination.clone(),
+                                );
                                 preview = Some(destination);
                                 program = route.program.map(|program| {
                                     (program, route.bank_select, route.bank_msb, route.bank_lsb)
@@ -1114,14 +1127,15 @@ mod tests {
         config.percussion_input_base = 60;
         config.percussion_notes = vec![36, 38, 40];
         let mut route = TrackerRoute::default();
-        route.configure(
-            true,
-            crate::sequencer::PageTarget::ConfiguredExternal,
-            2,
-            true,
-            (9, 0, 0),
-            &config,
-        );
+        route.configure(TrackerRouteConfig {
+            enabled: true,
+            target: crate::sequencer::PageTarget::ConfiguredExternal,
+            channel: 2,
+            percussion: true,
+            scale: None,
+            selection: (9, 0, 0),
+            external: &config,
+        });
         assert!(route.enabled);
         assert_eq!(route.channel, 2);
         assert_eq!(route.program, Some(9));
@@ -1132,15 +1146,37 @@ mod tests {
         assert!(tracker_edit_consumes_note(Some(&route), &[0x90, 60, 0]));
         assert!(tracker_edit_consumes_note(Some(&route), &[0x80, 60, 0]));
         assert!(!tracker_edit_consumes_note(Some(&route), &[0xb0, 1, 64]));
-        route.configure(
-            false,
-            crate::sequencer::PageTarget::ConfiguredExternal,
-            2,
-            true,
-            (9, 0, 0),
-            &config,
-        );
+        route.configure(TrackerRouteConfig {
+            enabled: false,
+            target: crate::sequencer::PageTarget::ConfiguredExternal,
+            channel: 2,
+            percussion: true,
+            scale: None,
+            selection: (9, 0, 0),
+            external: &config,
+        });
         assert!(!tracker_edit_consumes_note(Some(&route), &[0x90, 60, 100]));
+    }
+
+    #[test]
+    fn noob_route_applies_scale_only_to_melodic_pages() {
+        let config = RuntimeConfig::default().external_midi;
+        let scale = crate::scale::Scale {
+            root: 3,
+            kind: crate::scale::ScaleKind::NaturalMinor,
+        };
+        let mut route = TrackerRoute::default();
+        route.configure(TrackerRouteConfig {
+            enabled: true,
+            target: crate::sequencer::PageTarget::ConfiguredExternal,
+            channel: 4,
+            percussion: false,
+            scale: Some(scale),
+            selection: (0, 0, 0),
+            external: &config,
+        });
+        assert_eq!(route.mapped_note(64), scale.map(64));
+        assert_eq!(route.mapped_note(127), 126);
     }
 
     #[test]

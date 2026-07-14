@@ -33,6 +33,8 @@ routes.
 - Plays synthv1, Yoshimi, and FluidSynth instruments.
 - Routes one MIDI controller to software and hardware instruments.
 - Builds songs in a fast, four-lane pattern editor inspired by FastTracker II.
+- Provides FT2 Play/Rec/Edit/N00B modes and scale-safe live MIDI input.
+- Imports private WAV loops and synchronizes them with FT2 through JACK.
 - Records free playing as reusable MIDI ideas.
 - Records a stereo JACK input as a 24-bit WAV file.
 - Works from a computer keyboard or a small physical controller.
