@@ -1,4 +1,4 @@
-use crate::audio_recorder::AudioRecorder;
+use crate::audio_recorder::{AudioRecorder, RecorderStatus};
 use crate::chord::HeldNotes;
 use crate::config::{BankSelectMode, RuntimeConfig};
 use crate::control::{parameter_color, CONTROLS};
@@ -21,13 +21,14 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
-    backend::{Backend, CrosstermBackend},
+    backend::{Backend, CrosstermBackend, TestBackend},
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame, Terminal,
 };
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Stdout};
@@ -1256,12 +1257,19 @@ impl App {
         }
     }
     fn set_tracker_tempo(&mut self, bpm: u16) {
+        let tempo = self.apply_tracker_tempo(bpm);
+        self.status = format!("pattern tempo {tempo} BPM");
+    }
+    fn apply_tracker_tempo(&mut self, bpm: u16) -> u16 {
         let tempo = bpm.clamp(20, 300);
         if let Some(pattern) = self.current_pattern_mut() {
             pattern.tempo = tempo;
         }
         self.sequencer.tempo(tempo);
-        self.status = format!("pattern tempo {tempo} BPM");
+        tempo
+    }
+    fn loop_project_tempo(settings: &sequencer::LoopSettings) -> u16 {
+        settings.interpreted_bpm().round().clamp(20.0, 300.0) as u16
     }
     fn tracker_keyboard_note(&self, semitone: u8) -> u8 {
         let percussion = self.current_page().is_some_and(|page| page.percussion);
@@ -1483,16 +1491,22 @@ impl App {
             .min(self.loop_imports.len().saturating_sub(1));
     }
 
-    fn load_current_loop(&mut self) {
+    fn load_current_loop(&mut self) -> bool {
         let Some(settings) = self.song.audio_loop.clone() else {
-            return;
+            return false;
         };
         let path = crate::loop_player::loops_dir().join(&settings.file);
         match crate::loop_player::DecodedLoop::open(&path)
             .and_then(|decoded| self.loop_player.load(decoded, &settings))
         {
-            Ok(()) => self.status = format!("loop ready · {}", settings.file),
-            Err(error) => self.status = format!("loop load: {error}"),
+            Ok(()) => {
+                self.status = format!("loop ready · {}", settings.file);
+                true
+            }
+            Err(error) => {
+                self.status = format!("loop load: {error}");
+                false
+            }
         }
     }
 
@@ -1525,12 +1539,14 @@ impl App {
                     offset_beats: 0,
                 };
                 self.song.audio_loop = Some(settings.clone());
+                let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
                 match self.loop_player.load(decoded, &settings) {
                     Ok(()) => {
                         self.status = format!(
-                            "imported {} · {} bar(s) · BPM {:.0}/{:.0}/{:.0}",
+                            "imported {} · {} bar(s) · project {} BPM · source {:.0}/{:.0}/{:.0}",
                             settings.file,
                             alignment.bars,
+                            tempo,
                             candidates[0],
                             candidates[1],
                             candidates[2]
@@ -1565,17 +1581,25 @@ impl App {
                     settings.length_beats = alignment.length_beats;
                     settings.offset_beats = 0;
                 }
-                self.load_current_loop();
-                self.status = format!(
-                    "auto aligned {} bar(s) at {:.2} BPM{}",
-                    alignment.bars,
-                    alignment.source_bpm,
-                    if alignment.transient_detected {
-                        ""
-                    } else {
-                        " (duration)"
-                    }
-                );
+                let tempo = self
+                    .song
+                    .audio_loop
+                    .as_ref()
+                    .map(Self::loop_project_tempo)
+                    .map(|tempo| self.apply_tracker_tempo(tempo))
+                    .unwrap_or_else(|| self.current_tempo());
+                if self.load_current_loop() {
+                    self.status = format!(
+                        "auto aligned {} bar(s) · project {} BPM{}",
+                        alignment.bars,
+                        tempo,
+                        if alignment.transient_detected {
+                            ""
+                        } else {
+                            " (duration)"
+                        }
+                    );
+                }
             }
             Err(error) => self.status = format!("auto align: {error}"),
         }
@@ -1595,24 +1619,44 @@ impl App {
     }
 
     fn adjust_loop_source_bpm(&mut self, direction: i8) {
-        if let Some(settings) = self.song.audio_loop.as_mut() {
+        let tempo = if let Some(settings) = self.song.audio_loop.as_mut() {
             settings.source_bpm_x100 = if direction < 0 {
                 settings.source_bpm_x100.saturating_sub(100).max(2_000)
             } else {
                 settings.source_bpm_x100.saturating_add(100).min(30_000)
             };
-            self.load_current_loop();
+            Some(Self::loop_project_tempo(settings))
+        } else {
+            None
+        };
+        let Some(tempo) = tempo else {
+            self.status = "import a loop first".into();
+            return;
+        };
+        let tempo = self.apply_tracker_tempo(tempo);
+        if self.load_current_loop() {
+            self.status = format!("loop source BPM · project {tempo} BPM");
         }
     }
 
     fn cycle_loop_bpm_mode(&mut self) {
-        if let Some(settings) = self.song.audio_loop.as_mut() {
+        let tempo = if let Some(settings) = self.song.audio_loop.as_mut() {
             settings.interpretation = match settings.interpretation {
                 sequencer::BpmInterpretation::Half => sequencer::BpmInterpretation::Normal,
                 sequencer::BpmInterpretation::Normal => sequencer::BpmInterpretation::Double,
                 sequencer::BpmInterpretation::Double => sequencer::BpmInterpretation::Half,
             };
-            self.load_current_loop();
+            Some(Self::loop_project_tempo(settings))
+        } else {
+            None
+        };
+        let Some(tempo) = tempo else {
+            self.status = "import a loop first".into();
+            return;
+        };
+        let tempo = self.apply_tracker_tempo(tempo);
+        if self.load_current_loop() {
+            self.status = format!("loop BPM interpretation · project {tempo} BPM");
         }
     }
 
@@ -3919,12 +3963,10 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &App) {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "(inbox empty)".into());
     let details = if let Some(settings) = &a.song.audio_loop {
-        let interpreted = settings.interpreted_bpm();
-        let ratio = f64::from(a.current_tempo()) / interpreted.max(0.01);
         let bar_unit = i32::from(a.current_meter().clamp(1, 16));
         let offset_bars = f64::from(settings.offset_beats) / f64::from(bar_unit);
         format!(
-            "FT2 WAV LOOP\n{}\n\nSource {:>6.2} BPM  {}\nTarget {:>3} BPM  ratio {:.3}\nRegion beat {} +{}\nOffset {:+.0} bar(s)\nCut {} · meter {}/4\n\n{}  {} / {}\n{} Hz · {}ch\nPitch changes with tempo",
+            "FT2 WAV LOOP\n{}\n\nSource {:>6.2} BPM  {}\nProject {:>3} BPM\nRegion beat {} +{}\nOffset {:+.0} bar(s)\nCut {} · meter {}/4\n\n{}  {} / {}\n{} Hz · {}ch\nNative pitch playback",
             truncate(
                 player.file.as_deref().unwrap_or(&settings.file),
                 z.width.saturating_sub(2) as usize
@@ -3932,7 +3974,6 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &App) {
             settings.source_bpm(),
             settings.interpretation.label(),
             a.current_tempo(),
-            ratio,
             settings.start_beat,
             settings.length_beats,
             offset_bars,
@@ -3946,7 +3987,7 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &App) {
         )
     } else {
         format!(
-            "FT2 WAV LOOP\n\nInbox: {}\nSelected: {}\n\nTurn encoder to choose\nIMPORT copies to private storage\n\nWAV has no assumed BPM metadata.\nAfter import, enter source BPM.",
+            "FT2 WAV LOOP\n\nInbox: {}\nSelected: {}\n\nTurn encoder to choose\nIMPORT copies to private storage\n\nAUTO estimates beat length.\nProject tempo follows WAV.",
             a.config.loop_player.import_directory.display(),
             truncate(&selected, z.width.saturating_sub(2) as usize)
         )
@@ -4023,6 +4064,15 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let menu_width = z.width.min(40);
     let menu_x = z.x + z.width.saturating_sub(menu_width) / 2;
     let footer_rows = if a.screen == Screen::Playback { 2 } else { 3 };
+    f.render_widget(
+        Clear,
+        rect(
+            menu_x,
+            z.y + z.height - footer_rows,
+            menu_width,
+            footer_rows.saturating_sub(1),
+        ),
+    );
     for (i, page) in pages.iter().enumerate() {
         let col = i as u16;
         let width = menu_width / 4;
@@ -4091,7 +4141,14 @@ fn draw_status_bar<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
     let bpm = if matches!(
         a.screen,
-        Screen::Tracker | Screen::TrackerFiles | Screen::TrackerArrange | Screen::TrackerPages
+        Screen::Tracker
+            | Screen::TrackerFiles
+            | Screen::TrackerArrange
+            | Screen::TrackerPages
+            | Screen::TrackerTools
+            | Screen::TrackerNoob
+            | Screen::TrackerLoop
+            | Screen::TrackerLoopAlign
     ) {
         format!("{} BPM", a.current_tempo())
     } else {
@@ -4976,6 +5033,319 @@ fn truncate(s: &str, n: usize) -> String {
         return s.chars().take(n).collect();
     }
     format!("{}…", s.chars().take(n - 1).collect::<String>())
+}
+
+#[derive(Serialize)]
+struct ScreenshotSet {
+    cols: u16,
+    rows: u16,
+    screens: Vec<ScreenshotFrame>,
+}
+
+#[derive(Serialize)]
+struct ScreenshotFrame {
+    name: &'static str,
+    cells: Vec<ScreenshotCell>,
+}
+
+#[derive(Serialize)]
+struct ScreenshotCell {
+    symbol: String,
+    fg: [u8; 3],
+    bg: [u8; 3],
+    bold: bool,
+}
+
+pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
+    let screens = [
+        ("shr-daw-presets.png", Screen::Presets),
+        ("shr-daw-playback.png", Screen::Playback),
+        ("shr-daw-ft2-pattern.png", Screen::Tracker),
+        ("shr-daw-ft2-arrangement.png", Screen::TrackerArrange),
+        ("shr-daw-ft2-pages.png", Screen::TrackerPages),
+        ("shr-daw-project-files.png", Screen::TrackerFiles),
+        ("shr-daw-ft2-loop.png", Screen::TrackerLoop),
+        ("shr-daw-audio-recorder.png", Screen::AudioRecorder),
+    ];
+    let mut frames = Vec::new();
+    for (name, screen) in screens {
+        let mut app = screenshot_app(config.clone());
+        configure_screenshot(&mut app, screen);
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.draw(|frame| draw(frame, &mut app))?;
+        let cells = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| ScreenshotCell {
+                symbol: cell.symbol.clone(),
+                fg: color_rgb(cell.fg, true),
+                bg: color_rgb(cell.bg, false),
+                bold: cell.modifier.contains(Modifier::BOLD),
+            })
+            .collect();
+        frames.push(ScreenshotFrame { name, cells });
+    }
+    Ok(serde_json::to_string_pretty(&ScreenshotSet {
+        cols: 40,
+        rows: 20,
+        screens: frames,
+    })?)
+}
+
+fn screenshot_app(mut config: RuntimeConfig) -> App {
+    config.cpu_temperature_path = None;
+    config.capture.inputs = vec![crate::config::StereoInputConfig {
+        name: "AudioBox USB 96".into(),
+        left_port: "system:capture_1".into(),
+        right_port: "system:capture_2".into(),
+    }];
+    let catalogs = [Catalog {
+        backend: BackendKind::Synthv1,
+        presets: [
+            "Velvet Tines",
+            "Hollow Brass",
+            "Soft Fifths",
+            "Juniper Lead",
+            "Dust Pad",
+            "Square Bass",
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| Preset::synthv1(name, format!("demo-{index}.synthv1").into()))
+        .collect(),
+        unavailable: None,
+    }];
+    let mut app = App::new(
+        &catalogs,
+        Arc::new(std::sync::Mutex::new(None)),
+        Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
+        Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),
+        Arc::new(std::sync::Mutex::new(engine::TrackerRoute::default())),
+        Arc::new(std::sync::Mutex::new(None)),
+        config,
+    );
+    app.web_help_enabled = false;
+    app.playing = app.presets.first().cloned();
+    app.status = "Ready".into();
+    app.song.name = "dusk-project".into();
+    app
+}
+
+fn configure_screenshot(app: &mut App, screen: Screen) {
+    app.screen = screen;
+    app.select_menu_page(0);
+    match screen {
+        Screen::Presets => {
+            app.selected = 0;
+            app.status = "MIDI ready · pickup armed".into();
+        }
+        Screen::Playback => {
+            for note in [60, 64, 67] {
+                app.held_notes.observe(&[0x90, note, 100]);
+            }
+            app.status = "Playback to review".into();
+        }
+        Screen::Tracker => {
+            fill_demo_song(app);
+            app.tracker_mode = TrackerMode::Edit;
+            app.status = "step edit on".into();
+        }
+        Screen::TrackerArrange => {
+            fill_demo_song(app);
+            app.arrange_selected = 0;
+            app.status = "FT2 arrangement · chain pattern steps".into();
+        }
+        Screen::TrackerPages => {
+            fill_demo_song(app);
+            app.tracker_page = 0;
+            app.status = "page route updated · DONE to keep".into();
+        }
+        Screen::TrackerFiles => {
+            fill_demo_song(app);
+            app.song_list = vec![
+                "dusk-project".into(),
+                "sunday-sketch".into(),
+                "mt240-drums".into(),
+                "d50-pad-study".into(),
+                "live-set-a".into(),
+            ];
+            app.status = "Project files · select an action".into();
+        }
+        Screen::TrackerLoop => {
+            fill_demo_song(app);
+            let settings = sequencer::LoopSettings {
+                file: "breakbeat-96.wav".into(),
+                source_bpm_x100: 9_600,
+                interpretation: sequencer::BpmInterpretation::Normal,
+                start_beat: 0,
+                length_beats: 16,
+                offset_beats: 0,
+            };
+            app.song.audio_loop = Some(settings);
+            if let Some(pattern) = app.current_pattern_mut() {
+                pattern.tempo = 96;
+            }
+            app.loop_edit_bars = true;
+            app.loop_player
+                .set_preview_status(crate::loop_player::LoopStatus {
+                    loaded: true,
+                    playing: false,
+                    file: Some("breakbeat-96.wav".into()),
+                    source_rate: 48_000,
+                    source_channels: 2,
+                    duration: Duration::from_secs(8),
+                    elapsed: Duration::from_secs(3),
+                    error: None,
+                });
+        }
+        Screen::AudioRecorder => {
+            app.audio_recorder.set_preview_status(RecorderStatus {
+                recording: false,
+                elapsed: Duration::from_secs(134),
+                bytes: 36_800_000,
+                sample_rate: 48_000,
+                dropped_frames: 0,
+                path: Some(PathBuf::from("recordings/dusk-project-001.wav")),
+                error: None,
+            });
+        }
+        _ => {}
+    }
+}
+
+fn fill_demo_song(app: &mut App) {
+    let config = &app.config.external_midi;
+    let mut song = Song::new(config);
+    song.name = "dusk-project".into();
+    song.order = vec![0, 1, 0, 2];
+    if let Some(pattern) = song.patterns.get_mut(&0) {
+        pattern.tempo = 120;
+        pattern.meter = 4;
+        pattern.pages[0].target = PageTarget::ConfiguredExternal;
+        pattern.rows[0][0] = demo_cell(60, 0x60, Command::Delay(0));
+        pattern.rows[0][1] = demo_cell(64, 0x58, Command::None);
+        pattern.rows[0][2] = demo_cell(67, 0x5a, Command::None);
+        pattern.rows[2][0] = demo_cell(72, 0x70, Command::None);
+        pattern.rows[2][2] = Cell {
+            note: Note::Off,
+            ..Cell::default()
+        };
+        pattern.rows[4][0] = demo_cell(62, 0x62, Command::Tempo(120));
+        pattern.rows[4][1] = demo_cell(65, 0x50, Command::None);
+        pattern.rows[4][2] = demo_cell(69, 0x55, Command::None);
+        pattern.rows[7][0] = demo_cell(55, 0x6a, Command::None);
+        pattern.rows[8][0] = demo_cell(60, 0x60, Command::None);
+        pattern.rows[8][1] = demo_cell(64, 0x60, Command::None);
+        pattern.rows[8][2] = demo_cell(67, 0x60, Command::None);
+        pattern.rows[8][3] = demo_cell(71, 0x60, Command::None);
+        let mut d50 = sequencer::Page::new("D-50", 2, false, 0);
+        d50.target = PageTarget::Midi("Roland D-50".into());
+        pattern.pages.push(d50);
+        for row in &mut pattern.rows {
+            row.extend(std::iter::repeat(Cell::default()).take(LANES_PER_PAGE));
+        }
+    }
+    if let Some(setup) = song.patterns.get(&0).cloned() {
+        let mut second = sequencer::Pattern::empty_like_setup(32, &setup);
+        second.tempo = 92;
+        song.patterns.insert(1, second);
+        let mut third = sequencer::Pattern::empty_like_setup(24, &setup);
+        third.tempo = 135;
+        third.meter = 3;
+        third.pages.truncate(1);
+        for row in &mut third.rows {
+            row.truncate(LANES_PER_PAGE);
+        }
+        song.patterns.insert(2, third);
+    }
+    app.song = song;
+    app.tracker_order = 0;
+    app.tracker_row = 0;
+    app.tracker_page = 0;
+    app.tracker_track = 0;
+}
+
+fn demo_cell(note: u8, velocity: u8, command: Command) -> Cell {
+    Cell {
+        note: Note::On(note),
+        velocity: Some(velocity),
+        command,
+        ..Cell::default()
+    }
+}
+
+fn color_rgb(color: Color, foreground: bool) -> [u8; 3] {
+    match color {
+        Color::Reset => {
+            if foreground {
+                [170, 170, 170]
+            } else {
+                [0, 0, 0]
+            }
+        }
+        Color::Black => [0, 0, 0],
+        Color::Red => [170, 0, 0],
+        Color::Green => [0, 170, 0],
+        Color::Yellow => [170, 85, 0],
+        Color::Blue => [0, 0, 170],
+        Color::Magenta => [170, 0, 170],
+        Color::Cyan => [0, 170, 170],
+        Color::Gray => [170, 170, 170],
+        Color::DarkGray => [85, 85, 85],
+        Color::LightRed => [255, 85, 85],
+        Color::LightGreen => [85, 255, 85],
+        Color::LightYellow => [255, 255, 85],
+        Color::LightBlue => [85, 85, 255],
+        Color::LightMagenta => [255, 85, 255],
+        Color::LightCyan => [85, 255, 255],
+        Color::White => [255, 255, 255],
+        Color::Rgb(r, g, b) => [r, g, b],
+        Color::Indexed(index) => ansi_indexed_color(index),
+    }
+}
+
+fn ansi_indexed_color(index: u8) -> [u8; 3] {
+    const ANSI16: [[u8; 3]; 16] = [
+        [0, 0, 0],
+        [170, 0, 0],
+        [0, 170, 0],
+        [170, 85, 0],
+        [0, 0, 170],
+        [170, 0, 170],
+        [0, 170, 170],
+        [170, 170, 170],
+        [85, 85, 85],
+        [255, 85, 85],
+        [85, 255, 85],
+        [255, 255, 85],
+        [85, 85, 255],
+        [255, 85, 255],
+        [85, 255, 255],
+        [255, 255, 255],
+    ];
+    if index < 16 {
+        ANSI16[usize::from(index)]
+    } else if index < 232 {
+        let value = index - 16;
+        let channel = |component| {
+            if component == 0 {
+                0
+            } else {
+                55 + component * 40
+            }
+        };
+        [
+            channel(value / 36),
+            channel((value / 6) % 6),
+            channel(value % 6),
+        ]
+    } else {
+        let gray = 8 + (index - 232) * 10;
+        [gray, gray, gray]
+    }
 }
 
 #[cfg(test)]

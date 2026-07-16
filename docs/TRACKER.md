@@ -105,10 +105,12 @@ bar-based placement offset.
 
 WAV has no dependable standard BPM metadata, so SHR-DAW does not invent it.
 Import and **AUTO** estimate pulse spacing when the audio has useful
-transients; otherwise they fall back to project tempo and duration. Correct
-**BPM-**/**BPM+** when needed. **BPM x** cycles half, normal, and double
-interpretations (120 gives 60, 120, and 240). **UNIT** changes whether CUT
-controls move one beat or one measure.
+transients; otherwise they use duration and the current tempo to choose a whole
+bar length. The current Pattern tempo is then set from the interpreted WAV BPM.
+Correct **BPM-**/**BPM+** when needed; these controls also update the Pattern
+tempo. **BPM x** cycles half, normal, and double interpretations (120 gives
+60, 120, and 240). **UNIT** changes whether CUT controls move one beat or one
+measure.
 
 The loop screen's **ALIGN** child has **AUTO**, **BAR-**, and **BAR+**. **AUTO**
 re-runs the offline pulse/length estimate and resets placement to bar zero.
@@ -116,11 +118,13 @@ re-runs the offline pulse/length estimate and resets placement to bar zero.
 without changing the cut region.
 
 The loop follows FT2 play-here, play-from-start, stop, restart, order/pattern
-transitions, tempo changes, and looping. This first implementation uses
-real-time rate conversion, so tempo matching and sample-rate conversion are
-safe but pitch changes with tempo; the limitation is explicit on screen. A
-bounded 5 ms fade is applied at cut/loop edges. The 40×20 screen shows text for
-filename, BPMs and ratio, region, state, elapsed/total time, rate, and channels.
+transitions, and looping. It plays at native speed and pitch; beat detection
+adjusts the Pattern tempo to the WAV, not the WAV to the previous Pattern
+tempo. The loop player requires the JACK server sample rate to match the WAV
+sample rate. For a 44.1 kHz loop, configure/restart JACK at 44100 Hz before
+loading it. A bounded 5 ms fade is applied at cut/loop edges. The 40×20 screen
+shows text for filename, BPMs, region, state, elapsed/total time, rate, and
+channels.
 
 ## Copy and Paste
 

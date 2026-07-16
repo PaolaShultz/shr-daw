@@ -107,8 +107,11 @@ songs keep optional meter, filename, BPM interpretation, and beat-region
 settings plus a signed beat offset for one-bar placement shifts. The loop
 ALIGN child can run offline pulse/duration analysis, snap length to song bars,
 and move placement by whole bars. JACK loop client/output names and the import
-inbox are configuration. Tempo matching currently uses rate conversion and
-therefore changes pitch.
+inbox are configuration. Tempo matching sets the current Pattern tempo from the
+interpreted WAV BPM; the WAV is not stretched or pitch-shifted to fit the old
+tempo. The loop player requires the JACK server sample rate to match the WAV
+sample rate, so use JACK setup/restart at 44100 Hz for 44.1 kHz loops when
+needed.
 
 External MIDI sound names are data-driven. JSON profiles live in
 `midi-devices/` (installed below `share/shsynth/midi-devices/`), while private

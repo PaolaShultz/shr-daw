@@ -133,6 +133,15 @@ impl AudioRecorder {
             })
             .unwrap_or_default()
     }
+
+    #[doc(hidden)]
+    pub(crate) fn set_preview_status(&self, status: RecorderStatus) {
+        if let Ok(mut shared) = self.status.lock() {
+            shared.started = Instant::now() - status.elapsed;
+            shared.public = status;
+        }
+    }
+
     pub fn start(&mut self, optional_name: Option<&str>) -> Result<()> {
         if self.active.is_some() {
             bail!("audio recording is already active");

@@ -75,8 +75,9 @@ or reconnect the device; the song does not discard the route.
 Loop import copies WAV files from the configured inbox into private storage.
 Source BPM is manual unless AUTO align can measure a useful pulse.
 
-Tempo matching currently changes playback rate, so pitch changes with tempo.
-Use UNIT to edit by beat or bar, and ALIGN to snap/move placement by bars.
+Tempo matching sets the current Pattern tempo from the WAV; the WAV plays at
+native speed and pitch. The loop sample rate must match JACK. Use UNIT to edit
+by beat or bar, and ALIGN to snap/move placement by bars.
 
 The audio recorder writes the configured JACK stereo input as 24-bit WAV. If it
 is interrupted, the unfinished `.wav.part` file is recovered on the next start.

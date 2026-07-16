@@ -47,7 +47,9 @@ JACK must be running before SHR-DAW starts.
 
 The setup wizard can create a backed-up `~/.jackdrc` for a selected Raspberry
 Pi or USB audio device. It never starts or restarts JACK. This avoids changing
-a live audio session without the user's control.
+a live audio session without the user's control. Choose a JACK sample rate that
+matches the WAV loops you intend to use, such as 44100 Hz for CD-rate loops or
+48000 Hz for 48 kHz material.
 
 ## Optional dedicated audio CPU
 

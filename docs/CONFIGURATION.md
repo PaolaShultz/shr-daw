@@ -180,6 +180,13 @@ filename, source BPM, cut region, and bar placement offset. Disk I/O, decoding,
 allocation, import, and auto-alignment analysis happen outside the JACK
 callback.
 
+Loop playback is native-speed and native-pitch. Import and auto-align set the
+current Pattern tempo from the interpreted WAV BPM; they do not stretch the WAV
+to the previous Project tempo. The loop player also requires the JACK server
+sample rate to match the WAV sample rate. Choose 44100 Hz in JACK setup for
+44.1 kHz loops, or 48000 Hz for 48 kHz loops, and restart JACK yourself when it
+is safe.
+
 ## FT2 cell fields
 
 The contextual **CELL EDIT** menu is four pages of four items: **Fields**

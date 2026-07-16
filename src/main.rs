@@ -64,6 +64,10 @@ fn real_main() -> Result<()> {
             Ok(())
         }
         "doctor" => doctor(&runtime, &preset_dir, &state),
+        "screenshots" => {
+            println!("{}", ui::readme_screenshots_json(&runtime)?);
+            Ok(())
+        }
         "stop" => engine::stop_managed(&state),
         "log" | "logs" => show_log(&state, args.get(1)),
         "ideas" => ideas_command(&args[1..], &presets, &state, &runtime),

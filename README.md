@@ -55,7 +55,7 @@ Save, load, preview, and delete whole Projects.
 
 <img src="docs/images/shr-daw-ft2-loop.png" alt="FT2 WAV Loop screen with tempo and beat-region controls" width="100%">
 
-Import private loops and align them to tracker tempo.
+Import private loops and set tracker tempo from detected WAV beats.
 
 ### Stereo Recorder
 
@@ -83,7 +83,7 @@ routes.
 - Routes one MIDI controller to software and hardware instruments.
 - Builds Projects with self-contained FT2 Patterns and an FT2 Arrangement.
 - Provides FT2 Play/Rec/Edit/N00B modes and scale-safe live MIDI input.
-- Imports private WAV loops and synchronizes them with FT2 through JACK.
+- Imports private WAV loops and synchronizes FT2 tempo to them through JACK.
 - Records free playing as reusable MIDI ideas.
 - Records a stereo JACK input as a 24-bit WAV file.
 - Works from a computer keyboard or a small physical controller.

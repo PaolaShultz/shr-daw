@@ -1,6 +1,6 @@
 //! JACK-synchronized FT2 WAV loops. Decode/import work happens before JACK
-//! activation; the process callback only interpolates immutable PCM and writes
-//! two bounded output buffers.
+//! activation; the process callback only reads immutable PCM and writes two
+//! bounded output buffers.
 
 use crate::config::LoopPlayerConfig;
 use crate::sequencer::{LoopSettings, Song};
@@ -9,7 +9,7 @@ use libc::{c_char, c_int, c_uint, c_ulong, c_void};
 use std::ffi::{CStr, CString};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,7 +22,6 @@ const ANALYSIS_HOP: usize = 1024;
 pub struct TransportClock {
     playing: AtomicBool,
     generation: AtomicU64,
-    bpm_x100: AtomicU32,
     origin_beat: AtomicU64,
 }
 
@@ -31,19 +30,17 @@ impl Default for TransportClock {
         Self {
             playing: AtomicBool::new(false),
             generation: AtomicU64::new(0),
-            bpm_x100: AtomicU32::new(12_000),
             origin_beat: AtomicU64::new(0),
         }
     }
 }
 
 impl TransportClock {
-    pub fn play(&self, origin_beat: f64, bpm: u16) {
+    pub fn play(&self, origin_beat: f64, _bpm: u16) {
         self.origin_beat.store(
             (origin_beat.max(0.0) * BEAT_UNITS) as u64,
             Ordering::Release,
         );
-        self.bpm_x100.store(u32::from(bpm) * 100, Ordering::Release);
         self.generation.fetch_add(1, Ordering::AcqRel);
         self.playing.store(true, Ordering::Release);
     }
@@ -52,12 +49,7 @@ impl TransportClock {
         self.playing.store(false, Ordering::Release);
     }
 
-    pub fn tempo(&self, bpm: f64) {
-        self.bpm_x100.store(
-            (bpm.clamp(20.0, 300.0) * 100.0).round() as u32,
-            Ordering::Release,
-        );
-    }
+    pub fn tempo(&self, _bpm: f64) {}
 }
 
 #[derive(Clone, Debug)]
@@ -358,6 +350,7 @@ impl LoopPlayer {
         self.stop_backend();
         let mut jack = JackClient::open(&self.config.client_name)?;
         let jack_rate = jack.sample_rate();
+        require_native_rate(decoded.sample_rate, jack_rate)?;
         let left = jack.register_output("output_l")?;
         let right = jack.register_output("output_r")?;
         let interpreted = settings.interpreted_bpm();
@@ -381,7 +374,6 @@ impl LoopPlayer {
             port_get_buffer: jack.api.port_get_buffer,
             samples: decoded.samples,
             source_rate: decoded.sample_rate,
-            jack_rate,
             interpreted_bpm: interpreted,
             region_start: start,
             region_len: length,
@@ -419,6 +411,17 @@ impl LoopPlayer {
         status
     }
 
+    #[doc(hidden)]
+    pub(crate) fn set_preview_status(&mut self, status: LoopStatus) {
+        if status.source_rate > 0 {
+            self.position.store(
+                (status.elapsed.as_secs_f64() * f64::from(status.source_rate)).round() as u64,
+                Ordering::Release,
+            );
+        }
+        self.status = status;
+    }
+
     pub fn stop(&self) {
         self.clock.stop();
     }
@@ -444,7 +447,6 @@ struct CallbackData {
     port_get_buffer: PortGetBuffer,
     samples: Vec<[f32; 2]>,
     source_rate: u32,
-    jack_rate: u32,
     interpreted_bpm: f64,
     region_start: usize,
     region_len: usize,
@@ -649,9 +651,6 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
         let beat_phase = loop_phase_from_song(origin, data.offset_beats, loop_beats);
         data.phase = data.region_start as f64 + beat_phase * data.region_len as f64;
     }
-    let target_bpm = f64::from(data.clock.bpm_x100.load(Ordering::Acquire)) / 100.0;
-    let increment = f64::from(data.source_rate) / f64::from(data.jack_rate) * target_bpm
-        / data.interpreted_bpm.max(0.01);
     let end = (data.region_start + data.region_len) as f64;
     for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
         while data.phase >= end {
@@ -666,13 +665,22 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
         );
         *left_out = sample[0];
         *right_out = sample[1];
-        data.phase += increment;
+        data.phase += 1.0;
     }
     data.position.store(
         (data.phase - data.region_start as f64).max(0.0) as u64,
         Ordering::Release,
     );
     0
+}
+
+fn require_native_rate(source_rate: u32, jack_rate: u32) -> Result<()> {
+    if source_rate != jack_rate {
+        bail!(
+            "WAV is {source_rate} Hz but JACK is {jack_rate} Hz; restart JACK at {source_rate} Hz for native loop playback"
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -836,27 +844,33 @@ mod tests {
         let clock = TransportClock::default();
         clock.play(3.5, 120);
         assert!(clock.playing.load(Ordering::Acquire));
-        assert_eq!(clock.bpm_x100.load(Ordering::Acquire), 12_000);
         assert_eq!(clock.origin_beat.load(Ordering::Acquire), 3_500_000);
         let first_generation = clock.generation.load(Ordering::Acquire);
 
         clock.tempo(150.25);
-        assert_eq!(clock.bpm_x100.load(Ordering::Acquire), 15_025);
         clock.play(1.0, 90);
         assert!(clock.generation.load(Ordering::Acquire) > first_generation);
         assert_eq!(clock.origin_beat.load(Ordering::Acquire), 1_000_000);
-        assert_eq!(clock.bpm_x100.load(Ordering::Acquire), 9_000);
 
         clock.stop();
         assert!(!clock.playing.load(Ordering::Acquire));
     }
 
     #[test]
-    fn linear_resampling_wraps_with_bounded_fades() {
+    fn native_sample_rendering_wraps_with_bounded_fades() {
         let data = [[1.0, 1.0], [0.5, 0.5], [-1.0, -1.0], [0.0, 0.0]];
         assert_eq!(render_sample(&data, 0, 4, 0.0, 1), [0.0, 0.0]);
         assert!((render_sample(&data, 0, 4, 1.5, 1)[0] + 0.25).abs() < 0.0001);
         assert!((render_sample(&data, 0, 4, 4.5, 1)[0] - 0.375).abs() < 0.0001);
         assert!(fade_frames(48_000, 4) <= 1);
+    }
+
+    #[test]
+    fn native_loop_playback_requires_matching_jack_rate() {
+        assert!(require_native_rate(44_100, 44_100).is_ok());
+        assert!(require_native_rate(44_100, 48_000)
+            .unwrap_err()
+            .to_string()
+            .contains("restart JACK at 44100 Hz"));
     }
 }

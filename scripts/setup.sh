@@ -213,7 +213,7 @@ if ((${#cards[@]})) && ask_yes_no 'Select the ALSA card JACK should use on its n
     printf 'Invalid ALSA card identifier: %s\n' "$card" >&2
     exit 1
   }
-  read -r -p 'Sample rate [48000]: ' sample_rate
+  read -r -p 'Sample rate, match your WAV loops when possible [48000]: ' sample_rate
   read -r -p 'Period size in frames [256]: ' period_size
   read -r -p 'Periods per buffer [3]: ' periods
   sample_rate="${sample_rate:-48000}"
