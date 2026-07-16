@@ -19,7 +19,8 @@ editing, arrangement, routing, files, loops, and recording stay separate.
 
 <img src="docs/images/shr-daw-presets.png" alt="Preset browser showing synthv1 sounds" width="100%">
 
-Browse playable software-instrument sounds.
+Browse playable software-instrument sounds. The browser is paged across three
+software instruments, each with its own independent patch list.
 
 ### Playback
 
