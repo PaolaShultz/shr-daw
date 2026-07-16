@@ -1,34 +1,98 @@
 #!/usr/bin/env python3
-"""Render small README screenshots without starting SHR-DAW or JACK."""
+"""Render 40x20 README screenshots with the same grid as the TUI."""
 
+from __future__ import annotations
+
+import gzip
+import struct
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "images"
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+FONT_CANDIDATES = (
+    Path("/usr/share/consolefonts/Lat15-VGA16.psf.gz"),
+    ROOT / "target" / "Lat15-VGA16.psf",
+)
 
-FONT_SIZE = 13
-CELL_H = 15
-PAD_X = 12
-PAD_Y = 9
-COLS = 40
-ROWS = 20
-W = 480
-H = 320
+CELL_W, CELL_H = 12, 16
+COLS, ROWS = 40, 20
+W, H = COLS * CELL_W, ROWS * CELL_H
 
-BG = (17, 19, 22)
-PANEL = (24, 27, 31)
-FG = (220, 226, 232)
-DIM = (124, 133, 143)
-GREEN = (78, 213, 133)
-YELLOW = (247, 216, 92)
-RED = (245, 111, 111)
-BLUE = (119, 180, 255)
-SELECT_BG = (232, 190, 64)
-SELECT_FG = (13, 15, 18)
+PALETTE = {
+    "Reset": (170, 170, 170),
+    "Black": (0, 0, 0),
+    "Red": (170, 0, 0),
+    "Green": (0, 170, 0),
+    "Yellow": (170, 85, 0),
+    "Blue": (0, 0, 170),
+    "Magenta": (170, 0, 170),
+    "Cyan": (0, 170, 170),
+    "Gray": (170, 170, 170),
+    "DarkGray": (85, 85, 85),
+    "LightRed": (255, 85, 85),
+    "LightGreen": (85, 255, 85),
+    "LightYellow": (255, 255, 85),
+    "LightBlue": (85, 85, 255),
+    "LightMagenta": (255, 85, 255),
+    "LightCyan": (85, 255, 255),
+    "White": (255, 255, 255),
+}
+BRIGHT = {
+    "Black": "DarkGray",
+    "Red": "LightRed",
+    "Green": "LightGreen",
+    "Yellow": "LightYellow",
+    "Blue": "LightBlue",
+    "Magenta": "LightMagenta",
+    "Cyan": "LightCyan",
+    "Gray": "White",
+}
+
+
+def read_font(path: Path) -> bytes:
+    raw = path.read_bytes()
+    return gzip.decompress(raw) if path.suffix == ".gz" else raw
+
+
+def load_psf1() -> tuple[list[bytes], dict[int, int]]:
+    for path in FONT_CANDIDATES:
+        if path.exists():
+            raw = read_font(path)
+            break
+    else:
+        candidates = ", ".join(str(path) for path in FONT_CANDIDATES)
+        raise FileNotFoundError(f"missing console font; tried {candidates}")
+
+    if raw[:2] != b"\x36\x04":
+        raise ValueError("expected a PSF1 console font")
+    mode, charsize = raw[2], raw[3]
+    glyph_count = 512 if mode & 1 else 256
+    glyphs = [
+        raw[4 + i * charsize : 4 + (i + 1) * charsize]
+        for i in range(glyph_count)
+    ]
+    mapping: dict[int, int] = {}
+    pos = 4 + glyph_count * charsize
+    for glyph_index in range(glyph_count):
+        while pos + 2 <= len(raw):
+            value = struct.unpack_from("<H", raw, pos)[0]
+            pos += 2
+            if value == 0xFFFF:
+                break
+            if value != 0xFFFE:
+                mapping.setdefault(value, glyph_index)
+    return glyphs, mapping
+
+
+def color(name: str, *, bold: bool = False, background: bool = False) -> tuple[int, int, int]:
+    if name == "Reset":
+        return PALETTE["Black"] if background else PALETTE["Gray"]
+    if bold and not background:
+        name = BRIGHT.get(name, name)
+    return PALETTE[name]
 
 
 def fit(line: str) -> str:
@@ -36,9 +100,13 @@ def fit(line: str) -> str:
 
 
 def rows(*lines: str) -> list[str]:
-    value = [fit(line) for line in lines]
+    if len(lines) > 3 and lines[-3].startswith("["):
+        body = list(lines[:-3])
+        footer = list(lines[-3:])
+        lines = tuple(body + [""] * max(0, ROWS - len(body) - len(footer)) + footer)
+    value = [fit(line) for line in lines[:ROWS]]
     value.extend(" " * COLS for _ in range(ROWS - len(value)))
-    return value[:ROWS]
+    return value
 
 
 SCREENS = {
@@ -59,8 +127,8 @@ SCREENS = {
         "",
         "",
         "Ready",
-        " 1:OPS   2:ENGINE 3:NAV    4:SYS",
-        "[LOAD]  [PG UP] [PG DOWN] [FIRST]",
+        "[ LOAD  ][ ENGINE ][ NAV   ][ SYS   ]",
+        "[LOAD]   [PG UP]  [PG DN]  [FIRST] ",
         " PRESETS P1 STOP IDLE        --- BPM",
     ),
     "shr-daw-playback.png": rows(
@@ -69,9 +137,9 @@ SCREENS = {
         "Held: C4 E4 G4",
         "Chord: C major",
         "",
-        "Cut  [green]     Res [yellow]",
-        "Sus  [red]       Rel [green]",
-        "Mod  [green]     Pan [yellow]",
+        "Cut [green]      Res [yellow]",
+        "Sus [red]        Rel [green]",
+        "Mod [green]      Pan [yellow]",
         "",
         "recorded 48 MIDI events",
         "Playback to review",
@@ -80,9 +148,9 @@ SCREENS = {
         "",
         "",
         "",
-        " 1:OPS   2:SOUND 3:NAV    4:SYS",
-        "[RECORD][REC END][TAKE]  [SAVE]",
-        " PLAYBACK P1 RUN PLAY",
+        "[ OPS   ][ SOUND ][ NAV   ][ SYS   ]",
+        "[RECORD][REC END][TAKE]  [SAVE]   ",
+        " PLAYBACK P1 RUN PLAY        --- BPM",
     ),
     "shr-daw-ft2-pattern.png": rows(
         "MELODY · dusk-project EDIT",
@@ -100,18 +168,18 @@ SCREENS = {
         "",
         "P1/2 MELODY L1 ch1 Configured ON",
         "step edit on",
-        " 1:OPS   2:MODE  3:MOVE   4:SYS",
-        "[PLAY]  [START] [STEP]  [CELL]",
+        "[ OPS   ][ MODE  ][ MOVE  ][ SYS   ]",
+        "[PLAY]   [START]  [STEP]   [CELL]  ",
         " FT2 P1 STOP IDLE            120 BPM",
     ),
     "shr-daw-ft2-arrangement.png": rows(
         "FT2 ARRANGEMENT",
-        "┌ 4 steps ───────────────────────────┐",
+        "  4 steps",
         "> 01  pat 00  064 rows 120 BPM 4/4 2p",
         "  02  pat 01  032 rows 92 BPM  4/4 3p",
         "  03  pat 00  064 rows 120 BPM 4/4 2p",
         "  04  pat 02  024 rows 135 BPM 3/4 1p",
-        "└────────────────────────────────────┘",
+        "",
         "",
         "Repeat uses the same pattern ID.",
         "Clone or paste creates a new pattern.",
@@ -119,17 +187,18 @@ SCREENS = {
         "",
         "",
         "FT2 arrangement · chain pattern steps",
-        " 1:OPS   2:STEP  3:       4:SYS",
-        "[PLAY]  [JUMP]  [APPEND][INSERT]",
+        "",
+        "[ OPS   ][ STEP  ][       ][ SYS   ]",
+        "[PLAY]   [JUMP]   [APPEND][INSERT]",
         " ARRANGE P1 STOP IDLE        120 BPM",
     ),
     "shr-daw-ft2-pages.png": rows(
         "FT2 PATTERN PAGES · 4 LANES",
-        "┌ 3 pages ───────────────────────────┐",
+        "  3 pages",
         ">01 MELODY   ch01 Configured",
         " 02 DRUMS    ch10 Configured",
         " 03 D-50     ch03 Roland D-50",
-        "└────────────────────────────────────┘",
+        "",
         "",
         "Page setup belongs to this pattern.",
         "Targets can be exact hardware ports.",
@@ -138,27 +207,29 @@ SCREENS = {
         "",
         "",
         "page route updated · DONE to keep",
-        " 1:OPS   2:PAGE  3:       4:SYS",
-        "[ADD]   [TARGET][CHANNEL][DONE]",
+        "",
+        "[ OPS   ][ PAGE  ][       ][ SYS   ]",
+        "[ADD]    [TARGET][CHANNEL][DONE]  ",
         " TRACKS P1 STOP IDLE        120 BPM",
     ),
     "shr-daw-project-files.png": rows(
         "PROJECT FILES",
-        "┌ saved Projects · 5 ────────────────┐",
+        "  saved Projects · 5",
         "> dusk-project",
         "  sunday-sketch",
         "  mt240-drums",
         "  d50-pad-study",
         "  live-set-a",
-        "└────────────────────────────────────┘",
         "",
         "Files save/load/delete the whole Project.",
         "Pattern tools stay on PATTERNS.",
         "",
         "",
+        "",
         "Project files · select an action",
-        " 1:OPS   2:PATTERN 3:EDIT  4:SYS",
-        "[LOAD]  [SAVE] [PREVIEW][DELETE]",
+        "",
+        "[ OPS   ][PATTERN][ EDIT  ][ SYS   ]",
+        "[LOAD]   [SAVE]   [PREVIEW][DELETE]",
         " FILES P1 STOP IDLE         120 BPM",
     ),
     "shr-daw-ft2-loop.png": rows(
@@ -176,8 +247,8 @@ SCREENS = {
         "Pitch changes with tempo",
         "",
         "",
-        " 1:OPS   2:BPM   3:CUT    4:SYS",
-        "[IMPORT][HERE] [START] [STOP]",
+        "[ OPS   ][ BPM   ][ CUT   ][ SYS   ]",
+        "[IMPORT][HERE]   [START]  [STOP]  ",
         " FT2 LOOP P1 STOP IDLE      120 BPM",
     ),
     "shr-daw-audio-recorder.png": rows(
@@ -195,48 +266,63 @@ SCREENS = {
         "recordings/dusk-project-001.wav",
         "R/REC start · STOP finalize",
         "",
-        " 1:OPS   2:      3:NAV    4:SYS",
+        "[ OPS   ][       ][ NAV   ][ SYS   ]",
         "[RECORD]",
         " AUDIO P1 STOP IDLE          --- BPM",
     ),
 }
 
 
-def color_for(line: str, y: int) -> tuple[int, int, int]:
+def style_for(line: str, y: int, x: int, selected: bool) -> tuple[str, str, bool]:
     stripped = line.strip()
-    if y == 0 or stripped.startswith("FT2 ") or stripped.startswith("TRACKER"):
-        return GREEN
-    if stripped.startswith("[") or stripped.startswith("1:"):
-        return YELLOW
+    if selected:
+        return ("Yellow", "DarkGray", line[x] != " ")
+    if y == 0 or stripped.startswith("FT2 ") or stripped.startswith("PROJECT"):
+        return ("Green", "Reset", True)
+    if y == 1 and ("ord" in stripped or "steps" in stripped or "pages" in stripped or "saved" in stripped):
+        return ("Yellow", "Reset", False)
+    if stripped.startswith("["):
+        return ("Yellow", "Reset", True)
+    if y >= ROWS - 2:
+        return ("Gray", "Reset", False)
     if "OFFLINE" in stripped or "Dropped" in stripped:
-        return RED
+        return ("Red", "Reset", False)
     if stripped.startswith("Project") or stripped.startswith("Pattern") or "belongs" in stripped:
-        return BLUE
-    if y >= ROWS - 2 or not stripped:
-        return DIM
-    return FG
+        return ("Cyan", "Reset", False)
+    if not stripped:
+        return ("Gray", "Reset", False)
+    return ("Gray", "Reset", False)
 
 
-def render(name: str, content: list[str]) -> None:
-    font = ImageFont.truetype(FONT, FONT_SIZE)
-    image = Image.new("RGB", (W, H), BG)
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((3, 3, W - 3, H - 3), radius=8, fill=PANEL, outline=(46, 51, 57), width=1)
-    for y, line in enumerate(content):
-        x0 = PAD_X
-        y0 = PAD_Y + y * CELL_H
-        if line.startswith(">"):
-            draw.rectangle((PAD_X - 4, y0 - 2, W - PAD_X + 4, y0 + CELL_H - 3), fill=SELECT_BG)
-            draw.text((x0, y0), line, font=font, fill=SELECT_FG)
-        else:
-            draw.text((x0, y0), line, font=font, fill=color_for(line, y))
+def render(name: str, content: list[str], glyphs: list[bytes], unicode_map: dict[int, int]) -> None:
+    image = Image.new("RGB", (W, H), PALETTE["Black"])
+    pixels = image.load()
+    fallback = unicode_map.get(0x3F, 63)
+    for y, raw_line in enumerate(content):
+        selected = raw_line.startswith(">")
+        line = fit(raw_line[1:] if selected else raw_line)
+        for x, character in enumerate(line):
+            fg_name, bg_name, bold = style_for(line, y, x, selected)
+            glyph = glyphs[unicode_map.get(ord(character), fallback)]
+            fg = color(fg_name, bold=bold)
+            bg = color(bg_name, background=True)
+            cell_x = x * CELL_W
+            cell_y = y * CELL_H
+            for gy in range(CELL_H):
+                bits = glyph[gy] if gy < len(glyph) else 0
+                for out_x in range(CELL_W):
+                    source_x = out_x * 8 // CELL_W
+                    pixels[cell_x + out_x, cell_y + gy] = (
+                        fg if bits & (0x80 >> source_x) else bg
+                    )
     image.save(OUT / name, optimize=True)
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
+    glyphs, unicode_map = load_psf1()
     for name, content in SCREENS.items():
-        render(name, content)
+        render(name, content, glyphs, unicode_map)
 
 
 if __name__ == "__main__":
