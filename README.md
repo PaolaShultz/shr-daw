@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/shr-daw-header.png" alt="SHR-DAW" width="100%">
+  <img src="docs/images/shr-daw-header.jpg" alt="SHR-DAW" width="100%">
 </p>
 
 SHR-DAW is a small Raspberry Pi music workstation. It runs in a 40×20 terminal
@@ -15,56 +15,53 @@ controller, synthesizer, audio interface, or dedicated screen when you need one.
 SHR-DAW is split into focused 40x20 pages, so performance controls, FT2 pattern
 editing, arrangement, routing, files, loops, and recording stay separate.
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-presets.png" alt="Preset browser showing synthv1 sounds" width="360"><br>
-      <strong>Presets</strong><br>
-      Browse playable software-instrument sounds.
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-playback.png" alt="Playback screen with held notes, control indicators, and recorded MIDI status" width="360"><br>
-      <strong>Playback</strong><br>
-      Play, record, review, and save MIDI ideas.
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-ft2-pattern.png" alt="FT2 Pattern editor with four lanes of note data" width="360"><br>
-      <strong>FT2 Pattern Editor</strong><br>
-      Edit notes, velocity, programs, gates, and commands.
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-ft2-arrangement.png" alt="FT2 Arrangement screen listing ordered pattern steps" width="360"><br>
-      <strong>FT2 Arrangement</strong><br>
-      Chain Pattern IDs into the Project timeline.
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-ft2-pages.png" alt="FT2 Pattern page routing screen with MIDI channels and targets" width="360"><br>
-      <strong>Pattern Pages</strong><br>
-      Keep routes, channels, lanes, mutes, and targets inside each Pattern.
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-project-files.png" alt="Project Files screen listing saved Projects" width="360"><br>
-      <strong>Project Files</strong><br>
-      Save, load, preview, and delete whole Projects.
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-ft2-loop.png" alt="FT2 WAV Loop screen with tempo and beat-region controls" width="360"><br>
-      <strong>FT2 WAV Loop</strong><br>
-      Import private loops and align them to tracker tempo.
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/shr-daw-audio-recorder.png" alt="Stereo recorder screen with input ports and recording status" width="360"><br>
-      <strong>Stereo Recorder</strong><br>
-      Capture a JACK stereo input as a 24-bit WAV file.
-    </td>
-  </tr>
-</table>
+### Presets
+
+<img src="docs/images/shr-daw-presets.png" alt="Preset browser showing synthv1 sounds" width="100%">
+
+Browse playable software-instrument sounds.
+
+### Playback
+
+<img src="docs/images/shr-daw-playback.png" alt="Playback screen with held notes, control indicators, and recorded MIDI status" width="100%">
+
+Play, record, review, and save MIDI ideas.
+
+### FT2 Pattern Editor
+
+<img src="docs/images/shr-daw-ft2-pattern.png" alt="FT2 Pattern editor with four lanes of note data" width="100%">
+
+Edit notes, velocity, programs, gates, and commands.
+
+### FT2 Arrangement
+
+<img src="docs/images/shr-daw-ft2-arrangement.png" alt="FT2 Arrangement screen listing ordered pattern steps" width="100%">
+
+Chain Pattern IDs into the Project timeline.
+
+### Pattern Pages
+
+<img src="docs/images/shr-daw-ft2-pages.png" alt="FT2 Pattern page routing screen with MIDI channels and targets" width="100%">
+
+Keep routes, channels, lanes, mutes, and targets inside each Pattern.
+
+### Project Files
+
+<img src="docs/images/shr-daw-project-files.png" alt="Project Files screen listing saved Projects" width="100%">
+
+Save, load, preview, and delete whole Projects.
+
+### FT2 WAV Loop
+
+<img src="docs/images/shr-daw-ft2-loop.png" alt="FT2 WAV Loop screen with tempo and beat-region controls" width="100%">
+
+Import private loops and align them to tracker tempo.
+
+### Stereo Recorder
+
+<img src="docs/images/shr-daw-audio-recorder.png" alt="Stereo recorder screen with input ports and recording status" width="100%">
+
+Capture a JACK stereo input as a 24-bit WAV file.
 
 ## Start simple, expand when you want
 
@@ -73,7 +70,7 @@ diagram are optional. Begin with a Raspberry Pi and an audio output. Add a MIDI
 controller, external instruments, an audio interface, a mixer, or a dedicated
 screen as your setup grows.
 
-![SHR-DAW connected to an optional controller, display, audio interface, MIDI instruments, mixer, speakers, and headphones](docs/images/shr-daw-physical-connections.png)
+![SHR-DAW connected to an optional controller, display, audio interface, MIDI instruments, mixer, speakers, and headphones](docs/images/shr-daw-physical-connections.jpg)
 
 The basic signal paths are controller → SHR-DAW, SHR-DAW → software or hardware
 instruments, and audio → speakers or the stereo recorder. See

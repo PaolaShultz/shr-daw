@@ -20,6 +20,7 @@ FONT_CANDIDATES = (
 CELL_W, CELL_H = 12, 16
 COLS, ROWS = 40, 20
 W, H = COLS * CELL_W, ROWS * CELL_H
+OUTPUT_SCALE = 2
 
 PALETTE = {
     "Reset": (170, 170, 170),
@@ -315,7 +316,21 @@ def render(name: str, content: list[str], glyphs: list[bytes], unicode_map: dict
                     pixels[cell_x + out_x, cell_y + gy] = (
                         fg if bits & (0x80 >> source_x) else bg
                     )
-    image.save(OUT / name, optimize=True)
+    output = integer_scale(image, OUTPUT_SCALE)
+    output.save(OUT / name, optimize=True)
+
+
+def integer_scale(image: Image.Image, scale: int) -> Image.Image:
+    output = Image.new("RGB", (image.width * scale, image.height * scale))
+    source = image.load()
+    dest = output.load()
+    for y in range(image.height):
+        for x in range(image.width):
+            value = source[x, y]
+            for dy in range(scale):
+                for dx in range(scale):
+                    dest[x * scale + dx, y * scale + dy] = value
+    return output
 
 
 def main() -> None:
