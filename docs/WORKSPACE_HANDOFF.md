@@ -175,7 +175,9 @@ find presets/synthv1 user/presets/synthv1 -maxdepth 1 \
   -type f -name '*.synthv1' -print0 | xargs -0 -n1 xmllint --noout
 ```
 
-Use the repository-required Rust 1.85 toolchain for every handoff:
+Use the repository-required Rust 1.85 toolchain for changes that touch Rust,
+Cargo metadata, installer behavior, runtime configuration, preset validation,
+or application behavior:
 
 ```sh
 export PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH
@@ -191,6 +193,13 @@ installed correctly, Clippy passed with warnings denied, formatting passed,
 and the release build succeeded. Run the checks again after changes;
 this statement is history, not a substitute for current verification.
 
+For docs, README, screenshot, or image-only changes, keep validation scoped to
+the files changed instead of running the Rust suite mechanically. Examples:
+check links/references, verify image dimensions and byte sizes, compile Python
+helpers with `python3 -m py_compile`, and run `git diff --check`. Run the full
+Rust checks only when code, Cargo files, runtime behavior, or install/runtime
+scripts changed.
+
 ## Safety and fresh-session checklist
 
 1. Read `AGENTS.md`, this file, `THIRD_PARTY.md`, and the relevant source docs.
@@ -200,4 +209,5 @@ this statement is history, not a substitute for current verification.
 5. Never manage, kill, or layer processes outside SHR-DAW's ownership rules.
 6. Keep hardware routes and executable/client names in configuration.
 7. Keep the 12 mapped synthv1 controls and pickup/reset invariants intact.
-8. Validate XML, run all Rust checks, inspect the staged tree, then push.
+8. Validate only what changed, inspect the staged tree, then push. Run all Rust
+   checks for code/runtime changes, not for docs or image-only commits.

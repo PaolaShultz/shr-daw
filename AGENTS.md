@@ -15,8 +15,13 @@ The system `cargo` may be too old; use the installed Rust 1.85 toolchain:
 PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo test --locked
 ```
 
-Before handoff, also run `cargo fmt -- --check`, `cargo clippy --locked -- -D
-warnings`, and `cargo build --release --locked` with that PATH.
+Before handoff for Rust, Cargo, installer, runtime configuration, preset, or
+behavior changes, also run `cargo fmt -- --check`, `cargo clippy --locked -- -D
+warnings`, and `cargo build --release --locked` with that PATH. For docs,
+README, screenshot, or image-only changes, do not run the full Rust suite just
+because a handoff or push is happening; run targeted checks instead, such as
+link/reference checks, image size/format checks, `python3 -m py_compile` for
+Python helpers, and `git diff --check`.
 
 Install tools required to complete requested setup, validation, or publishing
 work instead of silently skipping the check or substituting a weaker one. On
