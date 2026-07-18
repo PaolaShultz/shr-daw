@@ -252,6 +252,10 @@ impl OwnedAudioGraph {
     /// non-real-time owner thread, including client-loss recovery.
     pub(crate) fn restore_direct(&mut self) -> Result<()> {
         self.callback.armed.store(false, Ordering::Release);
+        // Join the callback before creating either direct link. A callback
+        // that sampled the previous publish flag can therefore never overlap
+        // the restored dry path for even one block.
+        self.jack.deactivate();
         let mut first_error = None;
         for connection in &self.routes.direct {
             if let Err(error) = self
@@ -268,7 +272,6 @@ impl OwnedAudioGraph {
 impl Drop for OwnedAudioGraph {
     fn drop(&mut self) {
         let _ = self.restore_direct();
-        self.jack.deactivate();
         // `callback` is still alive here and is dropped only after this method.
     }
 }
@@ -574,6 +577,9 @@ mod tests {
     fn committed_activation_has_one_graph_path_and_no_direct_doubling() {
         let routes = routes();
         let mut connections = MockConnections::default();
+        connections
+            .connected
+            .insert(("unrelated:out".into(), "unrelated:in".into()));
         for direct in &routes.direct {
             connections
                 .connected
@@ -584,6 +590,10 @@ mod tests {
             .graph
             .iter()
             .map(|route| (route.source.clone(), route.destination.clone()))
+            .chain(std::iter::once((
+                "unrelated:out".into(),
+                "unrelated:in".into(),
+            )))
             .collect();
         assert_eq!(connections.connected, expected);
     }

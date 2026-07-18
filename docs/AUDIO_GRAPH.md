@@ -31,6 +31,12 @@ boundary. A rejected graph, activation failure, ambiguous engine-output pair,
 or connection failure leaves or restores the exact direct topology. The loop
 player remains on its existing direct route for this checkpoint.
 
+On normal shutdown, the publish flag is cleared and JACK deactivation joins the
+owned callback before either direct link is restored. Closing that client then
+releases only its registered ports and their graph-boundary connections. This
+ordering prevents a final already-started graph block from overlapping the
+restored direct path.
+
 `src/jack.rs` is the shared dynamic-loading and lifetime boundary for current
 and future JACK clients. A caller owns its callback allocation and keeps it
 alive until client deactivation returns.

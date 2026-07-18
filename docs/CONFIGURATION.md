@@ -49,8 +49,9 @@ then both direct links are removed transactionally before graph output is
 published at a callback boundary. Validation, client activation, exact port
 resolution, or connection failure leaves or restores direct playback. Graph
 shutdown restores only those two managed direct links and closing the owned
-client releases its own ports; unrelated JACK clients and connections are not
-changed.
+client releases its own ports. The callback is deactivated before those direct
+links are restored, preventing a final graph block from doubling the source;
+unrelated JACK clients and connections are not changed.
 
 Do not enable this merely to perform a routine setup check. The first live use
 is the authorized, level-matched dry-path comparison described in
