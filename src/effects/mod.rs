@@ -188,6 +188,26 @@ impl EffectSlot {
         self.kind
     }
 
+    /// Apply a compatible persisted instance while retaining recursive DSP
+    /// history, smoothing state, deterministic noise state, and meter handles.
+    pub fn apply_instance(&mut self, effect: &EffectInstance) -> Result<(), EffectError> {
+        if effect.id != self.id || effect.kind != self.kind {
+            return Err(EffectError::new("effect instance is not state-compatible"));
+        }
+        effect_schema::validate(effect).map_err(|error| EffectError::new(error.to_string()))?;
+        for spec in effect_schema::schema(effect.kind) {
+            self.set_parameter(
+                spec.name,
+                effect
+                    .parameters
+                    .get(spec.name)
+                    .copied()
+                    .unwrap_or(spec.default),
+            )?;
+        }
+        self.set_bypass(effect.bypass)
+    }
+
     pub fn meters(&self) -> MeterHandles {
         MeterHandles {
             input: Arc::clone(&self.published_input),

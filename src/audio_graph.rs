@@ -121,6 +121,128 @@ pub struct EffectInstance {
     pub owned_memory_bytes: usize,
 }
 
+/// Project-owned, ordered inserts for the single managed instrument source.
+/// JACK boundary names and runtime node IDs are deliberately not persisted.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct InsertRack {
+    #[serde(default)]
+    pub effects: Vec<EffectInstance>,
+    #[serde(default)]
+    pub order: Vec<EffectId>,
+}
+
+impl InsertRack {
+    pub fn validate(&self) -> Result<(), GraphError> {
+        if self.effects.len() > MAX_CHAIN_EFFECTS || self.order.len() > MAX_CHAIN_EFFECTS {
+            return Err(GraphError::new("serial effect chain bound exceeded"));
+        }
+        let mut effects = BTreeMap::new();
+        for effect in &self.effects {
+            if effect.id == 0 || effects.insert(effect.id, effect).is_some() {
+                return Err(GraphError::new("effect IDs must be unique and non-zero"));
+            }
+            if effect.version != EFFECT_FORMAT_VERSION {
+                return Err(GraphError::new("unsupported effect version"));
+            }
+            if !is_phase_two_insert(effect.kind) {
+                return Err(GraphError::new("effect kind is not available in Phase 2"));
+            }
+            crate::effect_schema::validate(effect)
+                .map_err(|error| GraphError::new(error.to_string()))?;
+        }
+        if effects.len() != self.order.len() {
+            return Err(GraphError::new("rack effects and order must match exactly"));
+        }
+        let mut ordered = BTreeSet::new();
+        for id in &self.order {
+            if !effects.contains_key(id) || !ordered.insert(*id) {
+                return Err(GraphError::new(
+                    "rack order contains a missing or duplicate effect",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn add(&mut self, kind: EffectKind) -> Result<EffectId, GraphError> {
+        if !is_phase_two_insert(kind) {
+            return Err(GraphError::new("effect kind is not available in Phase 2"));
+        }
+        if self.effects.len() >= MAX_CHAIN_EFFECTS {
+            return Err(GraphError::new("serial effect chain bound exceeded"));
+        }
+        let id = self
+            .effects
+            .iter()
+            .map(|effect| effect.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .filter(|id| *id != 0)
+            .ok_or_else(|| GraphError::new("effect ID space exhausted"))?;
+        self.effects.push(EffectInstance {
+            id,
+            kind,
+            version: EFFECT_FORMAT_VERSION,
+            bypass: false,
+            parameters: crate::effect_schema::defaults(kind),
+            owned_memory_bytes: 0,
+        });
+        self.order.push(id);
+        Ok(id)
+    }
+
+    pub fn remove(&mut self, id: EffectId) -> Result<EffectInstance, GraphError> {
+        let effect_index = self
+            .effects
+            .iter()
+            .position(|effect| effect.id == id)
+            .ok_or_else(|| GraphError::new("effect is not in the rack"))?;
+        let order_index = self
+            .order
+            .iter()
+            .position(|ordered| *ordered == id)
+            .ok_or_else(|| GraphError::new("effect is not in the rack order"))?;
+        self.order.remove(order_index);
+        Ok(self.effects.remove(effect_index))
+    }
+
+    pub fn move_to(&mut self, id: EffectId, index: usize) -> Result<(), GraphError> {
+        if index >= self.order.len() {
+            return Err(GraphError::new("rack destination is outside the chain"));
+        }
+        let current = self
+            .order
+            .iter()
+            .position(|ordered| *ordered == id)
+            .ok_or_else(|| GraphError::new("effect is not in the rack order"))?;
+        let id = self.order.remove(current);
+        self.order.insert(index, id);
+        Ok(())
+    }
+
+    pub fn effect(&self, id: EffectId) -> Option<&EffectInstance> {
+        self.effects.iter().find(|effect| effect.id == id)
+    }
+
+    pub fn effect_mut(&mut self, id: EffectId) -> Option<&mut EffectInstance> {
+        self.effects.iter_mut().find(|effect| effect.id == id)
+    }
+}
+
+pub const fn is_phase_two_insert(kind: EffectKind) -> bool {
+    matches!(
+        kind,
+        EffectKind::Utility
+            | EffectKind::Eq
+            | EffectKind::Compressor
+            | EffectKind::Distortion
+            | EffectKind::Filter
+            | EffectKind::Gate
+            | EffectKind::Crusher
+    )
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SourceChain {
     pub source_node: NodeId,
@@ -663,6 +785,44 @@ mod tests {
         let encoded = serde_json::to_vec(&graph).unwrap();
         let decoded: GraphDefinition = serde_json::from_slice(&encoded).unwrap();
         assert_eq!(decoded, graph);
+    }
+
+    #[test]
+    fn insert_rack_allocates_stable_ids_and_reorders_without_recreating_effects() {
+        let mut rack = InsertRack::default();
+        let eq = rack.add(EffectKind::Eq).unwrap();
+        let compressor = rack.add(EffectKind::Compressor).unwrap();
+        let crusher = rack.add(EffectKind::Crusher).unwrap();
+        rack.effect_mut(compressor)
+            .unwrap()
+            .parameters
+            .insert("threshold_db".into(), -24.0);
+
+        rack.move_to(compressor, 0).unwrap();
+        assert_eq!(rack.order, [compressor, eq, crusher]);
+        assert_eq!(
+            rack.effect(compressor).unwrap().parameters["threshold_db"],
+            -24.0
+        );
+        let removed = rack.remove(eq).unwrap();
+        assert_eq!(removed.id, eq);
+        assert_eq!(rack.add(EffectKind::Gate).unwrap(), crusher + 1);
+        rack.validate().unwrap();
+    }
+
+    #[test]
+    fn insert_rack_rejects_unknown_duplicate_and_phase_three_content() {
+        let mut rack = InsertRack::default();
+        let id = rack.add(EffectKind::Eq).unwrap();
+        rack.order.push(id);
+        assert!(rack.validate().is_err());
+
+        let mut rack = InsertRack::default();
+        assert!(rack.add(EffectKind::Delay).is_err());
+        for _ in 0..MAX_CHAIN_EFFECTS {
+            rack.add(EffectKind::Utility).unwrap();
+        }
+        assert!(rack.add(EffectKind::Utility).is_err());
     }
 
     #[test]

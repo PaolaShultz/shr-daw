@@ -165,6 +165,7 @@ struct RuntimeNode {
 }
 
 pub struct GraphPlan {
+    sample_rate: u32,
     maximum_frames: usize,
     buffers: Vec<Box<[StereoFrame]>>,
     nodes: Vec<RuntimeNode>,
@@ -175,6 +176,16 @@ pub struct GraphPlan {
 
 impl GraphPlan {
     pub fn compile(graph: &GraphDefinition) -> Result<Self, PlanError> {
+        Self::compile_retaining(graph, None)
+    }
+
+    /// Compile on the control thread, moving compatible effect slots out of
+    /// the previous plan so reorder/publication does not clear filter,
+    /// detector, hold, dither, smoothing, or metering state.
+    pub fn compile_retaining(
+        graph: &GraphDefinition,
+        previous: Option<Self>,
+    ) -> Result<Self, PlanError> {
         let order = graph
             .validate()
             .map_err(|error| PlanError::new(error.to_string()))?;
@@ -204,6 +215,16 @@ impl GraphPlan {
             .iter()
             .map(|effect| (effect.id, effect))
             .collect::<BTreeMap<_, _>>();
+        let mut retained = BTreeMap::new();
+        if let Some(previous) = previous.filter(|plan| {
+            plan.sample_rate == graph.sample_rate && plan.maximum_frames == maximum_frames
+        }) {
+            for node in previous.nodes {
+                if let Operation::Effect(slot) = node.operation {
+                    retained.insert(slot.id(), slot);
+                }
+            }
+        }
         let mut nodes = Vec::with_capacity(order.len());
         let mut source_nodes = Vec::new();
         let mut sink_nodes = Vec::new();
@@ -219,10 +240,18 @@ impl GraphPlan {
                     let effect = effects
                         .get(effect_id)
                         .ok_or_else(|| PlanError::new("processor effect missing"))?;
-                    Operation::Effect(Box::new(
-                        EffectSlot::compile(effect, graph.sample_rate, maximum_frames)
-                            .map_err(|error| PlanError::new(error.to_string()))?,
-                    ))
+                    let slot = match retained.remove(effect_id) {
+                        Some(mut slot) if slot.kind() == effect.kind => {
+                            slot.apply_instance(effect)
+                                .map_err(|error| PlanError::new(error.to_string()))?;
+                            slot
+                        }
+                        _ => Box::new(
+                            EffectSlot::compile(effect, graph.sample_rate, maximum_frames)
+                                .map_err(|error| PlanError::new(error.to_string()))?,
+                        ),
+                    };
+                    Operation::Effect(slot)
                 }
                 NodeKind::Sink { .. } => {
                     sink_nodes.push(id);
@@ -243,6 +272,7 @@ impl GraphPlan {
             .map(|_| vec![StereoFrame::SILENCE; maximum_frames].into_boxed_slice())
             .collect();
         Ok(Self {
+            sample_rate: graph.sample_rate,
             maximum_frames,
             buffers,
             nodes,
@@ -297,6 +327,13 @@ impl GraphPlan {
     pub fn effect_meters(&self, node_id: NodeId) -> Option<MeterHandles> {
         self.nodes.iter().find_map(|node| match &node.operation {
             Operation::Effect(slot) if node.id == node_id => Some(slot.meters()),
+            _ => None,
+        })
+    }
+
+    pub fn effect_meters_by_id(&self, effect_id: u32) -> Option<MeterHandles> {
+        self.nodes.iter().find_map(|node| match &node.operation {
+            Operation::Effect(slot) if slot.id() == effect_id => Some(slot.meters()),
             _ => None,
         })
     }
@@ -533,6 +570,30 @@ mod tests {
         assert!(plan.output_buffer(4, 128).unwrap().iter().all(|frame| {
             frame.left.is_finite() && frame.right.is_finite() && frame.left.abs() <= 0.5
         }));
+    }
+
+    #[test]
+    fn compatible_instance_id_retains_runtime_and_meter_handles_after_reorder() {
+        let first = GraphPlan::compile(&graph(true)).unwrap();
+        let meters = first.effect_meters_by_id(1).unwrap();
+        let mut reordered = graph(true);
+        reordered
+            .nodes
+            .iter_mut()
+            .find(|node| matches!(node.kind, NodeKind::Processor { .. }))
+            .unwrap()
+            .id = 9;
+        reordered.edges[1].to = 9;
+        reordered.edges[2].from = 9;
+        reordered.effects[0]
+            .parameters
+            .insert("trim_db".into(), -3.0);
+
+        let second = GraphPlan::compile_retaining(&reordered, Some(first)).unwrap();
+        let retained = second.effect_meters_by_id(1).unwrap();
+        assert!(Arc::ptr_eq(&meters.input, &retained.input));
+        assert!(Arc::ptr_eq(&meters.output, &retained.output));
+        assert!(second.effect_meters(9).is_some());
     }
 
     #[test]
