@@ -84,8 +84,29 @@ over 29,039 callbacks. Normal shutdown exposed the exact direct fallback before
 the managed synth exited; an unrelated capture connection survived; full JACK
 loss left no stale owned resources; and a subsequent direct start succeeded.
 The ignored local `audio.graph.enabled` flag was returned to `false`. See
-`docs/PHASE1_AUDIO_GRAPH_MEASUREMENT.md`. Phase 2 has not begun, and no creative
-effect is approved by this dry-path result.
+`docs/PHASE1_AUDIO_GRAPH_MEASUREMENT.md`.
+
+Phase 2's bounded eight-slot source insert rack is implemented: five-section
+EQ, linked feed-forward compressor, three honestly named distortion transfers,
+crusher/sample-rate reducer, linked gate/expander, and stable multimode filter.
+It includes strict schemas and persistence, stable IDs and compatible state
+retention, allocation-free preallocated processing, smoothing/click-conscious
+bypass, compact 40x20 editors, the four-page controller contract, and meters.
+Deterministic response/curve/stability tests provide objective technical
+quality measurements; musical preference remains a human curation decision.
+
+The authorized Raspberry Pi 4 checkpoint on 2026-07-18/19 used the dedicated
+audio core, AudioBox USB 96, JACK 48 kHz/3 periods, and low-velocity `Compact
+Bass`. At 128 frames, an eight-effect capacity chain ran 30.084 seconds with
+11,335 callbacks, 164.390 us mean, 185 us p95, 202 us p99, 266.313 us maximum,
+and zero missed/oversized callbacks. At 64 frames it ran 60.038 seconds with
+45,151 callbacks, 87.809 us mean, 107 us p95, 132 us p99, 446.516 us maximum,
+and zero missed/oversized callbacks. There were no xruns in either sustained
+window; synth-client xruns began at deliberate teardown and are recorded as a
+future cleanup issue. The service was restored to 128 frames, the ignored local
+graph flag remains `false`, the engine was stopped, and no stale JACK resources
+remained. See `docs/PHASE2_AUDIO_GRAPH_MEASUREMENT.md`. Phase 3 must not begin
+until the user completes the KEEP/IMPROVE/DROP curation sheet.
 
 At installation time the AudioBox USB 96 was disconnected. Consequently the
 pre-existing `jack.service` remained failed because ALSA could not resolve
@@ -242,7 +263,9 @@ this statement is history, not a substitute for current verification.
 
 After the Phase 1 metrics/recovery changes on 2026-07-18, formatting, all 283
 Rust tests, warning-denied Clippy, and the optimized locked release build passed
-again with Rust 1.85.
+again with Rust 1.85. At the Phase 2 final checkpoint, all 333 Rust tests,
+formatting, warning-denied Clippy, and the optimized locked release build passed
+with Rust 1.85.
 
 For docs, README, screenshot, or image-only changes, keep validation scoped to
 the files changed instead of running the Rust suite mechanically. Examples:

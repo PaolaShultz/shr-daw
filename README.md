@@ -149,8 +149,9 @@ does not start or restart JACK.
 The SHR-owned audio graph remains opt-in and disabled by default. Its authorized
 Raspberry Pi dry-path checkpoint passed with bit-exact stereo output and no
 callback deadline misses. Phase 2's bounded insert processors and compact FX
-editors are implemented; their final Raspberry Pi performance/listening gate
-is still recorded separately. Direct synth playback remains the fallback if
+editors are implemented, and both 128- and 64-frame Raspberry Pi stress runs
+passed without sustained-window deadline misses. Human musical curation remains
+open. Direct synth playback remains the fallback if
 graph validation, activation, or an exact JACK connection fails; see the
 [audio graph contract](docs/AUDIO_GRAPH.md), [Phase 1 measurement](docs/PHASE1_AUDIO_GRAPH_MEASUREMENT.md),
 and [Phase 2 measurement](docs/PHASE2_AUDIO_GRAPH_MEASUREMENT.md).

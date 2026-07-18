@@ -63,8 +63,22 @@ is disabled, but direct playback does not process it.
 Do not enable this merely to perform a routine setup check. The first
 authorized dry-path comparison is recorded in
 [Phase 1 dry audio graph measurement](PHASE1_AUDIO_GRAPH_MEASUREMENT.md). The
-Phase 2 software gate and pending Pi/listening checkpoint are recorded in
+Phase 2 software and Pi performance gates, plus the pending human listening
+checkpoint, are recorded in
 [Phase 2 insert-effects measurement](PHASE2_AUDIO_GRAPH_MEASUREMENT.md).
+
+The maintainer-only low-gain performance command is:
+
+```sh
+shr phase2-checkpoint ENGINE:PRESET [PROFILE] [SECONDS]
+```
+
+Profiles are `dry`, `eq`, `compressor`, `soft-cubic`, `hard-clip`,
+`asymmetric`, `gate`, `filter-lp`, `filter-bp`, `filter-hp`, `crusher`, and
+`full`. Duration is bounded to 1–60 seconds. The command enables the graph only
+in its cloned in-memory configuration, sends note 48 at velocity 8, measures
+the owned graph and synth processes, restores the exact direct route, and stops
+only the engine it owns. It does not persist graph enablement or JACK settings.
 
 ## Controller menu layouts
 
