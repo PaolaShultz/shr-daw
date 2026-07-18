@@ -4,6 +4,16 @@ This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.
 
+## Irregular Patterns, swing, and groove timing
+
+The post-competition plan for arbitrary Pattern shortening/growing, individual
+early/late hits, Pattern-wide swing, groove tools, expressive tracker capture,
+and optional formal odd-meter metadata is in [Post-competition rhythm
+plan](POST_COMPETITION_RHYTHM_PLAN.md). The first planned release uses the
+existing arbitrary row-count scheduler and a transactional Length editor, so a
+loaded drum groove can be cropped freely and committed once without repetitive
+confirmation dialogs.
+
 ## Audio effects graph: inserts, sends, and returns
 
 Implementation has begun with the shared JACK boundary, pure DSP foundations,

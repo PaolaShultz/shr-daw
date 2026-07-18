@@ -203,7 +203,9 @@ for the judge path.
 - [Physical connections](docs/CONNECTIONS.md) — simple and expanded hardware
   setups, MIDI paths, and audio paths.
 - [Future improvements](docs/FUTURE_IMPROVEMENTS.md) — intentionally deferred
-  routing, insert/send effects, and their safety requirements.
+  rhythm, routing, insert/send effects, and their safety requirements.
+- [Post-competition rhythm plan](docs/POST_COMPETITION_RHYTHM_PLAN.md) — staged
+  arbitrary Pattern length, microtiming, swing, groove, and optional meter work.
 
 ### Install and customize it
 
