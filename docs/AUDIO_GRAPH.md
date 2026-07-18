@@ -170,9 +170,11 @@ limits, reset and non-finite recovery, stereo independence, long-running
 finite state, chunk-size invariance, and callback-path allocation detection.
 
 The dry client additionally publishes allocation-free callback count, total,
-mean, maximum, missed-deadline, and oversized-callback counters. Percentile
-sampling and the full measurement report remain owner-thread/Pi checkpoint
-work rather than callback work.
+mean, maximum, missed-deadline, and oversized-callback counters. One fixed
+one-microsecond histogram increment per callback lets the owner calculate p95
+and p99 outside the callback. The headless daemon records the final timing
+summary in its private engine log during an orderly stop; the full measurement
+report remains owner-thread/Pi checkpoint work.
 
 ## Measurement and curation gates
 

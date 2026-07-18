@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
+const TIMING_HISTOGRAM_BUCKET_NANOSECONDS: u64 = 1_000;
+const TIMING_HISTOGRAM_BUCKETS: usize = 8_193;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlanError(String);
@@ -39,6 +41,8 @@ pub struct CallbackTimingSnapshot {
     pub callbacks: u64,
     pub total_nanoseconds: u64,
     pub maximum_nanoseconds: u64,
+    pub p95_nanoseconds: u64,
+    pub p99_nanoseconds: u64,
     pub missed_deadlines: u64,
     pub oversized_callbacks: u64,
 }
@@ -52,15 +56,30 @@ impl CallbackTimingSnapshot {
 }
 
 /// Lock-free counters written by the JACK callback and sampled by the owner.
-/// Percentiles are deliberately calculated outside the callback after the Pi
-/// measurement gate; these counters establish the allocation-free foundation.
-#[derive(Default)]
+/// The callback increments one fixed one-microsecond histogram bucket. The
+/// owner scans those buckets to calculate percentiles outside the callback.
 pub struct CallbackTimingCounters {
     callbacks: AtomicU64,
     total_nanoseconds: AtomicU64,
     maximum_nanoseconds: AtomicU64,
     missed_deadlines: AtomicU64,
     oversized_callbacks: AtomicU64,
+    histogram: Box<[AtomicU64]>,
+}
+
+impl Default for CallbackTimingCounters {
+    fn default() -> Self {
+        Self {
+            callbacks: AtomicU64::new(0),
+            total_nanoseconds: AtomicU64::new(0),
+            maximum_nanoseconds: AtomicU64::new(0),
+            missed_deadlines: AtomicU64::new(0),
+            oversized_callbacks: AtomicU64::new(0),
+            histogram: (0..TIMING_HISTOGRAM_BUCKETS)
+                .map(|_| AtomicU64::new(0))
+                .collect(),
+        }
+    }
 }
 
 impl CallbackTimingCounters {
@@ -76,6 +95,12 @@ impl CallbackTimingCounters {
             .fetch_add(elapsed_nanoseconds, Ordering::Relaxed);
         self.maximum_nanoseconds
             .fetch_max(elapsed_nanoseconds, Ordering::Relaxed);
+        let bucket = elapsed_nanoseconds.saturating_add(TIMING_HISTOGRAM_BUCKET_NANOSECONDS - 1)
+            / TIMING_HISTOGRAM_BUCKET_NANOSECONDS;
+        let bucket = usize::try_from(bucket)
+            .unwrap_or(usize::MAX)
+            .min(TIMING_HISTOGRAM_BUCKETS - 1);
+        self.histogram[bucket].fetch_add(1, Ordering::Relaxed);
         if matches!(status, ProcessStatus::OversizedBlock) {
             self.oversized_callbacks.fetch_add(1, Ordering::Relaxed);
         }
@@ -89,14 +114,41 @@ impl CallbackTimingCounters {
     }
 
     pub fn snapshot(&self) -> CallbackTimingSnapshot {
+        let maximum_nanoseconds = self.maximum_nanoseconds.load(Ordering::Acquire);
+        let histogram = self
+            .histogram
+            .iter()
+            .map(|bucket| bucket.load(Ordering::Acquire))
+            .collect::<Vec<_>>();
         CallbackTimingSnapshot {
             callbacks: self.callbacks.load(Ordering::Acquire),
             total_nanoseconds: self.total_nanoseconds.load(Ordering::Acquire),
-            maximum_nanoseconds: self.maximum_nanoseconds.load(Ordering::Acquire),
+            maximum_nanoseconds,
+            p95_nanoseconds: percentile_nanoseconds(&histogram, 95, maximum_nanoseconds),
+            p99_nanoseconds: percentile_nanoseconds(&histogram, 99, maximum_nanoseconds),
             missed_deadlines: self.missed_deadlines.load(Ordering::Acquire),
             oversized_callbacks: self.oversized_callbacks.load(Ordering::Acquire),
         }
     }
+}
+
+fn percentile_nanoseconds(histogram: &[u64], percentile: u64, maximum: u64) -> u64 {
+    let samples = histogram.iter().copied().sum::<u64>();
+    if samples == 0 {
+        return 0;
+    }
+    let target = samples.saturating_mul(percentile).saturating_add(99) / 100;
+    let mut seen = 0_u64;
+    for (index, count) in histogram.iter().copied().enumerate() {
+        seen = seen.saturating_add(count);
+        if seen >= target {
+            if index == TIMING_HISTOGRAM_BUCKETS - 1 {
+                return maximum;
+            }
+            return (index as u64).saturating_mul(TIMING_HISTOGRAM_BUCKET_NANOSECONDS);
+        }
+    }
+    maximum
 }
 
 enum Operation {
@@ -517,10 +569,25 @@ mod tests {
                 callbacks: 3,
                 total_nanoseconds: 4_500_000,
                 maximum_nanoseconds: 3_000_000,
+                p95_nanoseconds: 3_000_000,
+                p99_nanoseconds: 3_000_000,
                 missed_deadlines: 1,
                 oversized_callbacks: 1,
             }
         );
         assert_eq!(counters.snapshot().mean_nanoseconds(), 1_500_000);
+    }
+
+    #[test]
+    fn callback_timing_percentiles_are_calculated_from_fixed_buckets() {
+        let counters = CallbackTimingCounters::default();
+        assert_no_allocations(|| {
+            for microseconds in 1..=100 {
+                counters.record(128, 48_000, microseconds * 1_000, ProcessStatus::Complete);
+            }
+        });
+        let snapshot = counters.snapshot();
+        assert_eq!(snapshot.p95_nanoseconds, 95_000);
+        assert_eq!(snapshot.p99_nanoseconds, 99_000);
     }
 }

@@ -53,6 +53,11 @@ client releases its own ports. The callback is deactivated before those direct
 links are restored, preventing a final graph block from doubling the source;
 unrelated JACK clients and connections are not changed.
 
+For the authorized checkpoint, an orderly `shr stop` writes the owned graph's
+callback count, mean, p95, p99, maximum, missed-deadline count, and oversized
+callback count to the private `engine.log`. This measurement output is not a
+claim that an unmeasured graph or future effect rack is Raspberry Pi safe.
+
 Do not enable this merely to perform a routine setup check. The first live use
 is the authorized, level-matched dry-path comparison described in
 [Audio graph and DSP contract](AUDIO_GRAPH.md); no creative effects are active

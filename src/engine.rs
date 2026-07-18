@@ -1,4 +1,5 @@
 use crate::audio_graph_client::OwnedAudioGraph;
+use crate::audio_graph_runtime::CallbackTimingSnapshot;
 use crate::config::{BackendConfig, RuntimeConfig};
 use crate::control::{self, CONTROLS};
 use crate::pads::{EncoderAction, PadAction, PadConfig};
@@ -396,22 +397,27 @@ impl Engine {
         {
             return None;
         }
-        let mut graph = self.audio_graph.take()?;
-        let timing = graph.timing();
-        let restored = graph.restore_direct();
+        let (timing, restored) = self.stop_audio_graph()?;
         let status = match restored {
             Ok(()) => format!(
-                "AUDIO GRAPH LOST · direct route restored · {} callbacks, {} deadlines missed",
-                timing.callbacks, timing.missed_deadlines
+                "AUDIO GRAPH LOST · direct route restored · {}",
+                audio_graph_metrics(&timing)
             ),
             Err(error) => format!(
-                "AUDIO GRAPH LOST · direct restore unavailable: {error:#} · {} callbacks, {} deadlines missed",
-                timing.callbacks, timing.missed_deadlines
+                "AUDIO GRAPH LOST · direct restore unavailable: {error:#} · {}",
+                audio_graph_metrics(&timing)
             ),
         };
         self.audio_graph_fallback = Some(status.clone());
-        drop(graph);
         Some(status)
+    }
+
+    fn stop_audio_graph(&mut self) -> Option<(CallbackTimingSnapshot, Result<()>)> {
+        let mut graph = self.audio_graph.take()?;
+        let restored = graph.restore_direct();
+        let timing = graph.timing();
+        drop(graph);
+        Some((timing, restored))
     }
 
     pub fn send(&self, message: &[u8]) -> Result<()> {
@@ -1439,16 +1445,41 @@ pub fn daemon(preset: Preset, state: PathBuf, config: RuntimeConfig) -> Result<(
     }
     router.arm_pickup(&initial_values(&preset)?);
     let mut engine = Engine::start(&preset, &state, router.output(), &config)?;
+    if let Some(route) = engine.audio_route_status() {
+        eprintln!("AUDIO ROUTE · {route}");
+    }
     write_owner(&state.join("daemon.pid"), std::process::id() as i32)?;
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&stop))?;
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&stop))?;
     while !stop.load(std::sync::atomic::Ordering::Relaxed) && engine.alive() {
+        if let Some(status) = engine.poll_audio_graph() {
+            eprintln!("{status}");
+        }
         thread::sleep(Duration::from_millis(100));
+    }
+    if let Some((timing, restored)) = engine.stop_audio_graph() {
+        eprintln!("AUDIO GRAPH METRICS · {}", audio_graph_metrics(&timing));
+        if let Err(error) = restored {
+            eprintln!("AUDIO GRAPH SHUTDOWN · direct restore unavailable: {error:#}");
+        }
     }
     drop(engine);
     let _ = fs::remove_file(state.join("daemon.pid"));
     Ok(())
+}
+
+fn audio_graph_metrics(timing: &CallbackTimingSnapshot) -> String {
+    format!(
+        "callbacks={} mean_us={:.3} p95_us={:.3} p99_us={:.3} max_us={:.3} missed_deadlines={} oversized_callbacks={}",
+        timing.callbacks,
+        timing.mean_nanoseconds() as f64 / 1_000.0,
+        timing.p95_nanoseconds as f64 / 1_000.0,
+        timing.p99_nanoseconds as f64 / 1_000.0,
+        timing.maximum_nanoseconds as f64 / 1_000.0,
+        timing.missed_deadlines,
+        timing.oversized_callbacks,
+    )
 }
 
 pub fn initial_values(preset: &Preset) -> Result<std::collections::HashMap<u8, f32>> {
