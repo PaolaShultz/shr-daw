@@ -1,6 +1,8 @@
 //! Preallocated, allocation-free insert-effect runtime slots.
 
 mod compressor;
+mod crusher;
+mod distortion;
 mod eq;
 
 use crate::audio_graph::{EffectId, EffectInstance, EffectKind};
@@ -11,6 +13,8 @@ use std::sync::Arc;
 
 pub use compressor::AtomicGainReduction;
 use compressor::Compressor;
+use crusher::Crusher;
+use distortion::Distortion;
 use eq::Eq;
 
 const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
@@ -44,6 +48,8 @@ enum Processor {
     Utility(Utility),
     Eq(Box<Eq>),
     Compressor(Box<Compressor>),
+    Distortion(Box<Distortion>),
+    Crusher(Box<Crusher>),
 }
 
 impl Processor {
@@ -55,6 +61,11 @@ impl Processor {
                 effect,
                 sample_rate,
             )?))),
+            EffectKind::Distortion => Ok(Self::Distortion(Box::new(Distortion::compile(
+                effect,
+                sample_rate,
+            )?))),
+            EffectKind::Crusher => Ok(Self::Crusher(Box::new(Crusher::compile(effect)?))),
             _ => Err(EffectError::new(format!(
                 "{:?} processing is not implemented",
                 effect.kind
@@ -68,6 +79,8 @@ impl Processor {
             Self::Utility(effect) => effect.process(frame),
             Self::Eq(effect) => effect.process(frame),
             Self::Compressor(effect) => effect.process(frame),
+            Self::Distortion(effect) => effect.process(frame),
+            Self::Crusher(effect) => effect.process(frame),
         }
     }
 
@@ -76,6 +89,8 @@ impl Processor {
             Self::Utility(effect) => effect.set_parameter(name, value),
             Self::Eq(effect) => effect.set_parameter(name, value),
             Self::Compressor(effect) => effect.set_parameter(name, value),
+            Self::Distortion(effect) => effect.set_parameter(name, value),
+            Self::Crusher(effect) => effect.set_parameter(name, value),
         }
     }
 
@@ -84,13 +99,15 @@ impl Processor {
             Self::Utility(effect) => effect.reset(),
             Self::Eq(effect) => effect.reset(),
             Self::Compressor(effect) => effect.reset(),
+            Self::Distortion(effect) => effect.reset(),
+            Self::Crusher(effect) => effect.reset(),
         }
     }
 
     fn gain_reduction(&self) -> Option<Arc<AtomicGainReduction>> {
         match self {
             Self::Compressor(effect) => Some(effect.gain_reduction()),
-            Self::Utility(_) | Self::Eq(_) => None,
+            Self::Utility(_) | Self::Eq(_) | Self::Distortion(_) | Self::Crusher(_) => None,
         }
     }
 
@@ -190,11 +207,17 @@ impl EffectSlot {
                 dry
             };
             let wet = self.processed_mix.next_value();
-            let output = StereoFrame::new(
-                dry.left + (processed.left - dry.left) * wet,
-                dry.right + (processed.right - dry.right) * wet,
-            )
-            .finite_or_silence();
+            let output = if wet <= 0.0 {
+                dry
+            } else if wet >= 1.0 {
+                processed
+            } else {
+                StereoFrame::new(
+                    dry.left + (processed.left - dry.left) * wet,
+                    dry.right + (processed.right - dry.right) * wet,
+                )
+                .finite_or_silence()
+            };
             *frame = self.output_meter.process(output);
         }
         self.published_input
@@ -335,7 +358,7 @@ mod tests {
         assert_eq!(slot.id(), 7);
         assert_eq!(slot.kind(), EffectKind::Utility);
         let mut effect = utility(BTreeMap::new(), false);
-        effect.kind = EffectKind::Distortion;
+        effect.kind = EffectKind::Gate;
         assert!(EffectSlot::compile(&effect, 48_000, 128).is_err());
     }
 
