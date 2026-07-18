@@ -4,6 +4,8 @@ mod compressor;
 mod crusher;
 mod distortion;
 mod eq;
+mod filter;
+mod gate;
 
 use crate::audio_graph::{EffectId, EffectInstance, EffectKind};
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
@@ -16,6 +18,8 @@ use compressor::Compressor;
 use crusher::Crusher;
 use distortion::Distortion;
 use eq::Eq;
+use filter::Filter;
+use gate::Gate;
 
 const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
 const BYPASS_FADE_MILLISECONDS: f32 = 5.0;
@@ -50,6 +54,8 @@ enum Processor {
     Compressor(Box<Compressor>),
     Distortion(Box<Distortion>),
     Crusher(Box<Crusher>),
+    Gate(Box<Gate>),
+    Filter(Box<Filter>),
 }
 
 impl Processor {
@@ -66,6 +72,11 @@ impl Processor {
                 sample_rate,
             )?))),
             EffectKind::Crusher => Ok(Self::Crusher(Box::new(Crusher::compile(effect)?))),
+            EffectKind::Gate => Ok(Self::Gate(Box::new(Gate::compile(effect, sample_rate)?))),
+            EffectKind::Filter => Ok(Self::Filter(Box::new(Filter::compile(
+                effect,
+                sample_rate,
+            )?))),
             _ => Err(EffectError::new(format!(
                 "{:?} processing is not implemented",
                 effect.kind
@@ -81,6 +92,8 @@ impl Processor {
             Self::Compressor(effect) => effect.process(frame),
             Self::Distortion(effect) => effect.process(frame),
             Self::Crusher(effect) => effect.process(frame),
+            Self::Gate(effect) => effect.process(frame),
+            Self::Filter(effect) => effect.process(frame),
         }
     }
 
@@ -91,6 +104,8 @@ impl Processor {
             Self::Compressor(effect) => effect.set_parameter(name, value),
             Self::Distortion(effect) => effect.set_parameter(name, value),
             Self::Crusher(effect) => effect.set_parameter(name, value),
+            Self::Gate(effect) => effect.set_parameter(name, value),
+            Self::Filter(effect) => effect.set_parameter(name, value),
         }
     }
 
@@ -101,13 +116,20 @@ impl Processor {
             Self::Compressor(effect) => effect.reset(),
             Self::Distortion(effect) => effect.reset(),
             Self::Crusher(effect) => effect.reset(),
+            Self::Gate(effect) => effect.reset(),
+            Self::Filter(effect) => effect.reset(),
         }
     }
 
     fn gain_reduction(&self) -> Option<Arc<AtomicGainReduction>> {
         match self {
             Self::Compressor(effect) => Some(effect.gain_reduction()),
-            Self::Utility(_) | Self::Eq(_) | Self::Distortion(_) | Self::Crusher(_) => None,
+            Self::Utility(_)
+            | Self::Eq(_)
+            | Self::Distortion(_)
+            | Self::Crusher(_)
+            | Self::Gate(_)
+            | Self::Filter(_) => None,
         }
     }
 
@@ -358,7 +380,7 @@ mod tests {
         assert_eq!(slot.id(), 7);
         assert_eq!(slot.kind(), EffectKind::Utility);
         let mut effect = utility(BTreeMap::new(), false);
-        effect.kind = EffectKind::Gate;
+        effect.kind = EffectKind::Delay;
         assert!(EffectSlot::compile(&effect, 48_000, 128).is_err());
     }
 
