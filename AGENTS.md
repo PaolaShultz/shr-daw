@@ -81,18 +81,3 @@ at a time and separate user-performed actions from machine inspection. Research
 unfamiliar or current hardware, software, music, and product details from
 authoritative sources instead of guessing, and preserve source/provenance notes
 when the result affects configuration, sounds, or redistribution.
-
-## Build Week record
-
-After meaningful work, append a short entry to `docs/buildweek_journal.md`.
-Record the date, subsystem, completed work, important decisions or fixes, the
-main challenge, and any milestone. Include material non-code work such as MIDI
-inspection, physical-routing guidance, device configuration, sound design,
-rhythm design, validation, and publishing preparation. Clearly distinguish
-repository evidence, user-performed physical/listening work, and Codex-assisted
-work; do not reconstruct uncertain details as facts.
-
-Refresh the reproducible snapshot in `docs/BUILD_WEEK.md` after a substantial
-milestone. Keep ideas and candidate roadmap items separate from selected
-implementation tasks, and favor a stable, easily demonstrated workflow over
-unselected feature expansion.

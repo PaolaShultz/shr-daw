@@ -222,11 +222,7 @@ for the judge path.
 - [Workspace handoff](docs/WORKSPACE_HANDOFF.md) — current development and
   local-machine context.
 - [Build Week record](docs/BUILD_WEEK.md) — Codex's development role, current
-  metrics, eligibility timeline, and short journal.
-- [Build Week audit](docs/BUILD_WEEK_AUDIT.md) — module ledger, ranked findings,
-  validation evidence, and remaining human checks.
-- [Build Week submission package](docs/BUILD_WEEK_SUBMISSION.md) — truthful
-  Devpost draft, demo-song plan, and under-three-minute video script.
+  metrics, eligibility timeline, and the human/AI decision boundary.
 
 ## About the creator
 

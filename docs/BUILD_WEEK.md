@@ -15,11 +15,11 @@ uncle, who died while the software was being released; it was not the beginning
 of the code or of the Codex collaboration.
 
 For eligibility, SHR-DAW is treated plainly as a pre-existing project. The
-initial `4e779b55` commit predates the submission period, and the last
-pre-opening handoff commit, `1dad8087`, is the comparison baseline. The exact
-timestamps remain in [`BUILD_WEEK_AUDIT.md`](BUILD_WEEK_AUDIT.md), where they
-belong; only meaningful work after that baseline is presented as Build Week
-development.
+initial `4e779b55` commit is timestamped
+`2026-07-13T16:31:23+01:00`, and the last pre-opening handoff commit,
+`1dad8087`, is timestamped `2026-07-13T16:33:49+01:00`. The latter is the
+comparison baseline. Only meaningful work after that baseline is presented as
+Build Week development.
 
 The development story is not only “Codex wrote Rust.”
 [GPT-5.6](https://openai.com/index/gpt-5-6/) used through Codex also acted as a
@@ -115,11 +115,11 @@ documentation prepared for this release.
 | Rust physical LOC | 24,165 | `find src -name '*.rs' -print0 \| xargs -0 wc -l` |
 | Rust source modules | 22 | `.rs` files below `src/` |
 | Source test functions | 251 | `#[test]` annotations below `src/` and `tests/` |
-| Git commits | 34 | commits reachable after publishing this release |
+| Git commits | 35 | commits reachable after publishing this release |
 | Active development dates | 4 | unique commit dates; a lower bound on sessions |
 | Cleared synthv1 presets | 21 | public packaging allowlist |
 | Bundled drum patterns | 72 | 60 compact-catalog plus 12 standalone patterns |
-| User/developer Markdown guides | 22 | `.md` files directly below `docs/` |
+| User/developer Markdown guides | 19 | `.md` files directly below `docs/` |
 | Tracked README visuals | 12 | PNG/JPEG files directly below `docs/images/` |
 
 The major subsystem inventory is maintained in
@@ -129,9 +129,8 @@ architecture, tests, and the best demonstration shot. Counts are inventory
 checks rather than proof of product quality.
 
 Historical bug counts and session-type counts were not recorded consistently,
-so they are not invented here. From this point, journal entries should label a
-session as implementation, review, debugging, setup, sound design, or
-documentation when that distinction is useful.
+so they are not invented here. Detailed working records remain private rather
+than turning the product documentation into a submission-planning archive.
 
 ## Pre-existing baseline and Build Week extensions
 
@@ -142,9 +141,7 @@ capture, setup scripts, the MiniLab controller workflow, and 21 public cleared
 presets. This was substantial prior work and is not relabelled as a Build Week
 result.
 
-The 31 commits after `1dad8087` currently change 81 files: 18,627 insertions and
-2,604 deletions. Change volume is context rather than a quality claim. The
-dated feature diffs are the evidence:
+The dated feature diffs, rather than raw change volume, are the evidence:
 
 - **2026-07-14:** SHR-DAW product framing, configurable tracker pages,
   controller auto-detection/non-audible learn, external device profiles, live
@@ -154,13 +151,12 @@ dated feature diffs are the evidence:
   Project-storage hardening, controller navigation, and 40×20 presentation
   screenshots.
 - **2026-07-18:** expanded rhythm editing, reusable drum-pattern workflow, and
-  72 authored grooves, followed by the full safety/content/submission audit in
-  the current working tree.
+  72 authored grooves, followed by safety/content auditing, Raspberry Pi
+  validation, and submission preparation.
 
-The full commit-level table, audit findings, and open human checks are in
-[`BUILD_WEEK_AUDIT.md`](BUILD_WEEK_AUDIT.md). Submission copy, demo Project,
-video script, fallback, and final checklist are in
-[`BUILD_WEEK_SUBMISSION.md`](BUILD_WEEK_SUBMISSION.md).
+The detailed audit ledger, submission copy, video script, fallback, checklist,
+and working journal remain below the ignored private `user/build-week/` tree.
+They are not installed or published as product documentation.
 
 ## Presentation priorities
 
@@ -199,10 +195,3 @@ Sampling, a complete mixer, and a native synth are high-effort directions. A
 metric-gated source-insert or delay-send prototype could be smaller, but it
 must prove the JACK graph and callback budget on the Pi and must not displace
 stability, musical curation, documentation, or the demo song unless selected.
-
-## Ongoing journal
-
-Append concise meaningful-work entries to
-[`buildweek_journal.md`](buildweek_journal.md). Record setup, research, music
-and sound design, testing, debugging, documentation, and release work as well
-as code.
