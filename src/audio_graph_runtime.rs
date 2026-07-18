@@ -6,6 +6,7 @@ use crate::audio_graph::{
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
@@ -31,6 +32,71 @@ impl std::error::Error for PlanError {}
 pub enum ProcessStatus {
     Complete,
     OversizedBlock,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CallbackTimingSnapshot {
+    pub callbacks: u64,
+    pub total_nanoseconds: u64,
+    pub maximum_nanoseconds: u64,
+    pub missed_deadlines: u64,
+    pub oversized_callbacks: u64,
+}
+
+impl CallbackTimingSnapshot {
+    pub fn mean_nanoseconds(self) -> u64 {
+        self.total_nanoseconds
+            .checked_div(self.callbacks)
+            .unwrap_or(0)
+    }
+}
+
+/// Lock-free counters written by the JACK callback and sampled by the owner.
+/// Percentiles are deliberately calculated outside the callback after the Pi
+/// measurement gate; these counters establish the allocation-free foundation.
+#[derive(Default)]
+pub struct CallbackTimingCounters {
+    callbacks: AtomicU64,
+    total_nanoseconds: AtomicU64,
+    maximum_nanoseconds: AtomicU64,
+    missed_deadlines: AtomicU64,
+    oversized_callbacks: AtomicU64,
+}
+
+impl CallbackTimingCounters {
+    pub fn record(
+        &self,
+        frames: u32,
+        sample_rate: u32,
+        elapsed_nanoseconds: u64,
+        status: ProcessStatus,
+    ) {
+        self.callbacks.fetch_add(1, Ordering::Relaxed);
+        self.total_nanoseconds
+            .fetch_add(elapsed_nanoseconds, Ordering::Relaxed);
+        self.maximum_nanoseconds
+            .fetch_max(elapsed_nanoseconds, Ordering::Relaxed);
+        if matches!(status, ProcessStatus::OversizedBlock) {
+            self.oversized_callbacks.fetch_add(1, Ordering::Relaxed);
+        }
+        let deadline = u64::from(frames)
+            .saturating_mul(1_000_000_000)
+            .checked_div(u64::from(sample_rate))
+            .unwrap_or(0);
+        if deadline > 0 && elapsed_nanoseconds > deadline {
+            self.missed_deadlines.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn snapshot(&self) -> CallbackTimingSnapshot {
+        CallbackTimingSnapshot {
+            callbacks: self.callbacks.load(Ordering::Acquire),
+            total_nanoseconds: self.total_nanoseconds.load(Ordering::Acquire),
+            maximum_nanoseconds: self.maximum_nanoseconds.load(Ordering::Acquire),
+            missed_deadlines: self.missed_deadlines.load(Ordering::Acquire),
+            oversized_callbacks: self.oversized_callbacks.load(Ordering::Acquire),
+        }
+    }
 }
 
 enum Operation {
@@ -435,5 +501,26 @@ mod tests {
         let mut graph = graph(true);
         graph.effects[0].kind = EffectKind::Delay;
         assert!(GraphPlan::compile(&graph).is_err());
+    }
+
+    #[test]
+    fn callback_timing_counts_deadlines_and_oversized_blocks_without_allocating() {
+        let counters = CallbackTimingCounters::default();
+        assert_no_allocations(|| {
+            counters.record(128, 48_000, 1_000_000, ProcessStatus::Complete);
+            counters.record(128, 48_000, 3_000_000, ProcessStatus::Complete);
+            counters.record(8_192, 48_000, 500_000, ProcessStatus::OversizedBlock);
+        });
+        assert_eq!(
+            counters.snapshot(),
+            CallbackTimingSnapshot {
+                callbacks: 3,
+                total_nanoseconds: 4_500_000,
+                maximum_nanoseconds: 3_000_000,
+                missed_deadlines: 1,
+                oversized_callbacks: 1,
+            }
+        );
+        assert_eq!(counters.snapshot().mean_nanoseconds(), 1_500_000);
     }
 }
