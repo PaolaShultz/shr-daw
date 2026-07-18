@@ -22,6 +22,41 @@ backs up the boot command line, configures JACK affinity and the performance
 governor, and provides a matching `remove` operation. It never starts or
 restarts JACK. Reboot after installing or removing the isolation settings.
 
+## Owned dry audio graph
+
+Phase 1 includes an opt-in SHR-owned JACK client for one managed software
+instrument. It is disabled by default until the authorized low-gain Raspberry
+Pi comparison:
+
+```text
+audio.autoconnect=true
+audio.output=system:playback_1
+audio.output=system:playback_2
+audio.graph.enabled=false
+audio.graph.client=shr-graph
+audio.graph.maximum_callback_frames=4096
+```
+
+Exactly two `audio.output` entries are both the conservative direct fallback
+and the graph's main destinations. Enabling the graph requires those two
+entries and direct autoconnection. The callback frame bound may be 1–4096 and
+must cover the active JACK period; an unexpectedly larger callback is counted
+and written as silence rather than overrunning fixed memory.
+
+On a managed-engine load, SHR-DAW first establishes direct playback. The graph
+client stays muted while its exact source/input/output links are connected,
+then both direct links are removed transactionally before graph output is
+published at a callback boundary. Validation, client activation, exact port
+resolution, or connection failure leaves or restores direct playback. Graph
+shutdown restores only those two managed direct links and closing the owned
+client releases its own ports; unrelated JACK clients and connections are not
+changed.
+
+Do not enable this merely to perform a routine setup check. The first live use
+is the authorized, level-matched dry-path comparison described in
+[Audio graph and DSP contract](AUDIO_GRAPH.md); no creative effects are active
+in this phase.
+
 ## Controller menu layouts
 
 `controller.conf` maps physical notes to controller roles, not screen actions.

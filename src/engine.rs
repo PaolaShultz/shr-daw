@@ -1,3 +1,4 @@
+use crate::audio_graph_client::OwnedAudioGraph;
 use crate::config::{BackendConfig, RuntimeConfig};
 use crate::control::{self, CONTROLS};
 use crate::pads::{EncoderAction, PadAction, PadConfig};
@@ -34,6 +35,8 @@ pub struct Engine {
     output: SharedOutput,
     control_routes: Vec<(u8, u8)>,
     fluid_soundfonts: Vec<(PathBuf, u16)>,
+    audio_graph: Option<OwnedAudioGraph>,
+    audio_graph_fallback: Option<String>,
 }
 
 pub type SharedOutput = Arc<Mutex<Option<MidiOutputConnection>>>;
@@ -289,6 +292,8 @@ impl Engine {
             .stderr(Stdio::from(log_err))
             .spawn()
             .with_context(|| format!("start {}", backend_config.command))?;
+        let mut audio_graph = None;
+        let mut audio_graph_fallback = None;
         let prepare = (|| -> Result<()> {
             write_owner(&state.join("engine.pid"), child.id() as i32)?;
             wait_ready(
@@ -299,6 +304,14 @@ impl Engine {
                 &log_path,
             )?;
             connect_audio(&backend_config.client_name, config);
+            if config.audio_graph.enabled {
+                match start_managed_audio_graph(&backend_config.client_name, config) {
+                    Ok(graph) => audio_graph = Some(graph),
+                    Err(error) => {
+                        audio_graph_fallback = Some(format!("{error:#}"));
+                    }
+                }
+            }
             if config.midi_autoconnect {
                 attach_midi_output(&output, &backend_config.midi_output_match, preset.backend)?;
                 retain_midi_destination("SHR-DAW MIDI output", &backend_config.client_name);
@@ -324,6 +337,7 @@ impl Engine {
             if let Ok(mut connection) = output.lock() {
                 *connection = None;
             }
+            audio_graph.take();
             terminate(&mut child);
             cleanup_state(state);
             return Err(error);
@@ -345,6 +359,8 @@ impl Engine {
                 Vec::new()
             },
             fluid_soundfonts,
+            audio_graph,
+            audio_graph_fallback,
         };
         if preset.backend == BackendKind::FluidSynth {
             engine.select_fluidsynth(preset)?;
@@ -358,6 +374,44 @@ impl Engine {
 
     pub fn alive(&mut self) -> bool {
         self.child.try_wait().ok().flatten().is_none()
+    }
+
+    pub fn audio_route_status(&self) -> Option<String> {
+        if self.audio_graph.is_some() {
+            Some("owned dry graph active".into())
+        } else {
+            self.audio_graph_fallback
+                .as_ref()
+                .map(|error| format!("direct audio fallback · {error}"))
+        }
+    }
+
+    /// JACK shutdown notification is callback-safe; route recovery runs here
+    /// on the UI/owner thread and touches only the exact managed direct links.
+    pub fn poll_audio_graph(&mut self) -> Option<String> {
+        if !self
+            .audio_graph
+            .as_ref()
+            .is_some_and(|graph| graph.client_lost())
+        {
+            return None;
+        }
+        let mut graph = self.audio_graph.take()?;
+        let timing = graph.timing();
+        let restored = graph.restore_direct();
+        let status = match restored {
+            Ok(()) => format!(
+                "AUDIO GRAPH LOST · direct route restored · {} callbacks, {} deadlines missed",
+                timing.callbacks, timing.missed_deadlines
+            ),
+            Err(error) => format!(
+                "AUDIO GRAPH LOST · direct restore unavailable: {error:#} · {} callbacks, {} deadlines missed",
+                timing.callbacks, timing.missed_deadlines
+            ),
+        };
+        self.audio_graph_fallback = Some(status.clone());
+        drop(graph);
+        Some(status)
     }
 
     pub fn send(&self, message: &[u8]) -> Result<()> {
@@ -534,6 +588,9 @@ fn set_command_affinity(command: &mut Command, cpu: Option<usize>) {
 impl Drop for Engine {
     fn drop(&mut self) {
         self.panic();
+        // Restore the conservative dry boundary and deactivate the graph while
+        // its callback allocation and the managed source are both still alive.
+        self.audio_graph.take();
         if let Some(stdin) = self.stdin.as_mut() {
             let _ = match self.backend {
                 BackendKind::Yoshimi => writeln!(stdin, "exit y"),
@@ -1128,23 +1185,57 @@ fn connect_audio(client_name: &str, config: &RuntimeConfig) {
     if !config.audio_autoconnect {
         return;
     }
-    let client = client_name.to_ascii_lowercase();
-    let outputs: Vec<_> = jack_ports()
-        .into_iter()
-        .filter(|port| {
-            let lower = port.to_ascii_lowercase();
-            lower.contains(&client)
-                && (lower.contains("out")
-                    || lower.contains("audio")
-                    || lower.ends_with(":left")
-                    || lower.ends_with(":right"))
-        })
-        .collect();
+    let Ok(outputs) = managed_audio_outputs(client_name) else {
+        return;
+    };
     for (source, destination) in outputs.iter().zip(config.audio_outputs.iter()) {
         let _ = Command::new("jack_connect")
             .args([source.as_str(), destination.as_str()])
             .status();
     }
+}
+
+fn start_managed_audio_graph(client_name: &str, config: &RuntimeConfig) -> Result<OwnedAudioGraph> {
+    let source_ports = managed_audio_outputs(client_name)?;
+    let destinations: [String; 2] = config
+        .audio_outputs
+        .clone()
+        .try_into()
+        .map_err(|_| anyhow!("owned graph requires exactly two configured main outputs"))?;
+    OwnedAudioGraph::start(&config.audio_graph, source_ports, destinations)
+}
+
+fn managed_audio_outputs(client_name: &str) -> Result<[String; 2]> {
+    resolve_managed_audio_outputs(client_name, jack_ports())
+}
+
+fn resolve_managed_audio_outputs(
+    client_name: &str,
+    ports: impl IntoIterator<Item = String>,
+) -> Result<[String; 2]> {
+    let mut outputs = Vec::new();
+    for port in ports {
+        let Some((client, short_name)) = port.split_once(':') else {
+            continue;
+        };
+        let short_name = short_name.to_ascii_lowercase();
+        let is_output = short_name.contains("out")
+            || short_name.contains("audio")
+            || short_name == "left"
+            || short_name == "right";
+        if client.eq_ignore_ascii_case(client_name) && is_output && !outputs.contains(&port) {
+            outputs.push(port);
+        }
+    }
+    if outputs.len() != 2 {
+        bail!(
+            "managed JACK client {client_name:?} has {} unambiguous audio outputs, expected 2",
+            outputs.len()
+        );
+    }
+    outputs
+        .try_into()
+        .map_err(|_| anyhow!("managed JACK output pair changed during resolution"))
 }
 
 fn terminate(child: &mut Child) {
@@ -1516,6 +1607,29 @@ mod tests {
             unique_client_match(&clients, "synth-one").map(|client| client.0),
             Some(1)
         );
+    }
+
+    #[test]
+    fn managed_audio_graph_resolves_only_one_exact_stereo_client() {
+        let ports = vec![
+            "shs-synth:audio_out_1".into(),
+            "unrelated:audio_out_1".into(),
+            "shs-synth:audio_out_2".into(),
+            "shs-synth-midi:audio_out_1".into(),
+        ];
+        assert_eq!(
+            resolve_managed_audio_outputs("shs-synth", ports).unwrap(),
+            ["shs-synth:audio_out_1", "shs-synth:audio_out_2"]
+        );
+        assert!(resolve_managed_audio_outputs(
+            "shs-synth",
+            vec![
+                "shs-synth:audio_out_1".into(),
+                "shs-synth:audio_out_2".into(),
+                "shs-synth:audio_out_3".into(),
+            ]
+        )
+        .is_err());
     }
 
     #[test]

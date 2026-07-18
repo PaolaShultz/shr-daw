@@ -143,6 +143,11 @@ be running before loading a software instrument, playing a WAV loop, or
 recording audio. The setup wizard helps choose MIDI and audio ports, but it
 does not start or restart JACK.
 
+The new SHR-owned dry audio graph remains disabled by default pending its
+authorized Raspberry Pi level-matched comparison. Direct synth playback is the
+fallback if graph validation, activation, or an exact JACK connection fails;
+see [Audio graph and DSP contract](docs/AUDIO_GRAPH.md).
+
 Read [Installation](docs/INSTALLATION.md) for supported systems and installer
 options. Then follow [First run](docs/FIRST_RUN.md) to configure and test your
 setup.

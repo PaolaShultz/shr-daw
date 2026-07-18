@@ -3093,7 +3093,27 @@ impl App {
         self.arm_pickup();
         self.set_screen(Screen::Playback);
     }
+    fn audio_graph_edit_blocker(&self) -> Option<&'static str> {
+        if !self.config.audio_graph.enabled {
+            return None;
+        }
+        if self.audio_recorder.status().recording || self.recorder.is_recording() {
+            return Some("stop recording before changing the dry graph route");
+        }
+        if self.playback.is_some()
+            || self.sequencer.status().playing
+            || self.loop_player.status().playing
+            || self.song_previewing
+        {
+            return Some("stop transport before changing the dry graph route");
+        }
+        None
+    }
     fn load(&mut self, state: &Path, _tx: std::sync::mpsc::Sender<MidiEvent>) {
+        if let Some(reason) = self.audio_graph_edit_blocker() {
+            self.status = reason.into();
+            return;
+        }
         if let Some(reason) = self
             .catalogs
             .get(self.backend_index)
@@ -3140,12 +3160,16 @@ impl App {
         let backend_label = p.backend.label();
         match Engine::start(&p, state, Arc::clone(&self.midi_output), &self.config) {
             Ok(e) => {
+                let audio_route = e.audio_route_status();
                 self.engine = Some(e);
                 if let Ok(mut backend) = self.midi_backend.lock() {
                     *backend = p.backend;
                 }
                 self.commit_loaded_preset(p, original_values.clone(), original_values);
-                self.status = format!("{backend_label} running · MIDI ready");
+                self.status = format!(
+                    "{backend_label} running · MIDI ready{}",
+                    audio_route.map_or_else(String::new, |route| format!(" · {route}"))
+                );
             }
             Err(e) => {
                 self.status = format!("START FAILED: {e:#} · check JACK/log; select Play to retry");
@@ -3366,6 +3390,10 @@ impl App {
         }
     }
     fn load_idea(&mut self, state: &Path, _tx: std::sync::mpsc::Sender<MidiEvent>) {
+        if let Some(reason) = self.audio_graph_edit_blocker() {
+            self.status = reason.into();
+            return;
+        }
         let Some(name) = self.ideas.get(self.idea_selected).cloned() else {
             self.status = "no saved idea selected".into();
             return;
@@ -3418,6 +3446,7 @@ impl App {
                 self.playing = None;
                 match Engine::start(&preset, state, Arc::clone(&self.midi_output), &self.config) {
                     Ok(engine) => {
+                        let audio_route = engine.audio_route_status();
                         self.engine = Some(engine);
                         if let Ok(mut backend) = self.midi_backend.lock() {
                             *backend = preset.backend;
@@ -3430,6 +3459,9 @@ impl App {
                             &name,
                             false,
                         );
+                        if let Some(route) = audio_route {
+                            self.status.push_str(&format!(" · {route}"));
+                        }
                         self.confirm_load = None;
                     }
                     Err(e) => {
@@ -3502,6 +3534,9 @@ impl App {
                     self.status = format!("tracker target unavailable: {error}");
                 }
             }
+        }
+        if let Some(status) = self.engine.as_mut().and_then(Engine::poll_audio_graph) {
+            self.status = status;
         }
         if self.engine.as_mut().is_some_and(|engine| !engine.alive()) {
             self.playback.take();
@@ -6776,6 +6811,24 @@ mod tests {
         render(40, 20, Screen::TrackerLoop);
         render(40, 20, Screen::TrackerLoopAlign);
         render(40, 20, Screen::AudioRecorder);
+    }
+    #[test]
+    fn owned_graph_route_changes_require_stopped_transport_and_recording() {
+        let p = presets();
+        let mut a = app(&p);
+        assert_eq!(a.audio_graph_edit_blocker(), None);
+        a.config.audio_graph.enabled = true;
+        a.recorder.start(Instant::now());
+        assert_eq!(
+            a.audio_graph_edit_blocker(),
+            Some("stop recording before changing the dry graph route")
+        );
+        a.recorder.stop();
+        a.song_previewing = true;
+        assert_eq!(
+            a.audio_graph_edit_blocker(),
+            Some("stop transport before changing the dry graph route")
+        );
     }
     #[test]
     fn renders_smaller_and_tiny_gracefully() {

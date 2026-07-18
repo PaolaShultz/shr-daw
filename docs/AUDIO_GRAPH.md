@@ -2,9 +2,9 @@
 
 This document is the implementation contract for SHR-DAW's owned audio graph
 and lightweight effects rack. It records the stable model and real-time limits
-before the graph becomes responsible for playback. The current released
-behavior remains direct JACK routing while the foundation and graph are proved
-phase by phase.
+before the graph becomes responsible for playback. The Phase 1 owned dry client
+is implemented for one managed engine but disabled by default. Direct JACK
+routing remains the normal route until the authorized dry-path checkpoint.
 
 ## Ownership boundary
 
@@ -22,6 +22,14 @@ The graph may connect and disconnect only SHR-owned endpoints. It must not
 alter unrelated JACK connections or terminate a client/process it does not
 own. Until the graph is activated successfully, the existing engine, loop, and
 recorder routes remain the conservative fallback.
+
+For the Phase 1 managed-engine path, direct playback is connected first. The
+owned callback publishes silence while its four boundary links are prepared;
+the two direct links are then removed in the same rollback-capable transaction.
+Only after that commit does an atomic flag publish dry graph output at a block
+boundary. A rejected graph, activation failure, ambiguous engine-output pair,
+or connection failure leaves or restores the exact direct topology. The loop
+player remains on its existing direct route for this checkpoint.
 
 `src/jack.rs` is the shared dynamic-loading and lifetime boundary for current
 and future JACK clients. A caller owns its callback allocation and keeps it
@@ -130,6 +138,11 @@ generation through an atomic value. It never drops an `Arc` or frees retired
 storage. Reorder initially remains stopped-only unless Raspberry Pi evidence
 justifies two-plan live crossfading.
 
+The Phase 1 dry client has only one plan and is activated while transport and
+recording are stopped, so its first publication is the simpler atomic muted-to-
+dry boundary switch. Creative effects and live structural reordering remain
+gated behind later publication/fade work.
+
 ## Shared DSP foundation
 
 `src/dsp/mod.rs` provides finite/denormal guards, stereo frames, smoothed
@@ -149,6 +162,11 @@ No third-party DSP implementation code is copied into SHR-DAW.
 Deterministic tests cover silence/step/impulse behavior, supported sample-rate
 limits, reset and non-finite recovery, stereo independence, long-running
 finite state, chunk-size invariance, and callback-path allocation detection.
+
+The dry client additionally publishes allocation-free callback count, total,
+mean, maximum, missed-deadline, and oversized-callback counters. Percentile
+sampling and the full measurement report remain owner-thread/Pi checkpoint
+work rather than callback work.
 
 ## Measurement and curation gates
 
