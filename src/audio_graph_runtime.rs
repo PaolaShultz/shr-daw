@@ -1,16 +1,13 @@
 //! Preallocated callback plan compiled from a validated audio graph.
 
-use crate::audio_graph::{
-    EffectKind, GraphDefinition, NodeId, NodeKind, SourceKind, MAX_CALLBACK_FRAMES,
-};
-use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
-use crate::effect_schema;
+use crate::audio_graph::{GraphDefinition, NodeId, NodeKind, SourceKind, MAX_CALLBACK_FRAMES};
+use crate::dsp::{AtomicMeter, StereoFrame};
+use crate::effects::{EffectSlot, MeterHandles};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
 const TIMING_HISTOGRAM_BUCKET_NANOSECONDS: u64 = 1_000;
 const TIMING_HISTOGRAM_BUCKETS: usize = 8_193;
 
@@ -156,7 +153,7 @@ enum Operation {
     Source,
     Sum,
     Pass,
-    Utility(UtilityState),
+    Effect(Box<EffectSlot>),
     Sink,
 }
 
@@ -165,13 +162,6 @@ struct RuntimeNode {
     buffer: usize,
     inputs: Box<[usize]>,
     operation: Operation,
-}
-
-struct UtilityState {
-    left_gain: SmoothedValue,
-    right_gain: SmoothedValue,
-    meter: MeterAccumulator,
-    published: Arc<AtomicMeter>,
 }
 
 pub struct GraphPlan {
@@ -229,27 +219,10 @@ impl GraphPlan {
                     let effect = effects
                         .get(effect_id)
                         .ok_or_else(|| PlanError::new("processor effect missing"))?;
-                    if effect.kind != EffectKind::Utility {
-                        return Err(PlanError::new(
-                            "creative effects are not enabled in the dry graph",
-                        ));
-                    }
-                    let trim = effect_schema::parameter(effect, "trim_db")
-                        .map_err(|error| PlanError::new(error.to_string()))?;
-                    let pan = effect_schema::parameter(effect, "pan")
-                        .map_err(|error| PlanError::new(error.to_string()))?;
-                    let gain =
-                        db_to_gain(trim).map_err(|error| PlanError::new(error.to_string()))?;
-                    let (left, right) = stereo_pan_gains(pan);
-                    Operation::Utility(UtilityState {
-                        left_gain: SmoothedValue::new(gain * left)
+                    Operation::Effect(Box::new(
+                        EffectSlot::compile(effect, graph.sample_rate, maximum_frames)
                             .map_err(|error| PlanError::new(error.to_string()))?,
-                        right_gain: SmoothedValue::new(gain * right)
-                            .map_err(|error| PlanError::new(error.to_string()))?,
-                        meter: MeterAccumulator::new(maximum_frames)
-                            .map_err(|error| PlanError::new(error.to_string()))?,
-                        published: Arc::new(AtomicMeter::default()),
-                    })
+                    ))
                 }
                 NodeKind::Sink { .. } => {
                     sink_nodes.push(id);
@@ -316,7 +289,14 @@ impl GraphPlan {
 
     pub fn meter(&self, node_id: NodeId) -> Option<Arc<AtomicMeter>> {
         self.nodes.iter().find_map(|node| match &node.operation {
-            Operation::Utility(state) if node.id == node_id => Some(Arc::clone(&state.published)),
+            Operation::Effect(slot) if node.id == node_id => Some(slot.meters().output),
+            _ => None,
+        })
+    }
+
+    pub fn effect_meters(&self, node_id: NodeId) -> Option<MeterHandles> {
+        self.nodes.iter().find_map(|node| match &node.operation {
+            Operation::Effect(slot) if node.id == node_id => Some(slot.meters()),
             _ => None,
         })
     }
@@ -334,25 +314,34 @@ impl GraphPlan {
         {
             return Err(PlanError::new("utility target outside safe range"));
         }
-        let gain = db_to_gain(trim_db).map_err(|error| PlanError::new(error.to_string()))?;
-        let (left, right) = stereo_pan_gains(pan);
         let state = self
             .nodes
             .iter_mut()
             .find_map(|node| match &mut node.operation {
-                Operation::Utility(state) if node.id == node_id => Some(state),
+                Operation::Effect(slot) if node.id == node_id => Some(slot),
                 _ => None,
             })
             .ok_or_else(|| PlanError::new("utility node not found"))?;
         state
-            .left_gain
-            .set_target(gain * left, PARAMETER_SMOOTH_SAMPLES)
+            .set_parameter("trim_db", trim_db)
             .map_err(|error| PlanError::new(error.to_string()))?;
         state
-            .right_gain
-            .set_target(gain * right, PARAMETER_SMOOTH_SAMPLES)
+            .set_parameter("pan", pan)
             .map_err(|error| PlanError::new(error.to_string()))?;
         Ok(())
+    }
+
+    pub fn set_effect_bypass(&mut self, node_id: NodeId, bypass: bool) -> Result<(), PlanError> {
+        let slot = self
+            .nodes
+            .iter_mut()
+            .find_map(|node| match &mut node.operation {
+                Operation::Effect(slot) if node.id == node_id => Some(slot),
+                _ => None,
+            })
+            .ok_or_else(|| PlanError::new("effect node not found"))?;
+        slot.set_bypass(bypass)
+            .map_err(|error| PlanError::new(error.to_string()))
     }
 
     /// Process one block. Source buffers must be filled before this call.
@@ -370,16 +359,7 @@ impl GraphPlan {
             }
             match &mut self.nodes[node_index].operation {
                 Operation::Source | Operation::Sum | Operation::Pass | Operation::Sink => {}
-                Operation::Utility(state) => {
-                    for frame in &mut self.buffers[target][..frames] {
-                        frame.left *= state.left_gain.next_value();
-                        frame.right *= state.right_gain.next_value();
-                        *frame = state.meter.process(*frame);
-                    }
-                    state
-                        .published
-                        .publish(state.meter.snapshot_and_clear_peak());
-                }
+                Operation::Effect(slot) => slot.process(&mut self.buffers[target][..frames]),
             }
         }
         ProcessStatus::Complete
@@ -401,14 +381,6 @@ fn mix_buffers(buffers: &mut [Box<[StereoFrame]>], source: usize, target: usize,
     {
         output.left = crate::dsp::finite_or_zero(output.left + input.left);
         output.right = crate::dsp::finite_or_zero(output.right + input.right);
-    }
-}
-
-fn stereo_pan_gains(pan: f32) -> (f32, f32) {
-    if pan < 0.0 {
-        (1.0, (-pan * std::f32::consts::FRAC_PI_2).cos())
-    } else {
-        ((pan * std::f32::consts::FRAC_PI_2).cos(), 1.0)
     }
 }
 
