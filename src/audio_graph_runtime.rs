@@ -517,6 +517,25 @@ mod tests {
     }
 
     #[test]
+    fn implemented_eq_compiles_into_the_allocation_free_graph_plan() {
+        let mut graph = graph(true);
+        graph.effects[0].kind = EffectKind::Eq;
+        graph.effects[0]
+            .parameters
+            .insert("low_cut_enabled".into(), 1.0);
+        let mut plan = GraphPlan::compile(&graph).unwrap();
+        assert_no_allocations(|| {
+            plan.source_buffer_mut(1, 128)
+                .unwrap()
+                .fill(StereoFrame::new(0.5, -0.5));
+            assert_eq!(plan.process(128), ProcessStatus::Complete);
+        });
+        assert!(plan.output_buffer(4, 128).unwrap().iter().all(|frame| {
+            frame.left.is_finite() && frame.right.is_finite() && frame.left.abs() <= 0.5
+        }));
+    }
+
+    #[test]
     fn callback_timing_counts_deadlines_and_oversized_blocks_without_allocating() {
         let counters = CallbackTimingCounters::default();
         assert_no_allocations(|| {

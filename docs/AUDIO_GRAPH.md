@@ -171,6 +171,15 @@ Deterministic tests cover silence/step/impulse behavior, supported sample-rate
 limits, reset and non-finite recovery, stereo independence, long-running
 finite state, chunk-size invariance, and callback-path allocation detection.
 
+Phase 2 adds one canonical named parameter schema per effect kind in
+`src/effect_schema.rs`. Persisted values may omit older/defaulted controls, but
+unknown names, non-finite values, invalid discrete choices, and values outside
+the declared physical range reject the complete graph. `src/effects/` provides
+fixed runtime slots with stable instance identity, finite dry fallback,
+click-conscious bypass, reset, and separate input/output peak/RMS, clip, and
+non-finite meters. Creative processors are enabled in that slot only after
+their own deterministic and response-measurement gate passes.
+
 The dry client additionally publishes allocation-free callback count, total,
 mean, maximum, missed-deadline, and oversized-callback counters. One fixed
 one-microsecond histogram increment per callback lets the owner calculate p95
@@ -180,13 +189,28 @@ report remains owner-thread/Pi checkpoint work.
 
 ## Measurement and curation gates
 
-Source inspection and unit tests cannot establish sound quality or Raspberry
-Pi safety. Each phase needs an authorized, low-gain release-mode checkpoint.
-Record JACK rate/period settings, callback mean/p95/p99/max, missed deadlines,
-xruns, process/core CPU, RSS, owned effect memory, meters, and shutdown/client
-loss behavior. Listening must be level matched. The creator marks each audible
-effect or type `KEEP`, `IMPROVE`, or `DROP`; only kept/improving choices remain
-visible as product effects.
+Effect quality has an objective engineering part and a musical-curation part.
+Tests and controlled captures must establish the technical part against a
+declared design target rather than stopping at basic finite-output checks. Use
+impulses, steps, steady and swept sines, multitone/noise, silence, and bounded
+program material as appropriate. Measure response/cutoff/slope/resonance,
+transfer and dynamics curves, harmonics/intermodulation/aliasing/DC, envelope
+timing and stereo linking, transient overshoot/ringing, discontinuities and
+zipper/bypass clicks, noise/headroom, latency, chunk/sample-rate consistency,
+long-run recovery, and whole-chain callback cost where each applies. Report
+deviations numerically and treat a measurable defect as an engineering issue,
+not merely a subjective preference.
+
+Those measurements can establish accuracy to the intended response, stability,
+bounded artifacts, click-conscious operation, and Pi performance. They cannot
+alone decide whether a deliberate coloration is inspiring or appropriate for
+particular music. Each phase therefore also needs an authorized, low-gain,
+level-matched release-mode listening checkpoint. Record JACK rate/period
+settings, callback mean/p95/p99/max, missed deadlines, xruns, process/core CPU,
+RSS, owned effect memory, meters, and shutdown/client-loss behavior. Provide an
+evidence-based technical `KEEP`, `IMPROVE`, or `DROP` recommendation; the
+creator makes the final musical curation decision, and only kept/improving
+choices remain visible as product effects.
 
 The first authorized graph checkpoint compared one dry source with the direct
 fallback and verified bit-exact stereo output, one path, callback headroom, and

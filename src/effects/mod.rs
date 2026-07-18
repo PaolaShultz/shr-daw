@@ -1,10 +1,14 @@
 //! Preallocated, allocation-free insert-effect runtime slots.
 
+mod eq;
+
 use crate::audio_graph::{EffectId, EffectInstance, EffectKind};
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
 use crate::effect_schema;
 use std::fmt;
 use std::sync::Arc;
+
+use eq::Eq;
 
 const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
 const BYPASS_FADE_MILLISECONDS: f32 = 5.0;
@@ -34,12 +38,14 @@ pub struct MeterHandles {
 
 enum Processor {
     Utility(Utility),
+    Eq(Box<Eq>),
 }
 
 impl Processor {
-    fn compile(effect: &EffectInstance) -> Result<Self, EffectError> {
+    fn compile(effect: &EffectInstance, sample_rate: u32) -> Result<Self, EffectError> {
         match effect.kind {
             EffectKind::Utility => Ok(Self::Utility(Utility::compile(effect)?)),
+            EffectKind::Eq => Ok(Self::Eq(Box::new(Eq::compile(effect, sample_rate)?))),
             _ => Err(EffectError::new(format!(
                 "{:?} processing is not implemented",
                 effect.kind
@@ -51,18 +57,21 @@ impl Processor {
     fn process(&mut self, frame: StereoFrame) -> StereoFrame {
         match self {
             Self::Utility(effect) => effect.process(frame),
+            Self::Eq(effect) => effect.process(frame),
         }
     }
 
     fn set_parameter(&mut self, name: &str, value: f32) -> Result<(), EffectError> {
         match self {
             Self::Utility(effect) => effect.set_parameter(name, value),
+            Self::Eq(effect) => effect.set_parameter(name, value),
         }
     }
 
     fn reset(&mut self) {
         match self {
             Self::Utility(effect) => effect.reset(),
+            Self::Eq(effect) => effect.reset(),
         }
     }
 }
@@ -94,7 +103,7 @@ impl EffectSlot {
         Ok(Self {
             id: effect.id,
             kind: effect.kind,
-            processor: Processor::compile(effect)?,
+            processor: Processor::compile(effect, sample_rate)?,
             processed_mix: SmoothedValue::new(if effect.bypass { 0.0 } else { 1.0 })
                 .map_err(|error| EffectError::new(error.to_string()))?,
             bypass_fade_samples,
@@ -299,7 +308,7 @@ mod tests {
         assert_eq!(slot.id(), 7);
         assert_eq!(slot.kind(), EffectKind::Utility);
         let mut effect = utility(BTreeMap::new(), false);
-        effect.kind = EffectKind::Eq;
+        effect.kind = EffectKind::Compressor;
         assert!(EffectSlot::compile(&effect, 48_000, 128).is_err());
     }
 
