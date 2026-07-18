@@ -5,25 +5,22 @@
 //! reads atomics, and updates lock-free counters.
 
 use crate::audio_graph::{
-    ChannelLayout, Edge, EffectInstance, EffectKind, GraphDefinition, Monitoring, Node, NodeKind,
-    RecordingTap, SinkKind, SourceChain, SourceKind, StereoPorts, EFFECT_FORMAT_VERSION,
-    GRAPH_FORMAT_VERSION,
+    ChannelLayout, Edge, GraphDefinition, InsertRack, Monitoring, Node, NodeKind, RecordingTap,
+    SinkKind, SourceChain, SourceKind, StereoPorts, GRAPH_FORMAT_VERSION,
 };
 use crate::audio_graph_runtime::{
     CallbackTimingCounters, CallbackTimingSnapshot, GraphPlan, ProcessStatus,
 };
 use crate::config::AudioGraphConfig;
-use crate::dsp::StereoFrame;
+use crate::dsp::{MeterSnapshot, StereoFrame};
 use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
 use anyhow::{anyhow, bail, Context, Result};
 use libc::{c_int, c_uint, c_void};
-use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const SOURCE_NODE: u32 = 1;
-const UTILITY_NODE: u32 = 2;
-const SINK_NODE: u32 = 3;
-const UTILITY_EFFECT: u32 = 1;
+const FIRST_EFFECT_NODE: u32 = 10;
+const SINK_NODE: u32 = 100;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Connection {
@@ -161,11 +158,19 @@ pub(crate) struct OwnedAudioGraph {
     routes: BoundaryRoutes,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct EffectMeterSnapshot {
+    pub input: MeterSnapshot,
+    pub output: MeterSnapshot,
+    pub gain_reduction_db: Option<f32>,
+}
+
 impl OwnedAudioGraph {
-    pub(crate) fn start(
+    pub(crate) fn start_with_rack(
         config: &AudioGraphConfig,
         source_ports: [String; 2],
         destinations: [String; 2],
+        rack: &InsertRack,
     ) -> Result<Self> {
         validate_stereo_boundary(&source_ports, "managed-engine source")?;
         validate_stereo_boundary(&destinations, "main output")?;
@@ -175,9 +180,13 @@ impl OwnedAudioGraph {
         if sample_rate == 0 {
             bail!("JACK reported a zero sample rate");
         }
-        let definition =
-            dry_graph_definition(sample_rate, config.maximum_callback_frames, &destinations);
-        let plan = GraphPlan::compile(&definition).context("compile dry audio graph")?;
+        let definition = managed_graph_definition(
+            sample_rate,
+            config.maximum_callback_frames,
+            &destinations,
+            rack,
+        );
+        let plan = GraphPlan::compile(&definition).context("compile managed audio graph")?;
 
         let input_left = jack.register_audio_port("managed_in_l", PortDirection::Input)?;
         let input_right = jack.register_audio_port("managed_in_r", PortDirection::Input)?;
@@ -248,6 +257,54 @@ impl OwnedAudioGraph {
         self.callback.timing.snapshot()
     }
 
+    pub(crate) fn effect_meter(&self, effect_id: u32) -> Option<EffectMeterSnapshot> {
+        let handles = self.callback.plan.effect_meters_by_id(effect_id)?;
+        Some(EffectMeterSnapshot {
+            input: handles.input.load(),
+            output: handles.output.load(),
+            gain_reduction_db: handles.gain_reduction.map(|meter| meter.load()),
+        })
+    }
+
+    /// Publish a validated structural rack change while transport and all
+    /// recording are stopped. JACK callback execution is joined before the
+    /// plan is mutated; compatible effect IDs retain their runtime state.
+    pub(crate) fn publish_rack(&mut self, rack: &InsertRack) -> Result<()> {
+        let destinations = [
+            self.routes.graph[2].destination.clone(),
+            self.routes.graph[3].destination.clone(),
+        ];
+        let definition = managed_graph_definition(
+            self.callback.sample_rate,
+            self.callback.plan.maximum_frames() as u32,
+            &destinations,
+            rack,
+        );
+        definition
+            .validate()
+            .map_err(|error| anyhow!(error.to_string()))?;
+        self.callback.armed.store(false, Ordering::Release);
+        self.jack.deactivate();
+        if let Err(error) = self.callback.plan.reconfigure(&definition) {
+            if self.jack.activate().is_ok() {
+                self.callback.armed.store(true, Ordering::Release);
+            } else {
+                let _ = self.restore_direct();
+            }
+            return Err(anyhow!(error.to_string()).context("compile replacement audio rack"));
+        }
+        if let Err(error) = self.jack.activate() {
+            let _ = self.restore_direct();
+            return Err(error.context("reactivate audio graph after rack publication"));
+        }
+        if let Err(error) = apply_transaction(&mut self.jack, &self.routes.activation_changes()) {
+            let _ = self.restore_direct();
+            return Err(error.context("restore audio graph boundary after rack publication"));
+        }
+        self.callback.armed.store(true, Ordering::Release);
+        Ok(())
+    }
+
     /// Restore both exact direct links best-effort. This runs only on the
     /// non-real-time owner thread, including client-loss recovery.
     pub(crate) fn restore_direct(&mut self) -> Result<()> {
@@ -293,67 +350,63 @@ fn validate_stereo_boundary(ports: &[String; 2], description: &str) -> Result<()
     Ok(())
 }
 
-fn dry_graph_definition(
+fn managed_graph_definition(
     sample_rate: u32,
     maximum_callback_frames: u32,
     destinations: &[String; 2],
+    rack: &InsertRack,
 ) -> GraphDefinition {
+    let mut nodes = vec![Node {
+        id: SOURCE_NODE,
+        layout: ChannelLayout::Stereo,
+        kind: NodeKind::Source {
+            source: SourceKind::ManagedEngine,
+        },
+    }];
+    let mut edges = Vec::with_capacity(rack.order.len() + 1);
+    let mut previous = SOURCE_NODE;
+    for (index, effect_id) in rack.order.iter().copied().enumerate() {
+        let node_id = FIRST_EFFECT_NODE + index as u32;
+        nodes.push(Node {
+            id: node_id,
+            layout: ChannelLayout::Stereo,
+            kind: NodeKind::Processor { effect_id },
+        });
+        edges.push(Edge {
+            id: edges.len() as u32 + 1,
+            from: previous,
+            to: node_id,
+        });
+        previous = node_id;
+    }
+    nodes.push(Node {
+        id: SINK_NODE,
+        layout: ChannelLayout::Stereo,
+        kind: NodeKind::Sink {
+            sink: SinkKind::MainPlayback {
+                ports: StereoPorts {
+                    left: destinations[0].clone(),
+                    right: destinations[1].clone(),
+                },
+            },
+        },
+    });
+    edges.push(Edge {
+        id: edges.len() as u32 + 1,
+        from: previous,
+        to: SINK_NODE,
+    });
     GraphDefinition {
         format_version: GRAPH_FORMAT_VERSION,
         enabled: true,
         sample_rate,
         maximum_callback_frames,
-        nodes: vec![
-            Node {
-                id: SOURCE_NODE,
-                layout: ChannelLayout::Stereo,
-                kind: NodeKind::Source {
-                    source: SourceKind::ManagedEngine,
-                },
-            },
-            Node {
-                id: UTILITY_NODE,
-                layout: ChannelLayout::Stereo,
-                kind: NodeKind::Processor {
-                    effect_id: UTILITY_EFFECT,
-                },
-            },
-            Node {
-                id: SINK_NODE,
-                layout: ChannelLayout::Stereo,
-                kind: NodeKind::Sink {
-                    sink: SinkKind::MainPlayback {
-                        ports: StereoPorts {
-                            left: destinations[0].clone(),
-                            right: destinations[1].clone(),
-                        },
-                    },
-                },
-            },
-        ],
-        edges: vec![
-            Edge {
-                id: 1,
-                from: SOURCE_NODE,
-                to: UTILITY_NODE,
-            },
-            Edge {
-                id: 2,
-                from: UTILITY_NODE,
-                to: SINK_NODE,
-            },
-        ],
-        effects: vec![EffectInstance {
-            id: UTILITY_EFFECT,
-            kind: EffectKind::Utility,
-            version: EFFECT_FORMAT_VERSION,
-            bypass: false,
-            parameters: BTreeMap::new(),
-            owned_memory_bytes: 0,
-        }],
+        nodes,
+        edges,
+        effects: rack.effects.clone(),
         source_chains: vec![SourceChain {
             source_node: SOURCE_NODE,
-            effects: vec![UTILITY_EFFECT],
+            effects: rack.order.clone(),
         }],
         master_chain: vec![],
         aux_buses: vec![],
@@ -361,6 +414,20 @@ fn dry_graph_definition(
         monitoring: Monitoring::default(),
         recording_tap: RecordingTap::PostMaster,
     }
+}
+
+#[cfg(test)]
+fn dry_graph_definition(
+    sample_rate: u32,
+    maximum_callback_frames: u32,
+    destinations: &[String; 2],
+) -> GraphDefinition {
+    managed_graph_definition(
+        sample_rate,
+        maximum_callback_frames,
+        destinations,
+        &InsertRack::default(),
+    )
 }
 
 fn process_block(
@@ -553,13 +620,33 @@ mod tests {
     fn dry_topology_is_valid_and_contains_one_managed_path() {
         let destinations = ["main:l".to_owned(), "main:r".to_owned()];
         let graph = dry_graph_definition(48_000, 128, &destinations);
+        assert_eq!(graph.validate().unwrap(), [SOURCE_NODE, SINK_NODE]);
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges.len(), 1);
+        assert!(graph.effects.is_empty());
+    }
+
+    #[test]
+    fn managed_rack_builds_one_ordered_source_path() {
+        let destinations = ["main:l".to_owned(), "main:r".to_owned()];
+        let mut rack = InsertRack::default();
+        let compressor = rack
+            .add(crate::audio_graph::EffectKind::Compressor)
+            .unwrap();
+        let eq = rack.add(crate::audio_graph::EffectKind::Eq).unwrap();
+        rack.move_to(eq, 0).unwrap();
+        let graph = managed_graph_definition(48_000, 128, &destinations, &rack);
         assert_eq!(
             graph.validate().unwrap(),
-            [SOURCE_NODE, UTILITY_NODE, SINK_NODE]
+            [
+                SOURCE_NODE,
+                FIRST_EFFECT_NODE,
+                FIRST_EFFECT_NODE + 1,
+                SINK_NODE
+            ]
         );
-        assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.edges.len(), 2);
-        assert_eq!(graph.effects.len(), 1);
+        assert_eq!(graph.source_chains[0].effects, [eq, compressor]);
+        assert_eq!(graph.edges.len(), 3);
     }
 
     #[test]

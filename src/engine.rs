@@ -1,4 +1,5 @@
-use crate::audio_graph_client::OwnedAudioGraph;
+use crate::audio_graph::InsertRack;
+use crate::audio_graph_client::{EffectMeterSnapshot, OwnedAudioGraph};
 use crate::audio_graph_runtime::CallbackTimingSnapshot;
 use crate::config::{BackendConfig, RuntimeConfig};
 use crate::control::{self, CONTROLS};
@@ -259,6 +260,16 @@ impl Engine {
         output: SharedOutput,
         config: &RuntimeConfig,
     ) -> Result<Self> {
+        Self::start_with_rack(preset, state, output, config, &InsertRack::default())
+    }
+
+    pub fn start_with_rack(
+        preset: &Preset,
+        state: &Path,
+        output: SharedOutput,
+        config: &RuntimeConfig,
+        rack: &InsertRack,
+    ) -> Result<Self> {
         fs::create_dir_all(state)?;
         let EnginePreflight {
             controller,
@@ -306,7 +317,7 @@ impl Engine {
             )?;
             connect_audio(&backend_config.client_name, config);
             if config.audio_graph.enabled {
-                match start_managed_audio_graph(&backend_config.client_name, config) {
+                match start_managed_audio_graph(&backend_config.client_name, config, rack) {
                     Ok(graph) => audio_graph = Some(graph),
                     Err(error) => {
                         audio_graph_fallback = Some(format!("{error:#}"));
@@ -379,12 +390,24 @@ impl Engine {
 
     pub fn audio_route_status(&self) -> Option<String> {
         if self.audio_graph.is_some() {
-            Some("owned dry graph active".into())
+            Some("owned insert graph active".into())
         } else {
             self.audio_graph_fallback
                 .as_ref()
                 .map(|error| format!("direct audio fallback · {error}"))
         }
+    }
+
+    pub fn publish_insert_rack(&mut self, rack: &InsertRack) -> Result<bool> {
+        let Some(graph) = self.audio_graph.as_mut() else {
+            return Ok(false);
+        };
+        graph.publish_rack(rack)?;
+        Ok(true)
+    }
+
+    pub(crate) fn effect_meter(&self, effect_id: u32) -> Option<EffectMeterSnapshot> {
+        self.audio_graph.as_ref()?.effect_meter(effect_id)
     }
 
     /// JACK shutdown notification is callback-safe; route recovery runs here
@@ -1201,14 +1224,18 @@ fn connect_audio(client_name: &str, config: &RuntimeConfig) {
     }
 }
 
-fn start_managed_audio_graph(client_name: &str, config: &RuntimeConfig) -> Result<OwnedAudioGraph> {
+fn start_managed_audio_graph(
+    client_name: &str,
+    config: &RuntimeConfig,
+    rack: &InsertRack,
+) -> Result<OwnedAudioGraph> {
     let source_ports = managed_audio_outputs(client_name)?;
     let destinations: [String; 2] = config
         .audio_outputs
         .clone()
         .try_into()
         .map_err(|_| anyhow!("owned graph requires exactly two configured main outputs"))?;
-    OwnedAudioGraph::start(&config.audio_graph, source_ports, destinations)
+    OwnedAudioGraph::start_with_rack(&config.audio_graph, source_ports, destinations, rack)
 }
 
 fn managed_audio_outputs(client_name: &str) -> Result<[String; 2]> {

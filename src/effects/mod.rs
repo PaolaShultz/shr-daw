@@ -438,6 +438,11 @@ mod tests {
                 && (0.125..=0.5).contains(&frame.left)
                 && (-0.5..=-0.125).contains(&frame.right)
         }));
+        let maximum_step = block
+            .windows(2)
+            .map(|pair| (pair[1].left - pair[0].left).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(maximum_step < 0.002, "bypass step {maximum_step}");
         assert_eq!(block[255], StereoFrame::new(0.5, -0.5));
     }
 

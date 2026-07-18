@@ -286,6 +286,48 @@ impl GraphPlan {
         self.maximum_frames
     }
 
+    /// Replace topology on a stopped control thread. Compatible slots are
+    /// moved into the new plan before publication, preserving their state.
+    pub fn reconfigure(&mut self, graph: &GraphDefinition) -> Result<(), PlanError> {
+        let mut next = Self::compile(graph)?;
+        if self.sample_rate == next.sample_rate && self.maximum_frames == next.maximum_frames {
+            let effects = graph
+                .effects
+                .iter()
+                .map(|effect| (effect.id, effect))
+                .collect::<BTreeMap<_, _>>();
+            for next_index in 0..next.nodes.len() {
+                let (effect_id, effect_kind) = match &next.nodes[next_index].operation {
+                    Operation::Effect(slot) => (slot.id(), slot.kind()),
+                    _ => continue,
+                };
+                let Some(old_index) = self.nodes.iter().position(|node| {
+                    matches!(
+                        &node.operation,
+                        Operation::Effect(slot)
+                            if slot.id() == effect_id && slot.kind() == effect_kind
+                    )
+                }) else {
+                    continue;
+                };
+                let old_slot = match &mut self.nodes[old_index].operation {
+                    Operation::Effect(slot) => slot,
+                    _ => unreachable!("position selected an effect slot"),
+                };
+                let next_slot = match &mut next.nodes[next_index].operation {
+                    Operation::Effect(slot) => slot,
+                    _ => unreachable!("loop selected an effect slot"),
+                };
+                old_slot
+                    .apply_instance(effects[&effect_id])
+                    .map_err(|error| PlanError::new(error.to_string()))?;
+                std::mem::swap(old_slot, next_slot);
+            }
+        }
+        *self = next;
+        Ok(())
+    }
+
     pub fn source_nodes(&self) -> &[NodeId] {
         &self.source_nodes
     }
@@ -589,7 +631,8 @@ mod tests {
             .parameters
             .insert("trim_db".into(), -3.0);
 
-        let second = GraphPlan::compile_retaining(&reordered, Some(first)).unwrap();
+        let mut second = first;
+        second.reconfigure(&reordered).unwrap();
         let retained = second.effect_meters_by_id(1).unwrap();
         assert!(Arc::ptr_eq(&meters.input, &retained.input));
         assert!(Arc::ptr_eq(&meters.output, &retained.output));
