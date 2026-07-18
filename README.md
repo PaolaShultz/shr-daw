@@ -215,6 +215,8 @@ for the judge path.
 
 - [How it works](docs/HOW_IT_WORKS.md) — synth ownership, MIDI safety, pickup,
   recording, and data locations.
+- [Audio graph and DSP contract](docs/AUDIO_GRAPH.md) — owned-routing schema,
+  real-time rules, fixed limits, fallback, measurement, and curation gates.
 - [Add patches and sounds](docs/NEW_PATCHES.md) — create and validate synthv1
   presets.
 - [Third-party software and sounds](THIRD_PARTY.md) — credits, licences, and

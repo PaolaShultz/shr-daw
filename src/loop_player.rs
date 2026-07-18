@@ -3,10 +3,10 @@
 //! bounded output buffers.
 
 use crate::config::LoopPlayerConfig;
+use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
 use crate::sequencer::{LoopSettings, Song};
 use anyhow::{bail, Context, Result};
-use libc::{c_char, c_int, c_uint, c_ulong, c_void};
-use std::ffi::{CStr, CString};
+use libc::{c_int, c_uint, c_void};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,9 +14,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-const JACK_DEFAULT_AUDIO_TYPE: &[u8] = b"32 bit float mono audio\0";
-const JACK_PORT_IS_OUTPUT: c_ulong = 2;
-const JACK_NO_START_SERVER: c_uint = 1;
 const BEAT_UNITS: f64 = 1_000_000.0;
 const ANALYSIS_HOP: usize = 1024;
 // Decoding is deliberately bounded because the whole loop stays resident in
@@ -497,8 +494,8 @@ impl LoopPlayer {
             let mut jack = JackClient::open(&self.config.client_name)?;
             let jack_rate = jack.sample_rate();
             require_native_rate(source_rate, jack_rate)?;
-            let left = jack.register_output("output_l")?;
-            let right = jack.register_output("output_r")?;
+            let left = jack.register_audio_port("output_l", PortDirection::Output)?;
+            let right = jack.register_audio_port("output_r", PortDirection::Output)?;
             let interpreted = settings.interpreted_bpm();
             let start = beat_to_frame(f64::from(settings.start_beat), interpreted, source_rate)
                 .min(decoded.samples.len().saturating_sub(1));
@@ -510,7 +507,7 @@ impl LoopPlayer {
             let mut callback = Box::new(CallbackData {
                 left,
                 right,
-                port_get_buffer: jack.api.port_get_buffer,
+                port_get_buffer: jack.port_get_buffer(),
                 samples: decoded.samples,
                 source_rate,
                 interpreted_bpm: interpreted,
@@ -523,8 +520,14 @@ impl LoopPlayer {
                 clock: Arc::clone(&self.clock),
                 position: Arc::clone(&self.position),
             });
-            jack.set_callback((&mut *callback) as *mut CallbackData)?;
-            jack.activate_and_connect(&self.config.outputs, left, right)?;
+            // SAFETY: `callback` stays boxed until after JACK is deactivated.
+            unsafe {
+                jack.set_process_callback(
+                    process_callback,
+                    ((&mut *callback) as *mut CallbackData).cast(),
+                )?;
+            }
+            activate_and_connect(&mut jack, &self.config.outputs, left, right)?;
             Ok((Active { jack, callback }, length))
         })();
         match result {
@@ -606,187 +609,24 @@ struct CallbackData {
     position: Arc<AtomicU64>,
 }
 
-#[repr(C)]
-struct JackOpaque {
-    _private: [u8; 0],
-}
-#[repr(C)]
-struct JackPort {
-    _private: [u8; 0],
-}
-type ClientOpen = unsafe extern "C" fn(*const c_char, c_uint, *mut c_uint) -> *mut JackOpaque;
-type ClientClose = unsafe extern "C" fn(*mut JackOpaque) -> c_int;
-type PortRegister = unsafe extern "C" fn(
-    *mut JackOpaque,
-    *const c_char,
-    *const c_char,
-    c_ulong,
-    c_ulong,
-) -> *mut JackPort;
-type SetProcess = unsafe extern "C" fn(
-    *mut JackOpaque,
-    unsafe extern "C" fn(c_uint, *mut c_void) -> c_int,
-    *mut c_void,
-) -> c_int;
-type Activate = unsafe extern "C" fn(*mut JackOpaque) -> c_int;
-type Deactivate = unsafe extern "C" fn(*mut JackOpaque) -> c_int;
-type Connect = unsafe extern "C" fn(*mut JackOpaque, *const c_char, *const c_char) -> c_int;
-type PortName = unsafe extern "C" fn(*const JackPort) -> *const c_char;
-type SampleRate = unsafe extern "C" fn(*const JackOpaque) -> c_uint;
-type PortGetBuffer = unsafe extern "C" fn(*mut JackPort, c_uint) -> *mut c_void;
-
-struct JackApi {
-    handle: *mut c_void,
-    client_close: ClientClose,
-    port_register: PortRegister,
-    set_process: SetProcess,
-    activate: Activate,
-    deactivate: Deactivate,
-    connect: Connect,
-    port_name: PortName,
-    sample_rate: SampleRate,
-    port_get_buffer: PortGetBuffer,
-}
-
-struct JackClient {
-    client: *mut JackOpaque,
-    api: JackApi,
-    active: bool,
-}
-
-impl JackClient {
-    fn open(name: &str) -> Result<Self> {
-        let name = CString::new(name)?;
-        unsafe {
-            let handle = libc::dlopen(c"libjack.so.0".as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL);
-            if handle.is_null() {
-                bail!("JACK library unavailable");
-            }
-            let loaded = (|| -> Result<(ClientOpen, JackApi)> {
-                Ok((
-                    symbol(handle, b"jack_client_open\0")?,
-                    JackApi {
-                        handle,
-                        client_close: symbol(handle, b"jack_client_close\0")?,
-                        port_register: symbol(handle, b"jack_port_register\0")?,
-                        set_process: symbol(handle, b"jack_set_process_callback\0")?,
-                        activate: symbol(handle, b"jack_activate\0")?,
-                        deactivate: symbol(handle, b"jack_deactivate\0")?,
-                        connect: symbol(handle, b"jack_connect\0")?,
-                        port_name: symbol(handle, b"jack_port_name\0")?,
-                        sample_rate: symbol(handle, b"jack_get_sample_rate\0")?,
-                        port_get_buffer: symbol(handle, b"jack_port_get_buffer\0")?,
-                    },
-                ))
-            })();
-            let (open, api) = match loaded {
-                Ok(loaded) => loaded,
-                Err(error) => {
-                    libc::dlclose(handle);
-                    return Err(error);
-                }
-            };
-            let mut status = 0;
-            let client = open(name.as_ptr(), JACK_NO_START_SERVER, &mut status);
-            if client.is_null() {
-                libc::dlclose(handle);
-                bail!("JACK server unavailable (status {status})");
-            }
-            Ok(Self {
-                client,
-                api,
-                active: false,
-            })
+fn activate_and_connect(
+    jack: &mut JackClient,
+    outputs: &[String],
+    left: *mut JackPort,
+    right: *mut JackPort,
+) -> Result<()> {
+    if outputs.len() != 2 {
+        bail!("loop.output requires exactly two JACK destination ports");
+    }
+    jack.activate().context("activate JACK loop player")?;
+    for (port, destination) in [(left, &outputs[0]), (right, &outputs[1])] {
+        if let Err(error) = jack.connect_port_to_external(port, destination) {
+            jack.deactivate();
+            return Err(error)
+                .with_context(|| format!("connect JACK loop output to {destination}"));
         }
     }
-
-    fn sample_rate(&self) -> u32 {
-        unsafe { (self.api.sample_rate)(self.client) }
-    }
-
-    fn register_output(&mut self, name: &str) -> Result<*mut JackPort> {
-        let name = CString::new(name)?;
-        let port = unsafe {
-            (self.api.port_register)(
-                self.client,
-                name.as_ptr(),
-                JACK_DEFAULT_AUDIO_TYPE.as_ptr().cast(),
-                JACK_PORT_IS_OUTPUT,
-                0,
-            )
-        };
-        if port.is_null() {
-            bail!("register JACK loop output {name:?}");
-        }
-        Ok(port)
-    }
-
-    fn set_callback(&mut self, data: *mut CallbackData) -> Result<()> {
-        if unsafe { (self.api.set_process)(self.client, process_callback, data.cast()) } != 0 {
-            bail!("set JACK loop callback");
-        }
-        Ok(())
-    }
-
-    fn activate_and_connect(
-        &mut self,
-        outputs: &[String],
-        left: *mut JackPort,
-        right: *mut JackPort,
-    ) -> Result<()> {
-        if outputs.len() != 2 {
-            bail!("loop.output requires exactly two JACK destination ports");
-        }
-        let destinations = [
-            CString::new(outputs[0].as_str())?,
-            CString::new(outputs[1].as_str())?,
-        ];
-        if unsafe { (self.api.activate)(self.client) } != 0 {
-            bail!("activate JACK loop player");
-        }
-        self.active = true;
-        for (port, destination) in [(left, &destinations[0]), (right, &destinations[1])] {
-            let source = unsafe { (self.api.port_name)(port) };
-            if source.is_null() {
-                self.deactivate();
-                bail!("JACK loop player returned an unnamed port");
-            }
-            let source = unsafe { CStr::from_ptr(source) };
-            if unsafe { (self.api.connect)(self.client, source.as_ptr(), destination.as_ptr()) }
-                != 0
-            {
-                let label = destination.to_string_lossy().into_owned();
-                self.deactivate();
-                bail!("connect JACK loop output to {label}");
-            }
-        }
-        Ok(())
-    }
-
-    fn deactivate(&mut self) {
-        if self.active {
-            unsafe { (self.api.deactivate)(self.client) };
-            self.active = false;
-        }
-    }
-}
-
-impl Drop for JackClient {
-    fn drop(&mut self) {
-        self.deactivate();
-        unsafe {
-            (self.api.client_close)(self.client);
-            libc::dlclose(self.api.handle);
-        }
-    }
-}
-
-unsafe fn symbol<T: Copy>(handle: *mut c_void, name: &[u8]) -> Result<T> {
-    let pointer = unsafe { libc::dlsym(handle, name.as_ptr().cast()) };
-    if pointer.is_null() {
-        bail!("JACK symbol unavailable");
-    }
-    Ok(unsafe { std::mem::transmute_copy(&pointer) })
+    Ok(())
 }
 
 unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> c_int {

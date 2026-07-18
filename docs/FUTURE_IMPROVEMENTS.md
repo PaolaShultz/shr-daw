@@ -6,6 +6,11 @@ multiple hardware instruments simultaneously.
 
 ## Audio effects graph: inserts, sends, and returns
 
+Implementation has begun with the shared JACK boundary, pure DSP foundations,
+and durable model/limit contract in [Audio graph and DSP
+contract](AUDIO_GRAPH.md). The routing and listening behavior below remains
+deferred until its phase gates pass.
+
 ### Product idea
 
 Effects should be reusable audio processors that can be placed deliberately in

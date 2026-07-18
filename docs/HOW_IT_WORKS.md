@@ -70,6 +70,12 @@ An interrupted recording stays as `.wav.part`. SHR-DAW attempts recovery when
 the next recording starts. Live input is not sent from JACK capture back to
 JACK playback; use hardware direct monitoring when available.
 
+The shared real-time foundations and validated model for the future owned
+stereo mixer/effects client are documented in
+[Audio graph and DSP contract](AUDIO_GRAPH.md). Playback remains direct until
+the dry-graph checkpoint passes; the design document is not a performance or
+listening claim.
+
 ## Data and configuration
 
 User configuration is stored below:
