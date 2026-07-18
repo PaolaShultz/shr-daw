@@ -85,6 +85,13 @@ pub struct LoopPlayerConfig {
 }
 
 #[derive(Clone, Debug)]
+pub struct AudioGraphConfig {
+    pub enabled: bool,
+    pub client_name: String,
+    pub maximum_callback_frames: u32,
+}
+
+#[derive(Clone, Debug)]
 pub struct RuntimeConfig {
     /// Legacy names remain public so old callers/configurations keep working.
     pub synth_command: String,
@@ -98,6 +105,7 @@ pub struct RuntimeConfig {
     pub midi_input_matches: Vec<String>,
     pub audio_autoconnect: bool,
     pub audio_outputs: Vec<String>,
+    pub audio_graph: AudioGraphConfig,
     /// Optional zero-based CPU reserved by system setup for the managed engine.
     pub audio_engine_cpu: Option<usize>,
     pub cpu_temperature_path: Option<PathBuf>,
@@ -128,6 +136,11 @@ impl Default for RuntimeConfig {
             midi_input_matches: Vec::new(),
             audio_autoconnect: false,
             audio_outputs: Vec::new(),
+            audio_graph: AudioGraphConfig {
+                enabled: false,
+                client_name: "shr-graph".into(),
+                maximum_callback_frames: 4_096,
+            },
             audio_engine_cpu: None,
             cpu_temperature_path: None,
             external_midi: ExternalMidiConfig {
@@ -293,6 +306,12 @@ impl RuntimeConfig {
                         self.audio_outputs.push(value.to_owned());
                     }
                 }
+                "audio.graph.enabled" => self.audio_graph.enabled = boolean(key, value)?,
+                "audio.graph.client" => self.audio_graph.client_name = required(key, value)?.into(),
+                "audio.graph.maximum_callback_frames" => {
+                    self.audio_graph.maximum_callback_frames =
+                        bounded_usize(key, value, 1, 4_096)? as u32
+                }
                 "audio.engine_cpu" => {
                     self.audio_engine_cpu = if value.is_empty() {
                         None
@@ -428,6 +447,9 @@ impl RuntimeConfig {
         if self.audio_autoconnect && self.audio_outputs.is_empty() {
             bail!("audio.autoconnect requires at least one audio.output");
         }
+        if self.audio_graph.enabled && (!self.audio_autoconnect || self.audio_outputs.len() != 2) {
+            bail!("audio.graph.enabled requires audio.autoconnect and two audio.output entries");
+        }
         if self.external_midi.enabled && self.external_midi.output_match.is_empty() {
             bail!("external_midi.enabled requires external_midi.output");
         }
@@ -523,6 +545,12 @@ impl RuntimeConfig {
         if self.audio_outputs.is_empty() {
             text.push_str("audio.output=\n");
         }
+        text.push_str(&format!(
+            "audio.graph.enabled={}\naudio.graph.client={}\naudio.graph.maximum_callback_frames={}\n",
+            self.audio_graph.enabled,
+            self.audio_graph.client_name,
+            self.audio_graph.maximum_callback_frames
+        ));
         text.push_str(&format!(
             "audio.engine_cpu={}\n",
             self.audio_engine_cpu
@@ -776,6 +804,31 @@ mod tests {
         fs::write(&path, "audio.engine_cpu=\n").unwrap();
         assert_eq!(RuntimeConfig::load(&path).unwrap().audio_engine_cpu, None);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn owned_audio_graph_is_disabled_by_default_and_requires_a_stereo_fallback() {
+        let path =
+            std::env::temp_dir().join(format!("shsynth-audio-graph-{}.conf", std::process::id()));
+        fs::write(
+            &path,
+            "audio.graph.enabled=true\naudio.graph.client=my-graph\naudio.graph.maximum_callback_frames=256\n",
+        )
+        .unwrap();
+        let config = RuntimeConfig::load(&path).unwrap();
+        assert!(config.audio_graph.enabled);
+        assert_eq!(config.audio_graph.client_name, "my-graph");
+        assert_eq!(config.audio_graph.maximum_callback_frames, 256);
+        config.save(&path).unwrap();
+        assert!(RuntimeConfig::load(&path).unwrap().audio_graph.enabled);
+
+        fs::write(&path, "audio.autoconnect=false\naudio.graph.enabled=true\n").unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        fs::write(&path, "audio.output=only:left\naudio.graph.enabled=true\n").unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        let _ = fs::remove_file(path);
+
+        assert!(!RuntimeConfig::default().audio_graph.enabled);
     }
 
     #[test]

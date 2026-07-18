@@ -1,4 +1,5 @@
 pub mod audio_graph;
+mod audio_graph_client;
 pub mod audio_graph_runtime;
 mod audio_recorder;
 mod chord;

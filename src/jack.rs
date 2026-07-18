@@ -16,6 +16,7 @@ const JACK_PORT_IS_OUTPUT: c_ulong = 2;
 const JACK_NO_START_SERVER: c_uint = 1;
 
 pub(crate) type ProcessCallback = unsafe extern "C" fn(c_uint, *mut c_void) -> c_int;
+pub(crate) type ShutdownCallback = unsafe extern "C" fn(*mut c_void);
 pub(crate) type PortGetBuffer = unsafe extern "C" fn(*mut Port, c_uint) -> *mut c_void;
 
 #[repr(C)]
@@ -38,9 +39,11 @@ type PortRegister = unsafe extern "C" fn(
     c_ulong,
 ) -> *mut Port;
 type SetProcess = unsafe extern "C" fn(*mut OpaqueClient, ProcessCallback, *mut c_void) -> c_int;
+type OnShutdown = unsafe extern "C" fn(*mut OpaqueClient, ShutdownCallback, *mut c_void);
 type Activate = unsafe extern "C" fn(*mut OpaqueClient) -> c_int;
 type Deactivate = unsafe extern "C" fn(*mut OpaqueClient) -> c_int;
 type Connect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
+type Disconnect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
 type PortName = unsafe extern "C" fn(*const Port) -> *const c_char;
 type SampleRate = unsafe extern "C" fn(*const OpaqueClient) -> c_uint;
 
@@ -49,9 +52,11 @@ struct Api {
     client_close: ClientClose,
     port_register: PortRegister,
     set_process: SetProcess,
+    on_shutdown: OnShutdown,
     activate: Activate,
     deactivate: Deactivate,
     connect: Connect,
+    disconnect: Disconnect,
     port_name: PortName,
     sample_rate: SampleRate,
     port_get_buffer: PortGetBuffer,
@@ -93,9 +98,11 @@ impl Client {
                         client_close: symbol(handle, b"jack_client_close\0")?,
                         port_register: symbol(handle, b"jack_port_register\0")?,
                         set_process: symbol(handle, b"jack_set_process_callback\0")?,
+                        on_shutdown: symbol(handle, b"jack_on_shutdown\0")?,
                         activate: symbol(handle, b"jack_activate\0")?,
                         deactivate: symbol(handle, b"jack_deactivate\0")?,
                         connect: symbol(handle, b"jack_connect\0")?,
+                        disconnect: symbol(handle, b"jack_disconnect\0")?,
                         port_name: symbol(handle, b"jack_port_name\0")?,
                         sample_rate: symbol(handle, b"jack_get_sample_rate\0")?,
                         port_get_buffer: symbol(handle, b"jack_port_get_buffer\0")?,
@@ -172,6 +179,18 @@ impl Client {
         Ok(())
     }
 
+    /// Register a notification that may only set lock-free state. As with the
+    /// process callback, `argument` must remain valid until deactivation.
+    pub(crate) unsafe fn set_shutdown_callback(
+        &self,
+        callback: ShutdownCallback,
+        argument: *mut c_void,
+    ) {
+        // SAFETY: validity of the callback and opaque argument is the caller's
+        // contract documented by this method.
+        unsafe { (self.api.on_shutdown)(self.client, callback, argument) };
+    }
+
     pub(crate) fn port_get_buffer(&self) -> PortGetBuffer {
         self.api.port_get_buffer
     }
@@ -210,6 +229,43 @@ impl Client {
         self.connect(source.as_ptr(), destination.as_ptr())
     }
 
+    pub(crate) fn port_name_string(&self, port: *mut Port) -> Result<String> {
+        Ok(self.port_name(port)?.to_string_lossy().into_owned())
+    }
+
+    /// Ensure an exact named connection exists. The boolean is true only when
+    /// this call created it, allowing transactional rollback to preserve a
+    /// connection that already existed.
+    pub(crate) fn ensure_connection(&self, source: &str, destination: &str) -> Result<bool> {
+        let source = CString::new(source).context("JACK port name contains a NUL byte")?;
+        let destination =
+            CString::new(destination).context("JACK port name contains a NUL byte")?;
+        let status =
+            unsafe { (self.api.connect)(self.client, source.as_ptr(), destination.as_ptr()) };
+        if status == 0 {
+            Ok(true)
+        } else if status == libc::EEXIST {
+            Ok(false)
+        } else {
+            bail!("connect JACK ports (status {status})")
+        }
+    }
+
+    /// Remove an exact named connection. JACK does not define a distinct
+    /// already-absent status here, so every non-zero result remains a failure.
+    pub(crate) fn remove_connection(&self, source: &str, destination: &str) -> Result<bool> {
+        let source = CString::new(source).context("JACK port name contains a NUL byte")?;
+        let destination =
+            CString::new(destination).context("JACK port name contains a NUL byte")?;
+        let status =
+            unsafe { (self.api.disconnect)(self.client, source.as_ptr(), destination.as_ptr()) };
+        if status == 0 {
+            Ok(true)
+        } else {
+            bail!("disconnect JACK ports (status {status})")
+        }
+    }
+
     pub(crate) fn deactivate(&mut self) {
         if self.active {
             // SAFETY: JACK permits deactivation of an active open client.
@@ -232,8 +288,9 @@ impl Client {
 
     fn connect(&self, source: *const c_char, destination: *const c_char) -> Result<()> {
         // SAFETY: both arguments are live NUL-terminated port names.
-        if unsafe { (self.api.connect)(self.client, source, destination) } != 0 {
-            bail!("connect JACK ports");
+        let status = unsafe { (self.api.connect)(self.client, source, destination) };
+        if status != 0 && status != libc::EEXIST {
+            bail!("connect JACK ports (status {status})");
         }
         Ok(())
     }
