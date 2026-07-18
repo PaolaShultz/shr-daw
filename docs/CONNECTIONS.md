@@ -25,8 +25,8 @@ The main paths are:
 - optional audio input → direct monitoring and/or stereo WAV recording.
 
 The diagram is an example, not a shopping list. The original test rig used an
-Arturia MiniLab, an AudioBox USB interface, and a Casio Casiotone MT-240. Those
-devices proved the workflow, but SHR-DAW is not designed around them.
+Arturia MiniLab 3, a PreSonus AudioBox USB 96, and a Casio Casiotone MT-240.
+Those devices proved the workflow, but SHR-DAW is not designed around them.
 
 ## MIDI input
 
@@ -71,7 +71,7 @@ and right recording ports.
 When an audio interface has direct monitoring, connect an external instrument
 to its inputs and use the interface's monitor balance. This mixes the external
 sound with SHR-DAW software instruments without a second software-monitoring
-path, added latency, or added CPU use.
+path or its additional CPU work.
 
 The same JACK capture inputs remain available to the stereo recorder. SHR-DAW
 does not currently send capture audio back to playback for software monitoring.

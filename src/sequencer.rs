@@ -2191,23 +2191,58 @@ fn connect_target(
         PageTarget::ActiveInstrument => bail!("active instrument uses the monitored route"),
     };
     let output = MidiOutput::new(&config.client_name)?;
-    let port = output
-        .ports()
-        .into_iter()
-        .find(|p| {
-            output
-                .port_name(p)
-                .map(|n| {
-                    n == *wanted
-                        || (matches!(target, PageTarget::ConfiguredExternal)
-                            && n.to_lowercase().contains(&wanted.to_lowercase()))
-                })
-                .unwrap_or(false)
-        })
-        .with_context(|| format!("MIDI output {wanted:?} is offline"))?;
+    let ports = output.ports();
+    let names = ports
+        .iter()
+        .map(|port| output.port_name(port).unwrap_or_default())
+        .collect::<Vec<_>>();
+    let index = matching_output_index(
+        &names,
+        wanted,
+        matches!(target, PageTarget::ConfiguredExternal),
+    )?;
     output
-        .connect(&port, "SHR-DAW tracker page")
+        .connect(&ports[index], "SHR-DAW tracker page")
         .map_err(|e| anyhow!(e.to_string()))
+}
+
+pub(crate) fn matching_output_index(
+    names: &[String],
+    wanted: &str,
+    allow_partial: bool,
+) -> Result<usize> {
+    let exact = names
+        .iter()
+        .enumerate()
+        .filter_map(|(index, name)| (name == wanted).then_some(index))
+        .collect::<Vec<_>>();
+    match exact.as_slice() {
+        [index] => return Ok(*index),
+        [_, _, ..] => bail!(
+            "MIDI output {wanted:?} is ambiguous ({} exact matches)",
+            exact.len()
+        ),
+        [] => {}
+    }
+    if allow_partial && !wanted.is_empty() {
+        let wanted = wanted.to_lowercase();
+        let partial = names
+            .iter()
+            .enumerate()
+            .filter_map(|(index, name)| name.to_lowercase().contains(&wanted).then_some(index))
+            .collect::<Vec<_>>();
+        match partial.as_slice() {
+            [index] => return Ok(*index),
+            [_, _, ..] => {
+                bail!(
+                    "MIDI output match {wanted:?} is ambiguous ({} partial matches)",
+                    partial.len()
+                )
+            }
+            [] => {}
+        }
+    }
+    bail!("MIDI output {wanted:?} is offline")
 }
 
 pub fn available_midi_outputs(client_name: &str) -> Result<Vec<String>> {
@@ -2218,7 +2253,6 @@ pub fn available_midi_outputs(client_name: &str) -> Result<Vec<String>> {
         .filter_map(|port| output.port_name(port).ok())
         .collect::<Vec<_>>();
     names.sort();
-    names.dedup();
     Ok(names)
 }
 
@@ -3029,6 +3063,31 @@ mod tests {
             .contains("disabled"));
         let song = Song::new(&c);
         assert!(schedule(&song, &c, 0, 0).is_ok());
+    }
+
+    #[test]
+    fn output_matching_prefers_one_exact_name_and_rejects_ambiguity() {
+        let names = vec![
+            "USB MIDI".to_owned(),
+            "USB MIDI Through".to_owned(),
+            "DIN Output".to_owned(),
+        ];
+        assert_eq!(matching_output_index(&names, "USB MIDI", true).unwrap(), 0);
+        assert_eq!(matching_output_index(&names, "DIN", true).unwrap(), 2);
+        assert!(matching_output_index(&names, "MIDI", true)
+            .unwrap_err()
+            .to_string()
+            .contains("ambiguous"));
+        assert!(matching_output_index(&names, "DIN", false)
+            .unwrap_err()
+            .to_string()
+            .contains("offline"));
+
+        let duplicates = vec!["Same Port".to_owned(), "Same Port".to_owned()];
+        assert!(matching_output_index(&duplicates, "Same Port", false)
+            .unwrap_err()
+            .to_string()
+            .contains("2 exact matches"));
     }
 
     #[test]

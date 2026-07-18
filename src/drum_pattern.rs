@@ -534,7 +534,7 @@ mod tests {
             .into_iter()
             .filter(|entry| !entry.user)
             .collect::<Vec<_>>();
-        assert!(bundled.len() >= 60);
+        assert_eq!(bundled.len(), 72);
         assert!(bundled.iter().any(|entry| entry.name.contains("Rock")));
         assert!(bundled.iter().any(|entry| entry.name.contains("House")));
         assert!(bundled.iter().any(|entry| entry.name.contains("Waltz")));

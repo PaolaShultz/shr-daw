@@ -101,8 +101,8 @@ not globally on the Project. Pages in the current pattern play at the same time
 and each page stores:
 
 - its target;
-- MIDI channel 1–16;
-- bank, program, velocity, mute, and percussion settings;
+- four column channel/bank/program setups, with channels 1–16;
+- page velocity, mute, and percussion settings;
 - four lane names and lane mute states;
 - a reserved list of MIDI setup messages for later use.
 
@@ -121,7 +121,8 @@ offline when no managed instrument is active.
 An exact hardware port name is saved in the song. If that device is later
 missing, the page shows `OFFLINE`. SHR-DAW keeps the name and pattern data,
 does not rewrite the file, and continues playing pages whose targets are
-available.
+available. If multiple ports have the same exact name, or a configured partial
+match selects more than one port, the target is ambiguous and no port is chosen.
 
 ## Configured output
 
@@ -141,8 +142,10 @@ external_midi.percussion_channel=10
 ```
 
 These example values are not device requirements. Run `shr-setup` and choose
-the ports present on the Raspberry Pi. The Casiotone profile in the bundled
-example is only the original proof-of-concept profile.
+the ports present on the Raspberry Pi. The configuration template retains the
+original Casiotone proof-of-concept profile id, but no Casiotone named-program
+JSON is distributed; without a private matching profile, the browser correctly
+falls back to numeric programs 0–127.
 
 `external_midi.profile` selects named program data for the configured route.
 Use `roland-d-50` for a D-50, or leave an unknown id to retain the numeric
@@ -214,7 +217,8 @@ current Pattern tempo from the interpreted WAV BPM; they do not stretch the WAV
 to the previous Project tempo. The loop player also requires the JACK server
 sample rate to match the WAV sample rate. Choose 44100 Hz in JACK setup for
 44.1 kHz loops, or 48000 Hz for 48 kHz loops, and restart JACK yourself when it
-is safe.
+is safe. Decoded loop data is capped at 6,000,000 frames, about 46 MiB of stereo
+sample memory and 125 seconds at 48 kHz.
 
 ## FT2 cell fields
 

@@ -6,6 +6,7 @@ use std::cell::UnsafeCell;
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Seek, SeekFrom, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -428,9 +429,17 @@ pub fn recover_interrupted(dir: &Path) -> Result<Vec<PathBuf>> {
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("part") {
+            if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                found.push(path);
+                continue;
+            }
             let len = entry.metadata().map(|m| m.len()).unwrap_or(0);
             if len >= 44 && is_wav_part(&path) {
-                let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
+                let mut file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .custom_flags(libc::O_NOFOLLOW)
+                    .open(&path)?;
                 let frames = ((len - 44) / 6).min(WAV_MAX_FRAMES);
                 file.set_len(44 + frames * 6)?;
                 let rate = read_wav_rate(&mut file).context("invalid interrupted WAV header")?;
@@ -463,7 +472,10 @@ fn read_wav_rate(file: &mut File) -> Option<u32> {
 fn is_wav_part(path: &Path) -> bool {
     use std::io::Read;
     let mut header = [0u8; 44];
-    File::open(path)
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
         .and_then(|mut file| file.read_exact(&mut header))
         .is_ok()
         && &header[..4] == b"RIFF"
@@ -740,6 +752,28 @@ mod tests {
         assert_eq!(u32::from_le_bytes(b[40..44].try_into().unwrap()), 12);
         fs::write(d.join("lost.wav.part"), b"partial").unwrap();
         assert_eq!(recover_interrupted(&d).unwrap().len(), 1);
+        let _ = fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn interrupted_recovery_reports_but_never_follows_part_symlinks() {
+        let d = std::env::temp_dir().join(format!("shwav-symlink-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let target = d.join("target.bin");
+        let mut file = File::create(&target).unwrap();
+        write_wav_header(&mut file, 48_000, 0).unwrap();
+        drop(file);
+        let before = fs::read(&target).unwrap();
+        let link = d.join("linked.wav.part");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert_eq!(recover_interrupted(&d).unwrap(), [link.clone()]);
+        assert!(fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read(&target).unwrap(), before);
         let _ = fs::remove_dir_all(d);
     }
 

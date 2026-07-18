@@ -2,11 +2,16 @@ use crate::control::CONTROLS;
 use crate::preset::{BackendKind, Preset, PresetId};
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const FORMAT_VERSION: u32 = 2;
+const MAX_IDEA_MIDI_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_IDEA_METADATA_BYTES: u64 = 1024 * 1024;
+const MAX_PRESET_REFERENCE_BYTES: u64 = 64 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TimedEvent {
@@ -109,7 +114,13 @@ pub fn list(base: &Path) -> Result<Vec<String>> {
 }
 
 pub fn inspect(base: &Path, name: &str) -> Result<String> {
-    fs::read_to_string(idea_dir(base, name)?.join("metadata.json")).map_err(Into::into)
+    let path = idea_dir(base, name)?.join("metadata.json");
+    String::from_utf8(read_owned_file(
+        &path,
+        MAX_IDEA_METADATA_BYTES,
+        "idea metadata",
+    )?)
+    .context("idea metadata is not UTF-8")
 }
 
 #[cfg(test)]
@@ -138,7 +149,8 @@ fn load_core(base: &Path, name: &str) -> Result<(PathBuf, Preset, Vec<TimedEvent
         }
         Preset::synthv1(name, path)
     };
-    let events = decode_smf(&fs::read(dir.join("recording.mid"))?)?;
+    let midi = dir.join("recording.mid");
+    let events = decode_smf(&read_owned_file(&midi, MAX_IDEA_MIDI_BYTES, "idea MIDI")?)?;
     Ok((dir, preset, events))
 }
 
@@ -146,8 +158,12 @@ fn read_saved_parameters(path: &Path, backend: BackendKind) -> Result<HashMap<u8
     if backend != BackendKind::Synthv1 || !path.is_file() {
         return Ok(HashMap::new());
     }
-    let metadata: serde_json::Value = serde_json::from_slice(&fs::read(path)?)
-        .with_context(|| format!("parse idea metadata {}", path.display()))?;
+    let metadata: serde_json::Value = serde_json::from_slice(&read_owned_file(
+        path,
+        MAX_IDEA_METADATA_BYTES,
+        "idea metadata",
+    )?)
+    .with_context(|| format!("parse idea metadata {}", path.display()))?;
     let Some(parameters) = metadata
         .get("parameters")
         .and_then(serde_json::Value::as_object)
@@ -251,6 +267,7 @@ pub fn save(
             tmp.join("metadata.json"),
             serde_json::to_vec_pretty(&metadata)?,
         )?;
+        sync_idea_files(&tmp, snapshot.is_some())?;
         Ok(())
     })();
     if let Err(e) = result {
@@ -312,7 +329,12 @@ fn write_preset_ref(path: &Path, preset: &Preset) -> Result<()> {
 }
 
 fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
-    let text = fs::read_to_string(path)?;
+    let text = String::from_utf8(read_owned_file(
+        path,
+        MAX_PRESET_REFERENCE_BYTES,
+        "preset reference",
+    )?)
+    .context("preset reference is not UTF-8")?;
     let field = |name: &str| {
         text.lines()
             .find_map(|line| line.strip_prefix(name).map(str::to_owned))
@@ -356,6 +378,48 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
         category,
         id,
     })
+}
+
+fn read_owned_file(path: &Path, max_bytes: u64, label: &str) -> Result<Vec<u8>> {
+    let path_metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("inspect {label} {}", path.display()))?;
+    if !path_metadata.file_type().is_file() || path_metadata.file_type().is_symlink() {
+        bail!("{label} is not a regular owned file");
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .with_context(|| format!("open {label} {} without following links", path.display()))?;
+    let metadata = file
+        .metadata()
+        .with_context(|| format!("inspect opened {label} {}", path.display()))?;
+    if !metadata.is_file() {
+        bail!("{label} is not a regular owned file");
+    }
+    if metadata.len() > max_bytes {
+        bail!("{label} exceeds the {max_bytes}-byte safety limit");
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(max_bytes + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read {label} {}", path.display()))?;
+    if bytes.len() as u64 > max_bytes {
+        bail!("{label} exceeds the {max_bytes}-byte safety limit");
+    }
+    Ok(bytes)
+}
+
+fn sync_idea_files(dir: &Path, has_snapshot: bool) -> Result<()> {
+    let mut names = vec!["preset.ref", "recording.mid", "metadata.json"];
+    if has_snapshot {
+        names.push("preset.synthv1");
+    }
+    for name in names {
+        fs::File::open(dir.join(name))?.sync_all()?;
+    }
+    fs::File::open(dir)?.sync_all()?;
+    Ok(())
 }
 
 fn safe_ref_value(value: &str) -> Result<String> {
@@ -703,6 +767,35 @@ mod tests {
         let preset = Preset::synthv1("p", preset_path);
         save(&base, "fresh", &preset, &HashMap::new(), &[]).unwrap();
         assert_eq!(fs::read(stale.join("keep")).unwrap(), b"unfinished");
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn idea_load_rejects_symlinked_and_oversized_owned_midi_files() {
+        let base = std::env::temp_dir().join(format!("shsynth-idea-bounds-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let preset_path = base.join("p.synthv1");
+        fs::write(&preset_path, "preset").unwrap();
+        let preset = Preset::synthv1("p", preset_path);
+        let saved = save(&base, "bounded", &preset, &HashMap::new(), &[]).unwrap();
+        let midi = saved.join("recording.mid");
+        let outside = base.join("outside.mid");
+        fs::write(&outside, encode_smf(&[])).unwrap();
+        fs::remove_file(&midi).unwrap();
+        std::os::unix::fs::symlink(&outside, &midi).unwrap();
+        assert!(load(&base, "bounded")
+            .unwrap_err()
+            .to_string()
+            .contains("regular owned file"));
+
+        fs::remove_file(&midi).unwrap();
+        let oversized = fs::File::create(&midi).unwrap();
+        oversized.set_len(MAX_IDEA_MIDI_BYTES + 1).unwrap();
+        assert!(load(&base, "bounded")
+            .unwrap_err()
+            .to_string()
+            .contains("safety limit"));
         let _ = fs::remove_dir_all(base);
     }
 

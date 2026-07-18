@@ -19,6 +19,10 @@ const JACK_PORT_IS_OUTPUT: c_ulong = 2;
 const JACK_NO_START_SERVER: c_uint = 1;
 const BEAT_UNITS: f64 = 1_000_000.0;
 const ANALYSIS_HOP: usize = 1024;
+// Decoding is deliberately bounded because the whole loop stays resident in
+// memory for the lock-free JACK callback. Six million stereo frames use about
+// 46 MiB and cover 125 seconds at 48 kHz.
+const MAX_DECODED_LOOP_FRAMES: u32 = 6_000_000;
 
 #[derive(Debug)]
 pub struct TransportClock {
@@ -75,41 +79,45 @@ impl DecodedLoop {
         if !(8_000..=384_000).contains(&spec.sample_rate) {
             bail!("unsupported WAV sample rate {} Hz", spec.sample_rate);
         }
-        let raw = match spec.sample_format {
-            hound::SampleFormat::Float => reader
-                .samples::<f32>()
-                .map(|sample| {
-                    let sample = sample.context("malformed float WAV sample")?;
-                    if !sample.is_finite() {
-                        bail!("WAV contains a non-finite float sample");
-                    }
-                    Ok(sample.clamp(-1.0, 1.0))
-                })
-                .collect::<Result<Vec<_>>>()?,
+        let frames = checked_loop_frames(reader.duration())?;
+        let mut samples = Vec::with_capacity(frames);
+        match spec.sample_format {
+            hound::SampleFormat::Float => {
+                let mut raw = reader.samples::<f32>();
+                while let Some(left) = raw.next() {
+                    let left = checked_float_sample(left)?;
+                    let right = if spec.channels == 1 {
+                        left
+                    } else {
+                        checked_float_sample(raw.next().context("incomplete stereo WAV frame")?)?
+                    };
+                    samples.push([left, right]);
+                }
+            }
             hound::SampleFormat::Int => {
                 let bits = u32::from(spec.bits_per_sample);
                 if bits == 0 || bits > 32 {
                     bail!("unsupported WAV integer depth {}", spec.bits_per_sample);
                 }
                 let divisor = 2_f32.powi(bits.saturating_sub(1) as i32);
-                reader
-                    .samples::<i32>()
-                    .map(|sample| {
-                        sample
-                            .map(|value| value as f32 / divisor)
-                            .context("malformed integer WAV sample")
-                    })
-                    .collect::<Result<Vec<_>>>()?
+                let mut raw = reader.samples::<i32>();
+                while let Some(left) = raw.next() {
+                    let left = left.context("malformed integer WAV sample")? as f32 / divisor;
+                    let right = if spec.channels == 1 {
+                        left
+                    } else {
+                        raw.next()
+                            .context("incomplete stereo WAV frame")?
+                            .context("malformed integer WAV sample")? as f32
+                            / divisor
+                    };
+                    samples.push([left, right]);
+                }
             }
-        };
-        if raw.is_empty() || raw.len() % usize::from(spec.channels) != 0 {
+        }
+        if samples.is_empty() || samples.len() != frames {
             bail!("WAV has no complete audio frames");
         }
-        let samples = if spec.channels == 1 {
-            raw.into_iter().map(|sample| [sample, sample]).collect()
-        } else {
-            raw.chunks_exact(2).map(|pair| [pair[0], pair[1]]).collect()
-        };
         Ok(Self {
             samples,
             sample_rate: spec.sample_rate,
@@ -120,6 +128,21 @@ impl DecodedLoop {
     pub fn duration(&self) -> Duration {
         Duration::from_secs_f64(self.samples.len() as f64 / f64::from(self.sample_rate))
     }
+}
+
+fn checked_loop_frames(frames: u32) -> Result<usize> {
+    if frames > MAX_DECODED_LOOP_FRAMES {
+        bail!("WAV has {frames} frames; the safe loop limit is {MAX_DECODED_LOOP_FRAMES} frames");
+    }
+    Ok(frames as usize)
+}
+
+fn checked_float_sample(sample: hound::Result<f32>) -> Result<f32> {
+    let sample = sample.context("malformed float WAV sample")?;
+    if !sample.is_finite() {
+        bail!("WAV contains a non-finite float sample");
+    }
+    Ok(sample.clamp(-1.0, 1.0))
 }
 
 pub fn loops_dir() -> PathBuf {
@@ -257,6 +280,8 @@ pub fn import(source: &Path, destination: &Path) -> Result<(PathBuf, DecodedLoop
             return Err(error)
                 .with_context(|| format!("copy private loop to {}", target.display()));
         }
+        drop(output);
+        fs::File::open(destination)?.sync_all()?;
         return Ok((target, decoded));
     }
     bail!("too many imported loops named {safe}")
@@ -941,6 +966,18 @@ mod tests {
         fs::write(&bad, b"not a wave").unwrap();
         assert!(DecodedLoop::open(&bad).is_err());
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn decoded_loop_frame_limit_is_explicit_and_bounded() {
+        assert_eq!(
+            checked_loop_frames(MAX_DECODED_LOOP_FRAMES).unwrap(),
+            MAX_DECODED_LOOP_FRAMES as usize
+        );
+        assert!(checked_loop_frames(MAX_DECODED_LOOP_FRAMES + 1)
+            .unwrap_err()
+            .to_string()
+            .contains("safe loop limit"));
     }
 
     #[test]

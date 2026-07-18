@@ -1192,8 +1192,24 @@ fn owner_for(pid: i32) -> Option<Owner> {
     })
 }
 
+fn stable_owner_for(pid: i32) -> Option<Owner> {
+    let deadline = Instant::now() + Duration::from_millis(250);
+    let mut previous = None;
+    loop {
+        let current = owner_for(pid);
+        if current.is_some() && current == previous {
+            return current;
+        }
+        previous = current;
+        if Instant::now() >= deadline {
+            return None;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn write_owner(path: &Path, pid: i32) -> Result<()> {
-    let owner = owner_for(pid).context("read spawned process identity")?;
+    let owner = stable_owner_for(pid).context("read stable spawned process identity")?;
     fs::write(
         path,
         format!(
@@ -1227,6 +1243,22 @@ fn still_owned(owner: &Owner) -> bool {
     })
 }
 
+fn confirm_still_owned(owner: &Owner) -> bool {
+    let deadline = Instant::now() + Duration::from_millis(100);
+    loop {
+        if still_owned(owner) {
+            return true;
+        }
+        if proc_start_time(owner.pid).is_some_and(|start| start != owner.start_time) {
+            return false;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn same_executable(recorded: &Path, current: &Path) -> bool {
     executable_bytes(recorded) == executable_bytes(current)
 }
@@ -1243,7 +1275,7 @@ fn stop_owned(path: &Path, timeout: Duration) -> Result<()> {
         let _ = fs::remove_file(path);
         return Ok(());
     };
-    if still_owned(&owner) {
+    if confirm_still_owned(&owner) {
         signal_owned(&owner, libc::SIGTERM)?;
         let deadline = Instant::now() + timeout;
         while still_owned(&owner) && Instant::now() < deadline {
@@ -1516,8 +1548,24 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let mut child = Command::new("sleep").arg("300").spawn().unwrap();
         write_owner(&dir.join("engine.pid"), child.id() as i32).unwrap();
+        let recorded = read_owner(&dir.join("engine.pid")).unwrap();
+        if !still_owned(&recorded) {
+            let current = owner_for(child.id() as i32);
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("recorded owner {recorded:?} did not match spawned process {current:?}");
+        }
         stop_managed(&dir).unwrap();
-        assert!(child.wait().unwrap().code().is_none());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        if child.try_wait().unwrap().is_none() {
+            let current = owner_for(child.id() as i32);
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("recorded owner {recorded:?} failed to stop spawned process {current:?}");
+        }
         assert!(!dir.join("engine.pid").exists());
         let _ = fs::remove_dir_all(dir);
     }

@@ -141,7 +141,7 @@ struct TrackerRecording {
     page: usize,
     last_row: usize,
     next_lane: usize,
-    active_lanes: HashMap<u8, usize>,
+    active_lanes: HashMap<(u8, u8), Vec<usize>>,
     notes: usize,
 }
 
@@ -1256,12 +1256,16 @@ impl App {
             PageTarget::ActiveInstrument => self.engine.is_some(),
             PageTarget::ConfiguredExternal => {
                 self.config.external_midi.enabled
-                    && self.available_page_outputs.iter().any(|name| {
-                        name.to_lowercase()
-                            .contains(&self.config.external_midi.output_match.to_lowercase())
-                    })
+                    && sequencer::matching_output_index(
+                        &self.available_page_outputs,
+                        &self.config.external_midi.output_match,
+                        true,
+                    )
+                    .is_ok()
             }
-            PageTarget::Midi(name) => self.available_page_outputs.contains(name),
+            PageTarget::Midi(name) => {
+                sequencer::matching_output_index(&self.available_page_outputs, name, false).is_ok()
+            }
         }
     }
     fn open_page_manager(&mut self) {
@@ -1615,11 +1619,19 @@ impl App {
         if bytes.len() < 3 || !matches!(bytes[0] & 0xf0, 0x80 | 0x90) {
             return;
         }
+        let channel = bytes[0] & 0x0f;
         let note = bytes[1];
         let note_on = bytes[0] & 0xf0 == 0x90 && bytes[2] > 0;
         if !note_on {
             if let Some(recording) = self.tracker_recording.as_mut() {
-                recording.active_lanes.remove(&note);
+                let key = (channel, note);
+                let empty = recording.active_lanes.get_mut(&key).is_none_or(|lanes| {
+                    lanes.pop();
+                    lanes.is_empty()
+                });
+                if empty {
+                    recording.active_lanes.remove(&key);
+                }
             }
             return;
         }
@@ -1635,13 +1647,23 @@ impl App {
         let lane = (0..LANES_PER_PAGE)
             .map(|offset| (recording.next_lane + offset) % LANES_PER_PAGE)
             .find(|lane| {
-                !recording.active_lanes.values().any(|active| active == lane)
+                !recording
+                    .active_lanes
+                    .values()
+                    .flatten()
+                    .any(|active| active == lane)
                     && matches!(pattern.rows[row][first_lane + lane].note, Note::Empty)
             })
             .or_else(|| {
                 (0..LANES_PER_PAGE)
                     .map(|offset| (recording.next_lane + offset) % LANES_PER_PAGE)
-                    .find(|lane| !recording.active_lanes.values().any(|active| active == lane))
+                    .find(|lane| {
+                        !recording
+                            .active_lanes
+                            .values()
+                            .flatten()
+                            .any(|active| active == lane)
+                    })
             });
         let Some(lane) = lane else {
             self.status = format!("REC row {row:02X} full · note ignored");
@@ -1652,7 +1674,11 @@ impl App {
             velocity: Some(bytes[2]),
             ..Cell::default()
         };
-        recording.active_lanes.insert(note, lane);
+        recording
+            .active_lanes
+            .entry((channel, note))
+            .or_default()
+            .push(lane);
         recording.next_lane = (lane + 1) % LANES_PER_PAGE;
         recording.notes += 1;
         self.tracker_track = lane;
@@ -8324,6 +8350,46 @@ mod tests {
 
         a.stop_tracker_recording();
         assert!(!a.tracker_route.lock().unwrap().preview_state().0);
+    }
+
+    #[test]
+    fn tracker_record_keeps_overlapping_same_notes_owned_by_channel_and_instance() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.begin_tracker_recording();
+
+        a.record_tracker_midi(&[0x90, 60, 100]);
+        a.record_tracker_midi(&[0x90, 60, 101]);
+        a.record_tracker_midi(&[0x91, 60, 102]);
+        let recording = a.tracker_recording.as_ref().unwrap();
+        assert_eq!(recording.active_lanes[&(0, 60)], [0, 1]);
+        assert_eq!(recording.active_lanes[&(1, 60)], [2]);
+
+        a.record_tracker_midi(&[0x80, 60, 0]);
+        assert_eq!(
+            a.tracker_recording.as_ref().unwrap().active_lanes[&(0, 60)],
+            [0]
+        );
+        a.record_tracker_midi(&[0x90, 62, 103]);
+        assert_eq!(a.song.patterns[&0].rows[0][3].note, Note::On(62));
+
+        a.record_tracker_midi(&[0x90, 60, 0]);
+        a.record_tracker_midi(&[0x81, 60, 0]);
+        assert!(!a
+            .tracker_recording
+            .as_ref()
+            .unwrap()
+            .active_lanes
+            .contains_key(&(0, 60)));
+        assert!(!a
+            .tracker_recording
+            .as_ref()
+            .unwrap()
+            .active_lanes
+            .contains_key(&(1, 60)));
+        a.stop_tracker_recording();
     }
 
     #[test]

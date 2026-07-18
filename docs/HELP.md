@@ -91,8 +91,8 @@ grooves into the percussion page without changing its MIDI route. FILTER picks
 genre, meter, and 32/64/128-row length (24/48/96 in 3/4). Empty Patterns resize;
 existing melody is protected. Saved drum patterns are separate `.shdrum` files;
 only user saves can be deleted.
-renames a saved Project without overwriting another file. FILES CLEAN deletes
-only a zero-reference Pattern and never edits Arrangement steps.
+FILES CLEAN deletes only a zero-reference Pattern and never edits Arrangement
+steps.
 
 ## Loops and audio
 

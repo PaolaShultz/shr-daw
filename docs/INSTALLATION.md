@@ -8,6 +8,15 @@ build the locked project with Rust 1.85, and pass the test suite. Audio and MIDI
 hardware have not been tested there. Raspberry Pi OS Bullseye and Debian or
 Raspberry Pi OS 13 (Trixie) are expected to work, but are not hardware-tested.
 
+The supported family is Debian-based Linux. Rust 1.85, Cargo, a C build
+toolchain, `pkg-config`, ALSA development/runtime tools, and JACK2 are required
+to build the complete binary. A running JACK server is optional for browsing
+and editing but required for software-instrument audio, WAV-loop playback, and
+stereo recording. synthv1, Yoshimi, and FluidSynth/TimGM are separate optional
+sound engines at runtime; the default installer includes all three so their
+catalogs are useful immediately. MIDI controllers, external instruments, audio
+interfaces, and a 480×320 display are optional hardware.
+
 ## Install
 
 From the project directory, run:
@@ -41,6 +50,50 @@ Use `--no-deps` to keep the installer from installing system packages. Use
 
 The product and Cargo package are named `shr-daw`. The main command is `shr`.
 Existing `shsynth` configuration and data paths are kept for compatibility.
+
+## Repository-local evaluation
+
+Contributors can build and inspect the checkout without installing files:
+
+```sh
+cargo test --locked
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo run --locked -- config init
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo run --locked -- list
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo run --locked -- screenshots > /tmp/shr-daw-screens.json
+```
+
+This path does not start JACK or transmit MIDI. Delete the two explicit `/tmp`
+paths afterward. For a persistent private development checkout,
+`./scripts/setup-local.sh` and `./scripts/local.sh` redirect configuration,
+Projects, Ideas, recordings, loops, and private presets below ignored `user/`.
+
+## Upgrade and uninstall boundaries
+
+Rerunning `./scripts/install.sh` builds the locked current checkout and replaces
+installed program/shared documentation files. Existing XDG configuration,
+controller learning, Projects, Ideas, loops, and recordings are not removed or
+reset. Run `shr-setup` only when routes or hardware need to change.
+
+For a default `/usr/local` source installation, remove installed SHR-DAW files
+from this checkout with:
+
+```sh
+sudo make uninstall
+```
+
+This removes the installed commands, public presets, profiles, rhythms, and
+documentation. It deliberately preserves user data under
+`${XDG_STATE_HOME:-~/.local/state}/shsynth/` and
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/`, repository-local `user/`, system
+packages, JACK policy, and setup backups. Optional CPU/audio tuning is also a
+separate explicit system change; inspect/remove it with `shr-audio-tune` before
+uninstalling the command if desired. Never delete those retained directories
+unless their Projects, Ideas, recordings, loops, and private presets have been
+reviewed and backed up.
+
+The Makefile install/uninstall file boundary was validated in an isolated
+`DESTDIR`: 21 allowlisted public presets were installed, no `user/` path was
+included, and staged uninstall removed only staged product files.
 
 ## JACK
 

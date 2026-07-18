@@ -1,10 +1,10 @@
 # Licensing and redistribution
 
-SHR-DAW source code, `Velvet Tines.synthv1`, and the 20 newly authored presets
-listed below are released under the MIT license in `LICENSE`. MIT permits
-commercial and non-commercial use, modification, and redistribution, but the
-copyright and license notice must be kept. No MIT/Apache/GPL license is
-literally obligation-free.
+SHR-DAW source code, `Velvet Tines.synthv1`, the 20 newly authored presets, and
+the bundled original drum-pattern data are released under the MIT license in
+`LICENSE`. MIT permits commercial and non-commercial use, modification, and
+redistribution, but the copyright and license notice must be kept. No
+MIT/Apache/GPL license is literally obligation-free.
 
 ## Rust dependencies
 
@@ -94,3 +94,14 @@ after its provenance is recorded here. Static tests verify the manifest, all
 145 indices and names, and mapped values against the current schema. Sound
 quality still requires authorized listening tests; none were run while adding
 this set.
+
+## Original drum patterns
+
+The 60 compact catalog entries and 12 standalone `.shdrum` files in
+`drum-patterns/` were authored as editable SHR-DAW MIDI data and are released
+under MIT. They use conventional General MIDI-style drum-note assignments, but
+they do not copy or transcribe third-party MIDI files or protected recordings.
+Genre names are creative navigation hints rather than claims of an
+authoritative cultural transcription. The structural and naming audit is in
+`docs/DRUM_PATTERN_AUDIT.md`; groove, feel, and final curation still require
+human listening.

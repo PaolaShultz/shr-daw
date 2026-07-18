@@ -108,9 +108,9 @@ inbox. Import validates it, estimates the loop length from transient pulses
 when possible, snaps the length to whole Project bars, and copies it into private
 storage below
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/loops/`; user audio never enters the
-tracked repository. The Project stores only the imported filename, meter, source
-BPM, 1/2x/1x/2x interpretation, non-destructive start/length in beats, and a
-bar-based placement offset.
+tracked repository. The Project stores only the imported filename, source BPM,
+1/2x/1x/2x interpretation, non-destructive start/length in beats, and a
+bar-based placement offset. Meter comes from the Pattern.
 
 WAV has no dependable standard BPM metadata, so SHR-DAW does not invent it.
 Import and **AUTO** estimate pulse spacing when the audio has useful
@@ -133,7 +133,8 @@ tempo. The loop player requires the JACK server sample rate to match the WAV
 sample rate. For a 44.1 kHz loop, configure/restart JACK at 44100 Hz before
 loading it. A bounded 5 ms fade is applied at cut/loop edges. The 40×20 screen
 shows text for filename, BPMs, region, state, elapsed/total time, rate, and
-channels.
+channels. A decoded loop is limited to 6,000,000 frames (about 125 seconds at
+48 kHz) so one imported file cannot exhaust Raspberry Pi memory.
 
 From **TOOLS** → **LOOP**, press **REMOVE** twice to detach the loop from the
 Project and unload its JACK client. The imported private WAV is kept on disk so
@@ -160,12 +161,14 @@ destination page; missing destinations are not created implicitly.
 ## Drum pattern library and transpose
 
 Open **FILES** → **PATTERN** → **DRUMS** for reusable rhythms stored separately
-from Projects. The bundled library has more than 70 authored grooves across
+from Projects. The bundled library has 72 authored grooves across
 Rock, Pop, House, Techno, Hip-Hop, Funk, Reggae, Breaks, Latin, and Jazz. The
 **FILTER** page selects genre, 3/4 or 4/4 meter, and phrase length. 4/4 offers
 32/64/128 rows (2/4/8 bars at the default four steps per beat); 3/4 offers the
 matching 24/48/96 rows. Longer choices add alternating-bar changes and
-genre-aware phrase-end fills rather than merely duplicating a filename.
+genre-aware phrase-end fills rather than merely duplicating a filename. Genre
+names are compact creative labels for editable starting points, not claims of
+an authoritative historical transcription.
 
 **LOAD** replaces only the current Pattern's first percussion page. Its
 destination, channels, bank/program setup, lane state, tempo, and arrangement
