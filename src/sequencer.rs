@@ -1,5 +1,6 @@
 //! Multi-destination FT2-style sequencing. Song editing/storage and event
 //! planning remain independent from the owned software-synth lifecycle.
+use crate::audio_graph::InsertRack;
 use crate::config::{BankSelectMode, ExternalMidiConfig};
 use crate::device_profile::Registry as DeviceProfiles;
 use anyhow::{anyhow, bail, Context, Result};
@@ -12,7 +13,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 1;
+pub const SONG_VERSION: u8 = 2;
 pub const LANES_PER_PAGE: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_PATTERNS: usize = 256;
@@ -22,12 +23,13 @@ const MAX_SETUP_MESSAGES_PER_PAGE: usize = 256;
 #[cfg(test)]
 const DEFAULT_GESTURE_SETTLE: Duration = Duration::from_millis(45);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Song {
     pub name: String,
     pub steps_per_beat: u8,
     pub gate_percent: u8,
     pub audio_loop: Option<LoopSettings>,
+    pub insert_rack: InsertRack,
     pub order: Vec<u16>,
     pub patterns: BTreeMap<u16, Pattern>,
 }
@@ -293,6 +295,7 @@ impl Song {
             steps_per_beat: config.steps_per_beat,
             gate_percent: config.gate_percent,
             audio_loop: None,
+            insert_rack: InsertRack::default(),
             order: vec![0],
             patterns,
         }
@@ -322,6 +325,9 @@ impl Song {
                 bail!("invalid private loop settings");
             }
         }
+        self.insert_rack
+            .validate()
+            .map_err(|error| anyhow!(error.to_string()))?;
         if self
             .order
             .iter()
@@ -798,6 +804,10 @@ pub fn encode(song: &Song) -> Result<String> {
             audio_loop.offset_beats
         ));
     }
+    out.push_str(&format!(
+        "insert_rack={}\n",
+        escape(&serde_json::to_string(&song.insert_rack)?)
+    ));
     for (number, pattern) in &song.patterns {
         out.push_str(&format!(
             "pattern={number}|{}|{}|{}\n",
@@ -878,6 +888,7 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut steps = None;
     let mut gate = None;
     let mut audio_loop = None;
+    let mut insert_rack = None;
     let mut order = None;
     let mut patterns: BTreeMap<u16, Pattern> = BTreeMap::new();
     let mut pattern_pages: BTreeMap<u16, BTreeMap<usize, Page>> = BTreeMap::new();
@@ -914,6 +925,11 @@ pub fn decode(text: &str) -> Result<Song> {
                     "loop",
                 )?;
             }
+            "insert_rack" if version == 2 => set_once(
+                &mut insert_rack,
+                serde_json::from_str::<InsertRack>(&unescape(value)?)?,
+                "insert_rack",
+            )?,
             "order" => {
                 let parsed = value
                     .split(',')
@@ -978,7 +994,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         },
                         true,
                     ),
-                    (1, [_, _, name, enabled, velocity, percussion, target]) => (
+                    (1 | 2, [_, _, name, enabled, velocity, percussion, target]) => (
                         Page {
                             name: unescape(name)?,
                             enabled: binary_flag(enabled, "pattern page enabled")?,
@@ -1004,7 +1020,7 @@ pub fn decode(text: &str) -> Result<Song> {
                 debug_assert_eq!(legacy_column, version == 0);
             }
             "pattern_lane" => pattern_lanes.push(value.to_owned()),
-            "pattern_column" if version == 1 => pattern_columns.push(value.to_owned()),
+            "pattern_column" if version >= 1 => pattern_columns.push(value.to_owned()),
             "pattern_setup" => pattern_setup.push(value.to_owned()),
             "cell" => cells.push(value.to_owned()),
             _ => bail!("unknown song field {key}; file was not changed"),
@@ -1018,7 +1034,7 @@ pub fn decode(text: &str) -> Result<Song> {
         pattern.pages = pages.into_values().collect();
     }
     attach_pattern_lanes(&mut patterns, pattern_lanes)?;
-    if version == 1 {
+    if version >= 1 {
         attach_pattern_columns(&mut patterns, pattern_columns)?;
     }
     attach_pattern_setup(&mut patterns, pattern_setup)?;
@@ -1074,6 +1090,11 @@ pub fn decode(text: &str) -> Result<Song> {
         steps_per_beat: steps.context("missing steps")?,
         gate_percent: gate.context("missing gate")?,
         audio_loop,
+        insert_rack: if version == 2 {
+            insert_rack.context("missing insert rack")?
+        } else {
+            InsertRack::default()
+        },
         order: order.context("missing order")?,
         patterns,
     };
@@ -1204,15 +1225,8 @@ pub fn save(base: &Path, song: &Song, overwrite: bool) -> Result<PathBuf> {
     }
     if path.exists() && overwrite {
         let existing = fs::read_to_string(&path)?;
-        let supported = existing
-            .lines()
-            .next()
-            .and_then(|header| header.strip_prefix("SHSYNTH-SONG "))
-            .and_then(|version| version.parse::<u8>().ok())
-            .is_some_and(|version| version <= SONG_VERSION);
-        if !supported {
-            bail!("refusing to overwrite unsupported/newer song file");
-        }
+        decode(&existing)
+            .context("refusing to overwrite unsupported, malformed, or unknown project data")?;
     }
     let encoded = encode(song)?;
     if overwrite {
@@ -2509,10 +2523,20 @@ mod tests {
     fn serialization_round_trip_requires_current_schema() {
         let mut s = Song::new(&config());
         s.name = "a|b".into();
+        let compressor = s
+            .insert_rack
+            .add(crate::audio_graph::EffectKind::Compressor)
+            .unwrap();
+        s.insert_rack
+            .effect_mut(compressor)
+            .unwrap()
+            .parameters
+            .insert("threshold_db".into(), -27.5);
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
+        assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
     }
     #[test]
     fn current_format_loop_round_trips_and_old_shapes_are_rejected() {
@@ -2549,7 +2573,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 1\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 2\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -3029,6 +3053,12 @@ mod tests {
             fs::read_to_string(&path).unwrap(),
             "SHSYNTH-SONG 99\nfuture=data\n"
         );
+        let unknown = encode(&Song::new(&config()))
+            .unwrap()
+            .replace("name=untitled\n", "name=untitled\nfuture=data\n");
+        fs::write(&path, &unknown).unwrap();
+        assert!(save(&base, &Song::new(&config()), true).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), unknown);
         let _ = fs::remove_dir_all(base);
     }
     #[test]
@@ -3390,7 +3420,22 @@ mod tests {
                 program: 6,
             }; LANES_PER_PAGE]
         );
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 1\n"));
+        assert!(song.insert_rack.order.is_empty());
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 2\n"));
+    }
+
+    #[test]
+    fn version_one_project_migrates_to_an_empty_insert_rack() {
+        let current = encode(&Song::new(&config())).unwrap();
+        let legacy = current
+            .replacen("SHSYNTH-SONG 2", "SHSYNTH-SONG 1", 1)
+            .lines()
+            .filter(|line| !line.starts_with("insert_rack="))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let migrated = decode(&legacy).unwrap();
+        assert!(migrated.insert_rack.order.is_empty());
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 2\n"));
     }
 
     #[test]

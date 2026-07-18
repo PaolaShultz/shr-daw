@@ -110,6 +110,7 @@ impl EffectKind {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EffectInstance {
     pub id: EffectId,
     pub kind: EffectKind,
@@ -124,6 +125,7 @@ pub struct EffectInstance {
 /// Project-owned, ordered inserts for the single managed instrument source.
 /// JACK boundary names and runtime node IDs are deliberately not persisted.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct InsertRack {
     #[serde(default)]
     pub effects: Vec<EffectInstance>,
