@@ -131,11 +131,6 @@ fn phase2_checkpoint(
     let mut config = config.clone();
     config.audio_graph.enabled = true;
     let maximum_frames = config.audio_graph.maximum_callback_frames as usize;
-    let effect_memory_bytes = rack
-        .effects
-        .iter()
-        .map(|effect| effect_schema::minimum_runtime_memory_bytes(effect.kind, maximum_frames))
-        .sum::<usize>();
     let graph_buffer_bytes = (rack.order.len() + 2)
         .saturating_mul(maximum_frames)
         .saturating_mul(std::mem::size_of::<dsp::StereoFrame>());
@@ -143,6 +138,16 @@ fn phase2_checkpoint(
     let router = engine::MidiRouter::start(state, &config, tx)?;
     let mut engine =
         engine::Engine::start_with_rack(preset, state, router.output(), &config, &rack)?;
+    let sample_rate = engine
+        .audio_graph_sample_rate()
+        .context("owned graph sample rate unavailable")?;
+    let effect_memory_bytes = rack
+        .effects
+        .iter()
+        .map(|effect| {
+            effect_schema::minimum_runtime_memory_bytes(effect.kind, sample_rate, maximum_frames)
+        })
+        .sum::<usize>();
     let owner_pid = std::process::id();
     let synth_pid = engine.process_id();
     let owner_start = process_ticks(owner_pid).unwrap_or(0);

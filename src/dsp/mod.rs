@@ -492,16 +492,18 @@ impl FractionalDelayLine {
         {
             return 0.0;
         }
-        let length = self.samples.len() as f32;
+        // Use f64 for the wrapped index. At large high-rate capacities, f32
+        // can round `len - epsilon` up to `len` and produce an invalid index.
+        let length = self.samples.len() as f64;
         let newest = if self.write == 0 {
             self.samples.len() - 1
         } else {
             self.write - 1
-        } as f32;
-        let position = (newest - (delay_samples - 1.0)).rem_euclid(length);
+        } as f64;
+        let position = (newest - (delay_samples as f64 - 1.0)).rem_euclid(length);
         let first = position.floor() as usize;
         let second = (first + 1) % self.samples.len();
-        let fraction = position - first as f32;
+        let fraction = (position - first as f64) as f32;
         finite_or_zero(
             self.samples[first] + (self.samples[second] - self.samples[first]) * fraction,
         )
@@ -919,6 +921,11 @@ mod tests {
         assert_eq!(delay.memory_bytes(), 10 * std::mem::size_of::<f32>());
         delay.reset();
         assert_eq!(delay.read(1.0), 0.0);
+
+        let mut high_rate = FractionalDelayLine::new(768_000).unwrap();
+        high_rate.push(1.0);
+        assert_eq!(high_rate.read(768_000.0), 0.0);
+        assert!(high_rate.read(767_999.5).is_finite());
     }
 
     #[test]

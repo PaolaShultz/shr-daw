@@ -414,6 +414,10 @@ impl Engine {
         self.child.id()
     }
 
+    pub(crate) fn audio_graph_sample_rate(&self) -> Option<u32> {
+        self.audio_graph.as_ref().map(OwnedAudioGraph::sample_rate)
+    }
+
     pub(crate) fn finish_audio_graph_checkpoint(
         &mut self,
     ) -> Option<(CallbackTimingSnapshot, Result<()>)> {

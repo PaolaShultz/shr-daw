@@ -166,6 +166,10 @@ pub(crate) struct EffectMeterSnapshot {
 }
 
 impl OwnedAudioGraph {
+    pub(crate) fn sample_rate(&self) -> u32 {
+        self.callback.sample_rate
+    }
+
     pub(crate) fn start_with_rack(
         config: &AudioGraphConfig,
         source_ports: [String; 2],

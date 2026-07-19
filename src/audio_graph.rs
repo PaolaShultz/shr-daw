@@ -146,8 +146,10 @@ impl InsertRack {
             if effect.version != EFFECT_FORMAT_VERSION {
                 return Err(GraphError::new("unsupported effect version"));
             }
-            if !is_phase_two_insert(effect.kind) {
-                return Err(GraphError::new("effect kind is not available in Phase 2"));
+            if !is_insert_effect(effect.kind) {
+                return Err(GraphError::new(
+                    "effect kind is not available in the insert rack",
+                ));
             }
             crate::effect_schema::validate(effect)
                 .map_err(|error| GraphError::new(error.to_string()))?;
@@ -167,8 +169,10 @@ impl InsertRack {
     }
 
     pub fn add(&mut self, kind: EffectKind) -> Result<EffectId, GraphError> {
-        if !is_phase_two_insert(kind) {
-            return Err(GraphError::new("effect kind is not available in Phase 2"));
+        if !is_insert_effect(kind) {
+            return Err(GraphError::new(
+                "effect kind is not available in the insert rack",
+            ));
         }
         if self.effects.len() >= MAX_CHAIN_EFFECTS {
             return Err(GraphError::new("serial effect chain bound exceeded"));
@@ -232,13 +236,14 @@ impl InsertRack {
     }
 }
 
-pub const fn is_phase_two_insert(kind: EffectKind) -> bool {
+pub const fn is_insert_effect(kind: EffectKind) -> bool {
     matches!(
         kind,
         EffectKind::Utility
             | EffectKind::Eq
             | EffectKind::Compressor
             | EffectKind::Distortion
+            | EffectKind::Delay
             | EffectKind::Filter
             | EffectKind::Gate
             | EffectKind::Crusher
@@ -437,6 +442,7 @@ impl GraphDefinition {
                 .map_err(|error| GraphError::new(error.to_string()))?;
             let required_memory = crate::effect_schema::minimum_runtime_memory_bytes(
                 effect.kind,
+                self.sample_rate,
                 self.maximum_callback_frames as usize,
             )
             .max(effect.owned_memory_bytes);
@@ -818,14 +824,14 @@ mod tests {
     }
 
     #[test]
-    fn insert_rack_rejects_unknown_duplicate_and_phase_three_content() {
+    fn insert_rack_rejects_unknown_duplicate_and_chain_overflow() {
         let mut rack = InsertRack::default();
         let id = rack.add(EffectKind::Eq).unwrap();
         rack.order.push(id);
         assert!(rack.validate().is_err());
 
         let mut rack = InsertRack::default();
-        assert!(rack.add(EffectKind::Delay).is_err());
+        assert!(rack.add(EffectKind::Reverb).is_err());
         for _ in 0..MAX_CHAIN_EFFECTS {
             rack.add(EffectKind::Utility).unwrap();
         }

@@ -170,6 +170,9 @@ const DISTORTION: &[ParameterSpec] = &[
 
 const DELAY: &[ParameterSpec] = &[
     ParameterSpec::integer("mode", "mode", 0.0, 0.0, 2.0),
+    ParameterSpec::toggle("tempo_sync", false),
+    ParameterSpec::continuous("tempo_bpm", "BPM", 120.0, 20.0, 300.0),
+    ParameterSpec::integer("division", "division", 4.0, 0.0, 7.0),
     ParameterSpec::continuous("time_ms", "ms", 375.0, 1.0, 2_000.0),
     ParameterSpec::continuous("feedback_percent", "%", 30.0, 0.0, 92.0),
     ParameterSpec::continuous("stereo_ratio", "", 1.0, 0.5, 2.0),
@@ -283,16 +286,24 @@ pub fn defaults(kind: EffectKind) -> BTreeMap<String, f32> {
 
 /// Minimum heap storage allocated by one Phase 2 runtime slot. This is derived
 /// from kind and callback capacity; persisted memory claims cannot reduce it.
-pub fn minimum_runtime_memory_bytes(kind: EffectKind, maximum_frames: usize) -> usize {
+pub fn minimum_runtime_memory_bytes(
+    kind: EffectKind,
+    sample_rate: u32,
+    maximum_frames: usize,
+) -> usize {
     let metering = 2usize
         .saturating_mul(maximum_frames)
         .saturating_mul(std::mem::size_of::<crate::dsp::StereoFrame>());
-    let processor = if kind == EffectKind::Compressor {
-        (COMPRESSOR_GAIN_TABLE_STEPS + 1).saturating_mul(std::mem::size_of::<f32>())
-    } else {
-        0
+    let processor = match kind {
+        EffectKind::Compressor => {
+            (COMPRESSOR_GAIN_TABLE_STEPS + 1).saturating_mul(std::mem::size_of::<f32>())
+        }
+        EffectKind::Delay => 2usize
+            .saturating_mul((sample_rate as usize).saturating_mul(2).saturating_add(2))
+            .saturating_mul(std::mem::size_of::<f32>()),
+        _ => 0,
     };
-    if crate::audio_graph::is_phase_two_insert(kind) {
+    if crate::audio_graph::is_insert_effect(kind) {
         metering.saturating_add(processor)
     } else {
         0
@@ -417,11 +428,17 @@ mod tests {
     fn runtime_memory_is_derived_even_when_persisted_claim_is_zero() {
         let frames = 128;
         let meters = 2 * frames * std::mem::size_of::<crate::dsp::StereoFrame>();
-        assert_eq!(minimum_runtime_memory_bytes(EffectKind::Eq, frames), meters);
         assert_eq!(
-            minimum_runtime_memory_bytes(EffectKind::Compressor, frames),
+            minimum_runtime_memory_bytes(EffectKind::Eq, 48_000, frames),
+            meters
+        );
+        assert_eq!(
+            minimum_runtime_memory_bytes(EffectKind::Compressor, 48_000, frames),
             meters + (COMPRESSOR_GAIN_TABLE_STEPS + 1) * std::mem::size_of::<f32>()
         );
-        assert_eq!(minimum_runtime_memory_bytes(EffectKind::Delay, frames), 0);
+        assert_eq!(
+            minimum_runtime_memory_bytes(EffectKind::Delay, 48_000, frames),
+            meters + 2 * (96_000 + 2) * std::mem::size_of::<f32>()
+        );
     }
 }

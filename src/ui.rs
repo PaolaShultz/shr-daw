@@ -44,10 +44,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CPU_TEMPERATURE_REFRESH: Duration = Duration::from_secs(10);
 const HELP_TEXT_WIDTH: usize = 38;
-const PHASE_TWO_EFFECTS: [EffectKind; 7] = [
+const INSERT_EFFECTS: [EffectKind; 8] = [
     EffectKind::Eq,
     EffectKind::Compressor,
     EffectKind::Distortion,
+    EffectKind::Delay,
     EffectKind::Gate,
     EffectKind::Filter,
     EffectKind::Crusher,
@@ -60,6 +61,7 @@ fn effect_kind_label(kind: EffectKind) -> &'static str {
         EffectKind::Eq => "EQ",
         EffectKind::Compressor => "COMPRESSOR",
         EffectKind::Distortion => "DISTORTION",
+        EffectKind::Delay => "DELAY",
         EffectKind::Filter => "FILTER",
         EffectKind::Gate => "GATE",
         EffectKind::Crusher => "CRUSHER",
@@ -3187,7 +3189,7 @@ impl App {
     }
 
     fn add_effect(&mut self) {
-        let kind = PHASE_TWO_EFFECTS[self.fx_add_kind];
+        let kind = INSERT_EFFECTS[self.fx_add_kind];
         let mut rack = self.song.insert_rack.clone();
         match rack.add(kind) {
             Ok(id) => {
@@ -3261,13 +3263,13 @@ impl App {
         self.fx_add_kind = if direction < 0 {
             self.fx_add_kind
                 .checked_sub(1)
-                .unwrap_or(PHASE_TWO_EFFECTS.len() - 1)
+                .unwrap_or(INSERT_EFFECTS.len() - 1)
         } else {
-            (self.fx_add_kind + 1) % PHASE_TWO_EFFECTS.len()
+            (self.fx_add_kind + 1) % INSERT_EFFECTS.len()
         };
         self.status = format!(
             "next FX to add · {}",
-            effect_kind_label(PHASE_TWO_EFFECTS[self.fx_add_kind])
+            effect_kind_label(INSERT_EFFECTS[self.fx_add_kind])
         );
     }
 
@@ -4371,7 +4373,7 @@ fn perform(
             a.set_screen(Screen::FxRack);
             a.status = format!(
                 "insert rack · next {}",
-                effect_kind_label(PHASE_TWO_EFFECTS[a.fx_add_kind])
+                effect_kind_label(INSERT_EFFECTS[a.fx_add_kind])
             );
         }
         Action::OpenFxEditor => {
@@ -5378,7 +5380,7 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         ),
         Span::raw(format!(
             "  ADD: {}  {}/8",
-            effect_kind_label(PHASE_TWO_EFFECTS[a.fx_add_kind]),
+            effect_kind_label(INSERT_EFFECTS[a.fx_add_kind]),
             a.song.insert_rack.order.len()
         )),
     ])];

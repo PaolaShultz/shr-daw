@@ -2,6 +2,7 @@
 
 mod compressor;
 mod crusher;
+mod delay;
 mod distortion;
 mod eq;
 mod filter;
@@ -16,6 +17,7 @@ use std::sync::Arc;
 pub use compressor::AtomicGainReduction;
 use compressor::Compressor;
 use crusher::Crusher;
+use delay::Delay;
 use distortion::Distortion;
 use eq::Eq;
 use filter::Filter;
@@ -53,6 +55,7 @@ enum Processor {
     Eq(Box<Eq>),
     Compressor(Box<Compressor>),
     Distortion(Box<Distortion>),
+    Delay(Box<Delay>),
     Crusher(Box<Crusher>),
     Gate(Box<Gate>),
     Filter(Box<Filter>),
@@ -71,6 +74,7 @@ impl Processor {
                 effect,
                 sample_rate,
             )?))),
+            EffectKind::Delay => Ok(Self::Delay(Box::new(Delay::compile(effect, sample_rate)?))),
             EffectKind::Crusher => Ok(Self::Crusher(Box::new(Crusher::compile(effect)?))),
             EffectKind::Gate => Ok(Self::Gate(Box::new(Gate::compile(effect, sample_rate)?))),
             EffectKind::Filter => Ok(Self::Filter(Box::new(Filter::compile(
@@ -91,6 +95,7 @@ impl Processor {
             Self::Eq(effect) => effect.process(frame),
             Self::Compressor(effect) => effect.process(frame),
             Self::Distortion(effect) => effect.process(frame),
+            Self::Delay(effect) => effect.process(frame),
             Self::Crusher(effect) => effect.process(frame),
             Self::Gate(effect) => effect.process(frame),
             Self::Filter(effect) => effect.process(frame),
@@ -103,6 +108,7 @@ impl Processor {
             Self::Eq(effect) => effect.set_parameter(name, value),
             Self::Compressor(effect) => effect.set_parameter(name, value),
             Self::Distortion(effect) => effect.set_parameter(name, value),
+            Self::Delay(effect) => effect.set_parameter(name, value),
             Self::Crusher(effect) => effect.set_parameter(name, value),
             Self::Gate(effect) => effect.set_parameter(name, value),
             Self::Filter(effect) => effect.set_parameter(name, value),
@@ -115,6 +121,7 @@ impl Processor {
             Self::Eq(effect) => effect.reset(),
             Self::Compressor(effect) => effect.reset(),
             Self::Distortion(effect) => effect.reset(),
+            Self::Delay(effect) => effect.reset(),
             Self::Crusher(effect) => effect.reset(),
             Self::Gate(effect) => effect.reset(),
             Self::Filter(effect) => effect.reset(),
@@ -127,6 +134,7 @@ impl Processor {
             Self::Utility(_)
             | Self::Eq(_)
             | Self::Distortion(_)
+            | Self::Delay(_)
             | Self::Crusher(_)
             | Self::Gate(_)
             | Self::Filter(_) => None,
@@ -136,6 +144,13 @@ impl Processor {
     fn publish(&self) {
         if let Self::Compressor(effect) = self {
             effect.publish();
+        }
+    }
+
+    fn set_bypass(&mut self, bypass: bool, fade_samples: u32) -> bool {
+        match self {
+            Self::Delay(effect) => effect.set_bypass(bypass, fade_samples),
+            _ => false,
         }
     }
 }
@@ -217,8 +232,12 @@ impl EffectSlot {
     }
 
     pub fn set_bypass(&mut self, bypass: bool) -> Result<(), EffectError> {
+        let preserve_tail = self.processor.set_bypass(bypass, self.bypass_fade_samples);
         self.processed_mix
-            .set_target(if bypass { 0.0 } else { 1.0 }, self.bypass_fade_samples)
+            .set_target(
+                if bypass && !preserve_tail { 0.0 } else { 1.0 },
+                self.bypass_fade_samples,
+            )
             .map_err(|error| EffectError::new(error.to_string()))
     }
 
@@ -400,7 +419,7 @@ mod tests {
         assert_eq!(slot.id(), 7);
         assert_eq!(slot.kind(), EffectKind::Utility);
         let mut effect = utility(BTreeMap::new(), false);
-        effect.kind = EffectKind::Delay;
+        effect.kind = EffectKind::Reverb;
         assert!(EffectSlot::compile(&effect, 48_000, 128).is_err());
     }
 
