@@ -159,8 +159,14 @@ delay/modulation, three shared-topology reverb voicings, two pre/post aux buses,
 and a master insert chain. Phase 2's 128- and 64-frame Raspberry Pi stress runs
 passed without sustained-window deadline misses. The expanded 11-effect graph
 also passed at both settings; consolidated human curation remains open. Direct
-synth playback remains the fallback if
-graph validation, activation, or an exact JACK connection fails; see the
+synth playback remains the fallback if graph validation, activation, or an
+exact JACK connection fails.
+
+Current routing is deliberately narrower than a full multi-channel DAW mixer:
+exactly one managed software-instrument source enters the owned effects graph
+at a time. The aux buses and master chain process only that source and its wet
+returns. WAV loops, additional engines, live inputs, and hardware returns do
+not share those effects yet. See the
 [audio graph contract](docs/AUDIO_GRAPH.md), [Phase 1 measurement](docs/PHASE1_AUDIO_GRAPH_MEASUREMENT.md),
 the [Phase 2 measurement](docs/PHASE2_AUDIO_GRAPH_MEASUREMENT.md), and the
 [Phase 3/4 measurement](docs/PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md).
