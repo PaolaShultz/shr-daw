@@ -25,6 +25,7 @@ accepts:
 | Group | Keys and constraints |
 | --- | --- |
 | Startup and status | `synth.startup_timeout_ms`; optional `status.cpu_temperature_path` |
+| Display | `display.note_names` (`german` for B/H or `english` for A#/B) |
 | synthv1 | `synthv1.command`, `.client`, `.presets`, `.midi_output`; legacy `synth.command`, `synth.client`, `presets.directory`, and `midi.synth_output` remain accepted |
 | Yoshimi | `yoshimi.command`, `.client`, `.midi_output`, repeated `.preset_root` and `.category`, `.presets_per_category` |
 | FluidSynth | `fluidsynth.command`, `.client`, `.midi_output`, `.gain`, repeated `.soundfont` |
@@ -38,6 +39,11 @@ Boolean values are `true` or `false`; numbers and structured entries are
 rejected when malformed or out of range. Commands, clients, paths, and ports
 remain data: copy the template and change them for the actual machine instead
 of editing Rust constants.
+
+`display.note_names` changes Playback chord roots, slash bass notes, and the
+held-note row together. It does not transpose MIDI or alter the keyboard-state
+positions. The default is `german`, matching the existing central-European B
+and H convention; `english` names those pitch classes A# and B.
 
 ## Audio CPU isolation
 

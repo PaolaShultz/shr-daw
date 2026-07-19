@@ -85,3 +85,10 @@ at a time and separate user-performed actions from machine inspection. Research
 unfamiliar or current hardware, software, music, and product details from
 authoritative sources instead of guessing, and preserve source/provenance notes
 when the result affects configuration, sounds, or redistribution.
+
+The user normally operates from a development PC over SSH and cannot open Pi-local
+file links or tool-only image previews. For requested visual review, put temporary
+outputs below an exact ignored `user/` subdirectory, serve only that subdirectory
+over a temporary LAN HTTP server, and provide URLs reachable from the development
+PC. Never serve the repository root, the whole `user/` tree, configuration,
+credentials, or other private data. Stop the temporary server after review.

@@ -36,6 +36,11 @@ jumps during live audio.
 The dots beside synthv1 values compare the current sound to the loaded preset:
 green is lower, yellow is near original, red is higher.
 
+Playback names the held chord and notes above a continuous two-row keyboard.
+At 40 columns it shows C2 through G7 when middle C is C4. A red white-key area
+means its natural note is held; a red upper `└` means the following sharp is
+held. `display.note_names=german` uses B/H spelling; `english` uses A#/B.
+
 ## Effects graph
 
 Playback SOUND FX opens the current Project's FX rack. TARGET cycles SOURCE,

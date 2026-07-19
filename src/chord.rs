@@ -1,3 +1,29 @@
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NoteNaming {
+    German,
+    English,
+}
+
+impl NoteNaming {
+    pub fn config_value(self) -> &'static str {
+        match self {
+            Self::German => "german",
+            Self::English => "english",
+        }
+    }
+
+    fn pitch_name(self, pc: u8) -> &'static str {
+        match self {
+            Self::German => [
+                "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "B", "H",
+            ][pc as usize],
+            Self::English => [
+                "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+            ][pc as usize],
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct HeldNotes {
     channels: [u16; 128],
@@ -10,6 +36,12 @@ impl Default for HeldNotes {
 }
 
 impl HeldNotes {
+    pub fn is_held(&self, note: u8) -> bool {
+        self.channels
+            .get(usize::from(note))
+            .is_some_and(|channels| *channels != 0)
+    }
+
     pub fn observe(&mut self, message: &[u8]) {
         if message.len() != 3 || message[1] > 127 || message[2] > 127 {
             return;
@@ -27,7 +59,7 @@ impl HeldNotes {
         }
     }
 
-    pub fn description(&self) -> Option<(String, String)> {
+    pub fn description(&self, naming: NoteNaming) -> Option<(String, String)> {
         let notes = self
             .channels
             .iter()
@@ -37,18 +69,18 @@ impl HeldNotes {
         let bass = *notes.first()?;
         let played = notes
             .iter()
-            .map(|note| pitch_name(note % 12))
+            .map(|note| naming.pitch_name(note % 12))
             .collect::<Vec<_>>()
             .join(" ");
         if notes.len() == 1 {
-            return Some((pitch_name(notes[0] % 12).into(), played));
+            return Some((naming.pitch_name(notes[0] % 12).into(), played));
         }
 
         let mut pitch_classes = notes.iter().map(|note| note % 12).collect::<Vec<_>>();
         pitch_classes.sort_unstable();
         pitch_classes.dedup();
         if pitch_classes.len() == 1 {
-            return Some((pitch_name(pitch_classes[0]).into(), played));
+            return Some((naming.pitch_name(pitch_classes[0]).into(), played));
         }
 
         let bass_pc = bass % 12;
@@ -61,11 +93,11 @@ impl HeldNotes {
                 .collect::<Vec<_>>();
             intervals.sort_unstable();
             if let Some((_, suffix)) = CHORDS.iter().find(|(formula, _)| *formula == intervals) {
-                let slash = (root != bass_pc).then(|| format!("/{}", pitch_name(bass_pc)));
+                let slash = (root != bass_pc).then(|| format!("/{}", naming.pitch_name(bass_pc)));
                 return Some((
                     format!(
                         "{}{}{}",
-                        pitch_name(root),
+                        naming.pitch_name(root),
                         suffix,
                         slash.unwrap_or_default()
                     ),
@@ -81,7 +113,10 @@ impl HeldNotes {
             .map(interval_name)
             .collect::<Vec<_>>()
             .join(" ");
-        Some((format!("{} [{intervals}]", pitch_name(bass_pc)), played))
+        Some((
+            format!("{} [{intervals}]", naming.pitch_name(bass_pc)),
+            played,
+        ))
     }
 }
 
@@ -115,12 +150,6 @@ const CHORDS: &[(&[u8], &str)] = &[
     (&[0, 2, 3, 7, 9, 10], "m13"),
 ];
 
-fn pitch_name(pc: u8) -> &'static str {
-    [
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "B", "H",
-    ][pc as usize]
-}
-
 fn interval_name(interval: u8) -> &'static str {
     [
         "1", "b2", "2", "m3", "3", "4", "b5", "5", "#5", "6", "b7", "7",
@@ -136,7 +165,7 @@ mod tests {
         for note in notes {
             held.observe(&[0x90, *note, 100]);
         }
-        held.description().unwrap()
+        held.description(NoteNaming::German).unwrap()
     }
 
     #[test]
@@ -155,10 +184,10 @@ mod tests {
         let mut held = HeldNotes::default();
         held.observe(&[0x91, 60, 100]);
         held.observe(&[0x81, 60, 0]);
-        assert!(held.description().is_none());
+        assert!(held.description(NoteNaming::German).is_none());
         held.observe(&[0x92, 60, 100]);
         held.observe(&[0xb2, 123, 0]);
-        assert!(held.description().is_none());
+        assert!(held.description(NoteNaming::German).is_none());
     }
 
     #[test]
@@ -167,12 +196,24 @@ mod tests {
         held.observe(&[0x90, 255, 100]);
         held.observe(&[0x90, 60, 255]);
         held.observe(&[0x90, 60, 100, 0]);
-        assert!(held.description().is_none());
+        assert!(held.description(NoteNaming::German).is_none());
     }
 
     #[test]
     fn uses_central_european_b_and_h_names() {
         assert_eq!(recognize(&[70]).0, "B");
         assert_eq!(recognize(&[71]).0, "H");
+    }
+
+    #[test]
+    fn english_naming_uses_a_sharp_and_b() {
+        let mut held = HeldNotes::default();
+        held.observe(&[0x90, 70, 100]);
+        held.observe(&[0x90, 74, 100]);
+        held.observe(&[0x90, 77, 100]);
+        assert_eq!(
+            held.description(NoteNaming::English).unwrap(),
+            ("A#".into(), "A# D F".into())
+        );
     }
 }

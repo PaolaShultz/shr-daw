@@ -6698,8 +6698,9 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         z.width,
         actions.y.saturating_sub(params.y + 6),
     );
-    if let Some((chord, notes)) = a.held_notes.description() {
-        let top = chord_area.y + chord_area.height.saturating_sub(2) / 2;
+    let content_height = 4.min(chord_area.height);
+    let top = chord_area.y + chord_area.height.saturating_sub(content_height) / 2;
+    if let Some((chord, notes)) = a.held_notes.description(a.config.note_naming) {
         f.render_widget(
             Paragraph::new(chord)
                 .style(
@@ -6718,6 +6719,9 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 rect(chord_area.x, top + 1, chord_area.width, 1),
             );
         }
+    }
+    if chord_area.height >= 4 {
+        draw_playback_keyboard(f, a, rect(chord_area.x, top + 2, chord_area.width, 2));
     }
     a.hits.back = rect(z.x + 1, actions.y, 6, 1);
     a.hits.stop = rect(z.x + 7, actions.y, 6, 1);
@@ -6739,6 +6743,66 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         },
     );
     button(f, a.hits.save, "Save Idea");
+}
+
+const PLAYBACK_KEY_TOP_GLYPH: &str = "└";
+const PLAYBACK_KEYBOARD_FIRST_NOTE: u8 = 36;
+const PLAYBACK_NATURAL_PITCHES: [u8; 7] = [0, 2, 4, 5, 7, 9, 11];
+const PLAYBACK_SHARP_PITCHES: [Option<u8>; 7] =
+    [Some(1), Some(3), None, Some(6), Some(8), Some(10), None];
+
+fn draw_playback_keyboard<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
+    if area.width == 0 || area.height < 2 {
+        return;
+    }
+    for column in 0..area.width {
+        let key = usize::from(column % 7);
+        let octave = column / 7;
+        let octave_base = u32::from(PLAYBACK_KEYBOARD_FIRST_NOTE) + u32::from(octave) * 12;
+        let natural = octave_base + u32::from(PLAYBACK_NATURAL_PITCHES[key]);
+        if natural > 127 {
+            break;
+        }
+        let natural = natural as u8;
+        let x = area.x + column;
+        let natural_held = a.held_notes.is_held(natural);
+        let natural_color = if natural_held {
+            Color::Red
+        } else {
+            Color::White
+        };
+        let sharp = PLAYBACK_SHARP_PITCHES[key]
+            .map(|pitch| octave_base + u32::from(pitch))
+            .filter(|note| *note <= 127)
+            .map(|note| note as u8);
+        if let Some(sharp) = sharp {
+            f.render_widget(
+                Paragraph::new(PLAYBACK_KEY_TOP_GLYPH).style(
+                    Style::default()
+                        .fg(if a.held_notes.is_held(sharp) {
+                            Color::Red
+                        } else {
+                            Color::Black
+                        })
+                        .bg(if natural_held {
+                            Color::Red
+                        } else {
+                            Color::White
+                        }),
+                ),
+                rect(x, area.y, 1, 1),
+            );
+        } else {
+            f.render_widget(
+                Paragraph::new("█").style(Style::default().fg(natural_color)),
+                rect(x, area.y, 1, 1),
+            );
+        }
+        f.render_widget(
+            Paragraph::new("█").style(Style::default().fg(natural_color)),
+            rect(x, area.y + 1, 1, 1),
+        );
+    }
 }
 fn draw_ideas<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
@@ -7777,7 +7841,7 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
             app.status = "MIDI ready · pickup armed".into();
         }
         Screen::Playback => {
-            for note in [60, 64, 67] {
+            for note in [62, 66, 69] {
                 app.held_notes.observe(&[0x90, note, 100]);
             }
             let originals = [
@@ -9132,6 +9196,44 @@ mod tests {
         assert!(text.contains("C#maj7sus4"));
         assert!(!text.contains("Chord"));
         assert!(!text.contains("MIDI CC"));
+    }
+
+    #[test]
+    fn playback_keyboard_joins_octaves_and_separates_natural_and_sharp_colors() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Playback;
+        a.playing = Some(p[0].clone());
+        // C, E, and G exercise natural keys; F# exercises a sharp without F.
+        for note in [60, 64, 66, 67] {
+            a.held_notes.observe(&[0x90, note, 100]);
+        }
+        let b = TestBackend::new(40, 20);
+        let mut t = Terminal::new(b).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let b = t.backend().buffer();
+
+        // Every column is a white-key column; octave boundaries have no gaps.
+        assert!((0..40).all(|x| b.get(x, 13).symbol == "█"));
+        assert_eq!(b.get(6, 12).symbol, "█"); // B2
+        assert_eq!(b.get(7, 12).symbol, "└"); // C3 immediately follows
+
+        // C4: the white natural region and lower block are red, not its └ stroke.
+        assert_eq!(b.get(14, 12).symbol, "└");
+        assert_eq!(b.get(14, 12).fg, Color::Black);
+        assert_eq!(b.get(14, 12).bg, Color::Red);
+        assert_eq!(b.get(14, 13).fg, Color::Red);
+
+        // E4 has no sharp above it, so both complete blocks are red.
+        assert_eq!(b.get(16, 12).symbol, "█");
+        assert_eq!(b.get(16, 12).fg, Color::Red);
+        assert_eq!(b.get(16, 13).fg, Color::Red);
+
+        // F#4 colours only the └ foreground; the unplayed F stays white.
+        assert_eq!(b.get(17, 12).symbol, "└");
+        assert_eq!(b.get(17, 12).fg, Color::Red);
+        assert_eq!(b.get(17, 12).bg, Color::White);
+        assert_eq!(b.get(17, 13).fg, Color::White);
     }
 
     #[test]

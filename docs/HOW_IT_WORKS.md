@@ -60,6 +60,12 @@ more than 0.03 below the original, bright yellow means within 0.03, and red
 means more than 0.03 above it. Reset changes only these 12 parameters and
 re-arms pickup; it does not restart the synth.
 
+Held MIDI notes also drive the chord/name text and continuous two-row keyboard
+on Playback. At 40 columns the fixed C2–G7 strip has no octave separators. A
+natural note colors its white upper background and lower block red; a sharp
+colors the upper `└` foreground red. German B/H spelling is the default, while
+`display.note_names=english` selects A#/B spelling for chord and note text.
+
 ## Owned effects graph and direct fallback
 
 When `audio.graph.enabled=true`, SHR-DAW moves the one managed instrument from

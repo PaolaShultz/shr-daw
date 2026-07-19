@@ -13,13 +13,15 @@ The Presets screen browses three kinds of software instruments:
 - FluidSynth `.sf2` and `.sf3` SoundFonts.
 
 Changing engine does not mix their files or control rules. The Playback screen
-shows held notes, chord names, MIDI idea recording, and the 12 mapped synthv1
-controls.
+shows held note names, chord names, a continuous keyboard-state strip, MIDI
+idea recording, and the 12 mapped synthv1 controls. `display.note_names` in
+`shsynth.conf` selects German `B`/`H` spelling or English `A#`/`B` spelling.
 
 ## Screens
 
 - **Presets** chooses an engine and sound.
-- **Playback** shows played notes, changes synthv1 controls, and records ideas.
+- **Playback** shows played notes and keyboard state, changes synthv1 controls,
+  and records ideas.
 - **MTR** passively shows CPU-core activity and, when available, the owned
   graph's stereo final-output level.
 - **Ideas** loads, plays, saves, and deletes MIDI ideas.

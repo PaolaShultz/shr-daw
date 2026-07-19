@@ -1,3 +1,4 @@
+use crate::chord::NoteNaming;
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
@@ -101,6 +102,7 @@ pub struct RuntimeConfig {
     pub yoshimi: YoshimiConfig,
     pub fluidsynth: FluidSynthConfig,
     pub startup_timeout: Duration,
+    pub note_naming: NoteNaming,
     pub midi_autoconnect: bool,
     pub midi_input_matches: Vec<String>,
     pub audio_autoconnect: bool,
@@ -132,6 +134,7 @@ impl Default for RuntimeConfig {
                 gain: 0.4,
             },
             startup_timeout: Duration::ZERO,
+            note_naming: NoteNaming::German,
             midi_autoconnect: false,
             midi_input_matches: Vec::new(),
             audio_autoconnect: false,
@@ -233,6 +236,13 @@ impl RuntimeConfig {
                         bail!("startup timeout must be greater than zero");
                     }
                     self.startup_timeout = Duration::from_millis(millis);
+                }
+                "display.note_names" => {
+                    self.note_naming = match value.to_ascii_lowercase().as_str() {
+                        "german" => NoteNaming::German,
+                        "english" => NoteNaming::English,
+                        _ => bail!("{key} must be german or english"),
+                    }
                 }
                 "presets.directory" | "synthv1.presets" => {
                     self.preset_dir = (!value.is_empty()).then(|| expand_home(value))
@@ -491,6 +501,7 @@ impl RuntimeConfig {
              synthv1.command={}\n\
              synthv1.client={}\n\
              synth.startup_timeout_ms={}\n\
+             display.note_names={}\n\
              synthv1.presets={}\n\
              synthv1.midi_output={}\n\
              yoshimi.command={}\n\
@@ -499,6 +510,7 @@ impl RuntimeConfig {
             self.synth_command,
             self.client_name,
             self.startup_timeout.as_millis(),
+            self.note_naming.config_value(),
             display_path(self.preset_dir.as_ref()),
             self.midi_output_match,
             self.yoshimi.backend.command,
@@ -683,6 +695,24 @@ fn atomic_write(path: &Path, text: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn note_naming_defaults_to_german_and_round_trips_english() {
+        assert_eq!(RuntimeConfig::default().note_naming, NoteNaming::German);
+        let path =
+            std::env::temp_dir().join(format!("shsynth-note-names-{}.conf", std::process::id()));
+        fs::write(&path, "display.note_names=english\n").unwrap();
+        let config = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(config.note_naming, NoteNaming::English);
+        config.save(&path).unwrap();
+        assert_eq!(
+            RuntimeConfig::load(&path).unwrap().note_naming,
+            NoteNaming::English
+        );
+        fs::write(&path, "display.note_names=solfege\n").unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        let _ = fs::remove_file(path);
+    }
 
     #[test]
     fn legacy_v1_configuration_inherits_optional_engine_defaults() {

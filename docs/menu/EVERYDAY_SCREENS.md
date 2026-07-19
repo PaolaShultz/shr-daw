@@ -46,8 +46,10 @@ computer-keyboard-only.
 
 ## Playback
 
-Playback appears after a sound is loaded. The body shows held notes and the 12
-mapped synthv1 controls. Parameter colors are relative to the loaded preset:
+Playback appears after a sound is loaded. The body shows the held chord and
+notes, a continuous two-row keyboard state, and the 12 mapped synthv1 controls.
+On the keyboard, red white-key areas are held natural notes and red upper `└`
+marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
 main encoder press resets only these mapped controls and re-arms pickup; it does
 not restart the synth.

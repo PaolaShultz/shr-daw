@@ -161,6 +161,13 @@ items/pages are invisible, silent, and skipped. The visible control strip is
 centered and capped at 40 columns. The full map is in
 `docs/CONTROLLER_INTERFACE.md`; README carries only the overview and link.
 
+Playback shows chord and held-note text above a continuous two-row keyboard
+state. At 40 columns it covers C2–G7 without octave gaps: natural notes color
+the white upper background and lower full block red, while sharps color the
+upper `└` foreground red. `display.note_names=german` is the B/H default;
+`english` selects A#/B for both chord and note text. Buffer tests lock the
+natural/sharp color ownership and the gapless octave boundary.
+
 Presets NAV item 1 opens the passive `MTR` performance screen. CPU0–CPU3 come
 from bounded UI-side `/proc/stat` deltas, with the configured temperature when
 available. Stereo RMS, peak hold, and clip state come only from the active

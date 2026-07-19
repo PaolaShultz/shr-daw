@@ -14,6 +14,12 @@ and record stereo audio from a compact physical interface.
 Start with a Pi and computer keyboard. Add a MIDI controller, synth, audio
 interface, or dedicated screen when useful.
 
+The immediate connection between played sound, note spelling, chord names,
+scale-aware entry, and visible keyboard state also makes SHR-DAW a practical
+companion for learning foundational music theory. A player can relate what they
+hear and press to intervals, chord construction, scales, and pattern notation
+without separating study from making music.
+
 ## Quick start
 
 On Patchbox OS, Raspberry Pi OS, or Debian:
@@ -62,9 +68,10 @@ Browse the three independent software-instrument catalogs.
 
 ### Playback
 
-<img src="docs/images/shr-daw-playback.png" alt="Playback screen with held notes, control indicators, and recorded MIDI status" width="100%">
+<img src="docs/images/shr-daw-playback.png" alt="Playback screen with held chord, continuous keyboard state, control indicators, and recorded MIDI status" width="100%">
 
-Play sounds, shape mapped synthv1 controls, and record MIDI Ideas.
+Play sounds, see held notes on a continuous keyboard, shape mapped synthv1
+controls, and record MIDI Ideas.
 
 ### Performance Meter
 
