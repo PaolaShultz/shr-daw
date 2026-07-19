@@ -1,5 +1,11 @@
 # Phase 3/4 time effects, reverb, and buses measurement
 
+> Historical measured checkpoint: this records the implemented Phase 3/4
+> graph and the machine state at the end of its 2026-07-19 run. The effect and
+> routing implementation remains current, but the unchecked consolidated
+> listening/curation sheet is still unfinished. Statements about JACK, ports,
+> and processes are not claims about the machine's present state.
+
 This is the objective evidence record for the expanded internal effects graph.
 The user explicitly chose to complete the bounded effects set before one
 consolidated listening and repair pass. Technical conformance can identify a

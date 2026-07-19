@@ -1,5 +1,9 @@
 # Phase 1 dry audio graph measurement
 
+> Historical checkpoint: this records the first measured dry graph, not the
+> present feature boundary. Source inserts, two aux buses, master processing,
+> and final metering were implemented and measured in the linked later phases.
+
 This is the first authorized low-gain Raspberry Pi checkpoint for SHR-DAW's
 owned dry graph. It covers one managed synth source only. It does not measure
 creative effects, auxes, live input, or recording taps and is not evidence that
@@ -125,7 +129,8 @@ buffer configuration was changed.
 Phase 1 passes its one-managed-source dry-path checkpoint: routing is single,
 dry output is bit exact and stereo-preserving, callback timing stayed far below
 the observed whole-period deadline, fallback was observable, and unrelated
-resources survived. This result permits Phase 2 planning or implementation;
-it does not pre-approve any creative effect or effect default. Each later phase
-still requires its own deterministic tests, level-matched listening, Pi
-measurements, and `KEEP` / `IMPROVE` / `DROP` curation.
+resources survived. This result permitted Phase 2 implementation; it did not
+pre-approve any creative effect or effect default. The later technical
+checkpoints are now recorded in [Phase 2](PHASE2_AUDIO_GRAPH_MEASUREMENT.md)
+and [Phase 3/4](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md). Their consolidated human
+listening/curation sheet remains unfinished.

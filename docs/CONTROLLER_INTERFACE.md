@@ -24,16 +24,17 @@ implemented.
 | Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; load into the percussion page; save that page separately; confirmed deletion of user saves only; list navigation. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
 | FT2 arrange | Select arrangement step; append/insert current pattern; duplicate/remove step; move step earlier/later; jump to referenced pattern; play from selected step; back and panic. |
 | Pattern setup | Choose 3/4 or 4/4 and pattern size; confirm new/destructive resize, cancel, or clear while retaining the current size. |
-| Page/track manager | Select previous/next page; add four-lane page; edit target; edit channel; confirm all changes; cancel and restore the original song; open files; mute current page. |
+| Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Start/toggle recording, stop/finalize, inspect status, back, open presets/ideas/FT2, and panic. |
 | FX rack/editor | Choose source, AUX 1, AUX 2, or master; add/select/remove/bypass/reorder bounded effects; edit strict named physical-unit parameters; set independent send level, pre/post point, and return level; inspect peak/RMS/clip/non-finite/gain-reduction meters; and panic. Aux time effects are forced wet. Structural publication requires stopped transport and no recording. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
 
-The complete final screen × page × item mapping is maintained below.
-`src/navigation.rs` is the executable canonical copy: labels and dispatch
-actions are one definition. A unit test builds the
+The complete final screen × page × item mapping is maintained below. The table
+uses expanded action names where that is clearer; the compact visible label is
+shown in parentheses when it differs materially. `src/navigation.rs` is the
+executable canonical copy: labels and dispatch actions are one definition. A unit test builds the
 union of every normal and contextual menu and checks every action in this
 inventory for controller reachability.
 
@@ -98,11 +99,11 @@ Blank physical positions and wholly empty pages are omitted.
 | Help | Sys | Panic | — | — | Exit |
 | FT2 | Ops | Play here | Play from start | Step edit | Cell edit |
 | FT2 | Mode | Play | Record | Edit | N00B |
-| FT2 | Move | Order− | Order+ | Lane− | Lane+ |
+| FT2 | Move | Arrangement step− (`PG-`) | Arrangement step+ (`PG+`) | Lane− | Lane+ |
 | FT2 | Sys | Panic | Stop | Tools | Exit |
-| FT2 tools | Ops | Pages/tracks | Files | Arrange | Mute lane |
-| FT2 tools | Clip | Copy lane | Paste lane | Copy page | Paste page |
-| FT2 tools | Loop | Loop | Remove | — | — |
+| FT2 tools | Ops | Pages/tracks (`PAGES`) | Files | Arrange (`ARR`) | Mute lane |
+| FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
+| FT2 tools | Loop | Loop | Remove | Library | Mute page (`MUTE PG`) |
 | FT2 tools | Sys | Panic | Stop | Help | Exit |
 | N00B setup | Ops | Root− | Root+ | Scale | Done |
 | N00B setup | Sys | Panic | Stop | Help | Exit |
@@ -117,9 +118,9 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 record | Ops | Rec end | — | — | — |
 | FT2 record | Sys | Panic | Stop | Help | Exit |
 | FT2 step edit | Ops | Blank/skip | Erase | N-off | Done |
-| FT2 step edit | Move | Order− | Order+ | Lane− | Lane+ |
+| FT2 step edit | Move | Arrangement step− (`PG-`) | Arrangement step+ (`PG+`) | Lane− | Lane+ |
 | FT2 step edit | Add | 1 row | 2 rows | 4 rows | 8 rows |
-| FT2 step edit | Sys | Panic | Stop | Next page | Exit edit |
+| FT2 step edit | Sys | Panic | Stop | Next page (`PAGE`) | Exit edit |
 | FT2 cell edit | Ops | Confirm | Step edit | Clear field | Effect type |
 | FT2 cell edit | Fields | Note | Gate | Vel | Program |
 | FT2 cell edit | Adjust | Effect parameter | Value− | Value+ | — |
@@ -128,8 +129,8 @@ Blank physical positions and wholly empty pages are omitted.
 | Files | Project | New Project | Save As | Name/rename | Pattern tools |
 | Files | Sys | Panic | Stop | Help | Exit |
 | Pattern tools | Ops | New | Clone | Clear | Drum patterns |
-| Pattern tools | Clip | Copy | Paste new | Paste over | Clean unused |
-| Pattern tools | Trans | Octave− | Semitone− | Semitone+ | Octave+ |
+| Pattern tools | Clip | Copy | Paste new (`NEW`) | Paste over (`OVER`) | Clean unused (`CLEAN`) |
+| Pattern tools | Trans | Octave− (`OCT-`) | Semitone− (`NOTE-`) | Semitone+ (`NOTE+`) | Octave+ (`OCT+`) |
 | Pattern tools | Sys | Panic | Stop | Help | Exit |
 | Drum patterns | Ops | Load | Save | Delete user | — |
 | Drum patterns | Filter | Genre− | Genre+ | Meter | Size |
@@ -141,10 +142,10 @@ Blank physical positions and wholly empty pages are omitted.
 | Pattern setup | Ops | 3/4 | 4/4 | Size− | Size+ |
 | Pattern setup | Apply | Confirm | Keep | — | — |
 | Pattern setup | Sys | Panic | — | Help | Exit/cancel |
-| Pages/tracks | Ops | Add four lanes | Target | Channel | Done |
-| Pages/tracks | Column | Column− | Column+ | Program− | Program+ |
-| Pages/tracks | Bank | MSB− | MSB+ | LSB− | LSB+ |
-| Pages/tracks | Sys | Panic | Stop | Help | Exit/cancel |
+| Tracks | Ops | Add four lanes | Target | Channel | Done |
+| Tracks | Column | Column− | Column+ | Program− | Program+ |
+| Tracks | Bank | MSB− | MSB+ | LSB− | LSB+ |
+| Tracks | Sys | Panic | Stop | Help | Exit/cancel |
 | Target/channel editor | Ops | Confirm | — | — | — |
 | Target/channel editor | Sys | Panic | Stop | Help | Exit/cancel |
 | Audio recorder | Ops | Record/toggle | — | — | — |

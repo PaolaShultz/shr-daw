@@ -1,5 +1,10 @@
 # Development story and OpenAI Build Week record
 
+> Historical record: dates, counts, submission language, and measured state in
+> this document are frozen to the stated Build Week snapshot. They are not the
+> current repository inventory; use the documentation index and source for
+> current behavior.
+
 SHR-DAW is being prepared for the OpenAI Build Week Challenge. The official
 [Build Week page](https://openai.com/build-week/),
 [Devpost overview](https://openai.devpost.com/), and
@@ -140,7 +145,9 @@ hardware or heard audio. Those actions require the user.
 ## Development snapshot
 
 Snapshot date: 2026-07-18, including the audit fixes and submission
-documentation prepared for this release.
+documentation prepared for that release. Later features, documents, tests,
+commits, and the 80-image visual manual are intentionally not folded into this
+historical table.
 
 | Measure | Snapshot value | Consistent counting rule |
 | --- | ---: | --- |

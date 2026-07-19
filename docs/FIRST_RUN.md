@@ -35,8 +35,8 @@ audio require it. SHR-DAW does not start or restart JACK.
 
 Computer-keyboard step entry is available, but it is not the primary hardware
 workflow. Free live performance of a software synth from the computer keyboard,
-a wider keyboard range, and more bindings such as F1–F12 are planned fallback
-features.
+a wider keyboard range, and more performance bindings are planned fallback
+features. `?` and F1 already open Help.
 
 ## Terminal size
 
@@ -53,13 +53,16 @@ matter. Change those settings yourself if fewer than 40 columns or 20 rows fit.
 For a self-contained local setup, use:
 
 ```sh
+cargo +1.85.0 build --release --locked
 ./scripts/setup-local.sh
 ./scripts/local.sh
 ```
 
 This keeps configuration, logs, ideas, songs, recordings, downloads, and local
-presets below the ignored `user/` directory. Set `SHSYNTH_USER_DIR` to use a
-different private directory.
+presets below the ignored `user/` directory. Existing private files are not
+replaced. Set `SHSYNTH_USER_DIR` to use a different private directory. These
+helpers neither install packages nor start JACK; `setup-local.sh` only runs the
+routing wizard, and `local.sh` launches the already-built binary.
 
 ## If setup is unusual
 

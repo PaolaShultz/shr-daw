@@ -28,7 +28,7 @@ controls.
   LAN URL for the same help page.
 - **FT2** edits and plays patterns.
 - **Tools** opens page, file, arrangement, loop, and clipboard workflows.
-- **Pages/Tracks** adds four-lane pages, chooses one destination, and edits each
+- **Tracks** (opened with **Tools** → **Pages**) adds four-lane pages, chooses one destination, and edits each
   column's channel, bank, master program, and profile-provided instrument name.
 - **Files** manages Projects; its **Pattern** child groups pattern editing,
   melody-only transpose, and the separate reusable drum-pattern library. Drum
@@ -38,6 +38,8 @@ controls.
 - **Loop** imports, trims, aligns, and plays a private WAV with the tracker;
   **Library** separately deletes only unreferenced regular WAV files.
 - **Audio Recorder** records the configured stereo JACK input.
+- **FX Rack** shapes the managed instrument with source inserts, two parallel
+  pre/post aux sends and wet returns, then a master rack and final meter.
 
 The display shows the current screen, menu page, and four available actions.
 Empty actions are hidden. The main encoder moves through lists, rows, pages,
@@ -99,6 +101,12 @@ player, hardware returns, recorder inputs, or unrelated JACK clients. In direct
 playback MTR explicitly reports that output metering is unavailable because
 there is no safe owned tap; it never enables the graph or fakes movement.
 
+The CPU bars are whole-core system load, not CPU used by the synth or graph.
+MTR deliberately does not measure JACK callback duration, xruns, scheduling
+latency, or whether a particular effects chain is safe. Those require the
+maintainer performance checkpoint and JACK evidence described in the
+[audio graph contract](AUDIO_GRAPH.md).
+
 ## Command line
 
 The main program also provides these commands:
@@ -117,8 +125,14 @@ shr ideas inspect "idea-name"
 shr ideas play "idea-name"
 shr ideas delete "idea-name" --yes
 shr pads list
+shr pads ports
+shr pads profiles
+shr pads auto [PORT_MATCH]
+shr pads learn [PORT_MATCH]
 shr pads update
 shr casio diagnostic
+shr config init
+shr effects-checkpoint ENGINE:PRESET [PROFILE] [SECONDS]
 ```
 
 `shr casio diagnostic` keeps an old name from the first hardware test. It does
@@ -126,5 +140,11 @@ not send MIDI. It lists output ports and shows the messages that would be used.
 The tracker itself is device-neutral. Command-line idea playback restores the
 saved instrument and can be stopped with Ctrl+C; deletion always requires the
 explicit `--yes` argument.
+
+`config init` creates missing configuration from templates without replacing
+existing files. `effects-checkpoint` is a maintainer-only, bounded, low-gain
+measurement workflow; it requires explicit authorization and a prepared JACK
+session, and normal use should not run it. See
+[Configuration and routing](CONFIGURATION.md#owned-audio-graph).
 
 For pattern editing, continue with the [Tracker guide](TRACKER.md).

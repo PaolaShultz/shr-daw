@@ -1,37 +1,63 @@
 # Audio graph and DSP contract
 
-This document is the implementation contract for SHR-DAW's owned audio graph
-and lightweight effects rack. It records the stable model and real-time limits
-before the graph becomes responsible for playback. The owned client now compiles
-the managed-source, aux-return, and master racks but remains disabled by default. Its first
-authorized Raspberry Pi dry-path checkpoint passed; direct JACK routing remains
-the default and conservative fallback. See
-[Phase 1 dry audio graph measurement](PHASE1_AUDIO_GRAPH_MEASUREMENT.md).
+This document is the current implementation contract for SHR-DAW's owned audio
+graph and effects racks. The graph is implemented and Raspberry Pi measured,
+but remains opt-in and disabled by default. Direct JACK routing is both the
+default and the conservative fallback. The current product graph owns exactly
+one stereo source: the one software instrument process managed by SHR-DAW.
+
+The active signal flow is:
+
+```text
+managed instrument -> SOURCE inserts -------------------------------> dry sum
+       |                    |                                            ^
+       |                    +-> POST send gain -> wet AUX 1/2 -> return -+
+       +----------------------> PRE send gain  -> wet AUX 1/2 -> return -+
+
+dry sum -> MASTER inserts -> FINAL OUT meter -> configured playback L/R
+```
+
+Each aux bus has its own send level, pre/post source-insert tap, forced-wet
+serial rack, return level, and return meter. Each return is mixed exactly once.
+The complete dry-plus-wet sum then passes through the master rack and a
+dedicated post-master meter immediately before playback. The measured history
+is in the [Phase 1 dry](PHASE1_AUDIO_GRAPH_MEASUREMENT.md),
+[Phase 2 insert](PHASE2_AUDIO_GRAPH_MEASUREMENT.md), and
+[Phase 3/4 bus](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md) records.
+
+Send and return gain are each bounded to -60..+12 dB. The compact UI changes
+sends by 3 dB and treats below -60 dB as `OFF`; a newly created aux starts with
+a -18 dB post-insert send. Return changes also use 3 dB steps and wrap from
+-60 to +12 dB. These are Project values, not JACK port gains.
 
 ## Ownership boundary
 
-One SHR-owned JACK client will contain the stereo graph. Effects are internal
-processors, not separate JACK clients or processes. JACK ports exist only at
-the graph boundary:
+One SHR-owned JACK client contains the current stereo graph. Effects are
+internal processors, not separate JACK clients or processes. That client has
+one stereo input boundary from the managed engine and one stereo output
+boundary to the two configured `audio.output` ports. Exact JACK and hardware
+names come from configuration, never Rust constants.
 
-- inputs from the managed engine, loop player, configured live capture, and
-  configured hardware returns;
-- outputs to configured main playback, hardware sends, and recording taps; and
-- exact physical port names supplied by configuration, never compiled into
-  Rust.
+The typed graph model reserves source and sink kinds for a loop player, live
+input, hardware returns/sends, and recording taps. The current graph client
+does not instantiate those boundaries. The WAV loop player remains a separate
+owned client on its direct route; the stereo recorder remains a separate
+capture client; external instruments have no SHR-owned audio return; and there
+is no software input monitoring or hardware insert. Those are present topology
+limitations, not hidden paths through the master meter.
 
 The graph may connect and disconnect only SHR-owned endpoints. It must not
 alter unrelated JACK connections or terminate a client/process it does not
-own. Until the graph is activated successfully, the existing engine, loop, and
-recorder routes remain the conservative fallback.
+own. Until the graph is activated successfully, the managed engine uses its
+direct route. The separately owned loop and recorder routes are unchanged.
 
-For the Phase 1 managed-engine path, direct playback is connected first. The
+For every current managed-engine start, direct playback is connected first. The
 owned callback publishes silence while its four boundary links are prepared;
 the two direct links are then removed in the same rollback-capable transaction.
-Only after that commit does an atomic flag publish dry graph output at a block
+Only after that commit does an atomic flag publish graph output at a block
 boundary. A rejected graph, activation failure, ambiguous engine-output pair,
 or connection failure leaves or restores the exact direct topology. The loop
-player remains on its existing direct route for this checkpoint.
+player remains on its existing direct route.
 
 On normal shutdown, the publish flag is cleared and JACK deactivation joins the
 owned callback before either direct link is restored. Closing that client then
@@ -43,14 +69,18 @@ restored direct path.
 and future JACK clients. A caller owns its callback allocation and keeps it
 alive until client deactivation returns.
 
-## Persisted model
+## Project data and typed graph model
 
-The initial graph document has its own format version in addition to the
-Project format. IDs are stable non-zero integers and are never inferred from
-array positions. Unknown newer graph or effect versions are rejected; a failed
-load must not be written back over the Project.
+Project format 3 stores the managed-source `InsertRack` and
+`ProjectAuxRouting` as strict JSON inside the versioned `.shsong` line format.
+Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
+rack and adds empty aux/master routing. Unknown current fields, malformed rack
+data, and newer Project/effect versions are refused on load and on overwrite.
+Rack order is a separate list of stable effect IDs, so moving an effect does
+not recreate its identity.
 
-Each graph stores:
+The runtime compiler expands those Project fields into a typed graph definition
+with stable non-zero IDs:
 
 ```text
 format_version
@@ -70,14 +100,6 @@ Effect parameters use stable names and physical units rather than positional
 arrays. Interactive controls clamp to their visible range. Persisted
 parameters must already be finite and valid or the whole proposed graph is
 rejected.
-
-Project format 3 stores a managed-source `InsertRack` and `ProjectAuxRouting`
-as strict JSON inside the versioned `.shsong` line format. Formats 0 and 1
-migrate to an empty rack and routing; format 2 keeps its source rack and adds
-empty aux/master routing.
-Unknown current fields, malformed rack data, and newer Project/effect versions
-are refused on load and on overwrite. Rack order is a separate list of stable
-effect IDs, so moving an effect does not recreate its identity.
 
 ### Typed nodes
 
@@ -106,7 +128,8 @@ Validation checks:
 - no unintended sink reachability or duplicate aux return;
 - no simultaneous direct and software monitoring unless the user explicitly
   accepts the doubled-path warning;
-- dry level forced to zero for delay, reverb, or modulation on an aux return;
+- every non-empty aux rack contains a wet generator; delay, reverb, chorus,
+  flanger, and phaser are forced to 100% wet with zero dry signal;
 - structural edits only while transport and recording are stopped; and
 - every capacity and memory bound below.
 
@@ -120,7 +143,7 @@ These are rejection limits, not targets and not silent truncation points:
 
 | Resource | Bound |
 | --- | ---: |
-| Stereo source strips | 4 |
+| Stereo source strips | 4 in the general model; 1 instantiated now |
 | Aux buses | 2 |
 | Effects in one serial chain | 8 |
 | Active effect instances | 16 |
@@ -201,6 +224,43 @@ gain reduction. Raspberry Pi whole-chain evidence is documented in the
 [Phase 2 measurement](PHASE2_AUDIO_GRAPH_MEASUREMENT.md) and
 [Phase 3/4 measurement](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md); the consolidated
 human-curation gate remains open in the latter.
+
+The source/master effect meters observe each processor's input and output;
+return meters observe the wet bus after return gain; `FINAL OUT` observes the
+complete owned graph after master processing. All publish bounded peak/RMS,
+clip, and non-finite state through atomics. They do not observe the separate
+loop client, recorder capture, hardware, or unrelated JACK clients. The MTR
+CPU bars are whole-core `/proc/stat` load and deliberately cannot diagnose
+per-process DSP cost, callback deadlines, scheduling jitter, or xruns; those
+belong to the explicit checkpoint counters and JACK evidence.
+
+### Effect parameter schemas
+
+These stable names and physical ranges are the persistence and control
+contract. Values in parentheses are defaults. Discrete numeric modes are
+listed in their current order.
+
+| Effect | Parameters |
+| --- | --- |
+| Utility | `trim_db` -60..12 (0); `pan` -1..1 (0); `width_percent` 0..200 (100); `invert_left`, `invert_right`, `mute` toggles |
+| EQ | `low_cut_enabled`; `low_cut_hz` 20..500 (80); `low_shelf_hz` 40..800 (120), `low_shelf_db` -18..18 (0); `low_mid_hz` 80..3000 (500), `low_mid_db` -18..18 (0); `high_mid_hz` 400..12000 (3000), `high_mid_db` -18..18 (0); `high_shelf_hz` 1500..20000 (8000), `high_shelf_db` -18..18 (0); `output_trim_db` -18..12 (0) |
+| Compressor | `threshold_db` -48..0 (-18); `ratio` 1..20 (4); `knee_db` 0..12 (6); `attack_ms` 0.1..100 (10); `release_ms` 20..1500 (150); `makeup_db` -12..18 (0); `mix_percent` 0..100 (100); `sidechain_highpass_hz` 20..250 (20) |
+| Distortion | `mode` 0 soft cubic, 1 hard, 2 asymmetric (0); `drive_db` 0..30 (6); `bias` -0.5..0.5 (0); `tone_hz` 800..18000 (12000); `output_db` -24..0 (-6); `mix_percent` 0..100 (100) |
+| Delay | `mode` 0 stereo, 1 ping-pong, 2 mono-to-stereo (0); `tempo_sync`; `tempo_bpm` 20..300 (120); `division` 0..7 (4); `time_ms` 1..2000 (375); `feedback_percent` 0..92 (30); `stereo_ratio` 0.5..2 (1); `tone_hz` 500..18000 (8000); `wet_percent` 0..100 (25); `dry_percent` 0..100 (100); `tail_on_bypass` |
+| Reverb | `type` 0 room, 1 plate, 2 hall (0); `predelay_ms` 0..200 (20); `decay_seconds` 0.2..8 (1.5); `size_percent` 0..100 (50); `damping_percent` 0..100 (50); `input_low_cut_hz` 20..500 (80); `width_percent` 0..100 (100); `wet_percent` 0..100 (25); `dry_percent` 0..100 (100) |
+| Chorus | `base_delay_ms` 5..30 (15); `rate_hz` 0.05..5 (0.5); `depth_percent` 0..100 (35); `stereo_phase_degrees` 0..180 (90); `feedback_percent` 0..35 (0); `mix_percent` 0..100 (35); `dry_percent` 0..100 (100) |
+| Flanger | `base_delay_ms` 0.2..8 (2); `rate_hz` 0.03..5 (0.25); `depth_percent` 0..100 (50); `feedback_percent` -80..80 (25); `stereo_phase_degrees` 0..180 (90); `mix_percent` 0..100 (50); `dry_percent` 0..100 (100) |
+| Phaser | `stages` 4 or 6 (4); `rate_hz` 0.03..5 (0.25); `center_hz` 100..5000 (1000); `range_octaves` 0.5..6 (3); `feedback_percent` -75..75 (0); `stereo_phase_degrees` 0..180 (90); `mix_percent` 0..100 (50); `dry_percent` 0..100 (100) |
+| Tremolo/Pan | `mode` 0 tremolo, 1 pan (0); `rate_hz` 0.05..15 (4); `depth_percent` 0..100 (50); `shape` 0 sine, 1 triangle, 2 smoothed square (0); `stereo_phase_degrees` 0..180 (180); `output_trim_db` -18..12 (0) |
+| Filter | `mode` 0 low-pass, 1 band-pass, 2 high-pass (0); `cutoff_hz` 20..20000 (1000); `resonance` 0..90 (20); `drive_db` 0..12 (0); `mix_percent` 0..100 (100) |
+| Gate | `threshold_db` -80..0 (-48); `hysteresis_db` 0..24 (6); `range_db` -80..0 (-60); `attack_ms` 0.1..100 (2); `hold_ms` 0..500 (40); `release_ms` 5..2000 (150) |
+| Crusher | `bit_depth` 4..16 (12); `hold_factor` 1..32 (1); `dither`; `mix_percent` 0..100 (100) |
+
+Delay sync divisions 0..7 are 1/16, 1/8, 1/4, 1/2, 1, 2, 4, and 8
+beats. The source and master racks allow all 13 types. The normal aux editor
+offers Delay, Reverb, Chorus, Flanger, and Phaser and forces their wet/dry
+values; conditioning effects can exist in a loaded aux chain only when the
+chain also contains one of those wet generators.
 
 The dry client additionally publishes allocation-free callback count, total,
 mean, maximum, missed-deadline, and oversized-callback counters. One fixed

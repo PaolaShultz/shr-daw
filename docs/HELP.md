@@ -2,7 +2,7 @@
 
 [Controller basics](#controller-basics)
 [Presets and playback](#presets-and-playback)
-[Insert effects](#insert-effects)
+[Effects graph](#effects-graph)
 [Performance meters](#performance-meters)
 [MIDI ideas](#midi-ideas)
 [FT2 tracker](#ft2-tracker)
@@ -36,23 +36,34 @@ jumps during live audio.
 The dots beside synthv1 values compare the current sound to the loaded preset:
 green is lower, yellow is near original, red is higher.
 
-## Insert effects
+## Effects graph
 
-Playback SOUND FX opens the current Project's ordered insert rack. KIND chooses
-what ADD creates. Select a row to EDIT it; BYPASS fades between processed and
-dry; ORDER moves the same stable instance; REMOVE deletes it.
+Playback SOUND FX opens the current Project's FX rack. TARGET cycles SOURCE,
+AUX 1, AUX 2, and MASTER. Source effects change the instrument in series.
+Each aux makes a parallel wet copy: SEND sets how much enters it, POINT chooses
+before or after source effects, and RETURN sets how much comes back. Master
+effects change the final dry-plus-aux mix.
+
+KIND chooses what ADD creates. Select a row to EDIT it; BYPASS fades a source
+or master effect toward dry. A fully bypassed aux returns silence, so it never
+doubles the dry source; a delay tail can be allowed to fade with new input
+muted. ORDER moves the same stable instance and REMOVE deletes it. Aux effects
+are forced wet.
 
 The editor selects named parameters and adjusts values in physical units. Its
 bottom rows show input/output peak and RMS, clip/non-finite counts, and
-compressor gain reduction when the owned graph is active. Stop transport and
-all recording before changing the rack. The rack is still saved when the
-opt-in audio graph is disabled, but direct playback will not process it.
+compressor gain reduction when the owned graph is active. Rack size and total
+effect count are bounded. Stop transport and all recording before structural
+changes. The rack is still saved when the opt-in audio graph is disabled, but
+direct playback will not process it.
 
 ## Performance meters
 
 Presets NAV MTR, or keyboard m on Presets, opens a passive meter. CPU0–CPU3 use
-Linux counter changes: green is below 60%, yellow is 60–85%, and red is above
-85%. Configured CPU temperature is optional.
+whole-core Linux `/proc/stat` counter changes: green is below 60%, yellow is
+60–85%, and red is above 85%. This is not synth/JACK process CPU, callback
+timing, xrun detection, or proof of audio safety. Configured CPU temperature is
+optional.
 
 Stereo bars show smoothed RMS and a peak-hold marker on a −60 to 0 dBFS scale.
 CLIP is held in red. RESET clears only the visible peak and clip holds.
@@ -80,8 +91,8 @@ actual JACK input.
 
 ## FT2 tracker
 
-FT2 is a pattern sequencer. PLAY starts at the cursor, START plays from the
-song beginning, and STOP stops only the tracker transport.
+FT2 is a Pattern sequencer. PLAY starts at the cursor, START plays from the
+Project's Arrangement beginning, and STOP stops only the tracker transport.
 
 EDIT turns incoming notes into pattern data. Encoder press inserts a blank row.
 The ADD page chooses whether note entry, blank, erase, and note-off advance by
@@ -107,7 +118,7 @@ Real-time REC is hardware-output only. It refuses Active Instrument so a loaded
 software synth is not doubled or rewritten by live capture.
 
 Offline targets keep their data. If hardware is unplugged, fix the page target
-or reconnect the device; the song does not discard the route.
+or reconnect the device; the Project does not discard the route.
 
 FILES NEW PRJ requires a second press, clears the current unsaved Project, and
 starts the next `project-001` style name. SAVE AS writes and switches to the

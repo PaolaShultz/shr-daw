@@ -1,5 +1,11 @@
 # Phase 2 insert-effects measurement
 
+> Historical checkpoint: the measurements and 333-test count below describe
+> this phase on 2026-07-18/19. Later time/modulation, reverb, aux, master, and
+> final-meter work is recorded in
+> [Phase 3/4](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md); current behavior is specified
+> in [Audio graph and DSP contract](AUDIO_GRAPH.md).
+
 This is the evidence record for the essential insert rack. It separates
 objective DSP conformance from the final musical decision. A technically
 correct response can still be uninspiring; an effect with a measurable defect

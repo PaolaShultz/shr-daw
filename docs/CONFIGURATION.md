@@ -1,12 +1,43 @@
 # Configuration and tracker routing
 
 SHR-DAW is a Raspberry Pi mini DAW and MIDI routing hub. Hardware names belong
-in `shsynth.conf`, `controller.conf`, or a saved song. They are not compiled
+in `shsynth.conf`, `controller.conf`, or a saved Project. They are not compiled
 into the program.
 
 Both configuration files use one `KEY=VALUE` entry per line. A comment must
 start with `#` after optional leading whitespace; `#` inside a value is kept as
 part of a hardware name or path rather than treated as an inline comment.
+
+The installed templates live under `share/shsynth/`. On first use, `shr`
+copies them without replacing existing files to
+`${XDG_STATE_HOME:-~/.local/state}/shsynth/`. A repository-local launch uses
+the checkout's `config/` and private `user/` tree instead. Environment
+overrides are documented in [Installation](INSTALLATION.md).
+
+## Runtime key reference
+
+Repeated `midi.input`, `audio.output`, `yoshimi.preset_root`,
+`yoshimi.category`, `fluidsynth.soundfont`, `external_midi.channel`,
+`external_midi.percussion_note`, `capture.input`, and `loop.output` keys build
+ordered lists. Empty optional values disable that choice. The current parser
+accepts:
+
+| Group | Keys and constraints |
+| --- | --- |
+| Startup and status | `synth.startup_timeout_ms`; optional `status.cpu_temperature_path` |
+| synthv1 | `synthv1.command`, `.client`, `.presets`, `.midi_output`; legacy `synth.command`, `synth.client`, `presets.directory`, and `midi.synth_output` remain accepted |
+| Yoshimi | `yoshimi.command`, `.client`, `.midi_output`, repeated `.preset_root` and `.category`, `.presets_per_category` |
+| FluidSynth | `fluidsynth.command`, `.client`, `.midi_output`, `.gain`, repeated `.soundfont` |
+| Managed MIDI/audio | `midi.autoconnect`, repeated `midi.input`; `audio.autoconnect`, repeated `audio.output`; optional `audio.engine_cpu` |
+| Owned graph | `audio.graph.enabled`, `.client`, `.maximum_callback_frames` (1–4096) |
+| External tracker MIDI | `external_midi.enabled`, `.client`, `.output`, `.max_tracks`, repeated `.channel`, `.melody_channel`, optional `.percussion_channel` and `.percussion_program`, `.percussion_input_base`, repeated `.percussion_note`, `.bank_select` (`off`, `cc0`, or `cc0+cc32`), `.program_changes`, `.send_transport`, `.default_tempo` (20–300), `.pattern_rows` (1–256), `.steps_per_beat` (1–16), `.live_thru`, `.profile`, `.gate_percent` (1–100), `.gesture_settle_ms` |
+| Stereo capture | `capture.directory`, `.client`, repeated `capture.input=NAME|LEFT|RIGHT`, `.ring_frames` (1024–4194304) |
+| WAV loop | `loop.client`, `loop.import_directory`, exactly two repeated `loop.output` entries when playback is used |
+
+Boolean values are `true` or `false`; numbers and structured entries are
+rejected when malformed or out of range. Commands, clients, paths, and ports
+remain data: copy the template and change them for the actual machine instead
+of editing Rust constants.
 
 ## Audio CPU isolation
 
@@ -25,9 +56,11 @@ restarts JACK. Reboot after installing or removing the isolation settings.
 ## Owned audio graph
 
 The opt-in SHR-owned JACK client processes one managed software instrument,
-its Project-persisted source inserts, two optional aux returns, and master
-inserts. It remains disabled by default after
-the authorized Phase 1 low-gain Raspberry Pi comparison:
+its Project-persisted source insert rack, two aux buses, and master rack. Each
+aux has an independent pre/post source-insert send, forced-wet rack, return
+gain, and return meter. The dry-plus-return sum passes through the master rack
+and final post-master meter. It remains disabled by default after the measured
+Raspberry Pi checkpoints:
 
 ```text
 audio.autoconnect=true
@@ -60,6 +93,17 @@ callback count to the private `engine.log`. The FX rack/editor is available
 only when the graph is enabled; stopped transport and no active recording are
 required for rack publication. Projects still save their rack while the graph
 is disabled, but direct playback does not process it.
+
+Each rack holds at most eight effects; the complete graph holds at most 16,
+including at most two reverbs. Source and master racks offer Utility, EQ,
+Compressor, Distortion, Delay, Reverb, Chorus, Flanger, Phaser, Tremolo/Pan,
+Filter, Gate, and Crusher. Aux creation offers Delay, Reverb, Chorus, Flanger,
+and Phaser and fixes their wet signal to 100% and dry signal to zero so an aux
+return never doubles the source. `BYPASS` fades a source/master effect toward
+dry passthrough. An all-bypassed aux is silent; a delay configured to keep its
+tail may drain that wet tail with new input muted. See the
+[audio graph contract](AUDIO_GRAPH.md) for exact schemas, publication rules,
+meters, and topology limits.
 
 Do not enable this merely to perform a routine setup check. The first
 authorized dry-path comparison is recorded in
@@ -170,19 +214,22 @@ and each page stores:
 - four lane names and lane mute states;
 - a reserved list of MIDI setup messages for later use.
 
-Open **PAGES** on the tracker screen. Use the main encoder or **PAGE−** and
-**PAGE+** to select a page in the selected pattern. **ADD** creates another
-four-lane page in that pattern. **TARGET**
+Open **TOOLS** → **PAGES** from FT2. The resulting **TRACKS** screen edits
+pages and columns. Use the main encoder to select a page. **ADD** creates
+another four-lane page in that Pattern. **TARGET**
 chooses an ALSA MIDI output that is currently visible, the active SHR-DAW
 software instrument, or the configured output. **CHANNEL**
 chooses 1–16. Encoder press confirms a field. **DONE** keeps all page changes;
-**CANCEL** restores the Project from before page management opened.
+**SYS** → **EXIT** restores the Project from before TRACKS opened. On the
+**COLUMN** and **BANK** pages, **COL−/COL+**, **PROG−/PROG+**, and the bank
+controls edit the selected column. In a target/channel chooser, **CONFIRM**
+keeps that field and **EXIT** cancels it.
 
 The active-instrument choice always means the single software instrument that
 SHR-DAW currently owns and monitors. It does not start another engine. It is
 offline when no managed instrument is active.
 
-An exact hardware port name is saved in the song. If that device is later
+An exact hardware port name is saved in the Project. If that device is later
 missing, the page shows `OFFLINE`. SHR-DAW keeps the name and pattern data,
 does not rewrite the file, and continues playing pages whose targets are
 available. If multiple ports have the same exact name, or a configured partial
@@ -221,12 +268,15 @@ Exact MIDI port targets can also match a profile's `port_matches` entries.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. The current development
-format stores each FT2 Pattern as a self-contained unit with its own tempo,
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 3
+stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
-channel/bank/program setups, and every cell field. Version 0 Projects with one
-page-wide channel/bank/program migrate by copying that setup to all four
-columns. Unknown newer versions and unknown fields are refused.
+channel/bank/program setups, every cell field, the source insert rack, aux
+routing, and master rack. Versions 0 and 1 migrate with empty effects routing;
+version 2 retains its source rack and gains empty aux/master routing. Version 0
+page-wide channel/bank/program data is copied to all four columns. Unknown
+newer versions, unknown fields, and invalid effect data are refused rather than
+partly loaded or written back.
 
 On **FILES**, **NEW PRJ** requires a second press and creates the next available
 `project-001` style unsaved name. **SAVE AS** writes a non-overwriting
@@ -313,7 +363,7 @@ restores its original value and selection.
 
 Tracker events are sent only to their page target and channel. Controller
 command pads, the encoder, and mapped controls stay inside SHR-DAW. STOP, page
-mute, lane mute, song replacement, route changes, and exit release notes only
+mute, lane mute, Project replacement, route changes, and exit release notes only
 on affected destinations. Lanes that share a device/channel keep separate note
 ownership; a shared note is released only after its last lane owner ends.
 
@@ -325,5 +375,5 @@ lanes, and does not advance through or alter other order entries.
 
 Pattern setup offers 4/4 row counts of 8, 16, 32, 64, and 128, or matching 3/4
 counts of 6, 12, 24, 48, and 96. New patterns are distinct pattern records and
-are appended to the song order; clone duplicates the selected pattern, while
+are appended to the Arrangement; clone duplicates the selected Pattern, while
 repeat adds another order reference to the same pattern.

@@ -54,6 +54,18 @@ into this repository. Pencil Research's CC BY-SA 4.0 MIDI dataset documents
 external instruments rather than USB controller surfaces and is likewise not
 included.
 
+## Documentation rendering tools
+
+The deterministic TUI screenshots are generated from SHR-DAW's own seeded
+screen data by `scripts/render-readme-screenshots.py`. That maintainer helper
+uses Pillow as a PNG container/writer and reads the host's
+`Lat15-VGA16.psf.gz` Linux console font; it does not bundle Pillow or the PSF
+font into the installed product-data directory. Anyone redistributing the
+generated documentation or a fallback copy of that font should retain and
+review the copyright/licence information supplied by the corresponding Pillow
+and console-font packages. The images are presentation fixtures, not evidence
+that JACK, MIDI hardware, playback, or recording was active.
+
 ## Preset bank boundary
 
 The tracked `presets/synthv1/` directory and public installation contain only

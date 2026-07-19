@@ -12,7 +12,8 @@ The manual is split into three chapters so it remains usable on a phone:
    Help, stereo recording, and the performance meter.
 2. [FT2, Projects, and Patterns](menu/TRACKER_AND_PROJECTS.md) — the tracker in
    Play, Record, Step Edit, and Cell Edit; Tools; N00B setup; Projects;
-   Pattern tools; drum patterns; Arrangement; tracks; and routing fields.
+   Pattern tools; drum patterns; Arrangement; the Tracks screen; and routing
+   fields.
 3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — WAV loop setup, loop-file
    management, alignment, the effects rack, and the parameter editor.
 

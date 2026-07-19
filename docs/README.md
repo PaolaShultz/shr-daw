@@ -1,16 +1,24 @@
-# Documentation index
+# SHR-DAW documentation
 
 README is the short product overview. This index routes each kind of detail to
 one maintained home so setup instructions, implementation contracts,
 measurements, history, and future plans do not become repeated walls of text.
+
+For current behavior, begin in **Start and use**, then follow implementation
+details into **Install and configure** or **Architecture and safety**.
+Measurement pages are dated evidence from particular checkpoints, not a second
+current specification. Development records preserve what was true during the
+build. Planned-work pages describe proposals and do not override current code,
+configuration, or the architecture contracts.
 
 ## Start and use
 
 - [First run](FIRST_RUN.md) — configure hardware and open SHR-DAW.
 - [Using SHR-DAW](USING_SHR_DAW.md) — instruments, screens, MIDI Ideas,
   performance meters, recording, and commands.
-- [Complete screen and menu manual](MENU_MANUAL.md) — every populated 40×20
-  screen, contextual editor, and controller-menu page with explanations.
+- [Complete screen and menu manual](MENU_MANUAL.md) — 80 deterministic images
+  covering every populated 40×20 screen, contextual editor, and controller
+  menu page, with explanations.
 - [In-app help](HELP.md) — the compact help text shown by `?` or F1.
 - [Tracker guide](TRACKER.md) — FT2 editing, pages, routing, Arrangement,
   drums, loops, and Project files.
@@ -35,8 +43,9 @@ measurements, history, and future plans do not become repeated walls of text.
 
 - [How SHR-DAW works](HOW_IT_WORKS.md) — concise ownership, MIDI, pickup,
   recording, audio-graph, and data boundaries.
-- [Audio graph and DSP contract](AUDIO_GRAPH.md) — persisted graph model,
-  real-time limits, routing publication, effects, and curation gates.
+- [Audio graph and DSP contract](AUDIO_GRAPH.md) — Project effects data, exact
+  parameter schemas, real-time limits, routing publication, meters, bypass,
+  tails, topology limits, and curation gates.
 - [Third-party software and sounds](../THIRD_PARTY.md) — licences, credits,
   provenance, and redistribution rules.
 - [New patches and sounds](NEW_PATCHES.md) — synthv1 schema and authoring

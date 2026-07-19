@@ -9,6 +9,9 @@ Do not put credentials, GitHub device codes, or private preset files here.
 - The checkout is a Git repository on branch `main`.
 - Public remote: <https://github.com/PaolaShultz/shr-daw>.
 - `main` tracks `origin/main`; push with `git push` after committing.
+- The complete 80-image visual menu manual was checkpointed and pushed as
+  commit `46c1a1b` (`Add complete visual menu manual`) before the subsequent
+  source-backed documentation refresh began.
 - GitHub CLI is installed and authenticated as `PaolaShultz` using HTTPS.
 - This repository uses the local commit identity `PaolaShultz` with GitHub's
   numeric no-reply address. Do not replace it with an invented identity.
@@ -50,7 +53,7 @@ Rust paths. The important local paths are:
 - `user/state/shsynth/`: runtime/controller configuration, backups, PID/log
   state, and generated engine configuration;
 - `user/data/shsynth/ideas/`: recorded MIDI ideas;
-- `user/data/shsynth/songs/`: tracker songs;
+- `user/data/shsynth/songs/`: tracker Projects (`.shsong`);
 - `user/data/shsynth/recordings/`: stereo WAV recordings;
 - `user/data/shsynth/loops/`: privately imported FT2 WAV loops;
 - `user/data/shsynth/drum-patterns/`: user-saved reusable four-lane drum patterns;
@@ -161,25 +164,27 @@ centered and capped at 40 columns. The full map is in
 Presets NAV item 1 opens the passive `MTR` performance screen. CPU0–CPU3 come
 from bounded UI-side `/proc/stat` deltas, with the configured temperature when
 available. Stereo RMS, peak hold, and clip state come only from the active
-owned graph master. Direct mode, stopped engines, WAV loops, hardware returns,
-recorder inputs, and unrelated JACK clients are never presented as final-output
-activity; direct/stopped output is explicitly unavailable. MTR RESET clears
-presentation holds only. Its deterministic README screenshot says that it uses
+owned graph's dedicated post-master meter. Direct mode, stopped engines, WAV
+loops, hardware returns, recorder inputs, and unrelated JACK clients are never
+presented as final-output activity; direct/stopped output is explicitly
+unavailable. MTR RESET clears presentation holds only. CPU rows are whole-core
+load: they do not measure synth/graph process CPU, callback timing, scheduling
+jitter, or xruns. Its deterministic README screenshot says that it uses
 presentation data.
 
 FT2 real-time REC is hardware-page-only: it refuses `ActiveInstrument`,
 consumes notes before the loaded synth, auditions through the selected page's
 MIDI destination/channel, and writes only that page in the selected looping
 pattern. Pattern setup supports 4/4 sizes 8/16/32/64/128 and corresponding 3/4
-sizes 6/12/24/48/96. Songs retain distinct patterns plus their order list.
+sizes 6/12/24/48/96. Projects retain distinct Patterns plus their Arrangement.
 
 FT2 has one Play/Rec/Edit/N00B mode state. N00B maps live input to the nearest
 selected major/natural-minor scale tone with downward tie-breaking and exact
 per-channel/source-note release ownership. The Tools child opens the private
 WAV loop player. Loop imports live below the XDG user-data `loops/` directory;
-songs keep optional meter, filename, BPM interpretation, and beat-region
+Projects keep optional meter, filename, BPM interpretation, and beat-region
 settings plus a signed beat offset for one-bar placement shifts. The loop
-ALIGN child can run offline pulse/duration analysis, snap length to song bars,
+ALIGN child can run offline pulse/duration analysis, snap length to Project bars,
 and move placement by whole bars. JACK loop client/output names and the import
 inbox are configuration. Tempo matching sets the current Pattern tempo from the
 interpreted WAV BPM; the WAV is not stretched or pitch-shifted to fit the old
@@ -208,11 +213,14 @@ External MIDI sound names are data-driven. JSON profiles live in
 overrides can live below `${XDG_DATA_HOME}/shsynth/midi-devices/` or
 `SHSYNTH_DEVICE_PROFILE_DIR`. `roland-d-50` is the first bundled profile, not a
 hardcoded tracker mode. Each FT2 page has one destination and four persisted
-column channel/bank/program setups. Song format 1 stores them explicitly;
-format 0 page-wide setups migrate into four identical columns, while unknown
-newer formats are refused. Compatible shared channels require identical master
-selections. FT2 Program cell editing uses the selected column for named live
-audition; devices without a profile retain numeric 0–127 access.
+column channel/bank/program setups. Project format 3 stores those setups plus
+the source insert rack, two aux routes, and master rack. Formats 0 and 1 migrate
+with empty effects routing; format 2 retains its source rack and gains empty
+aux/master routing; format 0 page-wide setups also migrate into four identical
+columns. Unknown newer formats and invalid fields are refused. Compatible
+shared channels require identical master selections. FT2 Program cell editing
+uses the selected column for named live audition; devices without a profile
+retain numeric 0–127 access.
 
 Project display names are editable and saved renames publish without replacing
 collisions. Pattern cleanup deletes only zero-reference records and never
@@ -321,6 +329,34 @@ check links/references, verify image dimensions and byte sizes, compile Python
 helpers with `python3 -m py_compile`, and run `git diff --check`. Run the full
 Rust checks only when code, Cargo files, runtime behavior, or install/runtime
 scripts changed.
+
+The documentation information architecture is deliberate: root `README.md` is
+the concise product overview; `docs/README.md` is the wiki-style home;
+`HOW_IT_WORKS.md` explains ownership and behavior; `AUDIO_GRAPH.md` and
+`CONFIGURATION.md` hold detailed implementation/persistence contracts;
+`USING_SHR_DAW.md`, `TRACKER.md`, `HELP.md`, and the visual manual speak to the
+musician; measurement and Build Week documents retain dated evidence; and
+future-plan documents must not present proposals as current behavior. Keep
+terms consistent: Project, Pattern, page, column, Arrangement, Idea, audio
+recording, source insert, aux send/return, and master rack. Link to the detailed
+contract instead of copying a long feature inventory into every guide.
+
+For a documentation-only refresh, enumerate every tracked Markdown file, check
+local Markdown paths, image paths, and heading fragments, run the exhaustive
+screenshot check when images/navigation are referenced, run targeted Rust
+tests only for documentation embedded in the binary, then finish with:
+
+```sh
+python3 scripts/render-readme-screenshots.py --check
+git diff --check
+git ls-files | rg '^user/'
+```
+
+The last command must produce no output. A comment-only correction to the
+configuration template does not change runtime behavior; validate its syntax
+and relevant parser/help tests rather than mechanically running the full Rust
+suite. Any actual Rust, parser behavior, installer, Makefile, or runtime script
+change still requires the full Rust 1.85 validation above.
 
 The complete visual interface reference starts at `docs/MENU_MANUAL.md` and is
 split into focused chapters below `docs/menu/`. Its 80 menu-page images come

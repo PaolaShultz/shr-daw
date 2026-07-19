@@ -29,7 +29,11 @@ The installer:
 
 - installs build, JACK, and ALSA tools;
 - installs synthv1, Yoshimi, FluidSynth, and a small default SoundFont;
-- builds the release version of SHR-DAW;
+- installs/selects the official Rust 1.85 toolchain when the current Cargo is
+  older, runs the locked tests, and builds the locked release version;
+- installs commands, templates, the 21 allowlisted presets, device/controller
+  profiles, drum data, documentation, and all 80 menu-manual images below the
+  selected prefix (normally `/usr/local`);
 - opens the routing wizard.
 
 Use `--no-deps` to keep the installer from installing system packages. Use
@@ -56,16 +60,18 @@ Existing `shsynth` configuration and data paths are kept for compatibility.
 Contributors can build and inspect the checkout without installing files:
 
 ```sh
-cargo test --locked
-SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo run --locked -- config init
-SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo run --locked -- list
-SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo run --locked -- screenshots > /tmp/shr-daw-screens.json
+cargo +1.85.0 test --locked
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo +1.85.0 run --locked -- config init
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo +1.85.0 run --locked -- list
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo +1.85.0 run --locked -- screenshots > /tmp/shr-daw-screens.json
 ```
 
 This path does not start JACK or transmit MIDI. Delete the two explicit `/tmp`
 paths afterward. For a persistent private development checkout,
 `./scripts/setup-local.sh` and `./scripts/local.sh` redirect configuration,
 Projects, Ideas, recordings, loops, and private presets below ignored `user/`.
+They copy missing templates/presets without replacing private edits. Build the
+release binary first; neither helper installs packages or builds the program.
 
 ## Upgrade and uninstall boundaries
 

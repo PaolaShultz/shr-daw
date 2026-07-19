@@ -173,6 +173,11 @@ system readings. Stereo RMS and peak hold are shown only for the final output
 of SHR-DAW's active owned graph. Direct mode and stopped engines are explicitly
 reported as unavailable instead of displaying unrelated audio.
 
+CPU is whole-core `/proc/stat` activity, not synth or graph process CPU, JACK
+callback timing, or xruns. The audio bars are post-master for the managed
+instrument and its two returns; they deliberately exclude the separate WAV
+loop, recorder input, external hardware, and unrelated JACK clients.
+
 ### OPS — clear presentation holds
 
 ![Populated performance meter with the OPS controller page](../images/menu/performance-meter-ops.png)

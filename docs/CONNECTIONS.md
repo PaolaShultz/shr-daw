@@ -48,6 +48,12 @@ the next one.
 Each engine has a configured MIDI input and JACK audio output. See
 [Configuration and routing](CONFIGURATION.md) for the settings.
 
+By default, the active engine connects directly to the configured playback
+pair. With the opt-in owned effects graph enabled, that same one engine instead
+passes through source inserts, two aux returns, the master rack, and final
+meter. Activation is transactional and restores the direct path on failure.
+The separate loop player and recorder do not pass through this graph.
+
 ## External MIDI instruments
 
 Each tracker page can use its own MIDI output, with four independent column
@@ -55,9 +61,9 @@ channels/banks/programs. Several pages can
 play several hardware instruments at the same time. A page can also target the
 currently active SHR-DAW software instrument.
 
-Songs save exact output port names. If a saved device is disconnected, the
+Projects save exact output port names. If a saved device is disconnected, the
 page is shown as `OFFLINE`. Its notes and route are kept. Connect the device or
-choose a different page target; SHR-DAW does not silently rewrite the song.
+choose a different page target; SHR-DAW does not silently rewrite the Project.
 
 Named sound lists for supported external instruments come from
 [MIDI device profiles](MIDI_DEVICE_PROFILES.md). Instruments without a profile
@@ -75,6 +81,9 @@ path or its additional CPU work.
 
 The same JACK capture inputs remain available to the stereo recorder. SHR-DAW
 does not currently send capture audio back to playback for software monitoring.
+External-instrument audio, hardware returns/sends, and the WAV loop are not
+currently mixed or metered by SHR-DAW's master rack; combine them with hardware
+direct monitoring or an external mixer.
 
 For exact routes and configuration keys, read
 [Configuration and routing](CONFIGURATION.md).

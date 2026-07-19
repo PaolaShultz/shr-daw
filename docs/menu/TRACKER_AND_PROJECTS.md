@@ -37,7 +37,7 @@ setup before enabling simplified live-note mapping.
 
 ![Populated FT2 Pattern in Play mode with the MOVE page](../images/menu/ft2-play-move.png)
 
-`ORD-` and `ORD+` move between Arrangement steps. `LANE-` and `LANE+` move the
+`PG-` and `PG+` move between Arrangement steps. `LANE-` and `LANE+` move the
 cursor across the current four-lane page.
 
 ### SYS — stop, tools, and exit
@@ -85,7 +85,7 @@ advances after entry, blank, erase, or note-off.
 
 ![Populated FT2 Step Edit with the MOVE page](../images/menu/ft2-step-edit-move.png)
 
-`ORD-`, `ORD+`, `LANE-`, and `LANE+` move the edit cursor without changing
+`PG-`, `PG+`, `LANE-`, and `LANE+` move the edit cursor without changing
 Pattern data.
 
 ### ADD — choose row advance
@@ -99,7 +99,7 @@ operation. This affects movement, not note duration or tempo.
 
 ![Populated FT2 Step Edit with the SYS page](../images/menu/ft2-step-edit-sys.png)
 
-`PANIC` and `STOP` retain their safety meanings. `NXT PG` moves to the next
+`PANIC` and `STOP` retain their safety meanings. `PAGE` moves to the next
 four-lane page. `EXIT` leaves Step Edit and returns to Play mode.
 
 ## FT2 Cell Edit
@@ -148,15 +148,15 @@ configuration, Project files, Arrangement, clip operations, and WAV loops.
 
 ![Populated FT2 Tools screen with the OPS page](../images/menu/ft2-tools-ops.png)
 
-`TRACKS` opens pages, columns, and MIDI routing. `FILES` opens Project and
-Pattern management. `ARRANGE` opens the Pattern order. `MUTE` toggles the
+`PAGES` opens the TRACKS screen for pages, columns, and MIDI routing. `FILES`
+opens Project and Pattern management. `ARR` opens the Pattern order. `MUTE` toggles the
 selected lane.
 
 ### CLIP — lane and page clipboard
 
 ![Populated FT2 Tools screen with the CLIP page](../images/menu/ft2-tools-clip.png)
 
-`CPY L`, `PST L`, `CPY P`, and `PST P` copy or paste the current lane or full
+`COPY L`, `PASTE L`, `COPY PG`, and `PSTE PG` copy or paste the current lane or full
 four-lane page. These are in-memory editing clipboards, not saved Projects.
 
 ### LOOP — attach or detach private audio
@@ -164,7 +164,8 @@ four-lane page. These are in-memory editing clipboards, not saved Projects.
 ![Populated FT2 Tools screen with the LOOP page](../images/menu/ft2-tools-loop.png)
 
 `LOOP` opens WAV-loop setup. `REMOVE` detaches the loop from this Project after
-confirmation; it does not delete the private WAV file.
+confirmation; it does not delete the private WAV file. `LIBRARY` opens safe
+private-WAV cleanup. `MUTE PG` toggles the current four-lane page.
 
 ### SYS — safety, help, and return
 
@@ -240,15 +241,15 @@ Arrangement behind the user's back. Transposition affects melodic pages only.
 
 ![Populated Pattern tools with the CLIP page](../images/menu/pattern-tools-clip.png)
 
-`COPY` stores the current Pattern in memory. `PASTE N` creates a new Pattern
-from it. `PASTE O` asks before replacing the current Pattern. `CLEAN` deletes
+`COPY` stores the current Pattern in memory. `NEW` creates a new Pattern from
+it. `OVER` asks before replacing the current Pattern. `CLEAN` deletes
 only Patterns not referenced by any Arrangement step.
 
 ### TRANS — transpose melody only
 
 ![Populated Pattern tools with the TRANS page](../images/menu/pattern-tools-trans.png)
 
-`OCT-`, `SEMI-`, `SEMI+`, and `OCT+` transpose melodic notes by −12, −1, +1,
+`OCT-`, `NOTE-`, `NOTE+`, and `OCT+` transpose melodic notes by −12, −1, +1,
 or +12 semitones. Percussion pages and note-off commands are left unchanged.
 
 ### SYS — stop and return

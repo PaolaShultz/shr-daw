@@ -167,50 +167,24 @@ create feedback in an external loop. The UI and Project must make the selected
 mode visible. Recording should explicitly choose pre-insert, post-insert, or
 master output instead of silently changing what is captured.
 
-### Candidate topologies
+### Implemented foundation and remaining choices
 
-1. **Per-source software insert:** `source → effect chain → selected output`.
-   This is the smallest useful topology and avoids a global mixer, but each
-   source needs its own instance or shared-chain ownership rules.
-2. **JACK-summed master insert:** `sources → stereo effect input → output`.
-   JACK can sum the sources at the input, making this a plausible small spike.
-   Graph switching must remove old dry connections without a doubled or silent
-   intermediate state; explicit gain/metering is still needed for headroom.
-3. **JACK-summed global aux:** keep `source → dry playback`, also connect
-   sources to `wet effect → playback`. This proves send/return cheaply, but one
-   effect input gain is a global send amount. Independent source send levels
-   need extra ports or owned gain/tap stages. A delay/reverb return should be
-   100% wet so dry audio is not doubled inside the effect.
-4. **External hardware loop:** `owned send output → processor → owned return
-   input → SHR mixer`. This consumes physical I/O, adds conversion/round-trip
-   latency, needs line-level compatibility, and must detect or structurally
-   prevent feedback. Direct monitoring must not create a second return path.
-5. **Live input chain:** `capture input → inserts/sends → monitor/master`, with
-   optional `capture → pre-FX recorder` or `processed output → post-FX
-   recorder`. This proves simultaneous input/output routing and makes external
-   instruments part of the same workflow rather than recorder-only signals.
+Earlier revisions of this plan compared per-source, JACK-summed, and owned-mix
+topologies and proposed a first small effect set. That selection work is now
+historical: the current bounded implementation uses an owned exactly-once sum,
+13 effect types, source/master serial racks, two wet-only aux racks, a
+post-master meter, and transactional direct fallback. The authoritative
+current behavior and limits live in the [audio graph contract](AUDIO_GRAPH.md),
+not in this future-work page.
 
-Chain order must be explicit because filter → drive, drive → filter, and
-compressor → delay are musically different. Bypass, reorder, add/remove, and
-Project load must not click, lose ownership, or leave stale JACK routes.
-
-### Small effect candidates
-
-The first implementation should prove the graph and real-time contract rather
-than attempt a whole suite. Candidates to compare are:
-
-- gain/pan plus peak metering and a conservative safety limiter, primarily as
-  routing/mixer infrastructure;
-- a bounded stereo delay with feedback, time, tone, wet level, and guarded
-  gain, which makes send/return behavior easy to demonstrate;
-- a filter or restrained drive insert with parameter smoothing; and
-- chorus or reverb only after the simpler graph is stable and measured.
-
-Objective DSP measurement can establish whether an effect meets its declared
-response, curve, timing, stability, artifact, and real-time targets. It cannot
-decide the remaining musical preference question. Codex provides a technical
-recommendation from those measurements; the human performs the final low-gain,
-level-matched musical curation.
+The choices still open here are genuinely future ones: how independently owned
+loop, live-input, and hardware-return sources become mixer strips; how
+monitoring and recording taps remain unambiguous; whether external hardware
+inserts are safe and worthwhile; and how a validated free-wiring UI fits 40×20.
+Chain order, bypass/tails, client loss, Project migration, and publication must
+retain the current safety guarantees during that expansion. Objective DSP and
+performance measurements can establish engineering fitness, but final
+low-gain, level-matched musical curation remains a human listening decision.
 
 ### Raspberry Pi metric plan
 

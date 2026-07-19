@@ -37,11 +37,11 @@ and program match, because MIDI program selection is channel-wide. Pages play
 together, so one pattern can control several hardware instruments and the
 active SHR-DAW software instrument.
 
-Open **PAGES** to add or select a page, choose a column, and set its target,
-channel, bank, and program. **DONE** validates shared-channel compatibility and
-keeps the changes. **CANCEL** restores the Project as it was before the page editor
-opened. A disconnected saved target is marked `OFFLINE`; its route and notes
-are not deleted.
+Open **TOOLS** → **PAGES** to reach the **TRACKS** screen. There you can add or
+select a page, choose a column, and set its target, channel, bank, and program.
+**DONE** validates shared-channel compatibility and keeps the changes. **SYS**
+→ **EXIT** restores the Project as it was before TRACKS opened. A disconnected
+saved target is marked `OFFLINE`; its route and notes are not deleted.
 
 ## Step editing
 
@@ -215,11 +215,13 @@ automatic names keep both actions usable from a four-button controller.
 are refused and a saved rename keeps the loaded Project state.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. The current development
-format stores each pattern's own tempo, meter, pages, four column setups,
-lanes, setup messages, and cells. Version 0 page-wide setups load by copying
-the old channel/bank/program into all four columns. Unknown newer versions and
-unknown shapes are not loaded or overwritten.
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 3
+stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
+messages, cells, source insert rack, two aux routes, and master rack. Versions
+0 and 1 gain empty effects routing; version 2 retains its source rack and gains
+empty aux/master routing. Version 0 page-wide setups copy the old
+channel/bank/program into all four columns. Unknown newer versions, fields, or
+invalid effect shapes are not loaded or overwritten.
 
 ## Detailed controls and routing
 
