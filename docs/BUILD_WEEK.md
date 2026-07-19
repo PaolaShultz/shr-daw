@@ -9,6 +9,37 @@ project's development story: it preserves the truthful timeline, working
 method, human/AI boundary, and a reproducible snapshot without turning the main
 README into a development journal. It is not an implementation specification.
 
+## Why SHR-DAW exists
+
+SHR-DAW began with a much smaller goal: play a few software synthesizers on a
+Raspberry Pi without turning it into a desktop computer. The creator explored
+existing music-focused systems, including Zynthian and Patchbox OS. The
+Zynthian setup they considered centered on dedicated control hardware that did
+not fit comfortably beside the GPIO display and four rotary controls they
+already wanted to use. Designing more custom hardware was also not where they
+wanted to spend their limited time.
+
+Patchbox OS provided the audio-focused base, but not the exact instrument. The
+experiment moved into a small terminal interface, avoiding a general desktop
+GUI and unnecessary background weight on the Pi's four ARM64 cores. Several
+synth engines were tried on the real hardware; some worked readily, some did
+not, and the three reliable choices became the foundation of SHR-DAW's synth
+support.
+
+Once playing sounds worked, a new question appeared: could the same little box
+provide an accompaniment? An FT2-style pattern editor fit the compact terminal
+and physical-control idea naturally. Patterns led to pages, routing,
+Arrangement, loops, recording, and effects—not as a plan to imitate a full
+desktop DAW, but as a sequence of useful musical needs.
+
+The OpenAI Build Week email arrived late in that process. SHR-DAW was not
+started for the competition. After reading the rules, the creator treated it
+openly as a pre-existing project and used the last pre-opening handoff as the
+baseline. The late decision brought a different challenge: decide quickly what
+could be completed and demonstrated before the deadline, what would be
+overreach, where to freeze the submission, and what should wait for
+post-competition development.
+
 SHR-DAW is a weekend/free-time side project, sometimes developed in parallel
 with the creator's primary `bee247.hr` portal work. Its first public commit was
 the moment the creator released the initial version and dedicated it to their
