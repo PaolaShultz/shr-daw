@@ -382,6 +382,7 @@ struct App {
     fx_add_kind: usize,
     fx_target: usize,
     performance_meter: PerformanceMeter,
+    loop_meter: PerformanceMeter,
     last_mapped_volume: Option<f32>,
 }
 impl App {
@@ -522,6 +523,7 @@ impl App {
             fx_add_kind: 0,
             fx_target: 0,
             performance_meter: PerformanceMeter::default(),
+            loop_meter: PerformanceMeter::default(),
             last_mapped_volume: None,
         }
     }
@@ -700,6 +702,8 @@ impl App {
             self.sequencer.stop();
         }
         self.loop_player.stop();
+        self.loop_meter
+            .set_audio_unavailable(AudioAvailability::Stopped);
         let _ = self.audio_recorder.stop();
         self.stop_recording();
         self.stop_playback();
@@ -1581,6 +1585,8 @@ impl App {
         if !self.stop_song_preview() {
             self.sequencer.stop();
         }
+        self.loop_meter
+            .set_audio_unavailable(AudioAvailability::Stopped);
         self.status = "tracker stopped".into();
     }
     fn tracker_play(&mut self, from_start: bool) {
@@ -1832,6 +1838,8 @@ impl App {
 
     fn unload_loop_player(&mut self) {
         self.loop_player.unload();
+        self.loop_meter
+            .set_audio_unavailable(AudioAvailability::Stopped);
     }
 
     fn remove_project_loop(&mut self) {
@@ -1956,6 +1964,8 @@ impl App {
                 };
                 self.song.audio_loop = Some(settings.clone());
                 let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
+                self.loop_meter
+                    .set_audio_unavailable(AudioAvailability::Stopped);
                 match self.loop_player.load(decoded, &settings) {
                     Ok(()) => {
                         self.status = format!(
@@ -4077,6 +4087,14 @@ impl App {
     fn tick(&mut self) {
         let now = Instant::now();
         self.refresh_cpu_temperature(now);
+        if !self.loop_meter.is_presentation() {
+            if let Some(snapshot) = self.loop_player.meter_snapshot() {
+                self.loop_meter.update_loop_audio(snapshot, now);
+            } else {
+                self.loop_meter
+                    .set_audio_unavailable(AudioAvailability::Stopped);
+            }
+        }
         if self.screen == Screen::Meter {
             self.performance_meter
                 .poll_cpu(now, Path::new("/proc/stat"));
@@ -5973,6 +5991,7 @@ fn audio_scale_line(width: usize) -> String {
 const fn performance_audio_route(availability: AudioAvailability) -> &'static str {
     match availability {
         AudioAvailability::GraphActive => "Owned graph master",
+        AudioAvailability::LoopActive => "Separate WAV loop callback",
         AudioAvailability::DirectUnavailable => "Direct · meter unavailable",
         AudioAvailability::Stopped => "Engine stopped · meter unavailable",
         AudioAvailability::Presentation => "Presentation · no live audio",
@@ -6059,7 +6078,9 @@ fn draw_performance_meter<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
     let levels = if matches!(
         availability,
-        AudioAvailability::GraphActive | AudioAvailability::Presentation
+        AudioAvailability::GraphActive
+            | AudioAvailability::LoopActive
+            | AudioAvailability::Presentation
     ) {
         a.performance_meter.audio_levels()
     } else {
@@ -6073,6 +6094,7 @@ fn draw_performance_meter<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         truncate(route, width),
         Style::default().fg(match availability {
             AudioAvailability::GraphActive => Color::Green,
+            AudioAvailability::LoopActive => Color::Green,
             AudioAvailability::Presentation => Color::LightYellow,
             AudioAvailability::Stopped | AudioAvailability::DirectUnavailable => Color::DarkGray,
         }),
@@ -6364,7 +6386,7 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         let bar_unit = i32::from(a.current_meter().clamp(1, 16));
         let offset_bars = f64::from(settings.offset_beats) / f64::from(bar_unit);
         format!(
-            "FT2 WAV LOOP\n{}\n\nSource {:>6.2} BPM  {}\nProject {:>3} BPM\nRegion beat {} +{}\nOffset {:+.0} bar(s)\nCut {} · meter {}/4\n\n{}  {} / {}\n{} Hz · {}ch\nNative pitch playback",
+            "FT2 WAV LOOP\n{}\n\nSource {:>6.2} BPM  {}\nProject tempo {:>3} BPM\nRegion beat {} +{}\nOffset {:+.0} bar(s)\nCut {} · meter {}/4\n\n{}  {} / {}\n{} Hz · {}ch\nNative pitch playback",
             truncate(
                 player.file.as_deref().unwrap_or(&settings.file),
                 z.width.saturating_sub(2) as usize
@@ -6390,15 +6412,69 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             truncate(&selected, z.width.saturating_sub(2) as usize)
         )
     };
+    let mut lines = details.lines().map(Spans::from).collect::<Vec<_>>();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(4));
+    if body.height >= 15 {
+        let availability = a.loop_meter.audio_availability();
+        let clipping = a.loop_meter.clipping(Instant::now());
+        let fault = a.loop_meter.non_finite() > 0;
+        let state = match availability {
+            AudioAvailability::LoopActive => "",
+            AudioAvailability::Presentation => " · PREVIEW",
+            AudioAvailability::Stopped | AudioAvailability::DirectUnavailable => " · STOP",
+            AudioAvailability::GraphActive => "",
+        };
+        let mut heading = vec![Span::styled(
+            format!("STEREO VU · LOOP OUT · dBFS{state}"),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )];
+        if clipping {
+            heading.push(Span::styled(
+                " CLIP!",
+                Style::default()
+                    .fg(Color::Red)
+                    .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+            ));
+        } else if fault {
+            heading.push(Span::styled(
+                " FAULT!",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ));
+        }
+        lines.push(Spans::from(heading));
+        let levels = if matches!(
+            availability,
+            AudioAvailability::LoopActive | AudioAvailability::Presentation
+        ) {
+            a.loop_meter.audio_levels()
+        } else {
+            [AudioLevel::default(); 2]
+        };
+        let numeric_peaks = a.loop_meter.numeric_peak_dbfs();
+        lines.push(audio_meter_line(
+            'L',
+            levels[0],
+            numeric_peaks[0],
+            usize::from(z.width),
+        ));
+        lines.push(audio_meter_line(
+            'R',
+            levels[1],
+            numeric_peaks[1],
+            usize::from(z.width),
+        ));
+    }
     f.render_widget(
-        Paragraph::new(details)
+        Paragraph::new(lines)
             .alignment(Alignment::Center)
             .style(Style::default().fg(if player.error.is_some() {
                 Color::Yellow
             } else {
                 Color::Green
             })),
-        rect(z.x, z.y, z.width, z.height.saturating_sub(4)),
+        body,
     );
 }
 
@@ -6750,11 +6826,11 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         z.width,
         actions.y.saturating_sub(params.y + 6),
     );
-    let content_height = 4.min(chord_area.height);
+    let content_height = 5.min(chord_area.height);
     let top = chord_area.y + chord_area.height.saturating_sub(content_height) / 2;
-    if let Some((chord, notes)) = a.held_notes.description(a.config.note_naming) {
+    if let Some(display) = a.held_notes.display(a.config.note_naming) {
         f.render_widget(
-            Paragraph::new(chord)
+            Paragraph::new(display.chord)
                 .style(
                     Style::default()
                         .fg(Color::Green)
@@ -6764,16 +6840,25 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             rect(chord_area.x, top, chord_area.width, 1),
         );
         if chord_area.height >= 2 {
+            let (notes, velocities) = held_note_rows(&display.notes, chord_area.width);
             f.render_widget(
-                Paragraph::new(truncate(&notes, chord_area.width as usize))
+                Paragraph::new(notes)
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(Color::DarkGray)),
                 rect(chord_area.x, top + 1, chord_area.width, 1),
             );
+            if chord_area.height >= 3 {
+                f.render_widget(
+                    Paragraph::new(velocities)
+                        .alignment(Alignment::Center)
+                        .style(Style::default().fg(Color::LightYellow)),
+                    rect(chord_area.x, top + 2, chord_area.width, 1),
+                );
+            }
         }
     }
-    if chord_area.height >= 4 {
-        draw_playback_keyboard(f, a, rect(chord_area.x, top + 2, chord_area.width, 2));
+    if chord_area.height >= 5 {
+        draw_playback_keyboard(f, a, rect(chord_area.x, top + 3, chord_area.width, 2));
     }
     a.hits.back = rect(z.x + 1, actions.y, 6, 1);
     a.hits.stop = rect(z.x + 7, actions.y, 6, 1);
@@ -6795,6 +6880,24 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         },
     );
     button(f, a.hits.save, "Save Idea");
+}
+
+fn held_note_rows(notes: &[crate::chord::HeldNoteDisplay], width: u16) -> (String, String) {
+    let visible = notes
+        .iter()
+        .take((usize::from(width) + 1) / 4)
+        .collect::<Vec<_>>();
+    let names = visible
+        .iter()
+        .map(|note| format!("{:^3}", note.name))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let velocities = visible
+        .iter()
+        .map(|note| format!("{:^3}", note.velocity))
+        .collect::<Vec<_>>()
+        .join(" ");
+    (names, velocities)
 }
 
 const PLAYBACK_KEY_TOP_GLYPH: &str = "└";
@@ -7893,8 +7996,8 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
             app.status = "MIDI ready · pickup armed".into();
         }
         Screen::Playback => {
-            for note in [62, 66, 69] {
-                app.held_notes.observe(&[0x90, note, 100]);
+            for (note, velocity) in [(62, 100), (66, 92), (69, 104)] {
+                app.held_notes.observe(&[0x90, note, velocity]);
             }
             let originals = [
                 0.72, 0.28, 0.34, 0.46, 0.82, 0.18, 0.42, 0.31, 0.03, 0.36, 0.68, 0.22,
@@ -7966,6 +8069,20 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
                     elapsed: Duration::from_secs(3),
                     error: None,
                 });
+            app.loop_meter.seed_audio_presentation(
+                [
+                    AudioLevel {
+                        rms_dbfs: -18.2,
+                        peak_dbfs: -7.1,
+                    },
+                    AudioLevel {
+                        rms_dbfs: -13.4,
+                        peak_dbfs: -3.8,
+                    },
+                ],
+                [-5.2, -2.4],
+                Instant::now(),
+            );
         }
         Screen::AudioRecorder => {
             app.audio_recorder.set_preview_status(RecorderStatus {
@@ -8483,6 +8600,7 @@ mod tests {
     fn meter_route_labels_fit_the_40_column_inner_row_without_truncation() {
         for availability in [
             AudioAvailability::GraphActive,
+            AudioAvailability::LoopActive,
             AudioAvailability::DirectUnavailable,
             AudioAvailability::Stopped,
             AudioAvailability::Presentation,
@@ -9366,6 +9484,56 @@ mod tests {
     }
 
     #[test]
+    fn playback_aligns_each_held_note_with_its_decimal_velocity_at_40x20() {
+        let p = presets();
+        let mut a = app(&p);
+        configure_screenshot(&mut a, Screen::Playback);
+        let b = TestBackend::new(40, 20);
+        let mut t = Terminal::new(b).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let b = t.backend().buffer();
+        let row = |y| {
+            (0..40)
+                .map(|x| b.get(x, y).symbol.as_str())
+                .collect::<String>()
+        };
+
+        assert_eq!(
+            held_note_rows(
+                &a.held_notes.display(a.config.note_naming).unwrap().notes,
+                40
+            ),
+            (" D  F#   A ".into(), "100 92  104".into(),)
+        );
+        assert!(row(11).contains(" D  F#   A "));
+        assert!(row(12).contains("100 92  104"));
+        assert!((0..40).all(|x| b.get(x, 14).symbol == "█"));
+    }
+
+    #[test]
+    fn playback_velocity_rows_compact_without_overlapping_controls_or_footer() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Playback;
+        a.playing = Some(p[0].clone());
+        for (note, velocity) in [(48, 41), (60, 87), (64, 103), (67, 119)] {
+            a.held_notes.observe(&[0x90, note, velocity]);
+        }
+        let b = TestBackend::new(38, 14);
+        let mut t = Terminal::new(b).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let b = t.backend().buffer();
+        let text = b
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        for expected in ["C maj", "41", "87", "103", "119", "OPS"] {
+            assert!(text.contains(expected), "missing {expected:?}");
+        }
+    }
+
+    #[test]
     fn playback_keyboard_joins_octaves_and_separates_natural_and_sharp_colors() {
         let p = presets();
         let mut a = app(&p);
@@ -9381,26 +9549,26 @@ mod tests {
         let b = t.backend().buffer();
 
         // Every column is a white-key column; octave boundaries have no gaps.
-        assert!((0..40).all(|x| b.get(x, 13).symbol == "█"));
-        assert_eq!(b.get(6, 12).symbol, "█"); // B2
-        assert_eq!(b.get(7, 12).symbol, "└"); // C3 immediately follows
+        assert!((0..40).all(|x| b.get(x, 14).symbol == "█"));
+        assert_eq!(b.get(6, 13).symbol, "█"); // B2
+        assert_eq!(b.get(7, 13).symbol, "└"); // C3 immediately follows
 
         // C4: the white natural region and lower block are red, not its └ stroke.
-        assert_eq!(b.get(14, 12).symbol, "└");
-        assert_eq!(b.get(14, 12).fg, Color::Black);
-        assert_eq!(b.get(14, 12).bg, Color::Red);
-        assert_eq!(b.get(14, 13).fg, Color::Red);
+        assert_eq!(b.get(14, 13).symbol, "└");
+        assert_eq!(b.get(14, 13).fg, Color::Black);
+        assert_eq!(b.get(14, 13).bg, Color::Red);
+        assert_eq!(b.get(14, 14).fg, Color::Red);
 
         // E4 has no sharp above it, so both complete blocks are red.
-        assert_eq!(b.get(16, 12).symbol, "█");
-        assert_eq!(b.get(16, 12).fg, Color::Red);
+        assert_eq!(b.get(16, 13).symbol, "█");
         assert_eq!(b.get(16, 13).fg, Color::Red);
+        assert_eq!(b.get(16, 14).fg, Color::Red);
 
         // F#4 colours only the └ foreground; the unplayed F stays white.
-        assert_eq!(b.get(17, 12).symbol, "└");
-        assert_eq!(b.get(17, 12).fg, Color::Red);
-        assert_eq!(b.get(17, 12).bg, Color::White);
-        assert_eq!(b.get(17, 13).fg, Color::White);
+        assert_eq!(b.get(17, 13).symbol, "└");
+        assert_eq!(b.get(17, 13).fg, Color::Red);
+        assert_eq!(b.get(17, 13).bg, Color::White);
+        assert_eq!(b.get(17, 14).fg, Color::White);
     }
 
     #[test]
@@ -9611,6 +9779,74 @@ mod tests {
         perform(Action::LoopRemove, &mut a, Path::new("/none"), None);
         assert!(a.song.audio_loop.is_none());
         assert_eq!(a.status, "loop removed from Project · private WAV kept");
+    }
+
+    #[test]
+    fn loop_screen_renders_populated_loop_only_meter_and_preserves_details() {
+        let p = presets();
+        let mut a = app(&p);
+        configure_screenshot(&mut a, Screen::TrackerLoop);
+        let b = TestBackend::new(40, 20);
+        let mut t = Terminal::new(b).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let text = t
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        for expected in [
+            "breakbeat-96.wav",
+            "Project tempo  96 BPM",
+            "Region beat 0 +16",
+            "Offset +0 bar(s)",
+            "48000 Hz · 2ch",
+            "Native pitch playback",
+            "LOOP OUT",
+            "dBFS",
+            "L [",
+            "R [",
+            "MAX  -5.2",
+            "MAX  -2.4",
+            "PREVIEW",
+        ] {
+            assert!(text.contains(expected), "missing {expected:?}");
+        }
+        assert!(!text.contains("FINAL OUT"));
+    }
+
+    #[test]
+    fn loop_meter_presentation_resets_on_unload_and_compact_layout_is_safe() {
+        let p = presets();
+        let mut a = app(&p);
+        configure_screenshot(&mut a, Screen::TrackerLoop);
+        assert!(a.loop_meter.numeric_peak_dbfs()[0] > -6.0);
+        seed_numeric_meter_peaks(&mut a);
+        let final_output_peaks = a.performance_meter.numeric_peak_dbfs();
+        a.unload_loop_player();
+        assert_eq!(
+            a.loop_meter.numeric_peak_dbfs(),
+            [
+                performance_meter::AUDIO_FLOOR_DBFS,
+                performance_meter::AUDIO_FLOOR_DBFS,
+            ]
+        );
+        assert_eq!(a.performance_meter.numeric_peak_dbfs(), final_output_peaks);
+
+        configure_screenshot(&mut a, Screen::TrackerLoop);
+        let b = TestBackend::new(38, 14);
+        let mut t = Terminal::new(b).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let text = t
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        assert!(text.contains("FT2 WAV LOOP"));
+        assert!(text.contains("OPS"));
     }
 
     #[test]

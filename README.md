@@ -15,10 +15,10 @@ Start with a Pi and computer keyboard. Add a MIDI controller, synth, audio
 interface, or dedicated screen when useful.
 
 The immediate connection between played sound, note spelling, chord names,
-scale-aware entry, and visible keyboard state also makes SHR-DAW a practical
-companion for learning foundational music theory. A player can relate what they
-hear and press to intervals, chord construction, scales, and pattern notation
-without separating study from making music.
+per-note MIDI strike velocity, scale-aware entry, and visible keyboard state
+also makes SHR-DAW a practical learning companion. A player can relate what
+they hear and press to intervals, chord construction, dynamics, scales, and
+pattern notation without separating study from making music.
 
 ## Quick start
 
@@ -44,7 +44,8 @@ SHR-DAW never starts or restarts it implicitly. Continue with
 - Sequence self-contained FT2 Patterns through an Arrangement.
 - Load and edit 72 bundled drum grooves.
 - Save free-timed MIDI Ideas and private tracker Projects.
-- Import private WAV loops and record a configured stereo JACK input.
+- Import private WAV loops, monitor their separate loop-only stereo meter, and
+  record a configured stereo JACK input.
 - Process the managed software instrument through source inserts, two aux
   returns, master effects, and a passive final-output meter.
 - Use a computer keyboard, mouse, or small configured controller.
@@ -68,10 +69,11 @@ Browse the three independent software-instrument catalogs.
 
 ### Playback
 
-<img src="docs/images/shr-daw-playback.png" alt="Playback screen with held chord, continuous keyboard state, control indicators, and recorded MIDI status" width="100%">
+<img src="docs/images/shr-daw-playback.png" alt="Playback screen with held chord, aligned per-note MIDI velocities, continuous keyboard state, and control indicators" width="100%">
 
-Play sounds, see held notes on a continuous keyboard, shape mapped synthv1
-controls, and record MIDI Ideas.
+Play sounds, compare each held note's MIDI strike velocity, see the continuous
+keyboard, shape mapped synthv1 controls, and record MIDI Ideas. Velocity helps
+practise dynamics but is not an audio loudness measurement.
 
 ### Performance Meter
 
@@ -114,9 +116,10 @@ Name, save, preview, and safely clean up Projects and Patterns.
 
 ### FT2 WAV Loop
 
-<img src="docs/images/shr-daw-ft2-loop.png" alt="FT2 WAV Loop screen with tempo and beat-region controls" width="100%">
+<img src="docs/images/shr-daw-ft2-loop.png" alt="FT2 WAV Loop screen with tempo, beat-region controls, and separate LOOP OUT stereo meter" width="100%">
 
-Import private loops and align the tracker tempo and beat region.
+Import private loops, align tempo and beat region, and monitor that WAV alone
+on the separate `LOOP OUT` meter.
 
 ### Stereo Recorder
 

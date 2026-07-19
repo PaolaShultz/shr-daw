@@ -12,7 +12,16 @@ The loop player and graph operate only on resources owned by SHR-DAW.
 A Project may attach one privately imported mono or stereo WAV. Import copies
 the selected inbox file beneath the user's SHR-DAW data directory. The player
 uses native pitch and requires the WAV sample rate to match JACK; it does not
-time-stretch or pitch-shift audio to force a fit.
+time-stretch or pitch-shift audio to force a fit. The normal screen's stereo
+`LOOP OUT` bars show smoothed RMS, a short peak marker, independent session
+`MAX` values, and clip state for this WAV alone. They are deterministic preview
+values in the screenshots below, not a live JACK measurement.
+
+The meter tap is after the chosen region, interpolation, transport gate, and
+edge fades, immediately before the loop player's existing two JACK outputs.
+It does not include the synth, source/aux/master effects, recorder input,
+hardware gain, or unrelated clients. The separate Performance Meter remains
+`FINAL OUT` for the owned graph and still excludes this loop.
 
 ### OPS — import and transport
 

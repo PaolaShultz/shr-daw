@@ -3,6 +3,7 @@
 //! bounded output buffers.
 
 use crate::config::LoopPlayerConfig;
+use crate::dsp::{AtomicMeter, MeterAccumulator, MeterSnapshot, StereoFrame, MAX_METER_WINDOW};
 use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
 use crate::sequencer::{LoopSettings, Song};
 use anyhow::{bail, Context, Result};
@@ -16,6 +17,8 @@ use std::time::Duration;
 
 const BEAT_UNITS: f64 = 1_000_000.0;
 const ANALYSIS_HOP: usize = 1024;
+const LOOP_OUTPUT_PORT_NAMES: [&str; 2] = ["output_l", "output_r"];
+const MAX_LOOP_CALLBACK_FRAMES: usize = MAX_METER_WINDOW;
 // Decoding is deliberately bounded because the whole loop stays resident in
 // memory for the lock-free JACK callback. Six million stereo frames use about
 // 46 MiB and cover 125 seconds at 48 kHz.
@@ -444,11 +447,14 @@ pub struct LoopPlayer {
     active: Option<Active>,
     status: LoopStatus,
     position: Arc<AtomicU64>,
+    meter: Arc<AtomicMeter>,
+    preview: bool,
 }
 
 struct Active {
     jack: JackClient,
     callback: Box<CallbackData>,
+    client_state: Arc<LoopClientState>,
 }
 
 impl LoopPlayer {
@@ -459,10 +465,17 @@ impl LoopPlayer {
             active: None,
             status: LoopStatus::default(),
             position: Arc::new(AtomicU64::new(0)),
+            meter: Arc::new(AtomicMeter::default()),
+            preview: false,
         }
     }
 
     pub fn load(&mut self, decoded: DecodedLoop, settings: &LoopSettings) -> Result<()> {
+        self.stop_backend();
+        self.position.store(0, Ordering::Release);
+        self.clear_meter();
+        self.status = LoopStatus::default();
+        self.preview = false;
         if decoded.samples.is_empty()
             || !(8_000..=384_000).contains(&decoded.sample_rate)
             || !matches!(decoded.channels, 1 | 2)
@@ -472,16 +485,16 @@ impl LoopPlayer {
                 .flatten()
                 .any(|sample| !sample.is_finite())
         {
+            self.status.error = Some("invalid decoded WAV loop".into());
             bail!("invalid decoded WAV loop");
         }
         if !(2_000..=30_000).contains(&settings.source_bpm_x100)
             || settings.length_beats == 0
             || !(-16_384..=16_384).contains(&settings.offset_beats)
         {
+            self.status.error = Some("invalid private loop settings".into());
             bail!("invalid private loop settings");
         }
-        self.stop_backend();
-        self.position.store(0, Ordering::Release);
         let source_rate = decoded.sample_rate;
         let source_channels = decoded.channels;
         self.status = LoopStatus {
@@ -494,8 +507,10 @@ impl LoopPlayer {
             let mut jack = JackClient::open(&self.config.client_name)?;
             let jack_rate = jack.sample_rate();
             require_native_rate(source_rate, jack_rate)?;
-            let left = jack.register_audio_port("output_l", PortDirection::Output)?;
-            let right = jack.register_audio_port("output_r", PortDirection::Output)?;
+            let left =
+                jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[0], PortDirection::Output)?;
+            let right =
+                jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[1], PortDirection::Output)?;
             let interpreted = settings.interpreted_bpm();
             let start = beat_to_frame(f64::from(settings.start_beat), interpreted, source_rate)
                 .min(decoded.samples.len().saturating_sub(1));
@@ -504,21 +519,30 @@ impl LoopPlayer {
             let length = requested
                 .max(1)
                 .min(decoded.samples.len().saturating_sub(start));
+            let client_state = Arc::new(LoopClientState {
+                active: AtomicBool::new(true),
+                published_meter: Arc::clone(&self.meter),
+            });
             let mut callback = Box::new(CallbackData {
                 left,
                 right,
                 port_get_buffer: jack.port_get_buffer(),
-                samples: decoded.samples,
-                source_rate,
-                interpreted_bpm: interpreted,
-                region_start: start,
-                region_len: length,
-                offset_beats: settings.offset_beats,
-                fade: fade_frames(source_rate, length),
-                phase: start as f64,
-                seen_generation: u64::MAX,
-                clock: Arc::clone(&self.clock),
-                position: Arc::clone(&self.position),
+                renderer: LoopRenderer {
+                    samples: decoded.samples,
+                    source_rate,
+                    interpreted_bpm: interpreted,
+                    region_start: start,
+                    region_len: length,
+                    offset_beats: settings.offset_beats,
+                    fade: fade_frames(source_rate, length),
+                    phase: start as f64,
+                    seen_generation: u64::MAX,
+                    clock: Arc::clone(&self.clock),
+                    position: Arc::clone(&self.position),
+                    meter: MeterAccumulator::new(MAX_LOOP_CALLBACK_FRAMES)?,
+                    client_state: Arc::clone(&client_state),
+                    meter_active: false,
+                },
             });
             // SAFETY: `callback` stays boxed until after JACK is deactivated.
             unsafe {
@@ -526,9 +550,22 @@ impl LoopPlayer {
                     process_callback,
                     ((&mut *callback) as *mut CallbackData).cast(),
                 )?;
+                jack.set_shutdown_callback(
+                    shutdown_callback,
+                    Arc::as_ptr(&callback.renderer.client_state)
+                        .cast_mut()
+                        .cast(),
+                );
             }
             activate_and_connect(&mut jack, &self.config.outputs, left, right)?;
-            Ok((Active { jack, callback }, length))
+            Ok((
+                Active {
+                    jack,
+                    callback,
+                    client_state,
+                },
+                length,
+            ))
         })();
         match result {
             Ok((active, length)) => {
@@ -539,6 +576,7 @@ impl LoopPlayer {
                 Ok(())
             }
             Err(error) => {
+                self.clear_meter();
                 self.status.error = Some(error.to_string());
                 Err(error)
             }
@@ -547,13 +585,29 @@ impl LoopPlayer {
 
     pub fn status(&self) -> LoopStatus {
         let mut status = self.status.clone();
-        status.playing = status.loaded && self.clock.playing.load(Ordering::Acquire);
+        let client_active = self
+            .active
+            .as_ref()
+            .is_some_and(|active| active.client_state.active.load(Ordering::Acquire));
+        status.playing = status.loaded
+            && self.clock.playing.load(Ordering::Acquire)
+            && (client_active || self.preview);
+        if status.loaded && !client_active && !self.preview {
+            status.error = Some("JACK loop client inactive".into());
+        }
         if status.source_rate > 0 {
             status.elapsed = Duration::from_secs_f64(
                 self.position.load(Ordering::Acquire) as f64 / f64::from(status.source_rate),
             );
         }
         status
+    }
+
+    pub fn meter_snapshot(&self) -> Option<MeterSnapshot> {
+        let active = self.active.as_ref()?;
+        (active.client_state.active.load(Ordering::Acquire)
+            && self.clock.playing.load(Ordering::Acquire))
+        .then(|| self.meter.load())
     }
 
     #[doc(hidden)]
@@ -565,16 +619,20 @@ impl LoopPlayer {
             );
         }
         self.status = status;
+        self.preview = true;
     }
 
     pub fn stop(&self) {
         self.clock.stop();
+        self.clear_meter();
     }
 
     pub fn unload(&mut self) {
         self.stop_backend();
         self.position.store(0, Ordering::Release);
+        self.clear_meter();
         self.status = LoopStatus::default();
+        self.preview = false;
     }
 
     fn stop_backend(&mut self) {
@@ -583,6 +641,11 @@ impl LoopPlayer {
             // Keep the callback allocation alive until JACK is inactive.
             drop(active.callback);
         }
+        self.clear_meter();
+    }
+
+    fn clear_meter(&self) {
+        self.meter.publish(MeterSnapshot::default());
     }
 }
 
@@ -596,6 +659,10 @@ struct CallbackData {
     left: *mut JackPort,
     right: *mut JackPort,
     port_get_buffer: PortGetBuffer,
+    renderer: LoopRenderer,
+}
+
+struct LoopRenderer {
     samples: Vec<[f32; 2]>,
     source_rate: u32,
     interpreted_bpm: f64,
@@ -607,6 +674,14 @@ struct CallbackData {
     seen_generation: u64,
     clock: Arc<TransportClock>,
     position: Arc<AtomicU64>,
+    meter: MeterAccumulator,
+    client_state: Arc<LoopClientState>,
+    meter_active: bool,
+}
+
+struct LoopClientState {
+    active: AtomicBool,
+    published_meter: Arc<AtomicMeter>,
 }
 
 fn activate_and_connect(
@@ -615,11 +690,9 @@ fn activate_and_connect(
     left: *mut JackPort,
     right: *mut JackPort,
 ) -> Result<()> {
-    if outputs.len() != 2 {
-        bail!("loop.output requires exactly two JACK destination ports");
-    }
+    let destinations = loop_destinations(outputs)?;
     jack.activate().context("activate JACK loop player")?;
-    for (port, destination) in [(left, &outputs[0]), (right, &outputs[1])] {
+    for (port, destination) in [(left, destinations[0]), (right, destinations[1])] {
         if let Err(error) = jack.connect_port_to_external(port, destination) {
             jack.deactivate();
             return Err(error)
@@ -629,22 +702,60 @@ fn activate_and_connect(
     Ok(())
 }
 
+fn loop_destinations(outputs: &[String]) -> Result<[&str; 2]> {
+    let [left, right] = outputs else {
+        bail!("loop.output requires exactly two JACK destination ports");
+    };
+    Ok([left, right])
+}
+
 unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> c_int {
     let data = unsafe { &mut *(argument.cast::<CallbackData>()) };
     let left = unsafe { (data.port_get_buffer)(data.left, frames) }.cast::<f32>();
     let right = unsafe { (data.port_get_buffer)(data.right, frames) }.cast::<f32>();
     if left.is_null() || right.is_null() {
+        clear_renderer_meter(&mut data.renderer);
         return 0;
     }
     let left = unsafe { std::slice::from_raw_parts_mut(left, frames as usize) };
     let right = unsafe { std::slice::from_raw_parts_mut(right, frames as usize) };
+    render_output(&mut data.renderer, left, right);
+    0
+}
+
+unsafe extern "C" fn shutdown_callback(argument: *mut c_void) {
+    let state = unsafe { &*(argument.cast::<LoopClientState>()) };
+    state.active.store(false, Ordering::Release);
+    state.published_meter.publish(MeterSnapshot::default());
+}
+
+#[inline]
+fn clear_renderer_meter(data: &mut LoopRenderer) {
+    if data.meter_active {
+        data.meter.reset();
+        data.meter_active = false;
+    }
+    data.client_state
+        .published_meter
+        .publish(MeterSnapshot::default());
+}
+
+#[inline]
+fn render_output(data: &mut LoopRenderer, left: &mut [f32], right: &mut [f32]) {
     left.fill(0.0);
     right.fill(0.0);
-    if !data.clock.playing.load(Ordering::Acquire) || data.region_len == 0 {
-        return 0;
+    if left.len() != right.len()
+        || left.len() > MAX_LOOP_CALLBACK_FRAMES
+        || !data.client_state.active.load(Ordering::Acquire)
+        || !data.clock.playing.load(Ordering::Acquire)
+        || data.region_len == 0
+    {
+        clear_renderer_meter(data);
+        return;
     }
     let generation = data.clock.generation.load(Ordering::Acquire);
     if generation != data.seen_generation {
+        data.meter.reset();
         data.seen_generation = generation;
         let origin = data.clock.origin_beat.load(Ordering::Acquire) as f64 / BEAT_UNITS;
         let loop_beats =
@@ -652,6 +763,7 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
         let beat_phase = loop_phase_from_song(origin, data.offset_beats, loop_beats);
         data.phase = data.region_start as f64 + beat_phase * data.region_len as f64;
     }
+    data.meter_active = true;
     let end = (data.region_start + data.region_len) as f64;
     for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
         while data.phase >= end {
@@ -664,15 +776,18 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
             data.phase,
             data.fade,
         );
-        *left_out = sample[0];
-        *right_out = sample[1];
+        let sample = data.meter.process(StereoFrame::new(sample[0], sample[1]));
+        *left_out = sample.left;
+        *right_out = sample.right;
         data.phase += 1.0;
     }
+    data.client_state
+        .published_meter
+        .publish(data.meter.snapshot_and_clear_peak());
     data.position.store(
         (data.phase - data.region_start as f64).max(0.0) as u64,
         Ordering::Release,
     );
-    0
 }
 
 fn require_native_rate(source_rate: u32, jack_rate: u32) -> Result<()> {
@@ -687,6 +802,7 @@ fn require_native_rate(source_rate: u32, jack_rate: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dsp::allocation_test::assert_no_allocations;
     use hound::{SampleFormat, WavSpec, WavWriter};
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -695,6 +811,34 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("shr-loop-{name}-{}-{nanos}", std::process::id()))
+    }
+
+    fn test_renderer(samples: Vec<[f32; 2]>) -> (LoopRenderer, Arc<AtomicMeter>) {
+        let clock = Arc::new(TransportClock::default());
+        let position = Arc::new(AtomicU64::new(0));
+        let published_meter = Arc::new(AtomicMeter::default());
+        (
+            LoopRenderer {
+                source_rate: 48_000,
+                interpreted_bpm: 120.0,
+                region_start: 0,
+                region_len: samples.len(),
+                offset_beats: 0,
+                fade: 0,
+                phase: 0.0,
+                seen_generation: u64::MAX,
+                clock,
+                position,
+                meter: MeterAccumulator::new(4).unwrap(),
+                client_state: Arc::new(LoopClientState {
+                    active: AtomicBool::new(true),
+                    published_meter: Arc::clone(&published_meter),
+                }),
+                meter_active: false,
+                samples,
+            },
+            published_meter,
+        )
     }
 
     #[test]
@@ -913,6 +1057,119 @@ mod tests {
         assert!((render_sample(&data, 0, 4, 1.5, 1)[0] + 0.25).abs() < 0.0001);
         assert!((render_sample(&data, 0, 4, 4.5, 1)[0] - 0.375).abs() < 0.0001);
         assert!(fade_frames(48_000, 4) <= 1);
+    }
+
+    #[test]
+    fn loop_callback_meter_accumulates_publishes_and_separates_stereo() {
+        let (mut renderer, published) = test_renderer(vec![[0.5, 0.25]; 4]);
+        renderer.clock.play(0.0, 120);
+        let mut left = [0.0; 4];
+        let mut right = [0.0; 4];
+
+        assert_no_allocations(|| render_output(&mut renderer, &mut left, &mut right));
+
+        assert_eq!(left, [0.0, 0.5, 0.5, 0.5]);
+        assert_eq!(right, [0.0, 0.25, 0.25, 0.25]);
+        let snapshot = published.load();
+        assert_eq!(snapshot.peak, StereoFrame::new(0.5, 0.25));
+        assert!((snapshot.rms.left - 0.433_012_7).abs() < 0.000_001);
+        assert!((snapshot.rms.right - 0.216_506_35).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn stopped_silent_and_restarted_loop_cannot_leave_stale_meter_levels() {
+        let (mut renderer, published) = test_renderer(vec![[0.8, 0.4]; 4]);
+        renderer.clock.play(0.0, 120);
+        let mut left = [0.0; 4];
+        let mut right = [0.0; 4];
+        render_output(&mut renderer, &mut left, &mut right);
+        assert_eq!(published.load().peak, StereoFrame::new(0.8, 0.4));
+
+        renderer.clock.stop();
+        render_output(&mut renderer, &mut left, &mut right);
+        assert_eq!(left, [0.0; 4]);
+        assert_eq!(right, [0.0; 4]);
+        assert_eq!(published.load(), MeterSnapshot::default());
+
+        published.publish(MeterSnapshot {
+            peak: StereoFrame::new(0.6, 0.3),
+            ..MeterSnapshot::default()
+        });
+        unsafe {
+            shutdown_callback(
+                Arc::as_ptr(&renderer.client_state)
+                    .cast_mut()
+                    .cast::<c_void>(),
+            )
+        };
+        assert_eq!(published.load(), MeterSnapshot::default());
+        left.fill(1.0);
+        right.fill(1.0);
+        render_output(&mut renderer, &mut left, &mut right);
+        assert_eq!(left, [0.0; 4]);
+        assert_eq!(right, [0.0; 4]);
+        assert_eq!(published.load(), MeterSnapshot::default());
+
+        renderer.samples.fill([0.1, 0.2]);
+        renderer.client_state.active.store(true, Ordering::Release);
+        renderer.clock.play(0.0, 120);
+        render_output(&mut renderer, &mut left, &mut right);
+        assert_eq!(published.load().peak, StereoFrame::new(0.1, 0.2));
+    }
+
+    #[test]
+    fn unloaded_failed_and_oversized_loop_states_clear_meter_availability() {
+        let config = crate::config::RuntimeConfig::default().loop_player;
+        let mut player = LoopPlayer::new(&config, Arc::new(TransportClock::default()));
+        player.meter.publish(MeterSnapshot {
+            peak: StereoFrame::new(0.9, 0.7),
+            ..MeterSnapshot::default()
+        });
+        player.unload();
+        assert!(player.meter_snapshot().is_none());
+        assert_eq!(player.meter.load(), MeterSnapshot::default());
+
+        let settings = LoopSettings {
+            file: "empty.wav".into(),
+            source_bpm_x100: 12_000,
+            interpretation: crate::sequencer::BpmInterpretation::Normal,
+            start_beat: 0,
+            length_beats: 4,
+            offset_beats: 0,
+        };
+        assert!(player
+            .load(
+                DecodedLoop {
+                    samples: Vec::new(),
+                    sample_rate: 48_000,
+                    channels: 2,
+                },
+                &settings,
+            )
+            .is_err());
+        assert!(player.meter_snapshot().is_none());
+        assert_eq!(player.meter.load(), MeterSnapshot::default());
+
+        let (mut renderer, published) = test_renderer(vec![[0.5, 0.5]; 4]);
+        renderer.clock.play(0.0, 120);
+        let mut left = vec![1.0; MAX_LOOP_CALLBACK_FRAMES + 1];
+        let mut right = vec![1.0; MAX_LOOP_CALLBACK_FRAMES + 1];
+        render_output(&mut renderer, &mut left, &mut right);
+        assert!(left.iter().all(|sample| *sample == 0.0));
+        assert!(right.iter().all(|sample| *sample == 0.0));
+        assert_eq!(published.load(), MeterSnapshot::default());
+    }
+
+    #[test]
+    fn loop_meter_keeps_the_existing_owned_stereo_route() {
+        let config = crate::config::RuntimeConfig::default().loop_player;
+        assert_eq!(LOOP_OUTPUT_PORT_NAMES, ["output_l", "output_r"]);
+        let destinations = loop_destinations(&config.outputs).unwrap();
+        assert_eq!(
+            destinations,
+            [config.outputs[0].as_str(), config.outputs[1].as_str()]
+        );
+        assert!(loop_destinations(&config.outputs[..1]).is_err());
     }
 
     #[test]

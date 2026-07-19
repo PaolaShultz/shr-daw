@@ -167,14 +167,21 @@ items/pages are invisible, silent, and skipped. The visible control strip is
 centered and capped at 40 columns. The full map is in
 `docs/CONTROLLER_INTERFACE.md`; README carries only the overview and link.
 
-Playback shows chord and held-note text above a continuous two-row keyboard
-state. At 40 columns it covers C2–G7 without octave gaps: natural notes color
-the white upper background and lower full block red, while sharps color the
-upper `└` foreground red. `display.note_names=german` is the B/H default;
-`english` selects A#/B for both chord and note text. Buffer tests lock the
-natural/sharp color ownership and the gapless octave boundary. Recognized
-major triads use an explicit spaced `maj` suffix (`C maj`), including before a
-slash bass (`C maj/E`); a single held C remains `C`.
+Playback shows the chord, structured held-note columns, and each note's current
+decimal MIDI Note On velocity directly beneath it, above a continuous two-row
+keyboard state. The velocity is strike data from the controller, not measured
+audio loudness. Note Off, velocity-zero Note On, and channel-specific All Notes
+Off/All Sound Off remove only that channel's instance. If several channels hold
+the same pitch, the display remains pitch-deduplicated and deterministically
+shows the greatest still-held velocity, falling back when that instance is
+released. At 40 columns the keyboard covers C2–G7 without octave gaps: natural
+notes color the white upper background and lower full block red, while sharps
+color the upper `└` foreground red. `display.note_names=german` is the B/H
+default; `english` selects A#/B for both chord and note text. Buffer tests lock
+velocity alignment, compact-layout safety, natural/sharp color ownership, and
+the gapless octave boundary. Recognized major triads use an explicit spaced
+`maj` suffix (`C maj`), including before a slash bass (`C maj/E`); a single
+held C remains `C`.
 
 Presets NAV item 1 opens the passive `MTR` performance screen. CPU0–CPU3 come
 from bounded UI-side `/proc/stat` deltas, with the configured temperature when
@@ -190,6 +197,19 @@ equal values, and unrelated controls do not. CPU rows are whole-core load: they
 do not measure synth/graph process CPU, callback timing, scheduling jitter, or
 xruns. Its deterministic README screenshot says that it uses presentation
 data.
+
+The normal FT2 WAV Loop view has its own independently smoothed stereo
+`LOOP OUT` RMS/peak/MAX/clip presentation. Its real-time accumulator taps the
+loop player's generated left/right callback samples after loop rendering,
+region/cut selection, interpolation, transport gating, and edge fades, just
+before those samples enter the existing loop JACK output buffers. It therefore
+measures only the independently routed WAV loop and never synths, owned source/
+aux/master effects, external inputs, hardware gain, or unrelated JACK clients.
+It adds no ports or connections and does not route the loop through the owned
+effects graph. Stop, unload, load failure, inactive-client/shutdown, and
+oversized-callback paths publish silence/unavailability so stale levels do not
+remain; loop/load boundaries reset this meter's presentation lifecycle without
+touching `FINAL OUT`.
 
 FT2 real-time REC is hardware-page-only: it refuses `ActiveInstrument`,
 consumes notes before the loaded synth, auditions through the selected page's
@@ -209,7 +229,9 @@ inbox are configuration. Tempo matching sets the current Pattern tempo from the
 interpreted WAV BPM; the WAV is not stretched or pitch-shifted to fit the old
 tempo. The loop player requires the JACK server sample rate to match the WAV
 sample rate, so use JACK setup/restart at 44100 Hz for 44.1 kHz loops when
-needed.
+needed. The deterministic loop fixture seeds useful stereo `LOOP OUT` display
+data without starting JACK or reading private loop files; mono decoding already
+duplicates samples into left/right values, so mono meter readings match.
 
 FT2 Edit has a persistent 1/2/4/8-row ADD value used by note/chord entry,
 blank, erase, and note-off. Project Files has a Pattern child for lifecycle,
@@ -341,6 +363,17 @@ with Rust 1.85.
 After Phase 3/4 implementation, all 356 Rust tests, formatting,
 warning-denied Clippy, and the optimized locked release build passed with Rust
 1.85 before the documentation-only measurement update.
+
+After the loop-only meter and Playback velocity work on 2026-07-19, formatting,
+all 394 Rust tests, warning-denied Clippy, and the optimized locked release
+build passed with Rust 1.85. The deterministic screenshot set was regenerated;
+the Playback and FT2 Loop root images plus their eight menu-page variants
+changed, while the visual manual remained at 80 menu screenshots. Representative
+40×20 Playback and Loop frames were inspected, the exhaustive screenshot check
+passed, all 34 tracked Markdown files had valid local paths, image references,
+and heading fragments, `git diff --check` passed, and no tracked path existed
+below `user/`. No JACK server, synth engine, MIDI hardware, private loop file,
+recording, or audible test was used.
 
 For docs, README, screenshot, or image-only changes, keep validation scoped to
 the files changed instead of running the Rust suite mechanically. Examples:

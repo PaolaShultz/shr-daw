@@ -28,13 +28,14 @@ FT2 scheduler -> each page's MIDI destination -> software or hardware instrument
 managed synth audio -> direct JACK playback
                     or SOURCE -> AUX 1/2 -> MASTER -> FINAL OUT -> playback
 
-private WAV loop -----------------------------------------------> playback
+private WAV loop -> region/interpolation/fades -> LOOP OUT meter -> playback
 configured stereo capture --------------------------------------> WAV recorder
 ```
 
 The last two audio paths are separate clients. The current master rack and
 `FINAL OUT` meter process only the one managed software instrument and its two
-aux returns. They do not secretly include the WAV loop, recorder input,
+aux returns. The WAV player has its own `LOOP OUT` meter, but still does not
+enter that graph. Neither meter secretly includes recorder input,
 external-instrument audio, hardware returns, or unrelated JACK clients.
 
 ## One input, controls, and musical notes
@@ -66,8 +67,12 @@ is more than 0.03 below it, bright yellow is within 0.03, and red is more than
 does not restart the engine.
 
 Held notes drive the Playback note/chord display and its continuous keyboard
-strip. German B/H spelling is the default; `display.note_names=english` uses
-A#/B spelling. Naming changes only the display, never the MIDI notes.
+strip. Each pitch also has its current MIDI Note On velocity shown directly
+beneath its name. Note Off removes only that channel's instance; if multiple
+channels hold one pitch, the display deterministically uses the highest still
+held velocity. German B/H spelling is the default;
+`display.note_names=english` uses A#/B spelling. Naming changes only the
+display, never the MIDI notes.
 
 ## Software instruments and ownership
 
@@ -322,11 +327,21 @@ and requires the WAV sample rate to match JACK. Decoded audio is bounded to
 6,000,000 frames, about 125 seconds at 48 kHz.
 
 The loop player is a separate owned JACK client connected to its configured
-playback pair. It follows FT2 start, play-here, Pattern/Arrangement transitions,
+playback pair. Its callback meters the generated left/right samples after
+region selection, interpolation, transport gating, and edge fades, immediately
+before writing the same two existing output ports. `LOOP OUT` therefore means
+only this WAV loop: it includes none of the source/aux/master graph, external
+inputs, hardware gain, or unrelated clients. The callback uses a bounded
+stereo RMS/peak accumulator and atomic publication; UI smoothing, short peak
+hold, independent maxima, and clip hold have their own lifecycle and clear on
+stop, unload, failure, restart, or client loss.
+
+The player follows FT2 start, play-here, Pattern/Arrangement transitions,
 looping, and stop, but it does not pass through source inserts, aux sends,
-master effects, or `FINAL OUT`. Project `REMOVE` only detaches the loop. The
-Library performs separate confirmed physical deletion and refuses current,
-saved-Project, symlinked, unsafe, or otherwise referenced files.
+master effects, or `FINAL OUT`. No ports or connections are added for the
+meter. Project `REMOVE` only detaches the loop. The Library performs separate
+confirmed physical deletion and refuses current, saved-Project, symlinked,
+unsafe, or otherwise referenced files.
 
 ## Note ownership and failure behavior
 
@@ -373,9 +388,11 @@ only the 21-presets allowlist and the authored drum data. See
 
 MTR CPU rows show whole Linux CPU-core activity from `/proc/stat`, not the CPU
 used by one synth/effect, JACK callback duration, scheduling jitter, or xruns.
-The stereo meter is available only from the active owned graph and covers only
-its post-master managed-instrument output. Direct mode reports audio metering
-unavailable instead of creating a hidden tap or displaying unrelated audio.
+The MTR stereo meter is available only from the active owned graph and covers
+only its post-master managed-instrument output. Direct mode reports audio
+metering unavailable instead of creating a hidden tap or displaying unrelated
+audio. The separate `LOOP OUT` bars live only on the WAV Loop screen and do not
+change that `FINAL OUT` boundary.
 
 Maintainer checkpoints separately collect callback count, mean, p95, p99,
 maximum, deadline misses, oversized blocks, xruns, process/core CPU, memory,

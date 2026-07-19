@@ -41,10 +41,11 @@ names come from configuration, never Rust constants.
 The typed graph model reserves source and sink kinds for a loop player, live
 input, hardware returns/sends, and recording taps. The current graph client
 does not instantiate those boundaries. The WAV loop player remains a separate
-owned client on its direct route; the stereo recorder remains a separate
-capture client; external instruments have no SHR-owned audio return; and there
-is no software input monitoring or hardware insert. Those are present topology
-limitations, not hidden paths through the master meter.
+owned client on its direct route and now meters only its own rendered callback
+as `LOOP OUT`; the stereo recorder remains a separate capture client; external
+instruments have no SHR-owned audio return; and there is no software input
+monitoring or hardware insert. Those are present topology limitations, not
+hidden paths through the master meter.
 
 The graph may connect and disconnect only SHR-owned endpoints. It must not
 alter unrelated JACK connections or terminate a client/process it does not

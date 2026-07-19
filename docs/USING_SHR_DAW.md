@@ -13,8 +13,13 @@ The Presets screen browses three kinds of software instruments:
 - FluidSynth `.sf2` and `.sf3` SoundFonts.
 
 Changing engine does not mix their files or control rules. The Playback screen
-shows held note names, chord names, a continuous keyboard-state strip, MIDI
-idea recording, and the 12 mapped synthv1 controls. `display.note_names` in
+shows held note names with each note's decimal MIDI velocity directly beneath
+it, chord names, a continuous keyboard-state strip, MIDI idea recording, and
+the 12 mapped synthv1 controls. This is a practical way to practise soft/loud
+key control, even chord attacks, and bass-plus-chord balance. It reports the
+controller's MIDI strike velocity (1–127), not measured audio loudness; the
+instrument and its settings decide how strongly that velocity changes sound.
+`display.note_names` in
 `shsynth.conf` selects German `B`/`H` spelling or English `A#`/`B` spelling.
 Recognized major triads use the explicit `maj` label, such as `C maj`, so the
 display does not rely on an omitted suffix to teach the chord quality.
@@ -39,7 +44,8 @@ display does not rely on an omitted suffix to teach the chord quality.
   filters choose genre, meter, and 2/4/8-bar phrase size. It also names and
   renames Projects and cleans only zero-reference Pattern records.
 - **Arrange** edits the ordered pattern steps separately from pattern data.
-- **Loop** imports, trims, aligns, and plays a private WAV with the tracker;
+- **Loop** imports, trims, aligns, and plays a private WAV with the tracker,
+  with a separate stereo `LOOP OUT` meter for that WAV alone;
   **Library** separately deletes only unreferenced regular WAV files.
 - **Audio Recorder** records the configured stereo JACK input.
 - **FX Rack** shapes the managed instrument with source inserts, two parallel
@@ -144,6 +150,16 @@ and master inserts. The current graph does not include the separate WAV loop
 player, hardware returns, recorder inputs, or unrelated JACK clients. In direct
 playback MTR explicitly reports that output metering is unavailable because
 there is no safe owned tap; it never enables the graph or fakes movement.
+
+The normal FT2 WAV Loop screen has a second, independent stereo meter labelled
+`LOOP OUT`. Its solid bars are smoothed RMS, its thin markers are short-held
+peaks, `MAX` is the highest left/right loop peak in the current transport
+session, and `CLIP!` is held visibly. It measures the loop callback after the
+selected region, interpolation, transport gate, and edge fades, just before
+the loop's existing JACK outputs. Stopping, unloading, a load failure, or a
+lost loop client clears it. It does not include synths, effects, inputs,
+hardware gain, or any other JACK client, and it does not make the loop part of
+`FINAL OUT`.
 
 The CPU bars are whole-core system load, not CPU used by the synth or graph.
 MTR deliberately does not measure JACK callback duration, xruns, scheduling

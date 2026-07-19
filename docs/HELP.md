@@ -37,6 +37,10 @@ The dots beside synthv1 values compare the current sound to the loaded preset:
 green is lower, yellow is near original, red is higher.
 
 Playback names the held chord and notes above a continuous two-row keyboard.
+Each displayed note has its decimal MIDI Note On velocity (1–127) directly
+beneath it. Use the row to practise gentle/strong strikes, even chord attacks,
+or bass-versus-chord balance. Velocity comes from MIDI and is not an audio
+volume measurement; the controller and instrument response matter.
 At 40 columns it shows C2 through G7 when middle C is C4. A red white-key area
 means its natural note is held; a red upper `└` means the following sharp is
 held. Major triads show `maj` explicitly, such as `C maj`.
@@ -84,6 +88,11 @@ FINAL OUT is available only for the active owned graph. It measures after all
 master inserts, immediately before playback, and covers the managed source and
 its wet returns—not WAV loops, inputs, hardware, or other JACK clients. Direct
 playback reports the meter unavailable and stays direct.
+
+The FT2 WAV Loop screen has its own `LOOP OUT` stereo RMS, peak, `MAX`, and clip
+display. It measures only the rendered loop at its separate JACK callback and
+clears when loop transport stops or the loop becomes unavailable. It is not
+part of `FINAL OUT`.
 
 ## MIDI ideas
 
@@ -156,6 +165,10 @@ by beat or bar, and ALIGN to snap/move placement by bars. TOOLS LOOP REMOVE is
 confirmed and detaches the Project loop without deleting the private WAV.
 TOOLS LIBRARY separately lists private WAVs and physically deletes only
 unreferenced regular files after confirmation.
+
+The normal Loop screen's `LOOP OUT` bars show only that WAV after its cut,
+position, interpolation, transport gate, and edge fades. They do not include
+the loaded synth, effects, recorder input, hardware gain, or other JACK clients.
 
 The audio recorder writes the configured JACK stereo input as 24-bit WAV. If it
 is interrupted, the unfinished `.wav.part` file is recovered on the next start.

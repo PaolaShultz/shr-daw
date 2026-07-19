@@ -327,6 +327,12 @@ filename, source BPM, cut region, and bar placement offset. Disk I/O, decoding,
 allocation, import, and auto-alignment analysis happen outside the JACK
 callback.
 
+The callback also publishes a bounded stereo `LOOP OUT` snapshot after region
+selection, interpolation, transport gating, and edge fades. This uses the same
+client, `output_l`/`output_r` ports, and two configured destinations above; it
+does not create a graph route or any additional JACK connection. Stop, unload,
+load failure, oversize, and client loss clear availability and stale levels.
+
 **TOOLS** → **LOOP** → **REMOVE** requires a second press, clears the Project's
 loop reference, and unloads the loop client. It never deletes the imported WAV
 from private storage. On FT2 Tools, the **LOOP** menu page's **LIBRARY** action

@@ -83,7 +83,9 @@ The same JACK capture inputs remain available to the stereo recorder. SHR-DAW
 does not currently send capture audio back to playback for software monitoring.
 External-instrument audio, hardware returns/sends, and the WAV loop are not
 currently mixed or metered by SHR-DAW's master rack; combine them with hardware
-direct monitoring or an external mixer.
+direct monitoring or an external mixer. The WAV Loop screen's separate
+`LOOP OUT` meter observes that loop alone and does not change this mixing
+boundary.
 
 For exact routes and configuration keys, read
 [Configuration and routing](CONFIGURATION.md).

@@ -177,6 +177,7 @@ pub enum AudioAvailability {
     Stopped,
     DirectUnavailable,
     GraphActive,
+    LoopActive,
     Presentation,
 }
 
@@ -284,7 +285,9 @@ impl PerformanceMeter {
     pub fn set_audio_unavailable(&mut self, availability: AudioAvailability) {
         debug_assert!(!matches!(
             availability,
-            AudioAvailability::GraphActive | AudioAvailability::Presentation
+            AudioAvailability::GraphActive
+                | AudioAvailability::LoopActive
+                | AudioAvailability::Presentation
         ));
         self.presentation = false;
         self.audio_availability = availability;
@@ -297,7 +300,24 @@ impl PerformanceMeter {
     }
 
     pub fn update_audio(&mut self, snapshot: MeterSnapshot, now: Instant) {
-        self.audio_availability = AudioAvailability::GraphActive;
+        self.update_audio_for(snapshot, now, AudioAvailability::GraphActive);
+    }
+
+    pub fn update_loop_audio(&mut self, snapshot: MeterSnapshot, now: Instant) {
+        self.update_audio_for(snapshot, now, AudioAvailability::LoopActive);
+    }
+
+    fn update_audio_for(
+        &mut self,
+        snapshot: MeterSnapshot,
+        now: Instant,
+        availability: AudioAvailability,
+    ) {
+        debug_assert!(matches!(
+            availability,
+            AudioAvailability::GraphActive | AudioAvailability::LoopActive
+        ));
+        self.audio_availability = availability;
         self.presentation = false;
         let elapsed = self
             .audio_last_update
@@ -396,6 +416,18 @@ impl PerformanceMeter {
         self.cpu_loads = cpu;
         self.cpu_cores = VISIBLE_CPU_CORES;
         self.cpu_available = true;
+        self.seed_audio_presentation(audio, numeric_peak_dbfs, now);
+    }
+
+    pub fn seed_audio_presentation(
+        &mut self,
+        audio: [AudioLevel; 2],
+        numeric_peak_dbfs: [f32; 2],
+        now: Instant,
+    ) {
+        self.clip_count = None;
+        self.clip_until = None;
+        self.non_finite = 0;
         for (state, level) in self.audio.iter_mut().zip(audio) {
             state.display = level;
             state.initialized = true;

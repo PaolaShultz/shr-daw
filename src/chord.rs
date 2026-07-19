@@ -24,63 +24,93 @@ impl NoteNaming {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeldNoteDisplay {
+    pub midi_note: u8,
+    pub name: &'static str,
+    pub velocity: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HeldNoteDisplayData {
+    pub chord: String,
+    pub notes: Vec<HeldNoteDisplay>,
+}
+
 #[derive(Debug)]
 pub struct HeldNotes {
-    channels: [u16; 128],
+    velocities: [[u8; 16]; 128],
 }
 
 impl Default for HeldNotes {
     fn default() -> Self {
-        Self { channels: [0; 128] }
+        Self {
+            velocities: [[0; 16]; 128],
+        }
     }
 }
 
 impl HeldNotes {
     pub fn is_held(&self, note: u8) -> bool {
-        self.channels
+        self.velocities
             .get(usize::from(note))
-            .is_some_and(|channels| *channels != 0)
+            .is_some_and(|velocities| velocities.iter().any(|velocity| *velocity != 0))
     }
 
     pub fn observe(&mut self, message: &[u8]) {
         if message.len() != 3 || message[1] > 127 || message[2] > 127 {
             return;
         }
-        let channel = 1u16 << (message[0] & 0x0f);
+        let channel = usize::from(message[0] & 0x0f);
         match message[0] & 0xf0 {
-            0x90 if message[2] != 0 => self.channels[message[1] as usize] |= channel,
-            0x80 | 0x90 => self.channels[message[1] as usize] &= !channel,
+            0x90 if message[2] != 0 => self.velocities[message[1] as usize][channel] = message[2],
+            0x80 | 0x90 => self.velocities[message[1] as usize][channel] = 0,
             0xb0 if matches!(message[1], 120 | 123) => {
-                for active in &mut self.channels {
-                    *active &= !channel;
+                for velocities in &mut self.velocities {
+                    velocities[channel] = 0;
                 }
             }
             _ => {}
         }
     }
 
-    pub fn description(&self, naming: NoteNaming) -> Option<(String, String)> {
+    pub fn display(&self, naming: NoteNaming) -> Option<HeldNoteDisplayData> {
         let notes = self
-            .channels
+            .velocities
             .iter()
             .enumerate()
-            .filter_map(|(note, channels)| (*channels != 0).then_some(note as u8))
+            .filter_map(|(note, velocities)| {
+                velocities
+                    .iter()
+                    .copied()
+                    .max()
+                    .filter(|velocity| *velocity != 0)
+                    .map(|velocity| HeldNoteDisplay {
+                        midi_note: note as u8,
+                        name: naming.pitch_name(note as u8 % 12),
+                        velocity,
+                    })
+            })
             .collect::<Vec<_>>();
-        let bass = *notes.first()?;
-        let played = notes
-            .iter()
-            .map(|note| naming.pitch_name(note % 12))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let bass = notes.first()?.midi_note;
         if notes.len() == 1 {
-            return Some((naming.pitch_name(notes[0] % 12).into(), played));
+            return Some(HeldNoteDisplayData {
+                chord: notes[0].name.into(),
+                notes,
+            });
         }
 
-        let mut pitch_classes = notes.iter().map(|note| note % 12).collect::<Vec<_>>();
+        let mut pitch_classes = notes
+            .iter()
+            .map(|note| note.midi_note % 12)
+            .collect::<Vec<_>>();
         pitch_classes.sort_unstable();
         pitch_classes.dedup();
         if pitch_classes.len() == 1 {
-            return Some((naming.pitch_name(pitch_classes[0]).into(), played));
+            return Some(HeldNoteDisplayData {
+                chord: naming.pitch_name(pitch_classes[0]).into(),
+                notes,
+            });
         }
 
         let bass_pc = bass % 12;
@@ -94,15 +124,15 @@ impl HeldNotes {
             intervals.sort_unstable();
             if let Some((_, suffix)) = CHORDS.iter().find(|(formula, _)| *formula == intervals) {
                 let slash = (root != bass_pc).then(|| format!("/{}", naming.pitch_name(bass_pc)));
-                return Some((
-                    format!(
+                return Some(HeldNoteDisplayData {
+                    chord: format!(
                         "{}{}{}",
                         naming.pitch_name(root),
                         suffix,
                         slash.unwrap_or_default()
                     ),
-                    played,
-                ));
+                    notes,
+                });
             }
         }
 
@@ -113,10 +143,10 @@ impl HeldNotes {
             .map(interval_name)
             .collect::<Vec<_>>()
             .join(" ");
-        Some((
-            format!("{} [{intervals}]", naming.pitch_name(bass_pc)),
-            played,
-        ))
+        Some(HeldNoteDisplayData {
+            chord: format!("{} [{intervals}]", naming.pitch_name(bass_pc)),
+            notes,
+        })
     }
 }
 
@@ -165,7 +195,16 @@ mod tests {
         for note in notes {
             held.observe(&[0x90, *note, 100]);
         }
-        held.description(NoteNaming::German).unwrap()
+        let display = held.display(NoteNaming::German).unwrap();
+        (
+            display.chord,
+            display
+                .notes
+                .iter()
+                .map(|note| note.name)
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
     }
 
     #[test]
@@ -185,10 +224,10 @@ mod tests {
         let mut held = HeldNotes::default();
         held.observe(&[0x91, 60, 100]);
         held.observe(&[0x81, 60, 0]);
-        assert!(held.description(NoteNaming::German).is_none());
+        assert!(held.display(NoteNaming::German).is_none());
         held.observe(&[0x92, 60, 100]);
         held.observe(&[0xb2, 123, 0]);
-        assert!(held.description(NoteNaming::German).is_none());
+        assert!(held.display(NoteNaming::German).is_none());
     }
 
     #[test]
@@ -197,7 +236,7 @@ mod tests {
         held.observe(&[0x90, 255, 100]);
         held.observe(&[0x90, 60, 255]);
         held.observe(&[0x90, 60, 100, 0]);
-        assert!(held.description(NoteNaming::German).is_none());
+        assert!(held.display(NoteNaming::German).is_none());
     }
 
     #[test]
@@ -212,9 +251,68 @@ mod tests {
         held.observe(&[0x90, 70, 100]);
         held.observe(&[0x90, 74, 100]);
         held.observe(&[0x90, 77, 100]);
+        let display = held.display(NoteNaming::English).unwrap();
+        assert_eq!(display.chord, "A# maj");
         assert_eq!(
-            held.description(NoteNaming::English).unwrap(),
-            ("A# maj".into(), "A# D F".into())
+            display
+                .notes
+                .iter()
+                .map(|note| note.name)
+                .collect::<Vec<_>>(),
+            ["A#", "D", "F"]
+        );
+    }
+
+    #[test]
+    fn held_notes_retain_velocity_and_zero_velocity_is_note_off() {
+        let mut held = HeldNotes::default();
+        held.observe(&[0x90, 60, 37]);
+        held.observe(&[0x90, 60, 55]);
+        held.observe(&[0x90, 64, 92]);
+        held.observe(&[0x90, 67, 127]);
+        let display = held.display(NoteNaming::German).unwrap();
+        assert_eq!(display.chord, "C maj");
+        assert_eq!(
+            display
+                .notes
+                .iter()
+                .map(|note| (note.midi_note, note.velocity))
+                .collect::<Vec<_>>(),
+            [(60, 55), (64, 92), (67, 127)]
+        );
+
+        held.observe(&[0x90, 64, 0]);
+        let display = held.display(NoteNaming::German).unwrap();
+        assert_eq!(
+            display
+                .notes
+                .iter()
+                .map(|note| (note.midi_note, note.velocity))
+                .collect::<Vec<_>>(),
+            [(60, 55), (67, 127)]
+        );
+    }
+
+    #[test]
+    fn channel_ownership_and_duplicate_pitch_use_highest_held_velocity() {
+        let mut held = HeldNotes::default();
+        held.observe(&[0x90, 60, 48]);
+        held.observe(&[0x91, 60, 110]);
+        held.observe(&[0x91, 64, 76]);
+
+        let display = held.display(NoteNaming::German).unwrap();
+        assert_eq!(display.notes[0].velocity, 110);
+        held.observe(&[0x81, 60, 0]);
+        let display = held.display(NoteNaming::German).unwrap();
+        assert_eq!(display.notes[0].velocity, 48);
+        assert_eq!(display.notes[1].velocity, 76);
+
+        held.observe(&[0xb0, 120, 0]);
+        let display = held.display(NoteNaming::German).unwrap();
+        assert_eq!(display.notes.len(), 1);
+        assert_eq!(
+            (display.notes[0].midi_note, display.notes[0].velocity),
+            (64, 76)
         );
     }
 }

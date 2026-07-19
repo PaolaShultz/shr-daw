@@ -47,7 +47,12 @@ computer-keyboard-only.
 ## Playback
 
 Playback appears after a sound is loaded. The body shows the held chord and
-notes, a continuous two-row keyboard state, and the 12 mapped synthv1 controls.
+notes, each note's decimal MIDI strike velocity directly beneath it, a
+continuous two-row keyboard state, and the 12 mapped synthv1 controls. The
+aligned velocity row helps with gentle/strong control, consistent chord
+attacks, and bass-plus-chord balance. It is MIDI input data, not an audio
+loudness meter; controller and instrument response determine the audible
+result.
 On the keyboard, red white-key areas are held natural notes and red upper `└`
 marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
