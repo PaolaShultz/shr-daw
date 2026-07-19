@@ -2553,9 +2553,15 @@ mod tests {
             .parameters
             .insert("threshold_db".into(), -27.5);
         let aux = s.aux_routing.add_bus().unwrap();
-        s.aux_routing
+        let aux_effect = s
+            .aux_routing
             .add_effect(&s.insert_rack, aux, crate::audio_graph::EffectKind::Reverb)
             .unwrap();
+        s.aux_routing.buses[0]
+            .rack
+            .effect_mut(aux_effect)
+            .unwrap()
+            .bypass = true;
         s.aux_routing
             .set_send(
                 &s.insert_rack,
@@ -2566,6 +2572,7 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
+        assert!(text.starts_with("SHSYNTH-SONG 3\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());

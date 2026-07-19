@@ -62,6 +62,7 @@ pub enum NodeKind {
     Source { source: SourceKind },
     Processor { effect_id: EffectId },
     StereoMixer,
+    PostMasterMeter,
     SendTap { aux_id: AuxId, source_node: NodeId },
     AuxReturn { aux_id: AuxId },
     MonoToStereo,
@@ -101,7 +102,7 @@ pub enum EffectKind {
 }
 
 impl EffectKind {
-    fn requires_wet_aux(self) -> bool {
+    pub(crate) fn requires_wet_aux(self) -> bool {
         matches!(
             self,
             Self::Delay | Self::Reverb | Self::Chorus | Self::Flanger | Self::Phaser
@@ -645,6 +646,7 @@ impl GraphDefinition {
         let mut nodes = BTreeMap::new();
         let mut sources = 0;
         let mut main_playback = 0;
+        let mut post_master_meters = 0;
         let mut aux_returns = BTreeSet::new();
         for node in &self.nodes {
             if node.id == 0 || nodes.insert(node.id, node).is_some() {
@@ -652,6 +654,12 @@ impl GraphDefinition {
             }
             match &node.kind {
                 NodeKind::Source { .. } => sources += 1,
+                NodeKind::PostMasterMeter => {
+                    post_master_meters += 1;
+                    if node.layout != ChannelLayout::Stereo {
+                        return Err(GraphError::new("stereo node has incompatible layout"));
+                    }
+                }
                 NodeKind::Sink {
                     sink: SinkKind::MainPlayback { .. },
                 } => main_playback += 1,
@@ -680,6 +688,9 @@ impl GraphDefinition {
         }
         if main_playback > 1 {
             return Err(GraphError::new("main playback sink must be unique"));
+        }
+        if post_master_meters > 1 {
+            return Err(GraphError::new("post-master meter must be unique"));
         }
         Ok(nodes)
     }
@@ -768,11 +779,18 @@ impl GraphDefinition {
                 return Err(GraphError::new("invalid aux return gain"));
             }
             validate_chain(&aux.effects, effects, &mut used)?;
+            let mut has_wet_generator = false;
             for effect_id in &aux.effects {
                 let effect = effects[effect_id];
                 if effect.kind.requires_wet_aux() {
                     validate_wet_aux_effect(effect)?;
+                    has_wet_generator = true;
                 }
+            }
+            if !aux.effects.is_empty() && !has_wet_generator {
+                return Err(GraphError::new(
+                    "aux chain needs a forced-wet time or modulation processor",
+                ));
             }
         }
         let mut send_routes = BTreeSet::new();
@@ -912,6 +930,27 @@ impl GraphDefinition {
                 && outdegree.get(&node.id).copied() != Some(1)
             {
                 return Err(GraphError::new("an aux return must be mixed exactly once"));
+            }
+            if matches!(node.kind, NodeKind::PostMasterMeter) {
+                let inputs = self.edges.iter().filter(|edge| edge.to == node.id).count();
+                let outputs = self
+                    .edges
+                    .iter()
+                    .filter(|edge| edge.from == node.id)
+                    .collect::<Vec<_>>();
+                if inputs != 1
+                    || outputs.len() != 1
+                    || !matches!(
+                        nodes.get(&outputs[0].to).map(|target| &target.kind),
+                        Some(NodeKind::Sink {
+                            sink: SinkKind::MainPlayback { .. }
+                        })
+                    )
+                {
+                    return Err(GraphError::new(
+                        "post-master meter must sit immediately before playback",
+                    ));
+                }
             }
         }
         for targets in outgoing.values_mut() {

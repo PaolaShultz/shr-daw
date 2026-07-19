@@ -116,6 +116,17 @@ routing without overwriting newer data. Hardware loops and full-duplex live
 input are still deferred because they require physical-interface monitoring
 decisions. See `docs/PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md`.
 
+The competition appliance keeps that one-managed-source topology. The later
+multi-strip mixer and two shared-aux migration is specified in
+`docs/POST_COMPETITION_MIXER_AUX_PLAN.md`. Its audit found two narrow
+correctness defects that were repaired without starting that rewrite. A
+dedicated final meter now sits after the complete master rack and immediately
+before playback. Aux bypass is placement-aware: source/master inserts retain
+dry passthrough, while an aux with no active wet generator fades its return to
+silence; delay-tail bypass drains wet-only with its input muted, and bypassed
+serial processors preserve a safe path around another active/tail wet
+generator. An all-bypassed chain never exposes its raw send.
+
 The Phase 3/4 Pi checkpoint on 2026-07-19 measured the combined eight source
 inserts, two aux reverbs, and master compressor for 60 seconds. At 128 frames it
 reported 313.572 us mean, 360 us p99, 540.108 us maximum, and zero

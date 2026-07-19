@@ -7,9 +7,9 @@ wrong response or artifact; it does not by itself decide musical taste.
 
 ## Software measurement checkpoint
 
-Measured on 2026-07-19 with the installed Rust 1.85 aarch64 toolchain. The
-complete suite contains 356 tests. Every new processor covers silence, impulse
-or bounded program input, parameter limits and rapid movement, reset,
+Measured on 2026-07-19 with the installed Rust 1.85 aarch64 toolchain. Every
+new processor is covered with silence, impulse or bounded program input,
+parameter limits and rapid movement, reset,
 non-finite recovery, 8–384 kHz sample-rate limits, chunk invariance, bypass,
 and callback-allocation detection.
 
@@ -22,7 +22,8 @@ and callback-allocation detection.
 | Tremolo/autopan | Sine, triangle, or 5 ms-smoothed square LFO; constant-power pan law | Zero depth is unity; shapes are bounded and distinct; every autopan table entry keeps squared left-plus-right gain at 2 within 0.00001, preserving the rack's unity-at-center convention without callback trigonometry |
 | Reverb | Original four-line Hadamard feedback-delay network; room, plate, and hall voicings; predelay, damping, width, and bounded RT60 | Every line feedback is strictly between 0 and 1; reconstructed RT60 attenuation is −60 dB within 0.01 dB; a 20 ms room impulse first arrives in samples 2,070–2,090 at 48 kHz; all three voicings have distinct signatures, decorrelated stereo output, and late energy below one fifth of early energy |
 | Aux sum | Two independent pre/post sends into forced-wet chains, each returned once | A −6.0206 dB send followed by a −6.0206 dB return produces 0.25 within 0.001 and the return meter agrees; dry-only auxes, a third bus, a third reverb, cycles, and duplicate/global-ID overflow are rejected |
-| Master | Dry source plus aux returns summed once, then one ordered chain | Deterministic topology tests place the master effects after the sum and before the single sink; the master fader/meter processes without allocation |
+| Aux bypass | Wet-safe one-effect and serial aux chains | A bypassed sole wet generator returns silence rather than the raw send; delay tail drains wet-only with muted input; bypassed conditioning and generators pass only signals made safe by another active/tail wet generator; bypassing all generators exposes no dry send; callback processing remains allocation-free |
+| Master | Dry source plus aux returns summed once, then one ordered chain and a dedicated final meter | Deterministic topology tests place every master effect before the final meter and put that meter immediately before the single playback sink; level-changing and empty master racks meter their actual playback signal without callback allocation |
 
 The delay is intentional wet-path time, not hidden graph latency. Source and
 master processors otherwise run in the current JACK callback without a
@@ -40,7 +41,8 @@ component; their dry component is not block-delayed.
   Add/remove/reorder operations validate transactionally and keep compatible
   runtime state by ID.
 - Aux delay, reverb, chorus, flanger, and phaser instances are forced to 100%
-  wet and 0% dry. Empty/dry-only active auxes are rejected.
+  wet and 0% dry. Empty/dry-only active auxes are rejected, and placement-aware
+  bypass prevents any all-bypassed aux from returning the raw send.
 - Structural publication remains stopped-transport/no-recording only. The exact
   owned-client rollback and direct fallback from Phase 1 are unchanged.
 - The compact FX screen selects `SOURCE`, `AUX 1`, `AUX 2`, or `MASTER`; exposes

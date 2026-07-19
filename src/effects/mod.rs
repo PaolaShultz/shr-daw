@@ -34,6 +34,13 @@ use tremolo_pan::TremoloPan;
 const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
 const BYPASS_FADE_MILLISECONDS: f32 = 5.0;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BypassMode {
+    DryPassthrough,
+    Silence,
+    WetTail,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EffectError(String);
 
@@ -193,9 +200,9 @@ impl Processor {
         }
     }
 
-    fn set_bypass(&mut self, bypass: bool, fade_samples: u32) -> bool {
+    fn set_bypass(&mut self, bypass: bool, fade_samples: u32, wet_only_tail: bool) -> bool {
         match self {
-            Self::Delay(effect) => effect.set_bypass(bypass, fade_samples),
+            Self::Delay(effect) => effect.set_bypass(bypass, fade_samples, wet_only_tail),
             _ => false,
         }
     }
@@ -206,6 +213,8 @@ pub struct EffectSlot {
     kind: EffectKind,
     processor: Processor,
     processed_mix: SmoothedValue,
+    bypass_mode: BypassMode,
+    wet_only: bool,
     bypass_fade_samples: u32,
     input_meter: MeterAccumulator,
     output_meter: MeterAccumulator,
@@ -219,18 +228,42 @@ impl EffectSlot {
         sample_rate: u32,
         meter_window: usize,
     ) -> Result<Self, EffectError> {
+        Self::compile_with_placement(
+            effect,
+            sample_rate,
+            meter_window,
+            false,
+            BypassMode::DryPassthrough,
+        )
+    }
+
+    pub(crate) fn compile_with_placement(
+        effect: &EffectInstance,
+        sample_rate: u32,
+        meter_window: usize,
+        wet_only: bool,
+        bypass_mode: BypassMode,
+    ) -> Result<Self, EffectError> {
         effect_schema::validate(effect).map_err(|error| EffectError::new(error.to_string()))?;
         if !(8_000..=384_000).contains(&sample_rate) {
             return Err(EffectError::new("unsupported effect sample rate"));
         }
         let bypass_fade_samples =
             ((sample_rate as f32 * BYPASS_FADE_MILLISECONDS * 0.001).round() as u32).max(1);
-        Ok(Self {
+        let mut slot = Self {
             id: effect.id,
             kind: effect.kind,
             processor: Processor::compile(effect, sample_rate)?,
-            processed_mix: SmoothedValue::new(if effect.bypass { 0.0 } else { 1.0 })
-                .map_err(|error| EffectError::new(error.to_string()))?,
+            processed_mix: SmoothedValue::new(
+                if effect.bypass && !matches!(bypass_mode, BypassMode::WetTail) {
+                    0.0
+                } else {
+                    1.0
+                },
+            )
+            .map_err(|error| EffectError::new(error.to_string()))?,
+            bypass_mode,
+            wet_only,
             bypass_fade_samples,
             input_meter: MeterAccumulator::new(meter_window)
                 .map_err(|error| EffectError::new(error.to_string()))?,
@@ -238,7 +271,13 @@ impl EffectSlot {
                 .map_err(|error| EffectError::new(error.to_string()))?,
             published_input: Arc::new(AtomicMeter::default()),
             published_output: Arc::new(AtomicMeter::default()),
-        })
+        };
+        slot.processor.set_bypass(
+            effect.bypass,
+            slot.bypass_fade_samples,
+            effect.bypass && matches!(bypass_mode, BypassMode::WetTail),
+        );
+        Ok(slot)
     }
 
     pub const fn id(&self) -> EffectId {
@@ -252,10 +291,20 @@ impl EffectSlot {
     /// Apply a compatible persisted instance while retaining recursive DSP
     /// history, smoothing state, deterministic noise state, and meter handles.
     pub fn apply_instance(&mut self, effect: &EffectInstance) -> Result<(), EffectError> {
+        self.apply_instance_with_placement(effect, false, BypassMode::DryPassthrough)
+    }
+
+    pub(crate) fn apply_instance_with_placement(
+        &mut self,
+        effect: &EffectInstance,
+        wet_only: bool,
+        bypass_mode: BypassMode,
+    ) -> Result<(), EffectError> {
         if effect.id != self.id || effect.kind != self.kind {
             return Err(EffectError::new("effect instance is not state-compatible"));
         }
         effect_schema::validate(effect).map_err(|error| EffectError::new(error.to_string()))?;
+        self.wet_only = wet_only;
         for spec in effect_schema::schema(effect.kind) {
             self.set_parameter(
                 spec.name,
@@ -266,7 +315,7 @@ impl EffectSlot {
                     .unwrap_or(spec.default),
             )?;
         }
-        self.set_bypass(effect.bypass)
+        self.set_bypass_with_mode(effect.bypass, bypass_mode)
     }
 
     pub fn meters(&self) -> MeterHandles {
@@ -278,7 +327,20 @@ impl EffectSlot {
     }
 
     pub fn set_bypass(&mut self, bypass: bool) -> Result<(), EffectError> {
-        let preserve_tail = self.processor.set_bypass(bypass, self.bypass_fade_samples);
+        self.set_bypass_with_mode(bypass, BypassMode::DryPassthrough)
+    }
+
+    pub(crate) fn set_bypass_with_mode(
+        &mut self,
+        bypass: bool,
+        bypass_mode: BypassMode,
+    ) -> Result<(), EffectError> {
+        self.bypass_mode = bypass_mode;
+        let preserve_tail = self.processor.set_bypass(
+            bypass,
+            self.bypass_fade_samples,
+            bypass && matches!(bypass_mode, BypassMode::WetTail),
+        );
         self.processed_mix
             .set_target(
                 if bypass && !preserve_tail { 0.0 } else { 1.0 },
@@ -311,17 +373,25 @@ impl EffectSlot {
                 processed
             } else {
                 self.processor.reset();
-                dry
+                if self.wet_only {
+                    StereoFrame::SILENCE
+                } else {
+                    dry
+                }
             };
             let wet = self.processed_mix.next_value();
+            let bypass = match self.bypass_mode {
+                BypassMode::DryPassthrough => dry,
+                BypassMode::Silence | BypassMode::WetTail => StereoFrame::SILENCE,
+            };
             let output = if wet <= 0.0 {
-                dry
+                bypass
             } else if wet >= 1.0 {
                 processed
             } else {
                 StereoFrame::new(
-                    dry.left + (processed.left - dry.left) * wet,
-                    dry.right + (processed.right - dry.right) * wet,
+                    bypass.left + (processed.left - bypass.left) * wet,
+                    bypass.right + (processed.right - bypass.right) * wet,
                 )
                 .finite_or_silence()
             };

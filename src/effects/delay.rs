@@ -46,6 +46,7 @@ pub(super) struct Delay {
     input_gain: SmoothedValue,
     tail_on_bypass: bool,
     tail_bypassed: bool,
+    wet_only_tail_bypass: bool,
     clear_after: u32,
 }
 
@@ -93,6 +94,7 @@ impl Delay {
             input_gain: smooth(1.0),
             tail_on_bypass: value("tail_on_bypass")? == 1.0,
             tail_bypassed: false,
+            wet_only_tail_bypass: false,
             clear_after: 0,
         })
     }
@@ -140,7 +142,11 @@ impl Delay {
         }
         let wet = self.wet.next_value();
         let dry = if self.tail_bypassed {
-            1.0
+            if self.wet_only_tail_bypass {
+                0.0
+            } else {
+                1.0
+            }
         } else {
             self.dry.next_value()
         };
@@ -195,13 +201,20 @@ impl Delay {
         Ok(())
     }
 
-    pub(super) fn set_bypass(&mut self, bypass: bool, fade_samples: u32) -> bool {
+    pub(super) fn set_bypass(
+        &mut self,
+        bypass: bool,
+        fade_samples: u32,
+        wet_only_tail: bool,
+    ) -> bool {
         if bypass && self.tail_on_bypass {
             self.tail_bypassed = true;
+            self.wet_only_tail_bypass = wet_only_tail;
             let _ = self.input_gain.set_target(0.0, fade_samples);
             return true;
         }
         self.tail_bypassed = false;
+        self.wet_only_tail_bypass = false;
         let _ = self
             .input_gain
             .set_target(if bypass { 0.0 } else { 1.0 }, fade_samples);

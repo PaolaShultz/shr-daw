@@ -1,8 +1,10 @@
 //! Preallocated callback plan compiled from a validated audio graph.
 
-use crate::audio_graph::{GraphDefinition, NodeId, NodeKind, SourceKind, MAX_CALLBACK_FRAMES};
+use crate::audio_graph::{
+    AuxId, EffectKind, GraphDefinition, NodeId, NodeKind, SourceKind, MAX_CALLBACK_FRAMES,
+};
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
-use crate::effects::{EffectSlot, MeterHandles};
+use crate::effects::{BypassMode, EffectSlot, MeterHandles};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -153,8 +155,70 @@ enum Operation {
     Source,
     Pass,
     Fader(Box<RuntimeFader>),
+    Meter(Box<RuntimeMeter>),
     Effect(Box<EffectSlot>),
     Sink,
+}
+
+struct RuntimeMeter {
+    meter: MeterAccumulator,
+    published: Arc<AtomicMeter>,
+}
+
+impl RuntimeMeter {
+    fn new(maximum_frames: usize) -> Result<Self, PlanError> {
+        Ok(Self {
+            meter: MeterAccumulator::new(maximum_frames)
+                .map_err(|error| PlanError::new(error.to_string()))?,
+            published: Arc::new(AtomicMeter::default()),
+        })
+    }
+
+    #[inline]
+    fn process(&mut self, frames: &mut [StereoFrame]) {
+        for frame in frames.iter_mut() {
+            *frame = self.meter.process(*frame);
+        }
+        self.published.publish(self.meter.snapshot_and_clear_peak());
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeAuxEffectState {
+    node_id: NodeId,
+    aux_id: AuxId,
+    wet_generator: bool,
+    tail_on_bypass: bool,
+    bypass: bool,
+}
+
+fn aux_bypass_mode(states: &[RuntimeAuxEffectState], index: usize) -> BypassMode {
+    let state = states[index];
+    if !state.bypass || !state.wet_generator {
+        return BypassMode::DryPassthrough;
+    }
+    let has_other_active = states.iter().enumerate().any(|(other_index, other)| {
+        other_index != index && other.aux_id == state.aux_id && other.wet_generator && !other.bypass
+    });
+    if state.tail_on_bypass {
+        return if has_other_active {
+            BypassMode::DryPassthrough
+        } else {
+            BypassMode::WetTail
+        };
+    }
+    let has_other_tail = states.iter().enumerate().any(|(other_index, other)| {
+        other_index != index
+            && other.aux_id == state.aux_id
+            && other.wet_generator
+            && other.bypass
+            && other.tail_on_bypass
+    });
+    if has_other_active || has_other_tail {
+        BypassMode::DryPassthrough
+    } else {
+        BypassMode::Silence
+    }
 }
 
 struct RuntimeFader {
@@ -203,6 +267,7 @@ pub struct GraphPlan {
     node_buffers: BTreeMap<NodeId, usize>,
     source_nodes: Box<[NodeId]>,
     sink_nodes: Box<[NodeId]>,
+    aux_effect_states: Box<[RuntimeAuxEffectState]>,
 }
 
 impl GraphPlan {
@@ -256,6 +321,32 @@ impl GraphPlan {
             .iter()
             .map(|aux| (aux.id, aux))
             .collect::<BTreeMap<_, _>>();
+        let effect_nodes = graph
+            .nodes
+            .iter()
+            .filter_map(|node| match node.kind {
+                NodeKind::Processor { effect_id } => Some((effect_id, node.id)),
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut aux_effect_states = Vec::new();
+        for aux in &graph.aux_buses {
+            for effect_id in &aux.effects {
+                let effect = effects
+                    .get(effect_id)
+                    .ok_or_else(|| PlanError::new("aux processor effect missing"))?;
+                aux_effect_states.push(RuntimeAuxEffectState {
+                    node_id: *effect_nodes
+                        .get(effect_id)
+                        .ok_or_else(|| PlanError::new("aux processor node missing"))?,
+                    aux_id: aux.id,
+                    wet_generator: effect.kind.requires_wet_aux(),
+                    tail_on_bypass: effect.kind == EffectKind::Delay
+                        && effect.parameters.get("tail_on_bypass").copied() == Some(1.0),
+                    bypass: effect.bypass,
+                });
+            }
+        }
         let mut retained = BTreeMap::new();
         if let Some(previous) = previous.filter(|plan| {
             plan.sample_rate == graph.sample_rate && plan.maximum_frames == maximum_frames
@@ -279,19 +370,36 @@ impl GraphPlan {
                 NodeKind::StereoMixer => {
                     Operation::Fader(Box::new(RuntimeFader::new(0.0, maximum_frames)?))
                 }
+                NodeKind::PostMasterMeter => {
+                    Operation::Meter(Box::new(RuntimeMeter::new(maximum_frames)?))
+                }
                 NodeKind::Processor { effect_id } => {
                     let effect = effects
                         .get(effect_id)
                         .ok_or_else(|| PlanError::new("processor effect missing"))?;
+                    let aux_state = aux_effect_states
+                        .iter()
+                        .position(|state| state.node_id == id);
+                    let wet_only =
+                        aux_state.is_some_and(|index| aux_effect_states[index].wet_generator);
+                    let bypass_mode = aux_state
+                        .map(|index| aux_bypass_mode(&aux_effect_states, index))
+                        .unwrap_or(BypassMode::DryPassthrough);
                     let slot = match retained.remove(effect_id) {
                         Some(mut slot) if slot.kind() == effect.kind => {
-                            slot.apply_instance(effect)
+                            slot.apply_instance_with_placement(effect, wet_only, bypass_mode)
                                 .map_err(|error| PlanError::new(error.to_string()))?;
                             slot
                         }
                         _ => Box::new(
-                            EffectSlot::compile(effect, graph.sample_rate, maximum_frames)
-                                .map_err(|error| PlanError::new(error.to_string()))?,
+                            EffectSlot::compile_with_placement(
+                                effect,
+                                graph.sample_rate,
+                                maximum_frames,
+                                wet_only,
+                                bypass_mode,
+                            )
+                            .map_err(|error| PlanError::new(error.to_string()))?,
                         ),
                     };
                     Operation::Effect(slot)
@@ -337,6 +445,7 @@ impl GraphPlan {
             node_buffers,
             source_nodes: source_nodes.into_boxed_slice(),
             sink_nodes: sink_nodes.into_boxed_slice(),
+            aux_effect_states: aux_effect_states.into_boxed_slice(),
         })
     }
 
@@ -372,12 +481,24 @@ impl GraphPlan {
                     Operation::Effect(slot) => slot,
                     _ => unreachable!("position selected an effect slot"),
                 };
+                let next_node_id = next.nodes[next_index].id;
+                let bypass_mode = next
+                    .aux_effect_states
+                    .iter()
+                    .position(|state| state.node_id == next_node_id)
+                    .map(|index| aux_bypass_mode(&next.aux_effect_states, index))
+                    .unwrap_or(BypassMode::DryPassthrough);
+                let wet_only = next
+                    .aux_effect_states
+                    .iter()
+                    .find(|state| state.node_id == next_node_id)
+                    .is_some_and(|state| state.wet_generator);
                 let next_slot = match &mut next.nodes[next_index].operation {
                     Operation::Effect(slot) => slot,
                     _ => unreachable!("loop selected an effect slot"),
                 };
                 old_slot
-                    .apply_instance(effects[&effect_id])
+                    .apply_instance_with_placement(effects[&effect_id], wet_only, bypass_mode)
                     .map_err(|error| PlanError::new(error.to_string()))?;
                 std::mem::swap(old_slot, next_slot);
             }
@@ -421,6 +542,7 @@ impl GraphPlan {
         self.nodes.iter().find_map(|node| match &node.operation {
             Operation::Effect(slot) if node.id == node_id => Some(slot.meters().output),
             Operation::Fader(fader) if node.id == node_id => Some(Arc::clone(&fader.published)),
+            Operation::Meter(meter) if node.id == node_id => Some(Arc::clone(&meter.published)),
             _ => None,
         })
     }
@@ -470,16 +592,43 @@ impl GraphPlan {
     }
 
     pub fn set_effect_bypass(&mut self, node_id: NodeId, bypass: bool) -> Result<(), PlanError> {
-        let slot = self
-            .nodes
-            .iter_mut()
-            .find_map(|node| match &mut node.operation {
-                Operation::Effect(slot) if node.id == node_id => Some(slot),
-                _ => None,
-            })
-            .ok_or_else(|| PlanError::new("effect node not found"))?;
-        slot.set_bypass(bypass)
-            .map_err(|error| PlanError::new(error.to_string()))
+        let Some(aux_index) = self
+            .aux_effect_states
+            .iter()
+            .position(|state| state.node_id == node_id)
+        else {
+            let slot = self
+                .nodes
+                .iter_mut()
+                .find_map(|node| match &mut node.operation {
+                    Operation::Effect(slot) if node.id == node_id => Some(slot),
+                    _ => None,
+                })
+                .ok_or_else(|| PlanError::new("effect node not found"))?;
+            return slot
+                .set_bypass(bypass)
+                .map_err(|error| PlanError::new(error.to_string()));
+        };
+        let aux_id = self.aux_effect_states[aux_index].aux_id;
+        self.aux_effect_states[aux_index].bypass = bypass;
+        for index in 0..self.aux_effect_states.len() {
+            if self.aux_effect_states[index].aux_id != aux_id {
+                continue;
+            }
+            let state = self.aux_effect_states[index];
+            let mode = aux_bypass_mode(&self.aux_effect_states, index);
+            let slot = self
+                .nodes
+                .iter_mut()
+                .find_map(|node| match &mut node.operation {
+                    Operation::Effect(slot) if node.id == state.node_id => Some(slot),
+                    _ => None,
+                })
+                .expect("validated aux effect node");
+            slot.set_bypass_with_mode(state.bypass, mode)
+                .map_err(|error| PlanError::new(error.to_string()))?;
+        }
+        Ok(())
     }
 
     /// Process one block. Source buffers must be filled before this call.
@@ -498,6 +647,7 @@ impl GraphPlan {
             match &mut self.nodes[node_index].operation {
                 Operation::Source | Operation::Pass | Operation::Sink => {}
                 Operation::Fader(fader) => fader.process(&mut self.buffers[target][..frames]),
+                Operation::Meter(meter) => meter.process(&mut self.buffers[target][..frames]),
                 Operation::Effect(slot) => slot.process(&mut self.buffers[target][..frames]),
             }
         }
@@ -608,6 +758,146 @@ mod tests {
             sends: vec![],
             monitoring: Monitoring::default(),
             recording_tap: RecordingTap::PostMaster,
+        }
+    }
+
+    fn aux_chain_graph(mut effects: Vec<EffectInstance>) -> GraphDefinition {
+        let effect_ids = effects.iter().map(|effect| effect.id).collect::<Vec<_>>();
+        let mut nodes = vec![
+            Node {
+                id: 1,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::Source {
+                    source: SourceKind::ManagedEngine,
+                },
+            },
+            Node {
+                id: 2,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::SendTap {
+                    aux_id: 1,
+                    source_node: 1,
+                },
+            },
+        ];
+        let mut edges = vec![
+            Edge {
+                id: 1,
+                from: 1,
+                to: 90,
+            },
+            Edge {
+                id: 2,
+                from: 1,
+                to: 2,
+            },
+        ];
+        let mut previous = 2;
+        for (index, effect) in effects.iter_mut().enumerate() {
+            let node_id = 10 + index as u32;
+            nodes.push(Node {
+                id: node_id,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::Processor {
+                    effect_id: effect.id,
+                },
+            });
+            edges.push(Edge {
+                id: edges.len() as u32 + 1,
+                from: previous,
+                to: node_id,
+            });
+            previous = node_id;
+        }
+        nodes.extend([
+            Node {
+                id: 80,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::AuxReturn { aux_id: 1 },
+            },
+            Node {
+                id: 90,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::StereoMixer,
+            },
+            Node {
+                id: 100,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::Sink {
+                    sink: SinkKind::MainPlayback {
+                        ports: StereoPorts {
+                            left: "main:l".into(),
+                            right: "main:r".into(),
+                        },
+                    },
+                },
+            },
+        ]);
+        edges.extend([
+            Edge {
+                id: edges.len() as u32 + 1,
+                from: previous,
+                to: 80,
+            },
+            Edge {
+                id: edges.len() as u32 + 2,
+                from: 80,
+                to: 90,
+            },
+            Edge {
+                id: edges.len() as u32 + 3,
+                from: 90,
+                to: 100,
+            },
+        ]);
+        GraphDefinition {
+            format_version: GRAPH_FORMAT_VERSION,
+            enabled: true,
+            sample_rate: 48_000,
+            maximum_callback_frames: 64,
+            nodes,
+            edges,
+            effects,
+            source_chains: vec![SourceChain {
+                source_node: 1,
+                effects: vec![],
+            }],
+            master_chain: vec![],
+            aux_buses: vec![AuxBus {
+                id: 1,
+                effects: effect_ids,
+                return_gain_db: 0.0,
+            }],
+            sends: vec![SendRoute {
+                source_node: 1,
+                aux_id: 1,
+                level_db: 0.0,
+                point: SendPoint::PreInsert,
+            }],
+            monitoring: Monitoring::default(),
+            recording_tap: RecordingTap::PostMaster,
+        }
+    }
+
+    fn configured_effect(
+        id: EffectId,
+        kind: EffectKind,
+        bypass: bool,
+        parameters: impl IntoIterator<Item = (&'static str, f32)>,
+    ) -> EffectInstance {
+        let mut configured = crate::effect_schema::defaults(kind);
+        configured.extend(
+            parameters
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value)),
+        );
+        EffectInstance {
+            id,
+            kind,
+            version: EFFECT_FORMAT_VERSION,
+            bypass,
+            parameters: configured,
+            owned_memory_bytes: 0,
         }
     }
 
@@ -736,6 +1026,268 @@ mod tests {
         assert_eq!(output[0], StereoFrame::new(1.0, 1.0));
         assert!((output[48].left - 0.25).abs() < 0.001);
         assert!((return_meter.load().peak.left - 0.25).abs() < 0.001);
+    }
+
+    #[test]
+    fn one_effect_aux_bypass_returns_silence_instead_of_raw_send() {
+        let graph = aux_chain_graph(vec![configured_effect(
+            10,
+            EffectKind::Delay,
+            true,
+            [
+                ("time_ms", 1.0),
+                ("feedback_percent", 0.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+            ],
+        )]);
+        let mut plan = GraphPlan::compile(&graph).unwrap();
+        let return_meter = plan.meter(80).unwrap();
+        assert_no_allocations(|| {
+            for _ in 0..8 {
+                plan.source_buffer_mut(1, 64)
+                    .unwrap()
+                    .fill(StereoFrame::new(0.25, -0.5));
+                assert_eq!(plan.process(64), ProcessStatus::Complete);
+                assert_eq!(
+                    plan.output_buffer(100, 64).unwrap(),
+                    [StereoFrame::new(0.25, -0.5); 64]
+                );
+            }
+        });
+        assert_eq!(return_meter.load().peak, Default::default());
+
+        let mut active_graph = graph;
+        active_graph.effects[0].bypass = false;
+        let mut active = GraphPlan::compile(&active_graph).unwrap();
+        for _ in 0..8 {
+            active
+                .source_buffer_mut(1, 64)
+                .unwrap()
+                .fill(StereoFrame::new(0.25, 0.25));
+            active.process(64);
+        }
+        active.set_effect_bypass(10, true).unwrap();
+        let mut transition = [0.0_f32; 512];
+        assert_no_allocations(|| {
+            for samples in transition.chunks_mut(64) {
+                active
+                    .source_buffer_mut(1, 64)
+                    .unwrap()
+                    .fill(StereoFrame::new(0.25, 0.25));
+                assert_eq!(active.process(64), ProcessStatus::Complete);
+                for (sample, frame) in samples
+                    .iter_mut()
+                    .zip(active.output_buffer(100, 64).unwrap())
+                {
+                    *sample = frame.left;
+                }
+            }
+        });
+        assert!(transition
+            .iter()
+            .all(|sample| (0.25..=0.5).contains(sample)));
+        let maximum_step = transition
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(maximum_step < 0.003, "aux bypass step {maximum_step}");
+        assert!((transition[511] - 0.25).abs() < 0.0001);
+    }
+
+    #[test]
+    fn aux_delay_tail_bypass_drains_wet_only_with_new_input_muted() {
+        let graph = aux_chain_graph(vec![configured_effect(
+            10,
+            EffectKind::Delay,
+            false,
+            [
+                ("time_ms", 1.0),
+                ("feedback_percent", 75.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+                ("tail_on_bypass", 1.0),
+            ],
+        )]);
+        let mut plan = GraphPlan::compile(&graph).unwrap();
+        plan.source_buffer_mut(1, 64)
+            .unwrap()
+            .fill(StereoFrame::SILENCE);
+        plan.source_buffer_mut(1, 64).unwrap()[0] = StereoFrame::new(1.0, 1.0);
+        assert_eq!(plan.process(64), ProcessStatus::Complete);
+        plan.set_effect_bypass(10, true).unwrap();
+        let mut heard_tail = false;
+        assert_no_allocations(|| {
+            for _ in 0..96 {
+                plan.source_buffer_mut(1, 64)
+                    .unwrap()
+                    .fill(StereoFrame::new(0.25, 0.25));
+                assert_eq!(plan.process(64), ProcessStatus::Complete);
+                heard_tail |= plan
+                    .output_buffer(100, 64)
+                    .unwrap()
+                    .iter()
+                    .any(|frame| (frame.left - 0.25).abs() > 0.01);
+            }
+        });
+        assert!(heard_tail);
+        assert!(plan
+            .output_buffer(100, 64)
+            .unwrap()
+            .iter()
+            .all(|frame| (frame.left - 0.25).abs() < 0.001));
+    }
+
+    #[test]
+    fn serial_aux_bypass_preserves_wet_signal_but_all_generators_bypassed_mute_return() {
+        let delay = configured_effect(
+            10,
+            EffectKind::Delay,
+            false,
+            [
+                ("time_ms", 1.0),
+                ("feedback_percent", 0.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+            ],
+        );
+        let conditioning = configured_effect(11, EffectKind::Utility, true, [("trim_db", -12.0)]);
+        let mut plan = GraphPlan::compile(&aux_chain_graph(vec![delay, conditioning])).unwrap();
+        plan.source_buffer_mut(1, 64)
+            .unwrap()
+            .fill(StereoFrame::SILENCE);
+        plan.source_buffer_mut(1, 64).unwrap()[0] = StereoFrame::new(1.0, 1.0);
+        assert_eq!(plan.process(64), ProcessStatus::Complete);
+        assert!((plan.output_buffer(100, 64).unwrap()[48].left - 1.0).abs() < 0.001);
+
+        plan.set_effect_bypass(10, true).unwrap();
+        assert_no_allocations(|| {
+            for _ in 0..8 {
+                plan.source_buffer_mut(1, 64)
+                    .unwrap()
+                    .fill(StereoFrame::new(0.25, -0.5));
+                assert_eq!(plan.process(64), ProcessStatus::Complete);
+            }
+        });
+        assert_eq!(
+            plan.output_buffer(100, 64).unwrap(),
+            [StereoFrame::new(0.25, -0.5); 64]
+        );
+    }
+
+    #[test]
+    fn bypassed_aux_generator_passes_only_toward_another_wet_generator() {
+        for bypass_first in [true, false] {
+            let first = configured_effect(
+                10,
+                EffectKind::Delay,
+                bypass_first,
+                [
+                    ("time_ms", 1.0),
+                    ("feedback_percent", 0.0),
+                    ("wet_percent", 100.0),
+                    ("dry_percent", 0.0),
+                ],
+            );
+            let second = configured_effect(
+                11,
+                EffectKind::Delay,
+                !bypass_first,
+                [
+                    ("time_ms", 1.0),
+                    ("feedback_percent", 0.0),
+                    ("wet_percent", 100.0),
+                    ("dry_percent", 0.0),
+                ],
+            );
+            let mut plan = GraphPlan::compile(&aux_chain_graph(vec![first, second])).unwrap();
+            plan.source_buffer_mut(1, 64)
+                .unwrap()
+                .fill(StereoFrame::SILENCE);
+            plan.source_buffer_mut(1, 64).unwrap()[0] = StereoFrame::new(1.0, 1.0);
+            assert_eq!(plan.process(64), ProcessStatus::Complete);
+            assert!((plan.output_buffer(100, 64).unwrap()[48].left - 1.0).abs() < 0.001);
+
+            plan.set_effect_bypass(if bypass_first { 11 } else { 10 }, true)
+                .unwrap();
+            assert_no_allocations(|| {
+                for _ in 0..8 {
+                    plan.source_buffer_mut(1, 64)
+                        .unwrap()
+                        .fill(StereoFrame::new(0.25, -0.5));
+                    assert_eq!(plan.process(64), ProcessStatus::Complete);
+                }
+            });
+            assert_eq!(
+                plan.output_buffer(100, 64).unwrap(),
+                [StereoFrame::new(0.25, -0.5); 64]
+            );
+        }
+    }
+
+    #[test]
+    fn bypassed_tail_delay_does_not_block_another_active_wet_generator() {
+        let active = configured_effect(
+            10,
+            EffectKind::Delay,
+            false,
+            [
+                ("time_ms", 1.0),
+                ("feedback_percent", 0.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+            ],
+        );
+        let tail_bypassed = configured_effect(
+            11,
+            EffectKind::Delay,
+            true,
+            [
+                ("time_ms", 1.0),
+                ("feedback_percent", 75.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+                ("tail_on_bypass", 1.0),
+            ],
+        );
+        let mut plan = GraphPlan::compile(&aux_chain_graph(vec![active, tail_bypassed])).unwrap();
+        plan.source_buffer_mut(1, 64)
+            .unwrap()
+            .fill(StereoFrame::SILENCE);
+        plan.source_buffer_mut(1, 64).unwrap()[0] = StereoFrame::new(1.0, 1.0);
+        assert_no_allocations(|| assert_eq!(plan.process(64), ProcessStatus::Complete));
+        assert!((plan.output_buffer(100, 64).unwrap()[48].left - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn source_and_master_insert_bypass_still_reach_exact_dry() {
+        for master in [false, true] {
+            let mut configured = graph(true);
+            configured.effects[0]
+                .parameters
+                .insert("trim_db".into(), -12.0);
+            configured.source_chains[0].effects.clear();
+            configured.master_chain.clear();
+            if master {
+                configured.master_chain.push(1);
+            } else {
+                configured.source_chains[0].effects.push(1);
+            }
+            let mut plan = GraphPlan::compile(&configured).unwrap();
+            plan.set_effect_bypass(3, true).unwrap();
+            assert_no_allocations(|| {
+                for _ in 0..8 {
+                    plan.source_buffer_mut(1, 128)
+                        .unwrap()
+                        .fill(StereoFrame::new(0.25, -0.5));
+                    assert_eq!(plan.process(128), ProcessStatus::Complete);
+                }
+            });
+            assert_eq!(
+                plan.output_buffer(4, 128).unwrap(),
+                [StereoFrame::new(0.25, -0.5); 128]
+            );
+        }
     }
 
     #[test]

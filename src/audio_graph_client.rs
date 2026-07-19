@@ -26,6 +26,7 @@ const FIRST_AUX_EFFECT_NODE: u32 = 40;
 const FIRST_AUX_RETURN_NODE: u32 = 70;
 const FIRST_MASTER_EFFECT_NODE: u32 = 80;
 const MASTER_NODE: u32 = 90;
+const FINAL_METER_NODE: u32 = 95;
 const SINK_NODE: u32 = 100;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -298,7 +299,7 @@ impl OwnedAudioGraph {
 
     pub(crate) fn master_meter(&self) -> Option<AuxMeterSnapshot> {
         Some(AuxMeterSnapshot {
-            output: self.callback.plan.meter(MASTER_NODE)?.load(),
+            output: self.callback.plan.meter(FINAL_METER_NODE)?.load(),
         })
     }
 
@@ -535,6 +536,17 @@ fn managed_graph_definition(
     effects.extend(aux_routing.master_rack.effects.iter().cloned());
 
     nodes.push(Node {
+        id: FINAL_METER_NODE,
+        layout: ChannelLayout::Stereo,
+        kind: NodeKind::PostMasterMeter,
+    });
+    edges.push(Edge {
+        id: edges.len() as u32 + 1,
+        from: master_previous,
+        to: FINAL_METER_NODE,
+    });
+
+    nodes.push(Node {
         id: SINK_NODE,
         layout: ChannelLayout::Stereo,
         kind: NodeKind::Sink {
@@ -548,7 +560,7 @@ fn managed_graph_definition(
     });
     edges.push(Edge {
         id: edges.len() as u32 + 1,
-        from: master_previous,
+        from: FINAL_METER_NODE,
         to: SINK_NODE,
     });
     GraphDefinition {
@@ -778,10 +790,10 @@ mod tests {
         let graph = dry_graph_definition(48_000, 128, &destinations);
         assert_eq!(
             graph.validate().unwrap(),
-            [SOURCE_NODE, MASTER_NODE, SINK_NODE]
+            [SOURCE_NODE, MASTER_NODE, FINAL_METER_NODE, SINK_NODE]
         );
-        assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.edges.len(), 2);
+        assert_eq!(graph.nodes.len(), 4);
+        assert_eq!(graph.edges.len(), 3);
         assert!(graph.effects.is_empty());
     }
 
@@ -808,11 +820,58 @@ mod tests {
                 FIRST_EFFECT_NODE,
                 FIRST_EFFECT_NODE + 1,
                 MASTER_NODE,
+                FINAL_METER_NODE,
                 SINK_NODE
             ]
         );
         assert_eq!(graph.source_chains[0].effects, [eq, compressor]);
-        assert_eq!(graph.edges.len(), 4);
+        assert_eq!(graph.edges.len(), 5);
+    }
+
+    #[test]
+    fn final_meter_follows_master_level_change_and_empty_master_identity() {
+        let destinations = ["main:l".to_owned(), "main:r".to_owned()];
+        for (routing, expected) in [
+            (ProjectAuxRouting::default(), 0.5_f32),
+            (
+                {
+                    let mut routing = ProjectAuxRouting::default();
+                    routing
+                        .master_rack
+                        .add_with_id(crate::audio_graph::EffectKind::Utility, 1)
+                        .unwrap();
+                    routing
+                        .master_rack
+                        .effect_mut(1)
+                        .unwrap()
+                        .parameters
+                        .insert("trim_db".into(), -6.0206);
+                    routing
+                },
+                0.25_f32,
+            ),
+        ] {
+            let graph = managed_graph_definition(
+                48_000,
+                64,
+                &destinations,
+                &InsertRack::default(),
+                &routing,
+            );
+            let mut plan = GraphPlan::compile(&graph).unwrap();
+            let meter = plan.meter(FINAL_METER_NODE).unwrap();
+            plan.source_buffer_mut(SOURCE_NODE, 64)
+                .unwrap()
+                .fill(StereoFrame::new(0.5, -0.5));
+            assert_eq!(plan.process(64), ProcessStatus::Complete);
+            let output = plan.output_buffer(SINK_NODE, 64).unwrap();
+            assert!(output.iter().all(|frame| {
+                (frame.left - expected).abs() < 0.0001 && (frame.right + expected).abs() < 0.0001
+            }));
+            let snapshot = meter.load();
+            assert!((snapshot.peak.left - expected).abs() < 0.0001);
+            assert!((snapshot.peak.right - expected).abs() < 0.0001);
+        }
     }
 
     #[test]

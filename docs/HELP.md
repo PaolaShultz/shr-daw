@@ -57,9 +57,10 @@ Linux counter changes: green is below 60%, yellow is 60–85%, and red is above
 Stereo bars show smoothed RMS and a peak-hold marker on a −60 to 0 dBFS scale.
 CLIP is held in red. RESET clears only the visible peak and clip holds.
 
-FINAL OUT is available only for the active owned graph master. It covers the
-managed source and its wet returns, not WAV loops, inputs, hardware, or other
-JACK clients. Direct playback reports the meter unavailable and stays direct.
+FINAL OUT is available only for the active owned graph. It measures after all
+master inserts, immediately before playback, and covers the managed source and
+its wet returns—not WAV loops, inputs, hardware, or other JACK clients. Direct
+playback reports the meter unavailable and stays direct.
 
 ## MIDI ideas
 

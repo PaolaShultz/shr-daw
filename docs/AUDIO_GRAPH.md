@@ -182,15 +182,19 @@ The effect rack adds one canonical named parameter schema per effect kind in
 `src/effect_schema.rs`. Persisted values may omit older/defaulted controls, but
 unknown names, non-finite values, invalid discrete choices, and values outside
 the declared physical range reject the complete graph. `src/effects/` provides
-fixed runtime slots with stable instance identity, finite dry fallback,
-click-conscious bypass, reset, and separate input/output peak/RMS, clip, and
-non-finite meters. The EQ, compressor, distortion, crusher/reducer, gate,
+fixed runtime slots with stable instance identity, placement-safe finite
+fallback, click-conscious bypass, reset, and separate input/output peak/RMS,
+clip, and non-finite meters. The EQ, compressor, distortion, crusher/reducer, gate,
 multimode filter, delay, chorus, flanger, phaser, tremolo/autopan, and
 shared-topology reverb have passed their deterministic software response gates.
 They are available in source and master racks; delay/reverb/modulation effects
 on an aux are validated as 100% wet. Two independently scaled pre/post sends
 feed two metered returns, which are mixed exactly once before the ordered master
-chain. The compact rack/editor
+chain. Source and master bypass retain dry passthrough. Aux bypass tracks wet
+generators explicitly: an all-bypassed bus returns silence, a delay may drain a
+wet-only tail with muted input, and serial conditioning may pass an already-wet
+signal. A dedicated meter after the final master insert and immediately before
+playback supplies the `MASTER`/`FINAL OUT` reading. The compact rack/editor
 uses four controller pages, with `OPS` first and `EXIT` at page 4/item 4, and
 shows input and output peak/RMS, clipping, non-finite counts, and compressor
 gain reduction. Raspberry Pi whole-chain evidence is documented in the

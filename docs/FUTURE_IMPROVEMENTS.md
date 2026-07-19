@@ -64,6 +64,14 @@ ordinary drum loops should feel like a pleasant afternoon.
 
 ## Audio effects graph: inserts, sends, and returns
 
+The concrete post-competition migration from the current single managed source
+to a bounded multi-strip mixer with two genuinely shared aux buses is in the
+[post-competition mixer and shared-aux plan](POST_COMPETITION_MIXER_AUX_PLAN.md).
+It also records the current dry/wet behavior, the audio-source boundary behind
+tracker lanes, Project migration, and recording taps. The two narrow meter and
+aux-bypass findings from that routing audit have been repaired in the current
+one-source graph without beginning the migration.
+
 The managed graph now includes the essential source inserts, delay/modulation,
 three reverb voicings, two independently scaled pre/post aux sends and returns,
 and an ordered master rack. It retains strict Project persistence, stopped
