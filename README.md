@@ -2,6 +2,12 @@
   <img src="docs/images/shr-daw-header.jpg" alt="SHR-DAW" width="100%">
 </p>
 
+> [!WARNING]
+> **SHR-DAW is a highly experimental release.** Expect breaking changes,
+> unfinished workflows, and audio/MIDI behavior that still requires real-world
+> testing and musical curation. Back up Projects and user data before relying on
+> it, and keep monitoring levels low while evaluating new audio features.
+
 SHR-DAW turns a Raspberry Pi, a 40×20 terminal, and the MIDI gear you already
 own into a focused music workstation. It is for bedroom musicians and
 Linux-audio makers who want a physical, mouse-free workflow without hiding the
