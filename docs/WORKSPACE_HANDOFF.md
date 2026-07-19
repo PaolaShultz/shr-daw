@@ -147,6 +147,15 @@ items/pages are invisible, silent, and skipped. The visible control strip is
 centered and capped at 40 columns. The full map is in
 `docs/CONTROLLER_INTERFACE.md`; README carries only the overview and link.
 
+Presets NAV item 1 opens the passive `MTR` performance screen. CPU0–CPU3 come
+from bounded UI-side `/proc/stat` deltas, with the configured temperature when
+available. Stereo RMS, peak hold, and clip state come only from the active
+owned graph master. Direct mode, stopped engines, WAV loops, hardware returns,
+recorder inputs, and unrelated JACK clients are never presented as final-output
+activity; direct/stopped output is explicitly unavailable. MTR RESET clears
+presentation holds only. Its deterministic README screenshot says that it uses
+presentation data.
+
 FT2 real-time REC is hardware-page-only: it refuses `ActiveInstrument`,
 consumes notes before the loaded synth, auditions through the selected page's
 MIDI destination/channel, and writes only that page in the selected looping

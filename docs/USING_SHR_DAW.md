@@ -20,6 +20,8 @@ controls.
 
 - **Presets** chooses an engine and sound.
 - **Playback** shows played notes, changes synthv1 controls, and records ideas.
+- **MTR** passively shows CPU-core activity and, when available, the owned
+  graph's stereo final-output level.
 - **Ideas** loads, plays, saves, and deletes MIDI ideas.
 - **Help** shows compact user help; turn the encoder through rows and press a
   highlighted link to jump sections. When possible, it also shows a temporary
@@ -73,6 +75,28 @@ stereo frame instead of producing an invalid WAV file.
 
 External line input is intended to use the audio interface's direct-monitor
 feature. See [Physical connections](CONNECTIONS.md) for the audio path.
+
+## Performance meters
+
+Open MTR from the first item on Presets NAV, or press `m` on Presets. Its four
+CPU rows normally show CPU0–CPU3 on a Raspberry Pi. They are calculated from
+changes in Linux `/proc/stat`, not by running a command. Green is below 60%,
+yellow is 60–85%, and red is above 85%. If fewer cores or no Linux statistics
+are available, the missing rows say `n/a`. A configured CPU-temperature sensor
+is shown too, but MTR does not require one.
+
+The friendly stereo VU display is labelled in dBFS: its solid body is smoothed
+RMS, the thin marker is peak hold, and `CLIP!` is held visibly after a full-scale
+sample. The scale runs from −60 to 0 dBFS; green is below −12 dBFS, yellow is
+−12 through −3 dBFS, and red is above −3 dBFS. RESET clears only the visual
+peak and clip holds. It does not touch audio, effects, engines, or JACK routes.
+
+`FINAL OUT` is truthful only while the owned audio graph is active. It is the
+graph master after the managed software-instrument source, its wet aux returns,
+and master inserts. The current graph does not include the separate WAV loop
+player, hardware returns, recorder inputs, or unrelated JACK clients. In direct
+playback MTR explicitly reports that output metering is unavailable because
+there is no safe owned tap; it never enables the graph or fakes movement.
 
 ## Command line
 

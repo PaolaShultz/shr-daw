@@ -12,6 +12,9 @@ use crate::geometry::{contains, rect, visible_index};
 use crate::help::{self, HelpKind};
 use crate::navigation::{self, Action, MenuContext, Screen, SlotState};
 use crate::pads::{ControllerLayout, MenuInput, TapTempo};
+use crate::performance_meter::{
+    self, AudioAvailability, AudioLevel, BarCell, MeterColor, PerformanceMeter, VISIBLE_CPU_CORES,
+};
 use crate::preset::{BackendKind, Catalog, Preset};
 use crate::recording::{self, Recorder, TimedEvent};
 use crate::scale::{Scale, ScaleKind};
@@ -378,6 +381,7 @@ struct App {
     fx_parameter: usize,
     fx_add_kind: usize,
     fx_target: usize,
+    performance_meter: PerformanceMeter,
 }
 impl App {
     fn new(
@@ -516,6 +520,7 @@ impl App {
             fx_parameter: 0,
             fx_add_kind: 0,
             fx_target: 0,
+            performance_meter: PerformanceMeter::default(),
         }
     }
 
@@ -4037,6 +4042,21 @@ impl App {
     fn tick(&mut self) {
         let now = Instant::now();
         self.refresh_cpu_temperature(now);
+        if self.screen == Screen::Meter {
+            self.performance_meter
+                .poll_cpu(now, Path::new("/proc/stat"));
+            if let Some(engine) = self.engine.as_ref() {
+                if let Some(meter) = engine.master_meter() {
+                    self.performance_meter.update_audio(meter.output, now);
+                } else {
+                    self.performance_meter
+                        .set_audio_unavailable(AudioAvailability::DirectUnavailable);
+                }
+            } else {
+                self.performance_meter
+                    .set_audio_unavailable(AudioAvailability::Stopped);
+            }
+        }
         if self.screen == Screen::Tracker
             && self.tracker_mode == TrackerMode::Edit
             && self.note_editor.is_none()
@@ -4603,6 +4623,7 @@ fn perform(
             | Screen::TrackerLoop
             | Screen::TrackerLoopAlign => {}
             Screen::AudioRecorder => a.toggle_audio_recording(),
+            Screen::Meter => a.performance_meter.clear_holds(),
             Screen::FxRack => {
                 if a.selected_effect_id().is_some() {
                     a.fx_parameter = 0;
@@ -4694,6 +4715,16 @@ fn perform(
                 a.status = "FX rack is empty".into();
             }
         }
+        Action::OpenMeter => {
+            a.set_tracker_edit(false);
+            a.set_screen(Screen::Meter);
+            a.reset_context_page();
+            a.status = "passive performance meters".into();
+        }
+        Action::ResetMeter => {
+            a.performance_meter.clear_holds();
+            a.status = "meter peak and clip holds cleared".into();
+        }
         Action::Back => {
             if a.screen == Screen::FxEditor {
                 a.set_screen(Screen::FxRack);
@@ -4756,7 +4787,11 @@ fn perform(
                 }
             } else if matches!(
                 a.screen,
-                Screen::Playback | Screen::Tracker | Screen::AudioRecorder | Screen::FxRack
+                Screen::Playback
+                    | Screen::Tracker
+                    | Screen::AudioRecorder
+                    | Screen::FxRack
+                    | Screen::Meter
             ) {
                 Screen::Presets
             } else if a.playing.is_some() {
@@ -5427,6 +5462,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         KeyCode::Char('p') => a.toggle_playback(),
         KeyCode::Char('w') => a.open_ideas(),
+        KeyCode::Char('m') if a.screen == Screen::Presets => {
+            perform(Action::OpenMeter, a, state, Some(tx));
+        }
         KeyCode::Char('t') => {
             a.set_screen(Screen::Tracker);
             a.sync_tracker_route();
@@ -5658,6 +5696,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::AudioRecorder => draw_audio_recorder(f, a),
         Screen::FxRack => draw_fx_rack(f, a),
         Screen::FxEditor => draw_fx_editor(f, a),
+        Screen::Meter => draw_performance_meter(f, a),
     }
     draw_pad_lock(f, a);
     draw_pad_buttons(f, a);
@@ -5784,6 +5823,231 @@ fn meter_db(value: f32) -> f32 {
     } else {
         -120.0
     }
+}
+
+fn performance_color(color: MeterColor) -> Color {
+    match color {
+        MeterColor::Green => Color::Green,
+        MeterColor::Yellow => Color::LightYellow,
+        MeterColor::Red => Color::Red,
+    }
+}
+
+fn styled_meter_bar(cells: Vec<BarCell>) -> Vec<Span<'static>> {
+    cells
+        .into_iter()
+        .map(|cell| {
+            let active = cell.symbol != '·';
+            Span::styled(
+                cell.symbol.to_string(),
+                Style::default()
+                    .fg(performance_color(cell.color))
+                    .add_modifier(if active {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+            )
+        })
+        .collect()
+}
+
+fn cpu_meter_line(
+    index: usize,
+    value: Option<f32>,
+    detected: bool,
+    width: usize,
+) -> Spans<'static> {
+    let bar_width = width.saturating_sub(10).max(1);
+    let mut spans = vec![Span::styled(
+        format!("{index} ["),
+        Style::default().fg(Color::Gray),
+    )];
+    spans.extend(styled_meter_bar(performance_meter::cpu_bar(
+        bar_width,
+        value.unwrap_or(0.0),
+    )));
+    spans.push(Span::styled(
+        match value {
+            Some(value) => format!("] {value:>3.0}%"),
+            None if detected => "]  --%".into(),
+            None => "]  n/a".into(),
+        },
+        Style::default().fg(if value.is_some() {
+            Color::White
+        } else {
+            Color::DarkGray
+        }),
+    ));
+    Spans::from(spans)
+}
+
+fn audio_meter_line(label: char, level: AudioLevel, width: usize) -> Spans<'static> {
+    let bar_width = width.saturating_sub(10).max(1);
+    let mut spans = vec![Span::styled(
+        format!("{label} ["),
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    )];
+    spans.extend(styled_meter_bar(performance_meter::audio_bar(
+        bar_width,
+        level.rms_dbfs,
+        level.peak_dbfs,
+    )));
+    spans.push(Span::styled(
+        format!("] {:>5.1}", level.rms_dbfs),
+        Style::default().fg(performance_color(performance_meter::audio_color(
+            level.rms_dbfs,
+        ))),
+    ));
+    Spans::from(spans)
+}
+
+fn audio_scale_line(width: usize) -> String {
+    let bar_width = width.saturating_sub(10).max(1);
+    let mut chars = vec![' '; width];
+    let start = 3;
+    let right = "-12  -3  0";
+    for (x, label) in [
+        (start, "-60"),
+        ((start + bar_width + 1).saturating_sub(right.len()), right),
+    ] {
+        let x = x.min(width.saturating_sub(label.len()));
+        for (offset, character) in label.chars().enumerate() {
+            if x + offset < chars.len() {
+                chars[x + offset] = character;
+            }
+        }
+    }
+    chars.into_iter().collect()
+}
+
+fn draw_performance_meter<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let inner = rect(
+        body.x.saturating_add(1),
+        body.y.saturating_add(1),
+        body.width.saturating_sub(2),
+        body.height.saturating_sub(2),
+    );
+    let width = usize::from(inner.width);
+    let cpu_count = a.performance_meter.cpu_cores();
+    let temperature = a.config.cpu_temperature_path.as_ref().map(|_| {
+        a.cpu_temperature
+            .map(|value| format!(" · {value:.0}°C"))
+            .unwrap_or_else(|| " · --°C".into())
+    });
+    let cpu_title = if a.performance_meter.cpu_available() {
+        format!(
+            "CPU LOAD · {}/{} core{}{}",
+            cpu_count.min(VISIBLE_CPU_CORES),
+            cpu_count,
+            if cpu_count == 1 { "" } else { "s" },
+            temperature.unwrap_or_default()
+        )
+    } else {
+        format!("CPU LOAD · unavailable{}", temperature.unwrap_or_default())
+    };
+    let mut lines = vec![Spans::from(Span::styled(
+        truncate(&cpu_title, width),
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    let detailed = inner.height >= 13;
+    if detailed {
+        lines.push(Spans::from(vec![
+            Span::styled("green <60%  ", Style::default().fg(Color::Green)),
+            Span::styled("yellow 60-85%  ", Style::default().fg(Color::LightYellow)),
+            Span::styled("red >85%", Style::default().fg(Color::Red)),
+        ]));
+    }
+    let loads = a.performance_meter.cpu_loads();
+    for (index, value) in loads.into_iter().enumerate() {
+        lines.push(cpu_meter_line(index, value, index < cpu_count, width));
+    }
+    if detailed {
+        lines.push(Spans::from(""));
+    }
+
+    let availability = a.performance_meter.audio_availability();
+    let clipping = a.performance_meter.clipping(Instant::now());
+    let signal_fault = a.performance_meter.non_finite() > 0;
+    let mut audio_heading = vec![Span::styled(
+        "STEREO VU · FINAL OUT · dBFS",
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    )];
+    if clipping {
+        audio_heading.push(Span::styled(
+            "  CLIP!",
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+        ));
+    } else if signal_fault {
+        audio_heading.push(Span::styled(
+            "  FAULT!",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ));
+    }
+    lines.push(Spans::from(audio_heading));
+    if detailed {
+        lines.push(Spans::from(Span::styled(
+            audio_scale_line(width),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    let levels = if matches!(
+        availability,
+        AudioAvailability::GraphActive | AudioAvailability::Presentation
+    ) {
+        a.performance_meter.audio_levels()
+    } else {
+        [AudioLevel::default(); 2]
+    };
+    lines.push(audio_meter_line('L', levels[0], width));
+    lines.push(audio_meter_line('R', levels[1], width));
+    let route = match availability {
+        AudioAvailability::GraphActive => "Owned graph master · source + wet returns",
+        AudioAvailability::DirectUnavailable => "Direct unavailable · no safe meter tap",
+        AudioAvailability::Stopped => "Unavailable · managed engine is stopped",
+        AudioAvailability::Presentation => "Presentation data · no JACK audio sampled",
+    };
+    lines.push(Spans::from(Span::styled(
+        truncate(route, width),
+        Style::default().fg(match availability {
+            AudioAvailability::GraphActive => Color::Green,
+            AudioAvailability::Presentation => Color::LightYellow,
+            AudioAvailability::Stopped | AudioAvailability::DirectUnavailable => Color::DarkGray,
+        }),
+    )));
+    if detailed {
+        lines.push(Spans::from(vec![
+            Span::styled("█ RMS smoothed  ", Style::default().fg(Color::Green)),
+            Span::styled("│ peak hold  ", Style::default().fg(Color::LightYellow)),
+            Span::styled("· scale", Style::default().fg(Color::Red)),
+        ]));
+    }
+    if detailed && a.performance_meter.is_presentation() {
+        lines.push(Spans::from(Span::styled(
+            "Deterministic screenshot preview",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    lines.truncate(usize::from(inner.height));
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(" MTR · PERFORMANCE ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        ),
+        body,
+    );
 }
 
 fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
@@ -6217,7 +6481,9 @@ fn draw_status_bar<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     if z.height == 0 {
         return;
     }
-    let bpm = if matches!(
+    let bpm = if a.screen == Screen::Meter {
+        "-60..0 dBFS".into()
+    } else if matches!(
         a.screen,
         Screen::Tracker
             | Screen::TrackerFiles
@@ -7270,6 +7536,7 @@ pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
         ("shr-daw-drum-patterns.png", Screen::TrackerFiles),
         ("shr-daw-ft2-loop.png", Screen::TrackerLoop),
         ("shr-daw-audio-recorder.png", Screen::AudioRecorder),
+        ("shr-daw-performance-meter.png", Screen::Meter),
     ];
     let mut frames = Vec::new();
     for (name, screen) in screens {
@@ -7435,6 +7702,23 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
                 path: Some(PathBuf::from("recordings/dusk-project-001.wav")),
                 error: None,
             });
+        }
+        Screen::Meter => {
+            app.performance_meter.seed_presentation(
+                [Some(18.0), Some(43.0), Some(67.0), Some(91.0)],
+                [
+                    AudioLevel {
+                        rms_dbfs: -16.8,
+                        peak_dbfs: -5.4,
+                    },
+                    AudioLevel {
+                        rms_dbfs: -12.6,
+                        peak_dbfs: -1.8,
+                    },
+                ],
+                Instant::now(),
+            );
+            app.status = "passive meter · RESET clears peak holds".into();
         }
         _ => {}
     }
@@ -7626,6 +7910,99 @@ mod tests {
         render(40, 20, Screen::AudioRecorder);
         render(40, 20, Screen::FxRack);
         render(40, 20, Screen::FxEditor);
+        render(40, 20, Screen::Meter);
+    }
+
+    #[test]
+    fn meter_renders_deterministic_40x20_regions_and_honest_route_label() {
+        let p = presets();
+        let mut a = app(&p);
+        configure_screenshot(&mut a, Screen::Meter);
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let text = buffer
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        for expected in [
+            "MTR · PERFORMANCE",
+            "CPU LOAD",
+            "STEREO VU",
+            "FINAL OUT",
+            "dBFS",
+            "Presentation data",
+        ] {
+            assert!(text.contains(expected), "missing {expected:?}");
+        }
+        for color in [Color::Green, Color::LightYellow, Color::Red] {
+            assert!(buffer.content.iter().any(|cell| cell.fg == color));
+        }
+    }
+
+    #[test]
+    fn meter_controller_entry_and_exit_return_exactly_to_presets() {
+        let p = presets();
+        let mut a = app(&p);
+        let open = navigation::slot(Screen::Presets, MenuContext::Normal, 2, 0)
+            .and_then(|slot| slot.dispatch())
+            .unwrap();
+        assert_eq!(open, Action::OpenMeter);
+        assert!(!perform(open, &mut a, Path::new("/none"), None));
+        assert_eq!(a.screen, Screen::Meter);
+        assert_eq!(
+            navigation::pages(a.screen, a.menu_context())[0].label,
+            "OPS"
+        );
+        let exit = navigation::slot(a.screen, a.menu_context(), 3, 3)
+            .and_then(|slot| slot.dispatch())
+            .unwrap();
+        assert_eq!(exit, Action::Back);
+        assert!(!perform(exit, &mut a, Path::new("/none"), None));
+        assert_eq!(a.screen, Screen::Presets);
+    }
+
+    #[test]
+    fn meter_compacts_without_losing_cpu_or_stereo_bars_at_38x14() {
+        let p = presets();
+        let mut a = app(&p);
+        configure_screenshot(&mut a, Screen::Meter);
+        let backend = TestBackend::new(38, 14);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        for expected in ["CPU LOAD", "0 [", "3 [", "STEREO VU", "L [", "R ["] {
+            assert!(text.contains(expected), "missing {expected:?}");
+        }
+    }
+
+    #[test]
+    fn meter_labels_direct_output_unavailable_without_inventing_levels() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Meter;
+        a.performance_meter
+            .set_audio_unavailable(AudioAvailability::DirectUnavailable);
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        assert!(text.contains("Direct unavailable"));
+        assert!(!text.contains("Owned graph master"));
     }
     #[test]
     fn owned_graph_route_changes_require_stopped_transport_and_recording() {
@@ -7662,6 +8039,7 @@ mod tests {
         render(38, 14, Screen::AudioRecorder);
         render(38, 14, Screen::FxRack);
         render(38, 14, Screen::FxEditor);
+        render(38, 14, Screen::Meter);
         render(30, 8, Screen::Presets);
         render(30, 8, Screen::Tracker)
     }

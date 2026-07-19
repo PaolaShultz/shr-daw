@@ -21,6 +21,7 @@ mod loop_player;
 mod midi;
 mod navigation;
 mod pads;
+mod performance_meter;
 mod preset;
 mod recording;
 mod scale;

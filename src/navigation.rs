@@ -20,12 +20,13 @@ pub enum Screen {
     AudioRecorder,
     FxRack,
     FxEditor,
+    Meter,
 }
 
 impl Screen {
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 16;
     #[cfg(test)]
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Presets,
         Self::Playback,
         Self::Ideas,
@@ -41,6 +42,7 @@ impl Screen {
         Self::AudioRecorder,
         Self::FxRack,
         Self::FxEditor,
+        Self::Meter,
     ];
 
     pub const fn index(self) -> usize {
@@ -60,6 +62,7 @@ impl Screen {
             Self::AudioRecorder => 12,
             Self::FxRack => 13,
             Self::FxEditor => 14,
+            Self::Meter => 15,
         }
     }
 
@@ -80,6 +83,7 @@ impl Screen {
             Self::AudioRecorder => "AUDIO",
             Self::FxRack => "FX RACK",
             Self::FxEditor => "FX EDIT",
+            Self::Meter => "MTR",
         }
     }
 }
@@ -112,6 +116,8 @@ pub enum Action {
     OpenAudioRecorder,
     OpenFxRack,
     OpenFxEditor,
+    OpenMeter,
+    ResetMeter,
     FxAdd,
     FxRemove,
     FxMoveUp,
@@ -348,7 +354,7 @@ const PRESETS: [MenuPage; 4] = [
     page(
         "NAV",
         [
-            off(""),
+            on("MTR", Action::OpenMeter),
             on("IDEAS", Action::OpenIdeas),
             on("FT2", Action::OpenTracker),
             on("AUDIO", Action::OpenAudioRecorder),
@@ -1038,6 +1044,24 @@ const FX_EDITOR: [MenuPage; 4] = [
     ),
 ];
 
+const METER: [MenuPage; 4] = [
+    page(
+        "OPS",
+        [on("RESET", Action::ResetMeter), off(""), off(""), off("")],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+
 const HELP: [MenuPage; 4] = [
     page(
         "OPS",
@@ -1086,6 +1110,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::AudioRecorder, _) => &AUDIO,
         (Screen::FxRack, _) => &FX_RACK,
         (Screen::FxEditor, _) => &FX_EDITOR,
+        (Screen::Meter, _) => &METER,
     }
 }
 
@@ -1186,6 +1211,7 @@ mod tests {
             (Screen::TrackerLoop, MenuContext::LoopLibrary),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
+            (Screen::Meter, MenuContext::Normal),
         ];
         for (screen, context) in contexts {
             let menu = pages(screen, context);
@@ -1310,6 +1336,7 @@ mod tests {
             (Screen::TrackerLoop, MenuContext::LoopLibrary),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
+            (Screen::Meter, MenuContext::Normal),
         ];
         let reachable = contexts
             .into_iter()
@@ -1337,6 +1364,8 @@ mod tests {
             Action::OpenTrackerLoop,
             Action::OpenTrackerLoopAlign,
             Action::OpenAudioRecorder,
+            Action::OpenMeter,
+            Action::ResetMeter,
             Action::TapTempo,
             Action::ResetParameters,
             Action::BeginRecord,

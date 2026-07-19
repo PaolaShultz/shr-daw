@@ -9,7 +9,8 @@ implemented.
 
 | Screen or mode | Existing user-facing operations and input paths |
 |---|---|
-| Presets | Select previous/next, page up/down, first/last (keyboard, wheel, encoder); previous/next engine (keyboard/pads); load selected sound (keyboard, mouse, encoder/pad); tracker, ideas, and audio screens (keyboard/pads); stop synth/panic. Application exit remains keyboard-only. |
+| Presets | Select previous/next, page up/down, first/last (keyboard, wheel, encoder); previous/next engine (keyboard/pads); load selected sound (keyboard, mouse, encoder/pad); MTR, tracker, ideas, and audio screens (controller/keyboard as available); stop synth/panic. Application exit remains keyboard-only. |
+| MTR | Passively inspect four per-core CPU bars, optional configured CPU temperature, and the owned graph's smoothed stereo final-output RMS/peak/clip meter; reset presentation holds; back, help, and panic. Direct audio remains direct and is explicitly unmetered. |
 | Playback | Reset the 12 mapped parameters in place (encoder press); record/stop/finish-and-save MIDI, play/stop take, save idea (keyboard/pads/mouse); presets/back, ideas, tracker, audio, and FX rack; tap tempo; stop/panic. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea (keyboard, wheel, encoder); inspect (keyboard/mouse/pad); load with replace confirmation (encoder); play take; delete with repeat confirmation; record/stop MIDI; save timestamped or numbered idea; back/cancel, tracker, audio, presets, panic. |
 | FT2 normal | Previous/next row (keyboard/encoder); order/lane movement; play here/from start; prominent Play/Rec/Edit/N00B MODE page; child Tools screen for pages, files, loop, mute, and page switching. |
@@ -73,8 +74,10 @@ Blank physical positions and wholly empty pages are omitted.
 |---|---|---|---|---|---|
 | Presets | Ops | Load | Page up | Page down | First |
 | Presets | Engine | Engine− | Engine+ | — | Last |
-| Presets | Nav | — | Ideas | FT2 | Audio |
+| Presets | Nav | MTR | Ideas | FT2 | Audio |
 | Presets | Sys | Panic | Help | — | — |
+| MTR | Ops | Reset holds | — | — | — |
+| MTR | Sys | Panic | — | Help | Exit |
 | Playback | Ops | Record MIDI | Rec end | Take | Save |
 | Playback | Sound | Reset controls | Finish + save | Tap tempo | FX |
 | Playback | Nav | Presets | Ideas | FT2 | Audio |

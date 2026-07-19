@@ -3,6 +3,7 @@
 [Controller basics](#controller-basics)
 [Presets and playback](#presets-and-playback)
 [Insert effects](#insert-effects)
+[Performance meters](#performance-meters)
 [MIDI ideas](#midi-ideas)
 [FT2 tracker](#ft2-tracker)
 [Pages and hardware MIDI](#pages-and-hardware-midi)
@@ -46,6 +47,19 @@ bottom rows show input/output peak and RMS, clip/non-finite counts, and
 compressor gain reduction when the owned graph is active. Stop transport and
 all recording before changing the rack. The rack is still saved when the
 opt-in audio graph is disabled, but direct playback will not process it.
+
+## Performance meters
+
+Presets NAV MTR, or keyboard m on Presets, opens a passive meter. CPU0–CPU3 use
+Linux counter changes: green is below 60%, yellow is 60–85%, and red is above
+85%. Configured CPU temperature is optional.
+
+Stereo bars show smoothed RMS and a peak-hold marker on a −60 to 0 dBFS scale.
+CLIP is held in red. RESET clears only the visible peak and clip holds.
+
+FINAL OUT is available only for the active owned graph master. It covers the
+managed source and its wet returns, not WAV loops, inputs, hardware, or other
+JACK clients. Direct playback reports the meter unavailable and stays direct.
 
 ## MIDI ideas
 

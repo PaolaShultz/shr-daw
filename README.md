@@ -54,6 +54,16 @@ software instruments, each with its own independent patch list.
 
 Play, record, review, and save MIDI ideas.
 
+### Performance Meter
+
+<img src="docs/images/shr-daw-performance-meter.png" alt="MTR performance screen with four CPU bars and stereo output meters" width="100%">
+
+MTR is a passive performance view with four per-core CPU bars and an optional
+CPU temperature, plus smoothed stereo RMS, peak hold, clip warning, and honest
+dBFS values. The stereo final-output reading is available only when SHR-DAW's
+owned audio graph is active. Direct playback has no safe passive tap, so MTR
+shows output metering as unavailable instead of changing or guessing the route.
+
 ### FT2 Pattern Editor
 
 <img src="docs/images/shr-daw-ft2-pattern.png" alt="FT2 Pattern editor with four lanes of note data" width="100%">
@@ -199,7 +209,8 @@ editable drum-pattern seeds. `shr list` exercises the real preset discovery
 path; the **Drum Patterns** screen loads and expands the real rhythm files into
 2-, 4-, or 8-bar Pattern data. `shr screenshots` uses explicitly seeded
 in-memory presentation states to exercise the real 40×20 renderer; it does not
-simulate audio or connected hardware.
+simulate audio or connected hardware. The MTR frame labels its deterministic
+meter values as presentation data rather than measured CPU or JACK results.
 
 No WAV, private Idea, recording, or finished demo Project is bundled. The final
 Build Week Project remains a human listening/performance task until its sounds,
