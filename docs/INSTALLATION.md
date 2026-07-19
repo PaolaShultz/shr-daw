@@ -12,7 +12,7 @@ The supported family is Debian-based Linux. Rust 1.85, Cargo, a C build
 toolchain, `pkg-config`, Python 3, ALSA development/runtime tools, and JACK2 are required
 to build the complete binary. A running JACK server is optional for browsing
 and editing but required for software-instrument audio, WAV-loop playback, and
-stereo recording. synthv1, Yoshimi, and FluidSynth/TimGM are separate optional
+multitrack recording. synthv1, Yoshimi, and FluidSynth/TimGM are separate optional
 sound engines at runtime; the default installer includes all three so their
 catalogs are useful immediately. MIDI controllers, external instruments, audio
 interfaces, and a 480×320 display are optional hardware.

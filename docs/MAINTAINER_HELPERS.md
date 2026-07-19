@@ -21,6 +21,7 @@ assumptions.
 | `render-readme-screenshots.py` | Regenerate or validate real TUI documentation images | Writes tracked PNGs below `docs/images/` only |
 | `generate_cleared_presets.sh` | Reproduce the authored public synthv1 bank | Creates named preset files only when they do not already exist |
 | `generate_demo_songs.py` | Reproduce or validate cleared public-domain demos | `--write` replaces only tracked demo outputs; normal mode is read-only and rejects changes/extras |
+| `shr recorder-stress` | Non-audibly exercise the production multistem buffer/writer without JACK | Creates one unique synthetic take below an explicit destination |
 
 None of the setup, tuning, preset, or screenshot helpers starts JACK, a synth
 engine, MIDI playback, or an audible test. `local.sh` is the exception only in
@@ -493,3 +494,37 @@ Match validation to the helper's effects:
 Before any commit, ensure `git ls-files | rg '^user/'` produces no output. Never
 stage private configuration, Ideas, Projects, recordings, downloads, or the
 private Codex skill below `user/`.
+
+## Synthetic multitrack recorder stress
+
+### Invocation
+
+```sh
+shr recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]
+```
+
+`DEST` is required and must be an explicit non-root directory. Defaults are 10
+seconds, 18 channels, 48000 Hz, and 128 frames/callback. Bounds are 1–86400
+seconds, 1–64 channels, 8000–384000 Hz, and 16–65536 callback frames.
+
+The command does not load runtime configuration, open/start JACK, register a
+port, transmit MIDI, start a synth, or produce sound. It paces deterministic
+distinguishable samples at the requested real-time rate through the same
+interleaved SPSC ring, mono-WAV writer, manifest, fsync, and no-replace take
+publication used by live capture. It reports total frames, wall time, aggregate
+write throughput, writer high-water frames, drops, overflows, channel-identity
+verification, and the exact published session.
+
+The only persistent side effect is one uniquely named
+`synthetic-multitrack*.take` below `DEST`. Existing names are never replaced.
+Temporary work is one matching `*.take.part` owned by this invocation; the
+recorder never cleans the destination, follows a temporary symlink, or removes
+unrelated content. A successful take remains for inspection. Use a dedicated
+temporary destination when the caller intends to remove it later, and validate
+that exact expanded path before doing so.
+
+This helper exists because a fast in-memory mock would not exercise Raspberry
+Pi storage scheduling, the real bounded transfer, per-stem conversion, flush,
+manifest, or atomic publication. It is evidence for hardware-independent
+capacity and file correctness, never evidence that an MR18 or any other
+physical interface passed.

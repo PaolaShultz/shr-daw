@@ -44,7 +44,8 @@ The typed graph model reserves source and sink kinds for a loop player, live
 input, hardware returns/sends, and recording taps. The current graph client
 does not instantiate those boundaries. The WAV loop player remains a separate
 owned client on its direct route and now meters only its own rendered callback
-as `LOOP OUT`; the stereo recorder remains a separate capture client; external
+as `LOOP OUT`; the synchronized multitrack recorder remains a separate capture
+client; external
 instruments have no SHR-owned audio return; and there is no software input
 monitoring or hardware insert. Those are present topology limitations, not
 hidden paths through the master meter.

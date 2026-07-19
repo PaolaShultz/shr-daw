@@ -17,6 +17,8 @@ const JACK_NO_START_SERVER: c_uint = 1;
 
 pub(crate) type ProcessCallback = unsafe extern "C" fn(c_uint, *mut c_void) -> c_int;
 pub(crate) type ShutdownCallback = unsafe extern "C" fn(*mut c_void);
+pub(crate) type XrunCallback = unsafe extern "C" fn(*mut c_void) -> c_int;
+pub(crate) type PortConnectCallback = unsafe extern "C" fn(c_uint, c_uint, c_int, *mut c_void);
 pub(crate) type PortGetBuffer = unsafe extern "C" fn(*mut Port, c_uint) -> *mut c_void;
 
 #[repr(C)]
@@ -40,11 +42,15 @@ type PortRegister = unsafe extern "C" fn(
 ) -> *mut Port;
 type SetProcess = unsafe extern "C" fn(*mut OpaqueClient, ProcessCallback, *mut c_void) -> c_int;
 type OnShutdown = unsafe extern "C" fn(*mut OpaqueClient, ShutdownCallback, *mut c_void);
+type SetXrun = unsafe extern "C" fn(*mut OpaqueClient, XrunCallback, *mut c_void) -> c_int;
+type SetPortConnect =
+    unsafe extern "C" fn(*mut OpaqueClient, PortConnectCallback, *mut c_void) -> c_int;
 type Activate = unsafe extern "C" fn(*mut OpaqueClient) -> c_int;
 type Deactivate = unsafe extern "C" fn(*mut OpaqueClient) -> c_int;
 type Connect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
 type Disconnect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
 type PortName = unsafe extern "C" fn(*const Port) -> *const c_char;
+type PortId = unsafe extern "C" fn(*const Port) -> c_uint;
 type SampleRate = unsafe extern "C" fn(*const OpaqueClient) -> c_uint;
 
 struct Api {
@@ -53,11 +59,14 @@ struct Api {
     port_register: PortRegister,
     set_process: SetProcess,
     on_shutdown: OnShutdown,
+    set_xrun: SetXrun,
+    set_port_connect: SetPortConnect,
     activate: Activate,
     deactivate: Deactivate,
     connect: Connect,
     disconnect: Disconnect,
     port_name: PortName,
+    port_id: PortId,
     sample_rate: SampleRate,
     port_get_buffer: PortGetBuffer,
 }
@@ -99,11 +108,14 @@ impl Client {
                         port_register: symbol(handle, b"jack_port_register\0")?,
                         set_process: symbol(handle, b"jack_set_process_callback\0")?,
                         on_shutdown: symbol(handle, b"jack_on_shutdown\0")?,
+                        set_xrun: symbol(handle, b"jack_set_xrun_callback\0")?,
+                        set_port_connect: symbol(handle, b"jack_set_port_connect_callback\0")?,
                         activate: symbol(handle, b"jack_activate\0")?,
                         deactivate: symbol(handle, b"jack_deactivate\0")?,
                         connect: symbol(handle, b"jack_connect\0")?,
                         disconnect: symbol(handle, b"jack_disconnect\0")?,
                         port_name: symbol(handle, b"jack_port_name\0")?,
+                        port_id: symbol(handle, b"jack_port_id\0")?,
                         sample_rate: symbol(handle, b"jack_get_sample_rate\0")?,
                         port_get_buffer: symbol(handle, b"jack_port_get_buffer\0")?,
                     },
@@ -191,6 +203,31 @@ impl Client {
         unsafe { (self.api.on_shutdown)(self.client, callback, argument) };
     }
 
+    /// Register a lock-free xrun notification before activation.
+    pub(crate) unsafe fn set_xrun_callback(
+        &self,
+        callback: XrunCallback,
+        argument: *mut c_void,
+    ) -> Result<()> {
+        if unsafe { (self.api.set_xrun)(self.client, callback, argument) } != 0 {
+            bail!("set JACK xrun callback");
+        }
+        Ok(())
+    }
+
+    /// Register a graph connection notification. The callback may only touch
+    /// preallocated lock-free state.
+    pub(crate) unsafe fn set_port_connect_callback(
+        &self,
+        callback: PortConnectCallback,
+        argument: *mut c_void,
+    ) -> Result<()> {
+        if unsafe { (self.api.set_port_connect)(self.client, callback, argument) } != 0 {
+            bail!("set JACK port-connect callback");
+        }
+        Ok(())
+    }
+
     pub(crate) fn port_get_buffer(&self) -> PortGetBuffer {
         self.api.port_get_buffer
     }
@@ -231,6 +268,13 @@ impl Client {
 
     pub(crate) fn port_name_string(&self, port: *mut Port) -> Result<String> {
         Ok(self.port_name(port)?.to_string_lossy().into_owned())
+    }
+
+    pub(crate) fn port_id(&self, port: *mut Port) -> Result<u32> {
+        if port.is_null() {
+            bail!("JACK returned a null port");
+        }
+        Ok(unsafe { (self.api.port_id)(port) })
     }
 
     /// Ensure an exact named connection exists. The boolean is true only when

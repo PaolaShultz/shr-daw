@@ -107,9 +107,9 @@ hiding both behaviors behind a generic “effect” switch.
 
 For a managed software engine, SHR-DAW now owns a bounded internal stereo sum:
 the source's dry path and two optional wet returns meet once, then pass through
-the master rack to configured playback. The WAV loop client remains on its
-independent direct route, and the recorder still captures one configured stereo
-input pair.
+the master rack to configured playback. The WAV loop client and synchronized
+multitrack recorder remain independently owned direct clients; recorded stems
+do not pass through or monitor through this graph.
 
 The graph uses internal preallocated mixer, send-tap, and return nodes rather
 than relying on implicit JACK summing. That makes independent send/return gain,

@@ -49,6 +49,13 @@ configuration, or the architecture contracts.
 - [Audio graph and DSP contract](AUDIO_GRAPH.md) — Project effects data, exact
   parameter schemas, real-time limits, routing publication, meters, bypass,
   tails, topology limits, and curation gates.
+- [Synchronized multitrack recording](MULTITRACK_RECORDING.md) — exact JACK
+  source mapping, shared callback timeline, mono stems, manifests, recovery,
+  and the non-audible stress helper.
+- [MR18 acceptance plan](MR18_TEST_PLAN.md) — printable, safety-first 18-channel
+  48 kHz procedure for the first real hardware test.
+- [Three-minute multitrack presentation](MULTITRACK_PRESENTATION.md) — truthful
+  hardware and synthetic versions with exact on-screen evidence.
 - [Third-party software and sounds](../THIRD_PARTY.md) — licences, credits,
   provenance, and redistribution rules.
 - [New patches and sounds](NEW_PATCHES.md) — synthv1 schema and authoring

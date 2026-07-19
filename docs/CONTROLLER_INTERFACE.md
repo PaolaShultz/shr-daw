@@ -26,7 +26,7 @@ implemented.
 | Pattern setup | Choose 3/4 or 4/4 and pattern size; confirm new/destructive resize, cancel, or clear while retaining the current size. |
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
-| Audio recorder | Start/toggle recording, stop/finalize, inspect status, back, open presets/ideas/FT2, and panic. |
+| Audio recorder | Select and name a track; assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; back, open presets/ideas/FT2, and panic. |
 | FX rack/editor | Choose source, AUX 1, AUX 2, or master; add/select/remove/bypass/reorder bounded effects; edit strict named physical-unit parameters; set independent send level, pre/post point, and return level; inspect peak/RMS/clip/non-finite/gain-reduction meters; and panic. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
@@ -148,8 +148,9 @@ Blank physical positions and wholly empty pages are omitted.
 | Tracks | Sys | Panic | Stop | Help | Exit/cancel |
 | Target/channel editor | Ops | Confirm | — | — | — |
 | Target/channel editor | Sys | Panic | Stop | Help | Exit/cancel |
-| Audio recorder | Ops | Record/toggle | — | — | — |
-| Audio recorder | Nav | Presets | Ideas | FT2 | — |
+| Audio recorder | Ops | Record/toggle | Arm selected | Arm all resolved | Disarm all |
+| Audio recorder | Track | Previous track | Next track | Assign source | Name track |
+| Audio recorder | Nav | Refresh sources | Presets | Ideas | FT2 |
 | Audio recorder | Sys | Panic | Stop/finalize | Help | Exit |
 
 ## FT2 cell editor inventory and mapping

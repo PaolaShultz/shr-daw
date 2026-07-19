@@ -19,7 +19,7 @@ overrides are documented in [Installation](INSTALLATION.md).
 
 Repeated `midi.input`, `audio.output`, `audio.internal_output`, `yoshimi.preset_root`,
 `yoshimi.category`, `fluidsynth.soundfont`, `external_midi.channel`,
-`external_midi.percussion_note`, `capture.input`, and `loop.output` keys build
+`external_midi.percussion_note`, `capture.input`, `capture.track`, and `loop.output` keys build
 ordered lists. Empty optional values disable that choice. The current parser
 accepts:
 
@@ -33,7 +33,7 @@ accepts:
 | Managed MIDI/audio | `midi.autoconnect`, repeated `midi.input`; `audio.autoconnect`, exactly two preferred `audio.output` entries, ordered `audio.internal_output=NAME|LEFT|RIGHT` fallbacks, final optional `audio.headphone_output=NAME|LEFT|RIGHT`; optional `audio.engine_cpu` |
 | Owned graph | `audio.graph.enabled`, `.client`, `.maximum_callback_frames` (1–4096) |
 | External tracker MIDI | `external_midi.enabled`, `.client`, `.output`, `.max_tracks`, repeated `.channel`, `.melody_channel`, optional `.percussion_channel` and `.percussion_program`, `.percussion_input_base`, repeated `.percussion_note`, `.bank_select` (`off`, `cc0`, or `cc0+cc32`), `.program_changes`, `.send_transport`, `.default_tempo` (20–300), `.pattern_rows` (1–256), `.steps_per_beat` (1–16), `.live_thru`, `.profile`, `.gate_percent` (1–100), `.gesture_settle_ms` |
-| Stereo capture | `capture.directory`, `.client`, repeated `capture.input=NAME|LEFT|RIGHT`, `.ring_frames` (1024–4194304) |
+| Synchronized capture | `capture.directory`, `.client`, repeated `capture.track=ID|LABEL|GROUP|ROLE|ARMED|EXACT_SOURCE`, legacy stereo `capture.input=NAME|LEFT|RIGHT`, `.ring_frames` (1024–4194304), `.maximum_callback_frames` (16–65536) |
 | WAV loop | `loop.client`, `loop.import_directory`, exactly two repeated `loop.output` entries when playback is used |
 
 Boolean values are `true` or `false`; numbers and structured entries are

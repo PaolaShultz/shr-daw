@@ -9,7 +9,7 @@
 SHR-DAW turns a Raspberry Pi, a 40×20 terminal, and optional MIDI gear into a
 focused music workstation. Play software or external instruments, build FT2
 Patterns and Arrangements, use effects, import private loops, save MIDI ideas,
-and record stereo audio from a compact physical interface.
+and record synchronized multitrack audio from compatible JACK interfaces.
 
 Start with a Pi and computer keyboard. Add a MIDI controller, synth, audio
 interface, or dedicated screen when useful.
@@ -32,7 +32,7 @@ shr
 ```
 
 The browser and external-MIDI tracker work without JACK. Software-instrument
-audio, WAV loops, effects, and stereo recording require a running JACK server;
+audio, WAV loops, effects, and live recording require a running JACK server;
 SHR-DAW never starts or restarts it implicitly. Continue with
 [First run](docs/FIRST_RUN.md).
 
@@ -129,11 +129,15 @@ Name, save, preview, and safely clean up Projects and Patterns.
 Import private loops, align tempo and beat region, and monitor that WAV alone
 on the separate `LOOP OUT` meter.
 
-### Stereo Recorder
+### Synchronized Multitrack Recorder
 
-<img src="docs/images/shr-daw-audio-recorder.png" alt="Stereo recorder screen with input ports and recording status" width="100%">
+<img src="docs/images/shr-daw-audio-recorder.png" alt="Compact synchronized multitrack recorder with armed, ready, and missing inputs" width="100%">
 
-Capture a configured JACK stereo input as a 24-bit WAV file.
+Name, map, and arm exact JACK inputs, then capture one shared timeline as
+separate 24-bit mono stems plus a versioned session manifest. Missing preferred
+hardware remains missing instead of silently falling back. See [multitrack
+recording](docs/MULTITRACK_RECORDING.md) and the concrete [MR18 acceptance
+plan](docs/MR18_TEST_PLAN.md).
 
 ## Optional hardware
 

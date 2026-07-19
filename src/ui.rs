@@ -1,7 +1,7 @@
 use crate::audio_graph::{
     EffectId, EffectKind, InsertRack, ProjectAuxRouting, SendPoint, MAX_AUX_BUSES,
 };
-use crate::audio_recorder::{AudioRecorder, RecorderStatus};
+use crate::audio_recorder::{AudioRecorder, RecorderStatus, RecorderTrackStatus};
 use crate::chord::HeldNotes;
 use crate::config::{BankSelectMode, ExternalMidiConfig, RuntimeConfig};
 use crate::control::{parameter_color, CONTROLS, VOLUME_CC};
@@ -323,6 +323,7 @@ struct App {
     song: Song,
     song_file_stem: Option<String>,
     project_name_input: Option<String>,
+    audio_track_name_input: Option<String>,
     song_list: Vec<String>,
     song_selected: usize,
     tracker_order: usize,
@@ -356,6 +357,8 @@ struct App {
     page_target_selected: usize,
     page_channel_draft: u8,
     audio_recorder: AudioRecorder,
+    capture_sources: Vec<String>,
+    audio_track_selected: usize,
     loop_player: crate::loop_player::LoopPlayer,
     loop_imports: Vec<PathBuf>,
     loop_selected: usize,
@@ -394,6 +397,11 @@ struct TrackerIo {
     input: engine::SharedTrackerInput,
 }
 
+struct AudioPorts {
+    playback: Vec<String>,
+    capture_sources: Vec<String>,
+}
+
 impl App {
     fn new(
         catalogs: &[Catalog],
@@ -402,7 +410,7 @@ impl App {
         midi_backend: engine::SharedBackend,
         tracker_io: TrackerIo,
         mut config: RuntimeConfig,
-        available_audio_ports: &[String],
+        audio_ports: AudioPorts,
     ) -> Self {
         let backend_index = catalogs
             .iter()
@@ -427,8 +435,9 @@ impl App {
         if let Ok(mut input) = tracker_io.input.lock() {
             *input = Some(tracker_live_input.clone());
         }
-        let audio_recorder = AudioRecorder::new(config.capture.clone());
-        let resolved_audio = config.resolve_audio_route(available_audio_ports);
+        let audio_recorder =
+            AudioRecorder::new(config.capture.clone(), audio_ports.capture_sources.clone());
+        let resolved_audio = config.resolve_audio_route(&audio_ports.playback);
         let mut loop_config = config.loop_player.clone();
         if resolved_audio.outputs.len() == 2 {
             loop_config.outputs = resolved_audio.outputs.clone();
@@ -478,6 +487,7 @@ impl App {
             song,
             song_file_stem: None,
             project_name_input: None,
+            audio_track_name_input: None,
             song_list: sequencer::list(&sequencer::songs_dir()),
             song_selected: 0,
             tracker_order: 0,
@@ -511,6 +521,8 @@ impl App {
             page_target_selected: 0,
             page_channel_draft: 0,
             audio_recorder,
+            capture_sources: audio_ports.capture_sources,
+            audio_track_selected: 0,
             loop_player,
             loop_imports: Vec::new(),
             loop_selected: 0,
@@ -3336,6 +3348,175 @@ impl App {
             self.sync_tracker_route();
         }
     }
+    fn ensure_explicit_capture_tracks(&mut self) {
+        if self.config.capture.tracks.is_empty() {
+            self.config.capture.tracks = self.config.capture.effective_tracks();
+        }
+        self.audio_track_selected = self
+            .audio_track_selected
+            .min(self.config.capture.tracks.len().saturating_sub(1));
+    }
+
+    fn persist_capture_tracks(&mut self, state: &Path, message: String) {
+        let path = state.join("shsynth.conf");
+        let result = self.config.save(&path).and_then(|()| {
+            self.audio_recorder
+                .update_configuration(self.config.capture.clone(), self.capture_sources.clone())
+        });
+        self.status = match result {
+            Ok(()) => message,
+            Err(error) => format!("capture configuration: {error}"),
+        };
+    }
+
+    fn move_audio_track(&mut self, direction: i8) {
+        let length = self.audio_recorder.status().tracks.len();
+        self.audio_track_selected = if direction < 0 {
+            self.audio_track_selected.saturating_sub(1)
+        } else {
+            (self.audio_track_selected + 1).min(length.saturating_sub(1))
+        };
+    }
+
+    fn toggle_audio_track_arm(&mut self, state: &Path) {
+        if self.audio_recorder.status().recording {
+            self.status = "stop the take before changing track arms".into();
+            return;
+        }
+        self.ensure_explicit_capture_tracks();
+        let Some(track) = self
+            .config
+            .capture
+            .tracks
+            .get_mut(self.audio_track_selected)
+        else {
+            self.status = "no recording track selected".into();
+            return;
+        };
+        track.armed = !track.armed;
+        let message = format!(
+            "{} · {}",
+            track.label,
+            if track.armed { "armed" } else { "disarmed" }
+        );
+        self.persist_capture_tracks(state, message);
+    }
+
+    fn set_all_audio_arms(&mut self, state: &Path, armed: bool) {
+        if self.audio_recorder.status().recording {
+            self.status = "stop the take before changing track arms".into();
+            return;
+        }
+        self.ensure_explicit_capture_tracks();
+        let mut armed_count = 0;
+        let mut missing_count = 0;
+        for track in &mut self.config.capture.tracks {
+            let resolved = !track.preferred_source.is_empty()
+                && self
+                    .capture_sources
+                    .iter()
+                    .any(|source| source == &track.preferred_source);
+            track.armed = armed && resolved;
+            armed_count += usize::from(track.armed);
+            missing_count += usize::from(armed && !resolved);
+        }
+        let message = if armed {
+            format!("armed {armed_count} resolved tracks · {missing_count} missing left safe")
+        } else {
+            "all recording tracks disarmed".into()
+        };
+        self.persist_capture_tracks(state, message);
+    }
+
+    fn refresh_audio_sources(&mut self) {
+        if self.audio_recorder.status().recording {
+            self.status = "source refresh waits until the take is stopped".into();
+            return;
+        }
+        self.capture_sources = engine::jack_capture_sources();
+        let result = self
+            .audio_recorder
+            .update_configuration(self.config.capture.clone(), self.capture_sources.clone());
+        self.status = match result {
+            Ok(()) => format!(
+                "found {} JACK recording sources",
+                self.capture_sources.len()
+            ),
+            Err(error) => format!("source refresh: {error}"),
+        };
+    }
+
+    fn assign_audio_source(&mut self, state: &Path) {
+        if self.audio_recorder.status().recording {
+            self.status = "stop the take before assigning a source".into();
+            return;
+        }
+        self.capture_sources = engine::jack_capture_sources();
+        self.ensure_explicit_capture_tracks();
+        let Some(track) = self
+            .config
+            .capture
+            .tracks
+            .get_mut(self.audio_track_selected)
+        else {
+            self.status = "no recording track selected".into();
+            return;
+        };
+        let next = if track.preferred_source.is_empty() {
+            self.capture_sources.first().cloned()
+        } else {
+            self.capture_sources
+                .iter()
+                .position(|source| source == &track.preferred_source)
+                .and_then(|index| self.capture_sources.get(index + 1).cloned())
+        };
+        track.preferred_source = next.unwrap_or_default();
+        let message = if track.preferred_source.is_empty() {
+            format!("{} source cleared · track is missing", track.label)
+        } else {
+            format!("{} source assigned deliberately", track.label)
+        };
+        self.persist_capture_tracks(state, message);
+    }
+
+    fn begin_audio_track_name(&mut self) {
+        if self.audio_recorder.status().recording {
+            self.status = "stop the take before naming a track".into();
+            return;
+        }
+        self.ensure_explicit_capture_tracks();
+        if let Some(track) = self.config.capture.tracks.get(self.audio_track_selected) {
+            self.audio_track_name_input = Some(track.label.clone());
+            self.status = "TRACK NAME · type, Enter confirms, Esc cancels".into();
+        }
+    }
+
+    fn commit_audio_track_name(&mut self, state: &Path) {
+        let Some(input) = self.audio_track_name_input.clone() else {
+            return;
+        };
+        let label = input.trim();
+        if label.is_empty()
+            || label.chars().any(char::is_control)
+            || label.contains('|')
+            || label.chars().count() > 64
+        {
+            self.status = "track name must be 1–64 printable characters without |".into();
+            return;
+        }
+        self.ensure_explicit_capture_tracks();
+        if let Some(track) = self
+            .config
+            .capture
+            .tracks
+            .get_mut(self.audio_track_selected)
+        {
+            track.label = label.into();
+            self.audio_track_name_input = None;
+            self.persist_capture_tracks(state, format!("track named {label}"));
+        }
+    }
+
     fn toggle_audio_recording(&mut self) {
         let result = if self.audio_recorder.status().recording {
             self.audio_recorder.stop()
@@ -4407,6 +4588,7 @@ fn app_loop(
         .map(engine::MidiRouter::tracker_input)
         .unwrap_or_else(|_| Arc::new(std::sync::Mutex::new(None)));
     let available_audio_ports = engine::jack_ports();
+    let capture_sources = engine::jack_capture_sources();
     let mut app = App::new(
         catalogs,
         output,
@@ -4417,7 +4599,10 @@ fn app_loop(
             input: tracker_input,
         },
         config.clone(),
-        &available_audio_ports,
+        AudioPorts {
+            playback: available_audio_ports,
+            capture_sources,
+        },
     );
     app.controller_layout = crate::pads::PadConfig::load(&state.join("controller.conf"))
         .unwrap_or_default()
@@ -4584,6 +4769,17 @@ fn perform(
     // modal confirmation owns the rest of the input dispatch.
     if action == Action::StopAll {
         a.stop_all(state);
+        return false;
+    }
+    if a.audio_track_name_input.is_some() {
+        match action {
+            Action::Activate => a.commit_audio_track_name(state),
+            Action::Back => {
+                a.audio_track_name_input = None;
+                a.status = "track naming cancelled".into();
+            }
+            _ => {}
+        }
         return false;
     }
     if a.project_name_input.is_some() {
@@ -5226,6 +5422,14 @@ fn perform(
             Ok(()) => a.status = "audio recording finalized".into(),
             Err(error) => a.status = format!("audio recorder: {error}"),
         },
+        Action::AudioToggleArm => a.toggle_audio_track_arm(state),
+        Action::AudioArmAll => a.set_all_audio_arms(state, true),
+        Action::AudioDisarmAll => a.set_all_audio_arms(state, false),
+        Action::AudioPreviousTrack => a.move_audio_track(-1),
+        Action::AudioNextTrack => a.move_audio_track(1),
+        Action::AudioAssignSource => a.assign_audio_source(state),
+        Action::AudioNameTrack => a.begin_audio_track_name(),
+        Action::AudioRefreshSources => a.refresh_audio_sources(),
         Action::FxAdd => a.add_effect(),
         Action::FxRemove => a.remove_effect(),
         Action::FxMoveUp => a.move_effect(-1),
@@ -5258,6 +5462,32 @@ fn perform(
     false
 }
 fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<MidiEvent>) -> bool {
+    if a.audio_track_name_input.is_some() {
+        match code {
+            KeyCode::Enter => a.commit_audio_track_name(state),
+            KeyCode::Esc => {
+                a.audio_track_name_input = None;
+                a.status = "track naming cancelled".into();
+            }
+            KeyCode::Backspace => {
+                if let Some(input) = a.audio_track_name_input.as_mut() {
+                    input.pop();
+                }
+            }
+            KeyCode::Char(character)
+                if !character.is_control()
+                    && a.audio_track_name_input
+                        .as_ref()
+                        .is_some_and(|input| input.chars().count() < 64) =>
+            {
+                if let Some(input) = a.audio_track_name_input.as_mut() {
+                    input.push(character);
+                }
+            }
+            _ => {}
+        }
+        return false;
+    }
     if a.project_name_input.is_some() {
         match code {
             KeyCode::Enter => a.commit_project_rename(),
@@ -5613,9 +5843,22 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             _ => {}
         }
     }
-    if a.screen == Screen::AudioRecorder && matches!(code, KeyCode::Char('r')) {
-        a.toggle_audio_recording();
-        return false;
+    if a.screen == Screen::AudioRecorder {
+        let action = match code {
+            KeyCode::Char('r') => Some(Action::AudioRecord),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::AudioPreviousTrack),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::AudioNextTrack),
+            KeyCode::Char(' ') => Some(Action::AudioToggleArm),
+            KeyCode::Char('a') => Some(Action::AudioArmAll),
+            KeyCode::Char('x') => Some(Action::AudioDisarmAll),
+            KeyCode::Char('s') => Some(Action::AudioAssignSource),
+            KeyCode::Char('n') => Some(Action::AudioNameTrack),
+            KeyCode::Char('f') => Some(Action::AudioRefreshSources),
+            _ => None,
+        };
+        if let Some(action) = action {
+            return perform(action, a, state, Some(tx));
+        }
     }
     match code {
         KeyCode::Char('q') => return true,
@@ -5941,6 +6184,17 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             ))
             .style(Style::default().fg(Color::Yellow))
             .block(Block::default().borders(Borders::ALL)),
+            area,
+        );
+    }
+    if let Some(input) = a.audio_track_name_input.as_deref() {
+        let z = f.size();
+        let area = rect(z.x + 2, z.y + 4, z.width.saturating_sub(4), 5);
+        f.render_widget(Clear, area);
+        f.render_widget(
+            Paragraph::new(format!("TRACK NAME\n{input}_\nEnter confirm · Esc cancel"))
+                .style(Style::default().fg(Color::Yellow))
+                .block(Block::default().borders(Borders::ALL)),
             area,
         );
     }
@@ -7884,9 +8138,9 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let s = a.audio_recorder.status();
     let state = if s.recording {
-        "● RECORDING"
+        "● SYNCHRONIZED TAKE"
     } else {
-        "STEREO RECORDER"
+        "MULTITRACK RECORDER"
     };
     f.render_widget(
         Paragraph::new(state).alignment(Alignment::Center).style(
@@ -7900,13 +8154,6 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         ),
         rect(z.x, z.y, z.width, 1),
     );
-    let input = a
-        .config
-        .capture
-        .inputs
-        .first()
-        .map(|i| format!("{}\nL {}\nR {}", i.name, i.left_port, i.right_port))
-        .unwrap_or_else(|| "No capture.input configured".into());
     let elapsed = format!(
         "{:02}:{:02}:{:02}",
         s.elapsed.as_secs() / 3600,
@@ -7917,18 +8164,87 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .path
         .as_deref()
         .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "no file".into());
-    let details=format!("\n{input}\n\nTime {elapsed}\nRate {} Hz · 24-bit stereo\nSize {:.1} MiB\nDropped {}\n{}\n{}",s.sample_rate,s.bytes as f64/1_048_576.0,s.dropped_frames,truncate(&path,z.width.saturating_sub(2) as usize),s.error.as_deref().unwrap_or("R/REC start · STOP finalize"));
-    f.render_widget(
-        Paragraph::new(details)
-            .alignment(Alignment::Center)
-            .style(
-                Style::default().fg(if s.error.is_some() || s.dropped_frames > 0 {
-                    Color::Yellow
-                } else {
+        .unwrap_or_else(|| "no saved take yet".into());
+    a.audio_track_selected = a.audio_track_selected.min(s.tracks.len().saturating_sub(1));
+    let selected = s.tracks.get(a.audio_track_selected);
+    let list_rows = 6usize.min(s.tracks.len());
+    let offset = a
+        .audio_track_selected
+        .saturating_add(1)
+        .saturating_sub(list_rows)
+        .min(s.tracks.len().saturating_sub(list_rows));
+    let mut lines = vec![Spans::from(format!(
+        "{elapsed} · {}/{} armed · {} Hz",
+        s.active_tracks,
+        s.tracks.len(),
+        s.sample_rate
+    ))];
+    if s.tracks.is_empty() {
+        lines.push(Spans::from("No capture tracks configured"));
+    } else {
+        for (index, track) in s.tracks.iter().enumerate().skip(offset).take(list_rows) {
+            let marker = if index == a.audio_track_selected {
+                ">"
+            } else {
+                " "
+            };
+            let arm = if track.armed { "●" } else { "○" };
+            let source = if track.resolved { "ready" } else { "missing" };
+            lines.push(Spans::from(Span::styled(
+                truncate(
+                    &format!("{marker}{arm} {:02} {} · {source}", index + 1, track.label),
+                    z.width.saturating_sub(1) as usize,
+                ),
+                Style::default().fg(if index == a.audio_track_selected {
+                    if track.resolved {
+                        Color::Green
+                    } else {
+                        Color::Yellow
+                    }
+                } else if track.armed {
                     Color::Gray
+                } else {
+                    Color::DarkGray
                 }),
-            ),
+            )));
+        }
+    }
+    if let Some(track) = selected {
+        let source = if track.preferred_source.is_empty() {
+            "unassigned".into()
+        } else {
+            track.preferred_source.clone()
+        };
+        let peak = track
+            .peak_dbfs
+            .map(|db| format!("{db:>5.1} dBFS"))
+            .unwrap_or_else(|| "no level".into());
+        lines.push(Spans::from(truncate(
+            &format!("Source {source}"),
+            z.width.saturating_sub(1) as usize,
+        )));
+        lines.push(Spans::from(format!("Selected meter {peak}")));
+    }
+    lines.push(Spans::from(format!(
+        "24-bit mono stems · {:.1} MiB",
+        s.bytes as f64 / 1_048_576.0
+    )));
+    lines.push(Spans::from(format!(
+        "Drop {} · ovf {} · xrun {} · high {}f",
+        s.dropped_frames, s.overflow_events, s.xruns, s.writer_high_water_frames
+    )));
+    lines.push(Spans::from(truncate(
+        s.error.as_deref().unwrap_or(&path),
+        z.width.saturating_sub(1) as usize,
+    )));
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().fg(
+            if s.error.is_some() || s.dropped_frames > 0 || s.incomplete {
+                Color::Yellow
+            } else {
+                Color::Gray
+            },
+        )),
         rect(z.x, z.y + 1, z.width, z.height.saturating_sub(5)),
     );
 }
@@ -8170,6 +8486,28 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         left_port: "system:capture_1".into(),
         right_port: "system:capture_2".into(),
     }];
+    config.capture.tracks = (0..18)
+        .map(|index| crate::config::CaptureTrackConfig {
+            id: format!("input-{}", index + 1),
+            label: if index == 4 {
+                "Input 5 · Bass mic".into()
+            } else {
+                format!("Input {}", index + 1)
+            },
+            group: if index >= 16 {
+                "line-stereo".into()
+            } else {
+                String::new()
+            },
+            role: match index {
+                16 => crate::config::CaptureTrackRole::StereoLeft,
+                17 => crate::config::CaptureTrackRole::StereoRight,
+                _ => crate::config::CaptureTrackRole::Mono,
+            },
+            armed: index < 8,
+            preferred_source: format!("interface:capture_{}", index + 1),
+        })
+        .collect();
     let catalogs = [Catalog {
         backend: BackendKind::Synthv1,
         presets: [
@@ -8187,6 +8525,13 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         unavailable: None,
     }];
     let available_audio_ports = config.audio_outputs.clone();
+    let capture_sources = config
+        .capture
+        .effective_tracks()
+        .into_iter()
+        .map(|track| track.preferred_source)
+        .filter(|source| !source.is_empty())
+        .collect();
     let mut app = App::new(
         &catalogs,
         Arc::new(std::sync::Mutex::new(None)),
@@ -8197,7 +8542,10 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
             input: Arc::new(std::sync::Mutex::new(None)),
         },
         config,
-        &available_audio_ports,
+        AudioPorts {
+            playback: available_audio_ports,
+            capture_sources,
+        },
     );
     app.web_help_enabled = false;
     app.playing = app.presets.first().cloned();
@@ -8304,14 +8652,32 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
             );
         }
         Screen::AudioRecorder => {
+            app.audio_track_selected = 4;
             app.audio_recorder.set_preview_status(RecorderStatus {
                 recording: false,
                 elapsed: Duration::from_secs(134),
-                bytes: 36_800_000,
+                bytes: 154_200_000,
                 sample_rate: 48_000,
+                total_frames: 6_432_000,
                 dropped_frames: 0,
-                path: Some(PathBuf::from("recordings/dusk-project-001.wav")),
+                active_tracks: 8,
+                writer_high_water_frames: 384,
+                path: Some(PathBuf::from("recordings/dusk-project-001.take")),
+                tracks: (0..18)
+                    .map(|index| RecorderTrackStatus {
+                        label: if index == 4 {
+                            "Input 5 · Bass mic".into()
+                        } else {
+                            format!("Input {}", index + 1)
+                        },
+                        armed: index < 8,
+                        preferred_source: format!("interface:capture_{}", index + 1),
+                        resolved: index != 10,
+                        peak_dbfs: (index == 4).then_some(-9.4),
+                    })
+                    .collect(),
                 error: None,
+                ..RecorderStatus::default()
             });
         }
         Screen::Meter => {
@@ -8680,6 +9046,13 @@ mod tests {
         }];
         let config = RuntimeConfig::default();
         let available_audio_ports = config.audio_outputs.clone();
+        let capture_sources = config
+            .capture
+            .effective_tracks()
+            .into_iter()
+            .map(|track| track.preferred_source)
+            .filter(|source| !source.is_empty())
+            .collect();
         let mut app = App::new(
             &catalogs,
             Arc::new(std::sync::Mutex::new(None)),
@@ -8690,7 +9063,10 @@ mod tests {
                 input: Arc::new(std::sync::Mutex::new(None)),
             },
             config,
-            &available_audio_ports,
+            AudioPorts {
+                playback: available_audio_ports,
+                capture_sources,
+            },
         );
         app.web_help_enabled = false;
         if !app.config.external_midi.output_match.is_empty() {
@@ -9290,7 +9666,7 @@ mod tests {
     fn empty_controller_items_are_silent() {
         let p = presets();
         let mut a = app(&p);
-        a.screen = Screen::AudioRecorder;
+        a.screen = Screen::Meter;
         a.select_menu_page(0);
         let before = a.status.clone();
         let (tx, rx) = mpsc::channel();
@@ -9603,6 +9979,13 @@ mod tests {
         ];
         let config = RuntimeConfig::default();
         let available_audio_ports = config.audio_outputs.clone();
+        let capture_sources = config
+            .capture
+            .effective_tracks()
+            .into_iter()
+            .map(|track| track.preferred_source)
+            .filter(|source| !source.is_empty())
+            .collect();
         let mut a = App::new(
             &catalogs,
             Arc::new(std::sync::Mutex::new(None)),
@@ -9613,7 +9996,10 @@ mod tests {
                 input: Arc::new(std::sync::Mutex::new(None)),
             },
             config,
-            &available_audio_ports,
+            AudioPorts {
+                playback: available_audio_ports,
+                capture_sources,
+            },
         );
         a.selected = 7;
         perform(Action::NextEngine, &mut a, Path::new("/none"), None);

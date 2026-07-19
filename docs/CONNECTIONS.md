@@ -22,7 +22,7 @@ The main paths are:
 - controller or computer keyboard → SHR-DAW;
 - SHR-DAW → synthv1, Yoshimi, or FluidSynth → JACK audio output;
 - tracker pages → optional external MIDI instruments;
-- optional audio input → direct monitoring and/or stereo WAV recording.
+- optional audio inputs → direct monitoring and/or synchronized stem recording.
 
 The diagram is an example, not a shopping list. The original test rig used an
 Arturia MiniLab 3, a PreSonus AudioBox USB 96, and a Casio Casiotone MT-240.
@@ -73,15 +73,16 @@ still have the normal MIDI program numbers 0–127.
 
 ## Audio output and recording
 
-The setup wizard selects the left and right JACK playback ports and the left
-and right recording ports.
+The setup wizard selects the left and right JACK playback ports and can retain
+the older left/right recording pair. The recorder screen and repeated
+`capture.track` entries configure any larger set of exact capture sources.
 
 When an audio interface has direct monitoring, connect an external instrument
 to its inputs and use the interface's monitor balance. This mixes the external
 sound with SHR-DAW software instruments without a second software-monitoring
 path or its additional CPU work.
 
-The same JACK capture inputs remain available to the stereo recorder. SHR-DAW
+Those JACK capture inputs remain available to the multitrack recorder. SHR-DAW
 does not currently send capture audio back to playback for software monitoring.
 External-instrument audio, hardware returns/sends, and the WAV loop are not
 currently mixed or metered by SHR-DAW's master rack; combine them with hardware
@@ -91,3 +92,5 @@ boundary.
 
 For exact routes and configuration keys, read
 [Configuration and routing](CONFIGURATION.md).
+For source assignment, manifests, recovery, and interfaces with any channel
+count, read [Multitrack recording](MULTITRACK_RECORDING.md).

@@ -51,7 +51,8 @@ plus provenance live in the XDG demo directory.
 - **Loop** imports, trims, aligns, and plays a private WAV with the tracker,
   with a separate stereo `LOOP OUT` meter for that WAV alone;
   **Library** separately deletes only unreferenced regular WAV files.
-- **Audio Recorder** records the configured stereo JACK input.
+- **Audio Recorder** maps, names, and arms exact JACK inputs for one synchronized
+  multistem take.
 - **FX Rack** shapes the managed instrument with source inserts, two parallel
   pre/post aux sends and wet returns, then a master rack and final meter.
 
@@ -106,22 +107,28 @@ and external-instrument audio do not pass through these effects. Read
 [How SHR-DAW works](HOW_IT_WORKS.md#the-managed-audio-graph) for the complete
 route and sound-oriented effect guide.
 
-## Stereo audio
+## Synchronized audio stems
 
-The Audio Recorder writes the selected JACK stereo pair as a 24-bit WAV file.
-The screen shows recording time, sample rate, file size, dropped frames, and
-errors.
+The Audio Recorder writes every armed exact source as a separate mono 24-bit
+WAV with one shared timeline and manifest. Select a musician-friendly track,
+assign a discovered source deliberately, name it, and arm it. A missing exact
+preference remains `missing` and blocks start until assigned or disarmed.
+The screen shows elapsed time, armed count, selected-track level, writer
+high-water, drops, overflows, xruns, saved path, and errors.
 
-If recording is interrupted, the temporary file remains with a `.wav.part`
-name. On the next recording start, SHR-DAW recovers complete frames from a
-recognized capture header and reports unrecognized partial files without
-silently deleting them.
+If recording is interrupted, the temporary `*.take.part` session remains. On
+the next start, recognized mono stems recover only their common complete frames
+and publish as `recovered-incomplete`; unknown or unsafe data is reported and
+not silently deleted.
 
-At RIFF's 4 GiB size limit, recording stops and finalizes the last complete
-stereo frame instead of producing an invalid WAV file.
+Each mono file has its own RIFF limit. Any overflow, callback violation, source
+loss, xrun, writer/storage error, or mismatched finalization prevents the take
+from appearing complete.
 
 External line input is intended to use the audio interface's direct-monitor
 feature. See [Physical connections](CONNECTIONS.md) for the audio path.
+See [Synchronized multitrack recording](MULTITRACK_RECORDING.md) for exact
+configuration, session layout, recovery, and hardware-free stress validation.
 
 ## Performance meters
 

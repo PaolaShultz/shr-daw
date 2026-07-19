@@ -51,6 +51,9 @@ fn real_main() -> Result<()> {
     if args.first().map(String::as_str) == Some("config") {
         return config_command(&args[1..], &state);
     }
+    if args.first().map(String::as_str) == Some("recorder-stress") {
+        return recorder_stress_command(&args[1..]);
+    }
     let runtime = config::RuntimeConfig::load(&state.join("shsynth.conf"))?;
     let preset_dir = preset_dir(&runtime)?;
     let catalogs = preset::discover_all(&runtime, &preset_dir);
@@ -535,7 +538,67 @@ fn show_log(state: &Path, count: Option<&String>) -> Result<()> {
 }
 
 fn usage() {
-    println!("Usage: shr [menu|list|status|doctor|start PRESET|stop|log [LINES]|ideas COMMAND|pads COMMAND|casio diagnostic|effects-checkpoint PRESET [PROFILE] [SECONDS]|config init]\n\nController setup: shr pads ports|profiles|auto [PORT]|learn [PORT]|update\nWith no arguments, opens the terminal instrument browser.");
+    println!("Usage: shr [menu|list|status|doctor|start PRESET|stop|log [LINES]|ideas COMMAND|pads COMMAND|casio diagnostic|effects-checkpoint PRESET [PROFILE] [SECONDS]|recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]|config init]\n\nController setup: shr pads ports|profiles|auto [PORT]|learn [PORT]|update\nWith no arguments, opens the terminal instrument browser.");
+}
+
+fn recorder_stress_command(args: &[String]) -> Result<()> {
+    let destination = PathBuf::from(
+        args.first()
+            .context("usage: shr recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]")?,
+    );
+    let seconds = args
+        .get(1)
+        .map(|value| value.parse::<u64>())
+        .transpose()?
+        .unwrap_or(10);
+    let channels = args
+        .get(2)
+        .map(|value| value.parse::<usize>())
+        .transpose()?
+        .unwrap_or(18);
+    let sample_rate = args
+        .get(3)
+        .map(|value| value.parse::<u32>())
+        .transpose()?
+        .unwrap_or(48_000);
+    let callback_frames = args
+        .get(4)
+        .map(|value| value.parse::<usize>())
+        .transpose()?
+        .unwrap_or(128);
+    if args.len() > 5 {
+        bail!("usage: shr recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]");
+    }
+    let report = audio_recorder::run_synthetic_stress(
+        &destination,
+        Duration::from_secs(seconds),
+        channels,
+        sample_rate,
+        callback_frames,
+    )?;
+    println!(
+        "SYNTHETIC MULTITRACK PASS · {} channels · {} Hz · {} frames/callback",
+        report.channels, report.sample_rate, report.callback_frames
+    );
+    println!(
+        "FRAMES {} · elapsed {:.3} s · throughput {:.2} MiB/s",
+        report.total_frames,
+        report.elapsed.as_secs_f64(),
+        report.throughput_bytes_per_second / 1_048_576.0
+    );
+    println!(
+        "HIGH WATER {} frames · dropped {} · overflows {} · identity {}",
+        report.writer_high_water_frames,
+        report.dropped_frames,
+        report.overflow_events,
+        if report.channel_identity_verified {
+            "verified"
+        } else {
+            "failed"
+        }
+    );
+    println!("SESSION {}", report.session.display());
+    Ok(())
 }
 
 fn casio_command(args: &[String], config: &config::RuntimeConfig) -> Result<()> {

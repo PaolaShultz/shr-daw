@@ -38,7 +38,7 @@ instrument initially uses the configured direct playback pair. Playback
 buses, and master rack. With the graph disabled those controls design and save
 the Project silently; direct playback cannot process or meter them. Enabling
 the graph in `shsynth.conf` makes that route audible and adds the final meter.
-The separate WAV loop and stereo capture paths do not pass through the current
+The separate WAV loop and multitrack capture paths do not pass through the current
 master rack. The WAV Loop screen meters that independent WAV path as
 `LOOP OUT`; it is not added to the graph's `FINAL OUT`. Read
 [How SHR-DAW works](HOW_IT_WORKS.md) before changing that routing boundary.

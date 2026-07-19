@@ -34,7 +34,8 @@ load a sound until `LOAD` is used.
 ![Populated Presets screen with the NAV controller page](../images/menu/presets-nav.png)
 
 `MTR` opens the passive performance meter. `IDEAS` opens saved free-time MIDI
-takes. `FT2` opens the Pattern editor. `AUDIO` opens stereo WAV recording.
+takes. `FT2` opens the Pattern editor. `AUDIO` opens synchronized multitrack
+recording.
 
 ### SYS — safety and help
 
@@ -148,21 +149,33 @@ that opened Help.
 
 ## Audio recorder
 
-The recorder captures the configured JACK stereo input as a 24-bit WAV. The
-screen reports the chosen input, elapsed time, sample rate, bytes written,
-dropped frames, path, and any error. It never starts or restarts JACK.
+The recorder captures any deliberately configured set of JACK source ports as
+one synchronized take with a 24-bit mono WAV per input and a shared manifest.
+The compact list shows named tracks as ready or missing, and the status rows
+show armed count, elapsed time, sample rate, writer high-water mark, drop/xrun
+counts, final path, or the failure reason. It never starts or restarts JACK.
 
-### OPS — record or pause
+### OPS — arm and record
 
 ![Populated Audio recorder screen with the OPS controller page](../images/menu/audio-recorder-ops.png)
 
-`RECORD` starts capture and toggles the current recording state. Use the
-dedicated stop/finalize action when the file should be closed cleanly.
+`RECORD` starts all armed tracks at one callback boundary. `ARM` toggles the
+selected track, `ALL` arms every resolved track, and `NONE` disarms everything.
+An armed missing source prevents a take from starting.
+
+### TRACK — choose the inputs
+
+![Populated Audio recorder screen with the TRACK controller page](../images/menu/audio-recorder-track.png)
+
+`PREV` and `NEXT` select a track. `SOURCE` cycles deliberately through the
+currently discovered sources (and blank); `NAME` edits the musician-facing
+label. Runtime absence never overwrites a remembered source.
 
 ### NAV — leave the recorder
 
 ![Populated Audio recorder screen with the NAV controller page](../images/menu/audio-recorder-nav.png)
 
+`REFRESH` discovers current JACK audio sources without changing assignments.
 `PRESETS`, `IDEAS`, and `FT2` open those workspaces. A recording should be
 finalized before leaving.
 
@@ -170,8 +183,8 @@ finalized before leaving.
 
 ![Populated Audio recorder screen with the SYS controller page](../images/menu/audio-recorder-sys.png)
 
-`PANIC` stops owned activity. `STOP` finalizes the WAV header and closes the
-file. `HELP` opens help. `EXIT` returns one level.
+`PANIC` stops owned activity. `STOP` finalizes every stem and the session
+manifest. `HELP` opens help. `EXIT` returns one level.
 
 ## Performance meter
 

@@ -170,8 +170,17 @@ The normal Loop screen's `LOOP OUT` bars show only that WAV after its cut,
 position, interpolation, transport gate, and edge fades. They do not include
 the loaded synth, effects, recorder input, hardware gain, or other JACK clients.
 
-The audio recorder writes the configured JACK stereo input as 24-bit WAV. If it
-is interrupted, the unfinished `.wav.part` file is recovered on the next start.
+The audio recorder arms independently named JACK inputs and writes one 24-bit
+mono WAV per input in a synchronized take directory. Select a track, assign an
+exact discovered source, name it, then arm it; a missing remembered source stays
+missing and blocks recording instead of being replaced. ARM ALL includes only
+resolved tracks, and NONE disarms all. Every armed stem starts and stops on the
+same JACK callback boundary.
+
+Each take has a `session.json` manifest recording the sample rate, shared frame
+count, source identities, grouping, errors, and finalization state. Recognized
+interrupted take directories recover conservatively on the next start. Existing
+two-port `capture.input` configuration still appears as a linked stereo pair.
 
 ## Trouble spots
 

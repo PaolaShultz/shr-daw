@@ -1275,6 +1275,52 @@ pub(crate) fn jack_ports() -> Vec<String> {
     command_lines("jack_lsp", &[])
 }
 
+/// Read-only discovery of JACK audio source ports. These names are candidates
+/// for deliberate recorder assignment; discovery never mutates configuration
+/// and never substitutes one source for another.
+pub(crate) fn jack_capture_sources() -> Vec<String> {
+    parse_jack_audio_sources(command_lines("jack_lsp", &["-p", "-t"]))
+}
+
+fn parse_jack_audio_sources(lines: Vec<String>) -> Vec<String> {
+    fn finish(port: &mut String, properties: &mut String, audio: &mut bool, out: &mut Vec<String>) {
+        if !port.is_empty()
+            && *audio
+            && properties
+                .split(|character: char| character == ',' || character.is_whitespace())
+                .any(|property| property.eq_ignore_ascii_case("output"))
+        {
+            out.push(std::mem::take(port));
+        } else {
+            port.clear();
+        }
+        properties.clear();
+        *audio = false;
+    }
+
+    let mut sources = Vec::new();
+    let mut port = String::new();
+    let mut properties = String::new();
+    let mut audio = false;
+    for line in lines {
+        if !line.starts_with(char::is_whitespace) {
+            finish(&mut port, &mut properties, &mut audio, &mut sources);
+            port = line;
+        } else {
+            let detail = line.trim();
+            if detail.to_ascii_lowercase().starts_with("properties:") {
+                properties.push_str(detail);
+            } else if detail.to_ascii_lowercase().contains("audio") {
+                audio = true;
+            }
+        }
+    }
+    finish(&mut port, &mut properties, &mut audio, &mut sources);
+    sources.sort();
+    sources.dedup();
+    sources
+}
+
 fn connect_audio(client_name: &str, config: &RuntimeConfig) {
     if !config.audio_autoconnect {
         return;
@@ -1853,5 +1899,32 @@ mod tests {
         assert!(!base.join("engine.pid").exists());
         assert!(!base.join("current").exists());
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn jack_source_discovery_keeps_only_exact_audio_outputs() {
+        let lines = [
+            "system:capture_2",
+            "    properties: output,physical,terminal,",
+            "    32 bit float mono audio",
+            "midi:out",
+            "    properties: output,",
+            "    8 bit raw midi",
+            "system:playback_1",
+            "    properties: input,physical,terminal,",
+            "    32 bit float mono audio",
+            "source:one",
+            "    properties: output,",
+            "    32 bit float mono audio",
+            "system:capture_1",
+            "    properties: output,physical,terminal,",
+            "    32 bit float mono audio",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        assert_eq!(
+            parse_jack_audio_sources(lines),
+            ["source:one", "system:capture_1", "system:capture_2"]
+        );
     }
 }

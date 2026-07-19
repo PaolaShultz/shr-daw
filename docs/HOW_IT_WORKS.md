@@ -2,7 +2,7 @@
 
 SHR-DAW is a small music workstation built from several deliberately separate
 parts: one controller input, one managed software instrument, an FT2-style MIDI
-sequencer, a private WAV loop player, a stereo recorder, and an optional owned
+sequencer, a private WAV loop player, a synchronized multitrack recorder, and an optional owned
 effects graph. This guide connects those parts and explains what the musician
 can do with them. For exact configuration keys use
 [Configuration and routing](CONFIGURATION.md); for the DSP and real-time
@@ -29,7 +29,7 @@ managed synth audio -> direct JACK playback
                     or SOURCE -> AUX 1/2 -> MASTER -> FINAL OUT -> playback
 
 private WAV loop -> region/interpolation/fades -> LOOP OUT meter -> playback
-configured stereo capture --------------------------------------> WAV recorder
+configured JACK sources -> shared callback timeline -> mono stems + manifest
 ```
 
 The last two audio paths are separate clients. The current master rack and
@@ -106,23 +106,24 @@ SHR-DAW uses “record” for three intentionally different jobs:
    to rows, writes only the visible page's four lanes, loops that Pattern, and
    auditions through the page's external MIDI target. It refuses an Active
    Instrument page so notes are not doubled through the managed synth.
-3. **Audio recording** captures the first configured JACK stereo input pair as
-   a 24-bit WAV. It records the sound arriving at those ports, not the MIDI
-   events that produced it.
+3. **Audio recording** captures every armed exact JACK source on one shared
+   callback timeline. It writes separate mono 24-bit stems and a session
+   manifest. It records arriving audio, not the MIDI events that produced it.
 
 Idea take playback runs independently of screen redraw. Stop, route changes,
 replacement, panic, and exit release the exact notes still owned by that take.
 Ideas publish into new private directories without replacing a same-named
 Idea.
 
-The audio callback writes capture samples into a fixed stereo ring; an ordinary
-worker thread performs disk I/O. A unique filename is selected without
-replacement. Until finalization the file ends in `.wav.part`; a later recording
-start recovers complete frames from a recognized interrupted file and never
-follows a `.part` symlink. The recorder stops cleanly at the RIFF 4 GiB limit
-and reports dropped frames or disk errors. It does not software-monitor its
-input back to playback, so an external instrument or microphone should use
-safe hardware direct monitoring when available.
+The audio callback copies a whole multichannel callback into one fixed ring or
+rejects all of it; an ordinary worker performs every file operation. A unique
+`*.take.part` session is published without replacement only after all mono WAVs
+and the manifest finalize. Recognized interrupted stems recover only their
+common whole-frame prefix and remain visibly incomplete; `.part` symlinks are
+never followed. Overflow, xrun, source/JACK loss, callback mismatch, RIFF limit,
+disk or finalization errors prevent a successful state. The recorder does not
+software-monitor, so use safe hardware direct monitoring. See [the complete
+recorder contract](MULTITRACK_RECORDING.md).
 
 ## Projects, Patterns, pages, and columns
 

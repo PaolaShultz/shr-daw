@@ -56,7 +56,8 @@ this with hardcoded Rust paths. The important local paths are:
 - `user/data/shsynth/songs/`: tracker Projects (`.shsong`);
 - `user/data/shsynth/demos/`: missing-only cleared MIDI/Project demo copies and
   their public manifest;
-- `user/data/shsynth/recordings/`: stereo WAV recordings;
+- `user/data/shsynth/recordings/`: synchronized take directories, mono stems,
+  manifests, recovered/incomplete takes, and legacy stereo WAV recordings;
 - `user/data/shsynth/loop-inbox/`: missing-only public starter seeds and any
   private source loops offered for import;
 - `user/data/shsynth/loops/`: privately imported FT2 WAV loops;
@@ -86,6 +87,37 @@ The local setup currently selects the MiniLab3 MIDI controller, JACK
 hardware destination. These are configuration values, not Rust constants.
 Rerun `scripts/setup-local.sh` when hardware or JACK port names change. The
 wizard did not replace `~/.jackdrc` and never starts or restarts JACK.
+
+The recorder is now generic and synchronized rather than fixed stereo. Repeated
+`capture.track=ID|LABEL|GROUP|ROLE|ARMED|JACK_SOURCE` entries remember exact
+machine-local sources; blank or missing sources never fall back to another JACK
+port. Old `capture.input` pairs remain compatible and appear as one linked
+stereo group until deliberately edited. One shared preallocated interleaved ring
+transfers all armed channels from the JACK process callback to a non-real-time
+writer, so every accepted callback is whole-take and every mono stem has the
+same start, stop, rate, and frame count. The callback performs no file I/O,
+allocation, logging, or waiting. A take is published as a unique `.take`
+directory with 24-bit mono WAVs and format-1 `session.json`; faults publish only
+an explicitly incomplete take or retain a recoverable `.take.part`.
+
+The compact recorder screen can select/name/assign tracks, arm one/all resolved/
+none, refresh discovery without changing preferences, record one synchronized
+take, and show missing inputs, elapsed time, selected activity, drop/xrun/high-
+water status, and its final path or failure. The safety cap is 64 tracks, not an
+MR18-specific limit. `shr recorder-stress DEST [SECONDS] [CHANNELS] [RATE]
+[CALLBACK]` exercises the production ring/writer/publication path without JACK,
+MIDI, a synth, or sound. Its primary target is 18 mono channels at 48 kHz and
+128 frames/callback. See `docs/MULTITRACK_RECORDING.md` and the fully explicit
+helper contract in `docs/MAINTAINER_HELPERS.md`.
+
+The planned first hardware acceptance target is a Midas M AIR MR18, but no
+Midas, ALSA-client, USB-card, or JACK-port name is compiled into Rust or public
+configuration. `docs/MR18_TEST_PLAN.md` separates official facts from tomorrow's
+required observations, preserves exact discovered identifiers only in private
+machine configuration, and progresses through 2/4/8/12/16/18 inputs at 48 kHz.
+Do not claim a hardware pass until that procedure has been completed. The
+three-minute truthful hardware/synthetic fallback script is in
+`docs/MULTITRACK_PRESENTATION.md`.
 
 The optional dedicated-core audio profile is installed for CPU 3. Both
 `user/state/shsynth/shsynth.conf` and the normal per-user runtime configuration
@@ -429,6 +461,22 @@ contained exactly the 21 manifest-cleared demo files. Shellcheck/bash syntax,
 Python compilation, all 36 Markdown files' local targets, `git diff --check`,
 and the no-tracked-`user/` boundary passed. No JACK start/restart, synth engine,
 MIDI transmission, playback, recording, or audible test was used.
+
+After the hardware-independent synchronized-recorder work on 2026-07-19, Rust
+1.85 formatting, all 409 tests, warning-denied Clippy, and the optimized locked
+release build passed. The final release helper produced and re-read an 18-mono-
+stem, 48 kHz, 128-frame synthetic take: all 48,000 frames and identity probes
+agreed, drops/overflows were zero, and writer high-water was 384 frames. This is
+synthetic recorder/storage evidence, not an MR18 hardware result. Recovery,
+future/malformed manifest refusal, traversal/symlink/no-replace safety, source
+loss, missing/reconnected preference, callback violation, bounded overflow,
+slow/failing writer, zero-frame and legacy-stereo paths passed. The regenerated
+40×20 recorder and controller images passed the exhaustive renderer check; all
+47 Markdown files passed local path and heading-fragment validation; `git diff
+--check` passed; and a 203-file isolated install contained the new recorder
+guides, configuration, and images before staged uninstall. No JACK start or
+restart, live graph edit, synth, MIDI transmission, hardware configuration,
+audible test, or MR18 claim was made.
 
 For docs, README, screenshot, or image-only changes, keep validation scoped to
 the files changed instead of running the Rust suite mechanically. Examples:

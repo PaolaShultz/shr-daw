@@ -258,6 +258,14 @@ pub enum Action {
     ConfirmPatternClear,
     AudioRecord,
     AudioStop,
+    AudioToggleArm,
+    AudioArmAll,
+    AudioDisarmAll,
+    AudioPreviousTrack,
+    AudioNextTrack,
+    AudioAssignSource,
+    AudioNameTrack,
+    AudioRefreshSources,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -953,16 +961,29 @@ const PATTERN_CLEAR: [MenuPage; 4] = [
 const AUDIO: [MenuPage; 4] = [
     page(
         "OPS",
-        [on("RECORD", Action::AudioRecord), off(""), off(""), off("")],
+        [
+            on("RECORD", Action::AudioRecord),
+            on("ARM", Action::AudioToggleArm),
+            on("ALL", Action::AudioArmAll),
+            on("NONE", Action::AudioDisarmAll),
+        ],
     ),
-    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "TRACK",
+        [
+            on("PREV", Action::AudioPreviousTrack),
+            on("NEXT", Action::AudioNextTrack),
+            on("SOURCE", Action::AudioAssignSource),
+            on("NAME", Action::AudioNameTrack),
+        ],
+    ),
     page(
         "NAV",
         [
+            on("REFRESH", Action::AudioRefreshSources),
             on("PRESETS", Action::OpenPresets),
             on("IDEAS", Action::OpenIdeas),
             on("FT2", Action::OpenTracker),
-            off(""),
         ],
     ),
     page(
@@ -1151,8 +1172,8 @@ mod tests {
 
     #[test]
     fn empty_slots_and_pages_do_not_dispatch() {
-        let empty_slot = slot(Screen::AudioRecorder, MenuContext::Normal, 0, 1).unwrap();
-        let empty_page = pages(Screen::AudioRecorder, MenuContext::Normal)[1];
+        let empty_slot = slot(Screen::Meter, MenuContext::Normal, 0, 1).unwrap();
+        let empty_page = pages(Screen::Meter, MenuContext::Normal)[1];
         assert_eq!((empty_slot.label, empty_slot.dispatch()), ("", None));
         assert!(!empty_page.available());
     }
@@ -1455,6 +1476,14 @@ mod tests {
             Action::DeleteLoopFile,
             Action::AudioRecord,
             Action::AudioStop,
+            Action::AudioToggleArm,
+            Action::AudioArmAll,
+            Action::AudioDisarmAll,
+            Action::AudioPreviousTrack,
+            Action::AudioNextTrack,
+            Action::AudioAssignSource,
+            Action::AudioNameTrack,
+            Action::AudioRefreshSources,
         ];
         for action in inventory {
             assert!(

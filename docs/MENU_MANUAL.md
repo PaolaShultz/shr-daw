@@ -9,7 +9,7 @@ MIDI port, or claim to show a live audio measurement.
 The manual is split into three chapters so it remains usable on a phone:
 
 1. [Everyday screens](menu/EVERYDAY_SCREENS.md) — Presets, Playback, Ideas,
-   Help, stereo recording, and the performance meter.
+   Help, synchronized multitrack recording, and the performance meter.
 2. [FT2, Projects, and Patterns](menu/TRACKER_AND_PROJECTS.md) — the tracker in
    Play, Record, Step Edit, and Cell Edit; Tools; N00B setup; Projects;
    Pattern tools; drum patterns; Arrangement; the Tracks screen; and routing
@@ -81,7 +81,9 @@ the arrows in reverse by one level; it does not throw the user back to the root.
   can still have its own channel, bank, and program.
 - **Idea** means a free-time MIDI take associated with a sound; it is not an
   audio recording.
-- **Audio recording** means a stereo 24-bit WAV from the configured JACK input.
+- **Audio recording** means one synchronized take containing a 24-bit mono WAV
+  for each armed JACK source plus a versioned session manifest. A legacy stereo
+  input remains a linked two-track configuration.
 - **Remove Loop** detaches the WAV from the Project. Deleting a private WAV is
   a separate confirmed action and is refused while saved Projects reference it.
 - With the graph active, FX edits require stopped transport and no active

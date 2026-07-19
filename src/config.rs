@@ -70,6 +70,35 @@ pub struct StereoInputConfig {
     pub right_port: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptureTrackRole {
+    Mono,
+    StereoLeft,
+    StereoRight,
+}
+
+impl CaptureTrackRole {
+    pub const fn config_value(self) -> &'static str {
+        match self {
+            Self::Mono => "mono",
+            Self::StereoLeft => "left",
+            Self::StereoRight => "right",
+        }
+    }
+}
+
+/// One stable logical recording track. `preferred_source` is an exact,
+/// machine-owned JACK port name; an empty value stays visibly unresolved.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CaptureTrackConfig {
+    pub id: String,
+    pub label: String,
+    pub group: String,
+    pub role: CaptureTrackRole,
+    pub armed: bool,
+    pub preferred_source: String,
+}
+
 /// A machine-owned stereo playback route. Projects never persist these JACK
 /// names; portable pages resolve through the active runtime configuration.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -84,7 +113,40 @@ pub struct AudioCaptureConfig {
     pub client_name: String,
     pub directory: PathBuf,
     pub inputs: Vec<StereoInputConfig>,
+    pub tracks: Vec<CaptureTrackConfig>,
     pub ring_frames: usize,
+    pub maximum_callback_frames: usize,
+}
+
+impl AudioCaptureConfig {
+    /// Explicit multitrack configuration wins. A legacy stereo input remains
+    /// exactly one two-track recording so old configuration keeps working.
+    pub fn effective_tracks(&self) -> Vec<CaptureTrackConfig> {
+        if !self.tracks.is_empty() {
+            return self.tracks.clone();
+        }
+        self.inputs.first().map_or_else(Vec::new, |input| {
+            let base = crate::sequencer::safe_name(&input.name);
+            vec![
+                CaptureTrackConfig {
+                    id: format!("{base}-left"),
+                    label: format!("{} L", input.name),
+                    group: base.clone(),
+                    role: CaptureTrackRole::StereoLeft,
+                    armed: true,
+                    preferred_source: input.left_port.clone(),
+                },
+                CaptureTrackConfig {
+                    id: format!("{base}-right"),
+                    label: format!("{} R", input.name),
+                    group: base,
+                    role: CaptureTrackRole::StereoRight,
+                    armed: true,
+                    preferred_source: input.right_port.clone(),
+                },
+            ]
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -275,7 +337,9 @@ impl Default for RuntimeConfig {
                 client_name: "shs-recorder".into(),
                 directory: expand_home("~/.local/share/shsynth/recordings"),
                 inputs: Vec::new(),
+                tracks: Vec::new(),
                 ring_frames: 262_144,
+                maximum_callback_frames: 4096,
             },
             loop_player: LoopPlayerConfig {
                 client_name: "shs-loop".into(),
@@ -314,6 +378,7 @@ impl RuntimeConfig {
         let mut saw_external_channels = false;
         let mut saw_percussion_notes = false;
         let mut saw_capture_inputs = false;
+        let mut saw_capture_tracks = false;
         let mut saw_loop_outputs = false;
         for (line_no, line) in text.lines().enumerate() {
             let line = line.trim();
@@ -555,8 +620,34 @@ impl RuntimeConfig {
                         self.capture.inputs.push(input);
                     }
                 }
+                "capture.track" => {
+                    replace_list_once(&mut self.capture.tracks, &mut saw_capture_tracks);
+                    if !value.is_empty() {
+                        let fields = value.split('|').map(str::trim).collect::<Vec<_>>();
+                        let [id, label, group, role, armed, source] = fields.as_slice() else {
+                            bail!("{key} must be ID|LABEL|GROUP|ROLE|ARMED|JACK_SOURCE");
+                        };
+                        let role = match *role {
+                            "mono" => CaptureTrackRole::Mono,
+                            "left" => CaptureTrackRole::StereoLeft,
+                            "right" => CaptureTrackRole::StereoRight,
+                            _ => bail!("{key} role must be mono, left, or right"),
+                        };
+                        self.capture.tracks.push(CaptureTrackConfig {
+                            id: required(key, id)?.into(),
+                            label: required(key, label)?.into(),
+                            group: (*group).into(),
+                            role,
+                            armed: boolean(key, armed)?,
+                            preferred_source: (*source).into(),
+                        });
+                    }
+                }
                 "capture.ring_frames" => {
                     self.capture.ring_frames = bounded_usize(key, value, 1024, 4_194_304)?
+                }
+                "capture.maximum_callback_frames" => {
+                    self.capture.maximum_callback_frames = bounded_usize(key, value, 16, 65_536)?
                 }
                 "loop.client" => self.loop_player.client_name = required(key, value)?.into(),
                 "loop.output" => {
@@ -620,6 +711,27 @@ impl RuntimeConfig {
             > 128
         {
             bail!("external_midi percussion input map exceeds MIDI note 127");
+        }
+        if self.capture.tracks.len() > 64 {
+            bail!("capture supports at most 64 configured tracks");
+        }
+        let mut track_ids = std::collections::BTreeSet::new();
+        for track in &self.capture.tracks {
+            if crate::sequencer::safe_name(&track.id) != track.id
+                || track.id.chars().count() > 64
+                || track.label.is_empty()
+                || track.label.chars().count() > 64
+                || track.label.chars().any(char::is_control)
+                || track.label.contains('|')
+                || track.group.chars().count() > 64
+                || track.group.chars().any(char::is_control)
+                || track.group.contains('|')
+                || track.preferred_source.chars().any(char::is_control)
+                || track.preferred_source.contains('|')
+                || !track_ids.insert(track.id.clone())
+            {
+                bail!("capture.track has an invalid or duplicate stable ID/label/group/source");
+            }
         }
         Ok(())
     }
@@ -751,13 +863,14 @@ impl RuntimeConfig {
             text.push_str("external_midi.percussion_note=\n");
         }
         text.push_str(&format!(
-            "external_midi.bank_select={}\nexternal_midi.program_changes={}\nexternal_midi.send_transport={}\nexternal_midi.default_tempo={}\nexternal_midi.pattern_rows={}\nexternal_midi.steps_per_beat={}\nexternal_midi.live_thru={}\nexternal_midi.profile={}\nexternal_midi.gate_percent={}\nexternal_midi.gesture_settle_ms={}\ncapture.client={}\ncapture.directory={}\ncapture.ring_frames={}\n",
+            "external_midi.bank_select={}\nexternal_midi.program_changes={}\nexternal_midi.send_transport={}\nexternal_midi.default_tempo={}\nexternal_midi.pattern_rows={}\nexternal_midi.steps_per_beat={}\nexternal_midi.live_thru={}\nexternal_midi.profile={}\nexternal_midi.gate_percent={}\nexternal_midi.gesture_settle_ms={}\ncapture.client={}\ncapture.directory={}\ncapture.ring_frames={}\ncapture.maximum_callback_frames={}\n",
             match self.external_midi.bank_select { BankSelectMode::Off => "off", BankSelectMode::Cc0 => "cc0", BankSelectMode::Cc0Cc32 => "cc0+cc32" },
             self.external_midi.program_changes, self.external_midi.send_transport,
             self.external_midi.default_tempo, self.external_midi.default_pattern_rows,
             self.external_midi.steps_per_beat, self.external_midi.live_thru,
             self.external_midi.profile, self.external_midi.gate_percent, self.external_midi.gesture_settle.as_millis(), self.capture.client_name,
-            self.capture.directory.display(), self.capture.ring_frames
+            self.capture.directory.display(), self.capture.ring_frames,
+            self.capture.maximum_callback_frames
         ));
         for input in &self.capture.inputs {
             text.push_str(&format!(
@@ -767,6 +880,20 @@ impl RuntimeConfig {
         }
         if self.capture.inputs.is_empty() {
             text.push_str("capture.input=\n");
+        }
+        for track in &self.capture.tracks {
+            text.push_str(&format!(
+                "capture.track={}|{}|{}|{}|{}|{}\n",
+                track.id,
+                track.label,
+                track.group,
+                track.role.config_value(),
+                track.armed,
+                track.preferred_source
+            ));
+        }
+        if self.capture.tracks.is_empty() {
+            text.push_str("capture.track=\n");
         }
         text.push_str(&format!(
             "loop.client={}\nloop.import_directory={}\n",
@@ -1110,6 +1237,56 @@ mod tests {
         assert!(loaded.external_midi.percussion_notes.is_empty());
         assert!(loaded.capture.inputs.is_empty());
         assert!(loaded.loop_player.outputs.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn legacy_stereo_capture_migrates_in_memory_without_changing_its_source() {
+        let mut config = RuntimeConfig::default();
+        config.capture.tracks.clear();
+        config.capture.inputs = vec![StereoInputConfig {
+            name: "Existing interface".into(),
+            left_port: "remembered:left".into(),
+            right_port: "remembered:right".into(),
+        }];
+        let tracks = config.capture.effective_tracks();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(tracks[0].preferred_source, "remembered:left");
+        assert_eq!(tracks[1].preferred_source, "remembered:right");
+        assert_eq!(tracks[0].role, CaptureTrackRole::StereoLeft);
+        assert_eq!(tracks[1].role, CaptureTrackRole::StereoRight);
+        assert!(tracks.iter().all(|track| track.armed));
+    }
+
+    #[test]
+    fn multitrack_config_round_trips_blank_and_exact_preferred_sources() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-capture-tracks-{}.conf",
+            std::process::id()
+        ));
+        let mut config = RuntimeConfig::default();
+        config.capture.tracks = vec![
+            CaptureTrackConfig {
+                id: "input-1".into(),
+                label: "Input 1 · Vocal".into(),
+                group: String::new(),
+                role: CaptureTrackRole::Mono,
+                armed: true,
+                preferred_source: "device:capture_1".into(),
+            },
+            CaptureTrackConfig {
+                id: "input-2".into(),
+                label: "Input 2".into(),
+                group: "room".into(),
+                role: CaptureTrackRole::StereoRight,
+                armed: false,
+                preferred_source: String::new(),
+            },
+        ];
+        config.save(&path).unwrap();
+        let loaded = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(loaded.capture.tracks, config.capture.tracks);
+        assert_eq!(loaded.capture.maximum_callback_frames, 4096);
         let _ = fs::remove_file(path);
     }
 
