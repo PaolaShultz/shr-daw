@@ -166,7 +166,9 @@ state. At 40 columns it covers C2–G7 without octave gaps: natural notes color
 the white upper background and lower full block red, while sharps color the
 upper `└` foreground red. `display.note_names=german` is the B/H default;
 `english` selects A#/B for both chord and note text. Buffer tests lock the
-natural/sharp color ownership and the gapless octave boundary.
+natural/sharp color ownership and the gapless octave boundary. Recognized
+major triads use an explicit spaced `maj` suffix (`C maj`), including before a
+slash bass (`C maj/E`); a single held C remains `C`.
 
 Presets NAV item 1 opens the passive `MTR` performance screen. CPU0–CPU3 come
 from bounded UI-side `/proc/stat` deltas, with the configured temperature when

@@ -121,7 +121,7 @@ impl HeldNotes {
 }
 
 const CHORDS: &[(&[u8], &str)] = &[
-    (&[0, 4, 7], ""),
+    (&[0, 4, 7], " maj"),
     (&[0, 3, 7], "m"),
     (&[0, 3, 6], "dim"),
     (&[0, 4, 8], "aug"),
@@ -171,11 +171,12 @@ mod tests {
     #[test]
     fn recognizes_note_chord_inversion_and_unusual_set() {
         assert_eq!(recognize(&[61]), ("C#".into(), "C#".into()));
+        assert_eq!(recognize(&[60, 64, 67]), ("C maj".into(), "C E G".into()));
         assert_eq!(
             recognize(&[61, 66, 68, 72]),
             ("C#maj7sus4".into(), "C# F# G# C".into())
         );
-        assert_eq!(recognize(&[64, 67, 72]).0, "C/E");
+        assert_eq!(recognize(&[64, 67, 72]).0, "C maj/E");
         assert_eq!(recognize(&[60, 61, 66]).0, "C [b2 b5]");
     }
 
@@ -213,7 +214,7 @@ mod tests {
         held.observe(&[0x90, 77, 100]);
         assert_eq!(
             held.description(NoteNaming::English).unwrap(),
-            ("A#".into(), "A# D F".into())
+            ("A# maj".into(), "A# D F".into())
         );
     }
 }

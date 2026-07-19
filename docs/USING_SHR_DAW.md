@@ -16,6 +16,8 @@ Changing engine does not mix their files or control rules. The Playback screen
 shows held note names, chord names, a continuous keyboard-state strip, MIDI
 idea recording, and the 12 mapped synthv1 controls. `display.note_names` in
 `shsynth.conf` selects German `B`/`H` spelling or English `A#`/`B` spelling.
+Recognized major triads use the explicit `maj` label, such as `C maj`, so the
+display does not rely on an omitted suffix to teach the chord quality.
 
 ## Screens
 

@@ -39,7 +39,8 @@ green is lower, yellow is near original, red is higher.
 Playback names the held chord and notes above a continuous two-row keyboard.
 At 40 columns it shows C2 through G7 when middle C is C4. A red white-key area
 means its natural note is held; a red upper `└` means the following sharp is
-held. `display.note_names=german` uses B/H spelling; `english` uses A#/B.
+held. Major triads show `maj` explicitly, such as `C maj`.
+`display.note_names=german` uses B/H spelling; `english` uses A#/B.
 
 ## Effects graph
 
