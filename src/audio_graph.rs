@@ -62,7 +62,7 @@ pub enum NodeKind {
     Source { source: SourceKind },
     Processor { effect_id: EffectId },
     StereoMixer,
-    SendTap { aux_id: AuxId },
+    SendTap { aux_id: AuxId, source_node: NodeId },
     AuxReturn { aux_id: AuxId },
     MonoToStereo,
     Sink { sink: SinkKind },
@@ -186,6 +186,22 @@ impl InsertRack {
             .checked_add(1)
             .filter(|id| *id != 0)
             .ok_or_else(|| GraphError::new("effect ID space exhausted"))?;
+        self.add_with_id(kind, id)?;
+        Ok(id)
+    }
+
+    pub fn add_with_id(&mut self, kind: EffectKind, id: EffectId) -> Result<(), GraphError> {
+        if !is_insert_effect(kind) {
+            return Err(GraphError::new(
+                "effect kind is not available in the insert rack",
+            ));
+        }
+        if id == 0 || self.effects.iter().any(|effect| effect.id == id) {
+            return Err(GraphError::new("effect ID must be unique and non-zero"));
+        }
+        if self.effects.len() >= MAX_CHAIN_EFFECTS {
+            return Err(GraphError::new("serial effect chain bound exceeded"));
+        }
         self.effects.push(EffectInstance {
             id,
             kind,
@@ -195,7 +211,7 @@ impl InsertRack {
             owned_memory_bytes: 0,
         });
         self.order.push(id);
-        Ok(id)
+        Ok(())
     }
 
     pub fn remove(&mut self, id: EffectId) -> Result<EffectInstance, GraphError> {
@@ -234,6 +250,229 @@ impl InsertRack {
     pub fn effect_mut(&mut self, id: EffectId) -> Option<&mut EffectInstance> {
         self.effects.iter_mut().find(|effect| effect.id == id)
     }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectAuxBus {
+    pub id: AuxId,
+    pub rack: InsertRack,
+    pub return_gain_db: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectAuxSend {
+    pub aux_id: AuxId,
+    pub level_db: f32,
+    pub point: SendPoint,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectAuxRouting {
+    #[serde(default)]
+    pub buses: Vec<ProjectAuxBus>,
+    #[serde(default)]
+    pub sends: Vec<ProjectAuxSend>,
+}
+
+impl ProjectAuxRouting {
+    pub fn next_effect_id(&self, source_rack: &InsertRack) -> Result<EffectId, GraphError> {
+        source_rack
+            .effects
+            .iter()
+            .chain(self.buses.iter().flat_map(|bus| bus.rack.effects.iter()))
+            .map(|effect| effect.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .filter(|id| *id != 0)
+            .ok_or_else(|| GraphError::new("effect ID space exhausted"))
+    }
+
+    pub fn validate(&self, source_rack: &InsertRack) -> Result<(), GraphError> {
+        source_rack.validate()?;
+        if self.buses.len() > MAX_AUX_BUSES || self.sends.len() > MAX_AUX_BUSES {
+            return Err(GraphError::new("aux bus bound exceeded"));
+        }
+        let mut ids = BTreeSet::new();
+        let mut effect_ids = source_rack
+            .effects
+            .iter()
+            .map(|effect| effect.id)
+            .collect::<BTreeSet<_>>();
+        let mut effect_count = source_rack.effects.len();
+        for bus in &self.buses {
+            if bus.id == 0 || !ids.insert(bus.id) {
+                return Err(GraphError::new("aux IDs must be unique and non-zero"));
+            }
+            if !bus.return_gain_db.is_finite() || !(-60.0..=12.0).contains(&bus.return_gain_db) {
+                return Err(GraphError::new("invalid aux return gain"));
+            }
+            bus.rack.validate()?;
+            effect_count = effect_count
+                .checked_add(bus.rack.effects.len())
+                .ok_or_else(|| GraphError::new("effect count overflow"))?;
+            let mut has_wet_processor = false;
+            for effect in &bus.rack.effects {
+                if !effect_ids.insert(effect.id) {
+                    return Err(GraphError::new("effect IDs must be globally unique"));
+                }
+                if effect.kind.requires_wet_aux() {
+                    validate_wet_aux_effect(effect)?;
+                    has_wet_processor = true;
+                }
+            }
+            if !bus.rack.effects.is_empty() && !has_wet_processor {
+                return Err(GraphError::new(
+                    "aux chain needs a forced-wet time or modulation processor",
+                ));
+            }
+        }
+        if effect_count > MAX_EFFECTS {
+            return Err(GraphError::new("effect bound exceeded"));
+        }
+        let mut sends = BTreeSet::new();
+        for send in &self.sends {
+            if !ids.contains(&send.aux_id)
+                || !sends.insert(send.aux_id)
+                || !send.level_db.is_finite()
+                || !(-60.0..=12.0).contains(&send.level_db)
+            {
+                return Err(GraphError::new("invalid project aux send"));
+            }
+            let bus = self
+                .buses
+                .iter()
+                .find(|bus| bus.id == send.aux_id)
+                .expect("validated aux ID");
+            if bus.rack.effects.is_empty() {
+                return Err(GraphError::new("an active aux send needs an effect chain"));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn add_bus(&mut self) -> Result<AuxId, GraphError> {
+        if self.buses.len() >= MAX_AUX_BUSES {
+            return Err(GraphError::new("aux bus bound exceeded"));
+        }
+        let id = (1..=MAX_AUX_BUSES as AuxId)
+            .find(|id| self.buses.iter().all(|bus| bus.id != *id))
+            .ok_or_else(|| GraphError::new("aux ID space exhausted"))?;
+        self.buses.push(ProjectAuxBus {
+            id,
+            rack: InsertRack::default(),
+            return_gain_db: 0.0,
+        });
+        Ok(id)
+    }
+
+    pub fn remove_bus(&mut self, id: AuxId) -> Result<ProjectAuxBus, GraphError> {
+        let index = self
+            .buses
+            .iter()
+            .position(|bus| bus.id == id)
+            .ok_or_else(|| GraphError::new("aux bus is missing"))?;
+        self.sends.retain(|send| send.aux_id != id);
+        Ok(self.buses.remove(index))
+    }
+
+    pub fn add_effect(
+        &mut self,
+        source_rack: &InsertRack,
+        aux_id: AuxId,
+        kind: EffectKind,
+    ) -> Result<EffectId, GraphError> {
+        if !kind.requires_wet_aux() {
+            return Err(GraphError::new(
+                "aux effect must have an enforceable wet-only mode",
+            ));
+        }
+        let next_id = self.next_effect_id(source_rack)?;
+        let mut proposed = self.clone();
+        let bus = proposed
+            .buses
+            .iter_mut()
+            .find(|bus| bus.id == aux_id)
+            .ok_or_else(|| GraphError::new("aux bus is missing"))?;
+        if bus.rack.effects.len() >= MAX_CHAIN_EFFECTS {
+            return Err(GraphError::new("serial effect chain bound exceeded"));
+        }
+        let mut parameters = crate::effect_schema::defaults(kind);
+        force_wet_aux_parameters(kind, &mut parameters);
+        bus.rack.effects.push(EffectInstance {
+            id: next_id,
+            kind,
+            version: EFFECT_FORMAT_VERSION,
+            bypass: false,
+            parameters,
+            owned_memory_bytes: 0,
+        });
+        bus.rack.order.push(next_id);
+        proposed.validate(source_rack)?;
+        *self = proposed;
+        Ok(next_id)
+    }
+
+    pub fn set_send(
+        &mut self,
+        source_rack: &InsertRack,
+        aux_id: AuxId,
+        level_db: f32,
+        point: SendPoint,
+    ) -> Result<(), GraphError> {
+        let mut proposed = self.clone();
+        if let Some(send) = proposed.sends.iter_mut().find(|send| send.aux_id == aux_id) {
+            send.level_db = level_db;
+            send.point = point;
+        } else {
+            proposed.sends.push(ProjectAuxSend {
+                aux_id,
+                level_db,
+                point,
+            });
+        }
+        proposed.validate(source_rack)?;
+        *self = proposed;
+        Ok(())
+    }
+
+    pub fn clear_send(&mut self, aux_id: AuxId) {
+        self.sends.retain(|send| send.aux_id != aux_id);
+    }
+}
+
+fn force_wet_aux_parameters(kind: EffectKind, parameters: &mut BTreeMap<String, f32>) {
+    if matches!(kind, EffectKind::Delay | EffectKind::Reverb) {
+        parameters.insert("wet_percent".into(), 100.0);
+    } else if matches!(
+        kind,
+        EffectKind::Chorus | EffectKind::Flanger | EffectKind::Phaser
+    ) {
+        parameters.insert("mix_percent".into(), 100.0);
+    }
+    parameters.insert("dry_percent".into(), 0.0);
+}
+
+fn validate_wet_aux_effect(effect: &EffectInstance) -> Result<(), GraphError> {
+    if effect.parameters.get("dry_percent").copied() != Some(0.0) {
+        return Err(GraphError::new(
+            "aux time/modulation effects must have zero dry",
+        ));
+    }
+    let wet_name = if matches!(effect.kind, EffectKind::Delay | EffectKind::Reverb) {
+        "wet_percent"
+    } else {
+        "mix_percent"
+    };
+    if effect.parameters.get(wet_name).copied() != Some(100.0) {
+        return Err(GraphError::new(
+            "aux time/modulation effects must be 100% wet",
+        ));
+    }
+    Ok(())
 }
 
 pub const fn is_insert_effect(kind: EffectKind) -> bool {
@@ -518,12 +757,8 @@ impl GraphDefinition {
             validate_chain(&aux.effects, effects, &mut used)?;
             for effect_id in &aux.effects {
                 let effect = effects[effect_id];
-                if effect.kind.requires_wet_aux()
-                    && effect.parameters.get("dry_percent").copied() != Some(0.0)
-                {
-                    return Err(GraphError::new(
-                        "aux time/modulation effects must be 100% wet",
-                    ));
+                if effect.kind.requires_wet_aux() {
+                    validate_wet_aux_effect(effect)?;
                 }
             }
         }
@@ -540,6 +775,43 @@ impl GraphDefinition {
             }
             if !send_routes.insert((send.source_node, send.aux_id)) {
                 return Err(GraphError::new("aux send is duplicated"));
+            }
+            if self
+                .aux_buses
+                .iter()
+                .find(|aux| aux.id == send.aux_id)
+                .is_some_and(|aux| aux.effects.is_empty())
+            {
+                return Err(GraphError::new("an active aux send needs an effect chain"));
+            }
+            let taps = self
+                .nodes
+                .iter()
+                .filter(|node| {
+                    matches!(
+                        node.kind,
+                        NodeKind::SendTap {
+                            aux_id,
+                            source_node,
+                        } if aux_id == send.aux_id && source_node == send.source_node
+                    )
+                })
+                .count();
+            if taps != 1 {
+                return Err(GraphError::new(
+                    "each aux send needs exactly one matching send tap",
+                ));
+            }
+        }
+        for node in &self.nodes {
+            if let NodeKind::SendTap {
+                aux_id,
+                source_node,
+            } = node.kind
+            {
+                if !send_routes.contains(&(source_node, aux_id)) {
+                    return Err(GraphError::new("send tap has no matching aux send"));
+                }
             }
         }
         Ok(())
@@ -829,18 +1101,49 @@ mod tests {
     }
 
     #[test]
-    fn insert_rack_rejects_unknown_duplicate_and_chain_overflow() {
+    fn insert_rack_rejects_duplicate_order_and_chain_overflow() {
         let mut rack = InsertRack::default();
         let id = rack.add(EffectKind::Eq).unwrap();
         rack.order.push(id);
         assert!(rack.validate().is_err());
 
         let mut rack = InsertRack::default();
-        assert!(rack.add(EffectKind::Reverb).is_err());
         for _ in 0..MAX_CHAIN_EFFECTS {
             rack.add(EffectKind::Utility).unwrap();
         }
         assert!(rack.add(EffectKind::Utility).is_err());
+    }
+
+    #[test]
+    fn project_auxes_allocate_global_ids_force_wet_and_keep_independent_sends() {
+        let mut source = InsertRack::default();
+        let source_id = source.add(EffectKind::Eq).unwrap();
+        let mut routing = ProjectAuxRouting::default();
+        let first = routing.add_bus().unwrap();
+        let second = routing.add_bus().unwrap();
+        let reverb = routing
+            .add_effect(&source, first, EffectKind::Reverb)
+            .unwrap();
+        let delay = routing
+            .add_effect(&source, second, EffectKind::Delay)
+            .unwrap();
+        assert!(reverb > source_id && delay > reverb);
+        for bus in &routing.buses {
+            let effect = bus.rack.effects.first().unwrap();
+            assert_eq!(effect.parameters.get("dry_percent"), Some(&0.0));
+            assert_eq!(effect.parameters.get("wet_percent"), Some(&100.0));
+        }
+        routing
+            .set_send(&source, first, -18.0, SendPoint::PostInsert)
+            .unwrap();
+        routing
+            .set_send(&source, second, -9.0, SendPoint::PreInsert)
+            .unwrap();
+        routing.validate(&source).unwrap();
+        assert_eq!(routing.sends[0].level_db, -18.0);
+        assert_ne!(routing.sends[0].point, routing.sends[1].point);
+        routing.remove_bus(first).unwrap();
+        assert!(routing.sends.iter().all(|send| send.aux_id != first));
     }
 
     #[test]
@@ -949,7 +1252,7 @@ mod tests {
             kind: EffectKind::Delay,
             version: 1,
             bypass: false,
-            parameters: BTreeMap::from([("dry_percent".into(), 50.0)]),
+            parameters: BTreeMap::from([("dry_percent".into(), 0.0), ("wet_percent".into(), 50.0)]),
             owned_memory_bytes: 1024,
         });
         graph.aux_buses.push(AuxBus {

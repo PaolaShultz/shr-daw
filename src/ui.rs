@@ -1,4 +1,6 @@
-use crate::audio_graph::{EffectId, EffectKind, InsertRack};
+use crate::audio_graph::{
+    EffectId, EffectKind, InsertRack, ProjectAuxRouting, SendPoint, MAX_AUX_BUSES,
+};
 use crate::audio_recorder::{AudioRecorder, RecorderStatus};
 use crate::chord::HeldNotes;
 use crate::config::{BankSelectMode, ExternalMidiConfig, RuntimeConfig};
@@ -59,6 +61,7 @@ const INSERT_EFFECTS: [EffectKind; 13] = [
     EffectKind::Crusher,
     EffectKind::Utility,
 ];
+const FIRST_AUX_EFFECT_INDEX: usize = 3;
 
 fn effect_kind_label(kind: EffectKind) -> &'static str {
     match kind {
@@ -75,6 +78,51 @@ fn effect_kind_label(kind: EffectKind) -> &'static str {
         EffectKind::Filter => "FILTER",
         EffectKind::Gate => "GATE",
         EffectKind::Crusher => "CRUSHER",
+    }
+}
+
+fn fx_target_label(target: usize) -> &'static str {
+    match target {
+        0 => "SOURCE",
+        1 => "AUX 1",
+        _ => "AUX 2",
+    }
+}
+
+fn send_point_label(point: SendPoint) -> &'static str {
+    match point {
+        SendPoint::PreInsert => "PRE",
+        SendPoint::PostInsert => "POST",
+    }
+}
+
+fn project_fx_rack<'a>(
+    source: &'a InsertRack,
+    aux: &'a ProjectAuxRouting,
+    target: usize,
+) -> Option<&'a InsertRack> {
+    if target == 0 {
+        Some(source)
+    } else {
+        aux.buses
+            .iter()
+            .find(|bus| usize::from(bus.id) == target)
+            .map(|bus| &bus.rack)
+    }
+}
+
+fn project_fx_rack_mut<'a>(
+    source: &'a mut InsertRack,
+    aux: &'a mut ProjectAuxRouting,
+    target: usize,
+) -> Option<&'a mut InsertRack> {
+    if target == 0 {
+        Some(source)
+    } else {
+        aux.buses
+            .iter_mut()
+            .find(|bus| usize::from(bus.id) == target)
+            .map(|bus| &mut bus.rack)
     }
 }
 
@@ -320,6 +368,7 @@ struct App {
     fx_selected: usize,
     fx_parameter: usize,
     fx_add_kind: usize,
+    fx_target: usize,
 }
 impl App {
     fn new(
@@ -457,6 +506,7 @@ impl App {
             fx_selected: 0,
             fx_parameter: 0,
             fx_add_kind: 0,
+            fx_target: 0,
         }
     }
 
@@ -2079,7 +2129,7 @@ impl App {
         self.unload_loop_player();
         let mut song = Song::new(&self.config.external_midi);
         song.name = name.clone();
-        if let Err(status) = self.publish_insert_rack_runtime(&song.insert_rack) {
+        if let Err(status) = self.publish_fx_routing_runtime(&song.insert_rack, &song.aux_routing) {
             self.confirm_new_project = false;
             self.status = status;
             return;
@@ -2225,7 +2275,9 @@ impl App {
         self.tracker_stop();
         match sequencer::load(&sequencer::songs_dir(), &name) {
             Ok(song) => {
-                if let Err(status) = self.publish_insert_rack_runtime(&song.insert_rack) {
+                if let Err(status) =
+                    self.publish_fx_routing_runtime(&song.insert_rack, &song.aux_routing)
+                {
                     self.status = status;
                     return;
                 }
@@ -3160,34 +3212,63 @@ impl App {
     }
 
     fn selected_effect_id(&self) -> Option<EffectId> {
-        self.song.insert_rack.order.get(self.fx_selected).copied()
+        project_fx_rack(
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+            self.fx_target,
+        )?
+        .order
+        .get(self.fx_selected)
+        .copied()
     }
 
-    fn commit_insert_rack(&mut self, rack: InsertRack, success: String) -> bool {
-        if let Err(status) = self.publish_insert_rack_runtime(&rack) {
+    fn selected_effect(&self) -> Option<&crate::audio_graph::EffectInstance> {
+        let id = self.selected_effect_id()?;
+        project_fx_rack(
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+            self.fx_target,
+        )?
+        .effect(id)
+    }
+
+    fn commit_fx_routing(
+        &mut self,
+        rack: InsertRack,
+        aux_routing: ProjectAuxRouting,
+        success: String,
+    ) -> bool {
+        if let Err(status) = self.publish_fx_routing_runtime(&rack, &aux_routing) {
             self.status = status;
             return false;
         }
         self.song.insert_rack = rack;
-        self.fx_selected = self
-            .fx_selected
-            .min(self.song.insert_rack.order.len().saturating_sub(1));
+        self.song.aux_routing = aux_routing;
+        let length = project_fx_rack(
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+            self.fx_target,
+        )
+        .map(|rack| rack.order.len())
+        .unwrap_or(0);
+        self.fx_selected = self.fx_selected.min(length.saturating_sub(1));
         self.status = success;
         true
     }
 
-    fn publish_insert_rack_runtime(
+    fn publish_fx_routing_runtime(
         &mut self,
         rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
     ) -> std::result::Result<(), String> {
         if let Some(reason) = self.audio_graph_edit_blocker() {
             return Err(reason.into());
         }
-        if let Err(error) = rack.validate() {
-            return Err(format!("FX rack: {error}"));
+        if let Err(error) = aux_routing.validate(rack) {
+            return Err(format!("FX routing: {error}"));
         }
         if let Some(engine) = self.engine.as_mut() {
-            match engine.publish_insert_rack(rack) {
+            match engine.publish_fx_routing(rack, aux_routing) {
                 Ok(_) => {}
                 Err(error) => {
                     return Err(format!("FX publication: {error:#}"));
@@ -3200,11 +3281,43 @@ impl App {
     fn add_effect(&mut self) {
         let kind = INSERT_EFFECTS[self.fx_add_kind];
         let mut rack = self.song.insert_rack.clone();
-        match rack.add(kind) {
+        let mut aux = self.song.aux_routing.clone();
+        let result = if self.fx_target == 0 {
+            aux.next_effect_id(&rack)
+                .and_then(|id| rack.add_with_id(kind, id).map(|()| id))
+        } else {
+            let aux_id = self.fx_target as u8;
+            while aux.buses.iter().all(|bus| bus.id != aux_id) {
+                if let Err(error) = aux.add_bus() {
+                    self.status = format!("FX add: {error}");
+                    return;
+                }
+            }
+            let id = match aux.add_effect(&rack, aux_id, kind) {
+                Ok(id) => id,
+                Err(error) => {
+                    self.status = format!("FX add: {error}");
+                    return;
+                }
+            };
+            if aux.sends.iter().all(|send| send.aux_id != aux_id) {
+                if let Err(error) = aux.set_send(&rack, aux_id, -18.0, SendPoint::PostInsert) {
+                    self.status = format!("FX send: {error}");
+                    return;
+                }
+            }
+            Ok(id)
+        };
+        match result {
             Ok(id) => {
-                let index = rack.order.len() - 1;
-                if self.commit_insert_rack(rack, format!("added {} #{id}", effect_kind_label(kind)))
-                {
+                let index = project_fx_rack(&rack, &aux, self.fx_target)
+                    .map(|rack| rack.order.len().saturating_sub(1))
+                    .unwrap_or(0);
+                if self.commit_fx_routing(
+                    rack,
+                    aux,
+                    format!("added {} #{id}", effect_kind_label(kind)),
+                ) {
                     self.fx_selected = index;
                     self.fx_parameter = 0;
                 }
@@ -3219,10 +3332,21 @@ impl App {
             return;
         };
         let mut rack = self.song.insert_rack.clone();
-        match rack.remove(id) {
+        let mut aux = self.song.aux_routing.clone();
+        let result = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+            .expect("selected effect has a rack")
+            .remove(id);
+        if self.fx_target > 0
+            && project_fx_rack(&rack, &aux, self.fx_target)
+                .is_some_and(|rack| rack.effects.is_empty())
+        {
+            aux.clear_send(self.fx_target as u8);
+        }
+        match result {
             Ok(effect) => {
-                self.commit_insert_rack(
+                self.commit_fx_routing(
                     rack,
+                    aux,
                     format!("removed {} #{id}", effect_kind_label(effect.kind)),
                 );
             }
@@ -3238,17 +3362,28 @@ impl App {
         let destination = if direction < 0 {
             self.fx_selected.saturating_sub(1)
         } else {
-            (self.fx_selected + 1).min(self.song.insert_rack.order.len() - 1)
+            let length = project_fx_rack(
+                &self.song.insert_rack,
+                &self.song.aux_routing,
+                self.fx_target,
+            )
+            .map(|rack| rack.order.len())
+            .unwrap_or(0);
+            (self.fx_selected + 1).min(length - 1)
         };
         if destination == self.fx_selected {
             return;
         }
         let mut rack = self.song.insert_rack.clone();
-        if let Err(error) = rack.move_to(id, destination) {
+        let mut aux = self.song.aux_routing.clone();
+        if let Err(error) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+            .expect("selected effect has a rack")
+            .move_to(id, destination)
+        {
             self.status = format!("FX reorder: {error}");
             return;
         }
-        if self.commit_insert_rack(rack, format!("moved FX #{id}")) {
+        if self.commit_fx_routing(rack, aux, format!("moved FX #{id}")) {
             self.fx_selected = destination;
         }
     }
@@ -3259,26 +3394,157 @@ impl App {
             return;
         };
         let mut rack = self.song.insert_rack.clone();
-        let effect = rack.effect_mut(id).expect("rack order was validated");
+        let mut aux = self.song.aux_routing.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+            .and_then(|rack| rack.effect_mut(id))
+            .expect("rack order was validated");
         effect.bypass = !effect.bypass;
         let bypass = effect.bypass;
-        self.commit_insert_rack(
+        self.commit_fx_routing(
             rack,
+            aux,
             format!("FX #{id} {}", if bypass { "bypassed" } else { "active" }),
         );
     }
 
     fn cycle_effect_kind(&mut self, direction: i8) {
-        self.fx_add_kind = if direction < 0 {
+        let mut next = if direction < 0 {
             self.fx_add_kind
                 .checked_sub(1)
                 .unwrap_or(INSERT_EFFECTS.len() - 1)
         } else {
             (self.fx_add_kind + 1) % INSERT_EFFECTS.len()
         };
+        if self.fx_target > 0 {
+            while !matches!(
+                INSERT_EFFECTS[next],
+                EffectKind::Delay
+                    | EffectKind::Reverb
+                    | EffectKind::Chorus
+                    | EffectKind::Flanger
+                    | EffectKind::Phaser
+            ) {
+                next = if direction < 0 {
+                    next.checked_sub(1).unwrap_or(INSERT_EFFECTS.len() - 1)
+                } else {
+                    (next + 1) % INSERT_EFFECTS.len()
+                };
+            }
+        }
+        self.fx_add_kind = next;
         self.status = format!(
             "next FX to add · {}",
             effect_kind_label(INSERT_EFFECTS[self.fx_add_kind])
+        );
+    }
+
+    fn cycle_fx_target(&mut self) {
+        self.fx_target = (self.fx_target + 1) % (MAX_AUX_BUSES + 1);
+        self.fx_selected = 0;
+        self.fx_parameter = 0;
+        if self.fx_target > 0
+            && !matches!(
+                INSERT_EFFECTS[self.fx_add_kind],
+                EffectKind::Delay
+                    | EffectKind::Reverb
+                    | EffectKind::Chorus
+                    | EffectKind::Flanger
+                    | EffectKind::Phaser
+            )
+        {
+            self.fx_add_kind = FIRST_AUX_EFFECT_INDEX;
+        }
+        self.status = format!("FX target · {}", fx_target_label(self.fx_target));
+    }
+
+    fn adjust_aux_send(&mut self, direction: i8) {
+        if self.fx_target == 0 {
+            self.status = "source inserts do not have a send level".into();
+            return;
+        }
+        let aux_id = self.fx_target as u8;
+        let mut aux = self.song.aux_routing.clone();
+        let Some(bus) = aux.buses.iter().find(|bus| bus.id == aux_id) else {
+            self.status = "add an aux effect before enabling its send".into();
+            return;
+        };
+        if bus.rack.effects.is_empty() {
+            self.status = "add an aux effect before enabling its send".into();
+            return;
+        }
+        let existing = aux.sends.iter().find(|send| send.aux_id == aux_id);
+        let point = existing
+            .map(|send| send.point)
+            .unwrap_or(SendPoint::PostInsert);
+        let current = existing.map(|send| send.level_db).unwrap_or(-27.0);
+        if direction < 0 && current <= -60.0 {
+            aux.clear_send(aux_id);
+            self.commit_fx_routing(
+                self.song.insert_rack.clone(),
+                aux,
+                format!("AUX {aux_id} send · OFF"),
+            );
+            return;
+        }
+        let value = (current + 3.0 * f32::from(direction.signum())).clamp(-60.0, 12.0);
+        if let Err(error) = aux.set_send(&self.song.insert_rack, aux_id, value, point) {
+            self.status = format!("FX send: {error}");
+            return;
+        }
+        self.commit_fx_routing(
+            self.song.insert_rack.clone(),
+            aux,
+            format!("AUX {aux_id} send · {value:.0} dB"),
+        );
+    }
+
+    fn toggle_aux_send_point(&mut self) {
+        if self.fx_target == 0 {
+            self.status = "select AUX 1 or AUX 2".into();
+            return;
+        }
+        let aux_id = self.fx_target as u8;
+        let mut aux = self.song.aux_routing.clone();
+        let Some(send) = aux.sends.iter().find(|send| send.aux_id == aux_id).cloned() else {
+            self.status = "enable the aux send first".into();
+            return;
+        };
+        let point = match send.point {
+            SendPoint::PreInsert => SendPoint::PostInsert,
+            SendPoint::PostInsert => SendPoint::PreInsert,
+        };
+        if let Err(error) = aux.set_send(&self.song.insert_rack, aux_id, send.level_db, point) {
+            self.status = format!("FX send: {error}");
+            return;
+        }
+        self.commit_fx_routing(
+            self.song.insert_rack.clone(),
+            aux,
+            format!("AUX {aux_id} send · {}", send_point_label(point)),
+        );
+    }
+
+    fn cycle_aux_return(&mut self) {
+        if self.fx_target == 0 {
+            self.status = "select AUX 1 or AUX 2".into();
+            return;
+        }
+        let aux_id = self.fx_target as u8;
+        let mut aux = self.song.aux_routing.clone();
+        let Some(bus) = aux.buses.iter_mut().find(|bus| bus.id == aux_id) else {
+            self.status = "aux bus is empty".into();
+            return;
+        };
+        bus.return_gain_db = if bus.return_gain_db <= -60.0 {
+            12.0
+        } else {
+            (bus.return_gain_db - 3.0).max(-60.0)
+        };
+        let value = bus.return_gain_db;
+        self.commit_fx_routing(
+            self.song.insert_rack.clone(),
+            aux,
+            format!("AUX {aux_id} return · {value:.0} dB"),
         );
     }
 
@@ -3288,10 +3554,18 @@ impl App {
             return;
         };
         let mut rack = self.song.insert_rack.clone();
-        let effect = rack.effect_mut(id).expect("rack order was validated");
+        let mut aux = self.song.aux_routing.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+            .and_then(|rack| rack.effect_mut(id))
+            .expect("rack order was validated");
         let schema = crate::effect_schema::schema(effect.kind);
         self.fx_parameter = self.fx_parameter.min(schema.len().saturating_sub(1));
         let spec = schema[self.fx_parameter];
+        if self.fx_target > 0 && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
+        {
+            self.status = "aux wet/dry controls are fixed at 100% wet".into();
+            return;
+        }
         let current = effect
             .parameters
             .get(spec.name)
@@ -3326,7 +3600,11 @@ impl App {
             }
         };
         effect.parameters.insert(spec.name.into(), value);
-        self.commit_insert_rack(rack, format!("{} · {value:.2} {}", spec.name, spec.unit));
+        self.commit_fx_routing(
+            rack,
+            aux,
+            format!("{} · {value:.2} {}", spec.name, spec.unit),
+        );
     }
     fn load(&mut self, state: &Path, _tx: std::sync::mpsc::Sender<MidiEvent>) {
         if let Some(reason) = self.audio_graph_edit_blocker() {
@@ -3377,12 +3655,13 @@ impl App {
         self.playing = None;
         self.status = format!("starting JACK/{}…", p.backend.label());
         let backend_label = p.backend.label();
-        match Engine::start_with_rack(
+        match Engine::start_with_routing(
             &p,
             state,
             Arc::clone(&self.midi_output),
             &self.config,
             &self.song.insert_rack,
+            &self.song.aux_routing,
         ) {
             Ok(e) => {
                 let audio_route = e.audio_route_status();
@@ -3669,12 +3948,13 @@ impl App {
                 }
                 self.engine.take();
                 self.playing = None;
-                match Engine::start_with_rack(
+                match Engine::start_with_routing(
                     &preset,
                     state,
                     Arc::clone(&self.midi_output),
                     &self.config,
                     &self.song.insert_rack,
+                    &self.song.aux_routing,
                 ) {
                     Ok(engine) => {
                         let audio_route = engine.audio_route_status();
@@ -4212,8 +4492,10 @@ fn perform(
             } else if a.screen == Screen::Presets {
                 a.selected = (a.selected + 1).min(a.presets.len().saturating_sub(1));
             } else if a.screen == Screen::FxRack {
-                a.fx_selected =
-                    (a.fx_selected + 1).min(a.song.insert_rack.order.len().saturating_sub(1));
+                let length = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
+                    .map(|rack| rack.order.len())
+                    .unwrap_or(0);
+                a.fx_selected = (a.fx_selected + 1).min(length.saturating_sub(1));
             } else if a.screen == Screen::FxEditor {
                 a.adjust_effect_parameter(1);
             }
@@ -4376,12 +4658,14 @@ fn perform(
             a.status = "stereo audio recorder".into();
         }
         Action::OpenFxRack => {
-            a.fx_selected = a
-                .fx_selected
-                .min(a.song.insert_rack.order.len().saturating_sub(1));
+            let length = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
+                .map(|rack| rack.order.len())
+                .unwrap_or(0);
+            a.fx_selected = a.fx_selected.min(length.saturating_sub(1));
             a.set_screen(Screen::FxRack);
             a.status = format!(
-                "insert rack · next {}",
+                "{} rack · next {}",
+                fx_target_label(a.fx_target),
                 effect_kind_label(INSERT_EFFECTS[a.fx_add_kind])
             );
         }
@@ -4671,18 +4955,21 @@ fn perform(
         Action::FxBypass => a.toggle_effect_bypass(),
         Action::FxKindPrevious => a.cycle_effect_kind(-1),
         Action::FxKindNext => a.cycle_effect_kind(1),
+        Action::FxTargetNext => a.cycle_fx_target(),
+        Action::FxSendDecrease => a.adjust_aux_send(-1),
+        Action::FxSendIncrease => a.adjust_aux_send(1),
+        Action::FxSendPoint => a.toggle_aux_send_point(),
+        Action::FxReturnCycle => a.cycle_aux_return(),
         Action::FxParameterPrevious => {
             let len = a
-                .selected_effect_id()
-                .and_then(|id| a.song.insert_rack.effect(id))
+                .selected_effect()
                 .map(|effect| crate::effect_schema::schema(effect.kind).len())
                 .unwrap_or(0);
             a.fx_parameter = a.fx_parameter.saturating_sub(1).min(len.saturating_sub(1));
         }
         Action::FxParameterNext => {
             let len = a
-                .selected_effect_id()
-                .and_then(|id| a.song.insert_rack.effect(id))
+                .selected_effect()
                 .map(|effect| crate::effect_schema::schema(effect.kind).len())
                 .unwrap_or(0);
             a.fx_parameter = (a.fx_parameter + 1).min(len.saturating_sub(1));
@@ -5380,9 +5667,11 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(4));
     a.hits.list = body;
+    let rack = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target);
+    let rack_length = rack.map(|rack| rack.order.len()).unwrap_or(0);
     let mut lines = vec![Spans::from(vec![
         Span::styled(
-            "FX RACK",
+            format!("FX {}", fx_target_label(a.fx_target)),
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
@@ -5390,14 +5679,51 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Span::raw(format!(
             "  ADD: {}  {}/8",
             effect_kind_label(INSERT_EFFECTS[a.fx_add_kind]),
-            a.song.insert_rack.order.len()
+            rack_length
         )),
     ])];
-    if a.song.insert_rack.order.is_empty() {
+    if a.fx_target > 0 {
+        let aux_id = a.fx_target as u8;
+        let send = a
+            .song
+            .aux_routing
+            .sends
+            .iter()
+            .find(|send| send.aux_id == aux_id);
+        let return_gain = a
+            .song
+            .aux_routing
+            .buses
+            .iter()
+            .find(|bus| bus.id == aux_id)
+            .map(|bus| bus.return_gain_db)
+            .unwrap_or(0.0);
+        lines.push(Spans::from(format!(
+            "SEND {}  {}  RETURN {return_gain:.0} dB",
+            send.map(|send| format!("{:.0} dB", send.level_db))
+                .unwrap_or_else(|| "OFF".into()),
+            send.map(|send| send_point_label(send.point))
+                .unwrap_or("POST")
+        )));
+        if let Some(meter) = a
+            .engine
+            .as_ref()
+            .and_then(|engine| engine.aux_meter(aux_id))
+        {
+            let peak = meter.output.peak.left.max(meter.output.peak.right);
+            let rms = meter.output.rms.left.max(meter.output.rms.right);
+            lines.push(Spans::from(format!(
+                "RETURN pk {:>5.1} rms {:>5.1} dBFS",
+                meter_db(peak),
+                meter_db(rms)
+            )));
+        }
+    }
+    if rack_length == 0 {
         lines.push(Spans::from("  Empty · choose KIND then ADD"));
-    } else {
-        for (index, id) in a.song.insert_rack.order.iter().copied().enumerate() {
-            let effect = a.song.insert_rack.effect(id).expect("validated rack order");
+    } else if let Some(rack) = rack {
+        for (index, id) in rack.order.iter().copied().enumerate() {
+            let effect = rack.effect(id).expect("validated rack order");
             let selected = index == a.fx_selected;
             let marker = if selected { ">" } else { " " };
             let state = if effect.bypass { "BYP" } else { "ON " };
@@ -5445,7 +5771,9 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         );
         return;
     };
-    let effect = a.song.insert_rack.effect(id).expect("validated rack order");
+    let effect = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
+        .and_then(|rack| rack.effect(id))
+        .expect("validated rack order");
     let schema = crate::effect_schema::schema(effect.kind);
     a.fx_parameter = a.fx_parameter.min(schema.len().saturating_sub(1));
     let visible_rows = body.height.saturating_sub(7) as usize;
@@ -5455,7 +5783,11 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .min(schema.len().saturating_sub(visible_rows));
     let mut lines = vec![Spans::from(vec![
         Span::styled(
-            format!("{} #{id}", effect_kind_label(effect.kind)),
+            format!(
+                "{} · {} #{id}",
+                fx_target_label(a.fx_target),
+                effect_kind_label(effect.kind)
+            ),
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
@@ -7328,6 +7660,41 @@ mod tests {
         let effect = a.song.insert_rack.effect(compressor).unwrap();
         assert!(effect.parameters["threshold_db"].is_finite());
         a.song.insert_rack.validate().unwrap();
+    }
+
+    #[test]
+    fn fx_aux_workflow_forces_wet_and_keeps_independent_send_return_state() {
+        let p = presets();
+        let mut a = app(&p);
+        a.fx_add_kind = 0;
+        a.add_effect();
+        let source_id = a.selected_effect_id().unwrap();
+        a.cycle_fx_target();
+        a.fx_add_kind = FIRST_AUX_EFFECT_INDEX;
+        a.add_effect();
+        let first_aux_effect = a.selected_effect_id().unwrap();
+        assert!(first_aux_effect > source_id);
+        let bus = &a.song.aux_routing.buses[0];
+        let delay = bus.rack.effect(first_aux_effect).unwrap();
+        assert_eq!(delay.parameters["dry_percent"], 0.0);
+        assert_eq!(delay.parameters["wet_percent"], 100.0);
+        assert_eq!(a.song.aux_routing.sends[0].level_db, -18.0);
+        a.adjust_aux_send(1);
+        a.toggle_aux_send_point();
+        a.cycle_aux_return();
+        assert_eq!(a.song.aux_routing.sends[0].level_db, -15.0);
+        assert_eq!(a.song.aux_routing.sends[0].point, SendPoint::PreInsert);
+        assert_eq!(a.song.aux_routing.buses[0].return_gain_db, -3.0);
+
+        a.cycle_fx_target();
+        a.fx_add_kind = 8;
+        a.add_effect();
+        assert_eq!(a.song.aux_routing.buses.len(), 2);
+        assert_ne!(
+            a.song.aux_routing.sends[0].level_db,
+            a.song.aux_routing.sends[1].level_db
+        );
+        a.song.aux_routing.validate(&a.song.insert_rack).unwrap();
     }
 
     #[test]

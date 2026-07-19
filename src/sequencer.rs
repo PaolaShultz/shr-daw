@@ -1,6 +1,6 @@
 //! Multi-destination FT2-style sequencing. Song editing/storage and event
 //! planning remain independent from the owned software-synth lifecycle.
-use crate::audio_graph::InsertRack;
+use crate::audio_graph::{InsertRack, ProjectAuxRouting};
 use crate::config::{BankSelectMode, ExternalMidiConfig};
 use crate::device_profile::Registry as DeviceProfiles;
 use anyhow::{anyhow, bail, Context, Result};
@@ -13,7 +13,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 2;
+pub const SONG_VERSION: u8 = 3;
 pub const LANES_PER_PAGE: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_PATTERNS: usize = 256;
@@ -30,6 +30,7 @@ pub struct Song {
     pub gate_percent: u8,
     pub audio_loop: Option<LoopSettings>,
     pub insert_rack: InsertRack,
+    pub aux_routing: ProjectAuxRouting,
     pub order: Vec<u16>,
     pub patterns: BTreeMap<u16, Pattern>,
 }
@@ -296,6 +297,7 @@ impl Song {
             gate_percent: config.gate_percent,
             audio_loop: None,
             insert_rack: InsertRack::default(),
+            aux_routing: ProjectAuxRouting::default(),
             order: vec![0],
             patterns,
         }
@@ -327,6 +329,9 @@ impl Song {
         }
         self.insert_rack
             .validate()
+            .map_err(|error| anyhow!(error.to_string()))?;
+        self.aux_routing
+            .validate(&self.insert_rack)
             .map_err(|error| anyhow!(error.to_string()))?;
         if self
             .order
@@ -808,6 +813,10 @@ pub fn encode(song: &Song) -> Result<String> {
         "insert_rack={}\n",
         escape(&serde_json::to_string(&song.insert_rack)?)
     ));
+    out.push_str(&format!(
+        "aux_routing={}\n",
+        escape(&serde_json::to_string(&song.aux_routing)?)
+    ));
     for (number, pattern) in &song.patterns {
         out.push_str(&format!(
             "pattern={number}|{}|{}|{}\n",
@@ -889,6 +898,7 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut gate = None;
     let mut audio_loop = None;
     let mut insert_rack = None;
+    let mut aux_routing = None;
     let mut order = None;
     let mut patterns: BTreeMap<u16, Pattern> = BTreeMap::new();
     let mut pattern_pages: BTreeMap<u16, BTreeMap<usize, Page>> = BTreeMap::new();
@@ -925,10 +935,15 @@ pub fn decode(text: &str) -> Result<Song> {
                     "loop",
                 )?;
             }
-            "insert_rack" if version == 2 => set_once(
+            "insert_rack" if version >= 2 => set_once(
                 &mut insert_rack,
                 serde_json::from_str::<InsertRack>(&unescape(value)?)?,
                 "insert_rack",
+            )?,
+            "aux_routing" if version == 3 => set_once(
+                &mut aux_routing,
+                serde_json::from_str::<ProjectAuxRouting>(&unescape(value)?)?,
+                "aux_routing",
             )?,
             "order" => {
                 let parsed = value
@@ -994,7 +1009,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         },
                         true,
                     ),
-                    (1 | 2, [_, _, name, enabled, velocity, percussion, target]) => (
+                    (1..=3, [_, _, name, enabled, velocity, percussion, target]) => (
                         Page {
                             name: unescape(name)?,
                             enabled: binary_flag(enabled, "pattern page enabled")?,
@@ -1090,10 +1105,15 @@ pub fn decode(text: &str) -> Result<Song> {
         steps_per_beat: steps.context("missing steps")?,
         gate_percent: gate.context("missing gate")?,
         audio_loop,
-        insert_rack: if version == 2 {
+        insert_rack: if version >= 2 {
             insert_rack.context("missing insert rack")?
         } else {
             InsertRack::default()
+        },
+        aux_routing: if version == 3 {
+            aux_routing.context("missing aux routing")?
+        } else {
+            ProjectAuxRouting::default()
         },
         order: order.context("missing order")?,
         patterns,
@@ -2532,6 +2552,18 @@ mod tests {
             .unwrap()
             .parameters
             .insert("threshold_db".into(), -27.5);
+        let aux = s.aux_routing.add_bus().unwrap();
+        s.aux_routing
+            .add_effect(&s.insert_rack, aux, crate::audio_graph::EffectKind::Reverb)
+            .unwrap();
+        s.aux_routing
+            .set_send(
+                &s.insert_rack,
+                aux,
+                -18.0,
+                crate::audio_graph::SendPoint::PostInsert,
+            )
+            .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
         assert_eq!(decode(&text).unwrap(), s);
@@ -2573,7 +2605,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 2\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 3\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -3421,21 +3453,35 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 2\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 3\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = current
-            .replacen("SHSYNTH-SONG 2", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 3", "SHSYNTH-SONG 1", 1)
             .lines()
-            .filter(|line| !line.starts_with("insert_rack="))
+            .filter(|line| !line.starts_with("insert_rack=") && !line.starts_with("aux_routing="))
             .collect::<Vec<_>>()
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 2\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 3\n"));
+    }
+
+    #[test]
+    fn version_two_project_migrates_to_empty_aux_routing() {
+        let current = encode(&Song::new(&config())).unwrap();
+        let old = current
+            .replacen("SHSYNTH-SONG 3", "SHSYNTH-SONG 2", 1)
+            .lines()
+            .filter(|line| !line.starts_with("aux_routing="))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let migrated = decode(&old).unwrap();
+        assert!(migrated.aux_routing.buses.is_empty());
+        assert!(migrated.aux_routing.sends.is_empty());
     }
 
     #[test]

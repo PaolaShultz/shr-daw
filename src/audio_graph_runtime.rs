@@ -1,7 +1,7 @@
 //! Preallocated callback plan compiled from a validated audio graph.
 
 use crate::audio_graph::{GraphDefinition, NodeId, NodeKind, SourceKind, MAX_CALLBACK_FRAMES};
-use crate::dsp::{AtomicMeter, StereoFrame};
+use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
 use crate::effects::{EffectSlot, MeterHandles};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -153,8 +153,40 @@ enum Operation {
     Source,
     Sum,
     Pass,
+    Fader(Box<RuntimeFader>),
     Effect(Box<EffectSlot>),
     Sink,
+}
+
+struct RuntimeFader {
+    gain: SmoothedValue,
+    meter: MeterAccumulator,
+    published: Arc<AtomicMeter>,
+}
+
+impl RuntimeFader {
+    fn new(gain_db: f32, maximum_frames: usize) -> Result<Self, PlanError> {
+        Ok(Self {
+            gain: SmoothedValue::new(
+                db_to_gain(gain_db).map_err(|error| PlanError::new(error.to_string()))?,
+            )
+            .map_err(|error| PlanError::new(error.to_string()))?,
+            meter: MeterAccumulator::new(maximum_frames)
+                .map_err(|error| PlanError::new(error.to_string()))?,
+            published: Arc::new(AtomicMeter::default()),
+        })
+    }
+
+    #[inline]
+    fn process(&mut self, frames: &mut [StereoFrame]) {
+        for frame in frames.iter_mut() {
+            let gain = self.gain.next_value();
+            *frame = self
+                .meter
+                .process(StereoFrame::new(frame.left * gain, frame.right * gain));
+        }
+        self.published.publish(self.meter.snapshot_and_clear_peak());
+    }
 }
 
 struct RuntimeNode {
@@ -215,6 +247,16 @@ impl GraphPlan {
             .iter()
             .map(|effect| (effect.id, effect))
             .collect::<BTreeMap<_, _>>();
+        let sends = graph
+            .sends
+            .iter()
+            .map(|send| ((send.source_node, send.aux_id), send))
+            .collect::<BTreeMap<_, _>>();
+        let aux_buses = graph
+            .aux_buses
+            .iter()
+            .map(|aux| (aux.id, aux))
+            .collect::<BTreeMap<_, _>>();
         let mut retained = BTreeMap::new();
         if let Some(previous) = previous.filter(|plan| {
             plan.sample_rate == graph.sample_rate && plan.maximum_frames == maximum_frames
@@ -257,9 +299,24 @@ impl GraphPlan {
                     sink_nodes.push(id);
                     Operation::Sink
                 }
-                NodeKind::SendTap { .. } | NodeKind::AuxReturn { .. } | NodeKind::MonoToStereo => {
-                    Operation::Pass
-                }
+                NodeKind::SendTap {
+                    aux_id,
+                    source_node,
+                } => Operation::Fader(Box::new(RuntimeFader::new(
+                    sends
+                        .get(&(*source_node, *aux_id))
+                        .ok_or_else(|| PlanError::new("send tap route missing"))?
+                        .level_db,
+                    maximum_frames,
+                )?)),
+                NodeKind::AuxReturn { aux_id } => Operation::Fader(Box::new(RuntimeFader::new(
+                    aux_buses
+                        .get(aux_id)
+                        .ok_or_else(|| PlanError::new("aux return bus missing"))?
+                        .return_gain_db,
+                    maximum_frames,
+                )?)),
+                NodeKind::MonoToStereo => Operation::Pass,
             };
             nodes.push(RuntimeNode {
                 id,
@@ -362,6 +419,7 @@ impl GraphPlan {
     pub fn meter(&self, node_id: NodeId) -> Option<Arc<AtomicMeter>> {
         self.nodes.iter().find_map(|node| match &node.operation {
             Operation::Effect(slot) if node.id == node_id => Some(slot.meters().output),
+            Operation::Fader(fader) if node.id == node_id => Some(Arc::clone(&fader.published)),
             _ => None,
         })
     }
@@ -438,6 +496,7 @@ impl GraphPlan {
             }
             match &mut self.nodes[node_index].operation {
                 Operation::Source | Operation::Sum | Operation::Pass | Operation::Sink => {}
+                Operation::Fader(fader) => fader.process(&mut self.buffers[target][..frames]),
                 Operation::Effect(slot) => slot.process(&mut self.buffers[target][..frames]),
             }
         }
@@ -552,6 +611,133 @@ mod tests {
     }
 
     #[test]
+    fn aux_send_and_return_gains_mix_once_and_publish_return_meter() {
+        let mut delay_parameters = crate::effect_schema::defaults(EffectKind::Delay);
+        delay_parameters.insert("time_ms".into(), 1.0);
+        delay_parameters.insert("feedback_percent".into(), 0.0);
+        delay_parameters.insert("wet_percent".into(), 100.0);
+        delay_parameters.insert("dry_percent".into(), 0.0);
+        let graph = GraphDefinition {
+            format_version: GRAPH_FORMAT_VERSION,
+            enabled: true,
+            sample_rate: 48_000,
+            maximum_callback_frames: 64,
+            nodes: vec![
+                Node {
+                    id: 1,
+                    layout: ChannelLayout::Stereo,
+                    kind: NodeKind::Source {
+                        source: SourceKind::ManagedEngine,
+                    },
+                },
+                Node {
+                    id: 2,
+                    layout: ChannelLayout::Stereo,
+                    kind: NodeKind::SendTap {
+                        aux_id: 1,
+                        source_node: 1,
+                    },
+                },
+                Node {
+                    id: 3,
+                    layout: ChannelLayout::Stereo,
+                    kind: NodeKind::Processor { effect_id: 10 },
+                },
+                Node {
+                    id: 4,
+                    layout: ChannelLayout::Stereo,
+                    kind: NodeKind::AuxReturn { aux_id: 1 },
+                },
+                Node {
+                    id: 5,
+                    layout: ChannelLayout::Stereo,
+                    kind: NodeKind::StereoMixer,
+                },
+                Node {
+                    id: 6,
+                    layout: ChannelLayout::Stereo,
+                    kind: NodeKind::Sink {
+                        sink: SinkKind::MainPlayback {
+                            ports: StereoPorts {
+                                left: "main:l".into(),
+                                right: "main:r".into(),
+                            },
+                        },
+                    },
+                },
+            ],
+            edges: vec![
+                Edge {
+                    id: 1,
+                    from: 1,
+                    to: 5,
+                },
+                Edge {
+                    id: 2,
+                    from: 1,
+                    to: 2,
+                },
+                Edge {
+                    id: 3,
+                    from: 2,
+                    to: 3,
+                },
+                Edge {
+                    id: 4,
+                    from: 3,
+                    to: 4,
+                },
+                Edge {
+                    id: 5,
+                    from: 4,
+                    to: 5,
+                },
+                Edge {
+                    id: 6,
+                    from: 5,
+                    to: 6,
+                },
+            ],
+            effects: vec![EffectInstance {
+                id: 10,
+                kind: EffectKind::Delay,
+                version: EFFECT_FORMAT_VERSION,
+                bypass: false,
+                parameters: delay_parameters,
+                owned_memory_bytes: 0,
+            }],
+            source_chains: vec![SourceChain {
+                source_node: 1,
+                effects: vec![],
+            }],
+            master_chain: vec![],
+            aux_buses: vec![AuxBus {
+                id: 1,
+                effects: vec![10],
+                return_gain_db: -6.0206,
+            }],
+            sends: vec![SendRoute {
+                source_node: 1,
+                aux_id: 1,
+                level_db: -6.0206,
+                point: SendPoint::PreInsert,
+            }],
+            monitoring: Monitoring::default(),
+            recording_tap: RecordingTap::PostMaster,
+        };
+        let mut plan = GraphPlan::compile(&graph).unwrap();
+        let return_meter = plan.meter(4).unwrap();
+        let source = plan.source_buffer_mut(1, 64).unwrap();
+        source.fill(StereoFrame::SILENCE);
+        source[0] = StereoFrame::new(1.0, 1.0);
+        assert_no_allocations(|| assert_eq!(plan.process(64), ProcessStatus::Complete));
+        let output = plan.output_buffer(6, 64).unwrap();
+        assert_eq!(output[0], StereoFrame::new(1.0, 1.0));
+        assert!((output[48].left - 0.25).abs() < 0.001);
+        assert!((return_meter.load().peak.left - 0.25).abs() < 0.001);
+    }
+
+    #[test]
     fn dry_single_source_is_bit_identical_and_chunk_invariant() {
         let mut plan = GraphPlan::compile(&graph(false)).unwrap();
         let input = (0..128)
@@ -587,11 +773,11 @@ mod tests {
     }
 
     #[test]
-    fn oversized_block_and_creative_effect_are_refused() {
+    fn oversized_block_and_invalid_effect_schema_are_refused() {
         let mut plan = GraphPlan::compile(&graph(false)).unwrap();
         assert_eq!(plan.process(129), ProcessStatus::OversizedBlock);
         let mut graph = graph(true);
-        graph.effects[0].kind = EffectKind::Delay;
+        graph.effects[0].parameters.insert("future".into(), 1.0);
         assert!(GraphPlan::compile(&graph).is_err());
     }
 

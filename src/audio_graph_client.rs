@@ -5,8 +5,9 @@
 //! reads atomics, and updates lock-free counters.
 
 use crate::audio_graph::{
-    ChannelLayout, Edge, GraphDefinition, InsertRack, Monitoring, Node, NodeKind, RecordingTap,
-    SinkKind, SourceChain, SourceKind, StereoPorts, GRAPH_FORMAT_VERSION,
+    AuxBus, ChannelLayout, Edge, GraphDefinition, InsertRack, Monitoring, Node, NodeKind,
+    ProjectAuxRouting, RecordingTap, SendRoute, SinkKind, SourceChain, SourceKind, StereoPorts,
+    GRAPH_FORMAT_VERSION,
 };
 use crate::audio_graph_runtime::{
     CallbackTimingCounters, CallbackTimingSnapshot, GraphPlan, ProcessStatus,
@@ -20,6 +21,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 const SOURCE_NODE: u32 = 1;
 const FIRST_EFFECT_NODE: u32 = 10;
+const FIRST_SEND_NODE: u32 = 30;
+const FIRST_AUX_EFFECT_NODE: u32 = 40;
+const FIRST_AUX_RETURN_NODE: u32 = 70;
+const MASTER_NODE: u32 = 90;
 const SINK_NODE: u32 = 100;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -156,6 +161,7 @@ pub(crate) struct OwnedAudioGraph {
     jack: JackClient,
     callback: Box<CallbackData>,
     routes: BoundaryRoutes,
+    aux_return_nodes: [Option<(u8, u32)>; 2],
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -165,16 +171,22 @@ pub(crate) struct EffectMeterSnapshot {
     pub gain_reduction_db: Option<f32>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct AuxMeterSnapshot {
+    pub output: MeterSnapshot,
+}
+
 impl OwnedAudioGraph {
     pub(crate) fn sample_rate(&self) -> u32 {
         self.callback.sample_rate
     }
 
-    pub(crate) fn start_with_rack(
+    pub(crate) fn start_with_routing(
         config: &AudioGraphConfig,
         source_ports: [String; 2],
         destinations: [String; 2],
         rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
     ) -> Result<Self> {
         validate_stereo_boundary(&source_ports, "managed-engine source")?;
         validate_stereo_boundary(&destinations, "main output")?;
@@ -189,6 +201,7 @@ impl OwnedAudioGraph {
             config.maximum_callback_frames,
             &destinations,
             rack,
+            aux_routing,
         );
         let plan = GraphPlan::compile(&definition).context("compile managed audio graph")?;
 
@@ -250,6 +263,7 @@ impl OwnedAudioGraph {
             jack,
             callback,
             routes,
+            aux_return_nodes: aux_return_nodes(aux_routing),
         })
     }
 
@@ -270,10 +284,25 @@ impl OwnedAudioGraph {
         })
     }
 
+    pub(crate) fn aux_meter(&self, aux_id: u8) -> Option<AuxMeterSnapshot> {
+        let node = self
+            .aux_return_nodes
+            .iter()
+            .flatten()
+            .find_map(|(id, node)| (*id == aux_id).then_some(*node))?;
+        Some(AuxMeterSnapshot {
+            output: self.callback.plan.meter(node)?.load(),
+        })
+    }
+
     /// Publish a validated structural rack change while transport and all
     /// recording are stopped. JACK callback execution is joined before the
     /// plan is mutated; compatible effect IDs retain their runtime state.
-    pub(crate) fn publish_rack(&mut self, rack: &InsertRack) -> Result<()> {
+    pub(crate) fn publish_routing(
+        &mut self,
+        rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
+    ) -> Result<()> {
         let destinations = [
             self.routes.graph[2].destination.clone(),
             self.routes.graph[3].destination.clone(),
@@ -283,6 +312,7 @@ impl OwnedAudioGraph {
             self.callback.plan.maximum_frames() as u32,
             &destinations,
             rack,
+            aux_routing,
         );
         definition
             .validate()
@@ -306,6 +336,7 @@ impl OwnedAudioGraph {
             return Err(error.context("restore audio graph boundary after rack publication"));
         }
         self.callback.armed.store(true, Ordering::Release);
+        self.aux_return_nodes = aux_return_nodes(aux_routing);
         Ok(())
     }
 
@@ -328,6 +359,14 @@ impl OwnedAudioGraph {
         }
         first_error.map_or(Ok(()), Err)
     }
+}
+
+fn aux_return_nodes(routing: &ProjectAuxRouting) -> [Option<(u8, u32)>; 2] {
+    let mut nodes = [None, None];
+    for (index, bus) in routing.buses.iter().take(2).enumerate() {
+        nodes[index] = Some((bus.id, FIRST_AUX_RETURN_NODE + index as u32));
+    }
+    nodes
 }
 
 impl Drop for OwnedAudioGraph {
@@ -359,6 +398,7 @@ fn managed_graph_definition(
     maximum_callback_frames: u32,
     destinations: &[String; 2],
     rack: &InsertRack,
+    aux_routing: &ProjectAuxRouting,
 ) -> GraphDefinition {
     let mut nodes = vec![Node {
         id: SOURCE_NODE,
@@ -367,7 +407,7 @@ fn managed_graph_definition(
             source: SourceKind::ManagedEngine,
         },
     }];
-    let mut edges = Vec::with_capacity(rack.order.len() + 1);
+    let mut edges = Vec::new();
     let mut previous = SOURCE_NODE;
     for (index, effect_id) in rack.order.iter().copied().enumerate() {
         let node_id = FIRST_EFFECT_NODE + index as u32;
@@ -384,6 +424,93 @@ fn managed_graph_definition(
         previous = node_id;
     }
     nodes.push(Node {
+        id: MASTER_NODE,
+        layout: ChannelLayout::Stereo,
+        kind: NodeKind::StereoMixer,
+    });
+    edges.push(Edge {
+        id: edges.len() as u32 + 1,
+        from: previous,
+        to: MASTER_NODE,
+    });
+
+    let mut effects = rack.effects.clone();
+    let mut aux_buses = Vec::new();
+    let mut sends = Vec::new();
+    let mut aux_effect_node = FIRST_AUX_EFFECT_NODE;
+    for (bus_index, bus) in aux_routing.buses.iter().enumerate() {
+        effects.extend(bus.rack.effects.iter().cloned());
+        aux_buses.push(AuxBus {
+            id: bus.id,
+            effects: bus.rack.order.clone(),
+            return_gain_db: bus.return_gain_db,
+        });
+        let send = aux_routing.sends.iter().find(|send| send.aux_id == bus.id);
+        let mut aux_previous = None;
+        if let Some(send) = send {
+            let send_node = FIRST_SEND_NODE + bus_index as u32;
+            nodes.push(Node {
+                id: send_node,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::SendTap {
+                    aux_id: bus.id,
+                    source_node: SOURCE_NODE,
+                },
+            });
+            edges.push(Edge {
+                id: edges.len() as u32 + 1,
+                from: match send.point {
+                    crate::audio_graph::SendPoint::PreInsert => SOURCE_NODE,
+                    crate::audio_graph::SendPoint::PostInsert => previous,
+                },
+                to: send_node,
+            });
+            sends.push(SendRoute {
+                source_node: SOURCE_NODE,
+                aux_id: bus.id,
+                level_db: send.level_db,
+                point: send.point,
+            });
+            aux_previous = Some(send_node);
+        }
+        for effect_id in bus.rack.order.iter().copied() {
+            let node_id = aux_effect_node;
+            aux_effect_node += 1;
+            nodes.push(Node {
+                id: node_id,
+                layout: ChannelLayout::Stereo,
+                kind: NodeKind::Processor { effect_id },
+            });
+            if let Some(from) = aux_previous {
+                edges.push(Edge {
+                    id: edges.len() as u32 + 1,
+                    from,
+                    to: node_id,
+                });
+            }
+            aux_previous = Some(node_id);
+        }
+        let return_node = FIRST_AUX_RETURN_NODE + bus_index as u32;
+        nodes.push(Node {
+            id: return_node,
+            layout: ChannelLayout::Stereo,
+            kind: NodeKind::AuxReturn { aux_id: bus.id },
+        });
+        if let Some(from) = aux_previous {
+            edges.push(Edge {
+                id: edges.len() as u32 + 1,
+                from,
+                to: return_node,
+            });
+        }
+        edges.push(Edge {
+            id: edges.len() as u32 + 1,
+            from: return_node,
+            to: MASTER_NODE,
+        });
+    }
+
+    nodes.push(Node {
         id: SINK_NODE,
         layout: ChannelLayout::Stereo,
         kind: NodeKind::Sink {
@@ -397,7 +524,7 @@ fn managed_graph_definition(
     });
     edges.push(Edge {
         id: edges.len() as u32 + 1,
-        from: previous,
+        from: MASTER_NODE,
         to: SINK_NODE,
     });
     GraphDefinition {
@@ -407,14 +534,14 @@ fn managed_graph_definition(
         maximum_callback_frames,
         nodes,
         edges,
-        effects: rack.effects.clone(),
+        effects,
         source_chains: vec![SourceChain {
             source_node: SOURCE_NODE,
             effects: rack.order.clone(),
         }],
         master_chain: vec![],
-        aux_buses: vec![],
-        sends: vec![],
+        aux_buses,
+        sends,
         monitoring: Monitoring::default(),
         recording_tap: RecordingTap::PostMaster,
     }
@@ -431,6 +558,7 @@ fn dry_graph_definition(
         maximum_callback_frames,
         destinations,
         &InsertRack::default(),
+        &ProjectAuxRouting::default(),
     )
 }
 
@@ -624,9 +752,12 @@ mod tests {
     fn dry_topology_is_valid_and_contains_one_managed_path() {
         let destinations = ["main:l".to_owned(), "main:r".to_owned()];
         let graph = dry_graph_definition(48_000, 128, &destinations);
-        assert_eq!(graph.validate().unwrap(), [SOURCE_NODE, SINK_NODE]);
-        assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(
+            graph.validate().unwrap(),
+            [SOURCE_NODE, MASTER_NODE, SINK_NODE]
+        );
+        assert_eq!(graph.nodes.len(), 3);
+        assert_eq!(graph.edges.len(), 2);
         assert!(graph.effects.is_empty());
     }
 
@@ -639,18 +770,52 @@ mod tests {
             .unwrap();
         let eq = rack.add(crate::audio_graph::EffectKind::Eq).unwrap();
         rack.move_to(eq, 0).unwrap();
-        let graph = managed_graph_definition(48_000, 128, &destinations, &rack);
+        let graph = managed_graph_definition(
+            48_000,
+            128,
+            &destinations,
+            &rack,
+            &ProjectAuxRouting::default(),
+        );
         assert_eq!(
             graph.validate().unwrap(),
             [
                 SOURCE_NODE,
                 FIRST_EFFECT_NODE,
                 FIRST_EFFECT_NODE + 1,
+                MASTER_NODE,
                 SINK_NODE
             ]
         );
         assert_eq!(graph.source_chains[0].effects, [eq, compressor]);
-        assert_eq!(graph.edges.len(), 3);
+        assert_eq!(graph.edges.len(), 4);
+    }
+
+    #[test]
+    fn managed_aux_builds_one_scaled_pre_or_post_send_and_one_wet_return() {
+        let destinations = ["main:l".to_owned(), "main:r".to_owned()];
+        let mut rack = InsertRack::default();
+        rack.add(crate::audio_graph::EffectKind::Eq).unwrap();
+        let mut routing = ProjectAuxRouting::default();
+        let aux = routing.add_bus().unwrap();
+        let reverb = routing
+            .add_effect(&rack, aux, crate::audio_graph::EffectKind::Reverb)
+            .unwrap();
+        routing
+            .set_send(&rack, aux, -18.0, crate::audio_graph::SendPoint::PostInsert)
+            .unwrap();
+        let graph = managed_graph_definition(48_000, 128, &destinations, &rack, &routing);
+        graph.validate().unwrap();
+        assert_eq!(graph.aux_buses[0].effects, [reverb]);
+        assert_eq!(graph.sends[0].level_db, -18.0);
+        assert_eq!(
+            graph
+                .nodes
+                .iter()
+                .filter(|node| matches!(node.kind, NodeKind::AuxReturn { .. }))
+                .count(),
+            1
+        );
     }
 
     #[test]

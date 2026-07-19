@@ -1,5 +1,5 @@
-use crate::audio_graph::InsertRack;
-use crate::audio_graph_client::{EffectMeterSnapshot, OwnedAudioGraph};
+use crate::audio_graph::{InsertRack, ProjectAuxRouting};
+use crate::audio_graph_client::{AuxMeterSnapshot, EffectMeterSnapshot, OwnedAudioGraph};
 use crate::audio_graph_runtime::CallbackTimingSnapshot;
 use crate::config::{BackendConfig, RuntimeConfig};
 use crate::control::{self, CONTROLS};
@@ -270,6 +270,24 @@ impl Engine {
         config: &RuntimeConfig,
         rack: &InsertRack,
     ) -> Result<Self> {
+        Self::start_with_routing(
+            preset,
+            state,
+            output,
+            config,
+            rack,
+            &ProjectAuxRouting::default(),
+        )
+    }
+
+    pub fn start_with_routing(
+        preset: &Preset,
+        state: &Path,
+        output: SharedOutput,
+        config: &RuntimeConfig,
+        rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
+    ) -> Result<Self> {
         fs::create_dir_all(state)?;
         let EnginePreflight {
             controller,
@@ -317,7 +335,12 @@ impl Engine {
             )?;
             connect_audio(&backend_config.client_name, config);
             if config.audio_graph.enabled {
-                match start_managed_audio_graph(&backend_config.client_name, config, rack) {
+                match start_managed_audio_graph(
+                    &backend_config.client_name,
+                    config,
+                    rack,
+                    aux_routing,
+                ) {
                     Ok(graph) => audio_graph = Some(graph),
                     Err(error) => {
                         audio_graph_fallback = Some(format!("{error:#}"));
@@ -398,16 +421,24 @@ impl Engine {
         }
     }
 
-    pub fn publish_insert_rack(&mut self, rack: &InsertRack) -> Result<bool> {
+    pub fn publish_fx_routing(
+        &mut self,
+        rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
+    ) -> Result<bool> {
         let Some(graph) = self.audio_graph.as_mut() else {
             return Ok(false);
         };
-        graph.publish_rack(rack)?;
+        graph.publish_routing(rack, aux_routing)?;
         Ok(true)
     }
 
     pub(crate) fn effect_meter(&self, effect_id: u32) -> Option<EffectMeterSnapshot> {
         self.audio_graph.as_ref()?.effect_meter(effect_id)
+    }
+
+    pub(crate) fn aux_meter(&self, aux_id: u8) -> Option<AuxMeterSnapshot> {
+        self.audio_graph.as_ref()?.aux_meter(aux_id)
     }
 
     pub(crate) fn process_id(&self) -> u32 {
@@ -1242,6 +1273,7 @@ fn start_managed_audio_graph(
     client_name: &str,
     config: &RuntimeConfig,
     rack: &InsertRack,
+    aux_routing: &ProjectAuxRouting,
 ) -> Result<OwnedAudioGraph> {
     let source_ports = managed_audio_outputs(client_name)?;
     let destinations: [String; 2] = config
@@ -1249,7 +1281,13 @@ fn start_managed_audio_graph(
         .clone()
         .try_into()
         .map_err(|_| anyhow!("owned graph requires exactly two configured main outputs"))?;
-    OwnedAudioGraph::start_with_rack(&config.audio_graph, source_ports, destinations, rack)
+    OwnedAudioGraph::start_with_routing(
+        &config.audio_graph,
+        source_ports,
+        destinations,
+        rack,
+        aux_routing,
+    )
 }
 
 fn managed_audio_outputs(client_name: &str) -> Result<[String; 2]> {
