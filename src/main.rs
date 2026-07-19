@@ -82,7 +82,9 @@ fn real_main() -> Result<()> {
         "ideas" => ideas_command(&args[1..], &presets, &state, &runtime),
         "pads" => pads_command(&args[1..], &state),
         "casio" => casio_command(&args[1..], &runtime),
-        "phase2-checkpoint" => phase2_checkpoint(&args[1..], &presets, &state, &runtime),
+        "effects-checkpoint" | "phase2-checkpoint" => {
+            effects_checkpoint(&args[1..], &presets, &state, &runtime)
+        }
         "start" => {
             let arg = args.get(1).context("usage: shr start PRESET")?;
             let p = preset::resolve(&presets, arg)
@@ -107,7 +109,7 @@ fn real_main() -> Result<()> {
     }
 }
 
-fn phase2_checkpoint(
+fn effects_checkpoint(
     args: &[String],
     presets: &[preset::Preset],
     state: &Path,
@@ -115,7 +117,7 @@ fn phase2_checkpoint(
 ) -> Result<()> {
     let selector = args
         .first()
-        .context("usage: shr phase2-checkpoint PRESET [PROFILE] [SECONDS]")?;
+        .context("usage: shr effects-checkpoint PRESET [PROFILE] [SECONDS]")?;
     let preset = preset::resolve(presets, selector)
         .with_context(|| format!("unknown preset (use ENGINE:NAME): {selector}"))?;
     let profile = args.get(1).map(String::as_str).unwrap_or("full");
@@ -127,23 +129,50 @@ fn phase2_checkpoint(
     if !(1..=60).contains(&seconds) {
         bail!("checkpoint duration must be 1..=60 seconds");
     }
-    let rack = phase2_rack(profile)?;
+    let (rack, aux_routing) = effects_routing(profile)?;
     let mut config = config.clone();
     config.audio_graph.enabled = true;
     let maximum_frames = config.audio_graph.maximum_callback_frames as usize;
-    let graph_buffer_bytes = (rack.order.len() + 2)
+    let node_count = 3usize
+        .saturating_add(rack.order.len())
+        .saturating_add(aux_routing.master_rack.order.len())
+        .saturating_add(
+            aux_routing
+                .buses
+                .iter()
+                .map(|bus| {
+                    bus.rack.order.len()
+                        + 1
+                        + usize::from(aux_routing.sends.iter().any(|send| send.aux_id == bus.id))
+                })
+                .sum::<usize>(),
+        );
+    let graph_buffer_bytes = node_count
         .saturating_mul(maximum_frames)
         .saturating_mul(std::mem::size_of::<dsp::StereoFrame>());
     let (tx, _) = std::sync::mpsc::channel();
     let router = engine::MidiRouter::start(state, &config, tx)?;
-    let mut engine =
-        engine::Engine::start_with_rack(preset, state, router.output(), &config, &rack)?;
+    let mut engine = engine::Engine::start_with_routing(
+        preset,
+        state,
+        router.output(),
+        &config,
+        &rack,
+        &aux_routing,
+    )?;
     let sample_rate = engine
         .audio_graph_sample_rate()
         .context("owned graph sample rate unavailable")?;
     let effect_memory_bytes = rack
         .effects
         .iter()
+        .chain(aux_routing.master_rack.effects.iter())
+        .chain(
+            aux_routing
+                .buses
+                .iter()
+                .flat_map(|bus| bus.rack.effects.iter()),
+        )
         .map(|effect| {
             effect_schema::minimum_runtime_memory_bytes(effect.kind, sample_rate, maximum_frames)
         })
@@ -177,7 +206,13 @@ fn phase2_checkpoint(
         .context("owned graph fell back before checkpoint completed")?;
     println!(
         "PROFILE {profile} · effects {} · {elapsed:.3} s",
-        rack.order.len()
+        rack.effects.len()
+            + aux_routing.master_rack.effects.len()
+            + aux_routing
+                .buses
+                .iter()
+                .map(|bus| bus.rack.effects.len())
+                .sum::<usize>()
     );
     println!(
         "AUDIO GRAPH METRICS · {}",
@@ -199,58 +234,161 @@ fn phase2_checkpoint(
     Ok(())
 }
 
-fn phase2_rack(profile: &str) -> Result<audio_graph::InsertRack> {
+fn effects_routing(
+    profile: &str,
+) -> Result<(audio_graph::InsertRack, audio_graph::ProjectAuxRouting)> {
     use audio_graph::EffectKind;
     let mut rack = audio_graph::InsertRack::default();
-    let mut add = |kind, parameters: &[(&str, f32)]| -> Result<()> {
-        let id = rack
-            .add(kind)
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        let effect = rack.effect_mut(id).context("new rack effect missing")?;
-        for (name, value) in parameters {
-            effect.parameters.insert((*name).into(), *value);
-        }
-        Ok(())
-    };
+    let mut aux_routing = audio_graph::ProjectAuxRouting::default();
     match profile {
         "dry" => {}
-        "eq" => add(
+        "eq" => add_profile_effect(
+            &mut rack,
             EffectKind::Eq,
             &[("low_cut_enabled", 1.0), ("low_cut_hz", 80.0)],
         )?,
-        "compressor" => add(EffectKind::Compressor, &[("threshold_db", -24.0)])?,
-        "soft-cubic" => add(EffectKind::Distortion, &[("mode", 0.0)])?,
-        "hard-clip" => add(EffectKind::Distortion, &[("mode", 1.0)])?,
-        "asymmetric" => add(EffectKind::Distortion, &[("mode", 2.0)])?,
-        "gate" => add(EffectKind::Gate, &[])?,
-        "filter-lp" => add(EffectKind::Filter, &[("mode", 0.0)])?,
-        "filter-bp" => add(EffectKind::Filter, &[("mode", 1.0)])?,
-        "filter-hp" => add(EffectKind::Filter, &[("mode", 2.0)])?,
-        "crusher" => add(
+        "compressor" => add_profile_effect(
+            &mut rack,
+            EffectKind::Compressor,
+            &[("threshold_db", -24.0)],
+        )?,
+        "soft-cubic" => add_profile_effect(&mut rack, EffectKind::Distortion, &[("mode", 0.0)])?,
+        "hard-clip" => add_profile_effect(&mut rack, EffectKind::Distortion, &[("mode", 1.0)])?,
+        "asymmetric" => add_profile_effect(&mut rack, EffectKind::Distortion, &[("mode", 2.0)])?,
+        "gate" => add_profile_effect(&mut rack, EffectKind::Gate, &[])?,
+        "filter-lp" => add_profile_effect(&mut rack, EffectKind::Filter, &[("mode", 0.0)])?,
+        "filter-bp" => add_profile_effect(&mut rack, EffectKind::Filter, &[("mode", 1.0)])?,
+        "filter-hp" => add_profile_effect(&mut rack, EffectKind::Filter, &[("mode", 2.0)])?,
+        "crusher" => add_profile_effect(
+            &mut rack,
             EffectKind::Crusher,
             &[("bit_depth", 8.0), ("hold_factor", 4.0)],
         )?,
         "full" => {
-            add(
+            add_profile_effect(
+                &mut rack,
                 EffectKind::Eq,
                 &[("low_cut_enabled", 1.0), ("low_cut_hz", 80.0)],
             )?;
-            add(EffectKind::Compressor, &[("threshold_db", -24.0)])?;
-            add(EffectKind::Distortion, &[("mode", 2.0)])?;
-            add(
+            add_profile_effect(
+                &mut rack,
+                EffectKind::Compressor,
+                &[("threshold_db", -24.0)],
+            )?;
+            add_profile_effect(&mut rack, EffectKind::Distortion, &[("mode", 2.0)])?;
+            add_profile_effect(
+                &mut rack,
                 EffectKind::Crusher,
                 &[("bit_depth", 10.0), ("hold_factor", 2.0)],
             )?;
-            add(EffectKind::Gate, &[])?;
-            add(EffectKind::Filter, &[("mode", 0.0)])?;
-            add(EffectKind::Eq, &[])?;
-            add(EffectKind::Compressor, &[])?;
+            add_profile_effect(&mut rack, EffectKind::Gate, &[])?;
+            add_profile_effect(&mut rack, EffectKind::Filter, &[("mode", 0.0)])?;
+            add_profile_effect(&mut rack, EffectKind::Eq, &[])?;
+            add_profile_effect(&mut rack, EffectKind::Compressor, &[])?;
+        }
+        "delay" => add_profile_effect(&mut rack, EffectKind::Delay, &[])?,
+        "chorus" => add_profile_effect(&mut rack, EffectKind::Chorus, &[])?,
+        "flanger" => add_profile_effect(&mut rack, EffectKind::Flanger, &[])?,
+        "phaser" => add_profile_effect(&mut rack, EffectKind::Phaser, &[])?,
+        "tremolo" => add_profile_effect(&mut rack, EffectKind::TremoloPan, &[("mode", 0.0)])?,
+        "autopan" => add_profile_effect(&mut rack, EffectKind::TremoloPan, &[("mode", 1.0)])?,
+        "time-full" => {
+            for kind in [
+                EffectKind::Delay,
+                EffectKind::Chorus,
+                EffectKind::Flanger,
+                EffectKind::Phaser,
+                EffectKind::TremoloPan,
+                EffectKind::Eq,
+                EffectKind::Compressor,
+                EffectKind::Filter,
+            ] {
+                add_profile_effect(&mut rack, kind, &[])?;
+            }
+        }
+        "reverb-room" | "reverb-plate" | "reverb-hall" | "two-reverbs" | "phase4-full" => {
+            if profile == "phase4-full" {
+                for kind in [
+                    EffectKind::Eq,
+                    EffectKind::Compressor,
+                    EffectKind::Delay,
+                    EffectKind::Chorus,
+                    EffectKind::Flanger,
+                    EffectKind::Phaser,
+                    EffectKind::TremoloPan,
+                    EffectKind::Filter,
+                ] {
+                    add_profile_effect(&mut rack, kind, &[])?;
+                }
+            }
+            let first = aux_routing
+                .add_bus()
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            let first_type = match profile {
+                "reverb-plate" => 1.0,
+                "reverb-hall" => 2.0,
+                _ => 0.0,
+            };
+            let first_effect = aux_routing
+                .add_effect(&rack, first, EffectKind::Reverb)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            aux_routing.buses[0]
+                .rack
+                .effect_mut(first_effect)
+                .context("first reverb missing")?
+                .parameters
+                .insert("type".into(), first_type);
+            aux_routing
+                .set_send(&rack, first, -18.0, audio_graph::SendPoint::PostInsert)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            if matches!(profile, "two-reverbs" | "phase4-full") {
+                let second = aux_routing
+                    .add_bus()
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                let second_effect = aux_routing
+                    .add_effect(&rack, second, EffectKind::Reverb)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                aux_routing.buses[1]
+                    .rack
+                    .effect_mut(second_effect)
+                    .context("second reverb missing")?
+                    .parameters
+                    .insert("type".into(), 2.0);
+                aux_routing
+                    .set_send(&rack, second, -24.0, audio_graph::SendPoint::PreInsert)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            }
+            if profile == "phase4-full" {
+                let id = aux_routing
+                    .next_effect_id(&rack)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                aux_routing
+                    .master_rack
+                    .add_with_id(EffectKind::Compressor, id)
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            }
         }
         _ => bail!("unknown checkpoint profile {profile}"),
     }
-    rack.validate()
+    aux_routing
+        .validate(&rack)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    Ok(rack)
+    Ok((rack, aux_routing))
+}
+
+fn add_profile_effect(
+    rack: &mut audio_graph::InsertRack,
+    kind: audio_graph::EffectKind,
+    parameters: &[(&str, f32)],
+) -> Result<()> {
+    let id = rack
+        .add(kind)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let effect = rack.effect_mut(id).context("new rack effect missing")?;
+    for (name, value) in parameters {
+        effect.parameters.insert((*name).into(), *value);
+    }
+    Ok(())
 }
 
 fn process_ticks(pid: u32) -> Option<u64> {
@@ -394,7 +532,7 @@ fn show_log(state: &Path, count: Option<&String>) -> Result<()> {
 }
 
 fn usage() {
-    println!("Usage: shr [menu|list|status|doctor|start PRESET|stop|log [LINES]|ideas COMMAND|pads COMMAND|casio diagnostic|phase2-checkpoint PRESET [PROFILE] [SECONDS]|config init]\n\nController setup: shr pads ports|profiles|auto [PORT]|learn [PORT]|update\nWith no arguments, opens the terminal instrument browser.");
+    println!("Usage: shr [menu|list|status|doctor|start PRESET|stop|log [LINES]|ideas COMMAND|pads COMMAND|casio diagnostic|effects-checkpoint PRESET [PROFILE] [SECONDS]|config init]\n\nController setup: shr pads ports|profiles|auto [PORT]|learn [PORT]|update\nWith no arguments, opens the terminal instrument browser.");
 }
 
 fn casio_command(args: &[String], config: &config::RuntimeConfig) -> Result<()> {
@@ -833,7 +971,7 @@ mod tests {
     }
 
     #[test]
-    fn phase_two_checkpoint_profiles_are_strict_and_full_uses_the_chain_bound() {
+    fn effects_checkpoint_profiles_are_strict_and_cover_each_topology() {
         for profile in [
             "dry",
             "eq",
@@ -847,10 +985,38 @@ mod tests {
             "filter-hp",
             "crusher",
             "full",
+            "delay",
+            "chorus",
+            "flanger",
+            "phaser",
+            "tremolo",
+            "autopan",
+            "time-full",
+            "reverb-room",
+            "reverb-plate",
+            "reverb-hall",
+            "two-reverbs",
+            "phase4-full",
         ] {
-            phase2_rack(profile).unwrap().validate().unwrap();
+            let (rack, routing) = effects_routing(profile).unwrap();
+            routing.validate(&rack).unwrap();
         }
-        assert_eq!(phase2_rack("full").unwrap().order.len(), 8);
-        assert!(phase2_rack("future").is_err());
+        assert_eq!(effects_routing("full").unwrap().0.order.len(), 8);
+
+        let (rack, routing) = effects_routing("phase4-full").unwrap();
+        assert_eq!(rack.effects.len(), 8);
+        assert_eq!(routing.buses.len(), 2);
+        assert_eq!(routing.master_rack.effects.len(), 1);
+        assert_eq!(
+            rack.effects.len()
+                + routing.master_rack.effects.len()
+                + routing
+                    .buses
+                    .iter()
+                    .map(|bus| bus.rack.effects.len())
+                    .sum::<usize>(),
+            11
+        );
+        assert!(effects_routing("future").is_err());
     }
 }
