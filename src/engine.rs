@@ -15,7 +15,11 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{mpsc::Sender, Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc::Sender,
+    Arc, Mutex, RwLock,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -27,6 +31,7 @@ pub enum MidiEvent {
     Pad(PadAction, bool),
     Encoder(EncoderAction),
     PadLock(bool),
+    Learn(Vec<u8>),
     Error(String),
 }
 
@@ -51,6 +56,9 @@ pub type SharedPickup = Arc<Mutex<crate::midi::Pickup>>;
 pub type SharedBackend = Arc<Mutex<BackendKind>>;
 pub type SharedTrackerRoute = Arc<Mutex<TrackerRoute>>;
 pub type SharedTrackerInput = Arc<Mutex<Option<crate::sequencer::LiveInput>>>;
+pub type SharedControllerConfig = Arc<RwLock<PadConfig>>;
+pub type SharedLearnMode = Arc<AtomicBool>;
+pub type SharedFxControlMode = Arc<AtomicBool>;
 
 pub struct TrackerRouteConfig<'a> {
     pub enabled: bool,
@@ -89,6 +97,9 @@ struct CallbackRouting {
     backend: SharedBackend,
     tracker_route: SharedTrackerRoute,
     tracker_input: SharedTrackerInput,
+    controller: SharedControllerConfig,
+    learn_mode: SharedLearnMode,
+    fx_control_mode: SharedFxControlMode,
 }
 
 impl Default for TrackerRoute {
@@ -187,6 +198,9 @@ pub struct MidiRouter {
     backend: SharedBackend,
     tracker_route: SharedTrackerRoute,
     tracker_input: SharedTrackerInput,
+    controller: SharedControllerConfig,
+    learn_mode: SharedLearnMode,
+    fx_control_mode: SharedFxControlMode,
 }
 
 impl MidiRouter {
@@ -195,6 +209,9 @@ impl MidiRouter {
             bail!("MIDI routing is disabled in shsynth.conf");
         }
         let pads = PadConfig::load(&state.join("controller.conf"))?;
+        let controller = Arc::new(RwLock::new(pads));
+        let learn_mode = Arc::new(AtomicBool::new(false));
+        let fx_control_mode = Arc::new(AtomicBool::new(false));
         let output = Arc::new(Mutex::new(None));
         let pickup = Arc::new(Mutex::new(crate::midi::Pickup::default()));
         let backend = Arc::new(Mutex::new(BackendKind::Synthv1));
@@ -205,7 +222,7 @@ impl MidiRouter {
         for _ in 0..25 {
             match connect_midi_input(
                 tx.clone(),
-                pads.clone(),
+                Arc::clone(&controller),
                 config,
                 CallbackRouting {
                     output: Arc::clone(&output),
@@ -213,6 +230,9 @@ impl MidiRouter {
                     backend: Arc::clone(&backend),
                     tracker_route: Arc::clone(&tracker_route),
                     tracker_input: Arc::clone(&tracker_input),
+                    controller: Arc::clone(&controller),
+                    learn_mode: Arc::clone(&learn_mode),
+                    fx_control_mode: Arc::clone(&fx_control_mode),
                 },
             ) {
                 Ok(connection) => {
@@ -234,6 +254,9 @@ impl MidiRouter {
             backend,
             tracker_route,
             tracker_input,
+            controller,
+            learn_mode,
+            fx_control_mode,
         })
     }
 
@@ -255,6 +278,18 @@ impl MidiRouter {
 
     pub fn tracker_input(&self) -> SharedTrackerInput {
         Arc::clone(&self.tracker_input)
+    }
+
+    pub fn controller_config(&self) -> SharedControllerConfig {
+        Arc::clone(&self.controller)
+    }
+
+    pub fn learn_mode(&self) -> SharedLearnMode {
+        Arc::clone(&self.learn_mode)
+    }
+
+    pub fn fx_control_mode(&self) -> SharedFxControlMode {
+        Arc::clone(&self.fx_control_mode)
     }
 
     pub fn arm_pickup(&self, values: &std::collections::HashMap<u8, f32>) {
@@ -917,7 +952,7 @@ fn write_synthv1_config(home: &Path, controller: &PadConfig) -> Result<()> {
 
 fn connect_midi_input(
     tx: Sender<MidiEvent>,
-    pads: PadConfig,
+    controller: SharedControllerConfig,
     config: &RuntimeConfig,
     routing: CallbackRouting,
 ) -> Result<MidiInputConnection<()>> {
@@ -927,7 +962,14 @@ fn connect_midi_input(
         backend,
         tracker_route,
         tracker_input,
+        controller: callback_controller,
+        learn_mode,
+        fx_control_mode,
     } = routing;
+    let pads = controller
+        .read()
+        .map(|config| config.clone())
+        .unwrap_or_default();
     let mut input = MidiInput::new("SHR-DAW MIDI input")?;
     input.ignore(Ignore::None);
     let ports = input.ports();
@@ -971,6 +1013,14 @@ fn connect_midi_input(
             "SHR-DAW monitor",
             move |_stamp, message, _| {
                 let received = Instant::now();
+                if learn_mode.load(Ordering::Relaxed) {
+                    let _ = tx.send(MidiEvent::Learn(message.to_vec()));
+                    return;
+                }
+                let Ok(pads) = callback_controller.read() else {
+                    let _ = tx.send(MidiEvent::Error("controller mapping lock failed".into()));
+                    return;
+                };
                 if invalid_note_message(message) {
                     let _ = tx.send(MidiEvent::Error(
                         "ignored malformed MIDI note message".into(),
@@ -991,6 +1041,17 @@ fn connect_midi_input(
                 }
                 let forced_pad_release =
                     locked_pad_release(&pads, message, pad_locked, &mut locked_pad_notes);
+                let fx_value = (fx_control_mode.load(Ordering::Relaxed)
+                    && message.len() >= 3
+                    && message[0] & 0xf0 == 0xb0)
+                    .then(|| pads.target_cc(message[1]))
+                    .flatten()
+                    .and_then(control::by_cc)
+                    .map(|control| (control.cc, control::value_from_cc(control, message[2])));
+                if let Some((cc, value)) = fx_value {
+                    let _ = tx.send(MidiEvent::MappedControl(cc, value));
+                    return;
+                }
                 let routed = crate::midi::route_with_pad_lock(&pads, backend, message, pad_locked);
                 if let Some((cc, value)) = routed.value {
                     let _ = tx.send(MidiEvent::MappedControl(cc, value));

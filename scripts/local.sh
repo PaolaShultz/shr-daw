@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 USER_DIR="${SHSYNTH_USER_DIR:-$ROOT/user}"
 
 export XDG_STATE_HOME="$USER_DIR/state"
@@ -46,13 +47,25 @@ while IFS= read -r demo; do
   fi
 done < <("$ROOT/scripts/generate_demo_songs.py" --files)
 
-if [[ -x "$ROOT/target/release/shr" ]]; then
+if [[ -n "${SHSYNTH_BIN:-}" ]]; then
+  [[ -x "$SHSYNTH_BIN" ]] || {
+    printf 'SHSYNTH_BIN is not executable: %s\n' "$SHSYNTH_BIN" >&2
+    exit 1
+  }
+elif [[ -x "$ROOT/target/debug/shr" && \
+  (! -x "$ROOT/target/release/shr" || \
+    "$ROOT/target/debug/shr" -nt "$ROOT/target/release/shr") ]]; then
+  SHSYNTH_BIN="$ROOT/target/debug/shr"
+elif [[ -x "$ROOT/target/release/shr" ]]; then
   SHSYNTH_BIN="$ROOT/target/release/shr"
-elif command -v shr >/dev/null 2>&1; then
-  SHSYNTH_BIN="$(command -v shr)"
 else
-  printf 'Build or install SHR-DAW first.\n' >&2
-  exit 1
+  INSTALLED_BIN="$(command -v shr || true)"
+  if [[ -n "$INSTALLED_BIN" && "$(readlink -f "$INSTALLED_BIN")" != "$SCRIPT_PATH" ]]; then
+    SHSYNTH_BIN="$INSTALLED_BIN"
+  else
+    printf 'Build or install SHR-DAW first.\n' >&2
+    exit 1
+  fi
 fi
 
 if [[ ! -f "$XDG_STATE_HOME/shsynth/shsynth.conf" ]]; then

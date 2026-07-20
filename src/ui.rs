@@ -87,6 +87,23 @@ fn effect_kind_label(kind: EffectKind) -> &'static str {
     }
 }
 
+fn parameter_display_name(name: &str) -> String {
+    let words = name.replace('_', " ");
+    let mut characters = words.chars();
+    characters
+        .next()
+        .map(|first| first.to_ascii_uppercase().to_string() + characters.as_str())
+        .unwrap_or_default()
+}
+
+fn fx_hardware_label(index: usize) -> String {
+    if index < 8 {
+        format!("K{}", index + 1)
+    } else {
+        format!("F{}", index - 7)
+    }
+}
+
 fn fx_target_label(target: usize) -> &'static str {
     match target {
         0 => "SOURCE",
@@ -410,6 +427,14 @@ struct App {
     fx_target: usize,
     fx_value_editing: bool,
     fx_edit_original: Option<(InsertRack, ProjectAuxRouting)>,
+    fx_type_edit: Option<FxTypeEdit>,
+    fx_numeric_input: Option<String>,
+    fx_pickup: FxPickup,
+    controller_config: engine::SharedControllerConfig,
+    learn_mode: engine::SharedLearnMode,
+    fx_control_mode: engine::SharedFxControlMode,
+    controller_online: bool,
+    controller_learn: Option<crate::controller_learn::LearnSession>,
     bus_selected: usize,
     final_recording_last: crate::audio_recorder::FinalMixRecorderStatus,
     performance_meter: PerformanceMeter,
@@ -420,6 +445,60 @@ struct App {
 struct TrackerIo {
     route: engine::SharedTrackerRoute,
     input: engine::SharedTrackerInput,
+}
+
+#[derive(Clone)]
+struct FxTypeEdit {
+    original_rack: InsertRack,
+    original_aux: ProjectAuxRouting,
+    effect_id: EffectId,
+    provisional: bool,
+}
+
+#[derive(Clone, Copy)]
+struct FxCatch {
+    target: f32,
+    previous: Option<f32>,
+    caught: bool,
+}
+
+#[derive(Default)]
+struct FxPickup {
+    controls: HashMap<u8, FxCatch>,
+}
+
+impl FxPickup {
+    fn arm(&mut self, targets: impl IntoIterator<Item = (u8, f32)>) {
+        self.controls = targets
+            .into_iter()
+            .map(|(cc, target)| {
+                (
+                    cc,
+                    FxCatch {
+                        target: target.clamp(0.0, 1.0),
+                        previous: None,
+                        caught: false,
+                    },
+                )
+            })
+            .collect();
+    }
+
+    fn accept(&mut self, cc: u8, value: f32) -> bool {
+        let Some(catch) = self.controls.get_mut(&cc) else {
+            return false;
+        };
+        if catch.caught {
+            return true;
+        }
+        let close = (value - catch.target).abs() <= 1.0 / 127.0 + f32::EPSILON;
+        let crossed = catch
+            .previous
+            .is_some_and(|previous| (previous - catch.target) * (value - catch.target) <= 0.0);
+        catch.previous = Some(value);
+        catch.caught = close || crossed;
+        catch.caught
+    }
 }
 
 struct AudioPorts {
@@ -583,6 +662,14 @@ impl App {
             fx_target: 0,
             fx_value_editing: false,
             fx_edit_original: None,
+            fx_type_edit: None,
+            fx_numeric_input: None,
+            fx_pickup: FxPickup::default(),
+            controller_config: Arc::new(std::sync::RwLock::new(crate::pads::PadConfig::default())),
+            learn_mode: Arc::new(AtomicBool::new(false)),
+            fx_control_mode: Arc::new(AtomicBool::new(false)),
+            controller_online: false,
+            controller_learn: None,
             bus_selected: 0,
             final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
             performance_meter: PerformanceMeter::default(),
@@ -602,8 +689,70 @@ impl App {
         (!notices.is_empty()).then(|| notices.join(" · "))
     }
 
+    fn begin_controller_learn(&mut self) {
+        if !self.controller_online {
+            self.status = "MIDI Learn unavailable · connect the selected controller first".into();
+            return;
+        }
+        let input = self
+            .controller_config
+            .read()
+            .ok()
+            .and_then(|config| config.input_match.clone());
+        let Some(input) = input else {
+            self.status = "MIDI Learn unavailable · select a controller input in setup".into();
+            return;
+        };
+        self.controller_learn = Some(crate::controller_learn::LearnSession::new(&input));
+        self.learn_mode.store(true, Ordering::Relaxed);
+        self.status =
+            "MIDI Learn active · all received messages are isolated from instruments".into();
+    }
+
+    fn cancel_controller_learn(&mut self) {
+        self.learn_mode.store(false, Ordering::Relaxed);
+        self.controller_learn = None;
+        self.status = "MIDI Learn cancelled · previous controller mapping kept".into();
+    }
+
+    fn save_controller_learn(&mut self, state: &Path) {
+        let Some(session) = self.controller_learn.as_ref() else {
+            return;
+        };
+        let config = match session.validated_config() {
+            Ok(config) => config,
+            Err(error) => {
+                self.status = format!("MIDI Learn validation: {error:#}");
+                return;
+            }
+        };
+        let path = state.join("controller.conf");
+        if let Err(error) = crate::controller_learn::backup(&path).and_then(|_| config.save(&path))
+        {
+            self.status = format!("MIDI Learn save failed: {error:#}");
+            return;
+        }
+        if let Ok(mut active) = self.controller_config.write() {
+            *active = config.clone();
+        }
+        self.controller_layout = config.layout;
+        self.learn_mode.store(false, Ordering::Relaxed);
+        self.controller_learn = None;
+        self.status = format!("controller profile saved atomically · {}", path.display());
+    }
+
+    fn receive_controller_learn(&mut self, message: &[u8]) {
+        if let Some(session) = self.controller_learn.as_mut() {
+            session.receive(message);
+        }
+    }
+
     fn menu_context(&self) -> MenuContext {
-        if self.screen == Screen::Tracker && self.note_editor.is_some() {
+        if self.screen == Screen::FxRack && self.fx_type_edit.is_some() {
+            MenuContext::FxType
+        } else if self.screen == Screen::FxRack && self.selected_effect_id().is_none() {
+            MenuContext::FxEmpty
+        } else if self.screen == Screen::Tracker && self.note_editor.is_some() {
             MenuContext::TrackerNoteEdit
         } else if self.screen == Screen::Tracker && self.tracker_recording.is_some() {
             MenuContext::TrackerRecord
@@ -639,6 +788,11 @@ impl App {
             self.prepare_confirmation_action(Action::Noop);
         }
         self.screen = screen;
+        self.fx_control_mode
+            .store(screen == Screen::FxEditor, Ordering::Relaxed);
+        if screen == Screen::FxEditor {
+            self.arm_fx_pickup();
+        }
     }
 
     fn prepare_confirmation_action(&mut self, action: Action) {
@@ -4060,6 +4214,103 @@ impl App {
         .effect(id)
     }
 
+    fn arm_fx_pickup(&mut self) {
+        let targets = self
+            .selected_effect()
+            .map(|effect| {
+                crate::effect_schema::schema(effect.kind)
+                    .iter()
+                    .zip(CONTROLS.iter())
+                    .map(|(spec, control)| {
+                        let value = effect
+                            .parameters
+                            .get(spec.name)
+                            .copied()
+                            .unwrap_or(spec.default);
+                        let normalized = match spec.value_type {
+                            crate::effect_schema::ParameterType::Choices(choices) => choices
+                                .iter()
+                                .position(|choice| f32::from(*choice) == value)
+                                .map(|index| {
+                                    index as f32 / choices.len().saturating_sub(1).max(1) as f32
+                                })
+                                .unwrap_or(0.0),
+                            _ => (value - spec.minimum) / (spec.maximum - spec.minimum).max(1.0),
+                        };
+                        (control.cc, normalized)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        self.fx_pickup.arm(targets);
+    }
+
+    fn apply_fx_control(&mut self, cc: u8, value: f32) {
+        let Some(control_index) = CONTROLS.iter().position(|control| control.cc == cc) else {
+            return;
+        };
+        let Some(control) = crate::control::by_cc(cc) else {
+            return;
+        };
+        let normalized = crate::control::normalize(control, value);
+        if !self.fx_pickup.accept(cc, normalized) {
+            self.status = format!("{} waiting for pickup", fx_hardware_label(control_index));
+            return;
+        }
+        let Some(id) = self.selected_effect_id() else {
+            return;
+        };
+        let mut rack = self.song.insert_rack.clone();
+        let mut aux = self.song.aux_routing.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+            .and_then(|rack| rack.effect_mut(id))
+            .expect("selected effect has a valid rack");
+        let Some(spec) = crate::effect_schema::schema(effect.kind).get(control_index) else {
+            self.status = format!(
+                "{} has no parameter on this effect",
+                fx_hardware_label(control_index)
+            );
+            return;
+        };
+        if is_aux_target(self.fx_target)
+            && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
+        {
+            self.status = "aux wet/dry controls are fixed at 100% wet".into();
+            return;
+        }
+        let mapped = match spec.value_type {
+            crate::effect_schema::ParameterType::Continuous => {
+                spec.minimum + normalized * (spec.maximum - spec.minimum)
+            }
+            crate::effect_schema::ParameterType::Integer => {
+                (spec.minimum + normalized * (spec.maximum - spec.minimum)).round()
+            }
+            crate::effect_schema::ParameterType::Toggle => {
+                if normalized >= 0.5 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            crate::effect_schema::ParameterType::Choices(choices) => {
+                let index = (normalized * choices.len().saturating_sub(1) as f32).round() as usize;
+                f32::from(choices[index.min(choices.len() - 1)])
+            }
+        };
+        effect.parameters.insert(spec.name.into(), mapped);
+        self.fx_parameter = control_index;
+        self.commit_fx_routing(
+            rack,
+            aux,
+            format!(
+                "{} · {} · {mapped:.2} {}",
+                fx_hardware_label(control_index),
+                spec.name,
+                spec.unit
+            ),
+        );
+    }
+
     fn commit_fx_routing(
         &mut self,
         rack: InsertRack,
@@ -4107,7 +4358,13 @@ impl App {
     }
 
     fn add_effect(&mut self) {
-        let kind = INSERT_EFFECTS[self.fx_add_kind];
+        let original_rack = self.song.insert_rack.clone();
+        let original_aux = self.song.aux_routing.clone();
+        let kind = self
+            .selectable_effect_kinds(None)
+            .first()
+            .copied()
+            .unwrap_or(INSERT_EFFECTS[0]);
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
         let result = if self.fx_target == 0 {
@@ -4144,16 +4401,31 @@ impl App {
         };
         match result {
             Ok(id) => {
-                let index = project_fx_rack(&rack, &aux, self.fx_target)
-                    .map(|rack| rack.order.len().saturating_sub(1))
+                let length = project_fx_rack(&rack, &aux, self.fx_target)
+                    .map(|rack| rack.order.len())
                     .unwrap_or(0);
+                let index = self.fx_selected.min(length.saturating_sub(1));
+                if length > 1 {
+                    if let Some(target) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target) {
+                        if let Err(error) = target.move_to(id, index) {
+                            self.status = format!("FX insert: {error}");
+                            return;
+                        }
+                    }
+                }
                 if self.commit_fx_routing(
                     rack,
                     aux,
-                    format!("added {} #{id}", effect_kind_label(kind)),
+                    format!("{} inserted · turn to choose type", effect_kind_label(kind)),
                 ) {
                     self.fx_selected = index;
                     self.fx_parameter = 0;
+                    self.fx_type_edit = Some(FxTypeEdit {
+                        original_rack,
+                        original_aux,
+                        effect_id: id,
+                        provisional: true,
+                    });
                 }
             }
             Err(error) => self.status = format!("FX add: {error}"),
@@ -4242,6 +4514,23 @@ impl App {
     }
 
     fn cycle_effect_kind(&mut self, direction: i8) {
+        if let Some(edit) = self.fx_type_edit.clone() {
+            let Some(effect) = self.selected_effect() else {
+                return;
+            };
+            let choices = self.selectable_effect_kinds(Some(edit.effect_id));
+            let current = choices
+                .iter()
+                .position(|kind| *kind == effect.kind)
+                .unwrap_or(0);
+            let next = if direction < 0 {
+                current.checked_sub(1).unwrap_or(choices.len() - 1)
+            } else {
+                (current + 1) % choices.len()
+            };
+            self.set_selected_effect_kind(choices[next]);
+            return;
+        }
         let mut next = if direction < 0 {
             self.fx_add_kind
                 .checked_sub(1)
@@ -4270,6 +4559,111 @@ impl App {
             "next FX to add · {}",
             effect_kind_label(INSERT_EFFECTS[self.fx_add_kind])
         );
+    }
+
+    fn valid_effect_kinds(&self) -> Vec<EffectKind> {
+        INSERT_EFFECTS
+            .iter()
+            .copied()
+            .filter(|kind| !is_aux_target(self.fx_target) || kind.requires_wet_aux())
+            .collect()
+    }
+
+    fn selectable_effect_kinds(&self, edited_id: Option<EffectId>) -> Vec<EffectKind> {
+        let valid = self.valid_effect_kinds();
+        let used = project_fx_rack(
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+            self.fx_target,
+        )
+        .into_iter()
+        .flat_map(|rack| rack.effects.iter())
+        .filter(|effect| Some(effect.id) != edited_id)
+        .map(|effect| effect.kind)
+        .collect::<Vec<_>>();
+        let unused = valid
+            .iter()
+            .copied()
+            .filter(|kind| !used.contains(kind))
+            .collect::<Vec<_>>();
+        if unused.is_empty() {
+            valid
+        } else {
+            unused
+        }
+    }
+
+    fn begin_effect_type_edit(&mut self) {
+        let Some(id) = self.selected_effect_id() else {
+            self.add_effect();
+            return;
+        };
+        self.fx_type_edit = Some(FxTypeEdit {
+            original_rack: self.song.insert_rack.clone(),
+            original_aux: self.song.aux_routing.clone(),
+            effect_id: id,
+            provisional: false,
+        });
+        self.status = "TYPE ACTIVE · turn to browse · press confirms · Back cancels".into();
+    }
+
+    fn set_selected_effect_kind(&mut self, kind: EffectKind) {
+        let Some(id) = self.selected_effect_id() else {
+            return;
+        };
+        let mut rack = self.song.insert_rack.clone();
+        let mut aux = self.song.aux_routing.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+            .and_then(|rack| rack.effect_mut(id))
+            .expect("selected effect has a valid rack");
+        effect.kind = kind;
+        effect.parameters = crate::effect_schema::defaults(kind);
+        if is_aux_target(self.fx_target) {
+            for (name, value) in [
+                ("dry_percent", 0.0),
+                ("wet_percent", 100.0),
+                ("mix_percent", 100.0),
+            ] {
+                if effect.parameters.contains_key(name) {
+                    effect.parameters.insert(name.into(), value);
+                }
+            }
+        }
+        if self.commit_fx_routing(
+            rack,
+            aux,
+            format!("TYPE ACTIVE · {}", effect_kind_label(kind)),
+        ) {
+            self.fx_parameter = 0;
+        }
+    }
+
+    fn confirm_effect_type_edit(&mut self) {
+        let Some(edit) = self.fx_type_edit.take() else {
+            return;
+        };
+        self.status = format!(
+            "{} type confirmed",
+            if edit.provisional {
+                "new effect"
+            } else {
+                "effect"
+            }
+        );
+    }
+
+    fn cancel_effect_type_edit(&mut self) {
+        let Some(edit) = self.fx_type_edit.clone() else {
+            return;
+        };
+        let message = if edit.provisional {
+            "new effect cancelled and removed"
+        } else {
+            "effect type change cancelled"
+        };
+        if self.commit_fx_routing(edit.original_rack, edit.original_aux, message.into()) {
+            self.fx_type_edit = None;
+        }
     }
 
     fn cycle_fx_target(&mut self) {
@@ -4463,12 +4857,14 @@ impl App {
         self.fx_edit_original =
             Some((self.song.insert_rack.clone(), self.song.aux_routing.clone()));
         self.fx_value_editing = true;
+        self.fx_numeric_input = None;
         self.status = "FX VALUE ACTIVE · turn, press confirms, Back cancels".into();
     }
 
     fn confirm_fx_value_edit(&mut self) {
         self.fx_value_editing = false;
         self.fx_edit_original = None;
+        self.fx_numeric_input = None;
         self.status = "FX value confirmed".into();
     }
 
@@ -4480,6 +4876,68 @@ impl App {
         if self.commit_fx_routing(rack, aux, "FX value change cancelled".into()) {
             self.fx_value_editing = false;
             self.fx_edit_original = None;
+            self.fx_numeric_input = None;
+        }
+    }
+
+    fn begin_fx_numeric_entry(&mut self, character: char) {
+        if !self.fx_value_editing {
+            self.begin_fx_value_edit();
+        }
+        let input = self.fx_numeric_input.get_or_insert_with(String::new);
+        if input.len() < 16 {
+            input.push(character);
+        }
+        self.status = format!("numeric value · {input}_ · Enter confirms");
+    }
+
+    fn commit_fx_numeric_entry(&mut self) {
+        let Some(input) = self.fx_numeric_input.clone() else {
+            self.confirm_fx_value_edit();
+            return;
+        };
+        let Ok(value) = input.parse::<f32>() else {
+            self.status = format!("invalid number · {input}");
+            return;
+        };
+        let Some(id) = self.selected_effect_id() else {
+            return;
+        };
+        let mut rack = self.song.insert_rack.clone();
+        let mut aux = self.song.aux_routing.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+            .and_then(|rack| rack.effect_mut(id))
+            .expect("selected effect has a valid rack");
+        let spec = crate::effect_schema::schema(effect.kind)[self.fx_parameter];
+        if !spec.accepts(value) {
+            self.status = format!(
+                "out of range · {} needs {:.2}..{:.2} {}",
+                parameter_display_name(spec.name),
+                spec.minimum,
+                spec.maximum,
+                spec.unit
+            );
+            return;
+        }
+        if is_aux_target(self.fx_target)
+            && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
+        {
+            self.status = "aux wet/dry controls are fixed at 100% wet".into();
+            return;
+        }
+        effect.parameters.insert(spec.name.into(), value);
+        if self.commit_fx_routing(
+            rack,
+            aux,
+            format!(
+                "{} · {value:.2} {}",
+                parameter_display_name(spec.name),
+                spec.unit
+            ),
+        ) {
+            self.fx_value_editing = false;
+            self.fx_edit_original = None;
+            self.fx_numeric_input = None;
         }
     }
     fn load(&mut self, state: &Path, _tx: std::sync::mpsc::Sender<MidiEvent>) {
@@ -5071,6 +5529,9 @@ fn app_loop(
         signal_hook::flag::register(sig, Arc::clone(&stopping))?;
     }
     let (tx, rx) = mpsc::channel();
+    let controller_notice = auto_wire_controller(state, config)
+        .err()
+        .map(|error| error.to_string());
     let router = engine::MidiRouter::start(state, config, tx.clone());
     let output = router
         .as_ref()
@@ -5092,6 +5553,22 @@ fn app_loop(
         .as_ref()
         .map(engine::MidiRouter::tracker_input)
         .unwrap_or_else(|_| Arc::new(std::sync::Mutex::new(None)));
+    let controller_config = router
+        .as_ref()
+        .map(engine::MidiRouter::controller_config)
+        .unwrap_or_else(|_| {
+            Arc::new(std::sync::RwLock::new(
+                crate::pads::PadConfig::load(&state.join("controller.conf")).unwrap_or_default(),
+            ))
+        });
+    let learn_mode = router
+        .as_ref()
+        .map(engine::MidiRouter::learn_mode)
+        .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)));
+    let fx_control_mode = router
+        .as_ref()
+        .map(engine::MidiRouter::fx_control_mode)
+        .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)));
     let available_audio_ports = engine::jack_ports();
     let capture_sources = engine::jack_capture_sources();
     let mut app = App::new(
@@ -5109,9 +5586,17 @@ fn app_loop(
             capture_sources,
         },
     );
-    app.controller_layout = crate::pads::PadConfig::load(&state.join("controller.conf"))
-        .unwrap_or_default()
-        .layout;
+    app.controller_layout = controller_config
+        .read()
+        .map(|config| config.layout)
+        .unwrap_or_default();
+    app.controller_config = controller_config;
+    app.learn_mode = learn_mode;
+    app.fx_control_mode = fx_control_mode;
+    app.controller_online = router.is_ok();
+    if let Some(notice) = controller_notice {
+        app.status = format!("controller auto-wire: {notice}");
+    }
     if let Err(e) = &router {
         let notice = if config.midi_autoconnect {
             format!("keyboard fallback · preferred MIDI input missing: {e:#}")
@@ -5147,6 +5632,27 @@ fn app_loop(
     Ok(())
 }
 
+fn auto_wire_controller(state: &Path, config: &RuntimeConfig) -> Result<()> {
+    let path = state.join("controller.conf");
+    let current = crate::pads::PadConfig::load(&path)?;
+    let connected = crate::controller_learn::input_names()?;
+    let catalog = crate::controller_profile::Catalog::discover();
+    let Some((expected, _profile_name)) = crate::controller_profile::expected_for_connected(
+        &current,
+        &config.midi_input_matches,
+        &connected,
+        &catalog,
+    )?
+    else {
+        return Ok(());
+    };
+    if expected != current {
+        crate::controller_learn::backup(&path)?;
+        expected.save(&path)?;
+    }
+    Ok(())
+}
+
 fn drain(
     rx: &Receiver<MidiEvent>,
     app: &mut App,
@@ -5156,7 +5662,11 @@ fn drain(
     while let Ok(ev) = rx.try_recv() {
         match ev {
             MidiEvent::MappedControl(cc, v) => {
-                app.observe_mapped_control(cc, v);
+                if app.screen == Screen::FxEditor {
+                    app.apply_fx_control(cc, v);
+                } else {
+                    app.observe_mapped_control(cc, v);
+                }
             }
             MidiEvent::Value(cc, v) => {
                 app.apply_control_value(cc, v);
@@ -5194,61 +5704,10 @@ fn drain(
                 }
             }
             MidiEvent::Pad(pad, pressed) => {
-                if pressed {
-                    match pad.menu_input() {
-                        MenuInput::SelectPage(page) => app.select_menu_page(page),
-                        MenuInput::CyclePage => app.cycle_menu_page(1),
-                        MenuInput::ActivateItem(item) => {
-                            let slot = navigation::slot(
-                                app.screen,
-                                app.menu_context(),
-                                app.menu_page(),
-                                item,
-                            );
-                            if let Some(action) = slot.and_then(|slot| slot.dispatch()) {
-                                perform(action, app, state, Some(tx));
-                            }
-                        }
-                    }
-                }
+                dispatch_pad(pad, pressed, app, state, tx);
             }
             MidiEvent::Encoder(action) => {
-                let value_editor_owns_encoder = app.note_editor.is_some()
-                    || (app.screen == Screen::TrackerPages
-                        && app.page_manager_mode != PageManagerMode::Pages)
-                    || app.screen == Screen::FxEditor;
-                if app.controller_layout == ControllerLayout::Four && !value_editor_owns_encoder {
-                    match action {
-                        crate::pads::EncoderAction::Select => {
-                            app.prepare_confirmation_action(Action::Noop);
-                            app.page_select_mode = !app.page_select_mode;
-                            app.status = if app.page_select_mode {
-                                "PAGE SELECT · turn encoder · press to return".into()
-                            } else {
-                                "encoder returned to screen control".into()
-                            };
-                        }
-                        crate::pads::EncoderAction::Up if app.page_select_mode => {
-                            app.cycle_menu_page(-1)
-                        }
-                        crate::pads::EncoderAction::Down if app.page_select_mode => {
-                            app.cycle_menu_page(1)
-                        }
-                        crate::pads::EncoderAction::Up => {
-                            perform(Action::Up, app, state, Some(tx));
-                        }
-                        crate::pads::EncoderAction::Down => {
-                            perform(Action::Down, app, state, Some(tx));
-                        }
-                    }
-                } else {
-                    let action = match action {
-                        crate::pads::EncoderAction::Up => Action::Up,
-                        crate::pads::EncoderAction::Down => Action::Down,
-                        crate::pads::EncoderAction::Select => Action::Activate,
-                    };
-                    perform(action, app, state, Some(tx));
-                }
+                dispatch_encoder(action, app, state, tx);
             }
             MidiEvent::PadLock(locked) => {
                 app.pad_locked = locked;
@@ -5258,8 +5717,103 @@ fn drain(
                     "pad lock off · command pads restored".into()
                 };
             }
+            MidiEvent::Learn(message) => {
+                let confirms = app
+                    .controller_learn
+                    .as_ref()
+                    .is_some_and(|session| session.confirms_with(&message));
+                if confirms {
+                    app.save_controller_learn(state);
+                } else {
+                    app.receive_controller_learn(&message);
+                }
+            }
             MidiEvent::Error(e) => app.status = e,
         }
+    }
+}
+
+fn dispatch_pad(
+    pad: crate::pads::PadAction,
+    pressed: bool,
+    app: &mut App,
+    state: &Path,
+    tx: &std::sync::mpsc::Sender<MidiEvent>,
+) {
+    if !pressed {
+        return;
+    }
+    match pad.menu_input() {
+        MenuInput::SelectPage(page) => app.select_menu_page(page),
+        MenuInput::CyclePage => app.cycle_menu_page(1),
+        MenuInput::ActivateItem(item) => {
+            let slot = navigation::slot(app.screen, app.menu_context(), app.menu_page(), item);
+            if let Some(action) = slot.and_then(|slot| slot.dispatch()) {
+                perform(action, app, state, Some(tx));
+            }
+        }
+    }
+}
+
+fn dispatch_encoder(
+    action: crate::pads::EncoderAction,
+    app: &mut App,
+    state: &Path,
+    tx: &std::sync::mpsc::Sender<MidiEvent>,
+) {
+    if app.screen == Screen::FxRack && app.fx_type_edit.is_some() {
+        match action {
+            crate::pads::EncoderAction::Up => app.cycle_effect_kind(-1),
+            crate::pads::EncoderAction::Down => app.cycle_effect_kind(1),
+            crate::pads::EncoderAction::Select => app.confirm_effect_type_edit(),
+        }
+        return;
+    }
+    let value_editor_owns_encoder = app.note_editor.is_some()
+        || (app.screen == Screen::TrackerPages && app.page_manager_mode != PageManagerMode::Pages)
+        || app.screen == Screen::FxEditor;
+    if app.controller_layout == ControllerLayout::Four && !value_editor_owns_encoder {
+        match action {
+            crate::pads::EncoderAction::Select => {
+                app.prepare_confirmation_action(Action::Noop);
+                app.page_select_mode = !app.page_select_mode;
+                app.status = if app.page_select_mode {
+                    "PAGE SELECT · turn encoder · press to return".into()
+                } else {
+                    "encoder returned to screen control".into()
+                };
+            }
+            crate::pads::EncoderAction::Up if app.page_select_mode => app.cycle_menu_page(-1),
+            crate::pads::EncoderAction::Down if app.page_select_mode => app.cycle_menu_page(1),
+            crate::pads::EncoderAction::Up => {
+                perform(Action::Up, app, state, Some(tx));
+            }
+            crate::pads::EncoderAction::Down => {
+                perform(Action::Down, app, state, Some(tx));
+            }
+        }
+    } else {
+        let action = match action {
+            crate::pads::EncoderAction::Up => Action::Up,
+            crate::pads::EncoderAction::Down => Action::Down,
+            crate::pads::EncoderAction::Select => Action::Activate,
+        };
+        perform(action, app, state, Some(tx));
+    }
+}
+
+fn function_key_pad(code: KeyCode) -> Option<crate::pads::PadAction> {
+    use crate::pads::PadAction;
+    match code {
+        KeyCode::F(5) => Some(PadAction::Page1),
+        KeyCode::F(6) => Some(PadAction::Page2),
+        KeyCode::F(7) => Some(PadAction::Page3),
+        KeyCode::F(8) => Some(PadAction::Page4),
+        KeyCode::F(9) => Some(PadAction::Item1),
+        KeyCode::F(10) => Some(PadAction::Item2),
+        KeyCode::F(11) => Some(PadAction::Item3),
+        KeyCode::F(12) => Some(PadAction::Item4),
+        _ => None,
     }
 }
 fn perform(
@@ -5411,7 +5965,13 @@ fn perform(
     match action {
         Action::Noop => {}
         Action::Up => {
-            if a.screen == Screen::Ideas {
+            if a.screen == Screen::Help {
+                a.move_help(-1);
+            } else if a.screen == Screen::TrackerNoob {
+                a.adjust_noob_root(-1);
+            } else if a.screen == Screen::TrackerLoopAlign {
+                a.adjust_loop_offset_bars(-1);
+            } else if a.screen == Screen::Ideas {
                 a.idea_selected = a.idea_selected.saturating_sub(1);
             } else if a.screen == Screen::TrackerFiles {
                 match a.tracker_files_mode {
@@ -5454,7 +6014,13 @@ fn perform(
             }
         }
         Action::Down => {
-            if a.screen == Screen::Ideas {
+            if a.screen == Screen::Help {
+                a.move_help(1);
+            } else if a.screen == Screen::TrackerNoob {
+                a.adjust_noob_root(1);
+            } else if a.screen == Screen::TrackerLoopAlign {
+                a.adjust_loop_offset_bars(1);
+            } else if a.screen == Screen::Ideas {
                 a.idea_selected = (a.idea_selected + 1).min(a.ideas.len().saturating_sub(1));
             } else if a.screen == Screen::TrackerFiles {
                 match a.tracker_files_mode {
@@ -5584,21 +6150,22 @@ fn perform(
             },
             Screen::TrackerArrange => a.arrangement_jump_to_pattern(),
             Screen::TrackerPages => a.confirm_page_manager(),
-            Screen::TrackerTools
-            | Screen::TrackerNoob
-            | Screen::TrackerLoop
-            | Screen::TrackerLoopAlign => {}
+            Screen::TrackerTools => {}
+            Screen::TrackerNoob => a.confirm_noob(),
+            Screen::TrackerLoop => a.import_selected_loop(),
+            Screen::TrackerLoopAlign => {
+                a.set_screen(Screen::TrackerLoop);
+                a.status = "loop alignment set".into();
+            }
             Screen::AudioRecorder => a.toggle_audio_track_arm(state),
             Screen::Meter => a.toggle_bus_mute(),
             Screen::FxRack => {
-                if a.selected_effect_id().is_some() {
-                    a.fx_parameter = 0;
-                    a.set_screen(Screen::FxEditor);
-                    a.fx_value_editing = false;
-                    a.fx_edit_original = None;
-                    a.status = "effect editor · turn to choose parameter · press to edit".into();
+                if a.fx_type_edit.is_some() {
+                    a.confirm_effect_type_edit();
+                } else if a.selected_effect_id().is_some() {
+                    a.begin_effect_type_edit();
                 } else {
-                    a.status = "FX rack is empty · choose a kind and ADD".into();
+                    a.add_effect();
                 }
             }
             Screen::FxEditor => {
@@ -5617,6 +6184,7 @@ fn perform(
         }
         Action::OpenIdeas => a.open_ideas(),
         Action::OpenHelp => a.open_help(),
+        Action::OpenControllerLearn => a.begin_controller_learn(),
         Action::OpenTracker => {
             a.set_screen(Screen::Tracker);
             a.refresh_page_targets();
@@ -5715,6 +6283,10 @@ fn perform(
         Action::BusMute => a.toggle_bus_mute(),
         Action::FinalRecordToggle => a.toggle_final_recording(),
         Action::Back => {
+            if a.screen == Screen::FxRack && a.fx_type_edit.is_some() {
+                a.cancel_effect_type_edit();
+                return false;
+            }
             if a.screen == Screen::FxEditor {
                 if a.fx_value_editing {
                     a.cancel_fx_value_edit();
@@ -5983,6 +6555,7 @@ fn perform(
         Action::AudioNameTrack => a.begin_audio_track_name(),
         Action::AudioRefreshSources => a.refresh_audio_sources(),
         Action::FxAdd => a.add_effect(),
+        Action::FxEditType => a.begin_effect_type_edit(),
         Action::FxRemove => a.remove_effect(),
         Action::FxMoveUp => a.move_effect(-1),
         Action::FxMoveDown => a.move_effect(1),
@@ -6072,6 +6645,78 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             }
             _ => {}
         }
+        return false;
+    }
+    if a.controller_learn.is_some() {
+        match code {
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.cancel_controller_learn(),
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                if let Some(session) = a.controller_learn.as_mut() {
+                    session.skip();
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                if let Some(session) = a.controller_learn.as_mut() {
+                    session.retry();
+                }
+            }
+            KeyCode::Enter => a.save_controller_learn(state),
+            _ => {}
+        }
+        return false;
+    }
+    if a.screen == Screen::FxEditor {
+        match code {
+            KeyCode::Char(character)
+                if character.is_ascii_digit()
+                    || (character == '-' && a.fx_numeric_input.is_none())
+                    || (character == '.'
+                        && a.fx_numeric_input
+                            .as_ref()
+                            .is_none_or(|input| !input.contains('.'))) =>
+            {
+                a.begin_fx_numeric_entry(character);
+                return false;
+            }
+            KeyCode::Backspace if a.fx_numeric_input.is_some() => {
+                if let Some(input) = a.fx_numeric_input.as_mut() {
+                    input.pop();
+                    a.status = format!("numeric value · {input}_ · Enter confirms");
+                }
+                return false;
+            }
+            KeyCode::Left => {
+                if a.fx_value_editing {
+                    a.confirm_fx_value_edit();
+                }
+                a.move_fx_parameter(-1);
+                return false;
+            }
+            KeyCode::Right => {
+                if a.fx_value_editing {
+                    a.confirm_fx_value_edit();
+                }
+                a.move_fx_parameter(1);
+                return false;
+            }
+            KeyCode::Enter if a.fx_numeric_input.is_some() => {
+                a.commit_fx_numeric_entry();
+                return false;
+            }
+            _ => {}
+        }
+    }
+    if let Some(pad) = function_key_pad(code) {
+        dispatch_pad(pad, true, a, state, tx);
+        return false;
+    }
+    if let Some(action) = match code {
+        KeyCode::Up => Some(crate::pads::EncoderAction::Up),
+        KeyCode::Down => Some(crate::pads::EncoderAction::Down),
+        KeyCode::Enter => Some(crate::pads::EncoderAction::Select),
+        _ => None,
+    } {
+        dispatch_encoder(action, a, state, tx);
         return false;
     }
     if a.screen == Screen::TrackerLoop && a.loop_library_mode {
@@ -6714,6 +7359,10 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         );
         return;
     }
+    if a.controller_learn.is_some() {
+        draw_controller_learn(f, a);
+        return;
+    }
     match a.screen {
         Screen::Presets => draw_list(f, a),
         Screen::Playback => draw_playing(f, a),
@@ -6766,6 +7415,85 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
 }
 
+fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let area = f.size();
+    let session = a.controller_learn.as_ref().expect("learn modal is active");
+    let (step, total) = session.progress();
+    let role = session.role();
+    let draft = session.draft();
+    let mut lines = vec![
+        Spans::from(Span::styled(
+            format!("MIDI LEARN · {step}/{total}"),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from("Messages isolated · synth protected"),
+        Spans::from(""),
+        Spans::from(Span::styled(
+            role.label(),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from("Move/press that control now"),
+        Spans::from(""),
+        Spans::from(Span::styled(
+            session.feedback().to_owned(),
+            Style::default().fg(
+                if session.feedback().contains("Conflict")
+                    || session.feedback().contains("Expected")
+                {
+                    Color::Red
+                } else {
+                    Color::Green
+                },
+            ),
+        )),
+        Spans::from(""),
+        Spans::from(format!(
+            "Mapped: {} controls · {} buttons",
+            draft.controls.len(),
+            draft.pads.len() + draft.cc_buttons.len()
+        )),
+        Spans::from(format!(
+            "Encoder: turn {} · click {}",
+            if draft.encoder_relative_cc.is_some() {
+                "OK"
+            } else {
+                "--"
+            },
+            if draft.encoder_press_cc.is_some() || draft.encoder_press_note.is_some() {
+                "OK"
+            } else {
+                "--"
+            }
+        )),
+        Spans::from(""),
+    ];
+    if role == crate::controller_learn::LearnRole::Confirm {
+        lines.push(Spans::from(Span::styled(
+            "Enter SAVE · Esc CANCEL",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Spans::from("Save makes a backup and activates now"));
+    } else {
+        lines.push(Spans::from("S skip · R retry · Esc cancel"));
+    }
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(" CONTROLLER SETUP ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        ),
+        area,
+    );
+}
+
 fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(4));
@@ -6779,11 +7507,7 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(format!(
-            "  ADD: {}  {}/8",
-            effect_kind_label(INSERT_EFFECTS[a.fx_add_kind]),
-            rack_length
-        )),
+        Span::raw(format!("  SERIAL CHAIN  {rack_length}/8")),
     ])];
     if is_aux_target(a.fx_target) {
         let aux_id = a.fx_target as u8;
@@ -6833,14 +7557,26 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         }
     }
     if rack_length == 0 {
-        lines.push(Spans::from("  Empty · choose KIND then ADD"));
+        lines.push(Spans::from(Span::styled(
+            ">  + INSERT EFFECT · click/Enter",
+            Style::default().fg(Color::Black).bg(Color::Yellow),
+        )));
     } else if let Some(rack) = rack {
         for (index, id) in rack.order.iter().copied().enumerate() {
             let effect = rack.effect(id).expect("validated rack order");
             let selected = index == a.fx_selected;
             let marker = if selected { ">" } else { " " };
             let state = if effect.bypass { "BYP" } else { "ON " };
-            let style = if selected {
+            let type_active = a
+                .fx_type_edit
+                .as_ref()
+                .is_some_and(|edit| edit.effect_id == id);
+            let style = if selected && type_active {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Green)
+                    .add_modifier(Modifier::REVERSED | Modifier::BOLD)
+            } else if selected {
                 Style::default().fg(Color::Black).bg(Color::Yellow)
             } else if effect.bypass {
                 Style::default().fg(Color::DarkGray)
@@ -7332,7 +8068,11 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(if a.fx_value_editing {
-            "  VALUE ACTIVE"
+            if a.fx_numeric_input.is_some() {
+                "  NUMERIC ACTIVE"
+            } else {
+                "  VALUE ACTIVE"
+            }
         } else if effect.bypass {
             "  BYPASSED"
         } else {
@@ -7352,12 +8092,25 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         } else {
             Style::default().fg(Color::White)
         };
+        let mapping = if index < CONTROLS.len() {
+            fx_hardware_label(index)
+        } else {
+            "--".into()
+        };
+        let shown_value = if index == a.fx_parameter {
+            a.fx_numeric_input
+                .as_ref()
+                .map(|input| format!("{input}_"))
+                .unwrap_or_else(|| format!("{value:.2}"))
+        } else {
+            format!("{value:.2}")
+        };
         lines.push(Spans::from(Span::styled(
             format!(
-                "{} {:<22} {:>8.2} {}",
+                "{}{mapping:<3}{:<17} {:>7} {}",
                 if index == a.fx_parameter { ">" } else { " " },
-                spec.name,
-                value,
+                parameter_display_name(spec.name),
+                shown_value,
                 spec.unit
             ),
             style,
@@ -10319,12 +11072,14 @@ mod tests {
         a.fx_add_kind = 0;
         a.add_effect();
         let eq = a.selected_effect_id().unwrap();
+        a.confirm_effect_type_edit();
         a.fx_add_kind = 1;
         a.add_effect();
         let compressor = a.selected_effect_id().unwrap();
-        assert_eq!(a.song.insert_rack.order, [eq, compressor]);
-        a.move_effect(-1);
         assert_eq!(a.song.insert_rack.order, [compressor, eq]);
+        a.confirm_effect_type_edit();
+        a.move_effect(1);
+        assert_eq!(a.song.insert_rack.order, [eq, compressor]);
         a.toggle_effect_bypass();
         assert!(a.song.insert_rack.effect(compressor).unwrap().bypass);
         a.fx_parameter = 0;
@@ -10332,6 +11087,224 @@ mod tests {
         let effect = a.song.insert_rack.effect(compressor).unwrap();
         assert!(effect.parameters["threshold_db"].is_finite());
         a.song.insert_rack.validate().unwrap();
+    }
+
+    #[test]
+    fn function_keys_are_exact_physical_pad_equivalents() {
+        use crate::pads::PadAction;
+        let expected = [
+            PadAction::Page1,
+            PadAction::Page2,
+            PadAction::Page3,
+            PadAction::Page4,
+            PadAction::Item1,
+            PadAction::Item2,
+            PadAction::Item3,
+            PadAction::Item4,
+        ];
+        for (offset, action) in expected.into_iter().enumerate() {
+            assert_eq!(function_key_pad(KeyCode::F(5 + offset as u8)), Some(action));
+        }
+        assert_eq!(function_key_pad(KeyCode::F(4)), None);
+    }
+
+    #[test]
+    fn keyboard_and_physical_rotary_use_the_same_dispatch_path() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut physical = app(&p);
+        let mut keyboard = app(&p);
+        physical.set_screen(Screen::FxRack);
+        keyboard.set_screen(Screen::FxRack);
+
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut physical,
+            Path::new("/none"),
+            &tx,
+        );
+        key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
+        assert_eq!(physical.song.insert_rack, keyboard.song.insert_rack);
+        assert_eq!(physical.fx_selected, keyboard.fx_selected);
+        assert!(physical.fx_type_edit.is_some());
+        assert!(keyboard.fx_type_edit.is_some());
+
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut physical,
+            Path::new("/none"),
+            &tx,
+        );
+        key(KeyCode::Down, &mut keyboard, Path::new("/none"), &tx);
+        assert_eq!(
+            physical.selected_effect().unwrap().kind,
+            keyboard.selected_effect().unwrap().kind
+        );
+    }
+
+    #[test]
+    fn rack_inserts_first_unused_before_cursor_and_type_cancel_restores() {
+        let p = presets();
+        let mut a = app(&p);
+        a.set_screen(Screen::FxRack);
+        a.add_effect();
+        let first = a.selected_effect_id().unwrap();
+        assert_eq!(a.selected_effect().unwrap().kind, EffectKind::Eq);
+        assert!(a.fx_type_edit.as_ref().unwrap().provisional);
+        a.cancel_effect_type_edit();
+        assert!(a.song.insert_rack.order.is_empty());
+
+        a.add_effect();
+        assert_eq!(a.selected_effect_id(), Some(first));
+        a.confirm_effect_type_edit();
+        let before = a.song.insert_rack.clone();
+        a.add_effect();
+        let inserted = a.selected_effect_id().unwrap();
+        assert_ne!(inserted, first);
+        assert_eq!(a.selected_effect().unwrap().kind, EffectKind::Compressor);
+        assert_eq!(a.song.insert_rack.order, [inserted, first]);
+        a.cycle_effect_kind(1);
+        assert_eq!(a.selected_effect().unwrap().kind, EffectKind::Distortion);
+        a.cancel_effect_type_edit();
+        assert_eq!(a.song.insert_rack, before);
+    }
+
+    #[test]
+    fn rack_active_type_row_is_inverted_and_adaptive_actions_are_reachable() {
+        let p = presets();
+        let mut a = app(&p);
+        a.set_screen(Screen::FxRack);
+        assert_eq!(a.menu_context(), MenuContext::FxEmpty);
+        assert_eq!(
+            navigation::slot(a.screen, a.menu_context(), 0, 0).and_then(|slot| slot.dispatch()),
+            Some(Action::FxAdd)
+        );
+        a.add_effect();
+        assert_eq!(a.menu_context(), MenuContext::FxType);
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        assert!(terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .any(|cell| cell.modifier.contains(Modifier::REVERSED)));
+        a.confirm_effect_type_edit();
+        assert_eq!(a.menu_context(), MenuContext::Normal);
+        let actions = navigation::pages(a.screen, a.menu_context())[0]
+            .slots
+            .into_iter()
+            .filter_map(|slot| slot.dispatch())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actions,
+            [
+                Action::FxAdd,
+                Action::FxRemove,
+                Action::FxEditType,
+                Action::OpenFxEditor
+            ]
+        );
+    }
+
+    #[test]
+    fn effect_parameter_keyboard_numeric_validation_cancel_and_knob_pickup() {
+        let p = presets();
+        let mut a = app(&p);
+        a.add_effect();
+        a.confirm_effect_type_edit();
+        a.set_screen(Screen::FxEditor);
+        let id = a.selected_effect_id().unwrap();
+        let (tx, _rx) = mpsc::channel();
+
+        key(KeyCode::Right, &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.fx_parameter, 1);
+        for character in ['1', '2', '3'] {
+            key(KeyCode::Char(character), &mut a, Path::new("/none"), &tx);
+        }
+        key(KeyCode::Enter, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            a.song.insert_rack.effect(id).unwrap().parameters["low_cut_hz"],
+            123.0
+        );
+
+        for character in ['9', '9', '9', '9', '9'] {
+            key(KeyCode::Char(character), &mut a, Path::new("/none"), &tx);
+        }
+        key(KeyCode::Enter, &mut a, Path::new("/none"), &tx);
+        assert!(a.status.contains("out of range"));
+        key(KeyCode::Esc, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            a.song.insert_rack.effect(id).unwrap().parameters["low_cut_hz"],
+            123.0
+        );
+
+        a.fx_parameter = 0;
+        a.arm_fx_pickup();
+        a.apply_fx_control(CONTROLS[0].cc, 1.0);
+        assert!(a.status.contains("waiting for pickup"));
+        a.apply_fx_control(CONTROLS[0].cc, 0.0);
+        a.apply_fx_control(CONTROLS[0].cc, 1.0);
+        assert_eq!(
+            a.song.insert_rack.effect(id).unwrap().parameters["low_cut_enabled"],
+            1.0
+        );
+    }
+
+    #[test]
+    fn every_effect_and_parameter_remains_reachable() {
+        assert_eq!(INSERT_EFFECTS.len(), 13);
+        for kind in INSERT_EFFECTS {
+            assert!(!crate::effect_schema::schema(kind).is_empty(), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn in_app_learn_cancel_keeps_state_and_confirm_backs_up_saves_and_activates() {
+        let p = presets();
+        let mut a = app(&p);
+        a.controller_online = true;
+        *a.controller_config.write().unwrap() =
+            crate::pads::PadConfig::unmapped("Test Controller MIDI");
+        let original = a.controller_config.read().unwrap().clone();
+        a.begin_controller_learn();
+        assert!(a.learn_mode.load(Ordering::Relaxed));
+        a.cancel_controller_learn();
+        assert_eq!(*a.controller_config.read().unwrap(), original);
+
+        a.begin_controller_learn();
+        for cc in 10..=21 {
+            a.receive_controller_learn(&[0xb0, cc, 64]);
+        }
+        a.receive_controller_learn(&[0xb0, 28, 65]);
+        a.receive_controller_learn(&[0xb0, 28, 63]);
+        a.receive_controller_learn(&[0xb0, 118, 127]);
+        for note in 36..=43 {
+            a.receive_controller_learn(&[0x99, note, 100]);
+        }
+        let state = std::env::temp_dir().join(format!(
+            "shr-in-app-learn-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&state).unwrap();
+        original.save(&state.join("controller.conf")).unwrap();
+        a.save_controller_learn(&state);
+        assert!(a.controller_learn.is_none());
+        assert!(!a.learn_mode.load(Ordering::Relaxed));
+        let saved = crate::pads::PadConfig::load(&state.join("controller.conf")).unwrap();
+        assert_eq!(saved.controls.len(), 12);
+        assert_eq!(saved.pads.len(), 8);
+        assert_eq!(*a.controller_config.read().unwrap(), saved);
+        assert!(fs::read_dir(&state)
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().contains(".bak-")));
+        fs::remove_dir_all(state).unwrap();
     }
 
     #[test]

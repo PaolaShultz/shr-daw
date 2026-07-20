@@ -46,6 +46,16 @@ Repository-local operation uses:
 ./scripts/local.sh        # run SHR-DAW with all writable data below user/
 ```
 
+On the current Pi account, the plain `shr` command is a user-local symlink at
+`/home/patch/.local/bin/shr` targeting this checkout's `scripts/local.sh`.
+Because `/home/patch/.local/bin` precedes `/usr/local/bin`, it is the normal
+interactive entry point. The launcher keeps all writable state below `user/`
+and selects whichever of `target/debug/shr` or `target/release/shr` was built
+most recently. Rebuilding either binary therefore updates what plain `shr`
+runs without replacing the symlink. This is machine-local state, not a tracked
+installation; verify or restore the symlink after moving the checkout or
+replacing the development system.
+
 `SHSYNTH_USER_DIR` may replace `user/`. The launchers set `XDG_STATE_HOME`,
 `XDG_DATA_HOME`, `SHSYNTH_PRESET_DIR`, and `SHSYNTH_LOOP_INBOX`; do not replace
 this with hardcoded Rust paths. The important local paths are:
@@ -372,6 +382,18 @@ CC27 pad-lock binding was removed because ordinary Shift gestures toggled it.
 The captured exact Arturia program-notification SysEx remains forwarded rather
 than adding a broad manufacturer filter; profile-qualified metadata matching is
 the safe future boundary if consuming it becomes necessary.
+
+The 2026-07-20 controller/effects workflow rebuild was deliberately committed
+before physical testing at the user's request. It unifies F5–F12 with physical
+pads 1–8, unifies Up/Down/Enter with encoder rotation/click, adds in-app MIDI
+Learn, and implements the serial effect-rack and parameter-editor workflows.
+The active private controller state is
+`user/state/shsynth/controller.conf`, using reviewed profile
+`arturia-minilab-3` and exact input `Minilab3:Minilab3 MIDI`; its pre-refresh
+backup is `user/state/shsynth/controller.conf.bak-1784558588`. Keep this task
+open until the user has exercised the debug build on the physical 40×20 Pi
+display and MiniLab 3. Do not regenerate screenshots or broaden documentation
+until that approval.
 
 Optional `controller_clock.*` configuration owns a dedicated exact stable ALSA
 standard-MIDI output and is off by default. It shares tracker transport tempo,

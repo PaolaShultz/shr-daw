@@ -128,9 +128,13 @@ SHSYNTH_USER_DIR=/absolute/private/path ./scripts/local.sh
 ```
 
 All arguments are passed unchanged to `shr`. The environment and private-preset
-copy rules match `setup-local.sh`. The launcher prefers
-`target/release/shr`; if it is absent, it uses an installed `shr` from `PATH`.
-It refuses to run until the local `shsynth.conf` exists.
+copy rules match `setup-local.sh`. An explicit executable in `SHSYNTH_BIN`
+wins. Otherwise, the launcher uses whichever executable is newer between
+`target/debug/shr` and `target/release/shr`, then falls back to an installed
+`shr` from `PATH`. It resolves its own symlink before finding the repository,
+so a user-local `shr` symlink may safely target this launcher; that same symlink
+is excluded from the installed-binary fallback to prevent recursion. The
+launcher refuses to run until the local `shsynth.conf` exists.
 
 ### Why it uses `exec`
 

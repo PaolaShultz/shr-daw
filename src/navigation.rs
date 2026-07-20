@@ -106,6 +106,7 @@ pub enum Action {
     OpenPresets,
     OpenIdeas,
     OpenHelp,
+    OpenControllerLearn,
     OpenTracker,
     OpenTrackerFiles,
     OpenTrackerArrange,
@@ -125,6 +126,7 @@ pub enum Action {
     BusMute,
     FinalRecordToggle,
     FxAdd,
+    FxEditType,
     FxRemove,
     FxMoveUp,
     FxMoveDown,
@@ -343,6 +345,8 @@ pub enum MenuContext {
     LoopLibrary,
     PatternTools,
     DrumPatterns,
+    FxEmpty,
+    FxType,
 }
 
 const PRESETS: [MenuPage; 4] = [
@@ -378,7 +382,7 @@ const PRESETS: [MenuPage; 4] = [
         [
             on("PANIC", Action::StopAll),
             on("HELP", Action::OpenHelp),
-            off(""),
+            on("LEARN", Action::OpenControllerLearn),
             off(""),
         ],
     ),
@@ -1006,10 +1010,10 @@ const FX_RACK: [MenuPage; 4] = [
     page(
         "OPS",
         [
-            on("EDIT", Action::OpenFxEditor),
             on("ADD", Action::FxAdd),
-            on("BYPASS", Action::FxBypass),
-            on("REMOVE", Action::FxRemove),
+            on("DEL", Action::FxRemove),
+            on("EDIT", Action::FxEditType),
+            on("PARM", Action::OpenFxEditor),
         ],
     ),
     page(
@@ -1017,8 +1021,8 @@ const FX_RACK: [MenuPage; 4] = [
         [
             on("UP", Action::FxMoveUp),
             on("DOWN", Action::FxMoveDown),
-            on("KIND-", Action::FxKindPrevious),
-            on("KIND+", Action::FxKindNext),
+            on("BYPASS", Action::FxBypass),
+            off(""),
         ],
     ),
     page(
@@ -1039,6 +1043,28 @@ const FX_RACK: [MenuPage; 4] = [
             on("EXIT", Action::Back),
         ],
     ),
+];
+
+const FX_RACK_EMPTY: [MenuPage; 4] = [
+    page("OPS", [on("ADD", Action::FxAdd), off(""), off(""), off("")]),
+    page("ORDER", [off(""), off(""), off(""), off("")]),
+    FX_RACK[2],
+    FX_RACK[3],
+];
+
+const FX_TYPE: [MenuPage; 4] = [
+    page(
+        "TYPE",
+        [
+            on("TYPE-", Action::FxKindPrevious),
+            on("TYPE+", Action::FxKindNext),
+            on("OK", Action::Activate),
+            on("CANCEL", Action::Back),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
 ];
 
 const FX_EDITOR: [MenuPage; 4] = [
@@ -1150,6 +1176,8 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
         (Screen::AudioRecorder, _) => &AUDIO,
+        (Screen::FxRack, MenuContext::FxEmpty) => &FX_RACK_EMPTY,
+        (Screen::FxRack, MenuContext::FxType) => &FX_TYPE,
         (Screen::FxRack, _) => &FX_RACK,
         (Screen::FxEditor, _) => &FX_EDITOR,
         (Screen::Meter, _) => &METER,
@@ -1407,6 +1435,8 @@ mod tests {
             (Screen::TrackerFiles, MenuContext::Normal),
             (Screen::TrackerPages, MenuContext::Normal),
             (Screen::FxRack, MenuContext::Normal),
+            (Screen::FxRack, MenuContext::FxEmpty),
+            (Screen::FxRack, MenuContext::FxType),
             (Screen::FxEditor, MenuContext::Normal),
         ] {
             assert!(pages(screen, context)
@@ -1483,6 +1513,8 @@ mod tests {
             (Screen::AudioRecorder, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
             (Screen::FxRack, MenuContext::Normal),
+            (Screen::FxRack, MenuContext::FxEmpty),
+            (Screen::FxRack, MenuContext::FxType),
             (Screen::FxEditor, MenuContext::Normal),
         ];
         let reachable = contexts
@@ -1504,6 +1536,7 @@ mod tests {
             Action::OpenPresets,
             Action::OpenIdeas,
             Action::OpenHelp,
+            Action::OpenControllerLearn,
             Action::OpenTracker,
             Action::OpenTrackerFiles,
             Action::OpenTrackerPages,
@@ -1616,6 +1649,7 @@ mod tests {
             Action::AudioNameTrack,
             Action::AudioRefreshSources,
             Action::FxAdd,
+            Action::FxEditType,
             Action::FxRemove,
             Action::FxMoveUp,
             Action::FxMoveDown,

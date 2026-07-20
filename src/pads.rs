@@ -124,9 +124,11 @@ impl FromStr for PadAction {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PadConfig {
     pub input_match: Option<String>,
+    /// Reviewed catalog ID, `learned`, or absent for legacy/unmapped state.
+    pub profile: Option<String>,
     pub pads: HashMap<u8, PadAction>,
     /// Optional zero-based MIDI channel for each note command. Missing keeps
     /// the legacy behavior of matching the note on every channel.
@@ -142,6 +144,8 @@ pub struct PadConfig {
     pub encoder_relative_reverse: bool,
     pub encoder_press_cc: Option<u8>,
     pub encoder_press_note: Option<u8>,
+    /// Optional zero-based channel qualifier for either encoder press form.
+    pub encoder_press_channel: Option<u8>,
     /// Dedicated toggle control; this uses the raw Shift CC, not its shifted pad layer.
     pub lock_cc: Option<u8>,
     pub layout: ControllerLayout,
@@ -151,6 +155,7 @@ impl Default for PadConfig {
     fn default() -> Self {
         let mut config = Self {
             input_match: None,
+            profile: None,
             pads: HashMap::new(),
             pad_channels: HashMap::new(),
             cc_buttons: HashMap::new(),
@@ -160,6 +165,7 @@ impl Default for PadConfig {
             encoder_relative_reverse: false,
             encoder_press_cc: None,
             encoder_press_note: None,
+            encoder_press_channel: None,
             lock_cc: None,
             layout: ControllerLayout::Eight,
         };
@@ -208,6 +214,10 @@ impl PadConfig {
                 self.input_match = (!value.trim().is_empty()).then(|| value.trim().to_owned());
                 continue;
             }
+            if key.trim() == "profile" {
+                self.profile = (!value.trim().is_empty()).then(|| value.trim().to_owned());
+                continue;
+            }
             if key.trim() == "menu.layout" {
                 self.layout = match value.trim() {
                     "8" | "eight" => ControllerLayout::Eight,
@@ -235,6 +245,10 @@ impl PadConfig {
             }
             if key.trim() == "encoder.press_note" {
                 self.encoder_press_note = optional_midi_number(value, "encoder press note")?;
+                continue;
+            }
+            if key.trim() == "encoder.press_channel" {
+                self.encoder_press_channel = optional_midi_channel(value, "encoder press channel")?;
                 continue;
             }
             if key.trim() == "lock.cc" {
@@ -300,6 +314,13 @@ impl PadConfig {
             input.trim().is_empty() || input.trim() != input || input.contains(['\n', '\r'])
         }) {
             bail!("controller input match must be a non-empty single-line value");
+        }
+        if self.profile.as_ref().is_some_and(|profile| {
+            profile.trim().is_empty()
+                || profile.trim() != profile
+                || profile.contains(['\n', '\r', '='])
+        }) {
+            bail!("controller profile marker must be a non-empty single-line value");
         }
         for &cc in self.controls.keys() {
             ensure_midi_number(cc, "controller CC")?;
@@ -373,6 +394,15 @@ impl PadConfig {
             bail!("encoder press must use either a CC or a note, not both");
         }
         if self
+            .encoder_press_channel
+            .is_some_and(|channel| channel > 15)
+            || (self.encoder_press_channel.is_some()
+                && self.encoder_press_cc.is_none()
+                && self.encoder_press_note.is_none())
+        {
+            bail!("encoder press channel requires an encoder press CC or note and channel 1..16");
+        }
+        if self
             .encoder_press_note
             .is_some_and(|note| self.pads.contains_key(&note))
         {
@@ -393,7 +423,11 @@ impl PadConfig {
             text.push_str(&format!("input={input}\n"));
         }
         text.push_str(&format!(
-            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nlock.cc={}\n",
+            "profile={}\n",
+            self.profile.as_deref().unwrap_or_default()
+        ));
+        text.push_str(&format!(
+            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nlock.cc={}\n",
             match self.layout {
                 ControllerLayout::Eight => 8,
                 ControllerLayout::Five => 5,
@@ -408,6 +442,9 @@ impl PadConfig {
                 .unwrap_or_default(),
             self.encoder_press_note
                 .map(|note| note.to_string())
+                .unwrap_or_default(),
+            self.encoder_press_channel
+                .map(|channel| (channel + 1).to_string())
                 .unwrap_or_default(),
             self.lock_cc.map(|cc| cc.to_string()).unwrap_or_default(),
         ));
@@ -513,6 +550,12 @@ impl PadConfig {
             return (true, action);
         }
         if self.encoder_press_cc == Some(message[1]) {
+            if self
+                .encoder_press_channel
+                .is_some_and(|channel| channel != message[0] & 0x0f)
+            {
+                return (false, None);
+            }
             return (true, (message[2] > 0).then_some(EncoderAction::Select));
         }
         (false, None)
@@ -523,6 +566,12 @@ impl PadConfig {
             return (false, None);
         }
         if self.encoder_press_note != Some(message[1]) {
+            return (false, None);
+        }
+        if self
+            .encoder_press_channel
+            .is_some_and(|channel| channel != message[0] & 0x0f)
+        {
             return (false, None);
         }
         let pressed = message[0] & 0xf0 == 0x90 && message[2] > 0;
@@ -559,6 +608,20 @@ fn optional_midi_number(value: &str, description: &str) -> Result<Option<u8>> {
         return Ok(None);
     }
     midi_number(value, description).map(Some)
+}
+
+fn optional_midi_channel(value: &str, description: &str) -> Result<Option<u8>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let channel = value
+        .parse::<u8>()
+        .with_context(|| format!("{description} must be 1..16"))?;
+    if !(1..=16).contains(&channel) {
+        bail!("{description} must be 1..16");
+    }
+    Ok(Some(channel - 1))
 }
 
 fn command_binding(value: &str, description: &str) -> Result<(Option<u8>, u8)> {

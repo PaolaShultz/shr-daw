@@ -29,6 +29,9 @@ pub struct ControllerProfile {
     pub encoder_press_cc: Option<u8>,
     #[serde(default)]
     pub encoder_press_note: Option<u8>,
+    /// Optional 1-based channel qualifier for the encoder press message.
+    #[serde(default)]
+    pub encoder_press_channel: Option<u8>,
     #[serde(default)]
     pub lock_cc: Option<u8>,
     #[serde(default)]
@@ -132,6 +135,18 @@ impl ControllerProfile {
             );
         }
         if self
+            .encoder_press_channel
+            .is_some_and(|channel| !(1..=16).contains(&channel))
+            || (self.encoder_press_channel.is_some()
+                && self.encoder_press_cc.is_none()
+                && self.encoder_press_note.is_none())
+        {
+            bail!(
+                "controller profile {} has an invalid encoder press channel",
+                self.id
+            );
+        }
+        if self
             .encoder_press_note
             .is_some_and(|note| self.note_buttons.contains_key(&note))
         {
@@ -154,6 +169,7 @@ impl ControllerProfile {
     pub fn apply(&self, config: &mut PadConfig, input_name: &str) -> Result<()> {
         self.validate()?;
         config.input_match = Some(input_name.to_owned());
+        config.profile = Some(self.id.clone());
         config.layout = match self.layout {
             8 => ControllerLayout::Eight,
             5 => ControllerLayout::Five,
@@ -165,6 +181,7 @@ impl ControllerProfile {
         config.encoder_relative_reverse = self.encoder_relative_reverse;
         config.encoder_press_cc = self.encoder_press_cc;
         config.encoder_press_note = self.encoder_press_note;
+        config.encoder_press_channel = self.encoder_press_channel.map(|channel| channel - 1);
         config.lock_cc = self.lock_cc;
         config.pads = self
             .note_buttons
@@ -245,6 +262,61 @@ impl Catalog {
     pub fn profiles(&self) -> &[ControllerProfile] {
         &self.profiles
     }
+}
+
+/// Resolves only the controller already selected in state/runtime
+/// configuration. It never guesses among ports or profiles, which prevents a
+/// stale mapping from silently attaching to a different connected device.
+pub fn expected_for_connected(
+    current: &PadConfig,
+    runtime_matches: &[String],
+    connected_names: &[String],
+    catalog: &Catalog,
+) -> Result<Option<(PadConfig, String)>> {
+    let wanted = current
+        .input_match
+        .iter()
+        .chain(runtime_matches.iter())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>();
+    let mut resolved = Vec::new();
+    for wanted in wanted {
+        let wanted_lower = wanted.to_ascii_lowercase();
+        let matches = connected_names
+            .iter()
+            .filter(|name| name.to_ascii_lowercase().contains(&wanted_lower))
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [name] if !resolved.iter().any(|found: &&String| *found == *name) => {
+                resolved.push(*name)
+            }
+            [] => {}
+            [_] => {}
+            _ => bail!("configured controller input is ambiguous: {wanted}"),
+        }
+    }
+    let connected = match resolved.as_slice() {
+        [name] => *name,
+        [] => return Ok(None),
+        _ => bail!("configured controller inputs resolve to different devices"),
+    };
+    let Some(profile) = catalog.matching(connected) else {
+        return Ok(None);
+    };
+    if current.profile.as_deref() == Some("learned") {
+        return Ok(None);
+    }
+    if current
+        .profile
+        .as_deref()
+        .is_some_and(|id| id != profile.id)
+    {
+        bail!("connected controller conflicts with saved profile marker");
+    }
+    let stable = crate::controller_learn::stable_input_match(connected);
+    let mut expected = PadConfig::unmapped(stable.clone());
+    profile.apply(&mut expected, &stable)?;
+    Ok(Some((expected, profile.name.clone())))
 }
 
 #[cfg(test)]
@@ -346,6 +418,7 @@ mod tests {
             encoder_relative_reverse: false,
             encoder_press_cc: None,
             encoder_press_note: None,
+            encoder_press_channel: None,
             lock_cc: None,
             note_buttons: HashMap::new(),
             note_button_channels: HashMap::new(),
@@ -439,5 +512,47 @@ mod tests {
         };
 
         assert!(catalog.matching("Test Controller MIDI").is_none());
+    }
+
+    #[test]
+    fn known_connected_controller_rebuilds_stale_state_from_reviewed_profile() {
+        let catalog = Catalog::discover();
+        let stale = PadConfig {
+            input_match: Some("Minilab3:Minilab3 MIDI".into()),
+            lock_cc: Some(27),
+            ..PadConfig::default()
+        };
+        let connected = vec!["Minilab3:Minilab3 MIDI 28:0".into()];
+        let (expected, name) = expected_for_connected(&stale, &[], &connected, &catalog)
+            .unwrap()
+            .unwrap();
+        assert_eq!(name, "Arturia MiniLab 3");
+        assert_eq!(expected.lock_cc, None);
+        assert_eq!(expected.controls.len(), 12);
+        assert_eq!(expected.pad_channels.len(), 8);
+        assert_ne!(expected, stale);
+    }
+
+    #[test]
+    fn stale_or_conflicting_selection_never_guesses_a_different_controller() {
+        let catalog = Catalog::discover();
+        let stale = PadConfig::unmapped("Old Controller");
+        let connected = vec!["Minilab3:Minilab3 MIDI 28:0".into()];
+        assert!(expected_for_connected(&stale, &[], &connected, &catalog)
+            .unwrap()
+            .is_none());
+
+        let current = PadConfig::default();
+        let runtime = vec!["Minilab3".into(), "Other".into()];
+        let connected = vec!["Minilab3 MIDI".into(), "Other MIDI".into()];
+        assert!(expected_for_connected(&current, &runtime, &connected, &catalog).is_err());
+
+        let mut learned = PadConfig::unmapped("Minilab3");
+        learned.profile = Some("learned".into());
+        assert!(
+            expected_for_connected(&learned, &[], &["Minilab3 MIDI".into()], &catalog)
+                .unwrap()
+                .is_none()
+        );
     }
 }
