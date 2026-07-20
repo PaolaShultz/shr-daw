@@ -46,15 +46,17 @@ Repository-local operation uses:
 ./scripts/local.sh        # run SHR-DAW with all writable data below user/
 ```
 
-On the current Pi account, the plain `shr` command is a user-local symlink at
-`/home/patch/.local/bin/shr` targeting this checkout's `scripts/local.sh`.
-Because `/home/patch/.local/bin` precedes `/usr/local/bin`, it is the normal
-interactive entry point. The launcher keeps all writable state below `user/`
-and selects whichever of `target/debug/shr` or `target/release/shr` was built
-most recently. Rebuilding either binary therefore updates what plain `shr`
-runs without replacing the symlink. This is machine-local state, not a tracked
-installation; verify or restore the symlink after moving the checkout or
-replacing the development system.
+On the current Pi account, the plain `shr` command targets this checkout's
+`scripts/local.sh` through both the interactive Bash alias in
+`/home/patch/.bash_aliases` and the user-local symlink at
+`/home/patch/.local/bin/shr`. The alias previously hardcoded an old
+`target/release/shr` and therefore hid newer debug workflow builds; do not
+restore a build-specific alias. The launcher keeps all writable state below
+`user/` and selects whichever of `target/debug/shr` or `target/release/shr` was
+built most recently. Rebuilding either binary therefore updates what plain
+`shr` runs without changing shell startup files. This is machine-local state,
+not a tracked installation; verify or restore both entry points after moving
+the checkout or replacing the development system.
 
 `SHSYNTH_USER_DIR` may replace `user/`. The launchers set `XDG_STATE_HOME`,
 `XDG_DATA_HOME`, `SHSYNTH_PRESET_DIR`, and `SHSYNTH_LOOP_INBOX`; do not replace

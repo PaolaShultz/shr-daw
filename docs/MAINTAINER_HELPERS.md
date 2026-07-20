@@ -132,9 +132,10 @@ copy rules match `setup-local.sh`. An explicit executable in `SHSYNTH_BIN`
 wins. Otherwise, the launcher uses whichever executable is newer between
 `target/debug/shr` and `target/release/shr`, then falls back to an installed
 `shr` from `PATH`. It resolves its own symlink before finding the repository,
-so a user-local `shr` symlink may safely target this launcher; that same symlink
-is excluded from the installed-binary fallback to prevent recursion. The
-launcher refuses to run until the local `shsynth.conf` exists.
+so a user-local `shr` symlink or shell alias may safely target this launcher;
+the launcher itself is excluded from both build-path and installed-binary
+fallbacks to prevent recursion. The launcher refuses to run until the local
+`shsynth.conf` exists.
 
 ### Why it uses `exec`
 
