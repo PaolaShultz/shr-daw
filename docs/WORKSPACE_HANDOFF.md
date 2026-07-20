@@ -409,6 +409,11 @@ The 2026-07-20 controller/effects workflow rebuild was deliberately committed
 before physical testing at the user's request. It unifies F5–F12 with physical
 pads 1–8, unifies Up/Down/Enter with encoder rotation/click, adds in-app MIDI
 Learn, and implements the serial effect-rack and parameter-editor workflows.
+In-app MIDI Learn now bootstraps the master encoder left/right/click before any
+optional mapping. The learned encoder browses control and command roles; click
+saves the partial or complete learned profile and exits, while Esc cancels.
+Command roles are optional and infer the four-, five-, or eight-button layout
+instead of assuming the connected device has eight buttons.
 The active private controller state is
 `user/state/shsynth/controller.conf`, using reviewed profile
 `arturia-minilab-3` and exact input `Minilab3:Minilab3 MIDI`; its pre-refresh
@@ -513,10 +518,13 @@ cargo test --locked FILTER
 cargo build --locked
 ```
 
-Do not run the full test suite, warning-denied Clippy, an optimized release
-build, or release stress validation unless the user explicitly requests full
-or release validation. Historical release results below remain evidence for
-their dated commits, not the default iteration policy.
+During the competition heavy-test phase, do not run the full test suite,
+warning-denied Clippy, an optimized release build, or release stress
+validation. This temporary fast-iteration rule remains in force until the
+competition deadline; use formatting, `cargo check --locked`, and focused tests
+for the exact changed behavior. A commit, handoff, or broad validation request
+does not by itself override this phase rule. Historical release results below
+remain evidence for their dated commits, not the current iteration policy.
 
 At the time this handoff was written, all 445 public-plus-private XML files
 validated, 133 Rust tests passed, the bundled MIDI-device JSON parsed and
@@ -643,8 +651,9 @@ into the public project without explicit user direction.
 5. Never manage, kill, or layer processes outside SHR-DAW's ownership rules.
 6. Keep hardware routes and executable/client names in configuration.
 7. Keep the 12 mapped synthv1 controls and pickup/reset invariants intact.
-8. Validate only what changed, inspect the staged tree, then push. Run all Rust
-   checks for code/runtime changes, not for docs or image-only commits.
+8. Validate only what changed, inspect the staged tree, then push. During the
+   competition heavy-test phase, keep code/runtime validation to formatting,
+   `cargo check --locked`, and focused tests for the changed behavior.
 
 ## Final stereo performance bus (2026-07-20 implementation)
 

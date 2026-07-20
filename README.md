@@ -48,6 +48,8 @@ its sounds.
 - Browse synthv1, Yoshimi, and FluidSynth sounds without layering managed
   engines.
 - Route one controller to software or external MIDI instruments.
+- Learn the master rotary first, then use it to browse optional controller
+  mappings; each item keeps its first movement until the rotary moves on.
 - Optionally drive a controller arpeggiator from SHR's dedicated 24-PPQN
   clock/transport output without reusing a musical tracker route.
 - Sequence self-contained FT2 Patterns through an Arrangement.

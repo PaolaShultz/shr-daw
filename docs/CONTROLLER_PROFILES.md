@@ -15,7 +15,21 @@ The wizard selects an ALSA MIDI input, loads a matching known profile, or
 offers non-audible MIDI learn for the missing controls. Learning never forwards
 messages to a synth. It can identify absolute knob/fader CCs, either direction
 convention for a relative encoder, a CC or note encoder press, and command
-buttons that send either notes or CCs. Conflicting assignments are rejected.
+buttons that send either notes or CCs. Each step keeps the first qualifying
+message and stays on that item; extra values from the same movement, matching
+button releases, and unrelated MIDI traffic are ignored without changing the
+accepted indication. In the in-app learner, first turn the master encoder left,
+turn it right, and click it. The learned encoder then browses the optional
+control and command-button roles. Its next click saves the mappings learned so
+far and exits; Esc cancels and keeps the previous file. Conflicting assignments
+from a different already-mapped control are rejected.
+
+SHR does not guess how many buttons the controller has. Command roles are
+optional: browse past roles that the hardware does not need. Learning any
+dedicated page button selects the eight-button layout; learning page-cycle
+without dedicated page buttons selects the five-button layout; item buttons
+alone use the four-button layout. Partial layouts are valid, so spare hardware
+buttons can remain musical or unassigned.
 
 The generic installed `controller.conf` is deliberately empty. An unknown
 device therefore remains a normal musical MIDI input instead of accidentally

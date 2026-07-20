@@ -25,11 +25,13 @@ focused tests for the changed behavior, and `cargo build --locked` when a
 binary is needed for user testing. Plain `shr` must launch
 `target/debug/shr`, and the TUI must identify debug builds visibly. Do not run
 the complete test suite, warning-denied Clippy, an optimized/release build, or
-release-mode stress validation unless the user explicitly requests full or
-release validation. A commit or handoff alone is not such a request. For docs,
-README, screenshot, or image-only changes, use targeted checks such as
-link/reference checks, image size/format checks, `python3 -m py_compile` for
-Python helpers, and `git diff --check`.
+release-mode stress validation during the competition heavy-test phase. This
+temporary fast-iteration rule remains in force until the competition deadline;
+use formatting, `cargo check --locked`, and focused tests for the exact changed
+behavior instead. A commit, handoff, or broad validation request does not by
+itself override this phase rule. For docs, README, screenshot, or image-only
+changes, use targeted checks such as link/reference checks, image size/format
+checks, `python3 -m py_compile` for Python helpers, and `git diff --check`.
 
 Install tools required to complete requested setup, validation, or publishing
 work instead of silently skipping the check or substituting a weaker one. On

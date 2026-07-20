@@ -5720,12 +5720,27 @@ fn drain(
                 };
             }
             MidiEvent::Learn(message) => {
-                let confirms = app
+                let (navigation, action) = app
                     .controller_learn
                     .as_ref()
-                    .is_some_and(|session| session.confirms_with(&message));
-                if confirms {
-                    app.save_controller_learn(state);
+                    .map_or((false, None), |session| session.navigation_action(&message));
+                if navigation {
+                    match action {
+                        Some(crate::pads::EncoderAction::Up) => {
+                            if let Some(session) = app.controller_learn.as_mut() {
+                                session.previous();
+                            }
+                        }
+                        Some(crate::pads::EncoderAction::Down) => {
+                            if let Some(session) = app.controller_learn.as_mut() {
+                                session.skip();
+                            }
+                        }
+                        Some(crate::pads::EncoderAction::Select) => {
+                            app.save_controller_learn(state);
+                        }
+                        None => {}
+                    }
                 } else {
                     app.receive_controller_learn(&message);
                 }
@@ -6657,6 +6672,16 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                     session.skip();
                 }
             }
+            KeyCode::Down | KeyCode::Right => {
+                if let Some(session) = a.controller_learn.as_mut() {
+                    session.skip();
+                }
+            }
+            KeyCode::Up | KeyCode::Left => {
+                if let Some(session) = a.controller_learn.as_mut() {
+                    session.previous();
+                }
+            }
             KeyCode::Char('r') | KeyCode::Char('R') => {
                 if let Some(session) = a.controller_learn.as_mut() {
                     session.retry();
@@ -7423,6 +7448,7 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
     let (step, total) = session.progress();
     let role = session.role();
     let draft = session.draft();
+    let feedback_lower = session.feedback().to_ascii_lowercase();
     let mut lines = vec![
         Spans::from(Span::styled(
             format!("MIDI LEARN · {step}/{total}"),
@@ -7439,14 +7465,16 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
                 .bg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         )),
-        Spans::from("Move/press that control now"),
+        Spans::from(if session.can_finish() {
+            "Move/press to learn · rotary browses"
+        } else {
+            "Learn rotary left, right, then click"
+        }),
         Spans::from(""),
         Spans::from(Span::styled(
             session.feedback().to_owned(),
             Style::default().fg(
-                if session.feedback().contains("Conflict")
-                    || session.feedback().contains("Expected")
-                {
+                if feedback_lower.contains("conflict") || feedback_lower.contains("expected") {
                     Color::Red
                 } else {
                     Color::Green
@@ -7476,14 +7504,17 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
     ];
     if role == crate::controller_learn::LearnRole::Confirm {
         lines.push(Spans::from(Span::styled(
-            "Enter SAVE · Esc CANCEL",
+            "Rotary click / Enter SAVE + EXIT",
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         )));
         lines.push(Spans::from("Save makes a backup and activates now"));
+    } else if session.can_finish() {
+        lines.push(Spans::from("←/→ browse · S skip · R retry"));
+        lines.push(Spans::from("Rotary click SAVE+EXIT · Esc cancel"));
     } else {
-        lines.push(Spans::from("S skip · R retry · Esc cancel"));
+        lines.push(Spans::from("Master rotary required · Esc cancel"));
     }
     f.render_widget(
         Paragraph::new(lines).block(
@@ -11299,7 +11330,7 @@ mod tests {
     }
 
     #[test]
-    fn in_app_learn_cancel_keeps_state_and_confirm_backs_up_saves_and_activates() {
+    fn in_app_learn_cancel_keeps_state_and_rotary_click_backs_up_saves_and_activates() {
         let p = presets();
         let mut a = app(&p);
         a.controller_online = true;
@@ -11312,14 +11343,16 @@ mod tests {
         assert_eq!(*a.controller_config.read().unwrap(), original);
 
         a.begin_controller_learn();
+        a.receive_controller_learn(&[0xb0, 28, 63]);
+        a.receive_controller_learn(&[0xb0, 28, 65]);
+        a.receive_controller_learn(&[0xb0, 118, 127]);
         for cc in 10..=21 {
             a.receive_controller_learn(&[0xb0, cc, 64]);
+            a.controller_learn.as_mut().unwrap().skip();
         }
-        a.receive_controller_learn(&[0xb0, 28, 65]);
-        a.receive_controller_learn(&[0xb0, 28, 63]);
-        a.receive_controller_learn(&[0xb0, 118, 127]);
-        for note in 36..=43 {
+        for note in 36..=44 {
             a.receive_controller_learn(&[0x99, note, 100]);
+            a.controller_learn.as_mut().unwrap().skip();
         }
         let state = std::env::temp_dir().join(format!(
             "shr-in-app-learn-{}-{}",
@@ -11331,17 +11364,71 @@ mod tests {
         ));
         fs::create_dir_all(&state).unwrap();
         original.save(&state.join("controller.conf")).unwrap();
-        a.save_controller_learn(&state);
+        let (tx, rx) = mpsc::channel();
+        tx.send(MidiEvent::Learn(vec![0xb0, 118, 127])).unwrap();
+        drain(&rx, &mut a, &state, &tx);
         assert!(a.controller_learn.is_none());
         assert!(!a.learn_mode.load(Ordering::Relaxed));
         let saved = crate::pads::PadConfig::load(&state.join("controller.conf")).unwrap();
         assert_eq!(saved.controls.len(), 12);
-        assert_eq!(saved.pads.len(), 8);
+        assert_eq!(saved.pads.len(), 9);
         assert_eq!(*a.controller_config.read().unwrap(), saved);
         assert!(fs::read_dir(&state)
             .unwrap()
             .filter_map(std::result::Result::ok)
             .any(|entry| entry.file_name().to_string_lossy().contains(".bak-")));
+        fs::remove_dir_all(state).unwrap();
+    }
+
+    #[test]
+    fn in_app_learn_rotary_browses_and_second_click_saves_encoder_only() {
+        let p = presets();
+        let mut a = app(&p);
+        a.controller_online = true;
+        *a.controller_config.write().unwrap() =
+            crate::pads::PadConfig::unmapped("Test Controller MIDI");
+        a.begin_controller_learn();
+        a.receive_controller_learn(&[0xb0, 28, 63]);
+        a.receive_controller_learn(&[0xb0, 28, 65]);
+        a.receive_controller_learn(&[0xb0, 118, 127]);
+        assert_eq!(
+            a.controller_learn.as_ref().unwrap().role(),
+            crate::controller_learn::LearnRole::AbsoluteControl(0)
+        );
+
+        let state = std::env::temp_dir().join(format!(
+            "shr-in-app-learn-nav-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&state).unwrap();
+        let (tx, rx) = mpsc::channel();
+
+        tx.send(MidiEvent::Learn(vec![0xb0, 28, 65])).unwrap();
+        drain(&rx, &mut a, &state, &tx);
+        assert_eq!(
+            a.controller_learn.as_ref().unwrap().role(),
+            crate::controller_learn::LearnRole::AbsoluteControl(1)
+        );
+        tx.send(MidiEvent::Learn(vec![0xb0, 28, 63])).unwrap();
+        drain(&rx, &mut a, &state, &tx);
+        assert_eq!(
+            a.controller_learn.as_ref().unwrap().role(),
+            crate::controller_learn::LearnRole::AbsoluteControl(0)
+        );
+
+        tx.send(MidiEvent::Learn(vec![0xb0, 118, 127])).unwrap();
+        drain(&rx, &mut a, &state, &tx);
+        assert!(a.controller_learn.is_none());
+        let saved = crate::pads::PadConfig::load(&state.join("controller.conf")).unwrap();
+        assert_eq!(saved.encoder_relative_cc, Some(28));
+        assert_eq!(saved.encoder_press_cc, Some(118));
+        assert!(saved.controls.is_empty());
+        assert!(saved.pads.is_empty());
+        assert_eq!(saved.layout, crate::pads::ControllerLayout::Four);
         fs::remove_dir_all(state).unwrap();
     }
 

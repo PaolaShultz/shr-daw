@@ -69,6 +69,23 @@ pub enum LearnRole {
     Confirm,
 }
 
+const FIRST_OPTIONAL_STEP: usize = 3;
+const CONTROL_STEP_START: usize = FIRST_OPTIONAL_STEP;
+const BUTTON_STEP_START: usize = CONTROL_STEP_START + CONTROLS.len();
+const CONFIRM_STEP: usize = BUTTON_STEP_START + COMMAND_ACTIONS.len();
+const TOTAL_STEPS: usize = CONFIRM_STEP + 1;
+const COMMAND_ACTIONS: [PadAction; 9] = [
+    PadAction::Page1,
+    PadAction::Page2,
+    PadAction::Page3,
+    PadAction::Page4,
+    PadAction::CyclePage,
+    PadAction::Item1,
+    PadAction::Item2,
+    PadAction::Item3,
+    PadAction::Item4,
+];
+
 impl LearnRole {
     pub fn label(self) -> String {
         match self {
@@ -78,14 +95,13 @@ impl LearnRole {
             Self::EncoderClockwise => "MASTER ENCODER · TURN RIGHT".into(),
             Self::EncoderCounterClockwise => "MASTER ENCODER · TURN LEFT".into(),
             Self::EncoderClick => "MASTER ENCODER · CLICK".into(),
-            Self::Pad(index) if index < 4 => format!("PAD {} · PAGE {}", index + 1, index + 1),
-            Self::Pad(index) => format!("PAD {} · ITEM {}", index + 1, index - 3),
+            Self::Pad(index) => format!("COMMAND BUTTON · {}", COMMAND_ACTIONS[index]),
             Self::Confirm => "REVIEW AND SAVE".into(),
         }
     }
 
     pub const fn skippable(self) -> bool {
-        !matches!(self, Self::Confirm)
+        matches!(self, Self::AbsoluteControl(_) | Self::Pad(_))
     }
 }
 
@@ -94,32 +110,75 @@ pub struct LearnSession {
     draft: PadConfig,
     step: usize,
     feedback: String,
+    last_input: Option<LearnInput>,
+    captured: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LearnInput {
+    Cc(u8),
+    Note { channel: u8, note: u8 },
+}
+
+impl LearnInput {
+    fn from_message(message: &[u8]) -> Option<Self> {
+        if message.len() < 3 {
+            return None;
+        }
+        match message[0] & 0xf0 {
+            0xb0 => Some(Self::Cc(message[1])),
+            0x90 if message[2] > 0 => Some(Self::Note {
+                channel: message[0] & 0x0f,
+                note: message[1],
+            }),
+            _ => None,
+        }
+    }
+
+    fn matches(self, message: &[u8]) -> bool {
+        if message.len() < 2 {
+            return false;
+        }
+        match self {
+            Self::Cc(cc) => message[0] & 0xf0 == 0xb0 && message[1] == cc,
+            Self::Note { channel, note } => {
+                matches!(message[0] & 0xf0, 0x80 | 0x90 | 0xa0)
+                    && message[0] & 0x0f == channel
+                    && message[1] == note
+            }
+        }
+    }
 }
 
 impl LearnSession {
     pub fn new(input_name: &str) -> Self {
         let mut draft = PadConfig::unmapped(stable_input_match(input_name));
         draft.profile = Some("learned".into());
+        draft.layout = ControllerLayout::Four;
         Self {
             draft,
             step: 0,
             feedback: "Move or press the named hardware control".into(),
+            last_input: None,
+            captured: false,
         }
     }
 
     pub fn role(&self) -> LearnRole {
         match self.step {
-            0..=11 => LearnRole::AbsoluteControl(self.step),
-            12 => LearnRole::EncoderClockwise,
-            13 => LearnRole::EncoderCounterClockwise,
-            14 => LearnRole::EncoderClick,
-            15..=22 => LearnRole::Pad(self.step - 15),
+            0 => LearnRole::EncoderCounterClockwise,
+            1 => LearnRole::EncoderClockwise,
+            2 => LearnRole::EncoderClick,
+            CONTROL_STEP_START..BUTTON_STEP_START => {
+                LearnRole::AbsoluteControl(self.step - CONTROL_STEP_START)
+            }
+            BUTTON_STEP_START..CONFIRM_STEP => LearnRole::Pad(self.step - BUTTON_STEP_START),
             _ => LearnRole::Confirm,
         }
     }
 
     pub fn progress(&self) -> (usize, usize) {
-        (self.step.min(23) + 1, 24)
+        (self.step.min(CONFIRM_STEP) + 1, TOTAL_STEPS)
     }
 
     pub fn feedback(&self) -> &str {
@@ -131,38 +190,87 @@ impl LearnSession {
     }
 
     pub fn retry(&mut self) {
+        if self.captured {
+            self.clear_current_mapping();
+            self.captured = false;
+        }
+        self.last_input = None;
         self.feedback = format!("Retry · waiting for {}", self.role().label());
+    }
+
+    pub fn previous(&mut self) -> bool {
+        if self.step <= FIRST_OPTIONAL_STEP {
+            self.feedback = "Master encoder setup is complete · browse optional mappings".into();
+            return false;
+        }
+        self.step -= 1;
+        self.captured = self.role_is_mapped();
+        self.last_input = None;
+        self.feedback = format!("Selected {}", self.role().label());
+        true
     }
 
     pub fn skip(&mut self) -> bool {
         if !self.role().skippable() {
-            self.feedback = "Save or cancel from the review step".into();
+            self.feedback = if self.can_finish() {
+                "Click the encoder or press Enter to save and exit".into()
+            } else {
+                "Learn the master encoder first · Esc cancels".into()
+            };
             return false;
         }
         let skipped = self.role().label();
-        if self.role() == LearnRole::EncoderClockwise {
-            self.step = 14;
-        } else {
-            self.step += 1;
-        }
+        self.step += 1;
+        self.captured = self.role_is_mapped();
+        self.last_input = None;
         self.feedback = format!("Skipped {skipped}");
         true
     }
 
+    pub fn navigation_action(&self, message: &[u8]) -> (bool, Option<crate::pads::EncoderAction>) {
+        if !self.can_finish() {
+            return (false, None);
+        }
+        let cc_action = self.draft.encoder_action(message);
+        if cc_action.0 {
+            return cc_action;
+        }
+        self.draft.encoder_note_action(message)
+    }
+
     pub fn receive(&mut self, message: &[u8]) -> bool {
         let role = self.role();
+        if self.captured {
+            return false;
+        }
+        if !message_is_relevant(role, message) {
+            return false;
+        }
+        if role != LearnRole::EncoderClockwise
+            && self.last_input.is_some_and(|input| input.matches(message))
+        {
+            return false;
+        }
+        if role == LearnRole::EncoderClockwise && self.encoder_clockwise_is_trailing(message) {
+            return false;
+        }
         let accepted = match role {
             LearnRole::AbsoluteControl(index) => self.learn_absolute(index, message),
-            LearnRole::EncoderClockwise => self.learn_encoder_clockwise(message),
             LearnRole::EncoderCounterClockwise => self.learn_encoder_counterclockwise(message),
+            LearnRole::EncoderClockwise => self.learn_encoder_clockwise(message),
             LearnRole::EncoderClick => self.learn_click(message),
             LearnRole::Pad(index) => self.learn_pad(index, message),
             LearnRole::Confirm => return false,
         };
         match accepted {
             Ok(description) => {
-                self.step += 1;
+                if role.skippable() {
+                    self.captured = true;
+                } else {
+                    self.step += 1;
+                }
                 self.feedback = format!("Received {description} · OK");
+                self.last_input = LearnInput::from_message(message);
                 true
             }
             Err(message) => {
@@ -185,6 +293,20 @@ impl LearnSession {
     }
 
     fn learn_encoder_clockwise(&mut self, message: &[u8]) -> Result<String, String> {
+        let Some(cc) = self.draft.encoder_relative_cc else {
+            return Err("Learn the counterclockwise direction first".into());
+        };
+        if message.len() < 3 || message[0] & 0xf0 != 0xb0 || message[1] != cc {
+            return Err(format!("Expected the same encoder CC {cc}"));
+        }
+        let expected_less = self.draft.encoder_relative_reverse;
+        if message[2] == 64 || (message[2] < 64) != expected_less {
+            return Err("Direction conflict · turn the encoder right and retry".into());
+        }
+        Ok(format!("CC {cc} value {} = right", message[2]))
+    }
+
+    fn learn_encoder_counterclockwise(&mut self, message: &[u8]) -> Result<String, String> {
         if message.len() < 3 || message[0] & 0xf0 != 0xb0 || message[2] == 64 {
             return Err("Expected a moving relative CC (not value 64)".into());
         }
@@ -193,22 +315,19 @@ impl LearnSession {
             return Err(format!("Conflict · CC {cc} is already assigned · retry"));
         }
         self.draft.encoder_relative_cc = Some(cc);
-        self.draft.encoder_relative_reverse = message[2] < 64;
-        Ok(format!("CC {cc} value {} = right", message[2]))
+        self.draft.encoder_relative_reverse = message[2] > 64;
+        Ok(format!("CC {cc} value {} = left", message[2]))
     }
 
-    fn learn_encoder_counterclockwise(&mut self, message: &[u8]) -> Result<String, String> {
+    fn encoder_clockwise_is_trailing(&self, message: &[u8]) -> bool {
         let Some(cc) = self.draft.encoder_relative_cc else {
-            return Err("Learn the clockwise direction first".into());
+            return false;
         };
         if message.len() < 3 || message[0] & 0xf0 != 0xb0 || message[1] != cc {
-            return Err(format!("Expected the same encoder CC {cc}"));
+            return false;
         }
-        let expected_less = !self.draft.encoder_relative_reverse;
-        if message[2] == 64 || (message[2] < 64) != expected_less {
-            return Err("Direction conflict · turn the encoder left and retry".into());
-        }
-        Ok(format!("CC {cc} value {} = left", message[2]))
+        let expected_less = self.draft.encoder_relative_reverse;
+        message[2] == 64 || (message[2] < 64) != expected_less
     }
 
     fn learn_click(&mut self, message: &[u8]) -> Result<String, String> {
@@ -229,46 +348,126 @@ impl LearnSession {
     }
 
     fn learn_pad(&mut self, index: usize, message: &[u8]) -> Result<String, String> {
-        let action = [
-            PadAction::Page1,
-            PadAction::Page2,
-            PadAction::Page3,
-            PadAction::Page4,
-            PadAction::Item1,
-            PadAction::Item2,
-            PadAction::Item3,
-            PadAction::Item4,
-        ][index];
+        let action = COMMAND_ACTIONS[index];
         let button = button_from_message(message, &used_ccs(&self.draft), &used_notes(&self.draft))
             .ok_or_else(|| "Conflict or release · press an unused pad/button".to_owned())?;
-        self.draft.layout = ControllerLayout::Eight;
         match button {
             Button::Cc { cc, channel } => {
                 self.draft.cc_buttons.insert(cc, action);
                 self.draft.cc_button_channels.insert(cc, channel);
-                Ok(format!("CC {cc} ch {} = {action}", channel + 1))
             }
             Button::Note { note, channel } => {
                 self.draft.pads.insert(note, action);
                 self.draft.pad_channels.insert(note, channel);
-                Ok(format!("note {note} ch {} = {action}", channel + 1))
             }
         }
+        self.draft.layout = inferred_layout(&self.draft);
+        Ok(format!("{} = {action}", button_description(message)))
     }
 
     pub fn validated_config(&self) -> Result<PadConfig> {
-        if self.role() != LearnRole::Confirm {
-            bail!("MIDI Learn is not at final confirmation");
+        if !self.can_finish() {
+            bail!("learn the master encoder left, right, and click before saving");
         }
         self.draft.validate()?;
         Ok(self.draft.clone())
     }
 
-    pub fn confirms_with(&self, message: &[u8]) -> bool {
-        self.role() == LearnRole::Confirm
-            && (self.draft.encoder_action(message).1 == Some(crate::pads::EncoderAction::Select)
-                || self.draft.encoder_note_action(message).1
-                    == Some(crate::pads::EncoderAction::Select))
+    pub fn can_finish(&self) -> bool {
+        self.draft.encoder_relative_cc.is_some()
+            && (self.draft.encoder_press_cc.is_some() || self.draft.encoder_press_note.is_some())
+    }
+
+    fn role_is_mapped(&self) -> bool {
+        match self.role() {
+            LearnRole::AbsoluteControl(index) => self
+                .draft
+                .controls
+                .values()
+                .any(|target| *target == CONTROLS[index].cc),
+            LearnRole::Pad(index) => self
+                .draft
+                .pads
+                .values()
+                .chain(self.draft.cc_buttons.values())
+                .any(|action| *action == COMMAND_ACTIONS[index]),
+            _ => false,
+        }
+    }
+
+    fn clear_current_mapping(&mut self) {
+        match self.role() {
+            LearnRole::AbsoluteControl(index) => {
+                let target = CONTROLS[index].cc;
+                self.draft.controls.retain(|_, mapped| *mapped != target);
+            }
+            LearnRole::Pad(index) => {
+                let action = COMMAND_ACTIONS[index];
+                let notes = self
+                    .draft
+                    .pads
+                    .iter()
+                    .filter_map(|(note, mapped)| (*mapped == action).then_some(*note))
+                    .collect::<Vec<_>>();
+                for note in notes {
+                    self.draft.pads.remove(&note);
+                    self.draft.pad_channels.remove(&note);
+                }
+                let ccs = self
+                    .draft
+                    .cc_buttons
+                    .iter()
+                    .filter_map(|(cc, mapped)| (*mapped == action).then_some(*cc))
+                    .collect::<Vec<_>>();
+                for cc in ccs {
+                    self.draft.cc_buttons.remove(&cc);
+                    self.draft.cc_button_channels.remove(&cc);
+                }
+                self.draft.layout = inferred_layout(&self.draft);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn button_description(message: &[u8]) -> String {
+    match message[0] & 0xf0 {
+        0xb0 => format!("CC {} ch {}", message[1], (message[0] & 0x0f) + 1),
+        _ => format!("note {} ch {}", message[1], (message[0] & 0x0f) + 1),
+    }
+}
+
+fn inferred_layout(config: &PadConfig) -> ControllerLayout {
+    let actions = config.pads.values().chain(config.cc_buttons.values());
+    if actions.clone().any(|action| {
+        matches!(
+            action,
+            PadAction::Page1 | PadAction::Page2 | PadAction::Page3 | PadAction::Page4
+        )
+    }) {
+        ControllerLayout::Eight
+    } else if actions
+        .clone()
+        .any(|action| *action == PadAction::CyclePage)
+    {
+        ControllerLayout::Five
+    } else {
+        ControllerLayout::Four
+    }
+}
+
+fn message_is_relevant(role: LearnRole, message: &[u8]) -> bool {
+    if message.len() < 3 {
+        return false;
+    }
+    match role {
+        LearnRole::AbsoluteControl(_) => message[0] & 0xf0 == 0xb0,
+        LearnRole::EncoderClockwise => message[0] & 0xf0 == 0xb0,
+        LearnRole::EncoderCounterClockwise => message[0] & 0xf0 == 0xb0 && message[2] != 64,
+        LearnRole::EncoderClick | LearnRole::Pad(_) => {
+            message[2] > 0 && matches!(message[0] & 0xf0, 0x90 | 0xb0)
+        }
+        LearnRole::Confirm => false,
     }
 }
 
@@ -658,18 +857,27 @@ mod tests {
     #[test]
     fn live_session_learns_absolute_relative_click_and_channel_qualified_pads() {
         let mut learn = LearnSession::new("Test Controller MIDI 44:0");
+        assert_eq!(learn.role(), LearnRole::EncoderCounterClockwise);
+        assert!(learn.receive(&[0xb0, 28, 63]));
+        assert!(learn.receive(&[0xb0, 28, 65]));
+        assert!(learn.receive(&[0xb0, 118, 127]));
+        assert_eq!(learn.role(), LearnRole::AbsoluteControl(0));
         assert!(learn.receive(&[0xb0, 10, 20]));
         assert!(!learn.receive(&[0xb0, 10, 30]));
+        assert!(learn.feedback().contains("CC 10"));
+        assert!(learn.feedback().contains("OK"));
+        assert!(learn.skip());
+        assert!(!learn.receive(&[0xb0, 10, 64]));
         assert!(learn.feedback().contains("Conflict"));
-        for cc in 11..=21 {
+        assert!(learn.receive(&[0xb0, 11, 64]));
+        assert!(learn.skip());
+        for cc in 12..=21 {
             assert!(learn.receive(&[0xb0, cc, 64]));
+            assert!(learn.skip());
         }
-        assert_eq!(learn.role(), LearnRole::EncoderClockwise);
-        assert!(learn.receive(&[0xb0, 28, 65]));
-        assert!(learn.receive(&[0xb0, 28, 63]));
-        assert!(learn.receive(&[0xb0, 118, 127]));
-        for note in 36..=43 {
+        for note in 36..=44 {
             assert!(learn.receive(&[0x99, note, 100]));
+            assert!(learn.skip());
         }
         assert_eq!(learn.role(), LearnRole::Confirm);
         let config = learn.validated_config().unwrap();
@@ -678,17 +886,121 @@ mod tests {
         assert_eq!(config.encoder_relative_cc, Some(28));
         assert!(!config.encoder_relative_reverse);
         assert_eq!(config.encoder_press_cc, Some(118));
-        assert_eq!(config.pads.len(), 8);
+        assert_eq!(config.pads.len(), 9);
         assert!(config.pad_channels.values().all(|channel| *channel == 9));
+        assert_eq!(config.layout, ControllerLayout::Eight);
     }
 
     #[test]
-    fn live_session_skip_retry_and_early_validation_are_non_destructive() {
+    fn realistic_pot_and_button_traffic_keeps_each_first_capture_accepted() {
+        let mut learn = LearnSession::new("Busy Controller MIDI 52:0");
+
+        assert!(learn.receive(&[0xb0, 28, 63]));
+        let left_feedback = learn.feedback().to_owned();
+        for message in [[0xb0, 28, 62], [0xb0, 28, 61], [0xb0, 28, 64]] {
+            assert!(!learn.receive(&message));
+            assert_eq!(learn.feedback(), left_feedback);
+        }
+        assert!(learn.receive(&[0xb0, 28, 65]));
+        let right_feedback = learn.feedback().to_owned();
+        assert!(!learn.receive(&[0xb0, 28, 66]));
+        assert_eq!(learn.feedback(), right_feedback);
+        assert!(learn.receive(&[0xb0, 118, 127]));
+        let click_feedback = learn.feedback().to_owned();
+        assert!(!learn.receive(&[0xb0, 118, 0]));
+        assert_eq!(learn.feedback(), click_feedback);
+
+        for (index, cc) in (10..=21).enumerate() {
+            assert!(learn.receive(&[0xb0, cc, 40]));
+            let accepted_feedback = learn.feedback().to_owned();
+            assert!(accepted_feedback.contains("OK"));
+            assert_eq!(learn.draft().controls.len(), index + 1);
+
+            for message in [
+                vec![0xb0, cc, 41],
+                vec![0x90, 60, 100],
+                vec![0xb0, cc, 42],
+                vec![0x80, 60, 0],
+                vec![0xa0, 60, 70],
+                vec![0xf8],
+            ] {
+                assert!(!learn.receive(&message));
+                assert_eq!(learn.feedback(), accepted_feedback);
+                assert_eq!(learn.draft().controls.len(), index + 1);
+            }
+            assert!(learn.skip());
+        }
+
+        for note in 36..=44 {
+            assert!(learn.receive(&[0x99, note, 100]));
+            let pad_feedback = learn.feedback().to_owned();
+            for release in [[0x89, note, 0], [0x99, note, 0], [0xa9, note, 64]] {
+                assert!(!learn.receive(&release));
+                assert_eq!(learn.feedback(), pad_feedback);
+            }
+            assert!(learn.skip());
+        }
+
+        assert_eq!(learn.role(), LearnRole::Confirm);
+        let config = learn.validated_config().unwrap();
+        assert_eq!(config.controls.len(), 12);
+        assert_eq!(config.encoder_relative_cc, Some(28));
+        assert_eq!(config.encoder_press_cc, Some(118));
+        assert_eq!(config.pads.len(), 9);
+    }
+
+    #[test]
+    fn encoder_first_navigation_browses_optional_items_and_click_can_finish() {
         let mut learn = LearnSession::new("Unknown Controller");
         learn.retry();
         assert!(learn.feedback().contains("Retry"));
+        assert!(!learn.skip());
+        assert!(learn.validated_config().is_err());
+
+        assert!(learn.receive(&[0xb0, 28, 63]));
+        assert!(learn.receive(&[0xb0, 28, 65]));
+        assert!(learn.receive(&[0x90, 99, 100]));
+        assert!(learn.can_finish());
+        assert_eq!(
+            learn.validated_config().unwrap().layout,
+            ControllerLayout::Four
+        );
+
+        assert!(learn.receive(&[0xb0, 10, 40]));
+        learn.retry();
+        assert!(learn.draft().controls.is_empty());
+        assert!(learn.receive(&[0xb0, 10, 41]));
+
+        assert_eq!(
+            learn.navigation_action(&[0xb0, 28, 65]),
+            (true, Some(crate::pads::EncoderAction::Down))
+        );
         assert!(learn.skip());
         assert_eq!(learn.role(), LearnRole::AbsoluteControl(1));
-        assert!(learn.validated_config().is_err());
+        assert_eq!(
+            learn.navigation_action(&[0xb0, 28, 63]),
+            (true, Some(crate::pads::EncoderAction::Up))
+        );
+        assert!(learn.previous());
+        assert_eq!(learn.role(), LearnRole::AbsoluteControl(0));
+        assert_eq!(
+            learn.navigation_action(&[0x90, 99, 100]),
+            (true, Some(crate::pads::EncoderAction::Select))
+        );
+        assert_eq!(learn.navigation_action(&[0x80, 99, 0]), (true, None));
+    }
+
+    #[test]
+    fn optional_command_roles_infer_five_button_layout_without_device_guessing() {
+        let mut learn = LearnSession::new("Five Button Controller");
+        assert!(learn.receive(&[0xb0, 28, 63]));
+        assert!(learn.receive(&[0xb0, 28, 65]));
+        assert!(learn.receive(&[0xb0, 118, 127]));
+        for _ in 0..CONTROLS.len() + 4 {
+            assert!(learn.skip());
+        }
+        assert_eq!(learn.role(), LearnRole::Pad(4));
+        assert!(learn.receive(&[0x99, 40, 100]));
+        assert_eq!(learn.draft().layout, ControllerLayout::Five);
     }
 }
