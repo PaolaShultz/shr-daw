@@ -3,7 +3,7 @@ use crate::audio_graph::{
 };
 use crate::audio_recorder::{AudioRecorder, RecorderStatus, RecorderTrackStatus};
 use crate::chord::HeldNotes;
-use crate::config::{BankSelectMode, ExternalMidiConfig, RuntimeConfig};
+use crate::config::{ExternalMidiConfig, RuntimeConfig};
 use crate::control::{parameter_color, CONTROLS, VOLUME_CC};
 use crate::device_profile::{DeviceProfile, Registry as DeviceProfiles};
 use crate::drum_pattern::{self, DrumPattern};
@@ -146,17 +146,6 @@ struct Hits {
     list: Rect,
     actions: Vec<(Rect, Action)>,
     menu_pages: Vec<(Rect, usize)>,
-    primary: Rect,
-    stop: Rect,
-    exit: Rect,
-    back: Rect,
-    record: Rect,
-    stop_record: Rect,
-    playback: Rect,
-    save: Rect,
-    load: Rect,
-    delete: Rect,
-    inspect: Rect,
 }
 impl Hits {
     fn action(&self, x: u16, y: u16) -> Option<Action> {
@@ -170,6 +159,7 @@ impl Hits {
 
 struct Playback {
     stop: Arc<AtomicBool>,
+    finished: Arc<AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -191,6 +181,11 @@ enum PageManagerMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NoteEditorField {
+    Destination,
+    Channel,
+    DefaultProgram,
+    BankMsb,
+    BankLsb,
     Note,
     Gate,
     Velocity,
@@ -200,7 +195,12 @@ enum NoteEditorField {
 }
 
 impl NoteEditorField {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 11] = [
+        Self::Destination,
+        Self::Channel,
+        Self::DefaultProgram,
+        Self::BankMsb,
+        Self::BankLsb,
         Self::Note,
         Self::Gate,
         Self::Velocity,
@@ -211,6 +211,11 @@ impl NoteEditorField {
 
     const fn label(self) -> &'static str {
         match self {
+            Self::Destination => "DESTINATION",
+            Self::Channel => "MIDI CHANNEL",
+            Self::DefaultProgram => "INSTRUMENT",
+            Self::BankMsb => "BANK MSB",
+            Self::BankLsb => "BANK LSB",
             Self::Note => "NOTE",
             Self::Gate => "GATE",
             Self::Velocity => "VELOCITY",
@@ -221,14 +226,18 @@ impl NoteEditorField {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct NoteEditor {
     pattern: u16,
     row: usize,
     lane: usize,
     original: Cell,
+    original_page: sequencer::Page,
     draft: Cell,
     field: NoteEditorField,
+    active: bool,
+    edit_original_page: Option<sequencer::Page>,
+    edit_original_draft: Option<Cell>,
 }
 
 #[derive(Debug)]
@@ -261,6 +270,13 @@ enum TrackerMode {
     Rec,
     Edit,
     Noob,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum IdeaMode {
+    #[default]
+    Play,
+    Record,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -300,6 +316,7 @@ struct App {
     tracker_fallback: Option<String>,
     hits: Hits,
     recorder: Recorder,
+    idea_mode: IdeaMode,
     last: Vec<TimedEvent>,
     playback: Option<Playback>,
     tap: TapTempo,
@@ -337,6 +354,7 @@ struct App {
     tracker_mode: TrackerMode,
     tracker_recording: Option<TrackerRecording>,
     note_editor: Option<NoteEditor>,
+    audition_release_revision: u64,
     tracker_octave: u8,
     noob_scale: Scale,
     noob_draft: Scale,
@@ -390,6 +408,8 @@ struct App {
     fx_parameter: usize,
     fx_add_kind: usize,
     fx_target: usize,
+    fx_value_editing: bool,
+    fx_edit_original: Option<(InsertRack, ProjectAuxRouting)>,
     bus_selected: usize,
     final_recording_last: crate::audio_recorder::FinalMixRecorderStatus,
     performance_meter: PerformanceMeter,
@@ -469,6 +489,7 @@ impl App {
             tracker_fallback: None,
             hits: Hits::default(),
             recorder: Recorder::default(),
+            idea_mode: IdeaMode::Play,
             last: vec![],
             playback: None,
             tap: TapTempo::default(),
@@ -506,6 +527,7 @@ impl App {
             tracker_mode: TrackerMode::Play,
             tracker_recording: None,
             note_editor: None,
+            audition_release_revision: 0,
             tracker_octave: 4,
             noob_scale: Scale::default(),
             noob_draft: Scale::default(),
@@ -559,6 +581,8 @@ impl App {
             fx_parameter: 0,
             fx_add_kind: 0,
             fx_target: 0,
+            fx_value_editing: false,
+            fx_edit_original: None,
             bus_selected: 0,
             final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
             performance_meter: PerformanceMeter::default(),
@@ -729,12 +753,13 @@ impl App {
     }
     fn stop_recording(&mut self) {
         if self.recorder.is_recording() {
-            self.recorder.stop();
+            let captured = self.recorder.events.len();
+            self.recorder.stop(Instant::now());
             self.last = self.recorder.events.clone();
-            self.status = format!(
-                "recorded {} MIDI events · Playback to review",
-                self.last.len()
-            );
+            if let Some(engine) = &self.engine {
+                engine.panic();
+            }
+            self.status = format!("recorded {captured} MIDI events · Playback to review");
         }
     }
     fn stop_playback(&mut self) {
@@ -748,6 +773,7 @@ impl App {
         self.cancel_note_editor();
         self.cancel_tracker_gesture();
         self.stop_tracker_recording();
+        self.set_tracker_mode(TrackerMode::Play);
         if !self.stop_song_preview() {
             self.sequencer.stop();
         }
@@ -842,6 +868,10 @@ impl App {
         let pattern = self.tracker_pattern_number();
         let row = self.tracker_row;
         let lane = self.tracker_page * LANES_PER_PAGE + self.tracker_track;
+        let Some(original_page) = self.current_page().cloned() else {
+            self.status = "selected page is unavailable".into();
+            return;
+        };
         let Some(original) = self
             .song
             .patterns
@@ -858,40 +888,118 @@ impl App {
             row,
             lane,
             original,
+            original_page,
             draft: original,
-            field: NoteEditorField::Note,
+            field: NoteEditorField::Destination,
+            active: false,
+            edit_original_page: None,
+            edit_original_draft: None,
         });
+        self.refresh_page_targets();
         self.sync_tracker_route();
         self.reset_context_page();
-        self.status = "CELL EDIT · NOTE selected · Confirm commits, Cancel restores".into();
+        self.status = "NOTE EDIT · DESTINATION highlighted · press encoder to edit".into();
     }
-    fn select_note_editor_field(&mut self, field: NoteEditorField) {
-        if field == NoteEditorField::Program
-            && self
-                .current_page()
-                .is_some_and(|page| page.target == PageTarget::Default)
+    fn release_tracker_audition(&mut self) {
+        let Some(page) = self.current_page().cloned() else {
+            return;
+        };
+        self.audition_release_revision = self.audition_release_revision.wrapping_add(1);
+        for channel in page
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(lane, _)| page.runtime_channel(lane, &self.config.external_midi))
+            .collect::<std::collections::BTreeSet<_>>()
         {
-            self.status =
-                "PROGRAM is AUTO on a portable page · choose an explicit target first".into();
+            self.tracker_live_input.cancel(&page.target, channel);
+        }
+    }
+
+    fn select_note_editor_field(&mut self, field: NoteEditorField) {
+        if self
+            .note_editor
+            .as_ref()
+            .is_some_and(|editor| editor.active)
+        {
+            self.confirm_note_editor_field();
+        }
+        let page = self.current_page().cloned();
+        let draft = self.note_editor.as_ref().map(|editor| editor.draft);
+        let Some(editor) = self.note_editor.as_mut() else {
+            return;
+        };
+        editor.field = field;
+        editor.active = true;
+        editor.edit_original_page = page;
+        editor.edit_original_draft = draft;
+        if matches!(
+            field,
+            NoteEditorField::Channel
+                | NoteEditorField::DefaultProgram
+                | NoteEditorField::BankMsb
+                | NoteEditorField::BankLsb
+        ) && self
+            .current_page()
+            .is_some_and(|page| page.target == PageTarget::Default)
+        {
+            self.release_tracker_audition();
+            let target = if self.engine.is_some() {
+                PageTarget::ActiveInstrument
+            } else {
+                PageTarget::ConfiguredExternal
+            };
+            if let Some(page) = self.current_page_mut() {
+                page.target = target;
+            }
+        }
+        self.sync_tracker_route();
+        self.status = format!(
+            "NOTE EDIT · {} ACTIVE · turn, press confirms, Back cancels",
+            field.label()
+        );
+    }
+
+    fn confirm_note_editor_field(&mut self) {
+        let Some(editor) = self.note_editor.as_mut() else {
+            return;
+        };
+        editor.active = false;
+        editor.edit_original_page = None;
+        editor.edit_original_draft = None;
+        self.status = format!("NOTE EDIT · {} confirmed", editor.field.label());
+    }
+
+    fn cancel_note_editor_field(&mut self) {
+        let Some((page, draft, field)) = self.note_editor.as_mut().and_then(|editor| {
+            editor.active = false;
+            Some((
+                editor.edit_original_page.take()?,
+                editor.edit_original_draft.take()?,
+                editor.field,
+            ))
+        }) else {
+            return;
+        };
+        self.release_tracker_audition();
+        if let Some(current) = self.current_page_mut() {
+            *current = page;
+        }
+        if let Some(editor) = self.note_editor.as_mut() {
+            editor.draft = draft;
+        }
+        self.sync_tracker_route();
+        self.status = format!("NOTE EDIT · {} change cancelled", field.label());
+    }
+
+    fn move_note_editor_field(&mut self, direction: i8) {
+        if self
+            .note_editor
+            .as_ref()
+            .is_some_and(|editor| editor.active)
+        {
             return;
         }
-        let program = if let Some(editor) = self.note_editor.as_mut() {
-            editor.field = field;
-            self.status = format!("CELL EDIT · {} selected", field.label());
-            (field == NoteEditorField::Program).then_some(
-                editor
-                    .draft
-                    .program
-                    .unwrap_or_else(|| self.current_column().map_or(0, |column| column.program)),
-            )
-        } else {
-            None
-        };
-        if let Some(program) = program {
-            self.preview_tracker_program(program);
-        }
-    }
-    fn move_note_editor_field(&mut self, direction: i8) {
         let Some(editor) = self.note_editor.as_mut() else {
             return;
         };
@@ -905,27 +1013,121 @@ impl App {
             (current + 1) % NoteEditorField::ALL.len()
         };
         editor.field = NoteEditorField::ALL[next];
-        self.status = format!("CELL EDIT · {} selected", editor.field.label());
-        if editor.field == NoteEditorField::Program {
-            let program = editor
-                .draft
-                .program
-                .unwrap_or_else(|| self.current_column().map_or(0, |column| column.program));
-            self.preview_tracker_program(program);
-        }
+        self.status = format!(
+            "NOTE EDIT · {} highlighted · press encoder to edit",
+            editor.field.label()
+        );
     }
+
     fn adjust_note_editor(&mut self, direction: i8) {
+        let Some(field) = self.note_editor.as_ref().map(|editor| editor.field) else {
+            return;
+        };
+        if !self
+            .note_editor
+            .as_ref()
+            .is_some_and(|editor| editor.active)
+        {
+            self.move_note_editor_field(direction);
+            return;
+        }
+        let increase = direction >= 0;
         let page_velocity = self.current_page().map_or(96, |page| page.velocity);
         let page_program = self.current_column().map_or(0, |column| column.program);
         let song_gate = self.song.gate_percent;
         let pattern_tempo = self.current_tempo();
-        let changed_field = {
-            let Some(editor) = self.note_editor.as_mut() else {
-                return;
-            };
-            let increase = direction >= 0;
-            match editor.field {
-                NoteEditorField::Note => {
+        let route_field = matches!(
+            field,
+            NoteEditorField::Destination
+                | NoteEditorField::Channel
+                | NoteEditorField::DefaultProgram
+                | NoteEditorField::BankMsb
+                | NoteEditorField::BankLsb
+                | NoteEditorField::Program
+        );
+        if route_field {
+            self.release_tracker_audition();
+        }
+        match field {
+            NoteEditorField::Destination => {
+                self.refresh_page_targets();
+                let current = self.current_page().map(|page| page.target.clone());
+                let index = current
+                    .as_ref()
+                    .and_then(|target| {
+                        self.page_target_candidates
+                            .iter()
+                            .position(|candidate| candidate == target)
+                    })
+                    .unwrap_or(0);
+                let len = self.page_target_candidates.len().max(1);
+                let next = if increase {
+                    (index + 1) % len
+                } else {
+                    (index + len - 1) % len
+                };
+                if let Some(target) = self.page_target_candidates.get(next).cloned() {
+                    if let Some(page) = self.current_page_mut() {
+                        page.target = target;
+                        if page.target == PageTarget::Default {
+                            page.columns = [sequencer::ColumnSetup::default(); LANES_PER_PAGE];
+                            page.setup.clear();
+                        }
+                    }
+                }
+            }
+            NoteEditorField::Channel => {
+                if let Some(column) = self.current_column_mut() {
+                    column.channel = if increase {
+                        (column.channel + 1).min(15)
+                    } else {
+                        column.channel.saturating_sub(1)
+                    };
+                }
+            }
+            NoteEditorField::DefaultProgram => {
+                let channel = self
+                    .current_page()
+                    .map(|page| {
+                        page.runtime_channel(self.tracker_track, &self.config.external_midi)
+                    })
+                    .unwrap_or(0);
+                if channel == 9 {
+                    if let Some(editor) = self.note_editor.as_mut() {
+                        let note = match editor.draft.note {
+                            Note::On(note) if (35..=81).contains(&note) => note,
+                            _ => 35,
+                        };
+                        editor.draft.note = Note::On(if increase {
+                            note.saturating_add(1).min(81)
+                        } else {
+                            note.saturating_sub(1).max(35)
+                        });
+                    }
+                } else if let Some(column) = self.current_column_mut() {
+                    column.program = if increase {
+                        column.program.saturating_add(1).min(127)
+                    } else {
+                        column.program.saturating_sub(1)
+                    };
+                }
+            }
+            NoteEditorField::BankMsb | NoteEditorField::BankLsb => {
+                if let Some(column) = self.current_column_mut() {
+                    let value = if field == NoteEditorField::BankMsb {
+                        &mut column.bank_msb
+                    } else {
+                        &mut column.bank_lsb
+                    };
+                    *value = if increase {
+                        value.saturating_add(1).min(127)
+                    } else {
+                        value.saturating_sub(1)
+                    };
+                }
+            }
+            NoteEditorField::Note => {
+                if let Some(editor) = self.note_editor.as_mut() {
                     editor.draft.note = match (editor.draft.note, increase) {
                         (Note::Empty, true) => Note::On(60),
                         (Note::Empty, false) => Note::Off,
@@ -937,7 +1139,9 @@ impl App {
                         (Note::Off, false) => Note::On(127),
                     };
                 }
-                NoteEditorField::Gate => {
+            }
+            NoteEditorField::Gate => {
+                if let Some(editor) = self.note_editor.as_mut() {
                     let value = editor.draft.gate.unwrap_or(song_gate);
                     editor.draft.gate = Some(if increase {
                         value.saturating_add(1).min(100)
@@ -945,7 +1149,9 @@ impl App {
                         value.saturating_sub(1).max(1)
                     });
                 }
-                NoteEditorField::Velocity => {
+            }
+            NoteEditorField::Velocity => {
+                if let Some(editor) = self.note_editor.as_mut() {
                     let value = editor.draft.velocity.unwrap_or(page_velocity);
                     editor.draft.velocity = Some(if increase {
                         value.saturating_add(1).min(127)
@@ -953,7 +1159,9 @@ impl App {
                         value.saturating_sub(1)
                     });
                 }
-                NoteEditorField::Program => {
+            }
+            NoteEditorField::Program => {
+                if let Some(editor) = self.note_editor.as_mut() {
                     let value = editor.draft.program.unwrap_or(page_program);
                     editor.draft.program = Some(if increase {
                         value.saturating_add(1).min(127)
@@ -961,14 +1169,16 @@ impl App {
                         value.saturating_sub(1)
                     });
                 }
-                NoteEditorField::Effect => {
-                    let effects = [
-                        Command::None,
-                        Command::Cut(0),
-                        Command::Delay(0),
-                        Command::Retrigger(2),
-                        Command::Tempo(pattern_tempo),
-                    ];
+            }
+            NoteEditorField::Effect => {
+                let effects = [
+                    Command::None,
+                    Command::Cut(0),
+                    Command::Delay(0),
+                    Command::Retrigger(2),
+                    Command::Tempo(pattern_tempo),
+                ];
+                if let Some(editor) = self.note_editor.as_mut() {
                     let current = match editor.draft.command {
                         Command::None => 0,
                         Command::Cut(_) => 1,
@@ -983,61 +1193,89 @@ impl App {
                     };
                     editor.draft.command = effects[next];
                 }
-                NoteEditorField::EffectParameter => {
-                    editor.draft.command = match editor.draft.command {
-                        Command::None => {
-                            self.status = "PARAM unavailable · select an effect first".into();
-                            return;
-                        }
-                        Command::Cut(value) => Command::Cut(if increase {
-                            value.saturating_add(1).min(15)
-                        } else {
-                            value.saturating_sub(1)
-                        }),
-                        Command::Delay(value) => Command::Delay(if increase {
-                            value.saturating_add(1).min(15)
-                        } else {
-                            value.saturating_sub(1)
-                        }),
-                        Command::Retrigger(value) => Command::Retrigger(if increase {
-                            value.saturating_add(1).min(8)
-                        } else {
-                            value.saturating_sub(1).max(1)
-                        }),
-                        Command::Tempo(value) => Command::Tempo(if increase {
-                            value.saturating_add(1).min(300)
-                        } else {
-                            value.saturating_sub(1).max(20)
-                        }),
-                    };
-                }
             }
-            editor.field
-        };
-        if changed_field == NoteEditorField::Program {
-            self.sync_tracker_route();
-            if let Some(program) = self.note_editor.and_then(|editor| editor.draft.program) {
-                self.preview_tracker_program(program);
+            NoteEditorField::EffectParameter => {
+                let Some(editor) = self.note_editor.as_mut() else {
+                    return;
+                };
+                editor.draft.command = match editor.draft.command {
+                    Command::None => {
+                        self.status = "PARAM unavailable · select an effect first".into();
+                        return;
+                    }
+                    Command::Cut(value) => Command::Cut(if increase {
+                        value.saturating_add(1).min(15)
+                    } else {
+                        value.saturating_sub(1)
+                    }),
+                    Command::Delay(value) => Command::Delay(if increase {
+                        value.saturating_add(1).min(15)
+                    } else {
+                        value.saturating_sub(1)
+                    }),
+                    Command::Retrigger(value) => Command::Retrigger(if increase {
+                        value.saturating_add(1).min(8)
+                    } else {
+                        value.saturating_sub(1).max(1)
+                    }),
+                    Command::Tempo(value) => Command::Tempo(if increase {
+                        value.saturating_add(1).min(300)
+                    } else {
+                        value.saturating_sub(1).max(20)
+                    }),
+                };
             }
         }
-        let detail = if changed_field == NoteEditorField::Program {
-            self.note_editor
+        if route_field || field == NoteEditorField::Note {
+            self.sync_tracker_route();
+        }
+        let detail = match field {
+            NoteEditorField::Destination => {
+                self.current_page().map(|page| page.target.label().into())
+            }
+            NoteEditorField::Channel => self.current_page().map(|page| {
+                format!(
+                    "MIDI channel {}",
+                    page.runtime_channel(self.tracker_track, &self.config.external_midi) + 1
+                )
+            }),
+            NoteEditorField::DefaultProgram => Some(self.tracker_instrument_label()),
+            NoteEditorField::BankMsb | NoteEditorField::BankLsb => self
+                .current_column()
+                .map(|column| format!("bank {}/{}", column.bank_msb, column.bank_lsb)),
+            NoteEditorField::Program => self
+                .note_editor
+                .as_ref()
                 .and_then(|editor| editor.draft.program)
-                .map(|program| self.tracker_program_label(program))
-        } else {
-            None
+                .map(|program| format!("cell override · {}", self.tracker_program_label(program))),
+            _ => None,
         };
         self.status = detail.map_or_else(
-            || format!("CELL EDIT · {} changed", changed_field.label()),
-            |detail| format!("CELL EDIT · {detail} · play MIDI to audition"),
+            || format!("NOTE EDIT · {} changed", field.label()),
+            |detail| format!("NOTE EDIT · {detail} · play MIDI to audition"),
         );
     }
+
     fn clear_note_editor_field(&mut self) {
-        let field = {
-            let Some(editor) = self.note_editor.as_mut() else {
-                return;
-            };
-            match editor.field {
+        let Some(field) = self.note_editor.as_ref().map(|editor| editor.field) else {
+            return;
+        };
+        if matches!(
+            field,
+            NoteEditorField::Destination
+                | NoteEditorField::Channel
+                | NoteEditorField::DefaultProgram
+                | NoteEditorField::BankMsb
+                | NoteEditorField::BankLsb
+        ) {
+            self.status = format!("{} is a route default and cannot be blank", field.label());
+            return;
+        }
+        if field == NoteEditorField::Program {
+            self.release_tracker_audition();
+        }
+        if let Some(editor) = self.note_editor.as_mut() {
+            match field {
                 NoteEditorField::Note => editor.draft.note = Note::Empty,
                 NoteEditorField::Gate => editor.draft.gate = None,
                 NoteEditorField::Velocity => editor.draft.velocity = None,
@@ -1045,21 +1283,26 @@ impl App {
                 NoteEditorField::Effect | NoteEditorField::EffectParameter => {
                     editor.draft.command = Command::None
                 }
+                _ => {}
             }
-            editor.field
-        };
-        if field == NoteEditorField::Program {
-            self.sync_tracker_route();
-            self.preview_tracker_program(self.current_column().map_or(0, |column| column.program));
         }
-        self.status = format!("CELL EDIT · {} cleared only", field.label());
+        self.sync_tracker_route();
+        self.status = format!("NOTE EDIT · {} cleared", field.label());
     }
-    fn confirm_note_editor(&mut self) {
-        let Some(editor) = self.note_editor else {
+
+    fn save_note_editor(&mut self) {
+        if self
+            .note_editor
+            .as_ref()
+            .is_some_and(|editor| editor.active)
+        {
+            self.confirm_note_editor_field();
+        }
+        let Some(editor) = self.note_editor.as_ref().cloned() else {
             return;
         };
         if let Err(error) = editor.draft.validate() {
-            self.status = format!("CELL EDIT rejected · {error}");
+            self.status = format!("NOTE EDIT rejected · {error}");
             return;
         }
         if !matches!(editor.draft.note, Note::On(_))
@@ -1068,39 +1311,57 @@ impl App {
                 || editor.draft.gate.is_some())
         {
             self.status =
-                "CELL EDIT rejected · velocity, program, and gate require a note-on".into();
+                "NOTE EDIT rejected · velocity, program, and gate require a note-on".into();
             return;
         }
         if matches!(editor.draft.command, Command::Retrigger(_))
             && !matches!(editor.draft.note, Note::On(_))
         {
-            self.status = "CELL EDIT rejected · retrigger requires a note-on".into();
+            self.status = "NOTE EDIT rejected · retrigger requires a note-on".into();
             return;
         }
-        if let Some(cell) = self
+        let old = self
             .song
             .patterns
             .get_mut(&editor.pattern)
             .and_then(|pattern| pattern.rows.get_mut(editor.row))
             .and_then(|row| row.get_mut(editor.lane))
-        {
-            *cell = editor.draft;
+            .map(|cell| {
+                let old = *cell;
+                *cell = editor.draft;
+                old
+            });
+        if let Some(old) = old {
+            if let Err(error) = self.song.validate() {
+                if let Some(cell) = self
+                    .song
+                    .patterns
+                    .get_mut(&editor.pattern)
+                    .and_then(|pattern| pattern.rows.get_mut(editor.row))
+                    .and_then(|row| row.get_mut(editor.lane))
+                {
+                    *cell = old;
+                }
+                self.status = format!("NOTE EDIT rejected · {error}");
+                return;
+            }
             self.note_editor = None;
             self.sync_tracker_route();
             self.reset_context_page();
-            self.status = "CELL EDIT committed".into();
+            self.status = "NOTE EDIT saved · route defaults and cell are ready".into();
         } else {
-            self.status = "CELL EDIT rejected · source cell no longer exists".into();
+            self.status = "NOTE EDIT rejected · source cell no longer exists".into();
         }
     }
+
     fn cancel_note_editor(&mut self) {
         let Some(editor) = self.note_editor.take() else {
             return;
         };
-        let restore_program = editor
-            .original
-            .program
-            .unwrap_or_else(|| self.current_column().map_or(0, |column| column.program));
+        self.release_tracker_audition();
+        if let Some(page) = self.current_page_mut() {
+            *page = editor.original_page;
+        }
         if let Some(cell) = self
             .song
             .patterns
@@ -1110,10 +1371,21 @@ impl App {
         {
             *cell = editor.original;
         }
-        self.preview_tracker_program(restore_program);
         self.sync_tracker_route();
         self.reset_context_page();
-        self.status = "CELL EDIT cancelled · original restored".into();
+        self.status = "NOTE EDIT cancelled · route and cell restored".into();
+    }
+
+    fn back_note_editor(&mut self) {
+        if self
+            .note_editor
+            .as_ref()
+            .is_some_and(|editor| editor.active)
+        {
+            self.cancel_note_editor_field();
+        } else {
+            self.cancel_note_editor();
+        }
     }
     fn advance_tracker_row(&mut self) {
         let rows = self.tracker_rows();
@@ -1285,6 +1557,7 @@ impl App {
         let external = self.tracker_external_config();
         let program = self
             .note_editor
+            .as_ref()
             .and_then(|editor| editor.draft.program)
             .unwrap_or(column.program);
         let mut columns = std::array::from_fn(|index| {
@@ -1295,6 +1568,14 @@ impl App {
             )
         });
         columns[self.tracker_track].1 .0 = program;
+        let audition_note = self.note_editor.as_ref().and_then(|editor| {
+            (columns[self.tracker_track].0 == 9)
+                .then_some(editor.draft.note)
+                .and_then(|note| match note {
+                    Note::On(note) => Some(note),
+                    Note::Empty | Note::Off => None,
+                })
+        });
         if let Ok(mut route) = self.tracker_route.lock() {
             route.configure(crate::engine::TrackerRouteConfig {
                 enabled: self.screen == Screen::Tracker
@@ -1304,7 +1585,8 @@ impl App {
                 target: page.target.clone(),
                 columns,
                 start_column: self.tracker_track,
-                percussion: page.percussion,
+                percussion: page.percussion || columns[self.tracker_track].0 == 9,
+                audition_note,
                 scale: (self.tracker_mode == TrackerMode::Noob).then_some(self.noob_scale),
                 external: &external,
             });
@@ -1332,23 +1614,49 @@ impl App {
 
     fn tracker_program_label(&self, program: u8) -> String {
         let Some(page) = self.current_page() else {
-            return format!("MIDI program {program}");
+            return crate::gm::melodic_program(program).into();
         };
         let column = page.column(self.tracker_track);
+        let channel = page.runtime_channel(self.tracker_track, &self.config.external_midi);
+        if channel == 9 {
+            return "GM percussion · note chooses drum".into();
+        }
         self.tracker_device_profile()
             .and_then(|profile| profile.program_label(column.bank_msb, column.bank_lsb, program))
-            .unwrap_or_else(|| format!("MIDI program {program}"))
+            .unwrap_or_else(|| {
+                format!(
+                    "GM {:03} {}",
+                    u16::from(program) + 1,
+                    crate::gm::melodic_program(program)
+                )
+            })
     }
 
-    fn preview_tracker_program(&self, program: u8) {
+    fn tracker_instrument_label(&self) -> String {
         let Some(page) = self.current_page() else {
-            return;
+            return "instrument unavailable".into();
         };
-        for message in self.tracker_program_messages(program) {
-            self.tracker_live_input.send(&page.target, &message);
+        let channel = page.runtime_channel(self.tracker_track, &self.config.external_midi);
+        let column = page.column(self.tracker_track);
+        let note = self
+            .note_editor
+            .as_ref()
+            .and_then(|editor| match editor.draft.note {
+                Note::On(note) => Some(note),
+                Note::Empty | Note::Off => None,
+            })
+            .unwrap_or(36);
+        if channel == 9 {
+            format!(
+                "GM DRUM {note} · {}",
+                crate::gm::instrument(channel, column.program, note)
+            )
+        } else {
+            self.tracker_program_label(column.program)
         }
     }
 
+    #[cfg(test)]
     fn tracker_program_messages(&self, program: u8) -> Vec<Vec<u8>> {
         let external = self.tracker_external_config();
         if !external.program_changes {
@@ -1360,11 +1668,11 @@ impl App {
         let column = page.column(self.tracker_track);
         let mut messages = Vec::new();
         match external.bank_select {
-            BankSelectMode::Off => {}
-            BankSelectMode::Cc0 => {
+            crate::config::BankSelectMode::Off => {}
+            crate::config::BankSelectMode::Cc0 => {
                 messages.push(vec![0xb0 | column.channel, 0, column.bank_msb]);
             }
-            BankSelectMode::Cc0Cc32 => {
+            crate::config::BankSelectMode::Cc0Cc32 => {
                 messages.push(vec![0xb0 | column.channel, 0, column.bank_msb]);
                 messages.push(vec![0xb0 | column.channel, 32, column.bank_lsb]);
             }
@@ -1685,11 +1993,7 @@ impl App {
         }
     }
     fn page_field_confirm_hint(&self) -> &'static str {
-        if self.controller_layout == ControllerLayout::Four {
-            "use CONFIRM button"
-        } else {
-            "press encoder to confirm"
-        }
+        "press encoder to confirm"
     }
     fn toggle_tracker_page_mute(&mut self) {
         let page_index = self.tracker_page;
@@ -1745,18 +2049,16 @@ impl App {
             .set_audio_unavailable(AudioAvailability::Stopped);
         self.status = "tracker stopped".into();
     }
-    fn tracker_play(&mut self, from_start: bool) {
-        let status = self.sequencer.status();
-        if status.playing {
+    fn toggle_tracker_playback(&mut self) {
+        if self.tracker_recording.is_some() {
+            self.stop_tracker_recording();
+        } else if self.sequencer.status().playing {
             self.tracker_stop();
             return;
         }
+        self.set_tracker_mode(TrackerMode::Play);
         self.cancel_tracker_gesture();
-        let (order, row) = if from_start {
-            (0, 0)
-        } else {
-            (self.tracker_order, self.tracker_row)
-        };
+        let (order, row) = (self.tracker_order, self.tracker_row);
         let notes = match sequencer::schedule(&self.song, &self.config.external_midi, order, row) {
             Ok(messages) => messages
                 .iter()
@@ -1804,6 +2106,16 @@ impl App {
         };
     }
 
+    fn rewind_tracker(&mut self) {
+        if self.tracker_recording.is_some() || self.sequencer.status().playing {
+            self.tracker_stop();
+        }
+        self.tracker_order = 0;
+        self.tracker_row = 0;
+        self.clamp_tracker_cursor();
+        self.status = "tracker rewound · press PLAY to start".into();
+    }
+
     fn tracker_record_song(&self, pattern: u16, page: usize) -> Song {
         let mut song = self.song.clone();
         song.order = vec![pattern];
@@ -1815,7 +2127,7 @@ impl App {
         song
     }
 
-    fn begin_tracker_recording(&mut self) {
+    fn toggle_tracker_recording(&mut self) {
         if self.tracker_recording.is_some() {
             self.stop_tracker_recording();
             return;
@@ -1880,7 +2192,7 @@ impl App {
             }
         }
         self.sequencer.stop();
-        self.tracker_mode = TrackerMode::Play;
+        self.tracker_mode = TrackerMode::Rec;
         self.sync_tracker_route();
         self.reset_context_page();
         self.status = format!(
@@ -3333,7 +3645,7 @@ impl App {
             .arrange_selected
             .min(self.song.order.len().saturating_sub(1));
         self.tracker_row = 0;
-        self.tracker_play(false);
+        self.toggle_tracker_playback();
     }
     fn tracker_note_off(&mut self) {
         if self.tracker_mode != TrackerMode::Edit {
@@ -4129,6 +4441,47 @@ impl App {
             format!("{} · {value:.2} {}", spec.name, spec.unit),
         );
     }
+
+    fn move_fx_parameter(&mut self, direction: i8) {
+        let len = self
+            .selected_effect()
+            .map(|effect| crate::effect_schema::schema(effect.kind).len())
+            .unwrap_or(0);
+        self.fx_parameter = if direction < 0 {
+            self.fx_parameter.saturating_sub(1)
+        } else {
+            (self.fx_parameter + 1).min(len.saturating_sub(1))
+        };
+        self.status = "FX parameter highlighted · press encoder to edit".into();
+    }
+
+    fn begin_fx_value_edit(&mut self) {
+        if self.selected_effect().is_none() {
+            self.status = "FX rack is empty".into();
+            return;
+        }
+        self.fx_edit_original =
+            Some((self.song.insert_rack.clone(), self.song.aux_routing.clone()));
+        self.fx_value_editing = true;
+        self.status = "FX VALUE ACTIVE · turn, press confirms, Back cancels".into();
+    }
+
+    fn confirm_fx_value_edit(&mut self) {
+        self.fx_value_editing = false;
+        self.fx_edit_original = None;
+        self.status = "FX value confirmed".into();
+    }
+
+    fn cancel_fx_value_edit(&mut self) {
+        let Some((rack, aux)) = self.fx_edit_original.clone() else {
+            self.fx_value_editing = false;
+            return;
+        };
+        if self.commit_fx_routing(rack, aux, "FX value change cancelled".into()) {
+            self.fx_value_editing = false;
+            self.fx_edit_original = None;
+        }
+    }
     fn load(&mut self, state: &Path, _tx: std::sync::mpsc::Sender<MidiEvent>) {
         if let Some(reason) = self.audio_graph_edit_blocker() {
             self.status = reason.into();
@@ -4233,27 +4586,52 @@ impl App {
         self.arm_pickup();
         self.status = "parameters reset · controls waiting for pickup".into();
     }
-    fn begin_record(&mut self) {
+    fn toggle_idea_recording(&mut self) {
+        self.idea_mode = IdeaMode::Record;
+        if self.recorder.is_recording() {
+            self.stop_recording();
+            return;
+        }
+        if self.playback.is_some() {
+            self.stop_playback();
+        }
         if self.engine.is_none() {
             self.status = "load a preset before recording".into();
             return;
         }
-        self.stop_playback();
         self.recorder.start(Instant::now());
         self.status = "● RECORDING musical MIDI".into();
     }
     fn toggle_playback(&mut self) {
+        self.idea_mode = IdeaMode::Play;
+        if self
+            .playback
+            .as_ref()
+            .is_some_and(|playback| playback.finished.load(Ordering::Relaxed))
+        {
+            self.playback.take();
+        }
         if self.playback.is_some() {
             self.stop_playback();
-        } else if self.engine.is_none() {
+            return;
+        }
+        if self.recorder.is_recording() {
+            self.stop_recording();
+        }
+        if self.engine.is_none() {
             self.status = "load the idea preset before playing its recording".into();
         } else if self.last.is_empty() {
             self.status = "no recording yet".into();
         } else {
+            if let Some(engine) = &self.engine {
+                engine.panic();
+            }
             let events = self.last.clone();
             let output = Arc::clone(&self.midi_output);
             let stop = Arc::new(AtomicBool::new(false));
             let worker_stop = Arc::clone(&stop);
+            let finished = Arc::new(AtomicBool::new(false));
+            let worker_finished = Arc::clone(&finished);
             let worker = std::thread::spawn(move || {
                 recording::play_events(
                     &events,
@@ -4266,9 +4644,11 @@ impl App {
                     },
                     &worker_stop,
                 );
+                worker_finished.store(true, Ordering::Relaxed);
             });
             self.playback = Some(Playback {
                 stop,
+                finished,
                 worker: Some(worker),
             });
             self.status = "▶ playing recording".into();
@@ -4286,6 +4666,7 @@ impl App {
     }
     fn open_help(&mut self) {
         self.stop_tracker_recording();
+        self.set_tracker_mode(TrackerMode::Play);
         if self.screen != Screen::Help {
             self.help_previous = self.screen;
         }
@@ -4345,6 +4726,9 @@ impl App {
         }
     }
     fn save_new(&mut self) {
+        if self.recorder.is_recording() {
+            self.stop_recording();
+        }
         let Some(p) = &self.playing else {
             self.status = "load a preset before saving an idea".into();
             return;
@@ -4367,29 +4751,6 @@ impl App {
                 self.ideas = recording::list(&recording::ideas_dir()).unwrap_or_default();
             }
             Err(e) => self.status = format!("save failed: {e:#}"),
-        }
-    }
-    fn finish_and_save(&mut self) {
-        if !self.recorder.is_recording() {
-            return;
-        }
-        self.stop_recording();
-        let Some(preset) = &self.playing else { return };
-        let stem = recording::safe_name(&preset.name);
-        let base = recording::ideas_dir();
-        let name = (1..=9999)
-            .map(|n| format!("{stem}-{n:03}"))
-            .find(|name| !base.join(name).exists());
-        let Some(name) = name else {
-            self.status = "Save failed: idea numbers exhausted".into();
-            return;
-        };
-        match recording::save(&base, &name, preset, &self.values, &self.last) {
-            Ok(_) => {
-                self.status = format!("Saved {name}");
-                self.ideas = recording::list(&base).unwrap_or_default();
-            }
-            Err(e) => self.status = format!("Save failed: {e:#}"),
         }
     }
     fn inspect_idea(&mut self) {
@@ -4852,7 +5213,11 @@ fn drain(
                 }
             }
             MidiEvent::Encoder(action) => {
-                if app.controller_layout == ControllerLayout::Four {
+                let value_editor_owns_encoder = app.note_editor.is_some()
+                    || (app.screen == Screen::TrackerPages
+                        && app.page_manager_mode != PageManagerMode::Pages)
+                    || app.screen == Screen::FxEditor;
+                if app.controller_layout == ControllerLayout::Four && !value_editor_owns_encoder {
                     match action {
                         crate::pads::EncoderAction::Select => {
                             app.prepare_confirmation_action(Action::Noop);
@@ -4961,8 +5326,24 @@ fn perform(
         match action {
             Action::Up | Action::NoteEditorDecrease => a.adjust_note_editor(-1),
             Action::Down | Action::NoteEditorIncrease => a.adjust_note_editor(1),
-            Action::Activate | Action::NoteEditorConfirm => a.confirm_note_editor(),
-            Action::Back | Action::NoteEditorCancel => a.cancel_note_editor(),
+            Action::Activate | Action::NoteEditorConfirm => {
+                if a.note_editor.as_ref().is_some_and(|editor| editor.active) {
+                    a.confirm_note_editor_field();
+                } else if let Some(field) = a.note_editor.as_ref().map(|editor| editor.field) {
+                    a.select_note_editor_field(field);
+                }
+            }
+            Action::Back | Action::NoteEditorCancel => a.back_note_editor(),
+            Action::NoteEditorSave => a.save_note_editor(),
+            Action::NoteDestinationField => {
+                a.select_note_editor_field(NoteEditorField::Destination)
+            }
+            Action::NoteChannelField => a.select_note_editor_field(NoteEditorField::Channel),
+            Action::DefaultProgramField => {
+                a.select_note_editor_field(NoteEditorField::DefaultProgram)
+            }
+            Action::NoteBankMsbField => a.select_note_editor_field(NoteEditorField::BankMsb),
+            Action::NoteBankLsbField => a.select_note_editor_field(NoteEditorField::BankLsb),
             Action::NoteField => a.select_note_editor_field(NoteEditorField::Note),
             Action::GateField => a.select_note_editor_field(NoteEditorField::Gate),
             Action::VelocityField => a.select_note_editor_field(NoteEditorField::Velocity),
@@ -4979,9 +5360,6 @@ fn perform(
                 a.set_tracker_edit(true);
                 a.status = "step edit on".into();
             }
-            Action::TrackerStop => {
-                a.tracker_stop();
-            }
             Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
             _ => {}
         }
@@ -4989,12 +5367,17 @@ fn perform(
     }
     if a.tracker_recording.is_some() {
         match action {
-            Action::TrackerRecord | Action::TrackerStop => {
+            Action::TrackerRecordToggle => {
                 a.stop_tracker_recording();
+                return false;
+            }
+            Action::TrackerPlayToggle => {
+                a.toggle_tracker_playback();
                 return false;
             }
             Action::Back => {
                 a.stop_tracker_recording();
+                a.set_tracker_mode(TrackerMode::Play);
                 return false;
             }
             Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
@@ -5046,6 +5429,10 @@ fn perform(
             } else if a.screen == Screen::Tracker {
                 a.cancel_tracker_gesture();
                 a.tracker_row = a.tracker_row.saturating_sub(1);
+            } else if a.screen == Screen::AudioRecorder {
+                a.move_audio_track(-1);
+            } else if a.screen == Screen::Meter {
+                a.move_bus_selection(-1);
             } else if a.screen == Screen::TrackerPages {
                 a.turn_page_manager(-1);
             } else if a.screen == Screen::TrackerLoop {
@@ -5059,7 +5446,11 @@ fn perform(
             } else if a.screen == Screen::FxRack {
                 a.fx_selected = a.fx_selected.saturating_sub(1);
             } else if a.screen == Screen::FxEditor {
-                a.adjust_effect_parameter(-1);
+                if a.fx_value_editing {
+                    a.adjust_effect_parameter(-1);
+                } else {
+                    a.move_fx_parameter(-1);
+                }
             }
         }
         Action::Down => {
@@ -5082,6 +5473,10 @@ fn perform(
             } else if a.screen == Screen::Tracker {
                 a.cancel_tracker_gesture();
                 a.tracker_row = (a.tracker_row + 1).min(a.tracker_rows().saturating_sub(1));
+            } else if a.screen == Screen::AudioRecorder {
+                a.move_audio_track(1);
+            } else if a.screen == Screen::Meter {
+                a.move_bus_selection(1);
             } else if a.screen == Screen::TrackerPages {
                 a.turn_page_manager(1);
             } else if a.screen == Screen::TrackerLoop {
@@ -5100,7 +5495,11 @@ fn perform(
                     .unwrap_or(0);
                 a.fx_selected = (a.fx_selected + 1).min(length.saturating_sub(1));
             } else if a.screen == Screen::FxEditor {
-                a.adjust_effect_parameter(1);
+                if a.fx_value_editing {
+                    a.adjust_effect_parameter(1);
+                } else {
+                    a.move_fx_parameter(1);
+                }
             }
         }
         Action::PageUp => {
@@ -5189,18 +5588,26 @@ fn perform(
             | Screen::TrackerNoob
             | Screen::TrackerLoop
             | Screen::TrackerLoopAlign => {}
-            Screen::AudioRecorder => a.toggle_audio_recording(),
-            Screen::Meter => a.performance_meter.clear_holds(),
+            Screen::AudioRecorder => a.toggle_audio_track_arm(state),
+            Screen::Meter => a.toggle_bus_mute(),
             Screen::FxRack => {
                 if a.selected_effect_id().is_some() {
                     a.fx_parameter = 0;
                     a.set_screen(Screen::FxEditor);
-                    a.status = "effect editor · turn to adjust".into();
+                    a.fx_value_editing = false;
+                    a.fx_edit_original = None;
+                    a.status = "effect editor · turn to choose parameter · press to edit".into();
                 } else {
                     a.status = "FX rack is empty · choose a kind and ADD".into();
                 }
             }
-            Screen::FxEditor => a.adjust_effect_parameter(1),
+            Screen::FxEditor => {
+                if a.fx_value_editing {
+                    a.confirm_fx_value_edit();
+                } else {
+                    a.begin_fx_value_edit();
+                }
+            }
         },
         Action::Quit => unreachable!("quit is handled before contextual dispatch"),
         Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
@@ -5218,7 +5625,7 @@ fn perform(
                 .current_page()
                 .is_some_and(|page| a.target_online(&page.target));
             a.status = if page_online {
-                "tracker ready · EDIT toggles entry · encoder press skips".into()
+                "tracker ready · STEP toggles entry · encoder press skips".into()
             } else {
                 "tracker page target offline · PAGES to change it".into()
             };
@@ -5242,7 +5649,7 @@ fn perform(
         Action::OpenTrackerTools => {
             a.set_screen(Screen::TrackerTools);
             a.reset_context_page();
-            a.status = "FT2 tools · pages, files, loop, mute".into();
+            a.status = "FT2 tools · arrange, loop, clipboard, mute".into();
         }
         Action::OpenTrackerLoop => {
             a.loop_library_mode = false;
@@ -5259,13 +5666,15 @@ fn perform(
         Action::OpenAudioRecorder => {
             a.set_tracker_edit(false);
             a.set_screen(Screen::AudioRecorder);
-            a.status = "stereo audio recorder".into();
+            a.status = "multitrack audio recorder".into();
         }
         Action::OpenFxRack => {
             let length = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
                 .map(|rack| rack.order.len())
                 .unwrap_or(0);
             a.fx_selected = a.fx_selected.min(length.saturating_sub(1));
+            a.fx_value_editing = false;
+            a.fx_edit_original = None;
             a.set_screen(Screen::FxRack);
             a.status = format!(
                 "{} rack · next {}",
@@ -5276,8 +5685,10 @@ fn perform(
         Action::OpenFxEditor => {
             if a.selected_effect_id().is_some() {
                 a.fx_parameter = 0;
+                a.fx_value_editing = false;
+                a.fx_edit_original = None;
                 a.set_screen(Screen::FxEditor);
-                a.status = "effect editor · PARAM chooses · VALUE adjusts".into();
+                a.status = "effect editor · turn to choose parameter · press to edit".into();
             } else {
                 a.status = "FX rack is empty".into();
             }
@@ -5286,7 +5697,7 @@ fn perform(
             a.set_tracker_edit(false);
             a.set_screen(Screen::Meter);
             a.reset_context_page();
-            a.status = "passive performance meters".into();
+            a.status = "mix, final output, and meters".into();
         }
         Action::ResetMeter => {
             a.performance_meter.clear_holds();
@@ -5305,6 +5716,10 @@ fn perform(
         Action::FinalRecordToggle => a.toggle_final_recording(),
         Action::Back => {
             if a.screen == Screen::FxEditor {
+                if a.fx_value_editing {
+                    a.cancel_fx_value_edit();
+                    return false;
+                }
                 a.set_screen(Screen::FxRack);
                 a.status = "insert rack".into();
                 return false;
@@ -5389,15 +5804,7 @@ fn perform(
             }
         }
         Action::ResetParameters => a.reset_parameters(),
-        Action::BeginRecord => {
-            if a.recorder.is_recording() {
-                a.status = "already recording".into();
-            } else {
-                a.begin_record();
-            }
-        }
-        Action::StopRecord => a.stop_recording(),
-        Action::FinishSaveRecord => a.finish_and_save(),
+        Action::IdeaRecordToggle => a.toggle_idea_recording(),
         Action::SaveNew => a.save_new(),
         Action::InspectIdea => a.inspect_idea(),
         Action::DeleteIdea => a.delete_idea(),
@@ -5406,19 +5813,10 @@ fn perform(
                 a.load_idea(state, tx.clone());
             }
         }
-        Action::PlaybackRecording => a.toggle_playback(),
-        Action::StopPlayback => a.stop_playback(),
-        Action::TrackerPlayCursor => a.tracker_play(false),
-        Action::TrackerPlayStart => a.tracker_play(true),
-        Action::TrackerRecord => a.begin_tracker_recording(),
-        Action::TrackerModePlay => {
-            a.set_tracker_mode(TrackerMode::Play);
-            a.status = "PLAY mode · normal performance and transport".into();
-        }
-        Action::TrackerModeEdit => {
-            a.set_tracker_mode(TrackerMode::Edit);
-            a.status = "EDIT mode · step entry on".into();
-        }
+        Action::IdeaPlayToggle => a.toggle_playback(),
+        Action::TrackerPlayToggle => a.toggle_tracker_playback(),
+        Action::TrackerRewind => a.rewind_tracker(),
+        Action::TrackerRecordToggle => a.toggle_tracker_recording(),
         Action::TrackerModeNoob => a.open_noob_setup(),
         Action::NoobRootDown => a.adjust_noob_root(-1),
         Action::NoobRootUp => a.adjust_noob_root(1),
@@ -5449,9 +5847,6 @@ fn perform(
         }
         Action::OpenLoopLibrary => a.open_loop_library(),
         Action::DeleteLoopFile => a.delete_selected_loop_file(),
-        Action::TrackerStop => {
-            a.tracker_stop();
-        }
         Action::TrackerMute => {
             let global_lane = a.tracker_page * LANES_PER_PAGE + a.tracker_track;
             let track = a.tracker_track;
@@ -5522,7 +5917,12 @@ fn perform(
         Action::TrackerAdvance4 => a.set_tracker_advance(4),
         Action::TrackerAdvance8 => a.set_tracker_advance(8),
         Action::OpenNoteEditor => a.open_note_editor(),
-        Action::NoteField
+        Action::NoteDestinationField
+        | Action::NoteChannelField
+        | Action::DefaultProgramField
+        | Action::NoteBankMsbField
+        | Action::NoteBankLsbField
+        | Action::NoteField
         | Action::GateField
         | Action::VelocityField
         | Action::ProgramField
@@ -5534,6 +5934,7 @@ fn perform(
         | Action::NoteEditorDecrease
         | Action::NoteEditorIncrease
         | Action::NoteEditorConfirm
+        | Action::NoteEditorSave
         | Action::NoteEditorCancel => {}
         Action::PreviousTrack => {
             if a.screen == Screen::TrackerPages {
@@ -5572,11 +5973,7 @@ fn perform(
         Action::PatternSizeDown => a.change_pattern_size(-1),
         Action::PatternSizeUp => a.change_pattern_size(1),
         Action::ConfirmPatternClear => a.apply_pattern_clear(),
-        Action::AudioRecord => a.toggle_audio_recording(),
-        Action::AudioStop => match a.audio_recorder.stop() {
-            Ok(()) => a.status = "audio recording finalized".into(),
-            Err(error) => a.status = format!("audio recorder: {error}"),
-        },
+        Action::AudioRecordToggle => a.toggle_audio_recording(),
         Action::AudioToggleArm => a.toggle_audio_track_arm(state),
         Action::AudioArmAll => a.set_all_audio_arms(state, true),
         Action::AudioDisarmAll => a.set_all_audio_arms(state, false),
@@ -5598,21 +5995,29 @@ fn perform(
         Action::FxSendPoint => a.toggle_aux_send_point(),
         Action::FxReturnCycle => a.cycle_aux_return(),
         Action::FxParameterPrevious => {
-            let len = a
-                .selected_effect()
-                .map(|effect| crate::effect_schema::schema(effect.kind).len())
-                .unwrap_or(0);
-            a.fx_parameter = a.fx_parameter.saturating_sub(1).min(len.saturating_sub(1));
+            if a.fx_value_editing {
+                a.confirm_fx_value_edit();
+            }
+            a.move_fx_parameter(-1);
         }
         Action::FxParameterNext => {
-            let len = a
-                .selected_effect()
-                .map(|effect| crate::effect_schema::schema(effect.kind).len())
-                .unwrap_or(0);
-            a.fx_parameter = (a.fx_parameter + 1).min(len.saturating_sub(1));
+            if a.fx_value_editing {
+                a.confirm_fx_value_edit();
+            }
+            a.move_fx_parameter(1);
         }
-        Action::FxValueDecrease => a.adjust_effect_parameter(-1),
-        Action::FxValueIncrease => a.adjust_effect_parameter(1),
+        Action::FxValueDecrease => {
+            if !a.fx_value_editing {
+                a.begin_fx_value_edit();
+            }
+            a.adjust_effect_parameter(-1);
+        }
+        Action::FxValueIncrease => {
+            if !a.fx_value_editing {
+                a.begin_fx_value_edit();
+            }
+            a.adjust_effect_parameter(1);
+        }
     }
     false
 }
@@ -5732,7 +6137,8 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Char('a') | KeyCode::Char('A') => Some(Action::LoopAutoAlign),
             KeyCode::Enter => Some(Action::LoopAlignDone),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
-                Some(Action::TrackerStop)
+                a.tracker_stop();
+                None
             }
             KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
             _ => None,
@@ -5747,8 +6153,8 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => Some(Action::LoopImport),
-            KeyCode::Char('p') => Some(Action::TrackerPlayCursor),
-            KeyCode::Char('P') => Some(Action::TrackerPlayStart),
+            KeyCode::Char('p') => Some(Action::TrackerPlayToggle),
+            KeyCode::Char('P') => Some(Action::TrackerRewind),
             KeyCode::Char('a') | KeyCode::Char('A') => Some(Action::LoopAutoAlign),
             KeyCode::Char('-') => Some(Action::LoopSourceDown),
             KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::LoopSourceUp),
@@ -5759,7 +6165,8 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Char('{') => Some(Action::LoopLengthDown),
             KeyCode::Char('}') => Some(Action::LoopLengthUp),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
-                Some(Action::TrackerStop)
+                a.tracker_stop();
+                None
             }
             KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
             _ => None,
@@ -5813,6 +6220,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 KeyCode::Char('r') | KeyCode::Char('R') => {
                     a.stop_tracker_recording();
                 }
+                KeyCode::Char('p') | KeyCode::Char('P') => {
+                    a.toggle_tracker_playback();
+                }
                 KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
                 KeyCode::Esc | KeyCode::Char('b') => {
                     perform(Action::Back, a, state, Some(tx));
@@ -5831,6 +6241,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 KeyCode::Right => Some(Action::NoteEditorNextField),
                 KeyCode::Delete | KeyCode::Backspace => Some(Action::NoteEditorClearField),
                 KeyCode::Enter => Some(Action::NoteEditorConfirm),
+                KeyCode::Char('w') | KeyCode::Char('W') => Some(Action::NoteEditorSave),
                 KeyCode::Esc | KeyCode::Char('b') => Some(Action::NoteEditorCancel),
                 KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
                     Some(Action::StopAll)
@@ -5921,15 +6332,15 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 return false;
             }
             KeyCode::Char('p') => {
-                a.tracker_play(false);
+                a.toggle_tracker_playback();
                 return false;
             }
             KeyCode::Char('P') => {
-                a.tracker_play(true);
+                a.rewind_tracker();
                 return false;
             }
             KeyCode::Char('r') | KeyCode::Char('R') => {
-                a.begin_tracker_recording();
+                a.toggle_tracker_recording();
                 return false;
             }
             KeyCode::Char('+') | KeyCode::Char('=') => {
@@ -6000,7 +6411,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     }
     if a.screen == Screen::AudioRecorder {
         let action = match code {
-            KeyCode::Char('r') => Some(Action::AudioRecord),
+            KeyCode::Char('r') => Some(Action::AudioRecordToggle),
             KeyCode::Up | KeyCode::Char('k') => Some(Action::AudioPreviousTrack),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::AudioNextTrack),
             KeyCode::Char(' ') => Some(Action::AudioToggleArm),
@@ -6078,14 +6489,12 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         KeyCode::Char('b') => {
             perform(Action::Back, a, state, Some(tx));
         }
-        KeyCode::Char('r') => {
-            if a.recorder.is_recording() {
-                a.stop_recording()
-            } else {
-                a.begin_record()
-            }
+        KeyCode::Char('r') if matches!(a.screen, Screen::Playback | Screen::Ideas) => {
+            a.toggle_idea_recording()
         }
-        KeyCode::Char('p') => a.toggle_playback(),
+        KeyCode::Char('p') if matches!(a.screen, Screen::Playback | Screen::Ideas) => {
+            a.toggle_playback()
+        }
         KeyCode::Char('w') => a.open_ideas(),
         KeyCode::Char('m') if a.screen == Screen::Presets => {
             perform(Action::OpenMeter, a, state, Some(tx));
@@ -6100,7 +6509,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 a.set_tracker_edit(false);
             }
             a.set_screen(Screen::AudioRecorder);
-            a.status = "stereo audio recorder".into();
+            a.status = "multitrack audio recorder".into();
         }
         KeyCode::Char('d') if a.screen == Screen::Ideas => a.delete_idea(),
         KeyCode::Char('i') if a.screen == Screen::Ideas => a.inspect_idea(),
@@ -6314,7 +6723,9 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerFiles => draw_tracker_files(f, a),
         Screen::TrackerArrange => draw_tracker_arrange(f, a),
         Screen::TrackerPages => draw_tracker_pages(f, a),
-        Screen::TrackerTools => draw_tracker_child(f, "FT2 TOOLS", "Pages · Files · Loop · Mute"),
+        Screen::TrackerTools => {
+            draw_tracker_child(f, "FT2 TOOLS", "Arrange · Loop · N00B · Clipboard · Mute")
+        }
         Screen::TrackerNoob => draw_noob_setup(f, a),
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
@@ -6701,7 +7112,7 @@ fn draw_performance_meter<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     f.render_widget(
         Paragraph::new(lines).block(
             Block::default()
-                .title(" MTR · PERFORMANCE ")
+                .title(" MIX · PERFORMANCE ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Green)),
         ),
@@ -6872,7 +7283,7 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     f.render_widget(
         Paragraph::new(lines).block(
             Block::default()
-                .title(" MTR · PERFORMANCE BUS ")
+                .title(" MIX · PERFORMANCE BUS ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(if active { Color::Green } else { Color::Red })),
         ),
@@ -6920,10 +7331,12 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(if effect.bypass {
+        Span::raw(if a.fx_value_editing {
+            "  VALUE ACTIVE"
+        } else if effect.bypass {
             "  BYPASSED"
         } else {
-            "  ACTIVE"
+            "  ON"
         }),
     ])];
     for (index, spec) in schema.iter().enumerate().skip(offset).take(visible_rows) {
@@ -6932,7 +7345,9 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .get(spec.name)
             .copied()
             .unwrap_or(spec.default);
-        let style = if index == a.fx_parameter {
+        let style = if index == a.fx_parameter && a.fx_value_editing {
+            Style::default().fg(Color::Black).bg(Color::Green)
+        } else if index == a.fx_parameter {
             Style::default().fg(Color::Black).bg(Color::Yellow)
         } else {
             Style::default().fg(Color::White)
@@ -7295,7 +7710,6 @@ fn draw_fallback_badge<B: Backend>(f: &mut Frame<B>, a: &App) {
 // Screen layouts still calculate these rectangles for mouse hit tests. The
 // visible controls are rendered by the
 // canonical paged menu below.
-fn button<B: Backend>(_f: &mut Frame<B>, _r: Rect, _label: &str) {}
 fn pad_line(screen: Screen) -> String {
     format!("{} · controller menu below", screen.label())
 }
@@ -7463,9 +7877,6 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     a.ensure_visible(rows);
     let inner = rect(list.x + 1, list.y + 1, list.width - 2, list.height - 2);
     a.hits.list = inner;
-    a.hits.primary = rect(z.x + 1, foot.y, 8, 1);
-    a.hits.stop = rect(z.x + 10, foot.y, 8, 1);
-    a.hits.exit = rect(z.x + 19, foot.y, 8, 1);
     let now = a
         .playing
         .as_ref()
@@ -7517,9 +7928,6 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         ),
         list,
     );
-    button(f, a.hits.primary, "Play");
-    button(f, a.hits.stop, "Stop");
-    button(f, a.hits.exit, "Exit");
     f.render_widget(
         Paragraph::new(format!(
             "{}\n{}",
@@ -7554,6 +7962,8 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         ("LCK", Color::Red)
     } else if a.recorder.is_recording() {
         ("REC", Color::Red)
+    } else if a.idea_mode == IdeaMode::Record {
+        ("R-M", Color::Yellow)
     } else {
         ("PLY", Color::Green)
     };
@@ -7646,26 +8056,6 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     if chord_area.height >= 5 {
         draw_playback_keyboard(f, a, rect(chord_area.x, top + 3, chord_area.width, 2));
     }
-    a.hits.back = rect(z.x + 1, actions.y, 6, 1);
-    a.hits.stop = rect(z.x + 7, actions.y, 6, 1);
-    a.hits.record = rect(z.x + 13, actions.y, 7, 1);
-    a.hits.stop_record = rect(z.x + 20, actions.y, 9, 1);
-    a.hits.playback = rect(z.x + 29, actions.y, 10.min(z.width.saturating_sub(29)), 1);
-    a.hits.save = rect(z.x + 1, actions.y + 1, 11, 1);
-    button(f, a.hits.back, "Back");
-    button(f, a.hits.stop, "Stop");
-    button(f, a.hits.record, "Record");
-    button(f, a.hits.stop_record, "Stop Rec");
-    button(
-        f,
-        a.hits.playback,
-        if a.playback.is_some() {
-            "Stop Play"
-        } else {
-            "Playback"
-        },
-    );
-    button(f, a.hits.save, "Save Idea");
 }
 
 fn held_note_rows(notes: &[crate::chord::HeldNoteDisplay], width: u16) -> (String, String) {
@@ -7800,16 +8190,6 @@ fn draw_ideas<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         list,
     );
     let y = z.y + z.height - 4;
-    a.hits.save = rect(z.x + 1, y, 10, 1);
-    a.hits.load = rect(z.x + 11, y, 7, 1);
-    a.hits.delete = rect(z.x + 18, y, 9, 1);
-    a.hits.inspect = rect(z.x + 27, y, 10.min(z.width.saturating_sub(27)), 1);
-    a.hits.back = rect(z.x + 1, y + 1, 7, 1);
-    button(f, a.hits.save, "Save New");
-    button(f, a.hits.load, "Load");
-    button(f, a.hits.delete, "Delete");
-    button(f, a.hits.inspect, "Inspect");
-    button(f, a.hits.back, "Back");
     f.render_widget(
         Paragraph::new(truncate(&a.status, z.width as usize - 10)).style(Style::default().fg(
             if a.confirm_delete.is_some() || a.confirm_load.is_some() {
@@ -7845,6 +8225,8 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         "PLAY".into()
     } else if a.tracker_mode == TrackerMode::Edit {
         format!("EDIT +{}", a.tracker_advance)
+    } else if a.tracker_mode == TrackerMode::Rec {
+        "REC READY".into()
     } else if a.tracker_mode == TrackerMode::Noob {
         a.tracker_mode.label().into()
     } else {
@@ -7884,10 +8266,18 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         rect(z.x, z.y + 1, z.width, 1),
     );
     let grid = rect(z.x, z.y + 2, z.width, z.height.saturating_sub(6));
-    if a.note_editor
-        .is_some_and(|editor| editor.field == NoteEditorField::Program)
-    {
+    let program_browser = a.note_editor.as_ref().is_some_and(|editor| {
+        editor.active
+            && matches!(
+                editor.field,
+                NoteEditorField::DefaultProgram | NoteEditorField::Program
+            )
+            && page.runtime_channel(a.tracker_track, &a.config.external_midi) != 9
+    });
+    if program_browser {
         draw_tracker_program_browser(f, a, grid);
+    } else if a.note_editor.is_some() {
+        draw_tracker_note_editor(f, a, grid);
     } else {
         let visible_tracks = LANES_PER_PAGE;
         let first_track = a.tracker_page * LANES_PER_PAGE;
@@ -7951,6 +8341,7 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 let cursor = selected && track_index == first_track + a.tracker_track;
                 let cell = a
                     .note_editor
+                    .as_ref()
                     .filter(|editor| {
                         editor.pattern == pattern_number
                             && editor.row == row_index
@@ -7987,7 +8378,7 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
     let lane = &page.lanes[a.tracker_track];
     let column = page.column(a.tracker_track);
-    let footer = if let Some(editor) = a.note_editor {
+    let footer = if let Some(editor) = a.note_editor.as_ref() {
         let command = match editor.draft.command {
             Command::None => "none".into(),
             Command::Cut(value) => format!("cut {value}/15"),
@@ -8000,8 +8391,9 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .program
             .map_or_else(|| "inherit".into(), |value| a.tracker_program_label(value));
         format!(
-            "{} · {} v{} g{} · {} · {command}",
+            "{}{} · {} v{} g{} · {} · {command}",
             editor.field.label(),
+            if editor.active { " ACTIVE" } else { "" },
             sequencer::note_name(editor.draft.note),
             editor
                 .draft
@@ -8040,18 +8432,145 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     );
 }
 
+fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
+    let (Some(editor), Some(page)) = (a.note_editor.as_ref(), a.current_page()) else {
+        return;
+    };
+    let column = page.column(a.tracker_track);
+    let channel = page.runtime_channel(a.tracker_track, &a.config.external_midi);
+    let command = match editor.draft.command {
+        Command::None => ("none".into(), "—".into()),
+        Command::Cut(value) => ("cut".into(), format!("{value}/15")),
+        Command::Delay(value) => ("delay".into(), format!("{value}/15")),
+        Command::Retrigger(value) => ("retrigger".into(), format!("{value}/8")),
+        Command::Tempo(value) => ("tempo".into(), value.to_string()),
+    };
+    let note = match editor.draft.note {
+        Note::On(note) if channel == 9 => format!(
+            "{note} {}",
+            crate::gm::percussion_note(note).unwrap_or("GM drum")
+        ),
+        note => sequencer::note_name(note),
+    };
+    let values = [
+        (
+            NoteEditorField::Destination,
+            page.target.label().to_owned(),
+            "audition + page",
+        ),
+        (
+            NoteEditorField::Channel,
+            format!(
+                "{} · {}",
+                channel + 1,
+                if channel == 9 {
+                    "GM DRUMS"
+                } else {
+                    "GM MELODIC"
+                }
+            ),
+            "audition + new notes",
+        ),
+        (
+            NoteEditorField::DefaultProgram,
+            a.tracker_instrument_label(),
+            if channel == 9 {
+                "audition + cell note"
+            } else {
+                "audition + new notes"
+            },
+        ),
+        (
+            NoteEditorField::BankMsb,
+            column.bank_msb.to_string(),
+            "new notes",
+        ),
+        (
+            NoteEditorField::BankLsb,
+            column.bank_lsb.to_string(),
+            "new notes",
+        ),
+        (NoteEditorField::Note, note, "this cell"),
+        (
+            NoteEditorField::Gate,
+            editor
+                .draft
+                .gate
+                .map_or_else(|| "inherit".into(), |value| format!("{value}%")),
+            "this cell",
+        ),
+        (
+            NoteEditorField::Velocity,
+            editor
+                .draft
+                .velocity
+                .map_or_else(|| "inherit".into(), |value| value.to_string()),
+            "this cell",
+        ),
+        (
+            NoteEditorField::Program,
+            editor.draft.program.map_or_else(
+                || "inherit default".into(),
+                |value| a.tracker_program_label(value),
+            ),
+            "this cell only",
+        ),
+        (NoteEditorField::Effect, command.0, "this cell"),
+        (NoteEditorField::EffectParameter, command.1, "this cell"),
+    ];
+    for (index, (field, value, scope)) in values.into_iter().enumerate() {
+        if index >= usize::from(area.height) {
+            break;
+        }
+        let selected = editor.field == field;
+        let marker = if selected && editor.active {
+            "*"
+        } else if selected {
+            ">"
+        } else {
+            " "
+        };
+        let line = format!(
+            "{marker}{:<8} {:<17} {}",
+            truncate(field.label(), 8),
+            truncate(&value, 17),
+            scope
+        );
+        let style = if selected && editor.active {
+            Style::default().fg(Color::Black).bg(Color::Green)
+        } else if selected {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        f.render_widget(
+            Paragraph::new(truncate(&line, area.width as usize)).style(style),
+            rect(area.x, area.y + index as u16, area.width, 1),
+        );
+    }
+}
+
 fn draw_tracker_program_browser<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
     let Some(page) = a.current_page() else {
         return;
     };
     let selected = a
         .note_editor
-        .and_then(|editor| editor.draft.program)
+        .as_ref()
+        .and_then(|editor| {
+            if editor.field == NoteEditorField::DefaultProgram {
+                Some(page.column(a.tracker_track).program)
+            } else {
+                editor.draft.program
+            }
+        })
         .unwrap_or(page.column(a.tracker_track).program);
     let title = a
         .tracker_device_profile()
         .map(DeviceProfile::label)
-        .unwrap_or_else(|| "Unnamed MIDI device".into());
+        .unwrap_or_else(|| "General MIDI".into());
     let list_height = usize::from(area.height.saturating_sub(3));
     let before = list_height / 2;
     let start = usize::from(selected).saturating_sub(before);
@@ -8188,14 +8707,14 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .unwrap_or("OFFLINE");
             f.render_widget(
                 Paragraph::new(vec![
-                    Spans::from("TARGET DEVICE"),
+                    Spans::from("TARGET DEVICE · ACTIVE"),
                     Spans::from(""),
                     Spans::from(Span::styled(
                         format!(
                             "▶ {}",
                             truncate(target, usize::from(z.width.saturating_sub(6)))
                         ),
-                        Style::default().fg(Color::Black).bg(Color::Yellow),
+                        Style::default().fg(Color::Black).bg(Color::Green),
                     )),
                     Spans::from(if online {
                         route
@@ -8211,11 +8730,11 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         PageManagerMode::Channel => {
             f.render_widget(
                 Paragraph::new(vec![
-                    Spans::from("MIDI CHANNEL"),
+                    Spans::from("MIDI CHANNEL · ACTIVE"),
                     Spans::from(""),
                     Spans::from(Span::styled(
                         format!("▶ {:02}", a.page_channel_draft + 1),
-                        Style::default().fg(Color::Black).bg(Color::Yellow),
+                        Style::default().fg(Color::Black).bg(Color::Green),
                     )),
                     Spans::from("turn encoder 1–16"),
                     Spans::from(a.page_field_confirm_hint()),
@@ -9370,6 +9889,7 @@ fn ansi_indexed_color(index: u8) -> [u8; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::BankSelectMode;
     use ratatui::backend::TestBackend;
     fn presets() -> Vec<Preset> {
         (0..39)
@@ -9448,6 +9968,46 @@ mod tests {
     }
 
     #[test]
+    fn every_populated_context_and_controller_page_renders_at_40x20() {
+        let config = RuntimeConfig::default();
+        for scenario in ScreenshotScenario::ALL {
+            let mut a = screenshot_app(config.clone());
+            configure_screenshot_scenario(&mut a, scenario);
+            let context = a.menu_context();
+            for page in 0..4 {
+                if !navigation::pages(a.screen, context)[page].available() {
+                    continue;
+                }
+                a.select_menu_page(page);
+                let frame = render_screenshot_frame(&mut a, format!("{scenario:?}-{page}"))
+                    .expect("40x20 context must render");
+                assert_eq!(frame.cells.len(), 40 * 20);
+            }
+        }
+    }
+
+    #[test]
+    fn note_edit_at_40x20_names_route_default_and_cell_scopes() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.open_note_editor();
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        for expected in ["DESTINAT", "CHANNEL", "INSTRUM", "audition +", "this cell"] {
+            assert!(text.contains(expected), "missing {expected:?}: {text}");
+        }
+    }
+
+    #[test]
     fn meter_renders_readable_deterministic_40x20_regions_and_honest_labels() {
         let p = presets();
         let mut a = app(&p);
@@ -9462,7 +10022,7 @@ mod tests {
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
         for expected in [
-            "MTR · PERFORMANCE",
+            "MIX · PERFORMANCE",
             "CPU LOAD",
             "STEREO VU",
             "FINAL OUT",
@@ -9496,7 +10056,7 @@ mod tests {
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
         for expected in [
-            "MTR · PERFORMANCE BUS",
+            "MIX · PERFORMANCE BUS",
             "THREE-SOURCE SUM · UNAVAILABLE",
             "SYNTH",
             "LOOP",
@@ -9723,7 +10283,7 @@ mod tests {
             a.audio_graph_edit_blocker(),
             Some("stop recording before changing the insert rack")
         );
-        a.recorder.stop();
+        a.recorder.stop(Instant::now());
         a.song_previewing = true;
         assert_eq!(
             a.audio_graph_edit_blocker(),
@@ -9772,6 +10332,57 @@ mod tests {
         let effect = a.song.insert_rack.effect(compressor).unwrap();
         assert!(effect.parameters["threshold_db"].is_finite());
         a.song.insert_rack.validate().unwrap();
+    }
+
+    #[test]
+    fn fx_rotary_browses_then_confirms_or_cancels_an_active_value() {
+        let p = presets();
+        let mut a = app(&p);
+        a.fx_add_kind = 0;
+        a.add_effect();
+        a.set_screen(Screen::FxEditor);
+        let id = a.selected_effect_id().unwrap();
+
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        assert_eq!(a.fx_parameter, 1, "inactive rotation browses parameters");
+        let before = a.song.insert_rack.effect(id).unwrap().clone();
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert!(a.fx_value_editing);
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        assert_ne!(a.song.insert_rack.effect(id).unwrap(), &before);
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::FxEditor);
+        assert!(!a.fx_value_editing);
+        assert_eq!(a.song.insert_rack.effect(id).unwrap(), &before);
+
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert!(!a.fx_value_editing);
+        assert_ne!(a.song.insert_rack.effect(id).unwrap(), &before);
+    }
+
+    #[test]
+    fn list_rotary_activation_never_starts_audio_or_final_recording() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::AudioRecorder;
+        let tracks = a.audio_recorder.status().tracks.len();
+        assert!(tracks > 1);
+
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        assert_eq!(a.audio_track_selected, 1);
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert!(!a.audio_recorder.status().recording);
+
+        a.screen = Screen::Meter;
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        assert_eq!(a.bus_selected, 1);
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert!(a
+            .engine
+            .as_ref()
+            .is_none_or(|engine| !engine.final_recording_active()));
     }
 
     #[test]
@@ -9832,12 +10443,12 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for label in ["OPS", "SOUND", "NAV", "SYS", "RESET", "FINISH", "TAP", "FX"] {
+        for label in ["PLAY", "SOUND", "NAV", "SYS", "RESET", "SAVE", "IDEAS"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
         assert!(text.contains("PLY"));
         assert_eq!(a.hits.menu_pages.len(), 4);
-        assert_eq!(a.hits.actions.len(), 4);
+        assert_eq!(a.hits.actions.len(), 3);
     }
 
     #[test]
@@ -9848,7 +10459,7 @@ mod tests {
         eight.screen = Screen::Tracker;
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Page1, true))
             .unwrap();
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item1, true))
             .unwrap();
         drain(&rx, &mut eight, Path::new("/none"), &tx);
         assert_eq!(
@@ -9861,7 +10472,7 @@ mod tests {
         let mut five = app(&p);
         five.screen = Screen::Tracker;
         five.controller_layout = ControllerLayout::Five;
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item1, true))
             .unwrap();
         drain(&rx, &mut five, Path::new("/none"), &tx);
         assert!(five.note_editor.is_some());
@@ -9894,7 +10505,7 @@ mod tests {
         let mut a = app(&p);
         let (tx, rx) = mpsc::channel();
         a.screen = Screen::Tracker;
-        a.select_menu_page(2);
+        a.select_menu_page(1);
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
@@ -9902,7 +10513,7 @@ mod tests {
         perform(Action::OpenIdeas, &mut a, Path::new("/none"), None);
         assert_eq!(a.menu_page(), 0);
         perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
-        assert_eq!(a.menu_page(), 2, "each screen remembers its page");
+        assert_eq!(a.menu_page(), 1, "each screen remembers its page");
     }
     #[test]
     fn help_opens_links_and_returns_to_previous_screen() {
@@ -10006,7 +10617,7 @@ mod tests {
         connect_test_midi_hardware(&mut a);
         a.set_screen(Screen::Tracker);
         a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
-        a.begin_tracker_recording();
+        a.toggle_tracker_recording();
         assert!(a.tracker_recording.is_some());
 
         perform(Action::Back, &mut a, Path::new("/none"), None);
@@ -10023,7 +10634,7 @@ mod tests {
         connect_test_midi_hardware(&mut a);
         a.set_screen(Screen::Tracker);
         a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
-        a.begin_tracker_recording();
+        a.toggle_tracker_recording();
 
         a.open_help();
 
@@ -10039,11 +10650,11 @@ mod tests {
         a.set_screen(Screen::Tracker);
         a.open_note_editor();
         a.adjust_note_editor(1);
-        let draft = a.note_editor.unwrap().draft;
+        let draft = a.note_editor.as_ref().unwrap().draft;
 
-        perform(Action::TrackerStop, &mut a, Path::new("/none"), None);
+        a.tracker_stop();
 
-        assert_eq!(a.note_editor.unwrap().draft, draft);
+        assert_eq!(a.note_editor.as_ref().unwrap().draft, draft);
         assert_eq!(a.screen, Screen::Tracker);
     }
 
@@ -10055,7 +10666,7 @@ mod tests {
         a.select_menu_page(1);
         let before = a.status.clone();
         let (tx, rx) = mpsc::channel();
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
         assert_eq!(a.status, before);
@@ -10535,7 +11146,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for expected in ["C maj", "41", "87", "103", "119", "OPS"] {
+        for expected in ["C maj", "41", "87", "103", "119", "PLAY"] {
             assert!(text.contains(expected), "missing {expected:?}");
         }
     }
@@ -10584,7 +11195,7 @@ mod tests {
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         connect_test_midi_hardware(&mut a);
-        a.tracker_play(true);
+        a.toggle_tracker_playback();
         assert!(a.status.contains("no notes"));
         perform(Action::NextTrack, &mut a, Path::new("/none"), None);
         assert_eq!(a.tracker_track, 1);
@@ -10668,6 +11279,115 @@ mod tests {
     }
 
     #[test]
+    fn idea_play_and_record_controls_toggle_modes_and_finalize_safely() {
+        let p = presets();
+        let mut a = app(&p);
+        let now = Instant::now();
+        a.recorder.start(now);
+        a.recorder
+            .capture(now + Duration::from_millis(10), &[0x90, 60, 100]);
+
+        a.toggle_playback();
+        assert_eq!(a.idea_mode, IdeaMode::Play);
+        assert!(!a.recorder.is_recording());
+        assert_eq!(a.last.len(), 4, "Record-to-Play finalizes before playback");
+        assert_eq!(
+            a.last[1..]
+                .iter()
+                .map(|event| event.bytes.as_slice())
+                .collect::<Vec<_>>(),
+            vec![&[0xb0, 64, 0][..], &[0xb0, 123, 0][..], &[0xb0, 120, 0][..]]
+        );
+
+        let stop = Arc::new(AtomicBool::new(false));
+        a.playback = Some(Playback {
+            stop,
+            finished: Arc::new(AtomicBool::new(false)),
+            worker: None,
+        });
+        a.toggle_idea_recording();
+        assert_eq!(a.idea_mode, IdeaMode::Record);
+        assert!(a.playback.is_none(), "Play-to-Record stops playback first");
+
+        a.recorder.start(Instant::now());
+        a.toggle_idea_recording();
+        assert!(!a.recorder.is_recording());
+        assert_eq!(a.idea_mode, IdeaMode::Record);
+    }
+
+    #[test]
+    fn idea_transport_keyboard_shortcuts_are_not_forced_onto_unrelated_screens() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.screen = Screen::Meter;
+
+        key(KeyCode::Char('r'), &mut a, Path::new("/none"), &tx);
+        key(KeyCode::Char('p'), &mut a, Path::new("/none"), &tx);
+
+        assert_eq!(a.idea_mode, IdeaMode::Play);
+        assert!(!a.recorder.is_recording());
+        assert!(a.playback.is_none());
+
+        a.screen = Screen::Playback;
+        key(KeyCode::Char('r'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.idea_mode, IdeaMode::Record);
+    }
+
+    #[test]
+    fn tracker_play_record_transitions_are_single_button_toggles() {
+        let p = presets();
+        let mut a = app(&p);
+        connect_test_midi_hardware(&mut a);
+        a.screen = Screen::Tracker;
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+
+        a.toggle_tracker_playback();
+        assert!(a.sequencer.status().playing);
+        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        a.toggle_tracker_playback();
+        assert!(!a.sequencer.status().playing);
+
+        a.toggle_tracker_playback();
+        a.toggle_tracker_recording();
+        assert!(a.tracker_recording.is_some());
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
+        a.toggle_tracker_playback();
+        assert!(a.tracker_recording.is_none());
+        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        assert!(a.sequencer.status().playing);
+
+        a.toggle_tracker_recording();
+        assert!(a.tracker_recording.is_some());
+        a.toggle_tracker_recording();
+        assert!(a.tracker_recording.is_none());
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
+        a.toggle_tracker_recording();
+        assert!(a.tracker_recording.is_some());
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
+    }
+
+    #[test]
+    fn inactive_tracker_record_mode_is_visible_at_forty_by_twenty() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_mode = TrackerMode::Rec;
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        assert!(text.contains("REC READY"));
+    }
+
+    #[test]
     fn take_playback_worker_cancels_without_waiting_for_the_last_event() {
         let p = presets();
         let mut a = app(&p);
@@ -10682,6 +11402,7 @@ mod tests {
         });
         a.playback = Some(Playback {
             stop,
+            finished: Arc::new(AtomicBool::new(false)),
             worker: Some(worker),
         });
         let started = Instant::now();
@@ -10854,7 +11575,7 @@ mod tests {
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
         assert!(text.contains("FT2 WAV LOOP"));
-        assert!(text.contains("OPS"));
+        assert!(text.contains("PLAY"));
     }
 
     #[test]
@@ -10893,7 +11614,7 @@ mod tests {
         };
         a.note_editor.as_mut().unwrap().draft = edited;
         assert_eq!(a.song.patterns[&0].rows[0][0], original);
-        perform(Action::NoteEditorConfirm, &mut a, Path::new("/none"), None);
+        perform(Action::NoteEditorSave, &mut a, Path::new("/none"), None);
         assert_eq!(a.song.patterns[&0].rows[0][0], edited);
 
         perform(Action::OpenNoteEditor, &mut a, Path::new("/none"), None);
@@ -10917,7 +11638,7 @@ mod tests {
         a.open_note_editor();
         a.select_note_editor_field(NoteEditorField::Velocity);
         a.clear_note_editor_field();
-        a.confirm_note_editor();
+        a.save_note_editor();
         let cell = a.song.patterns[&0].rows[0][0];
         assert_eq!(cell.velocity, None);
         assert_eq!(cell.note, Note::On(60));
@@ -10927,6 +11648,46 @@ mod tests {
         a.set_tracker_edit(true);
         a.tracker_erase();
         assert_eq!(a.song.patterns[&0].rows[0][0], Cell::default());
+    }
+
+    #[test]
+    fn note_edit_reaches_channel_gm_instrument_and_cancelable_audition_route() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.open_note_editor();
+        assert_eq!(a.tracker_program_label(0), "GM 001 Acoustic Grand Piano");
+        assert_eq!(a.tracker_program_label(127), "GM 128 Gunshot");
+
+        a.select_note_editor_field(NoteEditorField::Channel);
+        assert!(a.note_editor.as_ref().unwrap().active);
+        let release_before = a.audition_release_revision;
+        for _ in 0..9 {
+            a.adjust_note_editor(1);
+        }
+        assert_eq!(a.current_column().unwrap().channel, 9);
+        assert!(a.audition_release_revision > release_before);
+        a.confirm_note_editor_field();
+
+        a.select_note_editor_field(NoteEditorField::DefaultProgram);
+        a.adjust_note_editor(1);
+        assert_eq!(a.note_editor.as_ref().unwrap().draft.note, Note::On(36));
+        assert!(a.tracker_instrument_label().contains("Bass Drum 1"));
+        a.cancel_note_editor_field();
+        assert_eq!(a.note_editor.as_ref().unwrap().draft.note, Note::Empty);
+
+        a.select_note_editor_field(NoteEditorField::Channel);
+        a.adjust_note_editor(-1);
+        a.back_note_editor();
+        assert_eq!(a.current_column().unwrap().channel, 9);
+        assert!(
+            a.note_editor.is_some(),
+            "Back cancels only the active field"
+        );
+        a.back_note_editor();
+        assert!(a.note_editor.is_none());
+        assert_eq!(a.current_column().unwrap().channel, 0);
     }
 
     #[test]
@@ -11015,7 +11776,7 @@ mod tests {
         let original = Cell::default();
         a.open_note_editor();
         a.note_editor.as_mut().unwrap().draft.command = Command::Retrigger(4);
-        a.confirm_note_editor();
+        a.save_note_editor();
         assert!(a.note_editor.is_some());
         assert!(a.status.contains("retrigger requires"));
         assert_eq!(a.song.patterns[&0].rows[0][0], original);
@@ -11027,8 +11788,10 @@ mod tests {
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.open_note_editor();
+        perform(Action::NoteField, &mut a, Path::new("/none"), None);
         perform(Action::NoteEditorDecrease, &mut a, Path::new("/none"), None);
         perform(Action::NoteEditorConfirm, &mut a, Path::new("/none"), None);
+        perform(Action::NoteEditorSave, &mut a, Path::new("/none"), None);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Off);
     }
 
@@ -11039,17 +11802,17 @@ mod tests {
         a.screen = Screen::Tracker;
         a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
         a.open_note_editor();
-        a.select_menu_page(1);
+        a.select_menu_page(2);
         let (tx, rx) = mpsc::channel();
         for (pad, field) in [
             (crate::pads::PadAction::Item1, NoteEditorField::Note),
             (crate::pads::PadAction::Item2, NoteEditorField::Gate),
             (crate::pads::PadAction::Item3, NoteEditorField::Velocity),
-            (crate::pads::PadAction::Item4, NoteEditorField::Program),
+            (crate::pads::PadAction::Item4, NoteEditorField::Effect),
         ] {
             tx.send(MidiEvent::Pad(pad, true)).unwrap();
             drain(&rx, &mut a, Path::new("/none"), &tx);
-            assert_eq!(a.note_editor.unwrap().field, field);
+            assert_eq!(a.note_editor.as_ref().unwrap().field, field);
         }
     }
 
@@ -11081,15 +11844,18 @@ mod tests {
         tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Down))
             .unwrap();
         drain(&rx, &mut four, Path::new("/none"), &tx);
-        assert!(four.page_select_mode);
-        assert_eq!(four.menu_page(), 1);
+        assert!(!four.page_select_mode);
+        assert!(four.note_editor.as_ref().unwrap().active);
         tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Select))
             .unwrap();
         tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Down))
             .unwrap();
         drain(&rx, &mut four, Path::new("/none"), &tx);
         assert!(!four.page_select_mode);
-        assert_eq!(four.note_editor.unwrap().draft.note, Note::On(60));
+        assert_eq!(
+            four.note_editor.as_ref().unwrap().field,
+            NoteEditorField::Channel
+        );
     }
 
     #[test]
@@ -11513,13 +12279,13 @@ mod tests {
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.available_page_outputs.clear();
-        a.begin_tracker_recording();
+        a.toggle_tracker_recording();
         assert!(a.tracker_recording.is_none());
         assert!(a.status.contains("available MIDI hardware output"));
 
         connect_test_midi_hardware(&mut a);
         a.current_page_mut().unwrap().target = PageTarget::ActiveInstrument;
-        a.begin_tracker_recording();
+        a.toggle_tracker_recording();
         assert!(a.tracker_recording.is_none());
         assert!(a.status.contains("fallback stays isolated"));
 
@@ -11530,7 +12296,7 @@ mod tests {
             .insert(1, sequencer::Pattern::empty_like_setup(8, &setup));
         a.song.order.push(1);
         a.tracker_order = 1;
-        a.begin_tracker_recording();
+        a.toggle_tracker_recording();
         assert_eq!(a.menu_context(), MenuContext::TrackerRecord);
         assert!(a.tracker_route.lock().unwrap().preview_state().0);
 
@@ -11557,7 +12323,7 @@ mod tests {
         a.screen = Screen::Tracker;
         connect_test_midi_hardware(&mut a);
         a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
-        a.begin_tracker_recording();
+        a.toggle_tracker_recording();
 
         a.record_tracker_midi(&[0x90, 60, 100]);
         a.record_tracker_midi(&[0x90, 60, 101]);
@@ -11727,7 +12493,7 @@ mod tests {
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.set_tracker_edit(true);
-        perform(Action::TrackerStop, &mut a, Path::new("/none"), None);
+        a.tracker_stop();
         assert_eq!(a.screen, Screen::Tracker);
         assert_eq!(a.tracker_mode, TrackerMode::Edit);
     }
@@ -11737,7 +12503,7 @@ mod tests {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
-        perform(Action::TrackerModeEdit, &mut a, Path::new("/none"), None);
+        perform(Action::TrackerEdit, &mut a, Path::new("/none"), None);
         assert_eq!(a.tracker_mode, TrackerMode::Edit);
         assert!(a.tracker_recording.is_none());
         perform(Action::TrackerModeNoob, &mut a, Path::new("/none"), None);
@@ -11749,7 +12515,7 @@ mod tests {
         perform(Action::ConfirmNoob, &mut a, Path::new("/none"), None);
         assert_eq!(a.tracker_mode, TrackerMode::Noob);
         assert_eq!(a.noob_scale.root, 3);
-        perform(Action::TrackerModePlay, &mut a, Path::new("/none"), None);
+        a.set_tracker_mode(TrackerMode::Play);
         assert_eq!(a.tracker_mode, TrackerMode::Play);
         assert!(a.tracker_recording.is_none());
     }

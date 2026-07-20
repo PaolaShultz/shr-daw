@@ -22,16 +22,34 @@ pub struct TimedEvent {
 #[derive(Debug, Default)]
 pub struct Recorder {
     started: Option<Instant>,
+    used_channels: u16,
     pub events: Vec<TimedEvent>,
 }
 
 impl Recorder {
     pub fn start(&mut self, now: Instant) {
         self.events.clear();
+        self.used_channels = 0;
         self.started = Some(now);
     }
-    pub fn stop(&mut self) {
-        self.started = None;
+    pub fn stop(&mut self, now: Instant) {
+        let Some(started) = self.started.take() else {
+            return;
+        };
+        let micros = (now
+            .checked_duration_since(started)
+            .unwrap_or_default()
+            .as_micros() as u64)
+            .max(self.events.last().map_or(0, |event| event.micros));
+        for channel in 0..16 {
+            if self.used_channels & (1 << channel) == 0 {
+                continue;
+            }
+            self.events.extend(
+                channel_all_notes_off(channel as u8).map(|bytes| TimedEvent { micros, bytes }),
+            );
+        }
+        self.used_channels = 0;
     }
     pub fn is_recording(&self) -> bool {
         self.started.is_some()
@@ -42,6 +60,7 @@ impl Recorder {
             return;
         };
         if is_musical(bytes) {
+            self.used_channels |= 1 << (bytes[0] & 0x0f);
             self.events.push(TimedEvent {
                 micros: elapsed.as_micros() as u64,
                 bytes: bytes.to_vec(),
@@ -63,15 +82,16 @@ pub fn is_musical(m: &[u8]) -> bool {
 }
 
 pub fn all_notes_off() -> Vec<Vec<u8>> {
-    (0..16)
-        .flat_map(|ch| {
-            [
-                vec![0xb0 | ch, 64, 0],
-                vec![0xb0 | ch, 123, 0],
-                vec![0xb0 | ch, 120, 0],
-            ]
-        })
-        .collect()
+    (0..16).flat_map(channel_all_notes_off).collect()
+}
+
+fn channel_all_notes_off(channel: u8) -> std::array::IntoIter<Vec<u8>, 3> {
+    [
+        vec![0xb0 | channel, 64, 0],
+        vec![0xb0 | channel, 123, 0],
+        vec![0xb0 | channel, 120, 0],
+    ]
+    .into_iter()
 }
 
 pub fn ideas_dir() -> PathBuf {
@@ -683,6 +703,29 @@ mod tests {
                 ]
             );
         }
+    }
+
+    #[test]
+    fn stopping_a_take_appends_timestamped_cleanup_only_for_used_channels() {
+        let started = Instant::now();
+        let mut recorder = Recorder::default();
+        recorder.start(started);
+        recorder.capture(started + Duration::from_millis(10), &[0x92, 60, 100]);
+        recorder.stop(started + Duration::from_millis(40));
+
+        assert!(!recorder.is_recording());
+        assert_eq!(recorder.events.len(), 4);
+        assert_eq!(recorder.events[0].bytes, [0x92, 60, 100]);
+        assert!(recorder.events[1..]
+            .iter()
+            .all(|event| event.micros == 40_000));
+        assert_eq!(
+            recorder.events[1..]
+                .iter()
+                .map(|event| event.bytes.as_slice())
+                .collect::<Vec<_>>(),
+            vec![&[0xb2, 64, 0][..], &[0xb2, 123, 0][..], &[0xb2, 120, 0][..]]
+        );
     }
 
     #[test]

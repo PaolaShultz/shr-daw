@@ -698,6 +698,13 @@ mod tests {
         let _ = fs::remove_file(path);
     }
     #[test]
+    fn legacy_transport_names_keep_the_conventional_soft_button_positions() {
+        assert_eq!(PadAction::Stop.menu_input(), MenuInput::ActivateItem(0));
+        assert_eq!(PadAction::Play.menu_input(), MenuInput::ActivateItem(1));
+        assert_eq!(PadAction::Rec.menu_input(), MenuInput::ActivateItem(2));
+        assert_eq!(PadAction::TapTempo.menu_input(), MenuInput::ActivateItem(3));
+    }
+    #[test]
     fn five_and_four_button_profiles_are_configurable_without_device_constants() {
         let path = std::env::temp_dir().join(format!(
             "shsynth-controller-layout-{}.conf",

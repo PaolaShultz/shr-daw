@@ -58,6 +58,7 @@ pub struct TrackerRouteConfig<'a> {
     pub columns: [(u8, (u8, u8, u8)); crate::sequencer::LANES_PER_PAGE],
     pub start_column: usize,
     pub percussion: bool,
+    pub audition_note: Option<u8>,
     pub scale: Option<crate::scale::Scale>,
     pub external: &'a crate::config::ExternalMidiConfig,
 }
@@ -125,8 +126,13 @@ impl TrackerRoute {
         self.scale = config.scale;
         self.bank_select = config.external.bank_select;
         if config.percussion {
-            for (offset, &note) in config.external.percussion_notes.iter().enumerate() {
-                self.note_map[usize::from(config.external.percussion_input_base) + offset] = note;
+            if let Some(note) = config.audition_note {
+                self.note_map.fill(note);
+            } else {
+                for (offset, &note) in config.external.percussion_notes.iter().enumerate() {
+                    self.note_map[usize::from(config.external.percussion_input_base) + offset] =
+                        note;
+                }
             }
         }
         if let Some(scale) = self.scale.filter(|_| !config.percussion) {
@@ -1771,6 +1777,7 @@ mod tests {
             columns: [(2, (9, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
             percussion: true,
+            audition_note: None,
             scale: None,
             external: &config,
         });
@@ -1795,6 +1802,7 @@ mod tests {
             columns: [(2, (9, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
             percussion: true,
+            audition_note: None,
             scale: None,
             external: &config,
         });
@@ -1815,11 +1823,31 @@ mod tests {
             columns: [(4, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
             percussion: false,
+            audition_note: None,
             scale: Some(scale),
             external: &config,
         });
         assert_eq!(route.mapped_note(64), Some(scale.map(64)));
         assert_eq!(route.mapped_note(127), Some(126));
+    }
+
+    #[test]
+    fn gm_drum_audition_can_pin_keyboard_notes_to_the_selected_drum() {
+        let config = RuntimeConfig::default().external_midi;
+        let mut route = TrackerRoute::default();
+        route.configure(TrackerRouteConfig {
+            enabled: true,
+            target: crate::sequencer::PageTarget::ConfiguredExternal,
+            columns: [(9, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
+            start_column: 0,
+            percussion: true,
+            audition_note: Some(42),
+            scale: None,
+            external: &config,
+        });
+        assert_eq!(route.mapped_note(36), Some(42));
+        assert_eq!(route.mapped_note(60), Some(42));
+        assert_eq!(route.mapped_note(96), Some(42));
     }
 
     #[test]

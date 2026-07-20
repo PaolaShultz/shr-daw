@@ -18,6 +18,7 @@ mod engine;
 mod final_bus;
 mod fsutil;
 mod geometry;
+mod gm;
 mod help;
 mod jack;
 mod loop_player;
