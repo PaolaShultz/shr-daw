@@ -28,6 +28,31 @@ is a per-timeline capacity shared by every channel; at 18 channels and 262144
 frames the sample storage is about 18 MiB. `capture.maximum_callback_frames`
 must be at least the largest JACK period the machine will use.
 
+## Storage planning
+
+Raw stem storage grows independently of the callback-ring capacity. For
+24-bit mono PCM without compression, the approximate payload rate is:
+
+```text
+channels × sample_rate × 3 bytes per second
+```
+
+At 48 kHz, WAV headers and the session manifest are negligible beside the
+audio payload:
+
+| Armed mono channels | Approximate payload per hour |
+|---:|---:|
+| 1 | 0.52 GB |
+| 18 | 9.33 GB |
+| 32 | 16.59 GB |
+| 64 | 33.18 GB |
+
+These are decimal drive-manufacturer gigabytes. A nominal empty 128 GB drive
+therefore holds less than 7.8 hours at 32 channels, and the real recording
+allowance is lower after the OS, builds, Projects, filesystem reserve, and a
+deliberate free-space safety margin. Choose capacity from channel count and
+retained hours rather than treating any drive size as universally excessive.
+
 ## Configuration and exact routing
 
 New tracks use repeated lines in the private `shsynth.conf`:

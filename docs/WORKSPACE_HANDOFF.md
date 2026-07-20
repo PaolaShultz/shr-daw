@@ -88,6 +88,17 @@ hardware destination. These are configuration values, not Rust constants.
 Rerun `scripts/setup-local.sh` when hardware or JACK port names change. The
 wizard did not replace `~/.jackdrc` and never starts or restarts JACK.
 
+The active development machine is still the Raspberry Pi 4 with 4 GB RAM and
+microSD storage described by the dated measurement documents below. A
+Raspberry Pi 5 with 2 GB RAM, active cooler, 27 W supply, bottom-mounted NVMe
+adapter, and 128 GB NVMe has been ordered but is not present, installed,
+configured, or measured. Do not retitle Pi 4 results, change current tuning, or
+make Pi 5/2 GB support claims in current product documentation. The unscheduled
+hardware migration, footprint audit, isolated-core measurements, and proposed
+one-rack `» PRESTO` effect mark are strictly post-Build Week future work in
+`docs/PI5_HEADROOM_PLAN.md`. All measurements begin after the Build Week
+deadline and require a clean development checkpoint.
+
 The recorder is now generic and synchronized rather than fixed stereo. Repeated
 `capture.track=ID|LABEL|GROUP|ROLE|ARMED|JACK_SOURCE` entries remember exact
 machine-local sources; blank or missing sources never fall back to another JACK

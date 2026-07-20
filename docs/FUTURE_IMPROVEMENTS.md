@@ -4,6 +4,22 @@ This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.
 
+## Raspberry Pi 5 Headroom pass
+
+An unscheduled post-Build Week pass will compare the current Raspberry Pi 4
+development host with an ordered but not-yet-present 2 GB Raspberry Pi 5 and
+NVMe setup. It will measure clean and incremental builds, memory, storage,
+thermal/power behavior, private-cache benefits from real-time core placement,
+effect state and callback cost, and dependency/library footprint before making
+any optimization claim.
+
+The proposal keeps one effects rack. Effects that later pass fixed low-state
+and low-callback-cost gates may receive the compact `» PRESTO` mark; unmarked
+effects remain normal first-class choices. No hardware result, marker, library
+change, or release date is implied today. The complete boundaries and planned
+experiment matrix are in the [Raspberry Pi 5 headroom and footprint
+plan](PI5_HEADROOM_PLAN.md).
+
 ## Irregular Patterns, swing, and groove timing
 
 The post-competition plan for arbitrary Pattern shortening/growing, individual

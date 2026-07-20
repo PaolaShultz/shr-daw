@@ -224,7 +224,29 @@ The README intentionally stops at the current product boundary. Deferred ideas
 and their safety requirements live in
 [`FUTURE_IMPROVEMENTS.md`](FUTURE_IMPROVEMENTS.md). The selected
 post-competition work is split into executable [mixer/aux](POST_COMPETITION_MIXER_AUX_PLAN.md)
-and [rhythm](POST_COMPETITION_RHYTHM_PLAN.md) plans. This record should grow
-only when there is a meaningful development event to preserve; feature manuals,
-benchmark tables, and speculative implementation detail belong in their
-dedicated documents.
+and [rhythm](POST_COMPETITION_RHYTHM_PLAN.md) plans. A separate
+[Pi 5 Headroom plan](PI5_HEADROOM_PLAN.md) records another unscheduled future
+pass; its hardware is not present and none of its measurements or changes is
+part of the Build Week submission. That work begins only after the deadline.
+
+The hardware choice is part of the human development story even though its
+benchmarks are not. With memory and NVMe prices climbing, server replacement
+cycles also leave many unfashionably small 128 GB NVMe drives looking for a
+new job—sometimes around EUR 5 when a buyer is lucky. For SHR-DAW, that old
+server size is generous. The ordered drive cost EUR 15, and the complete Pi 5
+2 GB, active-cooler, 27 W supply, bottom-NVMe package cost about EUR 120. The
+adapter goes below because the GPIO screen owns the top; a measured, angled
+printed enclosure is planned after the parts arrive.
+
+The running `biiiig cache` thought comes from the creator's old 1 KB-demo
+instinct: modern hardware offers an enormous budget compared with the tiny
+procedural tunnels, space scenes, and music once squeezed into a kilobyte, so
+every dependency and retained byte is still fair to question. It is not a
+claim that the whole DAW will live permanently in L1. The future pass will
+measure the hot audio working set, core isolation, library features, build
+cost, effect state, and callback timing before deciding what to remove or mark
+as especially light.
+
+This record should grow only when there is a meaningful development event to
+preserve; feature manuals, benchmark tables, and speculative implementation
+detail belong in their dedicated documents.

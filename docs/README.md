@@ -94,6 +94,9 @@ setup guide.
 
 - [Future improvements](FUTURE_IMPROVEMENTS.md) — deferred routing and product
   ideas, including the deliberately unreasonable challenges.
+- [Raspberry Pi 5 headroom and footprint plan](PI5_HEADROOM_PLAN.md) —
+  unscheduled post-Build Week hardware comparison, dependency/footprint audit,
+  real-time core measurements, and one-rack PRESTO proposal.
 - [Post-competition mixer and aux plan](POST_COMPETITION_MIXER_AUX_PLAN.md) —
   multi-strip mixer and shared-aux migration.
 - [Post-competition rhythm plan](POST_COMPETITION_RHYTHM_PLAN.md) — arbitrary
