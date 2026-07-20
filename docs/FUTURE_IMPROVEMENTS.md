@@ -4,6 +4,22 @@ This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.
 
+## Safe fallback for unknown USB MIDI devices
+
+When a USB MIDI input is connected without a saved or reviewed controller
+profile, SHR should eventually offer or apply a useful fallback mapping instead
+of leaving the device entirely unmapped. Reviewed profiles must remain the
+preferred source, and fallback discovery must never silently overwrite the
+user's controller configuration.
+
+This needs a deliberately conservative design. Arbitrary notes and CCs must not
+accidentally become transport, record, panic, or navigation commands. Musical
+notes must continue to pass through unless the user deliberately assigns them
+as channel-qualified commands. Safe continuous-control discovery should be
+separate from command-button assignment: a knob or encoder can be proposed from
+observed continuous traffic, while transport and other command buttons require
+clear review or explicit learning before activation.
+
 ## Raspberry Pi 5 Headroom pass
 
 An unscheduled post-Build Week pass will compare the current Raspberry Pi 4

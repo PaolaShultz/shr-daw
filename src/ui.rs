@@ -306,6 +306,51 @@ enum TrackerFilesMode {
     Drums,
 }
 
+#[derive(Clone, Copy)]
+struct HomeEntry {
+    label: &'static str,
+    action: Action,
+}
+
+const HOME_ENTRIES: [HomeEntry; 9] = [
+    HomeEntry {
+        label: "Software Synths",
+        action: Action::OpenPresets,
+    },
+    HomeEntry {
+        label: "FT2 MIDI Tracker",
+        action: Action::OpenTracker,
+    },
+    HomeEntry {
+        label: "Sound Recorder",
+        action: Action::OpenAudioRecorder,
+    },
+    HomeEntry {
+        label: "Ideas",
+        action: Action::OpenIdeas,
+    },
+    HomeEntry {
+        label: "Performance Mixer",
+        action: Action::OpenMeter,
+    },
+    HomeEntry {
+        label: "Effects & Routing",
+        action: Action::OpenFxRack,
+    },
+    HomeEntry {
+        label: "MIDI Devices / Global MIDI Setup",
+        action: Action::OpenMidiSetup,
+    },
+    HomeEntry {
+        label: "MIDI Learn",
+        action: Action::OpenControllerLearn,
+    },
+    HomeEntry {
+        label: "Help",
+        action: Action::OpenHelp,
+    },
+];
+
 impl TrackerMode {
     const fn label(self) -> &'static str {
         match self {
@@ -323,6 +368,8 @@ struct App {
     presets: Vec<Preset>,
     selected: usize,
     offset: usize,
+    home_selected: usize,
+    home_offset: usize,
     screen: Screen,
     engine: Option<Engine>,
     playing: Option<Preset>,
@@ -432,6 +479,7 @@ struct App {
     fx_type_edit: Option<FxTypeEdit>,
     fx_numeric_input: Option<String>,
     fx_pickup: FxPickup,
+    fx_rack_parent: Screen,
     controller_config: engine::SharedControllerConfig,
     learn_mode: engine::SharedLearnMode,
     fx_control_mode: engine::SharedFxControlMode,
@@ -508,6 +556,20 @@ struct AudioPorts {
     capture_sources: Vec<String>,
 }
 
+fn first_letter_index<I, S>(items: I, letter: char) -> Option<usize>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    items.into_iter().position(|item| {
+        item.as_ref()
+            .trim_start()
+            .chars()
+            .next()
+            .is_some_and(|first| first.eq_ignore_ascii_case(&letter))
+    })
+}
+
 impl App {
     fn new(
         catalogs: &[Catalog],
@@ -558,7 +620,9 @@ impl App {
             presets,
             selected: 0,
             offset: 0,
-            screen: Screen::Presets,
+            home_selected: 0,
+            home_offset: 0,
+            screen: Screen::Home,
             engine: None,
             playing: None,
             values: HashMap::new(),
@@ -579,7 +643,7 @@ impl App {
             idea_offset: 0,
             help_selected: 0,
             help_offset: 0,
-            help_previous: Screen::Presets,
+            help_previous: Screen::Home,
             web_help: None,
             web_help_status: String::new(),
             web_help_enabled: true,
@@ -667,6 +731,7 @@ impl App {
             fx_type_edit: None,
             fx_numeric_input: None,
             fx_pickup: FxPickup::default(),
+            fx_rack_parent: Screen::Home,
             controller_config: Arc::new(std::sync::RwLock::new(crate::pads::PadConfig::default())),
             learn_mode: Arc::new(AtomicBool::new(false)),
             fx_control_mode: Arc::new(AtomicBool::new(false)),
@@ -689,6 +754,99 @@ impl App {
             .cloned()
             .collect::<Vec<_>>();
         (!notices.is_empty()).then(|| notices.join(" · "))
+    }
+
+    fn move_home(&mut self, direction: i8) {
+        self.home_selected = if direction < 0 {
+            self.home_selected.saturating_sub(1)
+        } else {
+            (self.home_selected + 1).min(HOME_ENTRIES.len().saturating_sub(1))
+        };
+    }
+
+    fn ensure_home_visible(&mut self, rows: usize) {
+        if self.home_selected < self.home_offset {
+            self.home_offset = self.home_selected;
+        } else if self.home_selected >= self.home_offset.saturating_add(rows) {
+            self.home_offset = self.home_selected + 1 - rows.max(1);
+        }
+    }
+
+    fn jump_to_letter(&mut self, letter: char) -> bool {
+        let letter = letter.to_ascii_lowercase();
+        let selected = match self.screen {
+            Screen::Presets => first_letter_index(
+                self.presets.iter().map(|preset| preset.name.as_str()),
+                letter,
+            )
+            .map(|index| {
+                self.selected = index;
+            }),
+            Screen::Ideas => first_letter_index(self.ideas.iter(), letter).map(|index| {
+                self.idea_selected = index;
+            }),
+            Screen::TrackerFiles if self.tracker_files_mode == TrackerFilesMode::Projects => {
+                first_letter_index(self.song_list.iter(), letter).map(|index| {
+                    self.song_selected = index;
+                })
+            }
+            Screen::TrackerFiles if self.tracker_files_mode == TrackerFilesMode::Drums => {
+                let filtered = self.filtered_drum_indices();
+                first_letter_index(
+                    filtered
+                        .iter()
+                        .map(|index| self.drum_patterns[*index].name.as_str()),
+                    letter,
+                )
+                .map(|position| {
+                    self.drum_pattern_selected = filtered[position];
+                })
+            }
+            Screen::TrackerLoop if self.loop_library_mode => first_letter_index(
+                self.loop_library.iter().map(|entry| entry.file.as_str()),
+                letter,
+            )
+            .map(|index| {
+                self.loop_library_selected = index;
+            }),
+            Screen::TrackerLoop => first_letter_index(
+                self.loop_imports.iter().map(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or_default()
+                }),
+                letter,
+            )
+            .map(|index| {
+                self.loop_selected = index;
+            }),
+            _ => None,
+        };
+        selected.is_some()
+    }
+
+    fn keyboard_modal_active(&self) -> bool {
+        self.audio_track_name_input.is_some()
+            || self.project_name_input.is_some()
+            || self.controller_learn.is_some()
+            || self.note_editor.is_some()
+            || self.tracker_recording.is_some()
+            || self.fx_type_edit.is_some()
+            || self.fx_numeric_input.is_some()
+            || self.fx_value_editing
+            || self.confirm_delete.is_some()
+            || self.confirm_load.is_some()
+            || self.confirm_song_save.is_some()
+            || self.confirm_new_project
+            || self.confirm_loop_remove
+            || self.confirm_song_delete.is_some()
+            || self.confirm_pattern_clear
+            || self.confirm_pattern_paste_over.is_some()
+            || self.confirm_pattern_delete.is_some()
+            || self.confirm_drum_pattern_delete.is_some()
+            || self.confirm_loop_delete.is_some()
+            || (self.screen == Screen::TrackerPages
+                && self.page_manager_mode != PageManagerMode::Pages)
     }
 
     fn begin_controller_learn(&mut self) {
@@ -1849,13 +2007,22 @@ impl App {
         self.tracker_track = next % LANES_PER_PAGE;
         self.sync_tracker_route();
     }
-    fn switch_tracker_page(&mut self) {
+    fn move_tracker_page(&mut self, direction: i8) {
         self.cancel_tracker_gesture();
-        self.tracker_page = (self.tracker_page + 1) % self.current_pages().len().max(1);
+        let pages = self.current_pages().len().max(1);
+        self.tracker_page = if direction < 0 {
+            (self.tracker_page + pages - 1) % pages
+        } else {
+            (self.tracker_page + 1) % pages
+        };
         self.sync_tracker_route();
         self.status = self
             .current_page()
             .map_or_else(|| "no page".into(), |page| format!("{} page", page.name));
+    }
+    #[cfg(test)]
+    fn switch_tracker_page(&mut self) {
+        self.move_tracker_page(1);
     }
     fn refresh_page_targets(&mut self) {
         let mut targets = vec![PageTarget::Default, PageTarget::ActiveInstrument];
@@ -5778,6 +5945,16 @@ fn dispatch_encoder(
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
 ) {
+    if app.screen == Screen::Home {
+        match action {
+            crate::pads::EncoderAction::Up => app.move_home(-1),
+            crate::pads::EncoderAction::Down => app.move_home(1),
+            crate::pads::EncoderAction::Select => {
+                perform(Action::Activate, app, state, Some(tx));
+            }
+        }
+        return;
+    }
     if app.screen == Screen::FxRack && app.fx_type_edit.is_some() {
         match action {
             crate::pads::EncoderAction::Up => app.cycle_effect_kind(-1),
@@ -5982,7 +6159,9 @@ fn perform(
     match action {
         Action::Noop => {}
         Action::Up => {
-            if a.screen == Screen::Help {
+            if a.screen == Screen::Home {
+                a.move_home(-1);
+            } else if a.screen == Screen::Help {
                 a.move_help(-1);
             } else if a.screen == Screen::TrackerNoob {
                 a.adjust_noob_root(-1);
@@ -6031,7 +6210,9 @@ fn perform(
             }
         }
         Action::Down => {
-            if a.screen == Screen::Help {
+            if a.screen == Screen::Home {
+                a.move_home(1);
+            } else if a.screen == Screen::Help {
                 a.move_help(1);
             } else if a.screen == Screen::TrackerNoob {
                 a.adjust_noob_root(1);
@@ -6109,7 +6290,9 @@ fn perform(
             }
         }
         Action::Home => {
-            if a.screen == Screen::Ideas {
+            if a.screen == Screen::Home {
+                a.home_selected = 0;
+            } else if a.screen == Screen::Ideas {
                 a.idea_selected = 0;
             } else if a.screen == Screen::TrackerFiles
                 && a.tracker_files_mode == TrackerFilesMode::Drums
@@ -6122,7 +6305,9 @@ fn perform(
             }
         }
         Action::End => {
-            if a.screen == Screen::Ideas {
+            if a.screen == Screen::Home {
+                a.home_selected = HOME_ENTRIES.len().saturating_sub(1);
+            } else if a.screen == Screen::Ideas {
                 a.idea_selected = a.ideas.len().saturating_sub(1);
             } else if a.screen == Screen::TrackerFiles
                 && a.tracker_files_mode == TrackerFilesMode::Drums
@@ -6145,6 +6330,11 @@ fn perform(
             }
         }
         Action::Activate => match a.screen {
+            Screen::Home => {
+                if let Some(entry) = HOME_ENTRIES.get(a.home_selected) {
+                    perform(entry.action, a, state, tx);
+                }
+            }
             Screen::Presets => {
                 if let Some(tx) = tx {
                     a.load(state, tx.clone())
@@ -6192,12 +6382,14 @@ fn perform(
                     a.begin_fx_value_edit();
                 }
             }
+            Screen::MidiSetup => {}
         },
         Action::Quit => unreachable!("quit is handled before contextual dispatch"),
         Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
         Action::OpenPresets => {
             a.set_tracker_edit(false);
             a.set_screen(Screen::Presets);
+            a.status = "software synths · choose a sound".into();
         }
         Action::OpenIdeas => a.open_ideas(),
         Action::OpenHelp => a.open_help(),
@@ -6254,6 +6446,13 @@ fn perform(
             a.status = "multitrack audio recorder".into();
         }
         Action::OpenFxRack => {
+            if !matches!(a.screen, Screen::FxRack | Screen::FxEditor) {
+                a.fx_rack_parent = if a.screen == Screen::Meter {
+                    Screen::Meter
+                } else {
+                    Screen::Home
+                };
+            }
             let length = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
                 .map(|rack| rack.order.len())
                 .unwrap_or(0);
@@ -6283,6 +6482,11 @@ fn perform(
             a.set_screen(Screen::Meter);
             a.reset_context_page();
             a.status = "mix, final output, and meters".into();
+        }
+        Action::OpenMidiSetup => {
+            a.set_tracker_edit(false);
+            a.set_screen(Screen::MidiSetup);
+            a.status = "MIDI device overview · run shr-setup outside SHR to change routes".into();
         }
         Action::ResetMeter => {
             a.performance_meter.clear_holds();
@@ -6352,34 +6556,25 @@ fn perform(
             a.confirm_delete = None;
             a.confirm_load = None;
             a.set_tracker_edit(false);
-            let current_screen = a.screen;
-            let next_screen = if matches!(
-                current_screen,
+            let next_screen = match a.screen {
+                Screen::Home => Screen::Home,
+                Screen::Presets
+                | Screen::Ideas
+                | Screen::Tracker
+                | Screen::AudioRecorder
+                | Screen::Meter
+                | Screen::MidiSetup => Screen::Home,
+                Screen::Playback => Screen::Presets,
                 Screen::TrackerFiles
-                    | Screen::TrackerTools
-                    | Screen::TrackerArrange
-                    | Screen::TrackerNoob
-                    | Screen::TrackerLoop
-                    | Screen::TrackerLoopAlign
-            ) {
-                if current_screen == Screen::TrackerLoopAlign {
-                    Screen::TrackerLoop
-                } else {
-                    Screen::Tracker
-                }
-            } else if matches!(
-                a.screen,
-                Screen::Playback
-                    | Screen::Tracker
-                    | Screen::AudioRecorder
-                    | Screen::FxRack
-                    | Screen::Meter
-            ) {
-                Screen::Presets
-            } else if a.playing.is_some() {
-                Screen::Playback
-            } else {
-                Screen::Presets
+                | Screen::TrackerArrange
+                | Screen::TrackerPages
+                | Screen::TrackerTools
+                | Screen::TrackerNoob
+                | Screen::TrackerLoop => Screen::Tracker,
+                Screen::TrackerLoopAlign => Screen::TrackerLoop,
+                Screen::FxRack => a.fx_rack_parent,
+                Screen::FxEditor => Screen::FxRack,
+                Screen::Help => a.help_previous,
             };
             a.set_screen(next_screen);
         }
@@ -6451,7 +6646,8 @@ fn perform(
             }
         }
         Action::TrackerPageMute => a.toggle_tracker_page_mute(),
-        Action::NextTrackerPage => a.switch_tracker_page(),
+        Action::NextTrackerPage => a.move_tracker_page(1),
+        Action::PreviousTrackerPage => a.move_tracker_page(-1),
         Action::PreviewSong => a.preview_song(),
         Action::DeleteSong => a.delete_song(),
         Action::RenameProject => a.begin_project_rename(),
@@ -6746,6 +6942,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         dispatch_encoder(action, a, state, tx);
         return false;
     }
+    let letter_jump_blocked = a.keyboard_modal_active();
     if a.screen == Screen::TrackerLoop && a.loop_library_mode {
         let action = match code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::Up),
@@ -6756,6 +6953,10 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 Some(Action::DeleteLoopFile)
             }
             KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
+            KeyCode::Char(character) if character.is_ascii_alphabetic() && !letter_jump_blocked => {
+                a.jump_to_letter(character);
+                None
+            }
             _ => None,
         };
         if let Some(action) = action {
@@ -6779,6 +6980,12 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         _ => Action::Noop,
     };
+    if letter_jump_blocked
+        && confirmation_action == Action::Noop
+        && matches!(code, KeyCode::Char(character) if character.is_ascii_alphabetic())
+    {
+        return false;
+    }
     a.prepare_confirmation_action(confirmation_action);
     if matches!(code, KeyCode::F(1) | KeyCode::Char('?')) && a.screen != Screen::Help {
         perform(Action::OpenHelp, a, state, Some(tx));
@@ -6841,6 +7048,10 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 None
             }
             KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
+            KeyCode::Char(character) if character.is_ascii_alphabetic() && !letter_jump_blocked => {
+                a.jump_to_letter(character);
+                None
+            }
             _ => None,
         };
         if let Some(action) = action {
@@ -7101,7 +7312,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     match code {
         KeyCode::Char('q') => return true,
         KeyCode::Esc => {
-            if a.screen != Screen::Presets {
+            if a.screen != Screen::Home {
                 perform(Action::Back, a, state, Some(tx));
             } else {
                 return true;
@@ -7185,6 +7396,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         KeyCode::Char('d') if a.screen == Screen::Ideas => a.delete_idea(),
         KeyCode::Char('i') if a.screen == Screen::Ideas => a.inspect_idea(),
+        KeyCode::Char(character) if character.is_ascii_alphabetic() && !letter_jump_blocked => {
+            a.jump_to_letter(character);
+        }
         _ => {}
     }
     false
@@ -7252,7 +7466,7 @@ fn mouse(
     tx: &std::sync::mpsc::Sender<MidiEvent>,
 ) -> bool {
     if matches!(m.kind, MouseEventKind::Down(MouseButton::Right)) {
-        if a.screen != Screen::Presets {
+        if a.screen != Screen::Home {
             perform(Action::Back, a, state, Some(tx));
         } else {
             return true;
@@ -7262,7 +7476,9 @@ fn mouse(
     match m.kind {
         MouseEventKind::ScrollUp => {
             a.prepare_confirmation_action(Action::Noop);
-            if a.screen == Screen::Ideas {
+            if a.screen == Screen::Home {
+                a.move_home(-1);
+            } else if a.screen == Screen::Ideas {
                 a.idea_selected = a.idea_selected.saturating_sub(1)
             } else if a.screen == Screen::Help {
                 a.move_help(-3);
@@ -7274,7 +7490,9 @@ fn mouse(
         }
         MouseEventKind::ScrollDown => {
             a.prepare_confirmation_action(Action::Noop);
-            if a.screen == Screen::Ideas {
+            if a.screen == Screen::Home {
+                a.move_home(1);
+            } else if a.screen == Screen::Ideas {
                 a.idea_selected = (a.idea_selected + 1).min(a.ideas.len().saturating_sub(1))
             } else if a.screen == Screen::Help {
                 a.move_help(3);
@@ -7285,7 +7503,16 @@ fn mouse(
             }
         }
         MouseEventKind::Down(MouseButton::Left) => {
-            if a.screen == Screen::Presets && contains(a.hits.list, m.column, m.row) {
+            if a.screen == Screen::Home && contains(a.hits.list, m.column, m.row) {
+                let index = visible_index(a.hits.list, a.home_offset, m.column, m.row).unwrap();
+                if index < HOME_ENTRIES.len() {
+                    if index == a.home_selected {
+                        perform(Action::Activate, a, state, Some(tx));
+                    } else {
+                        a.home_selected = index;
+                    }
+                }
+            } else if a.screen == Screen::Presets && contains(a.hits.list, m.column, m.row) {
                 a.prepare_confirmation_action(Action::Noop);
                 let i = visible_index(a.hits.list, a.offset, m.column, m.row).unwrap();
                 if i < a.presets.len() {
@@ -7391,6 +7618,10 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         return;
     }
     match a.screen {
+        Screen::Home => {
+            draw_home(f, a);
+            return;
+        }
         Screen::Presets => draw_list(f, a),
         Screen::Playback => draw_playing(f, a),
         Screen::Ideas => draw_ideas(f, a),
@@ -7409,6 +7640,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::FxRack => draw_fx_rack(f, a),
         Screen::FxEditor => draw_fx_editor(f, a),
         Screen::Meter => draw_performance_meter(f, a),
+        Screen::MidiSetup => draw_midi_setup(f, a),
     }
     draw_pad_lock(f, a);
     draw_fallback_badge(f, a);
@@ -7440,6 +7672,133 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             area,
         );
     }
+}
+
+fn draw_home<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    f.render_widget(Block::default().style(Style::default().bg(Color::Black)), z);
+    f.render_widget(
+        Paragraph::new("SHR-DAW · HOME")
+            .alignment(Alignment::Center)
+            .style(
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        rect(z.x, z.y + 1, z.width, 1),
+    );
+    let list = rect(
+        z.x + 2,
+        z.y + 3,
+        z.width.saturating_sub(4),
+        z.height.saturating_sub(7),
+    );
+    a.hits.list = list;
+    let rows = usize::from(list.height);
+    a.ensure_home_visible(rows);
+    let lines = HOME_ENTRIES
+        .iter()
+        .enumerate()
+        .skip(a.home_offset)
+        .take(rows)
+        .map(|(index, entry)| {
+            let selected = index == a.home_selected;
+            Spans::from(Span::styled(
+                format!(" {} ", entry.label),
+                if selected {
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::White)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Gray).bg(Color::Black)
+                },
+            ))
+        })
+        .collect::<Vec<_>>();
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(Color::Black)),
+        list,
+    );
+    f.render_widget(
+        Paragraph::new("↑↓ / rotary browse · Enter / click open · Esc quit")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::DarkGray).bg(Color::Black)),
+        rect(z.x, z.y + z.height.saturating_sub(2), z.width, 1),
+    );
+    if a.status != "Ready" {
+        f.render_widget(
+            Paragraph::new(truncate(&a.status, z.width as usize))
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::DarkGray).bg(Color::Black)),
+            rect(z.x, z.y + z.height.saturating_sub(1), z.width, 1),
+        );
+    }
+}
+
+fn draw_midi_setup<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let controller = a
+        .controller_config
+        .read()
+        .ok()
+        .and_then(|config| config.input_match.clone())
+        .filter(|input| !input.is_empty())
+        .unwrap_or_else(|| "not configured".into());
+    let controller_state = if a.controller_online {
+        "connected"
+    } else {
+        "offline"
+    };
+    let external = if a.config.external_midi.enabled {
+        if a.config.external_midi.output_match.is_empty() {
+            "enabled · output missing".into()
+        } else {
+            a.config.external_midi.output_match.clone()
+        }
+    } else {
+        "off".into()
+    };
+    let profile = if a.config.external_midi.profile.is_empty() {
+        "none"
+    } else {
+        &a.config.external_midi.profile
+    };
+    let clock = if a.config.controller_clock.enabled {
+        "on"
+    } else {
+        "off"
+    };
+    let lines = vec![
+        Spans::from(Span::styled(
+            "MIDI DEVICES / GLOBAL SETUP",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from(""),
+        Spans::from(format!("Controller  {controller_state}")),
+        Spans::from(truncate(&controller, z.width.saturating_sub(4) as usize)),
+        Spans::from(""),
+        Spans::from("Tracker / external output"),
+        Spans::from(truncate(&external, z.width.saturating_sub(4) as usize)),
+        Spans::from(format!("Profile {profile} · clock {clock}")),
+        Spans::from(""),
+        Spans::from(Span::styled(
+            "To change devices, leave SHR and run shr-setup.",
+            Style::default().fg(Color::Yellow),
+        )),
+        Spans::from("This screen never starts hardware setup."),
+    ];
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        ),
+        rect(z.x, z.y, z.width, z.height.saturating_sub(3)),
+    );
 }
 
 fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
@@ -10751,6 +11110,7 @@ mod tests {
     }
     #[test]
     fn renders_40x20_all_screens() {
+        render(40, 20, Screen::Home);
         render(40, 20, Screen::Presets);
         render(40, 20, Screen::Playback);
         render(40, 20, Screen::Ideas);
@@ -10767,6 +11127,213 @@ mod tests {
         render(40, 20, Screen::FxRack);
         render(40, 20, Screen::FxEditor);
         render(40, 20, Screen::Meter);
+        render(40, 20, Screen::MidiSetup);
+    }
+
+    #[test]
+    fn home_is_initial_minimal_and_uses_an_inverted_selection() {
+        let p = presets();
+        let mut a = app(&p);
+        assert_eq!(a.screen, Screen::Home);
+
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let text = buffer
+            .content
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        assert!(text.contains("Software Synths"));
+        assert!(text.contains("FT2 MIDI Tracker"));
+        assert!(text.contains("Sound Recorder"));
+        assert!(text.contains("MIDI Devices / Global MIDI Setup"));
+        assert!(text.contains("MIDI Learn"));
+        assert!(!text.contains("controller menu below"));
+        assert!(buffer.content.iter().any(|cell| {
+            cell.fg == Color::Black
+                && cell.bg == Color::White
+                && cell.modifier.contains(Modifier::BOLD)
+        }));
+    }
+
+    #[test]
+    fn home_keyboard_and_rotary_select_and_open_workspaces() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut keyboard = app(&p);
+        key(KeyCode::Down, &mut keyboard, Path::new("/none"), &tx);
+        assert_eq!(keyboard.home_selected, 1);
+        key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
+        assert_eq!(keyboard.screen, Screen::Tracker);
+
+        let mut rotary = app(&p);
+        rotary.controller_layout = ControllerLayout::Four;
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut rotary,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut rotary,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(rotary.home_selected, 2);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut rotary,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(rotary.screen, Screen::AudioRecorder);
+        assert!(!rotary.page_select_mode);
+    }
+
+    #[test]
+    fn home_opens_encoder_first_midi_learn_directly() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.controller_online = true;
+        *a.controller_config.write().unwrap() =
+            crate::pads::PadConfig::unmapped("Test Controller MIDI");
+        a.home_selected = HOME_ENTRIES
+            .iter()
+            .position(|entry| entry.action == Action::OpenControllerLearn)
+            .unwrap();
+
+        key(KeyCode::Enter, &mut a, Path::new("/none"), &tx);
+
+        assert!(a.controller_learn.is_some());
+        assert!(a.learn_mode.load(Ordering::Relaxed));
+        assert_eq!(
+            a.controller_learn.as_ref().unwrap().role(),
+            crate::controller_learn::LearnRole::EncoderCounterClockwise
+        );
+    }
+
+    #[test]
+    fn top_level_exit_returns_home_and_nested_exit_returns_one_level() {
+        let p = presets();
+        for screen in [
+            Screen::Presets,
+            Screen::Ideas,
+            Screen::Tracker,
+            Screen::AudioRecorder,
+            Screen::Meter,
+            Screen::MidiSetup,
+            Screen::FxRack,
+        ] {
+            let mut a = app(&p);
+            a.screen = screen;
+            a.fx_rack_parent = Screen::Home;
+            assert!(!perform(Action::Back, &mut a, Path::new("/none"), None));
+            assert_eq!(a.screen, Screen::Home, "{screen:?}");
+        }
+
+        let mut a = app(&p);
+        a.screen = Screen::Playback;
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Presets);
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Home);
+
+        a.screen = Screen::TrackerFiles;
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Tracker);
+        a.screen = Screen::TrackerLoopAlign;
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::TrackerLoop);
+    }
+
+    #[test]
+    fn keyboard_page_keys_remain_available_without_pad_commands() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.screen = Screen::Presets;
+        a.selected = 20;
+        key(KeyCode::PageUp, &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.selected, 10);
+        key(KeyCode::PageDown, &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.selected, 20);
+
+        fill_demo_song(&mut a);
+        a.screen = Screen::Tracker;
+        a.tracker_order = 2;
+        key(KeyCode::PageUp, &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.tracker_order, 1);
+        key(KeyCode::PageDown, &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.tracker_order, 2);
+    }
+
+    #[test]
+    fn letter_jump_is_case_insensitive_for_sound_and_file_lists() {
+        let p = vec![
+            Preset::synthv1("Amber", "amber".into()),
+            Preset::synthv1("Cobalt", "cobalt".into()),
+            Preset::synthv1("Cedar", "cedar".into()),
+        ];
+        assert_eq!(first_letter_index(["amber", "Cobalt"], 'c'), Some(1));
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.screen = Screen::Presets;
+        key(KeyCode::Char('C'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.selected, 1);
+
+        a.screen = Screen::TrackerFiles;
+        a.song_list = vec!["alpha".into(), "Cedar".into(), "delta".into()];
+        a.song_selected = 0;
+        key(KeyCode::Char('D'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.song_selected, 2);
+
+        a.screen = Screen::TrackerLoop;
+        a.loop_library_mode = true;
+        a.loop_library = vec![
+            crate::loop_player::LibraryEntry {
+                file: "break.wav".into(),
+                current: false,
+                saved_references: 0,
+            },
+            crate::loop_player::LibraryEntry {
+                file: "Room.wav".into(),
+                current: false,
+                saved_references: 0,
+            },
+        ];
+        key(KeyCode::Char('r'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.loop_library_selected, 1);
+    }
+
+    #[test]
+    fn letter_jump_preserves_shortcuts_and_text_input_ownership() {
+        let p = vec![
+            Preset::synthv1("Amber", "amber".into()),
+            Preset::synthv1("Mellow", "mellow".into()),
+        ];
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.screen = Screen::Presets;
+        key(KeyCode::Char('m'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.screen, Screen::Meter, "explicit shortcut wins");
+
+        a.screen = Screen::TrackerFiles;
+        a.song_list = vec!["alpha".into(), "cobalt".into()];
+        a.song_selected = 0;
+        a.project_name_input = Some("Proje".into());
+        key(KeyCode::Char('c'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.project_name_input.as_deref(), Some("Projec"));
+        assert_eq!(a.song_selected, 0, "text editor owns the letter");
+
+        a.project_name_input = None;
+        a.confirm_pattern_clear = true;
+        key(KeyCode::Char('c'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.song_selected, 0, "modal blocks the list behind it");
+        assert!(a.confirm_pattern_clear);
     }
 
     #[test]
@@ -10909,14 +11476,15 @@ mod tests {
     }
 
     #[test]
-    fn meter_controller_entry_and_exit_return_exactly_to_presets() {
+    fn meter_and_effects_follow_home_and_contextual_parentage() {
         let p = presets();
         let mut a = app(&p);
-        let open = navigation::slot(Screen::Presets, MenuContext::Normal, 2, 0)
-            .and_then(|slot| slot.dispatch())
-            .unwrap();
-        assert_eq!(open, Action::OpenMeter);
-        assert!(!perform(open, &mut a, Path::new("/none"), None));
+        assert!(!perform(
+            Action::OpenMeter,
+            &mut a,
+            Path::new("/none"),
+            None
+        ));
         assert_eq!(a.screen, Screen::Meter);
         assert_eq!(
             navigation::pages(a.screen, a.menu_context())[0].label,
@@ -10927,7 +11495,13 @@ mod tests {
             .unwrap();
         assert_eq!(exit, Action::Back);
         assert!(!perform(exit, &mut a, Path::new("/none"), None));
-        assert_eq!(a.screen, Screen::Presets);
+        assert_eq!(a.screen, Screen::Home);
+
+        perform(Action::OpenMeter, &mut a, Path::new("/none"), None);
+        perform(Action::OpenFxRack, &mut a, Path::new("/none"), None);
+        assert_eq!(a.fx_rack_parent, Screen::Meter);
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Meter);
     }
 
     #[test]
@@ -11114,6 +11688,7 @@ mod tests {
     }
     #[test]
     fn renders_smaller_and_tiny_gracefully() {
+        render(38, 14, Screen::Home);
         render(38, 14, Screen::Presets);
         render(38, 14, Screen::Playback);
         render(38, 14, Screen::Ideas);
@@ -11130,6 +11705,7 @@ mod tests {
         render(38, 14, Screen::FxRack);
         render(38, 14, Screen::FxEditor);
         render(38, 14, Screen::Meter);
+        render(38, 14, Screen::MidiSetup);
         render(30, 8, Screen::Presets);
         render(30, 8, Screen::Tracker)
     }
@@ -11526,7 +12102,7 @@ mod tests {
     }
 
     #[test]
-    fn forty_by_twenty_shows_screen_all_pages_and_four_current_items() {
+    fn forty_by_twenty_hides_empty_child_navigation_pages_and_items() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Playback;
@@ -11541,12 +12117,15 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for label in ["PLAY", "SOUND", "NAV", "SYS", "RESET", "SAVE", "IDEAS"] {
+        for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
+        for removed in ["NAV", "IDEAS", "PRESETS", "FT2", "AUDIO"] {
+            assert!(!text.contains(removed), "stale {removed}: {text}");
+        }
         assert!(text.contains("PLY"));
-        assert_eq!(a.hits.menu_pages.len(), 4);
-        assert_eq!(a.hits.actions.len(), 3);
+        assert_eq!(a.hits.menu_pages.len(), 3);
+        assert_eq!(a.hits.actions.len(), 2);
     }
 
     #[test]
@@ -11555,7 +12134,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let mut eight = app(&p);
         eight.screen = Screen::Tracker;
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page1, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page2, true))
             .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item1, true))
             .unwrap();
@@ -11570,6 +12149,7 @@ mod tests {
         let mut five = app(&p);
         five.screen = Screen::Tracker;
         five.controller_layout = ControllerLayout::Five;
+        five.select_menu_page(1);
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item1, true))
             .unwrap();
         drain(&rx, &mut five, Path::new("/none"), &tx);
@@ -11603,7 +12183,7 @@ mod tests {
         let mut a = app(&p);
         let (tx, rx) = mpsc::channel();
         a.screen = Screen::Tracker;
-        a.select_menu_page(1);
+        a.select_menu_page(0);
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
@@ -11611,7 +12191,7 @@ mod tests {
         perform(Action::OpenIdeas, &mut a, Path::new("/none"), None);
         assert_eq!(a.menu_page(), 0);
         perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
-        assert_eq!(a.menu_page(), 1, "each screen remembers its page");
+        assert_eq!(a.menu_page(), 0, "each screen remembers its page");
     }
     #[test]
     fn help_opens_links_and_returns_to_previous_screen() {
@@ -11920,12 +12500,13 @@ mod tests {
     fn wheel_and_page_pad_button_clicks_work_at_40x20() {
         let p = presets();
         let mut a = app(&p);
+        a.screen = Screen::Presets;
         a.selected = 5;
         let b = TestBackend::new(40, 20);
         let mut t = Terminal::new(b).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
-        assert_eq!(a.hits.actions.len(), 4);
-        assert_eq!(a.hits.menu_pages.len(), 4);
+        assert_eq!(a.hits.actions.len(), 3);
+        assert_eq!(a.hits.menu_pages.len(), 3);
         assert!(a.hits.actions.iter().all(|(r, _)| r.width == 10));
         let (tx, _) = mpsc::channel();
         mouse(
@@ -11958,11 +12539,12 @@ mod tests {
     fn controller_strip_stays_compact_on_wide_terminals() {
         let p = presets();
         let mut a = app(&p);
+        a.screen = Screen::Presets;
         let backend = TestBackend::new(80, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
 
-        assert_eq!(a.hits.menu_pages.len(), 4);
+        assert_eq!(a.hits.menu_pages.len(), 3);
         assert!(a
             .hits
             .menu_pages

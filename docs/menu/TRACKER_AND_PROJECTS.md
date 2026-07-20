@@ -18,35 +18,36 @@ shown as offline where no actual device was opened for documentation.
 Turn the main encoder to move through rows. Left/right move the order or lane
 with the keyboard. The highlighted row is the next edit/play location.
 
-### OPS — transport and entry
+### MOVE — page and track navigation
 
 ![Populated FT2 Pattern in Play mode with the OPS page](../images/menu/ft2-play-ops.png)
 
-`HERE` plays from the highlighted row. `START` plays from the beginning of the
-Arrangement. `STEP` enters Step Edit. `CELL` opens the transactional editor for
-the selected cell.
+`PAGE-` and `PAGE+` move between the Pattern's four-track pages. `TRACK-` and
+`TRACK+` move the column cursor, crossing a page boundary when needed. These
+high-value tracker movements occupy controller page 1.
 
-### MODE — choose one tracker mode
+### PLAY — transport and entry
 
 ![Populated FT2 Pattern in Play mode with the MODE page](../images/menu/ft2-play-mode.png)
 
-`PLAY` selects normal navigation. `RECORD` begins real-time recording on the
-current external-MIDI page only. `EDIT` enables step entry. `N00B` opens scale
-setup before enabling simplified live-note mapping.
+`CELL` opens the transactional editor. `PLAY` toggles tracker transport,
+`RECORD` begins or ends real-time recording on the current external-MIDI page,
+and `STEP` toggles step entry.
 
-### MOVE — order and lane cursor
+### OPEN — tracker children
 
 ![Populated FT2 Pattern in Play mode with the MOVE page](../images/menu/ft2-play-move.png)
 
-`PG-` and `PG+` move between Arrangement steps. `LANE-` and `LANE+` move the
-cursor across the current four-lane page.
+`TRACKS`, `FILES`, and `TOOLS` open FT2-specific child workflows. `TAP` updates
+the Project tempo from repeated presses. Unrelated top-level workspaces live on
+Home instead of this controller page.
 
 ### SYS — stop, tools, and exit
 
 ![Populated FT2 Pattern in Play mode with the SYS page](../images/menu/ft2-play-sys.png)
 
-`PANIC` stops all owned notes and transports. `STOP` stops the tracker and loop
-transport. `TOOLS` opens the FT2 Tools child. `EXIT` returns one level.
+`PANIC` stops all owned notes and transports. `HELP` opens contextual help.
+`EXIT` returns Home.
 
 ## FT2 Pattern — real-time Record context
 
@@ -285,8 +286,10 @@ toggles 3/4 and 4/4. `SIZE` cycles the supported Pattern lengths for that meter.
 
 ![Populated drum-pattern library with the MOVE page](../images/menu/drum-patterns-move.png)
 
-`PG UP`, `PG DOWN`, `FIRST`, and `LAST` move through the filtered result list
-without loading anything.
+`FIRST` and `LAST` move to the filtered result-list boundaries without loading
+anything. Turn the rotary for one-step movement, type a first letter to jump,
+or use keyboard PageUp/PageDown for coarse scrolling; physical pads omit the
+coarse page commands.
 
 ### SYS — stop and return
 

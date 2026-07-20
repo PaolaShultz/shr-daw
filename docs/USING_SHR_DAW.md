@@ -26,6 +26,9 @@ display does not rely on an omitted suffix to teach the chord quality.
 
 ## Screens
 
+- **Home** is the startup and navigation root. Turn the master rotary or use
+  Up/Down, then press it or Enter to open a workspace. Esc quits only from
+  Home; controller MIDI never quits SHR.
 - **Presets** chooses an engine and sound.
 - **Playback** shows played notes and keyboard state, changes synthv1 controls,
   and records ideas.
@@ -55,10 +58,24 @@ plus provenance live in the XDG demo directory.
   multistem take.
 - **FX Rack** shapes the managed instrument with source inserts, two parallel
   pre/post aux sends and wet returns, then a master rack and final meter.
+- **MIDI Devices / Global MIDI Setup** shows the configured controller,
+  tracker output/profile, and controller-clock state. It is deliberately
+  read-only: leave SHR and run `shr-setup` to change hardware routes safely.
+- **MIDI Learn** opens directly from Home and learns rotary left, right, then
+  click before browsing optional mappings.
 
-The display shows the current screen, menu page, and four available actions.
-Empty actions are hidden. The main encoder moves through lists, rows, pages,
-and values. Its press selects or confirms.
+Home is a plain inverted-selection list. Other screens show their current
+controller page and available actions; empty actions and pages are hidden. The
+main encoder moves through lists, rows, pages, and values, and its press selects
+or confirms. Back from a top-level workspace returns Home. Nested tools and
+editors return one level at a time, without stopping unrelated playback or
+recording state.
+
+On large sound, Project, drum-pattern, and WAV lists, an otherwise unassigned
+letter jumps to the first matching name without taking input away from naming,
+numeric entry, or editor/modal fields. Keyboard PageUp/PageDown keep their
+existing list/tracker behavior. Physical command pages omit PageUp/PageDown so
+pads stay focused on the current musical workflow.
 
 Physical menu layouts with four, five, or eight buttons are supported. Read
 the [screen and menu manual](MENU_MANUAL.md) for the complete visual tour and

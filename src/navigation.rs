@@ -5,6 +5,7 @@
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Screen {
+    Home,
     Presets,
     Playback,
     Ideas,
@@ -21,12 +22,14 @@ pub enum Screen {
     FxRack,
     FxEditor,
     Meter,
+    MidiSetup,
 }
 
 impl Screen {
-    pub const COUNT: usize = 16;
+    pub const COUNT: usize = 18;
     #[cfg(test)]
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
+        Self::Home,
         Self::Presets,
         Self::Playback,
         Self::Ideas,
@@ -43,31 +46,35 @@ impl Screen {
         Self::FxRack,
         Self::FxEditor,
         Self::Meter,
+        Self::MidiSetup,
     ];
 
     pub const fn index(self) -> usize {
         match self {
-            Self::Presets => 0,
-            Self::Playback => 1,
-            Self::Ideas => 2,
-            Self::Help => 3,
-            Self::Tracker => 4,
-            Self::TrackerFiles => 5,
-            Self::TrackerArrange => 6,
-            Self::TrackerPages => 7,
-            Self::TrackerTools => 8,
-            Self::TrackerNoob => 9,
-            Self::TrackerLoop => 10,
-            Self::TrackerLoopAlign => 11,
-            Self::AudioRecorder => 12,
-            Self::FxRack => 13,
-            Self::FxEditor => 14,
-            Self::Meter => 15,
+            Self::Home => 0,
+            Self::Presets => 1,
+            Self::Playback => 2,
+            Self::Ideas => 3,
+            Self::Help => 4,
+            Self::Tracker => 5,
+            Self::TrackerFiles => 6,
+            Self::TrackerArrange => 7,
+            Self::TrackerPages => 8,
+            Self::TrackerTools => 9,
+            Self::TrackerNoob => 10,
+            Self::TrackerLoop => 11,
+            Self::TrackerLoopAlign => 12,
+            Self::AudioRecorder => 13,
+            Self::FxRack => 14,
+            Self::FxEditor => 15,
+            Self::Meter => 16,
+            Self::MidiSetup => 17,
         }
     }
 
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Home => "HOME",
             Self::Presets => "PRESETS",
             Self::Playback => "PLAYBACK",
             Self::Ideas => "IDEAS",
@@ -84,6 +91,7 @@ impl Screen {
             Self::FxRack => "FX RACK",
             Self::FxEditor => "FX EDIT",
             Self::Meter => "MIX",
+            Self::MidiSetup => "MIDI SETUP",
         }
     }
 }
@@ -118,6 +126,7 @@ pub enum Action {
     OpenFxRack,
     OpenFxEditor,
     OpenMeter,
+    OpenMidiSetup,
     ResetMeter,
     BusSelectPrevious,
     BusSelectNext,
@@ -205,6 +214,7 @@ pub enum Action {
     TrackerMute,
     TrackerPageMute,
     NextTrackerPage,
+    PreviousTrackerPage,
     PreviousTrack,
     NextTrack,
     PreviousProgram,
@@ -354,9 +364,9 @@ const PRESETS: [MenuPage; 4] = [
         "OPS",
         [
             on("LOAD", Action::Activate),
-            on("PG UP", Action::PageUp),
-            on("PG DOWN", Action::PageDown),
             on("FIRST", Action::Home),
+            on("LAST", Action::End),
+            off(""),
         ],
     ),
     page(
@@ -365,25 +375,17 @@ const PRESETS: [MenuPage; 4] = [
             on("ENGINE-", Action::PreviousEngine),
             on("ENGINE+", Action::NextEngine),
             off(""),
-            on("LAST", Action::End),
+            off(""),
         ],
     ),
-    page(
-        "NAV",
-        [
-            on("MIX", Action::OpenMeter),
-            on("IDEAS", Action::OpenIdeas),
-            on("FT2", Action::OpenTracker),
-            on("AUDIO", Action::OpenAudioRecorder),
-        ],
-    ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
             on("PANIC", Action::StopAll),
             on("HELP", Action::OpenHelp),
-            on("LEARN", Action::OpenControllerLearn),
             off(""),
+            on("EXIT", Action::Back),
         ],
     ),
 ];
@@ -402,19 +404,11 @@ const PLAYBACK: [MenuPage; 4] = [
         [
             on("RESET", Action::ResetParameters),
             on("SAVE", Action::SaveNew),
-            on("IDEAS", Action::OpenIdeas),
+            off(""),
             off(""),
         ],
     ),
-    page(
-        "NAV",
-        [
-            on("PRESETS", Action::OpenPresets),
-            on("FT2", Action::OpenTracker),
-            on("MIX", Action::OpenMeter),
-            on("AUDIO", Action::OpenAudioRecorder),
-        ],
-    ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
@@ -444,15 +438,7 @@ const IDEAS: [MenuPage; 4] = [
             on("LAST", Action::End),
         ],
     ),
-    page(
-        "NAV",
-        [
-            on("PRESETS", Action::OpenPresets),
-            on("FT2", Action::OpenTracker),
-            on("MIX", Action::OpenMeter),
-            on("AUDIO", Action::OpenAudioRecorder),
-        ],
-    ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
@@ -465,21 +451,21 @@ const IDEAS: [MenuPage; 4] = [
 ];
 const TRACKER: [MenuPage; 4] = [
     page(
+        "MOVE",
+        [
+            on("PAGE-", Action::PreviousTrackerPage),
+            on("PAGE+", Action::NextTrackerPage),
+            on("TRACK-", Action::PreviousTrack),
+            on("TRACK+", Action::NextTrack),
+        ],
+    ),
+    page(
         "PLAY",
         [
             on("CELL", Action::OpenNoteEditor),
             on("PLAY", Action::TrackerPlayToggle),
             on("RECORD", Action::TrackerRecordToggle),
             on("STEP", Action::TrackerEdit),
-        ],
-    ),
-    page(
-        "MOVE",
-        [
-            on("ORDER-", Action::PreviousOrder),
-            on("ORDER+", Action::NextOrder),
-            on("LANE-", Action::PreviousTrack),
-            on("LANE+", Action::NextTrack),
         ],
     ),
     page(
@@ -495,7 +481,7 @@ const TRACKER: [MenuPage; 4] = [
         "SYS",
         [
             on("PANIC", Action::StopAll),
-            on("MIX", Action::OpenMeter),
+            off(""),
             on("HELP", Action::OpenHelp),
             on("EXIT", Action::Back),
         ],
@@ -634,8 +620,8 @@ const LOOP_LIBRARY: [MenuPage; 4] = [
         "OPS",
         [
             on("DELETE", Action::DeleteLoopFile),
-            on("PG UP", Action::PageUp),
-            on("PG DOWN", Action::PageDown),
+            off(""),
+            off(""),
             off(""),
         ],
     ),
@@ -861,10 +847,10 @@ const DRUM_PATTERNS: [MenuPage; 4] = [
     page(
         "MOVE",
         [
-            on("PG UP", Action::PageUp),
-            on("PG DOWN", Action::PageDown),
             on("FIRST", Action::Home),
             on("LAST", Action::End),
+            off(""),
+            off(""),
         ],
     ),
     page(
@@ -992,14 +978,14 @@ const AUDIO: [MenuPage; 4] = [
             on("ALL", Action::AudioArmAll),
             on("NONE", Action::AudioDisarmAll),
             on("REFRESH", Action::AudioRefreshSources),
-            on("MIX", Action::OpenMeter),
+            off(""),
         ],
     ),
     page(
         "SYS",
         [
             on("PANIC", Action::StopAll),
-            on("PRESETS", Action::OpenPresets),
+            off(""),
             on("HELP", Action::OpenHelp),
             on("EXIT", Action::Back),
         ],
@@ -1135,9 +1121,9 @@ const HELP: [MenuPage; 4] = [
         "OPS",
         [
             on("OPEN", Action::Activate),
-            on("PG UP", Action::PageUp),
-            on("PG DOWN", Action::PageDown),
             on("TOP", Action::Home),
+            off(""),
+            off(""),
         ],
     ),
     page("", [off(""), off(""), off(""), off("")]),
@@ -1153,8 +1139,31 @@ const HELP: [MenuPage; 4] = [
     ),
 ];
 
+const HOME: [MenuPage; 4] = [
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+];
+
+const MIDI_SETUP: [MenuPage; 4] = [
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("HELP", Action::OpenHelp),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+
 pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
     match (screen, context) {
+        (Screen::Home, _) => &HOME,
         (Screen::Presets, _) => &PRESETS,
         (Screen::Playback, _) => &PLAYBACK,
         (Screen::Ideas, _) => &IDEAS,
@@ -1181,6 +1190,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::FxRack, _) => &FX_RACK,
         (Screen::FxEditor, _) => &FX_EDITOR,
         (Screen::Meter, _) => &METER,
+        (Screen::MidiSetup, _) => &MIDI_SETUP,
     }
 }
 
@@ -1261,6 +1271,7 @@ mod tests {
     #[test]
     fn every_menu_keeps_system_safety_and_exit_anchors() {
         let contexts = [
+            (Screen::MidiSetup, MenuContext::Normal),
             (Screen::Presets, MenuContext::Normal),
             (Screen::Playback, MenuContext::Normal),
             (Screen::Ideas, MenuContext::Normal),
@@ -1286,12 +1297,8 @@ mod tests {
         for (screen, context) in contexts {
             let menu = pages(screen, context);
             assert_eq!(menu[3].slots[0].label, "PANIC");
-            if screen == Screen::Presets {
-                assert_eq!(menu[3].slots[3].dispatch(), None);
-            } else {
-                assert_eq!(menu[3].slots[3].label, "EXIT");
-                assert!(menu[3].slots[3].dispatch().is_some());
-            }
+            assert_eq!(menu[3].slots[3].label, "EXIT");
+            assert!(menu[3].slots[3].dispatch().is_some());
             assert!(menu
                 .iter()
                 .flat_map(|page| page.slots)
@@ -1372,14 +1379,71 @@ mod tests {
                 .all(|slot| !matches!(slot.dispatch(), Some(Action::Up | Action::Down))));
         }
         assert_eq!(
-            TRACKER[1].slots.map(|slot| slot.dispatch()),
+            TRACKER[0].slots.map(|slot| slot.dispatch()),
             [
-                Some(Action::PreviousOrder),
-                Some(Action::NextOrder),
+                Some(Action::PreviousTrackerPage),
+                Some(Action::NextTrackerPage),
                 Some(Action::PreviousTrack),
                 Some(Action::NextTrack),
             ]
         );
+    }
+
+    #[test]
+    fn physical_menus_have_no_page_up_or_page_down_commands() {
+        for screen in Screen::ALL {
+            for context in [
+                MenuContext::Normal,
+                MenuContext::TrackerEdit,
+                MenuContext::TrackerRecord,
+                MenuContext::TrackerNoteEdit,
+                MenuContext::PageTarget,
+                MenuContext::PageChannel,
+                MenuContext::PatternClear,
+                MenuContext::LoopLibrary,
+                MenuContext::PatternTools,
+                MenuContext::DrumPatterns,
+                MenuContext::FxEmpty,
+                MenuContext::FxType,
+            ] {
+                assert!(pages(screen, context)
+                    .iter()
+                    .flat_map(|page| page.slots)
+                    .all(|slot| !matches!(
+                        slot.dispatch(),
+                        Some(Action::PageUp | Action::PageDown)
+                    )));
+            }
+        }
+    }
+
+    #[test]
+    fn child_command_pages_do_not_launch_unrelated_top_level_workspaces() {
+        let unrelated = [
+            Action::OpenPresets,
+            Action::OpenIdeas,
+            Action::OpenControllerLearn,
+            Action::OpenTracker,
+            Action::OpenAudioRecorder,
+            Action::OpenMeter,
+            Action::OpenMidiSetup,
+        ];
+        for screen in Screen::ALL {
+            if screen == Screen::Home {
+                continue;
+            }
+            for page in pages(screen, MenuContext::Normal) {
+                for slot in page.slots {
+                    assert!(
+                        !slot
+                            .dispatch()
+                            .is_some_and(|action| unrelated.contains(&action)),
+                        "{screen:?} exposes unrelated top-level action {:?}",
+                        slot.action
+                    );
+                }
+            }
+        }
     }
 
     #[test]
@@ -1524,8 +1588,6 @@ mod tests {
             .filter_map(MenuSlot::dispatch)
             .collect::<HashSet<_>>();
         let inventory = [
-            Action::PageUp,
-            Action::PageDown,
             Action::Home,
             Action::End,
             Action::PreviousEngine,
@@ -1533,19 +1595,13 @@ mod tests {
             Action::Activate,
             Action::Back,
             Action::StopAll,
-            Action::OpenPresets,
-            Action::OpenIdeas,
             Action::OpenHelp,
-            Action::OpenControllerLearn,
-            Action::OpenTracker,
             Action::OpenTrackerFiles,
             Action::OpenTrackerPages,
             Action::OpenTrackerTools,
             Action::OpenTrackerArrange,
             Action::OpenTrackerLoop,
             Action::OpenTrackerLoopAlign,
-            Action::OpenAudioRecorder,
-            Action::OpenMeter,
             Action::OpenFxRack,
             Action::OpenFxEditor,
             Action::ResetMeter,
@@ -1592,6 +1648,7 @@ mod tests {
             Action::TrackerMute,
             Action::TrackerPageMute,
             Action::NextTrackerPage,
+            Action::PreviousTrackerPage,
             Action::PreviousTrack,
             Action::NextTrack,
             Action::PreviousProgram,

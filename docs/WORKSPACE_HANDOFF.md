@@ -255,11 +255,16 @@ and the auto-installed `fluid-soundfont-gm` and Qsynth packages were purged
 without running `autoremove`. `/usr/bin/fluidsynth` and the 5.7 MiB TimGM bank
 remain for SHR's managed on-demand engine. JACK was not restarted.
 
-The controller menu uses a four-page spatial contract on every screen and
-modal context: page 1 is `OPS`; on child screens and editors, `EXIT` is always
-page 4/item 4 and returns one level. MIDI never quits the application. Empty
-items/pages are invisible, silent, and skipped. The visible control strip is
-centered and capped at 40 columns. The full map is in
+The application opens on a minimal black Home list. Home is the navigation
+root for Software Synths, FT2, Recorder, Ideas, Mixer, Effects, MIDI setup,
+MIDI Learn, and Help. Top-level Exit returns Home; nested editors return to
+their parent first. The controller menu uses a four-page spatial contract on
+workspace and modal contexts: page 1 holds the primary workflow (FT2 uses
+Page−/Page+/Track−/Track+); `EXIT` is page 4/item 4 and returns one level. MIDI
+never quits the application. Physical pages contain no PageUp/PageDown or
+unrelated top-level launchers; keyboard paging remains. Empty items/pages are
+invisible, silent, and skipped. The visible control strip is centered and
+capped at 40 columns. The full map is in
 `docs/CONTROLLER_INTERFACE.md`; README carries only the overview and link.
 
 Playback shows the chord, structured held-note columns, and each note's current

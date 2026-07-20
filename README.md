@@ -79,9 +79,21 @@ instrument, owned WAV loop, and configured stereo input. See the
 
 ## Screens
 
-This overview shows the main workspaces. The
-[complete visual menu manual](docs/MENU_MANUAL.md) contains all 16 screens,
-every contextual editor, and all 80 populated controller-menu pages.
+SHR opens on a minimal Home menu. Turn the master rotary or use Up/Down, then
+press the rotary or Enter to open Software Synths, FT2, the recorder, Ideas,
+the mixer, effects, MIDI setup, MIDI Learn, or Help. Back from a top-level
+workspace returns Home; editors and child tools return one level at a time.
+
+The overview below shows the established performance workspaces. The
+[visual menu manual](docs/MENU_MANUAL.md) retains the established workspace
+renders; its current text and controller map describe this iteration because
+the full screenshot set was deliberately not regenerated. The intentionally
+plain Home and read-only MIDI overview do not use dashboard screenshots.
+
+Large sound and file lists support case-insensitive first-letter jumps when a
+letter is not already a screen shortcut. Keyboard PageUp/PageDown remain
+available where supported; command pads use screen-specific operations instead
+of coarse list paging.
 
 ### Presets
 

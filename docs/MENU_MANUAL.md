@@ -1,8 +1,11 @@
 # Screen and menu manual
 
-This is the complete visual guide to SHR-DAW's 40×20 interface. It covers all
-16 screens, every distinct editor or confirmation context, and every visible
-controller-menu page. The screenshots are drawn by the real Rust UI from
+This is the visual guide to SHR-DAW's established 40×20 workspace and editor
+screens. The new intentionally plain Home list and read-only MIDI setup
+overview are documented textually during competition fast iteration; the full
+screenshot set was not regenerated for that navigation-only change. The
+current controller map is authoritative in
+[Controller interface](CONTROLLER_INTERFACE.md). Existing screenshots are drawn by the real Rust UI from
 deterministic, populated presentation states; they do not start JACK, open a
 MIDI port, or claim to show a live audio measurement.
 
@@ -32,8 +35,9 @@ The bottom controller strip has four page positions and four action positions:
 - On a four-button controller, press the main encoder to enter page selection,
   turn it to choose a page, press it again, then use the four buttons.
 - Empty pages and actions are hidden and skipped.
-- `OPS` is always page 1. On child screens and editors, `SYS` item 4 is always
-  `EXIT`, which goes back one level. MIDI controls never quit SHR-DAW.
+- Page 1 holds the screen's primary workflow; on FT2 it is Page−/Page+/Track−/
+  Track+. On workspaces, child screens, and editors, `SYS` item 4 is `EXIT`,
+  which goes back one level. MIDI controls never quit SHR-DAW.
 - `PANIC` stops owned playback and sends All Notes Off. It does not kill an
   unrelated synth or JACK client.
 
@@ -45,12 +49,17 @@ text and colors above the strip belong to the active screen.
 
 ```mermaid
 flowchart TD
-    P[Presets] -->|Load| PB[Playback]
-    P --> M[Performance meter]
-    P --> I[Ideas]
-    P --> T[FT2 Pattern]
-    P --> A[Audio recorder]
-    PB --> FX[FX rack]
+    H0[Home] --> P[Software Synths / Presets]
+    H0 --> T[FT2 Pattern]
+    H0 --> A[Audio recorder]
+    H0 --> I[Ideas]
+    H0 --> M[Performance meter]
+    H0 --> FX[FX rack]
+    H0 --> MS[MIDI setup overview]
+    H0 --> ML[MIDI Learn]
+    H0 --> H[Help]
+    P -->|Load| PB[Playback]
+    M --> FX
     FX --> FE[FX editor]
     T --> TT[FT2 Tools]
     T --> N[N00B setup]
@@ -66,11 +75,12 @@ flowchart TD
     PT --> PS[Pattern setup]
     L --> LA[Loop align]
     L --> LL[Private loop library]
-    H[Help] -. opens from most screens .-> P
+    H -. returns to its caller .-> H0
 ```
 
-The Help screen returns to whichever screen opened it. `EXIT` elsewhere follows
-the arrows in reverse by one level; it does not throw the user back to the root.
+The Help screen returns to whichever screen opened it. `EXIT` follows the
+arrows in reverse by one level. Top-level workspaces return Home; nested tools
+return to their parent first.
 
 ## Naming and safety conventions
 

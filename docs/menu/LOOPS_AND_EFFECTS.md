@@ -66,8 +66,10 @@ It rejects symlinks and unsafe paths.
 ![Populated private loop library with the OPS page](../images/menu/loop-library-ops.png)
 
 `DELETE` begins confirmed physical deletion. It succeeds only for a free,
-unreferenced private WAV. `PG UP` and `PG DOWN` move through the list. This is
-separate from Project `REMOVE`, which only detaches a loop.
+unreferenced private WAV. Turn the rotary for single-step movement or type a
+first letter to jump; keyboard PageUp/PageDown keep coarse scrolling. Physical
+pads no longer spend commands on list paging. This is separate from Project
+`REMOVE`, which only detaches a loop.
 
 ### SYS — stop and return
 

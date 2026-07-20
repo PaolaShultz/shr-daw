@@ -9,8 +9,8 @@ while the images were made.
 
 ## Presets
 
-Presets is the root screen. Turn the main encoder, use the arrow keys, or use
-the mouse wheel to choose a sound. Loading replaces the one managed software
+Home is the navigation root; **Software Synths** opens Presets. Turn the main
+encoder, use the arrow keys, or use the mouse wheel to choose a sound. Loading replaces the one managed software
 instrument; it never layers engines. synthv1, Yoshimi, and FluidSynth remain
 separate catalogs selected with the Engine page.
 
@@ -18,32 +18,24 @@ separate catalogs selected with the Engine page.
 
 ![Populated Presets screen with the OPS controller page](../images/menu/presets-ops.png)
 
-`LOAD` starts the highlighted sound. `PG UP` and `PG DOWN` move by a visible
-list page. `FIRST` jumps to the beginning of the current engine's catalog.
+`LOAD` starts the highlighted sound. `FIRST` and `LAST` jump to the ends of the
+current engine's catalog. Keyboard PageUp/PageDown still move by ten sounds;
+physical command pads deliberately do not duplicate that coarse scrolling.
 
 ### ENGINE — change instrument host
 
 ![Populated Presets screen with the ENGINE controller page](../images/menu/presets-engine.png)
 
-`ENGINE-` and `ENGINE+` move among synthv1, Yoshimi, and FluidSynth. `LAST`
-jumps to the final sound in the selected catalog. Changing catalogs does not
+`ENGINE-` and `ENGINE+` move among synthv1, Yoshimi, and FluidSynth. Changing catalogs does not
 load a sound until `LOAD` is used.
-
-### NAV — open another workspace
-
-![Populated Presets screen with the NAV controller page](../images/menu/presets-nav.png)
-
-`MTR` opens the passive performance meter. `IDEAS` opens saved free-time MIDI
-takes. `FT2` opens the Pattern editor. `AUDIO` opens synchronized multitrack
-recording.
 
 ### SYS — safety and help
 
 ![Populated Presets screen with the SYS controller page](../images/menu/presets-sys.png)
 
 `PANIC` stops owned playback and notes. `HELP` opens the local help reader.
-Presets has no MIDI `EXIT`: quitting the application is deliberately
-computer-keyboard-only.
+`EXIT` returns to Home. MIDI never quits the application; quitting remains
+computer-keyboard-only from Home.
 
 ## Playback
 
@@ -64,31 +56,22 @@ not restart the synth.
 
 ![Populated Playback screen with the OPS controller page](../images/menu/playback-ops.png)
 
-`RECORD` starts a free-time MIDI take. `REC END` stops capture but leaves the
-take unsaved. `TAKE` plays or stops the captured take. `SAVE` stores it as a
-new Idea without replacing an existing one.
+`PLAY` plays or stops the captured take. `RECORD` starts or stops free-time MIDI
+capture.
 
 ### SOUND — reset, finish, tempo, and effects
 
 ![Populated Playback screen with the SOUND controller page](../images/menu/playback-sound.png)
 
 `RESET` restores the 12 mapped parameters in place and re-arms hardware pickup.
-`FINISH` ends the current capture and saves it in one action. `TAP` estimates
-tempo from repeated presses. `FX` opens the effects rack for this Project state.
-
-### NAV — leave Playback
-
-![Populated Playback screen with the NAV controller page](../images/menu/playback-nav.png)
-
-`PRESETS`, `IDEAS`, `FT2`, and `AUDIO` open their named screens. Navigation
-does not implicitly save a pending MIDI take.
+`SAVE` publishes a new non-overwriting Idea.
 
 ### SYS — stop and return
 
 ![Populated Playback screen with the SYS controller page](../images/menu/playback-sys.png)
 
-`PANIC` performs the global owned stop. `STOP` stops take playback. `HELP`
-opens help and returns here afterward. `EXIT` returns to Presets.
+`PANIC` performs the global owned stop. `HELP` opens help and returns here
+afterward. `EXIT` returns to Presets, then Presets `EXIT` returns Home.
 
 ## Ideas
 
@@ -100,31 +83,24 @@ instead. Turn the encoder to select an entry.
 
 ![Populated Ideas screen with the OPS controller page](../images/menu/ideas-ops.png)
 
-`INSPECT` shows the Idea's sound and recording metadata. `LOAD` restores it,
-asking for confirmation before replacing an active sound. `PLAY` plays or
-stops the take. `DELETE` requires a repeated confirmation and only removes the
-selected Idea.
+`INSPECT` shows the Idea's sound and recording metadata. `PLAY` plays or stops
+the take. `RECORD` starts or stops capture. `DELETE` requires a repeated
+confirmation and only removes the selected Idea.
 
-### CAPTURE — make another Idea
+### FILE — load or save an Idea
 
 ![Populated Ideas screen with the CAPTURE controller page](../images/menu/ideas-capture.png)
 
-`RECORD` starts MIDI capture with the current sound. `REC END` stops it.
-`SAVE` publishes a new non-overwriting Idea. `FIRST` selects the oldest/top
-entry.
-
-### NAV — move to another workspace
-
-![Populated Ideas screen with the NAV controller page](../images/menu/ideas-nav.png)
-
-`PRESETS`, `HELP`, `FT2`, and `AUDIO` open their named screens.
+`LOAD` restores the selected Idea, asking for confirmation before replacing an
+active sound. `SAVE` publishes a new non-overwriting Idea. `FIRST` and `LAST`
+select the list boundaries.
 
 ### SYS — safety and list boundary
 
 ![Populated Ideas screen with the SYS controller page](../images/menu/ideas-sys.png)
 
-`PANIC` stops owned notes and transports. `STOP` stops take playback. `LAST`
-selects the newest/bottom entry. `EXIT` returns one level.
+`PANIC` stops owned notes and transports. `HELP` opens contextual help. `EXIT`
+returns Home.
 
 ## Help
 
@@ -137,8 +113,8 @@ five-button layouts, encoder press follows a selected section link.
 ![Populated Help screen with the OPS controller page](../images/menu/help-ops.png)
 
 `OPEN` follows the highlighted internal link and is the required link action on
-a four-button layout. `PG UP` and `PG DOWN` scroll by a visible page. `TOP`
-returns to the beginning.
+a four-button layout. `TOP` returns to the beginning. Keyboard
+PageUp/PageDown retain page scrolling; physical pads do not.
 
 ### SYS — safety and return
 
@@ -155,13 +131,12 @@ The compact list shows named tracks as ready or missing, and the status rows
 show armed count, elapsed time, sample rate, writer high-water mark, drop/xrun
 counts, final path, or the failure reason. It never starts or restarts JACK.
 
-### OPS — arm and record
+### RECORD — arm and record
 
 ![Populated Audio recorder screen with the OPS controller page](../images/menu/audio-recorder-ops.png)
 
 `RECORD` starts all armed tracks at one callback boundary. `ARM` toggles the
-selected track, `ALL` arms every resolved track, and `NONE` disarms everything.
-An armed missing source prevents a take from starting.
+selected track. An armed missing source prevents a take from starting.
 
 ### TRACK — choose the inputs
 
@@ -171,20 +146,19 @@ An armed missing source prevents a take from starting.
 currently discovered sources (and blank); `NAME` edits the musician-facing
 label. Runtime absence never overwrites a remembered source.
 
-### NAV — leave the recorder
+### SETUP — prepare tracks
 
 ![Populated Audio recorder screen with the NAV controller page](../images/menu/audio-recorder-nav.png)
 
-`REFRESH` discovers current JACK audio sources without changing assignments.
-`PRESETS`, `IDEAS`, and `FT2` open those workspaces. A recording should be
-finalized before leaving.
+`ALL` arms every resolved track, `NONE` disarms everything, and `REFRESH`
+discovers current JACK audio sources without changing assignments.
 
 ### SYS — finalize safely
 
 ![Populated Audio recorder screen with the SYS controller page](../images/menu/audio-recorder-sys.png)
 
-`PANIC` stops owned activity. `STOP` finalizes every stem and the session
-manifest. `HELP` opens help. `EXIT` returns one level.
+`PANIC` stops owned activity. `HELP` opens help. `EXIT` returns Home without
+silently changing recorder state.
 
 ## Performance meter
 
@@ -213,5 +187,5 @@ accepts the control; upward, equal, and unrelated control movements do not.
 ![Populated performance meter with the SYS controller page](../images/menu/performance-meter-sys.png)
 
 `PANIC` remains available. `HELP` opens the explanation of meter scope. `EXIT`
-returns to Presets. The screenshot says `Presentation · no live audio` because
+returns to Home. The screenshot says `Presentation · no live audio` because
 its meter values are seeded for documentation rather than measured.

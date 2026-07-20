@@ -5,15 +5,16 @@ interface. The authoritative inventory was taken from `ui.rs` keyboard, mouse,
 encoder, command-pad, screen, and contextual dispatch paths before paging was
 implemented.
 
-## Pre-implementation action inventory
+## Action inventory
 
 | Screen or mode | Existing user-facing operations and input paths |
 |---|---|
-| Presets | Select previous/next, page up/down, first/last (keyboard, wheel, encoder); previous/next engine (keyboard/pads); load selected sound (keyboard, mouse, encoder/pad); MTR, tracker, ideas, and audio screens (controller/keyboard as available); stop synth/panic. Application exit remains keyboard-only. |
+| Home | Startup navigation root. Encoder/Up/Down selects a musician-facing workspace and encoder click/Enter opens it. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard. |
+| Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Master level is visible; back, help, and panic remain reachable. |
-| Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; reset the 12 mapped parameters in place (encoder press); record/stop/finish-and-save MIDI, play/stop take, save idea (keyboard/pads/mouse); presets/back, ideas, tracker, audio, and FX rack; tap tempo; stop/panic. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
-| Ideas | Previous/next/first/last idea (keyboard, wheel, encoder); inspect (keyboard/mouse/pad); load with replace confirmation (encoder); play take; delete with repeat confirmation; record/stop MIDI; save timestamped or numbered idea; back/cancel, tracker, audio, presets, panic. |
-| FT2 normal | Previous/next row (keyboard/encoder); order/lane movement; play here/from start; prominent Play/Rec/Edit/N00B MODE page; child Tools screen for pages, files, loop, mute, and page switching. |
+| Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; reset the 12 mapped parameters in place; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
+| Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
+| FT2 normal | Previous/next row (keyboard/encoder); Page−/Page+/Track−/Track+ on controller page 1; play, record, cell edit, and step edit on page 2; child Tracks, Files, and Tools on page 3; panic/help/Exit on page 4. |
 | FT2 record | Record quantized notes into only the current page/current pattern; route live notes only to that page's hardware MIDI target; stop record, stop, exit, and panic remain available. |
 | FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; blank/skip; erase; note off; 1/2/4/8-row entry advance; leave edit; lane mute. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 N00B | Choose chromatic root plus major/natural minor; map live notes to the nearest scale tone with downward ties; preserve exact note ownership across releases and mode changes. |
@@ -26,9 +27,10 @@ implemented.
 | Pattern setup | Choose 3/4 or 4/4 and pattern size; confirm new/destructive resize, cancel, or clear while retaining the current size. |
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
-| Audio recorder | Select and name a track; assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; back, open presets/ideas/FT2, and panic. |
+| Audio recorder | Select and name a track; assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; Exit to Home and panic. |
 | FX rack/editor | Choose source, AUX 1, AUX 2, or master; add/select/remove/bypass/reorder bounded effects; edit strict named physical-unit parameters; set independent send level, pre/post point, and return level; inspect peak/RMS/clip/non-finite/gain-reduction meters; and panic. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
-| Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, page scrolling, top, and return to the previous screen. |
+| MIDI setup | Read-only overview of the selected controller, external tracker route/profile, and controller clock. Hardware changes remain an explicit external `shr-setup` action. |
+| Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
 
 The complete final screen × page × item mapping is maintained below. The table
@@ -36,7 +38,8 @@ uses expanded action names where that is clearer; the compact visible label is
 shown in parentheses when it differs materially. `src/navigation.rs` is the
 executable canonical copy: labels and dispatch actions are one definition. A unit test builds the
 union of every normal and contextual menu and checks every action in this
-inventory for controller reachability.
+  screen-specific inventory for controller reachability. Top-level Home entries
+  are reached by the master rotary rather than duplicated on child command pages.
 
 ## Input model
 
@@ -50,9 +53,10 @@ inventory for controller reachability.
   rotary selection actions.
 - Each screen remembers its last selected page. Entering/leaving a contextual
   mode resets that context to page 1, preventing stale hidden meanings.
-- Page 1 is always `OPS`. On every child screen and contextual editor, `EXIT`
-  is page 4/item 4 and returns exactly one level. Presets is the root and has
-  no MIDI Exit; quitting the application remains keyboard-only.
+- Page 1 holds the primary screen workflow; for FT2 normal mode it is the
+  Page−/Page+/Track−/Track+ movement page. On every workspace, child screen,
+  and contextual editor, `EXIT` is page 4/item 4 and returns exactly one level.
+  Home is the root and has no MIDI Exit; quitting remains keyboard-only.
 - Help is a child screen. It tries to show the same help at
   `http://<LAN-IP>/help` while open. The master encoder moves one help row at a
   time. Encoder press follows a highlighted internal section link on eight-
@@ -64,6 +68,9 @@ inventory for controller reachability.
   cancels the field on every layout.
 - Empty items and pages are not drawn, are silent when pressed, and are skipped
   by page cycling. The interface exposes working actions only.
+- Physical command pages never contain PageUp/PageDown. Keyboard
+  PageUp/PageDown retain their existing behavior, while the rotary continues
+  ordinary one-step list and row movement.
 - The rendered controller strip is centered and capped at 40 columns. Labels
   and brackets use their natural width instead of expanding with the terminal.
 - Command notes and CCs may be qualified by MIDI channel. The MiniLab factory
@@ -78,87 +85,85 @@ Blank physical positions and wholly empty pages are omitted.
 
 | Screen/context | Page | Item 1 | Item 2 | Item 3 | Item 4 |
 |---|---|---|---|---|---|
-| Presets | Ops | Load | Page up | Page down | First |
-| Presets | Engine | Engine− | Engine+ | — | Last |
-| Presets | Nav | MTR | Ideas | FT2 | Audio |
-| Presets | Sys | Panic | Help | — | — |
+| Presets | Ops | Load | First | Last | — |
+| Presets | Engine | Engine− | Engine+ | — | — |
+| Presets | Sys | Panic | Help | — | Exit |
 | MTR | Ops | Source− | Source+ | Level− | Level+ |
-| MTR | Mix | Mute | Final rec/stop | Reset holds | — |
+| MTR | Mix | Mute | — | Final rec/stop | Reset holds |
 | MTR | Nav | FX | — | — | — |
 | MTR | Sys | Panic | — | Help | Exit |
-| Playback | Ops | Record MIDI | Rec end | Take | Save |
-| Playback | Sound | Reset controls | Finish + save | Tap tempo | FX |
-| Playback | Nav | Presets | Ideas | FT2 | Audio |
-| Playback | Sys | Panic | Stop take | Help | Exit |
-| FX rack | Ops | Edit | Add | Bypass | Remove |
-| FX rack | Order | Up | Down | Kind− | Kind+ |
+| Playback | Play | — | Play take | Record MIDI | — |
+| Playback | Sound | Reset controls | Save | — | — |
+| Playback | Sys | Panic | Help | — | Exit |
+| FX rack | Ops | Add | Delete | Edit type | Parameters |
+| FX rack | Order | Up | Down | Bypass | — |
 | FX rack | Route | Target | Send− | Send+ | Point |
 | FX rack | Sys | Panic | Return | Help | Exit |
 | FX editor | Ops | Parameter− | Parameter+ | Value− | Value+ |
 | FX editor | State | Bypass | — | — | — |
 | FX editor | Nav | Rack | — | — | — |
 | FX editor | Sys | Panic | — | Help | Exit |
-| Ideas | Ops | Inspect | Load | Play | Delete |
-| Ideas | Capture | Record | Rec end | Save | First |
-| Ideas | Nav | Presets | Help | FT2 | Audio |
-| Ideas | Sys | Panic | Stop take | Last | Exit |
-| Help | Ops | Open link | Page up | Page down | Top |
+| Ideas | Play | Inspect | Play | Record | Delete |
+| Ideas | File | Load | Save | First | Last |
+| Ideas | Sys | Panic | — | Help | Exit |
+| Help | Ops | Open link | Top | — | — |
 | Help | Sys | Panic | — | — | Exit |
-| FT2 | Ops | Play here | Play from start | Step edit | Cell edit |
-| FT2 | Mode | Play | Record | Edit | N00B |
-| FT2 | Move | Arrangement step− (`PG-`) | Arrangement step+ (`PG+`) | Lane− | Lane+ |
-| FT2 | Sys | Panic | Stop | Tools | Exit |
-| FT2 tools | Ops | Pages/tracks (`PAGES`) | Files | Arrange (`ARR`) | Mute lane |
+| FT2 | Move | Page− | Page+ | Track− | Track+ |
+| FT2 | Play | Cell edit | Play | Record | Step edit |
+| FT2 | Open | Tracks | Files | Tools | Tap tempo |
+| FT2 | Sys | Panic | — | Help | Exit |
+| FT2 tools | Ops | Arrange | Loop | N00B | Mute lane |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
-| FT2 tools | Loop | Loop | Remove | Library | Mute page (`MUTE PG`) |
-| FT2 tools | Sys | Panic | Stop | Help | Exit |
+| FT2 tools | Page | Mute page (`MUTE PG`) | — | — | — |
+| FT2 tools | Sys | Panic | Help | — | Exit |
 | N00B setup | Ops | Root− | Root+ | Scale | Done |
-| N00B setup | Sys | Panic | Stop | Help | Exit |
-| FT2 loop | Ops | Import | Play here | Start | Stop |
+| N00B setup | Sys | Panic | Help | — | Exit |
+| FT2 loop | Play | Rewind | Play | Import | Remove |
 | FT2 loop | BPM | BPM− | BPM+ | BPM x | Unit |
 | FT2 loop | Cut | Start− | Start+ | Length− | Length+ |
-| FT2 loop | Sys | Panic | Stop | Align | Exit |
-| Loop library | Ops | Delete WAV | Page up | Page down | — |
-| Loop library | Sys | Panic | Stop | Help | Exit |
+| FT2 loop | Sys | Panic | Align | Library | Exit |
+| Loop library | Ops | Delete WAV | — | — | — |
+| Loop library | Sys | Panic | Help | — | Exit |
 | FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
-| FT2 loop align | Sys | Panic | Stop | Help | Exit |
-| FT2 record | Ops | Rec end | — | — | — |
-| FT2 record | Sys | Panic | Stop | Help | Exit |
+| FT2 loop align | Sys | Panic | Help | — | Exit |
+| FT2 record | Play | — | Play | Record/stop | — |
+| FT2 record | Sys | Panic | Help | — | Exit |
 | FT2 step edit | Ops | Blank/skip | Erase | N-off | Done |
 | FT2 step edit | Move | Arrangement step− (`PG-`) | Arrangement step+ (`PG+`) | Lane− | Lane+ |
 | FT2 step edit | Add | 1 row | 2 rows | 4 rows | 8 rows |
-| FT2 step edit | Sys | Panic | Stop | Next page (`PAGE`) | Exit edit |
-| FT2 cell edit | Ops | Confirm | Step edit | Clear field | Effect type |
-| FT2 cell edit | Fields | Note | Gate | Vel | Program |
-| FT2 cell edit | Adjust | Effect parameter | Value− | Value+ | — |
-| FT2 cell edit | Sys | Panic | Stop | — | Exit/cancel |
+| FT2 step edit | Sys | Panic | — | Next page (`PAGE`) | Exit edit |
+| FT2 cell edit | Route | Destination | Channel | Instrument | — |
+| FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
+| FT2 cell edit | Cell | Note | Gate | Velocity | Effect |
+| FT2 cell edit | Done | Panic | Save | Effect parameter | Exit/cancel |
 | Files | Ops | Load | Save | Preview/stop | Delete |
 | Files | Project | New Project | Save As | Name/rename | Pattern tools |
-| Files | Sys | Panic | Stop | Help | Exit |
+| Files | Sys | Panic | — | Help | Exit |
 | Pattern tools | Ops | New | Clone | Clear | Drum patterns |
 | Pattern tools | Clip | Copy | Paste new (`NEW`) | Paste over (`OVER`) | Clean unused (`CLEAN`) |
 | Pattern tools | Trans | Octave− (`OCT-`) | Semitone− (`NOTE-`) | Semitone+ (`NOTE+`) | Octave+ (`OCT+`) |
-| Pattern tools | Sys | Panic | Stop | Help | Exit |
+| Pattern tools | Sys | Panic | — | Help | Exit |
 | Drum patterns | Ops | Load | Save | Delete user | — |
 | Drum patterns | Filter | Genre− | Genre+ | Meter | Size |
-| Drum patterns | Move | Page up | Page down | First | Last |
-| Drum patterns | Sys | Panic | Stop | Help | Exit |
-| Arrange | Ops | Play | Jump | Append | Insert |
+| Drum patterns | Move | First | Last | — | — |
+| Drum patterns | Sys | Panic | — | Help | Exit |
+| Arrange | Ops | Jump | Play | Append | Insert |
 | Arrange | Step | Up | Down | Repeat | Remove |
-| Arrange | Sys | Panic | Stop | Help | Exit |
+| Arrange | Sys | Panic | Help | — | Exit |
 | Pattern setup | Ops | 3/4 | 4/4 | Size− | Size+ |
 | Pattern setup | Apply | Confirm | Keep | — | — |
 | Pattern setup | Sys | Panic | — | Help | Exit/cancel |
 | Tracks | Ops | Add four lanes | Target | Channel | Done |
 | Tracks | Column | Column− | Column+ | Program− | Program+ |
 | Tracks | Bank | MSB− | MSB+ | LSB− | LSB+ |
-| Tracks | Sys | Panic | Stop | Help | Exit/cancel |
+| Tracks | Sys | Panic | — | Help | Exit/cancel |
 | Target/channel editor | Ops | Confirm | — | — | — |
-| Target/channel editor | Sys | Panic | Stop | Help | Exit/cancel |
-| Audio recorder | Ops | Record/toggle | Arm selected | Arm all resolved | Disarm all |
+| Target/channel editor | Sys | Panic | — | Help | Exit/cancel |
+| Audio recorder | Record | — | — | Record/toggle | Arm selected |
 | Audio recorder | Track | Previous track | Next track | Assign source | Name track |
-| Audio recorder | Nav | Refresh sources | Presets | Ideas | FT2 |
-| Audio recorder | Sys | Panic | Stop/finalize | Help | Exit |
+| Audio recorder | Setup | Arm all resolved | Disarm all | Refresh sources | — |
+| Audio recorder | Sys | Panic | — | Help | Exit |
+| MIDI setup | Sys | Panic | Help | — | Exit |
 
 ## FT2 cell editor inventory and mapping
 
@@ -168,10 +173,10 @@ format stores all of these fields directly inside each FT2 Pattern.
 
 | Page | Item 1 | Item 2 | Item 3 | Item 4 |
 |---|---|---|---|---|
-| Ops | Confirm | Step entry | Clear selected field | Effect type |
-| Fields | Note | Gate | Vel | Program |
-| Adjust | Effect parameter | Value− | Value+ | — |
-| Sys | Panic | Stop | — | Exit/cancel |
+| Route | Destination | Channel | Instrument | — |
+| Sound | Bank MSB | Bank LSB | Cell program | Clear selected field |
+| Cell | Note | Gate | Velocity | Effect type |
+| Done | Panic | Save | Effect parameter | Exit/cancel |
 
 The first display spacer uses `C` for cut, `D` for delay, `R` for retrigger,
 `T` for tempo, and blank for no command. The data model supports one command
