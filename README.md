@@ -90,9 +90,10 @@ its sounds.
 
 New Projects start with Pattern-owned Software Synth, MIDI channel 1/program 1,
 and Drums channel 10 pages. An empty routed Pattern can explicitly replace that
-private new-Pattern template when saved. The standalone Software Synth owns its loaded
-sound only until that top-level workspace exits; FT2 loads the preset named by
-its Pattern and never inherits the standalone choice. Missing preferred
+private new-Pattern template when saved. The standalone Software Synth keeps its
+loaded sound when its screen exits. When FT2 page 1 is still `AUTO`, entering
+FT2 assigns that current engine/instrument to the page and keeps it playable;
+an explicit FT2 software route remains authoritative. Missing preferred
 MIDI/audio hardware remains visible and never rewrites a saved route.
 
 Hardware names and routes remain configuration data. The owned effects graph

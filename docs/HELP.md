@@ -50,9 +50,10 @@ cancels any unconfirmed draft and closes the overlay.
 
 Presets chooses the instrument engine and sound. Loading a sound starts or
 reuses only the engine owned by SHR-DAW; unrelated synth processes are left
-alone. Presets and Playback share that owned sound. Returning from top-level
-Presets to Home sends All Notes Off and unloads it; FT2 loads its Pattern's
-synthv1 preset separately.
+alone. Presets and Playback share that owned sound, and leaving those screens
+keeps it running. Global panic, shutdown, replacement, or an explicit different
+FT2 software route ends it safely. If FT2 page 1 is AUTO, entering FT2 assigns
+the current engine/instrument to that page and keeps it playable.
 
 Synthv1 controls use pickup. After loading, idea load, or RESET, mapped CCs are
 blocked until the physical control reaches the stored value. This prevents
@@ -78,7 +79,9 @@ held notes first.
 
 ## Effects graph
 
-Playback SOUND FX opens the current Project's FX rack. TARGET cycles SOURCE,
+Playback or FT2 SYS FX opens the current Project's FX rack. In FT2, uppercase F
+opens it directly. Back returns to the calling Player or FT2 screen while its
+instrument remains active. TARGET cycles SOURCE,
 AUX 1, AUX 2, and MASTER. Source effects change the instrument in series.
 Each aux makes a parallel wet copy: SEND sets how much enters it, POINT chooses
 before or after source effects, and RETURN sets how much comes back. Master

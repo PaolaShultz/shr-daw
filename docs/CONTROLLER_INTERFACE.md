@@ -27,7 +27,7 @@ from the splash.
 | Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard. |
 | Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
-| Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; enable a root plus major/natural-minor N00B filter or return to chromatic Normal; reset the 12 mapped parameters in place; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
+| Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; enable a root plus major/natural-minor N00B filter or return to chromatic Normal; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | Previous/next row (keyboard/encoder); Page−/Page+/Track−/Track+ on controller page 1; play, record, cell edit, and step edit on page 2; universal PAGE/PATTERN/SONG/ROUTE overlays on page 3; panic/help/Exit on page 4. |
 | FT2 record | Record quantized notes into only the current page/current pattern; route live notes only to that page's hardware MIDI target; stop record, stop, exit, and panic remain available. |
@@ -151,7 +151,7 @@ Blank physical positions and wholly empty pages are omitted.
 | MTR | Sys | Panic | — | Help | Exit |
 | Playback | Play | — | Play take | Record MIDI | — |
 | Playback | Sound | Reset controls | Save | N00B | Normal |
-| Playback | Sys | Panic | Help | — | Exit |
+| Playback | Sys | Panic | Help | FX | Exit |
 | FX rack | Ops | Add | Delete | Edit type | Parameters |
 | FX rack | Order | Up | Down | Bypass | — |
 | FX rack | Route | Target | Send− | Send+ | Point |
@@ -168,7 +168,7 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 | Move | Page− | Page+ | Track− | Track+ |
 | FT2 | Play | Cell edit | Play | Record | Step edit |
 | FT2 | Nav | Page overlay | Pattern overlay | Song overlay | Route overlay |
-| FT2 | Sys | Panic | N00B | Help | Exit |
+| FT2 | Sys | Panic | FX | Help | Exit |
 | FT2 tools | Ops | Arrange | Loop | N00B | Mute lane |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
 | FT2 tools | Page | Mute page (`MUTE PG`) | — | — | — |

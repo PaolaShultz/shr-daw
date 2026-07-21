@@ -24,10 +24,11 @@ instrument and its settings decide how strongly that velocity changes sound.
 Recognized major triads use the explicit `maj` label, such as `C maj`, so the
 display does not rely on an omitted suffix to teach the chord quality.
 
-The loaded standalone instrument belongs to the Software Synth workspace.
-Moving between Presets and Playback keeps it running; leaving Presets for Home
-sends All Notes Off and unloads it. FT2 has separate Pattern-owned synth routing
-and never treats this last standalone selection as its instrument.
+The loaded standalone instrument stays running when you leave Presets or
+Playback, so it remains available for effects and other screens. Global panic,
+application shutdown, loading a replacement, or entering FT2 with a different
+explicit software route still ends it safely. If FT2 page 1 is `AUTO`, entering
+FT2 assigns the current engine/instrument to that page and keeps it playable.
 
 ## Learning by exploration
 
@@ -182,7 +183,9 @@ active engine.
 
 ## Effects and routing
 
-From Playback, open **SOUND** → **FX**. `TARGET` moves among SOURCE, AUX 1,
+From Playback or normal FT2, open **SYS** → **FX**. Uppercase `F` is the direct
+FT2 keyboard shortcut. Back returns to the exact calling screen without
+stopping its instrument or disabling FT2 live input. `TARGET` moves among SOURCE, AUX 1,
 AUX 2, and MASTER. A source rack changes the managed instrument in series; it
 is the natural place for EQ, compression, filtering, distortion, gating, or
 other processing that belongs to that sound. The master rack processes the

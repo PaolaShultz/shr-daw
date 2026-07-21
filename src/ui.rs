@@ -746,6 +746,10 @@ fn is_tracker_screen(screen: Screen) -> bool {
     )
 }
 
+fn is_fx_screen(screen: Screen) -> bool {
+    matches!(screen, Screen::FxRack | Screen::FxEditor)
+}
+
 fn take_engine_when_owned<T>(
     engine: &mut Option<T>,
     owner: &mut Option<EngineOwner>,
@@ -2348,27 +2352,18 @@ impl App {
 
     fn set_screen(&mut self, screen: Screen) {
         let previous = self.screen;
-        let playback_filter_was_active = self.playback_noob
-            && (previous == Screen::Playback
-                || (previous == Screen::Help && self.help_previous == Screen::Playback));
-        let playback_filter_will_be_active = self.playback_noob
-            && (screen == Screen::Playback
-                || (screen == Screen::Help && self.help_previous == Screen::Playback));
+        let playback_filter_was_active =
+            self.playback_noob && self.screen_keeps_playback_workspace_active(previous);
+        let playback_filter_will_be_active =
+            self.playback_noob && self.screen_keeps_playback_workspace_active(screen);
         if playback_filter_was_active && !playback_filter_will_be_active {
             if let Some(engine) = self.engine.as_ref() {
                 engine.panic();
             }
             self.held_notes = HeldNotes::default();
         }
-        let previous_tracker = is_tracker_screen(previous)
-            || (previous == Screen::Help && is_tracker_screen(self.help_previous));
-        let next_tracker =
-            is_tracker_screen(screen) || (screen == Screen::Help && previous_tracker);
-        let previous_software = matches!(previous, Screen::Presets | Screen::Playback)
-            || (previous == Screen::Help
-                && matches!(self.help_previous, Screen::Presets | Screen::Playback));
-        let next_software = matches!(screen, Screen::Presets | Screen::Playback)
-            || (screen == Screen::Help && previous_software);
+        let previous_tracker = self.screen_keeps_tracker_workspace_active(previous);
+        let next_tracker = self.screen_keeps_tracker_workspace_active(screen);
         if self.screen != screen {
             if self.screen == Screen::TrackerFiles && self.song_previewing {
                 self.stop_song_preview();
@@ -2384,9 +2379,6 @@ impl App {
             self.arm_fx_pickup();
         }
         if previous != screen {
-            if previous_software && !next_software {
-                self.unload_owned_engine(|owner| *owner == EngineOwner::SoftwareSynth);
-            }
             if previous_tracker && !next_tracker {
                 self.disable_tracker_route();
                 self.unload_owned_engine(|owner| matches!(owner, EngineOwner::Tracker(_)));
@@ -2397,9 +2389,51 @@ impl App {
         }
     }
 
+    fn screen_keeps_playback_workspace_active(&self, screen: Screen) -> bool {
+        screen == Screen::Playback
+            || (is_fx_screen(screen) && self.fx_rack_parent == Screen::Playback)
+            || (screen == Screen::Help
+                && (self.help_previous == Screen::Playback
+                    || (is_fx_screen(self.help_previous)
+                        && self.fx_rack_parent == Screen::Playback)))
+    }
+
+    fn screen_keeps_tracker_workspace_active(&self, screen: Screen) -> bool {
+        is_tracker_screen(screen)
+            || (is_fx_screen(screen) && is_tracker_screen(self.fx_rack_parent))
+            || (screen == Screen::Help
+                && (is_tracker_screen(self.help_previous)
+                    || (is_fx_screen(self.help_previous)
+                        && is_tracker_screen(self.fx_rack_parent))))
+    }
+
     fn tracker_workspace_active(&self) -> bool {
-        is_tracker_screen(self.screen)
-            || (self.screen == Screen::Help && is_tracker_screen(self.help_previous))
+        self.screen_keeps_tracker_workspace_active(self.screen)
+    }
+
+    fn adopt_current_instrument_for_first_tracker_page(&mut self) -> bool {
+        if self.engine_owner.as_ref() != Some(&EngineOwner::SoftwareSynth) {
+            return false;
+        }
+        let Some(preset) = self.playing.as_ref() else {
+            return false;
+        };
+        let route = SoftwareRoute {
+            engine: preset.backend,
+            instrument: preset.route_id(),
+        };
+        let Some(first_page) = self
+            .current_pattern_mut()
+            .and_then(|pattern| pattern.pages.first_mut())
+        else {
+            return false;
+        };
+        if first_page.target != PageTarget::Default {
+            return false;
+        }
+        first_page.target = PageTarget::Software(route.clone());
+        self.engine_owner = Some(EngineOwner::Tracker(route));
+        true
     }
 
     fn unload_owned_engine(&mut self, matches: impl FnOnce(&EngineOwner) -> bool) {
@@ -3493,9 +3527,8 @@ impl App {
     fn sync_playback_noob(&self) {
         if let Ok(mut active) = self.playback_scale.lock() {
             *active = (self.playback_noob
-                && (self.screen == Screen::Playback
-                    || (self.screen == Screen::Help && self.help_previous == Screen::Playback)))
-                .then_some(self.noob_scale);
+                && self.screen_keeps_playback_workspace_active(self.screen))
+            .then_some(self.noob_scale);
         }
     }
 
@@ -8782,13 +8815,16 @@ fn perform(
         Action::OpenHelp => a.open_help(),
         Action::OpenControllerLearn => a.begin_controller_learn(),
         Action::OpenTracker => {
+            let adopted = a.adopt_current_instrument_for_first_tracker_page();
             a.set_screen(Screen::Tracker);
             a.refresh_page_targets();
             a.sync_tracker_route();
             let page_online = a
                 .current_page()
                 .is_some_and(|page| a.target_online(&page.target));
-            a.status = if page_online {
+            a.status = if adopted {
+                "tracker ready · current instrument assigned to page 1".into()
+            } else if page_online {
                 "tracker ready · STEP toggles entry · encoder press skips".into()
             } else {
                 "tracker page target offline · PAGES to change it".into()
@@ -8827,11 +8863,10 @@ fn perform(
         }
         Action::OpenFxRack => {
             if !matches!(a.screen, Screen::FxRack | Screen::FxEditor) {
-                a.fx_rack_parent = if a.screen == Screen::Meter {
-                    Screen::Meter
-                } else {
-                    Screen::Home
-                };
+                a.fx_rack_parent = a.screen;
+                if a.screen == Screen::Playback || is_tracker_screen(a.screen) {
+                    a.fx_target = 0;
+                }
             }
             if a.selected_effect_id().is_none() {
                 a.fx_selection = FxRackSelection::Insert;
@@ -9565,6 +9600,10 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 return false;
             }
         }
+        if code == KeyCode::Char('F') {
+            perform(Action::OpenFxRack, a, state, Some(tx));
+            return false;
+        }
         if let Some(semitone) = tracker_key_note(code) {
             let note = a.tracker_keyboard_note(semitone);
             a.audition_keyboard_note(note, 96);
@@ -9809,9 +9848,10 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             perform(Action::OpenMeter, a, state, Some(tx));
         }
         KeyCode::Char('t') => {
-            a.set_screen(Screen::Tracker);
-            a.sync_tracker_route();
-            a.status = a.sequencer.unavailable_label();
+            perform(Action::OpenTracker, a, state, Some(tx));
+        }
+        KeyCode::Char('f') | KeyCode::Char('F') if a.screen == Screen::Playback => {
+            perform(Action::OpenFxRack, a, state, Some(tx));
         }
         KeyCode::Char('a') => {
             if a.screen == Screen::Tracker {
@@ -15069,7 +15109,7 @@ mod tests {
     }
 
     #[test]
-    fn home_back_paths_release_workspace_owners_and_editor_drafts() {
+    fn home_back_paths_keep_standalone_sound_and_release_other_workspace_state() {
         let p = presets();
 
         let mut synth = app(&p);
@@ -15077,7 +15117,7 @@ mod tests {
         synth.engine_owner = Some(EngineOwner::SoftwareSynth);
         perform(Action::Back, &mut synth, Path::new("/none"), None);
         assert_eq!(synth.screen, Screen::Home);
-        assert_eq!(synth.engine_owner, None);
+        assert_eq!(synth.engine_owner, Some(EngineOwner::SoftwareSynth));
 
         let mut tracker = app(&p);
         tracker.screen = Screen::Tracker;
@@ -15382,6 +15422,41 @@ mod tests {
         assert_eq!(a.fx_rack_parent, Screen::Meter);
         perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Meter);
+    }
+
+    #[test]
+    fn playback_and_ft2_effects_return_to_their_callers_without_dropping_ownership() {
+        let p = presets();
+
+        let mut playback = app(&p);
+        playback.screen = Screen::Playback;
+        playback.engine_owner = Some(EngineOwner::SoftwareSynth);
+        perform(Action::OpenFxRack, &mut playback, Path::new("/none"), None);
+        assert_eq!(playback.screen, Screen::FxRack);
+        assert_eq!(playback.fx_rack_parent, Screen::Playback);
+        assert_eq!(playback.fx_target, 0);
+        assert_eq!(playback.engine_owner, Some(EngineOwner::SoftwareSynth));
+        perform(Action::Back, &mut playback, Path::new("/none"), None);
+        assert_eq!(playback.screen, Screen::Playback);
+        assert_eq!(playback.engine_owner, Some(EngineOwner::SoftwareSynth));
+
+        let route = SoftwareRoute::synthv1("Preset 00");
+        let mut tracker = app(&p);
+        tracker.screen = Screen::Tracker;
+        tracker.engine_owner = Some(EngineOwner::Tracker(route.clone()));
+        tracker.sync_tracker_route();
+        perform(Action::OpenFxRack, &mut tracker, Path::new("/none"), None);
+        assert_eq!(tracker.screen, Screen::FxRack);
+        assert_eq!(tracker.fx_rack_parent, Screen::Tracker);
+        assert_eq!(
+            tracker.engine_owner,
+            Some(EngineOwner::Tracker(route.clone()))
+        );
+        assert!(tracker.tracker_route.lock().unwrap().preview_state().0);
+        perform(Action::Back, &mut tracker, Path::new("/none"), None);
+        assert_eq!(tracker.screen, Screen::Tracker);
+        assert_eq!(tracker.engine_owner, Some(EngineOwner::Tracker(route)));
+        assert!(tracker.tracker_route.lock().unwrap().preview_state().0);
     }
 
     #[test]
@@ -18916,13 +18991,13 @@ mod tests {
     }
 
     #[test]
-    fn leaving_top_level_software_synth_clears_only_its_workspace_owner() {
+    fn leaving_top_level_software_synth_keeps_its_owned_engine_available() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Presets;
         a.engine_owner = Some(EngineOwner::SoftwareSynth);
         a.set_screen(Screen::Home);
-        assert_eq!(a.engine_owner, None);
+        assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
 
         a.screen = Screen::Presets;
         a.engine_owner = Some(EngineOwner::Tracker(SoftwareRoute::synthv1(
@@ -18938,18 +19013,43 @@ mod tests {
     }
 
     #[test]
-    fn tracker_synth_route_never_inherits_the_standalone_selection() {
+    fn tracker_keeps_an_explicit_first_page_instrument() {
         let p = presets();
         let mut a = app(&p);
         a.playing = Some(p[38].clone());
+        a.engine_owner = Some(EngineOwner::SoftwareSynth);
+        perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
         assert_eq!(
             a.tracker_software_route(),
             Some(SoftwareRoute::synthv1("Preset 00"))
         );
-        assert_ne!(
-            a.tracker_software_route().map(|route| route.instrument),
-            a.playing.as_ref().map(Preset::route_id)
+        assert_eq!(a.engine_owner, None);
+    }
+
+    #[test]
+    fn tracker_assigns_the_current_instrument_when_first_page_is_undefined() {
+        let p = presets();
+        let mut a = app(&p);
+        a.current_pattern_mut().unwrap().pages[0] =
+            sequencer::Page::new_portable("Software Synth", false);
+        a.playing = Some(p[38].clone());
+        a.engine_owner = Some(EngineOwner::SoftwareSynth);
+
+        perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
+
+        let route = SoftwareRoute::synthv1("Preset 38");
+        assert_eq!(a.screen, Screen::Tracker);
+        assert_eq!(
+            a.current_pages()[0].target,
+            PageTarget::Software(route.clone())
         );
+        assert_eq!(a.engine_owner, Some(EngineOwner::Tracker(route)));
+        assert_eq!(
+            a.playing.as_ref().map(Preset::route_id).as_deref(),
+            Some("Preset 38")
+        );
+        assert!(a.status.contains("current instrument assigned"));
+        assert!(a.tracker_route.lock().unwrap().preview_state().0);
     }
 
     #[test]

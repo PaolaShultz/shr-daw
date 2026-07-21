@@ -59,8 +59,9 @@ Every musician-facing screen shows channels 1–16 and programs 1–128.
 Each page keeps one MIDI target plus four independent column channel, bank, and
 master-program setups. It also keeps velocity, mute, percussion, optional
 device-profile metadata, and lane settings. A software target stores its engine
-and that engine's stable instrument identity in the Pattern; it never borrows
-the sound last chosen in the standalone Software Synth workspace.
+and that engine's stable instrument identity in the Pattern. When page 1 is
+still `AUTO`, entering FT2 assigns the currently loaded standalone
+engine/instrument to it; an already explicit software target is never replaced.
 Columns may share a destination/channel only when their master bank
 and program match, because MIDI program selection is channel-wide. Pages play
 together, so one pattern can control several hardware instruments and its
@@ -71,8 +72,10 @@ software routes instead of sending both through the wrong engine or sound.
 Computer-keyboard notes and ordinary incoming musical MIDI audition the
 selected page's target, channel, program, and drum mapping throughout the FT2
 workspace. Changing page, track route, preset, channel, program, or destination
-first ends notes on the old route. Leaving top-level FT2 ends notes and unloads
-its owned synth; child editors return to FT2.
+first ends notes on the old route. The FX rack/editor is an FT2 child: live
+input and the owned synth stay active, and Back returns to its FT2 caller.
+Leaving top-level FT2 for an unrelated workspace ends notes and unloads its
+owned synth.
 
 `AUTO · machine default` is a real portable target. Its saved channel, bank,
 program, and setup fields are blank; at playback the machine's configured

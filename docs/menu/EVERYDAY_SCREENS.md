@@ -29,9 +29,11 @@ encoder, MIDI Learn is selected first and Home explains why. Keyboard arrows
 and Enter remain available. A learned turn-and-click encoder is sufficient;
 optional command buttons may remain unmapped.
 
-Presets and Playback form one Software Synth workspace, so moving between them
-does not reload the sound. Exiting top-level Presets to Home sends All Notes Off
-and unloads only that SHR-owned engine. FT2 does not inherit the selection.
+Presets and Playback share one Software Synth sound, and leaving them keeps it
+running for effects and other screens. Global panic, shutdown, replacement, or
+an explicit different FT2 software route stops only that SHR-owned engine. If
+FT2 page 1 is `AUTO`, entering FT2 assigns the current selection to that page
+and keeps it playable.
 
 ### OPS — browse and load
 

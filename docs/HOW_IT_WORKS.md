@@ -246,8 +246,9 @@ percussion pages.
 The selected Pattern page owns live audition. A software page loads its saved
 engine/instrument pair; MIDI pages keep independent destination/channel/program routes;
 and percussion pages use their channel and drum mapping. Route changes cancel
-the old destination/channel before the new one is armed. The standalone
-Software Synth selection is never consulted by FT2.
+the old destination/channel before the new one is armed. An explicit FT2 route
+is authoritative; only an undefined `AUTO` first page adopts the currently
+loaded standalone engine/instrument when FT2 opens.
 
 Cell Edit is transactional: changes are made to a draft, `CONFIRM` publishes
 the whole cell, and `EXIT` restores the original. A cell can hold a note or

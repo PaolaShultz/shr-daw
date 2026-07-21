@@ -73,12 +73,12 @@ own configured FluidSynth when selected.
 
 SHR-DAW supports synthv1, Yoshimi, and FluidSynth as separately installed
 programs. Only one SHR-DAW-managed software synth runs at a time. The
-standalone Software Synth workspace keeps its sound while moving between its
-Presets and Playback screens, then sends All Notes Off and unloads it on the
-top-level return to Home. FT2 separately loads the engine/instrument pair saved
-by its current Pattern when a software note is auditioned or scheduled; opening
-an empty FT2 Pattern does not start it. Replacement and exit stop only a process
-SHR-DAW owns.
+standalone Software Synth workspace keeps its sound after leaving Presets or
+Playback. FT2 uses the engine/instrument pair saved by its current Pattern; if
+page 1 is still `AUTO`, entering FT2 assigns the current standalone selection
+to that page and transfers ownership without restarting it. A different
+explicit FT2 route replaces the standalone engine when needed. Global panic,
+replacement, and application shutdown stop only a process SHR-DAW owns.
 
 Each engine has a configured MIDI input and JACK audio output. See
 [Configuration and routing](CONFIGURATION.md) for the settings.
@@ -95,7 +95,8 @@ Each tracker page can use its own MIDI output, with four independent column
 channels/banks/programs. Several pages can play several hardware instruments
 at the same time. All channels 1–16 and programs 0–127 remain raw-editable
 without a device profile. A page can instead store a software engine and one of
-that engine's instruments; it never inherits the standalone workspace selection.
+that engine's instruments. An `AUTO` first page may deliberately adopt the
+current standalone selection when FT2 opens; an explicit page never does.
 
 Portable `AUTO` pages save no output or channel and follow the machine default.
 Explicit pages remember their exact port. If it is disconnected, the page

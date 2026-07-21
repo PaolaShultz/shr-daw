@@ -35,7 +35,7 @@ audio require it. SHR-DAW does not start or restart JACK.
 
 The owned effects graph is disabled by default, so a managed software
 instrument initially uses the configured direct playback pair. Playback
-**SOUND** → **FX** always opens the Project's source rack, two pre/post wet aux
+**SYS** → **FX** always opens the Project's source rack, two pre/post wet aux
 buses, and master rack. With the graph disabled those controls design and save
 the Project silently; direct playback cannot process or meter them. Enabling
 the graph in `shsynth.conf` requires the managed instrument, loaded owned loop,

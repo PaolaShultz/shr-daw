@@ -426,7 +426,7 @@ const PLAYBACK: [MenuPage; 4] = [
         [
             on("PANIC", Action::StopAll),
             on("HELP", Action::OpenHelp),
-            off(""),
+            on("FX", Action::OpenFxRack),
             on("EXIT", Action::Back),
         ],
     ),
@@ -493,7 +493,7 @@ const TRACKER: [MenuPage; 4] = [
         "SYS",
         [
             on("PANIC", Action::StopAll),
-            on("N00B", Action::TrackerNoobToggle),
+            on("FX", Action::OpenFxRack),
             on("HELP", Action::OpenHelp),
             on("EXIT", Action::Back),
         ],
@@ -1651,6 +1651,42 @@ mod tests {
             slot(Screen::Meter, MenuContext::Normal, 2, 0).and_then(MenuSlot::dispatch),
             Some(Action::OpenEffectsOverlay)
         );
+    }
+
+    #[test]
+    fn player_and_ft2_put_fx_only_on_their_sys_pages() {
+        assert_eq!(
+            slot(Screen::Playback, MenuContext::Normal, 3, 2).and_then(MenuSlot::dispatch),
+            Some(Action::OpenFxRack)
+        );
+        assert_eq!(
+            slot(Screen::Tracker, MenuContext::Normal, 3, 1).and_then(MenuSlot::dispatch),
+            Some(Action::OpenFxRack)
+        );
+        assert_eq!(
+            pages(Screen::Tracker, MenuContext::Normal)[2]
+                .slots
+                .map(MenuSlot::dispatch),
+            [
+                Some(Action::OpenPageOverlay),
+                Some(Action::OpenPatternOverlay),
+                Some(Action::OpenSongOverlay),
+                Some(Action::OpenRouteOverlay),
+            ]
+        );
+        for (screen, context) in [
+            (Screen::Playback, MenuContext::Normal),
+            (Screen::Tracker, MenuContext::Normal),
+            (Screen::TrackerTools, MenuContext::Normal),
+        ] {
+            for (page_index, page) in pages(screen, context).iter().enumerate() {
+                for slot in page.slots {
+                    if slot.dispatch() == Some(Action::OpenFxRack) {
+                        assert_eq!(page_index, 3, "{screen:?}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

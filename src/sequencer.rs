@@ -2045,11 +2045,6 @@ impl Sequencer {
     pub fn status(&self) -> SequencerStatus {
         self.status.lock().map(|s| s.clone()).unwrap_or_default()
     }
-    pub fn unavailable_label(&self) -> String {
-        self.status()
-            .error
-            .unwrap_or_else(|| "tracker target unavailable".into())
-    }
 }
 impl Drop for Sequencer {
     fn drop(&mut self) {
