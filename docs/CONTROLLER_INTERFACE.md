@@ -11,10 +11,10 @@ implemented.
 |---|---|
 | Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard. |
 | Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
-| MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Master level is visible; back, help, and panic remain reachable. |
+| MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
 | Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; enable a root plus major/natural-minor N00B filter or return to chromatic Normal; reset the 12 mapped parameters in place; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
-| FT2 normal | Previous/next row (keyboard/encoder); Page−/Page+/Track−/Track+ on controller page 1; play, record, cell edit, and step edit on page 2; child Tracks, Files, and Tools on page 3; panic/help/Exit on page 4. |
+| FT2 normal | Previous/next row (keyboard/encoder); Page−/Page+/Track−/Track+ on controller page 1; play, record, cell edit, and step edit on page 2; universal PAGE/PATTERN/SONG/ROUTE overlays on page 3; panic/help/Exit on page 4. |
 | FT2 record | Record quantized notes into only the current page/current pattern; route live notes only to that page's hardware MIDI target; stop record, stop, exit, and panic remain available. |
 | FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; independent 1/1–1/32 note length; blank/skip; erase; note off; 1/2/4/8-row entry advance; leave edit; lane mute. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Step Edit on a melodic page. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B preserves the current mode; moving to Drums turns only the filter off. |
@@ -41,6 +41,32 @@ union of every normal and contextual menu and checks every action in this
   screen-specific inventory for controller reachability. Top-level Home entries
   are reached by the master rotary rather than duplicated on child command pages.
 
+## Master overlays
+
+An overlay is transient state above its caller, not another `Screen` and not a
+second Project/engine owner. Its central state records identity, caller, title,
+canonical launcher, selection/scroll, active field snapshot, typed draft, and
+the caller's controller-page state. At 40×20 its outer rectangle is exactly
+`x=1`, `y=1`, `width=38`, `height=18`; the bordered inner content is exactly
+`x=2`, `y=2`, `width=36`, `height=16`. Compact terminals clamp those values
+without drawing outside the terminal.
+
+While open, only the launcher action remains on the bottom row, in its original
+physical item position and with an active highlight. All other page and item
+commands are hidden and silent. There is no controller-strip Back button.
+Pressing the highlighted launcher again closes the overlay. The rotary and
+Up/Down browse; rotary click and Enter select or confirm. Back/Esc cancels an
+active field first, then cancels the overlay draft and closes, before a later
+Back can leave the caller. Four-button page-selection state and every layout's
+previous page are restored deterministically.
+
+FT2 demonstrates four caller-specific adapters: PAGE navigates four-column
+locations and links to Tracks; PATTERN navigates the Project's existing Pattern
+owners and links to Pattern/Project tools; SONG navigates Arrangement steps and
+links to its detailed editors; ROUTE edits a detached copy of the active page
+and applies it only through the existing Project/route synchronization path.
+MTR's FX launcher reuses the same rendering, input, toggle, and return layer.
+
 ## Input model
 
 - Eight buttons: four direct page selectors plus four item buttons.
@@ -51,6 +77,8 @@ union of every normal and contextual menu and checks every action in this
   field adjustment. Encoder press retains the existing select/confirm action on
   eight- and five-button layouts. Menu slots do not duplicate those master
   rotary selection actions.
+- An open overlay always gives the encoder to overlay browsing/editing, so a
+  four-button controller cannot become stranded in page-selection mode.
 - Each screen remembers its last selected page. Entering/leaving a contextual
   mode resets that context to page 1, preventing stale hidden meanings.
 - Page 1 holds the primary screen workflow; for FT2 normal mode it is the
@@ -94,7 +122,7 @@ Blank physical positions and wholly empty pages are omitted.
 | Presets | Sys | Panic | Help | — | Exit |
 | MTR | Ops | Source− | Source+ | Level− | Level+ |
 | MTR | Mix | Mute | — | Final rec/stop | Reset holds |
-| MTR | Nav | FX | — | — | — |
+| MTR | Nav | FX overlay | — | — | — |
 | MTR | Sys | Panic | — | Help | Exit |
 | Playback | Play | — | Play take | Record MIDI | — |
 | Playback | Sound | Reset controls | Save | N00B | Normal |
@@ -114,7 +142,7 @@ Blank physical positions and wholly empty pages are omitted.
 | Help | Sys | Panic | — | — | Exit |
 | FT2 | Move | Page− | Page+ | Track− | Track+ |
 | FT2 | Play | Cell edit | Play | Record | Step edit |
-| FT2 | Open | Tracks | Files | Tools | Tap tempo |
+| FT2 | Nav | Page overlay | Pattern overlay | Song overlay | Route overlay |
 | FT2 | Sys | Panic | N00B | Help | Exit |
 | FT2 tools | Ops | Arrange | Loop | N00B | Mute lane |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |

@@ -34,13 +34,23 @@ high-value tracker movements occupy controller page 1.
 `RECORD` begins or ends real-time recording on the current external-MIDI page,
 and `STEP` toggles step entry.
 
-### OPEN — tracker children
+### NAV — master overlays
 
-![Populated FT2 Pattern in Play mode with the MOVE page](../images/menu/ft2-play-move.png)
+`PAGE`, `PATTERN`, `SONG`, and `ROUTE` open the reusable centered overlay while
+the Pattern remains visible around it. Turn the master rotary or use Up/Down;
+click/Enter selects. Only the highlighted launcher remains on the bottom row in
+its original physical position. Press that same menu item, or keyboard Back/
+Esc, to close. There is no extra controller Back item.
 
-`TRACKS`, `FILES`, and `TOOLS` open FT2-specific child workflows. `TAP` updates
-the Project tempo from repeated presses. Unrelated top-level workspaces live on
-Home instead of this controller page.
+PAGE browses page/column locations and links to the detailed Tracks manager.
+PATTERN browses the Project's existing Patterns and links to Pattern tools and
+Project Files. SONG browses Arrangement steps and links to the detailed
+Arrangement, Loop/page tools, and tap tempo. ROUTE transactionally edits the
+active page's destination and four column setups. On 40×20 the outer border is
+38×18 at `(1,1)` and its usable inner content is 36×16 at `(2,2)`.
+
+The old NAV-page screenshot is intentionally not regenerated until physical
+40×20 approval; this text and the controller map describe the current build.
 
 ### SYS — stop, tools, and exit
 
@@ -148,21 +158,21 @@ the same adjustment.
 
 ![Populated FT2 Cell Edit with the SYS page](../images/menu/ft2-cell-edit-sys.png)
 
-`PANIC` and `STOP` stay reachable. `EXIT` cancels and restores the original
+`PANIC` stays reachable. `EXIT` cancels and restores the original
 cell, so a half-edited draft never leaks into the Project.
 
 ## FT2 Tools
 
-This child screen keeps the main Pattern screen compact. It routes to track
-configuration, Project files, Arrangement, clip operations, and WAV loops.
+This detailed child screen remains for Arrangement, clip operations, WAV loops,
+N00B, and muting. Open it from the SONG overlay's `OPEN LOOP / PAGE TOOLS` row.
+Quick Page, Pattern, Song, and Route selection stays in the master overlays.
 
 ### OPS — open focused tools
 
 ![Populated FT2 Tools screen with the OPS page](../images/menu/ft2-tools-ops.png)
 
-`PAGES` opens the TRACKS screen for pages, columns, and MIDI routing. `FILES`
-opens Project and Pattern management. `ARR` opens the Pattern order. `MUTE` toggles the
-selected lane.
+`ARR` opens the Pattern order. `LOOP` opens WAV-loop setup. `N00B` toggles the
+scale filter on a melodic page. `MUTE` toggles the selected lane.
 
 ### CLIP — lane and page clipboard
 
@@ -171,19 +181,18 @@ selected lane.
 `COPY L`, `PASTE L`, `COPY PG`, and `PSTE PG` copy or paste the current lane or full
 four-lane page. These are in-memory editing clipboards, not saved Projects.
 
-### LOOP — attach or detach private audio
+### PAGE — page mute
 
-![Populated FT2 Tools screen with the LOOP page](../images/menu/ft2-tools-loop.png)
+![Populated FT2 Tools screen with the PAGE page](../images/menu/ft2-tools-loop.png)
 
-`LOOP` opens WAV-loop setup. `REMOVE` detaches the loop from this Project after
-confirmation; it does not delete the private WAV file. `LIBRARY` opens safe
-private-WAV cleanup. `MUTE PG` toggles the current four-lane page.
+`MUTE PG` toggles the current four-lane page. Loop import, detach, alignment,
+and private-library cleanup remain on the separate Loop screen opened from OPS.
 
 ### SYS — safety, help, and return
 
 ![Populated FT2 Tools screen with the SYS page](../images/menu/ft2-tools-sys.png)
 
-`PANIC`, `STOP`, and `HELP` retain their normal meanings. `EXIT` returns to the
+`PANIC` and `HELP` retain their normal meanings. `EXIT` returns to the
 Pattern editor.
 
 ## N00B filter and Step Edit note length
@@ -354,7 +363,29 @@ the reference. `REMOVE` removes only this step, not the underlying Pattern.
 
 ![Populated Arrangement screen with the SYS page](../images/menu/arrange-sys.png)
 
-`PANIC`, `STOP`, and `HELP` remain available. `EXIT` returns to the tracker.
+`PANIC` and `HELP` remain available. `EXIT` returns to the tracker.
+
+## ROUTE master overlay
+
+ROUTE is the quick transactional editor for the active Pattern page. The top
+row shows the page/master destination and its current resolved state. The next
+16 rows show channel, bank MSB, bank LSB, and program/instrument for each of the
+page's four columns; profile-provided instrument names appear when available.
+Long hardware names are deliberately shortened inside the border.
+
+Turn to a row and click/Enter to make that field active. Only then does rotary
+movement change the detached draft. Click/Enter keeps the field in the draft;
+Back/Esc restores that field's prior value. `APPLY ROUTING` validates and
+copies the page through the existing Project owner, releases old auditions,
+and runs the existing route synchronization. Until Apply, the Project, runtime
+route, engine, transport, and recorder are untouched.
+
+Pressing the highlighted `ROUTE` menu item closes the overlay and cancels its
+whole unconfirmed draft. Back/Esc from the main list does the same. Missing
+preferred hardware remains visible and saved as preferred; an exact external
+target may use only the configured hardware fallback and never the Pattern's
+software synth. `AUTO` keeps its portable machine-default behavior and owns its
+channel/bank/program values.
 
 ## Tracks and routing
 
@@ -362,6 +393,10 @@ The Tracks screen edits four-lane pages. Changes are kept as a draft until
 `DONE`; `EXIT` restores the original Project. Turn the encoder to choose a page
 in normal mode. A destination is shared by the page, while channel, bank, and
 program belong to the selected column.
+
+Open it from the PAGE overlay's `MANAGE PAGES / TRACKS` row. It intentionally
+remains a full screen because adding pages and coordinating several fields is
+more detailed than quick overlay navigation.
 
 ### OPS — add and route pages
 

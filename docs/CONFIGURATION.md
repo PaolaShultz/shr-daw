@@ -363,8 +363,9 @@ and each page stores:
 - four lane names and lane mute states;
 - a reserved list of MIDI setup messages for later use.
 
-Open **TOOLS** → **PAGES** from FT2. The resulting **TRACKS** screen edits
-pages and columns. Use the main encoder to select a page. **ADD** creates
+Open FT2 **NAV** → **PAGE**, then choose **MANAGE PAGES / TRACKS**. The
+resulting **TRACKS** screen edits pages and columns. Use the main encoder to
+select a page. **ADD** creates
 another four-lane page in that Pattern. **TARGET** chooses `AUTO` (portable
 machine default), an ALSA MIDI output that is currently visible, the active
 SHR-DAW software instrument, or the configured output. `AUTO` displays an
@@ -376,13 +377,24 @@ chooses 1–16. Encoder press confirms a field. **DONE** keeps all page changes;
 controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
 
+FT2 **NAV** → **ROUTE** is the passive quick editor. Its 38×18 bordered overlay
+shows the active page target and 16 per-column channel/bank/program rows inside
+a 36×16 content area. Opening and browsing use cached discovery information;
+they do not create a MIDI discovery client, send MIDI, synchronize routes, or
+start an engine. A field changes only after click/Enter activates it. Back/Esc
+cancels that field first. **APPLY ROUTING** validates and copies the detached
+page draft through the same Project and route-synchronization owner used by
+Tracks. Closing with the highlighted ROUTE launcher or Back cancels a dirty
+draft and never saves silently.
+
 The active-instrument choice always means the single software instrument that
 SHR-DAW currently owns and monitors. It does not start another engine. It is
 offline when no managed instrument is active.
 
 An exact hardware port name is saved as a preferred route. If it is missing,
 the page and persistent status show `FALLBACK` and name the missing target while
-runtime uses the configured external route or loaded instrument. With no route
+runtime may use the configured external hardware route. It never falls into
+the Pattern's software synth. With no hardware route
 at all it shows `OFFLINE`. SHR-DAW never rewrites the saved name. If multiple
 ports have the same exact name, or a configured partial match selects more than
 one port, the preferred target is ambiguous and is not guessed.

@@ -35,6 +35,15 @@ choose a menu page, then press again to return the encoder to row movement.
 In Help, use OPS OPEN to follow the highlighted link. In target/channel
 editors, use OPS CONFIRM; SYS EXIT cancels the field.
 
+Some navigation actions open a master overlay instead of replacing the current
+workspace. The workspace remains visible around a 38×18 border; its usable
+inside is 36×16 on a 40×20 display. While the overlay is open, the bottom row
+shows only its highlighted launcher in the same physical position. Turn the
+master rotary or use Up/Down, then click or press Enter. Press that same menu
+item again, or use Back/Esc, to close. The controller strip has no separate
+Back item while an overlay is open. Back first cancels an active field, then
+cancels any unconfirmed draft and closes the overlay.
+
 ## Presets and playback
 
 Presets chooses the instrument engine and sound. Loading a sound starts or
@@ -137,6 +146,15 @@ actual JACK input.
 
 FT2 is a Pattern sequencer. PLAY starts at the cursor, START plays from the
 Project's Arrangement beginning, and STOP stops only the tracker transport.
+
+FT2 `NAV` contains `PAGE`, `PATTERN`, `SONG`, and `ROUTE`. PAGE selects one of
+the current Pattern's four-column locations and can open the full Tracks
+manager. PATTERN selects an existing Pattern or opens Pattern/Project tools.
+SONG selects an Arrangement step and can open detailed Arrangement or Loop/
+page tools. ROUTE shows the active page destination and all four columns'
+channel, bank, program, profile name, and availability. ROUTE changes remain a
+draft until `APPLY ROUTING`; closing it with its highlighted launcher or Back
+cancels the draft safely.
 
 With controller clock enabled, SHR sends the current/default tempo at 24 PPQN
 to one exact controller MIDI port while the app is open; tracker transport adds

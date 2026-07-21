@@ -84,8 +84,12 @@ Raspberry Pi experimenters learning a new musical or technical vocabulary.
   highlighted link to jump sections. When possible, it also shows a temporary
   LAN URL for the same help page.
 - **FT2** edits and plays patterns.
-- **Tools** opens page, file, arrangement, loop, and clipboard workflows.
-- **Tracks** (opened with **Tools** → **Pages**) adds four-lane pages, chooses one destination, and edits each
+- FT2 **NAV** opens temporary PAGE, PATTERN, SONG, and ROUTE windows while the
+  Pattern remains visible. The rotary/Up/Down browses, click/Enter confirms,
+  and the same highlighted NAV item or Back closes. ROUTE cancels unconfirmed
+  changes. The native geometry is a 38×18 border around 36×16 usable cells.
+- **Tools** keeps detailed arrangement, loop, clipboard, N00B, and mute workflows.
+- **Tracks** (opened from the PAGE overlay) adds four-lane pages, chooses one destination, and edits each
   column's channel, bank, master program, and profile-provided instrument name.
 - **Files** manages Projects; its **Pattern** child groups pattern editing,
   melody-only transpose, and the separate reusable drum-pattern library. Drum

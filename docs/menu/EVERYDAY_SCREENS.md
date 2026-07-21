@@ -176,25 +176,33 @@ silently changing recorder state.
 
 ## Performance meter
 
-MTR is passive: it never changes the route. CPU bars come from bounded UI-side
-system readings. Live stereo RMS bars, a short decaying peak marker, and the
-independent non-decaying `MAX` numbers are shown only for the final output of
-SHR-DAW's active owned graph. Direct mode and stopped engines are explicitly
-reported as unavailable instead of displaying unrelated audio.
+With the final bus enabled, MTR selects the managed Synth, Loop, or exact Input
+source, controls its bounded level/mute, shows readiness and the post-limiter
+final meter, and controls final stereo recording. With the graph disabled it
+keeps the CPU/legacy meter presentation without pretending that direct output
+is being measured. CPU is whole-core `/proc/stat` activity, not callback timing
+or xruns.
 
-CPU is whole-core `/proc/stat` activity, not synth or graph process CPU, JACK
-callback timing, or xruns. The audio bars are post-master for the managed
-instrument and its two returns; they deliberately exclude the separate WAV
-loop, recorder input, external hardware, and unrelated JACK clients.
-
-### OPS — clear presentation holds
+### OPS — source and level
 
 ![Populated performance meter with the OPS controller page](../images/menu/performance-meter-ops.png)
 
-`RESET` clears both `MAX` numbers, the short peak markers, and the clip hold. It
-does not reset audio, effects, CPU state, or transport. Moving the mapped
-synthv1 Volume control downward clears both `MAX` numbers even before pickup
-accepts the control; upward, equal, and unrelated control movements do not.
+`SOURCE-`/`SOURCE+` choose Synth, Loop, or Input. `LEVEL-`/`LEVEL+` change only
+that source's bounded final-bus level.
+
+### MIX — mute, record, and holds
+
+`MUTE` changes the selected source. `RECORD` toggles the callback-boundary final
+stereo recorder. `RESET` clears presentation peak/clip holds; it does not reset
+effects, CPU state, or transport.
+
+### NAV — FX master overlay
+
+`FX` opens the same master-overlay layer used by FT2. Choose SOURCE, AUX 1,
+AUX 2, or MASTER, then click/Enter to open the existing rack for that target.
+The MTR caller stays underneath until selection. Only highlighted `FX` remains
+on the bottom row, and pressing it again closes the overlay without changing
+audio or Project state.
 
 ### SYS — safety and return
 

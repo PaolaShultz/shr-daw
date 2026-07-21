@@ -118,10 +118,13 @@ pub enum Action {
     OpenTracker,
     OpenTrackerFiles,
     OpenTrackerArrange,
-    OpenTrackerPages,
-    OpenTrackerTools,
     OpenTrackerLoop,
     OpenTrackerLoopAlign,
+    OpenPageOverlay,
+    OpenPatternOverlay,
+    OpenSongOverlay,
+    OpenRouteOverlay,
+    OpenEffectsOverlay,
     OpenAudioRecorder,
     OpenFxRack,
     OpenFxEditor,
@@ -151,7 +154,6 @@ pub enum Action {
     FxParameterNext,
     FxValueDecrease,
     FxValueIncrease,
-    TapTempo,
     ResetParameters,
     IdeaRecordToggle,
     SaveNew,
@@ -479,12 +481,12 @@ const TRACKER: [MenuPage; 4] = [
         ],
     ),
     page(
-        "OPEN",
+        "NAV",
         [
-            on("TRACKS", Action::OpenTrackerPages),
-            on("FILES", Action::OpenTrackerFiles),
-            on("TOOLS", Action::OpenTrackerTools),
-            on("TAP", Action::TapTempo),
+            on("PAGE", Action::OpenPageOverlay),
+            on("PATTERN", Action::OpenPatternOverlay),
+            on("SONG", Action::OpenSongOverlay),
+            on("ROUTE", Action::OpenRouteOverlay),
         ],
     ),
     page(
@@ -1157,7 +1159,12 @@ const METER: [MenuPage; 4] = [
     ),
     page(
         "NAV",
-        [on("FX", Action::OpenFxRack), off(""), off(""), off("")],
+        [
+            on("FX", Action::OpenEffectsOverlay),
+            off(""),
+            off(""),
+            off(""),
+        ],
     ),
     page(
         "SYS",
@@ -1565,7 +1572,6 @@ mod tests {
                                 | Action::AudioRecordToggle
                                 | Action::FinalRecordToggle,
                             ) => Some(2),
-                            Some(Action::TapTempo) => Some(3),
                             _ => None,
                         };
                         if let Some(expected) = expected {
@@ -1606,7 +1612,6 @@ mod tests {
                             | Action::TrackerRecordToggle
                             | Action::AudioRecordToggle
                             | Action::FinalRecordToggle
-                            | Action::TapTempo
                     )
                 )));
         }
@@ -1631,12 +1636,12 @@ mod tests {
             .filter(|screen| !matches!(screen, Screen::FxRack | Screen::FxEditor))
             .flat_map(|screen| pages(screen, MenuContext::Normal))
             .flat_map(|page| page.slots)
-            .filter(|slot| slot.dispatch() == Some(Action::OpenFxRack))
+            .filter(|slot| slot.dispatch() == Some(Action::OpenEffectsOverlay))
             .count();
         assert_eq!(entries, 1);
         assert_eq!(
             slot(Screen::Meter, MenuContext::Normal, 2, 0).and_then(MenuSlot::dispatch),
-            Some(Action::OpenFxRack)
+            Some(Action::OpenEffectsOverlay)
         );
     }
 
@@ -1688,9 +1693,11 @@ mod tests {
             Action::Back,
             Action::StopAll,
             Action::OpenHelp,
-            Action::OpenTrackerFiles,
-            Action::OpenTrackerPages,
-            Action::OpenTrackerTools,
+            Action::OpenPageOverlay,
+            Action::OpenPatternOverlay,
+            Action::OpenSongOverlay,
+            Action::OpenRouteOverlay,
+            Action::OpenEffectsOverlay,
             Action::OpenTrackerArrange,
             Action::OpenTrackerLoop,
             Action::OpenTrackerLoopAlign,
@@ -1703,7 +1710,6 @@ mod tests {
             Action::BusLevelIncrease,
             Action::BusMute,
             Action::FinalRecordToggle,
-            Action::TapTempo,
             Action::ResetParameters,
             Action::IdeaRecordToggle,
             Action::SaveNew,

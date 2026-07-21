@@ -434,13 +434,98 @@ the physical-controller review freeze.
 
 ### Next hands-on session: 2026-07-21
 
-Resume from the current working tree based on commit `0ea6a41` on `main`.
-Plain `shr` resolves through `scripts/local.sh` to the current
-`target/debug/shr`; the incremental debug binary was rebuilt after the smart
-drum-column work below and should show the red `DEV` badge. There is no known
-compile or hardware-independent test failure. The next work is physical
-acceptance and debugging, not another implementation pass in advance of
-observation.
+Resume from the current working tree based on commit `0ea6a41` on `main`, plus
+the uncommitted master-overlay implementation described below. Plain `shr`
+resolves through `scripts/local.sh` to the current `target/debug/shr`; the
+incremental debug binary was rebuilt after the overlay work and should show the
+red `DEV` badge. There is no known compile or focused hardware-independent test
+failure. The next work is non-audible physical overlay acceptance and debugging,
+not another implementation pass in advance of observation.
+
+The 2026-07-21 master-overlay redesign is shared infrastructure in
+`src/overlay.rs`, not an FT2 modal special case. `OverlayState` centrally owns
+the overlay identity, caller `Screen`, title, canonical launcher action/label
+and physical page/item, selection/scroll, active route field, detached draft,
+cancel-on-close rule, and the caller's prior controller-page/page-selection
+state. The caller continues to own its Project, Patterns, Arrangement, route,
+engines, transport, recorder, editor state, and cleanup. At 40×20 the double
+border is exactly 38×18 at `(1,1)` and the cleared inner content is exactly
+36×16 at `(2,2)`. Larger terminals retain those fixed dimensions centered;
+smaller rectangles preserve the reveal and border when possible and clamp with
+saturating geometry.
+
+FT2 now demonstrates the pattern with a `NAV` controller page containing
+`PAGE`, `PATTERN`, `SONG`, and `ROUTE`. PAGE, PATTERN, and SONG adapt the current
+cursor, Project Patterns, Arrangement, and existing detailed screens. ROUTE
+clones only the current page into a draft and applies it through the existing
+Project validation/synchronization path; Back first restores an active field,
+then a later Back or the highlighted ROUTE launcher discards the whole
+unconfirmed draft. Opening ROUTE uses cached destinations and performs no MIDI
+discovery or transmission. MTR's `FX` launcher is a second caller using the
+same state, renderer, input dispatch, toggle, and return rules before it opens
+the existing source/AUX/master rack. Tracks/Page Manager, Pattern Tools,
+Arrangement, loop/tools, FX Rack/Editor, Projects, Help, and other detailed
+editors deliberately remain full screens.
+
+While an overlay is open, the controller strip contains only its highlighted
+launcher in the launcher's original physical item position. There is
+intentionally no controller Back item: all four item positions are already the
+FT2 launchers, and hidden positions are silent. Pressing the same launcher
+closes it. Rotary/Enter and Up/Down/Enter own browsing and selection; keyboard
+Back/Esc cancels a route field before cancelling the overlay, and only a later
+Back can leave the caller. Four-button page-selection mode is suspended and
+restored exactly, as are five-/eight-button page choices. Another launcher is
+silent until the current overlay has closed, preventing draft or selection
+leakage.
+
+Fast iteration means the code and its focused tests are authoritative for
+behavioral details. The overlay-facing README, help, controller, menu, tracker,
+configuration, routing, and chapter text was consolidated in this pass, but
+older documentation outside that reviewed set may still lag and needs a later
+code-led review. The established screenshot set was not regenerated because
+40×20 physical approval is still pending.
+
+Hardware-independent validation for this overlay pass used pinned Rust 1.85:
+formatting; focused overlay model/geometry/render/scroll/strip/input/Back tests;
+canonical navigation-table tests; distinct PAGE/PATTERN/SONG/ROUTE and second-
+caller tests; route draft/apply/unavailable-target tests; four-/five-/eight-
+button selection tests; command Note On/Off/velocity-zero/pressure and musical-
+separation tests; Home/Help/keyboard-only/controller-exit tests; and focused
+engine/transport/recorder ownership tests all passed. `cargo check --locked`,
+the incremental `cargo build --locked`, documentation-reference spot checks,
+and `git diff --check` also passed. The complete suite, Clippy, release builds,
+stress tests, and screenshot regeneration were intentionally not run. No JACK
+client, synth process, transport, recording, MIDI transmission, audible output,
+or physical hardware test was started.
+
+For the first non-audible physical overlay pass, keep transport and recording
+stopped and do not attach a new audio or MIDI route:
+
+1. Open FT2 `NAV` and check `PAGE`, `PATTERN`, `SONG`, and `ROUTE` occupy the
+   four physical item positions in that order.
+2. Open each launcher. Confirm the caller remains visible only around the
+   38×18 double border, the title is centered, the inside is clean, row 19
+   contains only the highlighted launcher in its original quarter, and `DEV`
+   remains visible on the revealed top row.
+3. Turn and click the master encoder, then repeat with Up/Down/Enter. Confirm
+   selection and scrolling match and the tracker cursor does not move until a
+   choice is confirmed.
+4. Press an unhighlighted item while each overlay is open; nothing should
+   happen. Press the highlighted launcher; the overlay should close and the
+   same `NAV` page should return without entering page-selection mode.
+5. In ROUTE, edit one channel field, press Esc/Back once, and verify that field
+   returns to its old value while ROUTE stays open. Edit again, press Enter,
+   then close with ROUTE or Back and verify the Project route is still
+   unchanged because `APPLY ROUTING` was not chosen.
+6. Open ROUTE again and inspect the active page, its four columns, channel,
+   banks, program/name, destination availability, and resolved state. Do not
+   choose APPLY during this first display-only pass.
+7. From MTR `NAV`, open `FX`, select SOURCE/AUX/master without confirming, and
+   close with the highlighted `FX`. Confirm MTR and its previous menu page are
+   unchanged.
+8. Open an overlay, press Esc/Back to close it, then press Esc/Back again. Only
+   the second press should leave the underlying workspace. Repeat once using
+   keyboard-only navigation with the controller unavailable.
 
 Use a new empty FT2 Project so existing user music remains untouched. Check,
 in order:
@@ -548,8 +633,8 @@ The active private controller state is
 `arturia-minilab-3` and exact input `Minilab3:Minilab3 MIDI`; its pre-refresh
 backup is `user/state/shsynth/controller.conf.bak-1784558588`. Keep this task
 open until the user has exercised the debug build on the physical 40×20 Pi
-display and MiniLab 3. Do not regenerate screenshots or broaden documentation
-until that approval.
+display and MiniLab 3. The code-led overlay documentation pass is now complete,
+but do not regenerate the established screenshots until that physical approval.
 
 Optional `controller_clock.*` configuration owns a dedicated exact stable ALSA
 standard-MIDI output and is off by default. It shares tracker transport tempo,

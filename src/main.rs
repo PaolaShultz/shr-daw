@@ -25,6 +25,7 @@ mod loop_player;
 mod midi;
 mod navigation;
 mod note_lifecycle;
+mod overlay;
 mod pads;
 mod performance_meter;
 mod preset;

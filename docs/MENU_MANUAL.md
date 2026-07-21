@@ -28,7 +28,8 @@ as a native 480×320 bitmap using the project VGA console font, then enlarged to
 960×640 by copying every pixel into an exact 2×2 square. There is no font
 substitution, smoothing, interpolation, or antialiasing.
 
-The bottom controller strip has four page positions and four action positions:
+The normal bottom controller strip has four page positions and four action
+positions:
 
 - On an eight-button controller, the first four buttons choose the page and
   the second four run the shown actions.
@@ -41,6 +42,20 @@ The bottom controller strip has four page positions and four action positions:
   which goes back one level. MIDI controls never quit SHR-DAW.
 - `PANIC` stops owned playback and sends All Notes Off. It does not kill an
   unrelated synth or JACK client.
+
+A master overlay temporarily changes that strip. The caller remains visible
+around a centered double border, but row 19 shows only the highlighted action
+that opened the overlay, in its original physical item position. That same menu
+item closes it; there is no fourth-button Back item. The rotary and Up/Down
+browse, click/Enter selects or confirms, and Back/Esc cancels the current field
+before cancelling and closing the overlay. Unconfirmed drafts never save on
+close. On the native 40×20 display the outer rectangle is 38×18 at `(1,1)` and
+the usable inner area is 36×16 at `(2,2)`.
+
+The established screenshots predate this overlay pass and are intentionally
+not regenerated until physical 40×20 approval. The current text and
+[controller map](CONTROLLER_INTERFACE.md) are authoritative for the NAV page
+and overlay behavior.
 
 The yellow page name at the bottom is the page currently selected. The yellow
 bracketed numbers below the actions are the physical item positions. Status
@@ -60,16 +75,18 @@ flowchart TD
     H0 --> I[Ideas]
     H0 --> H[Help]
     P -->|Load| PB[Playback]
-    M --> FX
+    M --> MO[MTR FX overlay]
+    MO --> FX
     FX --> FE[FX editor]
-    T --> TT[FT2 Tools]
+    T --> ON[PAGE / PATTERN / SONG / ROUTE overlays]
     T --> N[N00B filter on/off]
     T --> R[Record context]
     T --> E[Step Edit]
     E --> CE[Cell Edit]
-    TT --> TR[Tracks and routing]
-    TT --> F[Project Files]
-    TT --> AR[Arrangement]
+    ON --> TR[Tracks and routing]
+    ON --> F[Project Files / Pattern tools]
+    ON --> AR[Arrangement]
+    ON --> TT[FT2 Tools]
     TT --> L[WAV Loop]
     F --> PT[Pattern tools]
     PT --> D[Drum patterns]

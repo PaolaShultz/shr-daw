@@ -14,6 +14,10 @@ use crate::final_bus::{
 use crate::geometry::{contains, rect, visible_index};
 use crate::help::{self, HelpKind};
 use crate::navigation::{self, Action, MenuContext, Screen, SlotState};
+use crate::overlay::{
+    self, CloseBehavior, OverlayDraft, OverlayKind, OverlayLauncher, OverlayState, RouteDraft,
+    RouteField,
+};
 use crate::pads::{ControllerLayout, MenuInput, TapTempo};
 use crate::performance_meter::{
     self, AudioAvailability, AudioLevel, BarCell, MeterColor, PerformanceMeter, VISIBLE_CPU_CORES,
@@ -35,7 +39,7 @@ use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame, Terminal,
 };
 use serde::Serialize;
@@ -560,6 +564,7 @@ struct App {
     loop_library_selected: usize,
     confirm_loop_delete: Option<String>,
     arrange_selected: usize,
+    overlay: Option<OverlayState>,
     menu_page_by_screen: [usize; Screen::COUNT],
     page_select_mode: bool,
     controller_layout: ControllerLayout,
@@ -985,6 +990,7 @@ impl App {
             loop_library_selected: 0,
             confirm_loop_delete: None,
             arrange_selected: 0,
+            overlay: None,
             menu_page_by_screen: [0; Screen::COUNT],
             page_select_mode: false,
             controller_layout: ControllerLayout::Eight,
@@ -1243,6 +1249,359 @@ impl App {
             }
         } else {
             MenuContext::Normal
+        }
+    }
+
+    fn overlay_pattern_locations(&self) -> Vec<(u16, usize)> {
+        let mut locations = Vec::new();
+        for (order, pattern) in self.song.order.iter().copied().enumerate() {
+            if !locations.iter().any(|(candidate, _)| *candidate == pattern) {
+                locations.push((pattern, order));
+            }
+        }
+        locations
+    }
+
+    fn overlay_row_count_for(&self, overlay: &OverlayState) -> usize {
+        match overlay.kind {
+            OverlayKind::TrackerPage => self.current_pages().len() * LANES_PER_PAGE + 1,
+            OverlayKind::TrackerPattern => self.overlay_pattern_locations().len() + 2,
+            OverlayKind::TrackerSong => self.song.order.len() + 3,
+            OverlayKind::TrackerRoute => RouteField::ROWS,
+            OverlayKind::MixEffects => MAX_AUX_BUSES + 2,
+        }
+    }
+
+    fn overlay_row_count(&self) -> usize {
+        self.overlay
+            .as_ref()
+            .map_or(0, |overlay| self.overlay_row_count_for(overlay))
+    }
+
+    fn open_overlay(&mut self, action: Action) {
+        let Some(kind) = OverlayKind::from_action(action) else {
+            return;
+        };
+        if self.overlay.is_some() || self.keyboard_modal_active() {
+            return;
+        }
+        let caller = self.screen;
+        let allowed = match kind {
+            OverlayKind::TrackerPage
+            | OverlayKind::TrackerPattern
+            | OverlayKind::TrackerSong
+            | OverlayKind::TrackerRoute => caller == Screen::Tracker,
+            OverlayKind::MixEffects => caller == Screen::Meter,
+        };
+        if !allowed {
+            return;
+        }
+        let context = self.menu_context();
+        let Some(launcher) = OverlayLauncher::resolve(caller, context, action) else {
+            self.status = "overlay launcher is unavailable in this controller context".into();
+            return;
+        };
+        let selection = match kind {
+            OverlayKind::TrackerPage => self.tracker_page * LANES_PER_PAGE + self.tracker_track,
+            OverlayKind::TrackerPattern => self
+                .overlay_pattern_locations()
+                .iter()
+                .position(|(pattern, _)| *pattern == self.tracker_pattern_number())
+                .unwrap_or(0),
+            OverlayKind::TrackerSong => self.tracker_order,
+            OverlayKind::TrackerRoute => 0,
+            OverlayKind::MixEffects => self.fx_target.min(MAX_AUX_BUSES + 1),
+        };
+        let draft = if kind == OverlayKind::TrackerRoute {
+            self.refresh_overlay_target_candidates();
+            let Some(page) = self.current_page().cloned() else {
+                self.status = "active page routing is unavailable".into();
+                return;
+            };
+            OverlayDraft::Route(RouteDraft::new(
+                self.tracker_pattern_number(),
+                self.tracker_page,
+                page,
+            ))
+        } else {
+            OverlayDraft::None
+        };
+        let caller_menu_page = self.menu_page();
+        let caller_page_select_mode = self.page_select_mode;
+        self.page_select_mode = false;
+        self.overlay = Some(OverlayState::new(
+            kind,
+            caller,
+            launcher,
+            selection,
+            draft,
+            caller_menu_page,
+            caller_page_select_mode,
+        ));
+        self.status = format!("{} · turn to browse · press to select", kind.title());
+    }
+
+    fn close_overlay(&mut self, cancelled: bool) {
+        let Some(overlay) = self.overlay.take() else {
+            return;
+        };
+        match overlay.close_behavior {
+            CloseBehavior::CancelDraft => {
+                // The detached draft is dropped with `overlay`. Only the
+                // overlay's explicit APPLY path may update the Project owner.
+            }
+        }
+        if self.screen == overlay.caller {
+            self.menu_page_by_screen[self.screen.index()] = overlay.caller_menu_page.min(3);
+            self.page_select_mode = overlay.caller_page_select_mode;
+        }
+        self.status = if cancelled && overlay.route().is_some_and(RouteDraft::dirty) {
+            "overlay closed · unconfirmed routing cancelled".into()
+        } else {
+            format!("returned to {}", overlay.caller.label())
+        };
+    }
+
+    fn overlay_back(&mut self) {
+        if self
+            .overlay
+            .as_mut()
+            .is_some_and(OverlayState::cancel_route_field)
+        {
+            self.status = "route field cancelled · draft otherwise unchanged".into();
+        } else {
+            self.close_overlay(true);
+        }
+    }
+
+    fn move_overlay(&mut self, direction: i8) {
+        let active = self
+            .overlay
+            .as_ref()
+            .and_then(|overlay| overlay.active_field);
+        if let Some(field) = active {
+            self.adjust_overlay_route_field(field, direction);
+            return;
+        }
+        let rows = self.overlay_row_count();
+        if let Some(overlay) = self.overlay.as_mut() {
+            overlay.move_selection(direction, rows);
+        }
+    }
+
+    fn adjust_overlay_route_field(&mut self, field: RouteField, direction: i8) {
+        let auto_route = self
+            .overlay
+            .as_ref()
+            .and_then(OverlayState::route)
+            .is_some_and(|route| route.page.target == PageTarget::Default);
+        if auto_route && field != RouteField::Target {
+            self.status = "AUTO owns channel/bank/program · choose an explicit target first".into();
+            return;
+        }
+        let selected_target = if field == RouteField::Target {
+            let current = self
+                .overlay
+                .as_ref()
+                .and_then(OverlayState::route)
+                .map(|route| &route.page.target);
+            let current = current
+                .and_then(|target| {
+                    self.page_target_candidates
+                        .iter()
+                        .position(|candidate| candidate == target)
+                })
+                .unwrap_or(0);
+            let last = self.page_target_candidates.len().saturating_sub(1);
+            let next = if direction < 0 {
+                current.saturating_sub(1)
+            } else {
+                (current + 1).min(last)
+            };
+            self.page_target_candidates.get(next).cloned()
+        } else {
+            None
+        };
+        let Some(route) = self.overlay.as_mut().and_then(OverlayState::route_mut) else {
+            return;
+        };
+        match field {
+            RouteField::Target => {
+                if let Some(target) = selected_target {
+                    route.page.target = target;
+                    if route.page.target == PageTarget::Default {
+                        route.page.columns = [sequencer::ColumnSetup::default(); LANES_PER_PAGE];
+                        route.page.setup.clear();
+                    }
+                }
+            }
+            RouteField::Channel(column) => {
+                let value = &mut route.page.columns[column.min(LANES_PER_PAGE - 1)].channel;
+                *value = if direction < 0 {
+                    value.saturating_sub(1)
+                } else {
+                    value.saturating_add(1).min(15)
+                };
+            }
+            RouteField::BankMsb(column) => {
+                let value = &mut route.page.columns[column.min(LANES_PER_PAGE - 1)].bank_msb;
+                *value = if direction < 0 {
+                    value.saturating_sub(1)
+                } else {
+                    value.saturating_add(1).min(127)
+                };
+            }
+            RouteField::BankLsb(column) => {
+                let value = &mut route.page.columns[column.min(LANES_PER_PAGE - 1)].bank_lsb;
+                *value = if direction < 0 {
+                    value.saturating_sub(1)
+                } else {
+                    value.saturating_add(1).min(127)
+                };
+            }
+            RouteField::Program(column) => {
+                let value = &mut route.page.columns[column.min(LANES_PER_PAGE - 1)].program;
+                *value = if direction < 0 {
+                    value.saturating_sub(1)
+                } else {
+                    value.saturating_add(1).min(127)
+                };
+            }
+        }
+    }
+
+    fn confirm_route_overlay(&mut self) {
+        let Some(route) = self.overlay.as_ref().and_then(OverlayState::route).cloned() else {
+            return;
+        };
+        let mut candidate = self.song.clone();
+        let Some(page) = candidate
+            .patterns
+            .get_mut(&route.pattern)
+            .and_then(|pattern| pattern.pages.get_mut(route.page_index))
+        else {
+            self.status = "routing owner changed while overlay was open".into();
+            return;
+        };
+        *page = route.page;
+        if let Err(error) = candidate.validate() {
+            self.status = format!("routing conflict · {error}");
+            return;
+        }
+        self.release_tracker_audition();
+        self.song = candidate;
+        self.close_overlay(false);
+        self.clamp_tracker_cursor();
+        self.sync_tracker_route();
+        self.status = "page routing applied through the Project owner".into();
+    }
+
+    fn activate_overlay(&mut self) {
+        if self
+            .overlay
+            .as_ref()
+            .is_some_and(|overlay| overlay.active_field.is_some())
+        {
+            if let Some(overlay) = self.overlay.as_mut() {
+                overlay.confirm_route_field();
+            }
+            self.status = "route field kept in draft · APPLY commits Project routing".into();
+            return;
+        }
+        let Some((kind, selection)) = self
+            .overlay
+            .as_ref()
+            .map(|overlay| (overlay.kind, overlay.selection))
+        else {
+            return;
+        };
+        match kind {
+            OverlayKind::TrackerPage => {
+                let page_rows = self.current_pages().len() * LANES_PER_PAGE;
+                if selection < page_rows {
+                    self.release_tracker_audition();
+                    self.tracker_page = selection / LANES_PER_PAGE;
+                    self.tracker_track = selection % LANES_PER_PAGE;
+                    self.close_overlay(false);
+                    if !self.leave_noob_on_percussion() {
+                        self.sync_tracker_route();
+                    }
+                } else {
+                    self.close_overlay(false);
+                    self.open_page_manager();
+                }
+            }
+            OverlayKind::TrackerPattern => {
+                let locations = self.overlay_pattern_locations();
+                if let Some((_, order)) = locations.get(selection).copied() {
+                    self.release_tracker_audition();
+                    self.tracker_order = order;
+                    self.tracker_row = 0;
+                    self.clamp_tracker_cursor();
+                    self.close_overlay(false);
+                    self.sync_tracker_route();
+                } else if selection == locations.len() {
+                    self.close_overlay(false);
+                    self.set_screen(Screen::TrackerFiles);
+                    self.open_pattern_tools();
+                } else {
+                    self.close_overlay(false);
+                    self.song_list = sequencer::list(&sequencer::songs_dir());
+                    self.tracker_files_mode = TrackerFilesMode::Projects;
+                    self.set_screen(Screen::TrackerFiles);
+                }
+            }
+            OverlayKind::TrackerSong => {
+                if selection < self.song.order.len() {
+                    self.release_tracker_audition();
+                    self.tracker_order = selection;
+                    self.tracker_row = 0;
+                    self.clamp_tracker_cursor();
+                    self.close_overlay(false);
+                    self.sync_tracker_route();
+                } else if selection == self.song.order.len() {
+                    self.close_overlay(false);
+                    self.open_arrange();
+                } else if selection == self.song.order.len() + 1 {
+                    self.close_overlay(false);
+                    self.set_screen(Screen::TrackerTools);
+                    self.reset_context_page();
+                    self.status = "FT2 tools · loop, clipboard, and mute".into();
+                } else {
+                    self.close_overlay(false);
+                    if let Some(bpm) = self.tap.tap(Instant::now()) {
+                        self.set_tracker_tempo(bpm.round().clamp(20.0, 300.0) as u16);
+                    } else {
+                        self.status = "tap again to set the Pattern tempo".into();
+                    }
+                }
+            }
+            OverlayKind::TrackerRoute => {
+                if selection == RouteField::ROWS - 1 {
+                    self.confirm_route_overlay();
+                } else if let Some(field) = RouteField::from_row(selection) {
+                    if let Some(overlay) = self.overlay.as_mut() {
+                        overlay.begin_route_field(field);
+                    }
+                    self.status =
+                        "route field active · turn changes draft · Back cancels field".into();
+                }
+            }
+            OverlayKind::MixEffects => {
+                self.fx_target = selection.min(MAX_AUX_BUSES + 1);
+                self.close_overlay(false);
+                let length = project_fx_rack(
+                    &self.song.insert_rack,
+                    &self.song.aux_routing,
+                    self.fx_target,
+                )
+                .map(|rack| rack.order.len())
+                .unwrap_or(0);
+                self.fx_selected = self.fx_selected.min(length.saturating_sub(1));
+                self.fx_rack_parent = Screen::Meter;
+                self.set_screen(Screen::FxRack);
+                self.status = format!("{} rack", fx_target_label(self.fx_target));
+            }
         }
     }
 
@@ -2664,13 +3023,30 @@ impl App {
 
     fn tracker_device_profile(&self) -> Option<&DeviceProfile> {
         let page = self.current_page()?;
-        match &page.target {
+        self.tracker_device_profile_for_target(&page.target)
+    }
+
+    fn tracker_device_profile_for_target(&self, target: &PageTarget) -> Option<&DeviceProfile> {
+        match target {
             PageTarget::Default | PageTarget::ConfiguredExternal => self
                 .device_profiles
                 .by_id(&self.config.external_midi.profile),
             PageTarget::Midi(port) => self.device_profiles.matching_port(port),
             PageTarget::ActiveInstrument | PageTarget::Synthv1(_) => None,
         }
+    }
+
+    fn route_program_label(&self, page: &sequencer::Page, column_index: usize) -> String {
+        let column = page.column(column_index);
+        let channel = page.runtime_channel(column_index, &self.config.external_midi);
+        if channel == 9 {
+            return "GM DRUMS".into();
+        }
+        self.tracker_device_profile_for_target(&page.target)
+            .and_then(|profile| {
+                profile.program_label(column.bank_msb, column.bank_lsb, column.program)
+            })
+            .unwrap_or_else(|| crate::gm::melodic_program(column.program).into())
     }
 
     fn tracker_program_label(&self, program: u8) -> String {
@@ -2840,6 +3216,35 @@ impl App {
         } else {
             self.available_page_outputs.clear();
         }
+        if let Some(target) = self.current_page().map(|page| page.target.clone()) {
+            targets.push(target);
+        }
+        targets.sort();
+        targets.dedup();
+        self.page_target_candidates = targets;
+    }
+
+    /// Build the passive overlay list from already-known ports. Unlike the
+    /// full page manager refresh, opening ROUTE never creates a discovery
+    /// client or touches ALSA/JACK merely to display the current state.
+    fn refresh_overlay_target_candidates(&mut self) {
+        let mut targets = vec![PageTarget::Default];
+        targets.extend(
+            self.catalogs
+                .iter()
+                .filter(|catalog| catalog.backend == BackendKind::Synthv1)
+                .flat_map(|catalog| catalog.presets.iter())
+                .map(|preset| PageTarget::Synthv1(preset.name.clone())),
+        );
+        if !self.config.external_midi.output_match.is_empty() {
+            targets.push(PageTarget::ConfiguredExternal);
+        }
+        targets.extend(
+            self.available_page_outputs
+                .iter()
+                .cloned()
+                .map(PageTarget::Midi),
+        );
         if let Some(target) = self.current_page().map(|page| page.target.clone()) {
             targets.push(target);
         }
@@ -6806,6 +7211,14 @@ fn dispatch_pad(
     if !pressed {
         return;
     }
+    if let Some(launcher) = app.overlay.as_ref().map(|overlay| overlay.launcher.clone()) {
+        if let MenuInput::ActivateItem(item) = pad.menu_input() {
+            if item == launcher.item {
+                perform(launcher.action, app, state, Some(tx));
+            }
+        }
+        return;
+    }
     match pad.menu_input() {
         MenuInput::SelectPage(page) => app.select_menu_page(page),
         MenuInput::CyclePage => app.cycle_menu_page(1),
@@ -6824,6 +7237,14 @@ fn dispatch_encoder(
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
 ) {
+    if app.overlay.is_some() {
+        match action {
+            crate::pads::EncoderAction::Up => app.move_overlay(-1),
+            crate::pads::EncoderAction::Down => app.move_overlay(1),
+            crate::pads::EncoderAction::Select => app.activate_overlay(),
+        }
+        return;
+    }
     app.prepare_confirmation_action(Action::Noop);
     if app.screen == Screen::Home {
         match action {
@@ -6909,6 +7330,24 @@ fn perform(
     // modal confirmation owns the rest of the input dispatch.
     if action == Action::StopAll {
         a.stop_all(state);
+        return false;
+    }
+    if let Some(launcher) = a.overlay.as_ref().map(|overlay| overlay.launcher.clone()) {
+        if action == launcher.action {
+            a.close_overlay(true);
+        } else {
+            match action {
+                Action::Up => a.move_overlay(-1),
+                Action::Down => a.move_overlay(1),
+                Action::Activate => a.activate_overlay(),
+                Action::Back => a.overlay_back(),
+                _ => {}
+            }
+        }
+        return false;
+    }
+    if OverlayKind::from_action(action).is_some() {
+        a.open_overlay(action);
         return false;
     }
     if a.noob_target.is_some() {
@@ -7330,12 +7769,6 @@ fn perform(
             a.status = "song files · select an action".into();
         }
         Action::OpenTrackerArrange => a.open_arrange(),
-        Action::OpenTrackerPages => a.open_page_manager(),
-        Action::OpenTrackerTools => {
-            a.set_screen(Screen::TrackerTools);
-            a.reset_context_page();
-            a.status = "FT2 tools · arrange, loop, clipboard, mute".into();
-        }
         Action::OpenTrackerLoop => {
             a.loop_library_mode = false;
             a.set_screen(Screen::TrackerLoop);
@@ -7348,6 +7781,11 @@ fn perform(
             a.reset_context_page();
             a.status = "loop align · AUTO or move by one bar".into();
         }
+        Action::OpenPageOverlay
+        | Action::OpenPatternOverlay
+        | Action::OpenSongOverlay
+        | Action::OpenRouteOverlay
+        | Action::OpenEffectsOverlay => a.open_overlay(action),
         Action::OpenAudioRecorder => {
             a.set_tracker_edit(false);
             a.set_screen(Screen::AudioRecorder);
@@ -7489,15 +7927,6 @@ fn perform(
                 Screen::Help => a.help_previous,
             };
             a.set_screen(next_screen);
-        }
-        Action::TapTempo => {
-            if let Some(b) = a.tap.tap(Instant::now()) {
-                if a.screen == Screen::Tracker {
-                    a.set_tracker_tempo(b.round().clamp(20.0, 300.0) as u16);
-                } else {
-                    a.status = format!("tap {b:.1} BPM · display only")
-                }
-            }
         }
         Action::ResetParameters => a.reset_parameters(),
         Action::IdeaRecordToggle => a.toggle_idea_recording(),
@@ -7804,6 +8233,21 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 }
             }
             KeyCode::Enter => a.save_controller_learn(state),
+            _ => {}
+        }
+        return false;
+    }
+    if a.overlay.is_some() {
+        if let Some(pad) = function_key_pad(code) {
+            dispatch_pad(pad, true, a, state, tx);
+            return false;
+        }
+        match code {
+            KeyCode::Up | KeyCode::Char('k') => a.move_overlay(-1),
+            KeyCode::Down | KeyCode::Char('j') => a.move_overlay(1),
+            KeyCode::Enter => a.activate_overlay(),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.overlay_back(),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
             _ => {}
         }
         return false;
@@ -8412,6 +8856,38 @@ fn mouse(
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
 ) -> bool {
+    if a.overlay.is_some() {
+        match m.kind {
+            MouseEventKind::Down(MouseButton::Right) => a.overlay_back(),
+            MouseEventKind::ScrollUp => a.move_overlay(-1),
+            MouseEventKind::ScrollDown => a.move_overlay(1),
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(action) = a.hits.action(m.column, m.row) {
+                    perform(action, a, state, Some(tx));
+                } else if contains(a.hits.list, m.column, m.row) {
+                    let scroll = a.overlay.as_ref().map_or(0, |overlay| overlay.scroll);
+                    let index = visible_index(a.hits.list, scroll, m.column, m.row).unwrap_or(0);
+                    if index < a.overlay_row_count() {
+                        let selected = a
+                            .overlay
+                            .as_ref()
+                            .is_some_and(|overlay| overlay.selection == index);
+                        if selected {
+                            a.activate_overlay();
+                        } else if let Some(overlay) = a
+                            .overlay
+                            .as_mut()
+                            .filter(|overlay| overlay.active_field.is_none())
+                        {
+                            overlay.selection = index;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        return false;
+    }
     if matches!(m.kind, MouseEventKind::Down(MouseButton::Right)) {
         if a.screen != Screen::Home {
             perform(Action::Back, a, state, Some(tx));
@@ -8588,6 +9064,11 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::FxEditor => draw_fx_editor(f, a),
         Screen::Meter => draw_performance_meter(f, a),
         Screen::Routing => draw_routing(f, a),
+    }
+    if a.overlay.is_some() {
+        draw_overlay(f, a);
+        draw_overlay_launcher(f, a);
+        return;
     }
     if a.noob_target.is_some() {
         draw_noob_setup(f, a);
@@ -9910,6 +10391,295 @@ fn draw_fallback_badge<B: Backend>(f: &mut Frame<B>, a: &App) {
 fn pad_line(screen: Screen) -> String {
     format!("{} · controller menu below", screen.label())
 }
+
+fn overlay_target_state(a: &App, target: &PageTarget) -> &'static str {
+    match target {
+        PageTarget::Synthv1(name) if a.synthv1_preset(name).is_some() => {
+            if a.engine_owner.as_ref() == Some(&EngineOwner::Tracker(name.clone())) {
+                "CONNECTED"
+            } else {
+                "AVAILABLE"
+            }
+        }
+        _ => a.target_route_label(target),
+    }
+}
+
+fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
+    match overlay.kind {
+        OverlayKind::TrackerPage => {
+            let mut rows = Vec::new();
+            for (page_index, page) in a.current_pages().iter().enumerate() {
+                for column_index in 0..LANES_PER_PAGE {
+                    let column = page.column(column_index);
+                    let channel = if page.target == PageTarget::Default {
+                        "AU".into()
+                    } else {
+                        format!("{:02}", sequencer::musician_channel(column.channel))
+                    };
+                    rows.push(format!(
+                        "P{:02} C{} {:<9} ch{} p{:03}",
+                        page_index + 1,
+                        column_index + 1,
+                        truncate(&page.name, 9),
+                        channel,
+                        sequencer::musician_program(column.program)
+                    ));
+                }
+            }
+            rows.push("MANAGE PAGES / TRACKS…".into());
+            rows
+        }
+        OverlayKind::TrackerPattern => {
+            let mut rows = a
+                .overlay_pattern_locations()
+                .into_iter()
+                .map(|(number, order)| {
+                    a.song.patterns.get(&number).map_or_else(
+                        || format!("PAT {number:02} · missing"),
+                        |pattern| {
+                            format!(
+                                "PAT {number:02} · {} rows · {} BPM · ord {:02}",
+                                pattern.rows.len(),
+                                pattern.tempo,
+                                order + 1
+                            )
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+            rows.push("OPEN PATTERN TOOLS…".into());
+            rows.push("OPEN PROJECT FILES…".into());
+            rows
+        }
+        OverlayKind::TrackerSong => {
+            let mut rows = a
+                .song
+                .order
+                .iter()
+                .enumerate()
+                .map(|(order, pattern)| {
+                    let detail = a.song.patterns.get(pattern).map_or_else(
+                        || "missing".into(),
+                        |pattern| {
+                            format!(
+                                "{}r {} BPM {}/4",
+                                pattern.rows.len(),
+                                pattern.tempo,
+                                pattern.meter
+                            )
+                        },
+                    );
+                    format!("STEP {:02} · PAT {pattern:02} · {detail}", order + 1)
+                })
+                .collect::<Vec<_>>();
+            rows.push("EDIT ARRANGEMENT…".into());
+            rows.push("OPEN LOOP / PAGE TOOLS…".into());
+            rows.push("TAP PATTERN TEMPO".into());
+            rows
+        }
+        OverlayKind::TrackerRoute => {
+            let Some(route) = overlay.route() else {
+                return vec!["routing draft unavailable".into()];
+            };
+            let page = &route.page;
+            let mut rows = vec![format!(
+                "TARGET · {} · {}",
+                page.target.label(),
+                overlay_target_state(a, &page.target)
+            )];
+            for column_index in 0..LANES_PER_PAGE {
+                let column = page.column(column_index);
+                let auto = page.target == PageTarget::Default;
+                rows.push(format!(
+                    "C{} CHANNEL · {}",
+                    column_index + 1,
+                    if auto {
+                        "AUTO".into()
+                    } else {
+                        sequencer::musician_channel(column.channel).to_string()
+                    }
+                ));
+                rows.push(format!(
+                    "C{} BANK MSB · {}",
+                    column_index + 1,
+                    if auto {
+                        "AUTO".into()
+                    } else {
+                        column.bank_msb.to_string()
+                    }
+                ));
+                rows.push(format!(
+                    "C{} BANK LSB · {}",
+                    column_index + 1,
+                    if auto {
+                        "AUTO".into()
+                    } else {
+                        column.bank_lsb.to_string()
+                    }
+                ));
+                rows.push(format!(
+                    "C{} PROGRAM · {} · {}",
+                    column_index + 1,
+                    if auto {
+                        "AUTO".into()
+                    } else {
+                        sequencer::musician_program(column.program).to_string()
+                    },
+                    if auto {
+                        "machine default".into()
+                    } else {
+                        a.route_program_label(page, column_index)
+                    }
+                ));
+            }
+            rows.push(format!(
+                "APPLY ROUTING{}",
+                if route.dirty() { " · CHANGED" } else { "" }
+            ));
+            rows
+        }
+        OverlayKind::MixEffects => (0..=MAX_AUX_BUSES + 1)
+            .map(|target| {
+                let effects = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, target)
+                    .map_or(0, |rack| rack.order.len());
+                format!("{} · {effects} effect(s)", fx_target_label(target))
+            })
+            .collect(),
+    }
+}
+
+fn draw_overlay<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let geometry = overlay::geometry(f.size());
+    if geometry.outer.width == 0 || geometry.outer.height == 0 {
+        return;
+    }
+    let Some(snapshot) = a.overlay.as_ref().cloned() else {
+        return;
+    };
+    let rows = overlay_rows(a, &snapshot);
+    let visible_rows = usize::from(geometry.inner.height);
+    if let Some(overlay) = a.overlay.as_mut() {
+        overlay.keep_selection_visible(visible_rows, rows.len());
+    }
+    let Some(overlay) = a.overlay.as_ref() else {
+        return;
+    };
+    let scroll = overlay.scroll;
+    let selection = overlay.selection;
+    let active_field = overlay.active_field;
+    f.render_widget(Clear, geometry.outer);
+    f.render_widget(
+        Block::default()
+            .title(Spans::from(Span::styled(
+                format!(" {} ", overlay.title),
+                Style::default()
+                    .fg(Color::LightYellow)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            )))
+            .title_alignment(Alignment::Center)
+            .borders(Borders::ALL)
+            .border_type(BorderType::Double)
+            .border_style(Style::default().fg(Color::Cyan).bg(Color::Black))
+            .style(Style::default().bg(Color::Black)),
+        geometry.outer,
+    );
+    f.render_widget(Clear, geometry.inner);
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        geometry.inner,
+    );
+    for (screen_row, (index, line)) in rows
+        .iter()
+        .enumerate()
+        .skip(scroll)
+        .take(visible_rows)
+        .enumerate()
+    {
+        let selected = index == selection;
+        let active = selected && active_field.is_some();
+        let marker = if active {
+            "*"
+        } else if selected {
+            ">"
+        } else {
+            " "
+        };
+        let style = if active {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else if selected {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray).bg(Color::Black)
+        };
+        f.render_widget(
+            Paragraph::new(truncate(
+                &format!("{marker}{line}"),
+                usize::from(geometry.inner.width),
+            ))
+            .style(style),
+            rect(
+                geometry.inner.x,
+                geometry.inner.y + screen_row as u16,
+                geometry.inner.width,
+                1,
+            ),
+        );
+    }
+    a.hits.actions.clear();
+    a.hits.menu_pages.clear();
+    a.hits.list = geometry.inner;
+}
+
+fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let Some(launcher) = a.overlay.as_ref().map(|overlay| overlay.launcher.clone()) else {
+        return;
+    };
+    let z = f.size();
+    if z.height == 0 {
+        return;
+    }
+    let row = rect(z.x, z.y + z.height - 1, z.width, 1);
+    f.render_widget(Clear, row);
+    let menu_width = z.width.min(40);
+    let menu_x = z.x + z.width.saturating_sub(menu_width) / 2;
+    let width = menu_width / 4;
+    let button = rect(menu_x + launcher.item as u16 * width, row.y, width, 1);
+    f.render_widget(
+        Paragraph::new(format!(
+            "[{}]",
+            truncate(launcher.label, usize::from(button.width.saturating_sub(2)))
+        ))
+        .alignment(Alignment::Center)
+        .style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        button,
+    );
+    a.hits.actions.push((button, launcher.action));
+    if cfg!(debug_assertions) && z.width > 0 {
+        f.render_widget(
+            Paragraph::new(BUILD_BADGE).style(
+                Style::default()
+                    .fg(Color::Red)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            rect(z.x, z.y, z.width.min(3), 1),
+        );
+    }
+}
+
 fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     if z.height < 4 {
@@ -12213,6 +12983,361 @@ mod tests {
             .map(|column| buffer_cell(buffer, column, row).symbol.as_str())
             .collect()
     }
+
+    fn inner_text(buffer: &Buffer, area: Rect) -> String {
+        let mut text = String::new();
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() {
+                text.push_str(buffer_cell(buffer, x, y).symbol.as_str());
+            }
+            text.push('\n');
+        }
+        text
+    }
+
+    #[test]
+    fn overlay_geometry_border_title_clear_and_selection_render_exactly_at_40x20() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        a.open_overlay(Action::OpenPageOverlay);
+        let buffer = render_app(&mut a, 40, 20);
+        let geometry = overlay::geometry(Rect::new(0, 0, 40, 20));
+        assert_eq!(geometry.outer, Rect::new(1, 1, 38, 18));
+        assert_eq!(geometry.inner, Rect::new(2, 2, 36, 16));
+        assert_eq!(buffer_cell(&buffer, 1, 1).symbol, "╔");
+        assert_eq!(buffer_cell(&buffer, 38, 1).symbol, "╗");
+        assert_eq!(buffer_cell(&buffer, 1, 18).symbol, "╚");
+        assert_eq!(buffer_cell(&buffer, 38, 18).symbol, "╝");
+        assert!(row_text(&buffer, 1).contains(" PAGE NAVIGATION "));
+        assert!(!inner_text(&buffer, geometry.inner).contains("ROW"));
+        assert_eq!(buffer_cell(&buffer, 2, 2).bg, Color::Yellow);
+        assert_ne!(buffer_cell(&buffer, 0, 1).symbol, "║");
+        assert_ne!(buffer_cell(&buffer, 39, 1).symbol, "║");
+    }
+
+    #[test]
+    fn route_overlay_scrolls_and_truncates_without_damaging_its_border() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        for page in &mut a.song.patterns.get_mut(&0).unwrap().pages {
+            page.target = PageTarget::ConfiguredExternal;
+        }
+        a.open_overlay(Action::OpenRouteOverlay);
+        if let Some(route) = a.overlay.as_mut().and_then(OverlayState::route_mut) {
+            route.page.target = PageTarget::Midi("LONG CONNECTION NAME ".repeat(8));
+        }
+        a.overlay.as_mut().unwrap().selection = RouteField::ROWS - 1;
+        let buffer = render_app(&mut a, 40, 20);
+        let overlay = a.overlay.as_ref().unwrap();
+        assert!(overlay.scroll > 0);
+        assert!(inner_text(&buffer, Rect::new(2, 2, 36, 16)).contains("APPLY ROUTING"));
+        for y in 2..18 {
+            assert_eq!(buffer_cell(&buffer, 1, y).symbol, "║");
+            assert_eq!(buffer_cell(&buffer, 38, y).symbol, "║");
+        }
+    }
+
+    #[test]
+    fn overlay_strip_shows_only_the_active_launcher_in_its_original_position() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        a.open_overlay(Action::OpenRouteOverlay);
+        let buffer = render_app(&mut a, 40, 20);
+        let row = row_text(&buffer, 19);
+        assert_eq!(row.matches('[').count(), 1);
+        assert!(row[30..40].contains("ROUTE"));
+        assert!(row[..30].trim().is_empty());
+        assert_eq!(buffer_cell(&buffer, 30, 19).bg, Color::LightYellow);
+        assert_eq!(a.hits.actions.len(), 1);
+        assert_eq!(a.hits.actions[0].1, Action::OpenRouteOverlay);
+    }
+
+    #[test]
+    fn overlay_launcher_toggle_is_exclusive_and_restores_controller_state() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.menu_page_by_screen[Screen::Tracker.index()] = 1;
+        a.page_select_mode = true;
+        a.open_overlay(Action::OpenRouteOverlay);
+        let (tx, _rx) = mpsc::channel();
+        dispatch_pad(
+            crate::pads::PadAction::Item1,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(a.overlay.is_some(), "hidden item must be silent");
+        dispatch_pad(
+            crate::pads::PadAction::Item4,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(a.overlay.is_none());
+        assert_eq!(a.menu_page(), 1);
+        assert!(a.page_select_mode);
+    }
+
+    #[test]
+    fn overlay_open_close_preserves_caller_owners_and_project_state() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.engine_owner = Some(EngineOwner::Tracker("Preset 00".into()));
+        a.tracker_mode = TrackerMode::Play;
+        a.tracker_row = 6;
+        a.tracker_advance = 8;
+        let song = a.song.clone();
+        let owner = a.engine_owner.clone();
+        let transport = a.sequencer.status();
+        let recorder = a.audio_recorder.status();
+        a.open_overlay(Action::OpenPatternOverlay);
+        a.move_overlay(1);
+        a.close_overlay(true);
+        assert_eq!(a.song, song);
+        assert_eq!(a.engine_owner, owner);
+        assert_eq!(a.tracker_row, 6);
+        assert_eq!(a.tracker_advance, 8);
+        assert_eq!(a.sequencer.status().playing, transport.playing);
+        assert_eq!(a.audio_recorder.status().recording, recorder.recording);
+    }
+
+    #[test]
+    fn overlay_keyboard_and_rotary_match_and_block_the_caller() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut rotary = app(&p);
+        rotary.screen = Screen::Tracker;
+        rotary.tracker_row = 7;
+        rotary.open_overlay(Action::OpenPageOverlay);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut rotary,
+            Path::new("/none"),
+            &tx,
+        );
+        let mut keyboard = app(&p);
+        keyboard.screen = Screen::Tracker;
+        keyboard.tracker_row = 7;
+        keyboard.open_overlay(Action::OpenPageOverlay);
+        assert!(!key(KeyCode::Down, &mut keyboard, Path::new("/none"), &tx));
+        assert_eq!(
+            rotary.overlay.as_ref().unwrap().selection,
+            keyboard.overlay.as_ref().unwrap().selection
+        );
+        assert_eq!(keyboard.tracker_row, 7, "covered caller must not move");
+        key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
+        assert!(keyboard.overlay.is_none());
+        assert_eq!(keyboard.tracker_track, 1);
+    }
+
+    #[test]
+    fn overlay_mouse_and_back_are_confined_before_caller_navigation() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_row = 9;
+        a.tracker_advance = 4;
+        a.open_overlay(Action::OpenPageOverlay);
+        render_app(&mut a, 40, 20);
+        let left = |column, row| MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        mouse(left(0, 8), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.overlay.as_ref().unwrap().selection, 0);
+        assert_eq!(a.tracker_row, 9);
+        mouse(left(3, 3), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.overlay.as_ref().unwrap().selection, 1);
+        assert_eq!(a.screen, Screen::Tracker);
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert!(a.overlay.is_none());
+        assert_eq!(a.screen, Screen::Tracker);
+        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        assert_eq!(a.tracker_advance, 4);
+        assert_eq!(a.tracker_row, 9);
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Home);
+    }
+
+    #[test]
+    fn route_back_cancels_a_field_before_it_cancels_the_overlay() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        for page in &mut a.song.patterns.get_mut(&0).unwrap().pages {
+            page.target = PageTarget::ConfiguredExternal;
+        }
+        a.open_overlay(Action::OpenRouteOverlay);
+        a.overlay.as_mut().unwrap().selection = 1;
+        a.activate_overlay();
+        a.move_overlay(1);
+        assert_eq!(
+            a.overlay.as_ref().unwrap().route().unwrap().page.columns[0].channel,
+            1
+        );
+        a.overlay_back();
+        assert!(a.overlay.is_some());
+        assert_eq!(a.overlay.as_ref().unwrap().active_field, None);
+        assert_eq!(
+            a.overlay.as_ref().unwrap().route().unwrap().page.columns[0].channel,
+            0
+        );
+        a.overlay_back();
+        assert!(a.overlay.is_none());
+    }
+
+    #[test]
+    fn every_controller_layout_keeps_master_navigation_and_launcher_close() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        for layout in [
+            ControllerLayout::Eight,
+            ControllerLayout::Five,
+            ControllerLayout::Four,
+        ] {
+            let mut a = app(&p);
+            a.screen = Screen::Tracker;
+            a.controller_layout = layout;
+            a.menu_page_by_screen[Screen::Tracker.index()] = 2;
+            a.open_overlay(Action::OpenPageOverlay);
+            dispatch_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!(a.overlay.as_ref().unwrap().selection, 1, "{layout:?}");
+            dispatch_pad(
+                crate::pads::PadAction::Item1,
+                true,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert!(a.overlay.is_none(), "{layout:?}");
+            assert_eq!(a.menu_page(), 2, "{layout:?}");
+            assert!(!a.page_select_mode, "{layout:?}");
+        }
+    }
+
+    #[test]
+    fn framework_supports_distinct_ft2_overlays_and_a_second_caller() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        for (action, kind) in [
+            (Action::OpenPageOverlay, OverlayKind::TrackerPage),
+            (Action::OpenPatternOverlay, OverlayKind::TrackerPattern),
+            (Action::OpenSongOverlay, OverlayKind::TrackerSong),
+            (Action::OpenRouteOverlay, OverlayKind::TrackerRoute),
+        ] {
+            a.open_overlay(action);
+            assert_eq!(a.overlay.as_ref().unwrap().kind, kind);
+            assert_eq!(a.overlay.as_ref().unwrap().caller, Screen::Tracker);
+            a.close_overlay(true);
+        }
+        a.open_overlay(Action::OpenPageOverlay);
+        perform(Action::OpenPatternOverlay, &mut a, Path::new("/none"), None);
+        assert_eq!(
+            a.overlay.as_ref().unwrap().kind,
+            OverlayKind::TrackerPage,
+            "another launcher stays silent until the first overlay closes"
+        );
+        a.close_overlay(true);
+        a.screen = Screen::Meter;
+        a.menu_page_by_screen[Screen::Meter.index()] = 2;
+        a.open_overlay(Action::OpenEffectsOverlay);
+        assert_eq!(a.overlay.as_ref().unwrap().kind, OverlayKind::MixEffects);
+        assert_eq!(a.overlay.as_ref().unwrap().caller, Screen::Meter);
+        a.overlay.as_mut().unwrap().selection = 1;
+        a.activate_overlay();
+        assert_eq!(a.screen, Screen::FxRack);
+        assert_eq!(a.fx_target, 1);
+        assert_eq!(a.fx_rack_parent, Screen::Meter);
+    }
+
+    #[test]
+    fn ft2_page_pattern_and_song_overlays_select_through_existing_owners() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        fill_demo_song(&mut a);
+
+        a.open_overlay(Action::OpenPageOverlay);
+        a.overlay.as_mut().unwrap().selection = LANES_PER_PAGE + 1;
+        a.activate_overlay();
+        assert_eq!((a.tracker_page, a.tracker_track), (1, 1));
+        assert_eq!(a.song.order, vec![0, 1, 0, 2]);
+
+        a.open_overlay(Action::OpenPatternOverlay);
+        a.overlay.as_mut().unwrap().selection = 1;
+        a.activate_overlay();
+        assert_eq!(a.tracker_pattern_number(), 1);
+        assert_eq!(a.tracker_order, 1);
+
+        a.open_overlay(Action::OpenSongOverlay);
+        a.overlay.as_mut().unwrap().selection = 3;
+        a.activate_overlay();
+        assert_eq!(a.tracker_order, 3);
+        assert_eq!(a.tracker_pattern_number(), 2);
+        assert_eq!(a.tracker_page, 0, "existing cursor clamp owns the return");
+    }
+
+    #[test]
+    fn route_overlay_is_passive_transactional_and_uses_the_existing_owner() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        for page in &mut a.song.patterns.get_mut(&0).unwrap().pages {
+            page.target = PageTarget::ConfiguredExternal;
+        }
+        let original = a.song.clone();
+        let release_revision = a.audition_release_revision;
+        let destinations = a.tracker_route.lock().unwrap().destinations();
+        a.open_overlay(Action::OpenRouteOverlay);
+        assert_eq!(a.song, original);
+        assert_eq!(a.audition_release_revision, release_revision);
+        assert_eq!(a.tracker_route.lock().unwrap().destinations(), destinations);
+        assert!(a.engine.is_none());
+        a.overlay.as_mut().unwrap().selection = 1;
+        a.activate_overlay();
+        a.move_overlay(1);
+        a.activate_overlay();
+        assert_eq!(a.song, original, "confirmed field is still only a draft");
+        a.overlay.as_mut().unwrap().selection = RouteField::ROWS - 1;
+        a.activate_overlay();
+        assert!(a.overlay.is_none());
+        assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
+        assert_eq!(a.audition_release_revision, release_revision + 1);
+        assert!(a.engine.is_none());
+    }
+
+    #[test]
+    fn route_launcher_cancel_preserves_unavailable_preference_exactly() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.available_page_outputs.clear();
+        let preferred = PageTarget::Midi("Borrowed hardware currently absent".into());
+        a.song.patterns.get_mut(&0).unwrap().pages[0].target = preferred.clone();
+        let original = a.song.clone();
+        a.open_overlay(Action::OpenRouteOverlay);
+        perform(Action::OpenRouteOverlay, &mut a, Path::new("/none"), None);
+        assert_eq!(a.song, original);
+        assert_eq!(a.current_page().unwrap().target, preferred);
+    }
     #[test]
     fn renders_40x20_all_screens() {
         render(40, 20, Screen::Home);
@@ -13734,7 +14859,7 @@ mod tests {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
-        perform(Action::OpenTrackerPages, &mut a, Path::new("/none"), None);
+        a.open_page_manager();
         assert_eq!(a.screen, Screen::TrackerPages);
         perform(Action::AddPage, &mut a, Path::new("/none"), None);
         assert_eq!(a.current_pages().len(), 4);

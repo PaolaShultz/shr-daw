@@ -66,12 +66,21 @@ melody/percussion channels and available default destination are used. `AUTO`
 does not mean channel 1, channel zero, muted, or disabled. Choose an explicit
 target only when a song intentionally belongs to particular hardware.
 
-Open **TOOLS** → **PAGES** to reach the **TRACKS** screen. There you can add or
+Use FT2 **NAV** → **PAGE** to browse every page/column without leaving the
+Pattern. Its final row opens the full **TRACKS** screen. There you can add or
 select a page, choose a column, and set its target, channel, bank, and program.
 **DONE** validates shared-channel compatibility and keeps the changes. **SYS**
 → **EXIT** restores the Project as it was before TRACKS opened. A disconnected
 saved target is marked `FALLBACK` while a configured/default route is usable,
 or `OFFLINE` when none is; its preferred route and notes are not deleted.
+
+For a quick routing change, **NAV** → **ROUTE** opens a centered overlay over
+FT2. It shows the active page destination plus all four columns' channel, bank,
+program/instrument name, and availability. Turn and click/Enter to activate a
+field; Back/Esc cancels that field first. Only **APPLY ROUTING** changes the
+Project. The same highlighted ROUTE item or Back closes and cancels every
+unconfirmed change. At 40×20 the bordered outer window is 38×18 at `(1,1)` and
+the usable inner area is 36×16 at `(2,2)`.
 
 ## Step editing
 
@@ -242,7 +251,8 @@ refused without changing the Pattern.
 
 ## FT2 Arrangement
 
-Open **TOOLS**, then **ARR** to edit the FT2 Arrangement separately from
+Use **NAV** → **SONG** for quick Arrangement-step navigation. Choose **EDIT
+ARRANGEMENT** there to edit the FT2 Arrangement separately from
 pattern editing and Project files. The ARRANGE screen can select a step, append
 or insert the current pattern, duplicate or remove a step, move a step earlier
 or later, jump to the referenced pattern for editing, and play from the selected

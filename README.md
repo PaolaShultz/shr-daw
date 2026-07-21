@@ -110,6 +110,17 @@ Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, or
 Help. Back from a top-level workspace returns Home; editors and child tools
 return one level at a time.
 
+FT2 and Performance now use reusable master overlays for navigation-heavy
+choices. On FT2, controller page `NAV` offers `PAGE`, `PATTERN`, `SONG`, and
+`ROUTE`. The selected action opens a centered bordered window while FT2 remains
+visible and keeps ownership of the Project, engine, transport, recorder, and
+editor state. Turn the master rotary or use Up/Down to browse; click or Enter
+selects or edits. Press the same highlighted NAV action, or use keyboard Back/
+Esc, to close. There is deliberately no extra controller Back item: the one
+visible launcher is the close control. Unconfirmed routing changes are
+cancelled. At 40×20 the border is exactly 38×18 at `(1,1)`, surrounding a
+36×16 content area at `(2,2)`.
+
 MIDI Learn, Routing, and Effects are separate top-level destinations. Routing
 is a read-only view of the current controller, external MIDI, clock, and audio
 connections; `shr-setup` remains the single owner of hardware changes. If a
@@ -168,7 +179,10 @@ Record, and Step Edit on melodic pages; note length belongs only to Step Edit.
 
 <img src="docs/images/shr-daw-ft2-pages.png" alt="FT2 Pattern page routing screen with MIDI channels and targets" width="100%">
 
-Choose one destination per page and an instrument setup for each column.
+Use FT2 `NAV` → `PAGE` for quick page/column location and `NAV` → `ROUTE` for
+transactional routing. The detailed Tracks screen remains available from the
+PAGE overlay for adding pages and broader page management. Choose one
+destination per page and an instrument setup for each column.
 
 ### FT2 Arrangement
 
