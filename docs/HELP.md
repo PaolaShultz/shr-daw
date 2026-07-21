@@ -131,13 +131,19 @@ The ADD page chooses whether note entry, blank, erase, and note-off advance by
 1, 2, 4, or 8 rows; the FT2 heading shows the active value. N-OFF writes a
 note-off.
 
+On a Drums page, EDIT reuses each voice's column from earlier rows. New bass
+drums prefer column 1, new snares prefer column 2, and other new drums begin in
+columns 3–4. Existing cells are not replaced to force that layout.
+
 CELL edit is transactional. Confirm commits the draft cell; EXIT cancels and
 restores the original value. STOP stops transport without discarding the draft.
 
 N00B mode keeps the selected page as the instrument and enters notes with one
 visible length. LENGTH opens a rotary selector for 1/1, 1/2, 1/4, 1/8, 1/16,
 or 1/32; 1/16 is the default. Entry writes the note and its end, then advances.
-NORMAL restores detailed tracker editing without changing existing notes.
+N00B is unavailable on Drums; selecting Drums while N00B is active returns to
+Play without changing cells. NORMAL restores detailed tracker editing without
+changing existing notes.
 
 ## Pages and hardware MIDI
 

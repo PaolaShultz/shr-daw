@@ -15,12 +15,32 @@ stereo performance mix from compatible JACK interfaces.
 Start with a Pi and computer keyboard. Add a MIDI controller, synth, audio
 interface, or dedicated screen when useful.
 
-The immediate connection between played sound, note spelling, chord names,
-per-note MIDI strike velocity, beginner note-length entry, and visible keyboard
-state
-also makes SHR-DAW a practical learning companion. A player can relate what
-they hear and press to intervals, chord construction, dynamics, scales, and
-pattern notation without separating study from making music.
+## Explore first, explain later
+
+SHR-DAW is not only for experienced musicians. It is meant to be approachable
+to curious children, first-time music makers, returning older learners, and
+Raspberry Pi enthusiasts who want a reason to explore sound, MIDI, routing, or
+small-computer music without beginning inside a full desktop studio.
+
+That direction comes from the creator's personal belief, not a claim that
+everyone learns in the same way: some people become interested in theory only
+after play gives them a question worth answering. In Playback, pressing keys
+immediately produces sound while the 40×20 display names the held notes and
+recognized chord, shows each strike velocity, and highlights exactly which
+notes are sounding on the continuous keyboard while the others remain dark. A
+learner exploring around C-sharp minor might discover `C#m`, add or move a
+note, see the chord name change, and begin asking why `E maj` or `A maj` can
+feel related. SHR does not mark a chord correct or forbidden; it gives an
+audible and visible result that can make the learner curious about the
+explanation.
+
+FT2 continues the same invitation from a different direction. Its melodic
+N00B mode uses plain note lengths, while normal Step Edit accepts up to four
+played notes at once. A beginner can deliberately build a phrase or simply
+"face-smash" a handful of tones, hear what the resulting lanes do, keep the
+parts they like, and change the rest. Drums retain their dedicated Step Edit
+workflow. The aim is not to remove music theory: it is to let sound, movement,
+names, repetition, and personal conclusions create a doorway into it.
 
 ## Quick start
 
@@ -127,6 +147,9 @@ reduction, and final recording status.
 <img src="docs/images/shr-daw-ft2-pattern.png" alt="FT2 Pattern editor with four lanes of note data" width="100%">
 
 Edit notes, velocity, programs, gates, commands, and multiple routed pages.
+On a drum page, Step Edit keeps recurring drum voices in their earlier columns
+instead of repacking every played combination from left to right. N00b is for
+melodic pages and is unavailable on Drums.
 
 ### Pattern Pages
 

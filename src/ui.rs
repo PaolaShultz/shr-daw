@@ -680,6 +680,99 @@ where
     })
 }
 
+fn drum_home_lane(note: u8) -> Option<usize> {
+    match note {
+        35 | 36 => Some(0), // Acoustic Bass Drum / Bass Drum 1
+        38 | 40 => Some(1), // Acoustic Snare / Electric Snare
+        _ => None,
+    }
+}
+
+fn previous_drum_lane(
+    pattern: &sequencer::Pattern,
+    row_index: usize,
+    page_index: usize,
+    matches: impl Fn(u8) -> bool,
+) -> Option<usize> {
+    let page_start = page_index.checked_mul(LANES_PER_PAGE)?;
+    pattern.rows.iter().take(row_index).rev().find_map(|row| {
+        (0..LANES_PER_PAGE).find(|lane| {
+            row.get(page_start + lane)
+                .is_some_and(|cell| matches!(cell.note, Note::On(note) if matches(note)))
+        })
+    })
+}
+
+fn drum_entry_lanes(
+    pattern: &sequencer::Pattern,
+    row_index: usize,
+    page_index: usize,
+    notes: &[(u8, u8)],
+) -> Vec<Option<usize>> {
+    let Some(row) = pattern.rows.get(row_index) else {
+        return vec![None; notes.len()];
+    };
+    let Some(page_start) = page_index.checked_mul(LANES_PER_PAGE) else {
+        return vec![None; notes.len()];
+    };
+    let mut claimed = [false; LANES_PER_PAGE];
+    let mut assignments = Vec::with_capacity(notes.len());
+
+    for &(note, _) in notes {
+        let exact_history = previous_drum_lane(pattern, row_index, page_index, |old| old == note);
+        let family_history = drum_home_lane(note).and_then(|family| {
+            previous_drum_lane(pattern, row_index, page_index, |old| {
+                old != note && drum_home_lane(old) == Some(family)
+            })
+        });
+        let current_match = (0..LANES_PER_PAGE).find(|lane| {
+            row.get(page_start + lane)
+                .is_some_and(|cell| cell.note == Note::On(note))
+        });
+
+        let mut candidates = Vec::with_capacity(LANES_PER_PAGE + 4);
+        candidates.extend(current_match.map(|lane| (lane, true)));
+        candidates.extend(exact_history.map(|lane| (lane, true)));
+        candidates.extend(family_history.map(|lane| (lane, true)));
+        candidates.extend(drum_home_lane(note).map(|lane| (lane, true)));
+        // Leave the first two columns open for a new kick and snare when the
+        // Pattern has not established a home for this drum yet.
+        candidates.extend([2, 3, 0, 1].map(|lane| (lane, false)));
+
+        let lane = candidates
+            .into_iter()
+            .find(|&(lane, may_replace_note_off)| {
+                if lane >= LANES_PER_PAGE || claimed[lane] {
+                    return false;
+                }
+                row.get(page_start + lane).is_some_and(|cell| {
+                    *cell == Cell::default()
+                        || cell.note == Note::On(note)
+                        || (may_replace_note_off && cell.note == Note::Off)
+                })
+            })
+            .map(|(lane, _)| lane);
+        if let Some(lane) = lane {
+            claimed[lane] = true;
+        }
+        assignments.push(lane);
+    }
+
+    assignments
+}
+
+fn write_step_note(cell: &mut Cell, note: u8, velocity: u8) {
+    if cell.note == Note::On(note) {
+        cell.velocity = Some(velocity);
+    } else {
+        *cell = Cell {
+            note: Note::On(note),
+            velocity: Some(velocity),
+            ..Cell::default()
+        };
+    }
+}
+
 impl App {
     fn new(
         catalogs: &[Catalog],
@@ -2031,6 +2124,39 @@ impl App {
             self.write_noob_notes(&[(note, velocity)]);
             return;
         }
+        if self.current_page().is_some_and(|page| page.percussion) {
+            let pattern_number = self.tracker_pattern_number();
+            let assignment = self.song.patterns.get(&pattern_number).and_then(|pattern| {
+                drum_entry_lanes(
+                    pattern,
+                    self.tracker_row,
+                    self.tracker_page,
+                    &[(note, velocity)],
+                )
+                .into_iter()
+                .next()
+                .flatten()
+            });
+            let Some(lane) = assignment else {
+                self.status = format!(
+                    "drum row {:02X} has no free column · note ignored",
+                    self.tracker_row
+                );
+                return;
+            };
+            let page_start = self.tracker_page * LANES_PER_PAGE;
+            if let Some(cell) = self
+                .song
+                .patterns
+                .get_mut(&pattern_number)
+                .and_then(|pattern| pattern.rows.get_mut(self.tracker_row))
+                .and_then(|row| row.get_mut(page_start + lane))
+            {
+                write_step_note(cell, note, velocity);
+                self.advance_tracker_row();
+            }
+            return;
+        }
         if let Some(cell) = self.tracker_cell_mut() {
             *cell = Cell {
                 note: Note::On(note),
@@ -2068,6 +2194,60 @@ impl App {
             return;
         }
         let pattern_number = self.song.order.get(order).copied().unwrap_or(0);
+        let percussion = self
+            .song
+            .patterns
+            .get(&pattern_number)
+            .and_then(|pattern| pattern.pages.get(page_index))
+            .is_some_and(|page| page.percussion);
+        if percussion {
+            let assignments = self
+                .song
+                .patterns
+                .get(&pattern_number)
+                .map(|pattern| drum_entry_lanes(pattern, row_index, page_index, &gesture.notes))
+                .unwrap_or_else(|| vec![None; gesture.notes.len()]);
+            let note_count = gesture.notes.len();
+            let page_start = page_index * LANES_PER_PAGE;
+            let mut entered = 0;
+            if let Some(row) = self
+                .song
+                .patterns
+                .get_mut(&pattern_number)
+                .and_then(|pattern| pattern.rows.get_mut(row_index))
+            {
+                for ((note, velocity), lane) in
+                    gesture.notes.into_iter().zip(assignments.into_iter())
+                {
+                    let Some(lane) = lane else {
+                        continue;
+                    };
+                    if let Some(cell) = row.get_mut(page_start + lane) {
+                        write_step_note(cell, note, velocity);
+                        entered += 1;
+                    }
+                }
+            }
+            self.tracker_order = order;
+            self.tracker_row = row_index;
+            if entered == 0 {
+                self.status = format!("drum row {row_index:02X} full · gesture ignored");
+            } else {
+                self.advance_tracker_row();
+                self.status = if entered == note_count {
+                    format!(
+                        "drum gesture entered · advanced {} row(s)",
+                        self.tracker_advance
+                    )
+                } else {
+                    format!(
+                        "drum gesture entered {entered}/{note_count} · row full · advanced {} row(s)",
+                        self.tracker_advance
+                    )
+                };
+            }
+            return;
+        }
         if let Some(row) = self
             .song
             .patterns
@@ -2109,7 +2289,25 @@ impl App {
         self.sync_tracker_route();
     }
 
+    fn leave_noob_on_percussion(&mut self) -> bool {
+        if self.tracker_mode == TrackerMode::Noob
+            && self.current_page().is_some_and(|page| page.percussion)
+        {
+            self.set_tracker_mode(TrackerMode::Play);
+            self.status = "N00b unavailable on Drums · use Step Edit".into();
+            true
+        } else {
+            false
+        }
+    }
+
     fn toggle_noob_mode(&mut self) {
+        if self.tracker_mode != TrackerMode::Noob
+            && self.current_page().is_some_and(|page| page.percussion)
+        {
+            self.status = "N00b unavailable on Drums · use Step Edit".into();
+            return;
+        }
         self.tracker_stop();
         self.set_screen(Screen::Tracker);
         let enabled = self.tracker_mode != TrackerMode::Noob;
@@ -2152,6 +2350,11 @@ impl App {
     fn confirm_noob_length(&mut self) {
         self.noob_length = self.noob_length_draft;
         self.set_screen(Screen::Tracker);
+        if self.current_page().is_some_and(|page| page.percussion) {
+            self.set_tracker_mode(TrackerMode::Play);
+            self.status = "N00b unavailable on Drums · use Step Edit".into();
+            return;
+        }
         self.set_tracker_mode(TrackerMode::Noob);
         self.status = format!("N00b Mode · note length {}", self.noob_length.label());
     }
@@ -2166,6 +2369,10 @@ impl App {
     }
 
     fn write_noob_notes(&mut self, notes: &[(u8, u8)]) {
+        if self.current_page().is_some_and(|page| page.percussion) {
+            self.status = "N00b unavailable on Drums · note ignored · use Step Edit".into();
+            return;
+        }
         let pattern_number = self.tracker_pattern_number();
         let row_index = self.tracker_row;
         let page_index = self.tracker_page;
@@ -2175,19 +2382,34 @@ impl App {
             return;
         };
         let page_start = page_index * LANES_PER_PAGE;
-        for (offset, (note, velocity)) in notes.iter().copied().enumerate() {
-            let lane = page_start + (first_lane + offset) % LANES_PER_PAGE;
+        let assignments = notes
+            .iter()
+            .enumerate()
+            .map(|(offset, _)| Some((first_lane + offset) % LANES_PER_PAGE))
+            .collect::<Vec<_>>();
+        let mut entered = 0;
+        for ((note, velocity), lane) in notes.iter().copied().zip(assignments) {
+            let Some(lane) = lane else {
+                continue;
+            };
+            let lane = page_start + lane;
             if let Some(cell) = pattern
                 .rows
                 .get_mut(row_index)
                 .and_then(|row| row.get_mut(lane))
             {
-                *cell = Cell {
-                    note: Note::On(note),
-                    velocity: Some(velocity),
-                    gate: Some(gate),
-                    ..Cell::default()
-                };
+                if cell.note == Note::On(note) {
+                    cell.velocity = Some(velocity);
+                    cell.gate = Some(gate);
+                } else {
+                    *cell = Cell {
+                        note: Note::On(note),
+                        velocity: Some(velocity),
+                        gate: Some(gate),
+                        ..Cell::default()
+                    };
+                }
+                entered += 1;
             }
             let end = row_index.saturating_add(span);
             if gate == 100 && end < pattern.rows.len() {
@@ -2204,14 +2426,24 @@ impl App {
                 }
             }
         }
-        if !pattern.rows.is_empty() {
+        if entered > 0 && !pattern.rows.is_empty() {
             self.tracker_row = (row_index + span).min(pattern.rows.len() - 1);
         }
-        self.status = format!(
-            "N00b note entered · length {} · next row {:02X}",
-            self.noob_length.label(),
-            self.tracker_row
-        );
+        self.status = if entered == 0 {
+            format!("row {row_index:02X} full · N00b note ignored")
+        } else if entered == notes.len() {
+            format!(
+                "N00b note entered · length {} · next row {:02X}",
+                self.noob_length.label(),
+                self.tracker_row
+            )
+        } else {
+            format!(
+                "N00b entered {entered}/{} · row full · next row {:02X}",
+                notes.len(),
+                self.tracker_row
+            )
+        };
     }
     fn sync_tracker_route(&mut self) {
         if self.tracker_workspace_active() {
@@ -2381,7 +2613,9 @@ impl App {
         self.cancel_tracker_gesture();
         self.tracker_page = page;
         self.tracker_track = next % LANES_PER_PAGE;
-        self.sync_tracker_route();
+        if !self.leave_noob_on_percussion() {
+            self.sync_tracker_route();
+        }
     }
     fn move_tracker_page(&mut self, direction: i8) {
         self.cancel_tracker_gesture();
@@ -2391,10 +2625,12 @@ impl App {
         } else {
             (self.tracker_page + 1) % pages
         };
-        self.sync_tracker_route();
-        self.status = self
-            .current_page()
-            .map_or_else(|| "no page".into(), |page| format!("{} page", page.name));
+        if !self.leave_noob_on_percussion() {
+            self.sync_tracker_route();
+            self.status = self
+                .current_page()
+                .map_or_else(|| "no page".into(), |page| format!("{} page", page.name));
+        }
     }
     #[cfg(test)]
     fn switch_tracker_page(&mut self) {
@@ -7658,14 +7894,18 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 a.cancel_tracker_gesture();
                 a.tracker_order = a.tracker_order.saturating_sub(1);
                 a.tracker_row = 0;
-                a.sync_tracker_route();
+                if !a.leave_noob_on_percussion() {
+                    a.sync_tracker_route();
+                }
                 return false;
             }
             KeyCode::PageDown => {
                 a.cancel_tracker_gesture();
                 a.tracker_order = (a.tracker_order + 1).min(a.song.order.len().saturating_sub(1));
                 a.tracker_row = 0;
-                a.sync_tracker_route();
+                if !a.leave_noob_on_percussion() {
+                    a.sync_tracker_route();
+                }
                 return false;
             }
             KeyCode::Char('-') => {
@@ -14159,6 +14399,116 @@ mod tests {
     }
 
     #[test]
+    fn drum_gesture_reuses_each_voice_column_from_earlier_rows() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.tracker_page = a.percussion_page_index().unwrap();
+        a.tracker_row = 4;
+        let page_start = a.tracker_page * LANES_PER_PAGE;
+        let pattern = a.song.patterns.get_mut(&0).unwrap();
+        pattern.rows[0][page_start].note = Note::On(36);
+        pattern.rows[2][page_start + 3].note = Note::On(57);
+
+        let start = Instant::now();
+        for (note, velocity) in [(57, 71), (36, 109)] {
+            a.tracker_gesture.observe(start, &[0x90, note, velocity]);
+            a.tracker_gesture
+                .observe(start + Duration::from_millis(2), &[0x80, note, 0]);
+        }
+        a.commit_tracker_gesture(start + Duration::from_millis(60));
+
+        let row = &a.song.patterns[&0].rows[4][page_start..page_start + LANES_PER_PAGE];
+        assert_eq!(row[0].note, Note::On(36));
+        assert_eq!(row[0].velocity, Some(109));
+        assert_eq!(row[3].note, Note::On(57));
+        assert_eq!(row[3].velocity, Some(71));
+        assert_eq!(row[1], Cell::default());
+        assert_eq!(row[2], Cell::default());
+    }
+
+    #[test]
+    fn new_kicks_and_snares_get_home_columns_and_family_continuity() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.tracker_page = a.percussion_page_index().unwrap();
+        let page_start = a.tracker_page * LANES_PER_PAGE;
+        a.tracker_single_note(35, 100);
+        assert_eq!(a.song.patterns[&0].rows[0][page_start].note, Note::On(35));
+
+        a.tracker_single_note(36, 101);
+        assert_eq!(a.song.patterns[&0].rows[1][page_start].note, Note::On(36));
+
+        a.tracker_single_note(38, 102);
+        assert_eq!(
+            a.song.patterns[&0].rows[2][page_start + 1].note,
+            Note::On(38)
+        );
+
+        a.tracker_single_note(40, 103);
+        assert_eq!(
+            a.song.patterns[&0].rows[3][page_start + 1].note,
+            Note::On(40)
+        );
+    }
+
+    #[test]
+    fn drum_gesture_preserves_occupied_cells_and_falls_to_a_free_column() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.tracker_page = a.percussion_page_index().unwrap();
+        a.tracker_row = 3;
+        let page_start = a.tracker_page * LANES_PER_PAGE;
+        let pattern = a.song.patterns.get_mut(&0).unwrap();
+        pattern.rows[0][page_start + 2].note = Note::On(42);
+        pattern.rows[1][page_start + 2].note = Note::On(57);
+        pattern.rows[3][page_start + 3] = Cell {
+            note: Note::On(51),
+            velocity: Some(88),
+            command: Command::Retrigger(2),
+            ..Cell::default()
+        };
+
+        let start = Instant::now();
+        for note in [42, 57] {
+            a.tracker_gesture.observe(start, &[0x90, note, 99]);
+            a.tracker_gesture
+                .observe(start + Duration::from_millis(2), &[0x80, note, 0]);
+        }
+        a.commit_tracker_gesture(start + Duration::from_millis(60));
+
+        let row = &a.song.patterns[&0].rows[3][page_start..page_start + LANES_PER_PAGE];
+        assert_eq!(row[2].note, Note::On(42));
+        assert_eq!(row[3].note, Note::On(51));
+        assert_eq!(row[3].command, Command::Retrigger(2));
+        assert_eq!(row[0].note, Note::On(57));
+    }
+
+    #[test]
+    fn unseen_drum_does_not_consume_an_unrelated_note_off_as_fallback_space() {
+        let p = presets();
+        let mut a = app(&p);
+        a.tracker_page = a.percussion_page_index().unwrap();
+        let page_start = a.tracker_page * LANES_PER_PAGE;
+        let pattern = a.song.patterns.get_mut(&0).unwrap();
+        pattern.rows[0][page_start].note = Note::On(42);
+        pattern.rows[0][page_start + 1].note = Note::Off;
+        pattern.rows[0][page_start + 2].note = Note::On(46);
+        pattern.rows[0][page_start + 3].note = Note::On(51);
+
+        assert_eq!(
+            drum_entry_lanes(pattern, 0, a.tracker_page, &[(57, 99)]),
+            [None]
+        );
+        assert_eq!(pattern.rows[0][page_start + 1].note, Note::Off);
+    }
+
+    #[test]
     fn blank_skip_wraps_and_off_and_clear_remain_distinct() {
         let p = presets();
         let mut a = app(&p);
@@ -14966,6 +15316,53 @@ mod tests {
             a.set_tracker_mode(TrackerMode::Noob);
             assert_eq!(a.song.patterns[&0].rows, snapshot);
         }
+    }
+
+    #[test]
+    fn noob_mode_is_unavailable_on_a_percussion_page() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_page = a.percussion_page_index().unwrap();
+        let before = a.song.patterns[&0].rows.clone();
+
+        a.toggle_noob_mode();
+
+        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        assert!(a.status.contains("N00b unavailable on Drums"));
+        assert_eq!(a.song.patterns[&0].rows, before);
+    }
+
+    #[test]
+    fn moving_from_noob_to_a_percussion_page_returns_to_play_mode() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_page = a.percussion_page_index().unwrap() - 1;
+        a.tracker_mode = TrackerMode::Noob;
+
+        a.move_tracker_page(1);
+
+        assert!(a.current_page().unwrap().percussion);
+        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        assert!(a.status.contains("N00b unavailable on Drums"));
+    }
+
+    #[test]
+    fn stale_noob_state_cannot_write_to_a_percussion_page() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_mode = TrackerMode::Noob;
+        a.tracker_page = a.percussion_page_index().unwrap();
+        a.tracker_row = 4;
+        let before = a.song.patterns[&0].rows.clone();
+
+        a.write_noob_notes(&[(57, 91)]);
+
+        assert_eq!(a.tracker_row, 4);
+        assert_eq!(a.song.patterns[&0].rows, before);
+        assert!(a.status.contains("note ignored"));
     }
 
     #[test]

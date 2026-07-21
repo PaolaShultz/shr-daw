@@ -321,10 +321,12 @@ corresponding 3/4 sizes 6/12/24/48/96. Projects retain distinct Patterns plus
 their Arrangement.
 
 FT2 has one Play/Rec/Edit/N00B mode state. N00B is the beginner duration-entry
-surface: the selected page owns the sound, the one rotary selector offers
-1/1–1/32 with 1/16 as default, and entry uses existing gate/explicit note-off
-cells before advancing. Its context keeps page/track, delete, note-off,
-play/save/files, Normal, and Exit controls. Mode switches never rewrite cells.
+surface for melodic pages: the selected page owns the sound, the one rotary
+selector offers 1/1–1/32 with 1/16 as default, and entry uses existing
+gate/explicit note-off cells before advancing. N00B is refused on percussion
+pages; page/lane movement onto one returns to Play without rewriting cells. Its
+context keeps page/track, delete, note-off, play/save/files, Normal, and Exit
+controls. Mode switches never rewrite cells.
 The Tools child opens the private
 WAV loop player. Loop imports live below the XDG user-data `loops/` directory;
 Projects keep optional meter, filename, BPM interpretation, and beat-region
@@ -407,12 +409,13 @@ the physical-controller review freeze.
 
 ### Next hands-on session: 2026-07-21
 
-Resume from commit `84f45db` on `main`. Plain `shr` resolves through
-`scripts/local.sh` to the current `target/debug/shr`; the debug binary was
-rebuilt after the optimized release build and should show the red `DEV` badge.
-There is no known compile or hardware-independent test failure. The next work
-is physical acceptance and debugging of the new ownership/routing workflow,
-not another implementation pass in advance of observation.
+Resume from the current working tree based on commit `0ea6a41` on `main`.
+Plain `shr` resolves through `scripts/local.sh` to the current
+`target/debug/shr`; the incremental debug binary was rebuilt after the smart
+drum-column work below and should show the red `DEV` badge. There is no known
+compile or hardware-independent test failure. The next work is physical
+acceptance and debugging, not another implementation pass in advance of
+observation.
 
 Use a new empty FT2 Project so existing user music remains untouched. Check,
 in order:
@@ -425,17 +428,37 @@ in order:
 3. Keyboard and ordinary musical MIDI audition the selected FT2 page. Change
    page, channel, program, destination, and synth preset while listening for
    stuck notes; command-pad presses/releases must remain silent and consumed.
-4. N00b Mode opens one rotary length selector, defaults to 1/16, and enters
-   1/1, 1/2, 1/4, 1/8, 1/16, and 1/32 notes without changing existing cells
-   when modes are switched.
+4. On Software Synth or MIDI, N00b Mode opens one rotary length selector,
+   defaults to 1/16, and enters 1/1, 1/2, 1/4, 1/8, 1/16, and 1/32 notes without
+   changing existing cells when modes are switched. On Drums it must refuse to
+   open; moving onto Drums from melodic N00b must return to Play unchanged.
 5. On a note-empty Pattern, change routing and Save: Cancel must retain the old
    defaults, Confirm must seed the next new Pattern, unchanged routing must not
    prompt, and a Pattern containing notes must not alter defaults.
+6. On the Drums page in Step Edit, establish kick and Crash Cymbal 2 in
+   different columns, then play both on a later row. Each must return to its
+   earlier column. Confirm new bass drums and snares begin in columns 1 and 2,
+   a simultaneous collision falls to a free column without replacing an
+   unrelated cell.
 
 All physical equipment used for this project is borrowed from friends. Preserve
 its configuration and do not start JACK, synth, MIDI transmission, or audible
 tests without the creator's explicit go-ahead. Keep observed hardware names in
 private configuration, never Rust or tracked documentation.
+
+The 2026-07-21 non-audible smart drum-column implementation applies only to
+pages marked as percussion. Step Edit computer-keyboard entry and incoming MIDI
+gestures search earlier rows of the current Pattern across all four columns,
+prefer exact-note history, then kick/snare family history and homes, then a free
+column. Existing Patterns are never rearranged. Unrelated notes, commands, and
+fallback note-offs are preserved; a note-off in the returning voice's own lane
+may be replaced by its new hit. Melodic entry is unchanged. N00B is deliberately
+unavailable on percussion pages, and real-time REC retains its active-note
+allocator because overlapping note-on/off ownership is a different constraint.
+Rust 1.85 formatting, focused smart-placement/N00B-exclusion tests, the existing
+melodic chord/selected-column regressions, `cargo check --locked`, and the
+incremental `cargo build --locked` passed. No release build, complete suite,
+JACK client, synth, MIDI transmission, or audible test was used.
 
 Preferred routing and resolved runtime routing are separate. MIDI targets are
 re-resolved for every transport start. An unavailable exact MIDI target may use

@@ -76,6 +76,12 @@ the cursor. Command-pad notes are consumed as controls and are not doubled into
 the Pattern or synth. The persistent ADD value chooses how many rows the cursor
 advances after entry, blank, erase, or note-off.
 
+On a percussion page, entry searches earlier rows across all four columns and
+reuses each drum voice's most recent column. New bass drums and snares prefer
+columns 1 and 2; other new voices begin in columns 3 and 4. Occupied cells are
+preserved, and simultaneous voices that want the same column fall through to a
+free one. Melodic pages still fill from the selected column.
+
 ### OPS — enter or remove cells
 
 ![Populated FT2 Step Edit with the OPS page](../images/menu/ft2-step-edit-ops.png)
@@ -178,10 +184,12 @@ Pattern editor.
 
 ## N00B mode and note length
 
-N00B mode is a simpler entry surface over the same Pattern cells. The selected
-page chooses the synth, MIDI instrument, or drums being played and edited. Its
-pages provide page/track movement; `LENGTH`, `DELETE`, `N-OFF`, and `NORMAL`;
-play, save, and Files; plus panic, help, and one-level Exit.
+N00B mode is a simpler melodic entry surface over the same Pattern cells. The
+selected non-percussion page chooses the synth or MIDI instrument being played
+and edited. N00B is refused on Drums; moving onto Drums while it is active
+returns to Play without changing cells. Its pages provide page/track movement;
+`LENGTH`, `DELETE`, `N-OFF`, and `NORMAL`; play, save, and Files; plus panic,
+help, and one-level Exit.
 
 `LENGTH` opens one rotary selector. Turn through `1/1`, `1/2`, `1/4`, `1/8`,
 `1/16`, and `1/32`, then click or choose `DONE`. `CANCEL`/`EXIT` keeps the old

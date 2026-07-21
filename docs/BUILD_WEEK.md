@@ -37,6 +37,36 @@ and physical-control idea naturally. Patterns led to pages, routing,
 Arrangement, loops, recording, and effects—not as a plan to imitate a full
 desktop DAW, but as a sequence of useful musical needs.
 
+### The creator's explore-first learning idea
+
+The learning angle is a personal product belief, not a factual claim that every
+child or beginner learns in one preferred way. In the creator's words:
+
+> Some children do not want their first contact with music to be a theory book.
+> They want to press something, hear what happens, change it, and make their own
+> conclusion. A child exploring around C-sharp minor can use Playback to see the
+> exact sounding notes lit on the keyboard, the notes that remain unplayed, and
+> the chord name. They might discover `C#m`, move or add a note, see another
+> name appear, and ask why `E maj` or `A maj` still feels connected. The program
+> does not need to declare an answer right or wrong. It can give the discovery a
+> sound, a visible shape, and a name, so theory later answers a question the
+> child already owns.
+>
+> FT2 extends that freedom into making something. Its melodic N00B mode hides
+> tracker timing details behind familiar note lengths, and Step Edit can turn a
+> played handful of tones into music lanes. Someone can carefully enter a
+> phrase or practically face-smash the keys, listen, keep an accident that
+> sounds good, and revise it. That is useful for a young explorer, a complete
+> music beginner, a Raspberry Pi enthusiast, or an older person returning to
+> learning—like me. N00B is the mode, not a label for the person.
+
+The intended path is curiosity first: press, hear, see the sounding notes, read
+the chord name, change something, compare, and ask why. Playback supplies the
+immediate musical mirror; FT2 turns discoveries into repeatable Patterns. This
+does not replace theory or claim measured educational results. It explains why
+beginner readability, visible names, compact feedback, and fast experimentation
+are central product requirements rather than incidental extras.
+
 The OpenAI Build Week email arrived late in that process. SHR-DAW was not
 started for the competition. After reading the rules, the creator treated it
 openly as a pre-existing project and used the last pre-opening handoff as the

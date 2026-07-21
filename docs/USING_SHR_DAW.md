@@ -29,6 +29,44 @@ Moving between Presets and Playback keeps it running; leaving Presets for Home
 sends All Notes Off and unloads it. FT2 has separate Pattern-owned synth routing
 and never treats this last standalone selection as its instrument.
 
+## Learning by exploration
+
+The beginner-friendly parts of SHR-DAW form one experience, but they do
+different jobs. Playback is the immediate feedback surface. It names the chord
+currently held, lists the notes and their MIDI strike velocities, and lights
+the exact sounding notes on the continuous keyboard while unplayed notes remain
+dark. It does not select a key, grade an answer, or claim that a chord is
+permitted or forbidden.
+
+For example, a learner may choose to explore C-sharp minor by ear or with a
+controller's own key/scale assistance. They can see and hear `C#m`, change one
+note, watch the displayed chord name change, and compare the result. Trying
+`E maj`, `A maj`, an added seventh, or an unfamiliar combination can lead to a
+personally meaningful question: why does this feel settled, related, tense, or
+surprising? The display supplies names and visible note shapes for discoveries
+the learner has already heard.
+
+FT2 turns discoveries into repeatable material. On a melodic page, N00B mode
+asks for a familiar length from 1/1 through 1/32 and handles the underlying
+gate/note-off representation. Normal Step Edit can accept a played note or a
+gesture of up to four notes. A new player can plan a phrase carefully or
+"face-smash" several tones, listen to the resulting lanes, preserve an
+interesting accident, and revise it without first learning traditional
+notation or tracker command syntax. Percussion pages deliberately use normal
+Step Edit rather than N00B.
+
+This is a product philosophy, not a promise about educational outcomes or a
+claim that every child learns alike. The intended loop is simple:
+
+```text
+press -> hear -> see notes -> read a chord name -> change -> compare -> ask why
+```
+
+Theory is still valuable. SHR-DAW tries to let it arrive as an explanation for
+something a person already cares about. That invitation is for children and
+new music makers, but also for returning adults—including the creator—and for
+Raspberry Pi experimenters learning a new musical or technical vocabulary.
+
 ## Screens
 
 - **Home** is the startup and navigation root. Turn the master rotary or use

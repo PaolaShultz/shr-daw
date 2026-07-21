@@ -15,6 +15,11 @@ insertion row. `1/32` uses the existing half-row gate; the longer values use
 the existing row grid and explicit note-off cells. No second timing system or
 new Project format is involved.
 
+N00B is a melodic-entry aid and is unavailable while a percussion page is
+selected. Trying to enter it on Drums is refused; moving from a melodic N00B
+page onto Drums returns to Play mode without writing or changing cells. Use
+normal Step Edit for drum entry and chords.
+
 N00B also keeps page/track selection, delete, note-off, play, save, files, and
 one-level Exit close at hand. **NORMAL** returns to the detailed tracker
 controls. Switching modes never changes existing cells. Command pads and their
@@ -79,6 +84,20 @@ and note-off. This makes evenly spaced bass notes and drum hits quick to enter;
 the FT2 title shows `EDIT +n`. A computer keyboard can enter notes with
 `Z S X D C V G B H N J M` and choose advance with `1`, `2`, `4`, or `8`.
 
+Percussion pages keep drum voices visually stable during Step Edit. For each
+played note, SHR searches all four columns in earlier rows of
+the current Pattern, newest row first, and reuses the column where that exact
+GM drum note last appeared. The two GM bass-drum notes share a family fallback,
+as do the acoustic and electric snare; with no history, bass drums start in
+column 1 and snares in column 2. Other new drum voices start in columns 3–4 so
+the kick/snare homes remain available. Simultaneous voices cannot share one
+cell, so a collision uses the next free column. An unrelated note or command
+already on the destination row is never overwritten; a note-off in a voice's
+own reused/home column can be replaced by its new hit. If all four columns are
+occupied, the status reports the ignored note. Existing Patterns are not
+rearranged, and melodic pages retain selected-column, left-to-right chord
+entry.
+
 The editor can add a note, note-off, or blank step. It can also change the page
 program and pattern master tempo, mute a lane, and move through rows, lanes,
 pages, and arrangement steps.
@@ -127,7 +146,10 @@ auditioned only through the page's hardware MIDI target and column channels.
 Real-time recording is hardware-page-only. A page targeting a Pattern-owned
 synthv1 preset, or an `AUTO`/preferred page currently resolved to the internal
 instrument, cannot enter **REC**. Choose an available hardware MIDI output
-first. **REC END**, **STOP**, **EXIT**, and **PANIC** release auditioned notes.
+first. Real-time REC retains its separate active-note lane allocator so note
+releases remain paired with overlapping held notes; the history-based drum
+placement above applies only to Step Edit. **REC END**, **STOP**, **EXIT**, and
+**PANIC** release auditioned notes.
 
 ## WAV loops
 
