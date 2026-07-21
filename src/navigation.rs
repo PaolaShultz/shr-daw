@@ -425,8 +425,8 @@ const PLAYBACK: [MenuPage; 4] = [
         "SYS",
         [
             on("PANIC", Action::StopAll),
-            on("HELP", Action::OpenHelp),
             on("FX", Action::OpenFxRack),
+            on("HELP", Action::OpenHelp),
             on("EXIT", Action::Back),
         ],
     ),
@@ -1656,7 +1656,11 @@ mod tests {
     #[test]
     fn player_and_ft2_put_fx_only_on_their_sys_pages() {
         assert_eq!(
-            slot(Screen::Playback, MenuContext::Normal, 3, 2).and_then(MenuSlot::dispatch),
+            pages(Screen::Playback, MenuContext::Normal)[3],
+            pages(Screen::Tracker, MenuContext::Normal)[3]
+        );
+        assert_eq!(
+            slot(Screen::Playback, MenuContext::Normal, 3, 1).and_then(MenuSlot::dispatch),
             Some(Action::OpenFxRack)
         );
         assert_eq!(

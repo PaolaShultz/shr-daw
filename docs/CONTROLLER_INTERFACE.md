@@ -151,7 +151,7 @@ Blank physical positions and wholly empty pages are omitted.
 | MTR | Sys | Panic | — | Help | Exit |
 | Playback | Play | — | Play take | Record MIDI | — |
 | Playback | Sound | Reset controls | Save | N00B | Normal |
-| Playback | Sys | Panic | Help | FX | Exit |
+| Playback | Sys | Panic | FX | Help | Exit |
 | FX rack | Ops | Add | Delete | Edit type | Parameters |
 | FX rack | Order | Up | Down | Bypass | — |
 | FX rack | Route | Target | Send− | Send+ | Point |
