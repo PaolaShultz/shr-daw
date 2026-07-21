@@ -405,6 +405,38 @@ process, MIDI transmission/playback, audible or physical-hardware test, or
 Clippy run was used. The established screenshot set was not regenerated during
 the physical-controller review freeze.
 
+### Next hands-on session: 2026-07-21
+
+Resume from commit `84f45db` on `main`. Plain `shr` resolves through
+`scripts/local.sh` to the current `target/debug/shr`; the debug binary was
+rebuilt after the optimized release build and should show the red `DEV` badge.
+There is no known compile or hardware-independent test failure. The next work
+is physical acceptance and debugging of the new ownership/routing workflow,
+not another implementation pass in advance of observation.
+
+Use a new empty FT2 Project so existing user music remains untouched. Check,
+in order:
+
+1. Software Synth loads the chosen preset, keeps it while moving between its
+   Presets and Playback screens, and ends notes/unloads it only on top-level
+   Exit to Home.
+2. A new FT2 Project shows Software Synth, MIDI channel 1/program 1, and Drums
+   channel 10; FT2 must not inherit the last standalone preset.
+3. Keyboard and ordinary musical MIDI audition the selected FT2 page. Change
+   page, channel, program, destination, and synth preset while listening for
+   stuck notes; command-pad presses/releases must remain silent and consumed.
+4. N00b Mode opens one rotary length selector, defaults to 1/16, and enters
+   1/1, 1/2, 1/4, 1/8, 1/16, and 1/32 notes without changing existing cells
+   when modes are switched.
+5. On a note-empty Pattern, change routing and Save: Cancel must retain the old
+   defaults, Confirm must seed the next new Pattern, unchanged routing must not
+   prompt, and a Pattern containing notes must not alter defaults.
+
+All physical equipment used for this project is borrowed from friends. Preserve
+its configuration and do not start JACK, synth, MIDI transmission, or audible
+tests without the creator's explicit go-ahead. Keep observed hardware names in
+private configuration, never Rust or tracked documentation.
+
 Preferred routing and resolved runtime routing are separate. MIDI targets are
 re-resolved for every transport start. An unavailable exact MIDI target may use
 the configured external hardware route but never falls into the Pattern's

@@ -66,6 +66,24 @@ helped reason about safe wiring and gain, organized presets and device data,
 designed MIDI rhythms, designed synthv1 sounds, validated artifacts, and kept
 licensing and private data out of the public repository.
 
+## The creator's programming background
+
+SHR-DAW is not the creator's first encounter with programming, but it is their
+first Rust and Raspberry Pi project. Their early experience was mainly assembly
+language on the Commodore 64 and Apple IIc. They later programmed on PCs and
+fell in love with Delphi, which was their last sustained general-purpose
+programming environment. In the years after that they worked mostly with SQL,
+apart from a few small sketches in tools such as Lazarus. This background
+predates Git and today's common collaborative, build, and release workflows.
+
+Before SHR-DAW, the creator had never owned or programmed a Raspberry Pi and
+had never written Rust; their prior exposure to Rust was limited to briefly
+glancing at—and liking—some syntax. All hardware used for hands-on SHR-DAW
+testing is borrowed from friends. The honest description is therefore an
+experienced returning programmer learning an unfamiliar language, platform,
+toolchain, and hardware workflow with Codex—not someone with no programming
+history, and not someone arriving with prior Rust or Raspberry Pi expertise.
+
 ## Model provenance for the first release
 
 The creator's account is that all code leading to the first public commit was
@@ -90,9 +108,9 @@ the authority for audible listening and whether a sound or groove is good.
 The repository owner name `PaolaShultz` is the creator's gaming name and an
 occasional online nickname, inspired by the empty tombstone used in the
 buried-alive sequence in *Kill Bill: Volume 2*. It is not a company or another
-contributor. This personal project is built by the same person who owns the
-hardware, makes the musical/product decisions, and works primarily on the
-`bee247.hr` portal outside this weekend/free-time project.
+contributor. This personal project is built by the same person who arranges
+access to the borrowed hardware, makes the musical/product decisions, and works
+primarily on the `bee247.hr` portal outside this weekend/free-time project.
 
 Codex CLI ran directly on the target Raspberry Pi throughout this work. Cargo
 compilation, tests, warning-denied Clippy, and optimized release builds were
@@ -111,8 +129,9 @@ command-by-command control. The human set the goal, supplied detailed durable
 `AGENTS.md` constraints, reviewed meaningful checkpoints/outcomes, and retained
 authority over hardware, audible judgment, destructive/system actions,
 publishing, and product/music choices. This was a deliberate high-autonomy
-workflow on an owned Pi and checkout, not a claim that unrestricted execution
-is a safe default for other environments.
+workflow on a borrowed Pi made available for the project and a
+creator-controlled checkout, not a claim that unrestricted execution is a safe
+default for other environments.
 
 Codex performed or guided the following non-code work during development:
 
