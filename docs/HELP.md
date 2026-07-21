@@ -54,8 +54,10 @@ Presets chooses the instrument engine and sound. Loading a sound starts or
 reuses only the engine owned by SHR-DAW; unrelated synth processes are left
 alone. Presets and Playback share that owned sound, and leaving those screens
 keeps it running. Global panic, shutdown, replacement, or an explicit different
-FT2 software route ends it safely. If FT2 page 1 is AUTO, entering FT2 assigns
-the current engine/instrument to that page and keeps it playable.
+FT2 software route ends it safely. A genuinely new, empty, unsaved default FT2
+Project adopts the current engine/instrument on page 1 without restarting it;
+without a Player instrument, FT2 loads the first available synthv1 preset.
+Saved or explicitly changed Projects keep their routes.
 
 Synthv1 controls use pickup. After loading, idea load, or RESET, mapped CCs are
 blocked until the physical control reaches the stored value. This prevents
@@ -74,10 +76,12 @@ means its natural note is held; a red upper `└` means the following sharp is
 held. Major triads show `maj` explicitly, such as `C maj`.
 `display.note_names=german` uses B/H spelling; `english` uses A#/B.
 
-Playback N00B chooses a root plus MAJOR or natural MINOR. Notes in the chosen
+Playback N00B toggles the filter on the existing Player screen. While on, its
+compact SCALE rotary appears below the normal controls; turn the master encoder
+to cycle every root plus MAJOR or natural MINOR choice. Notes in the chosen
 scale keep their pitch and sound normally; notes outside it stay silent.
-NORMAL restores all chromatic notes. Changing or leaving the filter releases
-held notes first.
+Pressing N00B again restores all chromatic notes. Changing or leaving the
+filter releases held notes first.
 
 ## Effects graph
 
@@ -187,11 +191,12 @@ CELL edit is transactional. DONE `SAVE` commits the draft cell; `EXIT` cancels
 and restores the original value. `PANIC` remains available without introducing
 a second partial-commit path.
 
-FT2 N00B is an independent on/off filter over Play, Record, and Step Edit on
-the selected melodic page. Out-of-scale keys stay silent and are never moved
-to another pitch. Play can use it without writing; Record and Step Edit write
-only the allowed notes. Turning N00B off leaves the current FT2 mode unchanged.
-It turns off automatically on Drums, where the current mode remains active.
+FT2 N00B toggles the Player-selected scale directly over Play, Record, and Step
+Edit on the selected melodic page; it does not open another screen or change
+the current mode. Out-of-scale keys stay silent and are never moved to another
+pitch. Play can use it without writing; Record and Step Edit write only the
+allowed notes. It turns off automatically on Drums, where the current mode
+remains active.
 
 Step Edit **LENGTH** opens a rotary overlay choosing 1/1, 1/2, 1/4, 1/8, 1/16,
 1/32, 1/64, or 1/128 for melodic notes. The independent 0–32-row **ADD**

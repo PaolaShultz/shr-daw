@@ -27,12 +27,12 @@ from the splash.
 | Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard. |
 | Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
-| Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; enable a root plus major/natural-minor N00B filter or return to chromatic Normal; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
+| Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | Main rotary selects the previous/next column across page boundaries in Play and Rec; keyboard Up/Down still moves rows, and Edit keeps rotary row movement. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. |
 | FT2 record | Record quantized notes into the selected page/current pattern and route live notes only to that page's hardware MIDI target. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; stop record, stop, exit, and panic remain available. |
 | FT2 edit | Musical keyboard or incoming MIDI note/chord gesture entry; independent 1/1–1/128 note length; blank/skip; erase; note off; a 0–32-row ADD value; PAGE, LENGTH, and ADD rotary overlays; and leave edit. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
-| FT2 N00B | Independent on/off scale filter layered over Play, Record, and Step Edit on a melodic page. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B preserves the current mode; moving to Drums turns only the filter off. |
+| FT2 N00B | Independent on/off scale filter layered over Play, Record, and Step Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
 | FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; explicit `READY`/`NOT READY`/`OUTPUT FAULT`; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
@@ -157,7 +157,7 @@ Blank physical positions and wholly empty pages are omitted.
 | MTR | Nav | FX overlay | — | — | — |
 | MTR | Sys | Panic | — | Help | Exit |
 | Playback | Play | — | Play take | Record MIDI | — |
-| Playback | Sound | Reset controls | Save | N00B | Normal |
+| Playback | Sound | Reset controls | Save | N00B on/off | — |
 | Playback | Sys | Panic | FX | Help | Exit |
 | FX rack | Ops | Add | Delete | Edit type | Parameters |
 | FX rack | Order | Up | Down | Bypass | — |
@@ -193,8 +193,6 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 step edit | Ops | Blank/skip | Erase | N-off | N00B |
 | FT2 step edit | Set | Page overlay | ADD 0–32 overlay | Note-length overlay | — |
 | FT2 step edit | Sys | Panic | Help | — | Exit edit |
-| N00B setup | Ops | Root− | Root+ | Major/Minor | Done |
-| N00B setup | Sys | Panic | Help | — | Exit |
 | FT2 cell edit | Route | Destination | Channel | Instrument | — |
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
 | FT2 cell edit | Cell | Note | Gate | Velocity | Effect |

@@ -625,6 +625,31 @@ impl Drop for MidiRouter {
 }
 
 impl Engine {
+    #[cfg(test)]
+    pub(crate) fn start_test_process(backend: BackendKind, output: SharedOutput) -> Result<Self> {
+        let child = Command::new("sleep")
+            .arg("300")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .context("start silent test engine process")?;
+        Ok(Self {
+            backend,
+            child,
+            stdin: None,
+            state: std::env::temp_dir().join(format!("shr-test-engine-{}", std::process::id())),
+            output,
+            control_routes: Vec::new(),
+            fluid_soundfonts: Vec::new(),
+            audio_graph: None,
+            final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
+            audio_graph_fallback: None,
+            audio_route_notice: None,
+            midi_lifecycle: None,
+        })
+    }
+
     pub fn start(
         preset: &Preset,
         state: &Path,

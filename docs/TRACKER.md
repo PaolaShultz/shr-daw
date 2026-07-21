@@ -19,9 +19,9 @@ filter on or off never changes Play/REC/EDIT. N00B is refused on a percussion
 page; moving onto Drums turns only the filter off and preserves the current
 mode.
 
-The N00B button is present in Play, REC, and EDIT. The first press opens scale
-setup; once enabled, pressing it again turns the filter off. Switching it never
-changes existing cells. Command pads and their releases remain consumed.
+The N00B button is present in Play, REC, and EDIT. Each press toggles the
+Player-selected scale directly without opening another screen or changing
+existing cells. Command pads and their releases remain consumed.
 
 On the main tracker grid, the physical main rotary selects the previous or next
 column in Play and REC, continuing through page boundaries from Software Synth
@@ -54,8 +54,11 @@ The Loop Player is a page in the musician-facing FT2 workflow, not four empty
 MIDI lanes. **SELECT** → **PAGE** opens it directly, so a new
 Project does not require adding or naming a page before importing a WAV.
 The blank Pattern, unloaded loop state, loop inbox, and startup MIDI-output
-snapshot are initialized when SHR-DAW starts, so opening an empty FT2 workspace
-does not start a synth or perform device discovery.
+snapshot are initialized when SHR-DAW starts. Entering a genuinely new, empty,
+unsaved FT2 Project loads its page 1 software instrument immediately. If Player
+already owns a loaded instrument, page 1 adopts that exact instrument and the
+same managed engine session becomes FT2-owned without a restart. Otherwise
+page 1 loads the first available synthv1 preset.
 
 The Loop Player's white position bar uses a green playhead to show the
 approximate position within the selected WAV region while the shared FT2
@@ -71,8 +74,10 @@ Each page keeps one MIDI target plus four independent column channel, bank, and
 master-program setups. It also keeps velocity, mute, percussion, optional
 device-profile metadata, and lane settings. A software target stores its engine
 and that engine's stable instrument identity in the Pattern. When page 1 is
-still `AUTO`, entering FT2 assigns the currently loaded standalone
-engine/instrument to it; an already explicit software target is never replaced.
+part of a genuinely new, empty, unsaved default Project, entering FT2 may
+replace its factory route with the currently loaded Player engine/instrument.
+A loaded/saved Project or an unsaved Project with any explicit change is never
+retargeted, even when its Pattern has no notes.
 Columns may share a destination/channel only when their master bank
 and program match, because MIDI program selection is channel-wide. Pages play
 together, so one pattern can control several hardware instruments and its

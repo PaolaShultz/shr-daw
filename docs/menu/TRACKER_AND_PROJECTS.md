@@ -61,9 +61,9 @@ ROUTE edits a detached page-routing draft that changes the Project only on Apply
 
 ![Populated FT2 Pattern in Play mode with the SYS page](../images/menu/ft2-play-sys.png)
 
-`PANIC` stops all owned notes and transports. `N00B` opens scale setup or turns
-an active filter off without leaving Play. `HELP` opens contextual help. `EXIT`
-returns Home.
+`PANIC` stops all owned notes and transports. `N00B` immediately toggles the
+Player-selected scale filter without leaving Play. `HELP` opens contextual
+help. `EXIT` returns Home.
 
 ## FT2 Pattern — real-time Record context
 
@@ -80,7 +80,7 @@ the already-playing Arrangement without restarting it.
 
 ![Populated FT2 Pattern recording context with the PLAY page](../images/menu/ft2-record-play.png)
 
-`N00B` opens scale setup or turns the active filter off without ending capture.
+`N00B` immediately toggles the active filter without ending capture.
 `PLAY` controls transport. `RECORD` ends real-time capture while preserving the
 notes already entered: it returns to Play after a punch-in, or stops after
 recording was started from Stop. With N00B on, only allowed notes are heard and
@@ -112,8 +112,8 @@ free one. Melodic pages still fill from the selected column.
 ![Populated FT2 Step Edit with the OPS page](../images/menu/ft2-step-edit-ops.png)
 
 `BLANK` advances without writing a note. `ERASE` clears the selected cell.
-`N-OFF` writes a note-off. `N00B` opens scale setup or turns the active filter
-off while Step Edit remains active.
+`N-OFF` writes a note-off. `N00B` toggles the active filter directly while Step
+Edit remains active.
 
 ### SET — rotary selectors
 
@@ -212,19 +212,13 @@ Pattern editor.
 ## N00B filter and Step Edit note length
 
 N00B is an independent scale-filter switch, not a fourth FT2 mode and not a
-duration control. Choose any chromatic root plus major or natural minor. On the
-selected melodic page, an in-scale key keeps its original pitch and an
+duration control. Player owns the scale choice: enabling N00B there adds one
+compact `SCALE` rotary to the unchanged Player screen, and turning the master
+encoder cycles every chromatic root in major and natural minor. FT2 uses that
+selection. On a melodic page, an in-scale key keeps its original pitch and an
 out-of-scale key stays silent; no rejected key is shifted to a nearby note.
-It can stay on through Play, Record, and Step Edit; moving to Drums turns only
-the filter off.
-
-![N00B scale setup with the OPS controller page](../images/menu/noob-setup-ops.png)
-
-OPS chooses the root and major or natural-minor scale, then confirms it.
-
-![N00B scale setup with the SYS controller page](../images/menu/noob-setup-sys.png)
-
-SYS keeps panic, help, and cancellation available during scale setup.
+The FT2 button toggles the filter immediately and can stay on through Play,
+Record, and Step Edit; moving to Drums turns only the filter off.
 
 Note duration belongs separately to Step Edit. `LENGTH` opens an overlay for
 `1/1` through `1/128`; it does not change the independent 0–32-row `ADD`

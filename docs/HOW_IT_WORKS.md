@@ -253,15 +253,21 @@ The FT2 screen has three explicit modes:
 through Play, Record, and Edit. The chosen root plus major or natural-minor
 scale gates input on the selected melodic page: accepted notes retain their
 exact pitch, rejected notes stay silent, and Record/Edit write only accepted
-notes. Switching N00B never changes the underlying mode. It turns off on
+notes. Player shows the scale as a compact in-place rotary while the filter is
+enabled. FT2 reuses that selection and toggles it without opening another
+screen. Switching N00B never changes the underlying mode. It turns off on
 percussion pages.
 
 The selected Pattern page owns live audition. A software page loads its saved
 engine/instrument pair; MIDI pages keep independent destination/channel/program routes;
 and percussion pages use their channel and drum mapping. Route changes cancel
 the old destination/channel before the new one is armed. An explicit FT2 route
-is authoritative; only an undefined `AUTO` first page adopts the currently
-loaded standalone engine/instrument when FT2 opens.
+is authoritative. Only a genuinely new, empty, unsaved default Project may
+replace its factory page 1 route with the currently loaded Player instrument;
+ownership of the already-running managed engine then moves to FT2 without a
+restart. With no Player engine, that fresh Project loads the first available
+synthv1 preset. Saved and otherwise changed Projects are never inferred from an
+empty note grid and keep their routes.
 
 Cell Edit is transactional: changes are made to a draft, `CONFIRM` publishes
 the whole cell, and `EXIT` restores the original. A cell can hold a note or

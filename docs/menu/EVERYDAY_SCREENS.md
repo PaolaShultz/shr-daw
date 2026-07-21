@@ -41,9 +41,11 @@ optional command buttons may remain unmapped.
 
 Presets and Playback share one Software Synth sound, and leaving them keeps it
 running for effects and other screens. Global panic, shutdown, replacement, or
-an explicit different FT2 software route stops only that SHR-owned engine. If
-FT2 page 1 is `AUTO`, entering FT2 assigns the current selection to that page
-and keeps it playable.
+an explicit different FT2 software route stops only that SHR-owned engine. A
+genuinely new, empty, unsaved default FT2 Project adopts the current selection
+on page 1 without restarting it; with no Player instrument, FT2 loads the first
+available synthv1 preset. Saved or explicitly changed Projects keep their own
+routes.
 
 ### OPS — browse and load
 
@@ -95,7 +97,11 @@ capture.
 ![Populated Playback screen with the SOUND controller page](../images/menu/playback-sound.png)
 
 `RESET` restores the 12 mapped parameters in place and re-arms hardware pickup.
-`SAVE` publishes a new non-overwriting Idea.
+`SAVE` publishes a new non-overwriting Idea. `N00B` toggles the optional scale
+filter without leaving Playback or hiding any normal content. While it is on, a
+single compact `SCALE` rotary appears below the 12 controls; turning the master
+encoder cycles every chromatic root in major and natural minor. Pressing N00B
+again removes only that control and restores chromatic play.
 
 ### SYS — safety, effects, help, and return
 

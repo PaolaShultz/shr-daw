@@ -184,13 +184,7 @@ pub enum Action {
     TrackerRewind,
     TrackerRecordToggle,
     TrackerNoobToggle,
-    OpenPlaybackNoob,
-    DisablePlaybackNoob,
-    NoobRootDown,
-    NoobRootUp,
-    NoobScale,
-    ConfirmNoob,
-    CancelNoob,
+    PlaybackNoobToggle,
     ConfirmRoutingDefaults,
     CancelRoutingDefaults,
     LoopImport,
@@ -340,7 +334,6 @@ pub enum MenuContext {
     #[default]
     Normal,
     TrackerEdit,
-    NoobSetup,
     RoutingDefaults,
     TrackerRecord,
     TrackerNoteEdit,
@@ -399,8 +392,8 @@ const PLAYBACK: [MenuPage; 4] = [
         [
             on("RESET", Action::ResetParameters),
             on("SAVE", Action::SaveNew),
-            on("N00B", Action::OpenPlaybackNoob),
-            on("NORMAL", Action::DisablePlaybackNoob),
+            on("N00B", Action::PlaybackNoobToggle),
+            off(""),
         ],
     ),
     page("", [off(""), off(""), off(""), off("")]),
@@ -539,28 +532,6 @@ const ARRANGE: [MenuPage; 4] = [
             on("HELP", Action::OpenHelp),
             off(""),
             on("EXIT", Action::Back),
-        ],
-    ),
-];
-const NOOB_SETUP: [MenuPage; 4] = [
-    page(
-        "OPS",
-        [
-            on("ROOT-", Action::NoobRootDown),
-            on("ROOT+", Action::NoobRootUp),
-            on("MAJ/MIN", Action::NoobScale),
-            on("DONE", Action::ConfirmNoob),
-        ],
-    ),
-    page("", [off(""), off(""), off(""), off("")]),
-    page("", [off(""), off(""), off(""), off("")]),
-    page(
-        "SYS",
-        [
-            on("PANIC", Action::StopAll),
-            on("HELP", Action::OpenHelp),
-            off(""),
-            on("EXIT", Action::CancelNoob),
         ],
     ),
 ];
@@ -1165,9 +1136,6 @@ const ROUTING: [MenuPage; 4] = [
 ];
 
 pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
-    if context == MenuContext::NoobSetup {
-        return &NOOB_SETUP;
-    }
     if context == MenuContext::RoutingDefaults {
         return &ROUTING_DEFAULTS;
     }
@@ -1308,7 +1276,6 @@ mod tests {
             (Screen::Tracker, MenuContext::TrackerEdit),
             (Screen::Tracker, MenuContext::TrackerRecord),
             (Screen::Tracker, MenuContext::TrackerNoteEdit),
-            (Screen::Tracker, MenuContext::NoobSetup),
             (Screen::TrackerFiles, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::PatternClear),
             (Screen::TrackerFiles, MenuContext::PatternTools),
@@ -1621,7 +1588,6 @@ mod tests {
             (Screen::Tracker, MenuContext::TrackerEdit),
             (Screen::Tracker, MenuContext::TrackerRecord),
             (Screen::Tracker, MenuContext::TrackerNoteEdit),
-            (Screen::Tracker, MenuContext::NoobSetup),
             (Screen::TrackerFiles, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::PatternClear),
             (Screen::TrackerFiles, MenuContext::PatternTools),
@@ -1703,13 +1669,7 @@ mod tests {
             Action::TrackerRewind,
             Action::TrackerRecordToggle,
             Action::TrackerNoobToggle,
-            Action::OpenPlaybackNoob,
-            Action::DisablePlaybackNoob,
-            Action::NoobRootDown,
-            Action::NoobRootUp,
-            Action::NoobScale,
-            Action::ConfirmNoob,
-            Action::CancelNoob,
+            Action::PlaybackNoobToggle,
             Action::OpenNoteLengthOverlay,
             Action::OpenTrackerAdvanceOverlay,
             Action::OpenPatternLengthOverlay,

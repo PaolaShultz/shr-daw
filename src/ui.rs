@@ -346,16 +346,17 @@ impl NoteLength {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum NoobTarget {
-    Playback,
-    Tracker,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum EngineOwner {
     SoftwareSynth,
     Tracker(SoftwareRoute),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TrackerEntryInstrument {
+    ExistingProject,
+    AdoptedPlayer,
+    FirstSynthv1,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -449,6 +450,8 @@ struct App {
     engine: Option<Engine>,
     engine_owner: Option<EngineOwner>,
     engine_state: PathBuf,
+    #[cfg(test)]
+    tracker_engine_start_override: Option<std::result::Result<(), String>>,
     playing: Option<Preset>,
     values: HashMap<u8, f32>,
     original_values: HashMap<u8, f32>,
@@ -504,8 +507,6 @@ struct App {
     tracker_octave: u8,
     note_length: NoteLength,
     noob_scale: Scale,
-    noob_draft: Scale,
-    noob_target: Option<NoobTarget>,
     playback_noob: bool,
     playback_scale: engine::SharedPlaybackScale,
     tracker_gesture: GestureCapture,
@@ -1137,6 +1138,8 @@ impl App {
             engine: None,
             engine_owner: None,
             engine_state,
+            #[cfg(test)]
+            tracker_engine_start_override: Some(Ok(())),
             playing: None,
             values: HashMap::new(),
             original_values: HashMap::new(),
@@ -1193,8 +1196,6 @@ impl App {
             tracker_octave: 4,
             note_length: NoteLength::default(),
             noob_scale: Scale::default(),
-            noob_draft: Scale::default(),
-            noob_target: None,
             playback_noob: false,
             tracker_gesture: GestureCapture::default(),
             tracker_gesture_anchor: None,
@@ -1818,9 +1819,7 @@ impl App {
     }
 
     fn menu_context(&self) -> MenuContext {
-        if self.noob_target.is_some() {
-            MenuContext::NoobSetup
-        } else if self.confirm_routing_defaults {
+        if self.confirm_routing_defaults {
             MenuContext::RoutingDefaults
         } else if self.screen == Screen::FxRack && self.fx_type_edit.is_some() {
             MenuContext::FxType
@@ -2454,29 +2453,47 @@ impl App {
         self.screen_keeps_tracker_workspace_active(self.screen)
     }
 
-    fn adopt_current_instrument_for_first_tracker_page(&mut self) -> bool {
-        if self.engine_owner.as_ref() != Some(&EngineOwner::SoftwareSynth) {
-            return false;
+    fn genuinely_new_empty_default_project(&self) -> bool {
+        self.song_file_stem.is_none()
+            && sequencer::matches_new_empty_default_project(
+                &self.song,
+                &self.config.external_midi,
+                &self.routing_defaults,
+            )
+    }
+
+    fn prepare_first_tracker_instrument(&mut self) -> TrackerEntryInstrument {
+        if !self.genuinely_new_empty_default_project() {
+            return TrackerEntryInstrument::ExistingProject;
         }
-        let Some(preset) = self.playing.as_ref() else {
-            return false;
-        };
-        let route = SoftwareRoute {
-            engine: preset.backend,
-            instrument: preset.route_id(),
+        let (route, entry) = if self.engine_owner.as_ref() == Some(&EngineOwner::SoftwareSynth) {
+            let Some(preset) = self.playing.as_ref() else {
+                return TrackerEntryInstrument::ExistingProject;
+            };
+            (
+                SoftwareRoute {
+                    engine: preset.backend,
+                    instrument: preset.route_id(),
+                },
+                TrackerEntryInstrument::AdoptedPlayer,
+            )
+        } else {
+            let Some(route) = self.first_synthv1_route() else {
+                return TrackerEntryInstrument::ExistingProject;
+            };
+            (route, TrackerEntryInstrument::FirstSynthv1)
         };
         let Some(first_page) = self
             .current_pattern_mut()
             .and_then(|pattern| pattern.pages.first_mut())
         else {
-            return false;
+            return TrackerEntryInstrument::ExistingProject;
         };
-        if first_page.target != PageTarget::Default {
-            return false;
-        }
         first_page.target = PageTarget::Software(route.clone());
-        self.engine_owner = Some(EngineOwner::Tracker(route));
-        true
+        if entry == TrackerEntryInstrument::AdoptedPlayer {
+            self.engine_owner = Some(EngineOwner::Tracker(route));
+        }
+        entry
     }
 
     fn unload_owned_engine(&mut self, matches: impl FnOnce(&EngineOwner) -> bool) {
@@ -2541,6 +2558,15 @@ impl App {
         })
     }
 
+    fn first_synthv1_route(&self) -> Option<SoftwareRoute> {
+        self.catalogs
+            .iter()
+            .find(|catalog| catalog.backend == BackendKind::Synthv1)?
+            .presets
+            .first()
+            .map(|preset| SoftwareRoute::synthv1(preset.route_id()))
+    }
+
     fn first_synthv1_name(&self) -> Option<String> {
         self.catalogs
             .iter()
@@ -2581,18 +2607,13 @@ impl App {
         }
         self.engine.take();
         self.engine_owner = None;
-        match Engine::start_with_routing(
-            &preset,
-            &self.engine_state,
-            Arc::clone(&self.midi_output),
-            &self.config,
-            &self.song.insert_rack,
-            &self.song.aux_routing,
-        ) {
+        self.playing = None;
+        match self.start_tracker_engine_process(&preset) {
             Ok(mut engine) => {
                 engine.bind_midi_lifecycle(self.midi_lifecycle.clone());
                 self.engine = Some(engine);
                 self.engine_owner = Some(EngineOwner::Tracker(route.clone()));
+                self.playing = Some(preset);
                 if let Ok(mut backend) = self.midi_backend.lock() {
                     *backend = route.engine;
                 }
@@ -2603,6 +2624,22 @@ impl App {
                 false
             }
         }
+    }
+
+    fn start_tracker_engine_process(&self, preset: &Preset) -> Result<Engine> {
+        #[cfg(test)]
+        if let Some(result) = self.tracker_engine_start_override.as_ref() {
+            result.clone().map_err(anyhow::Error::msg)?;
+            return Engine::start_test_process(preset.backend, Arc::clone(&self.midi_output));
+        }
+        Engine::start_with_routing(
+            preset,
+            &self.engine_state,
+            Arc::clone(&self.midi_output),
+            &self.config,
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+        )
     }
 
     fn prepare_confirmation_action(&mut self, action: Action) {
@@ -2734,7 +2771,6 @@ impl App {
         self.status = "recording playback stopped · all notes off".into();
     }
     fn stop_all(&mut self, state: &Path) {
-        self.noob_target = None;
         self.cancel_note_editor();
         self.cancel_tracker_gesture();
         self.stop_tracker_recording();
@@ -3587,80 +3623,47 @@ impl App {
         self.release_tracker_audition();
     }
 
-    fn open_noob_setup(&mut self, target: NoobTarget) {
-        if target == NoobTarget::Tracker && self.current_page().is_some_and(|page| page.percussion)
-        {
-            self.status = "N00B scale filter is unavailable on Drums".into();
-            return;
-        }
+    fn toggle_playback_noob(&mut self) {
         self.silence_live_notes();
-        self.noob_draft = self.noob_scale;
-        self.noob_target = Some(target);
-        self.reset_context_page();
-        self.status = "choose root and MAJOR/MINOR · outside notes stay silent".into();
-    }
-
-    fn adjust_noob_root(&mut self, direction: i8) {
-        self.noob_draft.root = if direction < 0 {
-            (self.noob_draft.root + 11) % 12
+        self.playback_noob = !self.playback_noob;
+        self.page_select_mode = false;
+        self.sync_playback_noob();
+        self.status = if self.playback_noob {
+            format!(
+                "N00B {} {} · turn the rotary to change scale",
+                self.config.note_naming.pitch_name(self.noob_scale.root),
+                self.noob_scale.kind.label()
+            )
         } else {
-            (self.noob_draft.root + 1) % 12
+            "Player N00B off · all chromatic notes enabled".into()
         };
-        self.status = self.noob_draft_label();
     }
 
-    fn toggle_noob_scale(&mut self) {
-        self.noob_draft.kind = match self.noob_draft.kind {
-            ScaleKind::Major => ScaleKind::NaturalMinor,
-            ScaleKind::NaturalMinor => ScaleKind::Major,
-        };
-        self.status = self.noob_draft_label();
-    }
-
-    fn noob_draft_label(&self) -> String {
-        format!(
-            "N00B {} {} · outside notes stay silent",
-            self.config.note_naming.pitch_name(self.noob_draft.root),
-            self.noob_draft.kind.label()
-        )
-    }
-
-    fn confirm_noob(&mut self) {
-        let Some(target) = self.noob_target.take() else {
+    fn adjust_playback_noob_scale(&mut self, direction: i8) {
+        if !self.playback_noob || direction == 0 {
             return;
-        };
-        self.silence_live_notes();
-        self.noob_scale = self.noob_draft;
-        match target {
-            NoobTarget::Playback => {
-                self.playback_noob = true;
-                self.sync_playback_noob();
-            }
-            NoobTarget::Tracker => {
-                self.tracker_noob = true;
-                self.sync_tracker_route();
-            }
         }
-        self.reset_context_page();
+        self.silence_live_notes();
+        let kind = match self.noob_scale.kind {
+            ScaleKind::Major => 0,
+            ScaleKind::NaturalMinor => 1,
+        };
+        let current = usize::from(self.noob_scale.root) * 2 + kind;
+        let next = wrapped_index(current, 24, direction);
+        self.noob_scale = Scale {
+            root: (next / 2) as u8,
+            kind: if next % 2 == 0 {
+                ScaleKind::Major
+            } else {
+                ScaleKind::NaturalMinor
+            },
+        };
+        self.sync_playback_noob();
         self.status = format!(
             "N00B {} {} · outside notes stay silent",
             self.config.note_naming.pitch_name(self.noob_scale.root),
             self.noob_scale.kind.label()
         );
-    }
-
-    fn cancel_noob(&mut self) {
-        self.noob_target = None;
-        self.noob_draft = self.noob_scale;
-        self.reset_context_page();
-        self.status = "N00B setup cancelled".into();
-    }
-
-    fn disable_playback_noob(&mut self) {
-        self.silence_live_notes();
-        self.playback_noob = false;
-        self.sync_playback_noob();
-        self.status = "Player N00B off · all chromatic notes enabled".into();
     }
 
     fn disable_tracker_noob(&mut self) {
@@ -3673,8 +3676,17 @@ impl App {
     fn toggle_tracker_noob(&mut self) {
         if self.tracker_noob {
             self.disable_tracker_noob();
+        } else if self.current_page().is_some_and(|page| page.percussion) {
+            self.status = "N00B scale filter is unavailable on Drums".into();
         } else {
-            self.open_noob_setup(NoobTarget::Tracker);
+            self.silence_live_notes();
+            self.tracker_noob = true;
+            self.sync_tracker_route();
+            self.status = format!(
+                "FT2 N00B {} {} · current mode unchanged",
+                self.config.note_naming.pitch_name(self.noob_scale.root),
+                self.noob_scale.kind.label()
+            );
         }
     }
 
@@ -3770,12 +3782,20 @@ impl App {
             )
         };
     }
-    fn sync_tracker_route(&mut self) {
+    fn sync_tracker_route(&mut self) -> bool {
+        let engine_ready = self
+            .tracker_software_route()
+            .is_none_or(|route| self.ensure_tracker_engine_for(&route));
         self.configure_tracker_route(false);
+        engine_ready
     }
 
-    fn sync_tracker_route_for_navigation(&mut self) {
+    fn sync_tracker_route_for_navigation(&mut self) -> bool {
+        let engine_ready = self
+            .tracker_software_route()
+            .is_none_or(|route| self.ensure_tracker_engine_for(&route));
         self.configure_tracker_route(true);
+        engine_ready
     }
 
     fn configure_tracker_route(&mut self, preserve_notes: bool) {
@@ -4017,10 +4037,11 @@ impl App {
         }
         self.tracker_page = wrapped_index(self.tracker_page, pages, direction);
         if !self.leave_noob_on_percussion() {
-            self.sync_tracker_route();
-            self.status = self
-                .current_page()
-                .map_or_else(|| "no page".into(), |page| format!("{} page", page.name));
+            if self.sync_tracker_route() {
+                self.status = self
+                    .current_page()
+                    .map_or_else(|| "no page".into(), |page| format!("{} page", page.name));
+            }
         }
     }
     #[cfg(test)]
@@ -5320,11 +5341,14 @@ impl App {
         self.confirm_song_delete = None;
         self.confirm_pattern_clear = false;
         self.confirm_pattern_paste_over = None;
+        self.prepare_first_tracker_instrument();
         self.set_screen(Screen::Tracker);
         self.refresh_page_targets();
-        self.sync_tracker_route();
+        let engine_ready = self.sync_tracker_route();
         self.project_name_input = Some(name.clone());
-        self.status = format!("new project {name} · type a name or confirm the quick default");
+        if engine_ready {
+            self.status = format!("new project {name} · type a name or confirm the quick default");
+        }
     }
 
     fn begin_project_rename(&mut self) {
@@ -7910,7 +7934,6 @@ impl App {
         if self.screen == Screen::Tracker
             && self.tracker_mode == TrackerMode::Edit
             && self.note_editor.is_none()
-            && self.noob_target.is_none()
         {
             self.commit_tracker_gesture(now);
         }
@@ -8336,16 +8359,12 @@ fn drain(
                 if !tracker_preview {
                     app.sequencer.thru(&bytes);
                 }
-                if app.screen == Screen::Tracker
-                    && app.tracker_recording.is_some()
-                    && app.noob_target.is_none()
-                {
+                if app.screen == Screen::Tracker && app.tracker_recording.is_some() {
                     app.record_tracker_midi(&bytes);
                 }
                 if app.screen == Screen::Tracker
                     && app.tracker_mode == TrackerMode::Edit
                     && app.note_editor.is_none()
-                    && app.noob_target.is_none()
                 {
                     if !app.tracker_gesture.is_active()
                         && bytes.len() >= 3
@@ -8469,7 +8488,6 @@ fn dispatch_encoder_input(
         || (app.screen == Screen::TrackerPages && app.page_manager_mode != PageManagerMode::Pages)
         || app.screen == Screen::FxEditor
         || app.screen == Screen::Routing
-        || app.noob_target.is_some()
         || app.confirm_routing_defaults;
     let tracker_column_turn = physical
         && app.screen == Screen::Tracker
@@ -8564,21 +8582,6 @@ fn perform(
     }
     if OverlayKind::from_action(action).is_some() {
         a.open_overlay(action);
-        return false;
-    }
-    if a.noob_target.is_some() {
-        match action {
-            Action::Up | Action::NoobRootDown => a.adjust_noob_root(-1),
-            Action::Down | Action::NoobRootUp => a.adjust_noob_root(1),
-            Action::NoobScale => a.toggle_noob_scale(),
-            Action::Activate | Action::ConfirmNoob => a.confirm_noob(),
-            Action::Back | Action::CancelNoob => a.cancel_noob(),
-            Action::OpenHelp => {
-                a.cancel_noob();
-                a.open_help();
-            }
-            _ => {}
-        }
         return false;
     }
     if a.confirm_routing_defaults {
@@ -8722,6 +8725,8 @@ fn perform(
         Action::Up => {
             if a.screen == Screen::Home {
                 a.move_home(-1);
+            } else if a.screen == Screen::Playback && a.playback_noob {
+                a.adjust_playback_noob_scale(-1);
             } else if a.screen == Screen::Help {
                 a.move_help(-1);
             } else if a.screen == Screen::TrackerLoopAlign {
@@ -8774,6 +8779,8 @@ fn perform(
         Action::Down => {
             if a.screen == Screen::Home {
                 a.move_home(1);
+            } else if a.screen == Screen::Playback && a.playback_noob {
+                a.adjust_playback_noob_scale(1);
             } else if a.screen == Screen::Help {
                 a.move_help(1);
             } else if a.screen == Screen::TrackerLoopAlign {
@@ -8957,20 +8964,24 @@ fn perform(
         Action::OpenHelp => a.open_help(),
         Action::OpenControllerLearn => a.begin_controller_learn(),
         Action::OpenTracker => {
-            let adopted = a.adopt_current_instrument_for_first_tracker_page();
+            let entry = a.prepare_first_tracker_instrument();
             a.set_screen(Screen::Tracker);
             a.refresh_page_targets();
-            a.sync_tracker_route();
+            let engine_ready = a.sync_tracker_route();
             let page_online = a
                 .current_page()
                 .is_some_and(|page| a.target_online(&page.target));
-            a.status = if adopted {
-                "tracker ready · current instrument assigned to page 1".into()
-            } else if page_online {
-                "tracker ready · STEP toggles entry · encoder press skips".into()
-            } else {
-                "tracker page target offline · PAGES to change it".into()
-            };
+            if engine_ready {
+                a.status = if entry == TrackerEntryInstrument::AdoptedPlayer {
+                    "tracker ready · Player instrument assigned to page 1".into()
+                } else if entry == TrackerEntryInstrument::FirstSynthv1 {
+                    "tracker ready · first synthv1 instrument assigned to page 1".into()
+                } else if page_online {
+                    "tracker ready · STEP toggles entry · encoder press skips".into()
+                } else {
+                    "tracker page target offline · PAGES to change it".into()
+                };
+            }
         }
         Action::OpenTrackerFiles => {
             if a.screen == Screen::TrackerPages {
@@ -9153,13 +9164,7 @@ fn perform(
         Action::TrackerRewind => a.rewind_tracker(),
         Action::TrackerRecordToggle => a.toggle_tracker_recording(),
         Action::TrackerNoobToggle => a.toggle_tracker_noob(),
-        Action::OpenPlaybackNoob => a.open_noob_setup(NoobTarget::Playback),
-        Action::DisablePlaybackNoob => a.disable_playback_noob(),
-        Action::NoobRootDown => a.adjust_noob_root(-1),
-        Action::NoobRootUp => a.adjust_noob_root(1),
-        Action::NoobScale => a.toggle_noob_scale(),
-        Action::ConfirmNoob => a.confirm_noob(),
-        Action::CancelNoob => a.cancel_noob(),
+        Action::PlaybackNoobToggle => a.toggle_playback_noob(),
         Action::ConfirmRoutingDefaults => a.finish_routing_defaults_prompt(true),
         Action::CancelRoutingDefaults => a.finish_routing_defaults_prompt(false),
         Action::LoopImport => a.import_selected_loop(),
@@ -9421,20 +9426,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Down | KeyCode::Char('j') => a.move_overlay(1),
             KeyCode::Enter => a.activate_overlay(),
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.overlay_back(),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
-            _ => {}
-        }
-        return false;
-    }
-    if a.noob_target.is_some() {
-        match code {
-            KeyCode::Left | KeyCode::Up | KeyCode::Char('-') => a.adjust_noob_root(-1),
-            KeyCode::Right | KeyCode::Down | KeyCode::Char('+') | KeyCode::Char('=') => {
-                a.adjust_noob_root(1)
-            }
-            KeyCode::Tab | KeyCode::Char('m') | KeyCode::Char('M') => a.toggle_noob_scale(),
-            KeyCode::Enter => a.confirm_noob(),
-            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.cancel_noob(),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
             _ => {}
         }
@@ -10232,9 +10223,6 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         draw_overlay(f, a);
         draw_overlay_launcher(f, a);
         return;
-    }
-    if a.noob_target.is_some() {
-        draw_noob_setup(f, a);
     }
     draw_pad_lock(f, a);
     draw_fallback_badge(f, a);
@@ -11431,32 +11419,6 @@ fn draw_tracker_child<B: Backend>(f: &mut Frame<B>, title: &str, details: &str) 
     );
 }
 
-fn draw_noob_setup<B: Backend>(f: &mut Frame<B>, a: &App) {
-    let z = f.size();
-    let scope = match a.noob_target {
-        Some(NoobTarget::Tracker) => "PLAY / REC / EDIT stay active",
-        Some(NoobTarget::Playback) | None => "Player input filter",
-    };
-    let area = rect(
-        z.x + 2,
-        z.y + 1,
-        z.width.saturating_sub(4),
-        z.height.saturating_sub(5).min(11),
-    );
-    f.render_widget(Clear, area);
-    f.render_widget(
-        Paragraph::new(format!(
-            "N00B SCALE FILTER\n\nRoot  {}\nScale {}\n\n{scope}\nOnly scale notes sound\nOutside keys stay silent\nDONE enables · EXIT cancels",
-            a.config.note_naming.pitch_name(a.noob_draft.root),
-            a.noob_draft.kind.label()
-        ))
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Green))
-        .block(Block::default().borders(Borders::ALL)),
-        area,
-    );
-}
-
 fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     if a.loop_library_mode {
@@ -12325,11 +12287,32 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             inner,
         );
     }
+    let scale_rows = if a.playback_noob { 1 } else { 0 };
+    if a.playback_noob {
+        f.render_widget(
+            Paragraph::new(Spans::from(vec![
+                Span::styled("SCALE ", Style::default().fg(Color::DarkGray)),
+                Span::styled("◉ ", Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    format!(
+                        "{} {}",
+                        a.config.note_naming.pitch_name(a.noob_scale.root),
+                        a.noob_scale.kind.label()
+                    ),
+                    Style::default()
+                        .fg(Color::LightYellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]))
+            .alignment(Alignment::Center),
+            rect(z.x, params.y + 6, z.width, 1),
+        );
+    }
     let chord_area = rect(
         z.x,
-        params.y + 6,
+        params.y + 6 + scale_rows,
         z.width,
-        actions.y.saturating_sub(params.y + 6),
+        actions.y.saturating_sub(params.y + 6 + scale_rows),
     );
     let content_height = 5.min(chord_area.height);
     let top = chord_area.y + chord_area.height.saturating_sub(content_height) / 2;
@@ -13636,7 +13619,7 @@ enum ScreenshotScenario {
     PageTarget,
     PageChannel,
     TrackerTools,
-    NoobSetup,
+    PlaybackNoob,
     RoutingDefaults,
     TrackerLoop,
     TrackerLoopAlign,
@@ -13668,7 +13651,7 @@ impl ScreenshotScenario {
         Self::PageTarget,
         Self::PageChannel,
         Self::TrackerTools,
-        Self::NoobSetup,
+        Self::PlaybackNoob,
         Self::RoutingDefaults,
         Self::TrackerLoop,
         Self::TrackerLoopAlign,
@@ -13696,7 +13679,7 @@ impl ScreenshotScenario {
             Self::TrackerArrange => Screen::TrackerArrange,
             Self::TrackerPages | Self::PageTarget | Self::PageChannel => Screen::TrackerPages,
             Self::TrackerTools => Screen::TrackerTools,
-            Self::NoobSetup => Screen::Tracker,
+            Self::PlaybackNoob => Screen::Playback,
             Self::RoutingDefaults => Screen::TrackerFiles,
             Self::TrackerLoop => Screen::TrackerLoop,
             Self::TrackerLoopAlign => Screen::TrackerLoopAlign,
@@ -13727,7 +13710,7 @@ impl ScreenshotScenario {
             Self::PageTarget => "target-editor",
             Self::PageChannel => "channel-editor",
             Self::TrackerTools => "ft2-tools",
-            Self::NoobSetup => "noob-setup",
+            Self::PlaybackNoob => "playback-noob",
             Self::RoutingDefaults => "routing-defaults",
             Self::TrackerLoop => "ft2-loop",
             Self::TrackerLoopAlign => "loop-align",
@@ -14123,14 +14106,14 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
             fill_demo_song(app);
             app.status = "choose a focused FT2 tool".into();
         }
-        ScreenshotScenario::NoobSetup => {
-            fill_demo_song(app);
-            app.noob_target = Some(NoobTarget::Tracker);
-            app.noob_draft = Scale {
+        ScreenshotScenario::PlaybackNoob => {
+            app.playback_noob = true;
+            app.noob_scale = Scale {
                 root: 4,
                 kind: ScaleKind::NaturalMinor,
             };
-            app.status = "N00B E MINOR · outside notes stay silent".into();
+            app.sync_playback_noob();
+            app.status = "N00B E MINOR · turn rotary to change scale".into();
         }
         ScreenshotScenario::RoutingDefaults => {
             fill_demo_song(app);
@@ -17121,7 +17104,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE", "N00B", "NORMAL"] {
+        for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE", "N00B"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
         for removed in ["NAV", "IDEAS", "PRESETS", "FT2", "AUDIO"] {
@@ -17129,7 +17112,7 @@ mod tests {
         }
         assert!(text.contains("PLY"));
         assert_eq!(a.hits.menu_pages.len(), 3);
-        assert_eq!(a.hits.actions.len(), 4);
+        assert_eq!(a.hits.actions.len(), 3);
     }
 
     #[test]
@@ -19563,16 +19546,15 @@ mod tests {
         assert!(a.tracker_recording.is_none());
         perform(Action::TrackerNoobToggle, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Tracker);
-        assert_eq!(a.noob_target, Some(NoobTarget::Tracker));
+        assert!(a.tracker_noob);
+        assert!(a.overlay.is_none());
+        assert_eq!(a.menu_context(), MenuContext::TrackerEdit);
         assert_eq!(a.tracker_mode, TrackerMode::Edit);
-        a.noob_draft = Scale {
+        a.noob_scale = Scale {
             root: 1,
             kind: ScaleKind::NaturalMinor,
         };
-        perform(Action::ConfirmNoob, &mut a, Path::new("/none"), None);
-        assert!(a.tracker_noob);
-        assert_eq!(a.tracker_mode, TrackerMode::Edit);
-        assert_eq!(a.noob_scale, a.noob_draft);
+        a.sync_tracker_route();
         a.set_tracker_mode(TrackerMode::Play);
         assert!(a.tracker_noob);
         assert_eq!(a.tracker_mode, TrackerMode::Play);
@@ -19663,25 +19645,14 @@ mod tests {
     }
 
     #[test]
-    fn tracker_keeps_an_explicit_first_page_instrument() {
+    fn fresh_ft2_adopts_the_player_instrument_without_restarting_its_engine() {
         let p = presets();
         let mut a = app(&p);
-        a.playing = Some(p[38].clone());
-        a.engine_owner = Some(EngineOwner::SoftwareSynth);
-        perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
-        assert_eq!(
-            a.tracker_software_route(),
-            Some(SoftwareRoute::synthv1("Preset 00"))
-        );
-        assert_eq!(a.engine_owner, None);
-    }
-
-    #[test]
-    fn tracker_assigns_the_current_instrument_when_first_page_is_undefined() {
-        let p = presets();
-        let mut a = app(&p);
-        a.current_pattern_mut().unwrap().pages[0] =
-            sequencer::Page::new_portable("Software Synth", false);
+        a.screen = Screen::Playback;
+        let engine =
+            Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output)).unwrap();
+        let process_id = engine.process_id();
+        a.engine = Some(engine);
         a.playing = Some(p[38].clone());
         a.engine_owner = Some(EngineOwner::SoftwareSynth);
 
@@ -19694,12 +19665,98 @@ mod tests {
             PageTarget::Software(route.clone())
         );
         assert_eq!(a.engine_owner, Some(EngineOwner::Tracker(route)));
+        assert_eq!(a.engine.as_ref().unwrap().process_id(), process_id);
         assert_eq!(
             a.playing.as_ref().map(Preset::route_id).as_deref(),
             Some("Preset 38")
         );
-        assert!(a.status.contains("current instrument assigned"));
+        assert!(a.status.contains("Player instrument assigned"));
+        assert_eq!(
+            a.tracker_route.lock().unwrap().destinations(),
+            vec![(PageTarget::Software(SoftwareRoute::synthv1("Preset 38")), 0)]
+        );
+    }
+
+    #[test]
+    fn fresh_ft2_without_a_player_loads_the_first_synthv1_for_tracker() {
+        let p = presets();
+        let mut a = app(&p);
+        a.tracker_engine_start_override = Some(Ok(()));
+
+        perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
+
+        let route = SoftwareRoute::synthv1("Preset 00");
+        assert_eq!(a.screen, Screen::Tracker);
+        assert_eq!(
+            a.current_pages()[0].target,
+            PageTarget::Software(route.clone())
+        );
+        assert_eq!(a.engine_owner, Some(EngineOwner::Tracker(route)));
+        assert!(a.engine.as_mut().unwrap().alive());
+        assert_eq!(
+            a.playing.as_ref().map(Preset::route_id).as_deref(),
+            Some("Preset 00")
+        );
+        assert!(a.status.contains("first synthv1 instrument assigned"));
         assert!(a.tracker_route.lock().unwrap().preview_state().0);
+    }
+
+    #[test]
+    fn saved_or_nondefault_empty_project_never_adopts_the_player_route() {
+        let p = presets();
+        let explicit = SoftwareRoute::synthv1("Preset 17");
+        let mut saved = app(&p);
+        saved.current_pattern_mut().unwrap().pages[0].target =
+            PageTarget::Software(explicit.clone());
+        saved.song_file_stem = Some("saved-empty".into());
+        saved.tracker_page = 1;
+        saved.tracker_track = 3;
+        saved.tracker_row = 11;
+        saved.tracker_order = 0;
+        saved.screen = Screen::Playback;
+        saved.engine = Some(
+            Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&saved.midi_output))
+                .unwrap(),
+        );
+        saved.playing = Some(p[38].clone());
+        saved.engine_owner = Some(EngineOwner::SoftwareSynth);
+
+        perform(Action::OpenTracker, &mut saved, Path::new("/none"), None);
+
+        assert_eq!(
+            saved.song.patterns[&0].pages[0].target,
+            PageTarget::Software(explicit.clone())
+        );
+        assert_eq!(
+            (saved.tracker_page, saved.tracker_track, saved.tracker_row),
+            (1, 3, 11)
+        );
+        assert!(!sequencer::pattern_has_note_events(
+            &saved.song.patterns[&0]
+        ));
+
+        let mut unsaved = app(&p);
+        unsaved.current_pattern_mut().unwrap().pages[0].target =
+            PageTarget::Software(explicit.clone());
+        unsaved.screen = Screen::Playback;
+        unsaved.engine = Some(
+            Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&unsaved.midi_output))
+                .unwrap(),
+        );
+        unsaved.playing = Some(p[38].clone());
+        unsaved.engine_owner = Some(EngineOwner::SoftwareSynth);
+        unsaved.tracker_engine_start_override = Some(Ok(()));
+
+        perform(Action::OpenTracker, &mut unsaved, Path::new("/none"), None);
+
+        assert_eq!(
+            unsaved.song.patterns[&0].pages[0].target,
+            PageTarget::Software(explicit)
+        );
+        assert_eq!(
+            unsaved.engine_owner,
+            Some(EngineOwner::Tracker(SoftwareRoute::synthv1("Preset 17")))
+        );
     }
 
     #[test]
@@ -19733,14 +19790,32 @@ mod tests {
     }
 
     #[test]
-    fn opening_empty_ft2_does_not_start_the_default_software_engine() {
+    fn fresh_ft2_engine_start_failure_is_actionable_and_never_uses_external_midi() {
         let p = presets();
         let mut a = app(&p);
+        a.tracker_engine_start_override = Some(Err("synthetic start failure".into()));
+        a.screen = Screen::Tracker;
+        a.tracker_page = 1;
+        a.sync_tracker_route();
+        assert_eq!(
+            a.tracker_route.lock().unwrap().destinations(),
+            vec![(PageTarget::ConfiguredExternal, 0)]
+        );
+        a.screen = Screen::Home;
+        a.tracker_page = 0;
 
-        a.set_screen(Screen::Tracker);
+        perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
 
         assert!(a.engine.is_none());
         assert!(a.engine_owner.is_none());
+        assert!(a.playing.is_none());
+        assert!(a.status.contains("FT2 SYNTH START FAILED"));
+        assert!(a.status.contains("synthetic start failure"));
+        assert_eq!(
+            a.tracker_route.lock().unwrap().destinations(),
+            vec![(PageTarget::Software(SoftwareRoute::synthv1("Preset 00")), 0)]
+        );
+        assert!(a.midi_output.lock().unwrap().is_none());
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);
     }
 
@@ -19785,26 +19860,47 @@ mod tests {
     fn ft2_live_route_follows_the_selected_synth_midi_and_drum_page() {
         let p = presets();
         let mut a = app(&p);
+        a.config.external_midi.program_changes = true;
+        a.config.external_midi.bank_select = BankSelectMode::Off;
         a.screen = Screen::Tracker;
         a.sync_tracker_route();
+        let software_owner = a.engine_owner.clone();
+        assert_eq!(
+            software_owner,
+            Some(EngineOwner::Tracker(SoftwareRoute::synthv1("Preset 00")))
+        );
+        assert!(matches!(
+            a.current_pages()[0].target,
+            PageTarget::Software(_)
+        ));
+        assert!(!a.current_pages()[0].percussion);
         assert_eq!(
             a.tracker_route.lock().unwrap().destinations(),
             vec![(PageTarget::Software(SoftwareRoute::synthv1("Preset 00")), 0)]
         );
+        assert!(a.tracker_program_messages(0).is_empty());
 
         a.tracker_page = 1;
         a.sync_tracker_route();
+        assert_eq!(a.engine_owner, software_owner);
+        assert_eq!(a.current_pages()[1].target, PageTarget::ConfiguredExternal);
+        assert!(!a.current_pages()[1].percussion);
         assert_eq!(
             a.tracker_route.lock().unwrap().destinations(),
             vec![(PageTarget::ConfiguredExternal, 0)]
         );
+        assert_eq!(a.tracker_program_messages(0), vec![vec![0xc0, 0]]);
 
         a.tracker_page = 2;
         a.sync_tracker_route();
+        assert_eq!(a.engine_owner, software_owner);
+        assert_eq!(a.current_pages()[2].target, PageTarget::ConfiguredExternal);
+        assert!(a.current_pages()[2].percussion);
         assert_eq!(
             a.tracker_route.lock().unwrap().destinations(),
             vec![(PageTarget::ConfiguredExternal, 9)]
         );
+        assert_eq!(a.tracker_program_messages(0), vec![vec![0xc9, 0]]);
     }
 
     #[test]
@@ -19946,7 +20042,7 @@ mod tests {
         a.tracker_page = a.percussion_page_index().unwrap();
         let before = a.song.patterns[&0].rows.clone();
 
-        a.open_noob_setup(NoobTarget::Tracker);
+        a.toggle_tracker_noob();
 
         assert!(!a.tracker_noob);
         assert_eq!(a.tracker_mode, TrackerMode::Play);
@@ -19995,22 +20091,40 @@ mod tests {
     }
 
     #[test]
-    fn playback_noob_activates_shared_scale_and_normal_clears_it() {
+    fn playback_noob_toggles_in_place_and_rotary_changes_the_shared_scale() {
         let p = presets();
         let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
         a.screen = Screen::Playback;
-        a.open_noob_setup(NoobTarget::Playback);
-        a.noob_draft = Scale {
-            root: 1,
-            kind: ScaleKind::NaturalMinor,
-        };
-        a.confirm_noob();
+        let playing = a.playing.clone();
+        let values = a.values.clone();
+        a.toggle_playback_noob();
         assert!(a.playback_noob);
+        assert_eq!(a.screen, Screen::Playback);
+        assert!(a.overlay.is_none());
+        assert_eq!(a.playing, playing);
+        assert_eq!(a.values, values);
+        assert_eq!(*a.playback_scale.lock().unwrap(), Some(a.noob_scale));
+        let original = a.noob_scale;
+
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_ne!(a.noob_scale, original);
         assert_eq!(*a.playback_scale.lock().unwrap(), Some(a.noob_scale));
 
-        a.disable_playback_noob();
+        let buffer = render_app(&mut a, 40, 20);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("SCALE"));
+        assert!(text.contains("Flt cut"));
+
+        a.toggle_playback_noob();
         assert!(!a.playback_noob);
         assert_eq!(*a.playback_scale.lock().unwrap(), None);
+        assert!(!buffer_text(&render_app(&mut a, 40, 20)).contains("SCALE"));
     }
 
     #[test]

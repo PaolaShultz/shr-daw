@@ -27,18 +27,24 @@ display does not rely on an omitted suffix to teach the chord quality.
 The loaded standalone instrument stays running when you leave Presets or
 Playback, so it remains available for effects and other screens. Global panic,
 application shutdown, loading a replacement, or entering FT2 with a different
-explicit software route still ends it safely. If FT2 page 1 is `AUTO`, entering
-FT2 assigns the current engine/instrument to that page and keeps it playable.
+explicit software route still ends it safely. Entering a genuinely new, empty,
+unsaved default FT2 Project assigns the current Player engine/instrument to page
+1 without restarting it. With no Player instrument loaded, FT2 loads the first
+available synthv1 preset itself. Saved or explicitly changed Projects keep their
+own routes, including saved Projects with empty note grids.
 
 ## Learning by exploration
 
-Playback N00B selects a root and major or natural-minor scale. Allowed notes
-keep their pitch; other notes stay silent. The chord, note, velocity, and
-keyboard displays make the result visible, while NORMAL restores chromatic
+Playback N00B toggles a root plus major or natural-minor scale filter without
+leaving Player. While it is on, the same screen adds one compact `SCALE` rotary;
+turning the master encoder cycles the scale while every normal Player control,
+chord, note, velocity, and keyboard display remains visible. Allowed notes keep
+their pitch, other notes stay silent, and pressing N00B again restores chromatic
 play.
 
-FT2 uses the same optional gate in Play, Record, and Step Edit on melodic
-pages. Record and Edit write only allowed notes; Step Edit note length remains
+FT2 toggles the same selected scale directly in Play, Record, and Step Edit on
+melodic pages; it never opens another workspace or changes the current mode.
+Record and Edit write only allowed notes; Step Edit note length remains
 independent from its row advance. Moving to Drums turns the filter off.
 
 ```text

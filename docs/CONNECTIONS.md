@@ -75,9 +75,11 @@ SHR-DAW supports synthv1, Yoshimi, and FluidSynth as separately installed
 programs. Only one SHR-DAW-managed software synth runs at a time. The
 standalone Software Synth workspace keeps its sound after leaving Presets or
 Playback. FT2 uses the engine/instrument pair saved by its current Pattern; if
-page 1 is still `AUTO`, entering FT2 assigns the current standalone selection
-to that page and transfers ownership without restarting it. A different
-explicit FT2 route replaces the standalone engine when needed. Global panic,
+the Project is genuinely new, empty, unsaved, and otherwise still at its
+defaults, entering FT2 assigns the current standalone selection to page 1 and
+transfers ownership without restarting it. With no standalone instrument, FT2
+loads the first available synthv1 preset. A different explicit FT2 route
+replaces the standalone engine when needed. Global panic,
 replacement, and application shutdown stop only a process SHR-DAW owns.
 
 Each engine has a configured MIDI input and JACK audio output. See

@@ -105,6 +105,17 @@ tour without duplicating its controls here.
   [multitrack recording](docs/MULTITRACK_RECORDING.md)
 - [Complete documentation index](docs/README.md)
 
+## Built with Codex
+
+SHR-DAW was a pre-existing personal project that was meaningfully extended
+during OpenAI Build Week using GPT-5.6 through Codex CLI directly on the target
+Raspberry Pi. Codex accelerated Rust implementation, ALSA/JACK/MIDI diagnosis,
+controller setup, original preset and rhythm design, safety review, validation,
+and documentation. The creator chose the product and musical direction,
+supplied and operated the hardware, judged the sound, and controlled public
+release. The [development story and dated baseline](docs/BUILD_WEEK.md) describe
+that collaboration and distinguish earlier work from Build Week additions.
+
 ## Licence
 
 SHR-DAW is MIT licensed. Included presets, demos, rhythms, and WAV loops have
