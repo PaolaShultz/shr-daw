@@ -15,7 +15,6 @@ pub enum Screen {
     TrackerArrange,
     TrackerPages,
     TrackerTools,
-    TrackerNoteLength,
     TrackerLoop,
     TrackerLoopAlign,
     AudioRecorder,
@@ -26,9 +25,9 @@ pub enum Screen {
 }
 
 impl Screen {
-    pub const COUNT: usize = 18;
+    pub const COUNT: usize = 17;
     #[cfg(test)]
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 17] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -39,7 +38,6 @@ impl Screen {
         Self::TrackerArrange,
         Self::TrackerPages,
         Self::TrackerTools,
-        Self::TrackerNoteLength,
         Self::TrackerLoop,
         Self::TrackerLoopAlign,
         Self::AudioRecorder,
@@ -61,14 +59,13 @@ impl Screen {
             Self::TrackerArrange => 7,
             Self::TrackerPages => 8,
             Self::TrackerTools => 9,
-            Self::TrackerNoteLength => 10,
-            Self::TrackerLoop => 11,
-            Self::TrackerLoopAlign => 12,
-            Self::AudioRecorder => 13,
-            Self::FxRack => 14,
-            Self::FxEditor => 15,
-            Self::Meter => 16,
-            Self::Routing => 17,
+            Self::TrackerLoop => 10,
+            Self::TrackerLoopAlign => 11,
+            Self::AudioRecorder => 12,
+            Self::FxRack => 13,
+            Self::FxEditor => 14,
+            Self::Meter => 15,
+            Self::Routing => 16,
         }
     }
 
@@ -84,7 +81,6 @@ impl Screen {
             Self::TrackerArrange => "ARRANGE",
             Self::TrackerPages => "TRACKS",
             Self::TrackerTools => "FT2 TOOLS",
-            Self::TrackerNoteLength => "NOTE LENGTH",
             Self::TrackerLoop => "FT2 LOOP",
             Self::TrackerLoopAlign => "LOOP ALIGN",
             Self::AudioRecorder => "AUDIO",
@@ -124,6 +120,9 @@ pub enum Action {
     OpenPatternOverlay,
     OpenSongOverlay,
     OpenRouteOverlay,
+    OpenPatternLengthOverlay,
+    OpenNoteLengthOverlay,
+    OpenTrackerAdvanceOverlay,
     OpenEffectsOverlay,
     OpenAudioRecorder,
     OpenFxRack,
@@ -150,10 +149,6 @@ pub enum Action {
     FxSendIncrease,
     FxSendPoint,
     FxReturnCycle,
-    FxParameterPrevious,
-    FxParameterNext,
-    FxValueDecrease,
-    FxValueIncrease,
     ResetParameters,
     IdeaRecordToggle,
     SaveNew,
@@ -165,10 +160,6 @@ pub enum Action {
     TrackerSkip,
     TrackerErase,
     TrackerNoteOff,
-    TrackerAdvance1,
-    TrackerAdvance2,
-    TrackerAdvance4,
-    TrackerAdvance8,
     OpenNoteEditor,
     NoteField,
     NoteDestinationField,
@@ -200,9 +191,6 @@ pub enum Action {
     NoobScale,
     ConfirmNoob,
     CancelNoob,
-    OpenNoteLength,
-    ConfirmNoteLength,
-    CancelNoteLength,
     ConfirmRoutingDefaults,
     CancelRoutingDefaults,
     LoopImport,
@@ -224,7 +212,6 @@ pub enum Action {
     TrackerMute,
     TrackerPageMute,
     NextTrackerPage,
-    PreviousTrackerPage,
     PreviousTrack,
     NextTrack,
     PreviousProgram,
@@ -273,16 +260,12 @@ pub enum Action {
     ArrangementMoveLater,
     ArrangementJumpToPattern,
     ArrangementPlayFromStep,
-    PreviousOrder,
-    NextOrder,
     AddPage,
     EditPageTarget,
     EditPageChannel,
     ConfirmPageManager,
     SelectThreeFour,
     SelectFourFour,
-    PatternSizeDown,
-    PatternSizeUp,
     ConfirmPatternClear,
     AudioRecordToggle,
     AudioToggleArm,
@@ -463,15 +446,6 @@ const IDEAS: [MenuPage; 4] = [
 ];
 const TRACKER: [MenuPage; 4] = [
     page(
-        "MOVE",
-        [
-            on("PAGE-", Action::PreviousTrackerPage),
-            on("PAGE+", Action::NextTrackerPage),
-            on("TRACK-", Action::PreviousTrack),
-            on("TRACK+", Action::NextTrack),
-        ],
-    ),
-    page(
         "PLAY",
         [
             on("CELL", Action::OpenNoteEditor),
@@ -481,7 +455,7 @@ const TRACKER: [MenuPage; 4] = [
         ],
     ),
     page(
-        "NAV",
+        "SELECT",
         [
             on("PAGE", Action::OpenPageOverlay),
             on("PATTERN", Action::OpenPatternOverlay),
@@ -489,6 +463,7 @@ const TRACKER: [MenuPage; 4] = [
             on("ROUTE", Action::OpenRouteOverlay),
         ],
     ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
@@ -564,28 +539,6 @@ const ARRANGE: [MenuPage; 4] = [
             on("HELP", Action::OpenHelp),
             off(""),
             on("EXIT", Action::Back),
-        ],
-    ),
-];
-const NOTE_LENGTH: [MenuPage; 4] = [
-    page(
-        "OPS",
-        [
-            on("DONE", Action::ConfirmNoteLength),
-            on("CANCEL", Action::CancelNoteLength),
-            off(""),
-            off(""),
-        ],
-    ),
-    page("", [off(""), off(""), off(""), off("")]),
-    page("", [off(""), off(""), off(""), off("")]),
-    page(
-        "SYS",
-        [
-            on("PANIC", Action::StopAll),
-            on("HELP", Action::OpenHelp),
-            off(""),
-            on("EXIT", Action::CancelNoteLength),
         ],
     ),
 ];
@@ -748,29 +701,21 @@ const TRACKER_EDIT: [MenuPage; 4] = [
         ],
     ),
     page(
-        "MOVE",
+        "SET",
         [
-            on("PG-", Action::PreviousOrder),
-            on("PG+", Action::NextOrder),
-            on("LANE-", Action::PreviousTrack),
-            on("LANE+", Action::NextTrack),
+            on("PAGE", Action::OpenPageOverlay),
+            on("ADD", Action::OpenTrackerAdvanceOverlay),
+            on("LENGTH", Action::OpenNoteLengthOverlay),
+            off(""),
         ],
     ),
-    page(
-        "ADD",
-        [
-            on("1", Action::TrackerAdvance1),
-            on("2", Action::TrackerAdvance2),
-            on("4", Action::TrackerAdvance4),
-            on("8", Action::TrackerAdvance8),
-        ],
-    ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
             on("PANIC", Action::StopAll),
-            on("LENGTH", Action::OpenNoteLength),
-            on("PAGE", Action::NextTrackerPage),
+            on("HELP", Action::OpenHelp),
+            off(""),
             on("EXIT", Action::TrackerEdit),
         ],
     ),
@@ -985,8 +930,8 @@ const PATTERN_CLEAR: [MenuPage; 4] = [
         [
             on("3/4", Action::SelectThreeFour),
             on("4/4", Action::SelectFourFour),
-            on("SIZE-", Action::PatternSizeDown),
-            on("SIZE+", Action::PatternSizeUp),
+            on("LNGTH", Action::OpenPatternLengthOverlay),
+            off(""),
         ],
     ),
     page(
@@ -1111,22 +1056,11 @@ const FX_TYPE: [MenuPage; 4] = [
 
 const FX_EDITOR: [MenuPage; 4] = [
     page(
-        "OPS",
-        [
-            on("PARAM-", Action::FxParameterPrevious),
-            on("PARAM+", Action::FxParameterNext),
-            on("VALUE-", Action::FxValueDecrease),
-            on("VALUE+", Action::FxValueIncrease),
-        ],
-    ),
-    page(
         "STATE",
         [on("BYPASS", Action::FxBypass), off(""), off(""), off("")],
     ),
-    page(
-        "NAV",
-        [on("RACK", Action::OpenFxRack), off(""), off(""), off("")],
-    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
@@ -1255,7 +1189,6 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerPages, MenuContext::PageTarget | MenuContext::PageChannel) => &PAGE_FIELD,
         (Screen::TrackerPages, _) => &PAGES,
         (Screen::TrackerTools, _) => &TRACKER_TOOLS,
-        (Screen::TrackerNoteLength, _) => &NOTE_LENGTH,
         (Screen::TrackerLoop, MenuContext::LoopLibrary) => &LOOP_LIBRARY,
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
@@ -1317,19 +1250,11 @@ mod tests {
                 .any(|slot| slot.dispatch() == Some(Action::TrackerNoobToggle)));
         }
 
-        let selector = pages(Screen::TrackerNoteLength, MenuContext::Normal);
-        assert_eq!(
-            selector[0].slots[0].dispatch(),
-            Some(Action::ConfirmNoteLength)
-        );
-        assert_eq!(
-            selector[0].slots[1].dispatch(),
-            Some(Action::CancelNoteLength)
-        );
-        assert_eq!(
-            selector[3].slots[3].dispatch(),
-            Some(Action::CancelNoteLength)
-        );
+        let edit = pages(Screen::Tracker, MenuContext::TrackerEdit);
+        assert!(edit
+            .iter()
+            .flat_map(|page| page.slots)
+            .any(|slot| slot.dispatch() == Some(Action::OpenNoteLengthOverlay)));
     }
 
     #[test]
@@ -1392,7 +1317,6 @@ mod tests {
             (Screen::TrackerPages, MenuContext::Normal),
             (Screen::TrackerPages, MenuContext::PageTarget),
             (Screen::TrackerTools, MenuContext::Normal),
-            (Screen::TrackerNoteLength, MenuContext::Normal),
             (Screen::TrackerLoop, MenuContext::Normal),
             (Screen::TrackerLoop, MenuContext::LoopLibrary),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
@@ -1483,15 +1407,17 @@ mod tests {
                 .flat_map(|page| page.slots)
                 .all(|slot| !matches!(slot.dispatch(), Some(Action::Up | Action::Down))));
         }
-        assert_eq!(
-            TRACKER[0].slots.map(|slot| slot.dispatch()),
-            [
-                Some(Action::PreviousTrackerPage),
-                Some(Action::NextTrackerPage),
-                Some(Action::PreviousTrack),
-                Some(Action::NextTrack),
-            ]
-        );
+        assert!(TRACKER
+            .iter()
+            .flat_map(|page| page.slots)
+            .all(|slot| !matches!(
+                slot.dispatch(),
+                Some(Action::NextTrackerPage | Action::PreviousTrack | Action::NextTrack)
+            )));
+        assert!(TRACKER
+            .iter()
+            .flat_map(|page| page.slots)
+            .any(|slot| slot.dispatch() == Some(Action::OpenPageOverlay)));
     }
 
     #[test]
@@ -1668,7 +1594,7 @@ mod tests {
             Some(Action::TrackerNoobToggle)
         );
         assert_eq!(
-            pages(Screen::Tracker, MenuContext::Normal)[2]
+            pages(Screen::Tracker, MenuContext::Normal)[1]
                 .slots
                 .map(MenuSlot::dispatch),
             [
@@ -1706,7 +1632,6 @@ mod tests {
             (Screen::TrackerPages, MenuContext::PageChannel),
             (Screen::TrackerTools, MenuContext::Normal),
             (Screen::TrackerArrange, MenuContext::Normal),
-            (Screen::TrackerNoteLength, MenuContext::Normal),
             (Screen::TrackerLoop, MenuContext::Normal),
             (Screen::TrackerLoop, MenuContext::LoopLibrary),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
@@ -1785,15 +1710,13 @@ mod tests {
             Action::NoobScale,
             Action::ConfirmNoob,
             Action::CancelNoob,
-            Action::OpenNoteLength,
-            Action::ConfirmNoteLength,
-            Action::CancelNoteLength,
+            Action::OpenNoteLengthOverlay,
+            Action::OpenTrackerAdvanceOverlay,
+            Action::OpenPatternLengthOverlay,
             Action::ConfirmRoutingDefaults,
             Action::CancelRoutingDefaults,
             Action::TrackerMute,
             Action::TrackerPageMute,
-            Action::NextTrackerPage,
-            Action::PreviousTrackerPage,
             Action::PreviousTrack,
             Action::NextTrack,
             Action::PreviousProgram,
@@ -1814,16 +1737,12 @@ mod tests {
             Action::ClearPattern,
             Action::ClearPatternNow,
             Action::DeleteUnusedPattern,
-            Action::PreviousOrder,
-            Action::NextOrder,
             Action::AddPage,
             Action::EditPageTarget,
             Action::EditPageChannel,
             Action::ConfirmPageManager,
             Action::SelectThreeFour,
             Action::SelectFourFour,
-            Action::PatternSizeDown,
-            Action::PatternSizeUp,
             Action::ConfirmPatternClear,
             Action::LoopImport,
             Action::LoopRemove,
@@ -1863,10 +1782,6 @@ mod tests {
             Action::FxSendIncrease,
             Action::FxSendPoint,
             Action::FxReturnCycle,
-            Action::FxParameterPrevious,
-            Action::FxParameterNext,
-            Action::FxValueDecrease,
-            Action::FxValueIncrease,
         ];
         for action in inventory {
             assert!(

@@ -93,31 +93,8 @@ fn effect_kind_label(kind: EffectKind) -> &'static str {
     }
 }
 
-fn fx_parameter_row(
-    selected: bool,
-    mapping: &str,
-    abbreviation: &str,
-    value: &str,
-    width: usize,
-) -> String {
-    crate::ui_text::label_value(
-        &format!(
-            "{}{} {}",
-            if selected { ">" } else { " " },
-            mapping,
-            abbreviation
-        ),
-        value,
-        width,
-    )
-}
-
 fn fx_hardware_label(index: usize) -> String {
-    if index < 8 {
-        format!("K{}", index + 1)
-    } else {
-        format!("F{}", index - 7)
-    }
+    format!("K{}", index + 1)
 }
 
 fn fx_target_label(target: usize) -> &'static str {
@@ -316,6 +293,8 @@ enum NoteLength {
     Eighth,
     Sixteenth,
     ThirtySecond,
+    SixtyFourth,
+    HundredTwentyEighth,
 }
 
 impl Default for NoteLength {
@@ -325,13 +304,15 @@ impl Default for NoteLength {
 }
 
 impl NoteLength {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 8] = [
         Self::Whole,
         Self::Half,
         Self::Quarter,
         Self::Eighth,
         Self::Sixteenth,
         Self::ThirtySecond,
+        Self::SixtyFourth,
+        Self::HundredTwentyEighth,
     ];
 
     const fn label(self) -> &'static str {
@@ -342,6 +323,8 @@ impl NoteLength {
             Self::Eighth => "1/8",
             Self::Sixteenth => "1/16",
             Self::ThirtySecond => "1/32",
+            Self::SixtyFourth => "1/64",
+            Self::HundredTwentyEighth => "1/128",
         }
     }
 
@@ -353,16 +336,9 @@ impl NoteLength {
             Self::Eighth => 8,
             Self::Sixteenth => 16,
             Self::ThirtySecond => 32,
+            Self::SixtyFourth => 64,
+            Self::HundredTwentyEighth => 128,
         }
-    }
-
-    fn turn(self, direction: i8) -> Self {
-        let current = Self::ALL
-            .iter()
-            .position(|length| *length == self)
-            .unwrap_or(4);
-        let next = wrapped_index(current, Self::ALL.len(), direction);
-        Self::ALL[next]
     }
 }
 
@@ -523,7 +499,6 @@ struct App {
     audition_release_revision: u64,
     tracker_octave: u8,
     note_length: NoteLength,
-    note_length_draft: NoteLength,
     noob_scale: Scale,
     noob_draft: Scale,
     noob_target: Option<NoobTarget>,
@@ -741,7 +716,6 @@ fn is_tracker_screen(screen: Screen) -> bool {
             | Screen::TrackerArrange
             | Screen::TrackerPages
             | Screen::TrackerTools
-            | Screen::TrackerNoteLength
             | Screen::TrackerLoop
             | Screen::TrackerLoopAlign
     )
@@ -1214,7 +1188,6 @@ impl App {
             audition_release_revision: 0,
             tracker_octave: 4,
             note_length: NoteLength::default(),
-            note_length_draft: NoteLength::default(),
             noob_scale: Scale::default(),
             noob_draft: Scale::default(),
             noob_target: None,
@@ -1898,6 +1871,9 @@ impl App {
             OverlayKind::TrackerPattern => self.overlay_pattern_locations().len() + 2,
             OverlayKind::TrackerSong => self.song.order.len() + 3,
             OverlayKind::TrackerRoute => RouteField::ROWS,
+            OverlayKind::TrackerPatternLength => pattern_length_choices().len(),
+            OverlayKind::TrackerNoteLength => NoteLength::ALL.len(),
+            OverlayKind::TrackerAdvance => 33,
             OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
             OverlayKind::MixEffects => MAX_AUX_BUSES + 2,
         }
@@ -1913,7 +1889,9 @@ impl App {
         let Some(kind) = OverlayKind::from_action(action) else {
             return;
         };
-        if self.overlay.is_some() || self.keyboard_modal_active() {
+        if self.overlay.is_some()
+            || (self.keyboard_modal_active() && kind != OverlayKind::TrackerPatternLength)
+        {
             return;
         }
         let caller = self.screen;
@@ -1922,6 +1900,12 @@ impl App {
             | OverlayKind::TrackerPattern
             | OverlayKind::TrackerSong
             | OverlayKind::TrackerRoute => caller == Screen::Tracker,
+            OverlayKind::TrackerNoteLength | OverlayKind::TrackerAdvance => {
+                caller == Screen::Tracker && self.tracker_mode == TrackerMode::Edit
+            }
+            OverlayKind::TrackerPatternLength => {
+                caller == Screen::TrackerFiles && self.confirm_pattern_clear
+            }
             OverlayKind::LoopLibrary => caller == Screen::TrackerLoop,
             OverlayKind::MixEffects => caller == Screen::Meter,
         };
@@ -1951,6 +1935,15 @@ impl App {
                 .unwrap_or(0),
             OverlayKind::TrackerSong => self.tracker_order,
             OverlayKind::TrackerRoute => 0,
+            OverlayKind::TrackerPatternLength => pattern_length_choices()
+                .iter()
+                .position(|rows| *rows == self.pattern_setup_rows)
+                .unwrap_or(0),
+            OverlayKind::TrackerNoteLength => NoteLength::ALL
+                .iter()
+                .position(|length| *length == self.note_length)
+                .unwrap_or(0),
+            OverlayKind::TrackerAdvance => self.tracker_advance.min(32),
             OverlayKind::LoopLibrary => self
                 .loop_library
                 .iter()
@@ -2354,6 +2347,25 @@ impl App {
                     self.status =
                         "route field active · turn changes draft · Back cancels field".into();
                 }
+            }
+            OverlayKind::TrackerPatternLength => {
+                if let Some(rows) = pattern_length_choices().get(selection).copied() {
+                    self.pattern_setup_rows = rows;
+                    self.close_overlay(false);
+                    self.pattern_setup_status();
+                }
+            }
+            OverlayKind::TrackerNoteLength => {
+                if let Some(length) = NoteLength::ALL.get(selection).copied() {
+                    self.note_length = length;
+                    self.close_overlay(false);
+                    self.status = format!("Step Edit note length {}", length.label());
+                }
+            }
+            OverlayKind::TrackerAdvance => {
+                self.set_tracker_advance(selection.min(32));
+                self.close_overlay(false);
+                self.status = format!("Step Edit ADD {} row(s)", self.tracker_advance);
             }
             OverlayKind::LoopLibrary => {
                 self.close_overlay(false);
@@ -3660,39 +3672,6 @@ impl App {
         } else {
             self.open_noob_setup(NoobTarget::Tracker);
         }
-    }
-
-    fn open_note_length(&mut self) {
-        if self.tracker_mode != TrackerMode::Edit {
-            self.status = "note length is available in Step Edit".into();
-            return;
-        }
-        self.note_length_draft = self.note_length;
-        self.set_screen(Screen::TrackerNoteLength);
-        self.reset_context_page();
-        self.status = "NOTE LENGTH · turn encoder · press to confirm".into();
-    }
-
-    fn adjust_note_length(&mut self, direction: i8) {
-        self.note_length_draft = self.note_length_draft.turn(direction);
-        self.status = format!(
-            "NOTE LENGTH {} · press to confirm",
-            self.note_length_draft.label()
-        );
-    }
-
-    fn cancel_note_length(&mut self) {
-        self.note_length_draft = self.note_length;
-        self.set_screen(Screen::Tracker);
-        self.set_tracker_mode(TrackerMode::Edit);
-        self.status = format!("note length unchanged · {}", self.note_length.label());
-    }
-
-    fn confirm_note_length(&mut self) {
-        self.note_length = self.note_length_draft;
-        self.set_screen(Screen::Tracker);
-        self.set_tracker_mode(TrackerMode::Edit);
-        self.status = format!("Step Edit note length {}", self.note_length.label());
     }
 
     fn note_row_span_and_gate(&self) -> (usize, u8) {
@@ -5607,24 +5586,7 @@ impl App {
     }
 
     fn select_pattern_meter(&mut self, beats: u8) {
-        let old = pattern_sizes(self.pattern_clear_beats);
-        let tier = old
-            .iter()
-            .position(|rows| *rows == self.pattern_setup_rows)
-            .unwrap_or(2);
         self.pattern_clear_beats = beats;
-        self.pattern_setup_rows = pattern_sizes(beats)[tier];
-        self.pattern_setup_status();
-    }
-
-    fn change_pattern_size(&mut self, direction: i8) {
-        let sizes = pattern_sizes(self.pattern_clear_beats);
-        let current = sizes
-            .iter()
-            .position(|rows| *rows == self.pattern_setup_rows)
-            .unwrap_or(2);
-        let next = wrapped_index(current, sizes.len(), direction);
-        self.pattern_setup_rows = sizes[next];
         self.pattern_setup_status();
     }
 
@@ -6171,18 +6133,6 @@ impl App {
             }
             Err(error) => self.status = format!("clear pattern: {error}"),
         }
-    }
-    fn move_order(&mut self, direction: i8) {
-        self.cancel_tracker_gesture();
-        self.tracker_order = wrapped_index(self.tracker_order, self.song.order.len(), direction);
-        self.clamp_tracker_cursor();
-        self.tracker_row = 0;
-        self.sync_tracker_route();
-        self.status = format!(
-            "order {:02}/{:02}",
-            self.tracker_order + 1,
-            self.song.order.len()
-        );
     }
     fn repeat_order(&mut self) {
         let number = self.tracker_pattern_number();
@@ -6764,10 +6714,12 @@ impl App {
         let targets = self
             .selected_effect()
             .map(|effect| {
-                crate::effect_schema::schema(effect.kind)
+                crate::effect_schema::controls(effect.kind)
                     .iter()
+                    .enumerate()
                     .zip(CONTROLS.iter())
-                    .map(|(spec, control)| {
+                    .filter_map(|((index, _mapping), control)| {
+                        let spec = crate::effect_schema::controlled_parameter(effect.kind, index)?;
                         let value = effect
                             .parameters
                             .get(spec.name)
@@ -6783,7 +6735,7 @@ impl App {
                                 .unwrap_or(0.0),
                             _ => (value - spec.minimum) / (spec.maximum - spec.minimum).max(1.0),
                         };
-                        (control.cc, normalized)
+                        Some((control.cc, normalized))
                     })
                     .collect::<Vec<_>>()
             })
@@ -6811,7 +6763,8 @@ impl App {
         let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("selected effect has a valid rack");
-        let Some(spec) = crate::effect_schema::schema(effect.kind).get(control_index) else {
+        let Some(spec) = crate::effect_schema::controlled_parameter(effect.kind, control_index)
+        else {
             self.status = format!(
                 "{} has no parameter on this effect",
                 fx_hardware_label(control_index)
@@ -7336,9 +7289,10 @@ impl App {
         let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("rack order was validated");
-        let schema = crate::effect_schema::schema(effect.kind);
-        self.fx_parameter = self.fx_parameter.min(schema.len().saturating_sub(1));
-        let spec = schema[self.fx_parameter];
+        let controls = crate::effect_schema::controls(effect.kind);
+        self.fx_parameter = self.fx_parameter.min(controls.len().saturating_sub(1));
+        let spec = crate::effect_schema::controlled_parameter(effect.kind, self.fx_parameter)
+            .expect("effect control layout references its persisted parameter");
         if is_aux_target(self.fx_target)
             && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
         {
@@ -7385,7 +7339,7 @@ impl App {
     fn move_fx_parameter(&mut self, direction: i8) {
         let len = self
             .selected_effect()
-            .map(|effect| crate::effect_schema::schema(effect.kind).len())
+            .map(|effect| crate::effect_schema::controls(effect.kind).len())
             .unwrap_or(0);
         self.fx_parameter = wrapped_index(self.fx_parameter, len, direction);
         self.status = "FX parameter highlighted · press encoder to edit".into();
@@ -7450,7 +7404,8 @@ impl App {
         let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("selected effect has a valid rack");
-        let spec = crate::effect_schema::schema(effect.kind)[self.fx_parameter];
+        let spec = crate::effect_schema::controlled_parameter(effect.kind, self.fx_parameter)
+            .expect("effect control layout references its persisted parameter");
         if !spec.accepts(value) {
             self.status = format!(
                 "{} RANGE · {:.2}..{:.2} {}",
@@ -8510,7 +8465,6 @@ fn dispatch_encoder_input(
         || (app.screen == Screen::TrackerPages && app.page_manager_mode != PageManagerMode::Pages)
         || app.screen == Screen::FxEditor
         || app.screen == Screen::Routing
-        || app.screen == Screen::TrackerNoteLength
         || app.noob_target.is_some()
         || app.confirm_routing_defaults;
     let tracker_column_turn = physical
@@ -8739,8 +8693,6 @@ fn perform(
     }
     if a.screen == Screen::TrackerFiles && a.confirm_pattern_clear {
         match action {
-            Action::Up | Action::PatternSizeDown => a.change_pattern_size(-1),
-            Action::Down | Action::PatternSizeUp => a.change_pattern_size(1),
             Action::SelectThreeFour => a.select_pattern_meter(3),
             Action::SelectFourFour => a.select_pattern_meter(4),
             Action::Activate | Action::ConfirmPatternClear => a.apply_pattern_clear(),
@@ -8768,8 +8720,6 @@ fn perform(
                 a.move_home(-1);
             } else if a.screen == Screen::Help {
                 a.move_help(-1);
-            } else if a.screen == Screen::TrackerNoteLength {
-                a.adjust_note_length(-1);
             } else if a.screen == Screen::TrackerLoopAlign {
                 a.adjust_loop_offset_bars(-1);
             } else if a.screen == Screen::Ideas {
@@ -8822,8 +8772,6 @@ fn perform(
                 a.move_home(1);
             } else if a.screen == Screen::Help {
                 a.move_help(1);
-            } else if a.screen == Screen::TrackerNoteLength {
-                a.adjust_note_length(1);
             } else if a.screen == Screen::TrackerLoopAlign {
                 a.adjust_loop_offset_bars(1);
             } else if a.screen == Screen::Ideas {
@@ -8963,7 +8911,6 @@ fn perform(
             Screen::TrackerArrange => a.arrangement_jump_to_pattern(),
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::TrackerTools => {}
-            Screen::TrackerNoteLength => a.confirm_note_length(),
             Screen::TrackerLoop => a.import_selected_loop(),
             Screen::TrackerLoopAlign => {
                 a.set_screen(Screen::TrackerLoop);
@@ -9046,6 +8993,9 @@ fn perform(
         | Action::OpenPatternOverlay
         | Action::OpenSongOverlay
         | Action::OpenRouteOverlay
+        | Action::OpenPatternLengthOverlay
+        | Action::OpenNoteLengthOverlay
+        | Action::OpenTrackerAdvanceOverlay
         | Action::OpenEffectsOverlay => a.open_overlay(action),
         Action::OpenAudioRecorder => {
             a.set_tracker_edit(false);
@@ -9109,10 +9059,6 @@ fn perform(
         Action::FinalRecordToggle => a.toggle_final_recording(),
         Action::Back => {
             if a.screen == Screen::Routing && a.cancel_routing_edit() {
-                return false;
-            }
-            if a.screen == Screen::TrackerNoteLength {
-                a.cancel_note_length();
                 return false;
             }
             if a.screen == Screen::FxRack && a.fx_type_edit.is_some() {
@@ -9180,7 +9126,6 @@ fn perform(
                 | Screen::TrackerArrange
                 | Screen::TrackerPages
                 | Screen::TrackerTools
-                | Screen::TrackerNoteLength
                 | Screen::TrackerLoop => Screen::Tracker,
                 Screen::TrackerLoopAlign => Screen::TrackerLoop,
                 Screen::FxRack => a.fx_rack_parent,
@@ -9211,9 +9156,6 @@ fn perform(
         Action::NoobScale => a.toggle_noob_scale(),
         Action::ConfirmNoob => a.confirm_noob(),
         Action::CancelNoob => a.cancel_noob(),
-        Action::OpenNoteLength => a.open_note_length(),
-        Action::ConfirmNoteLength => a.confirm_note_length(),
-        Action::CancelNoteLength => a.cancel_note_length(),
         Action::ConfirmRoutingDefaults => a.finish_routing_defaults_prompt(true),
         Action::CancelRoutingDefaults => a.finish_routing_defaults_prompt(false),
         Action::LoopImport => a.import_selected_loop(),
@@ -9257,7 +9199,6 @@ fn perform(
         }
         Action::TrackerPageMute => a.toggle_tracker_page_mute(),
         Action::NextTrackerPage => a.move_tracker_page(1),
-        Action::PreviousTrackerPage => a.move_tracker_page(-1),
         Action::PreviewSong => a.preview_song(),
         Action::DeleteSong => a.delete_song(),
         Action::RenameProject => a.begin_project_rename(),
@@ -9297,8 +9238,6 @@ fn perform(
         Action::ArrangementMoveLater => a.arrangement_move_step(1),
         Action::ArrangementJumpToPattern => a.arrangement_jump_to_pattern(),
         Action::ArrangementPlayFromStep => a.arrangement_play_from_step(),
-        Action::PreviousOrder => a.move_order(-1),
-        Action::NextOrder => a.move_order(1),
         Action::TrackerEdit => {
             let enabled = a.tracker_mode != TrackerMode::Edit;
             a.set_tracker_edit(enabled);
@@ -9307,10 +9246,6 @@ fn perform(
         Action::TrackerSkip => a.tracker_skip(),
         Action::TrackerErase => a.tracker_erase(),
         Action::TrackerNoteOff => a.tracker_note_off(),
-        Action::TrackerAdvance1 => a.set_tracker_advance(1),
-        Action::TrackerAdvance2 => a.set_tracker_advance(2),
-        Action::TrackerAdvance4 => a.set_tracker_advance(4),
-        Action::TrackerAdvance8 => a.set_tracker_advance(8),
         Action::OpenNoteEditor => a.open_note_editor(),
         Action::NoteDestinationField
         | Action::NoteChannelField
@@ -9365,8 +9300,6 @@ fn perform(
         Action::SelectFourFour => {
             a.select_pattern_meter(4);
         }
-        Action::PatternSizeDown => a.change_pattern_size(-1),
-        Action::PatternSizeUp => a.change_pattern_size(1),
         Action::ConfirmPatternClear => a.apply_pattern_clear(),
         Action::AudioRecordToggle => a.toggle_audio_recording(),
         Action::AudioToggleArm => a.toggle_audio_track_arm(state),
@@ -9390,30 +9323,6 @@ fn perform(
         Action::FxSendIncrease => a.adjust_aux_send(1),
         Action::FxSendPoint => a.toggle_aux_send_point(),
         Action::FxReturnCycle => a.cycle_aux_return(),
-        Action::FxParameterPrevious => {
-            if a.fx_value_editing {
-                a.confirm_fx_value_edit();
-            }
-            a.move_fx_parameter(-1);
-        }
-        Action::FxParameterNext => {
-            if a.fx_value_editing {
-                a.confirm_fx_value_edit();
-            }
-            a.move_fx_parameter(1);
-        }
-        Action::FxValueDecrease => {
-            if !a.fx_value_editing {
-                a.begin_fx_value_edit();
-            }
-            a.adjust_effect_parameter(-1);
-        }
-        Action::FxValueIncrease => {
-            if !a.fx_value_editing {
-                a.begin_fx_value_edit();
-            }
-            a.adjust_effect_parameter(1);
-        }
     }
     false
 }
@@ -9692,26 +9601,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 a.jump_to_letter(character);
                 None
             }
-            _ => None,
-        };
-        if let Some(action) = action {
-            perform(action, a, state, Some(tx));
-        }
-        return false;
-    }
-    if a.screen == Screen::TrackerNoteLength {
-        let action = match code {
-            KeyCode::Left | KeyCode::Up | KeyCode::Char('-') => {
-                a.adjust_note_length(-1);
-                None
-            }
-            KeyCode::Right | KeyCode::Down | KeyCode::Char('+') | KeyCode::Char('=') => {
-                a.adjust_note_length(1);
-                None
-            }
-            KeyCode::Enter => Some(Action::ConfirmNoteLength),
-            KeyCode::Esc | KeyCode::Char('b') => Some(Action::CancelNoteLength),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
             _ => None,
         };
         if let Some(action) = action {
@@ -10102,6 +9991,10 @@ const fn pattern_sizes(beats: u8) -> [usize; 5] {
     }
 }
 
+fn pattern_length_choices() -> Vec<usize> {
+    (1..=32).chain([48, 64, 96, 128, 192, 256]).collect()
+}
+
 const fn drum_sizes(meter: u8) -> [usize; 3] {
     if meter == 3 {
         [24, 48, 96]
@@ -10323,7 +10216,6 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerTools => {
             draw_tracker_child(f, "FT2 TOOLS", "Arrange · Loop · FX · Clipboard · Mute")
         }
-        Screen::TrackerNoteLength => draw_note_length(f, a),
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
         Screen::AudioRecorder => draw_audio_recorder(f, a),
@@ -11318,8 +11210,8 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let effect = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
         .and_then(|rack| rack.effect(id))
         .expect("validated rack order");
-    let schema = crate::effect_schema::schema(effect.kind);
-    a.fx_parameter = a.fx_parameter.min(schema.len().saturating_sub(1));
+    let controls = crate::effect_schema::controls(effect.kind);
+    a.fx_parameter = a.fx_parameter.min(controls.len().saturating_sub(1));
     let inner_width = usize::from(body.width.saturating_sub(2));
     let state = if a.fx_value_editing {
         if a.fx_numeric_input.is_some() {
@@ -11347,43 +11239,69 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD),
     ))];
-    for (index, spec) in schema.iter().enumerate() {
-        let value = effect
-            .parameters
-            .get(spec.name)
-            .copied()
-            .unwrap_or(spec.default);
-        let style = if index == a.fx_parameter && a.fx_value_editing {
-            Style::default().fg(Color::Black).bg(Color::Green)
-        } else if index == a.fx_parameter {
-            Style::default().fg(Color::Black).bg(Color::Yellow)
-        } else {
-            Style::default().fg(Color::White)
-        };
-        let mapping = if index < CONTROLS.len() {
-            fx_hardware_label(index)
-        } else {
-            "--".into()
-        };
-        let shown_value = if index == a.fx_parameter {
-            a.fx_numeric_input
-                .as_ref()
-                .map(|input| format!("{input}_"))
-                .unwrap_or_else(|| crate::effect_schema::format_value(effect.kind, *spec, value))
-        } else {
-            crate::effect_schema::format_value(effect.kind, *spec, value)
-        };
-        lines.push(Spans::from(Span::styled(
-            fx_parameter_row(
-                index == a.fx_parameter,
-                &mapping,
-                crate::effect_schema::abbreviation(spec.name),
-                &shown_value,
-                inner_width,
-            ),
-            style,
-        )));
+    lines.push(Spans::from(""));
+    let base_width = inner_width / 4;
+    let remainder = inner_width % 4;
+    let widths = [
+        base_width + usize::from(remainder > 0),
+        base_width + usize::from(remainder > 1),
+        base_width + usize::from(remainder > 2),
+        base_width,
+    ];
+    let centered = |text: &str, width: usize| {
+        let text = truncate(text, width);
+        let left = width.saturating_sub(text.chars().count()) / 2;
+        format!(
+            "{}{}{}",
+            " ".repeat(left),
+            text,
+            " ".repeat(width.saturating_sub(left + text.chars().count()))
+        )
+    };
+    for control_row in 0..2 {
+        let mut headings = Vec::with_capacity(4);
+        let mut values = Vec::with_capacity(4);
+        for (column, width) in widths.iter().copied().enumerate() {
+            let index = control_row * 4 + column;
+            let selected = index == a.fx_parameter;
+            let style = if selected && a.fx_value_editing {
+                Style::default().fg(Color::Black).bg(Color::Green)
+            } else if selected {
+                Style::default().fg(Color::Black).bg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            let Some(control) = controls.get(index) else {
+                headings.push(Span::raw(" ".repeat(width)));
+                values.push(Span::raw(" ".repeat(width)));
+                continue;
+            };
+            let spec = crate::effect_schema::controlled_parameter(effect.kind, index)
+                .expect("effect control layout references its persisted parameter");
+            let value = effect
+                .parameters
+                .get(spec.name)
+                .copied()
+                .unwrap_or(spec.default);
+            let shown_value = if selected {
+                a.fx_numeric_input
+                    .as_ref()
+                    .map(|input| format!("{input}_"))
+                    .unwrap_or_else(|| crate::effect_schema::format_value(effect.kind, spec, value))
+            } else {
+                crate::effect_schema::format_value(effect.kind, spec, value)
+            };
+            headings.push(Span::styled(centered(control.label, width), style));
+            values.push(Span::styled(centered(&shown_value, width), style));
+        }
+        lines.push(Spans::from(headings));
+        lines.push(Spans::from(values));
+        if control_row == 0 {
+            lines.push(Spans::from(""));
+            lines.push(Spans::from(""));
+        }
     }
+    lines.push(Spans::from(""));
     let meter = a.engine.as_ref().and_then(|engine| engine.effect_meter(id));
     let meter_line = if let Some(meter) = meter {
         let input_peak = meter.input.peak.left.max(meter.input.peak.right);
@@ -11486,19 +11404,6 @@ fn draw_tracker_child<B: Backend>(f: &mut Frame<B>, title: &str, details: &str) 
                     .add_modifier(Modifier::BOLD),
             ),
         rect(z.x, z.y + 1, z.width, z.height.saturating_sub(3)),
-    );
-}
-
-fn draw_note_length<B: Backend>(f: &mut Frame<B>, a: &App) {
-    let z = f.size();
-    f.render_widget(
-        Paragraph::new(format!(
-            "STEP EDIT NOTE LENGTH\n\n        {}\n\n1/1  1/2  1/4\n1/8  1/16  1/32\n\nTurn encoder to choose\nPress encoder to confirm\nEXIT cancels",
-            a.note_length_draft.label()
-        ))
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Green)),
-        rect(z.x, z.y, z.width, z.height.saturating_sub(2)),
     );
 }
 
@@ -11964,6 +11869,23 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
             ));
             rows
         }
+        OverlayKind::TrackerPatternLength => pattern_length_choices()
+            .into_iter()
+            .map(|rows| format!("{rows:>3} ROWS"))
+            .collect(),
+        OverlayKind::TrackerNoteLength => NoteLength::ALL
+            .iter()
+            .map(|length| format!("NOTE {}", length.label()))
+            .collect(),
+        OverlayKind::TrackerAdvance => (0..=32)
+            .map(|rows| {
+                if rows == 0 {
+                    "0 ROWS · STAY ON CURRENT ROW".into()
+                } else {
+                    format!("{rows} ROW(S)")
+                }
+            })
+            .collect(),
         OverlayKind::LoopLibrary => a
             .loop_imports
             .iter()
@@ -13288,7 +13210,7 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             Spans::from(format!("METER  ▶ {}/4", a.pattern_clear_beats)),
             Spans::from(format!("ROWS   ▶ {}", a.pattern_setup_rows)),
             Spans::from(""),
-            Spans::from("Turn: size · buttons: meter/confirm"),
+            Spans::from("LNGTH: rows · buttons: meter/confirm"),
             Spans::from("EXIT cancels"),
         ];
         f.render_widget(
@@ -13691,7 +13613,6 @@ enum ScreenshotScenario {
     PageChannel,
     TrackerTools,
     NoobSetup,
-    NoteLength,
     RoutingDefaults,
     TrackerLoop,
     TrackerLoopAlign,
@@ -13705,7 +13626,7 @@ enum ScreenshotScenario {
 }
 
 impl ScreenshotScenario {
-    const ALL: [Self; 29] = [
+    const ALL: [Self; 28] = [
         Self::Presets,
         Self::Playback,
         Self::Ideas,
@@ -13724,7 +13645,6 @@ impl ScreenshotScenario {
         Self::PageChannel,
         Self::TrackerTools,
         Self::NoobSetup,
-        Self::NoteLength,
         Self::RoutingDefaults,
         Self::TrackerLoop,
         Self::TrackerLoopAlign,
@@ -13753,7 +13673,6 @@ impl ScreenshotScenario {
             Self::TrackerPages | Self::PageTarget | Self::PageChannel => Screen::TrackerPages,
             Self::TrackerTools => Screen::TrackerTools,
             Self::NoobSetup => Screen::Tracker,
-            Self::NoteLength => Screen::TrackerNoteLength,
             Self::RoutingDefaults => Screen::TrackerFiles,
             Self::TrackerLoop => Screen::TrackerLoop,
             Self::TrackerLoopAlign => Screen::TrackerLoopAlign,
@@ -13785,7 +13704,6 @@ impl ScreenshotScenario {
             Self::PageChannel => "channel-editor",
             Self::TrackerTools => "ft2-tools",
             Self::NoobSetup => "noob-setup",
-            Self::NoteLength => "note-length",
             Self::RoutingDefaults => "routing-defaults",
             Self::TrackerLoop => "ft2-loop",
             Self::TrackerLoopAlign => "loop-align",
@@ -13808,18 +13726,24 @@ enum ScreenshotSpecialScenario {
     TrackerPatternOverlay,
     TrackerSongOverlay,
     TrackerRouteOverlay,
+    PatternLengthOverlay,
+    NoteLengthOverlay,
+    EditAddOverlay,
     LoopLibraryOverlay,
     MixEffectsOverlay,
 }
 
 impl ScreenshotSpecialScenario {
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 11] = [
         Self::Home,
         Self::MidiLearn,
         Self::TrackerPageOverlay,
         Self::TrackerPatternOverlay,
         Self::TrackerSongOverlay,
         Self::TrackerRouteOverlay,
+        Self::PatternLengthOverlay,
+        Self::NoteLengthOverlay,
+        Self::EditAddOverlay,
         Self::LoopLibraryOverlay,
         Self::MixEffectsOverlay,
     ];
@@ -13832,6 +13756,9 @@ impl ScreenshotSpecialScenario {
             Self::TrackerPatternOverlay => "overlay-ft2-pattern",
             Self::TrackerSongOverlay => "overlay-ft2-song",
             Self::TrackerRouteOverlay => "overlay-ft2-route",
+            Self::PatternLengthOverlay => "overlay-pattern-length",
+            Self::NoteLengthOverlay => "overlay-note-length",
+            Self::EditAddOverlay => "overlay-edit-add",
             Self::LoopLibraryOverlay => "overlay-loop-library",
             Self::MixEffectsOverlay => "overlay-performance-fx",
         }
@@ -14181,11 +14108,6 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
             };
             app.status = "N00B E MINOR · outside notes stay silent".into();
         }
-        ScreenshotScenario::NoteLength => {
-            fill_demo_song(app);
-            app.note_length_draft = NoteLength::Eighth;
-            app.status = "1/8 note length selected · DONE keeps it".into();
-        }
         ScreenshotScenario::RoutingDefaults => {
             fill_demo_song(app);
             app.confirm_routing_defaults = true;
@@ -14281,6 +14203,33 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
                     ScreenshotSpecialScenario::TrackerPatternOverlay => 1,
                     ScreenshotSpecialScenario::TrackerSongOverlay => 2,
                     ScreenshotSpecialScenario::TrackerRouteOverlay => 5,
+                    _ => 0,
+                };
+            }
+        }
+        ScreenshotSpecialScenario::PatternLengthOverlay => {
+            configure_screenshot_scenario(app, ScreenshotScenario::PatternSetup);
+            app.open_overlay(Action::OpenPatternLengthOverlay);
+            if let Some(overlay) = app.overlay.as_mut() {
+                overlay.selection = pattern_length_choices()
+                    .iter()
+                    .position(|rows| *rows == 48)
+                    .unwrap_or(0);
+            }
+        }
+        ScreenshotSpecialScenario::NoteLengthOverlay
+        | ScreenshotSpecialScenario::EditAddOverlay => {
+            configure_screenshot_scenario(app, ScreenshotScenario::TrackerEdit);
+            let action = match scenario {
+                ScreenshotSpecialScenario::NoteLengthOverlay => Action::OpenNoteLengthOverlay,
+                ScreenshotSpecialScenario::EditAddOverlay => Action::OpenTrackerAdvanceOverlay,
+                _ => unreachable!(),
+            };
+            app.open_overlay(action);
+            if let Some(overlay) = app.overlay.as_mut() {
+                overlay.selection = match scenario {
+                    ScreenshotSpecialScenario::NoteLengthOverlay => 3,
+                    ScreenshotSpecialScenario::EditAddOverlay => 12,
                     _ => 0,
                 };
             }
@@ -14909,6 +14858,43 @@ mod tests {
     }
 
     #[test]
+    fn ft2_selector_buttons_open_their_exact_rotary_overlays() {
+        use crate::pads::PadAction;
+
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+
+        dispatch_pad(PadAction::Page2, true, &mut a, Path::new("/none"), &tx);
+        dispatch_pad(PadAction::Item3, true, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerNoteLength)
+        );
+        assert_eq!(a.screen, Screen::Tracker, "LENGTH must remain over FT2");
+        a.close_overlay(true);
+
+        dispatch_pad(PadAction::Item2, true, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerAdvance)
+        );
+        a.overlay.as_mut().unwrap().selection = 0;
+        a.activate_overlay();
+        assert_eq!(a.tracker_advance, 0);
+
+        a.screen = Screen::TrackerFiles;
+        a.choose_pattern_clear();
+        dispatch_pad(PadAction::Item3, true, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerPatternLength)
+        );
+    }
+
+    #[test]
     fn ft2_page_overlay_exposes_the_unloaded_loop_after_the_midi_pages() {
         let p = presets();
         let mut a = app(&p);
@@ -15226,7 +15212,6 @@ mod tests {
         render(40, 20, Screen::TrackerArrange);
         render(40, 20, Screen::TrackerPages);
         render(40, 20, Screen::TrackerTools);
-        render(40, 20, Screen::TrackerNoteLength);
         render(40, 20, Screen::TrackerLoop);
         render(40, 20, Screen::TrackerLoopAlign);
         render(40, 20, Screen::AudioRecorder);
@@ -15599,12 +15584,9 @@ mod tests {
         assert_eq!(a.tracker_track, 3);
         assert_eq!(a.tracker_row, 7);
 
-        perform(
-            Action::PreviousTrackerPage,
-            &mut a,
-            Path::new("/none"),
-            None,
-        );
+        a.open_overlay(Action::OpenPageOverlay);
+        a.overlay.as_mut().unwrap().selection = 3;
+        a.activate_overlay();
         assert_eq!(a.tracker_page, 0);
         assert_eq!(a.tracker_track, 3);
         assert_eq!(a.tracker_row, 7);
@@ -16084,7 +16066,6 @@ mod tests {
         render(38, 14, Screen::TrackerArrange);
         render(38, 14, Screen::TrackerPages);
         render(38, 14, Screen::TrackerTools);
-        render(38, 14, Screen::TrackerNoteLength);
         render(38, 14, Screen::TrackerLoop);
         render(38, 14, Screen::TrackerLoopAlign);
         render(38, 14, Screen::AudioRecorder);
@@ -16331,7 +16312,7 @@ mod tests {
     }
 
     #[test]
-    fn every_effect_parameter_is_visible_together_at_40x20() {
+    fn every_effect_performance_control_is_visible_together_at_40x20() {
         let kinds = [
             EffectKind::Utility,
             EffectKind::Eq,
@@ -16352,14 +16333,14 @@ mod tests {
             let mut a = app(&p);
             a.song.insert_rack.add_with_id(kind, 1).unwrap();
             a.fx_selection = FxRackSelection::Effect(1);
-            a.fx_parameter = crate::effect_schema::schema(kind).len().saturating_sub(1);
+            a.fx_parameter = crate::effect_schema::controls(kind).len().saturating_sub(1);
             a.screen = Screen::FxEditor;
             let text = buffer_text(&render_app(&mut a, 40, 20));
-            for spec in crate::effect_schema::schema(kind) {
-                let abbreviation = crate::effect_schema::abbreviation(spec.name);
+            for control in crate::effect_schema::controls(kind) {
                 assert!(
-                    text.contains(abbreviation),
-                    "{kind:?} omitted {abbreviation}: {text}"
+                    text.contains(control.label),
+                    "{kind:?} omitted {}: {text}",
+                    control.label
                 );
             }
             assert!(!text.contains("Meters unavailable"));
@@ -16446,9 +16427,6 @@ mod tests {
         a.tracker_row = 0;
         perform(Action::Up, &mut a, Path::new("/none"), None);
         assert_eq!(a.tracker_row, a.tracker_rows() - 1);
-        a.tracker_order = 0;
-        a.move_order(-1);
-        assert_eq!(a.tracker_order, a.song.order.len() - 1);
         a.tracker_track = 0;
         a.tracker_page = 0;
         a.move_tracker_lane(-1);
@@ -16474,8 +16452,11 @@ mod tests {
         a.move_routing(-1);
         assert_eq!(a.routing.selected, RoutingRow::ALL.len() - 1);
 
-        assert_eq!(NoteLength::Whole.turn(-1), NoteLength::ThirtySecond);
-        assert_eq!(NoteLength::ThirtySecond.turn(1), NoteLength::Whole);
+        assert_eq!(NoteLength::ALL.first(), Some(&NoteLength::Whole));
+        assert_eq!(
+            NoteLength::ALL.last(),
+            Some(&NoteLength::HundredTwentyEighth)
+        );
 
         a.screen = Screen::Tracker;
         a.open_overlay(Action::OpenRouteOverlay);
@@ -16512,7 +16493,7 @@ mod tests {
         assert_eq!(a.song.insert_rack.order.len(), before + 1);
         a.confirm_effect_type_edit();
         a.set_screen(Screen::FxEditor);
-        let count = crate::effect_schema::schema(a.selected_effect().unwrap().kind).len();
+        let count = crate::effect_schema::controls(a.selected_effect().unwrap().kind).len();
         a.fx_parameter = 0;
         perform(Action::Up, &mut a, Path::new("/none"), None);
         assert_eq!(a.fx_parameter, count - 1);
@@ -16523,36 +16504,27 @@ mod tests {
     }
 
     #[test]
-    fn fx_rows_have_exact_cell_budgets_and_keep_selection_while_editing() {
+    fn fx_grid_maps_two_rows_of_four_and_keeps_selection_while_editing() {
         let p = presets();
         for kind in [EffectKind::Eq, EffectKind::Delay, EffectKind::Compressor] {
-            for (index, spec) in crate::effect_schema::schema(kind).iter().enumerate() {
-                let row = fx_parameter_row(
-                    index == 0,
-                    &fx_hardware_label(index),
-                    crate::effect_schema::abbreviation(spec.name),
-                    &crate::effect_schema::format_value(kind, *spec, spec.default),
-                    38,
-                );
-                assert_eq!(crate::ui_text::width(&row), 38, "{kind:?} {}", spec.name);
-                assert!(!row.contains('\n') && !row.contains('\r'));
-            }
+            assert!(crate::effect_schema::controls(kind).len() <= 8);
         }
 
         let mut a = app(&p);
         a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
         a.fx_selection = FxRackSelection::Effect(1);
-        a.fx_parameter = 10;
+        a.fx_parameter = 7;
         a.screen = Screen::FxEditor;
         let browse = render_app(&mut a, 40, 20);
-        assert_eq!(buffer_cell(&browse, 1, 12).bg, Color::Yellow);
+        assert_eq!(buffer_cell(&browse, 30, 7).bg, Color::Yellow);
         a.begin_fx_value_edit();
         a.begin_fx_numeric_entry('1');
         let editing = render_app(&mut a, 40, 20);
-        assert_eq!(buffer_cell(&editing, 1, 12).bg, Color::Green);
-        assert!(row_text(&editing, 12).contains("1_"));
-        for spec in crate::effect_schema::schema(EffectKind::Eq) {
-            assert!(buffer_text(&editing).contains(crate::effect_schema::abbreviation(spec.name)));
+        assert_eq!(buffer_cell(&editing, 30, 7).bg, Color::Green);
+        assert!(row_text(&editing, 8).contains("1_"));
+        let text = buffer_text(&editing);
+        for control in crate::effect_schema::controls(EffectKind::Eq) {
+            assert!(text.contains(control.label), "missing {}", control.label);
         }
     }
 
@@ -16766,7 +16738,7 @@ mod tests {
         }
         key(KeyCode::Enter, &mut a, Path::new("/none"), &tx);
         assert_eq!(
-            a.song.insert_rack.effect(id).unwrap().parameters["low_cut_hz"],
+            a.song.insert_rack.effect(id).unwrap().parameters["low_mid_hz"],
             123.0
         );
 
@@ -16777,7 +16749,7 @@ mod tests {
         assert!(a.status.contains("RANGE"));
         key(KeyCode::Esc, &mut a, Path::new("/none"), &tx);
         assert_eq!(
-            a.song.insert_rack.effect(id).unwrap().parameters["low_cut_hz"],
+            a.song.insert_rack.effect(id).unwrap().parameters["low_mid_hz"],
             123.0
         );
 
@@ -16788,16 +16760,25 @@ mod tests {
         a.apply_fx_control(CONTROLS[0].cc, 0.0);
         a.apply_fx_control(CONTROLS[0].cc, 1.0);
         assert_eq!(
-            a.song.insert_rack.effect(id).unwrap().parameters["low_cut_enabled"],
-            1.0
+            a.song.insert_rack.effect(id).unwrap().parameters["low_shelf_hz"],
+            800.0
+        );
+
+        a.arm_fx_pickup();
+        a.apply_fx_control(CONTROLS[4].cc, 0.5);
+        a.apply_fx_control(CONTROLS[4].cc, 1.0);
+        assert_eq!(
+            a.song.insert_rack.effect(id).unwrap().parameters["low_shelf_db"],
+            18.0
         );
     }
 
     #[test]
-    fn every_effect_and_parameter_remains_reachable() {
+    fn every_effect_and_performance_control_remains_reachable() {
         assert_eq!(INSERT_EFFECTS.len(), 13);
         for kind in INSERT_EFFECTS {
             assert!(!crate::effect_schema::schema(kind).is_empty(), "{kind:?}");
+            assert!(!crate::effect_schema::controls(kind).is_empty(), "{kind:?}");
         }
     }
 
@@ -17110,12 +17091,11 @@ mod tests {
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item1, true))
             .unwrap();
         drain(&rx, &mut eight, Path::new("/none"), &tx);
+        assert_eq!(eight.menu_page(), 1);
         assert_eq!(
-            eight.menu_page(),
-            0,
-            "edit context resets predictably to page one"
+            eight.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerPage)
         );
-        assert!(eight.note_editor.is_some());
 
         let mut five = app(&p);
         five.screen = Screen::Tracker;
@@ -17124,7 +17104,10 @@ mod tests {
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item1, true))
             .unwrap();
         drain(&rx, &mut five, Path::new("/none"), &tx);
-        assert!(five.note_editor.is_some());
+        assert_eq!(
+            five.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerPage)
+        );
 
         let mut four = app(&p);
         four.screen = Screen::Tracker;
@@ -17252,7 +17235,8 @@ mod tests {
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
-        assert_eq!(a.tracker_track, 1);
+        assert_eq!(a.tracker_mode, TrackerMode::Edit);
+        assert_eq!(a.menu_page(), 0, "entering STEP starts on its OPS page");
         perform(Action::OpenIdeas, &mut a, Path::new("/none"), None);
         assert_eq!(a.menu_page(), 0);
         perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
@@ -18939,7 +18923,12 @@ mod tests {
         assert!(a.confirm_pattern_clear);
         perform(Action::SelectThreeFour, &mut a, Path::new("/none"), None);
         assert_eq!(a.pattern_clear_beats, 3);
-        perform(Action::PatternSizeDown, &mut a, Path::new("/none"), None);
+        a.open_overlay(Action::OpenPatternLengthOverlay);
+        a.overlay.as_mut().unwrap().selection = pattern_length_choices()
+            .iter()
+            .position(|rows| *rows == 24)
+            .unwrap();
+        a.activate_overlay();
         perform(Action::Activate, &mut a, Path::new("/none"), None);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);
         assert_eq!(a.song.patterns[&0].rows.len(), 24);
@@ -18957,7 +18946,12 @@ mod tests {
 
         perform(Action::NewPattern, &mut a, Path::new("/none"), None);
         assert!(a.confirm_pattern_clear);
-        perform(Action::PatternSizeUp, &mut a, Path::new("/none"), None);
+        a.open_overlay(Action::OpenPatternLengthOverlay);
+        a.overlay.as_mut().unwrap().selection = pattern_length_choices()
+            .iter()
+            .position(|rows| *rows == 128)
+            .unwrap();
+        a.activate_overlay();
         perform(
             Action::ConfirmPatternClear,
             &mut a,
@@ -19202,17 +19196,28 @@ mod tests {
     }
 
     #[test]
-    fn pattern_setup_offers_matching_four_four_and_three_four_sizes() {
+    fn pattern_setup_offers_every_short_length_and_extended_choices() {
         assert_eq!(pattern_sizes(4), [8, 16, 32, 64, 128]);
         assert_eq!(pattern_sizes(3), [6, 12, 24, 48, 96]);
+        assert_eq!(
+            &pattern_length_choices()[..32],
+            (1..=32).collect::<Vec<_>>()
+        );
+        for rows in [48, 64, 96, 128, 192, 256] {
+            assert!(pattern_length_choices().contains(&rows));
+        }
 
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::TrackerFiles;
         a.new_pattern();
         a.select_pattern_meter(3);
-        assert_eq!(a.pattern_setup_rows, 48);
-        a.change_pattern_size(-1);
+        a.open_overlay(Action::OpenPatternLengthOverlay);
+        a.overlay.as_mut().unwrap().selection = pattern_length_choices()
+            .iter()
+            .position(|rows| *rows == 24)
+            .unwrap();
+        a.activate_overlay();
         assert_eq!(a.pattern_setup_rows, 24);
         a.apply_pattern_clear();
         assert_eq!(a.song.order, vec![0, 1]);
@@ -19363,9 +19368,15 @@ mod tests {
             .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
             .unwrap();
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page3, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page2, true))
             .unwrap();
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
+            .unwrap();
+        for _ in 0..7 {
+            tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Down))
+                .unwrap();
+        }
+        tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Select))
             .unwrap();
         drain(&rx, &mut a, Path::new("/none"), &tx);
         assert_eq!(a.tracker_advance, 8);
@@ -19495,8 +19506,16 @@ mod tests {
         perform(Action::TrackerNoobToggle, &mut a, Path::new("/none"), None);
         assert!(!a.tracker_noob);
         assert_eq!(a.tracker_mode, TrackerMode::Edit);
-        perform(Action::OpenNoteLength, &mut a, Path::new("/none"), None);
-        assert_eq!(a.screen, Screen::TrackerNoteLength);
+        perform(
+            Action::OpenNoteLengthOverlay,
+            &mut a,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerNoteLength)
+        );
         a.controller_layout = ControllerLayout::Four;
         dispatch_encoder(
             crate::pads::EncoderAction::Up,
@@ -19504,7 +19523,7 @@ mod tests {
             Path::new("/none"),
             &tx,
         );
-        assert_eq!(a.note_length_draft, NoteLength::Eighth);
+        assert_eq!(a.overlay.as_ref().map(|overlay| overlay.selection), Some(3));
         dispatch_encoder(
             crate::pads::EncoderAction::Select,
             &mut a,
@@ -19963,7 +19982,7 @@ mod tests {
         a.screen = Screen::TrackerFiles;
         a.choose_pattern_clear();
         a.select_pattern_meter(3);
-        a.change_pattern_size(-1);
+        a.pattern_setup_rows = 24;
         a.apply_pattern_clear();
         assert_eq!(a.song.patterns[&0].rows.len(), 24);
 
@@ -19987,7 +20006,7 @@ mod tests {
         a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         a.choose_pattern_clear();
         assert_eq!(a.pattern_clear_beats, 4);
-        a.change_pattern_size(-1);
+        a.pattern_setup_rows = 32;
         a.apply_pattern_clear();
         assert_eq!(a.song.patterns[&0].rows.len(), 32);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);

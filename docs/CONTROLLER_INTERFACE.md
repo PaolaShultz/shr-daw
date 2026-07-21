@@ -29,9 +29,9 @@ from the splash.
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
 | Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; enable a root plus major/natural-minor N00B filter or return to chromatic Normal; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
-| FT2 normal | Main rotary selects the previous/next column across page boundaries in Play and Rec; keyboard Up/Down still moves rows, and Edit keeps rotary row movement. Page−/Page+/Track−/Track+ remain on controller page 1; play, record, cell edit, and step edit are on page 2; universal PAGE/PATTERN/SONG/ROUTE overlays are on page 3; panic/help/Exit are on page 4. |
+| FT2 normal | Main rotary selects the previous/next column across page boundaries in Play and Rec; keyboard Up/Down still moves rows, and Edit keeps rotary row movement. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. |
 | FT2 record | Record quantized notes into the selected page/current pattern and route live notes only to that page's hardware MIDI target. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; stop record, stop, exit, and panic remain available. |
-| FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; independent 1/1–1/32 note length; blank/skip; erase; note off; 1/2/4/8-row entry advance; leave edit; lane mute. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
+| FT2 edit | Musical keyboard or incoming MIDI note/chord gesture entry; independent 1/1–1/128 note length; blank/skip; erase; note off; a 0–32-row ADD value; PAGE, LENGTH, and ADD rotary overlays; and leave edit. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Step Edit on a melodic page. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B preserves the current mode; moving to Drums turns only the filter off. |
 | FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; explicit `READY`/`NOT READY`/`OUTPUT FAULT`; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
@@ -75,11 +75,14 @@ active field first, then cancels the overlay draft and closes, before a later
 Back can leave the caller. Four-button page-selection state and every layout's
 previous page are restored deterministically.
 
-FT2 demonstrates four caller-specific adapters: PAGE navigates four-column
+FT2 demonstrates seven caller-specific adapters: PAGE navigates four-column
 locations and links to Tracks; PATTERN navigates the Project's existing Pattern
 owners and links to Pattern/Project tools; SONG navigates Arrangement steps and
 links to its detailed editors; ROUTE edits a detached copy of the active page
-and applies it only through the existing Project/route synchronization path.
+and applies it only through the existing Project/route synchronization path;
+Step Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
+Pattern Setup LNGTH chooses every value from 1 through 32 plus 48, 64, 96,
+128, 192, and 256.
 The Loop Player's LIBRARY launcher uses it for one combined inbox/private
 browser; inbox selection imports and loads, while private/current/saved
 selection attaches and loads. MTR's FX launcher reuses the same rendering,
@@ -100,8 +103,8 @@ input, toggle, and return layer.
   four-button controller cannot become stranded in page-selection mode.
 - Each screen remembers its last selected page. Entering/leaving a contextual
   mode resets that context to page 1, preventing stale hidden meanings.
-- Page 1 holds the primary screen workflow; for FT2 normal mode it is the
-  Page−/Page+/Track−/Track+ movement page. On every workspace, child screen,
+- Page 1 holds the primary screen workflow; for FT2 normal mode it is PLAY.
+  On every workspace, child screen,
   and contextual editor, `EXIT` is page 4/item 4 and returns exactly one level.
   Home is the root and has no MIDI Exit; quitting remains keyboard-only.
 - When a configured controller is offline, lacks a matching reviewed profile,
@@ -164,18 +167,15 @@ Blank physical positions and wholly empty pages are omitted.
 | FX rack empty | Route | Target | Send− | Send+ | Point |
 | FX rack empty | Sys | Panic | Return | Help | Exit |
 | FX type | Type | Type− | Type+ | OK | Cancel |
-| FX editor | Ops | Parameter− | Parameter+ | Value− | Value+ |
 | FX editor | State | Bypass | — | — | — |
-| FX editor | Nav | Rack | — | — | — |
 | FX editor | Sys | Panic | — | Help | Exit |
 | Ideas | Play | Inspect | Play | Record | Delete |
 | Ideas | File | Load | Save | First | Last |
 | Ideas | Sys | Panic | — | Help | Exit |
 | Help | Ops | Open link | Top | — | — |
 | Help | Sys | Panic | — | — | Exit |
-| FT2 | Move | Page− | Page+ | Track− | Track+ |
 | FT2 | Play | Cell edit | Play | Record | Step edit |
-| FT2 | Nav | Page overlay | Pattern overlay | Song overlay | Route overlay |
+| FT2 | Select | Page overlay | Pattern overlay | Song overlay | Route overlay |
 | FT2 | Sys | Panic | N00B | Help | Exit |
 | FT2 tools | Ops | Arrange | Loop | FX | Mute lane |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
@@ -191,13 +191,10 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 record | Play | N00B | Play | Record/stop | — |
 | FT2 record | Sys | Panic | Help | — | Exit |
 | FT2 step edit | Ops | Blank/skip | Erase | N-off | N00B |
-| FT2 step edit | Move | Arrangement step− (`PG-`) | Arrangement step+ (`PG+`) | Lane− | Lane+ |
-| FT2 step edit | Add | 1 row | 2 rows | 4 rows | 8 rows |
-| FT2 step edit | Sys | Panic | Length | Next page (`PAGE`) | Exit edit |
+| FT2 step edit | Set | Page overlay | ADD 0–32 overlay | Note-length overlay | — |
+| FT2 step edit | Sys | Panic | Help | — | Exit edit |
 | N00B setup | Ops | Root− | Root+ | Major/Minor | Done |
 | N00B setup | Sys | Panic | Help | — | Exit |
-| Note length | Ops | Done | Cancel | — | — |
-| Note length | Sys | Panic | Help | — | Exit |
 | FT2 cell edit | Route | Destination | Channel | Instrument | — |
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
 | FT2 cell edit | Cell | Note | Gate | Velocity | Effect |
@@ -261,13 +258,16 @@ claims that the D-50 itself was detected.
 
 ## FX editor and 40×20 text contract
 
-The FX editor reserves one title/state row, one row for every schema parameter
-(up to 11), and at most one compact meter row above the unchanged controller
-footer. It never scrolls parameters. Each row is `marker + K/F mapping + stable
-schema abbreviation + type-aware value`, for example `>K1 THR  -18.0 dB` or
-` K2 RAT  4.0:1`. Toggles use ON/OFF; choices/modes use compact names;
-integers omit decimals; percent, dB, frequency, time, and ratio use concise
-musical units. Full persisted schema names do not change.
+The FX editor is a spatial 2×4 grid matching the eight physical rotary
+positions. Every control has its title above its value; the selected pair is
+highlighted yellow while browsing and green while editing. Titles use clear
+words such as `RATE`, `RATIO`, `ATTACK`, and `FEEDBACK`, while values retain
+type-aware units. EQ is deliberately mapped as low, low-mid, high-mid, and
+high frequency on knobs 1–4 with their matching gains on knobs 5–8. Its
+secondary low-cut and output-trim Project values remain compatible but are not
+misrepresented as knob 1. Every effect exposes at most eight performance
+controls; full persisted schema names and unassigned secondary values do not
+change.
 
 All working-screen single-line regions have explicit terminal-cell budgets.
 Static operational labels are written to fit; unpredictable device/file/user

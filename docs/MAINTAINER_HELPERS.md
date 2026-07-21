@@ -384,7 +384,7 @@ python3 scripts/render-readme-screenshots.py
 
 # Render one exact manifest name for visual inspection.
 python3 scripts/render-readme-screenshots.py \
-  --only menu/ft2-step-edit-add.png
+  --only menu/ft2-step-edit-set.png
 
 # Validate presence, dimensions, and integer scaling without rewriting images.
 python3 scripts/render-readme-screenshots.py --check
@@ -407,7 +407,7 @@ The default command uses the installed Rust 1.85 toolchain when present and
 runs `shr screenshots`. Rust renders the real application `draw` function into
 40×20 ratatui test buffers seeded by the deterministic `ScreenshotScenario`
 and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The current manifest
-contains 10 overview frames plus 96 menu/context/overlay frames. JSON supplies
+contains 103 overview/menu/context/overlay frames. JSON supplies
 each cell's symbol, foreground,
 background, and bold state. No JACK server, engine, MIDI port, or private user
 file is involved.

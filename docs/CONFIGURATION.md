@@ -437,7 +437,7 @@ and each page stores:
 - four lane names and lane mute states;
 - a reserved list of MIDI setup messages for later use.
 
-Open FT2 **NAV** → **PAGE**, then choose **MANAGE PAGES / TRACKS**. The
+Open FT2 **SELECT** → **PAGE**, then choose **MANAGE PAGES / TRACKS**. The
 resulting **TRACKS** screen edits pages and columns. Use the main encoder to
 select a page. **ADD** creates
 another four-lane page in that Pattern. **TARGET** chooses `AUTO` (portable
@@ -452,7 +452,7 @@ chooses 1–16. Encoder press confirms a field. **DONE** keeps all page changes;
 controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
 
-FT2 **NAV** → **ROUTE** is the passive quick editor. Its 38×18 bordered overlay
+FT2 **SELECT** → **ROUTE** is the passive quick editor. Its 38×18 bordered overlay
 shows `TARGET`, `ENGINE`, `INSTR`, `MIDI OUT`, optional `PROFILE`, and the 16
 per-column channel/bank/program rows in a scrolling 36×16 content area. Opening and browsing use cached discovery information;
 they do not create a MIDI discovery client, send MIDI, synchronize routes, or

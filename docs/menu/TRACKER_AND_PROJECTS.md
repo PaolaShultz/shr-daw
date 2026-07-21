@@ -20,13 +20,6 @@ page boundaries. Keyboard Up/Down still moves rows, and Left/right move the
 order or lane. The shaded column is the live selection; the stronger yellow
 cell cursor and highlighted row remain the next edit/play location.
 
-### MOVE — page and track navigation
-
-![Populated FT2 Pattern in Play mode with the MOVE page](../images/menu/ft2-play-move.png)
-
-`PAGE-` and `PAGE+` move between the Pattern's four-track pages. `TRACK-` and
-`TRACK+` move the column cursor, crossing a page boundary when needed.
-
 ### PLAY — transport and entry
 
 ![Populated FT2 Pattern in Play mode with the PLAY page](../images/menu/ft2-play-play.png)
@@ -35,9 +28,9 @@ cell cursor and highlighted row remain the next edit/play location.
 Stop, `RECORD` starts the current Pattern record loop; from Play it punches in
 without moving the playhead. `STEP` toggles step entry.
 
-### NAV — master overlays
+### SELECT — master overlays
 
-![Populated FT2 Pattern with the NAV controller page](../images/menu/ft2-play-nav.png)
+![Populated FT2 Pattern with the SELECT controller page](../images/menu/ft2-play-select.png)
 
 `PAGE`, `PATTERN`, `SONG`, and `ROUTE` open the reusable centered overlay while
 the Pattern remains visible around it. Turn the master rotary or use Up/Down;
@@ -104,8 +97,9 @@ written.
 
 In Step Edit, a computer key or incoming MIDI gesture writes a note or chord at
 the cursor. Command-pad notes are consumed as controls and are not doubled into
-the Pattern or synth. The persistent ADD value chooses how many rows the cursor
-advances after entry, blank, erase, or note-off.
+the Pattern or synth. The persistent ADD value chooses any advance from 0
+through 32 rows after entry, blank, erase, or note-off; 0 stays on the current
+row.
 
 On a percussion page, entry searches earlier rows across all four columns and
 reuses each drum voice's most recent column. New bass drums and snares prefer
@@ -121,27 +115,25 @@ free one. Melodic pages still fill from the selected column.
 `N-OFF` writes a note-off. `N00B` opens scale setup or turns the active filter
 off while Step Edit remains active.
 
-### MOVE — order and lane cursor
+### SET — rotary selectors
 
-![Populated FT2 Step Edit with the MOVE page](../images/menu/ft2-step-edit-move.png)
+![Populated FT2 Step Edit with the SET page](../images/menu/ft2-step-edit-set.png)
 
-`PG-`, `PG+`, `LANE-`, and `LANE+` move the edit cursor without changing
-Pattern data.
+`PAGE` opens the same page/column overlay used in Play. `ADD` opens all row
+advances from 0 through 32. `LENGTH` opens note durations from 1/1 through
+1/128. Turning browses, clicking selects, and Back cancels without leaving
+Step Edit.
 
-### ADD — choose row advance
+![Step Edit ADD overlay](../images/menu/overlay-edit-add.png)
 
-![Populated FT2 Step Edit with the ADD page](../images/menu/ft2-step-edit-add.png)
+![Step Edit note-length overlay](../images/menu/overlay-note-length.png)
 
-`1`, `2`, `4`, and `8` set the persistent number of rows added after each step
-operation. This affects movement, not note duration or tempo.
-
-### SYS — safety, note length, next page, and leave edit
+### SYS — safety, help, and leave edit
 
 ![Populated FT2 Step Edit with the SYS page](../images/menu/ft2-step-edit-sys.png)
 
-`PANIC` performs the owned stop. `LENGTH` opens the separate note-duration
-selector. `PAGE` moves to the next four-lane page. `EXIT` leaves Step Edit and
-returns to Play mode.
+`PANIC` performs the owned stop. `HELP` opens contextual help. `EXIT` leaves
+Step Edit and returns to Play mode.
 
 ## FT2 Cell Edit
 
@@ -234,16 +226,9 @@ OPS chooses the root and major or natural-minor scale, then confirms it.
 
 SYS keeps panic, help, and cancellation available during scale setup.
 
-Note duration belongs separately to Step Edit. `LENGTH` opens a rotary selector
-for `1/1` through `1/32`; it does not change the independent `ADD` advance.
-
-![Step Edit note-length selector with the OPS controller page](../images/menu/note-length-ops.png)
-
-OPS confirms or cancels the highlighted duration.
-
-![Step Edit note-length selector with the SYS controller page](../images/menu/note-length-sys.png)
-
-SYS keeps panic, help, and exit available in the selector.
+Note duration belongs separately to Step Edit. `LENGTH` opens an overlay for
+`1/1` through `1/128`; it does not change the independent 0–32-row `ADD`
+advance.
 
 ## Project Files
 
@@ -360,15 +345,18 @@ coarse page commands.
 ## Pattern setup
 
 This confirmation context chooses musical meter and row count before a new or
-destructively cleared Pattern is created. The supported sizes represent two,
-four, eight, sixteen, or thirty-two bars in the selected meter.
+destructively cleared Pattern is created. `LNGTH` opens a rotary overlay with
+every row count from 1 through 32 plus 48, 64, 96, 128, 192, and 256.
 
 ### OPS — meter and size
 
 ![Populated Pattern setup with the OPS page](../images/menu/pattern-setup-ops.png)
 
-`3/4` and `4/4` choose the meter. `SIZE-` and `SIZE+` move among the matching
-row counts. Turning the encoder also changes size.
+`3/4` and `4/4` choose the meter without silently changing the row count.
+`LNGTH` opens the row-count overlay; turning browses and clicking keeps the
+highlighted value in the still-unconfirmed Pattern setup.
+
+![Pattern length overlay](../images/menu/overlay-pattern-length.png)
 
 ### APPLY — confirm or preserve
 

@@ -168,27 +168,26 @@ values without changing the processor type.
 
 ## FX parameter editor
 
-Parameters come from strict per-effect schemas. At 40×20 every parameter of
-the selected effect—up to the current maximum of 11—stays visible together;
-the grid never scrolls. Each row contains only its selection marker, hardware
-mapping (`K1`/`F1`), a deliberate stable abbreviation such as `THR`, `RAT`,
-`SC-HP`, `FDBK`, or `DECAY`, and a type-aware value/unit. Toggles use ON/OFF,
-integers omit decimals, named modes/divisions use compact labels, and dB,
-frequency, time, percent, and ratio keep musician-facing units. Persistence
-continues to use the full schema names.
+Parameters come from strict persisted schemas, while each effect has a curated
+performance layout of at most eight controls. At 40×20 those controls form two
+rows of four columns that mirror the physical rotary positions. Each cell has
+the parameter title above its type-aware value; clear names such as `RATE`,
+`RATIO`, `ATTACK`, and `FEEDBACK` replace cryptic three-letter labels. Toggles
+use ON/OFF, integers omit decimals, named modes/divisions use compact labels,
+and dB, frequency, time, percent, and ratio keep musician-facing units.
+
+EQ maps low, low-mid, high-mid, and high frequency across knobs 1–4, then the
+matching four gains across knobs 5–8. Low cut is not placed on knob 1.
+Secondary DSP values not assigned to a performance knob remain valid in saved
+Projects, so this UI correction does not invalidate existing files.
 
 The title/state uses one row and metering, when available, is bounded to one
 terse `IN / OUT / GR` row. Detailed meter prose never displaces a parameter.
 
-### OPS — select and adjust a parameter
-
-![Populated FX editor with the OPS page](../images/menu/fx-editor-ops.png)
-
-`PARAM-` and `PARAM+` choose a parameter and wrap at both ends. Rotary browsing
-does the same; click begins value editing, turn changes only the value, click
-confirms, and Back restores the original. `VALUE-` and `VALUE+` use the schema's
-safe step and clamp to the validated range. All rows remain visible during
-editing and numeric entry.
+Turn the rotary to select a control; click begins editing, turn changes only
+that value, click confirms, and Back restores the original. Numeric keyboard
+entry follows the same validation. There are no duplicate PARAM± or VALUE±
+navigation buttons.
 
 ### STATE — bypass this processor
 
@@ -196,12 +195,6 @@ editing and numeric entry.
 
 `BYPASS` toggles the edited processor without removing its ID, parameters, or
 position. Bypass uses click-conscious smoothing in the active graph.
-
-### NAV — return to the rack
-
-![Populated FX editor with the NAV page](../images/menu/fx-editor-nav.png)
-
-`RACK` returns to the parent rack while keeping valid parameter changes.
 
 ### SYS — safety and exit
 

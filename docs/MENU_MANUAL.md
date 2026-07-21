@@ -40,8 +40,8 @@ positions:
 - Every genuine rotary/Up/Down browsing list wraps at both ends. Functional
   entries such as Blank/Skip, AUTO, Off, Clear, and `+ INSERT EFFECT` remain
   selectable exactly once; only decorative blank lines are skipped.
-- Page 1 holds the screen's primary workflow; on FT2 it is Page−/Page+/Track−/
-  Track+. On workspaces, child screens, and editors, `SYS` item 4 is `EXIT`,
+- Page 1 holds the screen's primary workflow; on FT2 it is PLAY, while SELECT
+  holds the page/pattern/song/route overlays. On workspaces, child screens, and editors, `SYS` item 4 is `EXIT`,
   which goes back one level. MIDI controls never quit SHR-DAW.
 - `PANIC` stops owned playback and sends All Notes Off. It does not kill an
   unrelated synth or JACK client.

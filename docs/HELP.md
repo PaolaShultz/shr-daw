@@ -158,7 +158,7 @@ The shaded selected column does not move the row, playhead, Arrangement Step,
 or transport. During REC, turns made while recorded notes are held are ignored
 until all of those notes receive Note Off.
 
-FT2 `NAV` contains `PAGE`, `PATTERN`, `SONG`, and `ROUTE`. PAGE selects one of
+FT2 `SELECT` contains `PAGE`, `PATTERN`, `SONG`, and `ROUTE`. PAGE selects one of
 the current Pattern's four-column locations and can open the full Tracks
 manager. PATTERN selects an existing Pattern or opens Pattern/Project tools.
 SONG selects an Arrangement step and can open detailed Arrangement or Loop/
@@ -173,9 +173,9 @@ Start/Stop. An empty Pattern may run for a live external-sync arpeggiator;
 tracker pages never send notes or programs back through the clock-only route.
 
 EDIT turns incoming notes into pattern data. Encoder press inserts a blank row.
-The ADD page chooses whether note entry, blank, erase, and note-off advance by
-1, 2, 4, or 8 rows; the FT2 heading shows the active value. N-OFF writes a
-note-off.
+Step Edit `ADD` opens a rotary overlay choosing any advance from 0 through 32
+rows; 0 keeps the cursor on the current row. The FT2 heading shows the active
+value. N-OFF writes a note-off.
 
 On a Drums page, EDIT reuses each voice's column from earlier rows. New bass
 drums prefer column 1, new snares prefer column 2, and other new drums begin in
@@ -191,9 +191,9 @@ to another pitch. Play can use it without writing; Record and Step Edit write
 only the allowed notes. Turning N00B off leaves the current FT2 mode unchanged.
 It turns off automatically on Drums, where the current mode remains active.
 
-Step Edit **LENGTH** independently chooses 1/1, 1/2, 1/4, 1/8, 1/16, or 1/32
-for melodic notes. The 1/2/4/8-row **ADD** value still controls where the next
-entry goes.
+Step Edit **LENGTH** opens a rotary overlay choosing 1/1, 1/2, 1/4, 1/8, 1/16,
+1/32, 1/64, or 1/128 for melodic notes. The independent 0–32-row **ADD**
+overlay controls where the next entry goes.
 
 ## Pages and hardware MIDI
 

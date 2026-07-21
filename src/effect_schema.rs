@@ -29,6 +29,22 @@ pub struct ParameterSpec {
     pub value_type: ParameterType,
 }
 
+/// One physical knob position in the musician-facing 2×4 effect layout.
+/// The persisted schema remains independent so older Projects retain every
+/// supported DSP value even when a secondary setup parameter is not assigned
+/// to the eight performance knobs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ControlSpec {
+    pub parameter: &'static str,
+    pub label: &'static str,
+}
+
+impl ControlSpec {
+    const fn new(parameter: &'static str, label: &'static str) -> Self {
+        Self { parameter, label }
+    }
+}
+
 impl ParameterSpec {
     pub const fn continuous(
         name: &'static str,
@@ -260,6 +276,112 @@ const CRUSHER: &[ParameterSpec] = &[
     ParameterSpec::continuous("mix_percent", "%", 100.0, 0.0, 100.0),
 ];
 
+const UTILITY_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("trim_db", "TRIM"),
+    ControlSpec::new("pan", "PAN"),
+    ControlSpec::new("width_percent", "WIDTH"),
+    ControlSpec::new("mute", "MUTE"),
+    ControlSpec::new("invert_left", "INVERT L"),
+    ControlSpec::new("invert_right", "INVERT R"),
+];
+const EQ_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("low_shelf_hz", "LOW FREQ"),
+    ControlSpec::new("low_mid_hz", "LO MID F"),
+    ControlSpec::new("high_mid_hz", "HI MID F"),
+    ControlSpec::new("high_shelf_hz", "HIGH FREQ"),
+    ControlSpec::new("low_shelf_db", "LOW GAIN"),
+    ControlSpec::new("low_mid_db", "LO MID G"),
+    ControlSpec::new("high_mid_db", "HI MID G"),
+    ControlSpec::new("high_shelf_db", "HIGH GAIN"),
+];
+const COMPRESSOR_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("threshold_db", "THRESH"),
+    ControlSpec::new("ratio", "RATIO"),
+    ControlSpec::new("attack_ms", "ATTACK"),
+    ControlSpec::new("release_ms", "RELEASE"),
+    ControlSpec::new("knee_db", "KNEE"),
+    ControlSpec::new("makeup_db", "MAKEUP"),
+    ControlSpec::new("mix_percent", "MIX"),
+    ControlSpec::new("sidechain_highpass_hz", "SC HPF"),
+];
+const DISTORTION_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("mode", "MODE"),
+    ControlSpec::new("drive_db", "DRIVE"),
+    ControlSpec::new("bias", "BIAS"),
+    ControlSpec::new("tone_hz", "TONE"),
+    ControlSpec::new("output_db", "OUTPUT"),
+    ControlSpec::new("mix_percent", "MIX"),
+];
+const DELAY_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("time_ms", "TIME"),
+    ControlSpec::new("feedback_percent", "FEEDBACK"),
+    ControlSpec::new("tone_hz", "TONE"),
+    ControlSpec::new("stereo_ratio", "STEREO"),
+    ControlSpec::new("tempo_sync", "SYNC"),
+    ControlSpec::new("division", "DIVISION"),
+    ControlSpec::new("wet_percent", "WET"),
+    ControlSpec::new("dry_percent", "DRY"),
+];
+const REVERB_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("type", "TYPE"),
+    ControlSpec::new("predelay_ms", "PREDELAY"),
+    ControlSpec::new("decay_seconds", "DECAY"),
+    ControlSpec::new("size_percent", "SIZE"),
+    ControlSpec::new("damping_percent", "DAMPING"),
+    ControlSpec::new("input_low_cut_hz", "LOW CUT"),
+    ControlSpec::new("wet_percent", "WET"),
+    ControlSpec::new("dry_percent", "DRY"),
+];
+const CHORUS_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("base_delay_ms", "TIME"),
+    ControlSpec::new("rate_hz", "RATE"),
+    ControlSpec::new("depth_percent", "DEPTH"),
+    ControlSpec::new("stereo_phase_degrees", "PHASE"),
+    ControlSpec::new("feedback_percent", "FEEDBACK"),
+    ControlSpec::new("mix_percent", "MIX"),
+    ControlSpec::new("dry_percent", "DRY"),
+];
+const FLANGER_CONTROLS: &[ControlSpec] = CHORUS_CONTROLS;
+const PHASER_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("rate_hz", "RATE"),
+    ControlSpec::new("center_hz", "CENTER"),
+    ControlSpec::new("range_octaves", "RANGE"),
+    ControlSpec::new("feedback_percent", "FEEDBACK"),
+    ControlSpec::new("stages", "STAGES"),
+    ControlSpec::new("stereo_phase_degrees", "PHASE"),
+    ControlSpec::new("mix_percent", "MIX"),
+    ControlSpec::new("dry_percent", "DRY"),
+];
+const TREMOLO_PAN_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("rate_hz", "RATE"),
+    ControlSpec::new("depth_percent", "DEPTH"),
+    ControlSpec::new("shape", "SHAPE"),
+    ControlSpec::new("stereo_phase_degrees", "PHASE"),
+    ControlSpec::new("mode", "MODE"),
+    ControlSpec::new("output_trim_db", "OUTPUT"),
+];
+const FILTER_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("cutoff_hz", "CUTOFF"),
+    ControlSpec::new("resonance", "RESONANCE"),
+    ControlSpec::new("drive_db", "DRIVE"),
+    ControlSpec::new("mix_percent", "MIX"),
+    ControlSpec::new("mode", "MODE"),
+];
+const GATE_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("threshold_db", "THRESH"),
+    ControlSpec::new("hysteresis_db", "HYST"),
+    ControlSpec::new("range_db", "RANGE"),
+    ControlSpec::new("attack_ms", "ATTACK"),
+    ControlSpec::new("hold_ms", "HOLD"),
+    ControlSpec::new("release_ms", "RELEASE"),
+];
+const CRUSHER_CONTROLS: &[ControlSpec] = &[
+    ControlSpec::new("bit_depth", "BITS"),
+    ControlSpec::new("hold_factor", "HOLD"),
+    ControlSpec::new("dither", "DITHER"),
+    ControlSpec::new("mix_percent", "MIX"),
+];
+
 pub const fn schema(kind: EffectKind) -> &'static [ParameterSpec] {
     match kind {
         EffectKind::Utility => UTILITY,
@@ -276,6 +398,32 @@ pub const fn schema(kind: EffectKind) -> &'static [ParameterSpec] {
         EffectKind::Gate => GATE,
         EffectKind::Crusher => CRUSHER,
     }
+}
+
+pub const fn controls(kind: EffectKind) -> &'static [ControlSpec] {
+    match kind {
+        EffectKind::Utility => UTILITY_CONTROLS,
+        EffectKind::Eq => EQ_CONTROLS,
+        EffectKind::Compressor => COMPRESSOR_CONTROLS,
+        EffectKind::Distortion => DISTORTION_CONTROLS,
+        EffectKind::Delay => DELAY_CONTROLS,
+        EffectKind::Reverb => REVERB_CONTROLS,
+        EffectKind::Chorus => CHORUS_CONTROLS,
+        EffectKind::Flanger => FLANGER_CONTROLS,
+        EffectKind::Phaser => PHASER_CONTROLS,
+        EffectKind::TremoloPan => TREMOLO_PAN_CONTROLS,
+        EffectKind::Filter => FILTER_CONTROLS,
+        EffectKind::Gate => GATE_CONTROLS,
+        EffectKind::Crusher => CRUSHER_CONTROLS,
+    }
+}
+
+pub fn controlled_parameter(kind: EffectKind, index: usize) -> Option<ParameterSpec> {
+    let control = controls(kind).get(index)?;
+    schema(kind)
+        .iter()
+        .find(|parameter| parameter.name == control.parameter)
+        .copied()
 }
 
 pub fn defaults(kind: EffectKind) -> BTreeMap<String, f32> {
@@ -569,6 +717,56 @@ mod tests {
         assert_eq!(
             format_value(EffectKind::Crusher, crusher[0], 12.0),
             "12 bit"
+        );
+    }
+
+    #[test]
+    fn every_effect_has_a_valid_two_by_four_performance_layout() {
+        for kind in [
+            EffectKind::Utility,
+            EffectKind::Eq,
+            EffectKind::Compressor,
+            EffectKind::Distortion,
+            EffectKind::Delay,
+            EffectKind::Reverb,
+            EffectKind::Chorus,
+            EffectKind::Flanger,
+            EffectKind::Phaser,
+            EffectKind::TremoloPan,
+            EffectKind::Filter,
+            EffectKind::Gate,
+            EffectKind::Crusher,
+        ] {
+            let layout = controls(kind);
+            assert!(!layout.is_empty(), "{kind:?}");
+            assert!(layout.len() <= 8, "{kind:?} has too many controls");
+            let names = layout
+                .iter()
+                .map(|control| control.parameter)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(names.len(), layout.len(), "{kind:?}");
+            assert!(layout.iter().enumerate().all(|(index, control)| {
+                control.label.chars().count() <= 9
+                    && controlled_parameter(kind, index)
+                        .is_some_and(|parameter| parameter.name == control.parameter)
+            }));
+        }
+
+        assert_eq!(
+            controls(EffectKind::Eq)
+                .iter()
+                .map(|control| control.parameter)
+                .collect::<Vec<_>>(),
+            [
+                "low_shelf_hz",
+                "low_mid_hz",
+                "high_mid_hz",
+                "high_shelf_hz",
+                "low_shelf_db",
+                "low_mid_db",
+                "high_mid_db",
+                "high_shelf_db",
+            ]
         );
     }
 

@@ -51,7 +51,7 @@ whose FT2 workspace exposes four musician-facing pages:
 4. `Loop Player`, the Project-wide WAV source in an explicit `NOT READY` state.
 
 The Loop Player is a page in the musician-facing FT2 workflow, not four empty
-MIDI lanes. Page next/previous and **NAV** → **PAGE** open it directly, so a new
+MIDI lanes. **SELECT** → **PAGE** opens it directly, so a new
 Project does not require adding or naming a page before importing a WAV.
 The blank Pattern, unloaded loop state, loop inbox, and startup MIDI-output
 snapshot are initialized when SHR-DAW starts, so opening an empty FT2 workspace
@@ -95,7 +95,7 @@ melody/percussion channels and available default destination are used. `AUTO`
 does not mean channel 1, channel zero, muted, or disabled. Choose an explicit
 target only when a song intentionally belongs to particular hardware.
 
-Use FT2 **NAV** → **PAGE** to browse every page/column without leaving the
+Use FT2 **SELECT** → **PAGE** to browse every page/column without leaving the
 Pattern. Its final row opens the full **TRACKS** screen. There you can add or
 select a page, choose a column, and set its target, channel, bank, and program.
 **DONE** validates shared-channel compatibility and keeps the changes. Internal
@@ -105,7 +105,7 @@ routes use `TARGET → ENGINE → INSTR`; external routes use
 saved target is marked `OFFLINE` (or `AMBIG` for duplicate stable identities);
 its exact route, notes, raw channels 1–16, and programs 0–127 are not changed.
 
-For a quick routing change, **NAV** → **ROUTE** opens a centered overlay over
+For a quick routing change, **SELECT** → **ROUTE** opens a centered overlay over
 FT2. It shows target type, software engine/instrument or MIDI output, optional
 device profile, plus all four columns' channel, bank, program/instrument name,
 and interface availability. Turn and click/Enter to activate a
@@ -116,15 +116,14 @@ the usable inner area is 36×16 at `(2,2)`.
 
 ## Step editing
 
-Step entry accepts notes and chords from any configured musical input. A chord fills up to
-four lanes and keeps its velocities. The **ADD** controller page chooses a
-persistent advance of 1, 2, 4, or 8 rows for note/chord entry, blank, erase,
-and note-off. This makes evenly spaced bass notes and drum hits quick to enter;
-the FT2 title shows `EDIT +n`. A computer keyboard can enter notes with
-`Z S X D C V G B H N J M` and choose advance with `1`, `2`, `4`, or `8`.
+Step entry accepts notes and chords from any configured musical input. A chord
+fills up to four lanes and keeps its velocities. **ADD** opens an overlay for
+every persistent advance from 0 through 32 rows for note/chord entry, blank,
+erase, and note-off; 0 keeps the current row. The FT2 title shows `EDIT +n`.
+A computer keyboard can enter notes with `Z S X D C V G B H N J M`.
 
-**LENGTH** is a separate Step Edit control. It chooses `1/1`, `1/2`, `1/4`,
-`1/8`, `1/16`, or `1/32` for melodic entries and defaults to `1/16`. The
+**LENGTH** is a separate Step Edit overlay. It chooses `1/1`, `1/2`, `1/4`,
+`1/8`, `1/16`, `1/32`, `1/64`, or `1/128` for melodic entries and defaults to `1/16`. The
 selected duration writes the existing gate/explicit note-off representation;
 it does not change the independent **ADD** cursor advance or create a second
 timing system.
@@ -304,7 +303,7 @@ refused without changing the Pattern.
 
 ## FT2 Arrangement
 
-Use **NAV** → **SONG** for quick Arrangement-step navigation. Choose **EDIT
+Use **SELECT** → **SONG** for quick Arrangement-step navigation. Choose **EDIT
 ARRANGEMENT** there to edit the FT2 Arrangement separately from
 pattern editing and Project files. The ARRANGE screen can select a step, append
 or insert the current pattern, duplicate or remove a step, move a step earlier

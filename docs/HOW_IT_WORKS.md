@@ -240,8 +240,8 @@ The FT2 screen has three explicit modes:
   transport from the cursor or Project beginning.
 - **Record** performs the hardware-only quantized capture described above.
 - **Edit** writes notes or chords from MIDI/computer-keyboard input. Blank,
-  erase, and note-off are explicit operations, and the persistent 1/2/4/8-row
-  advance determines the next cursor position. Its independent 1/1–1/32
+  erase, and note-off are explicit operations, and the persistent 0–32-row
+  advance determines the next cursor position. Its independent 1/1–1/128
   length selector writes the existing gate/note-off representation.
 
 **N00B is an independent filter switch, not a fourth mode.** It can remain on
