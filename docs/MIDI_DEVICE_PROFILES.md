@@ -6,6 +6,13 @@ live in `midi-devices/`; installation copies them to
 override a bundled id from `${XDG_DATA_HOME}/shsynth/midi-devices/` or a path
 listed in `SHSYNTH_DEVICE_PROFILE_DIR`.
 
+Profiles are optional convenience metadata only. `RAW MIDI` needs no profile
+and retains every channel 1–16 and program 0–127. A profile may add friendly
+names, a bank protocol, controller maps, or documentation; it never gates
+transmission, limits raw values, or claims the downstream DIN instrument was
+physically detected. Interface discovery can only report whether the computer's
+configured MIDI output port is currently available.
+
 Schema version 1 records:
 
 - a stable `id`, manufacturer, model, and optional MIDI-port name fragments;

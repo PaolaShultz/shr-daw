@@ -858,9 +858,6 @@ impl TapTempo {
         }
         self.bpm
     }
-    pub fn bpm(&self) -> Option<f32> {
-        self.bpm
-    }
 }
 
 #[cfg(test)]

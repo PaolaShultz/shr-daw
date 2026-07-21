@@ -75,8 +75,8 @@ SHR-DAW supports synthv1, Yoshimi, and FluidSynth as separately installed
 programs. Only one SHR-DAW-managed software synth runs at a time. The
 standalone Software Synth workspace keeps its sound while moving between its
 Presets and Playback screens, then sends All Notes Off and unloads it on the
-top-level return to Home. FT2 separately loads the synthv1 preset named by its
-current Pattern. Replacement and exit stop only a process SHR-DAW owns.
+top-level return to Home. FT2 separately loads the engine/instrument pair saved
+by its current Pattern. Replacement and exit stop only a process SHR-DAW owns.
 
 Each engine has a configured MIDI input and JACK audio output. See
 [Configuration and routing](CONFIGURATION.md) for the settings.
@@ -90,25 +90,29 @@ The separate loop player and recorder do not pass through this graph.
 ## External MIDI instruments
 
 Each tracker page can use its own MIDI output, with four independent column
-channels/banks/programs. Several pages can
-play several hardware instruments at the same time. A page can instead own a
-named synthv1 preset; it never inherits the standalone workspace selection.
+channels/banks/programs. Several pages can play several hardware instruments
+at the same time. All channels 1–16 and programs 0–127 remain raw-editable
+without a device profile. A page can instead store a software engine and one of
+that engine's instruments; it never inherits the standalone workspace selection.
 
 Portable `AUTO` pages save no output or channel and follow the machine default.
-Explicit pages remember their preferred port. If it is disconnected, the page
-shows `FALLBACK` while the configured output is usable,
-otherwise `OFFLINE`. Its notes and preference are kept; reconnecting it makes
+Explicit pages remember their exact port. If it is disconnected, the page
+shows `OFFLINE` and does not silently send to another port. Its notes and
+preference are kept; reconnecting it makes
 the original mapping usable on the next play without rewriting the Project.
 
-Named sound lists for supported external instruments come from
-[MIDI device profiles](MIDI_DEVICE_PROFILES.md). Instruments without a profile
-still show the normal MIDI programs 1–128 (stored/sent as values 0–127).
+Named sound lists for supported external instruments come from optional
+[MIDI device profiles](MIDI_DEVICE_PROFILES.md). Profiles are convenience
+metadata, not permission or detection. Instruments without one still expose
+the normal MIDI programs 1–128 (stored/sent as values 0–127).
 
 ALSA can report that an AudioBox MIDI output port is online, but a one-way DIN
 output cannot report whether the downstream Roland D-50 is connected or
 powered. Routing therefore shows the interface availability and the configured
 device profile separately, for example `AudioBox · ONLINE` and
 `D-50 · UNVERIFIED`. It never says `D-50 connected`.
+SHR-DAW does not probe downstream DIN hardware. Advanced users may construct
+arbitrary experimental channel/program chains behind one configured output.
 
 ## Audio output and recording
 

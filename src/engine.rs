@@ -229,6 +229,7 @@ impl TrackerRoute {
             &config.target,
             crate::sequencer::PageTarget::ActiveInstrument
                 | crate::sequencer::PageTarget::Synthv1(_)
+                | crate::sequencer::PageTarget::Software(_)
         );
         self.target = config.target;
         self.columns = config

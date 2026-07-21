@@ -178,6 +178,7 @@ impl DeviceProfile {
             .map(|(_, label)| label)
     }
 
+    #[cfg(test)]
     fn port_match_specificity(&self, port: &str) -> Option<usize> {
         let port = port.to_ascii_lowercase();
         self.port_matches
@@ -245,6 +246,7 @@ impl Registry {
         self.profiles.values()
     }
 
+    #[cfg(test)]
     pub fn matching_port(&self, port: &str) -> Option<&DeviceProfile> {
         let matches = self
             .profiles

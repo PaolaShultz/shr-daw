@@ -77,6 +77,10 @@ impl OverlayLauncher {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RouteField {
     Target,
+    Engine,
+    Instrument,
+    MidiOutput,
+    DeviceProfile,
     Channel(usize),
     BankMsb(usize),
     BankLsb(usize),
@@ -84,17 +88,29 @@ pub enum RouteField {
 }
 
 impl RouteField {
-    pub const ROWS: usize = 18;
+    pub const ROWS: usize = 22;
 
     pub const fn from_row(row: usize) -> Option<Self> {
         if row == 0 {
             return Some(Self::Target);
         }
-        if row >= 17 {
+        if row == 1 {
+            return Some(Self::Engine);
+        }
+        if row == 2 {
+            return Some(Self::Instrument);
+        }
+        if row == 3 {
+            return Some(Self::MidiOutput);
+        }
+        if row == 4 {
+            return Some(Self::DeviceProfile);
+        }
+        if row >= 21 {
             return None;
         }
-        let column = (row - 1) / 4;
-        match (row - 1) % 4 {
+        let column = (row - 5) / 4;
+        match (row - 5) % 4 {
             0 => Some(Self::Channel(column)),
             1 => Some(Self::BankMsb(column)),
             2 => Some(Self::BankLsb(column)),

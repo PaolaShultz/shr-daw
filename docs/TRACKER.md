@@ -44,15 +44,16 @@ Channels and programs are zero-based in MIDI bytes and in the in-memory model.
 Every musician-facing screen shows channels 1–16 and programs 1–128.
 
 Each page keeps one MIDI target plus four independent column channel, bank, and
-master-program setups. It also keeps velocity, mute, percussion, and lane
-settings. A synthv1 target stores its portable preset name in the Pattern; it
-never borrows the sound last chosen in the standalone Software Synth workspace.
+master-program setups. It also keeps velocity, mute, percussion, optional
+device-profile metadata, and lane settings. A software target stores its engine
+and that engine's stable instrument identity in the Pattern; it never borrows
+the sound last chosen in the standalone Software Synth workspace.
 Columns may share a destination/channel only when their master bank
 and program match, because MIDI program selection is channel-wide. Pages play
 together, so one pattern can control several hardware instruments and its
 Pattern-owned SHR-DAW software instrument. Because SHR owns only one synth host
 at a time, playback refuses an Arrangement that would require two different
-synthv1 presets instead of sending both through the wrong sound.
+software routes instead of sending both through the wrong engine or sound.
 
 Computer-keyboard notes and ordinary incoming musical MIDI audition the
 selected page's target, channel, program, and drum mapping throughout the FT2
@@ -69,14 +70,17 @@ target only when a song intentionally belongs to particular hardware.
 Use FT2 **NAV** → **PAGE** to browse every page/column without leaving the
 Pattern. Its final row opens the full **TRACKS** screen. There you can add or
 select a page, choose a column, and set its target, channel, bank, and program.
-**DONE** validates shared-channel compatibility and keeps the changes. **SYS**
+**DONE** validates shared-channel compatibility and keeps the changes. Internal
+routes use `TARGET → ENGINE → INSTR`; external routes use
+`TARGET → MIDI OUT → CH → INSTR/PROG`. **SYS**
 → **EXIT** restores the Project as it was before TRACKS opened. A disconnected
-saved target is marked `FALLBACK` while a configured/default route is usable,
-or `OFFLINE` when none is; its preferred route and notes are not deleted.
+saved target is marked `OFFLINE` (or `AMBIG` for duplicate stable identities);
+its exact route, notes, raw channels 1–16, and programs 0–127 are not changed.
 
 For a quick routing change, **NAV** → **ROUTE** opens a centered overlay over
-FT2. It shows the active page destination plus all four columns' channel, bank,
-program/instrument name, and availability. Turn and click/Enter to activate a
+FT2. It shows target type, software engine/instrument or MIDI output, optional
+device profile, plus all four columns' channel, bank, program/instrument name,
+and interface availability. Turn and click/Enter to activate a
 field; Back/Esc cancels that field first. Only **APPLY ROUTING** changes the
 Project. The same highlighted ROUTE item or Back closes and cancels every
 unconfirmed change. At 40×20 the bordered outer window is 38×18 at `(1,1)` and
@@ -160,7 +164,7 @@ from a control-only surface. A combined device retains channel-qualified
 controller mappings.
 
 Real-time recording is hardware-page-only. A page targeting a Pattern-owned
-synthv1 preset, or an `AUTO`/preferred page currently resolved to the internal
+software instrument, or an `AUTO` page currently resolved to the internal
 instrument, cannot enter **REC**. Choose an available hardware MIDI output
 first. Real-time REC retains its separate active-note lane allocator so note
 releases remain paired with overlapping held notes; the history-based drum
@@ -282,17 +286,20 @@ automatic names keep both actions usable from a four-button controller.
 are refused and a saved rename keeps the loaded Project state.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 4
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 5
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, cells, source insert rack, two aux routes, and master rack. Portable
-pages use explicit `default` markers rather than numeric routing, and
-Pattern-owned synth pages use a portable `synthv1:<preset name>` target.
+pages use explicit `default` markers rather than numeric routing. Pattern-owned
+software pages store explicit engine and stable instrument identities; optional
+external-device profiles are stored separately from raw output/channel/bank/
+program data.
 Versions 0 and 1 gain empty effects routing; version 2 retains its source rack and gains
 empty aux/master routing. Format 3 routes stay explicit. Version 0 page-wide setups copy the old
 channel/bank/program into all four columns. Unknown newer versions, fields, or
 invalid effect shapes are not loaded or overwritten. Older
-`ActiveInstrument` routes are assigned the first available synthv1 preset in
-memory and are not rewritten until the musician explicitly saves the Project.
+`ActiveInstrument` and old `synthv1:<preset name>` routes are upgraded in
+memory to explicit synthv1 engine/instrument routes and are not rewritten until
+the musician explicitly saves the Project.
 
 If an empty Pattern's routing differs from the current new-Pattern template,
 **SAVE** asks: “Save this routing as the default for new patterns?” Confirming

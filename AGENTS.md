@@ -32,6 +32,14 @@ SHR-DAW is a responsive 40×20 Raspberry Pi mini DAW with a Rust TUI, FT2-style
 tracker, synth hosts, MIDI routing, loops, recording, JACK/ALSA integration,
 and a small controller. Keep live-audio paths bounded and responsive.
 
+Treat the 40×20 display as content-first. The shared controller menu may use
+two rows; do not add another persistent status, help, header, or footer row
+unless the user requests it or it reports an actionable fault. Omit healthy or
+obvious labels such as `AVAILABLE`, `ONLINE`, `CONNECTED`, and `IDLE`; assume
+the musician understands the current screen and controls. Keep navigation
+actions literal: changing a page or order must preserve the selected
+lane/column/cursor unless the requested behavior explicitly says otherwise.
+
 Use the installed Rust 1.85 toolchain because the system Cargo may be too old:
 
 ```sh

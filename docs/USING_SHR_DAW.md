@@ -89,8 +89,10 @@ Raspberry Pi experimenters learning a new musical or technical vocabulary.
   and the same highlighted NAV item or Back closes. ROUTE cancels unconfirmed
   changes. The native geometry is a 38×18 border around 36×16 usable cells.
 - **Tools** keeps detailed arrangement, loop, clipboard, N00B, and mute workflows.
-- **Tracks** (opened from the PAGE overlay) adds four-lane pages, chooses one destination, and edits each
-  column's channel, bank, master program, and profile-provided instrument name.
+- **Tracks** (opened from the PAGE overlay) adds four-lane pages and edits each
+  column's channel, bank, master program, and optional profile-provided name.
+  Internal routing chooses engine before that engine's instrument. External
+  routing chooses an output and retains raw channels 1–16/programs 0–127.
 - **Files** manages Projects; its **Pattern** child groups pattern editing,
   melody-only transpose, and the separate reusable drum-pattern library. Drum
   filters choose genre, meter, and 2/4/8-bar phrase size. It also names and
@@ -114,6 +116,9 @@ plus provenance live in the XDG demo directory.
   reports whether the selected interface port is discoverable, while Device
   always treats a downstream DIN profile as `UNVERIFIED`. Thus
   `AudioBox · ONLINE` and `D-50 · UNVERIFIED` can truthfully appear together.
+  Offline/ambiguous ports remain editable and saved. Discovery never grants
+  permission to route, never probes DIN hardware, and never limits arbitrary
+  experimental splitters, chains, channels, or programs.
 - **MIDI Learn** opens directly from Home and learns rotary left, right, then
   click before browsing optional mappings.
 

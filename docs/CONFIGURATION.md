@@ -434,8 +434,9 @@ Open FT2 **NAV** → **PAGE**, then choose **MANAGE PAGES / TRACKS**. The
 resulting **TRACKS** screen edits pages and columns. Use the main encoder to
 select a page. **ADD** creates
 another four-lane page in that Pattern. **TARGET** chooses `AUTO` (portable
-machine default), an ALSA MIDI output that is currently visible, the active
-SHR-DAW software instrument, or the configured output. `AUTO` displays an
+machine default), an internal software route, or external MIDI. An internal
+route then chooses **ENGINE** before **INSTR**; an external route chooses
+**MIDI OUT** before its per-column channel/bank/program values. `AUTO` displays an
 `AUTO` channel and does not permit channel/bank/program editing because those
 values would bind the Project to one machine. **CHANNEL**
 chooses 1–16. Encoder press confirms a field. **DONE** keeps all page changes;
@@ -445,8 +446,8 @@ controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
 
 FT2 **NAV** → **ROUTE** is the passive quick editor. Its 38×18 bordered overlay
-shows the active page target and 16 per-column channel/bank/program rows inside
-a 36×16 content area. Opening and browsing use cached discovery information;
+shows `TARGET`, `ENGINE`, `INSTR`, `MIDI OUT`, optional `PROFILE`, and the 16
+per-column channel/bank/program rows in a scrolling 36×16 content area. Opening and browsing use cached discovery information;
 they do not create a MIDI discovery client, send MIDI, synchronize routes, or
 start an engine. A field changes only after click/Enter activates it. Back/Esc
 cancels that field first. **APPLY ROUTING** validates and copies the detached
@@ -454,17 +455,18 @@ page draft through the same Project and route-synchronization owner used by
 Tracks. Closing with the highlighted ROUTE launcher or Back cancels a dirty
 draft and never saves silently.
 
-The active-instrument choice always means the single software instrument that
-SHR-DAW currently owns and monitors. It does not start another engine. It is
-offline when no managed instrument is active.
+An internal route stores the engine identity together with that engine's stable
+instrument identity. Changing the standalone/current engine or catalog order
+cannot retarget it. The editor deliberately asks for the engine first and then
+lists instruments belonging to that engine.
 
-An exact hardware port name is saved as a preferred route. If it is missing,
-the page and persistent status show `FALLBACK` and name the missing target while
-runtime may use the configured external hardware route. It never falls into
-the Pattern's software synth. With no hardware route
-at all it shows `OFFLINE`. SHR-DAW never rewrites the saved name. If multiple
-ports have the same exact name, or a configured partial match selects more than
-one port, the preferred target is ambiguous and is not guessed.
+An exact hardware port name is saved as the route. If it is missing, the page
+shows `OFFLINE`; if the stable identity matches more than once it shows
+`AMBIG`. Neither state changes, deletes, or falls back from the saved route.
+When the same interface port returns, playback resolves it without rewriting
+the Project. Discovery reports only whether the configured computer/interface
+output is available. It cannot discover, verify, or restrict instruments,
+splitters, chains, power state, MIDI channels, or programs behind a DIN socket.
 
 ## Configured output
 
@@ -478,32 +480,35 @@ The most important output keys are:
 ```text
 external_midi.enabled=true
 external_midi.client=shs-tracker
-external_midi.output=part of the ALSA output port name
+external_midi.output=stable client-name:port-name identity
 external_midi.melody_channel=1
 external_midi.percussion_channel=10
 ```
 
-These example values are not device requirements. Run `shr-setup` and choose
-the ports present on the Raspberry Pi. The configuration template retains the
-original Casiotone proof-of-concept profile id, but no Casiotone named-program
-JSON is distributed; without a private matching profile, the browser correctly
-falls back to numeric programs 0–127.
+These example values are not device requirements. A configured interface MIDI
+output is enough: advanced users may attach one instrument, a splitter, a chain
+of 100 devices, or change the downstream chain while SHR-DAW is running. The
+route remains saveable while the interface is offline. Without a profile, the
+browser retains raw channels 1–16 and numeric programs 0–127.
 
-`external_midi.profile` selects named program data for the configured route.
-Use `roland-d-50` for a D-50, or leave an unknown id to retain the numeric
-0–127 browser. JSON profiles are discovered, in override order, from
+`external_midi.profile` selects optional naming/bank metadata for the configured
+route. Use `roland-d-50` for D-50 labels or `raw-midi` for no downstream
+assumption. Profiles never enable transmission, limit raw channel/program
+values, or imply that the hardware was detected. JSON profiles are discovered, in override order, from
 `SHSYNTH_DEVICE_PROFILE_DIR`, `${XDG_DATA_HOME}/shsynth/midi-devices/`, the
 installed shared-data directory, and the checkout's `midi-devices/` directory.
-Exact MIDI port targets can also match a profile's `port_matches` entries.
+The FT2 route stores an optional profile id separately from its output, channel,
+bank, and program values.
 
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 4
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 5
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, every cell field, the source insert rack, aux
-routing, and master rack. A format-4 `default` target plus four `default`
+routing, master rack, explicit software engine/instrument identity, and optional
+external profile metadata. A format-4-or-newer `default` target plus four `default`
 column markers is the canonical portable/unassigned state; it is not channel
 zero, mute, or disabled. Versions 0 and 1 migrate with empty effects routing;
 version 2 retains its source rack and gains empty aux/master routing; format 3
@@ -601,13 +606,12 @@ commands in one cell are not supported. Per-cell program overrides use the
 selected column bank and exact page destination/column channel, occur before
 that note, and do not mutate the inherited column program.
 
-Choosing **Program** replaces the grid with a named program browser. Controller
-notes are routed to the selected page target/column channel for live audition without
-being inserted into the pattern or duplicated through the generic live-thru
-route. Unknown devices still show every numeric MIDI program. The next played
-note receives the current draft bank/program selection, which is transmitted
-as soon as the browser selection changes; confirm commits the cell and cancel
-restores its original value and selection.
+Choosing **Program** replaces the grid with a named program browser. Browsing
+alone sends nothing. An explicitly played controller note auditions through the
+selected page target/column channel without being inserted into the pattern or
+duplicated through generic live-thru. Raw MIDI still shows every numeric
+program. Confirm commits the cell and cancel restores its original value and
+selection.
 
 ## Note ownership
 
@@ -618,7 +622,7 @@ on affected destinations. Lanes that share a device/channel keep separate note
 ownership; a shared note is released only after its last lane owner ends.
 
 The selected FT2 page also owns live keyboard and ordinary musical MIDI
-audition. A synth page uses its saved synthv1 preset name; each MIDI page uses
+audition. A software page uses its saved engine and instrument identities; each MIDI page uses
 its own output/channel/program; a percussion page uses its drum mapping.
 Switching any route field cancels the old route first. Internal channels and
 programs are zero-based MIDI values, while every FT2 screen shows channels

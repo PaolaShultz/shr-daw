@@ -201,8 +201,8 @@ Arrangement reference and never silently rewrites the Arrangement.
 
 Each Pattern owns one or more **pages**, and every page has four note
 **columns**. All enabled pages play together. A page chooses one MIDI
-destination: portable `AUTO`, a named Pattern-owned synthv1 preset, the
-configured external output, or an exact visible ALSA MIDI port. An `AUTO` page persists no
+destination: portable `AUTO`, an explicit software engine/instrument pair, the
+configured external output, or an exact saved ALSA MIDI port. An `AUTO` page persists no
 device/channel/bank/program route and resolves the current machine defaults at
 playback. An explicit page's columns show channel 1–16 and program 1–128 while
 storing their zero-based MIDI values, plus bank MSB/LSB, lane name, and mute
@@ -213,16 +213,16 @@ match, because MIDI program changes affect the whole channel.
 This separation makes several useful routes possible in one Pattern: one page
 can play its named software instrument, another can address a drum machine,
 and another can play a hardware synth on a different port. A disconnected
-exact target is displayed as `FALLBACK` while the configured external route
-can substitute, otherwise `OFFLINE`; its name and notes stay
-in the Project. Destinations are re-resolved on each play, so returned equipment
-is selected without editing the Project. Ambiguous exact or partial preferred
-matches are not guessed.
+exact target is displayed as `OFFLINE` and never substitutes another port; its
+name and notes stay in the Project. Destinations are re-resolved on each play,
+so a returned interface is selected without editing the Project. Ambiguous
+stable identities are reported and not guessed.
 
-External MIDI device profiles add trustworthy bank labels and program names to
+External MIDI device profiles optionally add bank labels and program names to
 the column and cell program browsers. They remain JSON data, can be privately
-overridden for writable user memories, and never remove the musician-facing
-1–128 numeric fallback. See [MIDI device profiles](MIDI_DEVICE_PROFILES.md).
+overridden for writable user memories, and never remove raw channels 1–16 or
+the musician-facing 1–128 numeric fallback. They describe rather than detect
+downstream DIN hardware. See [MIDI device profiles](MIDI_DEVICE_PROFILES.md).
 
 ## FT2 Play, Record, and Edit modes with N00B
 
@@ -243,8 +243,8 @@ exact pitch, rejected notes stay silent, and Record/Edit write only accepted
 notes. Switching N00B never changes the underlying mode. It turns off on
 percussion pages.
 
-The selected Pattern page owns live audition. A synth page loads its named
-synthv1 preset; MIDI pages keep independent destination/channel/program routes;
+The selected Pattern page owns live audition. A software page loads its saved
+engine/instrument pair; MIDI pages keep independent destination/channel/program routes;
 and percussion pages use their channel and drum mapping. Route changes cancel
 the old destination/channel before the new one is armed. The standalone
 Software Synth selection is never consulted by FT2.
@@ -427,16 +427,17 @@ from cutting off another shared note.
 Missing JACK leaves browsing and external-MIDI sequencing usable. A missing
 controller leaves the computer keyboard active. Audio resolves preferred,
 ordered internal, then final headphone routes in memory. A missing external
-MIDI target falls back without rewriting Project data. Ambiguous
-ports are refused. Missing optional engines or sound banks remain visible with
+MIDI target remains offline without rewriting or falling through to another
+port. Ambiguous ports are reported and refused. Missing optional engines or sound banks remain visible with
 an explanation. A failed graph returns to direct playback. None of those
 failures authorizes SHR-DAW to rewire unrelated clients or terminate processes
 it does not own.
 
 ## Project and private-data safety
 
-Project format 4 persists the complete tracker state and effects routing plus
-an explicit portable route state. Format 3 remains loadable and keeps its
+Project format 5 persists the complete tracker state and effects routing plus
+explicit software engine/instrument identities and optional external profile
+metadata. Format 3 remains loadable and keeps its
 device/channel routes explicit.
 Formats 0 and 1 migrate with empty effects; format 2 retains its source rack and
 gains empty aux/master routing. Unknown newer formats, fields, malformed rack

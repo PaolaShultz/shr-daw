@@ -3,6 +3,7 @@
 use crate::audio_graph::{InsertRack, ProjectAuxRouting};
 use crate::config::{BankSelectMode, ExternalMidiConfig};
 use crate::device_profile::Registry as DeviceProfiles;
+use crate::preset::BackendKind;
 use anyhow::{anyhow, bail, Context, Result};
 use midir::{MidiOutput, MidiOutputConnection};
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,7 +14,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 4;
+pub const SONG_VERSION: u8 = 5;
 pub const LANES_PER_PAGE: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_PATTERNS: usize = 256;
@@ -102,6 +103,9 @@ pub struct Page {
     pub velocity: u8,
     pub percussion: bool,
     pub target: PageTarget,
+    /// Optional convenience metadata for labels and bank protocol. Raw MIDI
+    /// routing remains complete when this is `None`.
+    pub device_profile: Option<String>,
     /// Reserved for a later small per-page MIDI setup sequence. It is stored
     /// and routed, but deliberately has no editor yet.
     pub setup: Vec<Vec<u8>>,
@@ -128,10 +132,29 @@ pub enum PageTarget {
     /// Software Synth workspace. The portable identifier is the discovered
     /// preset name, never a machine-local absolute path.
     Synthv1(String),
+    /// Explicit software route. Engine and instrument identities travel
+    /// together so catalog order or the standalone current engine cannot
+    /// retarget a Pattern.
+    Software(SoftwareRoute),
     /// An exact ALSA MIDI output port name selected by the user.
     Midi(String),
     /// The configured `external_midi.output` route.
     ConfiguredExternal,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct SoftwareRoute {
+    pub engine: BackendKind,
+    pub instrument: String,
+}
+
+impl SoftwareRoute {
+    pub fn synthv1(instrument: impl Into<String>) -> Self {
+        Self {
+            engine: BackendKind::Synthv1,
+            instrument: instrument.into(),
+        }
+    }
 }
 
 impl PageTarget {
@@ -140,6 +163,7 @@ impl PageTarget {
             Self::Default => "AUTO · machine default",
             Self::ActiveInstrument => "SHR-DAW instrument",
             Self::Synthv1(name) => name,
+            Self::Software(route) => &route.instrument,
             Self::Midi(name) => name,
             Self::ConfiguredExternal => "Configured MIDI output",
         }
@@ -489,7 +513,7 @@ fn default_pages(_config: &ExternalMidiConfig) -> Vec<Page> {
 /// and programs 1--128.
 pub fn factory_routing_pages(first_synthv1: &str) -> Vec<Page> {
     let mut synth = Page::new("Software Synth", 0, false, 0);
-    synth.target = PageTarget::Synthv1(first_synthv1.to_owned());
+    synth.target = PageTarget::Software(SoftwareRoute::synthv1(first_synthv1));
     let midi = Page::new("MIDI", 0, false, 0);
     let drums = Page::new("Drums", 9, true, 0);
     vec![synth, midi, drums]
@@ -510,8 +534,13 @@ pub fn upgrade_legacy_synth_routes(song: &mut Song, first_synthv1: &str) -> usiz
         .values_mut()
         .flat_map(|pattern| pattern.pages.iter_mut())
     {
-        if page.target == PageTarget::ActiveInstrument {
-            page.target = PageTarget::Synthv1(first_synthv1.to_owned());
+        let replacement = match &page.target {
+            PageTarget::ActiveInstrument => Some(first_synthv1.to_owned()),
+            PageTarget::Synthv1(name) => Some(name.clone()),
+            _ => None,
+        };
+        if let Some(name) = replacement {
+            page.target = PageTarget::Software(SoftwareRoute::synthv1(name));
             changed += 1;
         }
     }
@@ -572,6 +601,7 @@ impl Page {
             velocity: 96,
             percussion,
             target: PageTarget::ConfiguredExternal,
+            device_profile: None,
             setup: Vec::new(),
             lanes: (1..=LANES_PER_PAGE)
                 .map(|lane| Lane {
@@ -827,8 +857,15 @@ impl Pattern {
                 PageTarget::Synthv1(name) => {
                     validate_label(name, "pattern page synthv1 preset", 255)?
                 }
+                PageTarget::Software(route) => {
+                    validate_label(route.engine.label(), "pattern page software engine", 32)?;
+                    validate_label(&route.instrument, "pattern page software instrument", 255)?;
+                }
                 PageTarget::Midi(name) => validate_label(name, "pattern page MIDI target", 256)?,
                 _ => {}
+            }
+            if let Some(profile) = &page.device_profile {
+                validate_label(profile, "pattern page device profile", 128)?;
             }
             if page.setup.len() > MAX_SETUP_MESSAGES_PER_PAGE
                 || page
@@ -965,12 +1002,16 @@ pub fn encode(song: &Song) -> Result<String> {
         ));
         for (page_index, page) in pattern.pages.iter().enumerate() {
             out.push_str(&format!(
-                "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}\n",
+                "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}|{}\n",
                 escape(&page.name),
                 u8::from(page.enabled),
                 page.velocity,
                 u8::from(page.percussion),
-                target_text(&page.target)
+                target_text(&page.target),
+                page.device_profile
+                    .as_deref()
+                    .map(escape)
+                    .unwrap_or_else(|| "-".into())
             ));
             for (column_index, column) in page.columns.iter().enumerate() {
                 let (channel, bank_msb, bank_lsb, program) = if page.target == PageTarget::Default {
@@ -1154,6 +1195,7 @@ pub fn decode(text: &str) -> Result<Song> {
                             velocity: midi_value(velocity)?,
                             percussion: binary_flag(percussion, "pattern page percussion")?,
                             target: parse_target(target, version)?,
+                            device_profile: None,
                             setup: Vec::new(),
                             lanes: Vec::new(),
                         },
@@ -1167,6 +1209,23 @@ pub fn decode(text: &str) -> Result<Song> {
                             velocity: midi_value(velocity)?,
                             percussion: binary_flag(percussion, "pattern page percussion")?,
                             target: parse_target(target, version)?,
+                            device_profile: None,
+                            setup: Vec::new(),
+                            lanes: Vec::new(),
+                        },
+                        false,
+                    ),
+                    (5, [_, _, name, enabled, velocity, percussion, target, profile]) => (
+                        Page {
+                            name: unescape(name)?,
+                            enabled: binary_flag(enabled, "pattern page enabled")?,
+                            columns: [ColumnSetup::default(); LANES_PER_PAGE],
+                            velocity: midi_value(velocity)?,
+                            percussion: binary_flag(percussion, "pattern page percussion")?,
+                            target: parse_target(target, version)?,
+                            device_profile: (*profile != "-")
+                                .then(|| unescape(profile))
+                                .transpose()?,
                             setup: Vec::new(),
                             lanes: Vec::new(),
                         },
@@ -1750,7 +1809,7 @@ fn append_program(
 ) {
     if matches!(
         page.target,
-        PageTarget::ActiveInstrument | PageTarget::Synthv1(_)
+        PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_)
     ) {
         return;
     }
@@ -1765,13 +1824,18 @@ fn append_program(
         };
         program = machine_program;
     }
-    let profile = match &page.target {
-        PageTarget::Default | PageTarget::ConfiguredExternal => {
-            device_profiles.by_id(&config.profile)
-        }
-        PageTarget::Midi(port) => device_profiles.matching_port(port),
-        PageTarget::ActiveInstrument | PageTarget::Synthv1(_) => None,
-    };
+    let profile = page
+        .device_profile
+        .as_deref()
+        .and_then(|id| device_profiles.by_id(id))
+        .or_else(|| {
+            matches!(
+                page.target,
+                PageTarget::Default | PageTarget::ConfiguredExternal
+            )
+            .then(|| device_profiles.by_id(&config.profile))
+            .flatten()
+        });
     if let Some(profile) = profile {
         profile.apply_midi_selection(&mut selection);
     }
@@ -2456,18 +2520,12 @@ fn resolve_midi_route(
     names: &[String],
     instrument_online: bool,
 ) -> ResolvedMidiRoute {
-    let configured_label = if config.output_match.is_empty() {
-        "configured external MIDI route"
-    } else {
-        &config.output_match
-    };
-    let configured = || {
-        config
-            .enabled
-            .then(|| matching_output_index(names, &config.output_match, true))
-            .transpose()
-            .ok()
-            .flatten()
+    let configured = || -> Result<Option<usize>> {
+        if config.enabled {
+            matching_output_index(names, &config.output_match, true).map(Some)
+        } else {
+            Ok(None)
+        }
     };
     let instrument = |notice: Option<String>, unavailable: String| ResolvedMidiRoute {
         choice: if instrument_online {
@@ -2478,26 +2536,22 @@ fn resolve_midi_route(
         notice: instrument_online.then_some(notice).flatten(),
     };
     match target {
-        PageTarget::ActiveInstrument | PageTarget::Synthv1(_) => {
+        PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_) => {
             instrument(None, "active SHR-DAW instrument is offline".into())
         }
         PageTarget::Default => {
-            if let Some(index) = configured() {
-                ResolvedMidiRoute {
-                    choice: MidiRouteChoice::Hardware(index),
-                    notice: None,
+            if config.enabled {
+                match configured() {
+                    Ok(Some(index)) => ResolvedMidiRoute {
+                        choice: MidiRouteChoice::Hardware(index),
+                        notice: None,
+                    },
+                    Ok(None) => unreachable!("enabled configured route returned no destination"),
+                    Err(error) => ResolvedMidiRoute {
+                        choice: MidiRouteChoice::Unavailable(error.to_string()),
+                        notice: None,
+                    },
                 }
-            } else if config.enabled {
-                instrument(
-                    Some(format!(
-                        "MIDI fallback: internal instrument · missing {}",
-                        configured_label
-                    )),
-                    format!(
-                        "portable route has no active default; configured MIDI output {:?} is offline and no instrument is loaded",
-                        config.output_match
-                    ),
-                )
             } else {
                 instrument(
                     None,
@@ -2506,47 +2560,33 @@ fn resolve_midi_route(
                 )
             }
         }
-        PageTarget::ConfiguredExternal => {
-            if let Some(index) = configured() {
-                ResolvedMidiRoute {
-                    choice: MidiRouteChoice::Hardware(index),
-                    notice: None,
-                }
-            } else {
-                ResolvedMidiRoute {
-                    choice: MidiRouteChoice::Unavailable(format!(
-                        "configured MIDI output {:?} is offline",
-                        config.output_match
-                    )),
-                    notice: None,
-                }
-            }
-        }
-        PageTarget::Midi(wanted) => {
-            if let Ok(index) = matching_output_index(names, wanted, false) {
-                return ResolvedMidiRoute {
-                    choice: MidiRouteChoice::Hardware(index),
-                    notice: None,
-                };
-            }
-            let missing = format!("preferred MIDI {wanted:?}");
-            if let Some(index) = configured() {
-                ResolvedMidiRoute {
-                    choice: MidiRouteChoice::Hardware(index),
-                    notice: Some(format!(
-                        "MIDI fallback: {} · missing {missing}",
-                        config.output_match
-                    )),
-                }
-            } else {
-                ResolvedMidiRoute {
-                    choice: MidiRouteChoice::Unavailable(format!(
-                        "MIDI output {wanted:?} is offline and no configured hardware fallback is available"
-                    )),
-                    notice: None,
-                }
-            }
-        }
+        PageTarget::ConfiguredExternal => match configured() {
+            Ok(Some(index)) => ResolvedMidiRoute {
+                choice: MidiRouteChoice::Hardware(index),
+                notice: None,
+            },
+            Ok(None) => ResolvedMidiRoute {
+                choice: MidiRouteChoice::Unavailable(format!(
+                    "configured MIDI output {:?} is offline",
+                    config.output_match
+                )),
+                notice: None,
+            },
+            Err(error) => ResolvedMidiRoute {
+                choice: MidiRouteChoice::Unavailable(error.to_string()),
+                notice: None,
+            },
+        },
+        PageTarget::Midi(wanted) => match matching_output_index(names, wanted, false) {
+            Ok(index) => ResolvedMidiRoute {
+                choice: MidiRouteChoice::Hardware(index),
+                notice: None,
+            },
+            Err(error) => ResolvedMidiRoute {
+                choice: MidiRouteChoice::Unavailable(error.to_string()),
+                notice: None,
+            },
+        },
     }
 }
 
@@ -2648,6 +2688,7 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
         velocity: 64,
         percussion: false,
         target: PageTarget::ConfiguredExternal,
+        device_profile: None,
         setup: Vec::new(),
         lanes: (1..=LANES_PER_PAGE)
             .map(|lane| Lane {
@@ -2743,8 +2784,16 @@ fn target_text(target: &PageTarget) -> String {
         PageTarget::Default => "default".into(),
         PageTarget::ActiveInstrument => "instrument".into(),
         PageTarget::Synthv1(name) => format!("synthv1:{}", escape(name)),
+        PageTarget::Software(route) => format!(
+            "software:{}:{}",
+            route.engine.label().to_ascii_lowercase(),
+            escape(&route.instrument)
+        ),
         PageTarget::ConfiguredExternal => "configured".into(),
-        PageTarget::Midi(name) => format!("midi:{}", escape(name)),
+        PageTarget::Midi(name) => format!(
+            "midi:{}",
+            escape(&crate::midi_endpoint::stable_identity(name))
+        ),
     }
 }
 fn parse_target(value: &str, version: u8) -> Result<PageTarget> {
@@ -2760,11 +2809,21 @@ fn parse_target(value: &str, version: u8) -> Result<PageTarget> {
             .filter(|name| !name.is_empty())
             .map(PageTarget::Synthv1)
             .context("invalid synthv1 page target"),
+        _ if version >= 5 && value.starts_with("software:") => {
+            let route = value.strip_prefix("software:").unwrap_or_default();
+            let (engine, instrument) = route
+                .split_once(':')
+                .context("invalid software page target")?;
+            Ok(PageTarget::Software(SoftwareRoute {
+                engine: engine.parse()?,
+                instrument: unescape(instrument)?,
+            }))
+        }
         _ => value
             .strip_prefix("midi:")
             .map(unescape)
             .transpose()?
-            .map(PageTarget::Midi)
+            .map(|name| PageTarget::Midi(crate::midi_endpoint::stable_identity(&name)))
             .context("invalid page target"),
     }
 }
@@ -2874,13 +2933,28 @@ mod tests {
     fn pages_mut(song: &mut Song) -> &mut [Page] {
         &mut song.patterns.get_mut(&0).unwrap().pages
     }
+    fn without_v5_profile_fields(text: &str) -> String {
+        text.lines()
+            .map(|line| {
+                if line.starts_with("pattern_page=") {
+                    line.rsplit_once('|').unwrap().0
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn factory_pattern_has_synth_midi_and_drum_routes_with_zero_based_storage() {
         let pages = factory_routing_pages("First Sound");
         assert_eq!(pages.len(), 3);
         assert_eq!(pages[0].name, "Software Synth");
-        assert_eq!(pages[0].target, PageTarget::Synthv1("First Sound".into()));
+        assert_eq!(
+            pages[0].target,
+            PageTarget::Software(SoftwareRoute::synthv1("First Sound"))
+        );
         assert!(!pages[0].percussion);
         assert_eq!(pages[1].name, "MIDI");
         assert_eq!(pages[1].target, PageTarget::ConfiguredExternal);
@@ -2916,7 +2990,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::ActiveInstrument;
         let before = encode(&song).unwrap();
-        assert!(before.contains("|instrument\n"));
+        assert!(before.contains("|instrument|-\n"));
         let base = env::temp_dir().join(format!("shr-legacy-routing-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         save(&base, &song, false).unwrap();
@@ -2926,10 +3000,12 @@ mod tests {
         assert_eq!(upgrade_legacy_synth_routes(&mut loaded, "First Sound"), 1);
         assert_eq!(
             pages(&loaded)[0].target,
-            PageTarget::Synthv1("First Sound".into())
+            PageTarget::Software(SoftwareRoute::synthv1("First Sound"))
         );
         assert_eq!(fs::read_to_string(path).unwrap(), before);
-        assert!(encode(&loaded).unwrap().contains("|synthv1:First Sound\n"));
+        assert!(encode(&loaded)
+            .unwrap()
+            .contains("|software:synthv1:First Sound|-\n"));
         let _ = fs::remove_dir_all(base);
     }
     #[test]
@@ -2965,7 +3041,7 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 4\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 5\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
@@ -3005,7 +3081,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 4\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 5\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -3169,6 +3245,7 @@ mod tests {
         let mut song = Song::new(&config);
         let page = &mut song.patterns.get_mut(&0).unwrap().pages[0];
         page.target = PageTarget::Midi("USB MIDI: Roland D-50".into());
+        page.device_profile = Some("roland-d-50".into());
         for column in &mut page.columns {
             column.bank_msb = 5;
             column.bank_lsb = 9;
@@ -3190,6 +3267,30 @@ mod tests {
         assert!(!transmitted.iter().any(|message| {
             message.len() >= 2 && message[0] & 0xf0 == 0xb0 && matches!(message[1], 0 | 32)
         }));
+    }
+
+    #[test]
+    fn configured_profile_does_not_leak_into_an_explicit_raw_midi_route() {
+        let mut config = config();
+        config.profile = "roland-d-50".into();
+        config.bank_select = BankSelectMode::Cc0Cc32;
+        let mut song = Song::new(&config);
+        let page = &mut song.patterns.get_mut(&0).unwrap().pages[0];
+        page.target = PageTarget::Midi("Independent raw output".into());
+        page.device_profile = None;
+        page.columns = [ColumnSetup {
+            channel: 2,
+            bank_msb: 5,
+            bank_lsb: 9,
+            program: 7,
+        }; LANES_PER_PAGE];
+        song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+        let messages = schedule(&song, &config, 0, 0).unwrap();
+        assert!(messages.iter().any(|message| message.bytes == [0xb2, 0, 5]));
+        assert!(messages
+            .iter()
+            .any(|message| message.bytes == [0xb2, 32, 9]));
+        assert!(messages.iter().any(|message| message.bytes == [0xc2, 7]));
     }
     #[test]
     fn row_timing_pattern_transition_and_tempo() {
@@ -3737,6 +3838,7 @@ mod tests {
     fn offline_exact_target_and_setup_round_trip_without_rebinding() {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Midi("Missing forever".into());
+        pages_mut(&mut song)[0].device_profile = Some("roland-d-50".into());
         pages_mut(&mut song)[0].setup = vec![vec![0xb3, 0, 12], vec![0xc3, 7]];
         let decoded = decode(&encode(&song).unwrap()).unwrap();
         assert_eq!(decoded, song);
@@ -3747,6 +3849,24 @@ mod tests {
                 m.target == Some(PageTarget::Midi("Missing forever".into()))
                     && m.bytes == [0xb3, 0, 12]
             }));
+        assert_eq!(
+            decoded.patterns[&0].pages[0].device_profile.as_deref(),
+            Some("roland-d-50")
+        );
+    }
+
+    #[test]
+    fn tracker_persistence_strips_only_volatile_alsa_numeric_address() {
+        let mut song = Song::new(&config());
+        pages_mut(&mut song)[0].target =
+            PageTarget::Midi("AudioBox USB 96:AudioBox MIDI 32:0".into());
+        let encoded = encode(&song).unwrap();
+        assert!(encoded.contains("midi:AudioBox USB 96:AudioBox MIDI"));
+        assert!(!encoded.contains(" 32:0"));
+        assert_eq!(
+            pages(&decode(&encoded).unwrap())[0].target,
+            PageTarget::Midi("AudioBox USB 96:AudioBox MIDI".into())
+        );
     }
 
     #[test]
@@ -3893,14 +4013,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 4\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 5\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
-        let legacy = current
-            .replacen("SHSYNTH-SONG 4", "SHSYNTH-SONG 1", 1)
+        let legacy = without_v5_profile_fields(&current)
+            .replacen("SHSYNTH-SONG 5", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -3909,14 +4029,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 4\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 5\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
-        let old = current
-            .replacen("SHSYNTH-SONG 4", "SHSYNTH-SONG 2", 1)
+        let old = without_v5_profile_fields(&current)
+            .replacen("SHSYNTH-SONG 5", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -3933,8 +4053,8 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 4\n"));
-        assert!(encoded.contains("|default\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 5\n"));
+        assert!(encoded.contains("|default|-\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
         assert_eq!(decoded, song);
@@ -3948,8 +4068,8 @@ mod tests {
     #[test]
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
-        let legacy = current
-            .replacen("SHSYNTH-SONG 4", "SHSYNTH-SONG 3", 1)
+        let legacy = without_v5_profile_fields(&current)
+            .replacen("SHSYNTH-SONG 5", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -3966,21 +4086,50 @@ mod tests {
     }
 
     #[test]
-    fn runtime_midi_fallback_preserves_preference_and_reconnects() {
+    fn version_four_synth_route_loads_and_upgrades_without_incidental_engine_state() {
+        let mut song = Song::new(&config());
+        pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
+        let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
+            "SHSYNTH-SONG 5",
+            "SHSYNTH-SONG 4",
+            1,
+        );
+        let mut loaded = decode(&legacy).unwrap();
+        assert_eq!(
+            pages(&loaded)[0].target,
+            PageTarget::Synthv1("Legacy Lead".into())
+        );
+        assert_eq!(upgrade_legacy_synth_routes(&mut loaded, "Other Sound"), 1);
+        assert_eq!(
+            pages(&loaded)[0].target,
+            PageTarget::Software(SoftwareRoute::synthv1("Legacy Lead"))
+        );
+    }
+
+    #[test]
+    fn offline_exact_midi_route_stays_offline_then_reconnects_without_rewriting() {
         let mut cfg = config();
         cfg.enabled = true;
         cfg.output_match = "Machine default".into();
         let preferred = PageTarget::Midi("Touring rack".into());
         let default_only = vec!["Machine default port".to_owned()];
-        let fallback = resolve_midi_route(&cfg, &preferred, &default_only, true);
-        assert_eq!(fallback.choice, MidiRouteChoice::Hardware(0));
-        assert!(fallback.notice.unwrap().contains("Touring rack"));
+        let offline = resolve_midi_route(&cfg, &preferred, &default_only, true);
+        assert!(matches!(offline.choice, MidiRouteChoice::Unavailable(_)));
+        assert_eq!(offline.notice, None);
         assert_eq!(preferred, PageTarget::Midi("Touring rack".into()));
 
         let restored_names = vec!["Machine default port".into(), "Touring rack".into()];
         let restored = resolve_midi_route(&cfg, &preferred, &restored_names, true);
         assert_eq!(restored.choice, MidiRouteChoice::Hardware(1));
         assert_eq!(restored.notice, None);
+
+        let ambiguous_names = vec!["Touring rack 20:0".into(), "Touring rack 21:0".into()];
+        let ambiguous = resolve_midi_route(&cfg, &preferred, &ambiguous_names, true);
+        assert!(matches!(
+            ambiguous.choice,
+            MidiRouteChoice::Unavailable(ref error) if error.contains("ambiguous")
+        ));
+        assert_eq!(preferred, PageTarget::Midi("Touring rack".into()));
     }
 
     #[test]
@@ -3995,6 +4144,12 @@ mod tests {
 
         let none = resolve_midi_route(&cfg, &exact, &[], false);
         assert!(matches!(none.choice, MidiRouteChoice::Unavailable(_)));
+
+        let configured_auto = resolve_midi_route(&cfg, &PageTarget::Default, &[], true);
+        assert!(matches!(
+            configured_auto.choice,
+            MidiRouteChoice::Unavailable(_)
+        ));
 
         cfg.enabled = false;
         let portable = resolve_midi_route(&cfg, &PageTarget::Default, &[], true);
@@ -4028,6 +4183,47 @@ mod tests {
                 .iter()
                 .any(|message| message.bytes == [0x90 | column as u8, 60 + column as u8, 96]));
         }
+    }
+
+    #[test]
+    fn raw_midi_accepts_every_channel_and_program_without_a_profile() {
+        let cfg = config();
+        for channel in 0..=15 {
+            for program in [0, 127] {
+                let mut song = Song::new(&cfg);
+                let pattern = song.patterns.get_mut(&0).unwrap();
+                pattern.pages[1].enabled = false;
+                pattern.pages[0].target = PageTarget::Midi("Raw DIN output".into());
+                pattern.pages[0].device_profile = None;
+                for column in &mut pattern.pages[0].columns {
+                    column.channel = channel;
+                    column.program = program;
+                }
+                pattern.rows.truncate(1);
+                pattern.rows[0][0].note = Note::On(60);
+                let messages = schedule(&song, &cfg, 0, 0).unwrap();
+                assert!(messages
+                    .iter()
+                    .any(|message| message.bytes == [0xc0 | channel, program]));
+                assert!(messages
+                    .iter()
+                    .any(|message| message.bytes == [0x90 | channel, 60, 96]));
+            }
+        }
+    }
+
+    #[test]
+    fn software_route_round_trips_engine_and_instrument_as_stable_identities() {
+        let mut song = Song::new(&config());
+        let route = SoftwareRoute {
+            engine: BackendKind::Yoshimi,
+            instrument: "Pads/Glass Horizon".into(),
+        };
+        pages_mut(&mut song)[0].target = PageTarget::Software(route.clone());
+        let encoded = encode(&song).unwrap();
+        assert!(encoded.contains("software:yoshimi:Pads/Glass Horizon"));
+        let decoded = decode(&encoded).unwrap();
+        assert_eq!(pages(&decoded)[0].target, PageTarget::Software(route));
     }
 
     #[test]

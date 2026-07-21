@@ -12,7 +12,7 @@ use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BackendKind {
     Synthv1,
     Yoshimi,
@@ -98,6 +98,32 @@ impl Preset {
             .as_ref()
             .map(|category| format!("[{category}] {}", self.name))
             .unwrap_or_else(|| self.name.clone())
+    }
+
+    /// Portable identity used by Project-owned software routes. It is stable
+    /// across catalog ordering and deliberately excludes machine-local
+    /// absolute paths.
+    pub fn route_id(&self) -> String {
+        match &self.id {
+            PresetId::Synthv1 { .. } => self.name.clone(),
+            PresetId::Yoshimi { .. } => self
+                .category
+                .as_ref()
+                .map(|category| format!("{category}/{}", self.name))
+                .unwrap_or_else(|| self.name.clone()),
+            PresetId::FluidSynth {
+                soundfont,
+                bank,
+                program,
+                ..
+            } => {
+                let soundfont = soundfont
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("soundfont");
+                format!("{soundfont}:{bank}:{program}")
+            }
+        }
     }
 }
 
