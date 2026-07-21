@@ -709,7 +709,7 @@ impl Engine {
             let mut runtime_config = config.clone();
             runtime_config.audio_outputs = resolved_audio.outputs;
             audio_route_notice = resolved_audio.notice;
-            connect_audio(&backend_config.client_name, &runtime_config);
+            connect_audio(&backend_config.client_name, &runtime_config)?;
             if config.audio_graph.enabled {
                 match start_managed_audio_graph(
                     &backend_config.client_name,
@@ -1236,17 +1236,14 @@ fn wait_ready(
                 log_path.display()
             );
         }
-        if jack_ports().iter().any(|port| {
-            port.to_ascii_lowercase()
-                .contains(&client_name.to_ascii_lowercase())
-        }) {
+        if resolve_managed_audio_outputs(client_name, jack_ports()).is_ok() {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(100));
     }
     terminate(child);
     bail!(
-        "{} did not register with JACK; see {}",
+        "{} did not register an unambiguous JACK stereo output; see {}",
         backend.label(),
         log_path.display()
     )
@@ -2164,18 +2161,21 @@ fn parse_jack_audio_sources(lines: Vec<String>) -> Vec<String> {
     sources
 }
 
-fn connect_audio(client_name: &str, config: &RuntimeConfig) {
+fn connect_audio(client_name: &str, config: &RuntimeConfig) -> Result<()> {
     if !config.audio_autoconnect {
-        return;
+        return Ok(());
     }
-    let Ok(outputs) = managed_audio_outputs(client_name) else {
-        return;
-    };
+    let outputs = managed_audio_outputs(client_name)?;
     for (source, destination) in outputs.iter().zip(config.audio_outputs.iter()) {
-        let _ = Command::new("jack_connect")
+        let status = Command::new("jack_connect")
             .args([source.as_str(), destination.as_str()])
-            .status();
+            .status()
+            .with_context(|| format!("connect JACK audio {source} -> {destination}"))?;
+        if !status.success() {
+            bail!("connect JACK audio {source} -> {destination} exited with {status}");
+        }
     }
+    Ok(())
 }
 
 fn start_managed_audio_graph(
@@ -2247,7 +2247,9 @@ fn resolve_managed_audio_outputs(
     client_name: &str,
     ports: impl IntoIterator<Item = String>,
 ) -> Result<[String; 2]> {
-    let mut outputs = Vec::new();
+    let wanted = client_name.to_ascii_lowercase();
+    let mut matching_clients = Vec::new();
+    let mut candidates = Vec::new();
     for port in ports {
         let Some((client, short_name)) = port.split_once(':') else {
             continue;
@@ -2257,13 +2259,30 @@ fn resolve_managed_audio_outputs(
             || short_name.contains("audio")
             || short_name == "left"
             || short_name == "right";
-        if client.eq_ignore_ascii_case(client_name) && is_output && !outputs.contains(&port) {
-            outputs.push(port);
+        let client_lower = client.to_ascii_lowercase();
+        if (client_lower == wanted || client_lower.contains(&wanted)) && is_output {
+            if !matching_clients.iter().any(|candidate| candidate == client) {
+                matching_clients.push(client.to_owned());
+            }
+            candidates.push((client.to_owned(), port));
         }
     }
+    if matching_clients.len() != 1 {
+        bail!(
+            "managed JACK client {client_name:?} matched {} audio clients, expected 1",
+            matching_clients.len()
+        );
+    }
+    let matched = &matching_clients[0];
+    let mut outputs = candidates
+        .into_iter()
+        .filter_map(|(client, port)| (client == *matched).then_some(port))
+        .collect::<Vec<_>>();
+    outputs.sort();
+    outputs.dedup();
     if outputs.len() != 2 {
         bail!(
-            "managed JACK client {client_name:?} has {} unambiguous audio outputs, expected 2",
+            "managed JACK client {matched:?} has {} unambiguous audio outputs, expected 2",
             outputs.len()
         );
     }
@@ -3135,6 +3154,30 @@ mod tests {
             ]
         )
         .is_err());
+    }
+
+    #[test]
+    fn managed_audio_outputs_accept_one_unambiguous_backend_prefix() {
+        let ports = vec![
+            "yoshimi-shs-yoshimi:audio/out_1".into(),
+            "yoshimi-shs-yoshimi:audio/out_2".into(),
+            "unrelated:audio/out_1".into(),
+        ];
+        assert_eq!(
+            resolve_managed_audio_outputs("shs-yoshimi", ports).unwrap(),
+            [
+                "yoshimi-shs-yoshimi:audio/out_1",
+                "yoshimi-shs-yoshimi:audio/out_2"
+            ]
+        );
+
+        let ambiguous = vec![
+            "first-shs-yoshimi:audio/out_1".into(),
+            "first-shs-yoshimi:audio/out_2".into(),
+            "second-shs-yoshimi:audio/out_1".into(),
+            "second-shs-yoshimi:audio/out_2".into(),
+        ];
+        assert!(resolve_managed_audio_outputs("shs-yoshimi", ambiguous).is_err());
     }
 
     #[test]

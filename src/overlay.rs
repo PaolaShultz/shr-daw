@@ -13,6 +13,7 @@ pub enum OverlayKind {
     TrackerPattern,
     TrackerSong,
     TrackerRoute,
+    LoopLibrary,
     MixEffects,
 }
 
@@ -30,6 +31,7 @@ impl OverlayKind {
             Action::OpenPatternOverlay => Some(Self::TrackerPattern),
             Action::OpenSongOverlay => Some(Self::TrackerSong),
             Action::OpenRouteOverlay => Some(Self::TrackerRoute),
+            Action::OpenLoopLibrary => Some(Self::LoopLibrary),
             Action::OpenEffectsOverlay => Some(Self::MixEffects),
             _ => None,
         }
@@ -41,6 +43,7 @@ impl OverlayKind {
             Self::TrackerPattern => "PATTERN NAVIGATION",
             Self::TrackerSong => "SONG NAVIGATION",
             Self::TrackerRoute => "PAGE ROUTING",
+            Self::LoopLibrary => "LOOP BROWSER",
             Self::MixEffects => "EFFECTS ROUTING",
         }
     }
@@ -327,6 +330,15 @@ mod tests {
         let geometry = geometry(Rect::new(0, 0, 80, 24));
         assert_eq!(geometry.outer, Rect::new(21, 3, 38, 18));
         assert_eq!(geometry.inner, Rect::new(22, 4, 36, 16));
+    }
+
+    #[test]
+    fn loop_library_uses_the_shared_overlay_kind() {
+        assert_eq!(
+            OverlayKind::from_action(Action::OpenLoopLibrary),
+            Some(OverlayKind::LoopLibrary)
+        );
+        assert_eq!(OverlayKind::LoopLibrary.title(), "LOOP BROWSER");
     }
 
     #[test]

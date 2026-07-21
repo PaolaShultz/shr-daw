@@ -1898,6 +1898,7 @@ impl App {
             OverlayKind::TrackerPattern => self.overlay_pattern_locations().len() + 2,
             OverlayKind::TrackerSong => self.song.order.len() + 3,
             OverlayKind::TrackerRoute => RouteField::ROWS,
+            OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
             OverlayKind::MixEffects => MAX_AUX_BUSES + 2,
         }
     }
@@ -1921,10 +1922,20 @@ impl App {
             | OverlayKind::TrackerPattern
             | OverlayKind::TrackerSong
             | OverlayKind::TrackerRoute => caller == Screen::Tracker,
+            OverlayKind::LoopLibrary => caller == Screen::TrackerLoop,
             OverlayKind::MixEffects => caller == Screen::Meter,
         };
         if !allowed {
             return;
+        }
+        if kind == OverlayKind::LoopLibrary {
+            self.tracker_stop();
+            self.loop_imports =
+                crate::loop_player::list_wavs(&self.config.loop_player.import_directory);
+            self.loop_selected = self
+                .loop_selected
+                .min(self.loop_imports.len().saturating_sub(1));
+            self.refresh_loop_library();
         }
         let context = self.menu_context();
         let Some(launcher) = OverlayLauncher::resolve(caller, context, action) else {
@@ -1940,6 +1951,12 @@ impl App {
                 .unwrap_or(0),
             OverlayKind::TrackerSong => self.tracker_order,
             OverlayKind::TrackerRoute => 0,
+            OverlayKind::LoopLibrary => self
+                .loop_library
+                .iter()
+                .position(|entry| entry.current)
+                .map(|index| self.loop_imports.len() + index)
+                .unwrap_or(0),
             OverlayKind::MixEffects => self.fx_target.min(MAX_AUX_BUSES + 1),
         };
         let draft = if kind == OverlayKind::TrackerRoute {
@@ -2336,6 +2353,15 @@ impl App {
                     }
                     self.status =
                         "route field active · turn changes draft · Back cancels field".into();
+                }
+            }
+            OverlayKind::LoopLibrary => {
+                self.close_overlay(false);
+                if selection < self.loop_imports.len() {
+                    self.loop_selected = selection;
+                    self.import_selected_loop();
+                } else {
+                    self.select_loop_library_entry(selection - self.loop_imports.len());
                 }
             }
             OverlayKind::MixEffects => {
@@ -4900,12 +4926,7 @@ impl App {
     }
 
     fn open_loop_library(&mut self) {
-        self.tracker_stop();
-        self.loop_library_mode = true;
-        self.refresh_loop_library();
-        self.set_screen(Screen::TrackerLoop);
-        self.reset_context_page();
-        self.status = "private loop library · DELETE requires confirmation".into();
+        self.open_overlay(Action::OpenLoopLibrary);
     }
 
     fn refresh_loop_library(&mut self) {
@@ -4924,6 +4945,50 @@ impl App {
                 self.loop_library.clear();
                 self.status = format!("loop library: {error}");
             }
+        }
+    }
+
+    fn select_loop_library_entry(&mut self, index: usize) {
+        let Some(entry) = self.loop_library.get(index).cloned() else {
+            self.status = "private loop library is empty".into();
+            return;
+        };
+        if self
+            .song
+            .audio_loop
+            .as_ref()
+            .is_some_and(|settings| settings.file == entry.file)
+        {
+            if self.load_current_loop() {
+                self.status = format!("loop ready · {}", entry.file);
+            }
+            return;
+        }
+        let path = crate::loop_player::loops_dir().join(&entry.file);
+        let decoded = match crate::loop_player::DecodedLoop::open(&path) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                self.status = format!("loop browser: {error}");
+                return;
+            }
+        };
+        let alignment = crate::loop_player::analyze_alignment(
+            &decoded,
+            self.current_tempo(),
+            self.current_meter(),
+        );
+        let settings = sequencer::LoopSettings {
+            file: entry.file.clone(),
+            source_bpm_x100: (alignment.source_bpm * 100.0).round() as u32,
+            interpretation: sequencer::BpmInterpretation::Normal,
+            start_beat: 0,
+            length_beats: alignment.length_beats,
+            offset_beats: 0,
+        };
+        self.song.audio_loop = Some(settings.clone());
+        let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
+        if self.load_loop_settings(Some(settings)) {
+            self.status = format!("loop ready · {} · project {tempo} BPM", entry.file);
         }
     }
 
@@ -11527,14 +11592,25 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let details = if let Some(settings) = &a.song.audio_loop {
         let bar_unit = i32::from(a.current_meter().clamp(1, 16));
         let offset_bars = f64::from(settings.offset_beats) / f64::from(bar_unit);
+        let state = if let Some(error) = player.error.as_deref() {
+            format!(
+                "OUTPUT FAULT · {}",
+                truncate(error, z.width.saturating_sub(15) as usize)
+            )
+        } else if player.loaded {
+            "READY".into()
+        } else {
+            "NOT READY".into()
+        };
         format!(
-            "P{:02}/{:02} · FT2 WAV LOOP\n{}\n\nSource {:>6.2} BPM  {}\nProject tempo {:>3} BPM\nRegion beat {} +{}\nOffset {:+.0} bar(s)\nCut {} · meter {}/4\n\n{}  {} / {}\n{} Hz · {}ch\nNative pitch playback",
+            "P{:02}/{:02} · FT2 WAV LOOP\n{}\n{}\nSource {:>6.2} BPM  {}\nProject tempo {:>3} BPM\nRegion beat {} +{}\nOffset {:+.0} bar(s)\nCut {} · meter {}/4\n\n{}  {} / {}\n{} Hz · {}ch\nNative pitch playback",
             a.tracker_loop_page_number(),
             a.tracker_page_count(),
             truncate(
                 player.file.as_deref().unwrap_or(&settings.file),
                 z.width.saturating_sub(2) as usize
             ),
+            state,
             settings.source_bpm(),
             settings.interpretation.label(),
             a.current_tempo(),
@@ -11562,10 +11638,10 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         )
     };
     let mut lines = details.lines().map(Spans::from).collect::<Vec<_>>();
-    if player.loaded && !player.duration.is_zero() {
+    if a.song.audio_loop.is_some() && !player.duration.is_zero() {
         // Keep the loop playhead sample-relative: playback and tracker REC
         // share the transport clock which advances `player.elapsed`.
-        lines.insert(10.min(lines.len()), loop_position_bar(&player, z.width));
+        lines.insert(3.min(lines.len()), loop_position_bar(&player, z.width));
     }
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(2));
     if body.height >= 15 {
@@ -11888,6 +11964,27 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
             ));
             rows
         }
+        OverlayKind::LoopLibrary => a
+            .loop_imports
+            .iter()
+            .map(|path| {
+                let file = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.display().to_string());
+                crate::ui_text::label_value(&file, "INBOX", 35)
+            })
+            .chain(a.loop_library.iter().map(|entry| {
+                let state = if entry.current {
+                    "CURRENT".into()
+                } else if entry.saved_references == 0 {
+                    "PRIVATE".into()
+                } else {
+                    format!("{} SAVED", entry.saved_references)
+                };
+                crate::ui_text::label_value(&entry.file, &state, 35)
+            }))
+            .collect(),
         OverlayKind::MixEffects => (0..=MAX_AUX_BUSES + 1)
             .map(|target| {
                 let effects = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, target)
@@ -18100,13 +18197,13 @@ mod tests {
         let wide = render_app(&mut a, 40, 20);
         for x in 0..40 {
             let expected = if x == 15 { Color::Green } else { Color::White };
-            assert_eq!(wide.get(x, 10).bg, expected, "40-cell bar at x={x}");
+            assert_eq!(wide.get(x, 3).bg, expected, "40-cell bar at x={x}");
         }
 
         let compact = render_app(&mut a, 38, 14);
         for x in 0..38 {
             let expected = if x == 14 { Color::Green } else { Color::White };
-            assert_eq!(compact.get(x, 10).bg, expected, "38-cell bar at x={x}");
+            assert_eq!(compact.get(x, 3).bg, expected, "38-cell bar at x={x}");
         }
     }
 

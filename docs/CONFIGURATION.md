@@ -575,11 +575,10 @@ load failure, oversize, and client loss clear availability and stale levels.
 
 **TOOLS** → **LOOP** → **REMOVE** requires a second press, clears the Project's
 loop reference, and unloads the loop client. It never deletes the imported WAV
-from private storage. On FT2 Tools, the **LOOP** menu page's **LIBRARY** action
-opens the separate physical cleanup workflow. It lists only regular WAV files,
-marks current and saved-Project
-references, rejects symlinks/unsafe paths, and requires confirmation before
-deleting an unreferenced file.
+from private storage. The **LIBRARY** action opens the shared browse overlay,
+which lists regular inbox and private WAV files, marks their ownership and
+saved-Project references, and imports or attaches the rotary-selected file to
+the current Project without exposing unsafe paths.
 
 Loop playback is native-speed and native-pitch. Import and auto-align set the
 current Pattern tempo from the interpreted WAV BPM; they do not stretch the WAV

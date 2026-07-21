@@ -185,8 +185,6 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 loop | BPM | BPM− | BPM+ | BPM x | Unit |
 | FT2 loop | Cut | Start− | Start+ | Length− | Length+ |
 | FT2 loop | Sys | Panic | Align | Library | Exit |
-| Loop library | Ops | Delete WAV | — | — | — |
-| Loop library | Sys | Panic | Help | — | Exit |
 | FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
 | FT2 loop align | Sys | Panic | Help | — | Exit |
 | FT2 record | Play | — | Play | Record/stop | — |

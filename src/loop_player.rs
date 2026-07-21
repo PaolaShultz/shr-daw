@@ -848,13 +848,21 @@ impl LoopPlayer {
         }
         let source_rate = decoded.sample_rate;
         let source_channels = decoded.channels;
+        let interpreted = settings.interpreted_bpm();
+        let start = beat_to_frame(f64::from(settings.start_beat), interpreted, source_rate)
+            .min(decoded.samples.len().saturating_sub(1));
+        let requested = beat_to_frame(f64::from(settings.length_beats), interpreted, source_rate);
+        let length = requested
+            .max(1)
+            .min(decoded.samples.len().saturating_sub(start));
         self.status = LoopStatus {
             file: Some(settings.file.clone()),
             source_rate,
             source_channels,
+            duration: Duration::from_secs_f64(length as f64 / f64::from(source_rate)),
             ..LoopStatus::default()
         };
-        let result = (|| -> Result<(Active, usize)> {
+        let result = (|| -> Result<Active> {
             let mut jack = JackClient::open(&self.config.client_name)?;
             let jack_rate = jack.sample_rate();
             require_native_rate(source_rate, jack_rate)?;
@@ -862,14 +870,6 @@ impl LoopPlayer {
                 jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[0], PortDirection::Output)?;
             let right =
                 jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[1], PortDirection::Output)?;
-            let interpreted = settings.interpreted_bpm();
-            let start = beat_to_frame(f64::from(settings.start_beat), interpreted, source_rate)
-                .min(decoded.samples.len().saturating_sub(1));
-            let requested =
-                beat_to_frame(f64::from(settings.length_beats), interpreted, source_rate);
-            let length = requested
-                .max(1)
-                .min(decoded.samples.len().saturating_sub(start));
             let client_state = Arc::new(LoopClientState {
                 active: AtomicBool::new(true),
                 published_meter: Arc::clone(&self.meter),
@@ -909,20 +909,15 @@ impl LoopPlayer {
                 );
             }
             activate_and_connect(&mut jack, &self.config.outputs, left, right)?;
-            Ok((
-                Active {
-                    jack,
-                    callback,
-                    client_state,
-                },
-                length,
-            ))
+            Ok(Active {
+                jack,
+                callback,
+                client_state,
+            })
         })();
         match result {
-            Ok((active, length)) => {
+            Ok(active) => {
                 self.status.loaded = true;
-                self.status.duration =
-                    Duration::from_secs_f64(length as f64 / f64::from(source_rate));
                 self.active = Some(active);
                 Ok(())
             }

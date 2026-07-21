@@ -95,7 +95,7 @@ flowchart TD
     PT --> D[Drum patterns]
     PT --> PS[Pattern setup]
     L --> LA[Loop align]
-    L --> LL[Private loop library]
+    L -. overlay .-> LL[Private loop browser]
     H -. returns to its caller .-> H0
 ```
 

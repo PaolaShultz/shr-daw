@@ -55,28 +55,15 @@ one whole Project bar.
 `PANIC` and `STOP` remain reachable. `ALIGN` opens offline analysis and
 placement adjustment. `EXIT` returns to FT2 Tools.
 
-## Private loop library
+## Private loop browser
 
-The library distinguishes the WAV attached to the current edit (`CURRENT`),
-files referenced by saved Projects (`SAVED`), and unreferenced files (`FREE`).
-It rejects symlinks and unsafe paths.
-
-### OPS — browse and delete an unused WAV
-
-![Populated private loop library with the OPS page](../images/menu/loop-library-ops.png)
-
-`DELETE` begins confirmed physical deletion. It succeeds only for a free,
-unreferenced private WAV. Turn the rotary for single-step movement or type a
-first letter to jump; keyboard PageUp/PageDown keep coarse scrolling. Physical
-pads no longer spend commands on list paging. This is separate from Project
-`REMOVE`, which only detaches a loop.
-
-### SYS — stop and return
-
-![Populated private loop library with the SYS page](../images/menu/loop-library-sys.png)
-
-`PANIC`, `STOP`, and `HELP` retain their normal meanings. `EXIT` leaves library
-mode and returns to WAV Loop setup.
+`LIBRARY` opens the shared overlay over the unchanged loop page. It includes
+configured inbox WAVs (`INBOX`), the WAV attached to the current edit
+(`CURRENT`), other imported files (`PRIVATE`), and files referenced by saved
+Projects (`SAVED`). Turn the rotary to browse and press it to import or attach
+and load a file. Press the highlighted `LIBRARY` launcher again, or use Back,
+to close the overlay without changing the Project. This is separate from
+Project `REMOVE`, which only detaches the current loop.
 
 ## Loop Align
 

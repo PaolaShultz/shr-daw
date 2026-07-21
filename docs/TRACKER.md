@@ -59,7 +59,10 @@ does not start a synth or perform device discovery.
 
 The Loop Player's white position bar uses a green playhead to show the
 approximate position within the selected WAV region while the shared FT2
-transport plays or records.
+transport plays or records. The bar remains visible at the top of the loop
+page whenever a valid WAV region is selected; an output fault leaves it at the
+start and reports the fault explicitly instead of using colour as the only
+state cue.
 
 Channels and programs are zero-based in MIDI bytes and in the in-memory model.
 Every musician-facing screen shows channels 1–16 and programs 1–128.
@@ -240,14 +243,19 @@ shows text for filename, BPMs, region, state, elapsed/total time, rate, and
 channels. A decoded loop is limited to 6,000,000 frames (about 125 seconds at
 48 kHz) so one imported file cannot exhaust Raspberry Pi memory.
 
-From **TOOLS** → **LOOP**, press **REMOVE** twice to detach the loop from the
+From **TOOLS** → **LOOP**, choose **LIBRARY** to open the shared overlay over
+the loop page. Turn the master rotary to browse inbox and private WAVs and press
+it to import or attach and load the selected file. Inbox, current, private, and
+saved-Project entries are labelled in the overlay. Press **LIBRARY** again or
+Back to close it without changing the Project.
+
+Press **REMOVE** twice to detach the loop from the
 Project and unload its JACK client. The imported private WAV is kept on disk so
 another Project can still use it.
 
-On FT2 Tools, open the **LOOP** menu page and choose **LIBRARY**. It is separate
-from Remove: it pages through imported private WAVs and marks the current loop,
-saved-Project references, and free files. Physical deletion requires
-confirmation and is refused for referenced, symlinked, or unsafe paths.
+**LIBRARY** is separate from Remove: its overlay browses inbox and imported
+private WAVs and marks the current loop and saved-Project references without
+leaving the Loop Player.
 
 ## Copy and Paste
 

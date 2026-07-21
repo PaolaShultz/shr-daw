@@ -231,8 +231,8 @@ Tempo matching sets the current Pattern tempo from the WAV; the WAV plays at
 native speed and pitch. The loop sample rate must match JACK. Use UNIT to edit
 by beat or bar, and ALIGN to snap/move placement by bars. TOOLS LOOP REMOVE is
 confirmed and detaches the Project loop without deleting the private WAV.
-TOOLS LIBRARY separately lists private WAVs and physically deletes only
-unreferenced regular files after confirmation.
+TOOLS LIBRARY opens an overlay over the loop page; turn to browse inbox and
+private WAVs, then press to import or attach and load the selected file.
 
 The normal Loop screen's `LOOP OUT` bars show only that WAV after its cut,
 position, interpolation, transport gate, and edge fades. They do not include
