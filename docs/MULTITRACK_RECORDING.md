@@ -90,12 +90,14 @@ continues to produce two synchronized mono stems in one take directory.
 Open **AUDIO**. The list shows an arm dot, track number, label, and `ready` or
 `missing`. Only the selected track has a compact level readout.
 
-- **OPS:** `RECORD`, selected-track `ARM`, safely arm `ALL` resolved tracks,
-  or disarm `NONE`.
+- **RECORD:** `RECORD` starts/stops the synchronized take; `ARM` toggles the
+  selected track.
 - **TRACK:** select `PREV`/`NEXT`, cycle a deliberate `SOURCE` assignment, or
   edit the track `NAME`.
-- **NAV:** `REFRESH` JACK sources or open Presets, Ideas, or FT2.
-- **SYS:** `STOP` finalizes, `HELP` explains the screen, and `EXIT` returns.
+- **SETUP:** `ALL` arms every resolved track, `NONE` disarms everything, and
+  `REFRESH` discovers JACK sources without rewriting remembered assignments.
+- **SYS:** `PANIC` safely stops owned activity, `HELP` explains the screen, and
+  `EXIT` returns Home.
 
 Keyboard equivalents are `R`, arrows or `J`/`K`, Space, `A`, `X`, `S`, `N`,
 and `F`. Track edits save to private runtime configuration. They are refused

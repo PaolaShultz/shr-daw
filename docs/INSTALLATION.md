@@ -37,7 +37,7 @@ The installer:
 - installs commands, templates, the 21 allowlisted presets, four allowlisted
   CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
   device/controller profiles, drum data, documentation, and
-  all 80 menu-manual images below the selected prefix (normally `/usr/local`);
+  all 96 menu-manual images below the selected prefix (normally `/usr/local`);
 - opens the routing wizard.
 
 The dependency installer always masks the exact per-user `fluidsynth.service`
@@ -83,19 +83,20 @@ Existing `shsynth` configuration and data paths are kept for compatibility.
 Contributors can build and inspect the checkout without installing files:
 
 ```sh
-cargo +1.85.0 test --locked
-SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo +1.85.0 run --locked -- config init
-SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo +1.85.0 run --locked -- list
-SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state cargo +1.85.0 run --locked -- screenshots > /tmp/shr-daw-screens.json
+PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo build --locked
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state target/debug/shr config init
+SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state target/debug/shr list
+python3 scripts/render-readme-screenshots.py --check
 ```
 
-This path does not start JACK or transmit MIDI. Delete the two explicit `/tmp`
-paths afterward. For a persistent private development checkout,
+This path does not start JACK or transmit MIDI. Delete the explicit temporary
+state directory afterward. For a persistent private development checkout,
 `./scripts/setup-local.sh` and `./scripts/local.sh` redirect configuration,
 Projects, Ideas, recordings, loops, and private presets below ignored `user/`.
 They copy missing public presets, starter loops, and demo Projects without
-replacing private files. Build the release binary first; neither helper installs packages or
-builds the program.
+replacing private files. Build the debug binary first; neither helper installs
+packages or builds the program. `local.sh` launches this checkout's
+`target/debug/shr`, which carries the visible `DEV` badge.
 
 ## Upgrade and uninstall boundaries
 

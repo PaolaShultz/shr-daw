@@ -7,11 +7,21 @@ All values shown below are deterministic presentation data. The screens are
 real SHR-DAW renders, but no instrument, MIDI take, recorder, or meter was live
 while the images were made.
 
-## Presets
+## Home
 
 Home is the navigation root. Its nine labels are centered inside equal 36-cell
 bars spanning zero-based columns 2–37 on the 40-column display. The block is
 centered vertically and scrolls safely on compact supported terminals.
+
+![Home screen with FT2 selected](../images/menu/home.png)
+
+The master rotary browses the current screen content and its press opens or
+confirms the selection. On the configured MiniLab, pads do not navigate this
+plain list: the first four select controller-menu pages and the other four
+invoke that page's items wherever a controller strip is present.
+
+## Presets
+
 **Software Synths** opens Presets. Turn the main encoder, use the arrow keys,
 or use the mouse wheel to choose a sound. Loading replaces the one managed software
 instrument; it never layers engines. synthv1, Yoshimi, and FluidSynth remain
@@ -73,26 +83,27 @@ green below the original value, bright yellow near it, and red above it. The
 main encoder press resets only these mapped controls and re-arms pickup; it does
 not restart the synth.
 
-### OPS — capture a MIDI take
+### PLAY — capture a MIDI take
 
-![Populated Playback screen with the OPS controller page](../images/menu/playback-ops.png)
+![Populated Playback screen with the PLAY controller page](../images/menu/playback-play.png)
 
 `PLAY` plays or stops the captured take. `RECORD` starts or stops free-time MIDI
 capture.
 
-### SOUND — reset, finish, tempo, and effects
+### SOUND — reset, save, and scale filter
 
 ![Populated Playback screen with the SOUND controller page](../images/menu/playback-sound.png)
 
 `RESET` restores the 12 mapped parameters in place and re-arms hardware pickup.
 `SAVE` publishes a new non-overwriting Idea.
 
-### SYS — stop and return
+### SYS — safety, effects, help, and return
 
 ![Populated Playback screen with the SYS controller page](../images/menu/playback-sys.png)
 
-`PANIC` performs the global owned stop. `HELP` opens help and returns here
-afterward. `EXIT` returns to Presets, then Presets `EXIT` returns Home.
+`PANIC` performs the global owned stop. `FX` opens the current Project rack
+without restarting the sound. `HELP` opens help and returns here afterward.
+`EXIT` returns to Presets, then Presets `EXIT` returns Home.
 
 ## Ideas
 
@@ -100,9 +111,9 @@ Ideas are timestamped or numbered free-time MIDI takes. A synthv1 Idea carries
 a private preset snapshot; external-engine Ideas retain their sound identity
 instead. Turn the encoder to select an entry.
 
-### OPS — inspect, load, play, or delete
+### PLAY — inspect, play, record, or delete
 
-![Populated Ideas screen with the OPS controller page](../images/menu/ideas-ops.png)
+![Populated Ideas screen with the PLAY controller page](../images/menu/ideas-play.png)
 
 `INSPECT` shows the Idea's sound and recording metadata. `PLAY` plays or stops
 the take. `RECORD` starts or stops capture. `DELETE` requires a repeated
@@ -110,18 +121,29 @@ confirmation and only removes the selected Idea.
 
 ### FILE — load or save an Idea
 
-![Populated Ideas screen with the CAPTURE controller page](../images/menu/ideas-capture.png)
+![Populated Ideas screen with the FILE controller page](../images/menu/ideas-file.png)
 
 `LOAD` restores the selected Idea, asking for confirmation before replacing an
 active sound. `SAVE` publishes a new non-overwriting Idea. `FIRST` and `LAST`
 select the list boundaries.
 
-### SYS — safety and list boundary
+### SYS — safety, help, and return
 
 ![Populated Ideas screen with the SYS controller page](../images/menu/ideas-sys.png)
 
 `PANIC` stops owned notes and transports. `HELP` opens contextual help. `EXIT`
 returns Home.
+
+## MIDI Learn
+
+![Non-audible MIDI Learn screen waiting for a master-encoder gesture](../images/menu/midi-learn.png)
+
+MIDI Learn isolates controller messages from instruments while it captures the
+master rotary's counter-clockwise turn, clockwise turn, and click, followed by
+optional absolute controls and command buttons. Release each opening control
+as prompted. The review step writes a private controller profile only after
+confirmation; Back cancels without saving. A learned master rotary is enough
+to browse and confirm even when optional buttons are skipped.
 
 ## Help
 
@@ -154,7 +176,7 @@ counts, final path, or the failure reason. It never starts or restarts JACK.
 
 ### RECORD — arm and record
 
-![Populated Audio recorder screen with the OPS controller page](../images/menu/audio-recorder-ops.png)
+![Populated Audio recorder screen with the RECORD controller page](../images/menu/audio-recorder-record.png)
 
 `RECORD` starts all armed tracks at one callback boundary. `ARM` toggles the
 selected track. An armed missing source prevents a take from starting.
@@ -169,7 +191,7 @@ label. Runtime absence never overwrites a remembered source.
 
 ### SETUP — prepare tracks
 
-![Populated Audio recorder screen with the NAV controller page](../images/menu/audio-recorder-nav.png)
+![Populated Audio recorder screen with the SETUP controller page](../images/menu/audio-recorder-setup.png)
 
 `ALL` arms every resolved track, `NONE` disarms everything, and `REFRESH`
 discovers current JACK audio sources without changing assignments.
@@ -199,17 +221,23 @@ that source's bounded final-bus level.
 
 ### MIX — mute, record, and holds
 
+![Populated performance meter with the MIX controller page](../images/menu/performance-meter-mix.png)
+
 `MUTE` changes the selected source. `RECORD` toggles the callback-boundary final
 stereo recorder. `RESET` clears presentation peak/clip holds; it does not reset
 effects, CPU state, or transport.
 
 ### NAV — FX master overlay
 
+![Populated performance meter with the NAV controller page](../images/menu/performance-meter-nav.png)
+
 `FX` opens the same master-overlay layer used by FT2. Choose SOURCE, AUX 1,
 AUX 2, or MASTER, then click/Enter to open the existing rack for that target.
 The MTR caller stays underneath until selection. Only highlighted `FX` remains
 on the bottom row, and pressing it again closes the overlay without changing
 audio or Project state.
+
+![Effects-routing overlay over the performance meter](../images/menu/overlay-performance-fx.png)
 
 ### SYS — safety and return
 
@@ -218,3 +246,27 @@ audio or Project state.
 `PANIC` remains available. `HELP` opens the explanation of meter scope. `EXIT`
 returns to Home. The screenshot says `Presentation · no live audio` because
 its meter values are seeded for documentation rather than measured.
+
+## Routing
+
+Routing is a transactional editor for controller and performance inputs,
+controller role, external MIDI/profile, controller clock, and the stereo audio
+destination. Turn to browse rows and press to start an isolated draft. Turn to
+change that field, then press to validate, save, and activate it; Back cancels
+the draft without writing. Audio and clock changes that cannot be activated
+live are clearly marked for the next managed-engine start.
+
+### EDIT — browse or change one route
+
+![Routing editor with the EDIT controller page](../images/menu/routing-edit.png)
+
+`PREV` and `NEXT` browse the same wrapping row list as the master rotary.
+`EDIT/OK` starts or confirms the selected field. `CANCEL` abandons the active
+field, or returns Home when no draft is active.
+
+### SYS — safety and return
+
+![Routing editor with the SYS controller page](../images/menu/routing-sys.png)
+
+`PANIC` stops owned playback and sends All Notes Off. `HELP` opens the local
+reference. `EXIT` cancels an active draft first, otherwise returning Home.

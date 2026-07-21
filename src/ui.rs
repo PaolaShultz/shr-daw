@@ -13625,6 +13625,14 @@ pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
             frames.push(render_screenshot_frame(&mut app, name)?);
         }
     }
+    for scenario in ScreenshotSpecialScenario::ALL {
+        let mut app = screenshot_app(config.clone());
+        configure_special_screenshot_scenario(&mut app, scenario);
+        frames.push(render_screenshot_frame(
+            &mut app,
+            format!("menu/{}.png", scenario.slug()),
+        )?);
+    }
     Ok(serde_json::to_string_pretty(&ScreenshotSet {
         cols: 40,
         rows: 20,
@@ -13683,17 +13691,21 @@ enum ScreenshotScenario {
     PageChannel,
     TrackerTools,
     NoobSetup,
+    NoteLength,
+    RoutingDefaults,
     TrackerLoop,
-    LoopLibrary,
     TrackerLoopAlign,
     AudioRecorder,
     FxRack,
+    FxRackEmpty,
+    FxType,
     FxEditor,
     Meter,
+    Routing,
 }
 
 impl ScreenshotScenario {
-    const ALL: [Self; 25] = [
+    const ALL: [Self; 29] = [
         Self::Presets,
         Self::Playback,
         Self::Ideas,
@@ -13712,13 +13724,17 @@ impl ScreenshotScenario {
         Self::PageChannel,
         Self::TrackerTools,
         Self::NoobSetup,
+        Self::NoteLength,
+        Self::RoutingDefaults,
         Self::TrackerLoop,
-        Self::LoopLibrary,
         Self::TrackerLoopAlign,
         Self::AudioRecorder,
         Self::FxRack,
+        Self::FxRackEmpty,
+        Self::FxType,
         Self::FxEditor,
         Self::Meter,
+        Self::Routing,
     ];
 
     const fn screen(self) -> Screen {
@@ -13737,12 +13753,15 @@ impl ScreenshotScenario {
             Self::TrackerPages | Self::PageTarget | Self::PageChannel => Screen::TrackerPages,
             Self::TrackerTools => Screen::TrackerTools,
             Self::NoobSetup => Screen::Tracker,
-            Self::TrackerLoop | Self::LoopLibrary => Screen::TrackerLoop,
+            Self::NoteLength => Screen::TrackerNoteLength,
+            Self::RoutingDefaults => Screen::TrackerFiles,
+            Self::TrackerLoop => Screen::TrackerLoop,
             Self::TrackerLoopAlign => Screen::TrackerLoopAlign,
             Self::AudioRecorder => Screen::AudioRecorder,
-            Self::FxRack => Screen::FxRack,
+            Self::FxRack | Self::FxRackEmpty | Self::FxType => Screen::FxRack,
             Self::FxEditor => Screen::FxEditor,
             Self::Meter => Screen::Meter,
+            Self::Routing => Screen::Routing,
         }
     }
 
@@ -13766,13 +13785,55 @@ impl ScreenshotScenario {
             Self::PageChannel => "channel-editor",
             Self::TrackerTools => "ft2-tools",
             Self::NoobSetup => "noob-setup",
+            Self::NoteLength => "note-length",
+            Self::RoutingDefaults => "routing-defaults",
             Self::TrackerLoop => "ft2-loop",
-            Self::LoopLibrary => "loop-library",
             Self::TrackerLoopAlign => "loop-align",
             Self::AudioRecorder => "audio-recorder",
             Self::FxRack => "fx-rack",
+            Self::FxRackEmpty => "fx-rack-empty",
+            Self::FxType => "fx-type",
             Self::FxEditor => "fx-editor",
             Self::Meter => "performance-meter",
+            Self::Routing => "routing",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ScreenshotSpecialScenario {
+    Home,
+    MidiLearn,
+    TrackerPageOverlay,
+    TrackerPatternOverlay,
+    TrackerSongOverlay,
+    TrackerRouteOverlay,
+    LoopLibraryOverlay,
+    MixEffectsOverlay,
+}
+
+impl ScreenshotSpecialScenario {
+    const ALL: [Self; 8] = [
+        Self::Home,
+        Self::MidiLearn,
+        Self::TrackerPageOverlay,
+        Self::TrackerPatternOverlay,
+        Self::TrackerSongOverlay,
+        Self::TrackerRouteOverlay,
+        Self::LoopLibraryOverlay,
+        Self::MixEffectsOverlay,
+    ];
+
+    const fn slug(self) -> &'static str {
+        match self {
+            Self::Home => "home",
+            Self::MidiLearn => "midi-learn",
+            Self::TrackerPageOverlay => "overlay-ft2-page",
+            Self::TrackerPatternOverlay => "overlay-ft2-pattern",
+            Self::TrackerSongOverlay => "overlay-ft2-song",
+            Self::TrackerRouteOverlay => "overlay-ft2-route",
+            Self::LoopLibraryOverlay => "overlay-loop-library",
+            Self::MixEffectsOverlay => "overlay-performance-fx",
         }
     }
 }
@@ -14120,33 +14181,15 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
             };
             app.status = "N00B E MINOR · outside notes stay silent".into();
         }
-        ScreenshotScenario::LoopLibrary => {
-            configure_demo_loop(app);
-            app.loop_library_mode = true;
-            app.loop_library = vec![
-                crate::loop_player::LibraryEntry {
-                    file: "breakbeat-96.wav".into(),
-                    current: true,
-                    saved_references: 2,
-                },
-                crate::loop_player::LibraryEntry {
-                    file: "tape-drums-92.wav".into(),
-                    current: false,
-                    saved_references: 1,
-                },
-                crate::loop_player::LibraryEntry {
-                    file: "room-pulse-120.wav".into(),
-                    current: false,
-                    saved_references: 0,
-                },
-                crate::loop_player::LibraryEntry {
-                    file: "odd-percussion-135.wav".into(),
-                    current: false,
-                    saved_references: 0,
-                },
-            ];
-            app.loop_library_selected = 2;
-            app.status = "FREE loops can be deleted after confirmation".into();
+        ScreenshotScenario::NoteLength => {
+            fill_demo_song(app);
+            app.note_length_draft = NoteLength::Eighth;
+            app.status = "1/8 note length selected · DONE keeps it".into();
+        }
+        ScreenshotScenario::RoutingDefaults => {
+            fill_demo_song(app);
+            app.confirm_routing_defaults = true;
+            app.status = "new-pattern routing changed".into();
         }
         ScreenshotScenario::TrackerLoopAlign => {
             configure_demo_loop(app);
@@ -14159,6 +14202,15 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
         ScreenshotScenario::FxRack => {
             configure_demo_fx(app);
             app.screen = Screen::FxRack;
+        }
+        ScreenshotScenario::FxRackEmpty => {
+            app.screen = Screen::FxRack;
+            app.status = "SOURCE rack is empty · ADD inserts an effect".into();
+        }
+        ScreenshotScenario::FxType => {
+            configure_demo_fx(app);
+            app.screen = Screen::FxRack;
+            app.begin_effect_type_edit();
         }
         ScreenshotScenario::FxEditor => {
             configure_demo_fx(app);
@@ -14174,8 +14226,114 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
             app.fx_parameter = 2;
             app.status = "COMPRESSOR · ratio selected · graph inactive".into();
         }
+        ScreenshotScenario::Routing => {
+            app.routing_inputs = vec!["Arturia MiniLab 3".into(), "KeyStep 37".into()];
+            app.routing_outputs = vec!["USB MIDI Interface".into(), "Roland D-50".into()];
+            app.routing_audio_ports = vec!["system:playback_1".into(), "system:playback_2".into()];
+            app.config.midi_performance_input_matches = vec!["KeyStep 37".into()];
+            app.config.external_midi.enabled = true;
+            app.config.external_midi.output_match = "Roland D-50".into();
+            app.config.audio_outputs = vec!["system:playback_1".into(), "system:playback_2".into()];
+            if let Ok(mut controller) = app.controller_config.write() {
+                controller.input_match = Some("Arturia MiniLab 3".into());
+            }
+            app.routing.selected = 4;
+            app.status = "Routing · browse rows · click edits one draft".into();
+        }
     }
     app.select_menu_page(0);
+}
+
+fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpecialScenario) {
+    match scenario {
+        ScreenshotSpecialScenario::Home => {
+            configure_screenshot(app, Screen::Home);
+            app.home_selected = 1;
+            app.status = "Master rotary browses · press opens".into();
+        }
+        ScreenshotSpecialScenario::MidiLearn => {
+            configure_screenshot(app, Screen::Home);
+            let now = Instant::now();
+            let mut session = crate::controller_learn::LearnSession::new_at(
+                "Arturia MiniLab 3",
+                now - Duration::from_secs(1),
+            );
+            session.tick(now);
+            app.controller_learn = Some(session);
+            app.status = "MIDI Learn active · instrument routing isolated".into();
+        }
+        ScreenshotSpecialScenario::TrackerPageOverlay
+        | ScreenshotSpecialScenario::TrackerPatternOverlay
+        | ScreenshotSpecialScenario::TrackerSongOverlay
+        | ScreenshotSpecialScenario::TrackerRouteOverlay => {
+            configure_screenshot_scenario(app, ScreenshotScenario::TrackerPlay);
+            let action = match scenario {
+                ScreenshotSpecialScenario::TrackerPageOverlay => Action::OpenPageOverlay,
+                ScreenshotSpecialScenario::TrackerPatternOverlay => Action::OpenPatternOverlay,
+                ScreenshotSpecialScenario::TrackerSongOverlay => Action::OpenSongOverlay,
+                ScreenshotSpecialScenario::TrackerRouteOverlay => Action::OpenRouteOverlay,
+                _ => unreachable!(),
+            };
+            app.open_overlay(action);
+            if let Some(overlay) = app.overlay.as_mut() {
+                overlay.selection = match scenario {
+                    ScreenshotSpecialScenario::TrackerPageOverlay => 4,
+                    ScreenshotSpecialScenario::TrackerPatternOverlay => 1,
+                    ScreenshotSpecialScenario::TrackerSongOverlay => 2,
+                    ScreenshotSpecialScenario::TrackerRouteOverlay => 5,
+                    _ => 0,
+                };
+            }
+        }
+        ScreenshotSpecialScenario::LoopLibraryOverlay => {
+            configure_screenshot_scenario(app, ScreenshotScenario::TrackerLoop);
+            app.loop_imports = vec![
+                PathBuf::from("/demo/inbox/new-break-104.wav"),
+                PathBuf::from("/demo/inbox/tape-drums-92.wav"),
+            ];
+            app.loop_library = vec![
+                crate::loop_player::LibraryEntry {
+                    file: "breakbeat-96.wav".into(),
+                    current: true,
+                    saved_references: 2,
+                },
+                crate::loop_player::LibraryEntry {
+                    file: "room-pulse-120.wav".into(),
+                    current: false,
+                    saved_references: 0,
+                },
+                crate::loop_player::LibraryEntry {
+                    file: "odd-percussion-135.wav".into(),
+                    current: false,
+                    saved_references: 1,
+                },
+            ];
+            let launcher = OverlayLauncher::resolve(
+                Screen::TrackerLoop,
+                MenuContext::Normal,
+                Action::OpenLoopLibrary,
+            )
+            .expect("loop overlay launcher");
+            app.overlay = Some(OverlayState::new(
+                OverlayKind::LoopLibrary,
+                Screen::TrackerLoop,
+                launcher,
+                2,
+                OverlayDraft::None,
+                3,
+                false,
+            ));
+        }
+        ScreenshotSpecialScenario::MixEffectsOverlay => {
+            configure_screenshot_scenario(app, ScreenshotScenario::Meter);
+            configure_demo_fx(app);
+            app.screen = Screen::Meter;
+            app.open_overlay(Action::OpenEffectsOverlay);
+            if let Some(overlay) = app.overlay.as_mut() {
+                overlay.selection = 3;
+            }
+        }
+    }
 }
 
 fn configure_demo_page_editor(app: &mut App) {
@@ -14203,6 +14361,7 @@ fn configure_demo_fx(app: &mut App) {
     for kind in [0, 1, 2, 10] {
         app.fx_add_kind = kind;
         app.add_effect();
+        app.confirm_effect_type_edit();
     }
     app.fx_selection = app
         .song
@@ -15552,6 +15711,18 @@ mod tests {
                     .expect("40x20 context must render");
                 assert_eq!(frame.cells.len(), 40 * 20);
             }
+        }
+    }
+
+    #[test]
+    fn every_master_overlay_and_contextual_frame_renders_at_40x20() {
+        let config = RuntimeConfig::default();
+        for scenario in ScreenshotSpecialScenario::ALL {
+            let mut app = screenshot_app(config.clone());
+            configure_special_screenshot_scenario(&mut app, scenario);
+            let frame = render_screenshot_frame(&mut app, format!("{scenario:?}"))
+                .expect("40x20 special scenario must render");
+            assert_eq!(frame.cells.len(), 40 * 20);
         }
     }
 

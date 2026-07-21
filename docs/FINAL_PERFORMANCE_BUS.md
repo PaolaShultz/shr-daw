@@ -24,7 +24,7 @@ insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
 basic three-source summing headroom. These live performance controls are not
-Project data; Project format remains 4. JACK assignments remain machine
+Project data; Project format remains 5. JACK assignments remain machine
 configuration.
 
 ## Exact routing and availability

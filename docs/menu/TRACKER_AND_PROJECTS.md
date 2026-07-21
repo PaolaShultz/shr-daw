@@ -22,7 +22,7 @@ cell cursor and highlighted row remain the next edit/play location.
 
 ### MOVE — page and track navigation
 
-![Populated FT2 Pattern in Play mode with the OPS page](../images/menu/ft2-play-ops.png)
+![Populated FT2 Pattern in Play mode with the MOVE page](../images/menu/ft2-play-move.png)
 
 `PAGE-` and `PAGE+` move between the Pattern's four-track pages. `TRACK-` and
 `TRACK+` move the column cursor, crossing a page boundary when needed. These
@@ -30,13 +30,15 @@ high-value tracker movements occupy controller page 1.
 
 ### PLAY — transport and entry
 
-![Populated FT2 Pattern in Play mode with the MODE page](../images/menu/ft2-play-mode.png)
+![Populated FT2 Pattern in Play mode with the PLAY page](../images/menu/ft2-play-play.png)
 
 `CELL` opens the transactional editor. `PLAY` toggles tracker transport. From
 Stop, `RECORD` starts the current Pattern record loop; from Play it punches in
 without moving the playhead. `STEP` toggles step entry.
 
 ### NAV — master overlays
+
+![Populated FT2 Pattern with the NAV controller page](../images/menu/ft2-play-nav.png)
 
 `PAGE`, `PATTERN`, `SONG`, and `ROUTE` open the reusable centered overlay while
 the Pattern remains visible around it. Turn the master rotary or use Up/Down;
@@ -51,10 +53,15 @@ Arrangement, Loop/page tools, and tap tempo. ROUTE transactionally edits the
 active page's destination and four column setups. On 40×20 the outer border is
 38×18 at `(1,1)` and its usable inner content is 36×16 at `(2,2)`.
 
-The old NAV-page screenshot is intentionally not regenerated until physical
-40×20 approval; this text and the controller map describe the current build.
+![PAGE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-page.png)
 
-### SYS — stop, tools, and exit
+![PATTERN overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-pattern.png)
+
+![SONG overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-song.png)
+
+![ROUTE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-route.png)
+
+### SYS — safety, filter, help, and exit
 
 ![Populated FT2 Pattern in Play mode with the SYS page](../images/menu/ft2-play-sys.png)
 
@@ -125,12 +132,13 @@ Pattern data.
 `1`, `2`, `4`, and `8` set the persistent number of rows added after each step
 operation. This affects movement, not note duration or tempo.
 
-### SYS — stop, next page, and leave edit
+### SYS — safety, note length, next page, and leave edit
 
 ![Populated FT2 Step Edit with the SYS page](../images/menu/ft2-step-edit-sys.png)
 
-`PANIC` and `STOP` retain their safety meanings. `PAGE` moves to the next
-four-lane page. `EXIT` leaves Step Edit and returns to Play mode.
+`PANIC` performs the owned stop. `LENGTH` opens the separate note-duration
+selector. `PAGE` moves to the next four-lane page. `EXIT` leaves Step Edit and
+returns to Play mode.
 
 ## FT2 Cell Edit
 
@@ -139,48 +147,51 @@ The cell can contain a note, inherited or explicit velocity, inherited or
 explicit gate, an optional per-note program, and one command: cut, delay,
 retrigger, tempo, or none.
 
-### OPS — commit and change command type
+### ROUTE — destination defaults for this cell
 
-![Populated FT2 Cell Edit with the OPS page](../images/menu/ft2-cell-edit-ops.png)
+![Populated FT2 Cell Edit with the ROUTE page](../images/menu/ft2-cell-edit-route.png)
 
-`CONFIRM` commits the whole draft. `STEP` commits and hands off to Step Edit.
-`CLEAR` clears only the selected field. `EFFECT` cycles the command type.
+`DEST`, `CHANNEL`, and `INSTR` select the cell's route, channel, and inherited
+instrument fields. Turning the master rotary adjusts the selected field in the
+draft; the Pattern stays unchanged until `SAVE`.
 
-### FIELDS — select the value to edit
+### SOUND — banks and per-cell program
 
-![Populated FT2 Cell Edit with the FIELDS page](../images/menu/ft2-cell-edit-fields.png)
+![Populated FT2 Cell Edit with the SOUND page](../images/menu/ft2-cell-edit-sound.png)
 
-`NOTE`, `GATE`, `VEL`, and `PROGRAM` select the corresponding field. Gate is a
-percentage of one row; inherited values use the page/project default. Program
-is sent before that note on the exact target and channel.
+`BANKMSB`, `BANKLSB`, and `CELLPRG` select the sound-routing fields. `CLEAR`
+clears only the selected field back to its inherited/default representation.
+An explicit per-cell program is sent before that note on its exact target and
+channel.
 
-### ADJUST — command parameter and value
+### CELL — musical content and command type
 
-![Populated FT2 Cell Edit with the ADJUST page](../images/menu/ft2-cell-edit-adjust.png)
+![Populated FT2 Cell Edit with the CELL page](../images/menu/ft2-cell-edit-cell.png)
 
-`PARAM` selects the current command's parameter. `VALUE-` and `VALUE+` adjust
-the selected field within its validated range. Turning the encoder performs
-the same adjustment.
+`NOTE`, `GATE`, and `VEL` select the corresponding value. Gate is a percentage
+of one row; inherited values use the page/project default. `EFFECT` selects and
+cycles cut, delay, retrigger, tempo, or none.
 
-### SYS — cancel without partial edits
+### DONE — save or cancel the draft
 
-![Populated FT2 Cell Edit with the SYS page](../images/menu/ft2-cell-edit-sys.png)
+![Populated FT2 Cell Edit with the DONE page](../images/menu/ft2-cell-edit-done.png)
 
-`PANIC` stays reachable. `EXIT` cancels and restores the original
-cell, so a half-edited draft never leaks into the Project.
+`PANIC` stays reachable. `SAVE` commits the whole draft. `PARAM` selects the
+current command parameter. `EXIT` cancels and restores the original cell, so a
+half-edited draft never leaks into the Project.
 
 ## FT2 Tools
 
 This detailed child screen remains for Arrangement, clip operations, WAV loops,
-N00B, and muting. Open it from the SONG overlay's `OPEN LOOP / PAGE TOOLS` row.
+effects, and muting. Open it from the SONG overlay's `OPEN LOOP / PAGE TOOLS` row.
 Quick Page, Pattern, Song, and Route selection stays in the master overlays.
 
 ### OPS — open focused tools
 
 ![Populated FT2 Tools screen with the OPS page](../images/menu/ft2-tools-ops.png)
 
-`ARR` opens the Pattern order. `LOOP` opens WAV-loop setup. `N00B` toggles the
-scale filter on a melodic page. `MUTE` toggles the selected lane.
+`ARR` opens the Pattern order. `LOOP` opens WAV-loop setup. `FX` opens the
+Project effects rack. `MUTE` toggles the selected lane.
 
 ### CLIP — lane and page clipboard
 
@@ -191,10 +202,10 @@ four-lane page. These are in-memory editing clipboards, not saved Projects.
 
 ### PAGE — page mute
 
-![Populated FT2 Tools screen with the PAGE page](../images/menu/ft2-tools-loop.png)
+![Populated FT2 Tools screen with the PAGE page](../images/menu/ft2-tools-page.png)
 
-`MUTE PG` toggles the current four-lane page. Loop import, detach, alignment,
-and private-library cleanup remain on the separate Loop screen opened from OPS.
+`MUTE PG` toggles the current four-lane page. Loop import, attachment, detach,
+and alignment remain on the separate Loop screen opened from OPS.
 
 ### SYS — safety, help, and return
 
@@ -214,10 +225,18 @@ not write cells; Record and Step Edit write only allowed notes. The N00B button
 is reachable in all three modes and turns the active filter off without
 changing mode. Moving onto Drums also turns only the filter off.
 
+![N00B scale setup with the OPS controller page](../images/menu/noob-setup-ops.png)
+
+![N00B scale setup with the SYS controller page](../images/menu/noob-setup-sys.png)
+
 Note duration belongs separately to Step Edit. `LENGTH` opens a rotary selector
 for `1/1`, `1/2`, `1/4`, `1/8`, `1/16`, and `1/32`; `1/16` is the default.
 The duration uses the existing gate/note-off representation. It does not alter
 the independent 1/2/4/8-row `ADD` value that chooses the next insertion row.
+
+![Step Edit note-length selector with the OPS controller page](../images/menu/note-length-ops.png)
+
+![Step Edit note-length selector with the SYS controller page](../images/menu/note-length-sys.png)
 
 ## Project Files
 
@@ -242,12 +261,20 @@ before replacement. `PREVIEW` starts or stops the selected Project preview.
 non-overwriting copy. `NAME` edits the Project display name. `PATTERN` opens
 Pattern tools.
 
-### SYS — stop and return
+### SYS — safety, help, and return
 
 ![Populated Project Files screen with the SYS page](../images/menu/files-sys.png)
 
-`PANIC`, `STOP`, and `HELP` remain available. `EXIT` cancels pending file
-actions and returns to the tracker.
+`PANIC` and `HELP` remain available. `EXIT` cancels pending file actions and
+returns to the tracker.
+
+When saving a changed blank Pattern, SHR can ask whether its page routing
+should become the private default for future Patterns. `CONFIRM` writes the
+template; `CANCEL` keeps the previous default. Neither choice changes notes.
+
+![Routing-default confirmation with the DEFAULT controller page](../images/menu/routing-defaults-default.png)
+
+![Routing-default confirmation with the SYS controller page](../images/menu/routing-defaults-sys.png)
 
 ## Pattern tools
 
@@ -277,11 +304,11 @@ only Patterns not referenced by any Arrangement step.
 `OCT-`, `NOTE-`, `NOTE+`, and `OCT+` transpose melodic notes by −12, −1, +1,
 or +12 semitones. Percussion pages and note-off commands are left unchanged.
 
-### SYS — stop and return
+### SYS — safety, help, and return
 
 ![Populated Pattern tools with the SYS page](../images/menu/pattern-tools-sys.png)
 
-`PANIC`, `STOP`, and `HELP` stay available. `EXIT` returns to Project Files.
+`PANIC` and `HELP` stay available. `EXIT` returns to Project Files.
 
 ## Drum patterns
 
@@ -314,11 +341,11 @@ anything. Turn the rotary for one-step movement, type a first letter to jump,
 or use keyboard PageUp/PageDown for coarse scrolling; physical pads omit the
 coarse page commands.
 
-### SYS — stop and return
+### SYS — safety, help, and return
 
 ![Populated drum-pattern library with the SYS page](../images/menu/drum-patterns-sys.png)
 
-`PANIC`, `STOP`, and `HELP` remain available. `EXIT` returns to Pattern tools.
+`PANIC` and `HELP` remain available. `EXIT` returns to Pattern tools.
 
 ## Pattern setup
 
@@ -367,13 +394,15 @@ the selected step.
 `UP` and `DOWN` move the selected step earlier or later. `REPEAT` duplicates
 the reference. `REMOVE` removes only this step, not the underlying Pattern.
 
-### SYS — stop and return
+### SYS — safety, help, and return
 
 ![Populated Arrangement screen with the SYS page](../images/menu/arrange-sys.png)
 
 `PANIC` and `HELP` remain available. `EXIT` returns to the tracker.
 
 ## ROUTE master overlay
+
+![ROUTE master overlay over the active Pattern](../images/menu/overlay-ft2-route.png)
 
 ROUTE is the quick transactional editor for the active Pattern page. The top
 row shows the page/master destination and its current resolved state. The next
@@ -428,12 +457,12 @@ choose its 0–127 program, using a device profile's name when available.
 `MSB-`, `MSB+`, `LSB-`, and `LSB+` adjust the MIDI bank-select bytes for the
 selected column. The configured bank-select order is honored during playback.
 
-### SYS — mute, cancel, and safety
+### SYS — safety, help, and cancel
 
 ![Populated Tracks screen with the SYS page](../images/menu/tracks-sys.png)
 
-`PANIC` and `STOP` remain available. `MUTE` toggles the whole current page.
-`EXIT` cancels the entire Tracks draft and restores the original Project.
+`PANIC` and `HELP` remain available. `EXIT` cancels the entire Tracks draft and
+restores the original Project.
 
 ## Target field editor
 
@@ -454,8 +483,8 @@ also confirm.
 
 ![Populated target editor with the SYS page](../images/menu/target-editor-sys.png)
 
-`PANIC`, `STOP`, and `HELP` stay available. `EXIT` cancels only the target
-field and returns to the unchanged Tracks draft.
+`PANIC` and `HELP` stay available. `EXIT` cancels only the target field and
+returns to the unchanged Tracks draft.
 
 ## Channel field editor
 
@@ -473,5 +502,5 @@ Tracks. Encoder press also confirms on eight- and five-button layouts.
 
 ![Populated channel editor with the SYS page](../images/menu/channel-editor-sys.png)
 
-`PANIC`, `STOP`, and `HELP` stay available. `EXIT` discards only the channel
-draft and returns to Tracks.
+`PANIC` and `HELP` stay available. `EXIT` discards only the channel draft and
+returns to Tracks.

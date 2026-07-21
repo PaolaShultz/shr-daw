@@ -33,8 +33,8 @@ from the splash.
 | FT2 record | Record quantized notes into the selected page/current pattern and route live notes only to that page's hardware MIDI target. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; stop record, stop, exit, and panic remain available. |
 | FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; independent 1/1–1/32 note length; blank/skip; erase; note off; 1/2/4/8-row entry advance; leave edit; lane mute. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Step Edit on a melodic page. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B preserves the current mode; moving to Drums turns only the filter off. |
-| FT2 loop | Select/import WAV; inspect its separate loop-only stereo RMS/peak/`MAX`/clip meter; confirmed Project detach without deleting the private WAV; play here/from start/stop; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; align child screen for auto bar alignment and one-bar placement shifts. |
-| FT2 cell edit | Transactional note, gate, velocity, per-note program, single command type/parameter, clear-field, confirm/cancel, step-entry handoff, stop, and panic actions. Four-button encoder page selection remains available. |
+| FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; explicit `READY`/`NOT READY`/`OUTPUT FAULT`; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
+| FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
 | Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; load into the percussion page; save that page separately; confirmed deletion of user saves only; list navigation. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
@@ -80,7 +80,10 @@ locations and links to Tracks; PATTERN navigates the Project's existing Pattern
 owners and links to Pattern/Project tools; SONG navigates Arrangement steps and
 links to its detailed editors; ROUTE edits a detached copy of the active page
 and applies it only through the existing Project/route synchronization path.
-MTR's FX launcher reuses the same rendering, input, toggle, and return layer.
+The Loop Player's LIBRARY launcher uses it for one combined inbox/private
+browser; inbox selection imports and loads, while private/current/saved
+selection attaches and loads. MTR's FX launcher reuses the same rendering,
+input, toggle, and return layer.
 
 ## Input model
 
@@ -157,6 +160,10 @@ Blank physical positions and wholly empty pages are omitted.
 | FX rack | Order | Up | Down | Bypass | — |
 | FX rack | Route | Target | Send− | Send+ | Point |
 | FX rack | Sys | Panic | Return | Help | Exit |
+| FX rack empty | Ops | Add | — | — | — |
+| FX rack empty | Route | Target | Send− | Send+ | Point |
+| FX rack empty | Sys | Panic | Return | Help | Exit |
+| FX type | Type | Type− | Type+ | OK | Cancel |
 | FX editor | Ops | Parameter− | Parameter+ | Value− | Value+ |
 | FX editor | State | Bypass | — | — | — |
 | FX editor | Nav | Rack | — | — | — |
@@ -169,30 +176,28 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 | Move | Page− | Page+ | Track− | Track+ |
 | FT2 | Play | Cell edit | Play | Record | Step edit |
 | FT2 | Nav | Page overlay | Pattern overlay | Song overlay | Route overlay |
-| FT2 | Sys | Panic | FX | Help | Exit |
-| FT2 tools | Ops | Arrange | Loop | N00B | Mute lane |
+| FT2 | Sys | Panic | N00B | Help | Exit |
+| FT2 tools | Ops | Arrange | Loop | FX | Mute lane |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
 | FT2 tools | Page | Mute page (`MUTE PG`) | — | — | — |
 | FT2 tools | Sys | Panic | Help | — | Exit |
 | FT2 Record | Play | N00B | Play | Record | — |
-| FT2 Step Edit | Ops | Blank | Erase | Note off | N00B |
-| N00B setup | Ops | Root− | Root+ | Major/Minor | Done |
-| N00B setup | Sys | Panic | Help | — | Exit |
-| FT2 Step Edit | Sys | Panic | Length | Page | Exit |
-| Note length | Ops | Done | Cancel | — | — |
-| Note length | Sys | Panic | Help | — | Exit |
 | FT2 loop | Play | Rewind | Play | Import | Remove |
 | FT2 loop | BPM | BPM− | BPM+ | BPM x | Unit |
 | FT2 loop | Cut | Start− | Start+ | Length− | Length+ |
 | FT2 loop | Sys | Panic | Align | Library | Exit |
 | FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
 | FT2 loop align | Sys | Panic | Help | — | Exit |
-| FT2 record | Play | — | Play | Record/stop | — |
+| FT2 record | Play | N00B | Play | Record/stop | — |
 | FT2 record | Sys | Panic | Help | — | Exit |
-| FT2 step edit | Ops | Blank/skip | Erase | N-off | Done |
+| FT2 step edit | Ops | Blank/skip | Erase | N-off | N00B |
 | FT2 step edit | Move | Arrangement step− (`PG-`) | Arrangement step+ (`PG+`) | Lane− | Lane+ |
 | FT2 step edit | Add | 1 row | 2 rows | 4 rows | 8 rows |
-| FT2 step edit | Sys | Panic | — | Next page (`PAGE`) | Exit edit |
+| FT2 step edit | Sys | Panic | Length | Next page (`PAGE`) | Exit edit |
+| N00B setup | Ops | Root− | Root+ | Major/Minor | Done |
+| N00B setup | Sys | Panic | Help | — | Exit |
+| Note length | Ops | Done | Cancel | — | — |
+| Note length | Sys | Panic | Help | — | Exit |
 | FT2 cell edit | Route | Destination | Channel | Instrument | — |
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
 | FT2 cell edit | Cell | Note | Gate | Velocity | Effect |
@@ -200,6 +205,8 @@ Blank physical positions and wholly empty pages are omitted.
 | Files | Ops | Load | Save | Preview/stop | Delete |
 | Files | Project | New Project | Save As | Name/rename | Pattern tools |
 | Files | Sys | Panic | — | Help | Exit |
+| Routing-default prompt | Default | Confirm | Cancel | — | — |
+| Routing-default prompt | Sys | Panic | — | — | Exit/cancel |
 | Pattern tools | Ops | New | Clone | Clear | Drum patterns |
 | Pattern tools | Clip | Copy | Paste new (`NEW`) | Paste over (`OVER`) | Clean unused (`CLEAN`) |
 | Pattern tools | Trans | Octave− (`OCT-`) | Semitone− (`NOTE-`) | Semitone+ (`NOTE+`) | Octave+ (`OCT+`) |

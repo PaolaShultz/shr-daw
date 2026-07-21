@@ -1,25 +1,25 @@
 # Screen and menu manual
 
-This is the visual guide to SHR-DAW's established 40×20 workspace and editor
-screens. The intentionally plain centered Home list and transactional Routing
-editor are documented textually during competition fast iteration; the full
-screenshot set was not regenerated for that navigation-only change. The
-current controller map is authoritative in
-[Controller interface](CONTROLLER_INTERFACE.md). Existing screenshots are drawn by the real Rust UI from
+This is the visual guide to SHR-DAW's current 40×20 workspaces, contextual
+screens, editors, and master overlays. The current controller map is
+authoritative in [Controller interface](CONTROLLER_INTERFACE.md). Screenshots
+are drawn by the real Rust UI from
 deterministic, populated presentation states; they do not start JACK, open a
 MIDI port, or claim to show a live audio measurement.
 
 The manual is split into three chapters so it remains usable on a phone:
 
-1. [Everyday screens](menu/EVERYDAY_SCREENS.md) — Presets, Playback, Ideas,
-   Help, synchronized multitrack recording, and the performance meter.
+1. [Everyday screens](menu/EVERYDAY_SCREENS.md) — Home, Presets, Playback,
+   Ideas, MIDI Learn, Help, synchronized multitrack recording, the performance
+   meter, and Routing.
 2. [FT2, Projects, and Patterns](menu/TRACKER_AND_PROJECTS.md) — the tracker in
    Play, Record, Step Edit, and Cell Edit; Tools; the N00B scale-filter switch
    across Play/Record/Edit; separate Step Edit note length; Projects;
    Pattern tools; drum patterns; Arrangement; the Tracks screen; and routing
    fields.
-3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — WAV loop setup, loop-file
-   management, alignment, the effects rack, and the parameter editor.
+3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — WAV loop setup, the shared
+   loop browser, alignment, the effects rack and its contexts, and the
+   parameter editor.
 
 ## How to read a screen
 
@@ -54,11 +54,6 @@ browse, click/Enter selects or confirms, and Back/Esc cancels the current field
 before cancelling and closing the overlay. Unconfirmed drafts never save on
 close. On the native 40×20 display the outer rectangle is 38×18 at `(1,1)` and
 the usable inner area is 36×16 at `(2,2)`.
-
-The established screenshots predate this overlay pass and are intentionally
-not regenerated until physical 40×20 approval. The current text and
-[controller map](CONTROLLER_INTERFACE.md) are authoritative for the NAV page
-and overlay behavior.
 
 The yellow page name at the bottom is the page currently selected. The yellow
 bracketed numbers below the actions are the physical item positions. Status
@@ -95,7 +90,7 @@ flowchart TD
     PT --> D[Drum patterns]
     PT --> PS[Pattern setup]
     L --> LA[Loop align]
-    L -. overlay .-> LL[Private loop browser]
+    L -. LIBRARY overlay .-> LL[Inbox + private loop browser]
     H -. returns to its caller .-> H0
 ```
 
@@ -115,8 +110,10 @@ return to their parent first.
 - **Audio recording** means one synchronized take containing a 24-bit mono WAV
   for each armed JACK source plus a versioned session manifest. A legacy stereo
   input remains a linked two-track configuration.
-- **Remove Loop** detaches the WAV from the Project. Deleting a private WAV is
-  a separate confirmed action and is refused while saved Projects reference it.
+- **Remove Loop** detaches the WAV from the Project and unloads SHR-DAW's loop
+  JACK client. It never deletes the private WAV. The current loop browser
+  imports inbox files or attaches existing private files; it has no deletion
+  workflow.
 - With the graph active, FX edits require stopped transport and no active
   recording. With it disabled, FX edits change saved Project data only.
 

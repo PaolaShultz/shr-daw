@@ -83,11 +83,19 @@ replacement, and application shutdown stop only a process SHR-DAW owns.
 Each engine has a configured MIDI input and JACK audio output. See
 [Configuration and routing](CONFIGURATION.md) for the settings.
 
+SHR considers a managed engine ready only after it resolves one unambiguous
+stereo JACK output pair—not merely a MIDI port. It accepts the exact configured
+client or one unique prefixed instance, including Yoshimi's generated prefixed
+client name. Missing, ambiguous, or non-stereo output and every failed JACK
+connection are reported instead of silently accepted.
+
 By default, the active engine connects directly to the configured playback
 pair. With the opt-in owned effects graph enabled, that same one engine instead
 passes through source inserts, two aux returns, the master rack, and final
 meter. Activation is transactional and restores the direct path on failure.
-The separate loop player and recorder do not pass through this graph.
+The owned WAV loop joins the graph as one of its three exact stereo sources
+and is removed from direct playback for the duration, preventing a doubled
+path. The raw multitrack recorder remains separate.
 
 ## External MIDI instruments
 

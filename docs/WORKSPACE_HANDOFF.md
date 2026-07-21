@@ -7,9 +7,9 @@ record credentials, GitHub device codes, or private file contents here.
 
 ## Current priority and shared checkout
 
-The competition fast-iteration policy in `AGENTS.md` is active. Physical
-approval, not a broad automated campaign, is the next gate for UI/controller
-work.
+The competition fast-iteration policy in `AGENTS.md` is active. The complete
+deterministic documentation screenshot set is reconciled to the current UI;
+physical approval remains the next gate for UI/controller work.
 
 Multiple workers use this checkout and commit their own changes independently.
 Branch tips, commit messages, and clean/dirty snapshots are intentionally not
@@ -72,8 +72,10 @@ sample redistribution.
   `system:capture_1`/`system:capture_2`, and the AudioBox MIDI port as external
   output. These are private configuration values, not portable defaults.
 - The reviewed controller profile is `arturia-minilab-3`; controller and
-  performance MIDI roles are separate. The Routing screen reports live
-  visibility, not merely remembered configuration.
+  performance MIDI roles are separate. Its configured eight-pad layout uses
+  four page pads plus four item pads; the master rotary browses content and its
+  press selects/confirms. The Routing screen reports live visibility, not
+  merely remembered configuration.
 - The optional audio profile reserves CPU 3. Boot isolation is active; the
   performance-governor service and JACK affinity drop-in are installed. Inspect
   with `shr-audio-tune status`; removal requires the helper's managed removal,
@@ -102,17 +104,19 @@ hardware/JACK names change. Read `docs/MAINTAINER_HELPERS.md` first.
 - The generic synchronized recorder and final stereo performance bus are
   implemented, but synthetic stress is not physical-interface or MR18
   acceptance. Follow `docs/MR18_TEST_PLAN.md` before claiming a hardware pass.
-- Do not regenerate the established screenshot set until the user approves the
-  40×20 overlay/controller presentation. The renderer's exact scaler and check
-  are documented only in `docs/MAINTAINER_HELPERS.md`.
+- The established tracked screenshot set now covers every normal controller
+  context plus Home, MIDI Learn, and all master overlays. Keep its exact
+  scenarios, font, 40×20 geometry, integer scaler, and validation contract in
+  `docs/MAINTAINER_HELPERS.md`; do not hand-edit generated PNGs.
 
 The open hands-on review is non-audible and must use a new empty FT2 Project.
 Keep transport/recording stopped and do not attach routes. Verify the shared
 38×18 overlay at `(1,1)`, its caller reveal and single highlighted launcher;
 encoder/keyboard parity and wrap behavior; silent hidden launchers; two-step
-Back behavior; ROUTE draft cancellation without Project mutation; and the MTR
-FX caller returning with its prior controller page intact. Record observed
-failures before changing behavior.
+Back behavior; ROUTE draft cancellation without Project mutation; the Loop
+Library's inbox/private selection and return behavior; and the MTR FX caller
+returning with its prior controller page intact. Record observed failures
+before changing behavior.
 
 A later user-authorized musical/hardware pass should exercise the
 standalone/FT2 synth ownership split, N00B versus Play/REC/Edit, independent

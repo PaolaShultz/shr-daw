@@ -48,7 +48,7 @@ whose FT2 workspace exposes four musician-facing pages:
    1, and program 1;
 3. `Drums`, a four-track page using the configured external output, MIDI
    channel 10, program 1, and the existing percussion-note mapping;
-4. `Loop Player`, the Project-wide WAV source in an explicit `UNLOADED` state.
+4. `Loop Player`, the Project-wide WAV source in an explicit `NOT READY` state.
 
 The Loop Player is a page in the musician-facing FT2 workflow, not four empty
 MIDI lanes. Page next/previous and **NAV** → **PAGE** open it directly, so a new
@@ -231,7 +231,7 @@ re-runs the offline pulse/length estimate and resets placement to bar zero.
 **BAR-** and **BAR+** move the whole WAV placement one Project bar left or right
 without changing the cut region.
 
-The loop follows FT2 play-here, play-from-start, stop, restart, order/pattern
+The loop follows FT2 rewind/play, stop, restart, order/pattern
 transitions, and looping. It plays at native speed and pitch; beat detection
 adjusts the Pattern tempo to the WAV, not the WAV to the previous Pattern
 tempo. A loop-only Project does not start the default software synth merely
@@ -248,6 +248,10 @@ the loop page. Turn the master rotary to browse inbox and private WAVs and press
 it to import or attach and load the selected file. Inbox, current, private, and
 saved-Project entries are labelled in the overlay. Press **LIBRARY** again or
 Back to close it without changing the Project.
+
+Selecting an `INBOX` entry imports it into private storage and loads it.
+Selecting `PRIVATE`, `CURRENT`, or `SAVED` attaches the existing private file
+and loads it. The browser has no deletion action.
 
 Press **REMOVE** twice to detach the loop from the
 Project and unload its JACK client. The imported private WAV is kept on disk so
@@ -371,10 +375,11 @@ effect, and changing Arrangement steps does not change rack order. The two aux
 sends take their pre/post source-insert taps from the one managed software
 instrument, not from individual MIDI lanes.
 
-With the opt-in graph active, the source and wet returns meet once before the
-master rack and final meter. The private WAV loop, external-instrument audio,
-and recorder capture are separate audio paths, so their MIDI pages or loop
-references do not acquire source inserts or aux sends. See
+With the opt-in graph active, the managed source and wet returns, private WAV
+loop, and exact configured stereo external-input return meet once before the
+master rack and final meter. The loop and external input do not acquire source
+inserts or aux sends; the raw multitrack recorder remains a separate capture
+path. See
 [How SHR-DAW works](HOW_IT_WORKS.md#the-managed-audio-graph) for the musical
 workflow and [Audio graph and DSP contract](AUDIO_GRAPH.md) for exact effect
 schemas and limits.

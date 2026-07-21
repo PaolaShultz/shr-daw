@@ -52,16 +52,16 @@ remains separate. Read
 - Add one or more performance MIDI keyboards to play velocity, chords, and live
   recordings. They bypass controller mappings even when note or CC numbers
   overlap.
-- If the controller is not ready yet, use the computer keyboard input to
-  navigate setup and enter tracker notes with `Z S X D C V G B H N J M`.
+- The terminal keyboard is a fully qualified input device alongside configured
+  controller and performance inputs. Use it to navigate and enter tracker
+  notes with `Z S X D C V G B H N J M` whenever convenient.
 - Open **FILES** in FT2 to load one of the seeded demo Projects; its `AUTO`
   pages use whatever MIDI destination and channels this machine currently has.
 - Add external MIDI instruments and audio hardware only when useful.
 
-Computer-keyboard step entry is available, but it is not the primary hardware
-workflow. Free live performance of a software synth from the computer keyboard,
-a wider keyboard range, and more performance bindings are planned fallback
-features. `?` and F1 already open Help.
+Computer-keyboard step entry is available, while free live performance of a
+software synth, a wider keyboard range, and more performance bindings remain
+future features. `?` and F1 already open Help.
 
 ## Terminal size
 
@@ -78,7 +78,7 @@ matter. Change those settings yourself if fewer than 40 columns or 20 rows fit.
 For a self-contained local setup, use:
 
 ```sh
-cargo +1.85.0 build --release --locked
+PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo build --locked
 ./scripts/setup-local.sh
 ./scripts/local.sh
 ```
@@ -87,7 +87,8 @@ This keeps configuration, logs, ideas, songs, recordings, downloads, and local
 presets below the ignored `user/` directory. Existing private files are not
 replaced. Set `SHSYNTH_USER_DIR` to use a different private directory. These
 helpers neither install packages nor start JACK; `setup-local.sh` only runs the
-routing wizard, and `local.sh` launches the already-built binary.
+routing wizard, and `local.sh` launches this checkout's `target/debug/shr`,
+identified as `DEV` in the TUI.
 
 ## If setup is unusual
 

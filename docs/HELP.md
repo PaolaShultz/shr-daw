@@ -19,8 +19,9 @@ select the highlighted row, confirm a field, or follow a help link.
 Home centers every label in one equal-width bar. MIDI Learn, Routing, and
 Effects are separate destinations. Routing reports current controller,
 performance-input, MIDI-output,
-clock, and audio connections without changing them; use `shr-setup` outside
-SHR to change routes.
+clock, and audio connections and edits them transactionally. Browsing is
+read-only; press to edit a detached field, press again to validate/save, or
+Back to cancel. Use `shr-setup` for initial machine setup.
 
 If a configured controller is offline, has no reviewed profile, or has not
 learned encoder turn and click, Home highlights MIDI Learn and explains why.
@@ -80,31 +81,30 @@ held notes first.
 
 ## Effects graph
 
-Playback or FT2 SYS FX opens the current Project's FX rack. In FT2, uppercase F
-opens it directly. Back returns to the calling Player or FT2 screen while its
-instrument remains active. TARGET cycles SOURCE,
+Playback SYS FX or FT2 Tools OPS FX opens the current Project's FX rack. In
+FT2, uppercase F opens it directly. Back returns to the calling Player or FT2
+screen while its instrument remains active. TARGET cycles SOURCE,
 AUX 1, AUX 2, and MASTER. Source effects change the instrument in series.
 Each aux makes a parallel wet copy: SEND sets how much enters it, POINT chooses
 before or after source effects, and RETURN sets how much comes back. Master
 effects change the final dry-plus-aux mix.
 
-KIND chooses what ADD creates. Select a row to EDIT it; BYPASS fades a source
-or master effect toward dry. A fully bypassed aux returns silence, so it never
-doubles the dry source; a delay tail can be allowed to fade with new input
-muted. ORDER moves the same stable instance and REMOVE deletes it. Aux effects
-are forced wet.
+ADD inserts a provisional processor and opens TYPE. EDIT changes the selected
+processor's type; PARM opens its named values; DEL removes it. ORDER moves the
+same stable instance and BYPASS fades a source or master effect toward dry. A
+fully bypassed aux returns silence, so it never doubles the dry source; a delay
+tail can be allowed to fade with new input muted. Aux effects are forced wet.
 
-The editor selects named parameters and adjusts values in physical units. Its
-bottom rows show input/output peak and RMS, clip/non-finite counts, and
-compressor gain reduction when the owned graph is active. Rack size and total
-effect count are bounded. With the graph active, stop transport and all
-recording before an FX change can publish a replacement plan. With the graph
-disabled, the same editor can design and save the Project silently, but direct
-playback will not process or meter it.
+The editor selects named parameters and adjusts values in physical units. One
+compact `IN / OUT / GR` row appears when the owned graph has meter data. Rack
+size and total effect count are bounded. With the graph active, stop transport
+and all recording before an FX change can publish a replacement plan. With the
+graph disabled, the same editor can design and save the Project silently, but
+direct playback will not process or meter it.
 
 ## Performance meters
 
-Presets NAV MTR, or keyboard m on Presets, opens the meter/mix surface. With the
+Home PERFORMANCE, or keyboard m, opens the meter/mix surface. With the
 owned graph disabled it retains the passive CPU and legacy output view. With
 the graph enabled it shows Synth, Loop, and Input readiness, level and mute;
 master level; final L/R peak and clip; limiter gain reduction; and final-record
@@ -181,8 +181,9 @@ On a Drums page, EDIT reuses each voice's column from earlier rows. New bass
 drums prefer column 1, new snares prefer column 2, and other new drums begin in
 columns 3–4. Existing cells are not replaced to force that layout.
 
-CELL edit is transactional. Confirm commits the draft cell; EXIT cancels and
-restores the original value. STOP stops transport without discarding the draft.
+CELL edit is transactional. DONE `SAVE` commits the draft cell; `EXIT` cancels
+and restores the original value. `PANIC` remains available without introducing
+a second partial-commit path.
 
 FT2 N00B is an independent on/off filter over Play, Record, and Step Edit on
 the selected melodic page. Out-of-scale keys stay silent and are never moved
@@ -229,10 +230,16 @@ Source BPM is manual unless AUTO align can measure a useful pulse.
 
 Tempo matching sets the current Pattern tempo from the WAV; the WAV plays at
 native speed and pitch. The loop sample rate must match JACK. Use UNIT to edit
-by beat or bar, and ALIGN to snap/move placement by bars. TOOLS LOOP REMOVE is
-confirmed and detaches the Project loop without deleting the private WAV.
-TOOLS LIBRARY opens an overlay over the loop page; turn to browse inbox and
-private WAVs, then press to import or attach and load the selected file.
+by beat or bar, and ALIGN to snap/move placement by bars. Loop Player PLAY
+`REMOVE` is confirmed and detaches the Project loop without deleting the WAV.
+Loop Player SYS `LIBRARY` opens an overlay over the loop page; turn to browse
+inbox and private WAVs, then press to import or attach and load the selected
+file.
+`INBOX` imports; `PRIVATE`, `CURRENT`, and `SAVED` attach the existing file.
+The browser does not delete WAVs.
+
+The loop reports READY, NOT READY, or OUTPUT FAULT. A valid decoded region
+keeps its white position bar and green playhead even during an output fault.
 
 The normal Loop screen's `LOOP OUT` bars show only that WAV after its cut,
 position, interpolation, transport gate, and edge fades. They do not include

@@ -241,6 +241,13 @@ links transactionally before publishing at a callback boundary. Failure leaves
 or restores those exact prior links. Shutdown restores only them; unrelated
 JACK clients and connections are not changed.
 
+A managed engine is ready only after one client resolves to exactly two
+unambiguous JACK audio outputs; the presence of a MIDI port is insufficient.
+SHR first prefers the exact configured client, then accepts one unique
+prefixed client such as Yoshimi's generated `yoshimi-<configured-name>` form.
+Zero or multiple client matches, a non-stereo output set, and every failed
+`jack_connect` call are surfaced as errors rather than ignored.
+
 Software monitoring means the configured capture pair passes through the final
 bus and adds JACK-buffer plus 2.5 ms limiter lookahead latency. Interface direct
 monitoring is outside SHR-DAW. If both are declared, activation is refused
@@ -578,7 +585,13 @@ loop reference, and unloads the loop client. It never deletes the imported WAV
 from private storage. The **LIBRARY** action opens the shared browse overlay,
 which lists regular inbox and private WAV files, marks their ownership and
 saved-Project references, and imports or attaches the rotary-selected file to
-the current Project without exposing unsafe paths.
+the current Project without exposing unsafe paths. `INBOX` imports and loads;
+`PRIVATE`, `CURRENT`, and `SAVED` attach and load. This overlay does not delete
+files.
+
+The Loop Player reports `READY`, `NOT READY`, or `OUTPUT FAULT`. Whenever the
+WAV decoded to a valid region, its white position bar and green playhead remain
+near the top even if the owned JACK output failed to activate.
 
 Loop playback is native-speed and native-pitch. Import and auto-align set the
 current Pattern tempo from the interpreted WAV BPM; they do not stretch the WAV
@@ -590,12 +603,12 @@ sample memory and 125 seconds at 48 kHz.
 
 ## FT2 cell fields
 
-The contextual **CELL EDIT** menu is four pages of four positions: **OPS**
-(Confirm, Step entry, Clear field, Effect type), **FIELDS** (Note, Gate,
-Velocity, Program), **ADJUST** (Effect parameter, Value−, Value+), and **SYS**
-(Panic, Stop, Exit/cancel). Empty positions are silent. Confirm writes the
-draft; Exit/cancel discards it without leaving a preview note. STOP only stops
-transport and deliberately preserves the draft.
+The contextual **CELL EDIT** menu has four pages: **ROUTE** (Destination,
+Channel, inherited Instrument), **SOUND** (Bank MSB, Bank LSB, per-cell
+Program, Clear selected field), **CELL** (Note, Gate, Velocity, Effect), and
+**DONE** (Panic, Save draft, Effect Parameter, Exit/cancel). Empty positions
+are silent. Save writes the draft; Exit/cancel discards it without leaving a
+preview note.
 
 Gate is inherited or 1–100% of a row. Velocity and program are inherited or
 MIDI 0–127. The single command field supports cut `C` and delay `D` ticks
@@ -605,7 +618,7 @@ commands in one cell are not supported. Per-cell program overrides use the
 selected column bank and exact page destination/column channel, occur before
 that note, and do not mutate the inherited column program.
 
-Choosing **Program** replaces the grid with a named program browser. Browsing
+Choosing **CELLPRG** replaces the grid with a named program browser. Browsing
 alone sends nothing. An explicitly played controller note auditions through the
 selected page target/column channel without being inserted into the pattern or
 duplicated through generic live-thru. Raw MIDI still shows every numeric

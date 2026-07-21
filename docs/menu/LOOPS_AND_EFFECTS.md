@@ -20,16 +20,23 @@ values in the screenshots below, not a live JACK measurement.
 The meter tap is after the chosen region, interpolation, transport gate, and
 edge fades, immediately before the loop player's existing two JACK outputs.
 It does not include the synth, source/aux/master effects, recorder input,
-hardware gain, or unrelated clients. The separate Performance Meter remains
-`FINAL OUT` for the owned graph and still excludes this loop.
+hardware gain, or unrelated clients. With the owned graph active, the loop is
+also one of the three sources summed exactly once into the Performance Meter's
+post-limiter `FINAL OUT`; the raw loop meter remains loop-only.
 
-### OPS — import and transport
+The state line explicitly says `READY`, `NOT READY`, or `OUTPUT FAULT`. A white
+position bar with a green playhead sits near the top whenever the attached WAV
+has a valid decoded region. That bar remains visible when output activation
+fails, separating successful decoding and region setup from the JACK fault.
 
-![Populated FT2 WAV Loop screen with the OPS page](../images/menu/ft2-loop-ops.png)
+### PLAY — import, remove, and transport
 
-`IMPORT` copies the selected inbox WAV into private storage and attaches it to
-the Project. `HERE` plays from the current tracker position. `START` plays from
-the Arrangement beginning. `STOP` stops tracker and loop transport.
+![Populated FT2 WAV Loop screen with the PLAY page](../images/menu/ft2-loop-play.png)
+
+`REWIND` stops owned transport and returns to the Arrangement beginning.
+`PLAY` starts or stops tracker and loop transport. `IMPORT` copies and loads
+the selected inbox WAV. `REMOVE` requires confirmation, detaches the loop from
+the Project, and unloads SHR-DAW's loop JACK client without deleting the WAV.
 
 ### BPM — interpret source tempo
 
@@ -48,12 +55,13 @@ it does not alter the WAV samples.
 its length. The active `UNIT` determines whether each press means one beat or
 one whole Project bar.
 
-### SYS — align and return
+### SYS — safety, align, library, and return
 
 ![Populated FT2 WAV Loop screen with the SYS page](../images/menu/ft2-loop-sys.png)
 
-`PANIC` and `STOP` remain reachable. `ALIGN` opens offline analysis and
-placement adjustment. `EXIT` returns to FT2 Tools.
+`PANIC` remains reachable. `ALIGN` opens offline analysis and placement
+adjustment. `LIBRARY` opens the shared loop browser. `EXIT` returns to FT2
+Tools.
 
 ## Private loop browser
 
@@ -63,7 +71,12 @@ configured inbox WAVs (`INBOX`), the WAV attached to the current edit
 Projects (`SAVED`). Turn the rotary to browse and press it to import or attach
 and load a file. Press the highlighted `LIBRARY` launcher again, or use Back,
 to close the overlay without changing the Project. This is separate from
-Project `REMOVE`, which only detaches the current loop.
+Project `REMOVE`, which only detaches the current loop. Selecting `INBOX`
+imports into private storage and loads; selecting `PRIVATE`, `CURRENT`, or
+`SAVED` attaches the existing private WAV and loads it. The overlay has no file
+deletion action.
+
+![Shared inbox/private loop overlay over the Loop Player](../images/menu/overlay-loop-library.png)
 
 ## Loop Align
 
@@ -79,11 +92,11 @@ editing the audio file.
 `BAR-` and `BAR+` move its placement by exactly one bar. `DONE` keeps the
 settings and returns to WAV Loop.
 
-### SYS — stop or leave
+### SYS — safety, help, and leave
 
 ![Populated Loop Align screen with the SYS page](../images/menu/loop-align-sys.png)
 
-`PANIC`, `STOP`, and `HELP` stay available. `EXIT` returns to WAV Loop without
+`PANIC` and `HELP` stay available. `EXIT` returns to WAV Loop without
 performing another automatic analysis.
 
 ## FX Rack
@@ -95,8 +108,8 @@ bounded to eight effects. With the graph active, FX changes are refused while
 transport or recording makes publication unsafe. With it disabled, the same
 controls edit saved Project data without touching audio.
 
-The screenshot shows a populated source chain. Selecting another target keeps
-the same menu but changes the body and which routing actions apply.
+The first screenshot shows a populated source chain. Selecting another target
+keeps the same menu but changes the body and which routing actions apply.
 The final blank-looking `+ INSERT EFFECT` row is a typed functional selection,
 not an effect index or decoration. It remains reachable once, participates in
 first/last wrapping, and click/Enter inserts an effect at that position.
@@ -105,17 +118,16 @@ first/last wrapping, and click/Enter inserts an effect at that position.
 
 ![Populated FX Rack with the OPS page](../images/menu/fx-rack-ops.png)
 
-`EDIT` opens the selected processor's named parameters. `ADD` inserts the
-currently displayed effect kind at the logical insertion position. `BYPASS`
-fades the selected processor between
-active and safe bypass. `REMOVE` removes only the selected owned processor.
+`ADD` inserts a provisional processor and opens its Type context. `DEL` removes
+only the selected owned processor. `EDIT` opens the Type context for the
+selected processor. `PARM` opens its named parameter editor.
 
-### ORDER — reorder and choose add kind
+### ORDER — reorder or bypass
 
 ![Populated FX Rack with the ORDER page](../images/menu/fx-rack-order.png)
 
-`UP` and `DOWN` move the selected effect within this rack. `KIND-` and `KIND+`
-choose the next effect type to add. Aux targets offer only supported wet
+`UP` and `DOWN` move the selected effect within this rack. `BYPASS` fades it
+between active and safe bypass. Aux targets offer only supported wet
 time/modulation effects.
 
 ### ROUTE — choose rack and aux send
@@ -133,6 +145,26 @@ Those three controls report that an aux must be selected when used elsewhere.
 `PANIC` remains available. On an aux target, `RETURN` cycles its independent
 return level. `HELP` opens the local reference. `EXIT` returns one level.
 
+### Empty rack context
+
+An empty target exposes only `ADD` on OPS while preserving ROUTE and SYS. It
+does not display inactive edit/delete actions as if they were available.
+
+![Empty FX rack with its OPS context](../images/menu/fx-rack-empty-ops.png)
+
+![Empty FX rack with its ROUTE context](../images/menu/fx-rack-empty-route.png)
+
+![Empty FX rack with its SYS context](../images/menu/fx-rack-empty-sys.png)
+
+### TYPE — choose or replace an effect type
+
+![FX Type context with confirmation and cancellation](../images/menu/fx-type-type.png)
+
+`TYPE-` and `TYPE+` browse compatible processors. `OK` confirms the new type;
+`CANCEL` restores the original processor, or removes a newly inserted
+provisional one. This context is distinct from `PARM`, which edits named
+values without changing the processor type.
+
 ## FX parameter editor
 
 Parameters come from strict per-effect schemas. At 40×20 every parameter of
@@ -146,9 +178,6 @@ continues to use the full schema names.
 
 The title/state uses one row and metering, when available, is bounded to one
 terse `IN / OUT / GR` row. Detailed meter prose never displaces a parameter.
-The established screenshot predates this compact pass and is intentionally not
-regenerated; deterministic 40×20 buffer tests are authoritative for the new
-layout.
 
 ### OPS — select and adjust a parameter
 

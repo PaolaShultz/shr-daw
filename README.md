@@ -68,7 +68,8 @@ its sounds.
 ## At a glance
 
 - Browse synthv1, Yoshimi, and FluidSynth sounds without layering managed
-  engines.
+  engines. Readiness requires one unambiguous stereo JACK output; unique
+  Yoshimi-prefixed client names are supported and connection failures surface.
 - Use one combined controller/keyboard, or separate control-surface and
   performance-keyboard inputs, with multiple simultaneous performance sources.
 - Learn the master rotary first, then use it to browse optional controller
@@ -82,7 +83,8 @@ its sounds.
   files and five separable arrangement parts.
 - Save free-timed MIDI Ideas and private tracker Projects.
 - Start with four CC0 48 kHz WAV loops, optionally download private
-  tempo-labelled drums during setup, and monitor the loop-only stereo meter.
+  tempo-labelled drums during setup, browse inbox and private WAVs in one
+  overlay, and monitor explicit loop readiness plus the loop-only stereo meter.
 - Sum the managed software instrument, owned WAV loop, and one exact configured
   stereo input through master effects, a linked lookahead limiter, final meter,
   playback, and a 24-bit stereo final-mix recorder.
@@ -140,11 +142,9 @@ instrument behind it. For example, `AudioBox · ONLINE` and
 `D-50 · UNVERIFIED` are separate facts: ALSA can see the AudioBox port but
 cannot prove that a downstream D-50 is connected or powered.
 
-The overview below shows the established performance workspaces. The
-[visual menu manual](docs/MENU_MANUAL.md) retains the established workspace
-renders; its current text and controller map describe this iteration because
-the full screenshot set was deliberately not regenerated. The intentionally
-plain Home and Routing editor do not use dashboard screenshots.
+The overview below shows the main performance workspaces. The complete
+[visual menu manual](docs/MENU_MANUAL.md) covers every current screen,
+controller context, editor, and master overlay, including Home and Routing.
 
 Large sound and file lists support case-insensitive first-letter jumps when a
 letter is not already a screen shortcut. Keyboard PageUp/PageDown remain
@@ -216,8 +216,13 @@ Name, save, preview, and safely clean up Projects and Patterns.
 
 <img src="docs/images/shr-daw-ft2-loop.png" alt="FT2 WAV Loop screen with tempo, beat-region controls, and separate LOOP OUT stereo meter" width="100%">
 
-Import private loops, align tempo and beat region, and monitor that WAV alone
-on the separate `LOOP OUT` meter.
+Import or attach private loops, align tempo and beat region, and monitor that
+WAV alone on the separate `LOOP OUT` meter. The screen explicitly reports
+`READY`, `NOT READY`, or `OUTPUT FAULT`; its white region bar and green
+playhead remain visible whenever a valid decoded region exists, even if JACK
+output activation failed. `LIBRARY` opens the shared inbox/private browser
+over this page, and `REMOVE` detaches the Project loop without deleting its
+WAV.
 
 ### Synchronized Multitrack Recorder
 

@@ -138,6 +138,14 @@ records enough process identity to stop only the engine it started. It neither
 layers managed engines nor kills an unrelated synthv1, Yoshimi, or FluidSynth
 process opened by the user.
 
+A managed host becomes ready only after SHR resolves one unambiguous stereo
+JACK output pair for it; a MIDI JACK/ALSA port alone is not readiness. Exact
+configured client names are preferred. A single uniquely prefixed client is
+also accepted, which covers Yoshimi's generated names, but zero or multiple
+matches and anything other than exactly two audio outputs are refused. Every
+`jack_connect` failure is surfaced and aborts or rolls back the owning route
+change instead of being silently ignored.
+
 SHR's FluidSynth process uses JACK audio, ALSA sequencer MIDI, and its piped
 command input; it does not open FluidSynth's TCP server. Interactive setup also
 offers to mask the distribution's always-running FluidSynth unit and blanket
@@ -409,12 +417,16 @@ performance bus transaction moves those exact ports into the sum and removes
 the direct loop links, so there is never a parallel doubled path. `LOOP OUT`
 still means only the loop; `FINAL OUT` includes all three bus sources.
 
-The player follows FT2 start, play-here, Pattern/Arrangement transitions,
+The player follows FT2 rewind/play, Pattern/Arrangement transitions,
 looping, and stop. The loop receives only its bus level/mute, then shares the
 master, limiter, final meter, recorder, and playback with the other sources.
-Project `REMOVE` only detaches the loop. The Library performs separate confirmed
-physical deletion and refuses current, saved-Project, symlinked, unsafe, or
-otherwise referenced files.
+Project `REMOVE` detaches the loop and unloads the owned JACK client while
+keeping the private WAV. `LIBRARY` opens the shared overlay over the Loop
+Player and browses both inbox and private files: inbox selection imports and
+loads, while private/current/saved selection attaches and loads. It does not
+delete files. The loop screen distinguishes `READY`, `NOT READY`, and `OUTPUT
+FAULT`; a valid decoded region keeps its white position bar and green playhead
+visible even when output activation fails.
 
 ## Note ownership and failure behavior
 
@@ -450,8 +462,8 @@ chooses a numbered non-overwriting copy. Rename publishes the complete new
 Project before removing the old filename and refuses collisions. New Ideas,
 audio recordings, imported loops, and user drum patterns likewise choose or
 require unused destinations. Destructive deletion is explicit and scoped:
-Pattern cleanup checks zero Arrangement references, Project loop removal keeps
-the WAV, and loop-library deletion rescans saved Projects at commit time.
+Pattern cleanup checks zero Arrangement references, and Project loop removal
+keeps the WAV. The current loop browser has no file-deletion workflow.
 
 Configuration lives below
 `${XDG_STATE_HOME:-~/.local/state}/shsynth/`; private user data normally lives

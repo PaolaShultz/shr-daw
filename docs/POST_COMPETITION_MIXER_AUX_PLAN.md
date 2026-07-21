@@ -1,7 +1,7 @@
 # Post-competition mixer and shared-aux plan
 
 > **Historical proposal boundary:** SHR-DAW now has a deliberately narrow
-> three-source final performance bus and Project format 4. The general
+> three-source final performance bus and Project format 5. The general
 > multi-strip/shared-aux, pan/solo, hardware-insert, and free-routing work below
 > remains a proposal, not current behavior. See
 > [Final performance bus](FINAL_PERFORMANCE_BUS.md).

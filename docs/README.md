@@ -16,7 +16,7 @@ configuration, or the architecture contracts.
 - [First run](FIRST_RUN.md) — configure hardware and open SHR-DAW.
 - [Using SHR-DAW](USING_SHR_DAW.md) — instruments, screens, MIDI Ideas,
   source/aux/master effects, performance meters, recording, and commands.
-- [Complete screen and menu manual](MENU_MANUAL.md) — 80 deterministic images
+- [Complete screen and menu manual](MENU_MANUAL.md) — 96 deterministic images
   covering every populated 40×20 screen, contextual editor, and controller
   menu page, with explanations.
 - [In-app help](HELP.md) — the compact help text shown by `?` or F1.

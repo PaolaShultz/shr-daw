@@ -89,7 +89,8 @@ Raspberry Pi experimenters learning a new musical or technical vocabulary.
   Pattern remains visible. The rotary/Up/Down browses, click/Enter confirms,
   and the same highlighted NAV item or Back closes. ROUTE cancels unconfirmed
   changes. The native geometry is a 38×18 border around 36×16 usable cells.
-- **Tools** keeps detailed arrangement, loop, clipboard, N00B, and mute workflows.
+- **Tools** keeps detailed arrangement, loop, effects, clipboard, and mute
+  workflows. N00B remains directly available in FT2 Play/Record/Edit contexts.
 - **Tracks** (opened from the PAGE overlay) adds four-lane pages and edits each
   column's channel, bank, master program, and optional profile-provided name.
   Internal routing chooses engine before that engine's instrument. External
@@ -105,7 +106,13 @@ plus provenance live in the XDG demo directory.
 - **Arrange** edits the ordered pattern steps separately from pattern data.
 - **Loop** imports, trims, aligns, and plays a private WAV with the tracker,
   with a separate stereo `LOOP OUT` meter for that WAV alone;
-  **Library** separately deletes only unreferenced regular WAV files.
+  **Library** opens the shared overlay over the Loop Player. It browses both
+  configured inbox and private WAVs: selecting `INBOX` imports and loads;
+  selecting `PRIVATE`, `CURRENT`, or `SAVED` attaches and loads. It does not
+  delete files. **Remove** detaches the Project loop and unloads its client
+  while keeping the WAV. The screen states `READY`, `NOT READY`, or `OUTPUT
+  FAULT`; a valid region keeps its white bar and green playhead through output
+  activation failure.
 - **Audio Recorder** maps, names, and arms exact JACK inputs for one synchronized
   multistem take.
 - **FX Rack** shapes the managed instrument with source inserts, two parallel

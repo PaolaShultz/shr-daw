@@ -81,7 +81,7 @@ alive until client deactivation returns.
 
 ## Project data and typed graph model
 
-Project format 4 stores the managed-source `InsertRack` and
+Project format 5 stores the managed-source `InsertRack` and
 `ProjectAuxRouting` as strict JSON inside the versioned `.shsong` line format.
 Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
 rack and adds empty aux/master routing; format 3 retains explicit routes.
