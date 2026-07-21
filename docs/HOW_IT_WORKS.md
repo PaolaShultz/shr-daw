@@ -144,7 +144,9 @@ configured client names are preferred. A single uniquely prefixed client is
 also accepted, which covers Yoshimi's generated names, but zero or multiple
 matches and anything other than exactly two audio outputs are refused. An
 exact direct connection already made by the managed synth is accepted;
-otherwise a `jack_connect` failure aborts or rolls back the owning route change.
+otherwise the checked JACK API aborts or rolls back the owning route change.
+Port connection may retry within the one startup deadline because some hosts
+publish names just before their JACK client becomes active.
 Managed synth MIDI selectors retain unique short-name matching for generated
 ALSA destinations, while physical MIDI devices continue to require their
 stable exact identities.

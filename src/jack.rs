@@ -89,6 +89,84 @@ pub(crate) struct Client {
 
 unsafe impl Send for Client {}
 
+/// Minimal non-real-time JACK client for exact graph connections. Keeping this
+/// boundary separate lets ordinary managed-engine routing work on JACK builds
+/// that do not export optional callback-inspection symbols used by the owned
+/// graph and recorder clients.
+pub(crate) struct Connector {
+    client: *mut OpaqueClient,
+    handle: *mut c_void,
+    client_close: ClientClose,
+    connect: Connect,
+}
+
+impl Connector {
+    pub(crate) fn open(name: &str) -> Result<Self> {
+        let name = CString::new(name).context("JACK client name contains a NUL byte")?;
+        // SAFETY: the selected symbols remain owned by `handle` until after
+        // jack_client_close in Drop.
+        unsafe {
+            let handle = libc::dlopen(c"libjack.so.0".as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL);
+            if handle.is_null() {
+                bail!("JACK library unavailable");
+            }
+            let loaded = (|| -> Result<(ClientOpen, ClientClose, Connect)> {
+                Ok((
+                    symbol(handle, b"jack_client_open\0")?,
+                    symbol(handle, b"jack_client_close\0")?,
+                    symbol(handle, b"jack_connect\0")?,
+                ))
+            })();
+            let (open, client_close, connect) = match loaded {
+                Ok(loaded) => loaded,
+                Err(error) => {
+                    libc::dlclose(handle);
+                    return Err(error);
+                }
+            };
+            let mut status = 0;
+            let client = open(name.as_ptr(), JACK_NO_START_SERVER, &mut status);
+            if client.is_null() {
+                libc::dlclose(handle);
+                bail!("JACK server unavailable (status {status})");
+            }
+            Ok(Self {
+                client,
+                handle,
+                client_close,
+                connect,
+            })
+        }
+    }
+
+    /// Ensure the exact route exists. JACK's EEXIST result is successful and
+    /// preserves a connection that the managed synth established itself.
+    pub(crate) fn ensure_connection(&self, source: &str, destination: &str) -> Result<bool> {
+        let source = CString::new(source).context("JACK port name contains a NUL byte")?;
+        let destination =
+            CString::new(destination).context("JACK port name contains a NUL byte")?;
+        // SAFETY: the client and both NUL-terminated names remain live here.
+        let status = unsafe { (self.connect)(self.client, source.as_ptr(), destination.as_ptr()) };
+        if status == 0 {
+            Ok(true)
+        } else if status == libc::EEXIST {
+            Ok(false)
+        } else {
+            bail!("connect JACK ports (status {status})")
+        }
+    }
+}
+
+impl Drop for Connector {
+    fn drop(&mut self) {
+        // SAFETY: close the client before unloading its function provider.
+        unsafe {
+            (self.client_close)(self.client);
+            libc::dlclose(self.handle);
+        }
+    }
+}
+
 impl Client {
     pub(crate) fn open(name: &str) -> Result<Self> {
         let name = CString::new(name).context("JACK client name contains a NUL byte")?;

@@ -710,7 +710,7 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
         command_exists(&config.synth_command),
         format!("synth command: {}", config.synth_command),
     );
-    for command in ["jack_lsp", "jack_connect", "aconnect"] {
+    for command in ["jack_lsp", "aconnect"] {
         check(
             command_exists(command),
             format!("required command: {command}"),

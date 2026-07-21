@@ -696,20 +696,25 @@ impl Engine {
         let mut audio_graph = None;
         let mut audio_graph_fallback = None;
         let mut audio_route_notice = None;
+        let startup_deadline = Instant::now() + config.startup_timeout;
         let prepare = (|| -> Result<()> {
             write_owner(&state.join("engine.pid"), child.id() as i32)?;
             wait_ready(
                 &mut child,
                 preset.backend,
                 &backend_config.client_name,
-                config.startup_timeout,
+                startup_deadline,
                 &log_path,
             )?;
             let resolved_audio = config.resolve_audio_route(&jack_ports());
             let mut runtime_config = config.clone();
             runtime_config.audio_outputs = resolved_audio.outputs;
             audio_route_notice = resolved_audio.notice;
-            connect_audio(&backend_config.client_name, &runtime_config)?;
+            connect_audio(
+                &backend_config.client_name,
+                &runtime_config,
+                startup_deadline,
+            )?;
             if config.audio_graph.enabled {
                 match start_managed_audio_graph(
                     &backend_config.client_name,
@@ -1225,10 +1230,9 @@ fn wait_ready(
     child: &mut Child,
     backend: BackendKind,
     client_name: &str,
-    timeout: Duration,
+    deadline: Instant,
     log_path: &Path,
 ) -> Result<()> {
-    let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         if let Some(status) = child.try_wait()? {
             bail!(
@@ -2201,47 +2205,28 @@ fn parse_jack_audio_sources(lines: Vec<String>) -> Vec<String> {
     sources
 }
 
-fn connect_audio(client_name: &str, config: &RuntimeConfig) -> Result<()> {
+fn connect_audio(client_name: &str, config: &RuntimeConfig, deadline: Instant) -> Result<()> {
     if !config.audio_autoconnect {
         return Ok(());
     }
     let outputs = managed_audio_outputs(client_name)?;
+    let jack = crate::jack::Connector::open("shr-engine-connect")
+        .context("open JACK client for managed audio routing")?;
     for (source, destination) in outputs.iter().zip(config.audio_outputs.iter()) {
-        let status = Command::new("jack_connect")
-            .args([source.as_str(), destination.as_str()])
-            .status()
-            .with_context(|| format!("connect JACK audio {source} -> {destination}"))?;
-        if !status.success() && !jack_connection_exists(source, destination) {
-            bail!("connect JACK audio {source} -> {destination} exited with {status}");
+        loop {
+            match jack.ensure_connection(source, destination) {
+                Ok(_) => break,
+                Err(_) if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                Err(error) => {
+                    return Err(error)
+                        .with_context(|| format!("connect JACK audio {source} -> {destination}"));
+                }
+            }
         }
     }
     Ok(())
-}
-
-fn jack_connection_exists(source: &str, destination: &str) -> bool {
-    parse_jack_connections(command_lines("jack_lsp", &["-c"]))
-        .iter()
-        .any(|(connected_source, connected_destination)| {
-            connected_source == source && connected_destination == destination
-        })
-}
-
-fn parse_jack_connections(lines: Vec<String>) -> Vec<(String, String)> {
-    let mut port: Option<String> = None;
-    let mut connections = Vec::new();
-    for line in lines {
-        if line.starts_with(char::is_whitespace) {
-            if let Some(source) = port.as_ref() {
-                let destination = line.trim();
-                if !destination.is_empty() {
-                    connections.push((source.clone(), destination.to_owned()));
-                }
-            }
-        } else {
-            port = Some(line);
-        }
-    }
-    connections
 }
 
 fn start_managed_audio_graph(
@@ -3415,38 +3400,6 @@ mod tests {
             "second-synthv1:in 134:0".into(),
         ];
         assert!(unique_backend_name_match(&ambiguous, "synthv1", "MIDI output").is_err());
-    }
-
-    #[test]
-    fn jack_connection_listing_preserves_exact_existing_routes() {
-        let lines = [
-            "yoshimi-shs-yoshimi:left",
-            "   system:playback_1",
-            "yoshimi-shs-yoshimi:right",
-            "   system:playback_2",
-            "system:playback_1",
-            "   yoshimi-shs-yoshimi:left",
-        ]
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
-        assert_eq!(
-            parse_jack_connections(lines),
-            vec![
-                (
-                    "yoshimi-shs-yoshimi:left".into(),
-                    "system:playback_1".into()
-                ),
-                (
-                    "yoshimi-shs-yoshimi:right".into(),
-                    "system:playback_2".into()
-                ),
-                (
-                    "system:playback_1".into(),
-                    "yoshimi-shs-yoshimi:left".into()
-                ),
-            ]
-        );
     }
 
     #[test]

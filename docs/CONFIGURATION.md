@@ -246,8 +246,10 @@ unambiguous JACK audio outputs; the presence of a MIDI port is insufficient.
 SHR first prefers the exact configured client, then accepts one unique
 prefixed client such as Yoshimi's generated `yoshimi-<configured-name>` form.
 Zero or multiple client matches and a non-stereo output set are surfaced as
-errors. Direct playback accepts an exact connection that the managed synth has
-already established; otherwise a failed `jack_connect` remains an error.
+errors. Direct playback uses SHR's checked JACK client API, accepts an exact
+connection that the managed synth has already established, and surfaces every
+other connection failure. A host that publishes its port names before becoming
+active may settle and retry only within the one configured startup deadline.
 
 Physical MIDI configuration uses stable exact ALSA identities. The three
 managed-backend `.midi_output` values additionally retain their historical
