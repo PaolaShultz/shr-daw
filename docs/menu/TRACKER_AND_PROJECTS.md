@@ -25,8 +25,7 @@ cell cursor and highlighted row remain the next edit/play location.
 ![Populated FT2 Pattern in Play mode with the MOVE page](../images/menu/ft2-play-move.png)
 
 `PAGE-` and `PAGE+` move between the Pattern's four-track pages. `TRACK-` and
-`TRACK+` move the column cursor, crossing a page boundary when needed. These
-high-value tracker movements occupy controller page 1.
+`TRACK+` move the column cursor, crossing a page boundary when needed.
 
 ### PLAY — transport and entry
 
@@ -46,20 +45,24 @@ click/Enter selects. Only the highlighted launcher remains on the bottom row in
 its original physical position. Press that same menu item, or keyboard Back/
 Esc, to close. There is no extra controller Back item.
 
-PAGE browses page/column locations and links to the detailed Tracks manager.
-PATTERN browses the Project's existing Patterns and links to Pattern tools and
-Project Files. SONG browses Arrangement steps and links to the detailed
-Arrangement, Loop/page tools, and tap tempo. ROUTE transactionally edits the
-active page's destination and four column setups. On 40×20 the outer border is
-38×18 at `(1,1)` and its usable inner content is 36×16 at `(2,2)`.
+On 40×20 the outer border is 38×18 at `(1,1)` and its usable inner content is
+36×16 at `(2,2)`.
 
 ![PAGE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-page.png)
 
+PAGE selects a page/column location and can open the detailed Tracks manager.
+
 ![PATTERN overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-pattern.png)
+
+PATTERN selects an existing Pattern and links to Pattern tools or Project Files.
 
 ![SONG overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-song.png)
 
+SONG selects an Arrangement step and links to Arrangement or page tools.
+
 ![ROUTE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-route.png)
+
+ROUTE edits a detached page-routing draft that changes the Project only on Apply.
 
 ### SYS — safety, filter, help, and exit
 
@@ -220,23 +223,27 @@ N00B is an independent scale-filter switch, not a fourth FT2 mode and not a
 duration control. Choose any chromatic root plus major or natural minor. On the
 selected melodic page, an in-scale key keeps its original pitch and an
 out-of-scale key stays silent; no rejected key is shifted to a nearby note.
-The filter can stay on while playing, recording, or using Step Edit. Play does
-not write cells; Record and Step Edit write only allowed notes. The N00B button
-is reachable in all three modes and turns the active filter off without
-changing mode. Moving onto Drums also turns only the filter off.
+It can stay on through Play, Record, and Step Edit; moving to Drums turns only
+the filter off.
 
 ![N00B scale setup with the OPS controller page](../images/menu/noob-setup-ops.png)
 
+OPS chooses the root and major or natural-minor scale, then confirms it.
+
 ![N00B scale setup with the SYS controller page](../images/menu/noob-setup-sys.png)
 
+SYS keeps panic, help, and cancellation available during scale setup.
+
 Note duration belongs separately to Step Edit. `LENGTH` opens a rotary selector
-for `1/1`, `1/2`, `1/4`, `1/8`, `1/16`, and `1/32`; `1/16` is the default.
-The duration uses the existing gate/note-off representation. It does not alter
-the independent 1/2/4/8-row `ADD` value that chooses the next insertion row.
+for `1/1` through `1/32`; it does not change the independent `ADD` advance.
 
 ![Step Edit note-length selector with the OPS controller page](../images/menu/note-length-ops.png)
 
+OPS confirms or cancels the highlighted duration.
+
 ![Step Edit note-length selector with the SYS controller page](../images/menu/note-length-sys.png)
+
+SYS keeps panic, help, and exit available in the selector.
 
 ## Project Files
 
@@ -268,13 +275,16 @@ Pattern tools.
 `PANIC` and `HELP` remain available. `EXIT` cancels pending file actions and
 returns to the tracker.
 
-When saving a changed blank Pattern, SHR can ask whether its page routing
-should become the private default for future Patterns. `CONFIRM` writes the
-template; `CANCEL` keeps the previous default. Neither choice changes notes.
+When saving a changed blank Pattern, SHR can offer its routing as the private
+default for future Patterns.
 
 ![Routing-default confirmation with the DEFAULT controller page](../images/menu/routing-defaults-default.png)
 
+`CONFIRM` writes the template; `CANCEL` keeps the previous default.
+
 ![Routing-default confirmation with the SYS controller page](../images/menu/routing-defaults-sys.png)
+
+SYS keeps panic and exit/cancel reachable; neither choice changes notes.
 
 ## Pattern tools
 

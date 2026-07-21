@@ -204,8 +204,8 @@ a named synthv1 preset, configured external output, or named MIDI port. Live
 keyboard and musical MIDI audition whichever page is selected.
 Sharing a destination/channel requires the same master instrument.
 
-Real-time REC is hardware-output only. It refuses synthv1 pages so a software
-synth is not doubled or rewritten by live capture.
+Real-time REC is hardware-output only. It refuses software-instrument pages so
+an owned synth is not doubled or rewritten by live capture.
 
 Missing preferred targets keep their data and show FALLBACK or OFFLINE. A
 runtime substitute never replaces the saved route; reconnect and play again.

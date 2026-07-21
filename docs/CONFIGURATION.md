@@ -640,7 +640,7 @@ Switching any route field cancels the old route first. Internal channels and
 programs are zero-based MIDI values, while every FT2 screen shows channels
 1–16 and programs 1–128.
 
-FT2 **REC** is deliberately hardware-only. It refuses a synthv1 page,
+FT2 **REC** is deliberately hardware-only. It refuses a software-instrument page,
 consumes musical controller notes before the loaded synth route, and
 auditions them on the current page's configured/exact MIDI output and channel.
 Recording loops only the selected pattern, writes only the visible page's four

@@ -66,17 +66,15 @@ Tools.
 ## Private loop browser
 
 `LIBRARY` opens the shared overlay over the unchanged loop page. It includes
-configured inbox WAVs (`INBOX`), the WAV attached to the current edit
-(`CURRENT`), other imported files (`PRIVATE`), and files referenced by saved
-Projects (`SAVED`). Turn the rotary to browse and press it to import or attach
-and load a file. Press the highlighted `LIBRARY` launcher again, or use Back,
-to close the overlay without changing the Project. This is separate from
-Project `REMOVE`, which only detaches the current loop. Selecting `INBOX`
-imports into private storage and loads; selecting `PRIVATE`, `CURRENT`, or
-`SAVED` attaches the existing private WAV and loads it. The overlay has no file
-deletion action.
+`INBOX`, `CURRENT`, `PRIVATE`, and `SAVED` entries. Turn the rotary and press to
+load a file; `INBOX` imports first, while the other types attach an existing
+private WAV. Press highlighted `LIBRARY` again or Back to close without
+changing the Project. The browser has no deletion action.
 
 ![Shared inbox/private loop overlay over the Loop Player](../images/menu/overlay-loop-library.png)
+
+The caller remains visible while the overlay identifies each file's source and
+Project relationship.
 
 ## Loop Align
 
@@ -147,14 +145,17 @@ return level. `HELP` opens the local reference. `EXIT` returns one level.
 
 ### Empty rack context
 
-An empty target exposes only `ADD` on OPS while preserving ROUTE and SYS. It
-does not display inactive edit/delete actions as if they were available.
-
 ![Empty FX rack with its OPS context](../images/menu/fx-rack-empty-ops.png)
+
+OPS exposes only `ADD`; unavailable edit and delete actions stay hidden.
 
 ![Empty FX rack with its ROUTE context](../images/menu/fx-rack-empty-route.png)
 
+ROUTE still selects the target and, for an aux, its send settings.
+
 ![Empty FX rack with its SYS context](../images/menu/fx-rack-empty-sys.png)
+
+SYS preserves panic, return-level, help, and one-level exit actions.
 
 ### TYPE — choose or replace an effect type
 

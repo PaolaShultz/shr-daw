@@ -232,12 +232,12 @@ effects, CPU state, or transport.
 ![Populated performance meter with the NAV controller page](../images/menu/performance-meter-nav.png)
 
 `FX` opens the same master-overlay layer used by FT2. Choose SOURCE, AUX 1,
-AUX 2, or MASTER, then click/Enter to open the existing rack for that target.
-The MTR caller stays underneath until selection. Only highlighted `FX` remains
-on the bottom row, and pressing it again closes the overlay without changing
-audio or Project state.
+AUX 2, or MASTER, then click/Enter to open that rack.
 
 ![Effects-routing overlay over the performance meter](../images/menu/overlay-performance-fx.png)
+
+The MTR remains underneath; pressing the highlighted `FX` again closes the
+overlay without changing audio or Project state.
 
 ### SYS — safety and return
 

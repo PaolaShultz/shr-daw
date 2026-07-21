@@ -1,9 +1,9 @@
 # First run
 
 You do not need a full hardware studio to start. SHR-DAW is designed around a
-small paged MIDI control surface, with computer-keyboard controls kept as a
-fallback for setup and development. External synths, an audio interface, mixer,
-and dedicated display are optional additions.
+small paged MIDI control surface, and the computer keyboard remains a complete
+input option. External synths, an audio interface, mixer, and dedicated display
+are optional.
 
 ## Configure and start
 
@@ -33,17 +33,9 @@ as a problem. The preset browser and external-MIDI tracker can still open
 without JACK; loading a software instrument, playing a WAV loop, and recording
 audio require it. SHR-DAW does not start or restart JACK.
 
-The owned effects graph is disabled by default, so a managed software
-instrument initially uses the configured direct playback pair. Playback
-**SYS** → **FX** always opens the Project's source rack, two pre/post wet aux
-buses, and master rack. With the graph disabled those controls design and save
-the Project silently; direct playback cannot process or meter them. Enabling
-the graph in `shsynth.conf` requires the managed instrument, loaded owned loop,
-and one exact configured stereo capture pair. It moves synth and loop away from
-their direct routes and sums all three through the master, linked limiter,
-final meter, final stereo WAV tap, and playback. The raw multitrack recorder
-remains separate. Read
-[How SHR-DAW works](HOW_IT_WORKS.md) before changing that routing boundary.
+The effects graph is disabled by default, so synth and loop audio initially use
+their configured direct routes. Read [How SHR-DAW works](HOW_IT_WORKS.md)
+before enabling the three-source final bus.
 
 ## Choose how to play
 
