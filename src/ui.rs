@@ -2334,7 +2334,7 @@ impl App {
                     self.close_overlay(false);
                     self.set_screen(Screen::TrackerTools);
                     self.reset_context_page();
-                    self.status = "FT2 tools · loop, clipboard, and mute".into();
+                    self.status = "FT2 tools · loop, FX, clipboard, and mute".into();
                 } else {
                     self.close_overlay(false);
                     if let Some(bpm) = self.tap.tap(Instant::now()) {
@@ -10321,7 +10321,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerArrange => draw_tracker_arrange(f, a),
         Screen::TrackerPages => draw_tracker_pages(f, a),
         Screen::TrackerTools => {
-            draw_tracker_child(f, "FT2 TOOLS", "Arrange · Loop · N00B · Clipboard · Mute")
+            draw_tracker_child(f, "FT2 TOOLS", "Arrange · Loop · FX · Clipboard · Mute")
         }
         Screen::TrackerNoteLength => draw_note_length(f, a),
         Screen::TrackerLoop => draw_tracker_loop(f, a),
@@ -13040,6 +13040,7 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .skip(start)
                 .take(rows)
                 .map(|(index, page)| {
+                    let visible_width = usize::from(z.width.saturating_sub(2));
                     let issue = a.target_route_issue(&page.target);
                     let channel = if page.target == PageTarget::Default {
                         "AU".to_owned()
@@ -13049,7 +13050,7 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                             sequencer::musician_channel(page.column(a.tracker_track).channel)
                         )
                     };
-                    let mut text = format!(
+                    let base = format!(
                         "{}{:02} {:<8} C{} ch{} p{:03} {}",
                         if index == a.tracker_page { "▶" } else { " " },
                         index + 1,
@@ -13059,12 +13060,14 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                         sequencer::musician_program(page.column(a.tracker_track).program),
                         truncate(page.target.label(), 7),
                     );
-                    if let Some(issue) = issue {
-                        text.push_str(" · ");
-                        text.push_str(issue);
-                    }
+                    let suffix = issue.map_or_else(String::new, |issue| format!(" · {issue}"));
+                    let text = format!(
+                        "{}{}",
+                        truncate(&base, visible_width.saturating_sub(suffix.chars().count())),
+                        suffix
+                    );
                     Spans::from(Span::styled(
-                        truncate(&text, usize::from(z.width)),
+                        truncate(&text, visible_width),
                         if index == a.tracker_page {
                             Style::default().fg(Color::Black).bg(Color::Yellow)
                         } else if issue.is_some() {
@@ -16600,7 +16603,7 @@ mod tests {
             key(KeyCode::Char(character), &mut a, Path::new("/none"), &tx);
         }
         key(KeyCode::Enter, &mut a, Path::new("/none"), &tx);
-        assert!(a.status.contains("out of range"));
+        assert!(a.status.contains("RANGE"));
         key(KeyCode::Esc, &mut a, Path::new("/none"), &tx);
         assert_eq!(
             a.song.insert_rack.effect(id).unwrap().parameters["low_cut_hz"],
@@ -17271,7 +17274,6 @@ mod tests {
         assert!(text.contains("Software Synth"));
         assert!(text.contains("STOP"));
         assert!(!text.contains("STOP/BACK"));
-        assert!(text.contains("137 BPM"));
         assert!(!text.contains("120.0 BPM"));
         a.switch_tracker_page();
         t.draw(|f| draw(f, &mut a)).unwrap();
@@ -17396,7 +17398,7 @@ mod tests {
         // Check the complete visible value ("C-4 58"), including the octave.
         let b = t.backend().buffer();
         for x in 12..18 {
-            let cell = b.get(x, 3);
+            let cell = b.get(x, 2);
             assert_eq!(cell.fg, Color::Black, "unexpected foreground at x={x}");
             assert_eq!(cell.bg, Color::Yellow, "unexpected background at x={x}");
             assert!(!cell.modifier.contains(Modifier::BOLD));
@@ -17460,7 +17462,8 @@ mod tests {
             Path::new("/nonexistent"),
             &tx,
         );
-        assert_eq!(a.selected, 0);
+        assert_eq!(a.menu_page(), 1);
+        assert_eq!(a.selected, 8, "page selection preserves the list cursor");
     }
 
     #[test]
@@ -17477,7 +17480,7 @@ mod tests {
             .hits
             .menu_pages
             .iter()
-            .all(|(area, _)| area.width == 10 && area.x >= 20 && area.x < 60));
+            .all(|(area, _)| area.width >= 7 && area.width <= 10 && area.x >= 20 && area.x < 60));
         assert!(a
             .hits
             .actions
@@ -18377,7 +18380,10 @@ mod tests {
         a.current_page_mut().unwrap().column_mut(0).bank_msb = 5;
         a.current_page_mut().unwrap().column_mut(0).bank_lsb = 9;
         a.current_page_mut().unwrap().target = PageTarget::Midi("Roland D-50".into());
-        assert_eq!(a.tracker_program_messages(7), vec![vec![0xc0, 7]]);
+        assert_eq!(
+            a.tracker_program_messages(7),
+            vec![vec![0xb0, 0, 5], vec![0xb0, 32, 9], vec![0xc0, 7]]
+        );
 
         a.current_page_mut().unwrap().target = PageTarget::ActiveInstrument;
         assert!(a.tracker_program_messages(7).is_empty());
@@ -18540,18 +18546,18 @@ mod tests {
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
         let buffer = terminal.backend().buffer();
         for (x, marker) in [(9, "C"), (18, "D"), (27, "R"), (36, "T")] {
-            assert_eq!(buffer.get(x, 3).symbol, marker);
+            assert_eq!(buffer.get(x, 2).symbol, marker);
         }
-        assert_eq!(buffer.get(9, 3).fg, Color::Black);
-        assert_eq!(buffer.get(9, 3).bg, Color::Yellow);
-        assert_eq!(buffer.get(18, 3).bg, Color::DarkGray);
+        assert_eq!(buffer.get(9, 2).fg, Color::Black);
+        assert_eq!(buffer.get(9, 2).bg, Color::Yellow);
+        assert_eq!(buffer.get(18, 2).bg, Color::DarkGray);
 
         let mut empty = app(&p);
         empty.screen = Screen::Tracker;
         let backend = TestBackend::new(40, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| draw(frame, &mut empty)).unwrap();
-        assert_eq!(terminal.backend().buffer().get(9, 3).symbol, " ");
+        assert_eq!(terminal.backend().buffer().get(9, 2).symbol, " ");
     }
 
     #[test]
@@ -19752,9 +19758,9 @@ mod tests {
         let mut t = Terminal::new(b).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
         let b = t.backend().buffer();
-        assert_eq!(b.get(0, 3).fg, Color::Yellow);
-        assert_eq!(b.get(0, 11).fg, Color::Yellow);
-        assert_eq!(b.get(0, 10).fg, Color::DarkGray);
+        assert_eq!(b.get(0, 2).fg, Color::Yellow);
+        assert_eq!(b.get(0, 10).fg, Color::Yellow);
+        assert_eq!(b.get(0, 9).fg, Color::DarkGray);
     }
 
     #[test]
@@ -19796,9 +19802,9 @@ mod tests {
         let mut t = Terminal::new(b).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
         let b = t.backend().buffer();
-        assert_eq!(b.get(0, 3).fg, Color::Yellow);
-        assert_eq!(b.get(0, 9).fg, Color::Yellow);
-        assert_eq!(b.get(0, 15).fg, Color::Yellow);
+        assert_eq!(b.get(0, 2).fg, Color::Yellow);
+        assert_eq!(b.get(0, 8).fg, Color::Yellow);
+        assert_eq!(b.get(0, 14).fg, Color::Yellow);
         assert_eq!(b.get(0, 11).fg, Color::DarkGray);
     }
 

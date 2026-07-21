@@ -2248,8 +2248,8 @@ fn resolve_managed_audio_outputs(
     ports: impl IntoIterator<Item = String>,
 ) -> Result<[String; 2]> {
     let wanted = client_name.to_ascii_lowercase();
-    let mut matching_clients = Vec::new();
-    let mut candidates = Vec::new();
+    let mut exact_candidates = Vec::new();
+    let mut partial_candidates = Vec::new();
     for port in ports {
         let Some((client, short_name)) = port.split_once(':') else {
             continue;
@@ -2260,13 +2260,25 @@ fn resolve_managed_audio_outputs(
             || short_name == "left"
             || short_name == "right";
         let client_lower = client.to_ascii_lowercase();
-        if (client_lower == wanted || client_lower.contains(&wanted)) && is_output {
-            if !matching_clients.iter().any(|candidate| candidate == client) {
-                matching_clients.push(client.to_owned());
+        if is_output {
+            if client_lower == wanted {
+                exact_candidates.push((client.to_owned(), port));
+            } else if client_lower.contains(&wanted) {
+                partial_candidates.push((client.to_owned(), port));
             }
-            candidates.push((client.to_owned(), port));
         }
     }
+    let candidates = if exact_candidates.is_empty() {
+        partial_candidates
+    } else {
+        exact_candidates
+    };
+    let mut matching_clients = candidates
+        .iter()
+        .map(|(client, _)| client.clone())
+        .collect::<Vec<_>>();
+    matching_clients.sort();
+    matching_clients.dedup();
     if matching_clients.len() != 1 {
         bail!(
             "managed JACK client {client_name:?} matched {} audio clients, expected 1",
@@ -2788,7 +2800,7 @@ mod tests {
     #[test]
     fn legacy_controller_input_remains_a_combined_musical_source() {
         let mut config = input_role_config();
-        config.midi_input_matches = vec!["Combined".into()];
+        config.midi_input_matches = vec!["Combined Device".into()];
         let plan = plan_midi_inputs(&["Combined Device".into()], &PadConfig::default(), &config);
         assert_eq!(plan.inputs.len(), 1);
         assert_eq!(
@@ -2804,8 +2816,8 @@ mod tests {
     #[test]
     fn separate_controller_and_performance_ports_keep_separate_roles() {
         let mut config = input_role_config();
-        config.midi_input_matches = vec!["Surface".into()];
-        config.midi_performance_input_matches = vec!["Keyboard".into()];
+        config.midi_input_matches = vec!["Surface MIDI".into()];
+        config.midi_performance_input_matches = vec!["Keyboard MIDI".into()];
         config.midi_controller_musical_input = false;
         let plan = plan_midi_inputs(
             &["Surface MIDI".into(), "Keyboard MIDI".into()],

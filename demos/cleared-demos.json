@@ -33,7 +33,7 @@
       "project": "house-of-the-rising-sun.shsong",
       "sha256": {
         "midi": "b332d520cacab301bc7abed44bbc7bee90991eaaefe3616037ffb9183680a189",
-        "project": "2780be14e15ba220ebb78bd3b45076189448c5b929b7a1e9dd816d275b8152cb"
+        "project": "afed9628912d5a3161b769e693c47e15c7ae9712d01491ada6cf9d3511fff454"
       }
     },
     {
@@ -66,7 +66,7 @@
       "project": "whiskey-in-the-jar.shsong",
       "sha256": {
         "midi": "ab8a3c65c42fa92ae0cc40d145cf479be396e34c09848dcb5cac23809fbaac52",
-        "project": "8d4dec9eecc20e7da38114c55b2d4fc5357046d23e51f81ffbc414c2e8b56d27"
+        "project": "ef57900a8f5ea0c65475f208145d2ad635d43209d37f336e361c14766e603c91"
       }
     },
     {
@@ -100,7 +100,7 @@
       "project": "cotton-eyed-joe.shsong",
       "sha256": {
         "midi": "802c81aaa2a712840ae4b93347ab7fb3f15364243fac3dbd7cbe61a1091829c8",
-        "project": "34fff465d8c138f6ba005fbbcc4d4f8a279638a5e964f9db14c0537362ff5b3a"
+        "project": "e41af42e4c209e06db0275033418ec41d94544d2e62a7817a72e402f0680c902"
       }
     },
     {
@@ -134,7 +134,7 @@
       "project": "scarborough-fair.shsong",
       "sha256": {
         "midi": "7ac2917efacfdb9a60bf432fc08d797c2032fa9084551e7ddbc2314963d7ba42",
-        "project": "75e163c7976f0827384528468c4d18f7d5f697e6fc92a499fc76dfa33ebb714a"
+        "project": "a33c2e74d684f0589120b5263b81d47678a8a2d593f29aca48d977b31e60a0e7"
       }
     },
     {
@@ -167,7 +167,7 @@
       "project": "greensleeves.shsong",
       "sha256": {
         "midi": "273c7815ba95f8311bd01b9d38289efb0886b146535d973da0fbe8ab293ac579",
-        "project": "73fb9c89c3d163ffa406c7770c78537ea375f82af9d307e2b4ca2ea38300e3fa"
+        "project": "50b2c4b9d0d92f62edc237bff595a0bf3308cc2060ac2f9780161266794b2e1c"
       }
     },
     {
@@ -200,7 +200,7 @@
       "project": "amazing-grace.shsong",
       "sha256": {
         "midi": "7bfcf6aa79ac30bc16c8c8b262859702f4415d5a296cac698cef8e605c8e386a",
-        "project": "fb5bcbf950356560c358ee4f760c8befe0a554ee7ec264db65acadff3ca4a203"
+        "project": "427fd58491214d313741fc46e870a1c628115bed71455223726f60d738d5166d"
       }
     },
     {
@@ -234,7 +234,7 @@
       "project": "drunken-sailor.shsong",
       "sha256": {
         "midi": "2f6238f91026cd18bde8a2b342253804fe6324fe8529c51cadf5d7c2fef22abd",
-        "project": "a5ea0e44feea787c7b5853e4de51adf06c252567cfcef13c191a824871c7355f"
+        "project": "fc41d8e767df5eebb604ebd0133b5329cb0c53130537471433095e20a8b9136c"
       }
     },
     {
@@ -268,7 +268,7 @@
       "project": "wellerman.shsong",
       "sha256": {
         "midi": "27aa38b6c52288a13727f68a2bc702c5e725a0134c5daff46f08177d996b6d5e",
-        "project": "ec3eb9fbb732692e163c384922e8cf2deb3e8a65b8cc109d3a57e5b902f861be"
+        "project": "03d06bcccf119c5b25969d062f986f75436814bc10fe54dc0caa4685f835c5d1"
       }
     },
     {
@@ -302,7 +302,7 @@
       "project": "auld-lang-syne.shsong",
       "sha256": {
         "midi": "d012c4ff3c09ffcf2cba59bdc0b2b947481bbd273c1ef3f03fac64a152442b93",
-        "project": "9cd1da467fed9d77eab3dc9f23371840dbd9816b6b3e533151514689f849c3a0"
+        "project": "8cc0d12d2a719de5486046a9e0f20b3382430d84c238e3a9572e0b60cd18eb49"
       }
     },
     {
@@ -336,7 +336,7 @@
       "project": "danny-boy.shsong",
       "sha256": {
         "midi": "293c574b041de974b5a6b76315351a34a731fcb7080d4c48941aace874c5e603",
-        "project": "367166d9cf2ed5434f1713fb4216216b8d1a2483c0c9bce85f917c3c894a4ab8"
+        "project": "e9cecae936440c878e1022269caa28d5d53686576529ac22d4a897f30cc88995"
       }
     }
   ]

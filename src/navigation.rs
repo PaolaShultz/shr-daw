@@ -493,7 +493,7 @@ const TRACKER: [MenuPage; 4] = [
         "SYS",
         [
             on("PANIC", Action::StopAll),
-            on("FX", Action::OpenFxRack),
+            on("N00B", Action::TrackerNoobToggle),
             on("HELP", Action::OpenHelp),
             on("EXIT", Action::Back),
         ],
@@ -505,7 +505,7 @@ const TRACKER_TOOLS: [MenuPage; 4] = [
         [
             on("ARR", Action::OpenTrackerArrange),
             on("LOOP", Action::OpenTrackerLoop),
-            on("N00B", Action::TrackerNoobToggle),
+            on("FX", Action::OpenFxRack),
             on("MUTE", Action::TrackerMute),
         ],
     ),
@@ -1654,18 +1654,18 @@ mod tests {
     }
 
     #[test]
-    fn player_and_ft2_put_fx_only_on_their_sys_pages() {
-        assert_eq!(
-            pages(Screen::Playback, MenuContext::Normal)[3],
-            pages(Screen::Tracker, MenuContext::Normal)[3]
-        );
+    fn player_and_ft2_keep_fx_reachable_without_displacing_tracker_noob() {
         assert_eq!(
             slot(Screen::Playback, MenuContext::Normal, 3, 1).and_then(MenuSlot::dispatch),
             Some(Action::OpenFxRack)
         );
         assert_eq!(
-            slot(Screen::Tracker, MenuContext::Normal, 3, 1).and_then(MenuSlot::dispatch),
+            slot(Screen::TrackerTools, MenuContext::Normal, 0, 2).and_then(MenuSlot::dispatch),
             Some(Action::OpenFxRack)
+        );
+        assert_eq!(
+            slot(Screen::Tracker, MenuContext::Normal, 3, 1).and_then(MenuSlot::dispatch),
+            Some(Action::TrackerNoobToggle)
         );
         assert_eq!(
             pages(Screen::Tracker, MenuContext::Normal)[2]
@@ -1678,19 +1678,10 @@ mod tests {
                 Some(Action::OpenRouteOverlay),
             ]
         );
-        for (screen, context) in [
-            (Screen::Playback, MenuContext::Normal),
-            (Screen::Tracker, MenuContext::Normal),
-            (Screen::TrackerTools, MenuContext::Normal),
-        ] {
-            for (page_index, page) in pages(screen, context).iter().enumerate() {
-                for slot in page.slots {
-                    if slot.dispatch() == Some(Action::OpenFxRack) {
-                        assert_eq!(page_index, 3, "{screen:?}");
-                    }
-                }
-            }
-        }
+        assert!(!pages(Screen::Tracker, MenuContext::Normal)
+            .iter()
+            .flat_map(|page| page.slots)
+            .any(|slot| slot.dispatch() == Some(Action::OpenFxRack)));
     }
 
     #[test]

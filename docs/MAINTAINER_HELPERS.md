@@ -501,7 +501,7 @@ not touch user/XDG song data.
 
 The script uses only Python's standard library. Each format-1 MIDI contains a
 conductor track and five named musical parts; each Project contains the same
-parts with canonical format-4 `default` routes. The JSON manifest owns title,
+parts with canonical format-5 `default` routes. The JSON manifest owns title,
 tempo, meter, key, parts, description, style ideas, original-arrangement
 licence, public-domain reasoning, institutional source URLs, filenames, and
 SHA-256 hashes. `src/demo.rs` validates that manifest, MIDI chunk structure,

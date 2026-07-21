@@ -334,14 +334,14 @@ def make_project(demo: Demo) -> str:
     project_meter = 3 if demo.meter == (6, 8) else demo.meter[0]
     names = ("Drums", "Bass", "Pad", "Lead", "Counter")
     out = [
-        "SHSYNTH-SONG 4", f"name={demo.title}", f"steps={STEPS}", "gate=80", "order=0",
+        "SHSYNTH-SONG 5", f"name={demo.title}", f"steps={STEPS}", "gate=80", "order=0",
         'insert_rack={"effects":[],"order":[]}',
         'aux_routing={"master_rack":{"effects":[],"order":[]},"buses":[],"sends":[]}',
         f"pattern=0|{rows}|{demo.bpm}|{project_meter}",
     ]
     for page, name in enumerate(names):
         percussion = 1 if name == "Drums" else 0
-        out.append(f"pattern_page=0|{page}|{name.upper()}|1|96|{percussion}|default")
+        out.append(f"pattern_page=0|{page}|{name.upper()}|1|96|{percussion}|default|-")
         for column in range(4):
             out.append(f"pattern_column=0|{page}|{column}|default|default|default|default")
             out.append(f"pattern_lane=0|{page}|{column}|{name[:3].upper()}{column + 1}|1")

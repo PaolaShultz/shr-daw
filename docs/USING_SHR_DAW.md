@@ -184,8 +184,10 @@ active engine.
 
 ## Effects and routing
 
-From Playback or normal FT2, open **SYS** → **FX**. Uppercase `F` is the direct
-FT2 keyboard shortcut. Back returns to the exact calling screen without
+From Playback, open **SYS** → **FX**. From normal FT2, use **NAV** → **SONG** →
+**OPEN LOOP / PAGE TOOLS…** → **FX**; this keeps N00B directly reachable on
+FT2's **SYS** page. Uppercase `F` remains the direct FT2 keyboard shortcut.
+Back returns to the exact calling screen without
 stopping its instrument or disabling FT2 live input. `TARGET` moves among SOURCE, AUX 1,
 AUX 2, and MASTER. A source rack changes the managed instrument in series; it
 is the natural place for EQ, compression, filtering, distortion, gating, or
