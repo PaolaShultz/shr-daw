@@ -203,6 +203,10 @@ impl Processor {
     fn set_bypass(&mut self, bypass: bool, fade_samples: u32, wet_only_tail: bool) -> bool {
         match self {
             Self::Delay(effect) => effect.set_bypass(bypass, fade_samples, wet_only_tail),
+            Self::Compressor(effect) => {
+                effect.set_bypass(bypass);
+                false
+            }
             _ => false,
         }
     }

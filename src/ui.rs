@@ -74,6 +74,10 @@ const INSERT_EFFECTS: [EffectKind; 13] = [
 
 const BUILD_BADGE: &str = if cfg!(debug_assertions) { "DEV" } else { "REL" };
 const FIRST_AUX_EFFECT_INDEX: usize = 3;
+const COMPRESSOR_GAIN_REDUCTION_LEDS_DB: [f32; 11] =
+    [0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 18.0, 24.0];
+// U+25CF is one cell wide and maps to a round glyph in the target Lat15-VGA16 font.
+const COMPRESSOR_LED_GLYPH: &str = "●";
 
 fn effect_kind_label(kind: EffectKind) -> &'static str {
     match kind {
@@ -10745,6 +10749,35 @@ fn meter_db(value: f32) -> f32 {
     }
 }
 
+fn compressor_gain_reduction_meter(gain_reduction_db: f32, width: usize) -> Spans<'static> {
+    let gain_reduction_db = if gain_reduction_db.is_finite() {
+        gain_reduction_db.max(0.0)
+    } else {
+        0.0
+    };
+    let label = "GR .5 ";
+    let scale_end = " 24dB";
+    let meter_width =
+        label.len() + COMPRESSOR_GAIN_REDUCTION_LEDS_DB.len() * 2 - 1 + scale_end.len();
+    let mut spans = vec![Span::raw(" ".repeat(width.saturating_sub(meter_width) / 2))];
+    spans.push(Span::styled(label, Style::default().fg(Color::Gray)));
+    for (index, threshold_db) in COMPRESSOR_GAIN_REDUCTION_LEDS_DB.iter().enumerate() {
+        spans.push(Span::styled(
+            COMPRESSOR_LED_GLYPH,
+            Style::default().fg(if gain_reduction_db >= *threshold_db {
+                Color::LightRed
+            } else {
+                Color::Red
+            }),
+        ));
+        if index + 1 < COMPRESSOR_GAIN_REDUCTION_LEDS_DB.len() {
+            spans.push(Span::raw(" "));
+        }
+    }
+    spans.push(Span::styled(scale_end, Style::default().fg(Color::Gray)));
+    Spans::from(spans)
+}
+
 fn performance_color(color: MeterColor) -> Color {
     match color {
         MeterColor::Green => Color::Green,
@@ -11303,26 +11336,31 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
     lines.push(Spans::from(""));
     let meter = a.engine.as_ref().and_then(|engine| engine.effect_meter(id));
-    let meter_line = if let Some(meter) = meter {
+    let meter_line = if effect.kind == EffectKind::Compressor {
+        let gain_reduction_db = if effect.bypass {
+            0.0
+        } else {
+            meter
+                .and_then(|snapshot| snapshot.gain_reduction_db)
+                .unwrap_or(0.0)
+        };
+        compressor_gain_reduction_meter(gain_reduction_db, inner_width)
+    } else if let Some(meter) = meter {
         let input_peak = meter.input.peak.left.max(meter.input.peak.right);
         let output_peak = meter.output.peak.left.max(meter.output.peak.right);
-        format!(
-            "IN {:.0}  OUT {:.0}  GR {}",
-            meter_db(input_peak),
-            meter_db(output_peak),
-            meter
-                .gain_reduction_db
-                .map(|value| format!("{value:.1}"))
-                .unwrap_or_else(|| "--".into())
-        )
+        Spans::from(crate::ui_text::fit_line(
+            &format!(
+                "IN {:.0}  OUT {:.0}",
+                meter_db(input_peak),
+                meter_db(output_peak),
+            ),
+            inner_width,
+        ))
     } else {
-        "METER --".into()
+        Spans::from(crate::ui_text::fit_line("METER --", inner_width))
     };
     if lines.len() < usize::from(body.height.saturating_sub(2)) {
-        lines.push(Spans::from(crate::ui_text::fit_line(
-            &meter_line,
-            inner_width,
-        )));
+        lines.push(meter_line);
     }
     f.render_widget(
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
@@ -16345,6 +16383,52 @@ mod tests {
             }
             assert!(!text.contains("Meters unavailable"));
         }
+    }
+
+    #[test]
+    fn compressor_gain_reduction_leds_use_the_declared_scale_and_red_states() {
+        assert_eq!(
+            unicode_width::UnicodeWidthStr::width(COMPRESSOR_LED_GLYPH),
+            1
+        );
+        let colors = |gain_reduction_db| {
+            compressor_gain_reduction_meter(gain_reduction_db, 38)
+                .0
+                .into_iter()
+                .filter(|span| span.content == COMPRESSOR_LED_GLYPH)
+                .map(|span| span.style.fg)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(colors(0.0), vec![Some(Color::Red); 11]);
+        assert_eq!(colors(f32::NAN), vec![Some(Color::Red); 11]);
+
+        let six_db = colors(6.0);
+        assert_eq!(six_db[..6], [Some(Color::LightRed); 6]);
+        assert_eq!(six_db[6..], [Some(Color::Red); 5]);
+        assert_eq!(colors(24.0), vec![Some(Color::LightRed); 11]);
+    }
+
+    #[test]
+    fn compressor_editor_renders_visible_dim_round_leds_at_40x20() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song
+            .insert_rack
+            .add_with_id(EffectKind::Compressor, 1)
+            .unwrap();
+        a.fx_selection = FxRackSelection::Effect(1);
+        a.screen = Screen::FxEditor;
+        let frame = render_app(&mut a, 40, 20);
+        let meter_row = (0..20)
+            .find(|row| row_text(&frame, *row).contains("GR .5"))
+            .expect("compressor LED scale row");
+        let leds = (0..40)
+            .map(|column| buffer_cell(&frame, column, meter_row))
+            .filter(|cell| cell.symbol == COMPRESSOR_LED_GLYPH)
+            .collect::<Vec<_>>();
+        assert_eq!(leds.len(), COMPRESSOR_GAIN_REDUCTION_LEDS_DB.len());
+        assert!(leds.iter().all(|cell| cell.fg == Color::Red));
+        assert!(row_text(&frame, meter_row).contains("24dB"));
     }
 
     #[test]

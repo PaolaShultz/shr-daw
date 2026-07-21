@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 const MIN_DETECTOR_DB: f32 = -120.0;
 const MIN_GAIN_DB: f32 = -96.0;
+const METER_RELEASE_MILLISECONDS: f32 = 250.0;
 
 #[derive(Debug, Default)]
 pub struct AtomicGainReduction {
@@ -62,6 +63,9 @@ pub(super) struct Compressor {
     attack_coefficient: f32,
     release_coefficient: f32,
     gain_change_db: f32,
+    meter_gain_reduction_db: f32,
+    meter_release_coefficient: f32,
+    meter_bypassed: bool,
     makeup: SmoothedValue,
     mix: SmoothedValue,
     sidechain_left: OnePole,
@@ -90,6 +94,9 @@ impl Compressor {
             attack_coefficient: time_coefficient(attack_ms, sample_rate),
             release_coefficient: time_coefficient(release_ms, sample_rate),
             gain_change_db: 0.0,
+            meter_gain_reduction_db: 0.0,
+            meter_release_coefficient: time_coefficient(METER_RELEASE_MILLISECONDS, sample_rate),
+            meter_bypassed: effect.bypass,
             makeup: smooth(db_to_gain(value("makeup_db")?)?),
             mix: smooth(value("mix_percent")? * 0.01),
             sidechain_left: OnePole::new(OnePoleMode::HighPass, sidechain_hz, sample_rate)?,
@@ -111,6 +118,7 @@ impl Compressor {
         };
         let target = curve_gain_db(level_db, self.threshold_db, self.ratio, self.knee_db);
         self.follow_gain_change(target);
+        self.follow_meter();
         let gain = self.gain_table.gain(self.gain_change_db) * self.makeup.next_value();
         let mix = self.mix.next_value();
         StereoFrame::new(
@@ -130,6 +138,18 @@ impl Compressor {
         self.gain_change_db =
             finite_or_zero(target_db + coefficient * (self.gain_change_db - target_db))
                 .clamp(MIN_GAIN_DB, 0.0);
+    }
+
+    #[inline]
+    fn follow_meter(&mut self) {
+        let actual_gain_reduction_db = -self.gain_change_db;
+        self.meter_gain_reduction_db = if actual_gain_reduction_db >= self.meter_gain_reduction_db {
+            actual_gain_reduction_db
+        } else {
+            actual_gain_reduction_db
+                + self.meter_release_coefficient
+                    * (self.meter_gain_reduction_db - actual_gain_reduction_db)
+        };
     }
 
     pub(super) fn set_parameter(&mut self, name: &str, value: f32) -> Result<(), EffectError> {
@@ -168,6 +188,7 @@ impl Compressor {
 
     pub(super) fn reset(&mut self) {
         self.gain_change_db = 0.0;
+        self.meter_gain_reduction_db = 0.0;
         self.sidechain_left.reset();
         self.sidechain_right.reset();
         self.published_gain_reduction.publish(0.0);
@@ -177,8 +198,20 @@ impl Compressor {
         Arc::clone(&self.published_gain_reduction)
     }
 
+    pub(super) fn set_bypass(&mut self, bypass: bool) {
+        self.meter_bypassed = bypass;
+        if bypass {
+            self.published_gain_reduction.publish(0.0);
+        }
+    }
+
     pub(super) fn publish(&self) {
-        self.published_gain_reduction.publish(-self.gain_change_db);
+        self.published_gain_reduction
+            .publish(if self.meter_bypassed {
+                0.0
+            } else {
+                self.meter_gain_reduction_db
+            });
     }
 }
 
@@ -277,6 +310,34 @@ mod tests {
     }
 
     #[test]
+    fn visual_meter_attacks_immediately_and_releases_more_stably_than_audio_gain() {
+        let mut compressor = Compressor::compile(
+            &effect([
+                ("threshold_db", -30.0),
+                ("ratio", 8.0),
+                ("knee_db", 0.0),
+                ("attack_ms", 0.1),
+                ("release_ms", 20.0),
+            ]),
+            48_000,
+        )
+        .unwrap();
+        for index in 0..4_800 {
+            let sample = if index % 24 < 12 { 1.0 } else { -1.0 };
+            compressor.process(StereoFrame::new(sample, sample));
+            assert!(compressor.meter_gain_reduction_db >= -compressor.gain_change_db);
+        }
+        let driven = compressor.meter_gain_reduction_db;
+        assert!(driven > 12.0);
+
+        for _ in 0..4_800 {
+            compressor.process(StereoFrame::SILENCE);
+        }
+        assert!(compressor.meter_gain_reduction_db < driven);
+        assert!(compressor.meter_gain_reduction_db > -compressor.gain_change_db);
+    }
+
+    #[test]
     fn louder_channel_drives_one_linked_gain_and_meter() {
         let configured = effect([
             ("threshold_db", -24.0),
@@ -310,6 +371,38 @@ mod tests {
         assert!((left_ratio - right_ratio).abs() < 1.0e-6);
         assert!(left_ratio < 0.5);
         assert!(meter.load() > 6.0);
+    }
+
+    #[test]
+    fn bypass_immediately_clears_and_suppresses_gain_reduction_meter() {
+        let configured = effect([
+            ("threshold_db", -30.0),
+            ("ratio", 8.0),
+            ("knee_db", 0.0),
+            ("attack_ms", 0.1),
+        ]);
+        let mut slot = EffectSlot::compile(&configured, 48_000, 128).unwrap();
+        let meter = slot.meters().gain_reduction.unwrap();
+        for block_index in 0..100 {
+            let mut block = [StereoFrame::SILENCE; 128];
+            for (index, frame) in block.iter_mut().enumerate() {
+                let phase = 2.0 * PI * 1_000.0 * (block_index * 128 + index) as f32 / 48_000.0;
+                let sample = phase.sin();
+                *frame = StereoFrame::new(sample, sample);
+            }
+            slot.process(&mut block);
+        }
+        assert!(meter.load() > 12.0);
+
+        slot.set_bypass(true).unwrap();
+        assert_eq!(meter.load(), 0.0);
+        let mut loud = [StereoFrame::new(1.0, -1.0); 128];
+        slot.process(&mut loud);
+        assert_eq!(meter.load(), 0.0);
+
+        slot.set_bypass(false).unwrap();
+        slot.process(&mut loud);
+        assert!(meter.load() > 0.0);
     }
 
     #[test]

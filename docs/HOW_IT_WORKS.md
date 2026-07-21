@@ -372,10 +372,13 @@ input while its already-created wet echoes drain; serial conditioning can
 continue to pass an already-wet signal or feed another active wet generator.
 
 Every processor publishes bounded input/output peak and RMS plus clip and
-non-finite state; compressor editing also exposes gain reduction. Each aux
-meters after its return gain. `FINAL OUT` follows the master level and dedicated
-stereo-linked sample-peak limiter. The recorder tap and playback receive the
-same final buffer after that meter boundary.
+non-finite state. Compressor editing also exposes its detector-derived gain
+reduction through a lock-free value; the LED display responds immediately to
+increasing reduction and uses a fixed 250 ms release for visual stability.
+Bypass publishes zero reduction. Each aux meters after its return gain. `FINAL
+OUT` follows the master level and dedicated stereo-linked sample-peak limiter.
+The recorder tap and playback receive the same final buffer after that meter
+boundary.
 
 The FX rack and parameter editor remain available while the graph is disabled,
 so a Project can be designed silently without an audio callback to rebuild.

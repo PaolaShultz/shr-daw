@@ -181,8 +181,11 @@ matching four gains across knobs 5–8. Low cut is not placed on knob 1.
 Secondary DSP values not assigned to a performance knob remain valid in saved
 Projects, so this UI correction does not invalidate existing files.
 
-The title/state uses one row and metering, when available, is bounded to one
-terse `IN / OUT / GR` row. Detailed meter prose never displaces a parameter.
+The title/state uses one row and metering is bounded to one row. The compressor
+shows 11 round red LEDs from 0.5 to 24 dB: dim circles keep the hardware-like
+scale visible, while bright circles show live gain reduction and all stay dim
+on bypass. Other processors use terse input/output values. Meter detail never
+displaces a parameter.
 
 Turn the rotary to select a control; click begins editing, turn changes only
 that value, click confirms, and Back restores the original. Numeric keyboard

@@ -96,11 +96,13 @@ fully bypassed aux returns silence, so it never doubles the dry source; a delay
 tail can be allowed to fade with new input muted. Aux effects are forced wet.
 
 The editor selects named parameters and adjusts values in physical units. One
-compact `IN / OUT / GR` row appears when the owned graph has meter data. Rack
-size and total effect count are bounded. With the graph active, stop transport
-and all recording before an FX change can publish a replacement plan. With the
-graph disabled, the same editor can design and save the Project silently, but
-direct playback will not process or meter it.
+compact meter row appears when the owned graph has data. The compressor uses a
+dark-red 0.5–24 dB LED row whose bright-red lights show live gain reduction;
+bypass leaves every LED dim. Other effects show compact input/output values.
+Rack size and total effect count are bounded. With the graph active, stop
+transport and all recording before an FX change can publish a replacement
+plan. With the graph disabled, the same editor can design and save the Project
+silently, but direct playback will not process or meter it.
 
 ## Performance meters
 
