@@ -221,10 +221,18 @@ impl OverlayState {
     }
 
     pub fn move_selection(&mut self, direction: i8, rows: usize) {
+        if rows == 0 {
+            self.selection = 0;
+            self.scroll = 0;
+            return;
+        }
+        self.selection = self.selection.min(rows - 1);
         self.selection = if direction < 0 {
-            self.selection.saturating_sub(1)
+            (self.selection + rows - 1) % rows
+        } else if direction > 0 {
+            (self.selection + 1) % rows
         } else {
-            (self.selection + 1).min(rows.saturating_sub(1))
+            self.selection
         };
     }
 

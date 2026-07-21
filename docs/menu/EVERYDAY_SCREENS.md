@@ -18,7 +18,12 @@ instrument; it never layers engines. synthv1, Yoshimi, and FluidSynth remain
 separate catalogs selected with the Engine page.
 
 Home keeps **MIDI Learn**, **Routing**, and **Effects** separate. Routing is the
-read-only current connection view; Effects is the existing Project rack. If a
+rotary browse/edit/confirm/cancel editor; Effects is the existing Project rack.
+Routing selections wrap, and merely browsing never writes configuration or
+opens/transmits through a MIDI output. Its live state names the discoverable
+interface separately from the configured downstream profile: an AudioBox may
+be `ONLINE` while a D-50 remains `UNVERIFIED`, because DIN supplies no device-
+presence feedback. If a
 configured controller is offline, unreviewed, or has an incomplete learned
 encoder, MIDI Learn is selected first and Home explains why. Keyboard arrows
 and Enter remain available. A learned turn-and-click encoder is sufficient;

@@ -28,8 +28,8 @@ implemented.
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Select and name a track; assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; Exit to Home and panic. |
-| FX rack/editor | Choose source, AUX 1, AUX 2, or master; add/select/remove/bypass/reorder bounded effects; edit strict named physical-unit parameters; set independent send level, pre/post point, and return level; inspect peak/RMS/clip/non-finite/gain-reduction meters; and panic. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
-| Routing | Read-only overview of currently connected controller, performance, MIDI-output, clock, and audio endpoints. Configured but disconnected device/profile names are hidden. Hardware changes remain an explicit external `shr-setup` action. |
+| FX rack/editor | Choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter together at 40×20 using explicit compact labels and type-aware values. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
+| Routing | Transactional rotary editor for controller input/role, performance input, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
 
@@ -103,6 +103,16 @@ MTR's FX launcher reuses the same rendering, input, toggle, and return layer.
 - Physical command pages never contain PageUp/PageDown. Keyboard
   PageUp/PageDown retain their existing behavior, while the rotary continues
   ordinary one-step list and row movement.
+- Every genuine rotary/Up/Down browse list wraps first-to-last and last-to-first,
+  including Home, file/library lists, Arrangement, tracker browse cursors,
+  recorder/meter/FX lists, overlays, Routing rows, and enumerated field choices.
+  Empty lists are inert, one-item lists remain stable, stale selections clamp
+  before wrapping, and scroll offsets follow the selected row. Bounded numeric
+  editing does not inherit list wrapping.
+- Functional sentinels are typed logical entries, not inferred from their
+  visual text. Blank/Skip, Off, Clear, Default/AUTO, and FX `+ INSERT EFFECT`
+  therefore remain distinct and reachable exactly once; decorative blank lines
+  remain non-selectable.
 - The rendered controller strip is centered and capped at 40 columns. Labels
   and brackets use their natural width instead of expanding with the terminal.
 - Command notes and CCs may be qualified by MIDI channel. The MiniLab factory
@@ -200,7 +210,50 @@ Blank physical positions and wholly empty pages are omitted.
 | Audio recorder | Track | Previous track | Next track | Assign source | Name track |
 | Audio recorder | Setup | Arm all resolved | Disarm all | Refresh sources | — |
 | Audio recorder | Sys | Panic | — | Help | Exit |
+| Routing | Edit | Previous row/value | Next row/value | Edit/OK | Cancel |
 | Routing | Sys | Panic | Help | — | Exit |
+
+## Routing editor contract
+
+Routing opens in browse mode with a highlighted row. Rotary/Up/Down moves one
+row and wraps; click/Enter opens a detached field draft; rotary/Up/Down changes
+only that draft; click/Enter validates and confirms; Back/Esc restores the
+original field. Back/Esc from browse returns Home. Re-entry always starts with
+clean browse state.
+
+Confirmation validates the complete runtime and controller candidate, creates
+non-overwriting backups, atomically replaces both files, releases source-owned
+notes/controller state, replaces SHR-owned MIDI inputs without layering, and
+refreshes live discovery. Failure restores the old files and runtime route.
+An audio-output change is saved for the next managed engine start and reported
+as `AUDIO NEXT START` instead of being described as hot/live. Controller-clock
+enable/output changes likewise report `CLOCK NEXT START`; live MIDI input role/
+source changes activate immediately. Selecting
+or confirming a MIDI output uses discovery only; it never opens an output as a
+probe and never transmits.
+
+The MIDI row describes the selected ALSA interface port as `ONLINE` or
+`OFFLINE`. The Device row describes only the configured profile and remains
+`UNVERIFIED` for a downstream DIN instrument. `AudioBox · ONLINE` plus
+`D-50 · UNVERIFIED` is therefore the truthful expected presentation; SHR never
+claims that the D-50 itself was detected.
+
+## FX editor and 40×20 text contract
+
+The FX editor reserves one title/state row, one row for every schema parameter
+(up to 11), and at most one compact meter row above the unchanged controller
+footer. It never scrolls parameters. Each row is `marker + K/F mapping + stable
+schema abbreviation + type-aware value`, for example `>K1 THR  -18.0 dB` or
+` K2 RAT  4.0:1`. Toggles use ON/OFF; choices/modes use compact names;
+integers omit decimals; percent, dB, frequency, time, and ratio use concise
+musical units. Full persisted schema names do not change.
+
+All working-screen single-line regions have explicit terminal-cell budgets.
+Static operational labels are written to fit; unpredictable device/file/user
+names pass through cell-aware fitting; fixed label/value rows reserve the
+selection marker and right-side state. Help remains the intentional wrapped,
+scrollable prose surface. The controller footer, `DEV`/`REL` badge, Help, and
+Exit areas retain their assigned cells at 40×20.
 
 ## FT2 cell editor inventory and mapping
 

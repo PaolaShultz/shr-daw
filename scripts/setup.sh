@@ -429,6 +429,20 @@ alsa_ports() {
   ' | awk '!seen[tolower($0)]++'
 }
 
+# Match Rust's stable ALSA identity policy: remove only one volatile trailing
+# numeric client:port address and preserve the meaningful client:port-name
+# separator. This is also applied to manually entered MIDI identities.
+stable_midi_identity() {
+  local value=$1 trailing
+  value="${value%"${value##*[![:space:]]}"}"
+  trailing="${value##* }"
+  if [[ "$trailing" =~ ^[0-9]+:[0-9]+$ ]]; then
+    value="${value% "$trailing"}"
+    value="${value%"${value##*[![:space:]]}"}"
+  fi
+  printf '%s\n' "$value"
+}
+
 jack_audio_ports() {
   local wanted_property=$1
   command -v jack_lsp >/dev/null 2>&1 || return 0
@@ -501,6 +515,7 @@ mapfile -t midi_sources < <(alsa_ports -i)
 choose_value 'Control-surface MIDI input (0 for no hardware controller)' yes "${midi_sources[@]}"
 controller_input="$CHOSEN"
 if [[ -n "$controller_input" ]]; then
+  controller_input="$(stable_midi_identity "$controller_input")"
   replace_values "$RUNTIME_CONFIG" midi.input "$controller_input"
   replace_values "$CONTROLLER_CONFIG" input "$controller_input"
   if ask_yes_no 'Should unmatched notes/messages from this controller also play music?' yes; then
@@ -525,6 +540,7 @@ performance_inputs=()
 while true; do
   choose_value 'Performance-keyboard MIDI input (0 when finished)' yes "${midi_sources[@]}"
   [[ -n "$CHOSEN" ]] || break
+  CHOSEN="$(stable_midi_identity "$CHOSEN")"
   already_selected=false
   for selected in "${performance_inputs[@]}"; do
     if [[ "${selected,,}" == "${CHOSEN,,}" ]]; then
@@ -660,6 +676,7 @@ fi
 mapfile -t midi_destinations < <(alsa_ports -o)
 if ask_yes_no 'Configure an external hardware MIDI output?' no; then
   choose_value 'External MIDI destination' no "${midi_destinations[@]}"
+  CHOSEN="$(stable_midi_identity "$CHOSEN")"
   replace_values "$RUNTIME_CONFIG" external_midi.enabled true
   replace_values "$RUNTIME_CONFIG" external_midi.output "$CHOSEN"
   profile_ids=(unknown-monophonic-safe)

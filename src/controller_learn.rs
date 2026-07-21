@@ -807,18 +807,7 @@ fn message_is_relevant(role: LearnRole, message: &[u8]) -> bool {
 }
 
 pub fn stable_input_match(name: &str) -> String {
-    name.split_whitespace()
-        .filter(|part| {
-            let token = part.trim_matches(|character: char| {
-                !character.is_ascii_alphanumeric() && character != ':'
-            });
-            let Some((left, right)) = token.split_once(':') else {
-                return true;
-            };
-            !(left.chars().all(|c| c.is_ascii_digit()) && right.chars().all(|c| c.is_ascii_digit()))
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    crate::midi_endpoint::stable_identity(name)
 }
 
 pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {

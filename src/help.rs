@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn help_lines_fit_forty_column_inner_width() {
         for line in lines(38) {
-            assert!(line.text.chars().count() <= 38, "{line:?}");
+            assert!(crate::ui_text::width(&line.text) <= 38, "{line:?}");
         }
     }
 

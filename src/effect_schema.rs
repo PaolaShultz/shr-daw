@@ -285,6 +285,132 @@ pub fn defaults(kind: EffectKind) -> BTreeMap<String, f32> {
         .collect()
 }
 
+/// Deliberate musician-facing abbreviations. Persistence continues to use the
+/// full schema `name`; these labels are stable UI metadata, never heuristics.
+pub fn abbreviation(name: &str) -> &'static str {
+    match name {
+        "trim_db" => "TRIM",
+        "pan" => "PAN",
+        "width_percent" => "WIDTH",
+        "invert_left" => "INV-L",
+        "invert_right" => "INV-R",
+        "mute" => "MUTE",
+        "low_cut_enabled" => "L-CUT",
+        "low_cut_hz" => "LC-HZ",
+        "low_shelf_hz" => "LS-HZ",
+        "low_shelf_db" => "LS-DB",
+        "low_mid_hz" => "LM-HZ",
+        "low_mid_db" => "LM-DB",
+        "high_mid_hz" => "HM-HZ",
+        "high_mid_db" => "HM-DB",
+        "high_shelf_hz" => "HS-HZ",
+        "high_shelf_db" => "HS-DB",
+        "output_trim_db" | "output_db" => "OUT",
+        "threshold_db" => "THR",
+        "ratio" => "RAT",
+        "knee_db" => "KNEE",
+        "attack_ms" => "ATK",
+        "release_ms" => "REL",
+        "makeup_db" => "MAKE",
+        "mix_percent" => "MIX",
+        "sidechain_highpass_hz" => "SC-HP",
+        "mode" => "MODE",
+        "drive_db" => "DRIVE",
+        "bias" => "BIAS",
+        "tone_hz" => "TONE",
+        "tempo_sync" => "SYNC",
+        "tempo_bpm" => "BPM",
+        "division" => "DIV",
+        "time_ms" | "base_delay_ms" => "TIME",
+        "feedback_percent" => "FDBK",
+        "stereo_ratio" => "STEREO",
+        "wet_percent" => "WET",
+        "dry_percent" => "DRY",
+        "tail_on_bypass" => "TAIL",
+        "type" => "TYPE",
+        "predelay_ms" => "PRE",
+        "decay_seconds" => "DECAY",
+        "size_percent" => "SIZE",
+        "damping_percent" => "DAMP",
+        "input_low_cut_hz" => "L-CUT",
+        "rate_hz" => "RATE",
+        "depth_percent" => "DEPTH",
+        "stereo_phase_degrees" => "PHASE",
+        "stages" => "STAGES",
+        "center_hz" => "CENTER",
+        "range_octaves" => "RANGE",
+        "shape" => "SHAPE",
+        "cutoff_hz" => "CUTOFF",
+        "resonance" => "RES",
+        "hysteresis_db" => "HYST",
+        "range_db" => "RANGE",
+        "hold_ms" => "HOLD",
+        "bit_depth" => "BITS",
+        "hold_factor" => "HOLD",
+        "dither" => "DITH",
+        _ => "?",
+    }
+}
+
+pub fn format_value(kind: EffectKind, spec: ParameterSpec, value: f32) -> String {
+    if spec.value_type == ParameterType::Toggle {
+        return if value >= 0.5 { "ON" } else { "OFF" }.into();
+    }
+    let indexed = value.round() as usize;
+    let named = match (kind, spec.name, indexed) {
+        (EffectKind::Distortion, "mode", 0) => Some("SOFT"),
+        (EffectKind::Distortion, "mode", 1) => Some("HARD"),
+        (EffectKind::Distortion, "mode", 2) => Some("DIODE"),
+        (EffectKind::Delay, "mode", 0) => Some("STEREO"),
+        (EffectKind::Delay, "mode", 1) => Some("PING"),
+        (EffectKind::Delay, "mode", 2) => Some("MONO-ST"),
+        (EffectKind::Delay, "division", 0) => Some("1/16"),
+        (EffectKind::Delay, "division", 1) => Some("1/8"),
+        (EffectKind::Delay, "division", 2) => Some("1/4"),
+        (EffectKind::Delay, "division", 3) => Some("1/2"),
+        (EffectKind::Delay, "division", 4) => Some("1/1"),
+        (EffectKind::Delay, "division", 5) => Some("2/1"),
+        (EffectKind::Delay, "division", 6) => Some("4/1"),
+        (EffectKind::Delay, "division", 7) => Some("8/1"),
+        (EffectKind::Reverb, "type", 0) => Some("SHORT"),
+        (EffectKind::Reverb, "type", 1) => Some("MED"),
+        (EffectKind::Reverb, "type", 2) => Some("LONG"),
+        (EffectKind::TremoloPan, "mode", 0) => Some("TREM"),
+        (EffectKind::TremoloPan, "mode", 1) => Some("PAN"),
+        (EffectKind::TremoloPan, "shape", 0) => Some("SINE"),
+        (EffectKind::TremoloPan, "shape", 1) => Some("TRI"),
+        (EffectKind::TremoloPan, "shape", 2) => Some("SQUARE"),
+        (EffectKind::Filter, "mode", 0) => Some("LP"),
+        (EffectKind::Filter, "mode", 1) => Some("BP"),
+        (EffectKind::Filter, "mode", 2) => Some("HP"),
+        _ => None,
+    };
+    if let Some(label) = named {
+        return label.into();
+    }
+    match spec.unit {
+        "dB" | "dBFS" => format!("{value:+.1} {}", spec.unit),
+        ":1" => format!("{value:.1}:1"),
+        "%" => format!("{value:.0}%"),
+        "Hz" if value >= 1_000.0 => format!("{:.1} kHz", value / 1_000.0),
+        "Hz" if value >= 10.0 => format!("{value:.0} Hz"),
+        "Hz" => format!("{value:.2} Hz"),
+        "ms" if value >= 10.0 => format!("{value:.0} ms"),
+        "ms" => format!("{value:.1} ms"),
+        "s" => format!("{value:.1} s"),
+        "deg" => format!("{value:.0}°"),
+        "oct" => format!("{value:.1} oct"),
+        "BPM" => format!("{value:.0} BPM"),
+        "stages" => format!("{value:.0} STG"),
+        "bit" => format!("{value:.0} bit"),
+        "x" => format!("{value:.0}x"),
+        "" if spec.value_type == ParameterType::Integer => format!("{value:.0}"),
+        "" => format!("{value:.2}"),
+        unit if spec.value_type == ParameterType::Integer => format!("{value:.0} {unit}"),
+        unit => format!("{value:.2} {unit}"),
+    }
+}
+
 /// Minimum heap storage allocated by one Phase 2 runtime slot. This is derived
 /// from kind and callback capacity; persisted memory claims cannot reduce it.
 pub fn minimum_runtime_memory_bytes(
@@ -368,6 +494,7 @@ pub fn validate(effect: &EffectInstance) -> Result<(), SchemaError> {
 mod tests {
     use super::*;
     use crate::audio_graph::EFFECT_FORMAT_VERSION;
+    use std::collections::BTreeSet;
 
     fn instance(kind: EffectKind) -> EffectInstance {
         EffectInstance {
@@ -401,10 +528,48 @@ mod tests {
             validate(&effect).unwrap();
             let defaults = defaults(kind);
             assert_eq!(defaults.len(), schema(kind).len());
-            assert!(schema(kind)
+            assert!(schema(kind).iter().all(|spec| {
+                !spec.name.is_empty()
+                    && abbreviation(spec.name) != "?"
+                    && spec.accepts(spec.default)
+            }));
+            let abbreviations = schema(kind)
                 .iter()
-                .all(|spec| { !spec.name.is_empty() && spec.accepts(spec.default) }));
+                .map(|spec| abbreviation(spec.name))
+                .collect::<BTreeSet<_>>();
+            assert_eq!(abbreviations.len(), schema(kind).len(), "{kind:?}");
+            assert!(abbreviations.iter().all(|label| label.chars().count() <= 6));
         }
+    }
+
+    #[test]
+    fn compact_values_are_type_aware() {
+        let compressor = schema(EffectKind::Compressor);
+        assert_eq!(
+            format_value(EffectKind::Compressor, compressor[0], -18.0),
+            "-18.0 dBFS"
+        );
+        assert_eq!(
+            format_value(EffectKind::Compressor, compressor[1], 4.0),
+            "4.0:1"
+        );
+        assert_eq!(
+            format_value(EffectKind::Compressor, compressor[6], 75.0),
+            "75%"
+        );
+        let delay = schema(EffectKind::Delay);
+        assert_eq!(format_value(EffectKind::Delay, delay[1], 1.0), "ON");
+        assert_eq!(format_value(EffectKind::Delay, delay[3], 4.0), "1/1");
+        assert_eq!(format_value(EffectKind::Delay, delay[4], 375.0), "375 ms");
+        assert_eq!(
+            format_value(EffectKind::Delay, delay[7], 8_000.0),
+            "8.0 kHz"
+        );
+        let crusher = schema(EffectKind::Crusher);
+        assert_eq!(
+            format_value(EffectKind::Crusher, crusher[0], 12.0),
+            "12 bit"
+        );
     }
 
     #[test]

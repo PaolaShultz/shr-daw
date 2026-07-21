@@ -4,6 +4,8 @@ This document is the source-of-truth guide to the repository helpers in
 `scripts/`: their arguments, environment variables, files changed, safety
 boundaries, and the reasons they work the way they do. End-user commands remain
 in the normal setup guides; this page explains the maintenance machinery.
+Repository-wide priority, validation, data, and publishing policy remains in
+`AGENTS.md`; current installed state remains in `docs/WORKSPACE_HANDOFF.md`.
 
 All shell helpers use `set -euo pipefail`. An unhandled failure, unset variable,
 or failed pipeline stops the operation instead of continuing with partial
@@ -285,6 +287,10 @@ toolchain for the current user and runs Cargo as `cargo +1.85.0`.
 It then runs locked tests, creates a locked release build, installs the files
 with `sudo make install-files`, and normally opens `shr-setup`.
 
+That is the install helper's production behavior, not the normal development
+validation policy. During the competition fast-iteration phase, do not invoke
+the installer merely to obtain a full suite or release build.
+
 ### Why install is explicit and relatively heavy
 
 SHR-DAW is a live-audio program. Installing an untested binary or silently using
@@ -547,14 +553,14 @@ expanded path. `uninstall` is intentionally broad within the exact selected
 `PREFIX`/`DESTDIR` application paths; never point those variables at an
 unresolved or unintended root.
 
-## Validation after helper changes
+## Helper-specific validation
 
 Match validation to the helper's effects:
 
 - Shell helper: run `shellcheck` on each changed shell file.
 - Python renderer: run `python3 -m py_compile`, inspect one image, render the
   full batch, and run `--check`.
-- Documentation: check local links/image references and run `git diff --check`.
+- This guide: check its local references and run `git diff --check`.
 - Preset generator or output: validate every affected `.synthv1` with
   `xmllint`, confirm parameter names, manifest membership, and provenance.
 - Demo generator or output: compile the Python helper, run its normal check,
@@ -566,9 +572,7 @@ Match validation to the helper's effects:
 - Install layout: use a validated explicit `DESTDIR` fixture and confirm the
   nested manual chapters/images and cleared-only preset bank.
 
-Before any commit, ensure `git ls-files | rg '^user/'` produces no output. Never
-stage private configuration, Ideas, Projects, recordings, downloads, or the
-private Codex skill below `user/`.
+Apply the private-data and publishing checks in `AGENTS.md` before any commit.
 
 ## Synthetic multitrack recorder stress
 

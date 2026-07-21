@@ -1,8 +1,8 @@
 # Screen and menu manual
 
 This is the visual guide to SHR-DAW's established 40×20 workspace and editor
-screens. The new intentionally plain centered Home list and read-only Routing
-overview are documented textually during competition fast iteration; the full
+screens. The intentionally plain centered Home list and transactional Routing
+editor are documented textually during competition fast iteration; the full
 screenshot set was not regenerated for that navigation-only change. The
 current controller map is authoritative in
 [Controller interface](CONTROLLER_INTERFACE.md). Existing screenshots are drawn by the real Rust UI from
@@ -37,6 +37,9 @@ positions:
 - On a four-button controller, press the main encoder to enter page selection,
   turn it to choose a page, press it again, then use the four buttons.
 - Empty pages and actions are hidden and skipped.
+- Every genuine rotary/Up/Down browsing list wraps at both ends. Functional
+  entries such as Blank/Skip, AUTO, Off, Clear, and `+ INSERT EFFECT` remain
+  selectable exactly once; only decorative blank lines are skipped.
 - Page 1 holds the screen's primary workflow; on FT2 it is Page−/Page+/Track−/
   Track+. On workspaces, child screens, and editors, `SYS` item 4 is `EXIT`,
   which goes back one level. MIDI controls never quit SHR-DAW.
@@ -70,7 +73,7 @@ flowchart TD
     H0 --> A[Recorder]
     H0 --> M[Performance]
     H0 --> ML[MIDI Learn]
-    H0 --> RTE[Routing overview]
+    H0 --> RTE[Routing editor]
     H0 --> FX[Effects / FX rack]
     H0 --> I[Ideas]
     H0 --> H[Help]

@@ -79,6 +79,29 @@ selectors empty, set the controller musical setting false, and configure one or
 more performance inputs. `external_midi.output` is an output destination, not
 an input; one interface may safely be configured in both directions.
 
+### Stable ALSA endpoint identities and in-app editing
+
+Setup, runtime discovery, status, diagnostics, external output routing,
+controller clock, and the Routing screen share one deterministic identity
+policy. From
+`AudioBox USB 96:AudioBox USB 96 MIDI 1 32:0`, only the volatile trailing
+numeric address is removed; the stable configured value is
+`AudioBox USB 96:AudioBox USB 96 MIDI 1`. The legacy whitespace form
+`AudioBox USB 96 AudioBox USB 96 MIDI 1` remains compatible only when unique.
+There is no substring/fuzzy fallback, and volatile numeric addresses are never
+written.
+
+The Routing screen edits detached drafts. Confirming any row validates the
+whole runtime/controller candidate, creates backups, atomically saves, then
+replaces SHR-owned MIDI inputs without layering them. Activation failure
+restores the previous files and route. Merely browsing, highlighting, or
+confirming an output choice does not open that output or send MIDI. Audio-
+output changes are marked `NEXT START` and take effect on the next managed
+engine start. Controller-clock changes also take effect on the next SHR start;
+MIDI input and controller-role changes activate immediately. Startup does not
+silently migrate legacy names; canonical form is written only after a confirmed
+Routing edit.
+
 ## Dedicated controller clock and transport
 
 The controller sync route is separate from every tracker page and from the

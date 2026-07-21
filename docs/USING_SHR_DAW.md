@@ -107,11 +107,13 @@ plus provenance live in the XDG demo directory.
   multistem take.
 - **FX Rack** shapes the managed instrument with source inserts, two parallel
   pre/post aux sends and wet returns, then a master rack and final meter.
-- **Routing** shows only MIDI endpoints currently visible to SHR plus the live
-  audio route. Configured but disconnected controller, performance, downstream
-  device-profile, and MIDI-output names are not presented as current
-  connections. It is deliberately read-only: leave SHR and run `shr-setup` to
-  change hardware preferences safely.
+- **Routing** is a rotary editor. Turn/Up/Down browses its wrapping rows; press/
+  Enter starts a detached field draft; turn changes only that draft; press
+  validates, backs up, saves atomically, and safely activates; Back/Esc cancels
+  a field or leaves Routing. Browsing does not write or transmit. The MIDI row
+  reports whether the selected interface port is discoverable, while Device
+  always treats a downstream DIN profile as `UNVERIFIED`. Thus
+  `AudioBox · ONLINE` and `D-50 · UNVERIFIED` can truthfully appear together.
 - **MIDI Learn** opens directly from Home and learns rotary left, right, then
   click before browsing optional mappings.
 
@@ -129,6 +131,12 @@ main encoder moves through lists, rows, pages, and values, and its press selects
 or confirms. Back from a top-level workspace returns Home. Nested tools and
 editors return one level at a time, without stopping unrelated playback or
 recording state.
+
+Up/Down browsing wraps universally, including overlays and editor choice
+lists. Functional sentinel rows—Blank/Skip, Off, Clear, Default/AUTO, and the
+FX rack's `+ INSERT EFFECT`—remain distinct selectable actions and participate
+in the wrap exactly once. Numeric value ranges still stop at their declared
+minimum and maximum.
 
 On large sound, Project, drum-pattern, and WAV lists, an otherwise unassigned
 letter jumps to the first matching name without taking input away from naming,

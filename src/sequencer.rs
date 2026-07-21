@@ -2601,40 +2601,9 @@ fn connect_target(
 pub(crate) fn matching_output_index(
     names: &[String],
     wanted: &str,
-    allow_partial: bool,
+    _allow_partial: bool,
 ) -> Result<usize> {
-    let exact = names
-        .iter()
-        .enumerate()
-        .filter_map(|(index, name)| (name == wanted).then_some(index))
-        .collect::<Vec<_>>();
-    match exact.as_slice() {
-        [index] => return Ok(*index),
-        [_, _, ..] => bail!(
-            "MIDI output {wanted:?} is ambiguous ({} exact matches)",
-            exact.len()
-        ),
-        [] => {}
-    }
-    if allow_partial && !wanted.is_empty() {
-        let wanted = wanted.to_lowercase();
-        let partial = names
-            .iter()
-            .enumerate()
-            .filter_map(|(index, name)| name.to_lowercase().contains(&wanted).then_some(index))
-            .collect::<Vec<_>>();
-        match partial.as_slice() {
-            [index] => return Ok(*index),
-            [_, _, ..] => {
-                bail!(
-                    "MIDI output match {wanted:?} is ambiguous ({} partial matches)",
-                    partial.len()
-                )
-            }
-            [] => {}
-        }
-    }
-    bail!("MIDI output {wanted:?} is offline")
+    crate::midi_endpoint::matching_index(names, wanted, "MIDI output")
 }
 
 pub fn available_midi_outputs(client_name: &str) -> Result<Vec<String>> {
@@ -2662,13 +2631,10 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
         .iter()
         .filter_map(|p| output.port_name(p).ok())
         .collect::<Vec<_>>();
-    let matches = ports
-        .iter()
-        .filter(|name| {
-            name.to_lowercase()
-                .contains(&config.output_match.to_lowercase())
-        })
-        .cloned()
+    let matches = matching_output_index(&ports, &config.output_match, true)
+        .ok()
+        .and_then(|index| ports.get(index).cloned())
+        .into_iter()
         .collect::<Vec<_>>();
     let page = Page {
         name: "dry-run".into(),
@@ -3604,18 +3570,15 @@ mod tests {
     }
 
     #[test]
-    fn output_matching_prefers_one_exact_name_and_rejects_ambiguity() {
+    fn output_matching_uses_stable_identity_and_never_partial_matches() {
         let names = vec![
             "USB MIDI".to_owned(),
             "USB MIDI Through".to_owned(),
             "DIN Output".to_owned(),
         ];
         assert_eq!(matching_output_index(&names, "USB MIDI", true).unwrap(), 0);
-        assert_eq!(matching_output_index(&names, "DIN", true).unwrap(), 2);
-        assert!(matching_output_index(&names, "MIDI", true)
-            .unwrap_err()
-            .to_string()
-            .contains("ambiguous"));
+        assert!(matching_output_index(&names, "DIN", true).is_err());
+        assert!(matching_output_index(&names, "MIDI", true).is_err());
         assert!(matching_output_index(&names, "DIN", false)
             .unwrap_err()
             .to_string()
@@ -3625,7 +3588,7 @@ mod tests {
         assert!(matching_output_index(&duplicates, "Same Port", false)
             .unwrap_err()
             .to_string()
-            .contains("2 exact matches"));
+            .contains("2 stable identity matches"));
     }
 
     #[test]

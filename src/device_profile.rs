@@ -241,6 +241,10 @@ impl Registry {
         self.profiles.get(id)
     }
 
+    pub fn profiles(&self) -> impl Iterator<Item = &DeviceProfile> {
+        self.profiles.values()
+    }
+
     pub fn matching_port(&self, port: &str) -> Option<&DeviceProfile> {
         let matches = self
             .profiles

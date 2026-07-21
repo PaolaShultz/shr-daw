@@ -57,6 +57,13 @@ A USB audio/MIDI interface may be full-duplex: its MIDI input can be a
 performance source while its MIDI output remains an FT2 destination. Input and
 `external_midi.output` are independent directions.
 
+Routing uses one stable ALSA identity policy everywhere. A live RtMidi name
+such as `AudioBox USB 96:AudioBox USB 96 MIDI 1 32:0` is persisted as
+`AudioBox USB 96:AudioBox USB 96 MIDI 1`; only the volatile trailing numeric
+address is removed. The older whitespace form is accepted only when it resolves
+uniquely. Partial or ambiguous matches stay offline rather than selecting an
+arbitrary port.
+
 Some distributions enable a standalone FluidSynth daemon or `amidiminder`,
 which connects hardware and application MIDI ports broadly. Accept the
 recommended exclusive-routing cleanup in `shr-setup`; SHR can still launch its
@@ -96,6 +103,12 @@ the original mapping usable on the next play without rewriting the Project.
 Named sound lists for supported external instruments come from
 [MIDI device profiles](MIDI_DEVICE_PROFILES.md). Instruments without a profile
 still show the normal MIDI programs 1–128 (stored/sent as values 0–127).
+
+ALSA can report that an AudioBox MIDI output port is online, but a one-way DIN
+output cannot report whether the downstream Roland D-50 is connected or
+powered. Routing therefore shows the interface availability and the configured
+device profile separately, for example `AudioBox · ONLINE` and
+`D-50 · UNVERIFIED`. It never says `D-50 connected`.
 
 ## Audio output and recording
 

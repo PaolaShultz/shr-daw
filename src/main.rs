@@ -23,6 +23,7 @@ mod help;
 mod jack;
 mod loop_player;
 mod midi;
+mod midi_endpoint;
 mod navigation;
 mod note_lifecycle;
 mod overlay;
@@ -33,6 +34,7 @@ mod recording;
 mod scale;
 mod sequencer;
 mod ui;
+mod ui_text;
 
 use anyhow::{bail, Context, Result};
 use std::env;

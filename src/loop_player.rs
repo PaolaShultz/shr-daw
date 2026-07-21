@@ -249,23 +249,8 @@ pub(crate) fn matching_controller_output_index(
     if wanted.trim().is_empty() || wanted.trim() != wanted {
         return Err("controller clock output must be one exact ALSA port name".into());
     }
-    let stable_wanted = crate::controller_learn::stable_input_match(wanted);
-    let matches = names
-        .iter()
-        .enumerate()
-        .filter_map(|(index, name)| {
-            (name == wanted || crate::controller_learn::stable_input_match(name) == stable_wanted)
-                .then_some(index)
-        })
-        .collect::<Vec<_>>();
-    match matches.as_slice() {
-        [index] => Ok(*index),
-        [] => Err(format!("controller clock output {wanted:?} is offline")),
-        _ => Err(format!(
-            "controller clock output {wanted:?} is ambiguous ({} exact stable-name matches)",
-            matches.len()
-        )),
-    }
+    crate::midi_endpoint::matching_index(names, wanted, "controller clock output")
+        .map_err(|error| error.to_string())
 }
 
 pub fn controller_clock_outputs(client_name: &str) -> Result<Vec<String>> {

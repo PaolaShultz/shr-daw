@@ -93,13 +93,23 @@ fn effect_kind_label(kind: EffectKind) -> &'static str {
     }
 }
 
-fn parameter_display_name(name: &str) -> String {
-    let words = name.replace('_', " ");
-    let mut characters = words.chars();
-    characters
-        .next()
-        .map(|first| first.to_ascii_uppercase().to_string() + characters.as_str())
-        .unwrap_or_default()
+fn fx_parameter_row(
+    selected: bool,
+    mapping: &str,
+    abbreviation: &str,
+    value: &str,
+    width: usize,
+) -> String {
+    crate::ui_text::label_value(
+        &format!(
+            "{}{} {}",
+            if selected { ">" } else { " " },
+            mapping,
+            abbreviation
+        ),
+        value,
+        width,
+    )
 }
 
 fn fx_hardware_label(index: usize) -> String {
@@ -347,11 +357,7 @@ impl NoteLength {
             .iter()
             .position(|length| *length == self)
             .unwrap_or(4);
-        let next = if direction < 0 {
-            current.saturating_sub(1)
-        } else {
-            (current + 1).min(Self::ALL.len() - 1)
-        };
+        let next = wrapped_index(current, Self::ALL.len(), direction);
         Self::ALL[next]
     }
 }
@@ -569,7 +575,7 @@ struct App {
     menu_page_by_screen: [usize; Screen::COUNT],
     page_select_mode: bool,
     controller_layout: ControllerLayout,
-    fx_selected: usize,
+    fx_selection: FxRackSelection,
     fx_parameter: usize,
     fx_add_kind: usize,
     fx_target: usize,
@@ -590,6 +596,11 @@ struct App {
     performance_meter: PerformanceMeter,
     loop_meter: PerformanceMeter,
     last_mapped_volume: Option<f32>,
+    midi_router: Option<engine::MidiRouter>,
+    routing: RoutingEditor,
+    routing_inputs: Vec<String>,
+    routing_outputs: Vec<String>,
+    routing_audio_ports: Vec<String>,
 }
 
 struct TrackerIo {
@@ -607,6 +618,12 @@ struct FxTypeEdit {
     provisional: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FxRackSelection {
+    Effect(EffectId),
+    Insert,
+}
+
 #[derive(Clone, Copy)]
 struct FxCatch {
     target: f32,
@@ -617,6 +634,59 @@ struct FxCatch {
 #[derive(Default)]
 struct FxPickup {
     controls: HashMap<u8, FxCatch>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RoutingRow {
+    Controller,
+    ControllerRole,
+    Performance,
+    ExternalEnabled,
+    ExternalOutput,
+    DeviceProfile,
+    ClockEnabled,
+    ClockOutput,
+    AudioOutput,
+}
+
+impl RoutingRow {
+    const ALL: [Self; 9] = [
+        Self::Controller,
+        Self::ControllerRole,
+        Self::Performance,
+        Self::ExternalEnabled,
+        Self::ExternalOutput,
+        Self::DeviceProfile,
+        Self::ClockEnabled,
+        Self::ClockOutput,
+        Self::AudioOutput,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Controller => "CTRL",
+            Self::ControllerRole => "MODE",
+            Self::Performance => "PERF",
+            Self::ExternalEnabled => "MIDI",
+            Self::ExternalOutput => "MIDI OUT",
+            Self::DeviceProfile => "DEVICE",
+            Self::ClockEnabled => "CLOCK",
+            Self::ClockOutput => "CLK OUT",
+            Self::AudioOutput => "AUDIO",
+        }
+    }
+}
+
+#[derive(Clone)]
+struct RoutingDraft {
+    config: RuntimeConfig,
+    controller: crate::pads::PadConfig,
+}
+
+#[derive(Default)]
+struct RoutingEditor {
+    selected: usize,
+    draft: Option<RoutingDraft>,
 }
 
 impl FxPickup {
@@ -719,6 +789,172 @@ where
             .next()
             .is_some_and(|first| first.eq_ignore_ascii_case(&letter))
     })
+}
+
+fn wrapped_index(current: usize, len: usize, direction: i8) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let current = current.min(len - 1);
+    if direction < 0 {
+        (current + len - 1) % len
+    } else if direction > 0 {
+        (current + 1) % len
+    } else {
+        current
+    }
+}
+
+fn wrapped_offset(current: usize, len: usize, amount: isize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let current = current.min(len - 1) as isize;
+    (current + amount).rem_euclid(len as isize) as usize
+}
+
+fn cycle_text_choice(current: &str, live: &[String], include_none: bool, direction: i8) -> String {
+    let mut choices = Vec::new();
+    if include_none {
+        choices.push(String::new());
+    }
+    if !current.is_empty()
+        && !live
+            .iter()
+            .any(|choice| choice.eq_ignore_ascii_case(current))
+    {
+        choices.push(current.to_owned());
+    }
+    for choice in live {
+        if !choices
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(choice))
+        {
+            choices.push(choice.clone());
+        }
+    }
+    let current = choices
+        .iter()
+        .position(|choice| choice.eq_ignore_ascii_case(current))
+        .unwrap_or(0);
+    choices
+        .get(wrapped_index(current, choices.len(), direction))
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn canonicalize_routing_draft(
+    draft: &mut RoutingDraft,
+    inputs: &[String],
+    outputs: &[String],
+) -> Result<()> {
+    let canonical = |names: &[String], wanted: &str, description: &str| -> Result<String> {
+        let index = crate::midi_endpoint::matching_index(names, wanted, description)?;
+        Ok(crate::midi_endpoint::stable_identity(&names[index]))
+    };
+    if let Some(input) = draft.controller.input_match.as_mut() {
+        *input = canonical(inputs, input, "controller MIDI input")?;
+        draft.config.midi_input_matches = vec![input.clone()];
+    } else {
+        draft.config.midi_input_matches.clear();
+    }
+    for input in &mut draft.config.midi_performance_input_matches {
+        *input = canonical(inputs, input, "performance MIDI input")?;
+    }
+    if !draft.config.external_midi.output_match.is_empty() {
+        match canonical(
+            outputs,
+            &draft.config.external_midi.output_match,
+            "MIDI output",
+        ) {
+            Ok(output) => draft.config.external_midi.output_match = output,
+            Err(error) if draft.config.external_midi.enabled => return Err(error),
+            Err(_) => {}
+        }
+    }
+    if !draft.config.controller_clock.output_match.is_empty() {
+        match canonical(
+            outputs,
+            &draft.config.controller_clock.output_match,
+            "controller clock output",
+        ) {
+            Ok(output) => draft.config.controller_clock.output_match = output,
+            Err(error) if draft.config.controller_clock.enabled => return Err(error),
+            Err(_) => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_routing_draft(draft: &RoutingDraft, state: &Path) -> Result<()> {
+    draft.controller.validate()?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!(
+        "shr-routing-validate-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir(&directory)?;
+    let runtime = directory.join("shsynth.conf");
+    let controller = directory.join("controller.conf");
+    let result = draft
+        .config
+        .save(&runtime)
+        .and_then(|_| RuntimeConfig::load(&runtime).map(|_| ()))
+        .and_then(|_| draft.controller.save(&controller))
+        .and_then(|_| crate::pads::PadConfig::load(&controller).map(|_| ()));
+    let _ = fs::remove_file(&runtime);
+    let _ = fs::remove_file(&controller);
+    let _ = fs::remove_dir(&directory);
+    result.with_context(|| format!("validate complete candidate for {}", state.display()))
+}
+
+fn restore_config_file(path: &Path, contents: Option<&[u8]>) {
+    match contents {
+        Some(contents) => {
+            let _ = crate::fsutil::atomic_write(path, contents);
+        }
+        None if path.is_file() => {
+            let _ = fs::remove_file(path);
+        }
+        None => {}
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RoutingTransactionStage {
+    Save,
+    Activate,
+}
+
+fn persist_routing_transaction<F>(
+    runtime_path: &Path,
+    controller_path: &Path,
+    draft: &RoutingDraft,
+    activate: F,
+) -> std::result::Result<(), (RoutingTransactionStage, anyhow::Error)>
+where
+    F: FnOnce() -> Result<()>,
+{
+    let old_runtime = fs::read(runtime_path).ok();
+    let old_controller = fs::read(controller_path).ok();
+    let save = crate::controller_learn::backup(runtime_path)
+        .and_then(|_| crate::controller_learn::backup(controller_path))
+        .and_then(|_| draft.config.save(runtime_path))
+        .and_then(|_| draft.controller.save(controller_path));
+    if let Err(error) = save {
+        restore_config_file(runtime_path, old_runtime.as_deref());
+        restore_config_file(controller_path, old_controller.as_deref());
+        return Err((RoutingTransactionStage::Save, error));
+    }
+    if let Err(error) = activate() {
+        restore_config_file(runtime_path, old_runtime.as_deref());
+        restore_config_file(controller_path, old_controller.as_deref());
+        return Err((RoutingTransactionStage::Activate, error));
+    }
+    Ok(())
 }
 
 fn drum_home_lane(note: u8) -> Option<usize> {
@@ -998,7 +1234,7 @@ impl App {
             menu_page_by_screen: [0; Screen::COUNT],
             page_select_mode: false,
             controller_layout: ControllerLayout::Eight,
-            fx_selected: 0,
+            fx_selection: FxRackSelection::Insert,
             fx_parameter: 0,
             fx_add_kind: 0,
             fx_target: 0,
@@ -1019,6 +1255,11 @@ impl App {
             performance_meter: PerformanceMeter::default(),
             loop_meter: PerformanceMeter::default(),
             last_mapped_volume: None,
+            midi_router: None,
+            routing: RoutingEditor::default(),
+            routing_inputs: Vec::new(),
+            routing_outputs: Vec::new(),
+            routing_audio_ports: audio_ports.playback,
         }
     }
 
@@ -1034,11 +1275,7 @@ impl App {
     }
 
     fn move_home(&mut self, direction: i8) {
-        self.home_selected = if direction < 0 {
-            self.home_selected.saturating_sub(1)
-        } else {
-            (self.home_selected + 1).min(HOME_ENTRIES.len().saturating_sub(1))
-        };
+        self.home_selected = wrapped_index(self.home_selected, HOME_ENTRIES.len(), direction);
     }
 
     fn ensure_home_visible(&mut self, rows: usize) {
@@ -1201,6 +1438,269 @@ impl App {
             Err(_) => {
                 self.controller_online = false;
                 self.performance_inputs.clear();
+            }
+        }
+    }
+
+    fn open_routing_editor(&mut self) {
+        self.routing = RoutingEditor::default();
+        self.refresh_routing_discovery();
+        self.set_screen(Screen::Routing);
+        self.status = "Routing · turn to browse · press to edit".into();
+    }
+
+    fn refresh_routing_discovery(&mut self) {
+        self.routing_inputs = crate::controller_learn::input_names().unwrap_or_default();
+        self.routing_outputs =
+            sequencer::available_midi_outputs(&self.config.external_midi.client_name)
+                .unwrap_or_default();
+        for names in [&mut self.routing_inputs, &mut self.routing_outputs] {
+            for name in names.iter_mut() {
+                *name = crate::midi_endpoint::stable_identity(name);
+            }
+            names.sort_by_key(|name| name.to_ascii_lowercase());
+            names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        }
+        self.routing_audio_ports = engine::jack_ports();
+        self.refresh_live_midi_connections();
+        self.refresh_page_targets();
+    }
+
+    fn routing_row(&self) -> RoutingRow {
+        RoutingRow::ALL[self.routing.selected.min(RoutingRow::ALL.len() - 1)]
+    }
+
+    fn move_routing(&mut self, direction: i8) {
+        if self.routing.draft.is_some() {
+            self.adjust_routing_draft(direction);
+        } else {
+            self.routing.selected =
+                wrapped_index(self.routing.selected, RoutingRow::ALL.len(), direction);
+            self.status = format!("{} selected · press to edit", self.routing_row().label());
+        }
+    }
+
+    fn begin_routing_edit(&mut self) {
+        if self.routing.draft.is_some() {
+            return;
+        }
+        let controller = self
+            .controller_config
+            .read()
+            .map(|controller| controller.clone())
+            .unwrap_or_default();
+        self.routing.draft = Some(RoutingDraft {
+            config: self.config.clone(),
+            controller,
+        });
+        self.status = format!(
+            "{} EDIT · turn · press confirms",
+            self.routing_row().label()
+        );
+    }
+
+    fn cancel_routing_edit(&mut self) -> bool {
+        if self.routing.draft.take().is_some() {
+            self.status = "Routing edit cancelled · active route unchanged".into();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn adjust_routing_draft(&mut self, direction: i8) {
+        let row = self.routing_row();
+        let input_choices = self.routing_inputs.clone();
+        let output_choices = self.routing_outputs.clone();
+        let audio_choices = self.routing_audio_choices();
+        let profile_choices = self
+            .device_profiles
+            .profiles()
+            .map(|profile| profile.id.clone())
+            .collect::<Vec<_>>();
+        let Some(draft) = self.routing.draft.as_mut() else {
+            return;
+        };
+        match row {
+            RoutingRow::Controller => {
+                let current = draft.controller.input_match.as_deref().unwrap_or("");
+                let choice = cycle_text_choice(current, &input_choices, true, direction);
+                draft.controller.input_match = (!choice.is_empty()).then_some(choice.clone());
+                draft.config.midi_input_matches =
+                    (!choice.is_empty()).then_some(choice).into_iter().collect();
+                draft.config.midi_autoconnect = draft.controller.input_match.is_some()
+                    || !draft.config.midi_performance_input_matches.is_empty();
+            }
+            RoutingRow::ControllerRole => {
+                draft.config.midi_controller_musical_input =
+                    !draft.config.midi_controller_musical_input;
+            }
+            RoutingRow::Performance => {
+                let current = draft
+                    .config
+                    .midi_performance_input_matches
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or("");
+                let choice = cycle_text_choice(current, &input_choices, true, direction);
+                draft.config.midi_performance_input_matches =
+                    (!choice.is_empty()).then_some(choice).into_iter().collect();
+                draft.config.midi_autoconnect = draft.controller.input_match.is_some()
+                    || !draft.config.midi_performance_input_matches.is_empty();
+            }
+            RoutingRow::ExternalEnabled => {
+                draft.config.external_midi.enabled = !draft.config.external_midi.enabled;
+            }
+            RoutingRow::ExternalOutput => {
+                let choice = cycle_text_choice(
+                    &draft.config.external_midi.output_match,
+                    &output_choices,
+                    true,
+                    direction,
+                );
+                draft.config.external_midi.output_match = choice;
+            }
+            RoutingRow::DeviceProfile => {
+                let choice = cycle_text_choice(
+                    &draft.config.external_midi.profile,
+                    &profile_choices,
+                    false,
+                    direction,
+                );
+                draft.config.external_midi.profile = choice.clone();
+                if let Some(profile) = self.device_profiles.by_id(&choice) {
+                    profile.apply_midi_selection(&mut draft.config.external_midi);
+                }
+            }
+            RoutingRow::ClockEnabled => {
+                draft.config.controller_clock.enabled = !draft.config.controller_clock.enabled;
+            }
+            RoutingRow::ClockOutput => {
+                draft.config.controller_clock.output_match = cycle_text_choice(
+                    &draft.config.controller_clock.output_match,
+                    &output_choices,
+                    true,
+                    direction,
+                );
+            }
+            RoutingRow::AudioOutput => {
+                if !audio_choices.is_empty() {
+                    let current = audio_choices
+                        .iter()
+                        .position(|pair| pair.as_slice() == draft.config.audio_outputs.as_slice())
+                        .unwrap_or(0);
+                    draft.config.audio_outputs = audio_choices
+                        [wrapped_index(current, audio_choices.len(), direction)]
+                    .clone();
+                    draft.config.loop_player.outputs = draft.config.audio_outputs.clone();
+                    draft.config.audio_autoconnect = true;
+                }
+            }
+        }
+        self.status = format!("{} EDIT · draft only", row.label());
+    }
+
+    fn routing_audio_choices(&self) -> Vec<Vec<String>> {
+        let mut choices = Vec::new();
+        if self.config.audio_outputs.len() == 2 {
+            choices.push(self.config.audio_outputs.clone());
+        }
+        let mut ports = self
+            .routing_audio_ports
+            .iter()
+            .filter(|port| {
+                let lower = port.to_ascii_lowercase();
+                lower.contains("playback") || lower.contains("output") || lower.contains("out_")
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        ports.sort();
+        for pair in ports.chunks_exact(2) {
+            if pair[0].split_once(':').map(|part| part.0)
+                == pair[1].split_once(':').map(|part| part.0)
+                && !choices.iter().any(|choice| choice.as_slice() == pair)
+            {
+                choices.push(pair.to_vec());
+            }
+        }
+        choices
+    }
+
+    fn confirm_routing_edit(&mut self, state: &Path) {
+        let Some(mut draft) = self.routing.draft.take() else {
+            self.begin_routing_edit();
+            return;
+        };
+        if let Err(error) =
+            canonicalize_routing_draft(&mut draft, &self.routing_inputs, &self.routing_outputs)
+        {
+            self.status = format!("Routing invalid · {error}");
+            self.routing.draft = Some(draft);
+            return;
+        }
+        if let Err(error) = validate_routing_draft(&draft, state) {
+            self.status = format!("Routing invalid · {error:#}");
+            self.routing.draft = Some(draft);
+            return;
+        }
+
+        let runtime_path = state.join("shsynth.conf");
+        let controller_path = state.join("controller.conf");
+        let old_config = self.config.clone();
+        let old_controller = self
+            .controller_config
+            .read()
+            .map(|controller| controller.clone())
+            .unwrap_or_default();
+        let audio_changed = draft.config.audio_outputs != old_config.audio_outputs;
+        let clock_changed = draft.config.controller_clock != old_config.controller_clock;
+
+        let mut activated_availability = None;
+        let transaction =
+            persist_routing_transaction(&runtime_path, &controller_path, &draft, || {
+                if let Ok(mut controller) = self.controller_config.write() {
+                    *controller = draft.controller.clone();
+                }
+                activated_availability = self
+                    .midi_router
+                    .as_mut()
+                    .map(|router| router.reconfigure_inputs(&draft.config))
+                    .transpose()?;
+                Ok(())
+            });
+        match transaction {
+            Ok(()) => {
+                if let Some(availability) = activated_availability {
+                    self.controller_online = availability.controller_available();
+                    self.performance_inputs = availability.performance;
+                }
+                self.config = draft.config;
+                self.controller_layout = draft.controller.layout;
+                self.refresh_routing_discovery();
+                self.status = match (audio_changed, clock_changed) {
+                    (true, true) => "Routing saved · AUDIO+CLOCK NEXT START".into(),
+                    (true, false) => "Routing saved · AUDIO NEXT START".into(),
+                    (false, true) => "Routing saved · CLOCK NEXT START".into(),
+                    (false, false) => "Routing saved · live inputs active".into(),
+                };
+            }
+            Err((stage, error)) => {
+                if let Ok(mut controller) = self.controller_config.write() {
+                    *controller = old_controller;
+                }
+                if stage == RoutingTransactionStage::Activate {
+                    if let Some(router) = self.midi_router.as_mut() {
+                        let _ = router.reconfigure_inputs(&old_config);
+                    }
+                }
+                self.config = old_config;
+                self.refresh_routing_discovery();
+                self.status = match stage {
+                    RoutingTransactionStage::Save => format!("Routing save failed · {error:#}"),
+                    RoutingTransactionStage::Activate => {
+                        format!("Routing activation failed · rolled back · {error:#}")
+                    }
+                };
             }
         }
     }
@@ -1479,12 +1979,7 @@ impl App {
                         .position(|candidate| candidate == target)
                 })
                 .unwrap_or(0);
-            let last = self.page_target_candidates.len().saturating_sub(1);
-            let next = if direction < 0 {
-                current.saturating_sub(1)
-            } else {
-                (current + 1).min(last)
-            };
+            let next = wrapped_index(current, self.page_target_candidates.len(), direction);
             self.page_target_candidates.get(next).cloned()
         } else {
             None
@@ -1657,14 +2152,9 @@ impl App {
             OverlayKind::MixEffects => {
                 self.fx_target = selection.min(MAX_AUX_BUSES + 1);
                 self.close_overlay(false);
-                let length = project_fx_rack(
-                    &self.song.insert_rack,
-                    &self.song.aux_routing,
-                    self.fx_target,
-                )
-                .map(|rack| rack.order.len())
-                .unwrap_or(0);
-                self.fx_selected = self.fx_selected.min(length.saturating_sub(1));
+                if self.selected_effect_id().is_none() {
+                    self.fx_selection = FxRackSelection::Insert;
+                }
                 self.fx_rack_parent = Screen::Meter;
                 self.set_screen(Screen::FxRack);
                 self.status = format!("{} rack", fx_target_label(self.fx_target));
@@ -3217,11 +3707,7 @@ impl App {
     }
     fn move_tracker_lane(&mut self, direction: i8) {
         let current = self.tracker_page * LANES_PER_PAGE + self.tracker_track;
-        let next = if direction < 0 {
-            current.saturating_sub(1)
-        } else {
-            (current + 1).min(self.current_total_lanes().saturating_sub(1))
-        };
+        let next = wrapped_index(current, self.current_total_lanes(), direction);
         let page = next / LANES_PER_PAGE;
         self.cancel_tracker_gesture();
         self.tracker_page = page;
@@ -3233,11 +3719,7 @@ impl App {
     fn move_tracker_page(&mut self, direction: i8) {
         self.cancel_tracker_gesture();
         let pages = self.current_pages().len().max(1);
-        self.tracker_page = if direction < 0 {
-            (self.tracker_page + pages - 1) % pages
-        } else {
-            (self.tracker_page + 1) % pages
-        };
+        self.tracker_page = wrapped_index(self.tracker_page, pages, direction);
         if !self.leave_noob_on_percussion() {
             self.sync_tracker_route();
             self.status = self
@@ -3458,11 +3940,7 @@ impl App {
             return;
         }
         self.release_tracker_audition();
-        self.tracker_page = if direction < 0 {
-            self.tracker_page.saturating_sub(1)
-        } else {
-            (self.tracker_page + 1).min(self.current_pages().len().saturating_sub(1))
-        };
+        self.tracker_page = wrapped_index(self.tracker_page, self.current_pages().len(), direction);
         self.refresh_page_targets();
         self.sync_tracker_route();
     }
@@ -3569,12 +4047,11 @@ impl App {
         match self.page_manager_mode {
             PageManagerMode::Pages => self.move_page_selection(direction),
             PageManagerMode::Target => {
-                let last = self.page_target_candidates.len().saturating_sub(1);
-                self.page_target_selected = if direction < 0 {
-                    self.page_target_selected.saturating_sub(1)
-                } else {
-                    (self.page_target_selected + 1).min(last)
-                };
+                self.page_target_selected = wrapped_index(
+                    self.page_target_selected,
+                    self.page_target_candidates.len(),
+                    direction,
+                );
             }
             PageManagerMode::Channel => {
                 self.page_channel_draft = if direction < 0 {
@@ -4607,11 +5084,7 @@ impl App {
             .iter()
             .position(|rows| *rows == self.pattern_setup_rows)
             .unwrap_or(2);
-        let next = if direction < 0 {
-            current.saturating_sub(1)
-        } else {
-            (current + 1).min(sizes.len() - 1)
-        };
+        let next = wrapped_index(current, sizes.len(), direction);
         self.pattern_setup_rows = sizes[next];
         self.pattern_setup_status();
     }
@@ -4777,19 +5250,13 @@ impl App {
             .iter()
             .position(|index| *index == self.drum_pattern_selected)
             .unwrap_or(0);
-        let next = current
-            .saturating_add_signed(amount)
-            .min(filtered.len().saturating_sub(1));
+        let next = wrapped_offset(current, filtered.len(), amount);
         self.drum_pattern_selected = filtered[next];
         self.confirm_drum_pattern_delete = None;
     }
     fn cycle_drum_genre(&mut self, direction: isize) {
         let len = self.drum_genres().len();
-        self.drum_genre_selected = if direction < 0 {
-            (self.drum_genre_selected + len - 1) % len
-        } else {
-            (self.drum_genre_selected + 1) % len
-        };
+        self.drum_genre_selected = wrapped_offset(self.drum_genre_selected, len, direction);
         self.clamp_drum_selection();
         self.drum_filter_status();
     }
@@ -5168,11 +5635,7 @@ impl App {
     }
     fn move_order(&mut self, direction: i8) {
         self.cancel_tracker_gesture();
-        self.tracker_order = if direction < 0 {
-            self.tracker_order.saturating_sub(1)
-        } else {
-            (self.tracker_order + 1).min(self.song.order.len().saturating_sub(1))
-        };
+        self.tracker_order = wrapped_index(self.tracker_order, self.song.order.len(), direction);
         self.clamp_tracker_cursor();
         self.tracker_row = 0;
         self.sync_tracker_route();
@@ -5216,11 +5679,8 @@ impl App {
         self.status = "FT2 arrangement · chain pattern steps".into();
     }
     fn select_arrangement_step(&mut self, direction: i8) {
-        self.arrange_selected = if direction < 0 {
-            self.arrange_selected.saturating_sub(1)
-        } else {
-            (self.arrange_selected + 1).min(self.song.order.len().saturating_sub(1))
-        };
+        self.arrange_selected =
+            wrapped_index(self.arrange_selected, self.song.order.len(), direction);
         self.status = format!(
             "arrangement step {:02}/{:02}",
             self.arrange_selected + 1,
@@ -5399,11 +5859,7 @@ impl App {
 
     fn move_audio_track(&mut self, direction: i8) {
         let length = self.audio_recorder.status().tracks.len();
-        self.audio_track_selected = if direction < 0 {
-            self.audio_track_selected.saturating_sub(1)
-        } else {
-            (self.audio_track_selected + 1).min(length.saturating_sub(1))
-        };
+        self.audio_track_selected = wrapped_index(self.audio_track_selected, length, direction);
     }
 
     fn toggle_audio_track_arm(&mut self, state: &Path) {
@@ -5626,11 +6082,7 @@ impl App {
     }
 
     fn move_bus_selection(&mut self, direction: i8) {
-        self.bus_selected = if direction < 0 {
-            self.bus_selected.saturating_sub(1)
-        } else {
-            (self.bus_selected + 1).min(3)
-        };
+        self.bus_selected = wrapped_index(self.bus_selected, 4, direction);
         self.status = format!("final bus · {} selected", self.bus_selection_label());
     }
 
@@ -5706,14 +6158,57 @@ impl App {
     }
 
     fn selected_effect_id(&self) -> Option<EffectId> {
+        let FxRackSelection::Effect(selected) = self.fx_selection else {
+            return None;
+        };
         project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
             self.fx_target,
         )?
         .order
-        .get(self.fx_selected)
-        .copied()
+        .contains(&selected)
+        .then_some(selected)
+    }
+
+    fn fx_selection_index(&self) -> usize {
+        let Some(rack) = project_fx_rack(
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+            self.fx_target,
+        ) else {
+            return 0;
+        };
+        match self.fx_selection {
+            FxRackSelection::Effect(id) => rack
+                .order
+                .iter()
+                .position(|candidate| *candidate == id)
+                .unwrap_or(rack.order.len()),
+            FxRackSelection::Insert => rack.order.len(),
+        }
+    }
+
+    fn move_fx_rack_selection(&mut self, direction: i8) {
+        let Some(rack) = project_fx_rack(
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+            self.fx_target,
+        ) else {
+            self.fx_selection = FxRackSelection::Insert;
+            return;
+        };
+        let index = wrapped_index(self.fx_selection_index(), rack.order.len() + 1, direction);
+        self.fx_selection = rack
+            .order
+            .get(index)
+            .copied()
+            .map(FxRackSelection::Effect)
+            .unwrap_or(FxRackSelection::Insert);
+        self.status = match self.fx_selection {
+            FxRackSelection::Effect(id) => format!("FX #{id} selected"),
+            FxRackSelection::Insert => "insert effect selected".into(),
+        };
     }
 
     fn selected_effect(&self) -> Option<&crate::audio_graph::EffectInstance> {
@@ -5835,14 +6330,18 @@ impl App {
         }
         self.song.insert_rack = rack;
         self.song.aux_routing = aux_routing;
-        let length = project_fx_rack(
+        let selected_exists = project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
             self.fx_target,
         )
-        .map(|rack| rack.order.len())
-        .unwrap_or(0);
-        self.fx_selected = self.fx_selected.min(length.saturating_sub(1));
+        .is_some_and(|rack| match self.fx_selection {
+            FxRackSelection::Effect(id) => rack.order.contains(&id),
+            FxRackSelection::Insert => true,
+        });
+        if !selected_exists {
+            self.fx_selection = FxRackSelection::Insert;
+        }
         self.status = success;
         true
     }
@@ -5916,7 +6415,7 @@ impl App {
                 let length = project_fx_rack(&rack, &aux, self.fx_target)
                     .map(|rack| rack.order.len())
                     .unwrap_or(0);
-                let index = self.fx_selected.min(length.saturating_sub(1));
+                let index = self.fx_selection_index().min(length.saturating_sub(1));
                 if length > 1 {
                     if let Some(target) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target) {
                         if let Err(error) = target.move_to(id, index) {
@@ -5930,7 +6429,7 @@ impl App {
                     aux,
                     format!("{} inserted · turn to choose type", effect_kind_label(kind)),
                 ) {
-                    self.fx_selected = index;
+                    self.fx_selection = FxRackSelection::Effect(id);
                     self.fx_parameter = 0;
                     self.fx_type_edit = Some(FxTypeEdit {
                         original_rack,
@@ -5962,6 +6461,7 @@ impl App {
         }
         match result {
             Ok(effect) => {
+                self.fx_selection = FxRackSelection::Insert;
                 self.commit_fx_routing(
                     rack,
                     aux,
@@ -5977,8 +6477,9 @@ impl App {
             self.status = "FX rack is empty".into();
             return;
         };
+        let current = self.fx_selection_index();
         let destination = if direction < 0 {
-            self.fx_selected.saturating_sub(1)
+            current.saturating_sub(1)
         } else {
             let length = project_fx_rack(
                 &self.song.insert_rack,
@@ -5987,9 +6488,9 @@ impl App {
             )
             .map(|rack| rack.order.len())
             .unwrap_or(0);
-            (self.fx_selected + 1).min(length - 1)
+            (current + 1).min(length - 1)
         };
-        if destination == self.fx_selected {
+        if destination == current {
             return;
         }
         let mut rack = self.song.insert_rack.clone();
@@ -6001,9 +6502,7 @@ impl App {
             self.status = format!("FX reorder: {error}");
             return;
         }
-        if self.commit_fx_routing(rack, aux, format!("moved FX #{id}")) {
-            self.fx_selected = destination;
-        }
+        self.commit_fx_routing(rack, aux, format!("moved FX #{id}"));
     }
 
     fn toggle_effect_bypass(&mut self) {
@@ -6180,7 +6679,7 @@ impl App {
 
     fn cycle_fx_target(&mut self) {
         self.fx_target = (self.fx_target + 1) % (MAX_AUX_BUSES + 2);
-        self.fx_selected = 0;
+        self.fx_selection = FxRackSelection::Insert;
         self.fx_parameter = 0;
         if is_aux_target(self.fx_target)
             && !matches!(
@@ -6322,11 +6821,7 @@ impl App {
                     .iter()
                     .position(|choice| f32::from(*choice) == current)
                     .unwrap_or(0);
-                let index = if direction < 0 {
-                    current_index.saturating_sub(1)
-                } else {
-                    (current_index + 1).min(choices.len() - 1)
-                };
+                let index = wrapped_index(current_index, choices.len(), direction);
                 f32::from(choices[index])
             }
             crate::effect_schema::ParameterType::Continuous => {
@@ -6353,11 +6848,7 @@ impl App {
             .selected_effect()
             .map(|effect| crate::effect_schema::schema(effect.kind).len())
             .unwrap_or(0);
-        self.fx_parameter = if direction < 0 {
-            self.fx_parameter.saturating_sub(1)
-        } else {
-            (self.fx_parameter + 1).min(len.saturating_sub(1))
-        };
+        self.fx_parameter = wrapped_index(self.fx_parameter, len, direction);
         self.status = "FX parameter highlighted · press encoder to edit".into();
     }
 
@@ -6423,8 +6914,8 @@ impl App {
         let spec = crate::effect_schema::schema(effect.kind)[self.fx_parameter];
         if !spec.accepts(value) {
             self.status = format!(
-                "out of range · {} needs {:.2}..{:.2} {}",
-                parameter_display_name(spec.name),
+                "{} RANGE · {:.2}..{:.2} {}",
+                crate::effect_schema::abbreviation(spec.name),
                 spec.minimum,
                 spec.maximum,
                 spec.unit
@@ -6438,13 +6929,13 @@ impl App {
             return;
         }
         effect.parameters.insert(spec.name.into(), value);
+        let displayed = crate::effect_schema::format_value(effect.kind, spec, value);
         if self.commit_fx_routing(
             rack,
             aux,
             format!(
-                "{} · {value:.2} {}",
-                parameter_display_name(spec.name),
-                spec.unit
+                "{} · {displayed}",
+                crate::effect_schema::abbreviation(spec.name)
             ),
         ) {
             self.fx_value_editing = false;
@@ -6675,12 +7166,11 @@ impl App {
         }
     }
     fn move_help(&mut self, delta: isize) {
-        let last = help::lines(HELP_TEXT_WIDTH).len().saturating_sub(1);
-        self.help_selected = if delta < 0 {
-            self.help_selected.saturating_sub(delta.unsigned_abs())
-        } else {
-            (self.help_selected + delta as usize).min(last)
-        };
+        self.help_selected = wrapped_offset(
+            self.help_selected,
+            help::lines(HELP_TEXT_WIDTH).len(),
+            delta,
+        );
     }
     fn activate_help(&mut self) {
         let lines = help::lines(HELP_TEXT_WIDTH);
@@ -7168,7 +7658,7 @@ fn app_loop(
         }
     }
     app.recommend_controller_learn_on_home();
-    let _router = router.ok();
+    app.midi_router = router.ok();
     let mut quit = false;
     let mut drawn_screen = None;
     while !quit && !stopping.load(Ordering::Relaxed) {
@@ -7362,6 +7852,7 @@ fn dispatch_encoder(
     let value_editor_owns_encoder = app.note_editor.is_some()
         || (app.screen == Screen::TrackerPages && app.page_manager_mode != PageManagerMode::Pages)
         || app.screen == Screen::FxEditor
+        || app.screen == Screen::Routing
         || app.screen == Screen::TrackerNoteLength
         || app.noob_target.is_some()
         || app.confirm_routing_defaults;
@@ -7610,11 +8101,13 @@ fn perform(
             } else if a.screen == Screen::TrackerLoopAlign {
                 a.adjust_loop_offset_bars(-1);
             } else if a.screen == Screen::Ideas {
-                a.idea_selected = a.idea_selected.saturating_sub(1);
+                a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), -1);
+            } else if a.screen == Screen::Routing {
+                a.move_routing(-1);
             } else if a.screen == Screen::TrackerFiles {
                 match a.tracker_files_mode {
                     TrackerFilesMode::Projects => {
-                        a.song_selected = a.song_selected.saturating_sub(1);
+                        a.song_selected = wrapped_index(a.song_selected, a.song_list.len(), -1);
                         a.confirm_song_delete = None;
                     }
                     TrackerFilesMode::Drums => {
@@ -7626,7 +8119,7 @@ fn perform(
                 a.select_arrangement_step(-1);
             } else if a.screen == Screen::Tracker {
                 a.cancel_tracker_gesture();
-                a.tracker_row = a.tracker_row.saturating_sub(1);
+                a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), -1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(-1);
             } else if a.screen == Screen::Meter {
@@ -7635,14 +8128,15 @@ fn perform(
                 a.turn_page_manager(-1);
             } else if a.screen == Screen::TrackerLoop {
                 if a.loop_library_mode {
-                    a.loop_library_selected = a.loop_library_selected.saturating_sub(1);
+                    a.loop_library_selected =
+                        wrapped_index(a.loop_library_selected, a.loop_library.len(), -1);
                 } else {
-                    a.loop_selected = a.loop_selected.saturating_sub(1);
+                    a.loop_selected = wrapped_index(a.loop_selected, a.loop_imports.len(), -1);
                 }
             } else if a.screen == Screen::Presets {
-                a.selected = a.selected.saturating_sub(1);
+                a.selected = wrapped_index(a.selected, a.presets.len(), -1);
             } else if a.screen == Screen::FxRack {
-                a.fx_selected = a.fx_selected.saturating_sub(1);
+                a.move_fx_rack_selection(-1);
             } else if a.screen == Screen::FxEditor {
                 if a.fx_value_editing {
                     a.adjust_effect_parameter(-1);
@@ -7661,12 +8155,13 @@ fn perform(
             } else if a.screen == Screen::TrackerLoopAlign {
                 a.adjust_loop_offset_bars(1);
             } else if a.screen == Screen::Ideas {
-                a.idea_selected = (a.idea_selected + 1).min(a.ideas.len().saturating_sub(1));
+                a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), 1);
+            } else if a.screen == Screen::Routing {
+                a.move_routing(1);
             } else if a.screen == Screen::TrackerFiles {
                 match a.tracker_files_mode {
                     TrackerFilesMode::Projects => {
-                        a.song_selected =
-                            (a.song_selected + 1).min(a.song_list.len().saturating_sub(1));
+                        a.song_selected = wrapped_index(a.song_selected, a.song_list.len(), 1);
                         a.confirm_song_delete = None;
                     }
                     TrackerFilesMode::Drums => {
@@ -7678,7 +8173,7 @@ fn perform(
                 a.select_arrangement_step(1);
             } else if a.screen == Screen::Tracker {
                 a.cancel_tracker_gesture();
-                a.tracker_row = (a.tracker_row + 1).min(a.tracker_rows().saturating_sub(1));
+                a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), 1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(1);
             } else if a.screen == Screen::Meter {
@@ -7688,18 +8183,14 @@ fn perform(
             } else if a.screen == Screen::TrackerLoop {
                 if a.loop_library_mode {
                     a.loop_library_selected =
-                        (a.loop_library_selected + 1).min(a.loop_library.len().saturating_sub(1));
+                        wrapped_index(a.loop_library_selected, a.loop_library.len(), 1);
                 } else {
-                    a.loop_selected =
-                        (a.loop_selected + 1).min(a.loop_imports.len().saturating_sub(1));
+                    a.loop_selected = wrapped_index(a.loop_selected, a.loop_imports.len(), 1);
                 }
             } else if a.screen == Screen::Presets {
-                a.selected = (a.selected + 1).min(a.presets.len().saturating_sub(1));
+                a.selected = wrapped_index(a.selected, a.presets.len(), 1);
             } else if a.screen == Screen::FxRack {
-                let length = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
-                    .map(|rack| rack.order.len())
-                    .unwrap_or(0);
-                a.fx_selected = (a.fx_selected + 1).min(length.saturating_sub(1));
+                a.move_fx_rack_selection(1);
             } else if a.screen == Screen::FxEditor {
                 if a.fx_value_editing {
                     a.adjust_effect_parameter(1);
@@ -7824,7 +8315,13 @@ fn perform(
                     a.begin_fx_value_edit();
                 }
             }
-            Screen::Routing => {}
+            Screen::Routing => {
+                if a.routing.draft.is_some() {
+                    a.confirm_routing_edit(state);
+                } else {
+                    a.begin_routing_edit();
+                }
+            }
         },
         Action::Quit => unreachable!("quit is handled before contextual dispatch"),
         Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
@@ -7894,10 +8391,9 @@ fn perform(
                     Screen::Home
                 };
             }
-            let length = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
-                .map(|rack| rack.order.len())
-                .unwrap_or(0);
-            a.fx_selected = a.fx_selected.min(length.saturating_sub(1));
+            if a.selected_effect_id().is_none() {
+                a.fx_selection = FxRackSelection::Insert;
+            }
             a.fx_value_editing = false;
             a.fx_edit_original = None;
             a.set_screen(Screen::FxRack);
@@ -7926,10 +8422,7 @@ fn perform(
         }
         Action::OpenRouting => {
             a.set_tracker_edit(false);
-            a.refresh_live_midi_connections();
-            a.refresh_page_targets();
-            a.set_screen(Screen::Routing);
-            a.status = "routing overview · run shr-setup outside SHR to change connections".into();
+            a.open_routing_editor();
         }
         Action::ResetMeter => {
             a.performance_meter.clear_holds();
@@ -7947,6 +8440,9 @@ fn perform(
         Action::BusMute => a.toggle_bus_mute(),
         Action::FinalRecordToggle => a.toggle_final_recording(),
         Action::Back => {
+            if a.screen == Screen::Routing && a.cancel_routing_edit() {
+                return false;
+            }
             if a.screen == Screen::TrackerNoteLength {
                 a.cancel_note_length();
                 return false;
@@ -8808,18 +9304,18 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         KeyCode::Up | KeyCode::Char('k') => {
             if a.screen == Screen::Ideas {
-                a.idea_selected = a.idea_selected.saturating_sub(1)
+                a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), -1)
             } else if a.screen == Screen::Presets {
-                a.selected = a.selected.saturating_sub(1)
+                a.selected = wrapped_index(a.selected, a.presets.len(), -1)
             } else {
                 perform(Action::Up, a, state, Some(tx));
             }
         }
         KeyCode::Down | KeyCode::Char('j') => {
             if a.screen == Screen::Ideas {
-                a.idea_selected = (a.idea_selected + 1).min(a.ideas.len().saturating_sub(1))
+                a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), 1)
             } else if a.screen == Screen::Presets {
-                a.selected = (a.selected + 1).min(a.presets.len().saturating_sub(1))
+                a.selected = wrapped_index(a.selected, a.presets.len(), 1)
             } else {
                 perform(Action::Down, a, state, Some(tx));
             }
@@ -8999,11 +9495,11 @@ fn mouse(
             if a.screen == Screen::Home {
                 a.move_home(-1);
             } else if a.screen == Screen::Ideas {
-                a.idea_selected = a.idea_selected.saturating_sub(1)
+                a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), -1)
             } else if a.screen == Screen::Help {
                 a.move_help(-3);
             } else if a.screen == Screen::Presets {
-                a.selected = a.selected.saturating_sub(3)
+                a.selected = wrapped_offset(a.selected, a.presets.len(), -3)
             } else {
                 perform(Action::Up, a, state, Some(tx));
             }
@@ -9013,11 +9509,11 @@ fn mouse(
             if a.screen == Screen::Home {
                 a.move_home(1);
             } else if a.screen == Screen::Ideas {
-                a.idea_selected = (a.idea_selected + 1).min(a.ideas.len().saturating_sub(1))
+                a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), 1)
             } else if a.screen == Screen::Help {
                 a.move_help(3);
             } else if a.screen == Screen::Presets {
-                a.selected = (a.selected + 3).min(a.presets.len().saturating_sub(1))
+                a.selected = wrapped_offset(a.selected, a.presets.len(), 3)
             } else {
                 perform(Action::Down, a, state, Some(tx));
             }
@@ -9196,7 +9692,11 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         f.render_widget(Clear, area);
         f.render_widget(
             Paragraph::new(format!(
-                "PROJECT NAME\n{input}_\nEnter confirm · Esc cancel"
+                "PROJECT NAME\n{}\nEnter confirm · Esc cancel",
+                crate::ui_text::fit_line(
+                    &format!("{input}_"),
+                    usize::from(area.width.saturating_sub(2))
+                )
             ))
             .style(Style::default().fg(Color::Yellow))
             .block(Block::default().borders(Borders::ALL)),
@@ -9208,9 +9708,15 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         let area = rect(z.x + 2, z.y + 4, z.width.saturating_sub(4), 5);
         f.render_widget(Clear, area);
         f.render_widget(
-            Paragraph::new(format!("TRACK NAME\n{input}_\nEnter confirm · Esc cancel"))
-                .style(Style::default().fg(Color::Yellow))
-                .block(Block::default().borders(Borders::ALL)),
+            Paragraph::new(format!(
+                "TRACK NAME\n{}\nEnter confirm · Esc cancel",
+                crate::ui_text::fit_line(
+                    &format!("{input}_"),
+                    usize::from(area.width.saturating_sub(2))
+                )
+            ))
+            .style(Style::default().fg(Color::Yellow))
+            .block(Block::default().borders(Borders::ALL)),
             area,
         );
     }
@@ -9310,7 +9816,7 @@ fn draw_home<B: Backend>(f: &mut Frame<B>, a: &mut App) {
 
 fn centered_text(value: &str, width: usize) -> String {
     let value = truncate(value, width);
-    let padding = width.saturating_sub(value.chars().count());
+    let padding = width.saturating_sub(crate::ui_text::width(&value));
     let left = padding / 2;
     format!(
         "{}{}{}",
@@ -9322,105 +9828,127 @@ fn centered_text(value: &str, width: usize) -> String {
 
 fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
     let z = f.size();
-    let (configured_controller, mapping) = a.controller_config.read().map_or_else(
-        |_| ("unavailable".into(), "unavailable".into()),
-        |config| {
-            (
-                config
-                    .input_match
-                    .clone()
-                    .filter(|input| !input.is_empty())
-                    .unwrap_or_else(|| "not configured".into()),
-                config.profile.clone().unwrap_or_else(|| "unmapped".into()),
-            )
-        },
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let width = usize::from(body.width.saturating_sub(2));
+    let owned_controller = a.controller_config.read().ok();
+    let (config, controller) = a.routing.draft.as_ref().map_or_else(
+        || (&a.config, owned_controller.as_deref()),
+        |draft| (&draft.config, Some(&draft.controller)),
     );
-    let controller = if a.controller_online {
-        format!("connected · {configured_controller} · {mapping}")
-    } else {
-        "none connected".into()
-    };
-    let connected_performance = a
-        .performance_inputs
-        .iter()
-        .filter(|state| state.available())
-        .filter_map(|state| state.resolved.as_deref())
-        .collect::<Vec<_>>();
-    let performance = if !connected_performance.is_empty() {
-        connected_performance.join(" + ")
-    } else if a.controller_online && a.config.midi_controller_musical_input {
-        "controller (combined)".into()
-    } else {
-        "none connected".into()
-    };
-    let external = a
-        .config
-        .external_midi
-        .enabled
-        .then(|| {
-            sequencer::matching_output_index(
-                &a.available_page_outputs,
-                &a.config.external_midi.output_match,
-                true,
+    let controller_name = controller
+        .and_then(|controller| controller.input_match.as_deref())
+        .unwrap_or("");
+    let performance_name = config
+        .midi_performance_input_matches
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    const ROUTING_LABEL_CELLS: usize = 9;
+    let value_width = width.saturating_sub(ROUTING_LABEL_CELLS);
+    let endpoint = |name: &str, names: &[String]| {
+        if name.is_empty() {
+            "NONE".into()
+        } else {
+            let online = crate::midi_endpoint::matching_index(names, name, "endpoint").is_ok();
+            crate::ui_text::label_value(
+                &crate::ui_text::endpoint_label(name, value_width.saturating_sub(10)),
+                if online { "ONLINE" } else { "OFFLINE" },
+                value_width,
             )
-            .ok()
-            .and_then(|index| a.available_page_outputs.get(index))
-            .cloned()
-        })
-        .flatten()
-        .unwrap_or_else(|| "none connected".into());
-    let clock = if a.config.controller_clock.enabled {
-        "on"
-    } else {
-        "off"
+        }
     };
-    let audio = if !a.config.audio_autoconnect {
-        "off".into()
-    } else if let Some(notice) = &a.audio_fallback {
-        notice.clone()
-    } else if a.config.audio_outputs.len() == 2 {
-        format!("connected · {}", a.config.audio_outputs.join(" + "))
-    } else {
-        "configured route is incomplete".into()
-    };
-    let lines = vec![
-        Spans::from(Span::styled(
-            "ROUTING · CURRENT CONNECTIONS",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Spans::from(truncate(
-            &format!("Controller · {controller}"),
-            z.width.saturating_sub(4) as usize,
-        )),
-        Spans::from(truncate(
-            &format!("Performance · {performance}"),
-            z.width.saturating_sub(4) as usize,
-        )),
-        Spans::from(truncate(
-            &format!("MIDI out · {external}"),
-            z.width.saturating_sub(4) as usize,
-        )),
-        Spans::from(truncate(
-            &format!("Clock · {clock}"),
-            z.width.saturating_sub(4) as usize,
-        )),
-        Spans::from("Audio out"),
-        Spans::from(truncate(&audio, z.width.saturating_sub(4) as usize)),
-        Spans::from(""),
-        Spans::from(Span::styled(
-            "Read-only · change with shr-setup",
-            Style::default().fg(Color::Yellow),
-        )),
+    let profile = a.device_profiles.by_id(&config.external_midi.profile);
+    let device = crate::ui_text::label_value(
+        profile.map_or(config.external_midi.profile.as_str(), |profile| {
+            profile.model.as_str()
+        }),
+        "UNVERIFIED",
+        value_width,
+    );
+    let audio_online = config.audio_outputs.len() == 2
+        && config
+            .audio_outputs
+            .iter()
+            .all(|port| a.routing_audio_ports.iter().any(|live| live == port));
+    let audio_name = config
+        .audio_outputs
+        .first()
+        .and_then(|port| port.split_once(':').map(|parts| parts.0))
+        .unwrap_or("NONE");
+    let values = [
+        endpoint(controller_name, &a.routing_inputs),
+        if config.midi_controller_musical_input {
+            "COMBINED".into()
+        } else {
+            "CONTROL".into()
+        },
+        endpoint(performance_name, &a.routing_inputs),
+        if config.external_midi.enabled {
+            "ON"
+        } else {
+            "OFF"
+        }
+        .into(),
+        endpoint(&config.external_midi.output_match, &a.routing_outputs),
+        device,
+        if config.controller_clock.enabled {
+            "ON"
+        } else {
+            "OFF"
+        }
+        .into(),
+        endpoint(&config.controller_clock.output_match, &a.routing_outputs),
+        crate::ui_text::label_value(
+            audio_name,
+            if audio_online { "ONLINE" } else { "OFFLINE" },
+            value_width,
+        ),
     ];
+    let editing = a.routing.draft.is_some();
+    let mut lines = vec![Spans::from(Span::styled(
+        crate::ui_text::label_value("ROUTING", if editing { "EDIT" } else { "BROWSE" }, width),
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    for (index, (row, value)) in RoutingRow::ALL.iter().zip(values).enumerate() {
+        let selected = index == a.routing.selected;
+        let text = crate::ui_text::fixed_label_value(
+            &format!("{}{}", if selected { ">" } else { " " }, row.label()),
+            ROUTING_LABEL_CELLS,
+            &value,
+            width,
+        );
+        let style = if selected && editing {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else if selected {
+            Style::default().fg(Color::Black).bg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Spans::from(Span::styled(text, style)));
+    }
+    lines.push(Spans::from(Span::styled(
+        crate::ui_text::fit_line(
+            if editing {
+                "Turn draft · click OK · Back cancel"
+            } else {
+                "Turn row · click EDIT · Back Home"
+            },
+            width,
+        ),
+        Style::default().fg(Color::DarkGray),
+    )));
     f.render_widget(
         Paragraph::new(lines).block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Green)),
         ),
-        rect(z.x, z.y, z.width, z.height.saturating_sub(3)),
+        body,
     );
 }
 
@@ -9454,7 +9982,10 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
         }),
         Spans::from(""),
         Spans::from(Span::styled(
-            session.feedback().to_owned(),
+            crate::ui_text::fit_line(
+                session.feedback(),
+                usize::from(area.width.saturating_sub(2)),
+            ),
             Style::default().fg(
                 if feedback_lower.contains("conflict") || feedback_lower.contains("expected") {
                     Color::Red
@@ -9516,15 +10047,17 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     a.hits.list = body;
     let rack = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target);
     let rack_length = rack.map(|rack| rack.order.len()).unwrap_or(0);
-    let mut lines = vec![Spans::from(vec![
-        Span::styled(
-            format!("FX {}", fx_target_label(a.fx_target)),
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
+    let inner_width = usize::from(body.width.saturating_sub(2));
+    let mut lines = vec![Spans::from(Span::styled(
+        crate::ui_text::label_value(
+            &format!("FX {}", fx_target_label(a.fx_target)),
+            &format!("CHAIN {rack_length}/8"),
+            inner_width,
         ),
-        Span::raw(format!("  SERIAL CHAIN  {rack_length}/8")),
-    ])];
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    ))];
     if is_aux_target(a.fx_target) {
         let aux_id = a.fx_target as u8;
         let send = a
@@ -9541,12 +10074,15 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .find(|bus| bus.id == aux_id)
             .map(|bus| bus.return_gain_db)
             .unwrap_or(0.0);
-        lines.push(Spans::from(format!(
-            "SEND {}  {}  RETURN {return_gain:.0} dB",
-            send.map(|send| format!("{:.0} dB", send.level_db))
-                .unwrap_or_else(|| "OFF".into()),
-            send.map(|send| send_point_label(send.point))
-                .unwrap_or("POST")
+        lines.push(Spans::from(crate::ui_text::fit_line(
+            &format!(
+                "SEND {}  {}  RETURN {return_gain:.0} dB",
+                send.map(|send| format!("{:.0} dB", send.level_db))
+                    .unwrap_or_else(|| "OFF".into()),
+                send.map(|send| send_point_label(send.point))
+                    .unwrap_or("POST")
+            ),
+            inner_width,
         )));
         if let Some(meter) = a
             .engine
@@ -9555,32 +10091,33 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         {
             let peak = meter.output.peak.left.max(meter.output.peak.right);
             let rms = meter.output.rms.left.max(meter.output.rms.right);
-            lines.push(Spans::from(format!(
-                "RETURN pk {:>5.1} rms {:>5.1} dBFS",
-                meter_db(peak),
-                meter_db(rms)
+            lines.push(Spans::from(crate::ui_text::fit_line(
+                &format!(
+                    "RETURN pk {:>5.1} rms {:>5.1} dBFS",
+                    meter_db(peak),
+                    meter_db(rms)
+                ),
+                inner_width,
             )));
         }
     } else if a.fx_target > MAX_AUX_BUSES {
         if let Some(meter) = a.engine.as_ref().and_then(Engine::master_meter) {
             let peak = meter.output.peak.left.max(meter.output.peak.right);
             let rms = meter.output.rms.left.max(meter.output.rms.right);
-            lines.push(Spans::from(format!(
-                "MASTER pk {:>5.1} rms {:>5.1} dBFS",
-                meter_db(peak),
-                meter_db(rms)
+            lines.push(Spans::from(crate::ui_text::fit_line(
+                &format!(
+                    "MASTER pk {:>5.1} rms {:>5.1} dBFS",
+                    meter_db(peak),
+                    meter_db(rms)
+                ),
+                inner_width,
             )));
         }
     }
-    if rack_length == 0 {
-        lines.push(Spans::from(Span::styled(
-            ">  + INSERT EFFECT · click/Enter",
-            Style::default().fg(Color::Black).bg(Color::Yellow),
-        )));
-    } else if let Some(rack) = rack {
+    if let Some(rack) = rack {
         for (index, id) in rack.order.iter().copied().enumerate() {
             let effect = rack.effect(id).expect("validated rack order");
-            let selected = index == a.fx_selected;
+            let selected = a.fx_selection == FxRackSelection::Effect(id);
             let marker = if selected { ">" } else { " " };
             let state = if effect.bypass { "BYP" } else { "ON " };
             let type_active = a
@@ -9600,17 +10137,35 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 Style::default().fg(Color::White)
             };
             lines.push(Spans::from(Span::styled(
-                format!(
-                    "{marker} {:>2}. {:<12} #{id:<3} {state}",
-                    index + 1,
-                    effect_kind_label(effect.kind)
+                crate::ui_text::fit_line(
+                    &format!(
+                        "{marker} {:>2}. {:<12} #{id:<3} {state}",
+                        index + 1,
+                        effect_kind_label(effect.kind)
+                    ),
+                    inner_width,
                 ),
                 style,
             )));
         }
     }
+    let insert_selected = a.fx_selection == FxRackSelection::Insert;
+    lines.push(Spans::from(Span::styled(
+        crate::ui_text::fit_line(
+            &format!(
+                "{} + INSERT EFFECT",
+                if insert_selected { ">" } else { " " }
+            ),
+            inner_width,
+        ),
+        if insert_selected {
+            Style::default().fg(Color::Black).bg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::White)
+        },
+    )));
     lines.push(Spans::from(""));
-    lines.push(Spans::from("Structural edits require stopped transport"));
+    lines.push(Spans::from("Stop transport for structural edits"));
     f.render_widget(
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
         body,
@@ -9900,9 +10455,12 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     });
     let mut lines = Vec::new();
     lines.push(Spans::from(Span::styled(
-        format!(
-            "THREE-SOURCE SUM · {}",
-            if active { "ACTIVE" } else { "UNAVAILABLE" }
+        truncate(
+            &format!(
+                "THREE-SOURCE SUM · {}",
+                if active { "ACTIVE" } else { "UNAVAILABLE" }
+            ),
+            width,
         ),
         Style::default()
             .fg(if active { Color::Green } else { Color::Red })
@@ -9923,13 +10481,16 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         });
         let selected = a.bus_selected == index;
         lines.push(Spans::from(Span::styled(
-            format!(
-                "{} {:<5} {:>4.0}dB {:<4} {}",
-                if selected { ">" } else { " " },
-                source.label(),
-                gain,
-                if muted { "MUTE" } else { "ON" },
-                if ready { "READY" } else { "OFFLINE" }
+            truncate(
+                &format!(
+                    "{} {:<5} {:>4.0}dB {:<4} {}",
+                    if selected { ">" } else { " " },
+                    source.label(),
+                    gain,
+                    if muted { "MUTE" } else { "ON" },
+                    if ready { "READY" } else { "OFFLINE" }
+                ),
+                width,
             ),
             if selected {
                 Style::default().fg(Color::Black).bg(Color::Yellow)
@@ -9945,10 +10506,13 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .map(|controls| controls.master_gain_db())
         .unwrap_or(0.0);
     lines.push(Spans::from(Span::styled(
-        format!(
-            "{} MASTER {:>4.0}dB",
-            if a.bus_selected == 3 { ">" } else { " " },
-            master_gain
+        truncate(
+            &format!(
+                "{} MASTER {:>4.0}dB",
+                if a.bus_selected == 3 { ">" } else { " " },
+                master_gain
+            ),
+            width,
         ),
         if a.bus_selected == 3 {
             Style::default().fg(Color::Black).bg(Color::Yellow)
@@ -9957,15 +10521,21 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         },
     )));
     let meter = meter.unwrap_or_default();
-    lines.push(Spans::from(format!(
-        "FINAL L {:>5.1}  R {:>5.1} dBFS",
-        meter_db(meter.output.peak.left),
-        meter_db(meter.output.peak.right)
+    lines.push(Spans::from(truncate(
+        &format!(
+            "FINAL L {:>5.1}  R {:>5.1} dBFS",
+            meter_db(meter.output.peak.left),
+            meter_db(meter.output.peak.right)
+        ),
+        width,
     )));
     lines.push(Spans::from(Span::styled(
-        format!(
-            "PRE CLIP {} · FINAL CLIP {} · GR {:.1}dB",
-            meter.limiter_input.clips, meter.output.clips, meter.limiter_gain_reduction_db
+        truncate(
+            &format!(
+                "PRE CLIP {} · FINAL CLIP {} · GR {:.1}dB",
+                meter.limiter_input.clips, meter.output.clips, meter.limiter_gain_reduction_db
+            ),
+            width,
         ),
         if meter.limiter_input.clips > 0 || meter.output.clips > 0 {
             Style::default().fg(Color::Red)
@@ -9984,25 +10554,32 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             )
         },
     );
-    lines.push(Spans::from(format!(
-        "LIMIT -1.0dBFS · knee 3dB · {latency}"
+    lines.push(Spans::from(truncate(
+        &format!("LIMIT -1.0dBFS · knee 3dB · {latency}"),
+        width,
     )));
-    lines.push(Spans::from(format!(
-        "REC {}  {:02}:{:02}  {}",
-        if recording.recording {
-            "ACTIVE"
-        } else if recording.error.is_some() {
-            "ERROR "
-        } else {
-            "STOPPED"
-        },
-        recording.elapsed.as_secs() / 60,
-        recording.elapsed.as_secs() % 60,
-        format_bytes(recording.bytes)
+    lines.push(Spans::from(truncate(
+        &format!(
+            "REC {}  {:02}:{:02}  {}",
+            if recording.recording {
+                "ACTIVE"
+            } else if recording.error.is_some() {
+                "ERROR "
+            } else {
+                "STOPPED"
+            },
+            recording.elapsed.as_secs() / 60,
+            recording.elapsed.as_secs() % 60,
+            format_bytes(recording.bytes)
+        ),
+        width,
     )));
-    lines.push(Spans::from(format!(
-        "DROP {} · OVF {} · HIGH {}f",
-        recording.dropped_frames, recording.overflow_events, recording.writer_high_water_frames
+    lines.push(Spans::from(truncate(
+        &format!(
+            "DROP {} · OVF {} · HIGH {}f",
+            recording.dropped_frames, recording.overflow_events, recording.writer_high_water_frames
+        ),
+        width,
     )));
     if let Some(error) = recording.error {
         lines.push(Spans::from(Span::styled(
@@ -10016,15 +10593,18 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         )));
     }
     lines.push(Spans::from(Span::styled(
-        if a.config.audio_graph.input_direct_monitoring {
-            if a.config.audio_graph.confirm_doubled_monitoring {
-                "MONITOR software + confirmed interface direct"
+        truncate(
+            if a.config.audio_graph.input_direct_monitoring {
+                if a.config.audio_graph.confirm_doubled_monitoring {
+                    "MONITOR software + confirmed direct"
+                } else {
+                    "MONITOR REFUSED · doubled path"
+                }
             } else {
-                "MONITOR REFUSED · unconfirmed doubled path"
-            }
-        } else {
-            "MONITOR software · interface direct monitor off"
-        },
+                "MONITOR software · direct off"
+            },
+            width,
+        ),
         Style::default().fg(if a.config.audio_graph.input_direct_monitoring {
             Color::LightYellow
         } else {
@@ -10067,35 +10647,34 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .expect("validated rack order");
     let schema = crate::effect_schema::schema(effect.kind);
     a.fx_parameter = a.fx_parameter.min(schema.len().saturating_sub(1));
-    let visible_rows = body.height.saturating_sub(7) as usize;
-    let offset = a
-        .fx_parameter
-        .saturating_sub(visible_rows.saturating_sub(1) / 2)
-        .min(schema.len().saturating_sub(visible_rows));
-    let mut lines = vec![Spans::from(vec![
-        Span::styled(
-            format!(
-                "{} · {} #{id}",
-                fx_target_label(a.fx_target),
-                effect_kind_label(effect.kind)
-            ),
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(if a.fx_value_editing {
-            if a.fx_numeric_input.is_some() {
-                "  NUMERIC ACTIVE"
-            } else {
-                "  VALUE ACTIVE"
-            }
-        } else if effect.bypass {
-            "  BYPASSED"
+    let inner_width = usize::from(body.width.saturating_sub(2));
+    let state = if a.fx_value_editing {
+        if a.fx_numeric_input.is_some() {
+            "NUM"
         } else {
-            "  ON"
-        }),
-    ])];
-    for (index, spec) in schema.iter().enumerate().skip(offset).take(visible_rows) {
+            "EDIT"
+        }
+    } else if effect.bypass {
+        "BYP"
+    } else {
+        "ON"
+    };
+    let title = crate::ui_text::label_value(
+        &format!(
+            "{} · {} #{id}",
+            fx_target_label(a.fx_target),
+            effect_kind_label(effect.kind)
+        ),
+        state,
+        inner_width,
+    );
+    let mut lines = vec![Spans::from(Span::styled(
+        title,
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    for (index, spec) in schema.iter().enumerate() {
         let value = effect
             .parameters
             .get(spec.name)
@@ -10117,56 +10696,42 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             a.fx_numeric_input
                 .as_ref()
                 .map(|input| format!("{input}_"))
-                .unwrap_or_else(|| format!("{value:.2}"))
+                .unwrap_or_else(|| crate::effect_schema::format_value(effect.kind, *spec, value))
         } else {
-            format!("{value:.2}")
+            crate::effect_schema::format_value(effect.kind, *spec, value)
         };
         lines.push(Spans::from(Span::styled(
-            format!(
-                "{}{mapping:<3}{:<17} {:>7} {}",
-                if index == a.fx_parameter { ">" } else { " " },
-                parameter_display_name(spec.name),
-                shown_value,
-                spec.unit
+            fx_parameter_row(
+                index == a.fx_parameter,
+                &mapping,
+                crate::effect_schema::abbreviation(spec.name),
+                &shown_value,
+                inner_width,
             ),
             style,
         )));
     }
     let meter = a.engine.as_ref().and_then(|engine| engine.effect_meter(id));
-    lines.push(Spans::from(""));
-    if let Some(meter) = meter {
+    let meter_line = if let Some(meter) = meter {
         let input_peak = meter.input.peak.left.max(meter.input.peak.right);
         let output_peak = meter.output.peak.left.max(meter.output.peak.right);
-        let input_rms = meter.input.rms.left.max(meter.input.rms.right);
-        let output_rms = meter.output.rms.left.max(meter.output.rms.right);
-        lines.push(Spans::from(format!(
-            "IN  pk {:>6.1} rms {:>6.1} dBFS",
+        format!(
+            "IN {:.0}  OUT {:.0}  GR {}",
             meter_db(input_peak),
-            meter_db(input_rms)
-        )));
-        lines.push(Spans::from(format!(
-            "OUT pk {:>6.1} rms {:>6.1} dBFS",
             meter_db(output_peak),
-            meter_db(output_rms)
-        )));
-        lines.push(Spans::from(Span::styled(
-            format!(
-                "CLIP {}  NONFINITE {}{}",
-                meter.output.clips,
-                meter.output.non_finite,
-                meter
-                    .gain_reduction_db
-                    .map(|value| format!("  GR {value:.1} dB"))
-                    .unwrap_or_default()
-            ),
-            if meter.output.clips > 0 || meter.output.non_finite > 0 {
-                Style::default().fg(Color::Red)
-            } else {
-                Style::default().fg(Color::Green)
-            },
-        )));
+            meter
+                .gain_reduction_db
+                .map(|value| format!("{value:.1}"))
+                .unwrap_or_else(|| "--".into())
+        )
     } else {
-        lines.push(Spans::from("Meters unavailable · graph inactive"));
+        "METER --".into()
+    };
+    if lines.len() < usize::from(body.height.saturating_sub(2)) {
+        lines.push(Spans::from(crate::ui_text::fit_line(
+            &meter_line,
+            inner_width,
+        )));
     }
     f.render_widget(
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
@@ -10377,7 +10942,10 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     } else {
         format!(
             "FT2 WAV LOOP\n\nInbox: {}\nSelected: {}\n\nTurn encoder to choose\nIMPORT copies to private storage\n\nAUTO estimates beat length.\nProject tempo follows WAV.",
-            a.config.loop_player.import_directory.display(),
+            truncate(
+                &a.config.loop_player.import_directory.display().to_string(),
+                z.width.saturating_sub(2) as usize
+            ),
             truncate(&selected, z.width.saturating_sub(2) as usize)
         )
     };
@@ -10944,7 +11512,7 @@ fn draw_status_bar<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .map(|temperature| format!("{temperature}  {bpm}"))
         .unwrap_or(bpm);
     let gap = usize::from(z.width)
-        .saturating_sub(left.chars().count() + right.chars().count())
+        .saturating_sub(crate::ui_text::width(&left) + crate::ui_text::width(&right))
         .max(1);
     f.render_widget(
         Paragraph::new(truncate(
@@ -11272,10 +11840,13 @@ fn draw_ideas<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 Style::default()
             };
             Spans::from(Span::styled(
-                format!(
-                    "{} {}",
-                    if i == a.idea_selected { "▶" } else { " " },
-                    a.ideas[i]
+                truncate(
+                    &format!(
+                        "{} {}",
+                        if i == a.idea_selected { "▶" } else { " " },
+                        a.ideas[i]
+                    ),
+                    usize::from(inner.width),
                 ),
                 style,
             ))
@@ -12075,7 +12646,10 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .map(|(index, name)| {
             let selected = index == selected;
             Spans::from(Span::styled(
-                format!("{} {name}", if selected { "▶" } else { " " }),
+                truncate(
+                    &format!("{} {name}", if selected { "▶" } else { " " }),
+                    usize::from(inner.width),
+                ),
                 if selected {
                     Style::default()
                         .fg(Color::Black)
@@ -12150,11 +12724,15 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .saturating_add(1)
         .saturating_sub(list_rows)
         .min(s.tracks.len().saturating_sub(list_rows));
-    let mut lines = vec![Spans::from(format!(
-        "{elapsed} · {}/{} armed · {} Hz",
-        s.active_tracks,
-        s.tracks.len(),
-        s.sample_rate
+    let line_width = z.width.saturating_sub(1) as usize;
+    let mut lines = vec![Spans::from(truncate(
+        &format!(
+            "{elapsed} · {}/{} armed · {} Hz",
+            s.active_tracks,
+            s.tracks.len(),
+            s.sample_rate
+        ),
+        line_width,
     ))];
     if s.tracks.is_empty() {
         lines.push(Spans::from("No capture tracks configured"));
@@ -12170,7 +12748,7 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             lines.push(Spans::from(Span::styled(
                 truncate(
                     &format!("{marker}{arm} {:02} {} · {source}", index + 1, track.label),
-                    z.width.saturating_sub(1) as usize,
+                    line_width,
                 ),
                 Style::default().fg(if index == a.audio_track_selected {
                     if track.resolved {
@@ -12198,21 +12776,30 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .unwrap_or_else(|| "no level".into());
         lines.push(Spans::from(truncate(
             &format!("Source {source}"),
-            z.width.saturating_sub(1) as usize,
+            line_width,
         )));
-        lines.push(Spans::from(format!("Selected meter {peak}")));
+        lines.push(Spans::from(truncate(
+            &format!("Selected meter {peak}"),
+            line_width,
+        )));
     }
-    lines.push(Spans::from(format!(
-        "24-bit mono stems · {:.1} MiB",
-        s.bytes as f64 / 1_048_576.0
+    lines.push(Spans::from(truncate(
+        &format!(
+            "24-bit mono stems · {:.1} MiB",
+            s.bytes as f64 / 1_048_576.0
+        ),
+        line_width,
     )));
-    lines.push(Spans::from(format!(
-        "Drop {} · ovf {} · xrun {} · high {}f",
-        s.dropped_frames, s.overflow_events, s.xruns, s.writer_high_water_frames
+    lines.push(Spans::from(truncate(
+        &format!(
+            "Drop {} · ovf {} · xrun {} · high {}f",
+            s.dropped_frames, s.overflow_events, s.xruns, s.writer_high_water_frames
+        ),
+        line_width,
     )));
     lines.push(Spans::from(truncate(
         s.error.as_deref().unwrap_or(&path),
-        z.width.saturating_sub(1) as usize,
+        line_width,
     )));
     f.render_widget(
         Paragraph::new(lines).style(Style::default().fg(
@@ -12226,13 +12813,7 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     );
 }
 fn truncate(s: &str, n: usize) -> String {
-    if s.chars().count() <= n {
-        return s.into();
-    }
-    if n < 2 {
-        return s.chars().take(n).collect();
-    }
-    format!("{}…", s.chars().take(n - 1).collect::<String>())
+    crate::ui_text::fit_line(s, n)
 }
 
 #[derive(Serialize)]
@@ -12840,7 +13421,14 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
         ScreenshotScenario::FxEditor => {
             configure_demo_fx(app);
             app.screen = Screen::FxEditor;
-            app.fx_selected = 1;
+            app.fx_selection = app
+                .song
+                .insert_rack
+                .order
+                .get(1)
+                .copied()
+                .map(FxRackSelection::Effect)
+                .unwrap_or(FxRackSelection::Insert);
             app.fx_parameter = 2;
             app.status = "COMPRESSOR · ratio selected · graph inactive".into();
         }
@@ -12874,7 +13462,14 @@ fn configure_demo_fx(app: &mut App) {
         app.fx_add_kind = kind;
         app.add_effect();
     }
-    app.fx_selected = 1;
+    app.fx_selection = app
+        .song
+        .insert_rack
+        .order
+        .get(1)
+        .copied()
+        .map(FxRackSelection::Effect)
+        .unwrap_or(FxRackSelection::Insert);
     app.fx_add_kind = 3;
     app.status = "SOURCE · four active inserts · transport stopped".into();
 }
@@ -14289,13 +14884,15 @@ mod tests {
     }
 
     #[test]
-    fn routing_keeps_controller_midi_audio_and_setup_visible_at_38x14() {
+    fn routing_keeps_all_operational_rows_visible_at_40x20() {
         let p = presets();
         let mut app = app(&p);
         app.screen = Screen::Routing;
-        let text = buffer_text(&render_app(&mut app, 38, 14));
+        let text = buffer_text(&render_app(&mut app, 40, 20));
 
-        for expected in ["Controller", "MIDI out", "Audio out", "shr-setup"] {
+        for expected in [
+            "CTRL", "MODE", "PERF", "MIDI OUT", "DEVICE", "CLK OUT", "AUDIO",
+        ] {
             assert!(
                 text.contains(expected),
                 "missing compact Routing text {expected}"
@@ -14304,15 +14901,15 @@ mod tests {
     }
 
     #[test]
-    fn routing_hides_disconnected_configured_midi_devices() {
+    fn routing_distinguishes_offline_interface_from_unverified_device_profile() {
         let p = presets();
         let mut app = app(&p);
         app.screen = Screen::Routing;
         app.controller_online = false;
         app.config.external_midi.enabled = true;
-        app.config.external_midi.output_match = "Casiotone DIN".into();
-        app.config.external_midi.profile = "casio-casiotone-mt-240".into();
-        app.available_page_outputs.clear();
+        app.config.external_midi.output_match = "AudioBox USB 96:AudioBox USB 96 MIDI 1".into();
+        app.config.external_midi.profile = "roland-d-50".into();
+        app.routing_outputs.clear();
         app.performance_inputs = vec![crate::engine::MidiInputState {
             wanted: "Casiotone keyboard".into(),
             resolved: None,
@@ -14322,11 +14919,422 @@ mod tests {
             crate::pads::PadConfig::unmapped("Casiotone controller");
 
         let text = buffer_text(&render_app(&mut app, 40, 20));
-        assert!(!text.to_ascii_lowercase().contains("casiotone"));
-        assert!(!text.contains("0/1 connected"));
-        assert!(text.contains("MIDI out · none connected"));
-        assert!(text.contains("Controller · none connected"));
-        assert!(text.contains("Performance · none connected"));
+        assert!(text.contains("OFFLINE"));
+        assert!(text.contains("D-50"));
+        assert!(text.contains("UNVERIFIED"));
+        assert!(!text.to_ascii_lowercase().contains("connected"));
+    }
+
+    #[test]
+    fn routing_editor_wraps_drafts_and_cancels_without_writing() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Routing;
+        a.routing_inputs = vec!["Keys:Keys MIDI".into()];
+        a.routing_outputs = vec!["AudioBox USB 96:AudioBox USB 96 MIDI 1".into()];
+        a.routing.selected = 0;
+        a.move_routing(-1);
+        assert_eq!(a.routing_row(), RoutingRow::AudioOutput);
+        a.move_routing(1);
+        assert_eq!(a.routing_row(), RoutingRow::Controller);
+
+        a.routing.selected = 1;
+        let original = a.config.midi_controller_musical_input;
+        a.begin_routing_edit();
+        a.move_routing(1);
+        assert_eq!(a.config.midi_controller_musical_input, original);
+        assert_eq!(
+            a.routing
+                .draft
+                .as_ref()
+                .unwrap()
+                .config
+                .midi_controller_musical_input,
+            !original
+        );
+        assert!(a.cancel_routing_edit());
+        assert_eq!(a.config.midi_controller_musical_input, original);
+    }
+
+    #[test]
+    fn routing_confirm_is_atomic_and_migrates_legacy_audiobox_identity() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-routing-editor-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).unwrap();
+        let p = presets();
+        let mut a = app(&p);
+        a.config.external_midi.enabled = true;
+        a.config.external_midi.output_match = "AudioBox USB 96 AudioBox USB 96 MIDI 1".into();
+        a.config.save(&base.join("shsynth.conf")).unwrap();
+        let controller = a.controller_config.read().unwrap().clone();
+        controller.save(&base.join("controller.conf")).unwrap();
+        a.routing_outputs = vec!["AudioBox USB 96:AudioBox USB 96 MIDI 1 32:0".into()];
+        a.routing.selected = 1;
+        a.begin_routing_edit();
+        a.adjust_routing_draft(1);
+        let d50 = a.device_profiles.by_id("roland-d-50").unwrap();
+        let routing = &mut a.routing.draft.as_mut().unwrap().config.external_midi;
+        routing.profile = "roland-d-50".into();
+        d50.apply_midi_selection(routing);
+        a.confirm_routing_edit(&base);
+
+        let saved = RuntimeConfig::load(&base.join("shsynth.conf")).unwrap();
+        assert_eq!(
+            saved.external_midi.output_match,
+            "AudioBox USB 96:AudioBox USB 96 MIDI 1"
+        );
+        assert!(!saved.external_midi.output_match.ends_with("32:0"));
+        assert_eq!(saved.external_midi.profile, "roland-d-50");
+        assert_ne!(
+            saved.midi_controller_musical_input,
+            RuntimeConfig::default().midi_controller_musical_input
+        );
+        assert!(fs::read_dir(&base)
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().contains(".bak-")));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn routing_transaction_restores_files_after_activation_failure() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-routing-rollback-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).unwrap();
+        let runtime_path = base.join("shsynth.conf");
+        let controller_path = base.join("controller.conf");
+        let old_runtime = RuntimeConfig::default();
+        old_runtime.save(&runtime_path).unwrap();
+        let old_controller = crate::pads::PadConfig::default();
+        old_controller.save(&controller_path).unwrap();
+        let runtime_bytes = fs::read(&runtime_path).unwrap();
+        let controller_bytes = fs::read(&controller_path).unwrap();
+        let mut candidate = RoutingDraft {
+            config: old_runtime,
+            controller: old_controller,
+        };
+        candidate.config.midi_controller_musical_input = false;
+
+        let error =
+            persist_routing_transaction(&runtime_path, &controller_path, &candidate, || {
+                anyhow::bail!("injected activation failure")
+            })
+            .unwrap_err();
+        assert_eq!(error.0, RoutingTransactionStage::Activate);
+        assert_eq!(fs::read(&runtime_path).unwrap(), runtime_bytes);
+        assert_eq!(fs::read(&controller_path).unwrap(), controller_bytes);
+
+        let absent_runtime = base.join("absent-runtime.conf");
+        let absent_controller = base.join("absent-controller.conf");
+        assert!(persist_routing_transaction(
+            &absent_runtime,
+            &absent_controller,
+            &candidate,
+            || anyhow::bail!("injected activation failure"),
+        )
+        .is_err());
+        assert!(!absent_runtime.exists());
+        assert!(!absent_controller.exists());
+
+        let save_runtime = base.join("save-runtime.conf");
+        candidate.config.save(&save_runtime).unwrap();
+        let save_bytes = fs::read(&save_runtime).unwrap();
+        let bad_controller = base.join("controller-is-directory");
+        fs::create_dir(&bad_controller).unwrap();
+        let error =
+            persist_routing_transaction(&save_runtime, &bad_controller, &candidate, || Ok(()))
+                .unwrap_err();
+        assert_eq!(error.0, RoutingTransactionStage::Save);
+        assert_eq!(fs::read(&save_runtime).unwrap(), save_bytes);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn every_effect_parameter_is_visible_together_at_40x20() {
+        let kinds = [
+            EffectKind::Utility,
+            EffectKind::Eq,
+            EffectKind::Compressor,
+            EffectKind::Distortion,
+            EffectKind::Delay,
+            EffectKind::Reverb,
+            EffectKind::Chorus,
+            EffectKind::Flanger,
+            EffectKind::Phaser,
+            EffectKind::TremoloPan,
+            EffectKind::Filter,
+            EffectKind::Gate,
+            EffectKind::Crusher,
+        ];
+        let p = presets();
+        for kind in kinds {
+            let mut a = app(&p);
+            a.song.insert_rack.add_with_id(kind, 1).unwrap();
+            a.fx_selection = FxRackSelection::Effect(1);
+            a.fx_parameter = crate::effect_schema::schema(kind).len().saturating_sub(1);
+            a.screen = Screen::FxEditor;
+            let text = buffer_text(&render_app(&mut a, 40, 20));
+            for spec in crate::effect_schema::schema(kind) {
+                let abbreviation = crate::effect_schema::abbreviation(spec.name);
+                assert!(
+                    text.contains(abbreviation),
+                    "{kind:?} omitted {abbreviation}: {text}"
+                );
+            }
+            assert!(!text.contains("Meters unavailable"));
+        }
+    }
+
+    #[test]
+    fn universal_list_wrapping_contract_covers_workspaces_and_overlays() {
+        assert_eq!(wrapped_index(9, 0, -1), 0);
+        assert_eq!(wrapped_index(9, 1, -1), 0);
+        assert_eq!(wrapped_index(9, 1, 1), 0);
+
+        let p = presets();
+        let mut a = app(&p);
+
+        a.home_selected = 0;
+        a.move_home(-1);
+        assert_eq!(a.home_selected, HOME_ENTRIES.len() - 1);
+        a.move_home(1);
+        assert_eq!(a.home_selected, 0);
+
+        a.screen = Screen::Presets;
+        a.selected = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.selected, p.len() - 1);
+        render_app(&mut a, 40, 20);
+        assert!(a.offset > 0, "wrapped preset must be scrolled into view");
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        assert_eq!(a.selected, 0);
+
+        a.ideas = vec!["one".into(), "two".into()];
+        a.screen = Screen::Ideas;
+        a.idea_selected = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.idea_selected, 1);
+
+        a.help_selected = 0;
+        a.move_help(-1);
+        assert_eq!(a.help_selected, help::lines(HELP_TEXT_WIDTH).len() - 1);
+
+        a.song_list = vec!["one".into(), "two".into()];
+        a.screen = Screen::TrackerFiles;
+        a.tracker_files_mode = TrackerFilesMode::Projects;
+        a.song_selected = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.song_selected, 1);
+
+        let filtered = a.filtered_drum_indices();
+        assert!(!filtered.is_empty());
+        a.tracker_files_mode = TrackerFilesMode::Drums;
+        a.drum_pattern_selected = filtered[0];
+        a.move_drum_selection(-1);
+        assert_eq!(a.drum_pattern_selected, *filtered.last().unwrap());
+
+        a.screen = Screen::TrackerLoop;
+        a.loop_library_mode = false;
+        a.loop_imports = vec![PathBuf::from("one.wav"), PathBuf::from("two.wav")];
+        a.loop_selected = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.loop_selected, 1);
+        a.loop_library_mode = true;
+        a.loop_library = vec![
+            crate::loop_player::LibraryEntry {
+                file: "one.wav".into(),
+                current: false,
+                saved_references: 0,
+            },
+            crate::loop_player::LibraryEntry {
+                file: "two.wav".into(),
+                current: false,
+                saved_references: 0,
+            },
+        ];
+        a.loop_library_selected = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.loop_library_selected, 1);
+
+        a.screen = Screen::TrackerArrange;
+        a.arrange_selected = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.arrange_selected, a.song.order.len() - 1);
+
+        a.screen = Screen::Tracker;
+        a.tracker_row = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.tracker_row, a.tracker_rows() - 1);
+        a.tracker_order = 0;
+        a.move_order(-1);
+        assert_eq!(a.tracker_order, a.song.order.len() - 1);
+        a.tracker_track = 0;
+        a.tracker_page = 0;
+        a.move_tracker_lane(-1);
+        assert_eq!(
+            a.tracker_page * LANES_PER_PAGE + a.tracker_track,
+            a.current_total_lanes() - 1
+        );
+
+        a.screen = Screen::AudioRecorder;
+        a.audio_track_selected = 0;
+        a.move_audio_track(-1);
+        assert_eq!(
+            a.audio_track_selected,
+            a.audio_recorder.status().tracks.len() - 1
+        );
+        a.screen = Screen::Meter;
+        a.bus_selected = 0;
+        a.move_bus_selection(-1);
+        assert_eq!(a.bus_selected, 3);
+
+        a.screen = Screen::Routing;
+        a.routing.selected = 0;
+        a.move_routing(-1);
+        assert_eq!(a.routing.selected, RoutingRow::ALL.len() - 1);
+
+        assert_eq!(NoteLength::Whole.turn(-1), NoteLength::ThirtySecond);
+        assert_eq!(NoteLength::ThirtySecond.turn(1), NoteLength::Whole);
+
+        a.screen = Screen::Tracker;
+        a.open_overlay(Action::OpenRouteOverlay);
+        let rows = a.overlay_row_count();
+        a.overlay.as_mut().unwrap().selection = 0;
+        a.move_overlay(-1);
+        assert_eq!(a.overlay.as_ref().unwrap().selection, rows - 1);
+        render_app(&mut a, 40, 20);
+        assert!(a.overlay.as_ref().unwrap().scroll > 0);
+        a.move_overlay(1);
+        assert_eq!(a.overlay.as_ref().unwrap().selection, 0);
+    }
+
+    #[test]
+    fn fx_insert_is_a_typed_reachable_row_and_parameter_motion_is_single_step() {
+        let p = presets();
+        let mut a = app(&p);
+        a.set_screen(Screen::FxRack);
+        assert_eq!(a.fx_selection, FxRackSelection::Insert);
+        a.add_effect();
+        a.confirm_effect_type_edit();
+        let first = a.selected_effect_id().unwrap();
+
+        a.fx_selection = FxRackSelection::Insert;
+        a.move_fx_rack_selection(1);
+        assert_eq!(a.fx_selection, FxRackSelection::Effect(first));
+        a.move_fx_rack_selection(-1);
+        assert_eq!(a.fx_selection, FxRackSelection::Insert);
+        let frame = render_app(&mut a, 40, 20);
+        assert_eq!(buffer_text(&frame).matches("+ INSERT EFFECT").count(), 1);
+
+        let before = a.song.insert_rack.order.len();
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert_eq!(a.song.insert_rack.order.len(), before + 1);
+        a.confirm_effect_type_edit();
+        a.set_screen(Screen::FxEditor);
+        let count = crate::effect_schema::schema(a.selected_effect().unwrap().kind).len();
+        a.fx_parameter = 0;
+        perform(Action::Up, &mut a, Path::new("/none"), None);
+        assert_eq!(a.fx_parameter, count - 1);
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        assert_eq!(a.fx_parameter, 0);
+        perform(Action::Down, &mut a, Path::new("/none"), None);
+        assert_eq!(a.fx_parameter, 1, "one gesture must move one parameter");
+    }
+
+    #[test]
+    fn fx_rows_have_exact_cell_budgets_and_keep_selection_while_editing() {
+        let p = presets();
+        for kind in [EffectKind::Eq, EffectKind::Delay, EffectKind::Compressor] {
+            for (index, spec) in crate::effect_schema::schema(kind).iter().enumerate() {
+                let row = fx_parameter_row(
+                    index == 0,
+                    &fx_hardware_label(index),
+                    crate::effect_schema::abbreviation(spec.name),
+                    &crate::effect_schema::format_value(kind, *spec, spec.default),
+                    38,
+                );
+                assert_eq!(crate::ui_text::width(&row), 38, "{kind:?} {}", spec.name);
+                assert!(!row.contains('\n') && !row.contains('\r'));
+            }
+        }
+
+        let mut a = app(&p);
+        a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
+        a.fx_selection = FxRackSelection::Effect(1);
+        a.fx_parameter = 10;
+        a.screen = Screen::FxEditor;
+        let browse = render_app(&mut a, 40, 20);
+        assert_eq!(buffer_cell(&browse, 1, 12).bg, Color::Yellow);
+        a.begin_fx_value_edit();
+        a.begin_fx_numeric_entry('1');
+        let editing = render_app(&mut a, 40, 20);
+        assert_eq!(buffer_cell(&editing, 1, 12).bg, Color::Green);
+        assert!(row_text(&editing, 12).contains("1_"));
+        for spec in crate::effect_schema::schema(EffectKind::Eq) {
+            assert!(buffer_text(&editing).contains(crate::effect_schema::abbreviation(spec.name)));
+        }
+    }
+
+    #[test]
+    fn routing_keyboard_and_encoder_dispatch_identically() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut encoder = app(&p);
+        let mut keyboard = app(&p);
+        encoder.screen = Screen::Routing;
+        keyboard.screen = Screen::Routing;
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut encoder,
+            Path::new("/none"),
+            &tx,
+        );
+        key(KeyCode::Down, &mut keyboard, Path::new("/none"), &tx);
+        assert_eq!(encoder.routing.selected, keyboard.routing.selected);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut encoder,
+            Path::new("/none"),
+            &tx,
+        );
+        key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
+        assert!(encoder.routing.draft.is_some());
+        assert!(keyboard.routing.draft.is_some());
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut encoder,
+            Path::new("/none"),
+            &tx,
+        );
+        key(KeyCode::Down, &mut keyboard, Path::new("/none"), &tx);
+        assert_eq!(
+            encoder
+                .routing
+                .draft
+                .as_ref()
+                .unwrap()
+                .config
+                .midi_controller_musical_input,
+            keyboard
+                .routing
+                .draft
+                .as_ref()
+                .unwrap()
+                .config
+                .midi_controller_musical_input
+        );
     }
 
     #[test]
@@ -14389,7 +15397,7 @@ mod tests {
         );
         key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
         assert_eq!(physical.song.insert_rack, keyboard.song.insert_rack);
-        assert_eq!(physical.fx_selected, keyboard.fx_selected);
+        assert_eq!(physical.fx_selection, keyboard.fx_selection);
         assert!(physical.fx_type_edit.is_some());
         assert!(keyboard.fx_type_edit.is_some());
 
@@ -14788,7 +15796,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE"] {
+        for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE", "N00B", "NORMAL"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
         for removed in ["NAV", "IDEAS", "PRESETS", "FT2", "AUDIO"] {
@@ -14796,7 +15804,7 @@ mod tests {
         }
         assert!(text.contains("PLY"));
         assert_eq!(a.hits.menu_pages.len(), 3);
-        assert_eq!(a.hits.actions.len(), 2);
+        assert_eq!(a.hits.actions.len(), 4);
     }
 
     #[test]

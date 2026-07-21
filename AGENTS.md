@@ -1,100 +1,100 @@
 # Repository instructions
 
-Read `docs/WORKSPACE_HANDOFF.md` at the start of work in this checkout. It
-records the repository/local-data boundary, current hardware setup, publishing
-workflow, and the decisions that must survive a fresh conversation.
-Before changing or questioning a repository helper, also read
-`docs/MAINTAINER_HELPERS.md`; it records every helper's parameters, side
-effects, safety boundary, and design rationale, including the intentionally
-explicit screenshot scaler.
+Read `docs/WORKSPACE_HANDOFF.md` completely at the start of work in this
+checkout. It records current machine state, private/public boundaries, open
+work, and decisions that must survive a new thread. Before changing or
+questioning a repository helper or related Make target, also read
+`docs/MAINTAINER_HELPERS.md`; that file alone owns detailed helper arguments,
+side effects, safety boundaries, and rationale.
 
-## Purpose and environment
+## Priority and scope
 
-SHR-DAW is a Raspberry Pi mini DAW with a Rust TUI, FT2-style tracker, synth
-hosts, MIDI routing, loops, recording, JACK/ALSA integration, and a small
-physical controller. Keep it responsive at 40×20 and safe for live audio.
-The system `cargo` may be too old; use the installed Rust 1.85 toolchain:
+Follow the user's priorities, make the requested path work quickly, and fix
+observed blockers. The user decides how to inspect results and owns music,
+demo, and video work. Do not turn a focused task into a broad testing,
+documentation, cleanup, or handoff campaign unless the user requests it or an
+observed failure requires diagnosis.
+
+Inspect the worktree before editing and preserve concurrent work. Do not alter
+private user data unless explicitly requested. Physical equipment is borrowed;
+do not start JACK, a synth, MIDI transmission/playback, recording, or any other
+audible or hardware-changing test without explicit permission.
+
+## Product and development
+
+SHR-DAW is a responsive 40×20 Raspberry Pi mini DAW with a Rust TUI, FT2-style
+tracker, synth hosts, MIDI routing, loops, recording, JACK/ALSA integration,
+and a small controller. Keep live-audio paths bounded and responsive.
+
+Use the installed Rust 1.85 toolchain because the system Cargo may be too old:
 
 ```sh
 PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo check --locked
 ```
 
-Optimize normal development for fast physical iteration on the Pi. Use
-incremental debug artifacts only: `cargo check --locked` while implementing,
-focused tests for the changed behavior, and `cargo build --locked` when a
-binary is needed for user testing. Plain `shr` must launch
-`target/debug/shr`, and the TUI must identify debug builds visibly. Do not run
-the complete test suite, warning-denied Clippy, an optimized/release build, or
-release-mode stress validation during the competition heavy-test phase. This
-temporary fast-iteration rule remains in force until the competition deadline;
-use formatting, `cargo check --locked`, and focused tests for the exact changed
-behavior instead. A commit, handoff, or broad validation request does not by
-itself override this phase rule. For docs, README, screenshot, or image-only
-changes, use targeted checks such as link/reference checks, image size/format
-checks, `python3 -m py_compile` for Python helpers, and `git diff --check`.
+During the competition heavy-test phase, optimize for incremental debug work:
+use formatting, `cargo check --locked`, and focused tests for changed behavior;
+run `cargo build --locked` only when a binary is needed for user testing. Do
+not run the complete test suite, warning-denied Clippy, optimized/release
+builds, or release stress validation unless the user explicitly requests them.
+A commit, handoff, or general validation request does not override this rule.
+For documentation or image-only work, use only relevant link/reference,
+format/dimension, helper syntax, and `git diff --check` checks. Install a tool
+required for the requested validation rather than silently weakening it.
 
-Install tools required to complete requested setup, validation, or publishing
-work instead of silently skipping the check or substituting a weaker one. On
-Debian/Raspberry Pi OS this includes `libxml2-utils` for `xmllint` preset
-validation and `gh` for GitHub authentication/publishing. Use the existing
-GitHub CLI login when it is valid. If authentication is missing or expired,
-use the web/device authorization flow and let the user authorize it. Do not
-invent a Git author identity or expose authentication credentials.
+Plain `shr` must launch this checkout's `target/debug/shr`; debug and release
+builds must remain visibly identified as `DEV` and `REL` in the TUI.
 
-## Architecture
+## Safety and ownership invariants
 
-- `src/ui.rs`: screens, actions, engine lifecycle, recording workflow.
-- `src/engine.rs`: synthv1 process, JACK/ALSA connections, monitored MIDI route.
-- `src/midi.rs`: routing and pickup/catch state.
-- `src/control.rs`: the 12 canonical controls, ranges, and relative colors.
-- `src/preset.rs`: preset discovery and XML values read by parameter name.
-- `src/recording.rs`: idea snapshots and MIDI encoding/playback.
-- `src/navigation.rs` / `src/pads.rs`: screen-specific command pads and config.
+- Never layer managed synth engines, terminate a synthv1 process SHR-DAW does
+  not own, alter unrelated processes/routes, or omit clean shutdown and All
+  Notes Off.
+- Put hardware names, client/executable names, preset paths, and audio/MIDI
+  routes in `shsynth.conf` or `controller.conf`, never Rust constants.
+- Block mapped CCs before synthv1 until pickup reaches or crosses the loaded
+  value. Loading or resetting parameters must re-arm pickup.
+- On Playback, main-encoder press resets only the 12 mapped parameters without
+  restarting the engine; PLAY and keyboard `P` control MIDI-take playback.
+- Keep synthv1 0.9.29 indices/ranges in `control.rs`; parse preset XML by name.
+- Parameter indicators are relative to the original preset: green below
+  −0.03, bright yellow within ±0.03, and red above +0.03.
+- Consume command-pad note-on and note-off; pass musical MIDI through.
 
-## Invariants
+## Public, private, and publishing boundaries
 
-- Never layer managed synth engines. Preserve clean shutdown and All Notes Off.
-- Never terminate synthv1 processes SHSynth does not own.
-- Hardware names, executable/client names, preset paths, and audio/MIDI routes
-  belong in `shsynth.conf` or `controller.conf`, not Rust constants.
-- Block mapped CC messages before synthv1 until pickup reaches/crosses the
-  loaded value. Loading and in-place parameter reset must re-arm pickup.
-- On Playback, the main encoder press resets only the 12 mapped parameters and
-  re-arms pickup without restarting the engine. PLAY and keyboard `P` control
-  MIDI take playback.
-- Indicators are relative to the original preset: green below −0.03, bright
-  yellow within ±0.03, red above +0.03.
-- Command pad note-on and note-off are consumed; musical MIDI passes through.
-- Keep synthv1 0.9.29 indices/ranges in `control.rs`. Parse preset XML by name
-  because older source files can have obsolete indices.
-- Preserve user ideas, controller config, unrelated processes, and existing
-  work. Do not start audible synth/JACK tests unless explicitly requested.
+Every tracked file is public. Keep all private runtime state, configuration,
+logs, ideas, Projects, recordings, downloads, routes, and uncleared presets
+below ignored `user/` (or an explicit `SHSYNTH_USER_DIR`). Use
+`scripts/setup-local.sh` and `scripts/local.sh` for repository-local operation.
+Never stage or publish a path below `user/`.
 
-## Presets and documentation
+Publish only when asked. Use the existing GitHub CLI login and repository-local
+Git identity; never invent an identity or expose credentials. Before committing
+or pushing, inspect `git status --short`, confirm no `user/` path is staged,
+and run `git diff --cached --check`.
 
-Place sounds in `presets/synthv1/` and follow `docs/NEW_PATCHES.md`. Prefer a
-complete current-schema preset, validate XML and parameter names, and retain
-source/license information for imported patches. Update README when behavior,
-commands, mappings, storage, or hardware assumptions change. Remove stale docs
-instead of leaving conflicting instructions.
+Only presets listed in `presets/synthv1/cleared-presets.txt` and documented in
+`THIRD_PARTY.md` may be public. Follow `docs/NEW_PATCHES.md`, validate current
+schema/XML names, and retain source/licence evidence. The uncleared private
+preset archive must not be committed, packaged, mirrored, or relabelled.
+Tracked loops and demos are likewise limited to their cleared manifests.
 
-Do not publish the uncleared preset bank until its provenance is established; see
-`THIRD_PARTY.md`. Project code and newly authored cleared presets use MIT.
+## Documentation and collaboration
 
-## Collaboration and navigation
+Update the README and focused documentation when behavior, commands, mappings,
+storage, or hardware assumptions change; link to canonical detail rather than
+copying it. Remove stale conflicting text. Use `docs/README.md` to find the
+focused architecture, musician, measurement, and future-plan documents.
 
-Act as a navigator for a user who has musical goals but does not assume prior
-music-theory, oscillator/filter, MIDI, JACK, or Rust knowledge. Explain choices
-in plain language, recommend a safe default, and connect technical parameters
-to what the user will hear or do. For physical setup, give one concrete action
-at a time and separate user-performed actions from machine inspection. Research
-unfamiliar or current hardware, software, music, and product details from
-authoritative sources instead of guessing, and preserve source/provenance notes
-when the result affects configuration, sounds, or redistribution.
+Explain musical and hardware choices in plain language, recommend a safe
+default, and connect parameters to what the user will hear or do. For physical
+setup, give one concrete user action at a time and separate it from machine
+inspection. Research unfamiliar or current details from authoritative sources
+and preserve provenance when it affects configuration or redistribution.
 
-The user normally operates from a development PC over SSH and cannot open Pi-local
-file links or tool-only image previews. For requested visual review, put temporary
-outputs below an exact ignored `user/` subdirectory, serve only that subdirectory
-over a temporary LAN HTTP server, and provide URLs reachable from the development
-PC. Never serve the repository root, the whole `user/` tree, configuration,
-credentials, or other private data. Stop the temporary server after review.
+For requested visual review over SSH, place temporary output in one exact
+ignored subdirectory below `user/`, serve only that subdirectory over a
+temporary LAN HTTP server, give the development-PC URL, and stop the server
+after review. Never serve the repository root, all of `user/`, configuration,
+credentials, or other private data.

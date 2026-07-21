@@ -110,13 +110,17 @@ controls edit saved Project data without touching audio.
 
 The screenshot shows a populated source chain. Selecting another target keeps
 the same menu but changes the body and which routing actions apply.
+The final blank-looking `+ INSERT EFFECT` row is a typed functional selection,
+not an effect index or decoration. It remains reachable once, participates in
+first/last wrapping, and click/Enter inserts an effect at that position.
 
 ### OPS — edit rack contents
 
 ![Populated FX Rack with the OPS page](../images/menu/fx-rack-ops.png)
 
-`EDIT` opens the selected processor's named parameters. `ADD` appends the
-currently displayed effect kind. `BYPASS` fades the selected processor between
+`EDIT` opens the selected processor's named parameters. `ADD` inserts the
+currently displayed effect kind at the logical insertion position. `BYPASS`
+fades the selected processor between
 active and safe bypass. `REMOVE` removes only the selected owned processor.
 
 ### ORDER — reorder and choose add kind
@@ -144,18 +148,30 @@ return level. `HELP` opens the local reference. `EXIT` returns one level.
 
 ## FX parameter editor
 
-Parameters come from strict per-effect schemas and are displayed in physical
-units such as dB, hertz, milliseconds, ratio, or percent. The demonstration
-shows a compressor with its ratio selected. Live input/output, clip,
-non-finite, and gain-reduction meters appear only when the owned graph supplies
-them; the screenshot honestly reports the graph as inactive.
+Parameters come from strict per-effect schemas. At 40×20 every parameter of
+the selected effect—up to the current maximum of 11—stays visible together;
+the grid never scrolls. Each row contains only its selection marker, hardware
+mapping (`K1`/`F1`), a deliberate stable abbreviation such as `THR`, `RAT`,
+`SC-HP`, `FDBK`, or `DECAY`, and a type-aware value/unit. Toggles use ON/OFF,
+integers omit decimals, named modes/divisions use compact labels, and dB,
+frequency, time, percent, and ratio keep musician-facing units. Persistence
+continues to use the full schema names.
+
+The title/state uses one row and metering, when available, is bounded to one
+terse `IN / OUT / GR` row. Detailed meter prose never displaces a parameter.
+The established screenshot predates this compact pass and is intentionally not
+regenerated; deterministic 40×20 buffer tests are authoritative for the new
+layout.
 
 ### OPS — select and adjust a parameter
 
 ![Populated FX editor with the OPS page](../images/menu/fx-editor-ops.png)
 
-`PARAM-` and `PARAM+` choose a named parameter. `VALUE-` and `VALUE+` change it
-by the schema's safe step and clamp to the validated range.
+`PARAM-` and `PARAM+` choose a parameter and wrap at both ends. Rotary browsing
+does the same; click begins value editing, turn changes only the value, click
+confirms, and Back restores the original. `VALUE-` and `VALUE+` use the schema's
+safe step and clamp to the validated range. All rows remain visible during
+editing and numeric entry.
 
 ### STATE — bypass this processor
 

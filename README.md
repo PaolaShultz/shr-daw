@@ -123,19 +123,27 @@ cancelled. At 40×20 the border is exactly 38×18 at `(1,1)`, surrounding a
 36×16 content area at `(2,2)`.
 
 MIDI Learn, Routing, and Effects are separate top-level destinations. Routing
-is a read-only view of the current controller, external MIDI, clock, and audio
-connections; `shr-setup` remains the single owner of hardware changes. If a
+is a transactional rotary editor for the current controller, performance MIDI,
+external MIDI/profile, controller clock, and audio choices. Turn to browse a
+wrapping list, press to edit, turn the detached draft, press to validate/save/
+activate, or press Back to cancel the field without writing. `shr-setup`
+remains available for initial configuration. If a
 configured controller is offline, has no matching reviewed profile, or has an
 incomplete learned master encoder, Home initially highlights MIDI Learn and
 states why. A learned encoder with working turn and click remains usable even
 when optional command buttons were skipped. Home never learns or transmits
 anything merely by being opened.
 
+MIDI output status describes the discoverable interface port, not a DIN
+instrument behind it. For example, `AudioBox · ONLINE` and
+`D-50 · UNVERIFIED` are separate facts: ALSA can see the AudioBox port but
+cannot prove that a downstream D-50 is connected or powered.
+
 The overview below shows the established performance workspaces. The
 [visual menu manual](docs/MENU_MANUAL.md) retains the established workspace
 renders; its current text and controller map describe this iteration because
 the full screenshot set was deliberately not regenerated. The intentionally
-plain Home and read-only Routing overview do not use dashboard screenshots.
+plain Home and Routing editor do not use dashboard screenshots.
 
 Large sound and file lists support case-insensitive first-letter jumps when a
 letter is not already a screen shortcut. Keyboard PageUp/PageDown remain

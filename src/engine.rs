@@ -481,14 +481,121 @@ impl MidiRouter {
             pickup.arm(values);
         }
     }
-}
 
-impl Drop for MidiRouter {
-    fn drop(&mut self) {
+    /// Replace only SHR-owned MIDI input subscriptions while retaining the
+    /// output, pickup, tracker, learning, and note-lifecycle shared state used
+    /// by the active engine. Old inputs are released and closed before any new
+    /// input is opened, so routes are never layered.
+    pub fn reconfigure_inputs(&mut self, config: &RuntimeConfig) -> Result<MidiInputAvailability> {
+        self.stop_input_monitor();
+        let deliveries = self
+            .live_state
+            .lock()
+            .map_or_else(|_| Vec::new(), |mut state| release_all_inputs(&mut state));
+        deliver_midi(
+            deliveries,
+            Instant::now(),
+            &self.tx,
+            &self.output,
+            &self.tracker_input,
+        );
+        self._inputs.clear();
+        if !config.midi_autoconnect {
+            self.availability = MidiInputAvailability::default();
+            return Ok(self.availability.clone());
+        }
+
+        let pads = self
+            .controller
+            .read()
+            .map(|pads| pads.clone())
+            .unwrap_or_default();
+        let names = midi_input_names()?;
+        let mut plan = plan_midi_inputs(&names, &pads, config);
+        let mut opened_names = Vec::new();
+        for planned in plan.inputs.clone() {
+            let routing = CallbackRouting {
+                output: Arc::clone(&self.output),
+                pickup: Arc::clone(&self.pickup),
+                backend: Arc::clone(&self.backend),
+                tracker_route: Arc::clone(&self.tracker_route),
+                tracker_input: Arc::clone(&self.tracker_input),
+                playback_scale: Arc::clone(&self.playback_scale),
+                controller: Arc::clone(&self.controller),
+                learn_mode: Arc::clone(&self.learn_mode),
+                fx_control_mode: Arc::clone(&self.fx_control_mode),
+                live_state: Arc::clone(&self.live_state),
+            };
+            match connect_midi_input(self.tx.clone(), &planned, config, routing) {
+                Ok(connection) => {
+                    opened_names.push(planned.name.clone());
+                    self._inputs.push(connection);
+                }
+                Err(error) => {
+                    self._inputs.clear();
+                    mark_input_open_error(
+                        &mut plan.availability,
+                        &planned,
+                        format!("{}: {error:#}", planned.name),
+                    );
+                    self.availability = plan.availability;
+                    return Err(anyhow!("MIDI input activation failed: {error:#}"));
+                }
+            }
+        }
+        self.start_input_monitor(opened_names);
+        self.availability = plan.availability;
+        Ok(self.availability.clone())
+    }
+
+    fn stop_input_monitor(&mut self) {
         self.monitor_stop.store(true, Ordering::Relaxed);
         if let Some(thread) = self.monitor_thread.take() {
             let _ = thread.join();
         }
+        self.monitor_stop = Arc::new(AtomicBool::new(false));
+    }
+
+    fn start_input_monitor(&mut self, opened_names: Vec<String>) {
+        if opened_names.is_empty() {
+            return;
+        }
+        let stop = Arc::clone(&self.monitor_stop);
+        let state = Arc::clone(&self.live_state);
+        let output = Arc::clone(&self.output);
+        let tracker_input = Arc::clone(&self.tracker_input);
+        let tx = self.tx.clone();
+        self.monitor_thread = Some(thread::spawn(move || {
+            let mut disconnected = std::collections::BTreeSet::new();
+            while !stop.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(250));
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let visible = midi_input_names().unwrap_or_default();
+                for source in &opened_names {
+                    if visible.iter().any(|name| name == source) {
+                        continue;
+                    }
+                    if disconnected.insert(source.clone()) {
+                        let deliveries = state
+                            .lock()
+                            .map(|mut state| release_source(&mut state, source))
+                            .unwrap_or_default();
+                        deliver_midi(deliveries, Instant::now(), &tx, &output, &tracker_input);
+                        let _ = tx.send(MidiEvent::Error(format!(
+                            "MIDI input disconnected: {source}"
+                        )));
+                    }
+                }
+            }
+        }));
+    }
+}
+
+impl Drop for MidiRouter {
+    fn drop(&mut self) {
+        self.stop_input_monitor();
         let deliveries = self
             .live_state
             .lock()
@@ -1968,38 +2075,7 @@ fn attach_midi_output(
 }
 
 fn unique_name_match(names: &[String], wanted: &str, description: &str) -> Result<Option<usize>> {
-    let wanted_lower = wanted.to_ascii_lowercase();
-    if wanted_lower.is_empty() {
-        bail!("{description} match cannot be empty");
-    }
-    let exact = names
-        .iter()
-        .enumerate()
-        .filter(|(_, name)| name.to_ascii_lowercase() == wanted_lower)
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
-    let matches = if exact.is_empty() {
-        names
-            .iter()
-            .enumerate()
-            .filter(|(_, name)| name.to_ascii_lowercase().contains(&wanted_lower))
-            .map(|(index, _)| index)
-            .collect::<Vec<_>>()
-    } else {
-        exact
-    };
-    match matches.as_slice() {
-        [] => Ok(None),
-        [index] => Ok(Some(*index)),
-        _ => bail!(
-            "{description} match {wanted:?} is ambiguous: {}",
-            matches
-                .iter()
-                .map(|index| names[*index].as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-    }
+    crate::midi_endpoint::matching_optional_index(names, wanted, description)
 }
 
 fn command_lines(program: &str, args: &[&str]) -> Vec<String> {
@@ -2642,11 +2718,17 @@ mod tests {
             unique_name_match(&names, "Exact", "MIDI input").unwrap(),
             Some(2)
         );
-        assert!(unique_name_match(&names, "Controller", "MIDI input").is_err());
+        assert_eq!(
+            unique_name_match(&names, "Controller", "MIDI input").unwrap(),
+            None,
+            "partial names must remain offline"
+        );
         assert_eq!(
             unique_name_match(&names, "missing", "MIDI input").unwrap(),
             None
         );
+        let ambiguous = vec!["Box:Port 20:0".into(), "Box-Port 21:0".into()];
+        assert!(unique_name_match(&ambiguous, "Box Port", "MIDI input").is_err());
 
         let clients = vec![(1, "synth-one".into()), (2, "synth-two".into())];
         assert!(unique_client_match(&clients, "synth").is_none());
@@ -2729,13 +2811,16 @@ mod tests {
     fn missing_and_ambiguous_roles_do_not_hide_available_inputs() {
         let mut config = input_role_config();
         config.midi_input_matches = vec!["Missing Surface".into()];
-        config.midi_performance_input_matches =
-            vec!["Keyboard".into(), "Ambiguous".into(), "Missing Keys".into()];
+        config.midi_performance_input_matches = vec![
+            "Keyboard".into(),
+            "Ambiguous A".into(),
+            "Missing Keys".into(),
+        ];
         let plan = plan_midi_inputs(
             &[
                 "Keyboard".into(),
-                "Ambiguous A".into(),
-                "Ambiguous B".into(),
+                "Ambiguous:A".into(),
+                "Ambiguous-A".into(),
             ],
             &PadConfig::default(),
             &config,

@@ -1208,7 +1208,15 @@ const HOME: [MenuPage; 4] = [
 ];
 
 const ROUTING: [MenuPage; 4] = [
-    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "EDIT",
+        [
+            on("PREV", Action::Up),
+            on("NEXT", Action::Down),
+            on("EDIT/OK", Action::Activate),
+            on("CANCEL", Action::Back),
+        ],
+    ),
     page("", [off(""), off(""), off(""), off("")]),
     page("", [off(""), off(""), off(""), off("")]),
     page(

@@ -404,6 +404,7 @@ dependencies = [
  "serde",
  "serde_json",
  "signal-hook",
+ "unicode-width",
 ]
 
 [[package]]
