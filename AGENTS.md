@@ -15,10 +15,16 @@ demo, and video work. Do not turn a focused task into a broad testing,
 documentation, cleanup, or handoff campaign unless the user requests it or an
 observed failure requires diagnosis.
 
-Inspect the worktree before editing and preserve concurrent work. Do not alter
-private user data unless explicitly requested. Physical equipment is borrowed;
-do not start JACK, a synth, MIDI transmission/playback, recording, or any other
-audible or hardware-changing test without explicit permission.
+This checkout is shared by multiple workers who edit and commit independently.
+Inspect live Git state before editing and again before committing; preserve
+other workers' changes and stage/commit only your own scoped paths or hunks. Do
+not wait for unrelated workers to finish. Never record a branch tip, last
+commit, or clean/dirty snapshot in the handoff because it becomes stale during
+parallel work.
+
+Do not alter private user data unless explicitly requested. Physical equipment
+is borrowed; do not start JACK, a synth, MIDI transmission/playback, recording,
+or any other audible or hardware-changing test without explicit permission.
 
 ## Product and development
 

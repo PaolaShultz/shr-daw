@@ -5,25 +5,17 @@ new thread in `/home/patch/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
-## Current priority and worktree
+## Current priority and shared checkout
 
 The competition fast-iteration policy in `AGENTS.md` is active. Physical
 approval, not a broad automated campaign, is the next gate for UI/controller
 work.
 
-The checkout is on `main` at `3a04e56` (`Fix MIDI input lifecycle and controller
-learning`) and tracks <https://github.com/PaolaShultz/shr-daw>. The worktree has
-uncommitted user work; inspect `git status --short` before editing. The current
-UI/controller pass implements the transactional Routing editor, shared stable
-ALSA endpoint matching, universal one-step list wrapping, typed FX Insert
-selection, exhaustive compact FX parameter metadata/value formatting, and
-terminal-cell-aware 40-column fitting in the new modules
-`src/midi_endpoint.rs` and `src/ui_text.rs`. Focused Routing, endpoint,
-navigation/controller parity, FX/schema, 40×20 render, fallback-size, shell
-helper, `cargo check --locked`, and debug-build validation passed without
-starting JACK, a synth, transport, recording, or MIDI transmission. Preserve
-that uncommitted implementation and its tests; the remaining gate is the
-non-audible physical UI sequence requested in the implementation handoff.
+Multiple workers use this checkout and commit their own changes independently.
+Branch tips, commit messages, and clean/dirty snapshots are intentionally not
+recorded here. Inspect live Git state, preserve concurrent work, commit only
+your own scope, and do not wait for unrelated workers to finish; follow the
+canonical collaboration rule in `AGENTS.md`.
 
 Plain `shr` resolves to this checkout's `scripts/local.sh` through both
 `/home/patch/.bash_aliases` and `/home/patch/.local/bin/shr`. The launcher uses
@@ -32,6 +24,7 @@ Plain `shr` resolves to this checkout's `scripts/local.sh` through both
 
 ## Publishing state
 
+Public remote: <https://github.com/PaolaShultz/shr-daw>.
 GitHub CLI is installed and authenticated as `PaolaShultz` over HTTPS. This
 repository's local identity is `PaolaShultz` with GitHub's numeric no-reply
 address. Keep those values; if authentication expires, use `gh auth login
