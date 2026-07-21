@@ -37,7 +37,7 @@ impl OverlayKind {
             Action::OpenPatternLengthOverlay => Some(Self::TrackerPatternLength),
             Action::OpenNoteLengthOverlay => Some(Self::TrackerNoteLength),
             Action::OpenTrackerAdvanceOverlay => Some(Self::TrackerAdvance),
-            Action::OpenLoopLibrary => Some(Self::LoopLibrary),
+            Action::LoopImport | Action::OpenLoopLibrary => Some(Self::LoopLibrary),
             Action::OpenEffectsOverlay => Some(Self::MixEffects),
             _ => None,
         }
@@ -343,6 +343,10 @@ mod tests {
 
     #[test]
     fn loop_library_uses_the_shared_overlay_kind() {
+        assert_eq!(
+            OverlayKind::from_action(Action::LoopImport),
+            Some(OverlayKind::LoopLibrary)
+        );
         assert_eq!(
             OverlayKind::from_action(Action::OpenLoopLibrary),
             Some(OverlayKind::LoopLibrary)

@@ -649,11 +649,11 @@ Switching any route field cancels the old route first. Internal channels and
 programs are zero-based MIDI values, while every FT2 screen shows channels
 1–16 and programs 1–128.
 
-FT2 **REC** is deliberately hardware-only. It refuses a software-instrument page,
-consumes musical controller notes before the loaded synth route, and
-auditions them on the current page's configured/exact MIDI output and channel.
-Recording loops only the selected pattern, writes only the visible page's four
-lanes, and does not advance through or alter other order entries.
+FT2 **REC** uses the selected page's exact online target, including a
+Pattern-owned software instrument or configured/exact MIDI output. It refuses
+an offline target rather than substituting another destination. Recording loops
+only the selected pattern, writes only the visible page's four lanes, and does
+not advance through or alter other order entries.
 
 Pattern setup offers 4/4 row counts of 8, 16, 32, 64, and 128, or matching 3/4
 counts of 6, 12, 24, 48, and 96. New patterns are distinct pattern records and

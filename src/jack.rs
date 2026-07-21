@@ -50,7 +50,8 @@ type Deactivate = unsafe extern "C" fn(*mut OpaqueClient) -> c_int;
 type Connect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
 type Disconnect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
 type PortName = unsafe extern "C" fn(*const Port) -> *const c_char;
-type PortId = unsafe extern "C" fn(*const Port) -> c_uint;
+type PortUuid = unsafe extern "C" fn(*const Port) -> u64;
+type UuidToIndex = unsafe extern "C" fn(u64) -> c_uint;
 type SampleRate = unsafe extern "C" fn(*const OpaqueClient) -> c_uint;
 
 struct Api {
@@ -66,7 +67,8 @@ struct Api {
     connect: Connect,
     disconnect: Disconnect,
     port_name: PortName,
-    port_id: PortId,
+    port_uuid: PortUuid,
+    uuid_to_index: UuidToIndex,
     sample_rate: SampleRate,
     port_get_buffer: PortGetBuffer,
 }
@@ -193,7 +195,8 @@ impl Client {
                         connect: symbol(handle, b"jack_connect\0")?,
                         disconnect: symbol(handle, b"jack_disconnect\0")?,
                         port_name: symbol(handle, b"jack_port_name\0")?,
-                        port_id: symbol(handle, b"jack_port_id\0")?,
+                        port_uuid: symbol(handle, b"jack_port_uuid\0")?,
+                        uuid_to_index: symbol(handle, b"jack_uuid_to_index\0")?,
                         sample_rate: symbol(handle, b"jack_get_sample_rate\0")?,
                         port_get_buffer: symbol(handle, b"jack_port_get_buffer\0")?,
                     },
@@ -352,7 +355,11 @@ impl Client {
         if port.is_null() {
             bail!("JACK returned a null port");
         }
-        Ok(unsafe { (self.api.port_id)(port) })
+        // JACK's connection callbacks identify ports with the 32-bit index
+        // encoded in each public port UUID. There is no public jack_port_id
+        // symbol in JACK 2; use the documented UUID conversion instead.
+        let uuid = unsafe { (self.api.port_uuid)(port) };
+        Ok(unsafe { (self.api.uuid_to_index)(uuid) })
     }
 
     /// Ensure an exact named connection exists. The boolean is true only when

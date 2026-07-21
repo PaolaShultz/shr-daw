@@ -243,7 +243,8 @@ The FT2 screen has three explicit modes:
 
 - **Play** navigates rows, pages, lanes, and Arrangement steps and starts
   transport from the cursor or Project beginning.
-- **Record** performs the hardware-only quantized capture described above.
+- **Record** performs quantized capture into the selected online Pattern page,
+  whether its exact target is the Pattern-owned software instrument or hardware.
 - **Edit** writes notes or chords from MIDI/computer-keyboard input. Blank,
   erase, and note-off are explicit operations, and the persistent 0–32-row
   advance determines the next cursor position. Its independent 1/1–1/128

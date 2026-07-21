@@ -30,9 +30,9 @@ from the splash.
 | Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | While Play or Rec transport is active, the main rotary selects the previous/next column across page boundaries. While transport is paused it moves rows, as it does in Edit; keyboard Up/Down always moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. |
-| FT2 record | Record quantized notes into the selected page/current pattern and route live notes only to that page's hardware MIDI target. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; stop record, stop, exit, and panic remain available. |
-| FT2 edit | Musical keyboard or incoming MIDI note/chord gesture entry; independent 1/1–1/128 note length; blank/skip; erase; note off; a 0–32-row ADD value; PAGE, LENGTH, and ADD rotary overlays; and leave edit. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
-| FT2 N00B | Independent on/off scale filter layered over Play, Record, and Step Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
+| FT2 record | Stop Play/Edit and record quantized note-ons and release-based note-offs into the selected page/current pattern through its configured target. Captures join playback on the next loop; Edit note length does not affect REC. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; PLAY, RECORD, and EDIT switch mutually exclusive modes. |
+| FT2 edit | A released musical note writes immediately in the selected column; only overlapping held notes spread across subsequent columns. COL-/COL+ select the edit column. Note length, blank/skip, erase, note off, a 0–32-row ADD value, and PAGE remain available; PLAY, RECORD, and EDIT switch mutually exclusive modes. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
+| FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
 | FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; explicit `READY`/`NOT READY`/`OUTPUT FAULT`; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
@@ -80,7 +80,7 @@ locations and links to Tracks; PATTERN navigates the Project's existing Pattern
 owners and links to Pattern/Project tools; SONG navigates Arrangement steps and
 links to its detailed editors; ROUTE edits a detached copy of the active page
 and applies it only through the existing Project/route synchronization path;
-Step Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
+Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
 Pattern Setup LNGTH chooses every value from 1 through 32 plus 48, 64, 96,
 128, 192, and 256.
 The Loop Player's LIBRARY launcher uses it for one combined inbox/private
@@ -175,25 +175,25 @@ Blank physical positions and wholly empty pages are omitted.
 | Ideas | Sys | Panic | — | Help | Exit |
 | Help | Ops | Open link | Top | — | — |
 | Help | Sys | Panic | — | — | Exit |
-| FT2 | Play | Cell edit | Play | Record | Step edit |
+| FT2 | Play | Cell edit | Play | Record | Edit |
 | FT2 | Select | Page overlay | Pattern overlay | Song overlay | Route overlay |
 | FT2 | Sys | Panic | N00B | Help | Exit |
 | FT2 tools | Ops | Arrange | Loop | FX | Mute lane |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
 | FT2 tools | Page | Mute page (`MUTE PG`) | — | — | — |
 | FT2 tools | Sys | Panic | Help | — | Exit |
-| FT2 Record | Play | N00B | Play | Record | — |
 | FT2 loop | Play | Rewind | Play | Import | Remove |
 | FT2 loop | BPM | BPM− | BPM+ | BPM x | Unit |
 | FT2 loop | Cut | Start− | Start+ | Length− | Length+ |
 | FT2 loop | Sys | Panic | Align | Library | Exit |
 | FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
 | FT2 loop align | Sys | Panic | Help | — | Exit |
-| FT2 record | Play | N00B | Play | Record/stop | — |
-| FT2 record | Sys | Panic | Help | — | Exit |
-| FT2 step edit | Ops | Blank/skip | Erase | N-off | N00B |
-| FT2 step edit | Set | Page overlay | ADD 0–32 overlay | Note-length overlay | — |
-| FT2 step edit | Sys | Panic | Help | — | Exit edit |
+| FT2 record | Mode | — | Play | Record/stop | Edit |
+| FT2 record | Sys | Panic | N00B | Help | Exit |
+| FT2 edit | Mode | — | Play | Record | Edit/exit |
+| FT2 edit | Edit | Blank/skip | Erase | N-off | ADD 0–32 overlay |
+| FT2 edit | Set | Column− | Column+ | Note-length overlay | Page overlay |
+| FT2 edit | Sys | Panic | N00B | Help | Exit edit |
 | FT2 cell edit | Route | Destination | Channel | Instrument | — |
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
 | FT2 cell edit | Cell | Note | Gate | Velocity | Effect |

@@ -319,6 +319,10 @@ impl GestureCapture {
     pub fn is_active(&self) -> bool {
         !self.collected.is_empty()
     }
+
+    pub fn is_released(&self) -> bool {
+        self.held.is_empty() && self.released_at.is_some()
+    }
 }
 
 impl Song {
@@ -1670,7 +1674,7 @@ pub fn schedule(
                         let gate = pulse_span
                             .mul_f64(f64::from(cell.gate.unwrap_or(song.gate_percent)) / 100.0)
                             .min(remaining);
-                        // Step Edit note length uses an explicit OFF cell for
+                        // Edit note length uses an explicit OFF cell for
                         // lengths of one row or more. A 100% gate is its format-compatible
                         // marker that the later OFF, next note, or Pattern end
                         // owns the release. Ordinary inherited gates and all
@@ -1977,6 +1981,7 @@ pub struct SequencerStatus {
 }
 enum Transport {
     Play(Song, usize, usize),
+    RefreshLoop(Song),
     Stop,
     Mute(usize, bool),
     Thru(PageTarget, Vec<u8>),
@@ -2037,6 +2042,11 @@ impl Sequencer {
             status.generation = status.generation.wrapping_add(1);
         }
         let _ = self.tx.send(Transport::Play(song.clone(), order, row));
+    }
+    /// Replace the material used at the next loop boundary without disturbing
+    /// the cycle that is currently sounding.
+    pub fn refresh_loop(&self, song: &Song) {
+        let _ = self.tx.send(Transport::RefreshLoop(song.clone()));
     }
     pub fn live_input(&self) -> LiveInput {
         LiveInput {
@@ -2164,6 +2174,25 @@ fn run_transport(
                     s.row = row;
                 }
             }
+            Ok(Transport::RefreshLoop(song)) => match schedule(&song, &config, 0, 0) {
+                Ok(next_cycle) => {
+                    repeat_messages = next_cycle;
+                    transport_targets.extend(
+                        repeat_messages
+                            .iter()
+                            .filter_map(|message| message.target.clone()),
+                    );
+                    for target in &transport_targets {
+                        outputs.refresh(target);
+                    }
+                    update_target_status(&status, &outputs, &transport_targets);
+                }
+                Err(error) => {
+                    if let Ok(mut s) = status.lock() {
+                        s.error = Some(error.to_string());
+                    }
+                }
+            },
             Ok(Transport::Stop) => {
                 clock.stop();
                 messages.clear();

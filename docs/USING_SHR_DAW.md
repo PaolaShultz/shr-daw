@@ -42,9 +42,9 @@ chord, note, velocity, and keyboard display remains visible. Allowed notes keep
 their pitch, other notes stay silent, and pressing N00B again restores chromatic
 play.
 
-FT2 toggles the same selected scale directly in Play, Record, and Step Edit on
+FT2 toggles the same selected scale directly in Play, Record, and Edit on
 melodic pages; it never opens another workspace or changes the current mode.
-Record and Edit write only allowed notes; Step Edit note length remains
+Record and Edit write only allowed notes; Edit note length remains
 independent from its row advance. Moving to Drums turns the filter off.
 
 ```text

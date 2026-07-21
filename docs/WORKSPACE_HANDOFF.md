@@ -120,7 +120,7 @@ observed failures before changing behavior.
 
 A later user-authorized musical/hardware pass should exercise the
 standalone/FT2 synth ownership split, N00B versus Play/REC/Edit, independent
-Step Edit length/ADD values, routing-default confirmation, and percussion smart
+Edit length/ADD values, routing-default confirmation, and percussion smart
 column reuse. Do not start that pass merely because the overlay review is
 complete. Detailed UI contracts live in `docs/CONTROLLER_INTERFACE.md`,
 `docs/TRACKER.md`, and the focused routing/effects documents linked from

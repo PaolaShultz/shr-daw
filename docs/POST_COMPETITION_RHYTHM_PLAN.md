@@ -355,8 +355,8 @@ the input's residual distance from the nearest row and store it as cell nudge.
 - Timing comes from the MIDI callback timestamp, not the screen refresh.
 - Notes outside the nudge range choose the adjacent row rather than clamping to
   a misleading extreme.
-- Existing exact channel/note/lane ownership and hardware-only isolation stay
-  intact.
+- Existing exact channel/note/lane ownership and selected-page route isolation
+  stay intact.
 
 Estimated effort: **3–6 days** after microtiming and swing are stable, plus
 human groove authoring and listening time.

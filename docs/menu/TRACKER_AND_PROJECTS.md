@@ -24,9 +24,9 @@ cell cursor and highlighted row remain the next edit/play location.
 
 ![Populated FT2 Pattern in Play mode with the PLAY page](../images/menu/ft2-play-play.png)
 
-`CELL` opens the transactional editor. `PLAY` toggles tracker transport. From
-Stop, `RECORD` starts the current Pattern record loop; from Play it punches in
-without moving the playhead. `STEP` toggles step entry.
+`CELL` opens the transactional editor. `PLAY` toggles tracker transport.
+`RECORD` stops another active mode and starts the current Pattern record loop.
+`EDIT` stops Play or REC before enabling note entry.
 
 ### SELECT — master overlays
 
@@ -67,36 +67,37 @@ help. `EXIT` returns Home.
 
 ## FT2 Pattern — real-time Record context
 
-Record is allowed only on a page routed to external MIDI. Incoming notes are
-consumed before the loaded software synth, auditioned on that page's exact
-target/channel, quantized into the current transport position, and written to
-the selected page. Between notes, the rotary can select another column or page
-without restarting recording or transport. Turns are ignored—not queued—while
-recorded notes remain held, and work again after every matching Note Off.
-Recording started from Stop loops the current Pattern; punch recording follows
-the already-playing Arrangement without restarting it.
+Record uses the selected page's exact online Pattern-owned software or hardware
+instrument. Incoming notes are auditioned on that target/channel, quantized
+into the current transport position, and written to the selected page. Between
+notes, the rotary can select another column or page without restarting
+recording or transport. Turns are ignored—not queued—while recorded notes
+remain held, and work again after every matching Note Off. REC always owns its
+Pattern loop; pressing REC again stops it and returns to stopped Play mode.
+Key release writes a quantized note-off, independently of the Edit note-length
+setting. New captures join playback on the next Pattern repetition.
 
-### PLAY — transport, capture, and filter
+### PLAY — transport and capture
 
 ![Populated FT2 Pattern recording context with the PLAY page](../images/menu/ft2-record-play.png)
 
-`N00B` immediately toggles the active filter without ending capture.
-`PLAY` controls transport. `RECORD` ends real-time capture while preserving the
-notes already entered: it returns to Play after a punch-in, or stops after
-recording was started from Stop. With N00B on, only allowed notes are heard and
-written.
+`PLAY` ends REC and starts normal transport. `RECORD` ends real-time capture
+while preserving the notes already entered. `EDIT` ends REC and enters stopped
+Edit mode. With N00B on, only allowed notes are heard and written.
 
 ### SYS — emergency and normal exits
 
 ![Populated FT2 Pattern recording context with the SYS page](../images/menu/ft2-record-sys.png)
 
-`PANIC` performs the global owned stop. `HELP` explains the current mode.
-`EXIT` leaves the recording context safely.
+`PANIC` performs the global owned stop. `N00B` toggles the same independent
+filter without ending capture. `HELP` explains the current mode. `EXIT` leaves
+the recording context safely.
 
-## FT2 Pattern — Step Edit context
+## FT2 Pattern — Edit context
 
-In Step Edit, a computer key or incoming MIDI gesture writes a note or chord at
-the cursor. Command-pad notes are consumed as controls and are not doubled into
+In Edit, a released melodic note writes immediately into the selected column.
+Only overlapping notes that are physically held together form a chord and fill
+subsequent columns. Command-pad notes are consumed as controls and are not doubled into
 the Pattern or synth. The persistent ADD value chooses any advance from 0
 through 32 rows after entry, blank, erase, or note-off; 0 stays on the current
 row.
@@ -107,33 +108,38 @@ columns 1 and 2; other new voices begin in columns 3 and 4. Occupied cells are
 preserved, and simultaneous voices that want the same column fall through to a
 free one. Melodic pages still fill from the selected column.
 
-### OPS — enter or remove cells
+### MODE — leave Edit for Play or Record
 
-![Populated FT2 Step Edit with the OPS page](../images/menu/ft2-step-edit-ops.png)
+`PLAY` stops Edit and starts normal transport. `RECORD` stops Edit and starts
+real-time capture from the first row. `EDIT` is the active mode; pressing it
+again leaves Edit. Play, Record, and Edit are mutually exclusive.
+
+### EDIT — enter or remove cells
+
+![Populated FT2 Edit mode with the OPS page](../images/menu/ft2-step-edit-ops.png)
 
 `BLANK` advances without writing a note. `ERASE` clears the selected cell.
-`N-OFF` writes a note-off. `N00B` toggles the active filter directly while Step
-Edit remains active.
+`N-OFF` writes a note-off. `ADD` selects an advance from 0 through 32 rows.
 
 ### SET — rotary selectors
 
-![Populated FT2 Step Edit with the SET page](../images/menu/ft2-step-edit-set.png)
+![Populated FT2 Edit mode with the SET page](../images/menu/ft2-step-edit-set.png)
 
-`PAGE` opens the same page/column overlay used in Play. `ADD` opens all row
-advances from 0 through 32. `LENGTH` opens note durations from 1/1 through
-1/128. Turning browses, clicking selects, and Back cancels without leaving
-Step Edit.
+`COL-` and `COL+` move the edit cursor between the page's four note columns.
+`LENGTH` opens note durations from 1/1 through 1/128. `PAGE` opens the same
+page/column overlay used in Play. Turning browses, clicking selects, and Back
+cancels without leaving Edit.
 
-![Step Edit ADD overlay](../images/menu/overlay-edit-add.png)
+![Edit ADD overlay](../images/menu/overlay-edit-add.png)
 
-![Step Edit note-length overlay](../images/menu/overlay-note-length.png)
+![Edit note-length overlay](../images/menu/overlay-note-length.png)
 
 ### SYS — safety, help, and leave edit
 
-![Populated FT2 Step Edit with the SYS page](../images/menu/ft2-step-edit-sys.png)
+![Populated FT2 Edit mode with the SYS page](../images/menu/ft2-step-edit-sys.png)
 
-`PANIC` performs the owned stop. `HELP` opens contextual help. `EXIT` leaves
-Step Edit and returns to Play mode.
+`PANIC` performs the owned stop. `N00B` toggles the same independent filter.
+`HELP` opens contextual help. `EXIT` leaves Edit and returns to Play mode.
 
 ## FT2 Cell Edit
 
@@ -209,7 +215,7 @@ and alignment remain on the separate Loop screen opened from OPS.
 `PANIC` and `HELP` retain their normal meanings. `EXIT` returns to the
 Pattern editor.
 
-## N00B filter and Step Edit note length
+## N00B filter and Edit note length
 
 N00B is an independent scale-filter switch, not a fourth FT2 mode and not a
 duration control. Player owns the scale choice: enabling N00B there adds one
@@ -217,10 +223,11 @@ compact `SCALE` rotary to the unchanged Player screen, and turning the master
 encoder cycles every chromatic root in major and natural minor. FT2 uses that
 selection. On a melodic page, an in-scale key keeps its original pitch and an
 out-of-scale key stays silent; no rejected key is shifted to a nearby note.
-The FT2 button toggles the filter immediately and can stay on through Play,
-Record, and Step Edit; moving to Drums turns only the filter off.
+The FT2 button stays in the same SYS position, toggles the filter immediately,
+and can stay on through Play, Record, and Edit; moving to Drums turns only the
+filter off.
 
-Note duration belongs separately to Step Edit. `LENGTH` opens an overlay for
+Note duration belongs separately to Edit. `LENGTH` opens an overlay for
 `1/1` through `1/128`; it does not change the independent 0–32-row `ADD`
 advance.
 

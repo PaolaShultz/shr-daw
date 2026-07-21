@@ -6,7 +6,7 @@ It does not use FT2 code or read XM files.
 
 ## Modes
 
-The normal FT2 screen has **PLAY**, hardware-only **REC**, and detailed
+The normal FT2 screen has **PLAY**, real-time **REC**, and detailed
 **EDIT** modes. **N00B is a separate on/off filter** that can remain enabled in
 all three. It keeps the selected melodic page as the instrument and filters
 input through a chosen chromatic root plus major or natural-minor scale. An
@@ -14,6 +14,8 @@ in-scale key keeps its original pitch; an out-of-scale key is consumed and
 stays silent. N00B never quantizes a rejected key to a different note.
 Each entry to the main FT2 screen opens controller-menu page 1, **PLAY**, where
 the **PLAY** and **RECORD** buttons are immediately available.
+PLAY, REC, and EDIT are mutually exclusive. Selecting one ends the other active
+mode first; pressing the active PLAY, REC, or EDIT control stops or leaves it.
 
 In Play, N00B changes only what is heard. In REC and EDIT, allowed notes can be
 written normally while rejected notes remain silent and unwritten. Turning the
@@ -21,9 +23,10 @@ filter on or off never changes Play/REC/EDIT. N00B is refused on a percussion
 page; moving onto Drums turns only the filter off and preserves the current
 mode.
 
-The N00B button is present in Play, REC, and EDIT. Each press toggles the
-Player-selected scale directly without opening another screen or changing
-existing cells. Command pads and their releases remain consumed.
+The N00B button stays in the same FT2 **SYS** position in Play, REC, and EDIT.
+Each press toggles the Player-selected scale directly without opening another
+screen or changing existing cells. Command pads and their releases remain
+consumed.
 
 On the main tracker grid, the physical main rotary selects the previous or next
 column while Play or REC transport is active, continuing through page
@@ -124,19 +127,21 @@ the usable inner area is 36×16 at `(2,2)`.
 
 ## Step editing
 
-Step entry accepts notes and chords from any configured musical input. A chord
-fills up to four lanes and keeps its velocities. **ADD** opens an overlay for
+Step entry accepts notes and chords from any configured musical input. Releasing
+a melodic note commits it immediately to the selected column, so a bass line or
+melody stays in that column. Only notes held at the same time form a chord and
+fill subsequent columns, keeping their velocities. **ADD** opens an overlay for
 every persistent advance from 0 through 32 rows for note/chord entry, blank,
 erase, and note-off; 0 keeps the current row. The FT2 title shows `EDIT +n`.
 A computer keyboard can enter notes with `Z S X D C V G B H N J M`.
 
-**LENGTH** is a separate Step Edit overlay. It chooses `1/1`, `1/2`, `1/4`,
+**LENGTH** is a separate Edit overlay. It chooses `1/1`, `1/2`, `1/4`,
 `1/8`, `1/16`, `1/32`, `1/64`, or `1/128` for melodic entries and defaults to `1/16`. The
 selected duration writes the existing gate/explicit note-off representation;
 it does not change the independent **ADD** cursor advance or create a second
 timing system.
 
-Percussion pages keep drum voices visually stable during Step Edit. For each
+Percussion pages keep drum voices visually stable during Edit. For each
 played note, SHR searches all four columns in earlier rows of
 the current Pattern, newest row first, and reuses the column where that exact
 GM drum note last appeared. The two GM bass-drum notes share a family fallback,
@@ -193,29 +198,31 @@ the previous value and selection.
 
 ## Real-time recording
 
-From a stopped transport, **REC** loops the selected pattern and records into
-the selected page; pressing **REC** again stops. During song playback, **REC**
-punches in without stopping, restarting, or moving the playhead, and the next
-press punches out to uninterrupted Play. Between notes, the main rotary may
+**REC** stops any current Play or Edit mode, starts the selected Pattern from
+row 1, and records into the selected page; pressing **REC** again stops and
+returns to stopped Play mode. Between notes, the main rotary may
 select another column or page without leaving REC, and later notes use that
 selected page. While one or more recorded notes are held, rotary turns are
 ignored rather than queued; movement resumes only after every matching Note Off.
 Played notes are placed on the selected page's four lanes and quantized to
-pattern rows. Each assigned lane auditions through that column's channel/
-instrument setup. During recording, those notes do not also pass to the loaded
-software synth. They are auditioned only through the page's hardware MIDI
-target and column channels.
+pattern rows. REC ignores the Edit note-length setting: releasing a key writes
+a quantized note-off for that same lane, so the recorded duration follows the
+performance. Newly captured notes and releases are published to the next loop
+cycle without restarting the cycle currently sounding. Each assigned lane
+auditions through that column's channel and the selected page's exact
+Pattern-owned software or hardware instrument. It does not leak into an
+unrelated standalone Player instrument.
 The source port, not a special MIDI channel, separates a performance keyboard
 from a control-only surface. A combined device retains channel-qualified
 controller mappings.
 
-Real-time recording is hardware-page-only. A page targeting a Pattern-owned
-software instrument, or an `AUTO` page currently resolved to the internal
-instrument, cannot enter **REC**. Choose an available hardware MIDI output
-first. Real-time REC retains its separate active-note lane allocator so note
-releases remain paired with overlapping held notes; the history-based drum
-placement above applies only to Step Edit. **REC END**, **STOP**, **EXIT**, and
-**PANIC** release auditioned notes.
+Real-time recording accepts the selected page when its exact target is online,
+including the factory Software Synth page. An offline or missing target refuses
+**REC** instead of substituting another destination. Real-time REC retains its
+separate active-note lane allocator so note releases remain paired with
+overlapping held notes; the history-based drum placement above applies only to
+Edit. **REC END**, **STOP**, **EXIT**, and **PANIC** release auditioned
+notes.
 
 ## WAV loops
 

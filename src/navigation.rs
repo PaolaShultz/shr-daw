@@ -444,7 +444,7 @@ const TRACKER: [MenuPage; 4] = [
             on("CELL", Action::OpenNoteEditor),
             on("PLAY", Action::TrackerPlayToggle),
             on("RECORD", Action::TrackerRecordToggle),
-            on("STEP", Action::TrackerEdit),
+            on("EDIT", Action::TrackerEdit),
         ],
     ),
     page(
@@ -641,12 +641,12 @@ const TRACKER_LOOP_ALIGN: [MenuPage; 4] = [
 ];
 const TRACKER_RECORD: [MenuPage; 4] = [
     page(
-        "PLAY",
+        "MODE",
         [
-            on("N00B", Action::TrackerNoobToggle),
+            off(""),
             on("PLAY", Action::TrackerPlayToggle),
             on("RECORD", Action::TrackerRecordToggle),
-            off(""),
+            on("EDIT", Action::TrackerEdit),
         ],
     ),
     page("", [off(""), off(""), off(""), off("")]),
@@ -655,38 +655,46 @@ const TRACKER_RECORD: [MenuPage; 4] = [
         "SYS",
         [
             on("PANIC", Action::StopAll),
+            on("N00B", Action::TrackerNoobToggle),
             on("HELP", Action::OpenHelp),
-            off(""),
             on("EXIT", Action::Back),
         ],
     ),
 ];
 const TRACKER_EDIT: [MenuPage; 4] = [
     page(
-        "OPS",
+        "MODE",
+        [
+            off(""),
+            on("PLAY", Action::TrackerPlayToggle),
+            on("RECORD", Action::TrackerRecordToggle),
+            on("EDIT", Action::TrackerEdit),
+        ],
+    ),
+    page(
+        "EDIT",
         [
             on("BLANK", Action::TrackerSkip),
             on("ERASE", Action::TrackerErase),
             on("N-OFF", Action::TrackerNoteOff),
-            on("N00B", Action::TrackerNoobToggle),
+            on("ADD", Action::OpenTrackerAdvanceOverlay),
         ],
     ),
     page(
         "SET",
         [
-            on("PAGE", Action::OpenPageOverlay),
-            on("ADD", Action::OpenTrackerAdvanceOverlay),
+            on("COL-", Action::PreviousTrack),
+            on("COL+", Action::NextTrack),
             on("LENGTH", Action::OpenNoteLengthOverlay),
-            off(""),
+            on("PAGE", Action::OpenPageOverlay),
         ],
     ),
-    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
             on("PANIC", Action::StopAll),
+            on("N00B", Action::TrackerNoobToggle),
             on("HELP", Action::OpenHelp),
-            off(""),
             on("EXIT", Action::TrackerEdit),
         ],
     ),
@@ -1206,16 +1214,21 @@ mod tests {
     }
 
     #[test]
-    fn noob_toggle_is_reachable_in_play_record_and_step_edit() {
+    fn noob_toggle_has_one_global_ft2_position_in_play_record_and_edit() {
         for context in [
             MenuContext::Normal,
             MenuContext::TrackerRecord,
             MenuContext::TrackerEdit,
         ] {
-            assert!(pages(Screen::Tracker, context)
-                .iter()
-                .flat_map(|page| page.slots)
-                .any(|slot| slot.dispatch() == Some(Action::TrackerNoobToggle)));
+            let menu = pages(Screen::Tracker, context);
+            assert_eq!(menu[3].slots[1].dispatch(), Some(Action::TrackerNoobToggle));
+            assert_eq!(
+                menu.iter()
+                    .flat_map(|page| page.slots)
+                    .filter(|slot| slot.dispatch() == Some(Action::TrackerNoobToggle))
+                    .count(),
+                1
+            );
         }
 
         let edit = pages(Screen::Tracker, MenuContext::TrackerEdit);
@@ -1343,7 +1356,7 @@ mod tests {
             slot(Screen::Tracker, MenuContext::TrackerEdit, 0, 1)
                 .unwrap()
                 .action,
-            Action::TrackerErase
+            Action::TrackerPlayToggle
         );
         assert_eq!(
             slot(Screen::TrackerPages, MenuContext::PageTarget, 0, 0)

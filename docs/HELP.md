@@ -179,7 +179,7 @@ Start/Stop. An empty Pattern may run for a live external-sync arpeggiator;
 tracker pages never send notes or programs back through the clock-only route.
 
 EDIT turns incoming notes into pattern data. Encoder press inserts a blank row.
-Step Edit `ADD` opens a rotary overlay choosing any advance from 0 through 32
+Edit `ADD` opens a rotary overlay choosing any advance from 0 through 32
 rows; 0 keeps the cursor on the current row. The FT2 heading shows the active
 value. N-OFF writes a note-off.
 
@@ -194,11 +194,11 @@ a second partial-commit path.
 FT2 N00B toggles the Player-selected scale directly over Play, Record, and Step
 Edit on the selected melodic page; it does not open another screen or change
 the current mode. Out-of-scale keys stay silent and are never moved to another
-pitch. Play can use it without writing; Record and Step Edit write only the
+pitch. Play can use it without writing; Record and Edit write only the
 allowed notes. It turns off automatically on Drums, where the current mode
 remains active.
 
-Step Edit **LENGTH** opens a rotary overlay choosing 1/1, 1/2, 1/4, 1/8, 1/16,
+Edit **LENGTH** opens a rotary overlay choosing 1/1, 1/2, 1/4, 1/8, 1/16,
 1/32, 1/64, or 1/128 for melodic notes. The independent 0–32-row **ADD**
 overlay controls where the next entry goes.
 

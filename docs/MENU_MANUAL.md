@@ -13,8 +13,8 @@ The manual is split into three chapters so it remains usable on a phone:
    Ideas, MIDI Learn, Help, synchronized multitrack recording, the performance
    meter, and Routing.
 2. [FT2, Projects, and Patterns](menu/TRACKER_AND_PROJECTS.md) — the tracker in
-   Play, Record, Step Edit, and Cell Edit; Tools; the N00B scale-filter switch
-   across Play/Record/Edit; separate Step Edit note length; Projects;
+   Play, Record, Edit, and Cell Edit; Tools; the N00B scale-filter switch
+   across Play/Record/Edit; separate Edit note length; Projects;
    Pattern tools; drum patterns; Arrangement; the Tracks screen; and routing
    fields.
 3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — WAV loop setup, the shared
@@ -79,7 +79,7 @@ flowchart TD
     T --> ON[PAGE / PATTERN / SONG / ROUTE overlays]
     T --> N[N00B filter on/off]
     T --> R[Record context]
-    T --> E[Step Edit]
+    T --> E[Edit]
     E --> CE[Cell Edit]
     ON --> TR[Tracks and routing]
     ON --> F[Project Files / Pattern tools]
