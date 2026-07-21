@@ -108,6 +108,7 @@ pub struct TrackerRoute {
     scale: Option<crate::scale::Scale>,
     bank_select: crate::config::BankSelectMode,
     revision: u64,
+    navigation_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -195,6 +196,7 @@ struct MidiInputPlan {
 #[derive(Debug, Default)]
 struct LiveMidiState {
     tracker_revision: u64,
+    tracker_navigation_revision: u64,
     tracker_next_column: std::collections::BTreeMap<String, usize>,
     tracker_programs: std::collections::BTreeMap<(crate::sequencer::PageTarget, u8), u8>,
     tracker_notes:
@@ -217,6 +219,7 @@ impl Default for TrackerRoute {
             scale: None,
             bank_select: crate::config::BankSelectMode::Off,
             revision: 0,
+            navigation_revision: 0,
         }
     }
 }
@@ -224,6 +227,16 @@ impl Default for TrackerRoute {
 impl TrackerRoute {
     pub fn configure(&mut self, config: TrackerRouteConfig<'_>) {
         self.revision = self.revision.wrapping_add(1);
+        self.navigation_revision = self.navigation_revision.wrapping_add(1);
+        self.apply(config);
+    }
+
+    pub(crate) fn configure_navigation(&mut self, config: TrackerRouteConfig<'_>) {
+        self.navigation_revision = self.navigation_revision.wrapping_add(1);
+        self.apply(config);
+    }
+
+    fn apply(&mut self, config: TrackerRouteConfig<'_>) {
         self.enabled = config.enabled;
         let software_synth = matches!(
             &config.target,
@@ -1526,6 +1539,13 @@ fn route_live_message(
         state.tracker_next_column.clear();
         state.tracker_programs.clear();
         state.tracker_revision = revision;
+        state.tracker_navigation_revision = route.map_or(0, |route| route.navigation_revision);
+    } else {
+        let navigation_revision = route.map_or(0, |route| route.navigation_revision);
+        if navigation_revision != state.tracker_navigation_revision {
+            state.tracker_next_column.clear();
+            state.tracker_navigation_revision = navigation_revision;
+        }
     }
     let status = message.first().copied().unwrap_or(0);
     let channel = status & 0x0f;
@@ -3019,6 +3039,53 @@ mod tests {
             vec![0x85, 67, 0]
         )));
         assert!(release_all_inputs(&mut state).is_empty());
+    }
+
+    #[test]
+    fn tracker_navigation_keeps_held_notes_on_their_original_route() {
+        let config = RuntimeConfig::default().external_midi;
+        let mut route = TrackerRoute::default();
+        route.configure(TrackerRouteConfig {
+            enabled: true,
+            target: crate::sequencer::PageTarget::Midi("bass output".into()),
+            columns: [(2, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
+            start_column: 0,
+            percussion: false,
+            audition_note: None,
+            scale: None,
+            external: &config,
+        });
+        let mut state = LiveMidiState::default();
+        let source = "keyboard".to_owned();
+        route_live_message(&mut state, &source, &[0x90, 60, 100], Some(&route), None);
+
+        route.configure_navigation(TrackerRouteConfig {
+            enabled: true,
+            target: crate::sequencer::PageTarget::Midi("lead output".into()),
+            columns: [(5, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
+            start_column: 0,
+            percussion: false,
+            audition_note: None,
+            scale: None,
+            external: &config,
+        });
+        let new_note =
+            route_live_message(&mut state, &source, &[0x90, 64, 110], Some(&route), None);
+        assert!(!new_note.contains(&MidiDelivery::Tracker(
+            crate::sequencer::PageTarget::Midi("bass output".into()),
+            vec![0x82, 60, 0]
+        )));
+        assert!(new_note.contains(&MidiDelivery::Tracker(
+            crate::sequencer::PageTarget::Midi("lead output".into()),
+            vec![0x95, 64, 110]
+        )));
+
+        let old_note_off =
+            route_live_message(&mut state, &source, &[0x80, 60, 0], Some(&route), None);
+        assert!(old_note_off.contains(&MidiDelivery::Tracker(
+            crate::sequencer::PageTarget::Midi("bass output".into()),
+            vec![0x82, 60, 0]
+        )));
     }
 
     #[test]

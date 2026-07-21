@@ -15,8 +15,10 @@ shown as offline where no actual device was opened for documentation.
 
 ## FT2 Pattern — Play mode
 
-Turn the main encoder to move through rows. Left/right move the order or lane
-with the keyboard. The highlighted row is the next edit/play location.
+Turn the main encoder to select the previous or next column, including across
+page boundaries. Keyboard Up/Down still moves rows, and Left/right move the
+order or lane. The shaded column is the live selection; the stronger yellow
+cell cursor and highlighted row remain the next edit/play location.
 
 ### MOVE — page and track navigation
 
@@ -64,9 +66,12 @@ returns Home.
 
 Record is allowed only on a page routed to external MIDI. Incoming notes are
 consumed before the loaded software synth, auditioned on that page's exact
-target/channel, quantized into the current transport position, and written only
-to that page. Recording started from Stop loops the current Pattern; punch
-recording follows the already-playing Arrangement without restarting it.
+target/channel, quantized into the current transport position, and written to
+the selected page. Between notes, the rotary can select another column or page
+without restarting recording or transport. Turns are ignored—not queued—while
+recorded notes remain held, and work again after every matching Note Off.
+Recording started from Stop loops the current Pattern; punch recording follows
+the already-playing Arrangement without restarting it.
 
 ### PLAY — transport, capture, and filter
 

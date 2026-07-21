@@ -23,6 +23,14 @@ The N00B button is present in Play, REC, and EDIT. The first press opens scale
 setup; once enabled, pressing it again turns the filter off. Switching it never
 changes existing cells. Command pads and their releases remain consumed.
 
+On the main tracker grid, the physical main rotary selects the previous or next
+column in Play and REC, continuing through page boundaries from Software Synth
+to MIDI, Drums, and later pages. The selected column has a subtle dark full-
+column shade; the yellow cell cursor and row/warning emphasis remain stronger.
+The rotary still moves rows in EDIT, and keyboard arrows retain their existing
+row navigation in every mode. Rotary selection does not move the row, playhead,
+Arrangement Step, or transport.
+
 ## Projects, patterns, and arrangement
 
 An SHR-DAW Project contains FT2 Patterns and an FT2 Arrangement. An FT2 Pattern
@@ -71,11 +79,12 @@ software routes instead of sending both through the wrong engine or sound.
 
 Computer-keyboard notes and ordinary incoming musical MIDI audition the
 selected page's target, channel, program, and drum mapping throughout the FT2
-workspace. Changing page, track route, preset, channel, program, or destination
-first ends notes on the old route. The FX rack/editor is an FT2 child: live
-input and the owned synth stay active, and Back returns to its FT2 caller.
-Leaving top-level FT2 for an unrelated workspace ends notes and unloads its
-owned synth.
+workspace. Main-rotary column navigation preserves already sounding notes on
+their original routes while later notes start from the newly selected column.
+Explicit page/track route, preset, channel, program, or destination changes
+still end notes on the old route. The FX rack/editor is an FT2 child: live input
+and the owned synth stay active, and Back returns to its FT2 caller. Leaving
+top-level FT2 for an unrelated workspace ends notes and unloads its owned synth.
 
 `AUTO · machine default` is a real portable target. Its saved channel, bank,
 program, and setup fields are blank; at playback the machine's configured
@@ -170,14 +179,18 @@ the previous value and selection.
 
 ## Real-time recording
 
-From a stopped transport, **REC** loops the selected pattern and records only
-the visible page; pressing **REC** again stops. During song playback, **REC**
+From a stopped transport, **REC** loops the selected pattern and records into
+the selected page; pressing **REC** again stops. During song playback, **REC**
 punches in without stopping, restarting, or moving the playhead, and the next
-press punches out to uninterrupted Play. Played notes are placed on the visible
-page's four lanes and quantized to pattern rows. Each assigned lane auditions
-through that column's channel/instrument setup. During recording, those notes
-do not also pass to the loaded software synth. They are auditioned only through
-the page's hardware MIDI target and column channels.
+press punches out to uninterrupted Play. Between notes, the main rotary may
+select another column or page without leaving REC, and later notes use that
+selected page. While one or more recorded notes are held, rotary turns are
+ignored rather than queued; movement resumes only after every matching Note Off.
+Played notes are placed on the selected page's four lanes and quantized to
+pattern rows. Each assigned lane auditions through that column's channel/
+instrument setup. During recording, those notes do not also pass to the loaded
+software synth. They are auditioned only through the page's hardware MIDI
+target and column channels.
 The source port, not a special MIDI channel, separates a performance keyboard
 from a control-only surface. A combined device retains channel-qualified
 controller mappings.

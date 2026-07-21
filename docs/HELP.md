@@ -12,8 +12,9 @@
 
 ## Controller basics
 
-The main encoder moves one visible row or value at a time. Press it to select
-the highlighted row, confirm a field, or follow a help link.
+The main encoder moves one visible row or value at a time except on the FT2
+grid, where Play/REC turns select columns and Edit turns move rows. Press it to
+select the highlighted row, confirm a field, or follow a help link.
 
 Home centers every label in one equal-width bar. MIDI Learn, Routing, and
 Effects are separate destinations. Routing reports current controller,
@@ -33,7 +34,7 @@ The controller menu has four pages. Page 1 is OPS. On child screens, page
 4 item 4 is EXIT and returns one level. Empty buttons are hidden and silent.
 
 Four-button controllers use encoder press to enter page-select mode. Turn to
-choose a menu page, then press again to return the encoder to row movement.
+choose a menu page, then press again to return the encoder to screen control.
 In Help, use OPS OPEN to follow the highlighted link. In target/channel
 editors, use OPS CONFIRM; SYS EXIT cancels the field.
 
@@ -151,6 +152,11 @@ actual JACK input.
 
 FT2 is a Pattern sequencer. PLAY starts at the cursor, START plays from the
 Project's Arrangement beginning, and STOP stops only the tracker transport.
+In Play and REC, turn the physical main encoder to select columns across page
+boundaries; keyboard Up/Down still moves rows. Edit keeps encoder row movement.
+The shaded selected column does not move the row, playhead, Arrangement Step,
+or transport. During REC, turns made while recorded notes are held are ignored
+until all of those notes receive Note Off.
 
 FT2 `NAV` contains `PAGE`, `PATTERN`, `SONG`, and `ROUTE`. PAGE selects one of
 the current Pattern's four-column locations and can open the full Tracks

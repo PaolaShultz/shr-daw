@@ -46,6 +46,12 @@ Use the installed Rust 1.85 toolchain because the system Cargo may be too old:
 PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo check --locked
 ```
 
+Temporary race-the-clock rule: do not run builds or any command that compiles
+the project until the user explicitly asks for the combined build-and-test
+pass. This includes `cargo build`, `cargo check`, `cargo test`, Clippy, and
+other build-producing validation. Add requested changes serially and limit
+intermediate validation to formatting and source-level inspection.
+
 During the competition heavy-test phase, optimize for incremental debug work:
 use formatting, `cargo check --locked`, and focused tests for changed behavior;
 run `cargo build --locked` only when a binary is needed for user testing. Do

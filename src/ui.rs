@@ -3762,6 +3762,14 @@ impl App {
         };
     }
     fn sync_tracker_route(&mut self) {
+        self.configure_tracker_route(false);
+    }
+
+    fn sync_tracker_route_for_navigation(&mut self) {
+        self.configure_tracker_route(true);
+    }
+
+    fn configure_tracker_route(&mut self, preserve_notes: bool) {
         let Some(page) = self.current_page() else {
             return;
         };
@@ -3789,10 +3797,12 @@ impl App {
                 })
         });
         if let Ok(mut route) = self.tracker_route.lock() {
-            for (target, channel) in route.destinations() {
-                self.tracker_live_input.cancel(&target, channel);
+            if !preserve_notes {
+                for (target, channel) in route.destinations() {
+                    self.tracker_live_input.cancel(&target, channel);
+                }
             }
-            route.configure(crate::engine::TrackerRouteConfig {
+            let config = crate::engine::TrackerRouteConfig {
                 enabled: self.tracker_workspace_active(),
                 target: page.target.clone(),
                 columns,
@@ -3801,7 +3811,12 @@ impl App {
                 audition_note,
                 scale: (self.tracker_noob && !page.percussion).then_some(self.noob_scale),
                 external: &external,
-            });
+            };
+            if preserve_notes {
+                route.configure_navigation(config);
+            } else {
+                route.configure(config);
+            }
         }
     }
 
@@ -3958,6 +3973,29 @@ impl App {
         if !self.leave_noob_on_percussion() {
             self.sync_tracker_route();
         }
+    }
+    fn move_tracker_rotary_column(&mut self, direction: i8) {
+        if self.tracker_mode == TrackerMode::Rec
+            && self
+                .tracker_recording
+                .as_ref()
+                .is_some_and(|recording| !recording.active_lanes.is_empty())
+        {
+            return;
+        }
+        let current = self.tracker_page * LANES_PER_PAGE + self.tracker_track;
+        let next = wrapped_index(current, self.current_total_lanes(), direction);
+        self.tracker_page = next / LANES_PER_PAGE;
+        self.tracker_track = next % LANES_PER_PAGE;
+        if let Some(recording) = self.tracker_recording.as_mut() {
+            recording.page = self.tracker_page;
+            recording.next_lane = self.tracker_track;
+        }
+        if self.tracker_noob && self.current_page().is_some_and(|page| page.percussion) {
+            self.tracker_noob = false;
+            self.status = "N00B off on Drums · current FT2 mode unchanged".into();
+        }
+        self.sync_tracker_route_for_navigation();
     }
     fn move_tracker_page(&mut self, direction: i8) {
         self.cancel_tracker_gesture();
@@ -8366,6 +8404,16 @@ fn dispatch_encoder(
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
 ) {
+    dispatch_encoder_input(action, app, state, tx, true);
+}
+
+fn dispatch_encoder_input(
+    action: crate::pads::EncoderAction,
+    app: &mut App,
+    state: &Path,
+    tx: &std::sync::mpsc::Sender<MidiEvent>,
+    physical: bool,
+) {
     if app.overlay.is_some() {
         match action {
             crate::pads::EncoderAction::Up => app.move_overlay(-1),
@@ -8400,6 +8448,21 @@ fn dispatch_encoder(
         || app.screen == Screen::TrackerNoteLength
         || app.noob_target.is_some()
         || app.confirm_routing_defaults;
+    let tracker_column_turn = physical
+        && app.screen == Screen::Tracker
+        && !value_editor_owns_encoder
+        && !(app.controller_layout == ControllerLayout::Four && app.page_select_mode)
+        && matches!(app.tracker_mode, TrackerMode::Play | TrackerMode::Rec);
+    if tracker_column_turn {
+        match action {
+            crate::pads::EncoderAction::Up => app.move_tracker_rotary_column(-1),
+            crate::pads::EncoderAction::Down => app.move_tracker_rotary_column(1),
+            crate::pads::EncoderAction::Select => {}
+        }
+        if action != crate::pads::EncoderAction::Select {
+            return;
+        }
+    }
     if app.controller_layout == ControllerLayout::Four && !value_editor_owns_encoder {
         match action {
             crate::pads::EncoderAction::Select => {
@@ -9450,7 +9513,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         KeyCode::Enter => Some(crate::pads::EncoderAction::Select),
         _ => None,
     } {
-        dispatch_encoder(action, a, state, tx);
+        dispatch_encoder_input(action, a, state, tx, false);
         return false;
     }
     let letter_jump_blocked = a.keyboard_modal_active();
@@ -12467,7 +12530,25 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         let column_width = grid.width.saturating_sub(row_width) / visible_tracks.max(1) as u16;
         let rows = grid.height.saturating_sub(1) as usize;
         let start = a.tracker_row.saturating_sub(rows / 2);
-        let mut header = String::from("ROW");
+        for index in 0..visible_tracks {
+            f.render_widget(
+                Block::default().style(Style::default().bg(if index == a.tracker_track {
+                    Color::Indexed(234)
+                } else {
+                    Color::Black
+                })),
+                rect(
+                    grid.x + row_width + index as u16 * column_width,
+                    grid.y,
+                    column_width,
+                    grid.height,
+                ),
+            );
+        }
+        let mut header = vec![Span::styled(
+            "ROW",
+            Style::default().fg(Color::Yellow).bg(Color::Black),
+        )];
         for (index, lane) in page.lanes.iter().enumerate() {
             let setup = page.column(index);
             let channel = if page.target == PageTarget::Default {
@@ -12481,21 +12562,30 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 channel,
                 sequencer::musician_program(setup.program)
             );
-            header.push_str(&format!(
-                "{:^w$}",
-                truncate(
-                    if column_width >= 8 {
-                        &compact
-                    } else {
-                        &lane.name
-                    },
-                    usize::from(column_width)
+            header.push(Span::styled(
+                format!(
+                    "{:^w$}",
+                    truncate(
+                        if column_width >= 8 {
+                            &compact
+                        } else {
+                            &lane.name
+                        },
+                        usize::from(column_width)
+                    ),
+                    w = usize::from(column_width)
                 ),
-                w = usize::from(column_width)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .bg(if index == a.tracker_track {
+                        Color::Indexed(234)
+                    } else {
+                        Color::Black
+                    }),
             ));
         }
         f.render_widget(
-            Paragraph::new(header).style(Style::default().fg(Color::Yellow)),
+            Paragraph::new(Spans::from(header)),
             rect(grid.x, grid.y, grid.width, 1),
         );
         for (screen_row, row_index) in (start..(start + rows).min(pattern.rows.len())).enumerate() {
@@ -12541,6 +12631,11 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                     sequencer::note_name(cell.note),
                     cell.command.marker()
                 );
+                let column_background = if track_index == first_track + a.tracker_track {
+                    Color::Indexed(234)
+                } else {
+                    Color::Black
+                };
                 spans.push(Span::styled(
                     format!("{text:<w$}", w = usize::from(column_width)),
                     if cursor {
@@ -12551,9 +12646,9 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                     } else if selected {
                         Style::default().bg(Color::DarkGray)
                     } else if beat_start {
-                        Style::default().fg(Color::Yellow)
+                        Style::default().fg(Color::Yellow).bg(column_background)
                     } else {
-                        Style::default()
+                        Style::default().bg(column_background)
                     },
                 ));
             }
@@ -13841,7 +13936,7 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
         ScreenshotScenario::TrackerPlay => {
             fill_demo_song(app);
             app.tracker_mode = TrackerMode::Play;
-            app.status = "PLAY mode · encoder moves rows".into();
+            app.status = "PLAY mode · encoder selects columns".into();
         }
         ScreenshotScenario::TrackerEdit => {
             fill_demo_song(app);
@@ -16777,9 +16872,103 @@ mod tests {
         drain(&rx, &mut four, Path::new("/none"), &tx);
         assert!(!four.page_select_mode);
         assert_eq!(
-            four.tracker_row, 1,
+            four.tracker_track, 1,
             "normal encoder operation remains available"
         );
+        assert_eq!(four.tracker_row, 0);
+    }
+
+    #[test]
+    fn ft2_rotary_selects_columns_across_pages_but_keyboard_and_edit_keep_rows() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        fill_demo_song(&mut a);
+        a.screen = Screen::Tracker;
+        a.tracker_mode = TrackerMode::Play;
+        a.tracker_order = 2;
+        a.tracker_row = 9;
+        a.tracker_page = 0;
+        a.tracker_track = LANES_PER_PAGE - 1;
+        let transport = a.sequencer.status();
+
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
+        assert_eq!((a.tracker_order, a.tracker_row), (2, 9));
+        assert_eq!(a.sequencer.status().playing, transport.playing);
+        assert_eq!(a.sequencer.status().order, transport.order);
+        assert_eq!(a.sequencer.status().row, transport.row);
+
+        key(KeyCode::Down, &mut a, Path::new("/none"), &tx);
+        assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
+        assert_eq!(a.tracker_row, 10);
+
+        a.tracker_mode = TrackerMode::Edit;
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
+        assert_eq!(a.tracker_row, 11);
+    }
+
+    #[test]
+    fn ft2_record_rotary_ignores_turns_until_every_recorded_note_is_off() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        fill_demo_song(&mut a);
+        a.screen = Screen::Tracker;
+        a.tracker_mode = TrackerMode::Rec;
+        a.tracker_row = 7;
+        a.tracker_page = 0;
+        a.tracker_track = LANES_PER_PAGE - 1;
+        a.tracker_recording = Some(TrackerRecording {
+            pattern: 0,
+            order: 0,
+            page: 0,
+            return_to_play: false,
+            last_row: 7,
+            next_lane: LANES_PER_PAGE - 1,
+            active_lanes: HashMap::from([((0, 60), vec![LANES_PER_PAGE - 1])]),
+            notes: 1,
+        });
+
+        for _ in 0..2 {
+            dispatch_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+        }
+        assert_eq!((a.tracker_page, a.tracker_track), (0, LANES_PER_PAGE - 1));
+        assert_eq!(a.tracker_row, 7);
+
+        a.record_tracker_midi(&[0x80, 60, 0]);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
+        let recording = a.tracker_recording.as_ref().unwrap();
+        assert_eq!(
+            (recording.pattern, recording.order, recording.page),
+            (0, 0, 1)
+        );
+        assert_eq!(recording.next_lane, 0);
+        assert_eq!(recording.notes, 1);
+        assert_eq!(a.tracker_row, 7);
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
     }
 
     #[test]
@@ -19469,6 +19658,28 @@ mod tests {
         assert_eq!(b.get(0, 3).fg, Color::Yellow);
         assert_eq!(b.get(0, 11).fg, Color::Yellow);
         assert_eq!(b.get(0, 10).fg, Color::DarkGray);
+    }
+
+    #[test]
+    fn tracker_selected_column_uses_subtle_background_below_stronger_cursor_styles() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_track = 1;
+        a.tracker_row = 4;
+        let b = TestBackend::new(40, 20);
+        let mut t = Terminal::new(b).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let b = t.backend().buffer();
+
+        assert_eq!(b.get(12, 1).bg, Color::Indexed(234));
+        assert_eq!(b.get(12, 2).bg, Color::Indexed(234));
+        assert_eq!(b.get(12, 16).bg, Color::Indexed(234));
+        assert_eq!(b.get(3, 1).bg, Color::Black);
+        assert_eq!(b.get(3, 2).bg, Color::Black);
+        assert_eq!(b.get(3, 16).bg, Color::Black);
+        assert_eq!(b.get(12, 6).bg, Color::Yellow);
+        assert_eq!(b.get(3, 6).bg, Color::DarkGray);
     }
 
     #[test]

@@ -134,9 +134,10 @@ workflow. Separate performance inputs are never candidates for learning.
 Home is a plain centered inverted-selection list. Other screens show their current
 controller page and available actions; empty actions and pages are hidden. The
 main encoder moves through lists, rows, pages, and values, and its press selects
-or confirms. Back from a top-level workspace returns Home. Nested tools and
-editors return one level at a time, without stopping unrelated playback or
-recording state.
+or confirms. On the FT2 grid, Play and REC instead use encoder turns for
+cross-page column selection; Edit and keyboard Up/Down retain row movement.
+Back from a top-level workspace returns Home. Nested tools and editors return
+one level at a time, without stopping unrelated playback or recording state.
 
 Up/Down browsing wraps universally, including overlays and editor choice
 lists. Functional sentinel rows—Blank/Skip, Off, Clear, Default/AUTO, and the

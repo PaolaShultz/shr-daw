@@ -29,8 +29,8 @@ from the splash.
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
 | Playback | Inspect held notes/chords, aligned decimal MIDI strike velocities, and keyboard state; enable a root plus major/natural-minor N00B filter or return to chromatic Normal; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
-| FT2 normal | Previous/next row (keyboard/encoder); Page−/Page+/Track−/Track+ on controller page 1; play, record, cell edit, and step edit on page 2; universal PAGE/PATTERN/SONG/ROUTE overlays on page 3; panic/help/Exit on page 4. |
-| FT2 record | Record quantized notes into only the current page/current pattern; route live notes only to that page's hardware MIDI target; stop record, stop, exit, and panic remain available. |
+| FT2 normal | Main rotary selects the previous/next column across page boundaries in Play and Rec; keyboard Up/Down still moves rows, and Edit keeps rotary row movement. Page−/Page+/Track−/Track+ remain on controller page 1; play, record, cell edit, and step edit are on page 2; universal PAGE/PATTERN/SONG/ROUTE overlays are on page 3; panic/help/Exit are on page 4. |
+| FT2 record | Record quantized notes into the selected page/current pattern and route live notes only to that page's hardware MIDI target. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; stop record, stop, exit, and panic remain available. |
 | FT2 edit | All cursor and transport operations; musical keyboard or incoming MIDI note/chord gesture entry; independent 1/1–1/32 note length; blank/skip; erase; note off; 1/2/4/8-row entry advance; leave edit; lane mute. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Step Edit on a melodic page. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B preserves the current mode; moving to Drums turns only the filter off. |
 | FT2 loop | Select/import WAV; inspect its separate loop-only stereo RMS/peak/`MAX`/clip meter; confirmed Project detach without deleting the private WAV; play here/from start/stop; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; align child screen for auto bar alignment and one-bar placement shifts. |
@@ -89,9 +89,10 @@ MTR's FX launcher reuses the same rendering, input, toggle, and return layer.
 - Four buttons: four item buttons; encoder press enters/leaves page-selection
   mode and encoder turn changes pages while that mode is visible.
 - Outside four-button page-selection mode, encoder turns retain list, row, and
-  field adjustment. Encoder press retains the existing select/confirm action on
-  eight- and five-button layouts. Menu slots do not duplicate those master
-  rotary selection actions.
+  field adjustment except on the normal FT2 grid: Play and Rec use turns for
+  cross-page column selection, while Edit keeps row movement. Encoder press
+  retains the existing select/confirm action on eight- and five-button layouts.
+  Menu slots do not duplicate those master rotary selection actions.
 - An open overlay always gives the encoder to overlay browsing/editing, so a
   four-button controller cannot become stranded in page-selection mode.
 - Each screen remembers its last selected page. Entering/leaving a contextual
