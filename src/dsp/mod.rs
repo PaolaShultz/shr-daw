@@ -8,6 +8,9 @@
 use std::fmt;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
+#[cfg(test)]
+pub(crate) mod analysis;
+
 pub const MIN_SAMPLE_RATE: f32 = 8_000.0;
 pub const MAX_SAMPLE_RATE: f32 = 384_000.0;
 pub const MAX_METER_WINDOW: usize = 4_096;
@@ -608,18 +611,24 @@ impl SineLfo {
         phase_radians: f32,
         sample_rate: f32,
     ) -> DspResult<()> {
-        validate_sample_rate(sample_rate)?;
-        if !frequency.is_finite()
-            || frequency <= 0.0
-            || frequency > sample_rate * 0.25
-            || !phase_radians.is_finite()
-        {
+        if !phase_radians.is_finite() {
             return Err(DspError("invalid LFO frequency or phase"));
         }
+        self.set_frequency(frequency, sample_rate)?;
         (self.sine, self.cosine) = phase_radians.sin_cos();
+        self.normalization_countdown = 4_096;
+        Ok(())
+    }
+
+    /// Change oscillator speed without resetting its instantaneous phase.
+    /// This is the control-thread path for click-conscious live rate changes.
+    pub fn set_frequency(&mut self, frequency: f32, sample_rate: f32) -> DspResult<()> {
+        validate_sample_rate(sample_rate)?;
+        if !frequency.is_finite() || frequency <= 0.0 || frequency > sample_rate * 0.25 {
+            return Err(DspError("invalid LFO frequency or phase"));
+        }
         let step = 2.0 * std::f32::consts::PI * frequency / sample_rate;
         (self.step_sine, self.step_cosine) = step.sin_cos();
-        self.normalization_countdown = 4_096;
         Ok(())
     }
 
@@ -824,6 +833,7 @@ pub(crate) mod allocation_test {
 #[cfg(test)]
 mod tests {
     use super::allocation_test::assert_no_allocations;
+    use super::analysis::spectral_amplitude;
     use super::*;
 
     fn close(left: f32, right: f32, tolerance: f32) {
@@ -929,6 +939,27 @@ mod tests {
     }
 
     #[test]
+    fn linear_fractional_delay_high_frequency_loss_matches_its_known_response() {
+        let sample_rate = 48_000.0;
+        let frequency = 10_000.0;
+        let mut delay = FractionalDelayLine::new(8).unwrap();
+        let mut output = Vec::with_capacity(43_200);
+        for index in 0..48_000 {
+            let input = (2.0 * std::f32::consts::PI * frequency * index as f32 / sample_rate).sin();
+            delay.push(input);
+            let delayed = delay.read(1.5);
+            if index >= 4_800 {
+                output.push(delayed);
+            }
+        }
+        let measured = spectral_amplitude(&output, 9_000);
+        let expected = (std::f64::consts::PI * frequency as f64 / sample_rate as f64).cos();
+        assert!((measured - expected).abs() < 1.0e-5);
+        let loss_db = 20.0 * measured.log10();
+        assert!((-2.02..=-2.00).contains(&loss_db), "{loss_db:.3} dB");
+    }
+
+    #[test]
     fn envelope_attack_and_release_are_monotonic_and_resettable() {
         let mut envelope = EnvelopeFollower::new(10.0, 100.0, 48_000.0).unwrap();
         let rising: Vec<_> = (0..100).map(|_| envelope.process_magnitude(1.0)).collect();
@@ -952,6 +983,19 @@ mod tests {
         for _ in 0..1_000_000 {
             assert!(lfo.next_value().is_finite());
         }
+    }
+
+    #[test]
+    fn lfo_rate_change_preserves_instantaneous_phase() {
+        let mut changed = SineLfo::new(0.5, 0.0, 48_000.0).unwrap();
+        let mut reference = SineLfo::new(0.5, 0.0, 48_000.0).unwrap();
+        for _ in 0..12_345 {
+            close(changed.next_value(), reference.next_value(), 1.0e-7);
+        }
+        changed.set_frequency(5.0, 48_000.0).unwrap();
+        close(changed.next_value(), reference.next_value(), 1.0e-7);
+        assert!((changed.next_value() - reference.next_value()).abs() < 0.001);
+        assert!(changed.set_frequency(f32::NAN, 48_000.0).is_err());
     }
 
     #[test]

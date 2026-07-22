@@ -27,6 +27,8 @@ struct ModeBranch {
     mode: Mode,
     dc_left: DcBlocker,
     dc_right: DcBlocker,
+    previous_left: Option<f32>,
+    previous_right: Option<f32>,
 }
 
 impl ModeBranch {
@@ -35,6 +37,8 @@ impl ModeBranch {
             mode,
             dc_left: DcBlocker::new(DC_BLOCK_HZ, sample_rate)?,
             dc_right: DcBlocker::new(DC_BLOCK_HZ, sample_rate)?,
+            previous_left: None,
+            previous_right: None,
         })
     }
 
@@ -42,12 +46,18 @@ impl ModeBranch {
         self.mode = mode;
         self.dc_left.reset();
         self.dc_right.reset();
+        self.previous_left = None;
+        self.previous_right = None;
     }
 
     #[inline]
     fn process(&mut self, frame: StereoFrame, bias: f32) -> StereoFrame {
-        let left = transfer(self.mode, frame.left, bias);
-        let right = transfer(self.mode, frame.right, bias);
+        let left_input = shaper_input(self.mode, frame.left, bias);
+        let right_input = shaper_input(self.mode, frame.right, bias);
+        let left = antialiased_transfer(self.mode, left_input, self.previous_left);
+        let right = antialiased_transfer(self.mode, right_input, self.previous_right);
+        self.previous_left = Some(left_input);
+        self.previous_right = Some(right_input);
         if self.mode == Mode::AsymmetricDiodeLike {
             StereoFrame::new(self.dc_left.process(left), self.dc_right.process(right))
         } else {
@@ -197,6 +207,7 @@ impl Distortion {
 }
 
 #[inline]
+#[cfg(test)]
 fn transfer(mode: Mode, input: f32, bias: f32) -> f32 {
     match mode {
         Mode::SoftCubic => soft_cubic(input),
@@ -209,6 +220,98 @@ fn transfer(mode: Mode, input: f32, bias: f32) -> f32 {
                 -0.8 * soft_cubic(-input * 0.9)
             }
         }
+    }
+}
+
+#[inline]
+fn shaper_input(mode: Mode, input: f32, bias: f32) -> f32 {
+    if mode == Mode::AsymmetricDiodeLike {
+        input + bias
+    } else {
+        input
+    }
+}
+
+/// First-order antiderivative antialiasing (ADAA) for the memoryless shapers.
+///
+/// This independently implements Eq. (45), with the midpoint fallback from
+/// Eq. (50), in Esqueda, Pöntynen, Parker, and Bilbao, "Virtual Analog Models
+/// of the Lockhart and Serge Wavefolders", Applied Sciences 7(12), 2017.
+/// ADAA needs one previous input per channel but no oversampling buffers and no
+/// integer-sample graph latency. The static transfer functions remain SHR's
+/// existing product choices; the paper is authority for the antialias method.
+#[inline]
+fn antialiased_transfer(mode: Mode, input: f32, previous: Option<f32>) -> f32 {
+    let Some(previous) = previous else {
+        return transfer_unbiased(mode, input);
+    };
+    let difference = input - previous;
+    if difference.abs() <= 1.0e-4 {
+        transfer_unbiased(mode, (input + previous) * 0.5)
+    } else {
+        finite_difference(
+            antiderivative(mode, input),
+            antiderivative(mode, previous),
+            difference,
+        )
+    }
+}
+
+#[inline]
+fn finite_difference(current: f32, previous: f32, difference: f32) -> f32 {
+    (current - previous) / difference
+}
+
+#[inline]
+fn transfer_unbiased(mode: Mode, input: f32) -> f32 {
+    match mode {
+        Mode::SoftCubic => soft_cubic(input),
+        Mode::HardClip => input.clamp(-1.0, 1.0),
+        Mode::AsymmetricDiodeLike => {
+            if input >= 0.0 {
+                soft_cubic(input * 1.4)
+            } else {
+                -0.8 * soft_cubic(-input * 0.9)
+            }
+        }
+    }
+}
+
+#[inline]
+fn antiderivative(mode: Mode, input: f32) -> f32 {
+    match mode {
+        Mode::SoftCubic => soft_cubic_antiderivative(input),
+        Mode::HardClip => hard_clip_antiderivative(input),
+        Mode::AsymmetricDiodeLike => {
+            if input >= 0.0 {
+                soft_cubic_antiderivative(input * 1.4) / 1.4
+            } else {
+                (0.8 / 0.9) * soft_cubic_antiderivative(-input * 0.9)
+            }
+        }
+    }
+}
+
+#[inline]
+fn soft_cubic_antiderivative(input: f32) -> f32 {
+    if input >= 1.0 {
+        input - 0.375
+    } else if input <= -1.0 {
+        -input - 0.375
+    } else {
+        let squared = input * input;
+        0.75 * squared - 0.125 * squared * squared
+    }
+}
+
+#[inline]
+fn hard_clip_antiderivative(input: f32) -> f32 {
+    if input >= 1.0 {
+        input - 0.5
+    } else if input <= -1.0 {
+        -input - 0.5
+    } else {
+        0.5 * input * input
     }
 }
 
@@ -228,6 +331,7 @@ mod tests {
     use super::*;
     use crate::audio_graph::{EffectKind, EFFECT_FORMAT_VERSION};
     use crate::dsp::allocation_test::assert_no_allocations;
+    use crate::dsp::analysis::{coherent_sine, spectral_amplitude};
     use crate::effects::EffectSlot;
     use std::f32::consts::PI;
 
@@ -251,18 +355,6 @@ mod tests {
         let mut imaginary = 0.0;
         for (index, sample) in samples.iter().copied().enumerate() {
             let phase = 2.0 * PI * number as f32 * index as f32 / length;
-            real += sample * phase.cos();
-            imaginary -= sample * phase.sin();
-        }
-        2.0 * (real * real + imaginary * imaginary).sqrt() / length
-    }
-
-    fn spectral_bin(samples: &[f32], bin: usize) -> f32 {
-        let length = samples.len() as f32;
-        let mut real = 0.0;
-        let mut imaginary = 0.0;
-        for (index, sample) in samples.iter().copied().enumerate() {
-            let phase = 2.0 * PI * bin as f32 * index as f32 / length;
             real += sample * phase.cos();
             imaginary -= sample * phase.sin();
         }
@@ -318,24 +410,72 @@ mod tests {
     }
 
     #[test]
-    fn non_oversampled_high_frequency_alias_is_measured() {
+    fn legacy_transfer_high_frequency_alias_is_measured() {
         let length = 4_096;
         let fundamental_bin = 900;
         let third_harmonic_alias_bin = length - fundamental_bin * 3;
-        let samples = (0..length)
-            .map(|index| {
-                let phase = 2.0 * PI * fundamental_bin as f32 * index as f32 / length as f32;
-                transfer(Mode::SoftCubic, phase.sin() * 0.8, 0.0)
-            })
+        let samples = coherent_sine(length, fundamental_bin, 0.8)
+            .into_iter()
+            .map(|sample| transfer(Mode::SoftCubic, sample, 0.0))
             .collect::<Vec<_>>();
-        let fundamental = spectral_bin(&samples, fundamental_bin);
-        let alias = spectral_bin(&samples, third_harmonic_alias_bin);
+        let fundamental = spectral_amplitude(&samples, fundamental_bin);
+        let alias = spectral_amplitude(&samples, third_harmonic_alias_bin);
         let alias_db = 20.0 * (alias / fundamental).log10();
 
         // At 48 kHz this models a 10.55 kHz input whose 31.64 kHz third
         // harmonic folds to 16.36 kHz. The explicit bound documents the
         // product cost of using this inexpensive transfer without oversampling.
         assert!((-24.1..=-23.8).contains(&alias_db), "{alias_db} dBc");
+    }
+
+    #[test]
+    fn antiderivative_antialiasing_materially_reduces_cubic_foldback() {
+        let length = 4_096;
+        let fundamental_bin = 900;
+        let alias_bin = length - fundamental_bin * 3;
+        let input = coherent_sine(length, fundamental_bin, 0.8);
+        let legacy = input
+            .iter()
+            .map(|sample| transfer(Mode::SoftCubic, *sample, 0.0))
+            .collect::<Vec<_>>();
+        let mut previous = None;
+        let improved = input
+            .iter()
+            .map(|sample| {
+                let output = antialiased_transfer(Mode::SoftCubic, *sample, previous);
+                previous = Some(*sample);
+                output
+            })
+            .collect::<Vec<_>>();
+        let legacy_alias_db = 20.0
+            * (spectral_amplitude(&legacy, alias_bin)
+                / spectral_amplitude(&legacy, fundamental_bin))
+            .log10();
+        let improved_alias_db = 20.0
+            * (spectral_amplitude(&improved, alias_bin)
+                / spectral_amplitude(&improved, fundamental_bin))
+            .log10();
+        eprintln!(
+            "soft-cubic alias: legacy {legacy_alias_db:.2} dBc, ADAA {improved_alias_db:.2} dBc"
+        );
+
+        assert!((-24.1..=-23.8).contains(&legacy_alias_db));
+        assert!(
+            improved_alias_db < legacy_alias_db - 12.0,
+            "legacy {legacy_alias_db:.2} dBc, ADAA {improved_alias_db:.2} dBc"
+        );
+    }
+
+    #[test]
+    fn antialiased_shapers_retain_static_transfer_and_bounds() {
+        for mode in [Mode::SoftCubic, Mode::HardClip, Mode::AsymmetricDiodeLike] {
+            for index in 0..=2_000 {
+                let input = -10.0 + index as f32 * 0.01;
+                let shaped = antialiased_transfer(mode, input, Some(input));
+                assert!((shaped - transfer_unbiased(mode, input)).abs() < 1.0e-6);
+                assert!(shaped.abs() <= 1.0);
+            }
+        }
     }
 
     #[test]
@@ -447,5 +587,141 @@ mod tests {
                 assert_eq!(silence, [StereoFrame::SILENCE; 64]);
             }
         }
+    }
+
+    /// Explicit maintainer-only private renderer. Normal test runs ignore it;
+    /// the destination must be supplied and every output is create-new.
+    #[test]
+    #[ignore = "writes the private level-matched DSP audition pack"]
+    fn render_private_distortion_audition_pack() {
+        use crate::dsp::analysis::{peak, rms};
+        use hound::{SampleFormat, WavSpec, WavWriter};
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::path::PathBuf;
+
+        let destination = PathBuf::from(
+            std::env::var("SHSYNTH_DSP_LAB_DIR")
+                .expect("set SHSYNTH_DSP_LAB_DIR to one explicit private run directory"),
+        );
+        assert!(destination.is_absolute() && destination.parent().is_some());
+        std::fs::create_dir_all(&destination).unwrap();
+
+        let sample_rate = 48_000_u32;
+        let segment = sample_rate as usize / 2;
+        let fade = sample_rate as usize / 100;
+        let mut dry = Vec::with_capacity(segment * 4);
+        for frequency in [220.0_f32, 1_000.0, 5_000.0, 10_546.875] {
+            for index in 0..segment {
+                let edge = index.min(segment - 1 - index);
+                let envelope = (edge as f32 / fade as f32).clamp(0.0, 1.0);
+                dry.push(
+                    (2.0 * PI * frequency * index as f32 / sample_rate as f32).sin()
+                        * 0.25
+                        * envelope,
+                );
+            }
+        }
+
+        let render = |drive_db: f32, antialiased: bool| {
+            let drive = db_to_gain(drive_db).unwrap();
+            let mut previous = None;
+            dry.iter()
+                .map(|sample| {
+                    let input = *sample * drive;
+                    if antialiased {
+                        let output = antialiased_transfer(Mode::SoftCubic, input, previous);
+                        previous = Some(input);
+                        output
+                    } else {
+                        transfer(Mode::SoftCubic, input, 0.0)
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let legacy_12 = render(12.0, false);
+        let adaa_12 = render(12.0, true);
+        let adaa_6 = render(6.0, true);
+        let high_start = segment * 3;
+        let high_dry = dry[high_start..].to_vec();
+        let high_adaa = adaa_12[high_start..].to_vec();
+
+        fn level_match(samples: &[f32]) -> (Vec<f32>, f64) {
+            let target = 10.0_f64.powf(-18.0 / 20.0);
+            let rms_gain = target / rms(samples).max(f64::MIN_POSITIVE);
+            let peak_gain = 10.0_f64.powf(-1.0 / 20.0) / f64::from(peak(samples).max(1.0e-12));
+            let gain = rms_gain.min(peak_gain);
+            (
+                samples.iter().map(|sample| *sample * gain as f32).collect(),
+                20.0 * gain.log10(),
+            )
+        }
+
+        fn write_wav(path: &std::path::Path, samples: &[f32]) {
+            let file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .unwrap();
+            let mut writer = WavWriter::new(
+                file,
+                WavSpec {
+                    channels: 2,
+                    sample_rate: 48_000,
+                    bits_per_sample: 24,
+                    sample_format: SampleFormat::Int,
+                },
+            )
+            .unwrap();
+            for sample in samples {
+                let quantized = (sample.clamp(-1.0, 1.0) * 8_388_607.0).round() as i32;
+                writer.write_sample(quantized).unwrap();
+                writer.write_sample(quantized).unwrap();
+            }
+            writer.finalize().unwrap();
+        }
+
+        let files = [
+            ("01-dry-tone-ladder.wav", dry, "dry four-tone reference"),
+            (
+                "02-soft-cubic-legacy-drive12.wav",
+                legacy_12,
+                "reproducible pre-ADAA shaper",
+            ),
+            (
+                "03-soft-cubic-adaa-drive12.wav",
+                adaa_12,
+                "ADAA shaper at matching drive",
+            ),
+            (
+                "04-soft-cubic-adaa-drive6.wav",
+                adaa_6,
+                "ADAA lower-drive position",
+            ),
+            (
+                "05-soft-cubic-adaa-high-note.wav",
+                high_adaa,
+                "remaining high-note artifact focus",
+            ),
+            ("06-dry-high-note.wav", high_dry, "dry high-note reference"),
+        ];
+        let mut manifest_rows = Vec::new();
+        for (name, samples, purpose) in files {
+            let (matched, gain_db) = level_match(&samples);
+            write_wav(&destination.join(name), &matched);
+            manifest_rows.push(format!("- `{name}` — {purpose}; gain {gain_db:+.2} dB"));
+        }
+        let manifest_path = destination.join("AUDITION_MANIFEST.md");
+        let mut manifest = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&manifest_path)
+            .unwrap();
+        writeln!(
+            manifest,
+            "# Private distortion audition\n\nSynthetic evidence/audition material; no listening judgment is implied.\n\n- Format: stereo 24-bit PCM WAV, 48 kHz\n- Input: deterministic 220 Hz, 1 kHz, 5 kHz, and 10.546875 kHz sine segments, 0.5 s each, 10 ms edge fades\n- Processor: isolated SHR soft-cubic shaper core; drive as named; tone, wet/dry, and output stages intentionally omitted to isolate antialiasing\n- Level control: each file targets -18 dBFS RMS, with a -1 dBFS peak ceiling\n- Listening question: compare files 02/03 for inharmonic high-note foldback without treating loudness as quality; file 05 isolates the known remaining high-frequency tradeoff\n\n{}",
+            manifest_rows.join("\n")
+        )
+        .unwrap();
     }
 }

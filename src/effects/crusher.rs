@@ -124,6 +124,7 @@ mod tests {
     use super::*;
     use crate::audio_graph::{EffectKind, EFFECT_FORMAT_VERSION};
     use crate::dsp::allocation_test::assert_no_allocations;
+    use crate::dsp::analysis::{correlation, mean, rms};
     use crate::effects::EffectSlot;
 
     fn effect(parameters: impl IntoIterator<Item = (&'static str, f32)>) -> EffectInstance {
@@ -196,6 +197,27 @@ mod tests {
             (-1.0..=0.875).contains(&frame.left) && (-1.0..=0.875).contains(&frame.right)
         }));
         assert!(actual.iter().any(|frame| *frame != actual[0]));
+    }
+
+    #[test]
+    fn tpdf_dither_has_zero_mean_half_lsb_rms_and_uncorrelated_channels() {
+        let length = 131_072;
+        let mut left_state = 0x1234_5678;
+        let mut right_state = 0x9abc_def0;
+        let mut left = Vec::with_capacity(length);
+        let mut right = Vec::with_capacity(length);
+        for _ in 0..length {
+            left.push(quantize(0.0, 8, true, &mut left_state));
+            right.push(quantize(0.0, 8, true, &mut right_state));
+        }
+        let lsb = 1.0 / 128.0;
+        assert!(mean(&left).abs() < lsb * 0.01);
+        assert!(mean(&right).abs() < lsb * 0.01);
+        assert!((rms(&left) / lsb - 0.5).abs() < 0.01);
+        assert!((rms(&right) / lsb - 0.5).abs() < 0.01);
+        assert!(correlation(&left, &right).abs() < 0.01);
+        assert!(left.iter().any(|sample| *sample < 0.0));
+        assert!(left.iter().any(|sample| *sample > 0.0));
     }
 
     #[test]

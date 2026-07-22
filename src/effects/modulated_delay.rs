@@ -104,7 +104,8 @@ impl ModulatedDelay {
                 .set_target(value * self.sample_rate / 1_000.0, PARAMETER_SMOOTH_SAMPLES)?,
             "rate_hz" => {
                 self.rate_hz = value;
-                self.configure_lfos()?;
+                self.left_lfo.set_frequency(value, self.sample_rate)?;
+                self.right_lfo.set_frequency(value, self.sample_rate)?;
             }
             "depth_percent" => self
                 .depth

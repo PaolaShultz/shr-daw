@@ -566,6 +566,44 @@ mod tests {
     }
 
     #[test]
+    fn utility_gain_pan_width_polarity_and_mute_have_exact_stereo_laws() {
+        let cases = [
+            (
+                BTreeMap::from([("trim_db".into(), -6.0206)]),
+                StereoFrame::new(0.5, -0.25),
+                StereoFrame::new(0.25, -0.125),
+            ),
+            (
+                BTreeMap::from([("pan".into(), -1.0)]),
+                StereoFrame::new(0.5, -0.25),
+                StereoFrame::new(0.5, 0.0),
+            ),
+            (
+                BTreeMap::from([("width_percent".into(), 0.0)]),
+                StereoFrame::new(0.75, -0.25),
+                StereoFrame::new(0.25, 0.25),
+            ),
+            (
+                BTreeMap::from([("invert_left".into(), 1.0), ("invert_right".into(), 1.0)]),
+                StereoFrame::new(0.5, -0.25),
+                StereoFrame::new(-0.5, 0.25),
+            ),
+            (
+                BTreeMap::from([("mute".into(), 1.0)]),
+                StereoFrame::new(0.5, -0.25),
+                StereoFrame::SILENCE,
+            ),
+        ];
+        for (parameters, input, expected) in cases {
+            let mut slot = EffectSlot::compile(&utility(parameters, false), 48_000, 1).unwrap();
+            let mut frame = [input];
+            slot.process(&mut frame);
+            assert!((frame[0].left - expected.left).abs() < 1.0e-5);
+            assert!((frame[0].right - expected.right).abs() < 1.0e-5);
+        }
+    }
+
+    #[test]
     fn bypass_crossfade_is_bounded_and_reaches_exact_dry() {
         let effect = utility(BTreeMap::from([("trim_db".into(), -12.0)]), false);
         let mut slot = EffectSlot::compile(&effect, 48_000, 256).unwrap();

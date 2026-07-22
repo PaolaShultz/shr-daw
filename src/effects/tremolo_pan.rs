@@ -73,6 +73,12 @@ impl ShapeLfo {
         Ok(())
     }
 
+    fn set_rate_preserve_phase(&mut self, rate_hz: f32) -> Result<(), EffectError> {
+        self.sine.set_frequency(rate_hz, self.sample_rate)?;
+        self.phase_step = rate_hz / self.sample_rate;
+        Ok(())
+    }
+
     #[inline]
     fn next(&mut self, shape: Shape) -> f32 {
         let sine = self.sine.next_value();
@@ -160,7 +166,8 @@ impl TremoloPan {
             "mode" => self.mode = Mode::from_parameter(value),
             "rate_hz" => {
                 self.rate_hz = value;
-                self.configure_lfos()?;
+                self.left_lfo.set_rate_preserve_phase(value)?;
+                self.right_lfo.set_rate_preserve_phase(value)?;
             }
             "depth_percent" => self
                 .depth
@@ -229,6 +236,7 @@ mod tests {
     use super::*;
     use crate::audio_graph::{EffectKind, EFFECT_FORMAT_VERSION};
     use crate::dsp::allocation_test::assert_no_allocations;
+    use crate::dsp::analysis::spectral_amplitude;
     use crate::effects::EffectSlot;
     use std::collections::BTreeMap;
 
@@ -305,6 +313,46 @@ mod tests {
         assert!(block
             .iter()
             .all(|frame| frame.left.is_finite() && frame.right.is_finite()));
+    }
+
+    #[test]
+    fn tremolo_rate_depth_and_live_rate_transition_are_measured() {
+        let mut tremolo = TremoloPan::compile(
+            &effect([
+                ("mode", 0.0),
+                ("rate_hz", 4.0),
+                ("depth_percent", 100.0),
+                ("shape", 0.0),
+                ("stereo_phase_degrees", 0.0),
+            ]),
+            48_000,
+        )
+        .unwrap();
+        let mut output = Vec::with_capacity(96_000);
+        for _ in 0..96_000 {
+            output.push(tremolo.process(StereoFrame::new(1.0, 1.0)).left);
+        }
+        assert!((spectral_amplitude(&output, 8) - 0.5).abs() < 0.001);
+        let minimum = output.iter().copied().fold(f32::INFINITY, f32::min);
+        let maximum = output.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        assert!(minimum < 0.001 && maximum > 0.999);
+
+        for _ in 0..12_345 {
+            tremolo.process(StereoFrame::new(1.0, 1.0));
+        }
+        let before = tremolo.process(StereoFrame::new(1.0, 1.0)).left;
+        tremolo.set_parameter("rate_hz", 15.0).unwrap();
+        let after = tremolo.process(StereoFrame::new(1.0, 1.0)).left;
+        eprintln!(
+            "tremolo rate change: preserved step {:.6}, legacy reset step {:.6}",
+            (after - before).abs(),
+            (0.5 - before).abs()
+        );
+        assert!(
+            (after - before).abs() < 0.002,
+            "rate-change step {}",
+            (after - before).abs()
+        );
     }
 
     #[test]

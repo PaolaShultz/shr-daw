@@ -157,6 +157,11 @@ fn effects_checkpoint(
     let (rack, aux_routing) = effects_routing(profile)?;
     let mut config = config.clone();
     config.audio_graph.enabled = true;
+    // The production final bus has a fixed loop-source boundary. A standalone
+    // checkpoint has no UI-owned loop client, so provide an owned silent source
+    // only when that exact configured client is absent. Its direct links are
+    // removed/restored by the normal graph transaction and disappear on drop.
+    let _checkpoint_loop = checkpoint_loop_source(&config)?;
     let maximum_frames = config.audio_graph.maximum_callback_frames as usize;
     let node_count = 3usize
         .saturating_add(rack.order.len())
@@ -258,6 +263,48 @@ fn effects_checkpoint(
     restored.context("restore exact direct route after checkpoint")?;
     drop(engine);
     Ok(())
+}
+
+fn checkpoint_loop_source(
+    config: &config::RuntimeConfig,
+) -> Result<Option<loop_player::LoopPlayer>> {
+    let ports = loop_player::configured_output_ports(&config.loop_player);
+    let available = engine::jack_ports();
+    let present = ports.map(|port| available.iter().any(|candidate| candidate == &port));
+    match present {
+        [true, true] => return Ok(None),
+        [true, false] | [false, true] => {
+            bail!("configured checkpoint loop source has only one stereo port available")
+        }
+        [false, false] => {}
+    }
+
+    let probe_name = format!("{}-checkpoint-probe", config.audio_graph.client_name);
+    let probe = jack::Client::open(&probe_name).context("read JACK rate for checkpoint source")?;
+    let sample_rate = probe.sample_rate();
+    drop(probe);
+    if !(8_000..=384_000).contains(&sample_rate) {
+        bail!("unsupported JACK rate for checkpoint source: {sample_rate}");
+    }
+
+    let clock = std::sync::Arc::new(loop_player::TransportClock::default());
+    let mut player = loop_player::LoopPlayer::new(&config.loop_player, clock);
+    player.load(
+        loop_player::DecodedLoop {
+            samples: vec![[0.0; 2]; sample_rate as usize],
+            sample_rate,
+            channels: 2,
+        },
+        &sequencer::LoopSettings {
+            file: "effects-checkpoint-silence".into(),
+            source_bpm_x100: 12_000,
+            interpretation: sequencer::BpmInterpretation::Normal,
+            start_beat: 0,
+            length_beats: 1,
+            offset_beats: 0,
+        },
+    )?;
+    Ok(Some(player))
 }
 
 fn effects_routing(

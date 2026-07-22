@@ -108,7 +108,8 @@ impl Phaser {
             "stages" => self.stages = value as usize,
             "rate_hz" => {
                 self.rate_hz = value;
-                self.configure_lfos()?;
+                self.left_lfo.set_frequency(value, self.sample_rate)?;
+                self.right_lfo.set_frequency(value, self.sample_rate)?;
             }
             "center_hz" => {
                 self.center_hz = value;

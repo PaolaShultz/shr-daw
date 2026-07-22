@@ -216,6 +216,7 @@ mod tests {
     use super::*;
     use crate::audio_graph::{EffectKind, EFFECT_FORMAT_VERSION};
     use crate::dsp::allocation_test::assert_no_allocations;
+    use crate::dsp::analysis::{channel, correlation, energy_decay_db};
     use crate::effects::EffectSlot;
     use std::collections::BTreeMap;
 
@@ -321,6 +322,57 @@ mod tests {
         }
         assert_ne!(signatures[0], signatures[1]);
         assert_ne!(signatures[1], signatures[2]);
+    }
+
+    #[test]
+    fn broadband_decay_and_late_stereo_correlation_are_measured_from_output() {
+        let sample_rate = 48_000;
+        let mut reverb = Reverb::compile(
+            &effect([
+                ("type", 1.0),
+                ("predelay_ms", 0.0),
+                ("decay_seconds", 1.5),
+                ("size_percent", 50.0),
+                ("damping_percent", 0.0),
+                ("input_low_cut_hz", 20.0),
+                ("width_percent", 100.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+            ]),
+            sample_rate,
+        )
+        .unwrap();
+        let mut response = Vec::with_capacity(sample_rate as usize * 4);
+        for index in 0..sample_rate as usize * 4 {
+            response.push(reverb.process(if index == 0 {
+                StereoFrame::new(1.0, 0.0)
+            } else {
+                StereoFrame::SILENCE
+            }));
+        }
+        let magnitude = response
+            .iter()
+            .map(|frame| (frame.left * frame.left + frame.right * frame.right).sqrt())
+            .collect::<Vec<_>>();
+        let decay = energy_decay_db(&magnitude);
+        let at_5 = decay.iter().position(|db| *db <= -5.0).unwrap();
+        let at_35 = decay.iter().position(|db| *db <= -35.0).unwrap();
+        let measured_rt60 = (at_35 - at_5) as f64 / sample_rate as f64 * 2.0;
+        assert!(
+            (1.1..=1.9).contains(&measured_rt60),
+            "measured broadband RT60 {measured_rt60:.3} s"
+        );
+
+        let left = channel(&response[24_000..72_000], true);
+        let right = channel(&response[24_000..72_000], false);
+        let late_correlation = correlation(&left, &right);
+        eprintln!(
+            "reverb plate: measured broadband RT60 {measured_rt60:.3} s, late correlation {late_correlation:.3}"
+        );
+        assert!(
+            late_correlation.abs() < 0.95,
+            "late stereo correlation {late_correlation:.3}"
+        );
     }
 
     #[test]

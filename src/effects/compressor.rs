@@ -236,6 +236,7 @@ mod tests {
     use super::*;
     use crate::audio_graph::{EffectKind, EFFECT_FORMAT_VERSION};
     use crate::dsp::allocation_test::assert_no_allocations;
+    use crate::dsp::analysis::{coherent_sine, spectral_amplitude};
     use crate::effects::EffectSlot;
     use std::f32::consts::PI;
 
@@ -272,6 +273,51 @@ mod tests {
             .abs()
                 < 0.001
         );
+    }
+
+    #[test]
+    fn end_to_end_hard_knee_static_transfer_tracks_declared_ratio() {
+        for input_db in [-30.0_f32, -20.0, -10.0, 0.0] {
+            let mut slot = EffectSlot::compile(
+                &effect([
+                    ("threshold_db", -20.0),
+                    ("ratio", 4.0),
+                    ("knee_db", 0.0),
+                    ("attack_ms", 0.1),
+                    ("release_ms", 1500.0),
+                    ("sidechain_highpass_hz", 20.0),
+                ]),
+                48_000,
+                128,
+            )
+            .unwrap();
+            let amplitude = db_to_gain(input_db).unwrap();
+            let input = coherent_sine(48_000, 1_000, amplitude);
+            let mut frames = input
+                .into_iter()
+                .map(|sample| StereoFrame::new(sample, sample))
+                .collect::<Vec<_>>();
+            for block in frames.chunks_mut(127) {
+                slot.process(block);
+            }
+            let settled = frames[24_000..]
+                .iter()
+                .map(|frame| frame.left)
+                .collect::<Vec<_>>();
+            let measured_db = 20.0 * spectral_amplitude(&settled, 500).log10();
+            let expected_db = if input_db <= -20.0 {
+                input_db as f64
+            } else {
+                -20.0 + (input_db as f64 + 20.0) / 4.0
+            };
+            eprintln!(
+                "compressor static: input {input_db:.1} dBFS, expected {expected_db:.2}, measured {measured_db:.2} dBFS"
+            );
+            assert!(
+                (measured_db - expected_db).abs() < 0.35,
+                "input {input_db} dBFS, expected {expected_db:.2}, measured {measured_db:.2} dBFS"
+            );
+        }
     }
 
     #[test]
