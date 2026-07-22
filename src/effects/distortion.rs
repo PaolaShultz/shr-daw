@@ -245,6 +245,14 @@ fn antialiased_transfer(mode: Mode, input: f32, previous: Option<f32>) -> f32 {
     let Some(previous) = previous else {
         return transfer_unbiased(mode, input);
     };
+    if let (Some(current), Some(previous)) = (
+        saturated_plateau(mode, input),
+        saturated_plateau(mode, previous),
+    ) {
+        if current == previous {
+            return current;
+        }
+    }
     let difference = input - previous;
     if difference.abs() <= 1.0e-4 {
         transfer_unbiased(mode, (input + previous) * 0.5)
@@ -254,6 +262,17 @@ fn antialiased_transfer(mode: Mode, input: f32, previous: Option<f32>) -> f32 {
             antiderivative(mode, previous),
             difference,
         )
+    }
+}
+
+#[inline]
+fn saturated_plateau(mode: Mode, input: f32) -> Option<f32> {
+    match mode {
+        Mode::SoftCubic | Mode::HardClip if input >= 1.0 => Some(1.0),
+        Mode::SoftCubic | Mode::HardClip if input <= -1.0 => Some(-1.0),
+        Mode::AsymmetricDiodeLike if input >= 1.0 / 1.4 => Some(1.0),
+        Mode::AsymmetricDiodeLike if input <= -1.0 / 0.9 => Some(-0.8),
+        _ => None,
     }
 }
 
@@ -331,9 +350,13 @@ mod tests {
     use super::*;
     use crate::audio_graph::{EffectKind, EFFECT_FORMAT_VERSION};
     use crate::dsp::allocation_test::assert_no_allocations;
-    use crate::dsp::analysis::{coherent_sine, spectral_amplitude};
+    use crate::dsp::analysis::{
+        coherent_sine, harmonic_alias_ratio, mean, peak, spectral_amplitude, spectral_component,
+    };
     use crate::effects::EffectSlot;
     use std::f32::consts::PI;
+    use std::hint::black_box;
+    use std::time::Instant;
 
     fn effect(parameters: impl IntoIterator<Item = (&'static str, f32)>) -> EffectInstance {
         EffectInstance {
@@ -359,6 +382,39 @@ mod tests {
             imaginary -= sample * phase.sin();
         }
         2.0 * (real * real + imaginary * imaginary).sqrt() / length
+    }
+
+    fn render_core(mode: Mode, input: &[f32], drive_db: f32, antialiased: bool) -> Vec<f32> {
+        let drive = db_to_gain(drive_db).unwrap();
+        let mut previous = None;
+        input
+            .iter()
+            .copied()
+            .map(|sample| {
+                let driven = sample * drive;
+                let output = if antialiased {
+                    antialiased_transfer(mode, driven, previous)
+                } else {
+                    transfer_unbiased(mode, driven)
+                };
+                previous = Some(driven);
+                output
+            })
+            .collect()
+    }
+
+    fn harmonic_energy(samples: &[f32], fundamental_bin: usize, even: bool) -> f64 {
+        (2..samples.len() / (2 * fundamental_bin))
+            .filter(|harmonic| (*harmonic % 2 == 0) == even)
+            .map(|harmonic| spectral_amplitude(samples, harmonic * fundamental_bin).powi(2))
+            .sum::<f64>()
+            .sqrt()
+    }
+
+    fn phase_difference(left: (f64, f64), right: (f64, f64)) -> f64 {
+        let difference = right.1.atan2(right.0) - left.1.atan2(left.0);
+        (difference + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI)
+            - std::f64::consts::PI
     }
 
     #[test]
@@ -467,6 +523,138 @@ mod tests {
     }
 
     #[test]
+    fn all_modes_have_multitone_harmonic_alias_and_cost_characterization() {
+        const LENGTH: usize = 4_096;
+        let low_bin = 93;
+        let high_bins = [700, 900, 1_300];
+        let mut rows = Vec::new();
+        for sample_rate in [44_100_u32, 48_000, 96_000] {
+            for mode in [Mode::SoftCubic, Mode::HardClip, Mode::AsymmetricDiodeLike] {
+                for drive_db in [0.0_f32, 6.0, 12.0, 24.0] {
+                    let low_input = coherent_sine(LENGTH * 2, low_bin * 2, 0.5);
+                    let low = render_core(mode, &low_input, drive_db, true).split_off(LENGTH);
+                    let fundamental = spectral_amplitude(&low, low_bin);
+                    let even = harmonic_energy(&low, low_bin, true);
+                    let odd = harmonic_energy(&low, low_bin, false);
+                    let thd = even.hypot(odd) / fundamental.max(f64::MIN_POSITIVE);
+
+                    let mut legacy_alias_squared = 0.0;
+                    let mut adaa_alias_squared = 0.0;
+                    let mut amplitude_ratio = 0.0;
+                    let mut phase_radians = 0.0;
+                    for bin in high_bins {
+                        let input = coherent_sine(LENGTH * 2, bin * 2, 0.5);
+                        let legacy = render_core(mode, &input, drive_db, false).split_off(LENGTH);
+                        let adaa = render_core(mode, &input, drive_db, true).split_off(LENGTH);
+                        legacy_alias_squared += harmonic_alias_ratio(&legacy, bin, 63).powi(2);
+                        adaa_alias_squared += harmonic_alias_ratio(&adaa, bin, 63).powi(2);
+                        amplitude_ratio += spectral_amplitude(&adaa, bin)
+                            / spectral_amplitude(&legacy, bin).max(f64::MIN_POSITIVE);
+                        phase_radians += phase_difference(
+                            spectral_component(&legacy, bin),
+                            spectral_component(&adaa, bin),
+                        );
+                    }
+                    let legacy_alias = (legacy_alias_squared / high_bins.len() as f64).sqrt();
+                    let adaa_alias = (adaa_alias_squared / high_bins.len() as f64).sqrt();
+                    if drive_db >= 12.0 {
+                        assert!(
+                            adaa_alias < legacy_alias * 0.6,
+                            "mode {mode:?}, drive {drive_db}: legacy {legacy_alias}, ADAA {adaa_alias}"
+                        );
+                    }
+                    rows.push((
+                        sample_rate,
+                        mode,
+                        drive_db,
+                        mean(&low),
+                        20.0 * thd.max(1.0e-15).log10(),
+                        20.0 * (even / fundamental.max(f64::MIN_POSITIVE))
+                            .max(1.0e-15)
+                            .log10(),
+                        20.0 * (odd / fundamental.max(f64::MIN_POSITIVE))
+                            .max(1.0e-15)
+                            .log10(),
+                        20.0 * legacy_alias.max(1.0e-15).log10(),
+                        20.0 * adaa_alias.max(1.0e-15).log10(),
+                        20.0 * (amplitude_ratio / high_bins.len() as f64).log10(),
+                        phase_radians / high_bins.len() as f64,
+                    ));
+                    let measured_peak = peak(&low);
+                    assert!(
+                        low.iter().all(|sample| sample.is_finite()) && measured_peak <= 1.000_1,
+                        "mode {mode:?}, drive {drive_db}, peak {measured_peak}"
+                    );
+                    if mode != Mode::AsymmetricDiodeLike {
+                        assert!(mean(&low).abs() < 1.0e-6);
+                    }
+                }
+            }
+        }
+
+        let first_bin = 137;
+        let second_bin = 223;
+        let two_tone = (0..LENGTH)
+            .map(|index| {
+                let first = 2.0 * PI * first_bin as f32 * index as f32 / LENGTH as f32;
+                let second = 2.0 * PI * second_bin as f32 * index as f32 / LENGTH as f32;
+                0.25 * (first.sin() + second.sin())
+            })
+            .collect::<Vec<_>>();
+        let mut imd_rows = Vec::new();
+        for mode in [Mode::SoftCubic, Mode::HardClip, Mode::AsymmetricDiodeLike] {
+            for drive_db in [6.0_f32, 12.0, 24.0] {
+                let output = render_core(mode, &two_tone, drive_db, true);
+                let carrier = spectral_amplitude(&output, first_bin)
+                    .hypot(spectral_amplitude(&output, second_bin));
+                let products = [
+                    second_bin - first_bin,
+                    2 * first_bin - second_bin,
+                    2 * second_bin - first_bin,
+                    first_bin + second_bin,
+                ]
+                .iter()
+                .map(|bin| spectral_amplitude(&output, *bin).powi(2))
+                .sum::<f64>()
+                .sqrt();
+                imd_rows.push((mode, drive_db, 20.0 * (products / carrier).log10()));
+            }
+        }
+
+        let benchmark_input = coherent_sine(65_536, 13_003, 0.5);
+        let benchmark = |antialiased: bool| {
+            let start = Instant::now();
+            let mut sum = 0.0_f32;
+            let mut previous = None;
+            for _ in 0..16 {
+                for sample in benchmark_input.iter().copied() {
+                    let output = if antialiased {
+                        antialiased_transfer(Mode::HardClip, sample * 4.0, previous)
+                    } else {
+                        transfer_unbiased(Mode::HardClip, sample * 4.0)
+                    };
+                    previous = Some(sample * 4.0);
+                    sum += black_box(output);
+                }
+            }
+            black_box(sum);
+            start.elapsed()
+        };
+        let legacy_time = benchmark(false);
+        let adaa_time = benchmark(true);
+        eprintln!("distortion characterization rows (rate, mode, drive dB, dc, THD dB, even dB, odd dB, legacy alias dBc, ADAA alias dBc, ADAA amplitude delta dB, phase delta rad): {rows:?}");
+        eprintln!(
+            "distortion two-tone IMD rows (mode, drive dB, selected products dBc): {imd_rows:?}"
+        );
+        eprintln!(
+            "distortion core cost: legacy {:?}, ADAA {:?}, ratio {:.3}",
+            legacy_time,
+            adaa_time,
+            adaa_time.as_secs_f64() / legacy_time.as_secs_f64()
+        );
+    }
+
+    #[test]
     fn antialiased_shapers_retain_static_transfer_and_bounds() {
         for mode in [Mode::SoftCubic, Mode::HardClip, Mode::AsymmetricDiodeLike] {
             for index in 0..=2_000 {
@@ -518,6 +706,74 @@ mod tests {
         }
         symmetric.process(&mut block);
         assert!(block[127].left > 0.24);
+    }
+
+    #[test]
+    fn wet_output_laws_and_live_drive_mode_transitions_are_measured() {
+        let configured = |mix_percent, output_db| {
+            effect([
+                ("mode", 0.0),
+                ("drive_db", 12.0),
+                ("tone_hz", 18_000.0),
+                ("output_db", output_db),
+                ("mix_percent", mix_percent),
+            ])
+        };
+        let mut dry = Distortion::compile(&configured(0.0, 0.0), 48_000).unwrap();
+        let mut wet = Distortion::compile(&configured(100.0, 0.0), 48_000).unwrap();
+        let mut half = Distortion::compile(&configured(50.0, 0.0), 48_000).unwrap();
+        let mut attenuated = Distortion::compile(&configured(100.0, -12.0), 48_000).unwrap();
+        let mut wet_energy = 0.0_f64;
+        let mut attenuated_energy = 0.0_f64;
+        for index in 0..48_000 {
+            let input = (2.0 * PI * 997.0 * index as f32 / 48_000.0).sin() * 0.25;
+            let frame = StereoFrame::new(input, -input);
+            let dry_output = dry.process(frame);
+            let wet_output = wet.process(frame);
+            let half_output = half.process(frame);
+            let attenuated_output = attenuated.process(frame);
+            assert_eq!(dry_output, frame);
+            assert!((half_output.left - (frame.left + wet_output.left) * 0.5).abs() < 2.0e-6);
+            if index >= 4_800 {
+                wet_energy += (wet_output.left as f64).powi(2);
+                attenuated_energy += (attenuated_output.left as f64).powi(2);
+            }
+        }
+        let measured_output_db = 10.0 * (attenuated_energy / wet_energy).log10();
+        assert!(
+            (measured_output_db + 12.0).abs() < 0.01,
+            "{measured_output_db} dB"
+        );
+
+        let mut changing = Distortion::compile(&configured(100.0, -6.0), 48_000).unwrap();
+        let mut previous = 0.0_f32;
+        let mut drive_step = 0.0_f32;
+        let mut mode_step = 0.0_f32;
+        for index in 0..12_000 {
+            if index == 4_000 {
+                changing.set_parameter("drive_db", 30.0).unwrap();
+            }
+            if index == 8_123 {
+                changing.set_parameter("mode", 2.0).unwrap();
+            }
+            let input = (2.0 * PI * 997.0 * index as f32 / 48_000.0).sin() * 0.25;
+            let output = changing.process(StereoFrame::new(input, input)).left;
+            let step = (output - previous).abs();
+            if index == 4_000 {
+                drive_step = step;
+            }
+            if index == 8_123 {
+                mode_step = step;
+            }
+            previous = output;
+        }
+        eprintln!(
+            "distortion output law: {measured_output_db:.3} dB for -12 dB setting; transition maximum steps drive {drive_step:.6}, mode {mode_step:.6}"
+        );
+        assert!(
+            drive_step < 0.2 && mode_step < 0.2,
+            "drive {drive_step}, mode {mode_step}"
+        );
     }
 
     #[test]
@@ -623,25 +879,37 @@ mod tests {
             }
         }
 
-        let render = |drive_db: f32, antialiased: bool| {
+        let render = |mode: Mode, drive_db: f32, antialiased: bool| {
             let drive = db_to_gain(drive_db).unwrap();
             let mut previous = None;
+            let mut dc = DcBlocker::new(DC_BLOCK_HZ, sample_rate as f32).unwrap();
             dry.iter()
                 .map(|sample| {
                     let input = *sample * drive;
-                    if antialiased {
-                        let output = antialiased_transfer(Mode::SoftCubic, input, previous);
+                    let output = if antialiased {
+                        let output = antialiased_transfer(mode, input, previous);
                         previous = Some(input);
                         output
                     } else {
-                        transfer(Mode::SoftCubic, input, 0.0)
+                        transfer(mode, input, 0.0)
+                    };
+                    if mode == Mode::AsymmetricDiodeLike {
+                        dc.process(output)
+                    } else {
+                        output
                     }
                 })
                 .collect::<Vec<_>>()
         };
-        let legacy_12 = render(12.0, false);
-        let adaa_12 = render(12.0, true);
-        let adaa_6 = render(6.0, true);
+        let legacy_12 = render(Mode::SoftCubic, 12.0, false);
+        let adaa_12 = render(Mode::SoftCubic, 12.0, true);
+        let adaa_6 = render(Mode::SoftCubic, 6.0, true);
+        let hard_legacy = render(Mode::HardClip, 12.0, false);
+        let hard_adaa = render(Mode::HardClip, 12.0, true);
+        let hard_6 = render(Mode::HardClip, 6.0, true);
+        let asymmetric_legacy = render(Mode::AsymmetricDiodeLike, 12.0, false);
+        let asymmetric_adaa = render(Mode::AsymmetricDiodeLike, 12.0, true);
+        let asymmetric_6 = render(Mode::AsymmetricDiodeLike, 6.0, true);
         let high_start = segment * 3;
         let high_dry = dry[high_start..].to_vec();
         let high_adaa = adaa_12[high_start..].to_vec();
@@ -704,6 +972,36 @@ mod tests {
                 "remaining high-note artifact focus",
             ),
             ("06-dry-high-note.wav", high_dry, "dry high-note reference"),
+            (
+                "07-hard-clip-legacy-drive12.wav",
+                hard_legacy,
+                "hard clip, reproducible pre-ADAA transfer, drive +12 dB",
+            ),
+            (
+                "08-hard-clip-adaa-drive12.wav",
+                hard_adaa,
+                "hard clip, ADAA, drive +12 dB",
+            ),
+            (
+                "09-hard-clip-adaa-drive6.wav",
+                hard_6,
+                "hard clip, ADAA, drive +6 dB",
+            ),
+            (
+                "10-asymmetric-legacy-drive12.wav",
+                asymmetric_legacy,
+                "asymmetric, reproducible pre-ADAA transfer, bias 0, 10 Hz DC block, drive +12 dB",
+            ),
+            (
+                "11-asymmetric-adaa-drive12.wav",
+                asymmetric_adaa,
+                "asymmetric, ADAA, bias 0, 10 Hz DC block, drive +12 dB",
+            ),
+            (
+                "12-asymmetric-adaa-drive6.wav",
+                asymmetric_6,
+                "asymmetric, ADAA, bias 0, 10 Hz DC block, drive +6 dB",
+            ),
         ];
         let mut manifest_rows = Vec::new();
         for (name, samples, purpose) in files {
@@ -719,7 +1017,7 @@ mod tests {
             .unwrap();
         writeln!(
             manifest,
-            "# Private distortion audition\n\nSynthetic evidence/audition material; no listening judgment is implied.\n\n- Format: stereo 24-bit PCM WAV, 48 kHz\n- Input: deterministic 220 Hz, 1 kHz, 5 kHz, and 10.546875 kHz sine segments, 0.5 s each, 10 ms edge fades\n- Processor: isolated SHR soft-cubic shaper core; drive as named; tone, wet/dry, and output stages intentionally omitted to isolate antialiasing\n- Level control: each file targets -18 dBFS RMS, with a -1 dBFS peak ceiling\n- Listening question: compare files 02/03 for inharmonic high-note foldback without treating loudness as quality; file 05 isolates the known remaining high-frequency tradeoff\n\n{}",
+            "# Private distortion audition\n\nSynthetic evidence/audition material; no listening judgment is implied.\n\n- Format: stereo 24-bit PCM WAV, 48 kHz\n- Input: deterministic 220 Hz, 1 kHz, 5 kHz, and 10.546875 kHz sine segments, 0.5 s each, 10 ms edge fades\n- Processor: isolated named SHR shaper core at bias 0; drive as named; asymmetric files include the production 10 Hz DC blocker; tone, wet/dry, and output stages are omitted to isolate antialiasing\n- Level control: every file is independently RMS-matched to -18 dBFS with a -1 dBFS peak ceiling; no latency or phase alignment is applied because each file begins from reset and ADAA's phase consequence is part of the comparison\n- Listening questions: compare each legacy/ADAA pair for inharmonic high-note foldback without treating loudness as quality; compare +6/+12 dB for drive dependence; file 05 deliberately exposes ADAA's remaining high-frequency attenuation/foldback tradeoff\n\n{}",
             manifest_rows.join("\n")
         )
         .unwrap();

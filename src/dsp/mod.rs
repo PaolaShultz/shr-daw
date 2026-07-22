@@ -466,6 +466,8 @@ impl FractionalDelayLine {
         if maximum_delay_samples == 0 {
             return Err(DspError("delay capacity must be positive"));
         }
+        // The two guard samples cover the older/newer taps used by the
+        // centered four-point interpolator at the maximum supported delay.
         let length = maximum_delay_samples
             .checked_add(2)
             .ok_or(DspError("delay capacity overflow"))?;
@@ -489,6 +491,11 @@ impl FractionalDelayLine {
     /// interpolation. Valid delay is `1..=maximum_delay` samples.
     #[inline]
     pub fn read(&self, delay_samples: f32) -> f32 {
+        self.read_linear(delay_samples)
+    }
+
+    #[inline]
+    fn read_linear(&self, delay_samples: f32) -> f32 {
         if !delay_samples.is_finite()
             || delay_samples < 1.0
             || delay_samples > self.maximum_delay as f32
@@ -509,6 +516,45 @@ impl FractionalDelayLine {
         let fraction = (position - first as f64) as f32;
         finite_or_zero(
             self.samples[first] + (self.samples[second] - self.samples[first]) * fraction,
+        )
+    }
+
+    /// Read with a third-order, four-point Lagrange interpolator. The centered
+    /// coefficient span requires two samples of delay; shorter reads retain
+    /// linear interpolation instead of referring to unwritten future input.
+    /// Coefficients independently implement Smith, *Physical Audio Signal
+    /// Processing*, "Delay-Line and Signal Interpolation", Eq. (5.7).
+    #[inline]
+    pub fn read_lagrange3(&self, delay_samples: f32) -> f32 {
+        if delay_samples < 2.0 {
+            return self.read_linear(delay_samples);
+        }
+        if !delay_samples.is_finite() || delay_samples > self.maximum_delay as f32 {
+            return 0.0;
+        }
+        let length = self.samples.len() as f64;
+        let newest = if self.write == 0 {
+            self.samples.len() - 1
+        } else {
+            self.write - 1
+        } as f64;
+        let position = (newest - (delay_samples as f64 - 1.0)).rem_euclid(length);
+        let first = position.floor() as usize;
+        let older = (first + self.samples.len() - 1) % self.samples.len();
+        let second = (first + 1) % self.samples.len();
+        let newer = (first + 2) % self.samples.len();
+        let fraction = (position - first as f64) as f32;
+        let before = fraction - 1.0;
+        let after = fraction - 2.0;
+        let coefficient_older = -fraction * before * after / 6.0;
+        let coefficient_first = (fraction + 1.0) * before * after * 0.5;
+        let coefficient_second = -(fraction + 1.0) * fraction * after * 0.5;
+        let coefficient_newer = (fraction + 1.0) * fraction * before / 6.0;
+        finite_or_zero(
+            self.samples[older] * coefficient_older
+                + self.samples[first] * coefficient_first
+                + self.samples[second] * coefficient_second
+                + self.samples[newer] * coefficient_newer,
         )
     }
 
@@ -957,6 +1003,325 @@ mod tests {
         assert!((measured - expected).abs() < 1.0e-5);
         let loss_db = 20.0 * measured.log10();
         assert!((-2.02..=-2.00).contains(&loss_db), "{loss_db:.3} dB");
+    }
+
+    #[test]
+    fn third_order_lagrange_candidate_reduces_useful_band_error_and_is_gain_bounded() {
+        let sample_rate = 48_000.0_f64;
+        let length = 48_000;
+        let delay_samples = 4.5_f32;
+        let mut responses = Vec::new();
+        for frequency in [1_000.0_f64, 5_000.0, 10_000.0, 18_000.0] {
+            let mut linear = FractionalDelayLine::new(32).unwrap();
+            let mut lagrange = FractionalDelayLine::new(32).unwrap();
+            let mut linear_error = 0.0_f64;
+            let mut lagrange_error = 0.0_f64;
+            let mut linear_energy = 0.0_f64;
+            let mut lagrange_energy = 0.0_f64;
+            let mut count = 0_u32;
+            for index in 0..length {
+                let phase = 2.0 * std::f64::consts::PI * frequency * index as f64 / sample_rate;
+                let input = phase.sin() as f32;
+                linear.push(input);
+                lagrange.push(input);
+                let linear_output = linear.read_linear(delay_samples) as f64;
+                let lagrange_output = lagrange.read_lagrange3(delay_samples) as f64;
+                if index >= 4_800 {
+                    let ideal_phase = 2.0
+                        * std::f64::consts::PI
+                        * frequency
+                        * (index as f64 - (delay_samples as f64 - 1.0))
+                        / sample_rate;
+                    let ideal = ideal_phase.sin();
+                    linear_error += (linear_output - ideal).powi(2);
+                    lagrange_error += (lagrange_output - ideal).powi(2);
+                    linear_energy += linear_output.powi(2);
+                    lagrange_energy += lagrange_output.powi(2);
+                    count += 1;
+                }
+            }
+            let linear_rms_error = (linear_error / count as f64).sqrt();
+            let lagrange_rms_error = (lagrange_error / count as f64).sqrt();
+            let linear_gain = (linear_energy / count as f64).sqrt() * 2.0_f64.sqrt();
+            let lagrange_gain = (lagrange_energy / count as f64).sqrt() * 2.0_f64.sqrt();
+            responses.push((
+                frequency,
+                20.0 * linear_gain.log10(),
+                20.0 * lagrange_gain.log10(),
+                linear_rms_error,
+                lagrange_rms_error,
+            ));
+            assert!(
+                lagrange_rms_error < linear_rms_error,
+                "{frequency} Hz: linear {linear_rms_error}, Lagrange {lagrange_rms_error}"
+            );
+        }
+
+        for fraction_index in 0..=100 {
+            let fraction = fraction_index as f64 / 100.0;
+            let nodes = [-1.0_f64, 0.0, 1.0, 2.0];
+            let mut coefficients = [0.0_f64; 4];
+            for (index, node) in nodes.iter().copied().enumerate() {
+                coefficients[index] = nodes
+                    .iter()
+                    .copied()
+                    .filter(|other| *other != node)
+                    .map(|other| (fraction - other) / (node - other))
+                    .product();
+            }
+            for frequency_index in 0..=1_000 {
+                let omega = std::f64::consts::PI * frequency_index as f64 / 1_000.0;
+                let (real, imaginary) = coefficients.iter().zip(nodes).fold(
+                    (0.0, 0.0),
+                    |(real, imaginary), (coefficient, node)| {
+                        (
+                            real + coefficient * (omega * node).cos(),
+                            imaginary - coefficient * (omega * node).sin(),
+                        )
+                    },
+                );
+                assert!(
+                    real.hypot(imaginary) <= 1.0 + 1.0e-12,
+                    "gain exceeded unity at fraction {fraction}, omega {omega}"
+                );
+            }
+        }
+        eprintln!("fractional delay response (Hz, linear dB, Lagrange-3 dB, linear RMS error, Lagrange-3 RMS error): {responses:?}");
+
+        let mut benchmark_delay = FractionalDelayLine::new(64).unwrap();
+        for index in 0..66 {
+            benchmark_delay.push((index as f32 * 0.37).sin());
+        }
+        let iterations = 2_000_000;
+        let start = std::time::Instant::now();
+        let mut sum = 0.0_f32;
+        for index in 0..iterations {
+            let delay = 4.0 + (index % 100) as f32 * 0.01;
+            sum += std::hint::black_box(benchmark_delay.read_linear(delay));
+        }
+        std::hint::black_box(sum);
+        let linear_time = start.elapsed();
+        let start = std::time::Instant::now();
+        let mut sum = 0.0_f32;
+        for index in 0..iterations {
+            let delay = 4.0 + (index % 100) as f32 * 0.01;
+            sum += std::hint::black_box(benchmark_delay.read_lagrange3(delay));
+        }
+        std::hint::black_box(sum);
+        let lagrange_time = start.elapsed();
+        eprintln!(
+            "fractional delay core cost: linear {linear_time:?}, Lagrange-3 {lagrange_time:?}, ratio {:.3}",
+            lagrange_time.as_secs_f64() / linear_time.as_secs_f64()
+        );
+    }
+
+    #[test]
+    fn moving_lagrange_delay_tracks_ideal_modulation_and_feedback_remains_stable() {
+        let length = 32_768;
+        let warmup = 4_096;
+        let carrier_bin = 6_827;
+        let modulation_bin = 137;
+        let mut linear = FractionalDelayLine::new(32).unwrap();
+        let mut lagrange = FractionalDelayLine::new(32).unwrap();
+        let mut linear_error = 0.0_f64;
+        let mut lagrange_error = 0.0_f64;
+        let mut ideal_energy = 0.0_f64;
+        for index in 0..length + warmup {
+            let carrier_phase =
+                2.0 * std::f64::consts::PI * carrier_bin as f64 * index as f64 / length as f64;
+            let modulation_phase =
+                2.0 * std::f64::consts::PI * modulation_bin as f64 * index as f64 / length as f64;
+            let delay = 8.5 + 3.2 * modulation_phase.sin() as f32;
+            let input = carrier_phase.sin() as f32;
+            linear.push(input);
+            lagrange.push(input);
+            let linear_output = linear.read_linear(delay) as f64;
+            let lagrange_output = lagrange.read_lagrange3(delay) as f64;
+            if index >= warmup {
+                let ideal = (carrier_phase
+                    - 2.0 * std::f64::consts::PI * carrier_bin as f64 * (delay as f64 - 1.0)
+                        / length as f64)
+                    .sin();
+                linear_error += (linear_output - ideal).powi(2);
+                lagrange_error += (lagrange_output - ideal).powi(2);
+                ideal_energy += ideal.powi(2);
+            }
+        }
+        let linear_error_db = 10.0 * (linear_error / ideal_energy).log10();
+        let lagrange_error_db = 10.0 * (lagrange_error / ideal_energy).log10();
+        assert!(
+            lagrange_error_db < linear_error_db - 8.0,
+            "linear {linear_error_db:.2} dB, Lagrange {lagrange_error_db:.2} dB"
+        );
+
+        let mut feedback = FractionalDelayLine::new(64).unwrap();
+        let mut block_energy = [0.0_f64; 8];
+        let mut maximum = 0.0_f32;
+        for index in 0..32_768 {
+            let delayed = feedback.read_lagrange3(31.5);
+            let input = if index == 0 { 1.0 } else { 0.0 };
+            feedback.push(input + delayed * 0.92);
+            maximum = maximum.max(delayed.abs());
+            block_energy[index / 4_096] += (delayed as f64).powi(2);
+        }
+        assert!(maximum <= 1.0 + 1.0e-6);
+        assert!(
+            block_energy
+                .windows(2)
+                .all(|pair| pair[1] < pair[0] * 0.999),
+            "{block_energy:?}"
+        );
+        eprintln!(
+            "moving fractional-delay normalized error: linear {linear_error_db:.2} dB, Lagrange-3 {lagrange_error_db:.2} dB; feedback block energy {block_energy:?}"
+        );
+    }
+
+    #[test]
+    #[ignore = "writes the private level-matched delay audition pack"]
+    fn render_private_fractional_delay_audition_pack() {
+        use hound::{SampleFormat, WavSpec, WavWriter};
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::path::PathBuf;
+
+        let destination = PathBuf::from(
+            std::env::var("SHSYNTH_DSP_LAB_DIR")
+                .expect("set SHSYNTH_DSP_LAB_DIR to one explicit private run directory"),
+        );
+        assert!(destination.is_absolute() && destination.parent().is_some());
+        std::fs::create_dir_all(&destination).unwrap();
+        let sample_rate = 48_000_u32;
+        let length = sample_rate as usize * 3;
+        let dry = (0..length)
+            .map(|index| {
+                let time = index as f32 / sample_rate as f32;
+                let tonal = (2.0 * std::f32::consts::PI * 5_000.0 * time).sin() * 0.12
+                    + (2.0 * std::f32::consts::PI * 10_000.0 * time).sin() * 0.08;
+                let burst_position = index % 6_000;
+                let burst = if burst_position < 480 {
+                    let noise = (((index * 73 % 257) as f32 / 128.0) - 1.0) * 0.12;
+                    noise * (1.0 - burst_position as f32 / 480.0)
+                } else {
+                    0.0
+                };
+                tonal + burst
+            })
+            .collect::<Vec<_>>();
+
+        let render = |lagrange: bool, modulation_hz: f32, feedback: f32| {
+            let mut line = FractionalDelayLine::new(128).unwrap();
+            let mut output = Vec::with_capacity(dry.len());
+            let mut delayed = 0.0_f32;
+            for (index, input) in dry.iter().copied().enumerate() {
+                let modulation = if modulation_hz > 0.0 {
+                    (2.0 * std::f32::consts::PI * modulation_hz * index as f32 / sample_rate as f32)
+                        .sin()
+                        * 10.0
+                } else {
+                    0.0
+                };
+                let delay = 12.5 + modulation;
+                line.push(input + delayed * feedback);
+                delayed = if lagrange {
+                    line.read_lagrange3(delay)
+                } else {
+                    line.read_linear(delay)
+                };
+                output.push(delayed);
+            }
+            output
+        };
+
+        fn level_match(samples: &[f32]) -> (Vec<f32>, f64) {
+            let target = 10.0_f64.powf(-18.0 / 20.0);
+            let rms_gain = target / analysis::rms(samples).max(f64::MIN_POSITIVE);
+            let peak_gain =
+                10.0_f64.powf(-1.0 / 20.0) / f64::from(analysis::peak(samples).max(1.0e-12));
+            let gain = rms_gain.min(peak_gain);
+            (
+                samples.iter().map(|sample| *sample * gain as f32).collect(),
+                20.0 * gain.log10(),
+            )
+        }
+
+        fn write_wav(path: &std::path::Path, samples: &[f32]) {
+            let file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .unwrap();
+            let mut writer = WavWriter::new(
+                file,
+                WavSpec {
+                    channels: 2,
+                    sample_rate: 48_000,
+                    bits_per_sample: 24,
+                    sample_format: SampleFormat::Int,
+                },
+            )
+            .unwrap();
+            for sample in samples {
+                let quantized = (sample.clamp(-1.0, 1.0) * 8_388_607.0).round() as i32;
+                writer.write_sample(quantized).unwrap();
+                writer.write_sample(quantized).unwrap();
+            }
+            writer.finalize().unwrap();
+        }
+
+        let files = [
+            (
+                "20-delay-dry.wav",
+                dry.clone(),
+                "unprocessed deterministic reference",
+            ),
+            (
+                "21-delay-static-linear.wav",
+                render(false, 0.0, 0.0),
+                "previous linear interpolation, 12.5 samples, feedback 0",
+            ),
+            (
+                "22-delay-static-lagrange3.wav",
+                render(true, 0.0, 0.0),
+                "current Lagrange-3 interpolation, 12.5 samples, feedback 0",
+            ),
+            (
+                "23-chorus-linear.wav",
+                render(false, 0.7, 0.0),
+                "previous linear interpolation, 2.5..22.5 samples at 0.7 Hz, feedback 0",
+            ),
+            (
+                "24-chorus-lagrange3.wav",
+                render(true, 0.7, 0.0),
+                "current Lagrange-3 interpolation, 2.5..22.5 samples at 0.7 Hz, feedback 0",
+            ),
+            (
+                "25-flanger-linear-feedback.wav",
+                render(false, 0.7, 0.7),
+                "previous linear interpolation, 2.5..22.5 samples at 0.7 Hz, feedback +70%",
+            ),
+            (
+                "26-flanger-lagrange3-feedback.wav",
+                render(true, 0.7, 0.7),
+                "current Lagrange-3 interpolation, 2.5..22.5 samples at 0.7 Hz, feedback +70%",
+            ),
+        ];
+        let mut rows = Vec::new();
+        for (name, samples, purpose) in files {
+            let (matched, gain_db) = level_match(&samples);
+            write_wav(&destination.join(name), &matched);
+            rows.push(format!("- `{name}` — {purpose}; gain {gain_db:+.2} dB"));
+        }
+        let mut manifest = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination.join("DELAY_MANIFEST.md"))
+            .unwrap();
+        writeln!(
+            manifest,
+            "# Private fractional-delay audition\n\nSynthetic evidence/audition material; no listening judgment is implied.\n\n- Format: stereo 24-bit PCM WAV, 48 kHz, 3.000 s\n- Input: deterministic 5 kHz + 10 kHz tones with deterministic 125 ms noise bursts every 125 ms\n- Level control: every file is independently RMS-matched to -18 dBFS with a -1 dBFS peak ceiling\n- Alignment: the compared interpolators use the same nominal read position and reset state; no post-render latency or phase alignment is applied because phase/modulation behavior is under test\n- Listening questions: compare 21/22 for static high-frequency loss, 23/24 for moving-delay sidebands, and 25/26 for feedback texture/stability; 25 deliberately exposes the retained linear artifact\n\n{}",
+            rows.join("\n")
+        )
+        .unwrap();
     }
 
     #[test]

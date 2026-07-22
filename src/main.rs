@@ -44,6 +44,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
     if let Err(e) = real_main() {
@@ -140,6 +141,7 @@ fn effects_checkpoint(
     state: &Path,
     config: &config::RuntimeConfig,
 ) -> Result<()> {
+    checkpoint_event("command-start");
     let selector = args
         .first()
         .context("usage: shr effects-checkpoint PRESET [PROFILE] [SECONDS]")?;
@@ -161,7 +163,8 @@ fn effects_checkpoint(
     // checkpoint has no UI-owned loop client, so provide an owned silent source
     // only when that exact configured client is absent. Its direct links are
     // removed/restored by the normal graph transaction and disappear on drop.
-    let _checkpoint_loop = checkpoint_loop_source(&config)?;
+    let checkpoint_loop = checkpoint_loop_source(&config)?;
+    checkpoint_event("loop-source-ready");
     let maximum_frames = config.audio_graph.maximum_callback_frames as usize;
     let node_count = 3usize
         .saturating_add(rack.order.len())
@@ -182,6 +185,7 @@ fn effects_checkpoint(
         .saturating_mul(std::mem::size_of::<dsp::StereoFrame>());
     let (tx, _) = std::sync::mpsc::channel();
     let router = engine::MidiRouter::start(state, &config, tx)?;
+    checkpoint_event("midi-router-ready");
     let mut engine = engine::Engine::start_with_routing(
         preset,
         state,
@@ -191,6 +195,7 @@ fn effects_checkpoint(
         &aux_routing,
     )?;
     engine.bind_midi_lifecycle(router.lifecycle());
+    checkpoint_event("engine-and-graph-ready");
     let sample_rate = engine
         .audio_graph_sample_rate()
         .context("owned graph sample rate unavailable")?;
@@ -216,13 +221,21 @@ fn effects_checkpoint(
     let mut synth_rss_kib = process_rss_kib(synth_pid).unwrap_or(0);
     let started = Instant::now();
     engine.send(&[0x90, 48, 8])?;
+    checkpoint_event("note-on-sent");
     while started.elapsed() < Duration::from_secs(seconds) {
         thread::sleep(Duration::from_millis(100));
         owner_rss_kib = owner_rss_kib.max(process_rss_kib(owner_pid).unwrap_or(0));
         synth_rss_kib = synth_rss_kib.max(process_rss_kib(synth_pid).unwrap_or(0));
     }
+    let final_meter = engine
+        .final_bus_meter()
+        .context("owned graph final meter unavailable")?;
+    checkpoint_event("measurement-complete");
     let _ = engine.send(&[0x80, 48, 0]);
-    engine.panic();
+    // `Engine::drop` sends the full all-channel panic immediately before it
+    // terminates the owned synth. Do not send the same 48-message burst twice
+    // during this tightly bounded checkpoint teardown.
+    checkpoint_event("note-off-sent");
     let elapsed = started.elapsed().as_secs_f64();
     let owner_ticks = process_ticks(owner_pid)
         .unwrap_or(owner_start)
@@ -232,9 +245,11 @@ fn effects_checkpoint(
         .saturating_sub(synth_start);
     let clock_ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
     let cpu_percent = |ticks: u64| ticks as f64 / clock_ticks / elapsed * 100.0;
+    checkpoint_event("graph-restore-start");
     let (timing, restored) = engine
         .finish_audio_graph_checkpoint()
         .context("owned graph fell back before checkpoint completed")?;
+    checkpoint_event("graph-restored");
     println!(
         "PROFILE {profile} · effects {} · {elapsed:.3} s",
         rack.effects.len()
@@ -260,9 +275,41 @@ fn effects_checkpoint(
         "PREALLOCATED AUDIO ARRAYS · effects {} bytes · graph buffers {} bytes · capacity {} frames",
         effect_memory_bytes, graph_buffer_bytes, maximum_frames
     );
+    println!(
+        "FINAL BUS METERS · limiter input peak {:.6}/{:.6} rms {:.6}/{:.6} clips {} non-finite {} · output peak {:.6}/{:.6} rms {:.6}/{:.6} clips {} non-finite {} · limiter reduction {:.3} dB",
+        final_meter.limiter_input.peak.left,
+        final_meter.limiter_input.peak.right,
+        final_meter.limiter_input.rms.left,
+        final_meter.limiter_input.rms.right,
+        final_meter.limiter_input.clips,
+        final_meter.limiter_input.non_finite,
+        final_meter.output.peak.left,
+        final_meter.output.peak.right,
+        final_meter.output.rms.left,
+        final_meter.output.rms.right,
+        final_meter.output.clips,
+        final_meter.output.non_finite,
+        final_meter.limiter_gain_reduction_db,
+    );
     restored.context("restore exact direct route after checkpoint")?;
+    checkpoint_event("engine-drop-start");
     drop(engine);
+    checkpoint_event("engine-dropped");
+    drop(router);
+    checkpoint_event("midi-router-dropped");
+    drop(checkpoint_loop);
+    checkpoint_event("loop-source-dropped");
     Ok(())
+}
+
+fn checkpoint_event(label: &str) {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    println!(
+        "CHECKPOINT EVENT · unix_us={} · {label}",
+        elapsed.as_micros()
+    );
 }
 
 fn checkpoint_loop_source(

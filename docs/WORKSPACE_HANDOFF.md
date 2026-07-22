@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.93`.
+corrected starting point; the current checked-progress version is `0.3.94`.
 
 The complete deterministic documentation screenshot set is reconciled to the
 current UI; physical approval remains the next gate for UI/controller work.
@@ -33,6 +33,67 @@ Plain `shr` resolves to this checkout's `scripts/local.sh` through both
 `/home/patch/.bash_aliases` and `/home/patch/.local/bin/shr`. The launcher uses
 `target/debug/shr` unless `SHSYNTH_BIN` is explicitly set; the debug TUI shows
 `DEV`. Do not restore the obsolete release-binary alias.
+
+## Active DSP/JACK continuation (2026-07-22)
+
+The current DSP closure pass must be continued, not recreated. It
+adds validated FFT/alias analyzers; centered four-point Lagrange interpolation
+for delay, chorus, and flanger; first-order ADAA on the filter cubic pre-drive;
+short reverb input all-pass diffusion; comprehensive nonlinear/interpolation/
+reverb tests; and private level-matched audition renders. Distortion retains
+first-order ADAA after multi-bin characterization. The implementation and
+focused provenance are in `src/dsp/`, `src/effects/`, `src/effect_schema.rs`,
+`src/main.rs`, `docs/AUDIO_GRAPH.md`, and `docs/CONFIGURATION.md`. Do not edit
+the roadmap or historical Phase 2/3/4 measurements for this work.
+
+Offline validation is coherent: the complete suite passed 648 tests with zero
+failures and four intentionally ignored private renderers; the later
+checkpoint-only diagnostic/panic change passed its focused parser test and
+`cargo check --locked`. Locked release builds succeeded. Private raw evidence
+and audition files are in the ignored
+`user/dsp-lab/20260722T151647Z/`; do not overwrite, stage, publish, or copy that
+directory into tracked documentation.
+
+The amplifier was confirmed off only for the completed connected tests in the
+originating session; fresh physical work still requires fresh explicit safety
+authorization. JACK was left running exactly as found at 48 kHz, 128 frames,
+three periods, RT priority 95 on `hw:A96`. Starting and final snapshots both had
+18 ports, zero connections, no SHR/synthv1 process, and identical routes. No
+persistent audio configuration or tuning changed.
+
+Connected release results were healthy during sustained processing:
+
+- `soft-cubic`, 10.027 s: 3,810 callbacks, mean 53.416 us, p99 98 us,
+  maximum 224.222 us, zero misses/oversized callbacks, owner/synth CPU
+  3.09%/5.09%, owner/synth RSS 119,388/129,284 KiB.
+- `phase4-full`, 20.050 s and eleven effects: 7,576 callbacks, mean
+  437.601 us, p99 532 us, maximum 1,013.125 us, zero misses/oversized
+  callbacks, owner/synth CPU 17.51%/5.44%, owner/synth RSS
+  121,752/129,324 KiB, 1,860,804 bytes effect storage and 589,824 bytes graph
+  buffers.
+- The final five-second `soft-cubic` diagnostic had zero meter clips and
+  non-finite samples, zero limiter reduction, 51.847 us mean, 96 us p99 and
+  253.202 us maximum callback time.
+
+The checkpoint now emits Unix-microsecond control-thread events and final-bus
+meters. Timestamp evidence demonstrated that the old checkpoint sent the
+48-message all-channel panic twice: explicitly before graph restore and again
+inside `Engine::drop`. Removing only the duplicate explicit panic reduced an
+otherwise identical five-second run from four teardown xruns to two without
+changing routes, signal policy, timeout, or callback work. `Engine::drop`
+remains the guaranteed All Notes Off/panic path.
+
+Two transition xruns remain and both name `shs-synthv1`: the final run began
+engine drop at Unix 1784739033026652 us; JACK reported the first miss at
+2026-07-22 17:50:33.032472+01:00 and the second at
+17:50:35.035115+01:00; engine drop completed at Unix 1784739035050091 us.
+Thus one miss follows synth termination startup by about 5.8 ms and the other
+lands at the existing two-second SIGTERM-to-forced-kill boundary. Do not hide
+these events, narrow the journal window, weaken exact route restoration, or
+extend/shorten the timeout speculatively. The next focused experiment should
+establish whether synthv1 0.9.29 has a usable graceful JACK-client exit path;
+the inspected upstream project is Rui Nuno Capela's `rncbc/synthv1`, GPL-2.0-
+or-later, but no upstream code was copied. Preserve unowned synth processes.
 
 ## Publishing state
 

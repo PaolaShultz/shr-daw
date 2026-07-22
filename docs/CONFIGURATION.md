@@ -311,7 +311,10 @@ uses eight source inserts, two reverb buses, and one master compressor.
 Duration is bounded to 1–60 seconds. The command enables the graph only
 in its cloned in-memory configuration, sends note 48 at velocity 8, measures
 the owned graph and synth processes, restores the exact direct route, and stops
-only the engine it owns. It does not persist graph enablement or JACK settings.
+only the engine it owns. It also prints final-bus peak/RMS, clip and non-finite
+counters plus Unix-microsecond control-thread lifecycle markers so JACK journal
+events can be assigned to startup, measurement, graph restore, or teardown.
+It does not persist graph enablement or JACK settings.
 
 ## Non-destructive runtime fallbacks
 

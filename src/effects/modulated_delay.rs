@@ -73,8 +73,8 @@ impl ModulatedDelay {
         let right_lfo = self.right_lfo.next_value();
         let left_time = self.modulated_samples(base, depth, left_lfo);
         let right_time = self.modulated_samples(base, depth, right_lfo);
-        let delayed_left = self.left.read(left_time);
-        let delayed_right = self.right.read(right_time);
+        let delayed_left = self.left.read_lagrange3(left_time);
+        let delayed_right = self.right.read_lagrange3(right_time);
         let feedback = self.feedback.next_value();
         let write_left = frame.left + delayed_left * feedback;
         let write_right = frame.right + delayed_right * feedback;

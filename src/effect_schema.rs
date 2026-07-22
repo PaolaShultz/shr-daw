@@ -594,8 +594,13 @@ pub fn minimum_runtime_memory_bytes(
             let fdn = 4usize.saturating_mul(
                 ((sample_rate as usize).saturating_mul(100) / 1_000).saturating_add(3),
             );
+            // Four bounded input diffusers use less than 8 ms each.
+            let diffusion = 4usize.saturating_mul(
+                ((sample_rate as usize).saturating_mul(8) / 1_000).saturating_add(3),
+            );
             predelay
                 .saturating_add(fdn)
+                .saturating_add(diffusion)
                 .saturating_mul(std::mem::size_of::<f32>())
         }
         _ => 0,

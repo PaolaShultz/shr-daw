@@ -77,6 +77,8 @@ pub(super) struct Filter {
     damping: SmoothedValue,
     drive_gain: SmoothedValue,
     drive_mix: SmoothedValue,
+    drive_previous_left: Option<f32>,
+    drive_previous_right: Option<f32>,
     mix: SmoothedValue,
     current_mode: Mode,
     next_mode: Mode,
@@ -102,6 +104,8 @@ impl Filter {
             damping: smooth(resonance_damping(value("resonance")?)),
             drive_gain: smooth(db_to_gain(drive_db)?),
             drive_mix: smooth(drive_db / 12.0),
+            drive_previous_left: None,
+            drive_previous_right: None,
             mix: smooth(value("mix_percent")? * 0.01),
             current_mode: mode,
             next_mode: mode,
@@ -115,8 +119,18 @@ impl Filter {
     pub(super) fn process(&mut self, frame: StereoFrame) -> StereoFrame {
         let drive_gain = self.drive_gain.next_value();
         let drive_mix = self.drive_mix.next_value();
-        let driven_left = drive(frame.left, drive_gain, drive_mix);
-        let driven_right = drive(frame.right, drive_gain, drive_mix);
+        let driven_left = drive(
+            frame.left,
+            drive_gain,
+            drive_mix,
+            &mut self.drive_previous_left,
+        );
+        let driven_right = drive(
+            frame.right,
+            drive_gain,
+            drive_mix,
+            &mut self.drive_previous_right,
+        );
         let g = self.g.next_value();
         let damping = self.damping.next_value();
         let left = self.left.process(driven_left, g, damping);
@@ -194,6 +208,8 @@ impl Filter {
     pub(super) fn reset(&mut self) {
         self.left.reset();
         self.right.reset();
+        self.drive_previous_left = None;
+        self.drive_previous_right = None;
         self.current_mode = self.pending_mode.unwrap_or(if self.transitioning {
             self.next_mode
         } else {
@@ -218,19 +234,60 @@ fn resonance_damping(resonance_percent: f32) -> f32 {
 }
 
 #[inline]
-fn drive(input: f32, gain: f32, mix: f32) -> f32 {
+fn drive(input: f32, gain: f32, mix: f32, previous: &mut Option<f32>) -> f32 {
+    let driven = input * gain;
     if mix <= 0.0 {
+        *previous = Some(driven);
         return input;
     }
-    let driven = input * gain;
-    let saturated = if driven >= 1.0 {
+    let saturated = antialiased_cubic(driven, *previous);
+    *previous = Some(driven);
+    finite_or_zero(input + (saturated - input) * mix)
+}
+
+/// First-order ADAA for the filter's cubic pre-drive. This is the same
+/// antiderivative method used by Distortion, applied before the resonant TPT
+/// state-variable filter so folded products are not amplified by that stage.
+#[inline]
+fn antialiased_cubic(input: f32, previous: Option<f32>) -> f32 {
+    let Some(previous) = previous else {
+        return cubic_transfer(input);
+    };
+    if input >= 1.0 && previous >= 1.0 {
+        return 1.0;
+    }
+    if input <= -1.0 && previous <= -1.0 {
+        return -1.0;
+    }
+    let difference = input - previous;
+    if difference.abs() <= 1.0e-4 {
+        cubic_transfer((input + previous) * 0.5)
+    } else {
+        (cubic_antiderivative(input) - cubic_antiderivative(previous)) / difference
+    }
+}
+
+#[inline]
+fn cubic_transfer(input: f32) -> f32 {
+    if input >= 1.0 {
         1.0
-    } else if driven <= -1.0 {
+    } else if input <= -1.0 {
         -1.0
     } else {
-        1.5 * (driven - driven * driven * driven / 3.0)
-    };
-    finite_or_zero(input + (saturated - input) * mix)
+        1.5 * (input - input * input * input / 3.0)
+    }
+}
+
+#[inline]
+fn cubic_antiderivative(input: f32) -> f32 {
+    if input >= 1.0 {
+        input - 0.375
+    } else if input <= -1.0 {
+        -input - 0.375
+    } else {
+        let squared = input * input;
+        0.75 * squared - 0.125 * squared * squared
+    }
 }
 
 #[cfg(test)]
@@ -238,6 +295,7 @@ mod tests {
     use super::*;
     use crate::audio_graph::{EffectKind, EFFECT_FORMAT_VERSION};
     use crate::dsp::allocation_test::assert_no_allocations;
+    use crate::dsp::analysis::{coherent_sine, harmonic_alias_ratio, rms};
     use crate::effects::EffectSlot;
     use std::f32::consts::PI;
 
@@ -278,6 +336,42 @@ mod tests {
         (output_energy / input_energy).sqrt()
     }
 
+    fn legacy_drive(input: f32, gain: f32, mix: f32) -> f32 {
+        if mix <= 0.0 {
+            return input;
+        }
+        let saturated = cubic_transfer(input * gain);
+        finite_or_zero(input + (saturated - input) * mix)
+    }
+
+    fn render_driven_filter(
+        input: &[f32],
+        sample_rate: f32,
+        cutoff: f32,
+        resonance: f32,
+        drive_db: f32,
+        antialiased: bool,
+    ) -> Vec<f32> {
+        let mut state = State::default();
+        let g = cutoff_coefficient(cutoff, sample_rate);
+        let damping = resonance_damping(resonance);
+        let gain = db_to_gain(drive_db).unwrap();
+        let mix = drive_db / 12.0;
+        let mut previous = None;
+        input
+            .iter()
+            .copied()
+            .map(|sample| {
+                let shaped = if antialiased {
+                    drive(sample, gain, mix, &mut previous)
+                } else {
+                    legacy_drive(sample, gain, mix)
+                };
+                state.process(shaped, g, damping).low
+            })
+            .collect()
+    }
+
     #[test]
     fn three_modes_have_the_expected_measured_response() {
         let low_pass_low = measured_gain(0, 100.0, 1_000.0);
@@ -294,11 +388,97 @@ mod tests {
 
     #[test]
     fn zero_drive_is_exactly_linear_before_filtering() {
+        let mut previous = None;
         for index in 0..=20_000 {
             let input = -1.0 + index as f32 * 0.0001;
-            assert_eq!(drive(input, 1.0, 0.0), input);
+            assert_eq!(drive(input, 1.0, 0.0, &mut previous), input);
         }
-        assert!(drive(0.75, db_to_gain(12.0).unwrap(), 1.0) <= 1.0);
+        previous = None;
+        assert!(drive(0.75, db_to_gain(12.0).unwrap(), 1.0, &mut previous) <= 1.0);
+    }
+
+    #[test]
+    fn filter_drive_alias_is_measured_through_the_resonant_tpt_stage() {
+        const LENGTH: usize = 4_096;
+        let bins = [700, 900, 1_300];
+        let mut rows = Vec::new();
+        for sample_rate in [44_100_u32, 48_000, 96_000] {
+            for cutoff in [5_000.0_f32, 15_000.0] {
+                for resonance in [20.0_f32, 70.0] {
+                    for drive_db in [4.0_f32, 8.0, 12.0] {
+                        let mut legacy_alias = 0.0_f64;
+                        let mut adaa_alias = 0.0_f64;
+                        let mut rms_delta = 0.0_f64;
+                        for bin in bins {
+                            let input = coherent_sine(LENGTH * 2, bin * 2, 0.5);
+                            let legacy = render_driven_filter(
+                                &input,
+                                sample_rate as f32,
+                                cutoff,
+                                resonance,
+                                drive_db,
+                                false,
+                            )
+                            .split_off(LENGTH);
+                            let adaa = render_driven_filter(
+                                &input,
+                                sample_rate as f32,
+                                cutoff,
+                                resonance,
+                                drive_db,
+                                true,
+                            )
+                            .split_off(LENGTH);
+                            legacy_alias += harmonic_alias_ratio(&legacy, bin, 63).powi(2);
+                            adaa_alias += harmonic_alias_ratio(&adaa, bin, 63).powi(2);
+                            rms_delta += 20.0 * (rms(&adaa) / rms(&legacy)).log10();
+                        }
+                        legacy_alias = (legacy_alias / bins.len() as f64).sqrt();
+                        adaa_alias = (adaa_alias / bins.len() as f64).sqrt();
+                        rows.push((
+                            sample_rate,
+                            cutoff,
+                            resonance,
+                            drive_db,
+                            20.0 * legacy_alias.max(1.0e-15).log10(),
+                            20.0 * adaa_alias.max(1.0e-15).log10(),
+                            rms_delta / bins.len() as f64,
+                        ));
+                        assert!(legacy_alias.is_finite() && adaa_alias.is_finite());
+                        assert!(
+                            adaa_alias < legacy_alias * 0.5,
+                            "rate {sample_rate}, cutoff {cutoff}, resonance {resonance}, drive {drive_db}: legacy {legacy_alias}, ADAA {adaa_alias}"
+                        );
+                    }
+                }
+            }
+        }
+        eprintln!("filter-drive alias rows (rate, cutoff Hz, resonance, drive dB, legacy alias dBc, ADAA alias dBc, ADAA RMS delta dB): {rows:?}");
+
+        let input = coherent_sine(65_536, 13_003, 0.5);
+        let legacy_start = std::time::Instant::now();
+        let mut sum = 0.0_f32;
+        for _ in 0..16 {
+            for sample in input.iter().copied() {
+                sum += std::hint::black_box(legacy_drive(sample, 4.0, 1.0));
+            }
+        }
+        std::hint::black_box(sum);
+        let legacy_time = legacy_start.elapsed();
+        let adaa_start = std::time::Instant::now();
+        let mut previous = None;
+        let mut sum = 0.0_f32;
+        for _ in 0..16 {
+            for sample in input.iter().copied() {
+                sum += std::hint::black_box(drive(sample, 4.0, 1.0, &mut previous));
+            }
+        }
+        std::hint::black_box(sum);
+        let adaa_time = adaa_start.elapsed();
+        eprintln!(
+            "filter drive core cost: legacy {legacy_time:?}, ADAA {adaa_time:?}, ratio {:.3}",
+            adaa_time.as_secs_f64() / legacy_time.as_secs_f64()
+        );
     }
 
     #[test]
@@ -391,5 +571,118 @@ mod tests {
         let mut dry = [StereoFrame::new(0.25, -0.5); 256];
         odd.process(&mut dry);
         assert_eq!(dry[255], StereoFrame::new(0.25, -0.5));
+    }
+
+    #[test]
+    #[ignore = "writes the private level-matched filter-drive audition pack"]
+    fn render_private_filter_drive_audition_pack() {
+        use hound::{SampleFormat, WavSpec, WavWriter};
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::path::PathBuf;
+
+        let destination = PathBuf::from(
+            std::env::var("SHSYNTH_DSP_LAB_DIR")
+                .expect("set SHSYNTH_DSP_LAB_DIR to one explicit private run directory"),
+        );
+        assert!(destination.is_absolute() && destination.parent().is_some());
+        std::fs::create_dir_all(&destination).unwrap();
+        let sample_rate = 48_000_u32;
+        let dry = (0..sample_rate as usize * 3)
+            .map(|index| {
+                let time = index as f32 / sample_rate as f32;
+                let sweep_frequency = 2_000.0 * (8.0_f32).powf(time / 3.0);
+                (2.0 * PI * sweep_frequency * time).sin() * 0.22
+                    + (2.0 * PI * 10_500.0 * time).sin() * 0.08
+                    + (((index * 47 % 257) as f32 / 128.0) - 1.0) * 0.025
+            })
+            .collect::<Vec<_>>();
+        let render = |cutoff: f32, resonance: f32, legacy: bool| {
+            render_driven_filter(&dry, sample_rate as f32, cutoff, resonance, 12.0, !legacy)
+        };
+
+        fn level_match(samples: &[f32]) -> (Vec<f32>, f64) {
+            let peak = samples
+                .iter()
+                .copied()
+                .map(f32::abs)
+                .fold(0.0, f32::max)
+                .max(1.0e-12);
+            let gain = (10.0_f64.powf(-18.0 / 20.0) / rms(samples).max(f64::MIN_POSITIVE))
+                .min(10.0_f64.powf(-1.0 / 20.0) / f64::from(peak));
+            (
+                samples.iter().map(|sample| *sample * gain as f32).collect(),
+                20.0 * gain.log10(),
+            )
+        }
+
+        fn write_wav(path: &std::path::Path, samples: &[f32]) {
+            let file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .unwrap();
+            let mut writer = WavWriter::new(
+                file,
+                WavSpec {
+                    channels: 2,
+                    sample_rate: 48_000,
+                    bits_per_sample: 24,
+                    sample_format: SampleFormat::Int,
+                },
+            )
+            .unwrap();
+            for sample in samples {
+                let quantized = (sample.clamp(-1.0, 1.0) * 8_388_607.0).round() as i32;
+                writer.write_sample(quantized).unwrap();
+                writer.write_sample(quantized).unwrap();
+            }
+            writer.finalize().unwrap();
+        }
+
+        let files = [
+            (
+                "40-filter-drive-dry.wav",
+                dry.clone(),
+                "unprocessed deterministic reference",
+            ),
+            (
+                "41-filter-drive-5k-legacy.wav",
+                render(5_000.0, 20.0, true),
+                "previous cubic drive, low-pass 5 kHz, resonance 20%, drive +12 dB",
+            ),
+            (
+                "42-filter-drive-5k-adaa.wav",
+                render(5_000.0, 20.0, false),
+                "current ADAA cubic drive, low-pass 5 kHz, resonance 20%, drive +12 dB",
+            ),
+            (
+                "43-filter-drive-15k-legacy.wav",
+                render(15_000.0, 70.0, true),
+                "previous cubic drive, low-pass 15 kHz, resonance 70%, drive +12 dB",
+            ),
+            (
+                "44-filter-drive-15k-adaa.wav",
+                render(15_000.0, 70.0, false),
+                "current ADAA cubic drive, low-pass 15 kHz, resonance 70%, drive +12 dB",
+            ),
+        ];
+        let mut rows = Vec::new();
+        for (name, samples, purpose) in files {
+            let (matched, gain_db) = level_match(&samples);
+            write_wav(&destination.join(name), &matched);
+            rows.push(format!("- `{name}` — {purpose}; gain {gain_db:+.2} dB"));
+        }
+        let mut manifest = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination.join("FILTER_MANIFEST.md"))
+            .unwrap();
+        writeln!(
+            manifest,
+            "# Private filter-drive audition\n\nSynthetic evidence/audition material; no listening judgment is implied.\n\n- Format: stereo 24-bit PCM WAV, 48 kHz, 3.000 s\n- Input: deterministic rising 2–16 kHz sinusoid, fixed 10.5 kHz tone, and low bounded deterministic noise\n- Processor: isolated SHR cubic pre-drive and low-pass TPT state; drive +12 dB and 100% effect mix; cutoff/resonance as named\n- Level control: every file is independently RMS-matched to -18 dBFS with a -1 dBFS peak ceiling\n- Alignment: reset at frame zero with no post-render latency or phase alignment; ADAA phase/amplitude consequences remain exposed\n- Listening questions: compare 41/42 for low-frequency foldback passing a 5 kHz cutoff and 43/44 for the higher-cutoff resonant case; 41 deliberately exposes the strongest measured baseline artifact\n\n{}",
+            rows.join("\n")
+        )
+        .unwrap();
     }
 }

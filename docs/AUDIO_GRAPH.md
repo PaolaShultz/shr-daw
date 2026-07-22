@@ -200,7 +200,9 @@ values, dB conversion, one-pole filters, a DC blocker, transposed-direct-form-II
 biquads, bounded fractional delay, an envelope follower, a recurrence sine
 LFO, and fixed-window peak/RMS metering with atomic publication. Construction
 and configuration are control-thread work; their sample-processing methods are
-allocation-free.
+allocation-free. Delay, chorus, and flanger use a centered four-point,
+third-order Lagrange read above the two-sample safety margin and retain linear
+interpolation for shorter reads that cannot refer to a future sample.
 
 The biquad formulas are an original Rust implementation guided by the
 [W3C Audio EQ Cookbook](https://www.w3.org/TR/audio-eq-cookbook/), which
@@ -225,13 +227,13 @@ literature.
 | EQ | Robert Bristow-Johnson / W3C, *Audio EQ Cookbook* (W3C Note, 2021), §2 and the HPF, peaking and shelf equations; Stephen Butterworth, “On the Theory of Filter Amplifiers” (1930), pp. 536–541. The fourth-order high-pass Q pair is derived from the Butterworth poles; bell Q, ranges and defaults are SHR choices. |
 | Compressor | D. Giannoulis, M. Massberg and J. D. Reiss, “Digital Dynamic Range Compressor Design—A Tutorial and Analysis,” *JAES* 60(6), 2012, §2, Eqs. 3–8. Stereo max linking, sidechain cutoff range and lookup-table resolution are SHR choices. |
 | Distortion | J. O. Smith, *Physical Audio Signal Processing*, “Nonlinear Elements,” hard-clip and cubic equations; S. Bilbao, F. Esqueda, J. D. Parker and V. Välimäki, “Antiderivative Antialiasing for Memoryless Nonlinearities,” *IEEE Signal Processing Letters*, 2017, §§II–III; F. Esqueda et al., “Virtual Analog Models of the Lockhart and Serge Wavefolders,” *Applied Sciences* 7(12), 2017, Eqs. 45 and 50. First-order ADAA now suppresses foldback in all three branches without oversampling storage or integer-sample graph latency. The normalized cubic and asymmetric coefficients remain SHR voicing choices, not diode-circuit claims. |
-| Delay | J. O. Smith, *Physical Audio Signal Processing*, “Linear Interpolation,” Eq. 5.1 and its high-frequency-loss discussion; “Comb Filters” and “Filtered-Feedback Comb Filters.” Routing modes, tempo map, 20 ms time glide, cutoff mapping and two-second capacity are SHR choices. |
+| Delay | J. O. Smith, *Physical Audio Signal Processing*, “Delay-Line and Signal Interpolation,” Eq. 5.7 and the order-3 central-span guidance; “Comb Filters” and “Filtered-Feedback Comb Filters.” Routing modes, tempo map, 20 ms time glide, cutoff mapping, linear fallback below two samples, and two-second capacity are SHR choices. |
 | Chorus | S. Disch and U. Zölzer, “Modulation and Delay Line Based Digital Audio Effects,” DAFx-99, §2.2 Eq. 5; J. O. Smith, *Physical Audio Signal Processing*, “Chorus Effect.” Delay/rate ranges, feedback cap and read-head margin are SHR choices. |
 | Flanger | J. O. Smith, *Physical Audio Signal Processing*, “Flanging,” Fig. 5.3 and feedback discussion; Disch and Zölzer, DAFx-99, §2.2. Delay/rate ranges and signed-feedback limit are SHR choices. |
 | Phaser | J. O. Smith, *Physical Audio Signal Processing*, “Phasing with First-Order Allpass Filters,” §§9.19–9.20, including the first-order all-pass and bilinear coefficient. Four/six stages, shared stage tuning and sweep maps are SHR choices. |
 | Tremolo/Pan | Disch and Zölzer, DAFx-99, §2.1 Eq. 1, amplitude modulation; W3C *Web Audio API 1.1* §6.3.3, equal-power panning. The unity-center normalization, waveform set and 5 ms square smoothing are SHR choices. |
-| Reverb | J. Stautner and M. Puckette, “Designing Multi-Channel Reverberators,” *Computer Music Journal* 6(1), 1982, pp. 52–55, Eqs. 1–3; J. O. Smith, *Physical Audio Signal Processing*, “FDN Reverberation,” “Hadamard Matrix,” and “Achieving Desired Reverberation Times,” Eqs. 4.5–4.10. The normalized Hadamard matrix and RT60 line-gain equation are sourced invariants; the four line sets, damping map and room/plate/hall labels are original SHR tuning. |
-| Filter | A. Simper, “Linear Trapezoidal Integrated State Variable Filter With Low Noise Optimisation,” Cytomic, 2013/2016 corrections, pp. 2–7, Eqs. 1–5. Resonance mapping and the pre-drive blend are SHR choices. Its cubic pre-drive remains non-oversampled and is not covered by Distortion's ADAA path. |
+| Reverb | J. Stautner and M. Puckette, “Designing Multi-Channel Reverberators,” *Computer Music Journal* 6(1), 1982, pp. 52–55, Eqs. 1–3; J. O. Smith, *Physical Audio Signal Processing*, “FDN Reverberation,” “Hadamard Matrix,” and “Achieving Desired Reverberation Times,” Eqs. 4.5–4.10; J. Dattorro, “Effect Design, Part 1: Reverberator and Other Filters,” *JAES* 45(9), 1997, Fig. 1 and §1.3.3, pp. 662–664, cascaded all-pass input diffusion. The normalized Hadamard matrix, RT60 line-gain equation, and all-pass topology are sourced invariants; the four FDN line sets, four input-diffuser lengths, 0.55 diffusion gain, damping map, and room/plate/hall labels are original SHR tuning. |
+| Filter | A. Simper, “Linear Trapezoidal Integrated State Variable Filter With Low Noise Optimisation,” Cytomic, 2013/2016 corrections, pp. 2–7, Eqs. 1–5; Bilbao et al. (2017), §§II–III, first-order ADAA. Resonance mapping and the pre-drive blend are SHR choices. The cubic pre-drive now uses independent per-channel ADAA state before the TPT filter, without oversampling storage or integer-sample latency. |
 | Gate | M. Terrell, J. D. Reiss and M. Sandler, “Automatic Noise Gate Settings for Drum Recordings Containing Bleed from Secondary Sources,” *EURASIP JASP*, 2010/2011, §2.1; Giannoulis et al. (2012), Eqs. 5–8. Detector constants, hysteresis, stereo max link and ranges are SHR choices. |
 | Crusher | S. P. Lipshitz, R. A. Wannamaker and J. Vanderkooy, “Quantization and Dither: A Theoretical Survey,” *JAES* 40(5), 1992; R. A. Wannamaker et al., “A Theory of Non-Subtractive Dither,” *IEEE Transactions on Signal Processing* 48(2), 2000. The two-uniform, 2-LSB peak-to-peak TPDF is source-backed; signed endpoints, LCG seeds and sample-hold range are SHR choices. |
 
@@ -243,16 +245,24 @@ Direct sources: [Blumlein patent](https://patents.google.com/patent/GB394325A/en
 [Smith nonlinear elements](https://www.dsprelated.com/freebooks/pasp/Nonlinear_Elements.html),
 [Bilbao et al. ADAA](https://www.research.ed.ac.uk/files/34115216/bilbao_pdf.pdf),
 [Esqueda et al. ADAA Eq. 45/50](https://www.mdpi.com/2076-3417/7/12/1328),
-[Smith linear interpolation](https://www.dsprelated.com/freebooks/pasp/linear_interpolation.html),
+[Smith Lagrange delay interpolation](https://www.dsprelated.com/freebooks/pasp/Delay_Line_Signal_Interpolation.html),
 [Smith comb filters](https://www.dsprelated.com/freebooks/pasp/Comb_Filters.html),
 [Disch/Zölzer modulation](https://dafx.de/paper-archive/1999/disch.pdf),
 [Smith flanging](https://www.dsprelated.com/freebooks/pasp/Flanging.html),
 [Smith phasing](https://www.dsprelated.com/freebooks/pasp/Phasing_First_Order_Allpass_Filters.html),
 [Stautner/Puckette FDN](https://www.ee.columbia.edu/~dpwe/e4896/papers/StautP82-reverb.pdf),
 [Smith FDN](https://www.dsprelated.com/freebooks/pasp/FDN_Reverberation.html),
+[Dattorro reverb](https://nagasm.org/ASL/Sketch14/fig5/EffectDesignPart1.pdf),
 [Simper SVF](https://www.cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf),
 [Terrell/Reiss/Sandler gate](https://asp-eurasipjournals.springeropen.com/counter/pdf/10.1155/2010/465417.pdf),
 and [Wannamaker et al. dither](https://www.robertwannamaker.com/writings/ieee.pdf).
+
+Objective reverb tests use the normalized echo-density definition from J. S.
+Abel and P. Huang, “A Simple, Robust Measure of Reverberation Echo Density,”
+AES Convention 121, paper 6985, 2006: the proportion outside one local standard
+deviation is normalized by the Gaussian expectation. That metric establishes
+density growth, not musical preference. See the
+[AES publication record](https://secure.aes.org/forum/pubs/conventions/?elib=13819).
 
 Deterministic tests cover silence/step/impulse behavior, supported sample-rate
 limits, reset and non-finite recovery, stereo independence, long-running

@@ -101,8 +101,8 @@ impl Delay {
 
     #[inline]
     pub(super) fn process(&mut self, frame: StereoFrame) -> StereoFrame {
-        let left_delay = self.left.read(self.left_time.next_value());
-        let right_delay = self.right.read(self.right_time.next_value());
+        let left_delay = self.left.read_lagrange3(self.left_time.next_value());
+        let right_delay = self.right.read_lagrange3(self.right_time.next_value());
         let left_feedback = self.tone_left.process(left_delay);
         let right_feedback = self.tone_right.process(right_delay);
         let feedback = self.feedback.next_value();
