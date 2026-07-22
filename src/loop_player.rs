@@ -1437,8 +1437,8 @@ mod tests {
         let mut samples = vec![[0.0, 0.0]; sample_rate as usize * 2];
         for beat in 0..4 {
             let start = beat * 24_000;
-            for frame in start..start + 512 {
-                samples[frame] = [1.0, 1.0];
+            for frame in &mut samples[start..start + 512] {
+                *frame = [1.0, 1.0];
             }
         }
         let decoded = DecodedLoop {

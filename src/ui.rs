@@ -796,12 +796,10 @@ fn wrapped_index(current: usize, len: usize, direction: i8) -> usize {
         return 0;
     }
     let current = current.min(len - 1);
-    if direction < 0 {
-        (current + len - 1) % len
-    } else if direction > 0 {
-        (current + 1) % len
-    } else {
-        current
+    match direction.cmp(&0) {
+        std::cmp::Ordering::Less => (current + len - 1) % len,
+        std::cmp::Ordering::Greater => (current + 1) % len,
+        std::cmp::Ordering::Equal => current,
     }
 }
 
@@ -1050,6 +1048,9 @@ fn write_step_note(cell: &mut Cell, note: u8, velocity: u8) {
 }
 
 impl App {
+    // Keep construction dependencies explicit at the one application assembly
+    // boundary; hiding them in another bag type would not simplify ownership.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         catalogs: &[Catalog],
         midi_output: engine::SharedOutput,
@@ -1970,11 +1971,11 @@ impl App {
                 self.status = "active page routing is unavailable".into();
                 return;
             };
-            OverlayDraft::Route(RouteDraft::new(
+            OverlayDraft::Route(Box::new(RouteDraft::new(
                 self.tracker_pattern_number(),
                 self.tracker_page,
                 page,
-            ))
+            )))
         } else {
             OverlayDraft::None
         };
@@ -2288,20 +2289,24 @@ impl App {
         match kind {
             OverlayKind::TrackerPage => {
                 let page_rows = self.current_pages().len() * LANES_PER_PAGE;
-                if selection < page_rows {
-                    self.release_tracker_audition();
-                    self.tracker_page = selection / LANES_PER_PAGE;
-                    self.tracker_track = selection % LANES_PER_PAGE;
-                    self.close_overlay(false);
-                    if !self.leave_noob_on_percussion() {
-                        self.sync_tracker_route();
+                match selection.cmp(&page_rows) {
+                    std::cmp::Ordering::Less => {
+                        self.release_tracker_audition();
+                        self.tracker_page = selection / LANES_PER_PAGE;
+                        self.tracker_track = selection % LANES_PER_PAGE;
+                        self.close_overlay(false);
+                        if !self.leave_noob_on_percussion() {
+                            self.sync_tracker_route();
+                        }
                     }
-                } else if selection == page_rows {
-                    self.close_overlay(false);
-                    self.open_tracker_loop();
-                } else {
-                    self.close_overlay(false);
-                    self.open_page_manager();
+                    std::cmp::Ordering::Equal => {
+                        self.close_overlay(false);
+                        self.open_tracker_loop();
+                    }
+                    std::cmp::Ordering::Greater => {
+                        self.close_overlay(false);
+                        self.open_page_manager();
+                    }
                 }
             }
             OverlayKind::TrackerPattern => {
@@ -4054,12 +4059,10 @@ impl App {
             return;
         }
         self.tracker_page = wrapped_index(self.tracker_page, pages, direction);
-        if !self.leave_noob_on_percussion() {
-            if self.sync_tracker_route() {
-                self.status = self
-                    .current_page()
-                    .map_or_else(|| "no page".into(), |page| format!("{} page", page.name));
-            }
+        if !self.leave_noob_on_percussion() && self.sync_tracker_route() {
+            self.status = self
+                .current_page()
+                .map_or_else(|| "no page".into(), |page| format!("{} page", page.name));
         }
     }
     #[cfg(test)]
@@ -4551,7 +4554,15 @@ impl App {
             self.tracker_stop();
             return;
         }
-        self.set_tracker_mode(TrackerMode::Play);
+        let mode_changed = self.tracker_mode != TrackerMode::Play;
+        self.tracker_mode = TrackerMode::Play;
+        if mode_changed {
+            self.reset_context_page();
+        }
+        // Configure live input without starting the selected page's engine.
+        // Playback preflight below starts only a software route that actually
+        // has scheduled notes.
+        self.configure_tracker_route(false);
         self.cancel_tracker_gesture();
         let (order, row) = (self.tracker_order, self.tracker_row);
         // The first pass starts at the cursor; every following pass starts at
@@ -4585,15 +4596,10 @@ impl App {
         match scheduled_software_route(&messages) {
             Ok(Some(route)) if !self.ensure_tracker_engine_for(&route) => return,
             Ok(Some(_)) => {}
-            Ok(None) => {
-                if let Some(route) = self.tracker_software_route() {
-                    if !self.ensure_tracker_engine_for(&route) {
-                        return;
-                    }
-                } else {
-                    self.unload_owned_engine(|owner| matches!(owner, EngineOwner::Tracker(_)));
-                }
-            }
+            // A blank software page is not a scheduled instrument. Keep an
+            // already-owned FT2 engine available for live input, but do not
+            // start one merely because a loop-only Project retains that page.
+            Ok(None) => {}
             Err(error) => {
                 self.status = format!("tracker cannot play: {error}");
                 return;
@@ -14905,7 +14911,7 @@ mod tests {
         a.screen = Screen::Tracker;
         a.set_tracker_edit(true);
 
-        dispatch_pad(PadAction::Page2, true, &mut a, Path::new("/none"), &tx);
+        dispatch_pad(PadAction::Page3, true, &mut a, Path::new("/none"), &tx);
         dispatch_pad(PadAction::Item3, true, &mut a, Path::new("/none"), &tx);
         assert_eq!(
             a.overlay.as_ref().map(|overlay| overlay.kind),
@@ -14914,7 +14920,8 @@ mod tests {
         assert_eq!(a.screen, Screen::Tracker, "LENGTH must remain over FT2");
         a.close_overlay(true);
 
-        dispatch_pad(PadAction::Item2, true, &mut a, Path::new("/none"), &tx);
+        dispatch_pad(PadAction::Page2, true, &mut a, Path::new("/none"), &tx);
+        dispatch_pad(PadAction::Item4, true, &mut a, Path::new("/none"), &tx);
         assert_eq!(
             a.overlay.as_ref().map(|overlay| overlay.kind),
             Some(OverlayKind::TrackerAdvance)
@@ -15345,7 +15352,7 @@ mod tests {
     fn home_fits_without_truncation_or_overflow_at_compact_size() {
         let p = presets();
         let mut app = app(&p);
-        for selected in 0..HOME_ENTRIES.len() {
+        for (selected, entry) in HOME_ENTRIES.iter().enumerate() {
             app.home_selected = selected;
             let buffer = render_app(&mut app, 38, 10);
             assert_eq!((app.hits.list.x, app.hits.list.width), (2, 34));
@@ -15354,7 +15361,7 @@ mod tests {
             let selected_row = (app.hits.list.y..app.hits.list.y + app.hits.list.height)
                 .find(|row| buffer_cell(&buffer, 2, *row).bg == Color::White)
                 .expect("selected Home row remains visible");
-            assert!(row_text(&buffer, selected_row).contains(HOME_ENTRIES[selected].label));
+            assert!(row_text(&buffer, selected_row).contains(entry.label));
             for column in 2..36 {
                 assert_eq!(buffer_cell(&buffer, column, selected_row).bg, Color::White);
             }
@@ -19539,13 +19546,11 @@ mod tests {
         assert_eq!(a.tracker_row, 1);
         let row = a.tracker_row;
         a.tracker_cell_mut().unwrap().note = Note::On(70);
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page1, true))
-            .unwrap();
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
-            .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Page2, true))
             .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
+            .unwrap();
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
         for _ in 0..7 {
             tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Down))
@@ -19560,7 +19565,7 @@ mod tests {
         let note_row = a.tracker_row;
         a.tracker_single_note(60, 96);
         assert_eq!(a.tracker_row, (note_row + 8) % a.tracker_rows());
-        a.select_menu_page(0);
+        a.select_menu_page(1);
         let b = TestBackend::new(40, 20);
         let mut terminal = Terminal::new(b).unwrap();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();

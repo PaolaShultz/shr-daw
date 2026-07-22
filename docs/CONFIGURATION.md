@@ -15,6 +15,11 @@ copies them without replacing existing files to
 the checkout's `config/` and private `user/` tree instead. Environment
 overrides are documented in [Installation](INSTALLATION.md).
 
+For an owned synthv1 child, SHR sets `XDG_CONFIG_HOME` to the managed engine's
+private `config/` directory below that state root. This prevents synthv1 from
+writing into the caller's normal desktop configuration; a caller-supplied
+`XDG_CONFIG_HOME` is not used for that child process.
+
 ## Runtime key reference
 
 Repeated `midi.performance_input`, `audio.output`, `audio.internal_output`, `yoshimi.preset_root`,

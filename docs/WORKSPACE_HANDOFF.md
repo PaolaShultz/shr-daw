@@ -13,6 +13,13 @@ a standing `dev` branch before the owner opens the planned 0.6 milestone. The
 temporary combined build-and-test gate in `AGENTS.md` still applies; an
 unfrozen repository is not implicit permission to compile.
 
+The current ordered targets are owned by `docs/RELEASE_ROADMAP.md`: 0.4 checks
+all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
+0.5 completes the owner-specified FT2 behavior without pulling random future
+features into scope; 0.6 implements and physically accepts simultaneous
+18-channel playback and 18-channel recording. Package version `0.3.92` is the
+corrected starting point; the current checked-progress version is `0.3.93`.
+
 The complete deterministic documentation screenshot set is reconciled to the
 current UI; physical approval remains the next gate for UI/controller work.
 

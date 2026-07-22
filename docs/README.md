@@ -16,7 +16,7 @@ configuration, or the architecture contracts.
 - [First run](FIRST_RUN.md) — configure hardware and open SHR-DAW.
 - [Using SHR-DAW](USING_SHR_DAW.md) — instruments, screens, MIDI Ideas,
   source/aux/master effects, performance meters, recording, and commands.
-- [Complete screen and menu manual](MENU_MANUAL.md) — 96 deterministic images
+- [Complete screen and menu manual](MENU_MANUAL.md) — 95 deterministic images
   covering every populated 40×20 screen, contextual editor, and controller
   menu page, with explanations.
 - [In-app help](HELP.md) — the compact help text shown by `?` or F1.
@@ -92,11 +92,13 @@ setup guide.
 
 ## Planned work
 
+- [Release roadmap](RELEASE_ROADMAP.md) — ordered 0.4, 0.5, and 0.6 acceptance
+  gates and the rule that keeps unrelated ideas out of the current milestone.
 - [Future improvements](FUTURE_IMPROVEMENTS.md) — deferred routing and product
   ideas, including the deliberately unreasonable challenges.
 - [Raspberry Pi 5 headroom and footprint plan](PI5_HEADROOM_PLAN.md) —
-  unscheduled post-Build Week hardware comparison, dependency/footprint audit,
-  real-time core measurements, and one-rack PRESTO proposal.
+  release 0.4 Raspberry Pi OS Lite acceptance followed by the later
+  dependency/footprint, real-time-core, and PRESTO experiments.
 - [Post-competition mixer and aux plan](POST_COMPETITION_MIXER_AUX_PLAN.md) —
   multi-strip mixer and shared-aux migration.
 - [Post-competition rhythm plan](POST_COMPETITION_RHYTHM_PLAN.md) — arbitrary

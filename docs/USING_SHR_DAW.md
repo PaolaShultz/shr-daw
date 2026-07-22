@@ -155,9 +155,16 @@ shr pads learn [PORT_MATCH]
 shr pads update
 shr clock ports
 shr casio diagnostic
-shr config init
+shr config paths
+shr config init [--force]
 shr effects-checkpoint ENGINE:PRESET [PROFILE] [SECONDS]
 ```
+
+`shr config init` preserves existing configuration; `--force` deliberately
+replaces both runtime and controller files with current defaults. The complete
+CLI inventory, including maintenance stress and screenshot commands, is in
+`shr --help`; their safety contracts are in the focused recording, final-bus,
+and maintainer-helper documents.
 
 `shr casio diagnostic` keeps an old name from the first hardware test. It does
 not send MIDI. It lists output ports and shows the messages that would be used.

@@ -1,12 +1,18 @@
 # Installation
 
-SHR-DAW is developed and tested with real audio and MIDI hardware on Patchbox
-OS based on Debian 12 (Bookworm).
+Current real audio and MIDI evidence comes from Patchbox OS based on Debian 12
+(Bookworm). Patchbox remains historical evidence, not the intended installation
+target for release 0.4.
 
 A clean Debian 11 (Bullseye) ARM64 system can install the required packages,
 build the locked project with Rust 1.85, and pass the test suite. Audio and MIDI
-hardware have not been tested there. Raspberry Pi OS Bullseye and Debian or
-Raspberry Pi OS 13 (Trixie) are expected to work, but are not hardware-tested.
+hardware have not been tested there. Release 0.4 will validate the complete
+install and setup path from a fresh 64-bit Raspberry Pi OS Lite image on the
+Raspberry Pi 5. Until that passes, Raspberry Pi OS Lite is the planned target,
+not a completed hardware-support claim. Record the exact image and version used
+rather than treating “Lite” as a reproducible version identifier. The
+[release roadmap](RELEASE_ROADMAP.md) owns the gate; the
+[Pi 5 plan](PI5_HEADROOM_PLAN.md) owns the state comparison.
 
 The supported family is Debian-based Linux. Rust 1.85, Cargo, a C build
 toolchain, `pkg-config`, Python 3, ALSA development/runtime tools, and JACK2 are required
@@ -37,7 +43,7 @@ The installer:
 - installs commands, templates, the 21 allowlisted presets, four allowlisted
   CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
   device/controller profiles, drum data, documentation, and
-  all 96 menu-manual images below the selected prefix (normally `/usr/local`);
+  all 95 menu-manual images below the selected prefix (normally `/usr/local`);
 - opens the routing wizard.
 
 The dependency installer always masks the exact per-user `fluidsynth.service`

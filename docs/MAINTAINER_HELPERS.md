@@ -408,7 +408,7 @@ The default command uses the installed Rust 1.85 toolchain when present and
 runs `shr screenshots`. Rust renders the real application `draw` function into
 40×20 ratatui test buffers seeded by the deterministic `ScreenshotScenario`
 and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The current manifest
-contains 103 overview/menu/context/overlay frames. JSON supplies
+contains 105 overview/menu/context/overlay frames. JSON supplies
 each cell's symbol, foreground,
 background, and bold state. No JACK server, engine, MIDI port, or private user
 file is involved.
@@ -441,7 +441,7 @@ without pretending the application has more than 40×20 cells.
 
 `--check` is also deliberately exhaustive. It opens every expected image and
 checks every 2×2 block instead of trusting file metadata or the name of a resize
-filter. On the Raspberry Pi, rendering or validating all 96 menu frames takes
+filter. On the Raspberry Pi, rendering or validating all 95 menu frames takes
 noticeable time. That time is an accepted documentation-integrity cost, not an
 optimization bug. Do not replace the scaler or weaken the check merely to make
 the command faster. First render one representative image and inspect it; then

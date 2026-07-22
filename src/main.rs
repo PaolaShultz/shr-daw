@@ -55,6 +55,13 @@ fn main() {
 fn real_main() -> Result<()> {
     let state = state_dir();
     let args: Vec<String> = env::args().skip(1).collect();
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "-h" | "--help")
+    ) {
+        usage();
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("config") {
         return config_command(&args[1..], &state);
     }
@@ -551,7 +558,42 @@ fn show_log(state: &Path, count: Option<&String>) -> Result<()> {
 }
 
 fn usage() {
-    println!("Usage: shr [menu|list|status|doctor|start PRESET|stop|log [LINES]|ideas COMMAND|pads COMMAND|clock ports|casio diagnostic|effects-checkpoint PRESET [PROFILE] [SECONDS]|recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]|final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]|config init]\n\nController setup: shr pads ports|profiles|auto [PORT]|learn [PORT]|update\nController sync discovery: shr clock ports\nWith no arguments, opens the terminal instrument browser.");
+    println!(
+        "Usage: shr [COMMAND]\n\
+         \n\
+         With no command, opens the terminal instrument browser.\n\
+         \n\
+         Application:\n\
+           menu\n\
+           list\n\
+           status\n\
+           doctor\n\
+           start PRESET\n\
+           stop\n\
+           log [LINES]\n\
+           ideas list|inspect NAME|play NAME|delete NAME --yes\n\
+         \n\
+         Controller and routing:\n\
+           pads list|ports|profiles|auto [PORT]|learn [PORT]|update\n\
+           pads set NOTE ACTION|clear NOTE|input PORT_MATCH|layout 8|5|4\n\
+           pads cc INCOMING TARGET\n\
+           clock ports\n\
+           casio diagnostic\n\
+         \n\
+         Configuration:\n\
+           config paths\n\
+           config init [--force]\n\
+         \n\
+         Non-audible maintenance:\n\
+           screenshots\n\
+           effects-checkpoint PRESET [PROFILE] [SECONDS]\n\
+           recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]\n\
+           final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]\n\
+         \n\
+         Help: help, -h, --help\n\
+         Compatibility aliases: logs; pads detect; casio status|dry-run;\n\
+           phase2-checkpoint. Internal process command: daemon PRESET."
+    );
 }
 
 fn clock_command(args: &[String], config: &config::RuntimeConfig) -> Result<()> {

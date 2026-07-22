@@ -111,6 +111,17 @@ again removes only that control and restores chromatic play.
 without restarting the sound. `HELP` opens help and returns here afterward.
 `EXIT` returns to Presets, then Presets `EXIT` returns Home.
 
+### N00B-on Playback pages
+
+N00B changes only the scale filter and its compact rotary; the three Playback
+controller pages keep the same actions and ordering.
+
+![Playback PLAY page with N00B enabled](../images/menu/playback-noob-play.png)
+
+![Playback SOUND page with N00B enabled](../images/menu/playback-noob-sound.png)
+
+![Playback SYS page with N00B enabled](../images/menu/playback-noob-sys.png)
+
 ## Ideas
 
 Ideas are timestamped or numbered free-time MIDI takes. A synthv1 Idea carries

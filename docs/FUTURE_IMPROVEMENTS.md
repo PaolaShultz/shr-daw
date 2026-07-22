@@ -4,6 +4,10 @@ This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.
 
+These entries do not enter the current 0.4, 0.5, or 0.6 scope automatically.
+The [release roadmap](RELEASE_ROADMAP.md) owns development order; an item here
+becomes a milestone requirement only when the owner explicitly moves it there.
+
 ## Safe fallback for unknown USB MIDI devices
 
 When a USB MIDI input is connected without a saved or reviewed controller

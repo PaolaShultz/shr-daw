@@ -160,7 +160,7 @@ impl RouteDraft {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OverlayDraft {
     None,
-    Route(RouteDraft),
+    Route(Box<RouteDraft>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -255,12 +255,10 @@ impl OverlayState {
             return;
         }
         self.selection = self.selection.min(rows - 1);
-        self.selection = if direction < 0 {
-            (self.selection + rows - 1) % rows
-        } else if direction > 0 {
-            (self.selection + 1) % rows
-        } else {
-            self.selection
+        self.selection = match direction.cmp(&0) {
+            std::cmp::Ordering::Less => (self.selection + rows - 1) % rows,
+            std::cmp::Ordering::Greater => (self.selection + 1) % rows,
+            std::cmp::Ordering::Equal => self.selection,
         };
     }
 
@@ -368,7 +366,7 @@ mod tests {
             Screen::Tracker,
             launcher,
             1,
-            OverlayDraft::Route(RouteDraft::new(0, 0, page)),
+            OverlayDraft::Route(Box::new(RouteDraft::new(0, 0, page))),
             2,
             false,
         );

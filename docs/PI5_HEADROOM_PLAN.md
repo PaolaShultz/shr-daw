@@ -1,12 +1,16 @@
 # Raspberry Pi 5 headroom and footprint plan
 
-> **Future work only.** This plan has no scheduled release date, is not part of
-> the Build Week submission, and does not describe current SHR-DAW behavior or
-> measured Raspberry Pi 5 performance. The ordered hardware is not present in
-> the workspace. The Build Week deadline has passed, but that alone does not
-> start this work or authorize compilation or hardware activity.
+> The clean Raspberry Pi OS Lite installation and setup acceptance is a release
+> 0.4 gate. The later headroom, dependency, PRESTO, and optimization experiments
+> remain unscheduled future work. Nothing here describes measured Raspberry Pi
+> 5 performance while the ordered hardware is absent.
 
 ## Purpose
+
+Release 0.4 uses the new Pi first to prove a reproducible clean installation,
+setup, and return from failures on normal Raspberry Pi OS Lite. That platform
+gate does not require or assume an optimization. Only after it passes does the
+future Headroom pass compare and tune performance.
 
 SHR-DAW grew experimentally by adding useful musical capabilities. The future
 **Headroom pass** deliberately reverses direction for a while: stop adding,
@@ -51,6 +55,11 @@ above it. A future printed enclosure should angle the display toward the
 player, retain cooler airflow, avoid cable strain, expose the required
 connectors, and keep the drive serviceable. Exact dimensions and CAD work wait
 until the physical board, adapter, drive, cooler, and screen can be measured.
+
+Begin the release 0.4 platform path from a fresh official 64-bit Raspberry Pi
+OS Lite image and record its exact filename, release, architecture, checksum,
+kernel, firmware, and first-boot choices. Do not install Patchbox OS or copy the
+Pi 4 root filesystem as a shortcut.
 
 The Raspberry Pi 5 CPU provides private per-core L1 and 512 KB L2 caches plus a
 2 MB shared L3 cache. Reserving a core cannot reserve the shared L3, but it can
@@ -101,6 +110,11 @@ sizes on the NVMe-backed Pi 5. First use the supported PCIe mode and a clean
 machine configuration; do not copy Pi 4 boot isolation files or tool-owned
 system settings blindly. Install and inspect audio tuning on the new machine as
 a new operation.
+
+First measure the clean system without optional SHR tuning. Compare the Pi 4
+state and results, then apply the managed audio profile only if the new kernel,
+boot layout, and measured need justify it. Use `shr-audio-tune`; do not
+reproduce its owned boot tokens, service files, or affinity settings by hand.
 
 Record the same build, memory, storage, thermal, power, and callback results.
 If Linux exposes trustworthy PMU counters, also record instruction, data, L2,

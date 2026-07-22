@@ -1306,18 +1306,20 @@ mod tests {
 
     #[test]
     fn audio_fallback_priority_is_runtime_only_and_headphones_are_last() {
-        let mut config = RuntimeConfig::default();
-        config.audio_outputs = vec!["usb:l".into(), "usb:r".into()];
-        config.audio_internal_outputs = vec![StereoOutputConfig {
-            name: "Pi HDMI".into(),
-            left_port: "hdmi:l".into(),
-            right_port: "hdmi:r".into(),
-        }];
-        config.audio_headphone_output = Some(StereoOutputConfig {
-            name: "Pi analogue".into(),
-            left_port: "phones:l".into(),
-            right_port: "phones:r".into(),
-        });
+        let config = RuntimeConfig {
+            audio_outputs: vec!["usb:l".into(), "usb:r".into()],
+            audio_internal_outputs: vec![StereoOutputConfig {
+                name: "Pi HDMI".into(),
+                left_port: "hdmi:l".into(),
+                right_port: "hdmi:r".into(),
+            }],
+            audio_headphone_output: Some(StereoOutputConfig {
+                name: "Pi analogue".into(),
+                left_port: "phones:l".into(),
+                right_port: "phones:r".into(),
+            }),
+            ..RuntimeConfig::default()
+        };
 
         let all = ["usb:l", "usb:r", "hdmi:l", "hdmi:r", "phones:l", "phones:r"].map(str::to_owned);
         assert_eq!(
@@ -1365,9 +1367,11 @@ mod tests {
     fn explicitly_empty_optional_lists_survive_save_and_reload() {
         let path =
             std::env::temp_dir().join(format!("shsynth-empty-lists-{}.conf", std::process::id()));
-        let mut config = RuntimeConfig::default();
-        config.midi_autoconnect = false;
-        config.audio_autoconnect = false;
+        let mut config = RuntimeConfig {
+            midi_autoconnect: false,
+            audio_autoconnect: false,
+            ..RuntimeConfig::default()
+        };
         config.yoshimi.backend.preset_roots.clear();
         config.yoshimi.categories.clear();
         config.fluidsynth.soundfonts.clear();

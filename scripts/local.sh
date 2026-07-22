@@ -35,7 +35,7 @@ while IFS= read -r loop_name || [[ -n "$loop_name" ]]; do
   [[ -e "$destination" ]] || install -m644 "$source" "$destination"
 done <"$ROOT/loops/cleared-loops.txt"
 
-"$ROOT/scripts/generate_demo_songs.py"
+"$ROOT/scripts/generate_demo_songs.py" >/dev/null
 while IFS= read -r demo; do
   filename="${demo##*/}"
   source="$ROOT/$demo"

@@ -77,9 +77,9 @@ Pattern loop; pressing REC again stops it and returns to stopped Play mode.
 Key release writes a quantized note-off, independently of the Edit note-length
 setting. New captures join playback on the next Pattern repetition.
 
-### PLAY — transport and capture
+### MODE — transport and capture
 
-![Populated FT2 Pattern recording context with the PLAY page](../images/menu/ft2-record-play.png)
+![Populated FT2 Pattern recording context with the MODE page](../images/menu/ft2-record-mode.png)
 
 `PLAY` ends REC and starts normal transport. `RECORD` ends real-time capture
 while preserving the notes already entered. `EDIT` ends REC and enters stopped
@@ -110,13 +110,15 @@ free one. Melodic pages still fill from the selected column.
 
 ### MODE — leave Edit for Play or Record
 
+![Populated FT2 Edit mode with the MODE page](../images/menu/ft2-step-edit-mode.png)
+
 `PLAY` stops Edit and starts normal transport. `RECORD` stops Edit and starts
 real-time capture from the first row. `EDIT` is the active mode; pressing it
 again leaves Edit. Play, Record, and Edit are mutually exclusive.
 
 ### EDIT — enter or remove cells
 
-![Populated FT2 Edit mode with the OPS page](../images/menu/ft2-step-edit-ops.png)
+![Populated FT2 Edit mode with the EDIT page](../images/menu/ft2-step-edit-edit.png)
 
 `BLANK` advances without writing a note. `ERASE` clears the selected cell.
 `N-OFF` writes a note-off. `ADD` selects an advance from 0 through 32 rows.

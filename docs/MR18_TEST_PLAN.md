@@ -7,6 +7,10 @@ The complete target is simultaneous independent 18-channel playback and
 success or mark a release checked until every applicable row below passes on
 the attached unit.
 
+This physical pass is the release 0.6 gate. Complete the 0.4 platform/workflow
+acceptance and the owner-defined 0.5 FT2 work first; see the
+[release roadmap](RELEASE_ROADMAP.md).
+
 ## Current status and next borrowing gate
 
 On 2026-07-22, the first borrowed MR18 was still packed in its bag. It was not

@@ -1459,33 +1459,28 @@ fn release_tracker_notes(
 ) -> Vec<MidiDelivery> {
     notes
         .into_iter()
-        .filter_map(|destination| {
-            let (target, channel, note) = destination.clone();
-            decrement_destination(&mut state.tracker_destinations, &destination).then(|| {
-                let message = vec![0x80 | channel, note, 0];
-                vec![
-                    MidiDelivery::Raw(message.clone()),
-                    MidiDelivery::Tracker(target, message),
-                ]
-            })
+        .filter(|destination| decrement_destination(&mut state.tracker_destinations, destination))
+        .flat_map(|(target, channel, note)| {
+            let message = vec![0x80 | channel, note, 0];
+            [
+                MidiDelivery::Raw(message.clone()),
+                MidiDelivery::Tracker(target, message),
+            ]
         })
-        .flatten()
         .collect()
 }
 
 fn release_direct_notes(state: &mut LiveMidiState, notes: Vec<(u8, u8)>) -> Vec<MidiDelivery> {
     notes
         .into_iter()
-        .filter_map(|destination @ (channel, note)| {
-            decrement_destination(&mut state.direct_destinations, &destination).then(|| {
-                let message = vec![0x80 | channel, note, 0];
-                vec![
-                    MidiDelivery::Raw(message.clone()),
-                    MidiDelivery::Direct(message),
-                ]
-            })
+        .filter(|destination| decrement_destination(&mut state.direct_destinations, destination))
+        .flat_map(|(channel, note)| {
+            let message = vec![0x80 | channel, note, 0];
+            [
+                MidiDelivery::Raw(message.clone()),
+                MidiDelivery::Direct(message),
+            ]
         })
-        .flatten()
         .collect()
 }
 
@@ -3435,8 +3430,10 @@ mod tests {
         let preset_path = base.join("preset.synthv1");
         fs::write(&preset_path, "<preset/>").unwrap();
         let preset = Preset::synthv1("test", preset_path);
-        let mut config = RuntimeConfig::default();
-        config.synth_command = base.join("missing-synth").to_string_lossy().into_owned();
+        let config = RuntimeConfig {
+            synth_command: base.join("missing-synth").to_string_lossy().into_owned(),
+            ..RuntimeConfig::default()
+        };
 
         assert!(validate_start(&preset, &base, &config).is_err());
         assert!(!base.join("engine.pid").exists());
