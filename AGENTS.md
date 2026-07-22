@@ -33,6 +33,15 @@ restore a connector. Do not silently substitute a browser, shell workflow,
 manual instructions, or a different tool for the requested mechanism. A
 workaround requires the user's choice when it materially changes their work.
 
+Keep the `openaiDeveloperDocs` MCP server on demand rather than configured
+globally. It has previously caused MCP loading problems during normal Codex
+startup. Do not persistently reinstall it merely because a skill prefers that
+source. When a task genuinely requires it, explain the temporary addition,
+add it for that task, account for any required Codex restart or resume, and
+remove it with `codex mcp remove openaiDeveloperDocs` when the lookup is done.
+Use official OpenAI web sources when they are sufficient and permitted by the
+task instead of imposing this MCP on every session.
+
 This checkout is shared by multiple workers who edit and commit independently.
 Inspect live Git state before editing and again before committing; preserve
 other workers' changes and stage/commit only your own scoped paths or hunks. Do
