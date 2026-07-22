@@ -54,8 +54,8 @@ configuration, or the architecture contracts.
 - [Synchronized multitrack recording](MULTITRACK_RECORDING.md) — exact JACK
   source mapping, shared callback timeline, mono stems, manifests, recovery,
   and the non-audible stress helper.
-- [MR18 acceptance plan](MR18_TEST_PLAN.md) — printable, safety-first 18-channel
-  48 kHz procedure for the first real hardware test.
+- [MR18 acceptance plan](MR18_TEST_PLAN.md) — readiness gates and a printable,
+  safety-first 18×18 full-duplex 48 kHz hardware procedure.
 - [Three-minute multitrack presentation](MULTITRACK_PRESENTATION.md) — truthful
   hardware and synthetic versions with exact on-screen evidence.
 - [Third-party software and sounds](../THIRD_PARTY.md) — licences, credits,

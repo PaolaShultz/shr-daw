@@ -3,8 +3,8 @@
 > **Future work only.** This plan has no scheduled release date, is not part of
 > the Build Week submission, and does not describe current SHR-DAW behavior or
 > measured Raspberry Pi 5 performance. The ordered hardware is not present in
-> the workspace. All measurements, dependency experiments, implementation, and
-> hardware acceptance begin only after the Build Week deadline.
+> the workspace. The Build Week deadline has passed, but that alone does not
+> start this work or authorize compilation or hardware activity.
 
 ## Purpose
 
@@ -64,11 +64,20 @@ and [Arm Cortex-A cache comparison](https://developer.arm.com/-/media/Arm%20Deve
 
 ## Measurement sequence
 
-Use one committed source revision for the comparison. Begin only after the
-Build Week deadline and after the concurrent feature work has reached a clean
-checkpoint. Do not clean, replace, or repurpose the active checkout's Cargo
-cache; use a separate exact ignored directory below `user/` as
-`CARGO_TARGET_DIR` for controlled clean builds.
+Use one committed source revision for the comparison. Begin only after the Pi 5
+arrives, concurrent feature work has reached a clean checkpoint, and the user
+explicitly requests the combined build-and-test pass. Do not clean, replace, or
+repurpose the active checkout's Cargo cache; use a separate exact ignored
+directory below `user/` as `CARGO_TARGET_DIR` for controlled clean builds.
+
+Before headroom experiments, treat the Pi 5 as a genuinely new machine and run
+the complete documented installation and local-setup path from its starting
+state. Do not copy the Pi 4 installation, runtime configuration, tuning state,
+or Cargo artifacts as a substitute. Record each required dependency, restart,
+configuration decision, failure, retry, and successful return to the main
+path. This clean-machine acceptance is a prerequisite for the next multi-day
+MR18 loan and its [18×18 full-duplex acceptance](MR18_TEST_PLAN.md), not part of
+the borrowed-hardware session itself.
 
 ### 1. Raspberry Pi 4 baseline
 

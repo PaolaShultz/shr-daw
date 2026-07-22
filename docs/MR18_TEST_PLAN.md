@@ -2,8 +2,39 @@
 
 This is the concrete checklist for the first full hardware test. The planned
 unit is a Midas M AIR MR18; the recorder itself remains generic JACK capture.
-Do not claim MR18 success until every applicable row below passes on the
-attached unit.
+The complete target is simultaneous independent 18-channel playback and
+18-channel recording through the same 18×18 interface. Do not claim MR18
+success or mark a release checked until every applicable row below passes on
+the attached unit.
+
+## Current status and next borrowing gate
+
+On 2026-07-22, the first borrowed MR18 was still packed in its bag. It was not
+unpacked, inspected, powered, connected, configured, or tested. No mixer scene,
+routing, firmware, clock, or other state was read or changed, so there is
+nothing from that loan to restore and no MR18 evidence to preserve as a pass or
+failure.
+
+The current synchronized recorder supplies the 18-channel capture foundation;
+the current performance bus supplies stereo playback, not 18 independent
+playback channels. The 18-output path and its hardware-independent identity,
+failure, retry, and result collection must therefore be implemented and
+rehearsed before the next loan. Do not use borrowed-hardware time to invent
+that workflow.
+
+Borrow the MR18 again for several days only after:
+
+- the Raspberry Pi 5 clean installation and machine-setup path has completed;
+- the unrelated working-flow blockers have been resolved and their recovery
+  paths are usable;
+- 18 distinguishable playback streams and 18 synchronized capture slots can be
+  prepared without guessing hardware names; and
+- the full-duplex checklist, measurements, storage, safe output state, and
+  result capture are ready before the mixer is unpacked.
+
+These are readiness gates, not calendar deadlines. Capture-only, playback-only,
+and synthetic results remain useful diagnostics but cannot substitute for the
+physical 18-in/18-out full-duplex pass.
 
 ## Verified facts and unit-specific checks
 
@@ -21,9 +52,9 @@ guide](https://cdn-media.empowertribe.com/3a0cd685a2a4450993e03a09ddb34dc7/QSG_M
   24-bit A/D-D/A conversion at those rates. The current manual tells Windows
   users to obtain a driver; the official Downloads tab offers no Linux audio
   driver. This supports ordinary Linux USB-audio operation, but the current
-  manual does not use the literal phrase “class compliant.” Tomorrow, confirm
-  the actual unit binds to Linux `snd-usb-audio` without a vendor driver before
-  recording “class-compliant Linux” as the observed result.
+  manual does not use the literal phrase “class compliant.” On the future
+  borrowed unit, confirm it binds to Linux `snd-usb-audio` without a vendor
+  driver before recording “class-compliant Linux” as the observed result.
 - The mixer can use 18×18 or 2×2 USB mode. Input/USB routing is freely
   assignable, USB sends/inputs are selectable, and the block diagram shows
   input tap choices including pre-HP, pre/post gate, pre/post EQ, pre/post
@@ -41,15 +72,17 @@ Still assumptions until observed on this exact mixer/Pi/cable:
 
 - the USB descriptors, vendor/product IDs, ALSA card ID and device/subdevice;
 - whether `snd-usb-audio` binds cleanly and exposes 18 capture channels;
-- the exact ALSA and JACK client/port names and their order;
+- whether it also exposes 18 playback channels and remains stable with both
+  directions active;
+- the exact ALSA and JACK capture/playback names and their order;
 - installed hardware revision, firmware, scene, clock, USB mode and send taps;
 - stable operation at the chosen period count/buffer, storage target, and all
-  18 channels on this Raspberry Pi.
+  18 channels in both directions on this Raspberry Pi.
 
 ## Safe step-by-step procedure
 
-One person should call each change; another should watch outputs, JACK, storage,
-and the result sheet.
+Begin only after the readiness gates above pass. One person should call each
+change; another should watch outputs, JACK, storage, and the result sheet.
 
 1. Read the front/rear label and control app identification. Confirm the unit
    is **Midas M AIR MR18**, not MR12, XR18, X18, or another mixer.
@@ -93,7 +126,8 @@ and the result sheet.
     ```
 
     Confirm the actual USB device, `snd-usb-audio` binding, supported 18-channel
-    48 kHz stream, and JACK capture sources. Do not infer names from this plan.
+    48 kHz streams in both directions, and JACK capture sources and playback
+    sinks. Do not infer names from this plan.
 12. While SHR is stopped, prepare 18 private logical slots if they do not
     already exist. This is a portable label template, not a device route; every
     blank final field must remain `missing` until deliberately assigned:
@@ -136,27 +170,42 @@ and the result sheet.
     record its physical input → USB channel → observed JACK port → SHR track ID.
     Stop immediately on a swap, duplicate, bleed, unexpected processing, clip,
     or missing channel.
-16. Record progressive takes at 2, 4, 8, 12, 16, then 18 armed channels. Re-run
-    the single-input identity check when a larger group first fails.
-17. For every take, inspect all mono WAV headers and `session.json`. Require one
-    rate, identical non-zero frame counts, expected duration, `complete` state,
-    zero drop/overflow/callback/xrun counts, correct source identity, and no
-    unintended signal in other stems.
-18. During each run monitor JACK xruns, recorder drop/overflow and writer
+16. Run capture-only progressive takes at 2, 4, 8, 12, 16, then 18 armed
+    channels. Re-run the single-input identity check when a larger group first
+    fails.
+17. For every capture take, inspect all mono WAV headers and `session.json`.
+    Require one rate, identical non-zero frame counts, expected duration,
+    `complete` state, zero drop/overflow/callback/xrun counts, correct source
+    identity, and no unintended signal in other stems.
+18. With every physical output still muted or disconnected, route one prepared,
+    low-level, distinguishable playback stream at a time to each observed JACK
+    playback sink. Verify the intended MR18 USB return meter and no other return
+    responds. Record JACK sink to USB return identity; do not infer channel
+    order or make this an audible test.
+19. Run playback-only progressive tests at 2, 4, 8, 12, 16, then 18 concurrent
+    streams. Require continuous output timelines, correct independent identity,
+    and zero JACK xruns or source-loss events.
+20. Run full-duplex progressive tests at 2-in/2-out, 4-in/4-out, 8-in/8-out,
+    12-in/12-out, 16-in/16-out, then 18-in/18-out. The final row must record 18
+    synchronized capture stems while all 18 independent playback streams remain
+    active and correctly mapped.
+21. During each run monitor JACK xruns, recorder drop/overflow and writer
     high-water, callback setting, CPU per core, temperature, memory, free space,
-    and sustained storage throughput. Useful read-only views include
-    `jack_iodelay` only when deliberately wired for it; do not alter this test's
-    graph casually. Use ordinary system tools for CPU/thermal/storage.
-19. Increase duration only after the previous channel count passes: 30 s map
+    playback continuity, and sustained storage throughput. Useful read-only
+    views include `jack_iodelay` only when deliberately wired for it; do not
+    alter this test's graph casually. Use ordinary system tools for
+    CPU/thermal/storage.
+22. Increase duration only after the previous channel count passes: 30 s map
     check, 5 min stability, then 30 min and a longer soak as time/storage allow.
-20. Record sample rate, JACK frames/period and periods/buffer, storage target,
+23. Record sample rate, JACK frames/period and periods/buffer, storage target,
     filesystem/free space, cable/USB port, and all results. If latency changes,
     write the new value and rerun the lower-channel baseline.
-21. Stop on corruption, channel swap/bleed, non-zero recorder drop/overflow,
-    JACK xrun, source loss, thermal throttling/warning, power warning, low-space
-    warning, write/finalization error, or unequal frames. Preserve failed take
-    and logs; do not relabel it successful.
-22. Restore the saved mixer scene and normal output safety state after testing.
+24. Stop on corruption, channel swap/bleed, playback discontinuity, non-zero
+    recorder drop/overflow, JACK xrun, source loss, thermal
+    throttling/warning, power warning, low-space warning,
+    write/finalization error, or unequal frames. Preserve failed take and logs;
+    do not relabel it successful.
+25. Restore the saved mixer scene and normal output safety state after testing.
     Confirm SHR has stopped recording and owns no stale JACK ports. Do not leave
     phantom power or routing changed without an explicit handoff.
 
@@ -169,6 +218,8 @@ A row passes only when:
   and all frame counts equal the expected callback-bounded timeline;
 - channel identity passes with no swap, duplicate, or measurable/visible
   unintended test signal in another digital stem;
+- every active playback stream reaches exactly its intended USB return with no
+  swap, duplicate, bleed, discontinuity, or silent substitution;
 - JACK xruns, recorder dropped frames, overflow events, callback violations,
   source-loss events, and write/finalization errors are all **zero**;
 - no power/undervoltage or thermal warning occurs, temperature stays below the
@@ -181,15 +232,27 @@ but only after recording the change and repeating the lower-channel baseline.
 
 ## Printable results
 
-| Channels | Rate | JACK frames / periods | Duration | Xruns | Recorder dropped frames | Writer high-water | Max CPU | Max temp | Storage throughput | Frame counts agree | Channel identity | Pass/fail | Notes |
-|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|
-| 2 | 48 kHz | | | | | | | | | | | | |
-| 4 | 48 kHz | | | | | | | | | | | | |
-| 8 | 48 kHz | | | | | | | | | | | | |
-| 12 | 48 kHz | | | | | | | | | | | | |
-| 16 | 48 kHz | | | | | | | | | | | | |
-| 18 | 48 kHz | | | | | | | | | | | | |
-| 18 long | 48 kHz | | | | | | | | | | | | |
+| Mode | Capture × playback | Rate | JACK frames / periods | Duration | Xruns | Recorder drops | Playback faults | Writer high-water | Max CPU | Max temp | Frame counts agree | Channel identity | Pass/fail | Notes |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|
+| Capture | 2×0 | 48 kHz | | | | | n/a | | | | | | | |
+| Capture | 4×0 | 48 kHz | | | | | n/a | | | | | | | |
+| Capture | 8×0 | 48 kHz | | | | | n/a | | | | | | | |
+| Capture | 12×0 | 48 kHz | | | | | n/a | | | | | | | |
+| Capture | 16×0 | 48 kHz | | | | | n/a | | | | | | | |
+| Capture | 18×0 | 48 kHz | | | | | n/a | | | | | | | |
+| Playback | 0×2 | 48 kHz | | | | n/a | | n/a | | | n/a | | | |
+| Playback | 0×4 | 48 kHz | | | | n/a | | n/a | | | n/a | | | |
+| Playback | 0×8 | 48 kHz | | | | n/a | | n/a | | | n/a | | | |
+| Playback | 0×12 | 48 kHz | | | | n/a | | n/a | | | n/a | | | |
+| Playback | 0×16 | 48 kHz | | | | n/a | | n/a | | | n/a | | | |
+| Playback | 0×18 | 48 kHz | | | | n/a | | n/a | | | n/a | | | |
+| Full duplex | 2×2 | 48 kHz | | | | | | | | | | | | |
+| Full duplex | 4×4 | 48 kHz | | | | | | | | | | | | |
+| Full duplex | 8×8 | 48 kHz | | | | | | | | | | | | |
+| Full duplex | 12×12 | 48 kHz | | | | | | | | | | | | |
+| Full duplex | 16×16 | 48 kHz | | | | | | | | | | | | |
+| Full duplex | 18×18 | 48 kHz | | | | | | | | | | | | |
+| Full duplex long | 18×18 | 48 kHz | | | | | | | | | | | | |
 
 Observed identifiers and routing:
 
@@ -199,11 +262,19 @@ Observed identifiers and routing:
 | 17 L | | | | | |
 | 18 R | | | | | |
 
+Observed playback routing:
+
+| SHR stream | Observed JACK sink | MR18 USB return | Identity result / notes |
+|---:|---|---:|---|
+| 1–16 | | | |
+| 17 | | | |
+| 18 | | | |
+
 ## Future final-bus acceptance (not yet run)
 
-After the raw multitrack matrix passes, obtain—not guess—the MR18 JACK capture
-names for the deliberately mixed external stereo pair and place them in the
-private `audio.graph.input` setting. With monitor/speaker level controlled,
+After the raw 18×18 full-duplex matrix passes, obtain—not guess—the MR18 JACK
+capture names for the deliberately mixed external stereo pair and place them
+in the private `audio.graph.input` setting. With monitor/speaker level controlled,
 verify synth-only, loop-only, input-only, and all-three identity; confirm there
 is no parallel direct loop/synth path; and deliberately choose either interface
 direct monitoring or the software path. Exercise source disconnect/reconnect,

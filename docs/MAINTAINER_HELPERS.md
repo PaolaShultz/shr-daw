@@ -288,8 +288,9 @@ It then runs locked tests, creates a locked release build, installs the files
 with `sudo make install-files`, and normally opens `shr-setup`.
 
 That is the install helper's production behavior, not the normal development
-validation policy. During the competition fast-iteration phase, do not invoke
-the installer merely to obtain a full suite or release build.
+validation policy. While the combined build-and-test gate in `AGENTS.md` is
+active, do not invoke the installer merely to obtain a full suite or release
+build.
 
 ### Why install is explicit and relatively heavy
 

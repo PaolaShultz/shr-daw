@@ -40,6 +40,11 @@ not wait for unrelated workers to finish. Never record a branch tip, last
 commit, or clean/dirty snapshot in the handoff because it becomes stale during
 parallel work.
 
+Use `main` for ordinary development. The Build Week submission is preserved by
+its tag; do not keep or recreate a standing `dev` branch before the repository
+owner opens the planned 0.6 milestone. A short-lived branch or worktree for an
+explicitly requested isolated experiment is not a standing integration branch.
+
 Do not alter private user data unless explicitly requested. Physical equipment
 is borrowed; do not start JACK, a synth, MIDI transmission/playback, recording,
 or any other audible or hardware-changing test without explicit permission.
@@ -64,15 +69,16 @@ Use the installed Rust 1.85 toolchain because the system Cargo may be too old:
 PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo check --locked
 ```
 
-Temporary race-the-clock rule: do not run builds or any command that compiles
+Temporary combined-pass rule: do not run builds or any command that compiles
 the project until the user explicitly asks for the combined build-and-test
 pass. This includes `cargo build`, `cargo check`, `cargo test`, Clippy, and
 other build-producing validation. Add requested changes serially and limit
 intermediate validation to formatting and source-level inspection.
 
-During the competition heavy-test phase, optimize for incremental debug work:
-use formatting, `cargo check --locked`, and focused tests for changed behavior;
-run `cargo build --locked` only when a binary is needed for user testing. Do
+During the current incremental-debug phase, use formatting and source
+inspection, then—only after that explicit build authorization—use
+`cargo check --locked` and focused tests for changed behavior. Run
+`cargo build --locked` only when a binary is needed for user testing. Do
 not run the complete test suite, warning-denied Clippy, optimized/release
 builds, or release stress validation unless the user explicitly requests them.
 A commit, handoff, or general validation request does not override this rule.

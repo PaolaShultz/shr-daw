@@ -7,9 +7,14 @@ record credentials, GitHub device codes, or private file contents here.
 
 ## Current priority and shared checkout
 
-The competition fast-iteration policy in `AGENTS.md` is active. The complete
-deterministic documentation screenshot set is reconciled to the current UI;
-physical approval remains the next gate for UI/controller work.
+The Build Week snapshot is preserved by its tag; the repository itself is
+unfrozen and ordinary development continues on `main`. Do not keep or recreate
+a standing `dev` branch before the owner opens the planned 0.6 milestone. The
+temporary combined build-and-test gate in `AGENTS.md` still applies; an
+unfrozen repository is not implicit permission to compile.
+
+The complete deterministic documentation screenshot set is reconciled to the
+current UI; physical approval remains the next gate for UI/controller work.
 
 Multiple workers use this checkout and commit their own changes independently.
 Branch tips, commit messages, and clean/dirty snapshots are intentionally not
@@ -103,7 +108,12 @@ hardware/JACK names change. Read `docs/MAINTAINER_HELPERS.md` first.
   belongs in the Phase 1–4 measurement documents, not here.
 - The generic synchronized recorder and final stereo performance bus are
   implemented, but synthetic stress is not physical-interface or MR18
-  acceptance. Follow `docs/MR18_TEST_PLAN.md` before claiming a hardware pass.
+  acceptance. The first borrowed MR18 remained packed and produced no hardware
+  evidence. Development and physical acceptance for simultaneous independent
+  18-channel playback and 18-channel recording are deferred until the Pi 5
+  clean-machine flow and the other working flows are ready; the next MR18 loan
+  should span several days. Follow `docs/MR18_TEST_PLAN.md` before claiming a
+  hardware pass or a checked release.
 - The established tracked screenshot set now covers every normal controller
   context plus Home, MIDI Learn, and all master overlays. Keep its exact
   scenarios, font, 40×20 geometry, integer scaler, and validation contract in
@@ -129,7 +139,7 @@ complete. Detailed UI contracts live in `docs/CONTROLLER_INTERFACE.md`,
 ## Installed tools and current validation boundary
 
 Rust 1.85, `gh`, `xmllint` (`libxml2-utils`), and `shellcheck` are installed.
-Use the scoped competition validation policy in `AGENTS.md`; historical full
+Use the scoped validation policy in `AGENTS.md`; historical full
 suites, release builds, benchmarks, and screenshot batches are evidence in
 their dated documents, not instructions to repeat them. No current physical or
 audible acceptance should be inferred from synthetic or hardware-independent
