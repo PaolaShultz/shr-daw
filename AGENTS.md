@@ -15,6 +15,30 @@ demo, and video work. Do not turn a focused task into a broad testing,
 documentation, cleanup, or handoff campaign unless the user requests it or an
 observed failure requires diagnosis.
 
+### Default execution contract
+
+Unless the user explicitly broadens a request, treat the concrete outcome as
+the exact scope boundary. Complete every ordinary step required to achieve and
+proportionately verify that outcome without making the user repeatedly
+authorize routine in-scope work. Do not add adjacent features, redesigns,
+refactors, cleanup, publishing, or process work merely because they appear
+useful. Required safety fixes and focused documentation for behavior changed by
+the request remain in scope; unrelated improvements do not.
+
+Check required named apps, connectors, hardware, credentials, and specialist
+tools at the start of the path that depends on them. If a required capability
+is absent or inaccessible, tell the user immediately, name the exact blocked
+action, and give the shortest recovery step such as exiting and resuming to
+restore a connector. Do not silently substitute a browser, shell workflow,
+manual instructions, or a different tool for the requested mechanism. A
+workaround requires the user's choice when it materially changes their work.
+
+When the user signals a deadline or urgency, enter minimum-path mode: verify
+critical capabilities first, suspend optional research, cleanup, documentation,
+branching, and broad validation, and keep the user informed of the single next
+action that matters. Never consume a deadline on polish while submission,
+authentication, upload, build, or another terminal requirement is unresolved.
+
 This checkout is shared by multiple workers who edit and commit independently.
 Inspect live Git state before editing and again before committing; preserve
 other workers' changes and stage/commit only your own scoped paths or hunks. Do
