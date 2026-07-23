@@ -260,7 +260,7 @@ tracker position.
 ![Populated Project Files screen with the PROJECT page](../images/menu/files-project.png)
 
 `NEW` creates a confirmed blank Project. `SAVE AS` writes a numbered
-non-overwriting copy. `NAME KBD` edits the Project display name with
+non-overwriting copy. `NAME KB` edits the Project display name with
 computer-keyboard text entry. `PATTERN` opens
 Pattern tools.
 

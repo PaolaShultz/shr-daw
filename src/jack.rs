@@ -9,6 +9,11 @@
 use anyhow::{bail, Context, Result};
 use libc::{c_char, c_int, c_uint, c_ulong, c_void};
 use std::ffi::{CStr, CString};
+use std::fs;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const JACK_DEFAULT_AUDIO_TYPE: &[u8] = b"32 bit float mono audio\0";
 const JACK_PORT_IS_INPUT: c_ulong = 1;
@@ -53,6 +58,24 @@ type PortName = unsafe extern "C" fn(*const Port) -> *const c_char;
 type PortUuid = unsafe extern "C" fn(*const Port) -> u64;
 type UuidToIndex = unsafe extern "C" fn(u64) -> c_uint;
 type SampleRate = unsafe extern "C" fn(*const OpaqueClient) -> c_uint;
+type SessionNotify = unsafe extern "C" fn(
+    *mut OpaqueClient,
+    *const c_char,
+    c_int,
+    *const c_char,
+) -> *mut SessionCommand;
+type SessionCommandsFree = unsafe extern "C" fn(*mut SessionCommand);
+
+const JACK_SESSION_SAVE_AND_QUIT: c_int = 2;
+const JACK_SESSION_SAVE_ERROR: c_uint = 1;
+
+#[repr(C)]
+struct SessionCommand {
+    uuid: *const c_char,
+    client_name: *const c_char,
+    command: *const c_char,
+    flags: c_uint,
+}
 
 struct Api {
     handle: *mut c_void,
@@ -100,6 +123,160 @@ pub(crate) struct Connector {
     handle: *mut c_void,
     client_close: ClientClose,
     connect: Connect,
+}
+
+struct SessionQuitter {
+    client: *mut OpaqueClient,
+    handle: *mut c_void,
+    client_close: ClientClose,
+    session_notify: SessionNotify,
+    session_commands_free: SessionCommandsFree,
+}
+
+impl SessionQuitter {
+    fn open(name: &str) -> Result<Self> {
+        let name = CString::new(name).context("JACK client name contains a NUL byte")?;
+        // JACK Session is deprecated and therefore loaded only for this
+        // synthv1 compatibility path. Missing symbols leave the normal owned
+        // signal fallback unchanged.
+        unsafe {
+            let handle = libc::dlopen(c"libjack.so.0".as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL);
+            if handle.is_null() {
+                bail!("JACK library unavailable");
+            }
+            let loaded =
+                (|| -> Result<(ClientOpen, ClientClose, SessionNotify, SessionCommandsFree)> {
+                    Ok((
+                        symbol(handle, b"jack_client_open\0")?,
+                        symbol(handle, b"jack_client_close\0")?,
+                        symbol(handle, b"jack_session_notify\0")?,
+                        symbol(handle, b"jack_session_commands_free\0")?,
+                    ))
+                })();
+            let (open, client_close, session_notify, session_commands_free) = match loaded {
+                Ok(loaded) => loaded,
+                Err(error) => {
+                    libc::dlclose(handle);
+                    return Err(error);
+                }
+            };
+            let mut status = 0;
+            let client = open(name.as_ptr(), JACK_NO_START_SERVER, &mut status);
+            if client.is_null() {
+                libc::dlclose(handle);
+                bail!("JACK server unavailable (status {status})");
+            }
+            Ok(Self {
+                client,
+                handle,
+                client_close,
+                session_notify,
+                session_commands_free,
+            })
+        }
+    }
+
+    fn request_quit(&self, target: &str, directory: &Path) -> Result<bool> {
+        let target = CString::new(target).context("JACK client name contains a NUL byte")?;
+        let mut bytes = directory.as_os_str().as_bytes().to_vec();
+        bytes.push(b'/');
+        let directory =
+            CString::new(bytes).context("JACK session directory contains a NUL byte")?;
+        // SAFETY: all pointers remain live for the synchronous call. JACK owns
+        // the terminated response array until session_commands_free.
+        let commands = unsafe {
+            (self.session_notify)(
+                self.client,
+                target.as_ptr(),
+                JACK_SESSION_SAVE_AND_QUIT,
+                directory.as_ptr(),
+            )
+        };
+        if commands.is_null() {
+            bail!("JACK returned no session response array");
+        }
+        let mut matched = false;
+        let mut save_error = false;
+        for index in 0..64 {
+            // SAFETY: JACK terminates the response array with a null UUID.
+            let command = unsafe { &*commands.add(index) };
+            if command.uuid.is_null() {
+                break;
+            }
+            if !command.client_name.is_null()
+                && unsafe { CStr::from_ptr(command.client_name) }.to_bytes() == target.as_bytes()
+            {
+                matched = true;
+                save_error |= command.flags & JACK_SESSION_SAVE_ERROR != 0;
+            }
+            if index == 63 {
+                // Free the library-owned response before rejecting a malformed
+                // unterminated array.
+                unsafe { (self.session_commands_free)(commands) };
+                bail!("JACK session response was not terminated");
+            }
+        }
+        unsafe { (self.session_commands_free)(commands) };
+        Ok(matched && !save_error)
+    }
+}
+
+impl Drop for SessionQuitter {
+    fn drop(&mut self) {
+        // This control-only client deliberately never joins the process graph.
+        // Close it before unloading its symbol provider.
+        unsafe {
+            (self.client_close)(self.client);
+            libc::dlclose(self.handle);
+        }
+    }
+}
+
+fn shared_session_directory() -> Result<PathBuf> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    for attempt in 0..100 {
+        let path = std::env::temp_dir().join(format!(
+            "shr-jack-session-{}-{timestamp}-{attempt}",
+            std::process::id()
+        ));
+        match fs::create_dir(&path) {
+            Ok(()) => {
+                // A system JACK daemon may run as a dedicated user. The
+                // unpredictable, invocation-owned directory exists only for
+                // the synchronous targeted notification and is removed below.
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o777))?;
+                return Ok(path);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error).context("create temporary JACK session directory"),
+        }
+    }
+    bail!("could not allocate a unique temporary JACK session directory")
+}
+
+/// Ask exactly one synthv1 JACK client to save-and-quit before the owned
+/// signal fallback. synthv1 0.9.29 ignores SIGTERM in `--no-gui` mode but
+/// implements this targeted session event and closes its JACK client cleanly.
+pub(crate) fn request_client_quit(target: &str) -> Result<bool> {
+    let directory = shared_session_directory()?;
+    let result = (|| {
+        let quitter = SessionQuitter::open(&format!("{target}-quit"))?;
+        quitter.request_quit(target, &directory)
+    })();
+    let cleanup = fs::remove_dir_all(&directory).with_context(|| {
+        format!(
+            "remove temporary JACK session directory {}",
+            directory.display()
+        )
+    });
+    match (result, cleanup) {
+        (Ok(result), Ok(())) => Ok(result),
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+    }
 }
 
 impl Connector {
@@ -460,6 +637,19 @@ mod tests {
         assert_eq!(std::mem::size_of::<c_ulong>(), std::mem::size_of::<usize>());
         assert_eq!(JACK_PORT_IS_INPUT, 1);
         assert_eq!(JACK_PORT_IS_OUTPUT, 2);
+        assert_eq!(JACK_SESSION_SAVE_AND_QUIT, 2);
+        assert_eq!(JACK_SESSION_SAVE_ERROR, 1);
         assert_eq!(JACK_DEFAULT_AUDIO_TYPE.last(), Some(&0));
+    }
+
+    #[test]
+    fn synth_session_directory_is_unique_shared_and_removable() {
+        let path = shared_session_directory().unwrap();
+        assert!(path.starts_with(std::env::temp_dir()));
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o777
+        );
+        fs::remove_dir(&path).unwrap();
     }
 }

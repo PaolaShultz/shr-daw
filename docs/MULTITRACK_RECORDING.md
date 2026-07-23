@@ -98,7 +98,7 @@ recorder state or faults may follow after one space.
 - **RECORD:** `RECORD` starts/stops the synchronized take; `ARM` toggles the
   selected track.
 - **TRACK:** select `PREV`/`NEXT`, cycle a deliberate `SOURCE` assignment, or
-  edit the track `NAME KBD`; custom text currently requires the computer
+  edit the track `NAME KB`; custom text currently requires the computer
   keyboard.
 - **SETUP:** `ALL` arms every resolved track, `NONE` disarms everything, and
   `REFRESH` discovers JACK sources without rewriting remembered assignments.

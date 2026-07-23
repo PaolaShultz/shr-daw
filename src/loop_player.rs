@@ -555,41 +555,6 @@ pub fn library_entries(
         .collect())
 }
 
-pub fn delete_library_file(
-    directory: &Path,
-    file: &str,
-    current: Option<&LoopSettings>,
-    projects: &Path,
-) -> Result<()> {
-    if Path::new(file).file_name().and_then(|name| name.to_str()) != Some(file)
-        || !Path::new(file)
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("wav"))
-    {
-        bail!("unsafe private loop path");
-    }
-    let entry = library_entries(directory, current, projects)?
-        .into_iter()
-        .find(|entry| entry.file == file)
-        .context("private loop is missing or is not a regular WAV file")?;
-    if entry.current || entry.saved_references != 0 {
-        bail!(
-            "loop is referenced by the current Project ({}) and {} saved Project(s)",
-            usize::from(entry.current),
-            entry.saved_references
-        );
-    }
-    let path = directory.join(file);
-    let metadata = fs::symlink_metadata(&path)?;
-    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-        bail!("private loop is not a regular file");
-    }
-    fs::remove_file(path)?;
-    fs::File::open(directory)?.sync_all()?;
-    Ok(())
-}
-
 pub fn import(source: &Path, destination: &Path) -> Result<(PathBuf, DecodedLoop)> {
     let decoded = DecodedLoop::open(source)?;
     fs::create_dir_all(destination)?;
@@ -1752,8 +1717,8 @@ mod tests {
     }
 
     #[test]
-    fn loop_library_deletes_only_unreferenced_regular_wavs() {
-        let base = temp_dir("library-delete");
+    fn loop_library_lists_only_regular_wavs_and_saved_references() {
+        let base = temp_dir("library-list");
         let loops = base.join("loops");
         let projects = base.join("projects");
         fs::create_dir_all(&loops).unwrap();
@@ -1775,6 +1740,8 @@ mod tests {
 
         let entries = library_entries(&loops, None, &projects).unwrap();
         assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|entry| entry.file == "free.wav"));
+        assert!(!entries.iter().any(|entry| entry.file == "alias.wav"));
         assert_eq!(
             entries
                 .iter()
@@ -1783,12 +1750,6 @@ mod tests {
                 .saved_references,
             1
         );
-        assert!(delete_library_file(&loops, "used.wav", None, &projects).is_err());
-        assert!(delete_library_file(&loops, "alias.wav", None, &projects).is_err());
-        assert!(delete_library_file(&loops, "../free.wav", None, &projects).is_err());
-        delete_library_file(&loops, "free.wav", None, &projects).unwrap();
-        assert!(!loops.join("free.wav").exists());
-        assert!(loops.join("used.wav").exists());
         let _ = fs::remove_dir_all(base);
     }
 }

@@ -82,6 +82,14 @@ loads the first available synthv1 preset. A different explicit FT2 route
 replaces the standalone engine when needed. Global panic,
 replacement, and application shutdown stop only a process SHR-DAW owns.
 
+Panic sends sustain off, All Notes Off, and All Sound Off on all 16 channels.
+For synthv1 0.9.29 those 48 messages are spaced by 100 microseconds because
+that version handles sequencer control traffic on its audio path; no safety
+message is omitted. Normal synthv1 shutdown then sends a targeted JACK
+SaveAndQuit request to the exact managed client before falling back to
+termination of the owned child process. The request is never broadcast and
+does not target an unowned synth.
+
 Each engine has a configured MIDI input and JACK audio output. See
 [Configuration and routing](CONFIGURATION.md) for the settings.
 

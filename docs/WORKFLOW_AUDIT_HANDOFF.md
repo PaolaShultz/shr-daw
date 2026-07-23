@@ -2,7 +2,7 @@
 
 Date: 2026-07-23
 
-Status: R01–R15 source repair pass complete; combined verification pending
+Status: R01–R15 combined acceptance passed; publication recorded below
 
 This is the durable handoff and repair ledger for the first complete
 musician/operator workflow audit. It contains the analysis, the evidence gaps,
@@ -58,11 +58,45 @@ focused documents that define current behavior.
 - `inference` — likely consequence derived from observed artifacts.
 - `open question` — physical, user, or operational evidence is required.
 
-No physical testing or user validation was performed during this audit.
-Focused tests were inspected as source but not run. The workspace handoff
-reports an earlier repository-only pass of 651 passing tests and four
-intentionally ignored tests; that is historical reported evidence, not fresh
-validation.
+The initial read-only audit performed no physical testing or user validation.
+The later explicitly authorized combined pass did run focused and complete
+tests, connected audio/MIDI/recording workflows, and isolated failure drills.
+Those results are direct machine evidence only. They do not substitute for
+owner observation where P01–P08 require it.
+
+## Combined acceptance evidence — 2026-07-23
+
+- Locked `cargo check --all-targets`, debug and release builds, warning-denied
+  Clippy, and both complete test profiles passed. Debug and release each ran
+  666 tests: 662 passed and the four private artifact renderers were ignored.
+  Sixteen focused R01–R15 and JACK lifecycle tests also passed individually.
+- All 105 real-TUI PNGs regenerated. Debug regeneration, debug drift checking,
+  release drift checking, exact manifest membership, dimensions, and integer
+  scaling passed. Debug frames identify `DEV`; release frames identify `REL`.
+- Shell syntax/ShellCheck, Python compilation, deterministic validation of all
+  10 demos, synthv1 XML validation, JSON parsing, README limits, and
+  `git diff --check` passed. The passive MiniLab helper check opened no MIDI
+  port and changed no service. `doctor` reported CORE 5/5, MIDI 2/2, JACK 4/4,
+  and tuning 3/3 ready. The isolated installer tree, noninteractive and
+  interactive setup, idempotent rerun, Ctrl-C recovery summary, and installer
+  preflight were exercised without starting JACK.
+- Sixty-second synthetic raw capture at 18 channels and sixty-second
+  three-source final-mix stress both completed with full PCM equality and zero
+  drop, overflow, callback, or xrun faults.
+- Real AudioBox raw capture finalized two synchronized mono 24-bit/48 kHz stems
+  at 139,008 frames each with zero faults. The real three-source final bus
+  finalized an 11.59-second stereo 24-bit/48 kHz WAV.
+- Live raw-recorder drills produced honest incomplete manifests for exact
+  source-route loss, a real xrun, and owned JACK-server shutdown. A 32 MiB
+  isolated filesystem was refused before recording. An isolated SIGKILL left
+  `.take.part`; the next launch recovered 587,520 equal common frames as
+  `recovered-incomplete`, then recorded a clean replacement take.
+- The synth teardown defect discovered during acceptance was repaired. An exact
+  JACK SaveAndQuit request closes only the managed synthv1 client, while a
+  100-microsecond spacing retains all 48 panic messages without overrunning a
+  callback. Final connected release runs (`soft-cubic` 5.011 s and
+  `phase4-full` 20.051 s) had zero new xruns, missed deadlines, oversized
+  callbacks, route drift, or owned-process residue.
 
 ## Executive summary
 
@@ -76,23 +110,27 @@ SHR-DAW has strong local safety foundations:
 - controller commands that cannot quit the application;
 - explicit public/private data boundaries.
 
-The largest risks occur at workflow boundaries:
+The initial audit's largest risks occurred at workflow boundaries:
 
-1. unsaved Project edits can be lost through LOAD or keyboard quit;
-2. Tracks is described as a draft but can mutate the Project and live route;
-3. recording or transport can continue on Home without authoritative transport
-   rendering;
-4. Routing can collapse several performance inputs to one;
+1. unsaved Project edits could be lost through LOAD or keyboard quit;
+2. Tracks was described as a draft but could mutate the Project and live route;
+3. recording or transport could continue on Home without authoritative
+   transport rendering;
+4. Routing could collapse several performance inputs to one;
 5. some FT2 order changes reset the row despite an explicit preservation rule;
-6. install/setup actions are individually careful but not interruption-safe as
-   one journey.
+6. install/setup actions were individually careful but not interruption-safe
+   as one journey.
+
+R01–R15 repair the unambiguous parts of these findings and have passed the
+combined acceptance recorded below. D01–D10 retain the product choices that
+were intentionally not assumed.
 
 Secondary issues concern automatic LAN help, undifferentiated `doctor`
 readiness, controller-visible naming that needs keyboard text entry, unclear
 Project ownership in Effects, and Loop Library browsing that stops transport
 before a selection is committed.
 
-### Priority ranking
+### Initial priority ranking
 
 | Rank | Finding | Consequence | Frequency | Recovery cost | Ledger |
 |---|---|---:|---:|---:|---|
@@ -129,29 +167,29 @@ physically or aurally validated.
 
 | Workflow and intended outcome | Entry, decisions, feedback, completion | Cancellation, failure, interruption, return, repeated use | Evidence and gap |
 |---|---|---|---|
-| Install, upgrade, uninstall | Installer chooses dependency/config phases, builds, installs, and enters setup | Failure leaves earlier package/service/install changes; uninstall preserves private data | `observed`: scripts, Makefile, install docs. Clean Pi path not run |
-| Setup and configuration | Operator discovers or enters exact display, MIDI, JACK, capture, download, and tuning values | Backups exist; Ctrl-C or late validation can leave partial setup | `observed`: setup script/helper contract. No interactive hardware run |
+| Install, upgrade, uninstall | Installer chooses dependency/config phases, builds, installs, and enters setup | Failure leaves earlier package/service/install changes; uninstall preserves private data | `observed`: scripts, Makefile, install docs, and exact isolated install tree. Clean Pi path not run |
+| Setup and configuration | Operator discovers or enters exact display, MIDI, JACK, capture, download, and tuning values | Backups exist; Ctrl-C or late validation can leave partial setup | `observed`: setup script/helper contract plus isolated interactive, noninteractive, idempotent, and Ctrl-C recovery runs. Clean-machine hardware journey pending |
 | Local checkout launch | `setup-local.sh` seeds isolated state; `local.sh` verifies config and this checkout's debug binary | Missing binary/config fails nearby; repeated seeding preserves existing files | `observed`: scripts/docs. C1, C8 |
 | Startup, splash, Home | Config/controller discovery, splash, Home recommendation, workspace selection | Missing controller recommends Learn; engines/audio remain lazy | `observed`: source and generated screenshots. Physical 40×13 pending |
-| Shutdown, panic, signal | Keyboard quit or process stop invokes global owned cleanup | Stops recordings/transports, releases notes, drops owned engine | `observed`: source. Power/signal interruption not exercised |
+| Shutdown, panic, signal | Keyboard quit or process stop invokes global owned cleanup | Stops recordings/transports, releases notes, drops owned engine | `observed`: source plus connected synth teardown and isolated recorder SIGKILL recovery; exact owned cleanup and route restoration passed |
 | Global navigation and Back | Controller pages, encoder, keyboard, overlays, and nested editors | Most draft paths restore; order navigation and Tracks have exceptions | `observed`: navigation/UI/tests/screenshots. C6, C7 |
-| Status and transport | Working screens compute one global transport cell | Home omits it; FT2 body duplicates transport | `observed`: render source/screenshots. C6, C9 |
+| Status and transport | Working screens compute one global transport cell | Home keeps its special layout while showing authoritative active ownership | `observed`: render source/tests and regenerated screenshots. R02/R13 accepted; C6, C9 |
 | Help | Local help preserves caller and automatically attempts LAN hosting | Leaving Help stops server; opening has network side effects | `observed`: UI/help source. No LAN/accessibility user test |
 | MIDI Learn and controller setup | Auto-profile or learn, backup, mapping, Home recommendation | Learn isolates MIDI; incomplete mapping remains recoverable | `observed`: source/docs/config. Current controllers not tested |
-| Routing | Browse, detached field edit, full validation/save, live input activation or next-start status | Field cancel and rollback are strong; performance-input list is not | `observed`: source/config/tests/docs. C2, C3, C8 |
-| Presets, Playback, synth ownership | Engine browse/load, musical MIDI, mapped controls, pickup, N00B, reset, Ideas/FX | Replacement and panic clean ownership | `observed`: source/docs/tests/screenshots. No audible/pickup hardware test |
+| Routing | Browse, detached field edit, full validation/save, live input activation or next-start status | Field cancel, rollback, and every repeated performance input are preserved | `observed`: source/config/tests/docs plus connected exact-route and byte-identical restoration checks. R04 accepted; C2, C3, C8 |
+| Presets, Playback, synth ownership | Engine browse/load, musical MIDI, mapped controls, pickup, N00B, reset, Ideas/FX | Replacement and panic clean ownership | `observed`: source/docs/tests/screenshots plus connected synth lifecycle and all-channel panic checks. No owner audible/pickup observation |
 | Ideas and take playback | Record, play, save, inspect, load, delete with instrument identity | Mode exclusivity and note cleanup exist; activity may outlive screen | `observed`: source/tests/docs. C1, C2 |
-| FT2 entry and navigation | New default may adopt Player route; saved/changed Projects retain ownership | Page navigation preserves row; order navigation does not | `observed`: source/tests/docs. C2, C3, C6 |
+| FT2 entry and navigation | New default may adopt Player route; saved/changed Projects retain ownership | Page and order navigation preserve clamped row/lane/column context | `observed`: source/tests/docs. R05 accepted; C2, C3, C6 |
 | FT2 Edit, Cell, REC, Play | Mutually exclusive modes, quantized REC, release notes, Cell draft | REC Back ends capture safely; exact failures refuse substitution | `observed`: source/tests/docs. Musical feel and latency untested |
-| Projects, Files, demos, defaults | Name, save, preview, load, delete, seed demos, save defaults | Save/no-replace is strong; LOAD/quit lack dirty protection | `observed`: source/docs/screenshots. C1 |
+| Projects, Files, demos, defaults | Name, save, preview, load, delete, seed demos, save defaults | Save/no-replace and dirty LOAD/quit protection retain the current Project on Cancel or failure | `observed`: source/tests/docs/screenshots. R01/R14 accepted; C1 |
 | Patterns, Arrangement, clipboard, drums | New, clone, clear, repeat, insert, move, jump, play | Destructive actions usually confirm; some order changes lose row | `observed`: source/tests/docs/screenshots |
-| Tracks and page routing | Add/select/edit target/channel/program/bank, DONE validates | Whole EXIT restores; field cancel/live route do not match draft promise | `observed`: source/docs/tests. C2, C3 |
-| WAV loops, import, library, alignment | Import/attach, tempo, cuts, alignment, playback, detach | Detach keeps WAV; opening browser stops transport | `observed`: source/docs/screenshots. Audio/sample-rate untested |
+| Tracks and page routing | Add/select/edit target/channel/program/bank, DONE validates | Whole EXIT and nested field Cancel restore exact drafts; live audition ownership remains D03 | `observed`: source/docs/tests. R03 accepted; C2, C3 |
+| WAV loops, import, library, alignment | Import/attach, tempo, cuts, alignment, playback, detach | Detach keeps WAV; browse/Cancel preserves transport and committed attach stops it | `observed`: source/docs/tests/screenshots plus 60-second synthetic and real final-bus loop participation at 48 kHz. R09/R15 accepted; owner audible observation pending |
 | FX, AUX, master | Caller opens rack, selects target/effect/parameter, publishes safely | Parameter cancel restores; owner unclear from Home/Playback | `observed`: source/docs/screenshots. C1, C4 |
-| Mixer, final bus, meter, final record | Levels/mutes, limiter/meter, final stereo recorder | Edit blockers protect active state; Home visibility issue remains | `observed`: source/docs/tests/screenshots. JACK/aural evidence absent |
-| Raw multitrack recorder | Assign/name/arm exact sources, record, monitor, finalize | Missing source blocks start; interrupted takes recover conservatively | `observed`: source/docs/tests/screenshots. No source-loss/xrun/disk test |
-| Diagnosis and recovery | `doctor`, status/log, setup rerun, recording recovery, fallback reports | Full `doctor` fails without optional JACK; setup rerun starts from partial state | `observed`: CLI/source/docs. Real failure drills not run |
-| Operation-affecting maintainer helpers | Screenshot/demo validation and non-audible recording stress | Written boundaries are strong; output remains synthetic evidence | `observed`: helper docs. No helpers executed |
+| Mixer, final bus, meter, final record | Levels/mutes, limiter/meter, final stereo recorder | Edit blockers protect active state and Home identifies the active owner | `observed`: source/docs/tests/screenshots plus 60-second synthetic stress, real three-source JACK routing, and real stereo finalization. R02 accepted; owner aural evidence pending |
+| Raw multitrack recorder | Assign/name/arm exact sources, record, monitor, finalize | Missing source blocks start; interrupted takes recover conservatively | `observed`: source/docs/tests/screenshots plus authorized real capture, source-loss, xrun, JACK-loss, low-space, and interruption/recovery drills |
+| Diagnosis and recovery | `doctor`, status/log, setup rerun, recording recovery, fallback reports | Full `doctor` fails without optional JACK; setup rerun starts from partial state | `observed`: CLI/source/docs plus grouped live `doctor`, setup recovery, source-loss, xrun, JACK-loss, low-space, and interruption drills |
+| Operation-affecting maintainer helpers | Screenshot/demo validation and non-audible recording stress | Written boundaries are strong; output remains synthetic evidence | `observed`: helper docs and authorized helper executions, including isolated setup/install and 60-second recorder stress runs |
 
 The repository has 105 generated PNG frames, two JPGs, and the HTML tour.
 Representative Home, FT2, overlay, Files, Playback, Routing, FX, Recorder, and
@@ -166,21 +204,21 @@ repairs only the unambiguous part.
 
 | ID | Status | First-pass repair | Do not decide yet |
 |---|---|---|---|
-| R01 | SOURCE DONE | Add Project dirty tracking and protect existing LOAD and current keyboard-quit paths with Save/Discard/Cancel; preserve the current reach of `q` | Whether `q` should remain global or become Home-only |
-| R02 | SOURCE DONE | Make Home's existing bottom line compute and show authoritative active transport/recording ownership while preserving Home's special layout | Which background activities should be permitted |
-| R03 | SOURCE DONE | Restore the exact nested Tracks field value on field EXIT | Whether the whole Tracks draft may live-audition routes |
-| R04 | SOURCE DONE | Preserve every repeated performance input when Routing edits one input; use a list-aware draft | No single-input simplification |
-| R05 | SOURCE DONE | Preserve/clamp FT2 row, page, lane, and column across Pattern/Song overlay and keyboard order changes | Explicit REWIND/START semantics |
-| R06 | SOURCE DONE | Put installer consequences before the FluidSynth mask and add exact interruption/completion reporting to setup | Whether install/setup should become separate commands or a fully collected draft |
-| R07 | SOURCE DONE | Add capability-group summaries to `doctor` without changing its current strict exit status | Default exit semantics and optional profiles |
-| R08 | SOURCE DONE | Label Project/track text naming as keyboard-required in the present UI/docs | Whether to build controller character entry |
-| R09 | SOURCE DONE | Delay Loop Library transport stop until an actual import/attach choice, after verifying no safety dependency requires early stop | Any broader live-preview feature |
-| R10 | SOURCE DONE | Show current Project ownership and saved/dirty state in FX rack/editor within 40×13 | Per-preset or non-Project FX |
-| R11 | SOURCE DONE | Reconcile embedded Help with current software-instrument FT2 REC behavior | Any change to REC ownership/routing |
-| R12 | SOURCE DONE | Reconcile `HOW_IT_WORKS.md` with the implemented/tested Pattern length choices | Groove/microtiming or new length features |
-| R13 | SOURCE DONE | Remove duplicate FT2 transport state from the header and update the focused test/screenshot expectation | Redesign of the shared status renderer |
-| R14 | SOURCE DONE | Make routing-default persistence and Project save one coherent successful result, or leave defaults unchanged on failed/pending Project save | New default-routing features |
-| R15 | SOURCE DONE | Prove the legacy Loop Library delete path unreachable, then remove stale dispatch/state/tests without adding deletion to the overlay | Any loop-file deletion feature |
+| R01 | DONE | Add Project dirty tracking and protect existing LOAD and current keyboard-quit paths with Save/Discard/Cancel; preserve the current reach of `q` | Whether `q` should remain global or become Home-only |
+| R02 | DONE | Make Home's existing bottom line compute and show authoritative active transport/recording ownership while preserving Home's special layout | Which background activities should be permitted |
+| R03 | DONE | Restore the exact nested Tracks field value on field EXIT | Whether the whole Tracks draft may live-audition routes |
+| R04 | DONE | Preserve every repeated performance input when Routing edits one input; use a list-aware draft | No single-input simplification |
+| R05 | DONE | Preserve/clamp FT2 row, page, lane, and column across Pattern/Song overlay and keyboard order changes | Explicit REWIND/START semantics |
+| R06 | DONE | Put installer consequences before the FluidSynth mask and add exact interruption/completion reporting to setup | Whether install/setup should become separate commands or a fully collected draft |
+| R07 | DONE | Add capability-group summaries to `doctor` without changing its current strict exit status | Default exit semantics and optional profiles |
+| R08 | DONE | Label Project/track text naming as keyboard-required in the present UI/docs | Whether to build controller character entry |
+| R09 | DONE | Delay Loop Library transport stop until an actual import/attach choice, after verifying no safety dependency requires early stop | Any broader live-preview feature |
+| R10 | DONE | Show current Project ownership and saved/dirty state in FX rack/editor within 40×13 | Per-preset or non-Project FX |
+| R11 | DONE | Reconcile embedded Help with current software-instrument FT2 REC behavior | Any change to REC ownership/routing |
+| R12 | DONE | Reconcile `HOW_IT_WORKS.md` with the implemented/tested Pattern length choices | Groove/microtiming or new length features |
+| R13 | DONE | Remove duplicate FT2 transport state from the header and update the focused test/screenshot expectation | Redesign of the shared status renderer |
+| R14 | DONE | Make routing-default persistence and Project save one coherent successful result, or leave defaults unchanged on failed/pending Project save | New default-routing features |
+| R15 | DONE | Prove the legacy Loop Library delete path unreachable, then remove stale dispatch/state/tests without adding deletion to the overlay | Any loop-file deletion feature |
 
 ### R01 — Unsaved Project protection
 
@@ -217,14 +255,15 @@ recording cleanup; atomic/no-replace save; private storage.
 - [x] Update focused Project/menu/help documentation
 - [x] Add focused source tests
 - [x] Run formatting/source inspection and `git diff --check`
-- [ ] Run authorized focused/build pass later
+- [x] Run authorized focused/build pass
 - [x] Record commit/push and source/static evidence here
 
 **History/evidence:** Whole-`Song` clean baseline and one pending LOAD/quit
 guard implemented in `src/ui.rs`; source tests cover dirty Cancel/Discard,
 context retention, and clean quit. Focused docs updated. `cargo fmt --all` and
 `git diff --check` passed without compiling. Repair commit `6d55069` pushed to
-`origin/main`. Status remains `SOURCE DONE` until the authorized build/test pass.
+`origin/main`. The combined pass ran its focused test plus both complete test
+profiles, locked builds, and warning-denied Clippy; status is `DONE`.
 
 ### R02 — Authoritative active state on Home
 
@@ -256,7 +295,7 @@ recording finalization, and MIDI inability to quit.
 - [x] Preserve ordinary Home guidance when fully stopped
 - [x] Add focused 40×13 render/state tests
 - [x] Update Home/status documentation
-- [ ] Run authorized screenshot regeneration later
+- [x] Run authorized screenshot regeneration
 - [x] Record commit/push and source/static evidence here
 
 **History/evidence:** Home now derives its existing last line from an explicit
@@ -292,7 +331,7 @@ whole Tracks EXIT, note cleanup, and current menu reachability.
 - [x] Preserve unrelated edits already made in the Tracks draft
 - [x] Add focused cancel-after-each-level tests
 - [x] Record whether any live route action remains after cancellation
-- [ ] Run authorized focused/build pass later
+- [x] Run authorized focused/build pass
 - [x] Record commit/push and source/static evidence here
 
 **History/evidence:** A complete page snapshot now survives TARGET through its
@@ -328,7 +367,7 @@ atomic save, live rollback, no output probe/transmission.
 - [x] Cover Cancel and activation failure rollback
 - [x] Cover save/reload ordering
 - [x] Update Routing/config/controller documentation
-- [ ] Run authorized focused/build/screenshot pass later
+- [x] Run authorized focused/build/screenshot pass
 - [x] Record commit/push and source/static evidence here
 
 **History/evidence:** Routing now builds dynamic `PERF n` rows plus `+ PERF`,
@@ -365,7 +404,7 @@ destructive replacement, and route/note cleanup.
 - [x] Shorter and longer Pattern tests
 - [x] Active Play/REC and percussion/N00B source review
 - [x] Focused docs/test correction
-- [ ] Run authorized focused/build pass later
+- [x] Run authorized focused/build pass
 - [x] Record commit/push and source/static evidence here
 
 **History/evidence:** Pattern/Song overlay selection and tracker keyboard
@@ -421,15 +460,15 @@ These remain individually scoped even when implemented in one working session.
 
 | ID | Evidence and smallest repair | Must remain unchanged | Verification/status record |
 |---|---|---|---|
-| R07 | `observed`: `doctor` counts missing JACK as a whole-check failure although editor/external MIDI can work. Add grouped capability summaries while retaining strict exit for now. | Exact missing command/device/CPU/MIDI/JACK checks | `SOURCE DONE`: exact diagnostic lines and strict failure retained; grouped core/MIDI/JACK/tuning summaries and pure source test added. Commit `6d55069`; build/runtime checks pending |
-| R08 | `observed`: controller NAME opens a text modal, but only keyboard characters edit it. Label NAME/modal/docs as keyboard-required. | Generated safe defaults, validation, Cancel | `SOURCE DONE`: `NAME KBD`, modal text, and focused docs updated for both naming paths; 4/5/8 source layouts inspected. Commit `6d55069`; rendered evidence pending |
-| R09 | `observed`: opening Loop Library calls `tracker_stop()` before browse/cancel. Move stop to committed import/attach after confirming no verified safety dependency. | Private WAV ownership, no delete, exact load validation | `SOURCE DONE`: stop moved from open to committed overlay selection; playing-preview cancel source test added. Commit `6d55069`; focused test run pending |
-| R10 | `observed`: FX mutates current Project racks but UI mostly says SOURCE/AUX/MASTER. Show Project name and dirty state. | Project ownership, caller return, edit blockers, topology | `SOURCE DONE`: rack/editor show Project name and `NEW`/`SAVED`/`DIRTY`; native-size source render test added. Commit `6d55069`; screenshot evidence pending |
-| R11 | `observed`: embedded Help says FT2 REC is hardware-only; source/tests/Tracker docs accept exact software routes. Correct Help. | Exact target, one engine, no fallback | `SOURCE DONE`: Help now describes exact software and hardware targets and refusal of missing/ambiguous routes. Source/doc consistency inspection passed; commit `6d55069` |
-| R12 | `observed`: architecture doc says arbitrary Pattern lengths are planned; current menu/source/tests expose 1–32 plus 48/64/96/128/192/256. Correct current-behavior text only. | No groove/microtiming/new feature promise | `SOURCE DONE`: current length list corrected without adding a feature promise. Source/doc consistency inspection passed; commit `6d55069` |
-| R13 | `observed`: FT2 header and test require REC/PLAY/PAUSE although final row owns transport and Tracker docs forbid duplication. Remove duplicate state and update test/screenshot fixture. | Project/order/pattern identity; exact final transport cell | `SOURCE DONE`: header now limits mode text to Cell/Edit/REC Ready/N0B; source test rejects duplicate PAUSE/PLAY/REC. Commit `6d55069`; screenshot regeneration pending |
-| R14 | `observed`: routing defaults save before Project save, so failed/pending Project save can still change defaults. Make the outcome transactional or defer defaults until Project success. | Explicit default confirmation and no-replace Project save | `SOURCE DONE`: defaults are queued and committed only after successful Project save; pending/refused/failed save leaves the old file. Source test covers defer/commit; commit `6d55069`; focused test run pending |
-| R15 | `observed`: current Loop overlay has no delete; legacy menu/state/delete dispatch remains. Prove unreachable, then remove stale code/tests. | No loop deletion from browser; Project REMOVE keeps WAV | `SOURCE DONE`: unreachable legacy action/context/menu/state/dispatch/render/tests removed; shared overlay remains deletion-free. Reachability/static search clean; commit `6d55069`; focused test run pending |
+| R07 | `observed`: `doctor` counts missing JACK as a whole-check failure although editor/external MIDI can work. Add grouped capability summaries while retaining strict exit for now. | Exact missing command/device/CPU/MIDI/JACK checks | `DONE`: focused test passed; live `doctor` reported CORE 5/5, MIDI 2/2, JACK 4/4, and tuning 3/3 while retaining strict semantics |
+| R08 | `observed`: controller NAME opens a text modal, but only keyboard characters edit it. Label NAME/modal/docs as keyboard-required. | Generated safe defaults, validation, Cancel | `DONE`: `NAME KB` and modal/docs render within the 4/5/8 layouts; all 105 screenshots regenerated and passed exact drift checks |
+| R09 | `observed`: opening Loop Library calls `tracker_stop()` before browse/cancel. Move stop to committed import/attach after confirming no verified safety dependency. | Private WAV ownership, no delete, exact load validation | `DONE`: focused active-preview cancellation test and complete suites passed |
+| R10 | `observed`: FX mutates current Project racks but UI mostly says SOURCE/AUX/MASTER. Show Project name and dirty state. | Project ownership, caller return, edit blockers, topology | `DONE`: native-size Project-owner/dirty-state test and regenerated FX screenshots passed |
+| R11 | `observed`: embedded Help says FT2 REC is hardware-only; source/tests/Tracker docs accept exact software routes. Correct Help. | Exact target, one engine, no fallback | `DONE`: Help width/link tests, source/doc consistency, and complete suites passed |
+| R12 | `observed`: architecture doc says arbitrary Pattern lengths are planned; current menu/source/tests expose 1–32 plus 48/64/96/128/192/256. Correct current-behavior text only. | No groove/microtiming/new feature promise | `DONE`: exact Pattern-length focused test and complete suites passed |
+| R13 | `observed`: FT2 header and test require REC/PLAY/PAUSE although final row owns transport and Tracker docs forbid duplication. Remove duplicate state and update test/screenshot fixture. | Project/order/pattern identity; exact final transport cell | `DONE`: focused no-duplicate-header test and regenerated FT2 screenshots passed |
+| R14 | `observed`: routing defaults save before Project save, so failed/pending Project save can still change defaults. Make the outcome transactional or defer defaults until Project success. | Explicit default confirmation and no-replace Project save | `DONE`: deferred/commit focused test and complete suites passed |
+| R15 | `observed`: current Loop overlay has no delete; legacy menu/state/delete dispatch remains. Prove unreachable, then remove stale code/tests. | No loop deletion from browser; Project REMOVE keeps WAV | `DONE`: stale reachability search is clean; shared-overlay focused test and complete suites passed |
 
 ## Decision queue for tomorrow
 
@@ -480,29 +519,31 @@ Record tomorrow's answers here:
 
 ## Physical and user-evidence queue
 
-These cannot be marked accepted from source/tests/screenshots alone.
+These cannot be marked accepted from source/tests/screenshots alone. The
+combined pass records machine evidence without substituting it for the
+remaining physical or owner observation.
 
-| ID | Required evidence |
-|---|---|
-| P01 | Physical 40×13 overlay reveal, launcher, status row, wrapping, Back, page-1 entry, and silent hidden launcher review |
-| P02 | Four-, five-, and eight-button controller reachability for every confirmation/cancel path |
-| P03 | Pickup re-arm after preset load, Project route change, reset, Idea load, and failed engine restart |
-| P04 | What remains audible/routed when leaving FT2 for Home: hardware MIDI, software synth, and WAV loop separately |
-| P05 | Raw/final recorder behavior under JACK loss, source loss, xrun, disk full, and power interruption |
-| P06 | Clean Raspberry Pi OS Lite install/setup/doctor/launch/recovery journey |
-| P07 | Pi 5/NVMe and later MR18 acceptance under their focused plans |
-| P08 | Exhaustive visual review of all 105 generated PNG frames after repairs |
+| ID | Required evidence | Evidence obtained / remaining gate |
+|---|---|---|
+| P01 | Physical 40×13 overlay reveal, launcher, status row, wrapping, Back, page-1 entry, and silent hidden launcher review | Pending physical 40×13 review |
+| P02 | Four-, five-, and eight-button controller reachability for every confirmation/cancel path | Pending physical controller review |
+| P03 | Pickup re-arm after preset load, Project route change, reset, Idea load, and failed engine restart | Pending physical pickup observation |
+| P04 | What remains audible/routed when leaving FT2 for Home: hardware MIDI, software synth, and WAV loop separately | Pending workflow-specific audible observation |
+| P05 | Raw/final recorder behavior under JACK loss, source loss, xrun, disk full, and power interruption | Partial machine evidence: real raw source loss, xrun, JACK shutdown, low-space refusal, and power-interruption recovery passed; a real three-source final recording also passed. Remaining final-recorder failure cases and owner observation are pending. |
+| P06 | Clean Raspberry Pi OS Lite install/setup/doctor/launch/recovery journey | Partial machine evidence: isolated install, setup, idempotence, preflight, Ctrl-C recovery, doctor, and launch checks passed on this configured Pi. A clean OS Lite journey remains pending. |
+| P07 | Pi 5/NVMe and later MR18 acceptance under their focused plans | Pending the separate hardware plans |
+| P08 | Exhaustive visual review of all 105 generated PNG frames after repairs | Partial machine evidence: all 105 frames regenerated with exact membership, dimensions, integer scaling, and debug/release drift checks. Exhaustive owner visual review remains pending. |
 
 ## Cross-artifact contradictions
 
 | ID | Contradiction | Disposition |
 |---|---|---|
-| X01 | `docs/HELP.md` says FT2 REC refuses software instruments; source, focused tests, and `docs/TRACKER.md` accept an exact online software route | R11 SOURCE DONE |
+| X01 | `docs/HELP.md` says FT2 REC refuses software instruments; source, focused tests, and `docs/TRACKER.md` accept an exact online software route | R11 DONE |
 | X02 | Help says START plays from Arrangement beginning; current UI exposes REWIND then PLAY | D08 DECISION |
-| X03 | `docs/HOW_IT_WORKS.md` calls arbitrary interactive Pattern lengths planned; menu/source/tests expose the wider list | R12 SOURCE DONE |
+| X03 | `docs/HOW_IT_WORKS.md` calls arbitrary interactive Pattern lengths planned; menu/source/tests expose the wider list | R12 DONE |
 | X04 | Menu docs say keyboard quit is from Home; source accepts `q` globally | R01 protects loss; D01 decides reach; docs wait |
-| X05 | Tracker docs say header does not repeat transport; source/test/screenshot require PAUSE/PLAY/REC | R13 SOURCE DONE; screenshot pending |
-| X06 | Current loop overlay has no deletion, but legacy menu/state/delete code remains | R15 SOURCE DONE |
+| X05 | Tracker docs say header does not repeat transport; source/test/screenshot require PAUSE/PLAY/REC | R13 DONE |
+| X06 | Current loop overlay has no deletion, but legacy menu/state/delete code remains | R15 DONE |
 
 The screenshot count is not contradictory: 95 menu-manual images are a subset
 of the 105 generated PNG frames.
@@ -557,3 +598,4 @@ Append one row per coherent repair. Do not replace history.
 |---|---|---|---|---|---|
 | 2026-07-23 | Audit | Review and repair ledger created; no implementation | Read-only artifact reconciliation; no compile | None; no physical/user validation | Not applicable |
 | 2026-07-23 | R01–R15 | First READY repair queue implemented; all items `SOURCE DONE`; D01–D10 and P01–P08 unchanged | Rust formatting, focused source inspection, `bash -n`, `shellcheck`, stale-path search, and `git diff --check` passed | Not run: the explicit combined-pass, screenshot, and physical authorizations remain outstanding | `6d55069` pushed to `origin/main` |
+| 2026-07-23 | R01–R15 acceptance | All repairs verified; synthv1 teardown xrun found and repaired; D01–D10 unanswered | Formatting, shell/Python/XML/JSON/demo/static checks and `git diff --check` passed | Locked check/builds; 16 focused tests; debug/release suites 662 pass + 4 ignored each; warning-denied Clippy; 105-image debug/release drift; helper/setup/install checks; 60-second raw/final stress; real capture and failure/recovery drills; connected release checkpoints with zero new xruns or route drift | This acceptance repair commit pushed to `origin/main` |

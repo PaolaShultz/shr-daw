@@ -355,7 +355,7 @@ rewrites an Arrangement step.
 chooses the next free `project-001` style name. **SAVE AS** immediately writes
 the next free `<current-name>-copy-001` style copy and switches to it. These
 automatic names keep both actions usable from a four-button controller.
-**NAME KBD** requires computer-keyboard text, accepts a useful display name,
+**NAME KB** requires computer-keyboard text, accepts a useful display name,
 and derives a safe filename; collisions
 are refused and a saved rename keeps the loaded Project state.
 

@@ -21,13 +21,14 @@ features into scope; 0.6 implements and physically accepts simultaneous
 corrected starting point; the current checked-progress version is `0.3.94`.
 
 The complete first musician/operator workflow review and its persistent repair
-ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 `READY` queue has
-completed the source/docs/test repair pass and is recorded there as
-`SOURCE DONE`; the combined build/test and screenshot evidence still requires
-explicit authorization. Its `DECISION` questions remain for the owner pass,
-and its physical queue remains untouched. Neither the audit nor source pass
-performed a compile, physical test, private-data inspection, or
-hardware/audio/MIDI action.
+ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
+the authorized combined acceptance pass on 2026-07-23. The ledger records the
+locked debug/release builds, 662 passing tests plus four intentionally ignored
+private renderers in each profile, warning-denied Clippy, all 105 screenshots,
+helper checks, stress runs, connected audio checkpoints, and isolated recorder
+failure/recovery drills. D01–D10 remain unanswered. P01–P08 retain their honest
+owner/physical gates; machine evidence obtained for P05, P06, and P08 is
+recorded without claiming user observation.
 
 The complete deterministic documentation screenshot set is reconciled to the
 current UI; physical approval remains the next gate for UI/controller work.
@@ -91,25 +92,25 @@ Connected release results were healthy during sustained processing:
   non-finite samples, zero limiter reduction, 51.847 us mean, 96 us p99 and
   253.202 us maximum callback time.
 
-The checkpoint now emits Unix-microsecond control-thread events and final-bus
-meters. Timestamp evidence demonstrated that the old checkpoint sent the
-48-message all-channel panic twice: explicitly before graph restore and again
-inside `Engine::drop`. Removing only the duplicate explicit panic reduced an
-otherwise identical five-second run from four teardown xruns to two without
-changing routes, signal policy, timeout, or callback work. `Engine::drop`
-remains the guaranteed All Notes Off/panic path.
+The teardown investigation is complete. synthv1 0.9.29 in `--no-gui` mode
+ignores ordinary termination signals but implements an exact JACK Session
+SaveAndQuit event. SHR now sends that event only to the configured managed
+client, retains owned-process termination as a fallback, and removes its
+short-lived shared session directory. The complete 48-message all-channel
+panic remains mandatory but is paced at 100 microseconds between synthv1
+messages; an unpaced burst caused one reproducible callback miss.
 
-Two transition xruns remain and both name `shs-synthv1`: the final run began
-engine drop at Unix 1784739033026652 us; JACK reported the first miss at
-2026-07-22 17:50:33.032472+01:00 and the second at
-17:50:35.035115+01:00; engine drop completed at Unix 1784739035050091 us.
-Thus one miss follows synth termination startup by about 5.8 ms and the other
-lands at the existing two-second SIGTERM-to-forced-kill boundary. Do not hide
-these events, narrow the journal window, weaken exact route restoration, or
-extend/shorten the timeout speculatively. The next focused experiment should
-establish whether synthv1 0.9.29 has a usable graceful JACK-client exit path;
-the inspected upstream project is Rui Nuno Capela's `rncbc/synthv1`, GPL-2.0-
-or-later, but no upstream code was copied. Preserve unowned synth processes.
+Final connected release evidence after that repair:
+
+- `soft-cubic`, 5.011 s: 1,924 callbacks, mean 50.578 us, p99 75 us,
+  maximum 138.406 us, zero misses/oversized callbacks, clips, non-finite
+  samples, limiter reduction, or new JACK xruns.
+- `phase4-full`, 20.051 s and eleven effects: 7,568 callbacks, mean
+  437.313 us, p99 539 us, maximum 808.162 us, zero misses/oversized callbacks,
+  clips, non-finite samples, limiter reduction, or new JACK xruns.
+- Both runs restored byte-identical JACK and ALSA route snapshots and left no
+  SHR or synthv1 process. The pre-existing system JACK server remained running
+  at 48 kHz, 128 frames, and three periods.
 
 ## Publishing state
 

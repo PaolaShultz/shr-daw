@@ -39,6 +39,7 @@ pub enum MidiEvent {
 /// lifecycle operations are kept behind this API so callers cannot layer them.
 pub struct Engine {
     backend: BackendKind,
+    managed_client_name: Option<String>,
     child: Child,
     stdin: Option<ChildStdin>,
     state: PathBuf,
@@ -636,6 +637,7 @@ impl Engine {
             .context("start silent test engine process")?;
         Ok(Self {
             backend,
+            managed_client_name: None,
             child,
             stdin: None,
             state: std::env::temp_dir().join(format!("shr-test-engine-{}", std::process::id())),
@@ -784,6 +786,7 @@ impl Engine {
 
         let engine = Self {
             backend: preset.backend,
+            managed_client_name: Some(backend_config.client_name.clone()),
             stdin: child.stdin.take(),
             child,
             state: state.to_path_buf(),
@@ -998,8 +1001,16 @@ impl Engine {
     }
 
     pub fn panic(&self) {
-        for message in crate::recording::all_notes_off() {
-            let _ = self.send(&message);
+        let messages = crate::recording::all_notes_off();
+        for (index, message) in messages.iter().enumerate() {
+            let _ = self.send(message);
+            // synthv1 0.9.29 handles ALSA sequencer control events on its
+            // audio path. A complete 48-message panic delivered in one burst
+            // can overrun one JACK cycle; this sub-millisecond pacing retains
+            // every safety message without stalling the musician's workflow.
+            if self.backend == BackendKind::Synthv1 && index + 1 < messages.len() {
+                thread::sleep(Duration::from_micros(100));
+            }
         }
         if let Some(lifecycle) = &self.midi_lifecycle {
             lifecycle.clear_after_all_notes_off();
@@ -1177,6 +1188,16 @@ impl Drop for Engine {
         }
         if let Ok(mut output) = self.output.lock() {
             *output = None;
+        }
+        // synthv1's no-GUI process ignores ordinary termination signals but
+        // handles a targeted JACK SaveAndQuit event cleanly. The control-only
+        // notifier deliberately remains outside the process graph. Failure is
+        // harmless because `terminate` below retains the owned-process
+        // fallback.
+        if self.backend == BackendKind::Synthv1 {
+            if let Some(client_name) = self.managed_client_name.as_deref() {
+                let _ = crate::jack::request_client_quit(client_name);
+            }
         }
         terminate(&mut self.child);
         cleanup_state(&self.state);

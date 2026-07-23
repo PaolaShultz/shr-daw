@@ -1696,7 +1696,7 @@ impl App {
         match row {
             RoutingRow::Controller => {
                 let current = draft.controller.input_match.as_deref().unwrap_or("");
-                let choice = cycle_text_choice(&current, &input_choices, true, direction);
+                let choice = cycle_text_choice(current, &input_choices, true, direction);
                 draft.controller.input_match = (!choice.is_empty()).then_some(choice.clone());
                 draft.config.midi_input_matches =
                     (!choice.is_empty()).then_some(choice).into_iter().collect();
@@ -15771,9 +15771,9 @@ mod tests {
         a.loop_player
             .set_preview_status(crate::loop_player::LoopStatus {
                 loaded: true,
-                playing: true,
                 ..crate::loop_player::LoopStatus::default()
             });
+        a.toggle_tracker_playback();
         assert_eq!(a.home_activity(), Some("> PLAY · FILES · Project preview"));
         let frame = render_app(&mut a, 40, 13);
         assert!(row_text(&frame, 12).contains("FILES"));

@@ -728,7 +728,7 @@ const FILES: [MenuPage; 4] = [
         [
             on("NEW PRJ", Action::NewProject),
             on("SAVE AS", Action::SaveSongAs),
-            on("NAME KBD", Action::RenameProject),
+            on("NAME KB", Action::RenameProject),
             on("PATTERN", Action::OpenPatternTools),
         ],
     ),
@@ -925,7 +925,7 @@ const AUDIO: [MenuPage; 4] = [
             on("PREV", Action::AudioPreviousTrack),
             on("NEXT", Action::AudioNextTrack),
             on("SOURCE", Action::AudioAssignSource),
-            on("NAME KBD", Action::AudioNameTrack),
+            on("NAME KB", Action::AudioNameTrack),
         ],
     ),
     page(
