@@ -202,7 +202,6 @@ pub enum Action {
     LoopOffsetUp,
     LoopAlignDone,
     OpenLoopLibrary,
-    DeleteLoopFile,
     TrackerMute,
     TrackerPageMute,
     NextTrackerPage,
@@ -340,7 +339,6 @@ pub enum MenuContext {
     PageTarget,
     PageChannel,
     PatternClear,
-    LoopLibrary,
     PatternTools,
     DrumPatterns,
     FxEmpty,
@@ -595,28 +593,6 @@ const TRACKER_LOOP: [MenuPage; 4] = [
         ],
     ),
 ];
-const LOOP_LIBRARY: [MenuPage; 4] = [
-    page(
-        "OPS",
-        [
-            on("DELETE", Action::DeleteLoopFile),
-            off(""),
-            off(""),
-            off(""),
-        ],
-    ),
-    page("", [off(""), off(""), off(""), off("")]),
-    page("", [off(""), off(""), off(""), off("")]),
-    page(
-        "SYS",
-        [
-            on("PANIC", Action::StopAll),
-            on("HELP", Action::OpenHelp),
-            off(""),
-            on("EXIT", Action::Back),
-        ],
-    ),
-];
 const TRACKER_LOOP_ALIGN: [MenuPage; 4] = [
     page(
         "OPS",
@@ -752,7 +728,7 @@ const FILES: [MenuPage; 4] = [
         [
             on("NEW PRJ", Action::NewProject),
             on("SAVE AS", Action::SaveSongAs),
-            on("NAME", Action::RenameProject),
+            on("NAME KBD", Action::RenameProject),
             on("PATTERN", Action::OpenPatternTools),
         ],
     ),
@@ -949,7 +925,7 @@ const AUDIO: [MenuPage; 4] = [
             on("PREV", Action::AudioPreviousTrack),
             on("NEXT", Action::AudioNextTrack),
             on("SOURCE", Action::AudioAssignSource),
-            on("NAME", Action::AudioNameTrack),
+            on("NAME KBD", Action::AudioNameTrack),
         ],
     ),
     page(
@@ -1165,7 +1141,6 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerPages, MenuContext::PageTarget | MenuContext::PageChannel) => &PAGE_FIELD,
         (Screen::TrackerPages, _) => &PAGES,
         (Screen::TrackerTools, _) => &TRACKER_TOOLS,
-        (Screen::TrackerLoop, MenuContext::LoopLibrary) => &LOOP_LIBRARY,
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
         (Screen::AudioRecorder, _) => &AUDIO,
@@ -1198,7 +1173,6 @@ mod tests {
                 MenuContext::PageTarget,
                 MenuContext::PageChannel,
                 MenuContext::PatternClear,
-                MenuContext::LoopLibrary,
                 MenuContext::PatternTools,
                 MenuContext::DrumPatterns,
             ] {
@@ -1298,7 +1272,6 @@ mod tests {
             (Screen::TrackerPages, MenuContext::PageTarget),
             (Screen::TrackerTools, MenuContext::Normal),
             (Screen::TrackerLoop, MenuContext::Normal),
-            (Screen::TrackerLoop, MenuContext::LoopLibrary),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
@@ -1411,7 +1384,6 @@ mod tests {
                 MenuContext::PageTarget,
                 MenuContext::PageChannel,
                 MenuContext::PatternClear,
-                MenuContext::LoopLibrary,
                 MenuContext::PatternTools,
                 MenuContext::DrumPatterns,
                 MenuContext::FxEmpty,
@@ -1468,7 +1440,6 @@ mod tests {
                 MenuContext::PageTarget,
                 MenuContext::PageChannel,
                 MenuContext::PatternClear,
-                MenuContext::LoopLibrary,
                 MenuContext::PatternTools,
                 MenuContext::DrumPatterns,
             ] {
@@ -1612,7 +1583,6 @@ mod tests {
             (Screen::TrackerTools, MenuContext::Normal),
             (Screen::TrackerArrange, MenuContext::Normal),
             (Screen::TrackerLoop, MenuContext::Normal),
-            (Screen::TrackerLoop, MenuContext::LoopLibrary),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
@@ -1732,7 +1702,6 @@ mod tests {
             Action::LoopOffsetUp,
             Action::LoopAlignDone,
             Action::OpenLoopLibrary,
-            Action::DeleteLoopFile,
             Action::AudioRecordToggle,
             Action::AudioToggleArm,
             Action::AudioArmAll,

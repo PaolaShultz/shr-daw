@@ -105,7 +105,10 @@ output changes are marked `NEXT START` and take effect on the next managed
 engine start. Controller-clock changes also take effect on the next SHR start;
 MIDI input and controller-role changes activate immediately. Startup does not
 silently migrate legacy names; canonical form is written only after a confirmed
-Routing edit.
+Routing edit. Every configured performance input has its own compact `PERF n`
+row and an explicit add row. Editing or removing one preserves all other
+entries, retained offline identities remain visible, and duplicates are
+refused.
 
 ## Dedicated controller clock and transport
 
@@ -675,5 +678,7 @@ Fresh Patterns use the private routing template at
 one, the factory pages are Software Synth (first synthv1 preset), MIDI (channel
 1/program 1), and Drums (channel 10). Saving a changed but note-empty Pattern
 asks whether to replace this template; confirm changes it, cancel does not. Projects with
-notes never update it implicitly. Legacy Projects without Pattern synth routing
+notes never update it implicitly. The confirmed template write is deferred
+until the Project save succeeds, so a pending/refused/failed Project save leaves
+the old template intact. Legacy Projects without Pattern synth routing
 receive safe in-memory defaults and are rewritten only by an explicit save.

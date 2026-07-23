@@ -47,6 +47,12 @@ The installer:
   all 95 menu-manual images below the selected prefix (normally `/usr/local`);
 - opens the routing wizard.
 
+Before changing packages or services, the installer prints the enabled phases
+and the exact per-user FluidSynth masking consequence. If interactive setup is
+interrupted, its phase summary distinguishes completed, possibly partial, and
+not-started work and prints the exact rerun/recovery commands for side effects
+that run recorded; it does not guess at or blanket-roll back system state.
+
 The dependency installer always masks the exact per-user `fluidsynth.service`
 that its package enables. At the start of interactive routing, setup checks that
 mask and detects the system-wide `amidiminder.service` blanket MIDI patcher.

@@ -121,6 +121,8 @@ routes use `TARGET → ENGINE → INSTR`; external routes use
 → **EXIT** restores the Project as it was before TRACKS opened. A disconnected
 saved target is marked `OFFLINE` (or `AMBIG` for duplicate stable identities);
 its exact route, notes, raw channels 1–16, and programs 0–127 are not changed.
+EXIT from a nested Tracks field restores that field's complete original route
+while retaining unrelated draft edits.
 
 For a quick routing change, **SELECT** → **ROUTE** opens a centered overlay over
 FT2. It shows target type, software engine/instrument or MIDI output, optional
@@ -271,11 +273,12 @@ From **TOOLS** → **LOOP**, choose **LIBRARY** to open the shared overlay over
 the loop page. Turn the master rotary to browse inbox and private WAVs and press
 it to import or attach and load the selected file. Inbox, current, private, and
 saved-Project entries are labelled in the overlay. Press **LIBRARY** again or
-Back to close it without changing the Project.
+Back to close it without changing the Project or stopping transport.
 
 Selecting an `INBOX` entry imports it into private storage and loads it.
 Selecting `PRIVATE`, `CURRENT`, or `SAVED` attaches the existing private file
-and loads it. The browser has no deletion action.
+and loads it. Selection stops owned tracker transport immediately before the
+import/attach is committed. The browser has no deletion action.
 
 Press **REMOVE** twice to detach the loop from the
 Project and unload its JACK client. The imported private WAV is kept on disk so
@@ -352,8 +355,17 @@ rewrites an Arrangement step.
 chooses the next free `project-001` style name. **SAVE AS** immediately writes
 the next free `<current-name>-copy-001` style copy and switches to it. These
 automatic names keep both actions usable from a four-button controller.
-**NAME** accepts a useful display name and derives a safe filename; collisions
+**NAME KBD** requires computer-keyboard text, accepts a useful display name,
+and derives a safe filename; collisions
 are refused and a saved rename keeps the loaded Project state.
+
+LOAD and computer-keyboard quit share one dirty-Project guard. SAVE continues
+only after a successful Project write, DISCARD performs the requested action,
+and CANCEL or any failed/pending save keeps the Project and exact
+order/page/lane/row position.
+
+The FX rack and editor always show the owning Project plus `NEW`, `SAVED`, or
+`DIRTY`; source, AUX, and master racks are all Project data.
 
 Projects are readable `.shsong` text files stored below
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 5
@@ -373,8 +385,9 @@ the musician explicitly saves the Project.
 
 If an empty Pattern's routing differs from the current new-Pattern template,
 **SAVE** asks: “Save this routing as the default for new patterns?” Confirming
-updates the private template; cancelling saves the Project but keeps the old
-template. A Pattern with notes never changes that template implicitly, and no
+queues the private template and writes it only after the Project save succeeds;
+cancelling saves the Project but keeps the old template. A pending, refused, or
+failed Project save leaves the template unchanged. A Pattern with notes never changes that template implicitly, and no
 prompt appears when routing is unchanged. The template is stored outside the
 repository at
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/ft2-routing-defaults.shsong` and is

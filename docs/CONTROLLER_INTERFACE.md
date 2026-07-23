@@ -26,7 +26,7 @@ from the splash.
 
 | Screen or mode | Existing user-facing operations and input paths |
 |---|---|
-| Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard. |
+| Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard, with Save/Discard/Cancel protection for a dirty Project. |
 | Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
@@ -44,9 +44,9 @@ from the splash.
 | Pattern setup | Choose 3/4 or 4/4 and pattern size; confirm new/destructive resize, cancel, or clear while retaining the current size. |
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
-| Audio recorder | Select and name a track; assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; Exit to Home and panic. |
-| FX rack/editor | Choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter together at 40×13 using explicit compact labels and type-aware values. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
-| Routing | Transactional rotary editor for controller input/role, performance input, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
+| Audio recorder | Select and name a track (`NAME KBD` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; Exit to Home and panic. |
+| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter together at 40×13 using explicit compact labels and type-aware values. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
+| Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate performance inputs, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
 
@@ -100,7 +100,9 @@ Pattern Setup LNGTH chooses every value from 1 through 32 plus 48, 64, 96,
 128, 192, and 256.
 The Loop Player's LIBRARY launcher uses it for one combined inbox/private
 browser; inbox selection imports and loads, while private/current/saved
-selection attaches and loads. MTR's FX launcher reuses the same rendering,
+selection attaches and loads. Opening or cancelling it preserves transport;
+committing a selection stops owned tracker transport before changing the
+Project. MTR's FX launcher reuses the same rendering,
 input, toggle, and return layer.
 
 ## Input model
@@ -135,12 +137,16 @@ input, toggle, and return layer.
   38-column width so link targets and rendered rows remain identical.
 - Target/channel fields use encoder press to confirm on eight- and five-button
   layouts. Four-button layouts use the visible OPS `CONFIRM` item; SYS `EXIT`
-  cancels the field on every layout.
+  cancels the field on every layout and restores that field's complete
+  target/engine/instrument/output/channel snapshot without reverting unrelated
+  Tracks edits.
 - Empty items and pages are not drawn, are silent when pressed, and are skipped
   by page cycling. The interface exposes working actions only.
 - Physical command pages never contain PageUp/PageDown. Keyboard
-  PageUp/PageDown retain their existing behavior, while the rotary continues
-  ordinary one-step list and row movement.
+  PageUp/PageDown change order while preserving page/lane/column and retaining
+  the row unless a shorter destination Pattern requires clamping. Pattern and
+  Song overlays follow the same rule; the rotary continues ordinary one-step
+  list and row movement.
 - Every genuine rotary/Up/Down browse list wraps first-to-last and last-to-first,
   including Home, file/library lists, Arrangement, tracker browse cursors,
   recorder/meter/FX lists, overlays, Routing rows, and enumerated field choices.

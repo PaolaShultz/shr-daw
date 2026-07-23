@@ -189,6 +189,14 @@ replaced.
 If standard input is not a terminal it then stops; it never guesses display,
 download, or hardware choices in automation.
 
+Interactive setup tracks each externally meaningful phase. Normal completion
+prints the full phase summary. An error, `Ctrl-C`, or termination prints which
+phases completed, which phase may be partial, which later phases did not start,
+and the exact rerun command. It prints restore commands only when this run
+created named configuration or `.jackdrc` backups, and names service/tuning/
+private-loop recovery only when that side effect was recorded. It does not
+attempt a blanket rollback across those ownership domains.
+
 ### Interactive sequence
 
 Before changing configuration, the wizard creates unique timestamped backups of
@@ -286,6 +294,11 @@ toolchain for the current user and runs Cargo as `cargo +1.85.0`.
 
 It then runs locked tests, creates a locked release build, installs the files
 with `sudo make install-files`, and normally opens `shr-setup`.
+
+Before its first package or service mutation, the installer prints the enabled
+package, per-user FluidSynth mask, Rust, test/build, install, and setup phases.
+It explains the exact FluidSynth service consequence before masking rather
+than after the action.
 
 That is the install helper's production behavior, not the normal development
 validation policy. While the combined build-and-test gate in `AGENTS.md` is

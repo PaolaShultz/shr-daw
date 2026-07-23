@@ -178,6 +178,17 @@ fn project_fx_rack_mut<'a>(
     }
 }
 
+fn project_owner_line(a: &App, width: usize) -> String {
+    let state = if a.project_is_dirty() {
+        "DIRTY"
+    } else if a.song_file_stem.is_some() {
+        "SAVED"
+    } else {
+        "NEW"
+    };
+    crate::ui_text::label_value(&format!("PROJECT {}", a.song.name), state, width)
+}
+
 fn is_aux_target(target: usize) -> bool {
     (1..=MAX_AUX_BUSES).contains(&target)
 }
@@ -413,6 +424,12 @@ struct HomeEntry {
     action: Action,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PendingProjectAction {
+    Load(String),
+    Quit,
+}
+
 const HOME_ENTRIES: [HomeEntry; 9] = [
     HomeEntry {
         label: "SOFTWARE SYNTHS",
@@ -522,6 +539,9 @@ struct App {
     cpu_temperature_read_at: Option<Instant>,
     pad_locked: bool,
     song: Song,
+    project_clean_baseline: Song,
+    pending_project_action: Option<PendingProjectAction>,
+    quit_requested: bool,
     song_file_stem: Option<String>,
     project_name_input: Option<String>,
     audio_track_name_input: Option<String>,
@@ -546,6 +566,7 @@ struct App {
     tracker_gesture_anchor: Option<(usize, usize, usize, usize)>,
     confirm_song_save: Option<String>,
     confirm_routing_defaults: bool,
+    pending_routing_defaults: Option<Vec<sequencer::Page>>,
     routing_defaults: Vec<sequencer::Page>,
     routing_defaults_path: PathBuf,
     confirm_new_project: bool,
@@ -559,6 +580,7 @@ struct App {
     sequencer: sequencer::Sequencer,
     tracker_live_input: sequencer::LiveInput,
     page_manager_original: Option<Song>,
+    page_field_original: Option<sequencer::Page>,
     page_manager_mode: PageManagerMode,
     page_target_candidates: Vec<PageTarget>,
     available_page_outputs: Vec<String>,
@@ -583,10 +605,7 @@ struct App {
     drum_meter: u8,
     drum_target_rows: usize,
     confirm_drum_pattern_delete: Option<PathBuf>,
-    loop_library_mode: bool,
     loop_library: Vec<crate::loop_player::LibraryEntry>,
-    loop_library_selected: usize,
-    confirm_loop_delete: Option<String>,
     arrange_selected: usize,
     overlay: Option<OverlayState>,
     menu_page_by_screen: [usize; Screen::COUNT],
@@ -657,7 +676,8 @@ struct FxPickup {
 enum RoutingRow {
     Controller,
     ControllerRole,
-    Performance,
+    Performance(usize),
+    PerformanceAdd,
     ExternalEnabled,
     ExternalOutput,
     DeviceProfile,
@@ -667,29 +687,18 @@ enum RoutingRow {
 }
 
 impl RoutingRow {
-    const ALL: [Self; 9] = [
-        Self::Controller,
-        Self::ControllerRole,
-        Self::Performance,
-        Self::ExternalEnabled,
-        Self::ExternalOutput,
-        Self::DeviceProfile,
-        Self::ClockEnabled,
-        Self::ClockOutput,
-        Self::AudioOutput,
-    ];
-
-    const fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            Self::Controller => "CTRL",
-            Self::ControllerRole => "MODE",
-            Self::Performance => "PERF",
-            Self::ExternalEnabled => "MIDI",
-            Self::ExternalOutput => "MIDI OUT",
-            Self::DeviceProfile => "DEVICE",
-            Self::ClockEnabled => "CLOCK",
-            Self::ClockOutput => "CLK OUT",
-            Self::AudioOutput => "AUDIO",
+            Self::Controller => "CTRL".into(),
+            Self::ControllerRole => "MODE".into(),
+            Self::Performance(index) => format!("PERF {}", index + 1),
+            Self::PerformanceAdd => "+ PERF".into(),
+            Self::ExternalEnabled => "MIDI".into(),
+            Self::ExternalOutput => "MIDI OUT".into(),
+            Self::DeviceProfile => "DEVICE".into(),
+            Self::ClockEnabled => "CLOCK".into(),
+            Self::ClockOutput => "CLK OUT".into(),
+            Self::AudioOutput => "AUDIO".into(),
         }
     }
 }
@@ -884,7 +893,17 @@ fn canonicalize_routing_draft(
         draft.config.midi_input_matches.clear();
     }
     for input in &mut draft.config.midi_performance_input_matches {
-        *input = canonical(inputs, input, "performance MIDI input")?;
+        *input = match canonical(inputs, input, "performance MIDI input") {
+            Ok(input) => input,
+            Err(error) if error.to_string().contains("ambiguous") => return Err(error),
+            Err(_) => crate::midi_endpoint::stable_identity(input),
+        };
+    }
+    let mut performance_inputs = std::collections::HashSet::new();
+    for input in &draft.config.midi_performance_input_matches {
+        if !performance_inputs.insert(input.to_ascii_lowercase()) {
+            bail!("duplicate performance MIDI input: {input}");
+        }
     }
     if !draft.config.external_midi.output_match.is_empty() {
         draft.config.external_midi.output_match = canonical(
@@ -1160,6 +1179,7 @@ impl App {
             })
             .collect();
         let loop_imports = crate::loop_player::list_wavs(&config.loop_player.import_directory);
+        let project_clean_baseline = song.clone();
         Self {
             catalogs: catalogs.to_vec(),
             backend_index,
@@ -1212,6 +1232,9 @@ impl App {
             cpu_temperature_read_at: None,
             pad_locked: false,
             song,
+            project_clean_baseline,
+            pending_project_action: None,
+            quit_requested: false,
             song_file_stem: None,
             project_name_input: None,
             audio_track_name_input: None,
@@ -1235,6 +1258,7 @@ impl App {
             tracker_gesture_anchor: None,
             confirm_song_save: None,
             confirm_routing_defaults: false,
+            pending_routing_defaults: None,
             routing_defaults,
             routing_defaults_path,
             confirm_new_project: false,
@@ -1248,6 +1272,7 @@ impl App {
             sequencer,
             tracker_live_input,
             page_manager_original: None,
+            page_field_original: None,
             page_manager_mode: PageManagerMode::Pages,
             page_target_candidates: Vec::new(),
             available_page_outputs,
@@ -1272,10 +1297,7 @@ impl App {
             drum_meter: 4,
             drum_target_rows: 32,
             confirm_drum_pattern_delete: None,
-            loop_library_mode: false,
             loop_library: Vec::new(),
-            loop_library_selected: 0,
-            confirm_loop_delete: None,
             arrange_selected: 0,
             overlay: None,
             menu_page_by_screen: [0; Screen::COUNT],
@@ -1400,13 +1422,6 @@ impl App {
                     self.drum_pattern_selected = filtered[position];
                 })
             }
-            Screen::TrackerLoop if self.loop_library_mode => first_letter_index(
-                self.loop_library.iter().map(|entry| entry.file.as_str()),
-                letter,
-            )
-            .map(|index| {
-                self.loop_library_selected = index;
-            }),
             Screen::TrackerLoop => first_letter_index(
                 self.loop_imports.iter().map(|path| {
                     path.file_name()
@@ -1426,6 +1441,7 @@ impl App {
     fn keyboard_modal_active(&self) -> bool {
         self.audio_track_name_input.is_some()
             || self.project_name_input.is_some()
+            || self.pending_project_action.is_some()
             || self.controller_learn.is_some()
             || self.note_editor.is_some()
             || self.tracker_recording.is_some()
@@ -1442,9 +1458,62 @@ impl App {
             || self.confirm_pattern_paste_over.is_some()
             || self.confirm_pattern_delete.is_some()
             || self.confirm_drum_pattern_delete.is_some()
-            || self.confirm_loop_delete.is_some()
             || (self.screen == Screen::TrackerPages
                 && self.page_manager_mode != PageManagerMode::Pages)
+    }
+
+    fn project_is_dirty(&self) -> bool {
+        self.song != self.project_clean_baseline
+    }
+
+    fn mark_project_clean(&mut self) {
+        self.project_clean_baseline = self.song.clone();
+    }
+
+    fn begin_project_action(&mut self, action: PendingProjectAction) {
+        if self.project_is_dirty() {
+            self.pending_project_action = Some(action);
+            self.status =
+                "UNSAVED PROJECT · SAVE keeps work · DISCARD continues · CANCEL returns".into();
+        } else {
+            self.complete_project_action(action);
+        }
+    }
+
+    fn complete_project_action(&mut self, action: PendingProjectAction) {
+        match action {
+            PendingProjectAction::Load(name) => self.load_song_named(&name),
+            PendingProjectAction::Quit => self.quit_requested = true,
+        }
+    }
+
+    fn cancel_project_action(&mut self) {
+        if self.pending_project_action.take().is_some() {
+            self.confirm_song_save = None;
+            self.pending_routing_defaults = None;
+            self.confirm_routing_defaults = false;
+            self.status = "unsaved Project action cancelled · Project and position kept".into();
+        }
+    }
+
+    fn discard_for_project_action(&mut self) {
+        if let Some(action) = self.pending_project_action.take() {
+            self.confirm_song_save = None;
+            self.pending_routing_defaults = None;
+            self.confirm_routing_defaults = false;
+            self.complete_project_action(action);
+        }
+    }
+
+    fn continue_project_action_after_save(&mut self) {
+        if let Some(action) = self.pending_project_action.take() {
+            self.complete_project_action(action);
+        }
+    }
+
+    fn request_quit(&mut self) -> bool {
+        self.begin_project_action(PendingProjectAction::Quit);
+        self.quit_requested
     }
 
     fn begin_controller_learn(&mut self) {
@@ -1537,16 +1606,47 @@ impl App {
         self.refresh_page_targets();
     }
 
+    fn routing_rows_for(config: &RuntimeConfig) -> Vec<RoutingRow> {
+        let mut rows = vec![RoutingRow::Controller, RoutingRow::ControllerRole];
+        rows.extend(
+            config
+                .midi_performance_input_matches
+                .iter()
+                .enumerate()
+                .map(|(index, _)| RoutingRow::Performance(index)),
+        );
+        rows.push(RoutingRow::PerformanceAdd);
+        rows.extend([
+            RoutingRow::ExternalEnabled,
+            RoutingRow::ExternalOutput,
+            RoutingRow::DeviceProfile,
+            RoutingRow::ClockEnabled,
+            RoutingRow::ClockOutput,
+            RoutingRow::AudioOutput,
+        ]);
+        rows
+    }
+
+    fn routing_rows(&self) -> Vec<RoutingRow> {
+        let config = self
+            .routing
+            .draft
+            .as_ref()
+            .map_or(&self.config, |draft| &draft.config);
+        Self::routing_rows_for(config)
+    }
+
     fn routing_row(&self) -> RoutingRow {
-        RoutingRow::ALL[self.routing.selected.min(RoutingRow::ALL.len() - 1)]
+        let rows = self.routing_rows();
+        rows[self.routing.selected.min(rows.len() - 1)]
     }
 
     fn move_routing(&mut self, direction: i8) {
         if self.routing.draft.is_some() {
             self.adjust_routing_draft(direction);
         } else {
-            self.routing.selected =
-                wrapped_index(self.routing.selected, RoutingRow::ALL.len(), direction);
+            let row_count = self.routing_rows().len();
+            self.routing.selected = wrapped_index(self.routing.selected, row_count, direction);
             self.status = format!("{} selected · press to edit", self.routing_row().label());
         }
     }
@@ -1596,7 +1696,7 @@ impl App {
         match row {
             RoutingRow::Controller => {
                 let current = draft.controller.input_match.as_deref().unwrap_or("");
-                let choice = cycle_text_choice(current, &input_choices, true, direction);
+                let choice = cycle_text_choice(&current, &input_choices, true, direction);
                 draft.controller.input_match = (!choice.is_empty()).then_some(choice.clone());
                 draft.config.midi_input_matches =
                     (!choice.is_empty()).then_some(choice).into_iter().collect();
@@ -1607,16 +1707,45 @@ impl App {
                 draft.config.midi_controller_musical_input =
                     !draft.config.midi_controller_musical_input;
             }
-            RoutingRow::Performance => {
-                let current = draft
+            RoutingRow::Performance(index) => {
+                let current = draft.config.midi_performance_input_matches[index].clone();
+                let choice = cycle_text_choice(&current, &input_choices, true, direction);
+                if choice.is_empty() {
+                    draft.config.midi_performance_input_matches.remove(index);
+                } else if draft
                     .config
                     .midi_performance_input_matches
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or("");
-                let choice = cycle_text_choice(current, &input_choices, true, direction);
-                draft.config.midi_performance_input_matches =
-                    (!choice.is_empty()).then_some(choice).into_iter().collect();
+                    .iter()
+                    .enumerate()
+                    .any(|(other, input)| other != index && input.eq_ignore_ascii_case(&choice))
+                {
+                    self.status = "PERF duplicate refused · choose a different exact input".into();
+                    return;
+                } else {
+                    draft.config.midi_performance_input_matches[index] = choice;
+                }
+                self.routing.selected = self.routing.selected.min(
+                    Self::routing_rows_for(&draft.config)
+                        .len()
+                        .saturating_sub(1),
+                );
+                draft.config.midi_autoconnect = draft.controller.input_match.is_some()
+                    || !draft.config.midi_performance_input_matches.is_empty();
+            }
+            RoutingRow::PerformanceAdd => {
+                let choice = cycle_text_choice("", &input_choices, true, direction);
+                if !choice.is_empty()
+                    && !draft
+                        .config
+                        .midi_performance_input_matches
+                        .iter()
+                        .any(|input| input.eq_ignore_ascii_case(&choice))
+                {
+                    draft.config.midi_performance_input_matches.push(choice);
+                } else if !choice.is_empty() {
+                    self.status = "PERF input is already selected".into();
+                    return;
+                }
                 draft.config.midi_autoconnect = draft.controller.input_match.is_some()
                     || !draft.config.midi_performance_input_matches.is_empty();
             }
@@ -1873,8 +2002,6 @@ impl App {
                 TrackerFilesMode::Patterns => MenuContext::PatternTools,
                 TrackerFilesMode::Drums => MenuContext::DrumPatterns,
             }
-        } else if self.screen == Screen::TrackerLoop && self.loop_library_mode {
-            MenuContext::LoopLibrary
         } else if self.screen == Screen::TrackerPages {
             match self.page_manager_mode {
                 PageManagerMode::Target
@@ -1950,7 +2077,6 @@ impl App {
             return;
         }
         if kind == OverlayKind::LoopLibrary {
-            self.tracker_stop();
             self.loop_imports =
                 crate::loop_player::list_wavs(&self.config.loop_player.import_directory);
             self.loop_selected = self
@@ -2341,7 +2467,6 @@ impl App {
                 if let Some((_, order)) = locations.get(selection).copied() {
                     self.release_tracker_audition();
                     self.tracker_order = order;
-                    self.tracker_row = 0;
                     self.clamp_tracker_cursor();
                     self.close_overlay(false);
                     self.sync_tracker_route();
@@ -2360,7 +2485,6 @@ impl App {
                 if selection < self.song.order.len() {
                     self.release_tracker_audition();
                     self.tracker_order = selection;
-                    self.tracker_row = 0;
                     self.clamp_tracker_cursor();
                     self.close_overlay(false);
                     self.sync_tracker_route();
@@ -2412,6 +2536,7 @@ impl App {
                 self.status = format!("EDIT ADD {} row(s)", self.tracker_advance);
             }
             OverlayKind::LoopLibrary => {
+                self.tracker_stop();
                 self.close_overlay(false);
                 if selection < self.loop_imports.len() {
                     self.loop_selected = selection;
@@ -2713,9 +2838,6 @@ impl App {
         }
         if action != Action::LoopRemove {
             self.confirm_loop_remove = false;
-        }
-        if action != Action::DeleteLoopFile {
-            self.confirm_loop_delete = None;
         }
     }
 
@@ -4233,6 +4355,7 @@ impl App {
         self.tracker_stop();
         self.set_tracker_mode(TrackerMode::Play);
         self.page_manager_original = Some(self.song.clone());
+        self.page_field_original = None;
         self.page_manager_mode = PageManagerMode::Pages;
         self.refresh_page_targets();
         self.set_screen(Screen::TrackerPages);
@@ -4246,6 +4369,7 @@ impl App {
         self.clamp_tracker_cursor();
         self.tracker_track = self.tracker_track.min(LANES_PER_PAGE - 1);
         self.page_manager_mode = PageManagerMode::Pages;
+        self.page_field_original = None;
         self.set_screen(Screen::Tracker);
         self.sync_tracker_route();
         self.status = "page changes cancelled".into();
@@ -4260,6 +4384,7 @@ impl App {
             return;
         }
         self.page_manager_original = None;
+        self.page_field_original = None;
         self.set_screen(Screen::Tracker);
         self.sync_tracker_route();
         self.status = format!("{} pages ready", self.current_pages().len());
@@ -4304,6 +4429,7 @@ impl App {
         let Some(current) = self.current_page().map(|page| page.target.clone()) else {
             return;
         };
+        self.page_field_original = self.current_page().cloned();
         let software = match &current {
             PageTarget::Software(route) => Some(route.clone()),
             PageTarget::Synthv1(name) => Some(SoftwareRoute::synthv1(name)),
@@ -4341,6 +4467,7 @@ impl App {
             return;
         }
         self.page_channel_draft = self.current_column().map_or(0, |column| column.channel);
+        self.page_field_original = self.current_page().cloned();
         self.page_manager_mode = PageManagerMode::Channel;
         self.reset_context_page();
         self.status = format!(
@@ -4387,6 +4514,7 @@ impl App {
         self.page_manager_mode = next_mode;
         self.reset_context_page();
         if next_mode == PageManagerMode::Pages {
+            self.page_field_original = None;
             self.sync_tracker_route();
             self.status = "page route updated · DONE to keep or CANCEL to restore".into();
         } else {
@@ -4400,8 +4528,15 @@ impl App {
         }
     }
     fn cancel_page_field(&mut self) {
+        self.release_tracker_audition();
+        if let Some(original) = self.page_field_original.take() {
+            if let Some(page) = self.current_page_mut() {
+                *page = original;
+            }
+        }
         self.page_manager_mode = PageManagerMode::Pages;
         self.reset_context_page();
+        self.sync_tracker_route();
         self.status = "field change cancelled".into();
     }
     fn turn_page_manager(&mut self, direction: i8) {
@@ -4909,7 +5044,6 @@ impl App {
     }
 
     fn open_tracker_loop(&mut self) {
-        self.loop_library_mode = false;
         self.set_screen(Screen::TrackerLoop);
         self.reset_context_page();
         self.status = if self.song.audio_loop.is_some() {
@@ -5004,9 +5138,6 @@ impl App {
         ) {
             Ok(entries) => {
                 self.loop_library = entries;
-                self.loop_library_selected = self
-                    .loop_library_selected
-                    .min(self.loop_library.len().saturating_sub(1));
             }
             Err(error) => {
                 self.loop_library.clear();
@@ -5056,41 +5187,6 @@ impl App {
         let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
         if self.load_loop_settings(Some(settings)) {
             self.status = format!("loop ready · {} · project {tempo} BPM", entry.file);
-        }
-    }
-
-    fn delete_selected_loop_file(&mut self) {
-        let Some(entry) = self.loop_library.get(self.loop_library_selected).cloned() else {
-            self.status = "private loop library is empty".into();
-            return;
-        };
-        if self.confirm_loop_delete.as_deref() != Some(&entry.file) {
-            self.confirm_loop_delete = Some(entry.file.clone());
-            self.status = if entry.current || entry.saved_references != 0 {
-                format!(
-                    "refusing {} · current {} · {} saved reference(s)",
-                    entry.file, entry.current, entry.saved_references
-                )
-            } else {
-                format!("DELETE {} physically · press again to confirm", entry.file)
-            };
-            return;
-        }
-        match crate::loop_player::delete_library_file(
-            &crate::loop_player::loops_dir(),
-            &entry.file,
-            self.song.audio_loop.as_ref(),
-            &sequencer::songs_dir(),
-        ) {
-            Ok(()) => {
-                self.confirm_loop_delete = None;
-                self.refresh_loop_library();
-                self.status = format!("deleted private WAV {}", entry.file);
-            }
-            Err(error) => {
-                self.confirm_loop_delete = None;
-                self.status = format!("loop delete: {error}");
-            }
         }
     }
 
@@ -5316,8 +5412,9 @@ impl App {
                 .current_pattern()
                 .map(|pattern| pattern.pages.clone())
                 .context("current Pattern is unavailable")?;
-            sequencer::save_routing_defaults(&self.routing_defaults_path, &pages)?;
-            self.routing_defaults = pages;
+            self.pending_routing_defaults = Some(pages);
+        } else {
+            self.pending_routing_defaults = None;
         }
         self.reset_context_page();
         Ok(())
@@ -5334,12 +5431,22 @@ impl App {
         self.save_song_file();
     }
 
+    fn commit_pending_routing_defaults(&mut self) -> Result<bool> {
+        let Some(pages) = self.pending_routing_defaults.take() else {
+            return Ok(false);
+        };
+        sequencer::save_routing_defaults(&self.routing_defaults_path, &pages)?;
+        self.routing_defaults = pages;
+        Ok(true)
+    }
+
     fn save_song_file(&mut self) {
         let stem = sequencer::safe_name(&self.song.name);
         let confirmed = self.confirm_song_save.as_deref() == Some(&stem);
         match sequencer::save(&sequencer::songs_dir(), &self.song, confirmed) {
             Ok(path) => {
-                self.status = format!("saved {}", path.display());
+                let mut status = format!("saved {}", path.display());
+                let mut complete_result = true;
                 self.song_file_stem = path
                     .file_stem()
                     .and_then(|name| name.to_str())
@@ -5351,6 +5458,25 @@ impl App {
                     .iter()
                     .position(|name| name == &sequencer::safe_name(&self.song.name))
                     .unwrap_or(0);
+                self.mark_project_clean();
+                if self.pending_routing_defaults.is_some() {
+                    match self.commit_pending_routing_defaults() {
+                        Ok(true) => {
+                            status.push_str(" · routing default updated");
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            complete_result = false;
+                            status.push_str(&format!(
+                                " · Project saved; routing default unchanged: {error}"
+                            ));
+                        }
+                    }
+                }
+                self.status = status;
+                if complete_result {
+                    self.continue_project_action_after_save();
+                }
             }
             Err(error) if !confirmed && error.to_string().contains("confirm") => {
                 self.confirm_song_save = Some(stem);
@@ -5359,6 +5485,7 @@ impl App {
             Err(error) => {
                 self.status = format!("song save: {error}");
                 self.confirm_song_save = None;
+                self.pending_routing_defaults = None;
             }
         }
     }
@@ -5389,6 +5516,7 @@ impl App {
             return;
         }
         self.song = song;
+        self.mark_project_clean();
         self.song_file_stem = None;
         self.tracker_order = 0;
         self.tracker_row = 0;
@@ -5397,6 +5525,7 @@ impl App {
         self.tracker_mode = TrackerMode::Play;
         self.tracker_recording = None;
         self.page_manager_original = None;
+        self.page_field_original = None;
         self.page_manager_mode = PageManagerMode::Pages;
         self.arrange_selected = 0;
         self.confirm_new_project = false;
@@ -5416,7 +5545,7 @@ impl App {
 
     fn begin_project_rename(&mut self) {
         self.project_name_input = Some(self.song.name.clone());
-        self.status = "PROJECT NAME · type, Enter confirms, Esc cancels".into();
+        self.status = "PROJECT NAME · KEYBOARD REQUIRED · Enter confirms · Esc cancels".into();
     }
 
     fn commit_project_rename(&mut self) {
@@ -5444,6 +5573,7 @@ impl App {
                         .and_then(|stem| self.song_list.iter().position(|name| name == stem))
                         .unwrap_or(0);
                     self.project_name_input = None;
+                    self.mark_project_clean();
                     self.status = format!("Project renamed · {}", self.song.name);
                 }
                 Err(error) => self.status = format!("rename: {error}"),
@@ -5519,6 +5649,7 @@ impl App {
                     .iter()
                     .position(|candidate| candidate == &name)
                     .unwrap_or(0);
+                self.mark_project_clean();
                 self.status = format!("saved as {}", path.display());
             }
             Err(error) => self.status = format!("save as: {error}"),
@@ -5529,8 +5660,12 @@ impl App {
             self.status = "no saved songs".into();
             return;
         };
+        self.begin_project_action(PendingProjectAction::Load(name));
+    }
+
+    fn load_song_named(&mut self, name: &str) {
         self.tracker_stop();
-        match sequencer::load(&sequencer::songs_dir(), &name) {
+        match sequencer::load(&sequencer::songs_dir(), name) {
             Ok(mut song) => {
                 if let Some(first) = self.first_synthv1_name() {
                     sequencer::upgrade_legacy_synth_routes(&mut song, &first);
@@ -5542,7 +5677,8 @@ impl App {
                     return;
                 }
                 self.song = song;
-                self.song_file_stem = Some(name.clone());
+                self.song_file_stem = Some(name.to_owned());
+                self.mark_project_clean();
                 self.tracker_order = 0;
                 self.tracker_row = 0;
                 self.tracker_page = 0;
@@ -6551,7 +6687,7 @@ impl App {
         self.ensure_explicit_capture_tracks();
         if let Some(track) = self.config.capture.tracks.get(self.audio_track_selected) {
             self.audio_track_name_input = Some(track.label.clone());
-            self.status = "TRACK NAME · type, Enter confirms, Esc cancels".into();
+            self.status = "TRACK NAME · KEYBOARD REQUIRED · Enter confirms · Esc cancels".into();
         }
     }
 
@@ -6659,6 +6795,32 @@ impl App {
             TransportIndicator::Pause
         } else {
             TransportIndicator::Stop
+        }
+    }
+
+    fn home_activity(&self) -> Option<&'static str> {
+        if self.audio_recorder.status().recording {
+            Some("● REC · RECORDER · raw multitrack")
+        } else if self
+            .engine
+            .as_ref()
+            .is_some_and(Engine::final_recording_active)
+        {
+            Some("● REC · PERFORMANCE · final stereo")
+        } else if self.tracker_recording.is_some() {
+            Some("● REC · FT2 · Pattern capture")
+        } else if self.recorder.is_recording() {
+            Some("● REC · IDEAS · MIDI take")
+        } else if self.song_previewing {
+            Some("> PLAY · FILES · Project preview")
+        } else if self.playback.is_some() {
+            Some("> PLAY · IDEAS · MIDI take")
+        } else if self.loop_player.status().playing {
+            Some("> PLAY · FT2 LOOP · WAV loop")
+        } else if self.sequencer.status().playing {
+            Some("> PLAY · FT2 · arrangement")
+        } else {
+            None
         }
     }
 
@@ -8368,7 +8530,7 @@ fn app_loop(
     app.midi_router = router.ok();
     let mut quit = false;
     let mut drawn_screen = None;
-    while !quit && !stopping.load(Ordering::Relaxed) {
+    while !quit && !app.quit_requested && !stopping.load(Ordering::Relaxed) {
         drain(&rx, &mut app, state, &tx);
         app.tick();
         if drawn_screen != Some(app.screen) {
@@ -8635,11 +8797,10 @@ fn perform(
     state: &Path,
     tx: Option<&std::sync::mpsc::Sender<MidiEvent>>,
 ) -> bool {
-    a.prepare_confirmation_action(action);
     // EXIT is the same physical page/item on every normal and contextual
     // menu, so it must not be swallowed by an active editor or confirmation.
     if action == Action::Quit {
-        return true;
+        return a.request_quit();
     }
     // PANIC is the other global system action. It remains live even while a
     // modal confirmation owns the rest of the input dispatch.
@@ -8647,6 +8808,26 @@ fn perform(
         a.stop_all(state);
         return false;
     }
+    if a.confirm_routing_defaults {
+        match action {
+            Action::ConfirmRoutingDefaults | Action::Activate | Action::SaveSong => {
+                a.finish_routing_defaults_prompt(true)
+            }
+            Action::CancelRoutingDefaults | Action::Back => a.finish_routing_defaults_prompt(false),
+            _ => {}
+        }
+        return a.quit_requested;
+    }
+    if a.pending_project_action.is_some() {
+        match action {
+            Action::SaveSong => a.save_song(),
+            Action::LoadSong => a.discard_for_project_action(),
+            Action::Back => a.cancel_project_action(),
+            _ => {}
+        }
+        return a.quit_requested;
+    }
+    a.prepare_confirmation_action(action);
     if let Some(launcher) = a.overlay.as_ref().map(|overlay| overlay.launcher.clone()) {
         if action == launcher.action {
             a.close_overlay(true);
@@ -8663,16 +8844,6 @@ fn perform(
     }
     if OverlayKind::from_action(action).is_some() {
         a.open_overlay(action);
-        return false;
-    }
-    if a.confirm_routing_defaults {
-        match action {
-            Action::ConfirmRoutingDefaults | Action::Activate | Action::SaveSong => {
-                a.finish_routing_defaults_prompt(true)
-            }
-            Action::CancelRoutingDefaults | Action::Back => a.finish_routing_defaults_prompt(false),
-            _ => {}
-        }
         return false;
     }
     if a.audio_track_name_input.is_some() {
@@ -8845,12 +9016,7 @@ fn perform(
             } else if a.screen == Screen::TrackerPages {
                 a.turn_page_manager(-1);
             } else if a.screen == Screen::TrackerLoop {
-                if a.loop_library_mode {
-                    a.loop_library_selected =
-                        wrapped_index(a.loop_library_selected, a.loop_library.len(), -1);
-                } else {
-                    a.loop_selected = wrapped_index(a.loop_selected, a.loop_imports.len(), -1);
-                }
+                a.loop_selected = wrapped_index(a.loop_selected, a.loop_imports.len(), -1);
             } else if a.screen == Screen::Presets {
                 a.selected = wrapped_index(a.selected, a.presets.len(), -1);
             } else if a.screen == Screen::FxRack {
@@ -8899,12 +9065,7 @@ fn perform(
             } else if a.screen == Screen::TrackerPages {
                 a.turn_page_manager(1);
             } else if a.screen == Screen::TrackerLoop {
-                if a.loop_library_mode {
-                    a.loop_library_selected =
-                        wrapped_index(a.loop_library_selected, a.loop_library.len(), 1);
-                } else {
-                    a.loop_selected = wrapped_index(a.loop_selected, a.loop_imports.len(), 1);
-                }
+                a.loop_selected = wrapped_index(a.loop_selected, a.loop_imports.len(), 1);
             } else if a.screen == Screen::Presets {
                 a.selected = wrapped_index(a.selected, a.presets.len(), 1);
             } else if a.screen == Screen::FxRack {
@@ -8924,8 +9085,6 @@ fn perform(
                 && a.tracker_files_mode == TrackerFilesMode::Drums
             {
                 a.move_drum_selection(-10);
-            } else if a.screen == Screen::TrackerLoop && a.loop_library_mode {
-                a.loop_library_selected = a.loop_library_selected.saturating_sub(10);
             }
         }
         Action::PageDown => {
@@ -8935,9 +9094,6 @@ fn perform(
                 && a.tracker_files_mode == TrackerFilesMode::Drums
             {
                 a.move_drum_selection(10);
-            } else if a.screen == Screen::TrackerLoop && a.loop_library_mode {
-                a.loop_library_selected =
-                    (a.loop_library_selected + 10).min(a.loop_library.len().saturating_sub(1));
             }
         }
         Action::Home => {
@@ -9194,13 +9350,6 @@ fn perform(
                     TrackerFilesMode::Projects => {}
                 }
             }
-            if a.screen == Screen::TrackerLoop && a.loop_library_mode {
-                a.loop_library_mode = false;
-                a.confirm_loop_delete = None;
-                a.reset_context_page();
-                a.status = "loop editor".into();
-                return false;
-            }
             if a.screen == Screen::TrackerPages {
                 if a.page_manager_mode == PageManagerMode::Pages {
                     a.cancel_page_manager();
@@ -9280,7 +9429,6 @@ fn perform(
             a.status = "loop alignment set".into();
         }
         Action::OpenLoopLibrary => a.open_loop_library(),
-        Action::DeleteLoopFile => a.delete_selected_loop_file(),
         Action::TrackerMute => {
             let global_lane = a.tracker_page * LANES_PER_PAGE + a.tracker_track;
             let track = a.tracker_track;
@@ -9425,6 +9573,21 @@ fn perform(
     false
 }
 fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<MidiEvent>) -> bool {
+    if a.pending_project_action.is_some() {
+        match code {
+            KeyCode::Char('v') | KeyCode::Char('V') => a.save_song(),
+            KeyCode::Char('d') | KeyCode::Char('D') => a.discard_for_project_action(),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B')
+                if a.confirm_routing_defaults =>
+            {
+                a.finish_routing_defaults_prompt(false)
+            }
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.cancel_project_action(),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+            _ => {}
+        }
+        return a.quit_requested;
+    }
     if a.audio_track_name_input.is_some() {
         match code {
             KeyCode::Enter => a.commit_audio_track_name(state),
@@ -9575,27 +9738,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         return false;
     }
     let letter_jump_blocked = a.keyboard_modal_active();
-    if a.screen == Screen::TrackerLoop && a.loop_library_mode {
-        let action = match code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::Up),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::Down),
-            KeyCode::PageUp => Some(Action::PageUp),
-            KeyCode::PageDown => Some(Action::PageDown),
-            KeyCode::Delete | KeyCode::Char('d') | KeyCode::Char('D') => {
-                Some(Action::DeleteLoopFile)
-            }
-            KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
-            KeyCode::Char(character) if character.is_ascii_alphabetic() && !letter_jump_blocked => {
-                a.jump_to_letter(character);
-                None
-            }
-            _ => None,
-        };
-        if let Some(action) = action {
-            return perform(action, a, state, Some(tx));
-        }
-        return false;
-    }
     let confirmation_action = match (a.screen, &code) {
         (Screen::Ideas, KeyCode::Char('d')) => Action::DeleteIdea,
         (Screen::Tracker, KeyCode::Char('v'))
@@ -9793,7 +9935,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::PageUp => {
                 a.cancel_tracker_gesture();
                 a.tracker_order = a.tracker_order.saturating_sub(1);
-                a.tracker_row = 0;
+                a.clamp_tracker_cursor();
                 if !a.leave_noob_on_percussion() {
                     a.sync_tracker_route();
                 }
@@ -9802,7 +9944,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::PageDown => {
                 a.cancel_tracker_gesture();
                 a.tracker_order = (a.tracker_order + 1).min(a.song.order.len().saturating_sub(1));
-                a.tracker_row = 0;
+                a.clamp_tracker_cursor();
                 if !a.leave_noob_on_percussion() {
                     a.sync_tracker_route();
                 }
@@ -9940,12 +10082,12 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
     }
     match code {
-        KeyCode::Char('q') => return true,
+        KeyCode::Char('q') => return a.request_quit(),
         KeyCode::Esc => {
             if a.screen != Screen::Home {
                 perform(Action::Back, a, state, Some(tx));
             } else {
-                return true;
+                return a.request_quit();
             }
         }
         KeyCode::Up | KeyCode::Char('k') => {
@@ -10232,16 +10374,6 @@ fn mouse(
                         a.song_selected = i;
                     }
                 }
-            } else if a.screen == Screen::TrackerLoop
-                && a.loop_library_mode
-                && contains(a.hits.list, m.column, m.row)
-            {
-                let rows = usize::from(a.hits.list.height.saturating_sub(2));
-                let start = a.loop_library_selected.saturating_sub(rows / 2);
-                let i = visible_index(a.hits.list, start, m.column, m.row).unwrap_or(0);
-                if i < a.loop_library.len() {
-                    a.loop_library_selected = i;
-                }
             } else if let Some((_, page)) = a
                 .hits
                 .menu_pages
@@ -10288,6 +10420,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     match a.screen {
         Screen::Home => {
             draw_home(f, a);
+            draw_project_guard(f, a);
             return;
         }
         Screen::Presets => draw_list(f, a),
@@ -10338,7 +10471,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         f.render_widget(Clear, area);
         f.render_widget(
             Paragraph::new(format!(
-                "PROJECT NAME\n{}\nEnter confirm · Esc cancel",
+                "PROJECT NAME · KEYBOARD REQUIRED\n{}\nEnter confirm · Esc cancel",
                 crate::ui_text::fit_line(
                     &format!("{input}_"),
                     usize::from(area.width.saturating_sub(2))
@@ -10355,7 +10488,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         f.render_widget(Clear, area);
         f.render_widget(
             Paragraph::new(format!(
-                "TRACK NAME\n{}\nEnter confirm · Esc cancel",
+                "TRACK NAME · KEYBOARD REQUIRED\n{}\nEnter confirm · Esc cancel",
                 crate::ui_text::fit_line(
                     &format!("{input}_"),
                     usize::from(area.width.saturating_sub(2))
@@ -10366,7 +10499,35 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             area,
         );
     }
+    draw_project_guard(f, a);
     draw_master_status(f, a);
+}
+
+fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let Some(action) = a.pending_project_action.as_ref() else {
+        return;
+    };
+    let z = f.size();
+    let area = rect(
+        z.x + 2,
+        z.y + 2,
+        z.width.saturating_sub(4),
+        z.height.saturating_sub(6).min(7),
+    );
+    let action = match action {
+        PendingProjectAction::Load(name) => format!("LOAD {name}"),
+        PendingProjectAction::Quit => "QUIT SHR-DAW".into(),
+    };
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(format!(
+            "UNSAVED PROJECT\n{action}\n\nV / SAVE  keep work\nD / LOAD  discard\nEsc / EXIT cancel"
+        ))
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::Yellow).bg(Color::Black))
+        .block(Block::default().borders(Borders::ALL)),
+        area,
+    );
 }
 
 fn draw_home<B: Backend>(f: &mut Frame<B>, a: &mut App) {
@@ -10434,7 +10595,9 @@ fn draw_home<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             rect(z.x, z.y + z.height.saturating_sub(3), z.width, 2),
         );
     }
-    let status = if a.status == "Ready" {
+    let status = if let Some(activity) = a.home_activity() {
+        activity
+    } else if a.status == "Ready" {
         "↑↓ / rotary browse · Enter / click open · Esc quit"
     } else {
         &a.status
@@ -10471,11 +10634,6 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
     let controller_name = controller
         .and_then(|controller| controller.input_match.as_deref())
         .unwrap_or("");
-    let performance_name = config
-        .midi_performance_input_matches
-        .first()
-        .map(String::as_str)
-        .unwrap_or("");
     const ROUTING_LABEL_CELLS: usize = 9;
     let value_width = width.saturating_sub(ROUTING_LABEL_CELLS);
     let endpoint = |name: &str, names: &[String]| {
@@ -10510,35 +10668,49 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
         .first()
         .and_then(|port| port.split_once(':').map(|parts| parts.0))
         .unwrap_or("NONE");
-    let values = [
-        endpoint(controller_name, &a.routing_inputs),
-        if config.midi_controller_musical_input {
-            "COMBINED".into()
-        } else {
-            "CONTROL".into()
-        },
-        endpoint(performance_name, &a.routing_inputs),
-        if config.external_midi.enabled {
-            "ON"
-        } else {
-            "OFF"
-        }
-        .into(),
-        endpoint(&config.external_midi.output_match, &a.routing_outputs),
-        device,
-        if config.controller_clock.enabled {
-            "ON"
-        } else {
-            "OFF"
-        }
-        .into(),
-        endpoint(&config.controller_clock.output_match, &a.routing_outputs),
-        crate::ui_text::label_value(
-            audio_name,
-            if audio_online { "ONLINE" } else { "OFFLINE" },
-            value_width,
-        ),
-    ];
+    let rows = App::routing_rows_for(config);
+    let values = rows
+        .iter()
+        .map(|row| match *row {
+            RoutingRow::Controller => endpoint(controller_name, &a.routing_inputs),
+            RoutingRow::ControllerRole => {
+                if config.midi_controller_musical_input {
+                    "COMBINED".into()
+                } else {
+                    "CONTROL".into()
+                }
+            }
+            RoutingRow::Performance(index) => endpoint(
+                &config.midi_performance_input_matches[index],
+                &a.routing_inputs,
+            ),
+            RoutingRow::PerformanceAdd => "ADD EXACT INPUT".into(),
+            RoutingRow::ExternalEnabled => if config.external_midi.enabled {
+                "ON"
+            } else {
+                "OFF"
+            }
+            .into(),
+            RoutingRow::ExternalOutput => {
+                endpoint(&config.external_midi.output_match, &a.routing_outputs)
+            }
+            RoutingRow::DeviceProfile => device.clone(),
+            RoutingRow::ClockEnabled => if config.controller_clock.enabled {
+                "ON"
+            } else {
+                "OFF"
+            }
+            .into(),
+            RoutingRow::ClockOutput => {
+                endpoint(&config.controller_clock.output_match, &a.routing_outputs)
+            }
+            RoutingRow::AudioOutput => crate::ui_text::label_value(
+                audio_name,
+                if audio_online { "ONLINE" } else { "OFFLINE" },
+                value_width,
+            ),
+        })
+        .collect::<Vec<_>>();
     let editing = a.routing.draft.is_some();
     let mut lines = vec![Spans::from(Span::styled(
         crate::ui_text::label_value("ROUTING", if editing { "EDIT" } else { "BROWSE" }, width),
@@ -10546,7 +10718,18 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD),
     ))];
-    for (index, (row, value)) in RoutingRow::ALL.iter().zip(values).enumerate() {
+    let visible_rows = usize::from(body.height.saturating_sub(3));
+    let start = a
+        .routing
+        .selected
+        .saturating_sub(visible_rows.saturating_sub(1));
+    for (index, (row, value)) in rows
+        .iter()
+        .zip(values)
+        .enumerate()
+        .skip(start)
+        .take(visible_rows)
+    {
         let selected = index == a.routing.selected;
         let text = crate::ui_text::fixed_label_value(
             &format!("{}{}", if selected { ">" } else { " " }, row.label()),
@@ -10683,6 +10866,10 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD),
     ))];
+    lines.push(Spans::from(Span::styled(
+        project_owner_line(a, inner_width),
+        Style::default().fg(Color::White),
+    )));
     if is_aux_target(a.fx_target) {
         let aux_id = a.fx_target as u8;
         let send = a
@@ -11334,7 +11521,10 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD),
     ))];
-    lines.push(Spans::from(""));
+    lines.push(Spans::from(Span::styled(
+        project_owner_line(a, inner_width),
+        Style::default().fg(Color::White),
+    )));
     let base_width = inner_width / 4;
     let remainder = inner_width % 4;
     let widths = [
@@ -11509,58 +11699,6 @@ fn draw_tracker_child<B: Backend>(f: &mut Frame<B>, title: &str, details: &str) 
 
 fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
-    if a.loop_library_mode {
-        let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
-        a.hits.list = body;
-        let rows = usize::from(body.height.saturating_sub(2));
-        let start = a.loop_library_selected.saturating_sub(rows / 2);
-        let lines = a
-            .loop_library
-            .iter()
-            .enumerate()
-            .skip(start)
-            .take(rows)
-            .map(|(index, entry)| {
-                let marker = if entry.current {
-                    "CURRENT"
-                } else if entry.saved_references != 0 {
-                    "SAVED"
-                } else {
-                    "FREE"
-                };
-                Spans::from(Span::styled(
-                    truncate(
-                        &format!(
-                            "{} {:<24} {marker}",
-                            if index == a.loop_library_selected {
-                                "▶"
-                            } else {
-                                " "
-                            },
-                            entry.file
-                        ),
-                        usize::from(z.width.saturating_sub(2)),
-                    ),
-                    if index == a.loop_library_selected {
-                        Style::default().fg(Color::Black).bg(Color::Yellow)
-                    } else if marker == "FREE" {
-                        Style::default()
-                    } else {
-                        Style::default().fg(Color::Green)
-                    },
-                ))
-            })
-            .collect::<Vec<_>>();
-        f.render_widget(
-            Paragraph::new(lines).block(
-                Block::default()
-                    .title(format!(" PRIVATE LOOPS · {} ", a.loop_library.len()))
-                    .borders(Borders::ALL),
-            ),
-            body,
-        );
-        return;
-    }
     let player = a.loop_player.status();
     let selected = a
         .loop_imports
@@ -12603,7 +12741,6 @@ fn draw_ideas<B: Backend>(f: &mut Frame<B>, a: &mut App) {
 fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     a.clamp_tracker_cursor();
-    let transport = a.sequencer.status();
     let pattern_number = a.tracker_pattern_number();
     let Some(pattern) = a.current_pattern() else {
         return;
@@ -12611,32 +12748,35 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let Some(page) = pattern.pages.get(a.tracker_page) else {
         return;
     };
-    let state = if a.note_editor.is_some() {
-        "CELL".into()
-    } else if a.tracker_recording.is_some() {
-        "REC".into()
-    } else if transport.playing {
-        "PLAY".into()
+    let mode = if a.note_editor.is_some() {
+        Some("CELL".into())
     } else if a.tracker_mode == TrackerMode::Edit {
-        format!("EDIT +{} {}", a.tracker_advance, a.note_length.label())
+        Some(format!(
+            "EDIT +{} {}",
+            a.tracker_advance,
+            a.note_length.label()
+        ))
     } else if a.tracker_mode == TrackerMode::Rec {
-        "REC READY".into()
+        Some("REC READY".into())
     } else {
-        "PAUSE".into()
+        None
     };
-    let state = if a.tracker_noob && !page.percussion {
-        format!(
-            "{state} N0B {} {}",
+    let mode = if a.tracker_noob && !page.percussion {
+        Some(format!(
+            "{}N0B {} {}",
+            mode.as_ref()
+                .map_or_else(String::new, |mode| format!("{mode} · ")),
             a.config.note_naming.pitch_name(a.noob_scale.root),
             a.noob_scale.kind.label()
-        )
+        ))
     } else {
-        state
+        mode
     };
+    let mode = mode.map_or_else(String::new, |mode| format!(" · {mode}"));
     f.render_widget(
         Paragraph::new(truncate(
             &format!(
-                "{} · O{:02}/{:02} P{:02} · {state}",
+                "{} · O{:02}/{:02} P{:02}{mode}",
                 a.song.name,
                 a.tracker_order + 1,
                 a.song.order.len(),
@@ -14883,6 +15023,18 @@ mod tests {
     }
 
     #[test]
+    fn opening_and_cancelling_loop_library_preserves_active_preview() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerLoop;
+        a.song_previewing = true;
+        a.open_overlay(Action::OpenLoopLibrary);
+        assert!(a.song_previewing);
+        a.close_overlay(true);
+        assert!(a.song_previewing);
+    }
+
+    #[test]
     fn overlay_keyboard_and_rotary_match_and_block_the_caller() {
         let p = presets();
         let (tx, _rx) = mpsc::channel();
@@ -15610,6 +15762,27 @@ mod tests {
     }
 
     #[test]
+    fn home_activity_uses_deterministic_owner_priority_over_messages() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Home;
+        a.status = "later selection message".into();
+        a.song_previewing = true;
+        a.loop_player
+            .set_preview_status(crate::loop_player::LoopStatus {
+                loaded: true,
+                playing: true,
+                ..crate::loop_player::LoopStatus::default()
+            });
+        assert_eq!(a.home_activity(), Some("> PLAY · FILES · Project preview"));
+        let frame = render_app(&mut a, 40, 13);
+        assert!(row_text(&frame, 12).contains("FILES"));
+
+        a.song_previewing = false;
+        assert_eq!(a.home_activity(), Some("> PLAY · FT2 LOOP · WAV loop"));
+    }
+
+    #[test]
     fn keyboard_navigation_remains_available_with_controller_offline() {
         let p = presets();
         let mut app = app(&p);
@@ -15805,6 +15978,162 @@ mod tests {
     }
 
     #[test]
+    fn dirty_project_guard_preserves_context_and_requires_explicit_discard() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerFiles;
+        a.tracker_order = 2;
+        a.tracker_row = 11;
+        a.tracker_page = 1;
+        a.tracker_track = 3;
+        a.song.name = "unsaved edit".into();
+
+        assert!(!a.request_quit());
+        assert_eq!(a.pending_project_action, Some(PendingProjectAction::Quit));
+        a.cancel_project_action();
+        assert_eq!(a.screen, Screen::TrackerFiles);
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (2, 11, 1, 3)
+        );
+        assert_eq!(a.song.name, "unsaved edit");
+
+        a.begin_project_action(PendingProjectAction::Load("other-project".into()));
+        assert_eq!(
+            a.pending_project_action,
+            Some(PendingProjectAction::Load("other-project".into()))
+        );
+        a.cancel_project_action();
+        assert_eq!(a.song.name, "unsaved edit");
+
+        a.request_quit();
+        a.discard_for_project_action();
+        assert!(a.quit_requested);
+    }
+
+    #[test]
+    fn clean_project_quit_does_not_add_a_confirmation() {
+        let p = presets();
+        let mut a = app(&p);
+        assert!(a.request_quit());
+        assert!(a.pending_project_action.is_none());
+    }
+
+    #[test]
+    fn tracks_nested_field_exit_restores_only_the_complete_field_route() {
+        let p = presets();
+        let mut a = app(&p);
+        a.open_page_manager();
+        a.tracker_page = 0;
+        let original = a.current_page().unwrap().clone();
+        a.edit_page_target();
+        a.page_target_selected = a
+            .page_target_candidates
+            .iter()
+            .position(|target| matches!(target, PageTarget::ConfiguredExternal))
+            .unwrap();
+        a.confirm_page_field();
+        assert_eq!(a.page_manager_mode, PageManagerMode::MidiOutput);
+        a.cancel_page_field();
+        assert_eq!(a.current_page().unwrap(), &original);
+
+        a.current_page_mut().unwrap().target =
+            PageTarget::Software(SoftwareRoute::synthv1("Preset 00"));
+        let original = a.current_page().unwrap().clone();
+        a.edit_page_target();
+        a.confirm_page_field();
+        assert_eq!(a.page_manager_mode, PageManagerMode::Engine);
+        a.confirm_page_field();
+        assert_eq!(a.page_manager_mode, PageManagerMode::Instrument);
+        a.turn_page_manager(1);
+        assert_ne!(a.current_page().unwrap(), &original);
+        a.cancel_page_field();
+        assert_eq!(a.current_page().unwrap(), &original);
+
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        let original = a.current_page().unwrap().clone();
+        a.edit_page_channel();
+        a.turn_page_manager(1);
+        a.cancel_page_field();
+        assert_eq!(a.current_page().unwrap(), &original);
+    }
+
+    #[test]
+    fn order_navigation_preserves_and_clamps_the_full_tracker_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        fill_demo_song(&mut a);
+        a.screen = Screen::Tracker;
+        a.tracker_row = 30;
+        a.tracker_page = 1;
+        a.tracker_track = 3;
+
+        key(KeyCode::PageDown, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (1, 30, 1, 3)
+        );
+        key(KeyCode::PageDown, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (2, 30, 1, 3)
+        );
+        key(KeyCode::PageDown, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (3, 23, 0, 3)
+        );
+
+        a.tracker_row = 22;
+        a.open_overlay(Action::OpenPatternOverlay);
+        a.overlay.as_mut().unwrap().selection = 1;
+        a.activate_overlay();
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (1, 22, 0, 3)
+        );
+
+        a.open_overlay(Action::OpenSongOverlay);
+        a.overlay.as_mut().unwrap().selection = 3;
+        a.activate_overlay();
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (3, 22, 0, 3)
+        );
+    }
+
+    #[test]
     fn letter_jump_is_case_insensitive_for_sound_and_file_lists() {
         let p = vec![
             Preset::synthv1("Amber", "amber".into()),
@@ -15825,21 +16154,9 @@ mod tests {
         assert_eq!(a.song_selected, 2);
 
         a.screen = Screen::TrackerLoop;
-        a.loop_library_mode = true;
-        a.loop_library = vec![
-            crate::loop_player::LibraryEntry {
-                file: "break.wav".into(),
-                current: false,
-                saved_references: 0,
-            },
-            crate::loop_player::LibraryEntry {
-                file: "Room.wav".into(),
-                current: false,
-                saved_references: 0,
-            },
-        ];
+        a.loop_imports = vec![PathBuf::from("break.wav"), PathBuf::from("Room.wav")];
         key(KeyCode::Char('r'), &mut a, Path::new("/none"), &tx);
-        assert_eq!(a.loop_library_selected, 1);
+        assert_eq!(a.loop_selected, 1);
     }
 
     #[test]
@@ -16654,27 +16971,10 @@ mod tests {
         assert_eq!(a.drum_pattern_selected, *filtered.last().unwrap());
 
         a.screen = Screen::TrackerLoop;
-        a.loop_library_mode = false;
         a.loop_imports = vec![PathBuf::from("one.wav"), PathBuf::from("two.wav")];
         a.loop_selected = 0;
         perform(Action::Up, &mut a, Path::new("/none"), None);
         assert_eq!(a.loop_selected, 1);
-        a.loop_library_mode = true;
-        a.loop_library = vec![
-            crate::loop_player::LibraryEntry {
-                file: "one.wav".into(),
-                current: false,
-                saved_references: 0,
-            },
-            crate::loop_player::LibraryEntry {
-                file: "two.wav".into(),
-                current: false,
-                saved_references: 0,
-            },
-        ];
-        a.loop_library_selected = 0;
-        perform(Action::Up, &mut a, Path::new("/none"), None);
-        assert_eq!(a.loop_library_selected, 1);
 
         a.screen = Screen::TrackerArrange;
         a.arrange_selected = 0;
@@ -16708,7 +17008,7 @@ mod tests {
         a.screen = Screen::Routing;
         a.routing.selected = 0;
         a.move_routing(-1);
-        assert_eq!(a.routing.selected, RoutingRow::ALL.len() - 1);
+        assert_eq!(a.routing.selected, a.routing_rows().len() - 1);
 
         assert_eq!(NoteLength::ALL.first(), Some(&NoteLength::Whole));
         assert_eq!(
@@ -16787,6 +17087,24 @@ mod tests {
     }
 
     #[test]
+    fn fx_screens_show_project_owner_and_dirty_state_at_native_size() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song.name = "night bus".into();
+        a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
+        a.fx_selection = FxRackSelection::Effect(1);
+        a.screen = Screen::FxRack;
+        let rack = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&rack).contains("PROJECT night bus"));
+        assert!(buffer_text(&rack).contains("DIRTY"));
+
+        a.screen = Screen::FxEditor;
+        let editor = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&editor).contains("PROJECT night bus"));
+        assert!(buffer_text(&editor).contains("DIRTY"));
+    }
+
+    #[test]
     fn routing_keyboard_and_encoder_dispatch_identically() {
         let p = presets();
         let (tx, _rx) = mpsc::channel();
@@ -16833,6 +17151,81 @@ mod tests {
                 .unwrap()
                 .config
                 .midi_controller_musical_input
+        );
+    }
+
+    #[test]
+    fn routing_edits_one_performance_input_without_collapsing_the_list() {
+        let p = presets();
+        let mut a = app(&p);
+        a.config.midi_performance_input_matches = vec!["Offline Keys".into(), "Keyboard B".into()];
+        a.routing_inputs = vec!["Keyboard B".into(), "Keyboard C".into()];
+        a.routing.selected = 3;
+        a.begin_routing_edit();
+        a.adjust_routing_draft(1);
+        assert_eq!(
+            a.routing
+                .draft
+                .as_ref()
+                .unwrap()
+                .config
+                .midi_performance_input_matches,
+            ["Offline Keys", "Keyboard C"]
+        );
+
+        a.cancel_routing_edit();
+        a.routing.selected = 2;
+        a.begin_routing_edit();
+        a.adjust_routing_draft(-1);
+        assert_eq!(
+            a.routing
+                .draft
+                .as_ref()
+                .unwrap()
+                .config
+                .midi_performance_input_matches,
+            ["Keyboard B"]
+        );
+
+        a.cancel_routing_edit();
+        a.routing.selected = 4;
+        a.begin_routing_edit();
+        a.adjust_routing_draft(-1);
+        assert_eq!(
+            a.routing
+                .draft
+                .as_ref()
+                .unwrap()
+                .config
+                .midi_performance_input_matches,
+            ["Offline Keys", "Keyboard B", "Keyboard C"]
+        );
+    }
+
+    #[test]
+    fn routing_canonicalization_retains_offline_inputs_and_rejects_duplicates() {
+        let p = presets();
+        let a = app(&p);
+        let controller = a.controller_config.read().unwrap().clone();
+        let mut draft = RoutingDraft {
+            config: a.config.clone(),
+            controller,
+        };
+        draft.config.midi_performance_input_matches =
+            vec!["Offline Keys".into(), "Keyboard B".into()];
+        canonicalize_routing_draft(&mut draft, &["Keyboard B 32:1".into()], &[]).unwrap();
+        assert_eq!(
+            draft.config.midi_performance_input_matches,
+            ["Offline Keys", "Keyboard B"]
+        );
+
+        draft.config.midi_performance_input_matches =
+            vec!["Keyboard B".into(), "keyboard b".into()];
+        assert!(
+            canonicalize_routing_draft(&mut draft, &["Keyboard B 32:1".into()], &[],)
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate")
         );
     }
 
@@ -17683,7 +18076,7 @@ mod tests {
         assert!(!a.audio_recorder.status().recording);
     }
     #[test]
-    fn tracker_renders_the_three_factory_page_names_and_compact_pause_label() {
+    fn tracker_renders_factory_pages_without_duplicate_transport_header() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
@@ -17702,7 +18095,9 @@ mod tests {
             .map(|c| c.symbol.as_str())
             .collect::<String>();
         assert!(text.contains("Software Synth"));
-        assert!(text.contains("PAUSE"));
+        assert!(!row_text(t.backend().buffer(), 0).contains("PAUSE"));
+        assert!(!row_text(t.backend().buffer(), 0).contains("PLAY"));
+        assert!(!row_text(t.backend().buffer(), 0).contains("REC"));
         assert!(!text.contains("STOP/BACK"));
         assert!(!text.contains("120.0 BPM"));
         a.switch_tracker_page();
@@ -20241,6 +20636,15 @@ mod tests {
 
         a.confirm_routing_defaults = true;
         a.resolve_routing_defaults_choice(true).unwrap();
+        assert_eq!(a.routing_defaults, original);
+        assert!(!a.routing_defaults_path.exists());
+        assert_eq!(
+            a.pending_routing_defaults.as_ref().unwrap()[1]
+                .column(0)
+                .channel,
+            6
+        );
+        a.commit_pending_routing_defaults().unwrap();
         assert_eq!(a.routing_defaults[1].column(0).channel, 6);
         assert_eq!(
             sequencer::load_routing_defaults(&a.routing_defaults_path, &original).unwrap(),

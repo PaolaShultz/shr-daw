@@ -17,6 +17,28 @@ for arg in "$@"; do
   esac
 done
 
+printf '%s\n' \
+  'SHR-DAW installation plan (consequences before changes):'
+if $INSTALL_DEPS; then
+  printf '%s\n' \
+    '  1. apt-get updates package metadata and installs build/audio/MIDI packages.' \
+    '  2. the per-user fluidsynth.service is stopped and persistently masked;' \
+    '     the FluidSynth executable remains available for SHR-owned use.'
+else
+  printf '%s\n' '  1–2. dependency installation and FluidSynth service masking are skipped.'
+fi
+printf '%s\n' \
+  '  3. Rust 1.85 may be installed for the current user when missing.' \
+  '  4. locked tests and a locked release build run in this checkout.' \
+  '  5. sudo installs public application files below /usr/local.'
+if $INIT_CONFIG; then
+  printf '%s\n' \
+    '  6. shr-setup seeds private user data and offers explicit configuration/service/tuning changes.'
+else
+  printf '%s\n' '  6. hardware/configuration setup is skipped.'
+fi
+printf '%s\n' 'JACK and synth engines are not started by this installer.'
+
 if $INSTALL_DEPS; then
   command -v apt-get >/dev/null || {
     printf 'Automatic dependencies require Debian/Raspberry Pi OS (apt-get).\n' >&2
@@ -27,6 +49,8 @@ if $INSTALL_DEPS; then
     alsa-utils build-essential ca-certificates curl jackd2 libasound2-dev \
     fluidsynth pkg-config python3 sox synthv1 timgm6mb-soundfont unzip yoshimi yoshimi-data
   if command -v systemctl >/dev/null 2>&1; then
+    printf '%s\n' \
+      'Stopping and masking only the per-user fluidsynth.service to prevent an unowned layered synth.'
     systemctl --user daemon-reload
     systemctl --user mask --now fluidsynth.service
     [[ "$(systemctl --user is-enabled fluidsynth.service 2>/dev/null || true)" == masked ]] || {

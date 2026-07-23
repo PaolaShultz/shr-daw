@@ -29,7 +29,9 @@ are remembered machine choices: disconnecting hardware never replaces them,
 and the fallback banner names both the active substitute and missing preference.
 
 `shr doctor` checks the complete audio/MIDI setup, so it reports missing JACK
-as a problem. The preset browser and external-MIDI tracker can still open
+as a problem and keeps a strict failing exit status. Its final grouped
+`CORE / EDITOR`, `MIDI`, `JACK AUDIO`, and `AUDIO TUNING` summaries distinguish
+which capabilities are ready. The preset browser and external-MIDI tracker can still open
 without JACK; loading a software instrument, playing a WAV loop, and recording
 audio require it. SHR-DAW does not start or restart JACK.
 

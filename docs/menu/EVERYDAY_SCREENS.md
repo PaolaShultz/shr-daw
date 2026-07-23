@@ -205,7 +205,8 @@ selected track. An armed missing source prevents a take from starting.
 ![Populated Audio recorder screen with the TRACK controller page](../images/menu/audio-recorder-track.png)
 
 `PREV` and `NEXT` select a track. `SOURCE` cycles deliberately through the
-currently discovered sources (and blank); `NAME` edits the musician-facing
+currently discovered sources (and blank); `NAME KBD` opens computer-keyboard
+text entry for the musician-facing
 label. Runtime absence never overwrites a remembered source.
 
 ### SETUP — prepare tracks

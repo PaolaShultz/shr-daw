@@ -834,46 +834,121 @@ fn casio_command(args: &[String], config: &config::RuntimeConfig) -> Result<()> 
     }
 }
 
+#[derive(Clone, Copy)]
+struct DoctorCapability {
+    label: &'static str,
+    checks: usize,
+    problems: usize,
+}
+
+impl DoctorCapability {
+    const fn new(label: &'static str) -> Self {
+        Self {
+            label,
+            checks: 0,
+            problems: 0,
+        }
+    }
+
+    fn record(&mut self, ok: bool) {
+        self.checks += 1;
+        if !ok {
+            self.problems += 1;
+        }
+    }
+
+    fn summary(self) -> String {
+        if self.checks == 0 {
+            format!("[--] {}: not configured", self.label)
+        } else if self.problems == 0 {
+            format!(
+                "[ok] {}: {}/{} checks ready",
+                self.label, self.checks, self.checks
+            )
+        } else {
+            format!(
+                "[!!] {}: {}/{} checks need attention",
+                self.label, self.problems, self.checks
+            )
+        }
+    }
+}
+
+fn doctor_check(
+    problems: &mut usize,
+    capability: &mut DoctorCapability,
+    ok: bool,
+    message: String,
+) {
+    println!("[{}] {message}", if ok { "ok" } else { "!!" });
+    capability.record(ok);
+    if !ok {
+        *problems += 1;
+    }
+}
+
 fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Result<()> {
     let mut problems = 0;
-    let mut check = |ok: bool, message: String| {
-        println!("[{}] {message}", if ok { "ok" } else { "!!" });
-        if !ok {
-            problems += 1;
-        }
-    };
-    check(
+    let mut core = DoctorCapability::new("CORE / EDITOR");
+    let mut midi = DoctorCapability::new("MIDI");
+    let mut audio = DoctorCapability::new("JACK AUDIO");
+    let mut tuning = DoctorCapability::new("AUDIO TUNING");
+    doctor_check(
+        &mut problems,
+        &mut core,
         command_exists(&config.synth_command),
         format!("synth command: {}", config.synth_command),
     );
-    for command in ["jack_lsp", "aconnect"] {
-        check(
-            command_exists(command),
-            format!("required command: {command}"),
-        );
-    }
-    check(
+    doctor_check(
+        &mut problems,
+        &mut audio,
+        command_exists("jack_lsp"),
+        "required command: jack_lsp".into(),
+    );
+    doctor_check(
+        &mut problems,
+        &mut midi,
+        command_exists("aconnect"),
+        "required command: aconnect".into(),
+    );
+    doctor_check(
+        &mut problems,
+        &mut core,
         preset_dir.is_dir(),
         format!("preset directory: {}", preset_dir.display()),
     );
-    check(
+    doctor_check(
+        &mut problems,
+        &mut core,
         state.join("shsynth.conf").is_file(),
         format!("runtime config: {}", state.join("shsynth.conf").display()),
     );
     let controller_path = state.join("controller.conf");
     let controller_exists = controller_path.is_file();
-    check(
+    doctor_check(
+        &mut problems,
+        &mut core,
         controller_exists,
         format!("controller config: {}", controller_path.display()),
     );
     let controller = if controller_exists {
         match pads::PadConfig::load(&controller_path) {
             Ok(controller) => {
-                check(true, "controller config parses".into());
+                doctor_check(
+                    &mut problems,
+                    &mut core,
+                    true,
+                    "controller config parses".into(),
+                );
                 Some(controller)
             }
             Err(error) => {
-                check(false, format!("controller config is invalid: {error:#}"));
+                doctor_check(
+                    &mut problems,
+                    &mut core,
+                    false,
+                    format!("controller config is invalid: {error:#}"),
+                );
                 None
             }
         }
@@ -885,23 +960,34 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
         .as_ref()
         .map(|output| output.status.success())
         .unwrap_or(false);
-    check(jack_ready, "JACK server reachable".into());
+    doctor_check(
+        &mut problems,
+        &mut audio,
+        jack_ready,
+        "JACK server reachable".into(),
+    );
     if jack_ready && config.audio_autoconnect {
         let ports = String::from_utf8_lossy(&jack.as_ref().unwrap().stdout);
         for output in &config.audio_outputs {
-            check(
+            doctor_check(
+                &mut problems,
+                &mut audio,
                 ports.lines().any(|port| port == output),
                 format!("JACK output: {output}"),
             );
         }
     }
     if let Some(cpu) = config.audio_engine_cpu {
-        check(
+        doctor_check(
+            &mut problems,
+            &mut tuning,
             Path::new(&format!("/sys/devices/system/cpu/cpu{cpu}")).is_dir(),
             format!("configured audio CPU is online: {cpu}"),
         );
         let cmdline = fs::read_to_string("/proc/cmdline").unwrap_or_default();
-        check(
+        doctor_check(
+            &mut problems,
+            &mut tuning,
             cmdline
                 .split_whitespace()
                 .any(|arg| arg == format!("nohz_full={cpu}")),
@@ -916,7 +1002,9 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
             .map(|entry| fs::read_to_string(entry.path().join("scaling_governor")))
             .collect::<std::io::Result<Vec<_>>>()
             .unwrap_or_default();
-        check(
+        doctor_check(
+            &mut problems,
+            &mut tuning,
             !governors.is_empty() && governors.iter().all(|value| value.trim() == "performance"),
             "CPU frequency governor: performance".into(),
         );
@@ -927,7 +1015,9 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
         match engine::inspect_midi_inputs(config, controller) {
             Ok(availability) => {
                 if let Some(controller) = availability.controller {
-                    check(
+                    doctor_check(
+                        &mut problems,
+                        &mut midi,
                         controller.available(),
                         format!("controller MIDI: {}", controller.description()),
                     );
@@ -945,7 +1035,9 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
                     );
                 }
                 for performance in availability.performance {
-                    check(
+                    doctor_check(
+                        &mut problems,
+                        &mut midi,
                         performance.available(),
                         format!(
                             "performance MIDI {}: {}",
@@ -955,12 +1047,19 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
                     );
                 }
             }
-            Err(error) => check(false, format!("MIDI input discovery: {error:#}")),
+            Err(error) => doctor_check(
+                &mut problems,
+                &mut midi,
+                false,
+                format!("MIDI input discovery: {error:#}"),
+            ),
         }
     }
     if config.controller_clock.enabled {
         match loop_player::controller_clock_outputs(&config.controller_clock.client_name) {
-            Ok(names) => check(
+            Ok(names) => doctor_check(
+                &mut problems,
+                &mut midi,
                 loop_player::matching_controller_output_index(
                     &names,
                     &config.controller_clock.output_match,
@@ -971,8 +1070,17 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
                     config.controller_clock.output_match
                 ),
             ),
-            Err(error) => check(false, format!("controller clock discovery: {error}")),
+            Err(error) => doctor_check(
+                &mut problems,
+                &mut midi,
+                false,
+                format!("controller clock discovery: {error}"),
+            ),
         }
+    }
+    println!("\nCapability summary");
+    for capability in [core, midi, audio, tuning] {
+        println!("{}", capability.summary());
     }
     if problems > 0 {
         bail!("doctor found {problems} problem(s)");
@@ -1390,5 +1498,24 @@ mod tests {
             11
         );
         assert!(effects_routing("future").is_err());
+    }
+
+    #[test]
+    fn doctor_capability_summary_distinguishes_ready_partial_and_unconfigured() {
+        let empty = DoctorCapability::new("AUDIO TUNING");
+        assert_eq!(empty.summary(), "[--] AUDIO TUNING: not configured");
+
+        let mut ready = DoctorCapability::new("CORE / EDITOR");
+        ready.record(true);
+        ready.record(true);
+        assert_eq!(ready.summary(), "[ok] CORE / EDITOR: 2/2 checks ready");
+
+        let mut partial = DoctorCapability::new("JACK AUDIO");
+        partial.record(true);
+        partial.record(false);
+        assert_eq!(
+            partial.summary(),
+            "[!!] JACK AUDIO: 1/2 checks need attention"
+        );
     }
 }

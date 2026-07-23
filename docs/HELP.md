@@ -220,8 +220,10 @@ a named synthv1 preset, configured external output, or named MIDI port. Live
 keyboard and musical MIDI audition whichever page is selected.
 Sharing a destination/channel requires the same master instrument.
 
-Real-time REC is hardware-output only. It refuses software-instrument pages so
-an owned synth is not doubled or rewritten by live capture.
+Real-time REC uses the selected page's exact target. A named software-instrument
+page records through that one owned engine; a hardware page uses its exact MIDI
+output. REC refuses an offline, missing, or ambiguous target instead of silently
+substituting another instrument.
 
 Missing preferred targets keep their data and show FALLBACK or OFFLINE. A
 runtime substitute never replaces the saved route; reconnect and play again.
@@ -230,7 +232,10 @@ FILES NEW PRJ requires a second press, clears the current unsaved Project, and
 starts the next `project-001` style name. SAVE AS writes and switches to the
 next non-overwriting `<name>-copy-001` file. Pattern Repeat/Remove operations
 remain on the Arrange screen. FILES NAME accepts a display name and safely
-publishes a rename. FILES PATTERN groups pattern create/clone/clear, clipboard,
+publishes a rename; its custom text requires the computer keyboard. LOAD and
+computer-keyboard quit protect dirty Project data with Save/Discard/Cancel.
+Cancel or a failed/pending Save retains the exact tracker position. FILES
+PATTERN groups pattern create/clone/clear, clipboard,
 and melody-only semitone/octave transpose actions. PATTERN DRUMS loads bundled
 grooves into the percussion page without changing its MIDI route. FILTER picks
 genre, meter, and 32/64/128-row length (24/48/96 in 3/4). Empty Patterns resize;

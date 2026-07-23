@@ -280,9 +280,9 @@ duplicating generic live thru.
 Pattern Setup offers musically convenient fixed shapes: 4/4 Patterns of
 8/16/32/64/128 rows and corresponding 3/4 Patterns of 6/12/24/48/96 rows.
 `CONFIRM` applies a new/destructive shape; `KEEP` clears while retaining the
-current shape. The underlying scheduler can represent 1–256 rows, but arbitrary
-interactive resizing and groove timing remain planned work rather than a
-current menu promise.
+current shape. The interactive length chooser exposes every size from 1 through
+32 rows, plus 48, 64, 96, 128, 192, and 256 rows. Groove timing remains planned
+work rather than a current menu promise.
 
 The reusable drum library contains 72 authored four-lane starting points in ten
 creative genre groups. Filters choose 3/4 or 4/4 and a 2/4/8-bar phrase. Loading

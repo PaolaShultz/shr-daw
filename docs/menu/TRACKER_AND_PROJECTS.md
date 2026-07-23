@@ -251,14 +251,17 @@ current edit.
 
 `LOAD` opens the selected Project. `SAVE` writes the current Project and asks
 before replacement. `PREVIEW` starts or stops the selected Project preview.
-`DELETE` requires repeat confirmation.
+`DELETE` requires repeat confirmation. A dirty LOAD first offers
+Save/Discard/Cancel; Cancel or failed/pending Save keeps the Project and exact
+tracker position.
 
 ### PROJECT — lifecycle and Pattern child
 
 ![Populated Project Files screen with the PROJECT page](../images/menu/files-project.png)
 
 `NEW` creates a confirmed blank Project. `SAVE AS` writes a numbered
-non-overwriting copy. `NAME` edits the Project display name. `PATTERN` opens
+non-overwriting copy. `NAME KBD` edits the Project display name with
+computer-keyboard text entry. `PATTERN` opens
 Pattern tools.
 
 ### SYS — safety, help, and return
@@ -273,7 +276,8 @@ default for future Patterns.
 
 ![Routing-default confirmation with the DEFAULT controller page](../images/menu/routing-defaults-default.png)
 
-`CONFIRM` writes the template; `CANCEL` keeps the previous default.
+`CONFIRM` queues the template and writes it only after the Project save
+succeeds; `CANCEL` keeps the previous default.
 
 ![Routing-default confirmation with the SYS controller page](../images/menu/routing-defaults-sys.png)
 

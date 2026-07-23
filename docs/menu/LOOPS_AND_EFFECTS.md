@@ -69,7 +69,9 @@ Tools.
 `INBOX`, `CURRENT`, `PRIVATE`, and `SAVED` entries. Turn the rotary and press to
 load a file; `INBOX` imports first, while the other types attach an existing
 private WAV. Press highlighted `LIBRARY` again or Back to close without
-changing the Project. The browser has no deletion action.
+changing the Project or stopping transport. Selecting an inbox/private entry
+stops owned tracker transport immediately before import/attach. The browser has
+no deletion action.
 
 ![Shared inbox/private loop overlay over the Loop Player](../images/menu/overlay-loop-library.png)
 
