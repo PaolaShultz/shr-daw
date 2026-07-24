@@ -153,10 +153,13 @@ sample redistribution.
 ## Current machine and hardware state
 
 - The active development system is a Raspberry Pi 4 with 4 GB RAM and microSD.
-  A Pi 5 with 2 GB RAM, active cooler, 27 W supply, bottom NVMe adapter, and
-  128 GB NVMe was ordered but is not installed or measured. Keep Pi 4 evidence
-  labelled accurately; migration and Pi 5 claims remain deferred to
-  `docs/PI5_HEADROOM_PLAN.md` after a clean checkpoint.
+  A Pi 5 with 2 GB RAM, active cooler, 27 W supply, bottom NVMe base, and
+  128 GB NVMe was ordered but is not installed or measured. The planned
+  480×320 display occupies the top GPIO position rather than HDMI, so the design
+  cannot use a top-mounted M.2 HAT; its housing will be self-designed and
+  printed around the measured stack. Keep Pi 4 evidence labelled accurately;
+  migration and Pi 5 claims remain deferred to `docs/PI5_HEADROOM_PLAN.md`
+  after a clean checkpoint.
 - Local configuration selects the MiniLab 3 controller, JACK
   `system:playback_1`/`system:playback_2`, AudioBox USB 96 stereo capture on
   `system:capture_1`/`system:capture_2`, and the AudioBox MIDI port as external

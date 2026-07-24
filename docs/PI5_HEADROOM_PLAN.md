@@ -40,7 +40,7 @@ the active callback.
 ## Planned development hardware
 
 The ordered package is a Raspberry Pi 5 with 2 GB RAM, active cooler, 27 W
-power supply, a bottom-mounted PCIe-to-NVMe adapter, and a 128 GB NVMe drive.
+power supply, a bottom-mounted PCIe-to-NVMe base, and a 128 GB NVMe drive.
 The complete package cost about EUR 120; the small NVMe cost EUR 15. Neither
 price is a product requirement or an evergreen buying guide.
 
@@ -50,11 +50,15 @@ Codex CLI, JACK, synth, graph, recorder, and normal OS memory peaks have been
 measured together. Do not publish 2 GB as a minimum or recommended capacity in
 installation documentation before that acceptance passes.
 
-The NVMe adapter sits below the Pi because the GPIO display needs the space
-above it. A future printed enclosure should angle the display toward the
-player, retain cooler airflow, avoid cable strain, expose the required
-connectors, and keep the drive serviceable. Exact dimensions and CAD work wait
-until the physical board, adapter, drive, cooler, and screen can be measured.
+The NVMe base sits below the Pi because the 480×320 display connects through
+GPIO and needs the top expansion position; this product does not use an HDMI
+screen, and a top-mounted M.2 HAT is incompatible with the intended stack.
+The housing will therefore be self-designed and printed around the measured Pi,
+bottom NVMe base, active cooler, and GPIO display. It should angle the display
+toward the player, retain cooler airflow, avoid ribbon and cable strain, expose
+the required connectors, and keep the drive serviceable. Exact dimensions and
+CAD work wait until the physical boards, drive, cooler, and screen can be
+measured together.
 
 Begin the release 0.4 platform path from a fresh official 64-bit Raspberry Pi
 OS Lite image. Record the Imager version, selected OS/date, release,

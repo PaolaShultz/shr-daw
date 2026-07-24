@@ -19,9 +19,10 @@ than treating “Lite” as a reproducible version identifier. The
 For the planned native-NVMe Pi 5, first follow
 [Raspberry Pi 5 NVMe installation](PI5_NVME_INSTALL.md). It covers safe drive
 identification, Raspberry Pi Imager, headless customisation, first-boot proof,
-boot-order recovery, and the boundary between HAT+ and adapter-specific PCIe
-settings. Return here only after `findmnt` proves that the running root
-filesystem is on the NVMe.
+boot-order recovery, and base-specific PCIe settings. The SHR-DAW assembly uses
+a bottom NVMe base so its GPIO display can occupy the top of the Pi; it does not
+use a top-mounted M.2 HAT. Return here only after `findmnt` proves that the
+running root filesystem is on the NVMe.
 
 The supported family is Debian-based Linux. Rust 1.85, Cargo, a C build
 toolchain, `pkg-config`, Python 3, ripgrep, ALSA development/runtime tools, and

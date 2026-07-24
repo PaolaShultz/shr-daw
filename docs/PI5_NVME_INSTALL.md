@@ -5,24 +5,27 @@ This is the supported clean-storage path for the planned SHR-DAW Raspberry Pi
 the NVMe drive. Do not clone the Pi 4 microSD system or copy its tuning files.
 
 This procedure is for a Raspberry Pi 5 NVMe drive connected through the PCIe
-connector. A Raspberry Pi 4 has no equivalent native-NVMe connector; an NVMe
-drive attached to a Pi 4 boots as USB mass storage and follows a different
-path.
+connector. The planned SHR-DAW assembly uses a bottom-mounted NVMe base, not a
+top-mounted M.2 HAT. The top of the Pi is reserved for the 480×320 display,
+which connects through GPIO rather than HDMI. A Raspberry Pi 4 has no
+equivalent native-NVMe connector; an NVMe drive attached to a Pi 4 boots as USB
+mass storage and follows a different path.
 
 ## Before writing the drive
 
 You need:
 
-- a Raspberry Pi 5, suitable power supply, active cooler, PCIe-to-NVMe adapter,
-  and compatible NVMe drive;
+- a Raspberry Pi 5, suitable power supply, active cooler, bottom-mounted
+  PCIe-to-NVMe base, and compatible NVMe drive;
 - a temporary Raspberry Pi OS SD card **or** a USB NVMe enclosure connected to
   another computer; and
 - Raspberry Pi Imager.
 
-Disconnect power before fitting or removing the adapter, ribbon cable, or
-drive. Install the active cooler first. Follow the adapter manufacturer's
-ribbon orientation and mounting instructions: bottom-mounted adapters may not
-match the photographs for Raspberry Pi's top-mounted M.2 HAT+.
+Disconnect power before fitting or removing the base, ribbon cable, or drive.
+Install the active cooler first. Follow the base manufacturer's
+ribbon orientation and mounting instructions. Raspberry Pi's M.2 HAT+
+photographs are not assembly instructions for this bottom-mounted base. Keep
+the GPIO header and the space above the Pi available for the display.
 
 The write operation below erases the selected NVMe completely. Disconnect
 other removable drives when practical, and identify this one by both model and
@@ -34,7 +37,7 @@ The shortest path is to put the NVMe in a USB enclosure and run Imager on
 another computer. If no enclosure is available, use this staging path:
 
 1. Use the familiar SD-card procedure to create a temporary Raspberry Pi OS
-   **with Desktop** card. Boot the Pi 5 from it with the NVMe adapter installed.
+   **with Desktop** card. Boot the Pi 5 from it with the NVMe base installed.
 2. Confirm that the NVMe is visible:
 
    ```sh
@@ -119,8 +122,9 @@ Keep changes narrow and test one cause at a time:
 
    Apply an available normal update with `sudo rpi-eeprom-update -a`, then
    reboot. Do not rewrite EEPROM configuration merely because NVMe exists.
-4. Raspberry Pi HAT+ compliant adapters are discovered automatically. A custom
-   or non-HAT+ adapter may require `dtparam=pciex1` in
+4. Do not assume that this bottom-mounted base is discovered like an official
+   M.2 HAT+. Follow the exact base manufacturer's instructions. A non-HAT+
+   design may require `dtparam=pciex1` in
    `/boot/firmware/config.txt` and `PCIE_PROBE=1` in EEPROM configuration.
    Apply those only when the exact adapter documentation requires them.
 5. Leave PCIe at the supported Gen 2 speed. Raspberry Pi does not certify Pi 5
@@ -136,7 +140,9 @@ the partition identifiers needed by the image.
 ## Authoritative references
 
 - Raspberry Pi's
-  [M.2 HAT+ installation and NVMe boot procedure](https://www.raspberrypi.com/documentation/accessories/m2-hat-plus.html#boot-from-nvme).
+  [M.2 HAT+ NVMe boot procedure](https://www.raspberrypi.com/documentation/accessories/m2-hat-plus.html#boot-from-nvme),
+  used here for Pi 5 boot behaviour only; its physical HAT assembly does not
+  describe the SHR-DAW NVMe base.
 - Raspberry Pi's
   [operating-system installation with Imager](https://www.raspberrypi.com/documentation/computers/getting-started.html#install-an-operating-system).
 - Raspberry Pi's
