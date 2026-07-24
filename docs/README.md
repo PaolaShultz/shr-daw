@@ -32,6 +32,9 @@ configuration, or the architecture contracts.
 
 - [Installation](INSTALLATION.md) — dependencies, install/uninstall boundaries,
   repository-local evaluation, JACK, and optional CPU tuning.
+- [Raspberry Pi audio-system optimization](AUDIO_SYSTEM_OPTIMIZATION.md) —
+  Patchbox/stock baselines, reviewed settings, ownership, rollback, doctor
+  states, and primary-source provenance.
 - [Configuration and routing](CONFIGURATION.md) — every runtime setting and
   persisted route.
 - [MIDI device profiles](MIDI_DEVICE_PROFILES.md) — external-instrument bank

@@ -31,9 +31,24 @@ and the fallback banner names both the active substitute and missing preference.
 `shr doctor` checks the complete audio/MIDI setup, so it reports missing JACK
 as a problem and keeps a strict failing exit status. Its final grouped
 `CORE / EDITOR`, `MIDI`, `JACK AUDIO`, and `AUDIO TUNING` summaries distinguish
-which capabilities are ready. The preset browser and external-MIDI tracker can still open
-without JACK; loading a software instrument, playing a WAV loop, and recording
-audio require it. SHR-DAW does not start or restart JACK.
+which capabilities are ready. Audio tuning reports configured intent separately
+from live state: for example, reboot required, stale kernel tokens, an inactive
+but enabled JACK service, duplicate JACK processes, an administrator-owned
+setting left untouched, or an available rollback. Each non-ready state names
+the precise safe inspection or repair command; doctor does not change system
+policy or service state. The preset browser and external-MIDI tracker can still
+open without JACK; loading a software instrument, playing a WAV loop, and
+recording audio require it. SHR-DAW does not start or restart JACK.
+
+Setup first retains a working distribution policy and JACK owner. A clean
+64-bit Raspberry Pi OS Lite login can opt into missing real-time permissions;
+Patchbox keeps its existing policy and shared JACK service. All system-changing
+setup questions default to no, and the final summary identifies logout/login,
+reboot, or next explicit JACK-start actions. Preview the optional CPU policy
+with `shr-audio-tune plan 3`, and inspect or retry it with
+`shr-audio-tune status`, `shr-audio-tune doctor 3`, or
+`sudo shr-audio-tune recover`. Details and rollback are in
+[Raspberry Pi audio-system optimization](AUDIO_SYSTEM_OPTIMIZATION.md).
 
 The effects graph is disabled by default, so synth and loop audio initially use
 their configured direct routes. Read [How SHR-DAW works](HOW_IT_WORKS.md)

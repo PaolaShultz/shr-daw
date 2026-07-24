@@ -887,6 +887,11 @@ fn doctor_check(
     }
 }
 
+fn audio_tuning_doctor_target(cpu: Option<usize>) -> String {
+    cpu.map(|value| value.to_string())
+        .unwrap_or_else(|| "none".into())
+}
+
 fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Result<()> {
     let mut problems = 0;
     let mut core = DoctorCapability::new("CORE / EDITOR");
@@ -977,36 +982,40 @@ fn doctor(config: &config::RuntimeConfig, preset_dir: &Path, state: &Path) -> Re
             );
         }
     }
-    if let Some(cpu) = config.audio_engine_cpu {
+    if command_exists("shr-audio-tune") {
+        let configured_cpu = audio_tuning_doctor_target(config.audio_engine_cpu);
+        match Command::new("shr-audio-tune")
+            .arg("doctor")
+            .arg(configured_cpu)
+            .output()
+        {
+            Ok(output) => {
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+                doctor_check(
+                    &mut problems,
+                    &mut tuning,
+                    output.status.success(),
+                    "configured and live audio policy agree".into(),
+                );
+            }
+            Err(error) => doctor_check(
+                &mut problems,
+                &mut tuning,
+                false,
+                format!("could not run shr-audio-tune doctor: {error}"),
+            ),
+        }
+    } else if let Some(cpu) = config.audio_engine_cpu {
         doctor_check(
             &mut problems,
             &mut tuning,
-            Path::new(&format!("/sys/devices/system/cpu/cpu{cpu}")).is_dir(),
-            format!("configured audio CPU is online: {cpu}"),
+            false,
+            format!("audio.engine_cpu={cpu}, but shr-audio-tune is unavailable; reinstall SHR-DAW"),
         );
-        let cmdline = fs::read_to_string("/proc/cmdline").unwrap_or_default();
-        doctor_check(
-            &mut problems,
-            &mut tuning,
-            cmdline
-                .split_whitespace()
-                .any(|arg| arg == format!("nohz_full={cpu}")),
-            format!("audio CPU {cpu} is isolated (reboot after shr-audio-tune)"),
-        );
-        let governors = fs::read_dir("/sys/devices/system/cpu/cpufreq")
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .filter(|entry| entry.file_name().to_string_lossy().starts_with("policy"))
-            .map(|entry| fs::read_to_string(entry.path().join("scaling_governor")))
-            .collect::<std::io::Result<Vec<_>>>()
-            .unwrap_or_default();
-        doctor_check(
-            &mut problems,
-            &mut tuning,
-            !governors.is_empty() && governors.iter().all(|value| value.trim() == "performance"),
-            "CPU frequency governor: performance".into(),
+    } else {
+        println!(
+            "[--] dedicated audio CPU: optional and not configured; install shr-audio-tune to inspect"
         );
     }
     if config.midi_autoconnect {
@@ -1517,5 +1526,11 @@ mod tests {
             partial.summary(),
             "[!!] JACK AUDIO: 1/2 checks need attention"
         );
+    }
+
+    #[test]
+    fn doctor_passes_configured_audio_intent_to_tuning_helper() {
+        assert_eq!(audio_tuning_doctor_target(Some(3)), "3");
+        assert_eq!(audio_tuning_doctor_target(None), "none");
     }
 }

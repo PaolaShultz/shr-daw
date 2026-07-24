@@ -18,6 +18,7 @@ DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}"
 STATE_DIR="$STATE_ROOT/shsynth"
 SHSYNTH_BIN="${SHSYNTH_BIN:-}"
 SETUP_ORIGINAL_ARGS=("$@")
+TUNE_TOOL=''
 
 usage() {
   cat <<'EOF'
@@ -48,6 +49,13 @@ while (($#)); do
   esac
 done
 
+if ((EUID == 0)); then
+  printf '%s\n' \
+    'Do not run shr-setup with sudo or as root.' \
+    'Run it as the musician account; individual system changes ask for sudo.' >&2
+  exit 1
+fi
+
 if [[ -z "$SHSYNTH_BIN" ]]; then
   if [[ -x "$ROOT/target/release/shr" ]]; then
     SHSYNTH_BIN="$ROOT/target/release/shr"
@@ -63,6 +71,7 @@ SETUP_PHASES=(
   'configuration initialization'
   'configuration backups'
   'public loop and demo seeds'
+  'real-time audio permissions'
   'exclusive MIDI services'
   'note-name preference'
   'JACK next-start configuration'
@@ -83,6 +92,7 @@ FLUID_SERVICE_MASKED=false
 AMIDIMINDER_SERVICE_MASKED=false
 PRIVATE_LOOPS_INSTALLED=false
 TUNING_INSTALLED=false
+PERMISSIONS_INSTALLED=false
 
 setup_phase_done() {
   ((SETUP_PHASE_INDEX += 1))
@@ -132,6 +142,10 @@ print_setup_recovery() {
   if $TUNING_INSTALLED; then
     printf '  inspect with shr-audio-tune status; remove only with sudo shr-audio-tune remove,\n'
     printf '  then clear audio.engine_cpu and reboot.\n'
+  fi
+  if $PERMISSIONS_INSTALLED; then
+    printf '  inspect real-time policy with shr-audio-tune doctor; remove this run'\''s owned\n'
+    printf '  permission changes with sudo shr-audio-tune permissions-remove.\n'
   fi
 }
 
@@ -369,6 +383,12 @@ if [[ ! -t 0 ]]; then
   exit 0
 fi
 
+if command -v shr-audio-tune >/dev/null 2>&1; then
+  TUNE_TOOL="$(command -v shr-audio-tune)"
+elif [[ -x "$ROOT/scripts/audio-performance.sh" ]]; then
+  TUNE_TOOL="$ROOT/scripts/audio-performance.sh"
+fi
+
 ask_yes_no() {
   local prompt=$1 default=$2 answer suffix
   if [[ "$default" == yes ]]; then suffix='[Y/n]'; else suffix='[y/N]'; fi
@@ -381,6 +401,48 @@ ask_yes_no() {
       *) printf 'Please answer yes or no.\n' >&2 ;;
     esac
   done
+}
+
+platform_kind() {
+  if [[ -e /usr/share/doc/patchbox ]] ||
+     [[ -e /etc/patchbox-release ]] ||
+     [[ -e /etc/update-motd.d/20-patchbox-motd-header ]]; then
+    printf 'patchbox\n'
+  else
+    printf 'other\n'
+  fi
+}
+
+configure_realtime_permissions() {
+  local rtprio memlock setup_user
+  rtprio="$(ulimit -r)"
+  memlock="$(ulimit -l)"
+  if [[ "$rtprio" =~ ^[0-9]+$ ]] && ((rtprio >= 95)) && [[ "$memlock" == unlimited ]]; then
+    printf 'Real-time audio limits are already active for this login; retaining them.\n'
+    return 0
+  fi
+  printf '\nReal-time audio permissions\n'
+  printf '%s\n' \
+    'JACK needs rtprio 95 and unlimited memlock for reliable low-latency work.' \
+    'The change grants those limits only through the audio group and requires' \
+    'a logout/login before this shell receives them. It does not start JACK.'
+  if [[ -z "$TUNE_TOOL" ]]; then
+    printf '%s\n' \
+      'WARNING: shr-audio-tune is unavailable; run setup again after installation.' >&2
+    return 0
+  fi
+  if ! ask_yes_no 'Configure owned real-time audio permissions for this user?' no; then
+    printf '%s\n' \
+      'Deferred. Repair later with: sudo shr-audio-tune permissions-install USER'
+    return 0
+  fi
+  setup_user="${USER:-}"
+  [[ -n "$setup_user" ]] || {
+    printf 'Could not determine the musician account; permissions were not changed.\n' >&2
+    return 1
+  }
+  sudo "$TUNE_TOOL" permissions-install "$setup_user"
+  PERMISSIONS_INSTALLED=true
 }
 
 unit_load_state() {
@@ -427,7 +489,7 @@ configure_exclusive_midi_services() {
     'double notes, bypass SHR pickup/routing, and send MIDI to unintended devices.' \
     'The recommended cleanup masks only fluidsynth.service and amidiminder.service.' \
     'It keeps the FluidSynth program available for SHR to start and stop on demand.'
-  if ! ask_yes_no 'Disable these conflicting background services now?' yes; then
+  if ! ask_yes_no 'Disable these conflicting background services now?' no; then
     printf '%s\n' \
       'WARNING: automatic FluidSynth/MIDI services remain available outside SHR.' \
       'Do not connect the controller to the same instrument through another router.' >&2
@@ -575,6 +637,8 @@ printf 'SHR-DAW hardware setup\n'
 printf 'No audio server, synth engine, or audible test will be started.\n'
 printf 'Starter loops: %s\n' "$LOOP_INBOX"
 
+configure_realtime_permissions
+setup_phase_done
 configure_exclusive_midi_services
 setup_phase_done
 choose_note_names
@@ -582,7 +646,36 @@ setup_phase_done
 
 sample_rate=48000
 mapfile -t cards < <(alsa_cards)
-if ((${#cards[@]})) && ask_yes_no 'Select the ALSA card JACK should use on its next start?' no; then
+jack_service_owner=''
+jack_process_count=0
+if command -v systemctl >/dev/null 2>&1; then
+  jack_service_owner="$(
+    systemctl show jack.service --property=FragmentPath --value 2>/dev/null || true
+  )"
+fi
+if command -v pgrep >/dev/null 2>&1; then
+  jack_process_count="$(pgrep -xc jackd 2>/dev/null || true)"
+  [[ "$jack_process_count" =~ ^[0-9]+$ ]] || jack_process_count=0
+fi
+if [[ -n "$jack_service_owner" ]]; then
+  printf '\nJACK service ownership\n'
+  printf 'Retaining the existing shared JACK service owned by %s.\n' "$jack_service_owner"
+  if [[ "$(platform_kind 2>/dev/null || true)" == patchbox ]]; then
+    printf '%s\n' \
+      'Patchbox owns /etc/jackdrc and its boot lifecycle; use patchbox-config for' \
+      'device/timing changes. SHR setup will not create a competing JACK owner.'
+  else
+    printf '%s\n' \
+      'SHR setup will not replace an administrator/distribution JACK service.' \
+      'Inspect its command and lifecycle before changing device or timing values.'
+  fi
+elif ((jack_process_count > 0)); then
+  printf '\nJACK process ownership\n'
+  printf '%s\n' \
+    "Detected $jack_process_count live jackd process(es) without a jack.service owner." \
+    'SHR setup will not write another JACK launch command. Identify and retain or' \
+    'stop the current owner yourself at an explicit safe point, then rerun setup.'
+elif ((${#cards[@]})) && ask_yes_no 'Select the ALSA card JACK should use on its next explicit start?' no; then
   choose_value 'JACK audio interface' no "${cards[@]}"
   card="${CHOSEN%% (*}"
   [[ "$card" =~ ^[A-Za-z0-9_-]+$ ]] || {
@@ -610,7 +703,7 @@ if ((${#cards[@]})) && ask_yes_no 'Select the ALSA card JACK should use on its n
   printf 'jackd -R -d alsa -d hw:%s -r %s -p %s -n %s\n' \
     "$card" "$sample_rate" "$period_size" "$periods" >"$HOME/.jackdrc"
   JACKDRC_WRITTEN=true
-  printf 'Wrote %s; restart JACK yourself when it is safe to do so.\n' "$HOME/.jackdrc"
+  printf 'Wrote %s; start or restart JACK yourself only when it is safe.\n' "$HOME/.jackdrc"
 fi
 setup_phase_done
 
@@ -803,15 +896,11 @@ fi
 setup_phase_done
 
 cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '0')"
-TUNE_TOOL=''
-if command -v shr-audio-tune >/dev/null 2>&1; then
-  TUNE_TOOL="$(command -v shr-audio-tune)"
-elif [[ -x "$ROOT/scripts/audio-performance.sh" ]]; then
-  TUNE_TOOL="$ROOT/scripts/audio-performance.sh"
-fi
 if [[ "$cpu_count" =~ ^[0-9]+$ ]] && ((cpu_count >= 4)) && [[ -n "$TUNE_TOOL" ]]; then
-  if ask_yes_no 'Reserve one CPU for real-time audio (sudo and reboot required)?' no; then
-    default_cpu=$((cpu_count - 1))
+  default_cpu=$((cpu_count - 1))
+  printf '\nReviewed dedicated audio CPU option\n'
+  "$TUNE_TOOL" plan "$default_cpu"
+  if ask_yes_no 'Apply this optional CPU/IRQ/governor profile (sudo and reboot required)?' no; then
     read -r -p "Zero-based audio CPU [$default_cpu]: " audio_cpu
     audio_cpu="${audio_cpu:-$default_cpu}"
     if [[ ! "$audio_cpu" =~ ^[0-9]+$ ]] || ((audio_cpu >= cpu_count)); then
@@ -834,6 +923,20 @@ printf '\nConfiguration complete.\n'
 printf '  Runtime:    %s\n' "$RUNTIME_CONFIG"
 printf '  Controller: %s\n' "$CONTROLLER_CONFIG"
 printf '  Backups:    *.bak-%s\n' "$STAMP"
-printf '%s\n' "Run \`shr doctor\` after JACK is running, then edit either file for any finer routing."
+printf '\nNext actions\n'
+if $PERMISSIONS_INSTALLED; then
+  printf '  Log out and back in to activate the new rtprio/memlock limits.\n'
+fi
+if $TUNING_INSTALLED; then
+  printf '  Reboot when convenient to activate CPU isolation and the governor service.\n'
+fi
+if [[ -n "$jack_service_owner" ]]; then
+  printf '  Existing JACK lifecycle retained; setup did not start or restart it.\n'
+elif $JACKDRC_WRITTEN; then
+  printf '  The new .jackdrc applies on the next explicit JACK start; setup did not start it.\n'
+else
+  printf '  JACK configuration/lifecycle was left unchanged.\n'
+fi
+printf '%s\n' "  Run \`shr doctor\`; edit either config file only for finer routing."
 print_setup_progress
 SETUP_FINISHED=true

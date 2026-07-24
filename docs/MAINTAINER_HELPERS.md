@@ -18,8 +18,8 @@ assumptions.
 | `setup-local.sh` | Configure this checkout inside ignored private storage | Writes below `user/` by default; may run the interactive hardware wizard |
 | `local.sh` | Run the checkout without using normal home-directory state | Writes runtime data below `user/` by default |
 | `setup.sh` / installed `shr-setup` | Seed loops/demos and configure display/MIDI/JACK choices | Backs up and rewrites owned configuration; optionally masks two conflicting auto-services, downloads private loops, writes `~/.jackdrc`, and installs CPU tuning after confirmation |
-| `install.sh` | Install dependencies and SHR-DAW on Debian/Raspberry Pi OS | May use `sudo apt-get --no-install-recommends`, rustup, `sudo make install-files`, and the setup wizard |
-| `audio-performance.sh` / installed `shr-audio-tune` | Reversibly reserve one CPU for audio | Manages specific boot, systemd, governor, and JACK-affinity settings; requires reboot for isolation |
+| `install.sh` | Install dependencies and SHR-DAW on Debian/Raspberry Pi OS | With grouped consent, may use `sudo apt-get --no-install-recommends`, mask one user service, install owned RT policy, run rustup, `sudo make install-files`, and open setup |
+| `audio-performance.sh` / installed `shr-audio-tune` | Diagnose audio policy and reversibly manage RT permissions or one audio CPU | Read-only plan/status/doctor plus owned limits/group, boot, systemd, governor, and JACK-affinity settings; CPU isolation requires reboot |
 | `render-readme-screenshots.py` | Regenerate or validate real TUI documentation images | Writes tracked PNGs below `docs/images/` only |
 | `generate_cleared_presets.sh` | Reproduce the authored public synthv1 bank | Creates named preset files only when they do not already exist |
 | `generate_demo_songs.py` | Reproduce or validate cleared public-domain demos | `--write` replaces only tracked demo outputs; normal mode is read-only and rejects changes/extras |
@@ -202,29 +202,34 @@ attempt a blanket rollback across those ownership domains.
 Before changing configuration, the wizard creates unique timestamped backups of
 both `shsynth.conf` and `controller.conf`. It then:
 
-1. when present and not already masked, offers the recommended exclusive-MIDI
+1. detects live RT limits and offers owned `audio`-group/PAM policy repair,
+   defaulting to no and requiring logout/login when accepted;
+2. when present and not already masked, offers the recommended exclusive-MIDI
    cleanup for exactly the per-user `fluidsynth.service` and system
-   `amidiminder.service`;
-2. asks whether note names use English `B` or German `H`/`B` spelling;
-3. optionally selects an ALSA interface and writes a backed-up `~/.jackdrc` for
-   the user's next manual JACK restart;
-4. selects the controller input, chooses combined or control-only behavior,
+   `amidiminder.service`, also defaulting to no;
+3. asks whether note names use English `B` or German `H`/`B` spelling;
+4. retains an existing Patchbox/administrator JACK service owner or a live
+   ownerless `jackd` process; only when neither exists can it select an ALSA
+   interface and write a backed-up `~/.jackdrc` for the user's next explicit
+   JACK start;
+5. selects the controller input, chooses combined or control-only behavior,
    then selects zero or more independent performance inputs; controller-only,
    keyboard-only, combined, and separate-device setups are all explicit;
-5. writes the controller exact match to runtime/controller configuration and
+6. writes the controller exact match to runtime/controller configuration and
    repeated performance matches only to runtime configuration, then runs
    non-audible `shr pads auto`, optionally followed by `shr pads learn` if
    no reviewed profile matches;
-6. discovers physical JACK playback ports, writes the same preferred stereo
+7. discovers physical JACK playback ports, writes the same preferred stereo
    pair for synth and loop playback, then optionally records a named internal
    fallback and a distinct final analogue-headphone fallback;
-7. optionally downloads four MusicRadar 80s drum beats, converts them to the
+8. optionally downloads four MusicRadar 80s drum beats, converts them to the
    chosen WAV rate with SoX, and records their source/redistribution terms;
-8. optionally configures a distinct stereo capture pair and label;
-9. optionally configures an external MIDI destination and data-driven device
+9. optionally configures a distinct stereo capture pair and label;
+10. optionally configures an external MIDI destination and data-driven device
    profile;
-10. on systems with at least four CPUs, optionally invokes `shr-audio-tune` and
-   records the selected engine CPU.
+11. on systems with at least four CPUs, prints `shr-audio-tune plan`, then
+    optionally invokes it and records the selected engine CPU. The prompt
+    defaults to no.
 
 ### Design decisions
 
@@ -239,10 +244,13 @@ both `shsynth.conf` and `controller.conf`. It then:
   half-written configuration.
 - Values containing newline or carriage-return characters are rejected, and
   capture labels also reject the field separator `|`.
-- The wizard may write `~/.jackdrc` only after an explicit opt-in and backup.
+- The wizard may write `~/.jackdrc` only after an explicit opt-in and backup,
+  and only when no system JACK service already owns lifecycle. Patchbox's
+  shared service and `/etc/jackdrc` remain Patchbox-owned.
   It never starts or restarts JACK because doing that during a live session can
   interrupt or produce audible output.
-- The exclusive-routing prompt defaults to yes but remains explicit because
+- Every system-changing prompt defaults to no. The exclusive-routing prompt
+  remains explicit because
   `amidiminder` is a system-wide service that another application might use.
   It stops and persistently masks only `fluidsynth.service` and
   `amidiminder.service`, verifies both masks, and leaves packages, SoundFonts,
@@ -272,6 +280,8 @@ both `shsynth.conf` and `controller.conf`. It then:
 ./scripts/install.sh
 ./scripts/install.sh --no-deps
 ./scripts/install.sh --no-config
+./scripts/install.sh --plan
+./scripts/install.sh --yes
 ./scripts/install.sh --no-deps --no-config
 ```
 
@@ -279,13 +289,21 @@ Options:
 
 - `--no-deps` skips `apt-get update` and dependency installation.
 - `--no-config` skips the final interactive `shr-setup` run.
+- `--plan` performs prerequisite checks and exits before builds or changes.
+- `--yes` is explicit non-interactive consent for the package/service and
+  real-time-policy groups; without it a non-terminal changing run stops.
 - `-h`, `--help` prints usage.
+
+The installer rejects root invocation: it must run as the musician account and
+uses `sudo` only for named system changes. It verifies `apt-get` and `sudo`
+before the first dependency mutation.
 
 With dependencies enabled, it requires a Debian-style `apt-get` system and uses
 `sudo` with `--no-install-recommends` to install the build toolchain, ALSA/JACK
 utilities and headers, SoX and unzip for optional loop installation, Python 3
-for demo validation/seeding, the three supported software instruments, and
-their explicitly named packaged data. Avoiding recommendations is deliberate:
+for demo validation/seeding, ripgrep for helper policy/config inspection, the
+three supported software instruments, and their explicitly named packaged
+data. Avoiding recommendations is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
 smaller TimGM bank. It requires
@@ -296,9 +314,17 @@ It then runs locked tests, creates a locked release build, installs the files
 with `sudo make install-files`, and normally opens `shr-setup`.
 
 Before its first package or service mutation, the installer prints the enabled
-package, per-user FluidSynth mask, Rust, test/build, install, and setup phases.
-It explains the exact FluidSynth service consequence before masking rather
-than after the action.
+package, per-user FluidSynth mask, Rust, test/build, install, and setup phases,
+then gathers grouped consent. After packages, it separately offers missing
+real-time audio policy, defaulting to no; accepting records owned group/limits
+state and explains the required logout/login. It explains the exact FluidSynth
+service consequence before masking rather than after the action.
+
+If a later command fails after system mutation began, the exit report names
+`sudo dpkg --configure -a` for an interrupted package transaction, the
+idempotent installer rerun, the exact optional FluidSynth unmask, and
+`shr-audio-tune recover` for a pending permissions transaction. It does not
+pretend `apt` can be atomically rolled back with SHR-owned files.
 
 That is the install helper's production behavior, not the normal development
 validation policy. While the combined build-and-test gate in `AGENTS.md` is
@@ -313,11 +339,11 @@ test/build. Dependencies are installed rather than quietly skipping parts of
 the application. `--no-deps` and `--no-config` exist for maintainers and package
 builders who have already satisfied those responsibilities.
 
-Immediately after dependency installation, the installer reloads the current
-user manager, stops and masks the exact package-enabled `fluidsynth.service`,
-and verifies the persistent mask. This is not optional because an unowned
-FluidSynth can load a large bank, open audio and MIDI devices, and layer with
-SHR. The mask does not prevent direct execution of the FluidSynth binary.
+After explicit package/service consent, the installer reloads the current user
+manager, stops and masks the exact package-enabled `fluidsynth.service`, and
+verifies the persistent mask. An unowned FluidSynth can load a large bank, open
+audio and MIDI devices, and layer with SHR. The mask does not prevent direct
+execution of the FluidSynth binary.
 
 The installer does not start JACK or a synth. The normal interactive setup that
 follows detects and offers to mask `amidiminder` before hardware routing. A
@@ -332,18 +358,34 @@ MIDI auto-patching policy separately.
 ```sh
 sudo shr-audio-tune install
 sudo shr-audio-tune install 3
+shr-audio-tune plan 3
 shr-audio-tune status
+shr-audio-tune doctor 3
+sudo shr-audio-tune recover
 sudo shr-audio-tune remove
+sudo shr-audio-tune permissions-install USER
+sudo shr-audio-tune permissions-remove
 ```
 
 Commands:
 
+- `plan [CPU]` previews detected platform, topology, kernel support, exact
+  boot tokens, lifecycle and tradeoff without changing state.
 - `install [CPU]` reserves the zero-based CPU; the default is the highest
   online CPU.
-- `status` reports the managed CPU, whether reboot-time isolation is active,
-  current readable governors, and JACK's affinity drop-in.
+- `status` reports configured intent, kernel feature support, live isolation,
+  governors, RT policy, JACK ownership/lifecycle, and rollback availability.
+- `doctor [CPU|none]` emits actionable configured-versus-live states and
+  returns failure only for partial, stale, conflicting, duplicate, unsupported,
+  interrupted, reboot-required, or live-mismatch conditions.
+- `recover` restores hash-matching pre-transaction group/limits state after an
+  interrupted permission change and command-line/files after an interrupted
+  CPU install.
 - `remove` reverses only the settings installed by this helper and keeps the
   original boot-command-line backup.
+- `permissions-install USER` and `permissions-remove` manage only missing
+  `audio`-group/limits state, guarded by pre/post hashes so later administrator
+  edits remain untouched.
 - `runtime-start` and `runtime-stop` are internal systemd-service entry points,
   not normal maintainer commands.
 
@@ -357,13 +399,13 @@ Environment:
 ### Managed state
 
 Installation requires at least four online CPUs and refuses non-contiguous or
-unusual online-CPU layouts instead of inventing a mask. It records ownership
-beneath `/var/lib/shr-audio-tune/`, backs up the Raspberry Pi boot command line,
-and manages only:
+unusual online-CPU layouts instead of inventing a mask. It records a versioned
+manifest and recoverable transaction beneath `/var/lib/shr-audio-tune/`, backs
+up the one detected Raspberry Pi boot command line, and manages only:
 
 - `isolcpus=domain,managed_irq,<CPU>`;
-- `nohz_full=<CPU>`;
-- `rcu_nocbs=<CPU>`;
+- `nohz_full=<CPU>` only with `CONFIG_NO_HZ_FULL=y`;
+- `rcu_nocbs=<CPU>` only with `CONFIG_RCU_NOCB_CPU=y`;
 - `irqaffinity=<housekeeping CPUs>`;
 - `/etc/systemd/system/jack.service.d/90-shr-audio-cpu.conf`;
 - `/etc/systemd/system/shr-audio-performance.service`;
@@ -371,6 +413,7 @@ and manages only:
 
 The runtime service records each existing CPU governor before selecting
 `performance` where supported, then restores the recorded values when stopped.
+Installation enables the service for the next boot but does not start it live.
 The JACK drop-in applies the audio CPU affinity, real-time priority limit, and
 unlimited memory lock on JACK's next start.
 
@@ -379,8 +422,13 @@ unlimited memory lock on JACK's next start.
 - Pre-existing kernel keys or managed-path collisions are refused unless this
   helper already owns the installation.
 - A different already-installed CPU must be removed before changing CPUs.
-- `remove` deletes only exact tokens and files owned by this helper; it does not
-  restore an entire possibly-stale command line over later administrator work.
+- Installation stages ownership and pre-images before mutation. An ordinary
+  failure rolls back immediately; a killed/interrupted operation leaves the
+  exact `recover` path. Real-time permissions use the same pre-image and
+  later-admin-edit protection. Repeated same-CPU install converges.
+- `remove` deletes only exact tokens and unchanged hashes owned by this helper;
+  it does not restore an entire possibly-stale command line over later
+  administrator work or remove later edits.
 - The untouched original command line remains as a recovery artifact.
 - Installation and removal never start or restart JACK. Kernel isolation waits
   for an explicit reboot, and the JACK drop-in waits for the user's next safe
@@ -588,6 +636,9 @@ Match validation to the helper's effects:
 - Installer, setup, runtime, Makefile, Rust fixture, Cargo, or application
   behavior: follow the fast debug validation policy in `AGENTS.md`; run full
   tests, warning-denied Clippy, and release validation only on explicit request.
+- Audio host policy: run `scripts/test-audio-performance.sh`. Its isolated roots
+  mock boot, proc, sysfs and systemd state; it must never call a real service or
+  hardware operation.
 - Install layout: use a validated explicit `DESTDIR` fixture and confirm the
   nested manual chapters/images and cleared-only preset bank.
 

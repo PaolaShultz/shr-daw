@@ -208,9 +208,15 @@ TUI, MIDI routing, or recording disk writer.
 Do not set this key by itself and assume the CPU is reserved: ordinary kernel
 and user work can still run there. On supported Raspberry Pi installations,
 use `sudo shr-audio-tune install CPU` or the opt-in setup-wizard step. That tool
-backs up the boot command line, configures JACK affinity and the performance
-governor, and provides a matching `remove` operation. It never starts or
-restarts JACK. Reboot after installing or removing the isolation settings.
+records and backs up the boot command line, configures JACK affinity and the
+performance governor, and provides matching `recover` and `remove` operations.
+It applies full-tickless and RCU-offload boot keys only when the running
+kernel's build configuration supports them. It never starts or restarts JACK.
+Reboot after installing or removing the isolation settings. Use
+`shr-audio-tune doctor CPU` to compare recorded intent, persistent files, and
+live kernel/service state; a matching line in a file alone is not proof that a
+setting is active. See
+[Raspberry Pi audio-system optimization](AUDIO_SYSTEM_OPTIMIZATION.md).
 
 ## Owned audio graph
 
