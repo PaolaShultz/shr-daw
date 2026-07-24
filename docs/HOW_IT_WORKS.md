@@ -169,7 +169,7 @@ SHR-DAW uses “record” for three intentionally different jobs:
 
 1. An **Idea** captures free-time MIDI while playing a managed sound. It keeps
    event timing and instrument identity; synthv1 Ideas also keep a private
-   preset snapshot and the mapped control values. `TAKE` plays that MIDI back
+   preset snapshot and the mapped control values. `PLAY` plays that MIDI back
    through the restored instrument. An Idea is not audio.
 2. FT2 **REC** captures notes into the current Pattern grid. It quantizes them
    to rows, writes only the visible page's four lanes, loops that Pattern, and
@@ -279,8 +279,10 @@ duplicating generic live thru.
 
 Pattern Setup offers musically convenient fixed shapes: 4/4 Patterns of
 8/16/32/64/128 rows and corresponding 3/4 Patterns of 6/12/24/48/96 rows.
-`CONFIRM` applies a new/destructive shape; `KEEP` clears while retaining the
-current shape. The interactive length chooser exposes every size from 1 through
+`CONFIRM` performs NEW or CLEAR with the newly selected shape. `KEEP` performs
+the same requested operation while retaining the current Pattern's shape:
+NEW creates a blank Pattern with that meter/length, and CLEAR removes content
+without reshaping. The interactive length chooser exposes every size from 1 through
 32 rows, plus 48, 64, 96, 128, 192, and 256 rows. Groove timing remains planned
 work rather than a current menu promise.
 
@@ -437,9 +439,14 @@ looping, and stop. The loop receives only its bus level/mute, then shares the
 master, limiter, final meter, recorder, and playback with the other sources.
 Project `REMOVE` detaches the loop and unloads the owned JACK client while
 keeping the private WAV. `LIBRARY` opens the shared overlay over the Loop
-Player and browses both inbox and private files: inbox selection imports and
-loads, while private/current/saved selection attaches and loads. It does not
-delete files. The loop screen distinguishes `READY`, `NOT READY`, and `OUTPUT
+Player and browses both inbox and private files without auto-preview.
+Controller PLAY explicitly previews the selection. Changing selection, STOP,
+Back, closing/leaving the browser, or leaving Loop Player stops preview.
+Activating an inbox entry imports and loads it; activating a
+private/current/saved entry attaches and loads it. Failed preview/import keeps
+the caller and selection for retry, and import failure rolls back its private
+copy and Project attachment. It does not delete existing library files. The
+loop screen distinguishes `READY`, `NOT READY`, and `OUTPUT
 FAULT`; a valid decoded region keeps its white position bar and green playhead
 visible even when output activation fails.
 

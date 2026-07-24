@@ -396,6 +396,14 @@ enum EngineOwner {
     Tracker(SoftwareRoute),
 }
 
+#[derive(Clone)]
+struct EngineSession {
+    preset: Preset,
+    owner: EngineOwner,
+    values: HashMap<u8, f32>,
+    original_values: HashMap<u8, f32>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TrackerEntryInstrument {
     ExistingProject,
@@ -408,6 +416,14 @@ enum IdeaMode {
     #[default]
     Play,
     Record,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RecordingOwner {
+    Idea,
+    Tracker,
+    Multitrack,
+    Final,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -502,6 +518,8 @@ struct App {
     engine_state: PathBuf,
     #[cfg(test)]
     tracker_engine_start_override: Option<std::result::Result<(), String>>,
+    #[cfg(test)]
+    engine_start_script: std::collections::VecDeque<std::result::Result<(), String>>,
     playing: Option<Preset>,
     values: HashMap<u8, f32>,
     original_values: HashMap<u8, f32>,
@@ -522,6 +540,8 @@ struct App {
     help_selected: usize,
     help_offset: usize,
     help_previous: Screen,
+    help_previous_menu_page: usize,
+    help_previous_page_select_mode: bool,
     web_help: Option<help::WebHelpServer>,
     web_help_status: String,
     web_help_enabled: bool,
@@ -592,6 +612,14 @@ struct App {
     loop_player: crate::loop_player::LoopPlayer,
     loop_imports: Vec<PathBuf>,
     loop_selected: usize,
+    loop_previewing: bool,
+    loop_preview_selection: Option<usize>,
+    #[cfg(test)]
+    loop_preview_load_override: Option<std::result::Result<(), String>>,
+    #[cfg(test)]
+    loop_runtime_load_override: Option<std::result::Result<(), String>>,
+    #[cfg(test)]
+    loop_library_directory_override: Option<PathBuf>,
     loop_edit_bars: bool,
     pattern_clipboard: Option<sequencer::Pattern>,
     lane_clipboard: Option<LaneClipboard>,
@@ -1194,6 +1222,8 @@ impl App {
             engine_state,
             #[cfg(test)]
             tracker_engine_start_override: Some(Ok(())),
+            #[cfg(test)]
+            engine_start_script: std::collections::VecDeque::new(),
             playing: None,
             values: HashMap::new(),
             original_values: HashMap::new(),
@@ -1214,6 +1244,8 @@ impl App {
             help_selected: 0,
             help_offset: 0,
             help_previous: Screen::Home,
+            help_previous_menu_page: 0,
+            help_previous_page_select_mode: false,
             web_help: None,
             web_help_status: String::new(),
             web_help_enabled: true,
@@ -1284,6 +1316,14 @@ impl App {
             loop_player,
             loop_imports,
             loop_selected: 0,
+            loop_previewing: false,
+            loop_preview_selection: None,
+            #[cfg(test)]
+            loop_preview_load_override: None,
+            #[cfg(test)]
+            loop_runtime_load_override: None,
+            #[cfg(test)]
+            loop_library_directory_override: None,
             loop_edit_bars: false,
             pattern_clipboard: None,
             lane_clipboard: None,
@@ -1894,11 +1934,16 @@ impl App {
                 self.config = old_config;
                 self.refresh_routing_discovery();
                 self.status = match stage {
-                    RoutingTransactionStage::Save => format!("Routing save failed · {error:#}"),
+                    RoutingTransactionStage::Save => {
+                        format!("Routing save failed · draft retained · {error:#}")
+                    }
                     RoutingTransactionStage::Activate => {
-                        format!("Routing activation failed · rolled back · {error:#}")
+                        format!(
+                            "Routing activation failed · runtime rolled back · draft retained · {error:#}"
+                        )
                     }
                 };
+                self.routing.draft = Some(draft);
             }
         }
     }
@@ -2148,6 +2193,13 @@ impl App {
     }
 
     fn close_overlay(&mut self, cancelled: bool) {
+        if self
+            .overlay
+            .as_ref()
+            .is_some_and(|overlay| overlay.kind == OverlayKind::LoopLibrary)
+        {
+            self.stop_loop_preview(false);
+        }
         let Some(overlay) = self.overlay.take() else {
             return;
         };
@@ -2181,6 +2233,14 @@ impl App {
     }
 
     fn move_overlay(&mut self, direction: i8) {
+        if direction != 0
+            && self
+                .overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.kind == OverlayKind::LoopLibrary)
+        {
+            self.stop_loop_preview(false);
+        }
         let active = self
             .overlay
             .as_ref()
@@ -2498,11 +2558,7 @@ impl App {
                     self.status = "FT2 tools · loop, FX, clipboard, and mute".into();
                 } else {
                     self.close_overlay(false);
-                    if let Some(bpm) = self.tap.tap(Instant::now()) {
-                        self.set_tracker_tempo(bpm.round().clamp(20.0, 300.0) as u16);
-                    } else {
-                        self.status = "tap again to set the Pattern tempo".into();
-                    }
+                    self.tap_tracker_tempo();
                 }
             }
             OverlayKind::TrackerRoute => {
@@ -2536,13 +2592,20 @@ impl App {
                 self.status = format!("EDIT ADD {} row(s)", self.tracker_advance);
             }
             OverlayKind::LoopLibrary => {
-                self.tracker_stop();
-                self.close_overlay(false);
+                self.stop_loop_preview(false);
                 if selection < self.loop_imports.len() {
                     self.loop_selected = selection;
-                    self.import_selected_loop();
+                    if self.import_selected_loop() {
+                        let status = self.status.clone();
+                        self.close_overlay(false);
+                        self.status = status;
+                    }
                 } else {
-                    self.select_loop_library_entry(selection - self.loop_imports.len());
+                    if self.select_loop_library_entry(selection - self.loop_imports.len()) {
+                        let status = self.status.clone();
+                        self.close_overlay(false);
+                        self.status = status;
+                    }
                 }
             }
             OverlayKind::MixEffects => {
@@ -2572,6 +2635,18 @@ impl App {
         }
         let previous_tracker = self.screen_keeps_tracker_workspace_active(previous);
         let next_tracker = self.screen_keeps_tracker_workspace_active(screen);
+        let leaving_loop_player = previous == Screen::TrackerLoop
+            && !matches!(screen, Screen::TrackerLoop | Screen::Help);
+        let leaving_ft2_loop_context = previous_tracker
+            && !next_tracker
+            && (self.loop_previewing || self.loop_player.status().playing);
+        if leaving_loop_player || leaving_ft2_loop_context {
+            if self.loop_previewing {
+                self.stop_loop_preview(false);
+            } else {
+                self.tracker_stop();
+            }
+        }
         if self.screen != screen {
             if self.screen == Screen::TrackerFiles && self.song_previewing {
                 self.stop_song_preview();
@@ -2760,40 +2835,39 @@ impl App {
             return true;
         }
         let Some(preset) = self.preset_for_route(route) else {
-            self.unload_owned_engine(|owner| matches!(owner, EngineOwner::Tracker(_)));
             self.status = format!(
-                "FT2 instrument missing · {} · {}",
+                "FT2 instrument missing · {} · {} · previous engine retained",
                 route.engine.label(),
                 route.instrument
             );
             return false;
         };
         self.release_tracker_audition();
-        if let Some(engine) = self.engine.as_ref() {
-            engine.panic();
-        }
-        self.engine.take();
-        self.engine_owner = None;
-        self.playing = None;
-        match self.start_tracker_engine_process(&preset) {
-            Ok(mut engine) => {
-                engine.bind_midi_lifecycle(self.midi_lifecycle.clone());
-                self.engine = Some(engine);
-                self.engine_owner = Some(EngineOwner::Tracker(route.clone()));
-                self.playing = Some(preset);
-                if let Ok(mut backend) = self.midi_backend.lock() {
-                    *backend = route.engine;
-                }
-                true
-            }
+        let state = self.engine_state.clone();
+        match self.replace_engine_process(&preset, EngineOwner::Tracker(route.clone()), &state) {
+            Ok(_) => true,
             Err(error) => {
-                self.status = format!("FT2 SYNTH START FAILED: {error:#}");
+                self.status = format!("FT2 SYNTH START FAILED: {error}");
                 false
             }
         }
     }
 
-    fn start_tracker_engine_process(&self, preset: &Preset) -> Result<Engine> {
+    fn engine_session(&self) -> Option<EngineSession> {
+        Some(EngineSession {
+            preset: self.playing.clone()?,
+            owner: self.engine_owner.clone()?,
+            values: self.values.clone(),
+            original_values: self.original_values.clone(),
+        })
+    }
+
+    fn start_engine_process(&mut self, preset: &Preset, state: &Path) -> Result<Engine> {
+        #[cfg(test)]
+        if let Some(result) = self.engine_start_script.pop_front() {
+            result.map_err(anyhow::Error::msg)?;
+            return Engine::start_test_process(preset.backend, Arc::clone(&self.midi_output));
+        }
         #[cfg(test)]
         if let Some(result) = self.tracker_engine_start_override.as_ref() {
             result.clone().map_err(anyhow::Error::msg)?;
@@ -2801,7 +2875,7 @@ impl App {
         }
         Engine::start_with_routing(
             preset,
-            &self.engine_state,
+            state,
             Arc::clone(&self.midi_output),
             &self.config,
             &self.song.insert_rack,
@@ -2809,35 +2883,151 @@ impl App {
         )
     }
 
+    fn install_engine_session(&mut self, mut engine: Engine, session: EngineSession) {
+        engine.bind_midi_lifecycle(self.midi_lifecycle.clone());
+        let _ = engine.set_mapped_parameters(&session.values);
+        if let Ok(mut backend) = self.midi_backend.lock() {
+            *backend = session.preset.backend;
+        }
+        self.engine = Some(engine);
+        self.engine_owner = Some(session.owner);
+        self.playing = Some(session.preset);
+        self.values = session.values;
+        self.original_values = session.original_values;
+        self.arm_pickup();
+    }
+
+    fn replace_engine_process(
+        &mut self,
+        preset: &Preset,
+        owner: EngineOwner,
+        state: &Path,
+    ) -> std::result::Result<Option<String>, String> {
+        #[cfg(not(test))]
+        engine::validate_start(preset, state, &self.config)
+            .map_err(|error| format!("precheck failed: {error:#}"))?;
+        #[cfg(test)]
+        if self.tracker_engine_start_override.is_none() {
+            engine::validate_start(preset, state, &self.config)
+                .map_err(|error| format!("precheck failed: {error:#}"))?;
+        }
+        let previous = self.engine_session();
+        if let Some(engine) = self.engine.as_mut() {
+            if engine.final_recording_active() {
+                let _ = engine.stop_final_recording();
+                if let Some(status) = engine.final_recording_status() {
+                    self.final_recording_last = status;
+                }
+            }
+            engine.panic();
+        }
+        drop(self.engine.take());
+        self.engine_owner = None;
+        self.playing = None;
+        match self.start_engine_process(preset, state) {
+            Ok(mut engine) => {
+                engine.bind_midi_lifecycle(self.midi_lifecycle.clone());
+                let audio_route = engine.audio_route_status();
+                self.audio_fallback = audio_route
+                    .as_ref()
+                    .filter(|route| route.contains("fallback") || route.contains("unavailable"))
+                    .cloned();
+                if let Ok(mut backend) = self.midi_backend.lock() {
+                    *backend = preset.backend;
+                }
+                self.engine = Some(engine);
+                self.engine_owner = Some(owner);
+                self.playing = Some(preset.clone());
+                Ok(audio_route)
+            }
+            Err(start_error) => {
+                let restoration = previous.and_then(|session| {
+                    let old_preset = session.preset.clone();
+                    match self.start_engine_process(&old_preset, state) {
+                        Ok(engine) => {
+                            self.install_engine_session(engine, session);
+                            Some("previous engine restored".to_string())
+                        }
+                        Err(error) => Some(format!("previous engine restore failed: {error:#}")),
+                    }
+                });
+                if self.engine.is_none() {
+                    self.performance_meter
+                        .set_audio_unavailable(AudioAvailability::Stopped);
+                }
+                Err(match restoration {
+                    Some(restoration) => format!("{start_error:#} · {restoration}"),
+                    None => format!("{start_error:#} · no previous engine"),
+                })
+            }
+        }
+    }
+
+    fn recover_failed_in_place_load(&mut self, state: &Path) -> String {
+        let Some(previous) = self.engine_session() else {
+            return "no previous engine was available".into();
+        };
+        match self.replace_engine_process(&previous.preset, previous.owner.clone(), state) {
+            Ok(_) => {
+                if let Some(engine) = self.engine.as_ref() {
+                    let _ = engine.set_mapped_parameters(&previous.values);
+                }
+                self.playing = Some(previous.preset);
+                self.engine_owner = Some(previous.owner);
+                self.values = previous.values;
+                self.original_values = previous.original_values;
+                self.arm_pickup();
+                "previous engine restored".into()
+            }
+            Err(error) => format!("previous engine restore failed: {error}"),
+        }
+    }
+
     fn prepare_confirmation_action(&mut self, action: Action) {
-        let loading_selected_idea = action == Action::LoadIdea
-            || (action == Action::Activate && self.screen == Screen::Ideas);
+        let loading_selected_idea = action == Action::LoadIdea;
+        let mut cleared = false;
         if !loading_selected_idea {
+            cleared |= self.confirm_load.is_some();
             self.confirm_load = None;
         }
         if action != Action::DeleteIdea {
+            cleared |= self.confirm_delete.is_some();
             self.confirm_delete = None;
         }
         if action != Action::SaveSong {
+            cleared |= self.confirm_song_save.is_some();
             self.confirm_song_save = None;
         }
         if action != Action::DeleteSong {
+            cleared |= self.confirm_song_delete.is_some();
             self.confirm_song_delete = None;
         }
         if action != Action::PastePatternOver {
+            cleared |= self.confirm_pattern_paste_over.is_some();
             self.confirm_pattern_paste_over = None;
         }
         if action != Action::DeleteUnusedPattern {
+            cleared |= self.confirm_pattern_delete.is_some();
             self.confirm_pattern_delete = None;
         }
         if action != Action::DeleteDrumPattern {
+            cleared |= self.confirm_drum_pattern_delete.is_some();
             self.confirm_drum_pattern_delete = None;
         }
         if action != Action::NewProject {
+            cleared |= self.confirm_new_project;
             self.confirm_new_project = false;
         }
         if action != Action::LoopRemove {
+            cleared |= self.confirm_loop_remove;
             self.confirm_loop_remove = false;
+        }
+        if cleared
+            && (self.status.to_ascii_lowercase().contains("confirm")
+                || self.status.to_ascii_lowercase().contains("press again")
+                || self.status.contains("SAVE again"))
+        {
+            self.status.clear();
         }
     }
 
@@ -2934,6 +3124,56 @@ impl App {
         }
         self.status = "recording playback stopped · all notes off".into();
     }
+
+    fn active_recording_owner(&self) -> Option<RecordingOwner> {
+        if self.tracker_recording.is_some() {
+            Some(RecordingOwner::Tracker)
+        } else if self.audio_recorder.status().recording {
+            Some(RecordingOwner::Multitrack)
+        } else if self.recorder.is_recording() {
+            Some(RecordingOwner::Idea)
+        } else if self
+            .engine
+            .as_ref()
+            .is_some_and(Engine::final_recording_active)
+        {
+            Some(RecordingOwner::Final)
+        } else {
+            None
+        }
+    }
+
+    fn finish_competing_recordings(&mut self, starting: RecordingOwner) {
+        if starting != RecordingOwner::Tracker {
+            self.finish_tracker_recording(false);
+        }
+        if starting != RecordingOwner::Multitrack && self.audio_recorder.status().recording {
+            let _ = self.audio_recorder.stop();
+        }
+        if starting != RecordingOwner::Idea {
+            self.stop_recording();
+        }
+        if starting != RecordingOwner::Final {
+            if let Some(engine) = self.engine.as_mut() {
+                if engine.final_recording_active() {
+                    let _ = engine.stop_final_recording();
+                    if let Some(status) = engine.final_recording_status() {
+                        self.final_recording_last = status;
+                    }
+                }
+            }
+        }
+    }
+
+    fn recording_status_message(&self) -> Option<&'static str> {
+        match self.active_recording_owner()? {
+            RecordingOwner::Idea => Some("IDEAS · MIDI recording"),
+            RecordingOwner::Tracker => Some("FT2 · pattern recording"),
+            RecordingOwner::Multitrack => Some("RECORDER · multitrack WAV recording"),
+            RecordingOwner::Final => Some("PERFORMANCE · final WAV recording"),
+        }
+    }
+
     fn stop_all(&mut self, state: &Path) {
         self.cancel_note_editor();
         self.cancel_tracker_gesture();
@@ -4842,6 +5082,7 @@ impl App {
             self.status = "REC unavailable · selected page target is offline".into();
             return;
         }
+        self.finish_competing_recordings(RecordingOwner::Tracker);
         self.cancel_note_editor();
         self.set_tracker_mode(TrackerMode::Play);
         let pattern = self.tracker_pattern_number();
@@ -5060,14 +5301,43 @@ impl App {
         self.load_loop_settings(self.song.audio_loop.clone())
     }
 
+    fn loop_library_directory(&self) -> PathBuf {
+        #[cfg(test)]
+        if let Some(path) = self.loop_library_directory_override.as_ref() {
+            return path.clone();
+        }
+        crate::loop_player::loops_dir()
+    }
+
+    fn load_loop_runtime(
+        &mut self,
+        decoded: crate::loop_player::DecodedLoop,
+        settings: &sequencer::LoopSettings,
+    ) -> Result<()> {
+        #[cfg(test)]
+        if let Some(result) = self.loop_runtime_load_override.as_ref() {
+            result.clone().map_err(anyhow::Error::msg)?;
+            self.loop_player
+                .set_preview_status(crate::loop_player::LoopStatus {
+                    loaded: true,
+                    file: Some(settings.file.clone()),
+                    source_rate: decoded.sample_rate,
+                    source_channels: decoded.channels,
+                    ..crate::loop_player::LoopStatus::default()
+                });
+            return Ok(());
+        }
+        self.loop_player.load(decoded, settings)
+    }
+
     fn load_loop_settings(&mut self, settings: Option<sequencer::LoopSettings>) -> bool {
         self.unload_loop_player();
         let Some(settings) = settings else {
             return false;
         };
-        let path = crate::loop_player::loops_dir().join(&settings.file);
+        let path = self.loop_library_directory().join(&settings.file);
         match crate::loop_player::DecodedLoop::open(&path)
-            .and_then(|decoded| self.loop_player.load(decoded, &settings))
+            .and_then(|decoded| self.load_loop_runtime(decoded, &settings))
         {
             Ok(()) => {
                 self.status = format!("loop ready · {}", settings.file);
@@ -5130,9 +5400,131 @@ impl App {
         self.open_overlay(Action::OpenLoopLibrary);
     }
 
+    fn tap_tracker_tempo(&mut self) {
+        if let Some(bpm) = self.tap.tap(Instant::now()) {
+            self.set_tracker_tempo(bpm.round().clamp(20.0, 300.0) as u16);
+        } else {
+            self.status = "tap again to set the Pattern tempo".into();
+        }
+    }
+
+    fn selected_loop_preview(&self) -> Option<(PathBuf, String)> {
+        let selection = self.overlay.as_ref()?.selection;
+        if let Some(path) = self.loop_imports.get(selection) {
+            let label = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("inbox loop")
+                .to_owned();
+            return Some((path.clone(), label));
+        }
+        let entry = self.loop_library.get(selection - self.loop_imports.len())?;
+        Some((
+            self.loop_library_directory().join(&entry.file),
+            entry.file.clone(),
+        ))
+    }
+
+    fn load_loop_preview_candidate(
+        &mut self,
+        decoded: crate::loop_player::DecodedLoop,
+        settings: &sequencer::LoopSettings,
+    ) -> Result<()> {
+        #[cfg(test)]
+        if let Some(result) = self.loop_preview_load_override.as_ref() {
+            result.clone().map_err(anyhow::Error::msg)?;
+            self.loop_player
+                .set_preview_status(crate::loop_player::LoopStatus {
+                    loaded: true,
+                    file: Some(settings.file.clone()),
+                    source_rate: 48_000,
+                    source_channels: 2,
+                    ..crate::loop_player::LoopStatus::default()
+                });
+            return Ok(());
+        }
+        self.loop_player.load(decoded, settings)
+    }
+
+    fn toggle_loop_preview(&mut self) {
+        let Some(selection) = self.overlay.as_ref().and_then(|overlay| {
+            (overlay.kind == OverlayKind::LoopLibrary).then_some(overlay.selection)
+        }) else {
+            return;
+        };
+        if self.loop_previewing && self.loop_preview_selection == Some(selection) {
+            self.stop_loop_preview(true);
+            return;
+        }
+        self.stop_loop_preview(false);
+        let Some((path, label)) = self.selected_loop_preview() else {
+            self.status = "no loop selected for preview".into();
+            return;
+        };
+        let decoded = match crate::loop_player::DecodedLoop::open(&path) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                self.status = format!("loop preview failed · {error}");
+                return;
+            }
+        };
+        let alignment = crate::loop_player::analyze_alignment(
+            &decoded,
+            self.current_tempo(),
+            self.current_meter(),
+        );
+        let settings = sequencer::LoopSettings {
+            file: label.clone(),
+            source_bpm_x100: (alignment.source_bpm * 100.0).round() as u32,
+            interpretation: sequencer::BpmInterpretation::Normal,
+            start_beat: 0,
+            length_beats: alignment.length_beats,
+            offset_beats: 0,
+        };
+        self.sequencer.stop();
+        if let Err(error) = self.load_loop_preview_candidate(decoded, &settings) {
+            if self.song.audio_loop.is_some() {
+                self.load_current_loop();
+            } else {
+                self.unload_loop_player();
+            }
+            self.status = format!("loop preview failed · {error}");
+            return;
+        }
+        let mut preview =
+            Song::new_with_pages(&self.config.external_midi, self.routing_defaults.clone());
+        if let Some(pattern) = preview.patterns.get_mut(&0) {
+            pattern.tempo = self.current_tempo();
+        }
+        self.sequencer.play(&preview, 0, 0);
+        self.loop_previewing = true;
+        self.loop_preview_selection = Some(selection);
+        self.status = format!("previewing {label} · PLAY stops");
+    }
+
+    fn stop_loop_preview(&mut self, announce: bool) {
+        if !self.loop_previewing {
+            if announce {
+                self.tracker_stop();
+            }
+            return;
+        }
+        self.sequencer.stop();
+        self.loop_previewing = false;
+        self.loop_preview_selection = None;
+        if self.song.audio_loop.is_some() {
+            self.load_current_loop();
+        } else {
+            self.unload_loop_player();
+        }
+        if announce {
+            self.status = "loop preview stopped".into();
+        }
+    }
+
     fn refresh_loop_library(&mut self) {
         match crate::loop_player::library_entries(
-            &crate::loop_player::loops_dir(),
+            &self.loop_library_directory(),
             self.song.audio_loop.as_ref(),
             &sequencer::songs_dir(),
         ) {
@@ -5146,10 +5538,10 @@ impl App {
         }
     }
 
-    fn select_loop_library_entry(&mut self, index: usize) {
+    fn select_loop_library_entry(&mut self, index: usize) -> bool {
         let Some(entry) = self.loop_library.get(index).cloned() else {
             self.status = "private loop library is empty".into();
-            return;
+            return false;
         };
         if self
             .song
@@ -5159,15 +5551,16 @@ impl App {
         {
             if self.load_current_loop() {
                 self.status = format!("loop ready · {}", entry.file);
+                return true;
             }
-            return;
+            return false;
         }
-        let path = crate::loop_player::loops_dir().join(&entry.file);
+        let path = self.loop_library_directory().join(&entry.file);
         let decoded = match crate::loop_player::DecodedLoop::open(&path) {
             Ok(decoded) => decoded,
             Err(error) => {
                 self.status = format!("loop browser: {error}");
-                return;
+                return false;
             }
         };
         let alignment = crate::loop_player::analyze_alignment(
@@ -5183,10 +5576,28 @@ impl App {
             length_beats: alignment.length_beats,
             offset_beats: 0,
         };
-        self.song.audio_loop = Some(settings.clone());
-        let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
         if self.load_loop_settings(Some(settings)) {
+            let settings = sequencer::LoopSettings {
+                file: entry.file.clone(),
+                source_bpm_x100: (alignment.source_bpm * 100.0).round() as u32,
+                interpretation: sequencer::BpmInterpretation::Normal,
+                start_beat: 0,
+                length_beats: alignment.length_beats,
+                offset_beats: 0,
+            };
+            self.song.audio_loop = Some(settings.clone());
+            let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
             self.status = format!("loop ready · {} · project {tempo} BPM", entry.file);
+            true
+        } else {
+            let error = self.status.clone();
+            if self.song.audio_loop.is_some() {
+                self.load_current_loop();
+            } else {
+                self.unload_loop_player();
+            }
+            self.status = format!("{error} · current Project loop restored");
+            false
         }
     }
 
@@ -5202,15 +5613,15 @@ impl App {
         true
     }
 
-    fn import_selected_loop(&mut self) {
+    fn import_selected_loop(&mut self) -> bool {
         let Some(source) = self.loop_imports.get(self.loop_selected).cloned() else {
             self.status = format!(
                 "no WAV in {}",
                 self.config.loop_player.import_directory.display()
             );
-            return;
+            return false;
         };
-        match crate::loop_player::import(&source, &crate::loop_player::loops_dir()) {
+        match crate::loop_player::import(&source, &self.loop_library_directory()) {
             Ok((path, decoded)) => {
                 let alignment = crate::loop_player::analyze_alignment(
                     &decoded,
@@ -5230,18 +5641,19 @@ impl App {
                     length_beats: alignment.length_beats,
                     offset_beats: 0,
                 };
-                self.song.audio_loop = Some(settings.clone());
-                let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
                 self.loop_meter
                     .set_audio_unavailable(AudioAvailability::Stopped);
                 if let Some(engine) = self.engine.as_mut() {
                     if let Err(error) = engine.suspend_audio_graph() {
+                        let _ = fs::remove_file(&path);
                         self.status = format!("final bus suspend failed: {error:#}");
-                        return;
+                        return false;
                     }
                 }
-                match self.loop_player.load(decoded, &settings) {
+                match self.load_loop_runtime(decoded, &settings) {
                     Ok(()) => {
+                        self.song.audio_loop = Some(settings.clone());
+                        let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
                         self.status = format!(
                             "imported {} · {} bar(s) · project {} BPM · source {:.0}/{:.0}/{:.0}",
                             settings.file,
@@ -5252,13 +5664,32 @@ impl App {
                             candidates[2]
                         );
                         self.retry_final_bus();
+                        true
                     }
                     Err(error) => {
-                        self.status = format!("imported privately · JACK loop offline: {error}")
+                        let cleanup = fs::remove_file(&path);
+                        if self.song.audio_loop.is_some() {
+                            self.load_current_loop();
+                        } else {
+                            self.unload_loop_player();
+                        }
+                        self.status = match cleanup {
+                            Ok(()) => format!(
+                                "loop import failed · {error} · private copy rolled back · retry"
+                            ),
+                            Err(cleanup) => format!(
+                                "loop import failed · {error} · rollback failed for {}: {cleanup}",
+                                path.display()
+                            ),
+                        };
+                        false
                     }
                 }
             }
-            Err(error) => self.status = format!("loop import: {error}"),
+            Err(error) => {
+                self.status = format!("loop import: {error}");
+                false
+            }
         }
     }
 
@@ -5267,7 +5698,7 @@ impl App {
             self.status = "import a loop first".into();
             return;
         };
-        let path = crate::loop_player::loops_dir().join(&settings.file);
+        let path = self.loop_library_directory().join(&settings.file);
         match crate::loop_player::DecodedLoop::open(&path) {
             Ok(decoded) => {
                 let alignment = crate::loop_player::analyze_alignment(
@@ -5858,13 +6289,28 @@ impl App {
     }
 
     fn create_pattern(&mut self, rows: usize) {
-        self.tracker_stop();
         let pattern = sequencer::Pattern::from_routing(
             &self.config.external_midi,
             rows,
             self.pattern_clear_beats,
             &self.routing_defaults,
         );
+        self.create_pattern_from(pattern);
+    }
+
+    fn create_pattern_keep_shape(&mut self) {
+        let Some(current) = self.current_pattern() else {
+            self.status = "new pattern: current Pattern is unavailable".into();
+            return;
+        };
+        let pattern = sequencer::Pattern::empty_like_setup(current.rows.len(), current);
+        self.create_pattern_from(pattern);
+    }
+
+    fn create_pattern_from(&mut self, pattern: sequencer::Pattern) {
+        let rows = pattern.rows.len();
+        let meter = pattern.meter;
+        self.tracker_stop();
         let number = match self.song.append_pattern(pattern) {
             Ok(number) => number,
             Err(error) => {
@@ -5880,7 +6326,7 @@ impl App {
         self.set_screen(Screen::Tracker);
         self.sync_tracker_route();
         self.status = format!(
-            "new pattern {number} · {rows} rows · order {:02}/{:02}",
+            "new pattern {number} · {meter}/4 · {rows} rows · order {:02}/{:02}",
             self.tracker_order + 1,
             self.song.order.len()
         );
@@ -6718,19 +7164,18 @@ impl App {
     }
 
     fn toggle_audio_recording(&mut self) {
-        let result = if self.audio_recorder.status().recording {
-            self.audio_recorder.stop()
-        } else {
-            self.audio_recorder.start(None)
-        };
+        if self.audio_recorder.status().recording {
+            let result = self.audio_recorder.stop();
+            self.status = match result {
+                Ok(()) => "audio recording finalized".into(),
+                Err(error) => format!("audio recorder: {error}"),
+            };
+            return;
+        }
+        self.finish_competing_recordings(RecordingOwner::Multitrack);
+        let result = self.audio_recorder.start(None);
         self.status = match result {
-            Ok(()) => {
-                if self.audio_recorder.status().recording {
-                    "audio recording started".into()
-                } else {
-                    "audio recording finalized".into()
-                }
-            }
+            Ok(()) => "audio recording started".into(),
             Err(e) => format!("audio recorder: {e}"),
         };
     }
@@ -6901,11 +7346,17 @@ impl App {
     }
 
     fn toggle_final_recording(&mut self) {
-        let Some(engine) = self.engine.as_mut() else {
+        let Some(active) = self.engine.as_ref().map(Engine::final_recording_active) else {
             self.status = "final recording unavailable · owned graph is inactive".into();
             return;
         };
-        let active = engine.final_recording_active();
+        if !active {
+            self.finish_competing_recordings(RecordingOwner::Final);
+        }
+        let engine = self
+            .engine
+            .as_mut()
+            .expect("final recording preflight retained the owned engine");
         let result = if active {
             engine.stop_final_recording()
         } else {
@@ -7738,54 +8189,31 @@ impl App {
                 return;
             }
         };
-        self.stop_recording();
-        self.stop_playback();
         if let Some(engine) = self.engine.as_mut() {
             match engine.load_in_place(&p) {
                 Ok(true) => {
                     let backend = engine.backend();
+                    self.stop_recording();
+                    self.stop_playback();
                     self.commit_loaded_preset(p, original_values.clone(), original_values);
                     self.status = format!("{} sound loaded in place · MIDI ready", backend.label());
                     return;
                 }
                 Ok(false) => {}
                 Err(error) => {
-                    self.status = format!("IN-PLACE LOAD FAILED: {error:#}");
+                    let recovery = self.recover_failed_in_place_load(state);
+                    self.status = format!(
+                        "IN-PLACE LOAD FAILED: {error:#} · {recovery} · select LOAD to retry"
+                    );
                     return;
                 }
             }
         }
-        if let Err(error) = engine::validate_start(&p, state, &self.config) {
-            self.status = format!("START PRECHECK FAILED: {error:#}");
-            return;
-        }
-        self.engine.take();
-        self.engine_owner = None;
-        self.performance_meter
-            .set_audio_unavailable(AudioAvailability::Stopped);
-        self.playing = None;
-        self.status = format!("starting JACK/{}…", p.backend.label());
         let backend_label = p.backend.label();
-        match Engine::start_with_routing(
-            &p,
-            state,
-            Arc::clone(&self.midi_output),
-            &self.config,
-            &self.song.insert_rack,
-            &self.song.aux_routing,
-        ) {
-            Ok(mut e) => {
-                e.bind_midi_lifecycle(self.midi_lifecycle.clone());
-                let audio_route = e.audio_route_status();
-                self.audio_fallback = audio_route
-                    .as_ref()
-                    .filter(|route| route.contains("fallback") || route.contains("unavailable"))
-                    .cloned();
-                self.engine = Some(e);
-                self.engine_owner = Some(EngineOwner::SoftwareSynth);
-                if let Ok(mut backend) = self.midi_backend.lock() {
-                    *backend = p.backend;
-                }
+        match self.replace_engine_process(&p, EngineOwner::SoftwareSynth, state) {
+            Ok(audio_route) => {
+                self.stop_recording();
+                self.stop_playback();
                 self.commit_loaded_preset(p, original_values.clone(), original_values);
                 self.status = format!(
                     "{backend_label} running · MIDI ready{}",
@@ -7793,7 +8221,7 @@ impl App {
                 );
             }
             Err(e) => {
-                self.status = format!("START FAILED: {e:#} · check JACK/log; select Play to retry");
+                self.status = format!("START FAILED: {e} · select LOAD to retry");
             }
         }
     }
@@ -7834,6 +8262,7 @@ impl App {
             self.status = "load a preset before recording".into();
             return;
         }
+        self.finish_competing_recordings(RecordingOwner::Idea);
         self.recorder.start(Instant::now());
         self.status = "● RECORDING musical MIDI".into();
     }
@@ -7900,22 +8329,22 @@ impl App {
         self.status = "ideas · select an action".into();
     }
     fn open_help(&mut self) {
-        self.stop_tracker_recording();
-        self.set_tracker_mode(TrackerMode::Play);
         if self.screen != Screen::Help {
             self.help_previous = self.screen;
+            self.help_previous_menu_page = self.menu_page();
+            self.help_previous_page_select_mode = self.page_select_mode;
         }
         self.set_screen(Screen::Help);
         self.start_web_help();
-        self.sync_tracker_route();
-        self.reset_context_page();
         self.status = format!("HELP · {} · EXIT closes", self.web_help_status);
     }
     fn close_help(&mut self) {
         self.web_help = None;
         self.web_help_status.clear();
-        self.set_screen(self.help_previous);
-        self.sync_tracker_route();
+        let previous = self.help_previous;
+        self.set_screen(previous);
+        self.menu_page_by_screen[previous.index()] = self.help_previous_menu_page.min(3);
+        self.page_select_mode = self.help_previous_page_select_mode;
         self.status = format!("returned to {}", self.screen.label());
     }
     fn start_web_help(&mut self) {
@@ -8040,11 +8469,11 @@ impl App {
                         return;
                     }
                 };
-                self.stop_recording();
-                self.stop_playback();
                 if let Some(engine) = self.engine.as_mut() {
                     match engine.load_in_place(&preset) {
                         Ok(true) => {
+                            self.stop_recording();
+                            self.stop_playback();
                             if let Ok(mut backend) = self.midi_backend.lock() {
                                 *backend = preset.backend;
                             }
@@ -8061,40 +8490,18 @@ impl App {
                         }
                         Ok(false) => {}
                         Err(error) => {
-                            self.status = format!("idea sound load failed: {error:#}");
+                            let recovery = self.recover_failed_in_place_load(state);
+                            self.status = format!(
+                                "idea sound load failed: {error:#} · {recovery} · select LOAD to retry"
+                            );
                             return;
                         }
                     }
                 }
-                if let Err(error) = engine::validate_start(&preset, state, &self.config) {
-                    self.status = format!("idea sound precheck failed: {error:#}");
-                    return;
-                }
-                self.engine.take();
-                self.performance_meter
-                    .set_audio_unavailable(AudioAvailability::Stopped);
-                self.playing = None;
-                match Engine::start_with_routing(
-                    &preset,
-                    state,
-                    Arc::clone(&self.midi_output),
-                    &self.config,
-                    &self.song.insert_rack,
-                    &self.song.aux_routing,
-                ) {
-                    Ok(mut engine) => {
-                        engine.bind_midi_lifecycle(self.midi_lifecycle.clone());
-                        let audio_route = engine.audio_route_status();
-                        self.audio_fallback = audio_route
-                            .as_ref()
-                            .filter(|route| {
-                                route.contains("fallback") || route.contains("unavailable")
-                            })
-                            .cloned();
-                        self.engine = Some(engine);
-                        if let Ok(mut backend) = self.midi_backend.lock() {
-                            *backend = preset.backend;
-                        }
+                match self.replace_engine_process(&preset, EngineOwner::SoftwareSynth, state) {
+                    Ok(audio_route) => {
+                        self.stop_recording();
+                        self.stop_playback();
                         self.finish_idea_load(
                             preset,
                             original_values,
@@ -8109,7 +8516,8 @@ impl App {
                         self.confirm_load = None;
                     }
                     Err(e) => {
-                        self.status = format!("idea load failed: {e:#} · check JACK/MIDI and retry")
+                        self.status =
+                            format!("idea load failed: {e} · previous sound retained · retry LOAD")
                     }
                 }
             }
@@ -8599,7 +9007,7 @@ fn drain(
                 if !tracker_preview {
                     app.sequencer.thru(&bytes);
                 }
-                if app.screen == Screen::Tracker && app.tracker_recording.is_some() {
+                if app.tracker_workspace_active() && app.tracker_recording.is_some() {
                     app.record_tracker_midi(&bytes);
                 }
                 if app.screen == Screen::Tracker
@@ -8664,10 +9072,10 @@ fn dispatch_pad(
     if !pressed {
         return;
     }
-    if let Some(launcher) = app.overlay.as_ref().map(|overlay| overlay.launcher.clone()) {
+    if let Some(overlay) = app.overlay.as_ref() {
         if let MenuInput::ActivateItem(item) = pad.menu_input() {
-            if item == launcher.item {
-                perform(launcher.action, app, state, Some(tx));
+            if let Some((_, action)) = overlay.controller_action(item) {
+                perform(action, app, state, Some(tx));
             }
         }
         return;
@@ -8784,10 +9192,10 @@ fn function_key_pad(code: KeyCode) -> Option<crate::pads::PadAction> {
         KeyCode::F(6) => Some(PadAction::Page2),
         KeyCode::F(7) => Some(PadAction::Page3),
         KeyCode::F(8) => Some(PadAction::Page4),
-        KeyCode::F(9) => Some(PadAction::Item1),
-        KeyCode::F(10) => Some(PadAction::Item2),
-        KeyCode::F(11) => Some(PadAction::Item3),
-        KeyCode::F(12) => Some(PadAction::Item4),
+        KeyCode::F(9) => Some(PadAction::Stop),
+        KeyCode::F(10) => Some(PadAction::Play),
+        KeyCode::F(11) => Some(PadAction::Rec),
+        KeyCode::F(12) => Some(PadAction::TapTempo),
         _ => None,
     }
 }
@@ -8828,8 +9236,15 @@ fn perform(
         return a.quit_requested;
     }
     a.prepare_confirmation_action(action);
-    if let Some(launcher) = a.overlay.as_ref().map(|overlay| overlay.launcher.clone()) {
-        if action == launcher.action {
+    if let Some(overlay) = a.overlay.as_ref() {
+        let launcher_action = overlay.launcher.action;
+        if action == Action::LoopPreview {
+            a.toggle_loop_preview();
+        } else if action == Action::LoopPreviewStop {
+            a.stop_loop_preview(true);
+        } else if action == Action::TapTempo {
+            a.tap_tracker_tempo();
+        } else if action == launcher_action {
             a.close_overlay(true);
         } else {
             match action {
@@ -8892,7 +9307,7 @@ fn perform(
         match action {
             Action::Up | Action::NoteEditorDecrease => a.adjust_note_editor(-1),
             Action::Down | Action::NoteEditorIncrease => a.adjust_note_editor(1),
-            Action::Activate | Action::NoteEditorConfirm => {
+            Action::Activate => {
                 if a.note_editor.as_ref().is_some_and(|editor| editor.active) {
                     a.confirm_note_editor_field();
                 } else if let Some(field) = a.note_editor.as_ref().map(|editor| editor.field) {
@@ -8963,16 +9378,17 @@ fn perform(
             Action::Activate | Action::ConfirmPatternClear => a.apply_pattern_clear(),
             Action::ClearPatternNow => {
                 if a.pattern_setup_new {
-                    a.create_pattern(a.pattern_setup_rows);
+                    a.create_pattern_keep_shape();
                 } else {
                     a.confirm_pattern_clear = false;
                     a.clear_pattern_now();
                 }
             }
             Action::Back => {
+                let operation = if a.pattern_setup_new { "new" } else { "clear" };
                 a.confirm_pattern_clear = false;
                 a.reset_context_page();
-                a.status = "pattern clear cancelled".into();
+                a.status = format!("pattern {operation} cancelled");
             }
             _ => {}
         }
@@ -9151,9 +9567,7 @@ fn perform(
                 a.reset_parameters();
             }
             Screen::Ideas => {
-                if let Some(tx) = tx {
-                    a.load_idea(state, tx.clone())
-                }
+                a.inspect_idea();
             }
             Screen::Help => a.activate_help(),
             Screen::Tracker => a.tracker_skip(),
@@ -9429,6 +9843,9 @@ fn perform(
             a.status = "loop alignment set".into();
         }
         Action::OpenLoopLibrary => a.open_loop_library(),
+        Action::LoopPreview => a.toggle_loop_preview(),
+        Action::LoopPreviewStop => a.stop_loop_preview(true),
+        Action::TapTempo => a.tap_tracker_tempo(),
         Action::TrackerMute => {
             let global_lane = a.tracker_page * LANES_PER_PAGE + a.tracker_track;
             let track = a.tracker_track;
@@ -9509,7 +9926,6 @@ fn perform(
         | Action::NoteEditorNextField
         | Action::NoteEditorDecrease
         | Action::NoteEditorIncrease
-        | Action::NoteEditorConfirm
         | Action::NoteEditorSave
         | Action::NoteEditorCancel => {}
         Action::PreviousTrack => {
@@ -9768,13 +10184,12 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     }
     if a.screen == Screen::Help {
         let action = match code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::Up),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::Down),
+            KeyCode::Char('k') => Some(Action::Up),
+            KeyCode::Char('j') => Some(Action::Down),
             KeyCode::PageUp => Some(Action::PageUp),
             KeyCode::PageDown => Some(Action::PageDown),
             KeyCode::Home => Some(Action::Home),
             KeyCode::End => Some(Action::End),
-            KeyCode::Enter => Some(Action::Activate),
             KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
             _ => None,
@@ -9789,7 +10204,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Left | KeyCode::Char('-') => Some(Action::LoopOffsetDown),
             KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::LoopOffsetUp),
             KeyCode::Char('a') | KeyCode::Char('A') => Some(Action::LoopAutoAlign),
-            KeyCode::Enter => Some(Action::LoopAlignDone),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
                 a.tracker_stop();
                 None
@@ -9804,9 +10218,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     }
     if a.screen == Screen::TrackerLoop {
         let action = match code {
-            KeyCode::Up => Some(Action::Up),
-            KeyCode::Down => Some(Action::Down),
-            KeyCode::Enter | KeyCode::Char('i') | KeyCode::Char('I') => Some(Action::LoopImport),
+            KeyCode::Char('i') | KeyCode::Char('I') => Some(Action::LoopImport),
             KeyCode::Char('p') => Some(Action::TrackerPlayToggle),
             KeyCode::Char('P') => Some(Action::TrackerRewind),
             KeyCode::Char('a') | KeyCode::Char('A') => Some(Action::LoopAutoAlign),
@@ -9836,9 +10248,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     }
     if a.screen == Screen::TrackerArrange {
         let action = match code {
-            KeyCode::Up => Some(Action::Up),
-            KeyCode::Down => Some(Action::Down),
-            KeyCode::Enter => Some(Action::ArrangementJumpToPattern),
             KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::ArrangementPlayFromStep),
             KeyCode::Char('a') | KeyCode::Char('A') => Some(Action::ArrangementAppend),
             KeyCode::Char('i') | KeyCode::Char('I') => Some(Action::ArrangementInsert),
@@ -9857,31 +10266,36 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     }
     if a.screen == Screen::Tracker {
         if a.tracker_recording.is_some() {
-            match code {
+            let handled = match code {
                 KeyCode::Char('r') | KeyCode::Char('R') => {
                     a.toggle_tracker_recording();
+                    true
                 }
                 KeyCode::Char('p') | KeyCode::Char('P') => {
                     a.toggle_tracker_playback();
+                    true
                 }
-                KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
-                KeyCode::Esc | KeyCode::Char('b') => {
+                KeyCode::Char('S') | KeyCode::Char(' ') => {
+                    a.stop_all(state);
+                    true
+                }
+                KeyCode::Esc | KeyCode::Char('B') => {
                     perform(Action::Back, a, state, Some(tx));
+                    true
                 }
-                _ => {}
+                _ => false,
+            };
+            if handled {
+                return false;
             }
-            return false;
         }
         if a.note_editor.is_some() {
             let action = match code {
-                KeyCode::Up | KeyCode::Char('-') => Some(Action::NoteEditorDecrease),
-                KeyCode::Down | KeyCode::Char('+') | KeyCode::Char('=') => {
-                    Some(Action::NoteEditorIncrease)
-                }
+                KeyCode::Char('-') => Some(Action::NoteEditorDecrease),
+                KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::NoteEditorIncrease),
                 KeyCode::Left => Some(Action::NoteEditorPreviousField),
                 KeyCode::Right => Some(Action::NoteEditorNextField),
                 KeyCode::Delete | KeyCode::Backspace => Some(Action::NoteEditorClearField),
-                KeyCode::Enter => Some(Action::NoteEditorConfirm),
                 KeyCode::Char('w') | KeyCode::Char('W') => Some(Action::NoteEditorSave),
                 KeyCode::Esc | KeyCode::Char('b') => Some(Action::NoteEditorCancel),
                 KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
@@ -9962,10 +10376,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 a.tracker_skip();
                 return false;
             }
-            KeyCode::Char('m') => {
-                perform(Action::TrackerMute, a, state, Some(tx));
-                return false;
-            }
             KeyCode::Char('M') => {
                 a.toggle_tracker_page_mute();
                 return false;
@@ -10020,10 +10430,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 a.set_tracker_tempo(a.current_tempo().saturating_add(1));
                 return false;
             }
-            KeyCode::Char('v') => {
-                a.save_song();
-                return false;
-            }
             KeyCode::Char('l') => {
                 a.load_song();
                 return false;
@@ -10067,8 +10473,8 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     if a.screen == Screen::AudioRecorder {
         let action = match code {
             KeyCode::Char('r') => Some(Action::AudioRecordToggle),
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::AudioPreviousTrack),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::AudioNextTrack),
+            KeyCode::Char('k') => Some(Action::AudioPreviousTrack),
+            KeyCode::Char('j') => Some(Action::AudioNextTrack),
             KeyCode::Char(' ') => Some(Action::AudioToggleArm),
             KeyCode::Char('a') => Some(Action::AudioArmAll),
             KeyCode::Char('x') => Some(Action::AudioDisarmAll),
@@ -10090,7 +10496,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 return a.request_quit();
             }
         }
-        KeyCode::Up | KeyCode::Char('k') => {
+        KeyCode::Char('k') => {
             if a.screen == Screen::Ideas {
                 a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), -1)
             } else if a.screen == Screen::Presets {
@@ -10099,7 +10505,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 perform(Action::Up, a, state, Some(tx));
             }
         }
-        KeyCode::Down | KeyCode::Char('j') => {
+        KeyCode::Char('j') => {
             if a.screen == Screen::Ideas {
                 a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), 1)
             } else if a.screen == Screen::Presets {
@@ -10122,24 +10528,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         KeyCode::Char('[') if a.screen == Screen::Presets => a.cycle_engine(-1),
         KeyCode::Char(']') if a.screen == Screen::Presets => a.cycle_engine(1),
-        KeyCode::Enter => {
-            if a.screen == Screen::Presets {
-                a.load(state, tx.clone())
-            } else if matches!(a.screen, Screen::TrackerFiles | Screen::TrackerPages) {
-                perform(Action::Activate, a, state, Some(tx));
-            } else {
-                perform(
-                    if a.screen == Screen::Ideas {
-                        Action::InspectIdea
-                    } else {
-                        Action::Back
-                    },
-                    a,
-                    state,
-                    Some(tx),
-                );
-            }
-        }
         KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
         KeyCode::Char('b') => {
             perform(Action::Back, a, state, Some(tx));
@@ -12219,7 +12607,7 @@ fn draw_overlay<B: Backend>(f: &mut Frame<B>, a: &mut App) {
 }
 
 fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
-    let Some(launcher) = a.overlay.as_ref().map(|overlay| overlay.launcher.clone()) else {
+    let Some(overlay) = a.overlay.as_ref().cloned() else {
         return;
     };
     let z = f.size();
@@ -12236,22 +12624,27 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let menu_width = geometry.inner.width;
     let menu_x = geometry.inner.x;
     let width = menu_width / 4;
-    let button = rect(menu_x + launcher.item as u16 * width, row.y, width, 1);
-    f.render_widget(
-        Paragraph::new(format!(
-            "[{}]",
-            truncate(launcher.label, usize::from(button.width.saturating_sub(2)))
-        ))
-        .alignment(Alignment::Center)
-        .style(
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::LightYellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        button,
-    );
-    a.hits.actions.push((button, launcher.action));
+    for item in 0..4 {
+        let Some((label, action)) = overlay.controller_action(item) else {
+            continue;
+        };
+        let button = rect(menu_x + item as u16 * width, row.y, width, 1);
+        f.render_widget(
+            Paragraph::new(format!(
+                "[{}]",
+                truncate(label, usize::from(button.width.saturating_sub(2)))
+            ))
+            .alignment(Alignment::Center)
+            .style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::LightYellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            button,
+        );
+        a.hits.actions.push((button, action));
+    }
 }
 
 fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
@@ -12267,11 +12660,13 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     let indicator_color = transport_color(state, elapsed);
-    let message = if a.status == "Ready" {
-        ""
-    } else {
-        a.status.as_str()
-    };
+    let message = a.recording_status_message().unwrap_or_else(|| {
+        if a.status == "Ready" {
+            ""
+        } else {
+            a.status.as_str()
+        }
+    });
     f.render_widget(
         Paragraph::new(Spans::from(vec![
             Span::styled(
@@ -14777,6 +15172,21 @@ mod tests {
         app.web_help_enabled = false;
         app
     }
+
+    fn write_test_loop(path: &Path) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 8_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(path, spec).unwrap();
+        for frame in 0..8_000 {
+            let sample = if frame % 2_000 < 80 { 16_000 } else { 0 };
+            writer.write_sample::<i16>(sample).unwrap();
+        }
+        writer.finalize().unwrap();
+    }
     fn learn_send(
         a: &mut App,
         now: &mut Instant,
@@ -14926,7 +15336,35 @@ mod tests {
         assert_eq!(buffer_cell(&buffer, 1, 11).symbol, "╚");
         assert_eq!(buffer_cell(&buffer, 38, 11).symbol, "╝");
         assert!(row_text(&buffer, 11).contains("ROUTE"));
-        assert!(row_text(&buffer, 12).starts_with('‖'));
+        assert!(row_text(&buffer, 12).starts_with(transport_glyph(a.transport_indicator()).0));
+    }
+
+    #[test]
+    fn loop_overlay_places_stop_play_and_launcher_inside_border_above_status() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerLoop;
+        a.open_overlay(Action::OpenLoopLibrary);
+        let buffer = render_app(&mut a, 40, 13);
+        let actions = a
+            .hits
+            .actions
+            .iter()
+            .map(|(area, action)| (area.y, *action))
+            .collect::<Vec<_>>();
+
+        assert!(row_text(&buffer, 11).contains("STOP"));
+        assert!(row_text(&buffer, 11).contains("PLAY"));
+        assert!(row_text(&buffer, 11).contains("LIBRARY"));
+        assert_eq!(
+            actions,
+            [
+                (11, Action::LoopPreviewStop),
+                (11, Action::LoopPreview),
+                (11, Action::OpenLoopLibrary),
+            ]
+        );
+        assert!(row_text(&buffer, 12).starts_with(transport_glyph(a.transport_indicator()).0));
     }
 
     #[test]
@@ -15032,6 +15470,177 @@ mod tests {
         assert!(a.song_previewing);
         a.close_overlay(true);
         assert!(a.song_previewing);
+    }
+
+    #[test]
+    fn loop_browser_preview_is_explicit_repeatable_and_stops_on_every_leave_path() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-loop-preview-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).unwrap();
+        let first = base.join("first.wav");
+        let second = base.join("second.wav");
+        write_test_loop(&first);
+        write_test_loop(&second);
+
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerLoop;
+        a.tracker_order = 0;
+        a.tracker_row = 7;
+        a.tracker_page = 1;
+        a.tracker_track = 3;
+        a.config.loop_player.import_directory = base.clone();
+        a.loop_imports = vec![first, second];
+        a.loop_preview_load_override = Some(Ok(()));
+        let project = a.song.clone();
+        a.open_overlay(Action::OpenLoopLibrary);
+        assert!(!a.loop_previewing, "selection alone must stay silent");
+
+        a.toggle_loop_preview();
+        assert!(a.loop_previewing);
+        assert_eq!(a.loop_preview_selection, Some(0));
+        assert_eq!(a.song, project, "preview must not attach the loop");
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (0, 7, 1, 3)
+        );
+
+        a.move_overlay(1);
+        assert!(!a.loop_previewing, "selection change must stop preview");
+        assert_eq!(a.overlay.as_ref().unwrap().selection, 1);
+        a.toggle_loop_preview();
+        assert!(a.loop_previewing);
+        a.toggle_loop_preview();
+        assert!(!a.loop_previewing, "repeated PLAY toggles preview off");
+
+        a.toggle_loop_preview();
+        a.close_overlay(true);
+        assert!(!a.loop_previewing, "Back/close must stop preview");
+        assert_eq!(a.screen, Screen::TrackerLoop);
+
+        a.open_overlay(Action::OpenLoopLibrary);
+        a.toggle_loop_preview();
+        a.set_screen(Screen::Tracker);
+        assert!(!a.loop_previewing, "leaving Loop Player must stop preview");
+        assert!(!a.sequencer.status().playing);
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            (0, 7, 1, 3)
+        );
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn failed_loop_preview_and_import_retain_selection_and_rollback_private_copy() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-loop-rollback-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let inbox = base.join("inbox");
+        let library = base.join("library");
+        fs::create_dir_all(&inbox).unwrap();
+        fs::create_dir_all(&library).unwrap();
+        let source = inbox.join("retry.wav");
+        write_test_loop(&source);
+
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerLoop;
+        a.config.loop_player.import_directory = inbox.clone();
+        a.loop_imports = vec![source];
+        a.loop_library_directory_override = Some(library.clone());
+        a.loop_preview_load_override = Some(Err("preview injection".into()));
+        a.open_overlay(Action::OpenLoopLibrary);
+        a.toggle_loop_preview();
+        assert!(!a.loop_previewing);
+        assert_eq!(a.overlay.as_ref().unwrap().selection, 0);
+        assert!(a.status.contains("preview injection"));
+
+        a.loop_runtime_load_override = Some(Err("runtime injection".into()));
+        a.activate_overlay();
+        assert!(a.overlay.is_some(), "failed import keeps browser open");
+        assert_eq!(a.overlay.as_ref().unwrap().selection, 0);
+        assert!(a.song.audio_loop.is_none());
+        assert_eq!(fs::read_dir(&library).unwrap().count(), 0);
+
+        a.activate_overlay();
+        assert!(
+            a.overlay.is_some(),
+            "repeated failed import remains retryable"
+        );
+        assert!(a.song.audio_loop.is_none());
+        assert_eq!(fs::read_dir(&library).unwrap().count(), 0);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn loop_import_completes_once_per_activation_and_repeated_import_stays_consistent() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-loop-import-success-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let inbox = base.join("inbox");
+        let library = base.join("library");
+        fs::create_dir_all(&inbox).unwrap();
+        fs::create_dir_all(&library).unwrap();
+        let source = inbox.join("repeat.wav");
+        write_test_loop(&source);
+
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerLoop;
+        a.config.loop_player.import_directory = inbox.clone();
+        a.loop_imports = vec![source];
+        a.loop_library_directory_override = Some(library.clone());
+        a.loop_runtime_load_override = Some(Ok(()));
+        a.open_overlay(Action::OpenLoopLibrary);
+        a.activate_overlay();
+        assert!(a.overlay.is_none());
+        assert_eq!(
+            a.song
+                .audio_loop
+                .as_ref()
+                .map(|settings| settings.file.as_str()),
+            Some("repeat.wav")
+        );
+        assert_eq!(fs::read_dir(&library).unwrap().count(), 1);
+
+        a.open_overlay(Action::OpenLoopLibrary);
+        a.activate_overlay();
+        assert!(a.overlay.is_none());
+        assert_eq!(
+            a.song
+                .audio_loop
+                .as_ref()
+                .map(|settings| settings.file.as_str()),
+            Some("repeat-2.wav")
+        );
+        assert_eq!(fs::read_dir(&library).unwrap().count(), 2);
+        fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]
@@ -16160,6 +16769,55 @@ mod tests {
     }
 
     #[test]
+    fn ideas_enter_encoder_and_mouse_all_inspect_while_load_stays_explicit() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let setup = || {
+            let mut a = app(&p);
+            a.screen = Screen::Ideas;
+            a.controller_layout = ControllerLayout::Eight;
+            a.ideas = vec!["missing-idea".into()];
+            a
+        };
+
+        let mut keyboard = setup();
+        key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
+        assert!(keyboard.status.starts_with("inspect failed:"));
+
+        let mut encoder = setup();
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut encoder,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(encoder.status.starts_with("inspect failed:"));
+
+        let mut pointer = setup();
+        render_app(&mut pointer, 40, 20);
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: pointer.hits.list.x,
+                row: pointer.hits.list.y,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut pointer,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(pointer.status.starts_with("inspect failed:"));
+
+        perform(
+            Action::LoadIdea,
+            &mut pointer,
+            Path::new("/none"),
+            Some(&tx),
+        );
+        assert!(pointer.status.starts_with("idea read failed:"));
+    }
+
+    #[test]
     fn letter_jump_preserves_shortcuts_and_text_input_ownership() {
         let p = vec![
             Preset::synthv1("Amber", "amber".into()),
@@ -16699,6 +17357,63 @@ mod tests {
         );
         assert!(a.cancel_routing_edit());
         assert_eq!(a.config.midi_controller_musical_input, original);
+    }
+
+    #[test]
+    fn routing_failures_retain_the_entered_draft_row_and_retry_context() {
+        let p = presets();
+        let mut invalid = app(&p);
+        invalid.screen = Screen::Routing;
+        invalid.routing.selected = 4;
+        invalid.begin_routing_edit();
+        invalid
+            .routing
+            .draft
+            .as_mut()
+            .unwrap()
+            .config
+            .midi_performance_input_matches = vec!["Keys".into(), "Keys".into()];
+        invalid.confirm_routing_edit(Path::new("/none"));
+        assert!(invalid.routing.draft.is_some());
+        assert_eq!(invalid.routing.selected, 4);
+        assert!(invalid.status.contains("Routing invalid"));
+
+        let missing_parent = std::env::temp_dir().join(format!(
+            "shr-routing-missing-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::write(&missing_parent, b"not a directory").unwrap();
+        let mut save_failure = app(&p);
+        save_failure.screen = Screen::Routing;
+        save_failure.routing.selected = 2;
+        save_failure.begin_routing_edit();
+        save_failure
+            .routing
+            .draft
+            .as_mut()
+            .unwrap()
+            .config
+            .midi_controller_musical_input = true;
+        let expected_layout = save_failure
+            .routing
+            .draft
+            .as_ref()
+            .unwrap()
+            .controller
+            .layout;
+        save_failure.confirm_routing_edit(&missing_parent);
+        let retained = save_failure.routing.draft.as_ref().unwrap();
+        assert!(retained.config.midi_controller_musical_input);
+        assert_eq!(retained.controller.layout, expected_layout);
+        assert_eq!(save_failure.routing.selected, 2);
+        assert!(save_failure.status.contains("draft retained"));
+        assert!(save_failure.cancel_routing_edit());
+        assert!(save_failure.routing.draft.is_none());
+        fs::remove_file(missing_parent).unwrap();
     }
 
     #[test]
@@ -17261,10 +17976,10 @@ mod tests {
             PadAction::Page2,
             PadAction::Page3,
             PadAction::Page4,
-            PadAction::Item1,
-            PadAction::Item2,
-            PadAction::Item3,
-            PadAction::Item4,
+            PadAction::Stop,
+            PadAction::Play,
+            PadAction::Rec,
+            PadAction::TapTempo,
         ];
         for (offset, action) in expected.into_iter().enumerate() {
             assert_eq!(function_key_pad(KeyCode::F(5 + offset as u8)), Some(action));
@@ -18023,19 +18738,169 @@ mod tests {
     }
 
     #[test]
-    fn opening_help_stops_tracker_recording_before_disabling_its_route() {
+    fn lowercase_tracker_note_keys_do_not_become_record_stop_or_back_shortcuts() {
         let p = presets();
+        let (tx, _rx) = mpsc::channel();
         let mut a = app(&p);
         connect_test_midi_hardware(&mut a);
         a.set_screen(Screen::Tracker);
         a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
         a.toggle_tracker_recording();
 
+        key(KeyCode::Char('s'), &mut a, Path::new("/none"), &tx);
+        key(KeyCode::Char('b'), &mut a, Path::new("/none"), &tx);
+
+        assert_eq!(a.screen, Screen::Tracker);
+        assert!(a.tracker_recording.is_some());
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
+    }
+
+    #[test]
+    fn exclusive_recording_switches_owners_and_failed_preflight_keeps_current_owner() {
+        let p = presets();
+        let mut a = app(&p);
+        a.engine = Some(
+            Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output)).unwrap(),
+        );
+        a.engine_owner = Some(EngineOwner::SoftwareSynth);
+        a.playing = Some(p[0].clone());
+        a.screen = Screen::Ideas;
+
+        a.toggle_idea_recording();
+        assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Idea));
+        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI recording"));
+
+        a.set_screen(Screen::Tracker);
+        a.current_page_mut().unwrap().target = PageTarget::Midi("Test DIN".into());
+        a.available_page_outputs.clear();
+        a.toggle_tracker_recording();
+        assert_eq!(
+            a.active_recording_owner(),
+            Some(RecordingOwner::Idea),
+            "failed replacement preflight must not discard the active capture"
+        );
+
+        a.available_page_outputs = vec!["Test DIN".into()];
+        a.toggle_tracker_recording();
+        assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Tracker));
+        assert!(!a.recorder.is_recording());
+        assert_eq!(
+            a.recording_status_message(),
+            Some("FT2 · pattern recording")
+        );
+
+        a.toggle_idea_recording();
+        assert_eq!(
+            a.active_recording_owner(),
+            Some(RecordingOwner::Tracker),
+            "failed Idea preflight must keep FT2 recording active"
+        );
+        a.engine = Some(
+            Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output)).unwrap(),
+        );
+        a.engine_owner = Some(EngineOwner::SoftwareSynth);
+        a.playing = Some(p[0].clone());
+        a.toggle_idea_recording();
+        assert_eq!(
+            a.active_recording_owner(),
+            Some(RecordingOwner::Idea),
+            "status={} engine={}",
+            a.status,
+            a.engine.is_some()
+        );
+        assert!(a.tracker_recording.is_none());
+        a.toggle_idea_recording();
+        assert_eq!(
+            a.active_recording_owner(),
+            None,
+            "repeated REC stops its owner"
+        );
+
+        a.toggle_idea_recording();
+        a.set_screen(Screen::Ideas);
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Home);
+        assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Idea));
+        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI recording"));
+    }
+
+    #[test]
+    fn help_preserves_and_restores_the_exact_active_tracker_context() {
+        let p = presets();
+        let mut a = app(&p);
+        connect_test_midi_hardware(&mut a);
+        a.set_screen(Screen::Tracker);
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.tracker_order = 0;
+        a.tracker_page = 1;
+        a.tracker_track = 2;
+        a.toggle_tracker_recording();
+        a.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        a.page_select_mode = true;
+        a.tracker_row = 9;
+        let recording = a
+            .tracker_recording
+            .as_ref()
+            .map(|recording| (recording.pattern, recording.order, recording.page));
+        let song = a.song.clone();
+
         a.open_help();
 
         assert_eq!(a.screen, Screen::Help);
-        assert!(a.tracker_recording.is_none());
-        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        assert_eq!(
+            a.tracker_recording.as_ref().map(|recording| (
+                recording.pattern,
+                recording.order,
+                recording.page
+            )),
+            recording
+        );
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
+        assert_eq!(a.song, song);
+
+        a.close_help();
+
+        assert_eq!(a.screen, Screen::Tracker);
+        assert_eq!(a.menu_page(), 2);
+        assert!(a.page_select_mode);
+        assert_eq!(a.tracker_order, 0);
+        assert_eq!(a.tracker_page, 1);
+        assert_eq!(a.tracker_track, 2);
+        assert_eq!(a.tracker_row, 9);
+        assert_eq!(
+            a.tracker_recording.as_ref().map(|recording| (
+                recording.pattern,
+                recording.order,
+                recording.page
+            )),
+            recording
+        );
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
+    }
+
+    #[test]
+    fn help_preserves_an_active_cell_editor_draft_and_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        a.set_screen(Screen::Tracker);
+        a.tracker_row = 5;
+        a.tracker_page = 1;
+        a.tracker_track = 2;
+        a.open_note_editor();
+        a.select_note_editor_field(NoteEditorField::Velocity);
+        a.adjust_note_editor(1);
+        let draft = a.note_editor.as_ref().unwrap().draft;
+        let field = a.note_editor.as_ref().unwrap().field;
+        let active = a.note_editor.as_ref().unwrap().active;
+
+        a.open_help();
+        a.close_help();
+
+        assert_eq!(a.screen, Screen::Tracker);
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), (5, 1, 2));
+        assert_eq!(a.note_editor.as_ref().unwrap().draft, draft);
+        assert_eq!(a.note_editor.as_ref().unwrap().field, field);
+        assert_eq!(a.note_editor.as_ref().unwrap().active, active);
     }
 
     #[test]
@@ -18984,6 +19849,10 @@ mod tests {
         perform(Action::Up, &mut a, Path::new("/none"), None);
         assert!(!a.confirm_loop_remove);
         assert!(a.song.audio_loop.is_some());
+        assert!(
+            !a.status.to_ascii_lowercase().contains("press again"),
+            "clearing confirmation must also clear stale feedback"
+        );
 
         perform(Action::LoopRemove, &mut a, Path::new("/none"), None);
         perform(Action::LoopRemove, &mut a, Path::new("/none"), None);
@@ -19290,7 +20159,7 @@ mod tests {
         a.open_note_editor();
         perform(Action::NoteField, &mut a, Path::new("/none"), None);
         perform(Action::NoteEditorDecrease, &mut a, Path::new("/none"), None);
-        perform(Action::NoteEditorConfirm, &mut a, Path::new("/none"), None);
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
         perform(Action::NoteEditorSave, &mut a, Path::new("/none"), None);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Off);
     }
@@ -19685,6 +20554,93 @@ mod tests {
         assert!(saved.contains("order=0,1\n"));
         assert!(saved.contains("pattern=0|"));
         assert!(saved.contains("pattern=1|"));
+    }
+
+    #[test]
+    fn pattern_setup_keep_and_confirm_have_distinct_new_and_clear_meanings() {
+        let p = presets();
+
+        let mut keep_new = app(&p);
+        keep_new.screen = Screen::TrackerFiles;
+        {
+            let pattern = keep_new.song.patterns.get_mut(&0).unwrap();
+            pattern.meter = 3;
+            pattern.rows.truncate(12);
+            pattern.rows[0][0].note = Note::On(60);
+        }
+        keep_new.new_pattern();
+        keep_new.select_pattern_meter(4);
+        keep_new.pattern_setup_rows = 32;
+        perform(
+            Action::ClearPatternNow,
+            &mut keep_new,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(keep_new.song.order, vec![0, 1]);
+        assert_eq!(keep_new.song.patterns[&1].meter, 3);
+        assert_eq!(keep_new.song.patterns[&1].rows.len(), 12);
+        assert!(keep_new.song.patterns[&1]
+            .rows
+            .iter()
+            .flatten()
+            .all(|cell| { *cell == Cell::default() }));
+
+        let mut confirm_new = app(&p);
+        confirm_new.screen = Screen::TrackerFiles;
+        confirm_new.new_pattern();
+        confirm_new.select_pattern_meter(3);
+        confirm_new.pattern_setup_rows = 24;
+        perform(
+            Action::ConfirmPatternClear,
+            &mut confirm_new,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(confirm_new.song.patterns[&1].meter, 3);
+        assert_eq!(confirm_new.song.patterns[&1].rows.len(), 24);
+
+        let mut keep_clear = app(&p);
+        keep_clear.screen = Screen::TrackerFiles;
+        {
+            let pattern = keep_clear.song.patterns.get_mut(&0).unwrap();
+            pattern.meter = 3;
+            pattern.rows.truncate(12);
+            pattern.rows[0][0].note = Note::On(64);
+        }
+        keep_clear.choose_pattern_clear();
+        keep_clear.select_pattern_meter(4);
+        keep_clear.pattern_setup_rows = 32;
+        perform(
+            Action::ClearPatternNow,
+            &mut keep_clear,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(keep_clear.song.patterns[&0].meter, 3);
+        assert_eq!(keep_clear.song.patterns[&0].rows.len(), 12);
+        assert_eq!(keep_clear.song.patterns[&0].rows[0][0], Cell::default());
+
+        let mut cancelled = app(&p);
+        cancelled.screen = Screen::TrackerFiles;
+        let before = cancelled.song.clone();
+        cancelled.new_pattern();
+        perform(Action::Back, &mut cancelled, Path::new("/none"), None);
+        assert_eq!(cancelled.song, before);
+        assert!(!cancelled.confirm_pattern_clear);
+
+        let mut unavailable = app(&p);
+        unavailable.song.order.clear();
+        unavailable.song.patterns.clear();
+        unavailable.new_pattern();
+        perform(
+            Action::ClearPatternNow,
+            &mut unavailable,
+            Path::new("/none"),
+            None,
+        );
+        assert!(unavailable.song.order.is_empty());
+        assert!(unavailable.status.contains("unavailable"));
     }
 
     #[test]
@@ -20296,6 +21252,80 @@ mod tests {
         );
         assert!(engine.is_none());
         assert!(owner.is_none());
+    }
+
+    #[test]
+    fn engine_replacement_restores_previous_session_on_same_or_cross_engine_failure() {
+        let p = presets();
+        for replacement in [
+            p[1].clone(),
+            Preset {
+                backend: BackendKind::Yoshimi,
+                name: "Cross engine".into(),
+                category: None,
+                id: crate::preset::PresetId::Yoshimi {
+                    path: PathBuf::from("cross.xiz"),
+                },
+            },
+        ] {
+            let mut a = app(&p);
+            a.engine = Some(
+                Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output))
+                    .unwrap(),
+            );
+            a.engine_owner = Some(EngineOwner::SoftwareSynth);
+            a.playing = Some(p[0].clone());
+            a.values.insert(7, 0.42);
+            a.original_values.insert(7, 0.25);
+            a.engine_start_script
+                .push_back(Err("replacement failed".into()));
+            a.engine_start_script.push_back(Ok(()));
+
+            let result = a.replace_engine_process(
+                &replacement,
+                EngineOwner::SoftwareSynth,
+                Path::new("/none"),
+            );
+
+            assert!(result.unwrap_err().contains("previous engine restored"));
+            assert_eq!(a.playing.as_ref(), Some(&p[0]));
+            assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
+            assert!(a.engine.as_mut().unwrap().alive());
+            assert_eq!(a.values.get(&7), Some(&0.42));
+            assert_eq!(a.original_values.get(&7), Some(&0.25));
+        }
+    }
+
+    #[test]
+    fn engine_replacement_commits_same_or_cross_engine_only_after_success() {
+        let p = presets();
+        for replacement in [
+            p[1].clone(),
+            Preset {
+                backend: BackendKind::Yoshimi,
+                name: "Cross engine".into(),
+                category: None,
+                id: crate::preset::PresetId::Yoshimi {
+                    path: PathBuf::from("cross.xiz"),
+                },
+            },
+        ] {
+            let mut a = app(&p);
+            a.engine = Some(
+                Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output))
+                    .unwrap(),
+            );
+            a.engine_owner = Some(EngineOwner::SoftwareSynth);
+            a.playing = Some(p[0].clone());
+            a.engine_start_script.push_back(Ok(()));
+
+            a.replace_engine_process(&replacement, EngineOwner::SoftwareSynth, Path::new("/none"))
+                .unwrap();
+
+            assert_eq!(a.playing.as_ref(), Some(&replacement));
+            assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
+            assert_eq!(a.engine.as_ref().unwrap().backend(), replacement.backend);
+        }
     }
 
     #[test]

@@ -77,7 +77,7 @@ Ideas capture free playing as MIDI. Each saved idea keeps its timing and
 instrument identity. A synthv1 idea includes its own private preset snapshot;
 other engines retain the external instrument reference. Mapped synthv1 control
 values are saved too. Loading an idea can replace the current managed engine,
-then TAKE plays through the restored idea instrument rather than an arbitrary
+then PLAY runs through the restored idea instrument rather than an arbitrary
 active engine.
 
 ## Effects and routing

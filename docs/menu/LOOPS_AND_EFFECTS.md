@@ -60,18 +60,20 @@ one whole Project bar.
 ![Populated FT2 WAV Loop screen with the SYS page](../images/menu/ft2-loop-sys.png)
 
 `PANIC` remains reachable. `ALIGN` opens offline analysis and placement
-adjustment. `LIBRARY` opens the shared loop browser. `EXIT` returns to FT2
-Tools.
+adjustment. `LIBRARY` opens the shared loop browser. `EXIT` returns to the
+calling FT2 Pattern or Song context with its location and cursor unchanged.
 
 ## Private loop browser
 
 `LIBRARY` opens the shared overlay over the unchanged loop page. It includes
-`INBOX`, `CURRENT`, `PRIVATE`, and `SAVED` entries. Turn the rotary and press to
-load a file; `INBOX` imports first, while the other types attach an existing
-private WAV. Press highlighted `LIBRARY` again or Back to close without
-changing the Project or stopping transport. Selecting an inbox/private entry
-stops owned tracker transport immediately before import/attach. The browser has
-no deletion action.
+`INBOX`, `CURRENT`, `PRIVATE`, and `SAVED` entries. Turning the rotary changes
+selection silently. Controller `PLAY` at position 6 explicitly previews the
+selection; pressing it again stops. Changing selection, controller `STOP`,
+Back, the highlighted `LIBRARY` launcher, or leaving the Loop Player stops the
+preview. Pressing the rotary/Enter commits the selected file: `INBOX` imports
+first, while the other types attach an existing private WAV. A failed preview
+or import leaves the browser selection and caller state in place for retry, and
+a failed import removes its private copy. The browser has no deletion action.
 
 ![Shared inbox/private loop overlay over the Loop Player](../images/menu/overlay-loop-library.png)
 
@@ -120,7 +122,7 @@ first/last wrapping, and click/Enter inserts an effect at that position.
 
 `ADD` inserts a provisional processor and opens its Type context. `DEL` removes
 only the selected owned processor. `EDIT` opens the Type context for the
-selected processor. `PARM` opens its named parameter editor.
+selected processor. `PARAM` opens its named parameter editor.
 
 ### ORDER — reorder or bypass
 
@@ -165,7 +167,7 @@ SYS preserves panic, return-level, help, and one-level exit actions.
 
 `TYPE-` and `TYPE+` browse compatible processors. `OK` confirms the new type;
 `CANCEL` restores the original processor, or removes a newly inserted
-provisional one. This context is distinct from `PARM`, which edits named
+provisional one. This context is distinct from `PARAM`, which edits named
 values without changing the processor type.
 
 ## FX parameter editor

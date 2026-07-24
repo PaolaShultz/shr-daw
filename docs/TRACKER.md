@@ -142,6 +142,9 @@ fill subsequent columns, keeping their velocities. **ADD** opens an overlay for
 every persistent advance from 0 through 32 rows for note/chord entry, blank,
 erase, and note-off; 0 keeps the current row. The FT2 title shows `EDIT +n`.
 A computer keyboard can enter notes with `Z S X D C V G B H N J M`.
+Those lowercase letter keys remain musical in REC as well as Play/Edit; in REC,
+use uppercase `S` or Space for Stop and Esc or uppercase `B` for Back so the
+`S` and `B` note keys are never shadowed.
 
 **LENGTH** is a separate Edit overlay. It chooses `1/1`, `1/2`, `1/4`,
 `1/8`, `1/16`, `1/32`, `1/64`, or `1/128` for melodic entries and defaults to `1/16`. The
@@ -229,7 +232,7 @@ including the factory Software Synth page. An offline or missing target refuses
 **REC** instead of substituting another destination. Real-time REC retains its
 separate active-note lane allocator so note releases remain paired with
 overlapping held notes; the history-based drum placement above applies only to
-Edit. **REC END**, **STOP**, **EXIT**, and **PANIC** release auditioned
+Edit. Repeated **RECORD**, **STOP**, **EXIT**, and **PANIC** release auditioned
 notes.
 
 ## WAV loops
@@ -270,15 +273,18 @@ channels. A decoded loop is limited to 6,000,000 frames (about 125 seconds at
 48 kHz) so one imported file cannot exhaust Raspberry Pi memory.
 
 From **TOOLS** → **LOOP**, choose **LIBRARY** to open the shared overlay over
-the loop page. Turn the master rotary to browse inbox and private WAVs and press
-it to import or attach and load the selected file. Inbox, current, private, and
-saved-Project entries are labelled in the overlay. Press **LIBRARY** again or
-Back to close it without changing the Project or stopping transport.
+the loop page. Turn the master rotary to browse inbox and private WAVs. Browsing
+is silent; controller **PLAY** explicitly previews the selected WAV. Repeated
+PLAY, selection change, **STOP**, Back, closing the browser, or leaving Loop
+Player stops the preview. Press the rotary/Enter to import or attach and load
+the selected file. Inbox, current, private, and saved-Project entries are
+labelled in the overlay.
 
-Selecting an `INBOX` entry imports it into private storage and loads it.
-Selecting `PRIVATE`, `CURRENT`, or `SAVED` attaches the existing private file
-and loads it. Selection stops owned tracker transport immediately before the
-import/attach is committed. The browser has no deletion action.
+Activating an `INBOX` entry imports it into private storage and loads it.
+Activating `PRIVATE`, `CURRENT`, or `SAVED` attaches the existing private file
+and loads it. A failed preview or import preserves selection and FT2 caller
+state for retry; failed import removes the private copy and leaves the Project
+unchanged. The browser has no deletion action.
 
 Press **REMOVE** twice to detach the loop from the
 Project and unload its JACK client. The imported private WAV is kept on disk so

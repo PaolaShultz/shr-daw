@@ -54,6 +54,8 @@ routes.
 `LOAD` starts the highlighted sound. `FIRST` and `LAST` jump to the ends of the
 current engine's catalog. Keyboard PageUp/PageDown still move by ten sounds;
 physical command pads deliberately do not duplicate that coarse scrolling.
+On the controller, LOAD uses semantic position 6; position 5 remains available
+for STOP/PANIC where that direct safety action exists.
 
 ### ENGINE — change instrument host
 
@@ -142,8 +144,10 @@ confirmation and only removes the selected Idea.
 ![Populated Ideas screen with the FILE controller page](../images/menu/ideas-file.png)
 
 `LOAD` restores the selected Idea, asking for confirmation before replacing an
-active sound. `SAVE` publishes a new non-overwriting Idea. `FIRST` and `LAST`
-select the list boundaries.
+active sound. The old engine remains usable if validation, start, or activation
+fails, and the same Idea stays selected for another LOAD attempt. `SAVE`
+publishes a new non-overwriting Idea. `FIRST` and `LAST` select the list
+boundaries.
 
 ### SYS — safety, help, and return
 
@@ -168,6 +172,10 @@ to browse and confirm even when optional buttons are skipped.
 Help is always available locally with `?` or F1, even if the optional temporary
 LAN page cannot bind. Turn the encoder one rendered row at a time. On eight- or
 five-button layouts, encoder press follows a selected section link.
+Opening Help preserves the exact caller, controller page, FT2 mode/location,
+cursor, editor draft, and active transport. EXIT restores that exact context.
+If the LAN port cannot be acquired, only the local reader opens and reports the
+failure; no URL is advertised.
 
 ### OPS — read and follow links
 

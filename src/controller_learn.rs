@@ -80,10 +80,10 @@ const COMMAND_ACTIONS: [PadAction; 9] = [
     PadAction::Page3,
     PadAction::Page4,
     PadAction::CyclePage,
-    PadAction::Item1,
-    PadAction::Item2,
-    PadAction::Item3,
-    PadAction::Item4,
+    PadAction::Stop,
+    PadAction::Play,
+    PadAction::Rec,
+    PadAction::TapTempo,
 ];
 
 impl LearnRole {
@@ -902,27 +902,27 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
         config.page_cycle_trigger = None;
         let actions: &[PadAction] = match layout {
             4 => &[
-                PadAction::Item1,
-                PadAction::Item2,
-                PadAction::Item3,
-                PadAction::Item4,
+                PadAction::Stop,
+                PadAction::Play,
+                PadAction::Rec,
+                PadAction::TapTempo,
             ],
             5 => &[
                 PadAction::CyclePage,
-                PadAction::Item1,
-                PadAction::Item2,
-                PadAction::Item3,
-                PadAction::Item4,
+                PadAction::Stop,
+                PadAction::Play,
+                PadAction::Rec,
+                PadAction::TapTempo,
             ],
             8 => &[
                 PadAction::Page1,
                 PadAction::Page2,
                 PadAction::Page3,
                 PadAction::Page4,
-                PadAction::Item1,
-                PadAction::Item2,
-                PadAction::Item3,
-                PadAction::Item4,
+                PadAction::Stop,
+                PadAction::Play,
+                PadAction::Rec,
+                PadAction::TapTempo,
             ],
             _ => unreachable!(),
         };

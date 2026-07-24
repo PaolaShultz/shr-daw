@@ -136,7 +136,11 @@ learning is optional and replaces the chosen button layout as one verified
 set.
 
 The reviewed MiniLab 3 profile uses factory Arturia/DAW pad notes 36–43 on
-channel 10. Direct capture on this unit found User 1 pads on channel 1, the same
+channel 10. Notes 36–39 select pages 1–4. Notes 40–43 are the semantic command
+positions 5–8 (`stop`, `play`, `rec`, `tap-tempo`); the current screen maps
+those positions to contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
+actions. Legacy `item-1` through `item-4` profile values remain compatible.
+Direct capture on this unit found User 1 pads on channel 1, the same
 channel as its keyboard, so User 1 pads are not safe command buttons: their
 messages are indistinguishable from keyboard notes. DAW Shift emits CC27, but
 the profile deliberately does not bind it as persistent pad lock; normal

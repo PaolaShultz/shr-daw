@@ -41,7 +41,7 @@ from the splash.
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
 | Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; load into the percussion page; save that page separately; confirmed deletion of user saves only; list navigation. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
 | FT2 arrange | Select arrangement step; append/insert current pattern; duplicate/remove step; move step earlier/later; jump to referenced pattern; play from selected step; back and panic. |
-| Pattern setup | Choose 3/4 or 4/4 and pattern size; confirm new/destructive resize, cancel, or clear while retaining the current size. |
+| Pattern setup | Choose 3/4 or 4/4 and pattern length; CONFIRM performs NEW/CLEAR with that shape, KEEP performs the same operation with the current Pattern's shape, and Exit cancels. |
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; Exit to Home and panic. |
@@ -80,10 +80,12 @@ the caller's controller-page state. At 40×13 its outer rectangle is exactly
 `x=2`, `y=2`, `width=36`, `height=9`. This leaves one cell visible on every
 side, including the final status row below it.
 
-While open, only the launcher action remains on the overlay's bottom border,
-near its original physical item position and with an active highlight. All
-other page and item commands are hidden and silent. It never occupies or clears
-the shared status row. There is no controller-strip Back button.
+While open, the launcher remains on the overlay's bottom border near its
+original physical item position and with an active highlight. Overlay-owned
+actions may share that border: Loop Browser keeps STOP at position 5 and PLAY
+preview at position 6, and the Song overlay keeps TAP at position 8. All
+unrelated caller commands are hidden and silent. The overlay never occupies or
+clears the shared status row. There is no controller-strip Back button.
 Pressing the highlighted launcher again closes the overlay. The rotary and
 Up/Down browse; rotary click and Enter select or confirm. Back/Esc cancels an
 active field first, then cancels the overlay draft and closes, before a later
@@ -99,10 +101,12 @@ Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
 Pattern Setup LNGTH chooses every value from 1 through 32 plus 48, 64, 96,
 128, 192, and 256.
 The Loop Player's LIBRARY launcher uses it for one combined inbox/private
-browser; inbox selection imports and loads, while private/current/saved
-selection attaches and loads. Opening or cancelling it preserves transport;
-committing a selection stops owned tracker transport before changing the
-Project. MTR's FX launcher reuses the same rendering,
+browser. Selection is silent until PLAY explicitly previews it; changing
+selection, STOP, Back, closing the browser, or leaving the Loop Player stops
+that preview. Activating an inbox selection imports and loads it, while
+activating a private/current/saved selection attaches and loads it. A failed
+preview or import keeps the selection and caller context for retry. MTR's FX
+launcher reuses the same rendering,
 input, toggle, and return layer.
 
 ## Input model
@@ -125,6 +129,11 @@ input, toggle, and return layer.
   On every workspace, child screen,
   and contextual editor, `EXIT` is page 4/item 4 and returns exactly one level.
   Home is the root and has no MIDI Exit; quitting remains keyboard-only.
+- Physical positions 5–8 are semantic anchors: STOP/PANIC, PLAY/LOAD/PREVIEW,
+  REC/capture, and TAP respectively when those actions are present. Empty
+  anchors remain contextual rather than becoming unconditional global
+  commands. The page-4/item-4 Exit flow remains at the right edge when TAP is
+  absent.
 - When a configured controller is offline, lacks a matching reviewed profile,
   or has an incomplete learned encoder, Home initially selects MIDI Learn and
   gives the reason. A learned master encoder with turn and click is usable even
@@ -171,7 +180,7 @@ Blank physical positions and wholly empty pages are omitted.
 
 | Screen/context | Page | Item 1 | Item 2 | Item 3 | Item 4 |
 |---|---|---|---|---|---|
-| Presets | Ops | Load | First | Last | — |
+| Presets | Ops | First | Load | Last | — |
 | Presets | Engine | Engine− | Engine+ | — | — |
 | Presets | Sys | Panic | Help | — | Exit |
 | MTR | Ops | Source− | Source+ | Level− | Level+ |
@@ -192,7 +201,7 @@ Blank physical positions and wholly empty pages are omitted.
 | FX editor | State | Bypass | — | — | — |
 | FX editor | Sys | Panic | — | Help | Exit |
 | Ideas | Play | Inspect | Play | Record | Delete |
-| Ideas | File | Load | Save | First | Last |
+| Ideas | File | Save | Load | First | Last |
 | Ideas | Sys | Panic | — | Help | Exit |
 | Help | Ops | Open link | Top | — | — |
 | Help | Sys | Panic | — | — | Exit |
@@ -219,23 +228,24 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
 | FT2 cell edit | Cell | Note | Gate | Velocity | Effect |
 | FT2 cell edit | Done | Panic | Save | Effect parameter | Exit/cancel |
-| Files | Ops | Load | Save | Preview/stop | Delete |
+| Files | Ops | Save | Load | Delete | — |
 | Files | Project | New Project | Save As | Name/rename | Pattern tools |
+| Files | Preview | — | Preview/stop | — | — |
 | Files | Sys | Panic | — | Help | Exit |
 | Routing-default prompt | Default | Confirm | Cancel | — | — |
 | Routing-default prompt | Sys | Panic | — | — | Exit/cancel |
-| Pattern tools | Ops | New | Clone | Clear | Drum patterns |
-| Pattern tools | Clip | Copy | Paste new (`NEW`) | Paste over (`OVER`) | Clean unused (`CLEAN`) |
+| Pattern tools | Ops | Blank new (`BLANK`) | Clone | Clear | Drum patterns |
+| Pattern tools | Clip | Copy | Paste as new (`PASTE+`) | Paste over (`OVER`) | Clean unused (`CLEAN`) |
 | Pattern tools | Trans | Octave− (`OCT-`) | Semitone− (`NOTE-`) | Semitone+ (`NOTE+`) | Octave+ (`OCT+`) |
 | Pattern tools | Sys | Panic | — | Help | Exit |
-| Drum patterns | Ops | Load | Save | Delete user | — |
+| Drum patterns | Ops | Save | Load | Delete user | — |
 | Drum patterns | Filter | Genre− | Genre+ | Meter | Size |
 | Drum patterns | Move | First | Last | — | — |
 | Drum patterns | Sys | Panic | — | Help | Exit |
 | Arrange | Ops | Jump | Play | Append | Insert |
 | Arrange | Step | Up | Down | Repeat | Remove |
 | Arrange | Sys | Panic | Help | — | Exit |
-| Pattern setup | Ops | 3/4 | 4/4 | Size− | Size+ |
+| Pattern setup | Ops | 3/4 | 4/4 | Length (`LNGTH`) | — |
 | Pattern setup | Apply | Confirm | Keep | — | — |
 | Pattern setup | Sys | Panic | — | Help | Exit/cancel |
 | Tracks | Ops | Add four lanes | Target | Channel | Done |
@@ -315,10 +325,12 @@ per cell. Gate is 1–100% of a row or inherited; delayed notes and retrigger
 pulses are bounded by the row. Program is a per-note override of the page
 program, routed before the note on the same exact target/channel.
 
-Physical MIDI notes and CCs remain configuration. Older `arp`, `pad`, `prog`,
-`loop`, `stop`, `play`, `rec`, and `tap-tempo` pad role aliases load as the
-same physical first-through-eighth positions, so local profiles can move to
-page 1–4 and item 1–4 without changing note numbers.
+Physical MIDI notes and CCs remain configuration. The canonical command roles
+for physical positions 5–8 are `stop`, `play`, `rec`, and `tap-tempo`; the
+active screen gives them their contextual STOP/PANIC, PLAY/LOAD/PREVIEW,
+capture, and TAP meanings. Older `item-1` through `item-4` mappings and other
+legacy role aliases still decode to the same physical positions without
+changing note numbers.
 
 ## Parameters, pickup, and extension points
 

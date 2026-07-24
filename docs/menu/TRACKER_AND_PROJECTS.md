@@ -167,7 +167,7 @@ draft; the Pattern stays unchanged until `SAVE`.
 
 ![Populated FT2 Cell Edit with the SOUND page](../images/menu/ft2-cell-edit-sound.png)
 
-`BANKMSB`, `BANKLSB`, and `CELLPRG` select the sound-routing fields. `CLEAR`
+`BNK MSB`, `BNK LSB`, and `PROGRAM` select the MIDI sound-routing fields. `CLEAR`
 clears only the selected field back to its inherited/default representation.
 An explicit per-cell program is sent before that note on its exact target and
 channel.
@@ -374,8 +374,10 @@ highlighted value in the still-unconfirmed Pattern setup.
 
 ![Populated Pattern setup with the APPLY page](../images/menu/pattern-setup-apply.png)
 
-`CONFIRM` performs the new/clear operation with the displayed shape. `KEEP`
-cancels the destructive reset and retains the current Pattern size.
+`CONFIRM` performs the requested NEW or CLEAR operation with the displayed
+meter and length. `KEEP` also performs the operation, but preserves the current
+Pattern's meter and length: NEW creates a blank Pattern with that shape, while
+CLEAR clears content without reshaping it.
 
 ### SYS — safety and cancellation
 

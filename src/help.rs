@@ -121,11 +121,7 @@ impl WebHelpUnavailable {
 
 pub fn start_web_help() -> Result<WebHelpServer, WebHelpUnavailable> {
     let ip = lan_ipv4().ok_or(WebHelpUnavailable::NoLanIp)?;
-    let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], WEB_HELP_PORT)))
-        .map_err(|_| WebHelpUnavailable::PortUnavailable)?;
-    listener
-        .set_nonblocking(true)
-        .map_err(|_| WebHelpUnavailable::PortUnavailable)?;
+    let listener = bind_web_help(SocketAddr::from(([0, 0, 0, 0], WEB_HELP_PORT)))?;
     let url = format!("http://{ip}{WEB_HELP_PATH}");
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
@@ -136,6 +132,14 @@ pub fn start_web_help() -> Result<WebHelpServer, WebHelpUnavailable> {
         stop,
         handle: Some(handle),
     })
+}
+
+fn bind_web_help(address: SocketAddr) -> Result<TcpListener, WebHelpUnavailable> {
+    let listener = TcpListener::bind(address).map_err(|_| WebHelpUnavailable::PortUnavailable)?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|_| WebHelpUnavailable::PortUnavailable)?;
+    Ok(listener)
 }
 
 fn display_link(raw: &str) -> (String, Option<String>, bool) {
@@ -444,5 +448,16 @@ mod tests {
         handle.join().unwrap();
         assert!(response.starts_with("HTTP/1.1 404 Not Found"));
         assert!(!response.contains("<html>help</html>"));
+    }
+
+    #[test]
+    fn occupied_port_abandons_web_help_without_a_listener() {
+        let occupied = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let address = occupied.local_addr().unwrap();
+
+        assert!(matches!(
+            bind_web_help(address),
+            Err(WebHelpUnavailable::PortUnavailable)
+        ));
     }
 }

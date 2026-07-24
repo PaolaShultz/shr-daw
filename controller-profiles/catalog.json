@@ -27,10 +27,10 @@
       "37": "page-2",
       "38": "page-3",
       "39": "page-4",
-      "40": "item-1",
-      "41": "item-2",
-      "42": "item-3",
-      "43": "item-4"
+      "40": "stop",
+      "41": "play",
+      "42": "rec",
+      "43": "tap-tempo"
     },
     "note_button_channels": {
       "36": 10,

@@ -101,7 +101,7 @@ before or after source effects, and RETURN sets how much comes back. Master
 effects change the final dry-plus-aux mix.
 
 ADD inserts a provisional processor and opens TYPE. EDIT changes the selected
-processor's type; PARM opens its named values; DEL removes it. ORDER moves the
+processor's type; PARAM opens its named values; DEL removes it. ORDER moves the
 same stable instance and BYPASS fades a source or master effect toward dry. A
 fully bypassed aux returns silence, so it never doubles the dry source; a delay
 tail can be allowed to fade with new input muted. Aux effects are forced wet.
@@ -149,10 +149,10 @@ smoothed; there are no pan, solo, aux, or per-input effect controls.
 
 ## MIDI ideas
 
-Ideas record musical MIDI while a sound is loaded. STOP REC ends the take; TAKE
-plays it back through the loaded engine; SAVE stores it for later.
+Ideas record musical MIDI while a sound is loaded. Repeated RECORD stops the
+capture; PLAY plays it back through the loaded engine; SAVE stores it for later.
 
-Recording timestamps come from the MIDI callback, and TAKE playback runs
+Recording timestamps come from the MIDI callback, and PLAY playback runs
 independently of screen redraws. Stopping a take cancels it promptly and sends
 all-notes-off cleanup.
 
@@ -165,8 +165,9 @@ actual JACK input.
 
 ## FT2 tracker
 
-FT2 is a Pattern sequencer. PLAY starts at the cursor, START plays from the
-Project's Arrangement beginning, and STOP stops only the tracker transport.
+FT2 is a Pattern sequencer. PLAY starts at the current Pattern/Arrangement
+location, REWIND returns to the beginning, and STOP stops only the tracker
+transport.
 In Play and REC, turn the physical main encoder to select columns across page
 boundaries; keyboard Up/Down still moves rows. Edit keeps encoder row movement.
 The shaded selected column does not move the row, playhead, Arrangement Step,
@@ -253,9 +254,11 @@ Tempo matching sets the current Pattern tempo from the WAV; the WAV plays at
 native speed and pitch. The loop sample rate must match JACK. Use UNIT to edit
 by beat or bar, and ALIGN to snap/move placement by bars. Loop Player PLAY
 `REMOVE` is confirmed and detaches the Project loop without deleting the WAV.
-Loop Player SYS `LIBRARY` opens an overlay over the loop page; turn to browse
-inbox and private WAVs, then press to import or attach and load the selected
-file.
+Loop Player SYS `LIBRARY` opens an overlay over the loop page. Browsing is
+silent. Controller PLAY explicitly previews the selected WAV; repeated PLAY,
+selection change, STOP, Back, browser close, or leaving Loop Player stops that
+preview. Press the rotary/Enter to import or attach and load. Failure keeps the
+selection and FT2 context for retry without attaching a partial import.
 `INBOX` imports; `PRIVATE`, `CURRENT`, and `SAVED` attach the existing file.
 The browser does not delete WAVs.
 

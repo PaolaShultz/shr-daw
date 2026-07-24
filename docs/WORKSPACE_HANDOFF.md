@@ -163,9 +163,12 @@ sample redistribution.
   output. These are private configuration values, not portable defaults.
 - The reviewed controller profile is `arturia-minilab-3`; controller and
   performance MIDI roles are separate. Its configured eight-pad layout uses
-  four page pads plus four item pads; the master rotary browses content and its
-  press selects/confirms. The Routing screen reports live visibility, not
-  merely remembered configuration.
+  four page pads plus semantic positions 5–8: STOP/PANIC, PLAY/LOAD/PREVIEW,
+  REC/capture, and TAP. MiniLab notes 40–43 use the canonical
+  `stop`/`play`/`rec`/`tap-tempo` roles; legacy item-role configuration remains
+  readable. The master rotary browses content and its press selects/confirms.
+  The Routing screen reports live visibility, not merely remembered
+  configuration.
 - The optional audio profile reserves CPU 3. Boot isolation is active; the
   performance-governor service and JACK affinity drop-in are installed. Inspect
   with `shr-audio-tune status`; removal requires the helper's managed removal,
@@ -203,6 +206,18 @@ hardware/JACK names change. Read `docs/MAINTAINER_HELPERS.md` first.
   context plus Home, MIDI Learn, and all master overlays. Keep its exact
   scenarios, font, 40×13 geometry, integer scaler, and validation contract in
   `docs/MAINTAINER_HELPERS.md`; do not hand-edit generated PNGs.
+- Loop browsing is owned by FT2. Loop Browser selection is silent until its
+  position-6 PLAY preview; selection change, STOP, Back/close, or leaving Loop
+  Player stops that preview. Failed preview/import keeps the FT2 caller and
+  selection for retry, and import failure rolls back its private copy and
+  Project attachment.
+- Help is temporary reference navigation and preserves the exact caller,
+  controller page, FT2 mode/location/editor state, and active workflow. LAN
+  Help advertises a URL only after its port has been acquired.
+- Managed preset/Idea replacement validates first and restores the previous
+  engine session if replacement fails. Routing failures keep both the old
+  persisted/runtime route and the entered draft. Idea MIDI, FT2 pattern,
+  multitrack WAV, and final WAV recording are exclusive transport owners.
 
 The open hands-on review is non-audible and must use a new empty FT2 Project.
 Keep transport/recording stopped and do not attach routes. On the physical
@@ -210,7 +225,7 @@ Keep transport/recording stopped and do not attach routes. On the physical
 launcher inside the bottom border, and uninterrupted final status row;
 encoder/keyboard parity and wrap behavior; silent hidden launchers; two-step
 Back behavior; ROUTE draft cancellation without Project mutation; the Loop
-Library's inbox/private selection and return behavior; and every entered screen,
+Library's explicit PLAY preview, stop/rollback, and return behavior; and every entered screen,
 including an MTR FX caller return, starting on controller-menu page 1. Record
 observed failures before changing behavior.
 

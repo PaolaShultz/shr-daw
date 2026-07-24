@@ -399,10 +399,10 @@ mod tests {
             PadAction::Page2,
             PadAction::Page3,
             PadAction::Page4,
-            PadAction::Item1,
-            PadAction::Item2,
-            PadAction::Item3,
-            PadAction::Item4,
+            PadAction::Stop,
+            PadAction::Play,
+            PadAction::Rec,
+            PadAction::TapTempo,
         ]
         .into_iter()
         .enumerate()

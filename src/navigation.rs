@@ -177,7 +177,6 @@ pub enum Action {
     NoteEditorNextField,
     NoteEditorDecrease,
     NoteEditorIncrease,
-    NoteEditorConfirm,
     NoteEditorSave,
     NoteEditorCancel,
     TrackerPlayToggle,
@@ -202,6 +201,9 @@ pub enum Action {
     LoopOffsetUp,
     LoopAlignDone,
     OpenLoopLibrary,
+    LoopPreview,
+    LoopPreviewStop,
+    TapTempo,
     TrackerMute,
     TrackerPageMute,
     NextTrackerPage,
@@ -349,8 +351,8 @@ const PRESETS: [MenuPage; 4] = [
     page(
         "OPS",
         [
-            on("LOAD", Action::Activate),
             on("FIRST", Action::Home),
+            on("LOAD", Action::Activate),
             on("LAST", Action::End),
             off(""),
         ],
@@ -418,8 +420,8 @@ const IDEAS: [MenuPage; 4] = [
     page(
         "FILE",
         [
-            on("LOAD", Action::LoadIdea),
             on("SAVE", Action::SaveNew),
+            on("LOAD", Action::LoadIdea),
             on("FIRST", Action::Home),
             on("LAST", Action::End),
         ],
@@ -688,9 +690,9 @@ const TRACKER_NOTE_EDIT: [MenuPage; 4] = [
     page(
         "SOUND",
         [
-            on("BANKMSB", Action::NoteBankMsbField),
-            on("BANKLSB", Action::NoteBankLsbField),
-            on("CELLPRG", Action::ProgramField),
+            on("BNK MSB", Action::NoteBankMsbField),
+            on("BNK LSB", Action::NoteBankLsbField),
+            on("PROGRAM", Action::ProgramField),
             on("CLEAR", Action::NoteEditorClearField),
         ],
     ),
@@ -717,10 +719,10 @@ const FILES: [MenuPage; 4] = [
     page(
         "OPS",
         [
-            on("LOAD", Action::LoadSong),
             on("SAVE", Action::SaveSong),
-            on("PREVIEW", Action::PreviewSong),
+            on("LOAD", Action::LoadSong),
             on("DELETE", Action::DeleteSong),
+            off(""),
         ],
     ),
     page(
@@ -732,7 +734,15 @@ const FILES: [MenuPage; 4] = [
             on("PATTERN", Action::OpenPatternTools),
         ],
     ),
-    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "PREVIEW",
+        [
+            off(""),
+            on("PREVIEW", Action::PreviewSong),
+            off(""),
+            off(""),
+        ],
+    ),
     page(
         "SYS",
         [
@@ -747,7 +757,7 @@ const PATTERN_TOOLS: [MenuPage; 4] = [
     page(
         "OPS",
         [
-            on("NEW", Action::NewPattern),
+            on("BLANK", Action::NewPattern),
             on("CLONE", Action::ClonePattern),
             on("CLEAR", Action::ClearPattern),
             on("DRUMS", Action::OpenDrumPatterns),
@@ -757,7 +767,7 @@ const PATTERN_TOOLS: [MenuPage; 4] = [
         "CLIP",
         [
             on("COPY", Action::CopyPattern),
-            on("NEW", Action::PastePatternNew),
+            on("PASTE+", Action::PastePatternNew),
             on("OVER", Action::PastePatternOver),
             on("CLEAN", Action::DeleteUnusedPattern),
         ],
@@ -785,8 +795,8 @@ const DRUM_PATTERNS: [MenuPage; 4] = [
     page(
         "OPS",
         [
-            on("LOAD", Action::LoadDrumPattern),
             on("SAVE", Action::SaveDrumPattern),
+            on("LOAD", Action::LoadDrumPattern),
             on("DELETE", Action::DeleteDrumPattern),
             off(""),
         ],
@@ -955,7 +965,7 @@ const FX_RACK: [MenuPage; 4] = [
             on("ADD", Action::FxAdd),
             on("DEL", Action::FxRemove),
             on("EDIT", Action::FxEditType),
-            on("PARM", Action::OpenFxEditor),
+            on("PARAM", Action::OpenFxEditor),
         ],
     ),
     page(
@@ -1435,6 +1445,7 @@ mod tests {
             for context in [
                 MenuContext::Normal,
                 MenuContext::TrackerEdit,
+                MenuContext::RoutingDefaults,
                 MenuContext::TrackerRecord,
                 MenuContext::TrackerNoteEdit,
                 MenuContext::PageTarget,
@@ -1442,21 +1453,16 @@ mod tests {
                 MenuContext::PatternClear,
                 MenuContext::PatternTools,
                 MenuContext::DrumPatterns,
+                MenuContext::FxEmpty,
+                MenuContext::FxType,
             ] {
                 for menu_page in pages(screen, context) {
                     for (position, slot) in menu_page.slots.iter().enumerate() {
-                        let expected = match slot.dispatch() {
-                            Some(
-                                Action::IdeaPlayToggle
-                                | Action::TrackerPlayToggle
-                                | Action::ArrangementPlayFromStep,
-                            ) => Some(1),
-                            Some(
-                                Action::IdeaRecordToggle
-                                | Action::TrackerRecordToggle
-                                | Action::AudioRecordToggle
-                                | Action::FinalRecordToggle,
-                            ) => Some(2),
+                        let expected = match slot.label {
+                            "STOP" | "PANIC" => Some(0),
+                            "PLAY" | "LOAD" | "PREVIEW" => Some(1),
+                            "RECORD" | "REC" => Some(2),
+                            "TAP" => Some(3),
                             _ => None,
                         };
                         if let Some(expected) = expected {
@@ -1467,6 +1473,35 @@ mod tests {
                             );
                         }
                     }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn no_play_or_load_uses_the_stop_position() {
+        for screen in Screen::ALL {
+            for context in [
+                MenuContext::Normal,
+                MenuContext::TrackerEdit,
+                MenuContext::RoutingDefaults,
+                MenuContext::TrackerRecord,
+                MenuContext::TrackerNoteEdit,
+                MenuContext::PageTarget,
+                MenuContext::PageChannel,
+                MenuContext::PatternClear,
+                MenuContext::PatternTools,
+                MenuContext::DrumPatterns,
+                MenuContext::FxEmpty,
+                MenuContext::FxType,
+            ] {
+                for page in pages(screen, context) {
+                    assert!(
+                        !matches!(page.slots[0].label, "PLAY" | "LOAD"),
+                        "{screen:?} {context:?} {} puts {} at position 5",
+                        page.label,
+                        page.slots[0].label
+                    );
                 }
             }
         }

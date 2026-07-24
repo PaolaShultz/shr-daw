@@ -217,6 +217,22 @@ impl OverlayState {
         }
     }
 
+    /// Controller actions that remain available while this overlay owns
+    /// transient selection. The launcher's original position is preserved;
+    /// Loop Browser adds contextual stop/play anchors and Song Navigation adds
+    /// TAP at the tempo anchor.
+    pub fn controller_action(&self, item: usize) -> Option<(&'static str, Action)> {
+        if self.launcher.item == item {
+            return Some((self.launcher.label, self.launcher.action));
+        }
+        match (self.kind, item) {
+            (OverlayKind::LoopLibrary, 0) => Some(("STOP", Action::LoopPreviewStop)),
+            (OverlayKind::LoopLibrary, 1) => Some(("PLAY", Action::LoopPreview)),
+            (OverlayKind::TrackerSong, 3) => Some(("TAP", Action::TapTempo)),
+            _ => None,
+        }
+    }
+
     pub fn begin_route_field(&mut self, field: RouteField) {
         if self.active_field.is_some() {
             return;
@@ -273,6 +289,67 @@ impl OverlayState {
         } else if self.selection >= self.scroll.saturating_add(visible_rows) {
             self.scroll = self.selection + 1 - visible_rows;
         }
+    }
+}
+
+#[cfg(test)]
+mod controller_tests {
+    use super::*;
+
+    fn overlay(kind: OverlayKind, launcher: OverlayLauncher) -> OverlayState {
+        OverlayState::new(
+            kind,
+            Screen::TrackerLoop,
+            launcher,
+            0,
+            OverlayDraft::None,
+            3,
+            false,
+        )
+    }
+
+    #[test]
+    fn loop_browser_keeps_launcher_and_exposes_stop_play_anchors() {
+        let state = overlay(
+            OverlayKind::LoopLibrary,
+            OverlayLauncher {
+                action: Action::OpenLoopLibrary,
+                label: "LIBRARY",
+                page: 3,
+                item: 2,
+            },
+        );
+        assert_eq!(
+            state.controller_action(0),
+            Some(("STOP", Action::LoopPreviewStop))
+        );
+        assert_eq!(
+            state.controller_action(1),
+            Some(("PLAY", Action::LoopPreview))
+        );
+        assert_eq!(
+            state.controller_action(2),
+            Some(("LIBRARY", Action::OpenLoopLibrary))
+        );
+        assert_eq!(state.controller_action(3), None);
+    }
+
+    #[test]
+    fn song_overlay_keeps_launcher_and_puts_tap_at_position_eight() {
+        let state = overlay(
+            OverlayKind::TrackerSong,
+            OverlayLauncher {
+                action: Action::OpenSongOverlay,
+                label: "SONG",
+                page: 1,
+                item: 2,
+            },
+        );
+        assert_eq!(
+            state.controller_action(2),
+            Some(("SONG", Action::OpenSongOverlay))
+        );
+        assert_eq!(state.controller_action(3), Some(("TAP", Action::TapTempo)));
     }
 }
 

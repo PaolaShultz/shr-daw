@@ -352,10 +352,10 @@ pad.36=page-1
 pad.37=page-2
 pad.38=page-3
 pad.39=page-4
-pad.40=item-1
-pad.41=item-2
-pad.42=item-3
-pad.43=item-4
+pad.40=stop
+pad.41=play
+pad.42=rec
+pad.43=tap-tempo
 ```
 
 Add an optional 1-based MIDI channel between `pad` and the note number when a
@@ -367,10 +367,10 @@ pad.10.36=page-1
 pad.10.37=page-2
 pad.10.38=page-3
 pad.10.39=page-4
-pad.10.40=item-1
-pad.10.41=item-2
-pad.10.42=item-3
-pad.10.43=item-4
+pad.10.40=stop
+pad.10.41=play
+pad.10.42=rec
+pad.10.43=tap-tempo
 ```
 
 Only channel-10 presses, releases, velocity-zero Note On releases, and
@@ -384,10 +384,10 @@ Five-button layout:
 ```text
 menu.layout=5
 pad.36=page-cycle
-pad.40=item-1
-pad.41=item-2
-pad.42=item-3
-pad.43=item-4
+pad.40=stop
+pad.41=play
+pad.42=rec
+pad.43=tap-tempo
 ```
 
 The page-cycle action may instead be a held chord. This example holds CC27 and
@@ -407,10 +407,10 @@ Four-button layout:
 
 ```text
 menu.layout=4
-pad.40=item-1
-pad.41=item-2
-pad.42=item-3
-pad.43=item-4
+pad.40=stop
+pad.41=play
+pad.42=rec
+pad.43=tap-tempo
 ```
 
 The note numbers above are examples only. Use the notes sent by the configured
@@ -421,7 +421,9 @@ profile or offers MIDI learn; compact profiles can also be edited directly or
 with `shr pads set NOTE ROLE`.
 
 Older physical role aliases are accepted in physical order. New profiles should
-use `page-1` through `page-4`, `page-cycle`, and `item-1` through `item-4`.
+use `page-1` through `page-4`, `page-cycle`, and the semantic command roles
+`stop`, `play`, `rec`, and `tap-tempo`. Legacy `item-1` through `item-4`
+values remain accepted for existing local configurations.
 Command-note on/off and matching polyphonic pressure remain consumed; unmapped
 musical notes pass through.
 Disabled (`-`) and planned (`~`) entries never dispatch actions.
@@ -434,7 +436,7 @@ shr pads input "Controller port name"
 shr pads layout 5
 shr pads cc 20 74
 shr pads set 51 page-cycle
-shr pads set 52 item-1
+shr pads set 52 stop
 shr pads clear 51
 ```
 
@@ -640,7 +642,7 @@ commands in one cell are not supported. Per-cell program overrides use the
 selected column bank and exact page destination/column channel, occur before
 that note, and do not mutate the inherited column program.
 
-Choosing **CELLPRG** replaces the grid with a named program browser. Browsing
+Choosing **PROGRAM** replaces the grid with a named MIDI program browser. Browsing
 alone sends nothing. An explicitly played controller note auditions through the
 selected page target/column channel without being inserted into the pattern or
 duplicated through generic live-thru. Raw MIDI still shows every numeric
