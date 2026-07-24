@@ -16,6 +16,13 @@ than treating “Lite” as a reproducible version identifier. The
 [release roadmap](RELEASE_ROADMAP.md) owns the gate; the
 [Pi 5 plan](PI5_HEADROOM_PLAN.md) owns the state comparison.
 
+For the planned native-NVMe Pi 5, first follow
+[Raspberry Pi 5 NVMe installation](PI5_NVME_INSTALL.md). It covers safe drive
+identification, Raspberry Pi Imager, headless customisation, first-boot proof,
+boot-order recovery, and the boundary between HAT+ and adapter-specific PCIe
+settings. Return here only after `findmnt` proves that the running root
+filesystem is on the NVMe.
+
 The supported family is Debian-based Linux. Rust 1.85, Cargo, a C build
 toolchain, `pkg-config`, Python 3, ripgrep, ALSA development/runtime tools, and
 JACK2 are required to build and diagnose the complete installation. A running

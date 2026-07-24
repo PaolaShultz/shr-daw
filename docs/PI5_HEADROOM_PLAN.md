@@ -57,9 +57,12 @@ connectors, and keep the drive serviceable. Exact dimensions and CAD work wait
 until the physical board, adapter, drive, cooler, and screen can be measured.
 
 Begin the release 0.4 platform path from a fresh official 64-bit Raspberry Pi
-OS Lite image and record its exact filename, release, architecture, checksum,
-kernel, firmware, and first-boot choices. Do not install Patchbox OS or copy the
-Pi 4 root filesystem as a shortcut.
+OS Lite image. Record the Imager version, selected OS/date, release,
+architecture, kernel, firmware, and first-boot choices; when using a downloaded
+custom image, also record its exact filename and checksum. Do not install
+Patchbox OS or copy the Pi 4 root filesystem as a shortcut. Use the canonical
+[Raspberry Pi 5 NVMe installation](PI5_NVME_INSTALL.md) path and prove the live
+root filesystem is on NVMe before installing SHR-DAW.
 
 The Raspberry Pi 5 CPU provides private per-core L1 and 512 KB L2 caches plus a
 2 MB shared L3 cache. Reserving a core cannot reserve the shared L3, but it can

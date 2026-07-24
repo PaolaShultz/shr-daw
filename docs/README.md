@@ -32,6 +32,8 @@ configuration, or the architecture contracts.
 
 - [Installation](INSTALLATION.md) — dependencies, install/uninstall boundaries,
   repository-local evaluation, JACK, and optional CPU tuning.
+- [Raspberry Pi 5 NVMe installation](PI5_NVME_INSTALL.md) — safe imaging,
+  headless customisation, first-boot proof, and boot recovery.
 - [Raspberry Pi audio-system optimization](AUDIO_SYSTEM_OPTIMIZATION.md) —
   Patchbox/stock baselines, reviewed settings, ownership, rollback, doctor
   states, and primary-source provenance.
