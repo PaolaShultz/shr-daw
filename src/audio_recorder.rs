@@ -1791,8 +1791,15 @@ pub fn run_synthetic_stress(
         .map_err(|_| anyhow!("synthetic multitrack writer panicked"))?;
     writer_result?;
     let elapsed = started.elapsed();
+    let published = if paths.final_path.is_dir() {
+        &paths.final_path
+    } else if paths.incomplete.is_dir() {
+        &paths.incomplete
+    } else {
+        bail!("synthetic take publication is missing");
+    };
     let manifest: SessionManifest =
-        serde_json::from_slice(&fs::read(paths.final_path.join("session.json"))?)?;
+        serde_json::from_slice(&fs::read(published.join("session.json"))?)?;
     if manifest.completeness != "complete"
         || manifest.total_frames != target_frames
         || manifest
@@ -1800,7 +1807,16 @@ pub fn run_synthetic_stress(
             .iter()
             .any(|track| track.frames != target_frames)
     {
-        bail!("synthetic take failed frame-count or completion verification");
+        bail!(
+            "synthetic take incomplete: {} of {target_frames} frames · dropped {} · overflows {} \
+             · callback violations {} · xruns {} · preserved at {}",
+            manifest.total_frames,
+            manifest.dropped_frames,
+            manifest.overflow_events,
+            manifest.callback_violations,
+            manifest.xruns,
+            published.display()
+        );
     }
     let mut identity_verified = true;
     for (channel, track) in manifest.tracks.iter().enumerate() {

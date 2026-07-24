@@ -154,8 +154,20 @@ matches the WAV loops you intend to use, such as 44100 Hz for CD-rate loops or
 ## Optional dedicated audio CPU
 
 On a Raspberry Pi with at least four cores, the setup wizard can reserve one
-CPU for JACK and the one software synth managed by SHR-DAW. This is disabled by
-default.
+CPU for JACK and the one software synth managed by SHR-DAW. The wizard asks
+before making this system-wide change and defaults to no. If accepted, it runs
+the managed tuning helper immediately; boot-time isolation takes effect only
+after the user reboots.
+
+The purpose is predictable real-time scheduling under demanding simultaneous
+playback and recording, such as an 18-input/18-output session. Keeping normal
+tasks and most interrupts off the audio CPU reduces the chance that a compiler,
+desktop task, or unrelated device delays JACK at the wrong moment. The tradeoff
+is deliberate: normal work has one fewer CPU until the profile is removed and
+the Pi is rebooted. Rust linking is largely serial, so it is often the longest
+build stage either way; parallel compilation can be somewhat slower with one
+of four CPUs reserved. Stopping JACK alone does not return an isolated CPU to
+general scheduling.
 
 The optional profile:
 

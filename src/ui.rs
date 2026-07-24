@@ -2600,12 +2600,10 @@ impl App {
                         self.close_overlay(false);
                         self.status = status;
                     }
-                } else {
-                    if self.select_loop_library_entry(selection - self.loop_imports.len()) {
-                        let status = self.status.clone();
-                        self.close_overlay(false);
-                        self.status = status;
-                    }
+                } else if self.select_loop_library_entry(selection - self.loop_imports.len()) {
+                    let status = self.status.clone();
+                    self.close_overlay(false);
+                    self.status = status;
                 }
             }
             OverlayKind::MixEffects => {
@@ -2941,14 +2939,14 @@ impl App {
                 Ok(audio_route)
             }
             Err(start_error) => {
-                let restoration = previous.and_then(|session| {
+                let restoration = previous.map(|session| {
                     let old_preset = session.preset.clone();
                     match self.start_engine_process(&old_preset, state) {
                         Ok(engine) => {
                             self.install_engine_session(engine, session);
-                            Some("previous engine restored".to_string())
+                            "previous engine restored".to_string()
                         }
-                        Err(error) => Some(format!("previous engine restore failed: {error:#}")),
+                        Err(error) => format!("previous engine restore failed: {error:#}"),
                     }
                 });
                 if self.engine.is_none() {
@@ -8326,7 +8324,7 @@ impl App {
         self.idea_selected = self.idea_selected.min(self.ideas.len().saturating_sub(1));
         self.confirm_delete = None;
         self.set_screen(Screen::Ideas);
-        self.status = "ideas · select an action".into();
+        self.status.clear();
     }
     fn open_help(&mut self) {
         if self.screen != Screen::Help {
@@ -9615,7 +9613,7 @@ fn perform(
         Action::OpenPresets => {
             a.set_tracker_edit(false);
             a.set_screen(Screen::Presets);
-            a.status = "software synths · choose a sound".into();
+            a.status.clear();
         }
         Action::OpenIdeas => a.open_ideas(),
         Action::OpenHelp => a.open_help(),
@@ -9629,15 +9627,15 @@ fn perform(
                 .current_page()
                 .is_some_and(|page| a.target_online(&page.target));
             if engine_ready {
-                a.status = if entry == TrackerEntryInstrument::AdoptedPlayer {
-                    "tracker ready · Player instrument assigned to page 1".into()
+                if entry == TrackerEntryInstrument::AdoptedPlayer {
+                    a.status = "Player instrument assigned to page 1".into();
                 } else if entry == TrackerEntryInstrument::FirstSynthv1 {
-                    "tracker ready · first synthv1 instrument assigned to page 1".into()
+                    a.status = "first synthv1 instrument assigned to page 1".into();
                 } else if page_online {
-                    "tracker ready · EDIT toggles entry · encoder press skips".into()
+                    a.status.clear();
                 } else {
-                    "tracker page target offline · PAGES to change it".into()
-                };
+                    a.status = "tracker page target offline · PAGES to change it".into();
+                }
             }
         }
         Action::OpenTrackerFiles => {
@@ -9652,14 +9650,14 @@ fn perform(
             a.tracker_files_mode = TrackerFilesMode::Projects;
             a.stop_song_preview();
             a.set_screen(Screen::TrackerFiles);
-            a.status = "song files · select an action".into();
+            a.status.clear();
         }
         Action::OpenTrackerArrange => a.open_arrange(),
         Action::OpenTrackerLoop => a.open_tracker_loop(),
         Action::OpenTrackerLoopAlign => {
             a.set_screen(Screen::TrackerLoopAlign);
             a.reset_context_page();
-            a.status = "loop align · AUTO or move by one bar".into();
+            a.status.clear();
         }
         Action::OpenPageOverlay
         | Action::OpenPatternOverlay
@@ -9672,7 +9670,7 @@ fn perform(
         Action::OpenAudioRecorder => {
             a.set_tracker_edit(false);
             a.set_screen(Screen::AudioRecorder);
-            a.status = "multitrack audio recorder".into();
+            a.status.clear();
         }
         Action::OpenFxRack => {
             if !matches!(a.screen, Screen::FxRack | Screen::FxEditor) {
@@ -9687,11 +9685,7 @@ fn perform(
             a.fx_value_editing = false;
             a.fx_edit_original = None;
             a.set_screen(Screen::FxRack);
-            a.status = format!(
-                "{} rack · next {}",
-                fx_target_label(a.fx_target),
-                effect_kind_label(INSERT_EFFECTS[a.fx_add_kind])
-            );
+            a.status.clear();
         }
         Action::OpenFxEditor => {
             if a.selected_effect_id().is_some() {
@@ -9699,7 +9693,7 @@ fn perform(
                 a.fx_value_editing = false;
                 a.fx_edit_original = None;
                 a.set_screen(Screen::FxEditor);
-                a.status = "effect editor · turn to choose parameter · press to edit".into();
+                a.status.clear();
             } else {
                 a.status = "FX rack is empty".into();
             }
@@ -9708,7 +9702,7 @@ fn perform(
             a.set_tracker_edit(false);
             a.set_screen(Screen::Meter);
             a.reset_context_page();
-            a.status = "mix, final output, and meters".into();
+            a.status.clear();
         }
         Action::OpenRouting => {
             a.set_tracker_edit(false);
@@ -9743,7 +9737,7 @@ fn perform(
                     return false;
                 }
                 a.set_screen(Screen::FxRack);
-                a.status = "insert rack".into();
+                a.status.clear();
                 return false;
             }
             if a.screen == Screen::TrackerFiles {
@@ -9752,13 +9746,13 @@ fn perform(
                         a.tracker_files_mode = TrackerFilesMode::Patterns;
                         a.confirm_drum_pattern_delete = None;
                         a.reset_context_page();
-                        a.status = format!("pattern {} tools", a.tracker_pattern_number());
+                        a.status.clear();
                         return false;
                     }
                     TrackerFilesMode::Patterns => {
                         a.tracker_files_mode = TrackerFilesMode::Projects;
                         a.reset_context_page();
-                        a.status = "Project files".into();
+                        a.status.clear();
                         return false;
                     }
                     TrackerFilesMode::Projects => {}
@@ -10553,7 +10547,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 a.set_tracker_edit(false);
             }
             a.set_screen(Screen::AudioRecorder);
-            a.status = "multitrack audio recorder".into();
+            a.status.clear();
         }
         KeyCode::Char('d') if a.screen == Screen::Ideas => a.delete_idea(),
         KeyCode::Char('i') if a.screen == Screen::Ideas => a.inspect_idea(),
@@ -14559,7 +14553,7 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
                 "d50-pad-study".into(),
                 "live-set-a".into(),
             ];
-            app.status = "Project files · select an action".into();
+            app.status.clear();
         }
         Screen::TrackerLoop => {
             fill_demo_song(app);
@@ -14746,7 +14740,7 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
             configure_demo_page_editor(app);
             app.page_manager_mode = PageManagerMode::Target;
             app.page_target_selected = 1;
-            app.status = "target editor · Roland D-50 is online".into();
+            app.status = "target editor · draft Roland D-50".into();
         }
         ScreenshotScenario::PageChannel => {
             fill_demo_song(app);
@@ -18625,6 +18619,27 @@ mod tests {
         perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
         assert_eq!(a.menu_page(), 0, "FT2 entry starts on PLAY");
     }
+
+    #[test]
+    fn healthy_working_screen_entries_do_not_fill_the_shared_status_row() {
+        let p = presets();
+        let mut a = app(&p);
+        for action in [
+            Action::OpenPresets,
+            Action::OpenIdeas,
+            Action::OpenTrackerFiles,
+            Action::OpenTrackerLoopAlign,
+            Action::OpenAudioRecorder,
+            Action::OpenFxRack,
+            Action::OpenMeter,
+        ] {
+            a.set_screen(Screen::Home);
+            a.status = "stale message".into();
+            perform(action, &mut a, Path::new("/none"), None);
+            assert!(a.status.is_empty(), "{action:?} left {:?}", a.status);
+        }
+    }
+
     #[test]
     fn help_opens_links_and_returns_to_previous_screen() {
         let p = presets();
@@ -20498,7 +20513,7 @@ mod tests {
         perform(Action::OpenTrackerFiles, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::TrackerFiles);
         assert_eq!(
-            navigation::slot(a.screen, a.menu_context(), 0, 2).and_then(|slot| slot.dispatch()),
+            navigation::slot(a.screen, a.menu_context(), 2, 1).and_then(|slot| slot.dispatch()),
             Some(Action::PreviewSong)
         );
         perform(Action::ClearPattern, &mut a, Path::new("/none"), None);

@@ -173,7 +173,11 @@ sample redistribution.
   performance-governor service and JACK affinity drop-in are installed. Inspect
   with `shr-audio-tune status`; removal requires the helper's managed removal,
   clearing `audio.engine_cpu`, and reboot. Never edit around its ownership
-  records in `/var/lib/shr-audio-tune/`.
+  records in `/var/lib/shr-audio-tune/`. This is deliberate real-time isolation
+  for demanding simultaneous playback/recording, not a dormant JACK core that
+  ordinary builds reclaim when JACK stops. General builds use CPUs 0–2 until
+  removal and reboot; final Rust linking is largely serial and remains the
+  longest build stage.
 - The per-user `fluidsynth.service` and system `amidiminder.service` are masked
   and stopped. `/usr/bin/fluidsynth` and the TimGM bank remain for SHR-owned
   on-demand use. Setup and tuning do not start or restart JACK.
