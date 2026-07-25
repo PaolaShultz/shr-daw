@@ -7,16 +7,15 @@ implemented.
 
 ## Startup splash
 
-Startup first shows a 40×13 old-school stereo LED animation whose 11-row
-composition uses top-origin terminal rows 0–10 exactly. Row 0 contains the
-indicator strip; rows 1–2 are empty; row 3 contains a lowercase `shr - daw`
-wordmark, where one bright light-blue glyph moves quickly across otherwise
-bright-white text; rows 4–5 are empty; rows 6–7 contain the `R` meter; row 8 is
-empty; and rows 9–10 contain the `L` meter. Each meter uses two identical
-horizontal `●` rows. Unlit meter LEDs are dark gray; lit LEDs use one green
-below −12 dBFS, yellow from −12 through −3 dBFS, and red above −3 dBFS. The
-animation is decorative and does not start audio, playback, or MIDI
-transmission.
+Startup first shows a 40×13 old-school stereo LED animation using all thirteen
+top-origin terminal rows. Row 0 contains the indicator strip; rows 1–3 are
+empty; row 4 contains a lowercase `shr - daw` wordmark, where one bright
+light-blue glyph moves quickly across otherwise bright-white text; rows 5–7 are
+empty; rows 8–9 contain the `R` meter; row 10 is empty; and rows 11–12 contain
+the `L` meter. Each meter uses two identical horizontal `●` rows. Unlit meter
+LEDs are dark gray; lit LEDs use one green below −12 dBFS, yellow from −12
+through −3 dBFS, and red above −3 dBFS. The animation is decorative and does
+not start audio, playback, or MIDI transmission.
 
 The indicator strip contains six identical five-cell indicators: one dynamic
 build-mode cell followed by ` CFG `, ` SND `, ` TTY `, ` CTL `, and ` INP `.

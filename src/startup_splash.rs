@@ -191,7 +191,7 @@ pub fn draw<B: Backend>(
     let area = frame.size();
     frame.render_widget(Clear, area);
 
-    if let Some(title_area) = rows_from_top(area, 3, 1) {
+    if let Some(title_area) = rows_from_top(area, 4, 1) {
         frame.render_widget(
             Paragraph::new(title(elapsed)).alignment(Alignment::Center),
             title_area,
@@ -199,7 +199,7 @@ pub fn draw<B: Backend>(
     }
 
     let meter_width = area.width.saturating_sub(2);
-    if let Some(mut meter) = rows_from_top(area, 9, 2) {
+    if let Some(mut meter) = rows_from_top(area, 11, 2) {
         meter.x = meter.x.saturating_add(1);
         meter.width = meter.width.saturating_sub(2);
         frame.render_widget(
@@ -207,7 +207,7 @@ pub fn draw<B: Backend>(
             meter,
         );
     }
-    if let Some(mut meter) = rows_from_top(area, 6, 2) {
+    if let Some(mut meter) = rows_from_top(area, 8, 2) {
         meter.x = meter.x.saturating_add(1);
         meter.width = meter.width.saturating_sub(2);
         frame.render_widget(
@@ -315,7 +315,7 @@ mod tests {
         assert!(output.contains("L ["));
         assert!(output.contains("R ["));
 
-        for rows in [6..8, 9..11] {
+        for rows in [8..10, 11..13] {
             for y in rows {
                 let symbols = (0..40)
                     .map(|x| buffer.get(x, y).symbol.as_str())
@@ -326,10 +326,10 @@ mod tests {
             }
         }
         for x in 4..38 {
-            assert_eq!(buffer.get(x, 6).symbol, buffer.get(x, 9).symbol);
-            assert_eq!(buffer.get(x, 6).fg, buffer.get(x, 9).fg);
+            assert_eq!(buffer.get(x, 8).symbol, buffer.get(x, 11).symbol);
+            assert_eq!(buffer.get(x, 8).fg, buffer.get(x, 11).fg);
         }
-        for y in [1, 2, 4, 5, 8, 11, 12] {
+        for y in [1, 2, 3, 5, 6, 7, 10] {
             assert!((0..40).all(|x| buffer.get(x, y).symbol == " "));
         }
     }
@@ -340,7 +340,7 @@ mod tests {
         let next = render(TITLE_STEP, true);
         let title_cells = |buffer: &Buffer| {
             (15..24)
-                .filter(|x| buffer.get(*x, 3).fg == Color::LightCyan)
+                .filter(|x| buffer.get(*x, 4).fg == Color::LightCyan)
                 .collect::<Vec<_>>()
         };
         assert_eq!(title_cells(&first), vec![16]);
