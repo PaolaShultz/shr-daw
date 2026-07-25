@@ -17,15 +17,15 @@ gray; lit LEDs use one green below −12 dBFS, yellow from −12 through −3 dB
 and red above −3 dBFS. The animation is decorative and does not start audio,
 playback, or MIDI transmission.
 
-The final row contains seven identical four-cell, black-separated indicators:
-`DEV`, `REL`, `CFG`, `SND`, `TTY`, `CTRL`, and `INPT`. At 40 columns their 28
-coloured cells, six one-cell black separators, and two three-cell outside
-margins fill the row exactly. They sweep from red to the same green as the
-meters over 2.5 seconds, then hold complete before the three-second minimum
-ends. `DEV` and `REL` are exclusive: the actual build mode turns green and the
-other remains red. Every startup phase turns green only after its corresponding
-fact is true; these are loader phases, not claims that JACK or all synth engines
-are running.
+The final row contains six identical five-cell indicators: ` DEV `, ` REL `,
+` CFG `, ` SND `, ` CTL `, and ` INP `. Each three-letter label is centred in
+its coloured cell. At 40 columns their 30 coloured cells and five two-cell
+black separators fill the row exactly, with no outside margin. They
+sweep from red to the same green as the meters over 2.5 seconds, then hold
+complete before the three-second minimum ends. `DEV` and `REL` are exclusive:
+the actual build mode turns green and the other remains red. Every startup
+phase turns green only after its corresponding fact is true; these are loader
+phases, not claims that JACK or all synth engines are running.
 
 A terminal computer keyboard is a fully qualified input device, equal to an
 available configured controller or performance MIDI input; it is not described

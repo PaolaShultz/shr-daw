@@ -13,8 +13,9 @@ pub const MINIMUM_VISIBLE: Duration = Duration::from_secs(3);
 pub const INPUT_RESCAN_INTERVAL: Duration = Duration::from_millis(500);
 const INDICATOR_SWEEP: Duration = Duration::from_millis(2_500);
 const TITLE_STEP: Duration = Duration::from_millis(75);
-const INDICATOR_COUNT: usize = 7;
-const INDICATOR_WIDTH: usize = 4;
+const INDICATOR_COUNT: usize = 6;
+const INDICATOR_WIDTH: usize = 5;
+const INDICATOR_GAP: usize = 2;
 
 pub const fn qualified_input_available(terminal_keyboard: bool, midi_input: bool) -> bool {
     terminal_keyboard || midi_input
@@ -146,11 +147,11 @@ fn indicator_row(
         ("REL", build_badge == "REL"),
         ("CFG", true),
         ("SND", true),
-        ("TTY", true),
-        ("CTRL", controller_checked),
-        ("INPT", input_available),
+        ("CTL", controller_checked),
+        ("INP", input_available),
     ];
-    let content_width = INDICATOR_COUNT * INDICATOR_WIDTH + indicators.len().saturating_sub(1);
+    let content_width =
+        INDICATOR_COUNT * INDICATOR_WIDTH + indicators.len().saturating_sub(1) * INDICATOR_GAP;
     let left_padding = usize::from(width).saturating_sub(content_width) / 2;
     let right_padding = usize::from(width)
         .saturating_sub(content_width)
@@ -159,11 +160,11 @@ fn indicator_row(
     let mut spans = vec![Span::styled(" ".repeat(left_padding), black)];
     for (index, (label, ready)) in indicators.into_iter().enumerate() {
         if index > 0 {
-            spans.push(Span::styled(" ", black));
+            spans.push(Span::styled(" ".repeat(INDICATOR_GAP), black));
         }
         let lit = indicator_lit(elapsed, index, ready);
         spans.push(Span::styled(
-            format!("{label:<width$}", width = INDICATOR_WIDTH),
+            format!("{label:^width$}", width = INDICATOR_WIDTH),
             Style::default()
                 .fg(Color::Black)
                 .bg(if lit { Color::Green } else { Color::Red })
@@ -337,8 +338,8 @@ mod tests {
                 .filter(|x| buffer.get(*x, 9).fg == Color::LightCyan)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(title_cells(&first), vec![15]);
-        assert_eq!(title_cells(&next), vec![16]);
+        assert_eq!(title_cells(&first), vec![16]);
+        assert_eq!(title_cells(&next), vec![17]);
     }
 
     #[test]
@@ -350,19 +351,19 @@ mod tests {
         let green = (0..40)
             .filter(|x| debug.get(*x, 12).bg == Color::Green)
             .count();
-        assert_eq!(red, 28);
-        assert_eq!(green, 24);
-        assert!((3..7).all(|x| debug.get(x, 12).bg == Color::Green));
-        assert!((8..12).all(|x| debug.get(x, 12).bg == Color::Red));
-        assert!((3..7).all(|x| release.get(x, 12).bg == Color::Red));
-        assert!((8..12).all(|x| release.get(x, 12).bg == Color::Green));
-        for x in [0, 1, 2, 7, 12, 17, 22, 27, 32, 37, 38, 39] {
+        assert_eq!(red, 30);
+        assert_eq!(green, 25);
+        assert!((0..5).all(|x| debug.get(x, 12).bg == Color::Green));
+        assert!((7..12).all(|x| debug.get(x, 12).bg == Color::Red));
+        assert!((0..5).all(|x| release.get(x, 12).bg == Color::Red));
+        assert!((7..12).all(|x| release.get(x, 12).bg == Color::Green));
+        for x in [5, 6, 12, 13, 19, 20, 26, 27, 33, 34] {
             assert_eq!(debug.get(x, 12).bg, Color::Black);
         }
         let labels = (0..40)
             .map(|x| debug.get(x, 12).symbol.as_str())
             .collect::<String>();
-        assert_eq!(labels, "   DEV  REL  CFG  SND  TTY  CTRL INPT   ");
+        assert_eq!(labels, " DEV    REL    CFG    SND    CTL    INP ");
     }
 
     #[test]
@@ -374,6 +375,6 @@ mod tests {
 
         let loading = text(&render(MINIMUM_VISIBLE, true));
         assert!(!loading.contains("WAITING FOR"));
-        assert!((33..37).all(|x| waiting_buffer.get(x, 12).bg == Color::Red));
+        assert!((35..40).all(|x| waiting_buffer.get(x, 12).bg == Color::Red));
     }
 }
