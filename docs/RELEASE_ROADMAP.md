@@ -7,7 +7,7 @@ product, installation, FT2, and hardware documents linked below.
 ## Version numbering
 
 The package uses `major.minor.patch` numbering. Version `0.3.92` corrected the
-unintended `0.392.0`; the current checked-progress version is `0.3.94`.
+unintended `0.392.0`; the current checked-progress version is `0.3.95`.
 
 - Meaningful checked progress before the next milestone increments the patch:
   `0.3.95`, `0.3.96`, and so on.

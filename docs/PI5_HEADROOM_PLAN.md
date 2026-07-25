@@ -182,9 +182,9 @@ There will be one effects rack. Do not create a separate fast, light, gaming,
 or performance rack and do not hide time-based effects from the normal list.
 
 The proposed compact mark is `»`, named **PRESTO** in Help and documentation.
-The installed `Lat15-VGA16` console font and deterministic screenshot renderer
-map this glyph, it occupies one cell, and it does not reuse SHR's existing `▶`
-play or `●` record symbols.
+The installed `Uni2-TerminusBold24x12` tty1 font and deterministic screenshot
+renderer map this glyph, it occupies one cell, and it does not reuse SHR's
+existing `▶` play or `●` record symbols.
 
 An eventual explanation should remain plain:
 

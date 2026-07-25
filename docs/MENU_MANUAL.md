@@ -23,10 +23,11 @@ The manual is split into three chapters so it remains usable on a phone:
 
 ## How to read a screen
 
-Each screenshot is a 40-column by 13-row terminal image. It is first rendered
-as a native 480×208 bitmap using the project VGA console font, then enlarged to
-960×416 by copying every pixel into an exact 2×2 square. There is no font
-substitution, smoothing, interpolation, or antialiasing.
+Each screenshot is a 40-column by 13-row terminal image. It uses the same
+12×24 `Uni2-TerminusBold24x12` PSF2 glyphs as tty1, producing a native 480×312
+content bitmap, then enlarges it to 960×624 by copying every pixel into an
+exact 2×2 square. There is no font substitution, stretching, smoothing,
+interpolation, or antialiasing.
 
 The normal bottom controller strip has four page positions and four action
 positions:

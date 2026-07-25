@@ -60,7 +60,7 @@ The installer:
 - installs commands, templates, the 21 allowlisted presets, four allowlisted
   CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
   device/controller profiles, drum data, documentation, and
-  all 95 menu-manual images below the selected prefix (normally `/usr/local`);
+  all 97 menu-manual images below the selected prefix (normally `/usr/local`);
 - opens the routing wizard.
 
 Before changing packages or services, the installer prints the enabled phases

@@ -58,7 +58,7 @@ or `q` can still exit from the splash.
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
-| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter together at 40×13 using explicit compact labels and type-aware values. The rack and parameter fields scroll around the current selection, so the selected effect, Insert row, and late cell fields remain visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
+| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
 | Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate performance inputs, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
@@ -73,7 +73,8 @@ union of every normal and contextual menu and checks every action in this
 
 ## Shared status row and master overlays
 
-Every working screen except Home reserves the final row. Its first cell is the
+Every working screen except Home and the native 40×13 fullscreen EQ reserves
+the final row. Its first cell is the
 transport state: steady green `>` for play, steady white `■` for stop, steady
 white `‖` for pause, or red `●` for record. Record alone pulses between normal
 and bright red; the circle never disappears. One space and the current useful
@@ -86,7 +87,10 @@ any recording fault. An idle transport cell with no message is the normal
 healthy state. Screen bodies do not add generic gray status lines, and the two
 controller rows sit immediately above the shared status row. Working-screen
 frame cleanup stops above that row; only the shared renderer clears and
-replaces it.
+replaces it. The fullscreen EQ deliberately owns all thirteen rows: its final
+row is the 50 Hz–20 kHz logarithmic axis, temporarily replaced only by a useful
+pickup, range, or fault message. It has no visible controller rows. A compact
+terminal falls back to the ordinary FX editor and shared status layout.
 
 Horizontal meters use the same circular LED language everywhere. Every cell is
 `●`: dark gray when unlit, one consistent green at a safe active level, then
@@ -310,16 +314,20 @@ was detected.
 
 ## FX editor and 40×13 text contract
 
-The FX editor is a spatial 2×4 grid matching the eight physical rotary
+Non-EQ processors use a spatial 2×4 grid matching the eight physical rotary
 positions. Every control has its title above its value; the selected pair is
 highlighted yellow while browsing and green while editing. Titles use clear
 words such as `RATE`, `RATIO`, `ATTACK`, and `FEEDBACK`, while values retain
-type-aware units. EQ is deliberately mapped as low, low-mid, high-mid, and
-high frequency on knobs 1–4 with their matching gains on knobs 5–8. Its
-secondary low-cut and output-trim Project values remain compatible but are not
-misrepresented as knob 1. Every effect exposes at most eight performance
-controls; full persisted schema names and unassigned secondary values do not
-change.
+type-aware units.
+
+At 40×13, EQ instead fills the display. Its 20-column plot maps 50 Hz through
+20 kHz logarithmically and draws one `─` for each low, low-mid, high-mid, and
+high band. Gain markers snap visually to the nearest labelled row from −18 to
++18 dB; displayed and editable gain values retain 0.5 dB precision. The master
+rotary browses bypass, each band frequency and gain, low-cut state and
+frequency, and output trim. Yellow means selected, green means editing, and a
+bypassed EQ is dim. Knobs 1–4 remain logarithmic band frequencies and knobs
+5–8 their half-decibel gains. Low cut is never misrepresented as knob 1.
 
 All working-screen single-line regions have explicit terminal-cell budgets.
 Static operational labels are written to fit; unpredictable device/file/user

@@ -456,7 +456,7 @@ Options:
 
 - no option renders every frame returned by the Rust manifest;
 - `--only NAME` renders only an exact output name from that manifest;
-- `--check` requires every manifest image, verifies 960×416 dimensions, and
+- `--check` requires every manifest image, verifies 960×624 dimensions, and
   checks every 2×2 output block for identical pixels.
 
 Environment:
@@ -469,7 +469,7 @@ The default command uses the installed Rust 1.85 toolchain when present and
 runs `shr screenshots`. Rust renders the real application `draw` function into
 40×13 ratatui test buffers seeded by the deterministic `ScreenshotScenario`
 and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The current manifest
-contains 105 overview/menu/context/overlay frames. JSON supplies
+contains 107 overview/menu/context/overlay frames. JSON supplies
 each cell's symbol, foreground,
 background, and bold state. No JACK server, engine, MIDI port, or private user
 file is involved.
@@ -477,22 +477,25 @@ file is involved.
 ### Image parameters
 
 - terminal geometry: 40 columns × 13 rows;
-- cell geometry: 12×16 pixels;
-- native raster: 480×208 pixels;
+- cell geometry: 12×24 pixels;
+- native content raster: 480×312 pixels;
 - final scale: exactly 2;
-- final PNG: 960×416 pixels;
-- primary font: `/usr/share/consolefonts/Lat15-VGA16.psf.gz`;
-- fallback font: `target/Lat15-VGA16.psf`;
+- final PNG: 960×624 pixels;
+- primary font: `/usr/share/consolefonts/Uni2-TerminusBold24x12.psf.gz`;
+- fallback font: `target/Uni2-TerminusBold24x12.psf`;
 - output roots: `docs/images/shr-daw-*.png` and `docs/images/menu/*.png`.
 
-The PSF glyph is eight bits wide. Each 12-pixel cell column samples it with
-`source_x = out_x * 8 // 12`, matching the established wide terminal look.
-Ratatui's ANSI colors and bold modifier are converted through a fixed palette.
-Unsupported Unicode falls back to the font's question-mark glyph instead of a
-host-dependent replacement. The font contains the required double-vertical
-pause shape at U+2551 but has no U+2016 table entry, so the renderer maps the
-TUI's exact one-cell `‖` symbol to that existing glyph. It does not substitute a
-different TUI symbol or font.
+This is the exact PSF2 font loaded on tty1 by `/etc/default/console-setup`
+(`FONTFACE=TerminusBold`, `FONTSIZE=24x12`). Each glyph is natively 12×24, so
+the renderer copies its bits directly without horizontal stretching, font
+substitution, smoothing, or host font metrics. The 40×13 application content
+occupies 480×312 of the 480×320 framebuffer; the remaining eight framebuffer
+pixels are outside ratatui's terminal-cell surface and are not invented in the
+documentation image. Ratatui's ANSI colors and bold modifier are converted
+through a fixed palette. Unsupported Unicode falls back to the font's
+question-mark glyph, matching console behavior. The font contains the required
+double-vertical pause shape at U+2551 but has no U+2016 table entry, so the
+renderer maps the TUI's exact one-cell `‖` symbol to that existing glyph.
 
 ### Why the renderer is intentionally slow
 
@@ -505,7 +508,7 @@ without pretending the application has more than 40×13 cells.
 
 `--check` is also deliberately exhaustive. It opens every expected image and
 checks every 2×2 block instead of trusting file metadata or the name of a resize
-filter. On the Raspberry Pi, rendering or validating all 95 menu frames takes
+filter. On the Raspberry Pi, rendering or validating all 97 menu frames takes
 noticeable time. That time is an accepted documentation-integrity cost, not an
 optimization bug. Do not replace the scaler or weaken the check merely to make
 the command faster. First render one representative image and inspect it; then

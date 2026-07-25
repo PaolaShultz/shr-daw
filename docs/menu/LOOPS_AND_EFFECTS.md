@@ -173,18 +173,30 @@ values without changing the processor type.
 
 ## FX parameter editor
 
-Parameters come from strict persisted schemas, while each effect has a curated
-performance layout of at most eight controls. At 40×13 those controls form two
-rows of four columns that mirror the physical rotary positions. Each cell has
-the parameter title above its type-aware value; clear names such as `RATE`,
-`RATIO`, `ATTACK`, and `FEEDBACK` replace cryptic three-letter labels. Toggles
-use ON/OFF, integers omit decimals, named modes/divisions use compact labels,
-and dB, frequency, time, percent, and ratio keep musician-facing units.
+Parameters come from strict persisted schemas. Non-EQ effects use a curated
+2×4 layout of at most eight controls that mirrors the physical rotary
+positions. Each cell has the parameter title above its type-aware value; clear
+names such as `RATE`, `RATIO`, `ATTACK`, and `FEEDBACK` replace cryptic
+three-letter labels.
 
-EQ maps low, low-mid, high-mid, and high frequency across knobs 1–4, then the
-matching four gains across knobs 5–8. Low cut is not placed on knob 1.
-Secondary DSP values not assigned to a performance knob remain valid in saved
-Projects, so this UI correction does not invalidate existing files.
+At 40×13, EQ uses a dedicated fullscreen editor:
+
+![Fullscreen logarithmic EQ editor](../images/menu/fx-editor-eq.png)
+
+Its 20-column plot covers 50 Hz–20 kHz logarithmically. Low, low-mid, high-mid,
+and high each use one movable `─`; vertical placement rounds to the nearest
+labelled −18 to +18 dB row while the value readout and edit remain accurate to
+0.5 dB. The master rotary browses bypass, all four frequency/gain pairs,
+low-cut state and frequency, and output trim. Turn to browse, click to edit,
+turn to change, click to confirm, and Back to restore the old value. Toggle
+fields act immediately. Yellow is selected, green is editing, and bypass dims
+the plot.
+
+Knobs 1–4 remain logarithmic low, low-mid, high-mid, and high frequencies;
+knobs 5–8 are their matching half-decibel gains. Low cut is not placed on knob
+1. Existing off-grid Project values display honestly until edited, so this
+surface does not invalidate saved Projects. Below 40×13, EQ uses the compact
+generic editor.
 
 The title/state uses one row and metering is bounded to one row. The compressor
 shows 11 round red LEDs from 0.5 to 24 dB: dim circles keep the hardware-like
@@ -192,10 +204,8 @@ scale visible, while bright circles show live gain reduction and all stay dim
 on bypass. Other processors use terse input/output values. Meter detail never
 displaces a parameter.
 
-Turn the rotary to select a control; click begins editing, turn changes only
-that value, click confirms, and Back restores the original. Numeric keyboard
-entry follows the same validation. There are no duplicate PARAM± or VALUE±
-navigation buttons.
+Numeric keyboard entry follows the same range and type validation. There are
+no duplicate PARAM± or VALUE± navigation buttons.
 
 ### STATE — bypass this processor
 

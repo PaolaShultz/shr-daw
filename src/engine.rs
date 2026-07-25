@@ -882,10 +882,6 @@ impl Engine {
         self.audio_graph.as_ref()?.effect_meter(effect_id)
     }
 
-    pub(crate) fn aux_meter(&self, aux_id: u8) -> Option<AuxMeterSnapshot> {
-        self.audio_graph.as_ref()?.aux_meter(aux_id)
-    }
-
     pub(crate) fn master_meter(&self) -> Option<AuxMeterSnapshot> {
         self.audio_graph.as_ref()?.master_meter()
     }

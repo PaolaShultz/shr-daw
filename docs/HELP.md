@@ -106,10 +106,15 @@ same stable instance and BYPASS fades a source or master effect toward dry. A
 fully bypassed aux returns silence, so it never doubles the dry source; a delay
 tail can be allowed to fade with new input muted. Aux effects are forced wet.
 
-The editor selects named parameters and adjusts values in physical units. One
-compact meter row appears when the owned graph has data. The compressor uses a
-dark-red 0.5–24 dB LED row whose bright-red lights show live gain reduction;
-bypass leaves every LED dim. Other effects show compact input/output values.
+The editor selects named parameters and adjusts values in physical units. At
+40×13 an EQ fills all thirteen rows: four one-cell markers move on a
+50 Hz–20 kHz logarithmic axis, the side panel exposes bypass, every band,
+low cut, and output trim, and gains edit in 0.5 dB steps. Turn/click browses and
+edits; Back restores an active edit. Knobs 1–4 are logarithmic band
+frequencies and knobs 5–8 are their gains. One compact meter row appears for
+other effects when the owned graph has data. The compressor uses a dark-red
+0.5–24 dB LED row whose bright-red lights show live gain reduction; bypass
+leaves every LED dim. Other effects show compact input/output values.
 Rack size and total effect count are bounded. With the graph active, stop
 transport and all recording before an FX change can publish a replacement
 plan. With the graph disabled, the same editor can design and save the Project

@@ -80,6 +80,13 @@ const COMPRESSOR_GAIN_REDUCTION_LEDS_DB: [f32; 11] =
     [0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 18.0, 24.0];
 // U+25CF is one cell wide in the target TTY font and is the master LED glyph.
 const COMPRESSOR_LED_GLYPH: &str = "●";
+const EQ_GRAPH_COLUMNS: usize = 20;
+const EQ_GRAPH_MIN_HZ: f32 = 50.0;
+const EQ_GRAPH_MAX_HZ: f32 = 20_000.0;
+const EQ_GAIN_ROWS_DB: [f32; 11] = [
+    18.0, 12.0, 9.0, 6.0, 3.0, 0.0, -3.0, -6.0, -9.0, -12.0, -18.0,
+];
+const EQ_MARKER_GLYPH: &str = "─";
 const ROUTINE_STATUS_LIFETIME: Duration = Duration::from_millis(1_500);
 const CONSEQUENTIAL_STATUS_LIFETIME: Duration = Duration::from_secs(3);
 const STATUS_TEXT_CELLS: u16 = 38;
@@ -139,6 +146,81 @@ fn fx_target_label(target: usize) -> &'static str {
         2 => "AUX 2",
         _ => "MASTER",
     }
+}
+
+fn eq_parameter_spec(name: &str) -> Option<crate::effect_schema::ParameterSpec> {
+    crate::effect_schema::schema(EffectKind::Eq)
+        .iter()
+        .find(|spec| spec.name == name)
+        .copied()
+}
+
+fn eq_frequency_column(frequency_hz: f32) -> usize {
+    if !frequency_hz.is_finite() {
+        return 0;
+    }
+    let frequency_hz = frequency_hz.clamp(EQ_GRAPH_MIN_HZ, EQ_GRAPH_MAX_HZ);
+    let normalized =
+        (frequency_hz / EQ_GRAPH_MIN_HZ).ln() / (EQ_GRAPH_MAX_HZ / EQ_GRAPH_MIN_HZ).ln();
+    (normalized * (EQ_GRAPH_COLUMNS - 1) as f32)
+        .round()
+        .clamp(0.0, (EQ_GRAPH_COLUMNS - 1) as f32) as usize
+}
+
+fn eq_gain_row(gain_db: f32) -> usize {
+    let gain_db = if gain_db.is_finite() { gain_db } else { 0.0 };
+    EQ_GAIN_ROWS_DB
+        .iter()
+        .enumerate()
+        .min_by(|(_, left), (_, right)| {
+            let left_distance = (gain_db - **left).abs();
+            let right_distance = (gain_db - **right).abs();
+            left_distance
+                .total_cmp(&right_distance)
+                .then_with(|| left.abs().total_cmp(&right.abs()))
+        })
+        .map(|(index, _)| index)
+        .unwrap_or(EQ_GAIN_ROWS_DB.len() / 2)
+}
+
+fn format_eq_frequency(frequency_hz: f32) -> String {
+    if frequency_hz >= 1_000.0 {
+        let khz = frequency_hz / 1_000.0;
+        if (khz - khz.round()).abs() < 0.05 {
+            format!("{khz:.0}kHz")
+        } else {
+            format!("{khz:.1}kHz")
+        }
+    } else {
+        format!("{frequency_hz:.0}Hz")
+    }
+}
+
+fn format_eq_gain(gain_db: f32) -> String {
+    let doubled = gain_db * 2.0;
+    if (doubled - doubled.round()).abs() < 0.001 {
+        if doubled.round() as i32 % 2 == 0 {
+            format!("{gain_db:+.0}dB")
+        } else {
+            format!("{gain_db:+.1}dB")
+        }
+    } else {
+        format!("{gain_db:+.1}dB")
+    }
+}
+
+fn eq_log_normalize(value: f32, minimum: f32, maximum: f32) -> f32 {
+    if !value.is_finite() || minimum <= 0.0 || maximum <= minimum {
+        return 0.0;
+    }
+    ((value.clamp(minimum, maximum) / minimum).ln() / (maximum / minimum).ln()).clamp(0.0, 1.0)
+}
+
+fn eq_log_denormalize(normalized: f32, minimum: f32, maximum: f32) -> f32 {
+    if minimum <= 0.0 || maximum <= minimum {
+        return minimum;
+    }
+    minimum * (maximum / minimum).powf(normalized.clamp(0.0, 1.0))
 }
 
 fn send_point_label(point: SendPoint) -> &'static str {
@@ -646,6 +728,7 @@ struct App {
     controller_layout: ControllerLayout,
     fx_selection: FxRackSelection,
     fx_parameter: usize,
+    eq_editor_field: EqEditorField,
     fx_add_kind: usize,
     fx_target: usize,
     fx_value_editing: bool,
@@ -696,6 +779,95 @@ struct FxTypeEdit {
 enum FxRackSelection {
     Effect(EffectId),
     Insert,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum EqEditorField {
+    Bypass,
+    HighFrequency,
+    HighGain,
+    HighMidFrequency,
+    HighMidGain,
+    LowMidFrequency,
+    LowMidGain,
+    #[default]
+    LowFrequency,
+    LowGain,
+    LowCutEnabled,
+    LowCutFrequency,
+    OutputTrim,
+}
+
+impl EqEditorField {
+    const ALL: [Self; 12] = [
+        Self::Bypass,
+        Self::HighFrequency,
+        Self::HighGain,
+        Self::HighMidFrequency,
+        Self::HighMidGain,
+        Self::LowMidFrequency,
+        Self::LowMidGain,
+        Self::LowFrequency,
+        Self::LowGain,
+        Self::LowCutEnabled,
+        Self::LowCutFrequency,
+        Self::OutputTrim,
+    ];
+
+    const fn parameter_name(self) -> Option<&'static str> {
+        match self {
+            Self::Bypass => None,
+            Self::HighFrequency => Some("high_shelf_hz"),
+            Self::HighGain => Some("high_shelf_db"),
+            Self::HighMidFrequency => Some("high_mid_hz"),
+            Self::HighMidGain => Some("high_mid_db"),
+            Self::LowMidFrequency => Some("low_mid_hz"),
+            Self::LowMidGain => Some("low_mid_db"),
+            Self::LowFrequency => Some("low_shelf_hz"),
+            Self::LowGain => Some("low_shelf_db"),
+            Self::LowCutEnabled => Some("low_cut_enabled"),
+            Self::LowCutFrequency => Some("low_cut_hz"),
+            Self::OutputTrim => Some("output_trim_db"),
+        }
+    }
+
+    const fn control_index(self) -> Option<usize> {
+        match self {
+            Self::LowFrequency => Some(0),
+            Self::LowMidFrequency => Some(1),
+            Self::HighMidFrequency => Some(2),
+            Self::HighFrequency => Some(3),
+            Self::LowGain => Some(4),
+            Self::LowMidGain => Some(5),
+            Self::HighMidGain => Some(6),
+            Self::HighGain => Some(7),
+            Self::Bypass | Self::LowCutEnabled | Self::LowCutFrequency | Self::OutputTrim => None,
+        }
+    }
+
+    const fn from_control_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::LowFrequency),
+            1 => Some(Self::LowMidFrequency),
+            2 => Some(Self::HighMidFrequency),
+            3 => Some(Self::HighFrequency),
+            4 => Some(Self::LowGain),
+            5 => Some(Self::LowMidGain),
+            6 => Some(Self::HighMidGain),
+            7 => Some(Self::HighGain),
+            _ => None,
+        }
+    }
+
+    const fn band(self) -> Option<usize> {
+        match self {
+            Self::LowFrequency | Self::LowGain => Some(0),
+            Self::LowMidFrequency | Self::LowMidGain => Some(1),
+            Self::HighMidFrequency | Self::HighMidGain => Some(2),
+            Self::HighFrequency | Self::HighGain => Some(3),
+            Self::Bypass | Self::LowCutEnabled | Self::LowCutFrequency | Self::OutputTrim => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1359,6 +1531,7 @@ impl App {
             controller_layout: ControllerLayout::Eight,
             fx_selection: FxRackSelection::Insert,
             fx_parameter: 0,
+            eq_editor_field: EqEditorField::default(),
             fx_add_kind: 0,
             fx_target: 0,
             fx_value_editing: false,
@@ -7414,6 +7587,37 @@ impl App {
         .effect(id)
     }
 
+    fn selected_effect_is_eq(&self) -> bool {
+        self.selected_effect()
+            .is_some_and(|effect| effect.kind == EffectKind::Eq)
+    }
+
+    fn fullscreen_eq_active(&self) -> bool {
+        self.screen == Screen::FxEditor && self.selected_effect_is_eq()
+    }
+
+    fn uses_fullscreen_eq_editor(&self, area: Rect) -> bool {
+        self.fullscreen_eq_active() && area.width >= 40 && area.height >= 13
+    }
+
+    fn selected_fx_parameter_spec(&self) -> Option<crate::effect_schema::ParameterSpec> {
+        let effect = self.selected_effect()?;
+        if effect.kind == EffectKind::Eq {
+            self.eq_editor_field
+                .parameter_name()
+                .and_then(eq_parameter_spec)
+        } else {
+            crate::effect_schema::controlled_parameter(effect.kind, self.fx_parameter)
+        }
+    }
+
+    fn select_eq_control(&mut self, control_index: usize) {
+        if let Some(field) = EqEditorField::from_control_index(control_index) {
+            self.eq_editor_field = field;
+            self.fx_parameter = control_index;
+        }
+    }
+
     fn arm_fx_pickup(&mut self) {
         let targets = self
             .selected_effect()
@@ -7437,6 +7641,11 @@ impl App {
                                     index as f32 / choices.len().saturating_sub(1).max(1) as f32
                                 })
                                 .unwrap_or(0.0),
+                            crate::effect_schema::ParameterType::Continuous
+                                if effect.kind == EffectKind::Eq && spec.unit == "Hz" =>
+                            {
+                                eq_log_normalize(value, spec.minimum, spec.maximum)
+                            }
                             _ => (value - spec.minimum) / (spec.maximum - spec.minimum).max(1.0),
                         };
                         Some((control.cc, normalized))
@@ -7451,6 +7660,12 @@ impl App {
         let Some(control_index) = CONTROLS.iter().position(|control| control.cc == cc) else {
             return;
         };
+        if self.selected_effect_is_eq() {
+            if self.fx_value_editing {
+                self.confirm_fx_value_edit();
+            }
+            self.select_eq_control(control_index);
+        }
         let Some(control) = crate::control::by_cc(cc) else {
             return;
         };
@@ -7483,7 +7698,16 @@ impl App {
         }
         let mapped = match spec.value_type {
             crate::effect_schema::ParameterType::Continuous => {
-                spec.minimum + normalized * (spec.maximum - spec.minimum)
+                let mapped = if effect.kind == EffectKind::Eq && spec.unit == "Hz" {
+                    eq_log_denormalize(normalized, spec.minimum, spec.maximum)
+                } else {
+                    spec.minimum + normalized * (spec.maximum - spec.minimum)
+                };
+                if effect.kind == EffectKind::Eq && spec.unit == "dB" {
+                    (mapped * 2.0).round() / 2.0
+                } else {
+                    mapped
+                }
             }
             crate::effect_schema::ParameterType::Integer => {
                 (spec.minimum + normalized * (spec.maximum - spec.minimum)).round()
@@ -7501,7 +7725,9 @@ impl App {
             }
         };
         effect.parameters.insert(spec.name.into(), mapped);
-        self.fx_parameter = control_index;
+        if effect.kind != EffectKind::Eq {
+            self.fx_parameter = control_index;
+        }
         self.commit_fx_routing(
             rack,
             aux,
@@ -7981,15 +8207,15 @@ impl App {
             self.status = "FX rack is empty".into();
             return;
         };
+        let Some(spec) = self.selected_fx_parameter_spec() else {
+            self.status = "select an EQ value".into();
+            return;
+        };
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
         let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("rack order was validated");
-        let controls = crate::effect_schema::controls(effect.kind);
-        self.fx_parameter = self.fx_parameter.min(controls.len().saturating_sub(1));
-        let spec = crate::effect_schema::controlled_parameter(effect.kind, self.fx_parameter)
-            .expect("effect control layout references its persisted parameter");
         if is_aux_target(self.fx_target)
             && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
         {
@@ -8022,6 +8248,11 @@ impl App {
                     "ms" => ((spec.maximum - spec.minimum) / 200.0).max(0.1),
                     _ => ((spec.maximum - spec.minimum) / 100.0).max(0.01),
                 };
+                let current = if effect.kind == EffectKind::Eq && spec.unit == "dB" {
+                    (current * 2.0).round() / 2.0
+                } else {
+                    current
+                };
                 (current + step * f32::from(direction.signum())).clamp(spec.minimum, spec.maximum)
             }
         };
@@ -8034,6 +8265,19 @@ impl App {
     }
 
     fn move_fx_parameter(&mut self, direction: i8) {
+        if self.selected_effect_is_eq() {
+            let current = EqEditorField::ALL
+                .iter()
+                .position(|field| *field == self.eq_editor_field)
+                .unwrap_or(0);
+            self.eq_editor_field =
+                EqEditorField::ALL[wrapped_index(current, EqEditorField::ALL.len(), direction)];
+            if let Some(control_index) = self.eq_editor_field.control_index() {
+                self.fx_parameter = control_index;
+            }
+            self.status.clear();
+            return;
+        }
         let len = self
             .selected_effect()
             .map(|effect| crate::effect_schema::controls(effect.kind).len())
@@ -8046,6 +8290,19 @@ impl App {
         if self.selected_effect().is_none() {
             self.status = "FX rack is empty".into();
             return;
+        }
+        if self.selected_effect_is_eq() {
+            match self.eq_editor_field {
+                EqEditorField::Bypass => {
+                    self.toggle_effect_bypass();
+                    return;
+                }
+                EqEditorField::LowCutEnabled => {
+                    self.adjust_effect_parameter(1);
+                    return;
+                }
+                _ => {}
+            }
         }
         self.fx_edit_original =
             Some((self.song.insert_rack.clone(), self.song.aux_routing.clone()));
@@ -8101,8 +8358,16 @@ impl App {
         let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("selected effect has a valid rack");
-        let spec = crate::effect_schema::controlled_parameter(effect.kind, self.fx_parameter)
-            .expect("effect control layout references its persisted parameter");
+        let Some(spec) = (if effect.kind == EffectKind::Eq {
+            self.eq_editor_field
+                .parameter_name()
+                .and_then(eq_parameter_spec)
+        } else {
+            crate::effect_schema::controlled_parameter(effect.kind, self.fx_parameter)
+        }) else {
+            self.status = "select a numeric value".into();
+            return;
+        };
         if !spec.accepts(value) {
             self.status = format!(
                 "{} RANGE · {:.2}..{:.2} {}",
@@ -8111,6 +8376,13 @@ impl App {
                 spec.maximum,
                 spec.unit
             );
+            return;
+        }
+        if effect.kind == EffectKind::Eq
+            && spec.unit == "dB"
+            && (value * 2.0 - (value * 2.0).round()).abs() > 0.001
+        {
+            self.status = "GAIN STEP · use .0 or .5".into();
             return;
         }
         if is_aux_target(self.fx_target)
@@ -8894,7 +9166,7 @@ fn app_loop(
         app.status = "CONTROLLER ROUTE DEGRADED · ROUTING".into();
     }
     if let Err(_error) = &router {
-        let notice = if config.midi_autoconnect {
+        let notice: String = if config.midi_autoconnect {
             "MIDI INPUT MISSING · use keyboard / ROUTING".into()
         } else {
             "keyboard input · MIDI controller routing disabled".into()
@@ -8923,7 +9195,7 @@ fn app_loop(
             ));
         }
         if !notices.is_empty() {
-            let notice = "MIDI INPUT MISSING · use keyboard / ROUTING".into();
+            let notice: String = "MIDI INPUT MISSING · use keyboard / ROUTING".into();
             app.status = notice.clone();
             app.controller_fallback = Some(notice);
         }
@@ -9686,6 +9958,7 @@ fn perform(
         Action::OpenFxEditor => {
             if a.selected_effect_id().is_some() {
                 a.fx_parameter = 0;
+                a.eq_editor_field = EqEditorField::default();
                 a.fx_value_editing = false;
                 a.fx_edit_original = None;
                 a.set_screen(Screen::FxEditor);
@@ -10773,6 +11046,7 @@ fn mouse(
 
 fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let area = f.size();
+    let fullscreen_eq = a.uses_fullscreen_eq_editor(area);
     a.hits = Hits::default();
     if area.width < 38 || area.height < 10 {
         f.render_widget(Clear, area);
@@ -10790,7 +11064,8 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         );
         return;
     }
-    let uses_shared_status = a.controller_learn.is_some() || a.screen != Screen::Home;
+    let uses_shared_status =
+        a.controller_learn.is_some() || (a.screen != Screen::Home && !fullscreen_eq);
     let clear_area = if uses_shared_status {
         rect(area.x, area.y, area.width, area.height.saturating_sub(1))
     } else {
@@ -10826,6 +11101,9 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::FxEditor => draw_fx_editor(f, a),
         Screen::Meter => draw_performance_meter(f, a),
         Screen::Routing => draw_routing(f, a),
+    }
+    if fullscreen_eq {
+        return;
     }
     if a.overlay.is_some() {
         draw_overlay(f, a);
@@ -11190,7 +11468,7 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
         )),
         Spans::from("Controller isolated · synth protected"),
         Spans::from(Span::styled(
-            crate::ui_text::fit_line(role.label(), usize::from(area.width.saturating_sub(2))),
+            crate::ui_text::fit_line(&role.label(), usize::from(area.width.saturating_sub(2))),
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Yellow)
@@ -11863,6 +12141,10 @@ fn format_bytes(bytes: u64) -> String {
 
 fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
+    if a.uses_fullscreen_eq_editor(z) {
+        draw_eq_editor(f, a);
+        return;
+    }
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
     let Some(id) = a.selected_effect_id() else {
         f.render_widget(
@@ -11995,6 +12277,328 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
         body,
     );
+}
+
+fn eq_field_style(a: &App, field: EqEditorField, bypassed: bool) -> Style {
+    if a.eq_editor_field == field {
+        Style::default().fg(Color::Black).bg(if a.fx_value_editing {
+            Color::Green
+        } else {
+            Color::Yellow
+        })
+    } else if bypassed {
+        Style::default().fg(Color::DarkGray)
+    } else {
+        Style::default().fg(Color::White)
+    }
+}
+
+fn eq_parameter_value(effect: &crate::audio_graph::EffectInstance, parameter: &str) -> f32 {
+    let default = eq_parameter_spec(parameter)
+        .map(|spec| spec.default)
+        .unwrap_or(0.0);
+    effect.parameters.get(parameter).copied().unwrap_or(default)
+}
+
+fn eq_shown_value(a: &App, field: EqEditorField, value: f32) -> String {
+    if a.eq_editor_field == field {
+        if let Some(input) = a.fx_numeric_input.as_ref() {
+            return format!("{input}_");
+        }
+    }
+    match field {
+        EqEditorField::HighFrequency
+        | EqEditorField::HighMidFrequency
+        | EqEditorField::LowMidFrequency
+        | EqEditorField::LowFrequency
+        | EqEditorField::LowCutFrequency => format_eq_frequency(value),
+        EqEditorField::HighGain
+        | EqEditorField::HighMidGain
+        | EqEditorField::LowMidGain
+        | EqEditorField::LowGain
+        | EqEditorField::OutputTrim => format_eq_gain(value),
+        EqEditorField::Bypass | EqEditorField::LowCutEnabled => String::new(),
+    }
+}
+
+fn eq_pair_spans(
+    a: &App,
+    effect: &crate::audio_graph::EffectInstance,
+    frequency_field: EqEditorField,
+    gain_field: EqEditorField,
+) -> Vec<Span<'static>> {
+    let frequency_name = frequency_field
+        .parameter_name()
+        .expect("EQ frequency field has a parameter");
+    let gain_name = gain_field
+        .parameter_name()
+        .expect("EQ gain field has a parameter");
+    let frequency = eq_shown_value(
+        a,
+        frequency_field,
+        eq_parameter_value(effect, frequency_name),
+    );
+    let gain = eq_shown_value(a, gain_field, eq_parameter_value(effect, gain_name));
+    let used = crate::ui_text::width(&frequency) + 1 + crate::ui_text::width(&gain);
+    vec![
+        Span::styled(frequency, eq_field_style(a, frequency_field, effect.bypass)),
+        Span::styled(
+            " ",
+            if effect.bypass {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::White)
+            },
+        ),
+        Span::styled(gain, eq_field_style(a, gain_field, effect.bypass)),
+        Span::raw(" ".repeat(14usize.saturating_sub(used))),
+    ]
+}
+
+fn eq_panel_spans(
+    a: &App,
+    effect: &crate::audio_graph::EffectInstance,
+    graph_row: usize,
+) -> Vec<Span<'static>> {
+    let base = if effect.bypass {
+        Style::default().fg(Color::DarkGray)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let band = a.eq_editor_field.band();
+    let label = |name: &str, index: usize| {
+        let selected = band == Some(index);
+        let text = format!("{}{name}", if selected { ">" } else { "" });
+        let style = if selected {
+            Style::default().fg(if a.fx_value_editing {
+                Color::Green
+            } else {
+                Color::Yellow
+            })
+        } else {
+            base
+        };
+        vec![
+            Span::styled(text.clone(), style),
+            Span::raw(" ".repeat(14usize.saturating_sub(crate::ui_text::width(&text)))),
+        ]
+    };
+    match graph_row {
+        0 => label("HIGH", 3),
+        1 => eq_pair_spans(
+            a,
+            effect,
+            EqEditorField::HighFrequency,
+            EqEditorField::HighGain,
+        ),
+        2 => label("HI MID", 2),
+        3 => eq_pair_spans(
+            a,
+            effect,
+            EqEditorField::HighMidFrequency,
+            EqEditorField::HighMidGain,
+        ),
+        4 => label("LOW MID", 1),
+        5 => eq_pair_spans(
+            a,
+            effect,
+            EqEditorField::LowMidFrequency,
+            EqEditorField::LowMidGain,
+        ),
+        6 => label("LOW", 0),
+        7 => eq_pair_spans(
+            a,
+            effect,
+            EqEditorField::LowFrequency,
+            EqEditorField::LowGain,
+        ),
+        8 => {
+            let enabled = eq_parameter_value(effect, "low_cut_enabled") >= 0.5;
+            let prefix = "LOW CUT · ";
+            let state = if enabled { "ON" } else { "OFF" };
+            vec![
+                Span::styled(prefix, base),
+                Span::styled(
+                    state,
+                    eq_field_style(a, EqEditorField::LowCutEnabled, effect.bypass),
+                ),
+                Span::raw(
+                    " ".repeat(14usize.saturating_sub(crate::ui_text::width(prefix) + state.len())),
+                ),
+            ]
+        }
+        9 => {
+            let value = eq_shown_value(
+                a,
+                EqEditorField::LowCutFrequency,
+                eq_parameter_value(effect, "low_cut_hz"),
+            );
+            let slope = " 24dB/oct";
+            let used = crate::ui_text::width(&value) + slope.len();
+            vec![
+                Span::styled(
+                    value,
+                    eq_field_style(a, EqEditorField::LowCutFrequency, effect.bypass),
+                ),
+                Span::styled(slope, base),
+                Span::raw(" ".repeat(14usize.saturating_sub(used))),
+            ]
+        }
+        10 => {
+            let prefix = "OUT ";
+            let value = eq_shown_value(
+                a,
+                EqEditorField::OutputTrim,
+                eq_parameter_value(effect, "output_trim_db"),
+            );
+            let used = prefix.len() + crate::ui_text::width(&value);
+            vec![
+                Span::styled(prefix, base),
+                Span::styled(
+                    value,
+                    eq_field_style(a, EqEditorField::OutputTrim, effect.bypass),
+                ),
+                Span::raw(" ".repeat(14usize.saturating_sub(used))),
+            ]
+        }
+        _ => vec![Span::raw(" ".repeat(14))],
+    }
+}
+
+fn draw_eq_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let canvas = rect(
+        z.x + z.width.saturating_sub(40) / 2,
+        z.y + z.height.saturating_sub(13) / 2,
+        40,
+        13,
+    );
+    let Some(id) = a.selected_effect_id() else {
+        return;
+    };
+    let effect = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
+        .and_then(|rack| rack.effect(id))
+        .expect("validated EQ rack order");
+    let header_state = if effect.bypass { "BYP" } else { "ON" };
+    let title = format!(" EQ · {} #{id} · ", fx_target_label(a.fx_target));
+    let dirty = if a.project_is_dirty() { "DIRTY" } else { "" };
+    let gap = 40usize.saturating_sub(
+        BUILD_BADGE.len() + crate::ui_text::width(&title) + header_state.len() + dirty.len(),
+    );
+    let badge_color = if cfg!(debug_assertions) {
+        Color::LightBlue
+    } else {
+        Color::Green
+    };
+    let state_style = if a.eq_editor_field == EqEditorField::Bypass {
+        eq_field_style(a, EqEditorField::Bypass, effect.bypass)
+    } else {
+        Style::default().fg(if effect.bypass {
+            Color::DarkGray
+        } else {
+            Color::Green
+        })
+    };
+    f.render_widget(
+        Paragraph::new(Spans::from(vec![
+            Span::styled(
+                BUILD_BADGE,
+                Style::default()
+                    .fg(badge_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(title, Style::default().fg(Color::White)),
+            Span::styled(header_state, state_style),
+            Span::raw(" ".repeat(gap)),
+            Span::styled(dirty, Style::default().fg(Color::Yellow)),
+        ])),
+        rect(canvas.x, canvas.y, 40, 1),
+    );
+
+    let frequencies = [
+        eq_parameter_value(effect, "low_shelf_hz"),
+        eq_parameter_value(effect, "low_mid_hz"),
+        eq_parameter_value(effect, "high_mid_hz"),
+        eq_parameter_value(effect, "high_shelf_hz"),
+    ];
+    let gains = [
+        eq_parameter_value(effect, "low_shelf_db"),
+        eq_parameter_value(effect, "low_mid_db"),
+        eq_parameter_value(effect, "high_mid_db"),
+        eq_parameter_value(effect, "high_shelf_db"),
+    ];
+    let selected_band = a.eq_editor_field.band();
+    let mut markers = [[None; EQ_GRAPH_COLUMNS]; 11];
+    for band in (0..4).filter(|band| Some(*band) != selected_band) {
+        markers[eq_gain_row(gains[band])][eq_frequency_column(frequencies[band])] = Some(band);
+    }
+    if let Some(band) = selected_band {
+        markers[eq_gain_row(gains[band])][eq_frequency_column(frequencies[band])] = Some(band);
+    }
+    let gain_labels = [
+        "+18 ", "+12 ", " +9 ", " +6 ", " +3 ", "  0 ", " -3 ", " -6 ", " -9 ", "-12 ", "-18 ",
+    ];
+    for graph_row in 0..11 {
+        let mut row = vec![
+            Span::styled(
+                gain_labels[graph_row],
+                Style::default().fg(if graph_row == 5 {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                }),
+            ),
+            Span::styled("│", Style::default().fg(Color::DarkGray)),
+        ];
+        for marker in markers[graph_row] {
+            let style = match marker {
+                Some(band) if Some(band) == selected_band => {
+                    Style::default().fg(if a.fx_value_editing {
+                        Color::Green
+                    } else {
+                        Color::Yellow
+                    })
+                }
+                Some(_) if effect.bypass => Style::default().fg(Color::DarkGray),
+                Some(_) => Style::default().fg(Color::White),
+                None => Style::default(),
+            };
+            row.push(Span::styled(
+                if marker.is_some() {
+                    EQ_MARKER_GLYPH
+                } else {
+                    " "
+                },
+                style,
+            ));
+        }
+        row.push(Span::styled("│", Style::default().fg(Color::DarkGray)));
+        row.extend(eq_panel_spans(a, effect, graph_row));
+        f.render_widget(
+            Paragraph::new(Spans::from(row)),
+            rect(canvas.x, canvas.y + 1 + graph_row as u16, 40, 1),
+        );
+    }
+
+    let local_status = status_is_fault(&a.status) || status_is_consequential(&a.status) || {
+        let status = a.status.to_ascii_lowercase();
+        status.contains("range") || status.contains("gain step")
+    };
+    let footer = if local_status {
+        Spans::from(Span::styled(
+            crate::ui_text::fit_line(&a.status, 40),
+            Style::default().fg(Color::Yellow),
+        ))
+    } else {
+        Spans::from(vec![
+            Span::raw("     "),
+            Span::styled("50 200   1k   5k 20k", Style::default().fg(Color::DarkGray)),
+            Span::styled("│", Style::default().fg(Color::DarkGray)),
+            Span::styled("LOG Hz", Style::default().fg(Color::DarkGray)),
+            Span::raw("        "),
+        ])
+    };
+    f.render_widget(Paragraph::new(footer), rect(canvas.x, canvas.y + 12, 40, 1));
 }
 fn draw_help<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
@@ -14261,27 +14865,25 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
     let integrity_fault =
         s.dropped_frames > 0 || s.overflow_events > 0 || s.xruns > 0 || s.incomplete;
+    let integrity = if integrity_fault {
+        format!(
+            "DROP {} · OVF {} · XRUN {}{}",
+            s.dropped_frames,
+            s.overflow_events,
+            s.xruns,
+            if s.incomplete { " · INCOMPLETE" } else { "" }
+        )
+    } else if s.recording {
+        format!(
+            "24-bit stems · {:.1} MiB · high {}f",
+            s.bytes as f64 / 1_048_576.0,
+            s.writer_high_water_frames
+        )
+    } else {
+        String::new()
+    };
     lines.push(Spans::from(Span::styled(
-        truncate(
-            if integrity_fault {
-                &format!(
-                    "DROP {} · OVF {} · XRUN {}{}",
-                    s.dropped_frames,
-                    s.overflow_events,
-                    s.xruns,
-                    if s.incomplete { " · INCOMPLETE" } else { "" }
-                )
-            } else if s.recording {
-                &format!(
-                    "24-bit stems · {:.1} MiB · high {}f",
-                    s.bytes as f64 / 1_048_576.0,
-                    s.writer_high_water_frames
-                )
-            } else {
-                ""
-            },
-            line_width,
-        ),
+        truncate(&integrity, line_width),
         Style::default().fg(if integrity_fault {
             Color::Yellow
         } else {
@@ -14566,6 +15168,7 @@ impl ScreenshotScenario {
 enum ScreenshotSpecialScenario {
     Home,
     MidiLearn,
+    FxEditorEq,
     TrackerPageOverlay,
     TrackerPatternOverlay,
     TrackerSongOverlay,
@@ -14578,9 +15181,10 @@ enum ScreenshotSpecialScenario {
 }
 
 impl ScreenshotSpecialScenario {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 12] = [
         Self::Home,
         Self::MidiLearn,
+        Self::FxEditorEq,
         Self::TrackerPageOverlay,
         Self::TrackerPatternOverlay,
         Self::TrackerSongOverlay,
@@ -14596,6 +15200,7 @@ impl ScreenshotSpecialScenario {
         match self {
             Self::Home => "home",
             Self::MidiLearn => "midi-learn",
+            Self::FxEditorEq => "fx-editor-eq",
             Self::TrackerPageOverlay => "overlay-ft2-page",
             Self::TrackerPatternOverlay => "overlay-ft2-pattern",
             Self::TrackerSongOverlay => "overlay-ft2-song",
@@ -15027,6 +15632,40 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
             session.tick(now);
             app.controller_learn = Some(session);
             app.status = "MIDI Learn active · instrument routing isolated".into();
+        }
+        ScreenshotSpecialScenario::FxEditorEq => {
+            app.fx_target = MAX_AUX_BUSES + 1;
+            app.song
+                .aux_routing
+                .master_rack
+                .add_with_id(EffectKind::Eq, 2)
+                .expect("deterministic master EQ");
+            let effect = app
+                .song
+                .aux_routing
+                .master_rack
+                .effect_mut(2)
+                .expect("deterministic master EQ exists");
+            for (name, value) in [
+                ("high_shelf_hz", 14_000.0),
+                ("high_shelf_db", -5.0),
+                ("high_mid_hz", 4_500.0),
+                ("high_mid_db", 3.5),
+                ("low_mid_hz", 340.0),
+                ("low_mid_db", -2.0),
+                ("low_shelf_hz", 180.0),
+                ("low_shelf_db", -4.0),
+                ("low_cut_enabled", 1.0),
+                ("low_cut_hz", 45.0),
+                ("output_trim_db", 0.0),
+            ] {
+                effect.parameters.insert(name.into(), value);
+            }
+            app.fx_selection = FxRackSelection::Effect(2);
+            app.eq_editor_field = EqEditorField::HighMidGain;
+            app.fx_parameter = 6;
+            app.screen = Screen::FxEditor;
+            app.status.clear();
         }
         ScreenshotSpecialScenario::TrackerPageOverlay
         | ScreenshotSpecialScenario::TrackerPatternOverlay
@@ -15758,7 +16397,7 @@ mod tests {
         a.toggle_loop_preview();
         assert!(!a.loop_previewing);
         assert_eq!(a.overlay.as_ref().unwrap().selection, 0);
-        assert!(a.status.contains("preview injection"));
+        assert_eq!(a.status, "PREVIEW FAILED · old loop restored");
 
         a.loop_runtime_load_override = Some(Err("runtime injection".into()));
         a.activate_overlay();
@@ -16040,7 +16679,7 @@ mod tests {
         assert!(a.overlay.is_none());
         assert_eq!(a.screen, Screen::TrackerLoop);
         assert!(a.song.audio_loop.is_none());
-        assert!(a.status.contains("loop page unloaded"));
+        assert!(a.status.is_empty());
     }
 
     #[test]
@@ -16395,8 +17034,8 @@ mod tests {
         assert!(text.contains("MIDI LEARN"));
         assert!(!text.contains("SHR-DAW · HOME"));
         assert!(!text.contains("controller menu below"));
-        assert!(row_text(buffer, 19).contains("rotary browse"));
-        assert!(!row_text(buffer, 18).contains("rotary browse"));
+        assert!(row_text(buffer, 19).trim().is_empty());
+        assert!(row_text(buffer, 18).trim().is_empty());
         assert!(buffer.content.iter().any(|cell| {
             cell.fg == Color::Black
                 && cell.bg == Color::White
@@ -16561,17 +17200,18 @@ mod tests {
         a.screen = Screen::Home;
         a.status = "later selection message".into();
         a.song_previewing = true;
-        a.loop_player
-            .set_preview_status(crate::loop_player::LoopStatus {
-                loaded: true,
-                ..crate::loop_player::LoopStatus::default()
-            });
         a.toggle_tracker_playback();
         assert_eq!(a.home_activity(), Some("> PLAY · FILES · Project preview"));
         let frame = render_app(&mut a, 40, 13);
         assert!(row_text(&frame, 12).contains("FILES"));
 
         a.song_previewing = false;
+        a.loop_player
+            .set_preview_status(crate::loop_player::LoopStatus {
+                loaded: true,
+                playing: true,
+                ..crate::loop_player::LoopStatus::default()
+            });
         assert_eq!(a.home_activity(), Some("> PLAY · FT2 LOOP · WAV loop"));
     }
 
@@ -16966,7 +17606,7 @@ mod tests {
 
         let mut keyboard = setup();
         key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
-        assert!(keyboard.status.starts_with("inspect failed:"));
+        assert_eq!(keyboard.status, "IDEA INSPECT FAILED · choose another");
 
         let mut encoder = setup();
         dispatch_encoder(
@@ -16975,7 +17615,7 @@ mod tests {
             Path::new("/none"),
             &tx,
         );
-        assert!(encoder.status.starts_with("inspect failed:"));
+        assert_eq!(encoder.status, "IDEA INSPECT FAILED · choose another");
 
         let mut pointer = setup();
         render_app(&mut pointer, 40, 20);
@@ -16990,7 +17630,7 @@ mod tests {
             Path::new("/none"),
             &tx,
         );
-        assert!(pointer.status.starts_with("inspect failed:"));
+        assert_eq!(pointer.status, "IDEA INSPECT FAILED · choose another");
 
         perform(
             Action::LoadIdea,
@@ -16998,7 +17638,7 @@ mod tests {
             Path::new("/none"),
             Some(&tx),
         );
-        assert!(pointer.status.starts_with("idea read failed:"));
+        assert_eq!(pointer.status, "IDEA READ FAILED · choose another");
     }
 
     #[test]
@@ -17586,13 +18226,13 @@ mod tests {
         a.recorder.start(Instant::now());
         assert_eq!(
             a.audio_graph_edit_blocker(),
-            Some("stop recording before changing the insert rack")
+            Some("STOP RECORDING · FX structure locked")
         );
         a.recorder.stop(Instant::now());
         a.song_previewing = true;
         assert_eq!(
             a.audio_graph_edit_blocker(),
-            Some("stop transport before changing the insert rack")
+            Some("STOP TRANSPORT · FX structure locked")
         );
     }
     #[test]
@@ -17656,7 +18296,7 @@ mod tests {
         let text = buffer_text(&render_app(&mut app, 40, 20));
         assert!(text.contains("OFFLINE"));
         assert!(text.contains("D-50"));
-        assert!(text.contains("UNVERIFIED"));
+        assert!(!text.contains("UNVERIFIED"));
         assert!(!text.to_ascii_lowercase().contains("connected"));
         assert!(!text.to_ascii_lowercase().contains("detected"));
     }
@@ -17730,7 +18370,7 @@ mod tests {
         invalid.confirm_routing_edit(Path::new("/none"));
         assert!(invalid.routing.draft.is_some());
         assert_eq!(invalid.routing.selected, 4);
-        assert!(invalid.status.contains("Routing invalid"));
+        assert_eq!(invalid.status, "ROUTING INVALID · fix field");
 
         let missing_parent = std::env::temp_dir().join(format!(
             "shr-routing-missing-{}-{}",
@@ -17764,7 +18404,7 @@ mod tests {
         assert!(retained.config.midi_controller_musical_input);
         assert_eq!(retained.controller.layout, expected_layout);
         assert_eq!(save_failure.routing.selected, 2);
-        assert!(save_failure.status.contains("draft retained"));
+        assert!(save_failure.status.contains("draft kept"));
         assert!(save_failure.cancel_routing_edit());
         assert!(save_failure.routing.draft.is_none());
         fs::remove_file(missing_parent).unwrap();
@@ -17913,7 +18553,6 @@ mod tests {
     fn every_effect_performance_control_is_visible_together_at_40x20() {
         let kinds = [
             EffectKind::Utility,
-            EffectKind::Eq,
             EffectKind::Compressor,
             EffectKind::Distortion,
             EffectKind::Delay,
@@ -18133,24 +18772,29 @@ mod tests {
     #[test]
     fn fx_grid_maps_two_rows_of_four_and_keeps_selection_while_editing() {
         let p = presets();
-        for kind in [EffectKind::Eq, EffectKind::Delay, EffectKind::Compressor] {
+        for kind in [EffectKind::Delay, EffectKind::Compressor] {
             assert!(crate::effect_schema::controls(kind).len() <= 8);
         }
 
         let mut a = app(&p);
-        a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
+        a.song
+            .insert_rack
+            .add_with_id(EffectKind::Compressor, 1)
+            .unwrap();
         a.fx_selection = FxRackSelection::Effect(1);
         a.fx_parameter = 7;
         a.screen = Screen::FxEditor;
         let browse = render_app(&mut a, 40, 20);
-        assert_eq!(buffer_cell(&browse, 30, 7).bg, Color::Yellow);
+        assert!((0..40).any(|x| buffer_cell(&browse, x, 5).bg == Color::Yellow));
+        assert!((0..40).any(|x| buffer_cell(&browse, x, 6).bg == Color::Yellow));
         a.begin_fx_value_edit();
         a.begin_fx_numeric_entry('1');
         let editing = render_app(&mut a, 40, 20);
-        assert_eq!(buffer_cell(&editing, 30, 7).bg, Color::Green);
-        assert!(row_text(&editing, 8).contains("1_"));
+        assert!((0..40).any(|x| buffer_cell(&editing, x, 5).bg == Color::Green));
+        assert!((0..40).any(|x| buffer_cell(&editing, x, 6).bg == Color::Green));
+        assert!(row_text(&editing, 6).contains("1_"));
         let text = buffer_text(&editing);
-        for control in crate::effect_schema::controls(EffectKind::Eq) {
+        for control in crate::effect_schema::controls(EffectKind::Compressor) {
             assert!(text.contains(control.label), "missing {}", control.label);
         }
     }
@@ -18169,8 +18813,137 @@ mod tests {
 
         a.screen = Screen::FxEditor;
         let editor = render_app(&mut a, 40, 13);
-        assert!(buffer_text(&editor).contains("PROJECT night bus"));
+        assert!(buffer_text(&editor).contains("EQ · SOURCE #1"));
+        assert!(!buffer_text(&editor).contains("PROJECT night bus"));
         assert!(buffer_text(&editor).contains("DIRTY"));
+    }
+
+    #[test]
+    fn fullscreen_eq_maps_log_frequency_and_rounded_gain_rows() {
+        assert_eq!(eq_frequency_column(20.0), 0);
+        assert_eq!(eq_frequency_column(50.0), 0);
+        assert_eq!(eq_frequency_column(180.0), 4);
+        assert_eq!(eq_frequency_column(340.0), 6);
+        assert_eq!(eq_frequency_column(4_500.0), 14);
+        assert_eq!(eq_frequency_column(14_000.0), 18);
+        assert_eq!(eq_frequency_column(20_000.0), 19);
+        assert_eq!(eq_frequency_column(24_000.0), 19);
+        assert_eq!(eq_gain_row(3.5), 4);
+        assert_eq!(eq_gain_row(-2.0), 6);
+        assert_eq!(eq_gain_row(-4.0), 6);
+        assert_eq!(eq_gain_row(-5.0), 7);
+        assert_eq!(format_eq_frequency(4_500.0), "4.5kHz");
+        assert_eq!(format_eq_frequency(20_000.0), "20kHz");
+        assert_eq!(format_eq_gain(3.5), "+3.5dB");
+        assert_eq!(format_eq_gain(-5.0), "-5dB");
+    }
+
+    #[test]
+    fn fullscreen_eq_owns_all_thirteen_rows_and_renders_the_approved_scale() {
+        let p = presets();
+        let mut a = app(&p);
+        a.fx_target = MAX_AUX_BUSES + 1;
+        a.song
+            .aux_routing
+            .master_rack
+            .add_with_id(EffectKind::Eq, 2)
+            .unwrap();
+        let effect = a.song.aux_routing.master_rack.effect_mut(2).unwrap();
+        for (name, value) in [
+            ("high_shelf_hz", 14_000.0),
+            ("high_shelf_db", -5.0),
+            ("high_mid_hz", 4_500.0),
+            ("high_mid_db", 3.5),
+            ("low_mid_hz", 340.0),
+            ("low_mid_db", -2.0),
+            ("low_shelf_hz", 180.0),
+            ("low_shelf_db", -4.0),
+            ("low_cut_enabled", 1.0),
+            ("low_cut_hz", 45.0),
+            ("output_trim_db", 0.0),
+        ] {
+            effect.parameters.insert(name.into(), value);
+        }
+        a.fx_selection = FxRackSelection::Effect(2);
+        a.eq_editor_field = EqEditorField::HighMidGain;
+        a.fx_parameter = 6;
+        a.screen = Screen::FxEditor;
+        a.status.clear();
+
+        let frame = render_app(&mut a, 40, 13);
+        assert_eq!(
+            row_text(&frame, 0),
+            format!("{BUILD_BADGE} EQ · MASTER #2 · ON            DIRTY")
+        );
+        assert_eq!(
+            row_text(&frame, 1),
+            "+18 │                    │HIGH          "
+        );
+        assert_eq!(
+            row_text(&frame, 12),
+            "     50 200   1k   5k 20k│LOG Hz        "
+        );
+        assert_eq!(buffer_cell(&frame, 19, 5).symbol, EQ_MARKER_GLYPH);
+        assert_eq!(buffer_cell(&frame, 19, 5).fg, Color::Yellow);
+        assert_eq!(buffer_cell(&frame, 33, 4).bg, Color::Yellow);
+        assert!(!row_text(&frame, 12).contains('■'));
+        assert!(!buffer_text(&frame).contains("[PANIC]"));
+    }
+
+    #[test]
+    fn fullscreen_eq_browses_all_fields_and_enforces_half_db_and_log_knobs() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
+        a.fx_selection = FxRackSelection::Effect(1);
+        a.screen = Screen::FxEditor;
+        let id = a.selected_effect_id().unwrap();
+
+        a.eq_editor_field = EqEditorField::Bypass;
+        a.begin_fx_value_edit();
+        assert!(a.selected_effect().unwrap().bypass);
+        assert!(!a.fx_value_editing);
+        for expected in EqEditorField::ALL.into_iter().skip(1) {
+            a.move_fx_parameter(1);
+            assert_eq!(a.eq_editor_field, expected);
+        }
+        a.move_fx_parameter(1);
+        assert_eq!(a.eq_editor_field, EqEditorField::Bypass);
+
+        a.eq_editor_field = EqEditorField::HighMidGain;
+        a.song
+            .insert_rack
+            .effect_mut(id)
+            .unwrap()
+            .parameters
+            .insert("high_mid_db".into(), 3.3);
+        a.adjust_effect_parameter(1);
+        assert_eq!(
+            a.song.insert_rack.effect(id).unwrap().parameters["high_mid_db"],
+            4.0
+        );
+        a.begin_fx_value_edit();
+        a.fx_numeric_input = Some("3.6".into());
+        a.commit_fx_numeric_entry();
+        assert!(a.status.contains("GAIN STEP"));
+        a.fx_numeric_input = Some("3.5".into());
+        a.commit_fx_numeric_entry();
+        assert_eq!(
+            a.song.insert_rack.effect(id).unwrap().parameters["high_mid_db"],
+            3.5
+        );
+
+        a.arm_fx_pickup();
+        a.fx_pickup
+            .controls
+            .get_mut(&CONTROLS[2].cc)
+            .unwrap()
+            .caught = true;
+        let midpoint = CONTROLS[2].min + (CONTROLS[2].max - CONTROLS[2].min) * 0.5;
+        a.apply_fx_control(CONTROLS[2].cc, midpoint);
+        let frequency = a.song.insert_rack.effect(id).unwrap().parameters["high_mid_hz"];
+        assert!((frequency - (400.0_f32 * 12_000.0).sqrt()).abs() < 0.1);
+        assert_eq!(a.eq_editor_field, EqEditorField::HighMidFrequency);
     }
 
     #[test]
@@ -18451,7 +19224,8 @@ mod tests {
         let id = a.selected_effect_id().unwrap();
         let (tx, _rx) = mpsc::channel();
 
-        key(KeyCode::Right, &mut a, Path::new("/none"), &tx);
+        a.eq_editor_field = EqEditorField::LowMidFrequency;
+        a.fx_parameter = 1;
         assert_eq!(a.fx_parameter, 1);
         for character in ['1', '2', '3'] {
             key(KeyCode::Char(character), &mut a, Path::new("/none"), &tx);
@@ -18667,7 +19441,7 @@ mod tests {
         let id = a.selected_effect_id().unwrap();
 
         perform(Action::Down, &mut a, Path::new("/none"), None);
-        assert_eq!(a.fx_parameter, 1, "inactive rotation browses parameters");
+        assert_eq!(a.fx_parameter, 4, "inactive rotation browses parameters");
         let before = a.song.insert_rack.effect(id).unwrap().clone();
         perform(Action::Activate, &mut a, Path::new("/none"), None);
         assert!(a.fx_value_editing);
@@ -19009,7 +19783,7 @@ mod tests {
         perform(Action::OpenHelp, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Help);
         assert_eq!(a.help_previous, Screen::Tracker);
-        assert!(a.status.contains("HELP"));
+        assert!(a.status.is_empty());
         assert_eq!(a.web_help_status, "web help unavailable");
 
         a.help_selected = help::lines(38)
@@ -19143,7 +19917,10 @@ mod tests {
 
         a.toggle_idea_recording();
         assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Idea));
-        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI take"));
+        assert_eq!(
+            a.recording_status_message().as_deref(),
+            Some("IDEAS · MIDI take")
+        );
 
         a.set_screen(Screen::Tracker);
         a.current_page_mut().unwrap().target = PageTarget::Midi("Test DIN".into());
@@ -19159,7 +19936,10 @@ mod tests {
         a.toggle_tracker_recording();
         assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Tracker));
         assert!(!a.recorder.is_recording());
-        assert_eq!(a.recording_status_message(), Some("FT2 · pattern capture"));
+        assert!(a
+            .recording_status_message()
+            .as_deref()
+            .is_some_and(|message| message.starts_with("FT2 ·")));
 
         a.toggle_idea_recording();
         assert_eq!(
@@ -19193,7 +19973,10 @@ mod tests {
         perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Home);
         assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Idea));
-        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI take"));
+        assert_eq!(
+            a.recording_status_message().as_deref(),
+            Some("IDEAS · MIDI take")
+        );
     }
 
     #[test]
@@ -19331,7 +20114,7 @@ mod tests {
             .iter()
             .map(|c| c.symbol.as_str())
             .collect::<String>();
-        assert!(text.contains("Software Synth"));
+        assert!(text.contains(&truncate(&a.current_page().unwrap().name, 8)));
         assert!(!row_text(t.backend().buffer(), 0).contains("PAUSE"));
         assert!(!row_text(t.backend().buffer(), 0).contains("PLAY"));
         assert!(!row_text(t.backend().buffer(), 0).contains("REC"));
@@ -19380,7 +20163,7 @@ mod tests {
             .map(|c| c.symbol.as_str())
             .collect::<String>();
         assert!(text.contains("P04/04 · FT2 WAV LOOP"));
-        assert!(text.contains("UNLOADED"));
+        assert!(text.contains("No WAV attached"));
     }
     #[test]
     fn page_management_is_fully_reachable_with_pads_and_encoder_actions() {
@@ -20143,10 +20926,7 @@ mod tests {
         a.toggle_playback();
 
         assert!(a.playback.is_none());
-        assert_eq!(
-            a.status,
-            "load the idea preset before playing its recording"
-        );
+        assert_eq!(a.status, "LOAD idea sound before PLAY");
     }
 
     #[test]
@@ -20249,11 +21029,10 @@ mod tests {
             .collect::<String>();
         for expected in [
             "breakbeat-96.wav",
-            "Project tempo  96 BPM",
+            "Source 96.00 BPM 1x · Project 96",
             "Region beat 0 +16",
             "Offset +0 bar(s)",
-            "48000 Hz · 2ch",
-            "Native pitch playback",
+            "48000 Hz 2ch",
             "LOOP OUT",
             "dBFS",
             "L [",
@@ -20276,13 +21055,13 @@ mod tests {
         let wide = render_app(&mut a, 40, 20);
         for x in 0..40 {
             let expected = if x == 15 { Color::Green } else { Color::White };
-            assert_eq!(wide.get(x, 3).bg, expected, "40-cell bar at x={x}");
+            assert_eq!(wide.get(x, 2).bg, expected, "40-cell bar at x={x}");
         }
 
         let compact = render_app(&mut a, 38, 14);
         for x in 0..38 {
             let expected = if x == 14 { Color::Green } else { Color::White };
-            assert_eq!(compact.get(x, 3).bg, expected, "38-cell bar at x={x}");
+            assert_eq!(compact.get(x, 2).bg, expected, "38-cell bar at x={x}");
         }
     }
 
@@ -20519,7 +21298,7 @@ mod tests {
         a.note_editor.as_mut().unwrap().draft.command = Command::Retrigger(4);
         a.save_note_editor();
         assert!(a.note_editor.is_some());
-        assert!(a.status.contains("retrigger requires"));
+        assert_eq!(a.status, "NOTE REJECTED · RETRIG needs note");
         assert_eq!(a.song.patterns[&0].rows[0][0], original);
     }
 
@@ -20685,7 +21464,7 @@ mod tests {
         }
         a.commit_tracker_gesture(start + Duration::from_millis(60));
         assert_eq!(a.tracker_row, row_before);
-        assert!(a.status.contains("rejected"));
+        assert_eq!(a.status, "GESTURE FULL · max 4 distinct notes");
     }
 
     #[test]
@@ -21012,7 +21791,7 @@ mod tests {
             None,
         );
         assert!(unavailable.song.order.is_empty());
-        assert!(unavailable.status.contains("unavailable"));
+        assert_eq!(unavailable.status, "NEW PAT FAILED · current PAT missing");
     }
 
     #[test]
@@ -21104,14 +21883,14 @@ mod tests {
         a.clamp_drum_selection();
         a.load_drum_pattern();
         assert_eq!(a.tracker_rows(), 32);
-        assert!(a.status.contains("32 rows"));
+        assert_eq!(a.status, "DRUM LOADED · routing unchanged");
 
         a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         a.drum_target_rows = 64;
         a.load_drum_pattern();
         assert_eq!(a.tracker_rows(), 32);
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::On(60));
-        assert!(a.status.contains("would resize existing page data"));
+        assert_eq!(a.status, "RESIZE BLOCKED · other page has notes");
     }
 
     #[test]
@@ -22148,7 +22927,7 @@ mod tests {
         assert!(a.current_page().unwrap().percussion);
         assert!(!a.tracker_noob);
         assert_eq!(a.tracker_mode, TrackerMode::Edit);
-        assert!(a.status.contains("current FT2 mode unchanged"));
+        assert_eq!(a.status, "N00B OFF on Drums · FT2 mode kept");
     }
 
     #[test]

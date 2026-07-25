@@ -603,6 +603,7 @@ pub fn import(source: &Path, destination: &Path) -> Result<(PathBuf, DecodedLoop
     bail!("too many imported loops named {safe}")
 }
 
+#[cfg(test)]
 pub fn bpm_candidates(measured: f64) -> [f64; 3] {
     [measured / 2.0, measured, measured * 2.0]
 }
@@ -923,6 +924,7 @@ impl LoopPlayer {
 
     #[doc(hidden)]
     pub(crate) fn set_preview_status(&mut self, status: LoopStatus) {
+        let playing = status.playing;
         if status.source_rate > 0 {
             self.position.store(
                 (status.elapsed.as_secs_f64() * f64::from(status.source_rate)).round() as u64,
@@ -931,6 +933,9 @@ impl LoopPlayer {
         }
         self.status = status;
         self.preview = true;
+        if playing {
+            self.clock.play(0.0, 120);
+        }
     }
 
     pub fn stop(&self) {

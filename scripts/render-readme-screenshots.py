@@ -20,14 +20,14 @@ OUT = ROOT / "docs" / "images"
 PINNED_TOOLCHAIN = Path("/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin")
 PINNED_CARGO = PINNED_TOOLCHAIN / "cargo"
 FONT_CANDIDATES = (
-    Path("/usr/share/consolefonts/Lat15-VGA16.psf.gz"),
-    ROOT / "target" / "Lat15-VGA16.psf",
+    Path("/usr/share/consolefonts/Uni2-TerminusBold24x12.psf.gz"),
+    ROOT / "target" / "Uni2-TerminusBold24x12.psf",
 )
 
-CELL_W, CELL_H = 12, 16
+CELL_W, CELL_H = 12, 24
 OUTPUT_SCALE = 2
 GLYPH_ALIASES = {
-    # Lat15-VGA16 has the required double-vertical shape at U+2551 but no
+    # TerminusBold has the required double-vertical shape at U+2551 but no
     # U+2016 Unicode-table entry. Keep the TUI's one-cell pause symbol exact
     # while rendering it with that existing console-font glyph.
     0x2016: 0x2551,
@@ -50,7 +50,7 @@ def read_font(path: Path) -> bytes:
     return gzip.decompress(raw) if path.suffix == ".gz" else raw
 
 
-def load_psf1() -> tuple[list[bytes], dict[int, int]]:
+def load_psf2() -> tuple[list[bytes], dict[int, int]]:
     for path in FONT_CANDIDATES:
         if path.exists():
             raw = read_font(path)
@@ -59,24 +59,56 @@ def load_psf1() -> tuple[list[bytes], dict[int, int]]:
         candidates = ", ".join(str(path) for path in FONT_CANDIDATES)
         raise FileNotFoundError(f"missing console font; tried {candidates}")
 
-    if raw[:2] != b"\x36\x04":
-        raise ValueError("expected a PSF1 console font")
-    mode, charsize = raw[2], raw[3]
-    glyph_count = 512 if mode & 1 else 256
+    if raw[:4] != b"\x72\xb5\x4a\x86":
+        raise ValueError(f"{path}: expected a PSF2 console font")
+    (
+        _magic,
+        version,
+        header_size,
+        flags,
+        glyph_count,
+        charsize,
+        height,
+        width,
+    ) = struct.unpack_from("<8I", raw)
+    if version != 0 or header_size < 32:
+        raise ValueError(f"{path}: unsupported PSF2 header")
+    if (width, height) != (CELL_W, CELL_H):
+        raise ValueError(
+            f"{path}: expected the tty1 {CELL_W}x{CELL_H} font, got {width}x{height}"
+        )
+    row_bytes = (width + 7) // 8
+    if charsize != row_bytes * height:
+        raise ValueError(f"{path}: inconsistent PSF2 glyph size")
+    glyph_end = header_size + glyph_count * charsize
+    if glyph_end > len(raw):
+        raise ValueError(f"{path}: truncated PSF2 glyph table")
     glyphs = [
-        raw[4 + i * charsize : 4 + (i + 1) * charsize]
+        raw[header_size + i * charsize : header_size + (i + 1) * charsize]
         for i in range(glyph_count)
     ]
     mapping: dict[int, int] = {}
-    pos = 4 + glyph_count * charsize
+    if not flags & 1:
+        raise ValueError(f"{path}: PSF2 font has no Unicode table")
+    pos = glyph_end
     for glyph_index in range(glyph_count):
-        while pos + 2 <= len(raw):
-            value = struct.unpack_from("<H", raw, pos)[0]
-            pos += 2
-            if value == 0xFFFF:
-                break
-            if value != 0xFFFE:
-                mapping.setdefault(value, glyph_index)
+        end = raw.find(b"\xff", pos)
+        if end < 0:
+            raise ValueError(f"{path}: truncated PSF2 Unicode table")
+        entries = raw[pos:end].split(b"\xfe")
+        for entry_index, sequence in enumerate(entries):
+            if not sequence:
+                continue
+            try:
+                text = sequence.decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise ValueError(f"{path}: invalid PSF2 Unicode table") from error
+            if entry_index == 0:
+                for character in text:
+                    mapping.setdefault(ord(character), glyph_index)
+            elif len(text) == 1:
+                mapping.setdefault(ord(text), glyph_index)
+        pos = end + 1
     return glyphs, mapping
 
 
@@ -137,11 +169,10 @@ def render(
         cell_x = x * CELL_W
         cell_y = y * CELL_H
         for gy in range(CELL_H):
-            bits = glyph[gy] if gy < len(glyph) else 0
-            for out_x in range(CELL_W):
-                source_x = out_x * 8 // CELL_W
-                pixels[cell_x + out_x, cell_y + gy] = (
-                    fg if bits & (0x80 >> source_x) else bg
+            for gx in range(CELL_W):
+                byte = glyph[gy * 2 + gx // 8]
+                pixels[cell_x + gx, cell_y + gy] = (
+                    fg if byte & (0x80 >> (gx % 8)) else bg
                 )
     destination = OUT / name
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +206,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
-    glyphs, unicode_map = load_psf1()
+    glyphs, unicode_map = load_psf2()
     data = screenshot_data()
     cols = int(data["cols"])
     rows = int(data["rows"])

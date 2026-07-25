@@ -172,7 +172,6 @@ pub(crate) struct OwnedAudioGraph {
     jack: JackClient,
     callback: Box<CallbackData>,
     routes: BoundaryRoutes,
-    aux_return_nodes: [Option<(u8, u32)>; 2],
     controls: std::sync::Arc<BusControls>,
     meters: std::sync::Arc<FinalBusMeters>,
     final_recorder: FinalMixRecorder,
@@ -355,7 +354,6 @@ impl OwnedAudioGraph {
             jack,
             callback,
             routes,
-            aux_return_nodes: aux_return_nodes(aux_routing),
             controls,
             meters,
             final_recorder,
@@ -382,17 +380,6 @@ impl OwnedAudioGraph {
             input: handles.input.load(),
             output: handles.output.load(),
             gain_reduction_db: handles.gain_reduction.map(|meter| meter.load()),
-        })
-    }
-
-    pub(crate) fn aux_meter(&self, aux_id: u8) -> Option<AuxMeterSnapshot> {
-        let node = self
-            .aux_return_nodes
-            .iter()
-            .flatten()
-            .find_map(|(id, node)| (*id == aux_id).then_some(*node))?;
-        Some(AuxMeterSnapshot {
-            output: self.callback.plan.meter(node)?.load(),
         })
     }
 
@@ -474,7 +461,6 @@ impl OwnedAudioGraph {
             return Err(error.context("restore audio graph boundary after rack publication"));
         }
         self.callback.armed.store(true, Ordering::Release);
-        self.aux_return_nodes = aux_return_nodes(aux_routing);
         Ok(())
     }
 
@@ -501,14 +487,6 @@ impl OwnedAudioGraph {
         }
         first_error.map_or(Ok(()), Err)
     }
-}
-
-fn aux_return_nodes(routing: &ProjectAuxRouting) -> [Option<(u8, u32)>; 2] {
-    let mut nodes = [None, None];
-    for (index, bus) in routing.buses.iter().take(2).enumerate() {
-        nodes[index] = Some((bus.id, FIRST_AUX_RETURN_NODE + index as u32));
-    }
-    nodes
 }
 
 impl Drop for OwnedAudioGraph {

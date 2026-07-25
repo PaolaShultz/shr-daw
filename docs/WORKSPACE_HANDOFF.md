@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.94`.
+corrected starting point; the current checked-progress version is `0.3.95`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -32,6 +32,14 @@ recorded without claiming user observation.
 
 The complete deterministic documentation screenshot set is reconciled to the
 current UI; physical approval remains the next gate for UI/controller work.
+The repository-only fullscreen-EQ and exact-font pass on 2026-07-25 completed
+at package version `0.3.95`: all 702 tests ran in both debug and release
+profiles with 698 passing and four intentionally ignored; locked check, debug,
+and release builds and warning-denied Clippy passed. All 107 screenshots use
+the tty1 `Uni2-TerminusBold24x12` console font at native 40×13 geometry and
+passed the exhaustive drift check. No JACK, synth, MIDI, playback, recording,
+or hardware-changing test was started for this pass.
+
 The repository-only release pass on 2026-07-22 completed at package version
 `0.3.94`: all 655 tests ran with 651 passing and four intentionally ignored;
 locked check, debug, and release builds and warning-denied Clippy passed; the

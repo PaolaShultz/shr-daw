@@ -89,10 +89,15 @@ SHR-DAW is a responsive 40×13 Raspberry Pi mini DAW with a Rust TUI, FT2-style
 tracker, synth hosts, MIDI routing, loops, recording, JACK/ALSA integration,
 and a small controller. Keep live-audio paths bounded and responsive.
 
-Treat the 40×13 display as content-first and do not change its established TTY
-font. Home is the only screen without the shared working-screen layout. Every
-other screen reserves row 13, the final terminal row, for one shared status
-renderer. The two controller rows sit immediately above it. Screen bodies,
+Treat the 40×13 display as content-first and do not change its established
+tty1 `Uni2-TerminusBold24x12` font. Home and the native-size fullscreen EQ
+editor are the only screens
+without the shared working-screen layout. Every other screen reserves row 13,
+the final terminal row, for one shared status renderer. The two controller rows
+sit immediately above it. The fullscreen EQ instead owns all thirteen rows,
+uses the last row for its logarithmic frequency axis or a transient
+pickup/fault/range message, and shows no controller rows. Below 40×13 it falls
+back to the ordinary compact FX editor and shared layout. Other screen bodies,
 screen-specific footers, overlays, and later cleanup passes must not draw or
 clear the final row. Remove or fold redundant gray status-like lines in screen
 bodies instead of stacking local commentary above the shared status row. Omit

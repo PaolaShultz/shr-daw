@@ -545,8 +545,8 @@ remaining physical or owner observation.
 | X05 | Tracker docs say header does not repeat transport; source/test/screenshot require PAUSE/PLAY/REC | R13 DONE |
 | X06 | Current loop overlay has no deletion, but legacy menu/state/delete code remains | R15 DONE |
 
-The screenshot count is not contradictory: 95 menu-manual images are a subset
-of the 105 generated PNG frames.
+The screenshot count is not contradictory: 97 menu-manual images are a subset
+of the 107 generated PNG frames.
 
 ## Isolated defects kept separate from workflow redesign
 

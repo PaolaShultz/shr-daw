@@ -69,6 +69,7 @@ impl Screen {
         }
     }
 
+    #[cfg(test)]
     pub const fn label(self) -> &'static str {
         match self {
             Self::Home => "HOME",
