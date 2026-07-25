@@ -8725,6 +8725,21 @@ fn midi_input_available(router: Option<&engine::MidiRouter>) -> bool {
     })
 }
 
+fn expected_startup_midi(router: Option<&engine::MidiRouter>) -> Option<String> {
+    let availability = router?.availability();
+    availability
+        .controller
+        .as_ref()
+        .filter(|input| !input.available())
+        .or_else(|| {
+            availability
+                .performance
+                .iter()
+                .find(|input| !input.available())
+        })
+        .map(|input| input.wanted.clone())
+}
+
 fn app_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     catalogs: &[Catalog],
@@ -8747,6 +8762,7 @@ fn app_loop(
             splash_started.elapsed(),
             terminal_keyboard,
             false,
+            None,
             BUILD_BADGE,
         )
     })?;
@@ -8766,8 +8782,16 @@ fn app_loop(
         {
             break;
         }
+        let expected = expected_startup_midi(router.as_ref().ok());
         terminal.draw(|frame| {
-            crate::startup_splash::draw(frame, elapsed, input_available, true, BUILD_BADGE)
+            crate::startup_splash::draw(
+                frame,
+                elapsed,
+                input_available,
+                true,
+                expected.as_deref(),
+                BUILD_BADGE,
+            )
         })?;
         if !input_available && Instant::now() >= next_input_scan {
             router = match router {

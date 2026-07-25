@@ -185,6 +185,7 @@ pub fn draw<B: Backend>(
     elapsed: Duration,
     input_available: bool,
     controller_checked: bool,
+    expected_midi: Option<&str>,
     build_badge: &str,
 ) {
     let area = frame.size();
@@ -227,6 +228,35 @@ pub fn draw<B: Backend>(
             indicator_area,
         );
     }
+
+    if elapsed >= MINIMUM_VISIBLE && !input_available {
+        if let Some(recovery_area) = rows_from_top(area, 1, 1) {
+            frame.render_widget(
+                Paragraph::new("CONNECT KEYBOARD OR MIDI INPUT")
+                    .alignment(Alignment::Center)
+                    .style(
+                        Style::default()
+                            .fg(Color::LightYellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                recovery_area,
+            );
+        }
+        if let (Some(expected), Some(expected_area)) = (
+            expected_midi.filter(|name| !name.trim().is_empty()),
+            rows_from_top(area, 2, 1),
+        ) {
+            frame.render_widget(
+                Paragraph::new(crate::ui_text::fit_middle(
+                    &format!("WAITING FOR {expected}"),
+                    usize::from(expected_area.width),
+                ))
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::DarkGray)),
+                expected_area,
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -242,7 +272,16 @@ mod tests {
         let backend = TestBackend::new(40, 13);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw(frame, elapsed, input_available, true, build_badge))
+            .draw(|frame| {
+                draw(
+                    frame,
+                    elapsed,
+                    input_available,
+                    true,
+                    Some("Stage Keyboard"),
+                    build_badge,
+                )
+            })
             .unwrap();
         terminal.backend().buffer().clone()
     }
@@ -340,11 +379,40 @@ mod tests {
     }
 
     #[test]
-    fn missing_input_keeps_reserved_splash_rows_empty() {
+    fn splash_names_missing_input_only_after_the_normal_sweep() {
         let waiting_buffer = render(MINIMUM_VISIBLE, false);
-        for y in [1, 2, 3, 5, 6, 7, 10] {
-            assert!((0..40).all(|x| waiting_buffer.get(x, y).symbol == " "));
-        }
+        let waiting = text(&waiting_buffer);
+        assert!(waiting.contains("CONNECT KEYBOARD OR MIDI INPUT"));
+        assert!(waiting.contains("WAITING FOR Stage Keyboard"));
+
+        let loading = text(&render(MINIMUM_VISIBLE, true));
+        assert!(!loading.contains("WAITING FOR"));
         assert!((35..40).all(|x| waiting_buffer.get(x, 0).bg == Color::Red));
+    }
+
+    #[test]
+    fn long_expected_input_stays_on_its_recovery_row() {
+        let backend = TestBackend::new(40, 13);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(
+                    frame,
+                    MINIMUM_VISIBLE,
+                    false,
+                    true,
+                    Some("Very Long Controller Client Name:Distinguishing MIDI Port 1"),
+                    "DEV",
+                )
+            })
+            .unwrap();
+        let row = (0..40)
+            .map(|x| terminal.backend().buffer().get(x, 2).symbol.as_str())
+            .collect::<String>();
+
+        assert!(row.contains("WAITING FOR"));
+        assert!(row.contains("MIDI Port 1"));
+        assert!(crate::ui_text::width(row.trim_end()) <= 40);
+        assert!((0..40).all(|x| terminal.backend().buffer().get(x, 3).symbol == " "));
     }
 }

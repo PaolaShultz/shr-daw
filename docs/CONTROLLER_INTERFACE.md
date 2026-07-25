@@ -31,9 +31,9 @@ claims that JACK or all synth engines are running.
 A terminal computer keyboard is a fully qualified input device, equal to an
 available configured controller or performance MIDI input; it is not described
 as a fallback. Only when none of those inputs is available does the splash
-remain open with the `INP` loader cell red and rescan the configured MIDI
-inputs. Rows 1–3 remain empty as part of the fixed splash composition. `Esc` or
-`q` can still exit from the splash.
+remain open, show `CONNECT KEYBOARD OR MIDI INPUT` and the expected input in
+the normally empty recovery rows, and rescan the configured MIDI inputs. `Esc`
+or `q` can still exit from the splash.
 
 ## Action inventory
 
