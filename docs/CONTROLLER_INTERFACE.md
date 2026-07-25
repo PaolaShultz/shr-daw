@@ -7,25 +7,27 @@ implemented.
 
 ## Startup splash
 
-Startup first shows a 40×13 old-school stereo LED animation. Its bottom-aligned
-11-row composition has two identical horizontal `●` rows for each of the `L`
-and `R` channels, with one empty row between channels; two empty rows separate
-the meters from a lowercase `shr - daw` wordmark, where one bright light-blue
-glyph moves quickly across otherwise bright-white text. Two further empty rows
-separate the wordmark from the final indicator row. Unlit meter LEDs are dark
-gray; lit LEDs use one green below −12 dBFS, yellow from −12 through −3 dBFS,
-and red above −3 dBFS. The animation is decorative and does not start audio,
-playback, or MIDI transmission.
+Startup first shows a 40×13 old-school stereo LED animation whose 11-row
+composition uses top-origin terminal rows 0–10 exactly. Row 0 contains the
+indicator strip; rows 1–2 are empty; row 3 contains a lowercase `shr - daw`
+wordmark, where one bright light-blue glyph moves quickly across otherwise
+bright-white text; rows 4–5 are empty; rows 6–7 contain the `R` meter; row 8 is
+empty; and rows 9–10 contain the `L` meter. Each meter uses two identical
+horizontal `●` rows. Unlit meter LEDs are dark gray; lit LEDs use one green
+below −12 dBFS, yellow from −12 through −3 dBFS, and red above −3 dBFS. The
+animation is decorative and does not start audio, playback, or MIDI
+transmission.
 
-The final row contains six identical five-cell indicators: ` DEV `, ` REL `,
-` CFG `, ` SND `, ` CTL `, and ` INP `. Each three-letter label is centred in
-its coloured cell. At 40 columns their 30 coloured cells and five two-cell
-black separators fill the row exactly, with no outside margin. They
-sweep from red to the same green as the meters over 2.5 seconds, then hold
-complete before the three-second minimum ends. `DEV` and `REL` are exclusive:
-the actual build mode turns green and the other remains red. Every startup
-phase turns green only after its corresponding fact is true; these are loader
-phases, not claims that JACK or all synth engines are running.
+The indicator strip contains six identical five-cell indicators: one dynamic
+build-mode cell followed by ` CFG `, ` SND `, ` TTY `, ` CTL `, and ` INP `.
+The build cell displays blue ` DEV ` in a debug build or green ` REL ` in a
+release build. Each three-letter label is centred in its coloured cell. At 40
+columns their 30 coloured cells and five two-cell black separators fill the row
+exactly, with no outside margin. They sweep from red over 2.5 seconds, then hold
+complete before the three-second minimum ends. At full load the build cell has
+its mode colour and every completed startup phase is green, so an inactive
+build mode does not leave a false red warning. These are loader phases, not
+claims that JACK or all synth engines are running.
 
 A terminal computer keyboard is a fully qualified input device, equal to an
 available configured controller or performance MIDI input; it is not described

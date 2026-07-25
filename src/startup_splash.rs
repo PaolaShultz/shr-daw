@@ -92,15 +92,15 @@ fn thick_meter(label: char, width: u16, elapsed: Duration) -> Vec<Spans<'static>
         .collect()
 }
 
-fn rows_from_bottom(area: Rect, highest_row: u16, height: u16) -> Option<Rect> {
-    if highest_row >= area.height || height == 0 {
+fn rows_from_top(area: Rect, first_row: u16, height: u16) -> Option<Rect> {
+    if first_row >= area.height || height == 0 {
         return None;
     }
     Some(Rect::new(
         area.x,
-        area.y + area.height - highest_row - 1,
+        area.y + first_row,
         area.width,
-        height.min(highest_row + 1),
+        height.min(area.height - first_row),
     ))
 }
 
@@ -142,13 +142,18 @@ fn indicator_row(
     controller_checked: bool,
     build_badge: &str,
 ) -> Spans<'static> {
+    let (build_label, build_color) = if build_badge == "DEV" {
+        ("DEV", Color::LightBlue)
+    } else {
+        ("REL", Color::Green)
+    };
     let indicators = [
-        ("DEV", build_badge == "DEV"),
-        ("REL", build_badge == "REL"),
-        ("CFG", true),
-        ("SND", true),
-        ("CTL", controller_checked),
-        ("INP", input_available),
+        (build_label, true, build_color),
+        ("CFG", true, Color::Green),
+        ("SND", true, Color::Green),
+        ("TTY", true, Color::Green),
+        ("CTL", controller_checked, Color::Green),
+        ("INP", input_available, Color::Green),
     ];
     let content_width =
         INDICATOR_COUNT * INDICATOR_WIDTH + indicators.len().saturating_sub(1) * INDICATOR_GAP;
@@ -158,7 +163,7 @@ fn indicator_row(
         .saturating_sub(left_padding);
     let black = Style::default().bg(Color::Black);
     let mut spans = vec![Span::styled(" ".repeat(left_padding), black)];
-    for (index, (label, ready)) in indicators.into_iter().enumerate() {
+    for (index, (label, ready, loaded_color)) in indicators.into_iter().enumerate() {
         if index > 0 {
             spans.push(Span::styled(" ".repeat(INDICATOR_GAP), black));
         }
@@ -167,7 +172,7 @@ fn indicator_row(
             format!("{label:^width$}", width = INDICATOR_WIDTH),
             Style::default()
                 .fg(Color::Black)
-                .bg(if lit { Color::Green } else { Color::Red })
+                .bg(if lit { loaded_color } else { Color::Red })
                 .add_modifier(Modifier::BOLD),
         ));
     }
@@ -186,7 +191,7 @@ pub fn draw<B: Backend>(
     let area = frame.size();
     frame.render_widget(Clear, area);
 
-    if let Some(title_area) = rows_from_bottom(area, 3, 1) {
+    if let Some(title_area) = rows_from_top(area, 3, 1) {
         frame.render_widget(
             Paragraph::new(title(elapsed)).alignment(Alignment::Center),
             title_area,
@@ -194,7 +199,7 @@ pub fn draw<B: Backend>(
     }
 
     let meter_width = area.width.saturating_sub(2);
-    if let Some(mut meter) = rows_from_bottom(area, 10, 2) {
+    if let Some(mut meter) = rows_from_top(area, 9, 2) {
         meter.x = meter.x.saturating_add(1);
         meter.width = meter.width.saturating_sub(2);
         frame.render_widget(
@@ -202,7 +207,7 @@ pub fn draw<B: Backend>(
             meter,
         );
     }
-    if let Some(mut meter) = rows_from_bottom(area, 7, 2) {
+    if let Some(mut meter) = rows_from_top(area, 6, 2) {
         meter.x = meter.x.saturating_add(1);
         meter.width = meter.width.saturating_sub(2);
         frame.render_widget(
@@ -211,7 +216,7 @@ pub fn draw<B: Backend>(
         );
     }
 
-    if let Some(indicator_area) = rows_from_bottom(area, 0, 1) {
+    if let Some(indicator_area) = rows_from_top(area, 0, 1) {
         frame.render_widget(
             Paragraph::new(indicator_row(
                 area.width,
@@ -225,7 +230,7 @@ pub fn draw<B: Backend>(
     }
 
     if elapsed >= MINIMUM_VISIBLE && !input_available {
-        if let Some(recovery_area) = rows_from_bottom(area, 2, 1) {
+        if let Some(recovery_area) = rows_from_top(area, 1, 1) {
             frame.render_widget(
                 Paragraph::new("CONNECT KEYBOARD OR MIDI INPUT")
                     .alignment(Alignment::Center)
@@ -239,7 +244,7 @@ pub fn draw<B: Backend>(
         }
         if let (Some(expected), Some(expected_area)) = (
             expected_midi.filter(|name| !name.trim().is_empty()),
-            rows_from_bottom(area, 1, 1),
+            rows_from_top(area, 2, 1),
         ) {
             frame.render_widget(
                 Paragraph::new(format!("WAITING FOR {expected}"))
@@ -303,14 +308,14 @@ mod tests {
     }
 
     #[test]
-    fn splash_renders_requested_bottom_up_rows_at_40x13() {
+    fn splash_renders_requested_top_origin_rows_at_40x13() {
         let buffer = render(Duration::from_millis(2_750), true);
         let output = text(&buffer);
         assert!(output.contains("shr - daw"));
         assert!(output.contains("L ["));
         assert!(output.contains("R ["));
 
-        for rows in [2..4, 5..7] {
+        for rows in [6..8, 9..11] {
             for y in rows {
                 let symbols = (0..40)
                     .map(|x| buffer.get(x, y).symbol.as_str())
@@ -321,10 +326,10 @@ mod tests {
             }
         }
         for x in 4..38 {
-            assert_eq!(buffer.get(x, 2).symbol, buffer.get(x, 5).symbol);
-            assert_eq!(buffer.get(x, 2).fg, buffer.get(x, 5).fg);
+            assert_eq!(buffer.get(x, 6).symbol, buffer.get(x, 9).symbol);
+            assert_eq!(buffer.get(x, 6).fg, buffer.get(x, 9).fg);
         }
-        for y in [0, 1, 4, 7, 8, 10, 11] {
+        for y in [1, 2, 4, 5, 8, 11, 12] {
             assert!((0..40).all(|x| buffer.get(x, y).symbol == " "));
         }
     }
@@ -335,7 +340,7 @@ mod tests {
         let next = render(TITLE_STEP, true);
         let title_cells = |buffer: &Buffer| {
             (15..24)
-                .filter(|x| buffer.get(*x, 9).fg == Color::LightCyan)
+                .filter(|x| buffer.get(*x, 3).fg == Color::LightCyan)
                 .collect::<Vec<_>>()
         };
         assert_eq!(title_cells(&first), vec![16]);
@@ -347,23 +352,27 @@ mod tests {
         let off = render(Duration::ZERO, true);
         let debug = render(INDICATOR_SWEEP, true);
         let release = render_build(INDICATOR_SWEEP, true, "REL");
-        let red = (0..40).filter(|x| off.get(*x, 12).bg == Color::Red).count();
+        let red = (0..40).filter(|x| off.get(*x, 0).bg == Color::Red).count();
         let green = (0..40)
-            .filter(|x| debug.get(*x, 12).bg == Color::Green)
+            .filter(|x| debug.get(*x, 0).bg == Color::Green)
             .count();
         assert_eq!(red, 30);
         assert_eq!(green, 25);
-        assert!((0..5).all(|x| debug.get(x, 12).bg == Color::Green));
-        assert!((7..12).all(|x| debug.get(x, 12).bg == Color::Red));
-        assert!((0..5).all(|x| release.get(x, 12).bg == Color::Red));
-        assert!((7..12).all(|x| release.get(x, 12).bg == Color::Green));
+        assert!((0..5).all(|x| debug.get(x, 0).bg == Color::LightBlue));
+        assert!((0..40).all(|x| debug.get(x, 0).bg != Color::Red));
+        assert!((0..5).all(|x| release.get(x, 0).bg == Color::Green));
+        assert!((0..40).all(|x| release.get(x, 0).bg != Color::Red));
         for x in [5, 6, 12, 13, 19, 20, 26, 27, 33, 34] {
-            assert_eq!(debug.get(x, 12).bg, Color::Black);
+            assert_eq!(debug.get(x, 0).bg, Color::Black);
         }
-        let labels = (0..40)
-            .map(|x| debug.get(x, 12).symbol.as_str())
+        let debug_labels = (0..40)
+            .map(|x| debug.get(x, 0).symbol.as_str())
             .collect::<String>();
-        assert_eq!(labels, " DEV    REL    CFG    SND    CTL    INP ");
+        let release_labels = (0..40)
+            .map(|x| release.get(x, 0).symbol.as_str())
+            .collect::<String>();
+        assert_eq!(debug_labels, " DEV    CFG    SND    TTY    CTL    INP ");
+        assert_eq!(release_labels, " REL    CFG    SND    TTY    CTL    INP ");
     }
 
     #[test]
@@ -375,6 +384,6 @@ mod tests {
 
         let loading = text(&render(MINIMUM_VISIBLE, true));
         assert!(!loading.contains("WAITING FOR"));
-        assert!((35..40).all(|x| waiting_buffer.get(x, 12).bg == Color::Red));
+        assert!((35..40).all(|x| waiting_buffer.get(x, 0).bg == Color::Red));
     }
 }
