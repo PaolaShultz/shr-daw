@@ -185,7 +185,6 @@ pub fn draw<B: Backend>(
     elapsed: Duration,
     input_available: bool,
     controller_checked: bool,
-    expected_midi: Option<&str>,
     build_badge: &str,
 ) {
     let area = frame.size();
@@ -228,32 +227,6 @@ pub fn draw<B: Backend>(
             indicator_area,
         );
     }
-
-    if elapsed >= MINIMUM_VISIBLE && !input_available {
-        if let Some(recovery_area) = rows_from_top(area, 1, 1) {
-            frame.render_widget(
-                Paragraph::new("CONNECT KEYBOARD OR MIDI INPUT")
-                    .alignment(Alignment::Center)
-                    .style(
-                        Style::default()
-                            .fg(Color::LightYellow)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                recovery_area,
-            );
-        }
-        if let (Some(expected), Some(expected_area)) = (
-            expected_midi.filter(|name| !name.trim().is_empty()),
-            rows_from_top(area, 2, 1),
-        ) {
-            frame.render_widget(
-                Paragraph::new(format!("WAITING FOR {expected}"))
-                    .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::DarkGray)),
-                expected_area,
-            );
-        }
-    }
 }
 
 #[cfg(test)]
@@ -269,16 +242,7 @@ mod tests {
         let backend = TestBackend::new(40, 13);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| {
-                draw(
-                    frame,
-                    elapsed,
-                    input_available,
-                    true,
-                    Some("Stage Keyboard"),
-                    build_badge,
-                )
-            })
+            .draw(|frame| draw(frame, elapsed, input_available, true, build_badge))
             .unwrap();
         terminal.backend().buffer().clone()
     }
@@ -376,14 +340,11 @@ mod tests {
     }
 
     #[test]
-    fn splash_names_missing_input_only_after_the_normal_sweep() {
+    fn missing_input_keeps_reserved_splash_rows_empty() {
         let waiting_buffer = render(MINIMUM_VISIBLE, false);
-        let waiting = text(&waiting_buffer);
-        assert!(waiting.contains("CONNECT KEYBOARD OR MIDI INPUT"));
-        assert!(waiting.contains("WAITING FOR Stage Keyboard"));
-
-        let loading = text(&render(MINIMUM_VISIBLE, true));
-        assert!(!loading.contains("WAITING FOR"));
+        for y in [1, 2, 3, 5, 6, 7, 10] {
+            assert!((0..40).all(|x| waiting_buffer.get(x, y).symbol == " "));
+        }
         assert!((35..40).all(|x| waiting_buffer.get(x, 0).bg == Color::Red));
     }
 }

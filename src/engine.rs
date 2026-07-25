@@ -967,7 +967,7 @@ impl Engine {
         } else {
             "AUDIO GRAPH LOST"
         };
-        let status = match restored {
+        let detail = match &restored {
             Ok(()) => format!(
                 "{loss} · exact direct routes restored · {}",
                 audio_graph_metrics(&timing)
@@ -977,8 +977,11 @@ impl Engine {
                 audio_graph_metrics(&timing)
             ),
         };
-        self.audio_graph_fallback = Some(status.clone());
-        Some(status)
+        self.audio_graph_fallback = Some(detail);
+        Some(match restored {
+            Ok(()) => format!("{loss} · direct routes restored"),
+            Err(_) => format!("{loss} · restore unavailable · ROUTING"),
+        })
     }
 
     fn stop_audio_graph(&mut self) -> Option<(CallbackTimingSnapshot, Result<()>)> {

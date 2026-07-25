@@ -619,9 +619,10 @@ the current Project without exposing unsafe paths. `INBOX` imports and loads;
 `PRIVATE`, `CURRENT`, and `SAVED` attach and load. This overlay does not delete
 files.
 
-The Loop Player reports `READY`, `NOT READY`, or `OUTPUT FAULT`. Whenever the
-WAV decoded to a valid region, its white position bar and green playhead remain
-near the top even if the owned JACK output failed to activate.
+Healthy Loop Player output has no status label. Missing or failed output gets a
+short unavailable/fault line with `PLAY` recovery. Whenever the WAV decoded to
+a valid region, its white position bar and green playhead remain near the top
+even if the owned JACK output failed to activate.
 
 Loop playback is native-speed and native-pitch. Import and auto-align set the
 current Pattern tempo from the interpreted WAV BPM; they do not stretch the WAV

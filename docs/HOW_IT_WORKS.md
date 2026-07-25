@@ -446,9 +446,10 @@ Activating an inbox entry imports and loads it; activating a
 private/current/saved entry attaches and loads it. Failed preview/import keeps
 the caller and selection for retry, and import failure rolls back its private
 copy and Project attachment. It does not delete existing library files. The
-loop screen distinguishes `READY`, `NOT READY`, and `OUTPUT
-FAULT`; a valid decoded region keeps its white position bar and green playhead
-visible even when output activation fails.
+loop screen is silent when healthy and shows concise unavailable/fault plus
+`PLAY` recovery when output is not usable; a valid decoded region keeps its
+white position bar and green playhead visible even when output activation
+fails.
 
 ## Note ownership and failure behavior
 

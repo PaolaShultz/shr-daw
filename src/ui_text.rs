@@ -6,10 +6,22 @@ pub fn width(text: &str) -> usize {
     UnicodeWidthStr::width(text)
 }
 
+pub fn sanitize_line(text: &str) -> String {
+    text.chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect()
+}
+
 /// Return one line which occupies no more than `cells`, using an ellipsis only
-/// for unpredictable dynamic text. Newlines are made visible as spaces.
+/// for unpredictable dynamic text. Display controls are made visible as spaces.
 pub fn fit_line(text: &str, cells: usize) -> String {
-    let text = text.replace(['\r', '\n'], " ");
+    let text = sanitize_line(text);
     if width(&text) <= cells {
         return text;
     }
@@ -32,6 +44,70 @@ pub fn fit_line(text: &str, cells: usize) -> String {
     }
     fitted.push('…');
     fitted
+}
+
+/// Fit an identity while retaining both its beginning and distinguishing tail.
+pub fn fit_middle(text: &str, cells: usize) -> String {
+    let text = sanitize_line(text);
+    if width(&text) <= cells {
+        return text;
+    }
+    if cells == 0 {
+        return String::new();
+    }
+    if cells == 1 {
+        return "…".into();
+    }
+
+    let content_cells = cells - 1;
+    let prefix_cells = content_cells.div_ceil(2);
+    let suffix_cells = content_cells - prefix_cells;
+    let mut prefix = String::new();
+    let mut used = 0;
+    for character in text.chars() {
+        let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
+        if used + character_width > prefix_cells {
+            break;
+        }
+        prefix.push(character);
+        used += character_width;
+    }
+
+    let mut suffix = Vec::new();
+    used = 0;
+    for character in text.chars().rev() {
+        let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
+        if used + character_width > suffix_cells {
+            break;
+        }
+        suffix.push(character);
+        used += character_width;
+    }
+    suffix.reverse();
+    format!("{prefix}…{}", suffix.into_iter().collect::<String>())
+}
+
+/// Keep an operational suffix visible after fitting unpredictable text.
+pub fn fit_with_suffix(text: &str, suffix: &str, cells: usize) -> String {
+    let suffix = sanitize_line(suffix);
+    let suffix_width = width(&suffix);
+    if suffix_width >= cells {
+        return fit_middle(&suffix, cells);
+    }
+    let text_cells = cells - suffix_width;
+    format!("{}{}", fit_line(text, text_cells), suffix)
+}
+
+/// Fit a status while retaining its final consequence or recovery clause.
+pub fn fit_status(text: &str, cells: usize) -> String {
+    let text = sanitize_line(text);
+    if width(&text) <= cells {
+        return text;
+    }
+    if let Some((head, tail)) = text.rsplit_once(" · ") {
+        return fit_with_suffix(head, &format!(" · {tail}"), cells);
+    }
+    fit_line(&text, cells)
 }
 
 pub fn label_value(label: &str, value: &str, cells: usize) -> String {
@@ -88,7 +164,30 @@ mod tests {
     fn fit_uses_terminal_cells_and_never_keeps_a_newline() {
         assert_eq!(width(&fit_line("ab·界cd", 6)), 6);
         assert_eq!(fit_line("one\ntwo", 20), "one two");
+        assert_eq!(fit_line("one\ttwo", 20), "one two");
         assert!(width(&fit_line("wide 界 endpoint", 8)) <= 8);
+    }
+
+    #[test]
+    fn middle_fit_preserves_both_ends_in_terminal_cells() {
+        let fitted = fit_middle("Project 夜明けのシンセ.wav", 15);
+        assert!(fitted.starts_with("Project"));
+        assert!(fitted.ends_with(".wav"));
+        assert!(width(&fitted) <= 15);
+    }
+
+    #[test]
+    fn suffix_fit_never_loses_the_recovery() {
+        let fitted = fit_with_suffix("IMPOSSIBLY LONG ROUTING FAILURE DETAIL", " · retry", 20);
+        assert!(fitted.ends_with(" · retry"));
+        assert!(width(&fitted) <= 20);
+    }
+
+    #[test]
+    fn status_fit_keeps_the_last_recovery_clause() {
+        let fitted = fit_status("PERFORMANCE · FINAL BUS UNAVAILABLE · retry MIX", 38);
+        assert!(fitted.ends_with(" · retry MIX"));
+        assert!(width(&fitted) <= 38);
     }
 
     #[test]

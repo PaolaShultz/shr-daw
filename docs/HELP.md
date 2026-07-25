@@ -262,8 +262,9 @@ selection and FT2 context for retry without attaching a partial import.
 `INBOX` imports; `PRIVATE`, `CURRENT`, and `SAVED` attach the existing file.
 The browser does not delete WAVs.
 
-The loop reports READY, NOT READY, or OUTPUT FAULT. A valid decoded region
-keeps its white position bar and green playhead even during an output fault.
+Healthy loop output needs no label. An unavailable or failed output reports a
+short fault with `PLAY` recovery. A valid decoded region keeps its white
+position bar and green playhead even during an output fault.
 
 The normal Loop screen's circular-LED `LOOP OUT` bars show only that WAV after its cut,
 position, interpolation, transport gate, and edge fades. They do not include

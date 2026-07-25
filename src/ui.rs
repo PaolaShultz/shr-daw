@@ -44,6 +44,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, IsTerminal, Stdout};
@@ -79,6 +80,9 @@ const COMPRESSOR_GAIN_REDUCTION_LEDS_DB: [f32; 11] =
     [0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 18.0, 24.0];
 // U+25CF is one cell wide in the target TTY font and is the master LED glyph.
 const COMPRESSOR_LED_GLYPH: &str = "●";
+const ROUTINE_STATUS_LIFETIME: Duration = Duration::from_millis(1_500);
+const CONSEQUENTIAL_STATUS_LIFETIME: Duration = Duration::from_secs(3);
+const STATUS_TEXT_CELLS: u16 = 38;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TransportIndicator {
@@ -525,6 +529,7 @@ struct App {
     original_values: HashMap<u8, f32>,
     held_notes: HeldNotes,
     status: String,
+    status_clock: RefCell<StatusClock>,
     controller_fallback: Option<String>,
     audio_fallback: Option<String>,
     tracker_fallback: Option<String>,
@@ -665,6 +670,11 @@ struct App {
     routing_inputs: Vec<String>,
     routing_outputs: Vec<String>,
     routing_audio_ports: Vec<String>,
+}
+
+struct StatusClock {
+    text: String,
+    since: Instant,
 }
 
 struct TrackerIo {
@@ -1229,6 +1239,10 @@ impl App {
             original_values: HashMap::new(),
             held_notes: HeldNotes::default(),
             status: "Ready".into(),
+            status_clock: RefCell::new(StatusClock {
+                text: "Ready".into(),
+                since: Instant::now(),
+            }),
             controller_fallback: None,
             audio_fallback: resolved_audio.notice,
             tracker_fallback: None,
@@ -1513,8 +1527,7 @@ impl App {
     fn begin_project_action(&mut self, action: PendingProjectAction) {
         if self.project_is_dirty() {
             self.pending_project_action = Some(action);
-            self.status =
-                "UNSAVED PROJECT · SAVE keeps work · DISCARD continues · CANCEL returns".into();
+            self.status = "UNSAVED PROJECT · choose SAVE/DISCARD".into();
         } else {
             self.complete_project_action(action);
         }
@@ -1532,7 +1545,7 @@ impl App {
             self.confirm_song_save = None;
             self.pending_routing_defaults = None;
             self.confirm_routing_defaults = false;
-            self.status = "unsaved Project action cancelled · Project and position kept".into();
+            self.status = "Cancelled · Project/position kept".into();
         }
     }
 
@@ -1558,7 +1571,7 @@ impl App {
 
     fn begin_controller_learn(&mut self) {
         if !self.controller_online {
-            self.status = "MIDI Learn unavailable · connect the selected controller first".into();
+            self.status = "MIDI LEARN OFFLINE · connect input".into();
             return;
         }
         let input = self
@@ -1567,12 +1580,12 @@ impl App {
             .ok()
             .and_then(|config| config.input_match.clone());
         let Some(input) = input else {
-            self.status = "MIDI Learn unavailable · select a controller input in setup".into();
+            self.status = "MIDI LEARN · select input in ROUTING".into();
             return;
         };
         self.controller_learn = Some(crate::controller_learn::LearnSession::new(&input));
         self.learn_mode.store(true, Ordering::Relaxed);
-        self.status = "MIDI Learn active · controller messages isolated from instruments".into();
+        self.status.clear();
     }
 
     fn refresh_live_midi_connections(&mut self) {
@@ -1602,7 +1615,7 @@ impl App {
         self.routing = RoutingEditor::default();
         self.refresh_routing_discovery();
         self.set_screen(Screen::Routing);
-        self.status = "Routing · turn to browse · press to edit".into();
+        self.status.clear();
     }
 
     fn refresh_routing_discovery(&mut self) {
@@ -1687,7 +1700,7 @@ impl App {
         } else {
             let row_count = self.routing_rows().len();
             self.routing.selected = wrapped_index(self.routing.selected, row_count, direction);
-            self.status = format!("{} selected · press to edit", self.routing_row().label());
+            self.status.clear();
         }
     }
 
@@ -1704,15 +1717,12 @@ impl App {
             config: self.config.clone(),
             controller,
         });
-        self.status = format!(
-            "{} EDIT · turn · press confirms",
-            self.routing_row().label()
-        );
+        self.status.clear();
     }
 
     fn cancel_routing_edit(&mut self) -> bool {
         if self.routing.draft.take().is_some() {
-            self.status = "Routing edit cancelled · active route unchanged".into();
+            self.status = "Cancelled · active route kept".into();
             true
         } else {
             false
@@ -1759,7 +1769,7 @@ impl App {
                     .enumerate()
                     .any(|(other, input)| other != index && input.eq_ignore_ascii_case(&choice))
                 {
-                    self.status = "PERF duplicate refused · choose a different exact input".into();
+                    self.status = "DUP INPUT · choose another exact port".into();
                     return;
                 } else {
                     draft.config.midi_performance_input_matches[index] = choice;
@@ -1835,7 +1845,7 @@ impl App {
                 }
             }
         }
-        self.status = format!("{} EDIT · draft only", row.label());
+        self.status.clear();
     }
 
     fn routing_audio_choices(&self) -> Vec<Vec<String>> {
@@ -1869,15 +1879,15 @@ impl App {
             self.begin_routing_edit();
             return;
         };
-        if let Err(error) =
+        if let Err(_error) =
             canonicalize_routing_draft(&mut draft, &self.routing_inputs, &self.routing_outputs)
         {
-            self.status = format!("Routing invalid · {error}");
+            self.status = "ROUTING INVALID · fix field".into();
             self.routing.draft = Some(draft);
             return;
         }
-        if let Err(error) = validate_routing_draft(&draft, state) {
-            self.status = format!("Routing invalid · {error:#}");
+        if let Err(_error) = validate_routing_draft(&draft, state) {
+            self.status = "ROUTING INVALID · fix field".into();
             self.routing.draft = Some(draft);
             return;
         }
@@ -1916,13 +1926,13 @@ impl App {
                 self.controller_layout = draft.controller.layout;
                 self.refresh_routing_discovery();
                 self.status = match (audio_changed, clock_changed) {
-                    (true, true) => "Routing saved · AUDIO+CLOCK NEXT START".into(),
-                    (true, false) => "Routing saved · AUDIO NEXT START".into(),
-                    (false, true) => "Routing saved · CLOCK NEXT START".into(),
-                    (false, false) => "Routing saved · live inputs active".into(),
+                    (true, true) => "Saved · audio+clock apply next start".into(),
+                    (true, false) => "Saved · audio applies next start".into(),
+                    (false, true) => "Saved · clock applies next start".into(),
+                    (false, false) => String::new(),
                 };
             }
-            Err((stage, error)) => {
+            Err((stage, _error)) => {
                 if let Ok(mut controller) = self.controller_config.write() {
                     *controller = old_controller;
                 }
@@ -1934,14 +1944,8 @@ impl App {
                 self.config = old_config;
                 self.refresh_routing_discovery();
                 self.status = match stage {
-                    RoutingTransactionStage::Save => {
-                        format!("Routing save failed · draft retained · {error:#}")
-                    }
-                    RoutingTransactionStage::Activate => {
-                        format!(
-                            "Routing activation failed · runtime rolled back · draft retained · {error:#}"
-                        )
-                    }
+                    RoutingTransactionStage::Save => "SAVE FAILED · draft kept · retry OK".into(),
+                    RoutingTransactionStage::Activate => "ROUTE FAILED · old route restored".into(),
                 };
                 self.routing.draft = Some(draft);
             }
@@ -1959,7 +1963,7 @@ impl App {
         }
         self.learn_mode.store(false, Ordering::Relaxed);
         self.controller_learn = None;
-        self.status = "MIDI Learn cancelled · previous controller mapping kept".into();
+        self.status = "Cancelled · previous MIDI map kept".into();
     }
 
     fn save_controller_learn(&mut self, state: &Path, wait_for_release: bool) {
@@ -1968,8 +1972,8 @@ impl App {
         };
         let config = match session.validated_config() {
             Ok(config) => config,
-            Err(error) => {
-                self.status = format!("MIDI Learn validation: {error:#}");
+            Err(_error) => {
+                self.status = "CONTROLLER INVALID · retry mapping".into();
                 if wait_for_release {
                     if let Some(session) = self.controller_learn.as_mut() {
                         session.mark_save_result(false);
@@ -1979,9 +1983,9 @@ impl App {
             }
         };
         let path = state.join("controller.conf");
-        if let Err(error) = crate::controller_learn::backup(&path).and_then(|_| config.save(&path))
+        if let Err(_error) = crate::controller_learn::backup(&path).and_then(|_| config.save(&path))
         {
-            self.status = format!("MIDI Learn save failed: {error:#}");
+            self.status = "CONTROLLER SAVE FAILED · retry SAVE".into();
             if wait_for_release {
                 if let Some(session) = self.controller_learn.as_mut() {
                     session.mark_save_result(false);
@@ -1997,15 +2001,12 @@ impl App {
             if let Some(session) = self.controller_learn.as_mut() {
                 session.mark_save_result(true);
             }
-            self.status = format!(
-                "controller profile saved atomically · release encoder · {}",
-                path.display()
-            );
+            self.status = "Saved · release encoder".into();
             return;
         }
         self.learn_mode.store(false, Ordering::Relaxed);
         self.controller_learn = None;
-        self.status = format!("controller profile saved atomically · {}", path.display());
+        self.status = "Controller mapping saved".into();
     }
 
     fn finish_saved_controller_learn(&mut self) {
@@ -2131,7 +2132,7 @@ impl App {
         }
         let context = self.menu_context();
         let Some(launcher) = OverlayLauncher::resolve(caller, context, action) else {
-            self.status = "overlay launcher is unavailable in this controller context".into();
+            self.status = "NO ACTION HERE · use visible controls".into();
             return;
         };
         let selection = match kind {
@@ -2189,7 +2190,7 @@ impl App {
             caller_menu_page,
             caller_page_select_mode,
         ));
-        self.status = format!("{} · turn to browse · press to select", kind.title());
+        self.status.clear();
     }
 
     fn close_overlay(&mut self, cancelled: bool) {
@@ -2214,9 +2215,9 @@ impl App {
             self.page_select_mode = overlay.caller_page_select_mode;
         }
         self.status = if cancelled && overlay.route().is_some_and(RouteDraft::dirty) {
-            "overlay closed · unconfirmed routing cancelled".into()
+            "Cancelled · routing draft discarded".into()
         } else {
-            format!("returned to {}", overlay.caller.label())
+            String::new()
         };
     }
 
@@ -2226,7 +2227,7 @@ impl App {
             .as_mut()
             .is_some_and(OverlayState::cancel_route_field)
         {
-            self.status = "route field cancelled · draft otherwise unchanged".into();
+            self.status = "Cancelled · routing draft kept".into();
         } else {
             self.close_overlay(true);
         }
@@ -2267,7 +2268,7 @@ impl App {
                 RouteField::Target | RouteField::Engine | RouteField::MidiOutput
             )
         {
-            self.status = "AUTO owns channel/bank/program · choose an explicit target first".into();
+            self.status = "AUTO OWNS CH/BANK/PROG · select target".into();
             return;
         }
         let current_page = self
@@ -2285,11 +2286,11 @@ impl App {
             )
         });
         if matches!(field, RouteField::Engine | RouteField::Instrument) && !internal {
-            self.status = "choose INTERNAL target before engine/instrument".into();
+            self.status = "Select INTERNAL before engine/sound".into();
             return;
         }
         if matches!(field, RouteField::MidiOutput | RouteField::DeviceProfile) && !external {
-            self.status = "choose EXTERNAL MIDI target before output/profile".into();
+            self.status = "Select EXTERNAL before output/profile".into();
             return;
         }
         let selected_target = current_page.as_ref().and_then(|page| match field {
@@ -2464,12 +2465,12 @@ impl App {
             .get_mut(&route.pattern)
             .and_then(|pattern| pattern.pages.get_mut(route.page_index))
         else {
-            self.status = "routing owner changed while overlay was open".into();
+            self.status = "ROUTE CHANGED · reopen overlay".into();
             return;
         };
         *page = route.page;
-        if let Err(error) = candidate.validate() {
-            self.status = format!("routing conflict · {error}");
+        if let Err(_error) = candidate.validate() {
+            self.status = "ROUTE CONFLICT · fix highlighted field".into();
             return;
         }
         self.release_tracker_audition();
@@ -2477,7 +2478,7 @@ impl App {
         self.close_overlay(false);
         self.clamp_tracker_cursor();
         self.sync_tracker_route();
-        self.status = "page routing applied through the Project owner".into();
+        self.status.clear();
     }
 
     fn activate_overlay(&mut self) {
@@ -2489,7 +2490,7 @@ impl App {
             if let Some(overlay) = self.overlay.as_mut() {
                 overlay.confirm_route_field();
             }
-            self.status = "route field kept in draft · APPLY commits Project routing".into();
+            self.status = "Draft kept · APPLY saves Project route".into();
             return;
         }
         let Some((kind, selection)) = self
@@ -2555,7 +2556,7 @@ impl App {
                     self.close_overlay(false);
                     self.set_screen(Screen::TrackerTools);
                     self.reset_context_page();
-                    self.status = "FT2 tools · loop, FX, clipboard, and mute".into();
+                    self.status.clear();
                 } else {
                     self.close_overlay(false);
                     self.tap_tracker_tempo();
@@ -2833,19 +2834,15 @@ impl App {
             return true;
         }
         let Some(preset) = self.preset_for_route(route) else {
-            self.status = format!(
-                "FT2 instrument missing · {} · {} · previous engine retained",
-                route.engine.label(),
-                route.instrument
-            );
+            self.status = "INSTRUMENT MISSING · old sound kept".into();
             return false;
         };
         self.release_tracker_audition();
         let state = self.engine_state.clone();
         match self.replace_engine_process(&preset, EngineOwner::Tracker(route.clone()), &state) {
             Ok(_) => true,
-            Err(error) => {
-                self.status = format!("FT2 SYNTH START FAILED: {error}");
+            Err(_error) => {
+                self.status = "FT2 START FAILED · retry PLAY".into();
                 false
             }
         }
@@ -3020,11 +3017,7 @@ impl App {
             cleared |= self.confirm_loop_remove;
             self.confirm_loop_remove = false;
         }
-        if cleared
-            && (self.status.to_ascii_lowercase().contains("confirm")
-                || self.status.to_ascii_lowercase().contains("press again")
-                || self.status.contains("SAVE again"))
-        {
+        if cleared {
             self.status.clear();
         }
     }
@@ -3120,7 +3113,7 @@ impl App {
         if let Some(e) = &self.engine {
             e.panic();
         }
-        self.status = "recording playback stopped · all notes off".into();
+        self.status = "All Notes Off · playback stopped".into();
     }
 
     fn active_recording_owner(&self) -> Option<RecordingOwner> {
@@ -3163,12 +3156,41 @@ impl App {
         }
     }
 
-    fn recording_status_message(&self) -> Option<&'static str> {
+    fn recording_status_message(&self) -> Option<String> {
         match self.active_recording_owner()? {
-            RecordingOwner::Idea => Some("IDEAS · MIDI recording"),
-            RecordingOwner::Tracker => Some("FT2 · pattern recording"),
-            RecordingOwner::Multitrack => Some("RECORDER · multitrack WAV recording"),
-            RecordingOwner::Final => Some("PERFORMANCE · final WAV recording"),
+            RecordingOwner::Idea => Some("IDEAS · MIDI take".into()),
+            RecordingOwner::Tracker => {
+                let tracker = self.sequencer.status();
+                if !tracker.available {
+                    Some("FT2 · TARGET OFFLINE · STOP".into())
+                } else {
+                    Some("FT2 · pattern capture".into())
+                }
+            }
+            RecordingOwner::Multitrack => {
+                let status = self.audio_recorder.status();
+                if status.error.is_some() {
+                    Some("RECORDER · FAULT · STOP".into())
+                } else if status.dropped_frames > 0
+                    || status.overflow_events > 0
+                    || status.xruns > 0
+                {
+                    Some("RECORDER · XRUN/DROP · STOP".into())
+                } else {
+                    Some("RECORDER · multitrack WAV".into())
+                }
+            }
+            RecordingOwner::Final => {
+                if self.final_recording_last.error.is_some() {
+                    Some("PERFORMANCE · FAULT · STOP".into())
+                } else if self.final_recording_last.dropped_frames > 0
+                    || self.final_recording_last.overflow_events > 0
+                {
+                    Some("PERFORMANCE · DROP/OVF · STOP".into())
+                } else {
+                    Some("PERFORMANCE · final WAV".into())
+                }
+            }
         }
     }
 
@@ -3308,7 +3330,7 @@ impl App {
         self.refresh_page_targets();
         self.sync_tracker_route();
         self.reset_context_page();
-        self.status = "NOTE EDIT · DESTINATION highlighted · press encoder to edit".into();
+        self.status = "NOTE EDIT · DESTINATION selected".into();
     }
     fn release_tracker_audition(&mut self) {
         let Some(page) = self.current_page().cloned() else {
@@ -3363,10 +3385,7 @@ impl App {
             }
         }
         self.sync_tracker_route();
-        self.status = format!(
-            "NOTE EDIT · {} ACTIVE · turn, press confirms, Back cancels",
-            field.label()
-        );
+        self.status = format!("NOTE EDIT · {} ACTIVE", field.label());
     }
 
     fn confirm_note_editor_field(&mut self) {
@@ -3422,10 +3441,7 @@ impl App {
             (current + 1) % NoteEditorField::ALL.len()
         };
         editor.field = NoteEditorField::ALL[next];
-        self.status = format!(
-            "NOTE EDIT · {} highlighted · press encoder to edit",
-            editor.field.label()
-        );
+        self.status = format!("NOTE EDIT · {} selected", editor.field.label());
     }
 
     fn adjust_note_editor(&mut self, direction: i8) {
@@ -3609,7 +3625,7 @@ impl App {
                 };
                 editor.draft.command = match editor.draft.command {
                     Command::None => {
-                        self.status = "PARAM unavailable · select an effect first".into();
+                        self.status = "NO FX · choose effect before PARAM".into();
                         return;
                     }
                     Command::Cut(value) => Command::Cut(if increase {
@@ -3712,8 +3728,8 @@ impl App {
         let Some(editor) = self.note_editor.as_ref().cloned() else {
             return;
         };
-        if let Err(error) = editor.draft.validate() {
-            self.status = format!("NOTE EDIT rejected · {error}");
+        if let Err(_error) = editor.draft.validate() {
+            self.status = "NOTE EDIT REJECTED · draft kept".into();
             return;
         }
         if !matches!(editor.draft.note, Note::On(_))
@@ -3721,14 +3737,13 @@ impl App {
                 || editor.draft.program.is_some()
                 || editor.draft.gate.is_some())
         {
-            self.status =
-                "NOTE EDIT rejected · velocity, program, and gate require a note-on".into();
+            self.status = "NOTE REJECTED · V/P/G need note".into();
             return;
         }
         if matches!(editor.draft.command, Command::Retrigger(_))
             && !matches!(editor.draft.note, Note::On(_))
         {
-            self.status = "NOTE EDIT rejected · retrigger requires a note-on".into();
+            self.status = "NOTE REJECTED · RETRIG needs note".into();
             return;
         }
         let old = self
@@ -3743,7 +3758,7 @@ impl App {
                 old
             });
         if let Some(old) = old {
-            if let Err(error) = self.song.validate() {
+            if let Err(_error) = self.song.validate() {
                 if let Some(cell) = self
                     .song
                     .patterns
@@ -3753,15 +3768,15 @@ impl App {
                 {
                     *cell = old;
                 }
-                self.status = format!("NOTE EDIT rejected · {error}");
+                self.status = "NOTE EDIT REJECTED · old cell kept".into();
                 return;
             }
             self.note_editor = None;
             self.sync_tracker_route();
             self.reset_context_page();
-            self.status = "NOTE EDIT saved · route defaults and cell are ready".into();
+            self.status = "NOTE SAVED · route defaults updated".into();
         } else {
-            self.status = "NOTE EDIT rejected · source cell no longer exists".into();
+            self.status = "NOTE REJECTED · source cell missing".into();
         }
     }
 
@@ -3784,7 +3799,7 @@ impl App {
         }
         self.sync_tracker_route();
         self.reset_context_page();
-        self.status = "NOTE EDIT cancelled · route and cell restored".into();
+        self.status = "Cancelled · route and cell restored".into();
     }
 
     fn back_note_editor(&mut self) {
@@ -3901,7 +3916,7 @@ impl App {
         };
         if gesture.overflowed {
             self.tracker_gesture_anchor = None;
-            self.status = "gesture rejected · maximum four distinct notes".into();
+            self.status = "GESTURE FULL · max 4 distinct notes".into();
             return;
         }
         let (order, row_index, page_index, first_lane) =
@@ -4000,7 +4015,7 @@ impl App {
             self.silence_live_notes();
             self.tracker_noob = false;
             self.sync_tracker_route();
-            self.status = "N00B off on Drums · current FT2 mode unchanged".into();
+            self.status = "N00B OFF on Drums · FT2 mode kept".into();
             true
         } else {
             false
@@ -4080,14 +4095,14 @@ impl App {
         self.silence_live_notes();
         self.tracker_noob = false;
         self.sync_tracker_route();
-        self.status = "FT2 N00B off · current mode unchanged · all chromatic notes enabled".into();
+        self.status = "N00B OFF · chromatic notes enabled".into();
     }
 
     fn toggle_tracker_noob(&mut self) {
         if self.tracker_noob {
             self.disable_tracker_noob();
         } else if self.current_page().is_some_and(|page| page.percussion) {
-            self.status = "N00B scale filter is unavailable on Drums".into();
+            self.status = "N00B SCALE unavailable on Drums".into();
         } else {
             self.silence_live_notes();
             self.tracker_noob = true;
@@ -4432,7 +4447,7 @@ impl App {
         }
         if self.tracker_noob && self.current_page().is_some_and(|page| page.percussion) {
             self.tracker_noob = false;
-            self.status = "N00B off on Drums · current FT2 mode unchanged".into();
+            self.status = "N00B OFF on Drums · FT2 mode kept".into();
         }
         self.sync_tracker_route_for_navigation();
     }
@@ -4598,7 +4613,7 @@ impl App {
         self.refresh_page_targets();
         self.set_screen(Screen::TrackerPages);
         self.reset_context_page();
-        self.status = "select page/column · TARGET, CHANNEL, PROGRAM · DONE saves changes".into();
+        self.status.clear();
     }
     fn cancel_page_manager(&mut self) {
         if let Some(song) = self.page_manager_original.take() {
@@ -4610,22 +4625,22 @@ impl App {
         self.page_field_original = None;
         self.set_screen(Screen::Tracker);
         self.sync_tracker_route();
-        self.status = "page changes cancelled".into();
+        self.status = "Cancelled · Project routing restored".into();
     }
     fn confirm_page_manager(&mut self) {
         if self.page_manager_mode != PageManagerMode::Pages {
             self.confirm_page_field();
             return;
         }
-        if let Err(error) = self.song.validate() {
-            self.status = format!("tracks conflict: {error}");
+        if let Err(_error) = self.song.validate() {
+            self.status = "TRACKS CONFLICT · fix highlighted page".into();
             return;
         }
         self.page_manager_original = None;
         self.page_field_original = None;
         self.set_screen(Screen::Tracker);
         self.sync_tracker_route();
-        self.status = format!("{} pages ready", self.current_pages().len());
+        self.status.clear();
     }
     fn move_page_selection(&mut self, direction: i8) {
         if self.page_manager_mode != PageManagerMode::Pages {
@@ -4655,9 +4670,9 @@ impl App {
                 self.tracker_track = 0;
                 self.refresh_page_targets();
                 self.sync_tracker_route();
-                self.status = "page added · four empty lanes · choose target/channel".into();
+                self.status = "PAGE ADDED · choose target/channel".into();
             }
-            Err(error) => self.status = format!("add page: {error}"),
+            Err(_error) => self.status = "PAGE ADD FAILED · Project unchanged".into(),
         }
     }
     fn edit_page_target(&mut self) {
@@ -4688,10 +4703,7 @@ impl App {
             .unwrap_or(0);
         self.page_manager_mode = PageManagerMode::Target;
         self.reset_context_page();
-        self.status = format!(
-            "turn encoder for target · {} · EXIT cancels field",
-            self.page_field_confirm_hint()
-        );
+        self.status.clear();
     }
     fn edit_page_channel(&mut self) {
         if self.page_manager_mode != PageManagerMode::Pages {
@@ -4701,17 +4713,14 @@ impl App {
             .current_page()
             .is_some_and(|page| page.target == PageTarget::Default)
         {
-            self.status = "channel AUTO · choose an explicit target before assigning 1–16".into();
+            self.status = "CHANNEL AUTO · select target first".into();
             return;
         }
         self.page_channel_draft = self.current_column().map_or(0, |column| column.channel);
         self.page_field_original = self.current_page().cloned();
         self.page_manager_mode = PageManagerMode::Channel;
         self.reset_context_page();
-        self.status = format!(
-            "turn encoder for channel 1–16 · {}",
-            self.page_field_confirm_hint()
-        );
+        self.status.clear();
     }
     fn confirm_page_field(&mut self) {
         self.release_tracker_audition();
@@ -4754,7 +4763,7 @@ impl App {
         if next_mode == PageManagerMode::Pages {
             self.page_field_original = None;
             self.sync_tracker_route();
-            self.status = "page route updated · DONE to keep or CANCEL to restore".into();
+            self.status.clear();
         } else {
             self.status = match next_mode {
                 PageManagerMode::Engine => "choose software ENGINE · press to confirm",
@@ -4890,9 +4899,6 @@ impl App {
             }
         }
     }
-    fn page_field_confirm_hint(&self) -> &'static str {
-        "press encoder to confirm"
-    }
     fn toggle_tracker_page_mute(&mut self) {
         let page_index = self.tracker_page;
         if let Some(page) = self.current_page_mut() {
@@ -4900,7 +4906,11 @@ impl App {
             let muted = !page.enabled;
             let name = page.name.clone();
             self.sequencer.mute_page(page_index, muted);
-            self.status = format!("{name} page {}", if muted { "muted" } else { "enabled" });
+            self.status = if muted {
+                format!("PAGE MUTED · {}", crate::ui_text::fit_middle(&name, 25))
+            } else {
+                String::new()
+            };
         }
     }
     fn set_tracker_tempo(&mut self, bpm: u16) {
@@ -4969,8 +4979,8 @@ impl App {
         // row zero of this Arrangement Step, so preflight the complete loop.
         let messages = match sequencer::schedule(&self.song, &self.config.external_midi, order, 0) {
             Ok(messages) => messages,
-            Err(error) => {
-                self.status = format!("tracker cannot play: {error}");
+            Err(_error) => {
+                self.status = "FT2 PLAY FAILED · fix route, retry".into();
                 return;
             }
         };
@@ -5000,8 +5010,8 @@ impl App {
             // already-owned FT2 engine available for live input, but do not
             // start one merely because a loop-only Project retains that page.
             Ok(None) => {}
-            Err(error) => {
-                self.status = format!("tracker cannot play: {error}");
+            Err(_error) => {
+                self.status = "FT2 PLAY FAILED · fix routing, retry".into();
                 return;
             }
         }
@@ -5069,7 +5079,7 @@ impl App {
             self.follow_tracker_transport(&transport);
         }
         let Some(target) = self.current_page().map(|page| page.target.clone()) else {
-            self.status = "REC unavailable · current page is missing".into();
+            self.status = "REC OFFLINE · current page missing".into();
             return;
         };
         if let Some(route) = self.tracker_software_route() {
@@ -5077,7 +5087,7 @@ impl App {
                 return;
             }
         } else if !self.target_online(&target) {
-            self.status = "REC unavailable · selected page target is offline".into();
+            self.status = "REC OFFLINE · page target offline".into();
             return;
         }
         self.finish_competing_recordings(RecordingOwner::Tracker);
@@ -5285,14 +5295,7 @@ impl App {
     fn open_tracker_loop(&mut self) {
         self.set_screen(Screen::TrackerLoop);
         self.reset_context_page();
-        self.status = if self.song.audio_loop.is_some() {
-            "loop page ready".into()
-        } else {
-            format!(
-                "loop page unloaded · {} WAV file(s) in inbox",
-                self.loop_imports.len()
-            )
-        };
+        self.status.clear();
     }
 
     fn load_current_loop(&mut self) -> bool {
@@ -5338,12 +5341,12 @@ impl App {
             .and_then(|decoded| self.load_loop_runtime(decoded, &settings))
         {
             Ok(()) => {
-                self.status = format!("loop ready · {}", settings.file);
+                self.status.clear();
                 self.retry_final_bus();
                 true
             }
-            Err(error) => {
-                self.status = format!("loop load: {error}");
+            Err(_error) => {
+                self.status = "LOOP LOAD FAILED · retry PLAY".into();
                 false
             }
         }
@@ -5351,8 +5354,8 @@ impl App {
 
     fn unload_loop_player(&mut self) {
         if let Some(engine) = self.engine.as_mut() {
-            if let Err(error) = engine.suspend_audio_graph() {
-                self.status = format!("final bus suspend failed: {error:#}");
+            if let Err(_error) = engine.suspend_audio_graph() {
+                self.status = "FINAL BUS SUSPEND FAILED · retry".into();
             }
         }
         self.loop_player.unload();
@@ -5366,11 +5369,11 @@ impl App {
         };
         match engine.retry_audio_graph(&self.config, &self.song.insert_rack, &self.song.aux_routing)
         {
-            Ok(true) => self.status.push_str(" · final bus active"),
+            Ok(true) => {}
             Ok(false) => {}
             Err(error) => {
                 self.audio_fallback = Some(format!("final bus unavailable · {error:#}"));
-                self.status.push_str(" · final bus unavailable");
+                self.status = "FINAL BUS UNAVAILABLE · retry MIX".into();
             }
         }
     }
@@ -5383,15 +5386,14 @@ impl App {
         }
         if !self.confirm_loop_remove {
             self.confirm_loop_remove = true;
-            self.status =
-                "REMOVE LOOP detaches it from the Project · press again · WAV is kept".into();
+            self.status = "REMOVE loop? · private WAV kept".into();
             return;
         }
         self.tracker_stop();
         self.song.audio_loop = None;
         self.unload_loop_player();
         self.confirm_loop_remove = false;
-        self.status = "loop removed from Project · private WAV kept".into();
+        self.status = "Removed · private WAV kept".into();
     }
 
     fn open_loop_library(&mut self) {
@@ -5461,8 +5463,8 @@ impl App {
         };
         let decoded = match crate::loop_player::DecodedLoop::open(&path) {
             Ok(decoded) => decoded,
-            Err(error) => {
-                self.status = format!("loop preview failed · {error}");
+            Err(_error) => {
+                self.status = "PREVIEW FAILED · retry PLAY".into();
                 return;
             }
         };
@@ -5480,13 +5482,13 @@ impl App {
             offset_beats: 0,
         };
         self.sequencer.stop();
-        if let Err(error) = self.load_loop_preview_candidate(decoded, &settings) {
+        if let Err(_error) = self.load_loop_preview_candidate(decoded, &settings) {
             if self.song.audio_loop.is_some() {
                 self.load_current_loop();
             } else {
                 self.unload_loop_player();
             }
-            self.status = format!("loop preview failed · {error}");
+            self.status = "PREVIEW FAILED · old loop restored".into();
             return;
         }
         let mut preview =
@@ -5497,7 +5499,10 @@ impl App {
         self.sequencer.play(&preview, 0, 0);
         self.loop_previewing = true;
         self.loop_preview_selection = Some(selection);
-        self.status = format!("previewing {label} · PLAY stops");
+        self.status = format!(
+            "Preview · {} · PLAY stop",
+            crate::ui_text::fit_middle(&label, 18)
+        );
     }
 
     fn stop_loop_preview(&mut self, announce: bool) {
@@ -5529,9 +5534,9 @@ impl App {
             Ok(entries) => {
                 self.loop_library = entries;
             }
-            Err(error) => {
+            Err(_error) => {
                 self.loop_library.clear();
-                self.status = format!("loop library: {error}");
+                self.status = "LOOP LIBRARY FAILED · retry IMPORT".into();
             }
         }
     }
@@ -5548,7 +5553,7 @@ impl App {
             .is_some_and(|settings| settings.file == entry.file)
         {
             if self.load_current_loop() {
-                self.status = format!("loop ready · {}", entry.file);
+                self.status.clear();
                 return true;
             }
             return false;
@@ -5556,8 +5561,8 @@ impl App {
         let path = self.loop_library_directory().join(&entry.file);
         let decoded = match crate::loop_player::DecodedLoop::open(&path) {
             Ok(decoded) => decoded,
-            Err(error) => {
-                self.status = format!("loop browser: {error}");
+            Err(_error) => {
+                self.status = "LOOP READ FAILED · choose another".into();
                 return false;
             }
         };
@@ -5585,16 +5590,15 @@ impl App {
             };
             self.song.audio_loop = Some(settings.clone());
             let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
-            self.status = format!("loop ready · {} · project {tempo} BPM", entry.file);
+            self.status = format!("Attached · Project {tempo} BPM");
             true
         } else {
-            let error = self.status.clone();
             if self.song.audio_loop.is_some() {
                 self.load_current_loop();
             } else {
                 self.unload_loop_player();
             }
-            self.status = format!("{error} · current Project loop restored");
+            self.status = "LOAD FAILED · Project loop restored".into();
             false
         }
     }
@@ -5613,10 +5617,7 @@ impl App {
 
     fn import_selected_loop(&mut self) -> bool {
         let Some(source) = self.loop_imports.get(self.loop_selected).cloned() else {
-            self.status = format!(
-                "no WAV in {}",
-                self.config.loop_player.import_directory.display()
-            );
+            self.status = "NO WAV · add file to loop inbox".into();
             return false;
         };
         match crate::loop_player::import(&source, &self.loop_library_directory()) {
@@ -5626,7 +5627,6 @@ impl App {
                     self.current_tempo(),
                     self.current_meter(),
                 );
-                let candidates = crate::loop_player::bpm_candidates(alignment.source_bpm);
                 let settings = sequencer::LoopSettings {
                     file: path
                         .file_name()
@@ -5642,9 +5642,9 @@ impl App {
                 self.loop_meter
                     .set_audio_unavailable(AudioAvailability::Stopped);
                 if let Some(engine) = self.engine.as_mut() {
-                    if let Err(error) = engine.suspend_audio_graph() {
+                    if let Err(_error) = engine.suspend_audio_graph() {
                         let _ = fs::remove_file(&path);
-                        self.status = format!("final bus suspend failed: {error:#}");
+                        self.status = "FINAL BUS SUSPEND FAILED · retry".into();
                         return false;
                     }
                 }
@@ -5652,19 +5652,12 @@ impl App {
                     Ok(()) => {
                         self.song.audio_loop = Some(settings.clone());
                         let tempo = self.apply_tracker_tempo(Self::loop_project_tempo(&settings));
-                        self.status = format!(
-                            "imported {} · {} bar(s) · project {} BPM · source {:.0}/{:.0}/{:.0}",
-                            settings.file,
-                            alignment.bars,
-                            tempo,
-                            candidates[0],
-                            candidates[1],
-                            candidates[2]
-                        );
+                        self.status =
+                            format!("Imported · {0} bar(s) · {tempo} BPM", alignment.bars);
                         self.retry_final_bus();
                         true
                     }
-                    Err(error) => {
+                    Err(_error) => {
                         let cleanup = fs::remove_file(&path);
                         if self.song.audio_loop.is_some() {
                             self.load_current_loop();
@@ -5672,20 +5665,15 @@ impl App {
                             self.unload_loop_player();
                         }
                         self.status = match cleanup {
-                            Ok(()) => format!(
-                                "loop import failed · {error} · private copy rolled back · retry"
-                            ),
-                            Err(cleanup) => format!(
-                                "loop import failed · {error} · rollback failed for {}: {cleanup}",
-                                path.display()
-                            ),
+                            Ok(()) => "IMPORT FAILED · copy rolled back".into(),
+                            Err(_cleanup) => "IMPORT FAILED · ROLLBACK FAILED".into(),
                         };
                         false
                     }
                 }
             }
-            Err(error) => {
-                self.status = format!("loop import: {error}");
+            Err(_error) => {
+                self.status = "IMPORT FAILED · choose another WAV".into();
                 false
             }
         }
@@ -5719,19 +5707,10 @@ impl App {
                     .map(|tempo| self.apply_tracker_tempo(tempo))
                     .unwrap_or_else(|| self.current_tempo());
                 if self.load_current_loop() {
-                    self.status = format!(
-                        "auto aligned {} bar(s) · project {} BPM{}",
-                        alignment.bars,
-                        tempo,
-                        if alignment.transient_detected {
-                            ""
-                        } else {
-                            " (duration)"
-                        }
-                    );
+                    self.status = format!("Aligned · {} bar(s) · {tempo} BPM", alignment.bars);
                 }
             }
-            Err(error) => self.status = format!("auto align: {error}"),
+            Err(_error) => self.status = "ALIGN FAILED · retry AUTO".into(),
         }
     }
 
@@ -5822,7 +5801,7 @@ impl App {
         if should_ask {
             self.confirm_routing_defaults = true;
             self.reset_context_page();
-            self.status = "Save this routing as the default for new patterns?".into();
+            self.status = "NEW ROUTING DEFAULT? · YES / NO".into();
             return;
         }
         self.save_song_file();
@@ -5853,8 +5832,8 @@ impl App {
         if !self.confirm_routing_defaults {
             return;
         }
-        if let Err(error) = self.resolve_routing_defaults_choice(confirm) {
-            self.status = format!("routing defaults: {error}");
+        if let Err(_error) = self.resolve_routing_defaults_choice(confirm) {
+            self.status = "DEFAULT NOT SAVED · retry SAVE".into();
             return;
         }
         self.save_song_file();
@@ -5874,7 +5853,7 @@ impl App {
         let confirmed = self.confirm_song_save.as_deref() == Some(&stem);
         match sequencer::save(&sequencer::songs_dir(), &self.song, confirmed) {
             Ok(path) => {
-                let mut status = format!("saved {}", path.display());
+                let mut status = "Project saved".to_string();
                 let mut complete_result = true;
                 self.song_file_stem = path
                     .file_stem()
@@ -5891,14 +5870,12 @@ impl App {
                 if self.pending_routing_defaults.is_some() {
                     match self.commit_pending_routing_defaults() {
                         Ok(true) => {
-                            status.push_str(" · routing default updated");
+                            status.clear();
                         }
                         Ok(false) => {}
-                        Err(error) => {
+                        Err(_error) => {
                             complete_result = false;
-                            status.push_str(&format!(
-                                " · Project saved; routing default unchanged: {error}"
-                            ));
+                            status = "PROJECT SAVED · default unchanged".into();
                         }
                     }
                 }
@@ -5909,10 +5886,10 @@ impl App {
             }
             Err(error) if !confirmed && error.to_string().contains("confirm") => {
                 self.confirm_song_save = Some(stem);
-                self.status = "song exists · SAVE again to overwrite".into();
+                self.status = "OVERWRITE Project? · SAVE / Back".into();
             }
-            Err(error) => {
-                self.status = format!("song save: {error}");
+            Err(_error) => {
+                self.status = "PROJECT SAVE FAILED · retry SAVE".into();
                 self.confirm_song_save = None;
                 self.pending_routing_defaults = None;
             }
@@ -5921,13 +5898,12 @@ impl App {
     fn new_project(&mut self) {
         if !self.confirm_new_project {
             self.confirm_new_project = true;
-            self.status =
-                "NEW PROJECT clears the current unsaved work · press again to confirm".into();
+            self.status = "NEW Project? · discards unsaved work".into();
             return;
         }
         let Some(name) = next_numbered_song_name(&self.song_list, "project") else {
             self.confirm_new_project = false;
-            self.status = "new project: project numbers exhausted".into();
+            self.status = "NEW PROJECT FAILED · names exhausted".into();
             return;
         };
         self.cancel_note_editor();
@@ -5968,13 +5944,13 @@ impl App {
         let engine_ready = self.sync_tracker_route();
         self.project_name_input = Some(name.clone());
         if engine_ready {
-            self.status = format!("new project {name} · type a name or confirm the quick default");
+            self.status = "NEW Project · name is unsaved".into();
         }
     }
 
     fn begin_project_rename(&mut self) {
         self.project_name_input = Some(self.song.name.clone());
-        self.status = "PROJECT NAME · KEYBOARD REQUIRED · Enter confirms · Esc cancels".into();
+        self.status = "PROJECT NAME · type; Enter / Esc".into();
     }
 
     fn commit_project_rename(&mut self) {
@@ -5983,7 +5959,7 @@ impl App {
         };
         let display = input.trim();
         if display.is_empty() {
-            self.status = "project name cannot be empty".into();
+            self.status = "INVALID NAME · enter text".into();
             return;
         }
         if let Some(old_stem) = self.song_file_stem.clone() {
@@ -6003,9 +5979,12 @@ impl App {
                         .unwrap_or(0);
                     self.project_name_input = None;
                     self.mark_project_clean();
-                    self.status = format!("Project renamed · {}", self.song.name);
+                    self.status = format!(
+                        "RENAMED · {}",
+                        crate::ui_text::fit_middle(&self.song.name, 28)
+                    );
                 }
-                Err(error) => self.status = format!("rename: {error}"),
+                Err(_error) => self.status = "RENAME FAILED · old name kept · retry".into(),
             }
         } else {
             let mut candidate = self.song.clone();
@@ -6014,9 +5993,12 @@ impl App {
                 Ok(()) => {
                     self.song = candidate;
                     self.project_name_input = None;
-                    self.status = format!("Project named {} · unsaved", self.song.name);
+                    self.status = format!(
+                        "UNSAVED · {}",
+                        crate::ui_text::fit_middle(&self.song.name, 27)
+                    );
                 }
-                Err(error) => self.status = format!("name: {error}"),
+                Err(_error) => self.status = "INVALID NAME · edit and retry Enter".into(),
             }
         }
     }
@@ -6032,14 +6014,12 @@ impl App {
             self.confirm_pattern_delete = None;
             let current = self.tracker_pattern_number();
             let references = self.song.pattern_reference_count(current);
-            self.status = format!(
-                "no unused patterns · pattern {current} has {references} arrangement reference(s)"
-            );
+            self.status = format!("NO UNUSED PAT · PAT {current} has {references} refs");
             return;
         };
         if self.confirm_pattern_delete != Some(number) {
             self.confirm_pattern_delete = Some(number);
-            self.status = format!("DELETE unused pattern {number} · press again to confirm");
+            self.status = format!("DELETE unused PAT {number}? · CLEAN / Back");
             return;
         }
         match self.song.delete_unused_pattern(number) {
@@ -6048,9 +6028,9 @@ impl App {
                 self.clamp_tracker_cursor();
                 self.status = format!("deleted unused pattern {number} · arrangement unchanged");
             }
-            Err(error) => {
+            Err(_error) => {
                 self.confirm_pattern_delete = None;
-                self.status = format!("pattern delete: {error}");
+                self.status = "PAT DELETE FAILED · Pattern kept".into();
             }
         }
     }
@@ -6059,7 +6039,7 @@ impl App {
         let stem = sequencer::safe_name(&self.song.name);
         let prefix = format!("{}-copy", stem.chars().take(51).collect::<String>());
         let Some(name) = next_numbered_song_name(&self.song_list, &prefix) else {
-            self.status = "save as: copy numbers exhausted".into();
+            self.status = "SAVE COPY FAILED · names exhausted".into();
             return;
         };
         let mut copy = self.song.clone();
@@ -6079,9 +6059,9 @@ impl App {
                     .position(|candidate| candidate == &name)
                     .unwrap_or(0);
                 self.mark_project_clean();
-                self.status = format!("saved as {}", path.display());
+                self.status.clear();
             }
-            Err(error) => self.status = format!("save as: {error}"),
+            Err(_error) => self.status = "SAVE COPY FAILED · Project unchanged".into(),
         }
     }
     fn load_song(&mut self) {
@@ -6116,10 +6096,10 @@ impl App {
                 self.refresh_page_targets();
                 self.sync_tracker_route();
                 if !self.load_current_loop() && self.song.audio_loop.is_none() {
-                    self.status = format!("loaded {name}");
+                    self.status.clear();
                 }
             }
-            Err(e) => self.status = format!("song load: {e}"),
+            Err(_error) => self.status = "PROJECT LOAD FAILED · current kept".into(),
         }
     }
     fn preview_song(&mut self) {
@@ -6150,7 +6130,7 @@ impl App {
                             })
                             .count();
                         if notes == 0 && song.audio_loop.is_none() {
-                            self.status = format!("{name} has no notes or loop to preview");
+                            self.status = "PREVIEW EMPTY · no notes or loop".into();
                             return;
                         }
                         match scheduled_software_route(&messages) {
@@ -6159,8 +6139,8 @@ impl App {
                             Ok(None) => self.unload_owned_engine(|owner| {
                                 matches!(owner, EngineOwner::Tracker(_))
                             }),
-                            Err(error) => {
-                                self.status = format!("song preview: {error}");
+                            Err(_error) => {
+                                self.status = "PREVIEW ROUTE FAILED · ROUTING".into();
                                 return;
                             }
                         }
@@ -6170,9 +6150,7 @@ impl App {
                         {
                             let preview_error = self.status.clone();
                             if self.song.audio_loop.is_some() && !self.load_current_loop() {
-                                let restore_error = self.status.clone();
-                                self.status =
-                                    format!("{preview_error}; current Project {restore_error}");
+                                self.status = "PREVIEW FAILED · loop restore failed".into();
                             } else {
                                 self.status = preview_error;
                             }
@@ -6183,12 +6161,13 @@ impl App {
                         }
                         self.sequencer.play(&song, 0, 0);
                         self.song_previewing = true;
-                        self.status = format!("previewing {name} · {notes} notes");
+                        self.status =
+                            format!("PREVIEW · {}", crate::ui_text::fit_middle(&name, 28));
                     }
-                    Err(error) => self.status = format!("song preview: {error}"),
+                    Err(_error) => self.status = "PREVIEW FAILED · retry PLAY".into(),
                 }
             }
-            Err(error) => self.status = format!("song preview: {error}"),
+            Err(_error) => self.status = "PREVIEW LOAD FAILED · retry PLAY".into(),
         }
     }
     fn delete_song(&mut self) {
@@ -6198,7 +6177,7 @@ impl App {
         };
         if self.confirm_song_delete.as_deref() != Some(&name) {
             self.confirm_song_delete = Some(name.clone());
-            self.status = format!("confirm DELETE {name}: press DELETE again");
+            self.status = "DELETE selected Project? · DEL / Back".into();
             return;
         }
         if self.song_previewing {
@@ -6211,9 +6190,9 @@ impl App {
                     .song_selected
                     .min(self.song_list.len().saturating_sub(1));
                 self.confirm_song_delete = None;
-                self.status = format!("deleted {name}");
+                self.status = "Project deleted".into();
             }
-            Err(error) => self.status = format!("song delete: {error}"),
+            Err(_error) => self.status = "PROJECT DELETE FAILED · Project kept".into(),
         }
     }
     fn choose_pattern_clear(&mut self) {
@@ -6270,8 +6249,8 @@ impl App {
         if let Some(pattern) = self.song.patterns.get(&number) {
             let mut replacement = sequencer::Pattern::empty_like_setup(rows, pattern);
             replacement.meter = self.pattern_clear_beats;
-            if let Err(error) = self.song.replace_pattern(number, replacement) {
-                self.status = format!("clear pattern: {error}");
+            if let Err(_error) = self.song.replace_pattern(number, replacement) {
+                self.status = "PAT CLEAR FAILED · notes kept".into();
                 return;
             }
         }
@@ -6298,7 +6277,7 @@ impl App {
 
     fn create_pattern_keep_shape(&mut self) {
         let Some(current) = self.current_pattern() else {
-            self.status = "new pattern: current Pattern is unavailable".into();
+            self.status = "NEW PAT FAILED · current PAT missing".into();
             return;
         };
         let pattern = sequencer::Pattern::empty_like_setup(current.rows.len(), current);
@@ -6311,8 +6290,8 @@ impl App {
         self.tracker_stop();
         let number = match self.song.append_pattern(pattern) {
             Ok(number) => number,
-            Err(error) => {
-                self.status = format!("new pattern: {error}");
+            Err(_error) => {
+                self.status = "NEW PAT FAILED · order unchanged".into();
                 return;
             }
         };
@@ -6337,8 +6316,8 @@ impl App {
         };
         let number = match self.song.append_pattern(pattern) {
             Ok(number) => number,
-            Err(error) => {
-                self.status = format!("clone pattern: {error}");
+            Err(_error) => {
+                self.status = "PAT CLONE FAILED · order unchanged".into();
                 return;
             }
         };
@@ -6472,12 +6451,12 @@ impl App {
             .context("current pattern missing")
             .and_then(|pattern| pattern.transpose_melodic(semitones));
         match result {
-            Ok(0) => self.status = "transpose: no melodic notes in current pattern".into(),
+            Ok(0) => self.status = "NO MELODIC NOTES · drums unchanged".into(),
             Ok(notes) => {
                 self.status =
                     format!("transposed {notes} melodic note(s) {semitones:+} · drums unchanged")
             }
-            Err(error) => self.status = format!("transpose: {error}"),
+            Err(_error) => self.status = "TRANSPOSE FAILED · notes kept".into(),
         }
     }
     fn percussion_page_index(&self) -> Option<usize> {
@@ -6492,13 +6471,13 @@ impl App {
             .and_then(|pattern| drum_pattern::arrange(&pattern, self.drum_target_rows))
         {
             Ok(pattern) => pattern,
-            Err(error) => {
-                self.status = format!("drum load: {error}");
+            Err(_error) => {
+                self.status = "DRUM LOAD FAILED · notes kept".into();
                 return;
             }
         };
         let Some(page) = self.percussion_page_index() else {
-            self.status = "drum load: current pattern has no percussion page".into();
+            self.status = "NO DRUM PAGE · add percussion page".into();
             return;
         };
         let number = self.tracker_pattern_number();
@@ -6506,10 +6485,7 @@ impl App {
         let shape_changes =
             self.current_meter() != pattern.meter || self.tracker_rows() != target_rows;
         if shape_changes && self.current_pattern_has_other_page_data(page) {
-            self.status = format!(
-                "drum load: {}/4 {target_rows} rows would resize existing page data",
-                pattern.meter
-            );
+            self.status = "RESIZE BLOCKED · other page has notes".into();
             return;
         }
         self.tracker_stop();
@@ -6529,10 +6505,7 @@ impl App {
         self.tracker_page = page;
         self.tracker_row = 0;
         self.tracker_track = 0;
-        self.status = format!(
-            "loaded {} · {}/4 · {target_rows} rows · routing unchanged",
-            entry.name, pattern.meter
-        );
+        self.status = "DRUM LOADED · routing unchanged".into();
     }
     fn current_pattern_has_other_page_data(&self, drum_page: usize) -> bool {
         let Some(pattern) = self.current_pattern() else {
@@ -6550,12 +6523,12 @@ impl App {
     }
     fn save_drum_pattern(&mut self) {
         let Some(page) = self.percussion_page_index() else {
-            self.status = "drum save: current pattern has no percussion page".into();
+            self.status = "DRUM SAVE BLOCKED · add drum page".into();
             return;
         };
         let start = page * LANES_PER_PAGE;
         let Some(pattern) = self.current_pattern() else {
-            self.status = "drum save: current pattern missing".into();
+            self.status = "DRUM SAVE FAILED · current PAT missing".into();
             return;
         };
         let existing = self
@@ -6566,7 +6539,7 @@ impl App {
             .collect::<Vec<_>>();
         let prefix = format!("{}-drums", sequencer::safe_name(&self.song.name));
         let Some(stem) = next_numbered_song_name(&existing, &prefix) else {
-            self.status = "drum save: pattern numbers exhausted".into();
+            self.status = "DRUM SAVE FAILED · names exhausted".into();
             return;
         };
         let drum = DrumPattern {
@@ -6594,9 +6567,13 @@ impl App {
                 if let Some(index) = self.drum_genres().iter().position(|genre| genre == "User") {
                     self.drum_genre_selected = index;
                 }
-                self.status = format!("saved drum pattern {}", path.display());
+                let name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy())
+                    .unwrap_or_default();
+                self.status = format!("DRUM SAVED · {}", crate::ui_text::fit_middle(&name, 25));
             }
-            Err(error) => self.status = format!("drum save: {error}"),
+            Err(_error) => self.status = "DRUM SAVE FAILED · retry SAVE".into(),
         }
     }
     fn delete_drum_pattern(&mut self) {
@@ -6605,12 +6582,12 @@ impl App {
             return;
         };
         if !entry.user {
-            self.status = "bundled drum patterns cannot be deleted".into();
+            self.status = "DELETE REFUSED · bundled drum".into();
             return;
         }
         if self.confirm_drum_pattern_delete.as_ref() != Some(&entry.path) {
             self.confirm_drum_pattern_delete = Some(entry.path);
-            self.status = format!("DELETE {} · press again to confirm", entry.name);
+            self.status = "DELETE selected drum? · DEL / Back".into();
             return;
         }
         match drum_pattern::delete_user(&entry) {
@@ -6618,9 +6595,9 @@ impl App {
                 self.drum_patterns = drum_pattern::discover();
                 self.clamp_drum_selection();
                 self.confirm_drum_pattern_delete = None;
-                self.status = format!("deleted drum pattern {}", entry.name);
+                self.status = "Drum pattern deleted".into();
             }
-            Err(error) => self.status = format!("drum delete: {error}"),
+            Err(_error) => self.status = "DRUM DELETE FAILED · file kept".into(),
         }
     }
     fn paste_pattern_new(&mut self) {
@@ -6631,8 +6608,8 @@ impl App {
         self.tracker_stop();
         let number = match self.song.append_pattern(pattern) {
             Ok(number) => number,
-            Err(error) => {
-                self.status = format!("paste pattern: {error}");
+            Err(_error) => {
+                self.status = "PAT PASTE FAILED · order unchanged".into();
                 return;
             }
         };
@@ -6649,13 +6626,13 @@ impl App {
         let number = self.tracker_pattern_number();
         if self.confirm_pattern_paste_over != Some(number) {
             self.confirm_pattern_paste_over = Some(number);
-            self.status = format!("confirm paste over pattern {number}");
+            self.status = format!("OVERWRITE PAT {number}? · OVER / Back");
             return;
         }
         self.tracker_stop();
-        if let Err(error) = self.song.replace_pattern(number, pattern) {
+        if let Err(_error) = self.song.replace_pattern(number, pattern) {
             self.confirm_pattern_paste_over = None;
-            self.status = format!("paste pattern: {error}");
+            self.status = "PAT PASTE FAILED · old notes kept".into();
             return;
         }
         self.confirm_pattern_paste_over = None;
@@ -6802,14 +6779,14 @@ impl App {
                 self.tracker_row = 0;
                 self.status = format!("cleared pattern {number}");
             }
-            Err(error) => self.status = format!("clear pattern: {error}"),
+            Err(_error) => self.status = "PAT CLEAR FAILED · notes kept".into(),
         }
     }
     fn repeat_order(&mut self) {
         let number = self.tracker_pattern_number();
         let index = self.tracker_order + 1;
-        if let Err(error) = self.song.insert_arrangement_step(index, number) {
-            self.status = format!("repeat pattern: {error}");
+        if let Err(_error) = self.song.insert_arrangement_step(index, number) {
+            self.status = "ORDER REPEAT FAILED · order unchanged".into();
             return;
         }
         self.tracker_order = index;
@@ -6819,7 +6796,7 @@ impl App {
     }
     fn delete_order(&mut self) {
         if self.song.order.len() <= 1 {
-            self.status = "cannot remove the only order entry".into();
+            self.status = "ORDER NEEDS 1 STEP · removal refused".into();
             return;
         }
         self.song.order.remove(self.tracker_order);
@@ -6852,8 +6829,8 @@ impl App {
         let index = self.song.order.len();
         match self.song.insert_arrangement_step(index, number) {
             Ok(index) => self.arrange_selected = index,
-            Err(error) => {
-                self.status = format!("append pattern: {error}");
+            Err(_error) => {
+                self.status = "ORDER APPEND FAILED · order unchanged".into();
                 return;
             }
         }
@@ -6864,8 +6841,8 @@ impl App {
         let index = self.arrange_selected.min(self.song.order.len());
         match self.song.insert_arrangement_step(index, number) {
             Ok(index) => self.arrange_selected = index,
-            Err(error) => {
-                self.status = format!("insert pattern: {error}");
+            Err(_error) => {
+                self.status = "ORDER INSERT FAILED · order unchanged".into();
                 return;
             }
         }
@@ -6878,8 +6855,8 @@ impl App {
         let index = self.arrange_selected + 1;
         match self.song.insert_arrangement_step(index, number) {
             Ok(index) => self.arrange_selected = index,
-            Err(error) => {
-                self.status = format!("duplicate step: {error}");
+            Err(_error) => {
+                self.status = "ORDER DUP FAILED · order unchanged".into();
                 return;
             }
         }
@@ -6887,7 +6864,7 @@ impl App {
     }
     fn arrangement_remove_step(&mut self) {
         if self.song.order.len() <= 1 {
-            self.status = "cannot remove the only arrangement step".into();
+            self.status = "ORDER NEEDS 1 STEP · removal refused".into();
             return;
         }
         self.song.order.remove(self.arrange_selected);
@@ -6964,9 +6941,10 @@ impl App {
                 column.program.saturating_add(1).min(127)
             };
             self.status = format!(
-                "{name} column {} instrument/program {}",
+                "C{} PROGRAM {} · {}",
                 track + 1,
-                sequencer::musician_program(column.program)
+                sequencer::musician_program(column.program),
+                crate::ui_text::fit_middle(&name, 17)
             );
             self.sync_tracker_route();
         }
@@ -6976,7 +6954,7 @@ impl App {
             .current_page()
             .is_some_and(|page| page.target == PageTarget::Default)
         {
-            self.status = "bank AUTO · choose an explicit target before assigning a bank".into();
+            self.status = "BANK AUTO · select target first".into();
             return;
         }
         let track = self.tracker_track;
@@ -7013,7 +6991,7 @@ impl App {
         });
         self.status = match result {
             Ok(()) => message,
-            Err(error) => format!("capture configuration: {error}"),
+            Err(_error) => "CAPTURE SAVE FAILED · old setup kept".into(),
         };
     }
 
@@ -7024,7 +7002,7 @@ impl App {
 
     fn toggle_audio_track_arm(&mut self, state: &Path) {
         if self.audio_recorder.status().recording {
-            self.status = "stop the take before changing track arms".into();
+            self.status = "STOP TAKE · track arms locked".into();
             return;
         }
         self.ensure_explicit_capture_tracks();
@@ -7048,7 +7026,7 @@ impl App {
 
     fn set_all_audio_arms(&mut self, state: &Path, armed: bool) {
         if self.audio_recorder.status().recording {
-            self.status = "stop the take before changing track arms".into();
+            self.status = "STOP TAKE · track arms locked".into();
             return;
         }
         self.ensure_explicit_capture_tracks();
@@ -7074,7 +7052,7 @@ impl App {
 
     fn refresh_audio_sources(&mut self) {
         if self.audio_recorder.status().recording {
-            self.status = "source refresh waits until the take is stopped".into();
+            self.status = "STOP TAKE · source refresh locked".into();
             return;
         }
         self.capture_sources = engine::jack_capture_sources();
@@ -7082,17 +7060,14 @@ impl App {
             .audio_recorder
             .update_configuration(self.config.capture.clone(), self.capture_sources.clone());
         self.status = match result {
-            Ok(()) => format!(
-                "found {} JACK recording sources",
-                self.capture_sources.len()
-            ),
-            Err(error) => format!("source refresh: {error}"),
+            Ok(()) => String::new(),
+            Err(_error) => "SOURCE REFRESH FAILED · retry".into(),
         };
     }
 
     fn assign_audio_source(&mut self, state: &Path) {
         if self.audio_recorder.status().recording {
-            self.status = "stop the take before assigning a source".into();
+            self.status = "STOP TAKE · source assignment locked".into();
             return;
         }
         self.capture_sources = engine::jack_capture_sources();
@@ -7116,22 +7091,22 @@ impl App {
         };
         track.preferred_source = next.unwrap_or_default();
         let message = if track.preferred_source.is_empty() {
-            format!("{} source cleared · track is missing", track.label)
+            "SOURCE CLEARED · track unavailable".into()
         } else {
-            format!("{} source assigned deliberately", track.label)
+            String::new()
         };
         self.persist_capture_tracks(state, message);
     }
 
     fn begin_audio_track_name(&mut self) {
         if self.audio_recorder.status().recording {
-            self.status = "stop the take before naming a track".into();
+            self.status = "STOP TAKE · track naming locked".into();
             return;
         }
         self.ensure_explicit_capture_tracks();
         if let Some(track) = self.config.capture.tracks.get(self.audio_track_selected) {
             self.audio_track_name_input = Some(track.label.clone());
-            self.status = "TRACK NAME · KEYBOARD REQUIRED · Enter confirms · Esc cancels".into();
+            self.status.clear();
         }
     }
 
@@ -7145,7 +7120,7 @@ impl App {
             || label.contains('|')
             || label.chars().count() > 64
         {
-            self.status = "track name must be 1–64 printable characters without |".into();
+            self.status = "INVALID TRACK NAME · 1–64, no |".into();
             return;
         }
         self.ensure_explicit_capture_tracks();
@@ -7165,16 +7140,16 @@ impl App {
         if self.audio_recorder.status().recording {
             let result = self.audio_recorder.stop();
             self.status = match result {
-                Ok(()) => "audio recording finalized".into(),
-                Err(error) => format!("audio recorder: {error}"),
+                Ok(()) => "Take finalized".into(),
+                Err(_error) => "TAKE INCOMPLETE · retry STOP".into(),
             };
             return;
         }
         self.finish_competing_recordings(RecordingOwner::Multitrack);
         let result = self.audio_recorder.start(None);
         self.status = match result {
-            Ok(()) => "audio recording started".into(),
-            Err(e) => format!("audio recorder: {e}"),
+            Ok(()) => String::new(),
+            Err(_error) => "RECORDER START FAILED · check sources".into(),
         };
     }
     fn commit_loaded_preset(
@@ -7278,14 +7253,14 @@ impl App {
                 .as_ref()
                 .is_some_and(Engine::final_recording_active)
         {
-            return Some("stop recording before changing the insert rack");
+            return Some("STOP RECORDING · FX structure locked");
         }
         if self.playback.is_some()
             || self.sequencer.status().playing
             || self.loop_player.status().playing
             || self.song_previewing
         {
-            return Some("stop transport before changing the insert rack");
+            return Some("STOP TRANSPORT · FX structure locked");
         }
         None
     }
@@ -7305,7 +7280,7 @@ impl App {
 
     fn adjust_bus_level(&mut self, direction: i8) {
         let Some(controls) = self.engine.as_ref().and_then(Engine::bus_controls) else {
-            self.status = "final bus unavailable · load loop, input, and synth first".into();
+            self.status = "FINAL BUS OFFLINE · load sources".into();
             return;
         };
         let delta = if direction < 0 { -1.0 } else { 1.0 };
@@ -7326,7 +7301,7 @@ impl App {
 
     fn toggle_bus_mute(&mut self) {
         if self.bus_selected >= 3 {
-            self.status = "master has level only · source mutes remain explicit".into();
+            self.status = "MASTER has level only · mute sources".into();
             return;
         }
         let Some(controls) = self.engine.as_ref().and_then(Engine::bus_controls) else {
@@ -7336,16 +7311,16 @@ impl App {
         let source = BusSource::ALL[self.bus_selected];
         let muted = !controls.source_muted(source);
         controls.set_source_muted(source, muted);
-        self.status = format!(
-            "{} {}",
-            source.label(),
-            if muted { "muted" } else { "ready" }
-        );
+        self.status = if muted {
+            format!("{} MUTED", source.label())
+        } else {
+            String::new()
+        };
     }
 
     fn toggle_final_recording(&mut self) {
         let Some(active) = self.engine.as_ref().map(Engine::final_recording_active) else {
-            self.status = "final recording unavailable · owned graph is inactive".into();
+            self.status = "FINAL REC OFFLINE · retry MIX".into();
             return;
         };
         if !active {
@@ -7364,11 +7339,17 @@ impl App {
         self.final_recording_last = final_status.clone();
         self.status = match result {
             Ok(()) if active => final_status.path.map_or_else(
-                || "final recording stopped".into(),
-                |path| format!("final recording saved · {}", path.display()),
+                || "Final take stopped".into(),
+                |path| {
+                    let name = path
+                        .file_name()
+                        .map(|name| name.to_string_lossy())
+                        .unwrap_or_default();
+                    format!("Final take · {}", crate::ui_text::fit_middle(&name, 25))
+                },
             ),
-            Ok(()) => "final recording armed · begins on next audio callback".into(),
-            Err(error) => format!("final recording: {error:#}"),
+            Ok(()) => String::new(),
+            Err(_error) => "FINAL REC FAILED · check MIX".into(),
         };
     }
 
@@ -7420,10 +7401,7 @@ impl App {
             .copied()
             .map(FxRackSelection::Effect)
             .unwrap_or(FxRackSelection::Insert);
-        self.status = match self.fx_selection {
-            FxRackSelection::Effect(id) => format!("FX #{id} selected"),
-            FxRackSelection::Insert => "insert effect selected".into(),
-        };
+        self.status.clear();
     }
 
     fn selected_effect(&self) -> Option<&crate::audio_graph::EffectInstance> {
@@ -7500,7 +7478,7 @@ impl App {
         if is_aux_target(self.fx_target)
             && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
         {
-            self.status = "aux wet/dry controls are fixed at 100% wet".into();
+            self.status = "AUX MIX FIXED · use send level".into();
             return;
         }
         let mapped = match spec.value_type {
@@ -7572,14 +7550,14 @@ impl App {
         if let Some(reason) = self.audio_graph_edit_blocker() {
             return Err(reason.into());
         }
-        if let Err(error) = aux_routing.validate(rack) {
-            return Err(format!("FX routing: {error}"));
+        if let Err(_error) = aux_routing.validate(rack) {
+            return Err("FX INVALID · Project unchanged".into());
         }
         if let Some(engine) = self.engine.as_mut() {
             match engine.publish_fx_routing(rack, aux_routing) {
                 Ok(_) => {}
-                Err(error) => {
-                    return Err(format!("FX publication: {error:#}"));
+                Err(_error) => {
+                    return Err("FX NOT APPLIED · old graph kept".into());
                 }
             }
         }
@@ -7602,21 +7580,21 @@ impl App {
         } else if is_aux_target(self.fx_target) {
             let aux_id = self.fx_target as u8;
             while aux.buses.iter().all(|bus| bus.id != aux_id) {
-                if let Err(error) = aux.add_bus() {
-                    self.status = format!("FX add: {error}");
+                if let Err(_error) = aux.add_bus() {
+                    self.status = "FX ADD FAILED · old rack kept".into();
                     return;
                 }
             }
             let id = match aux.add_effect(&rack, aux_id, kind) {
                 Ok(id) => id,
-                Err(error) => {
-                    self.status = format!("FX add: {error}");
+                Err(_error) => {
+                    self.status = "FX ADD FAILED · old rack kept".into();
                     return;
                 }
             };
             if aux.sends.iter().all(|send| send.aux_id != aux_id) {
-                if let Err(error) = aux.set_send(&rack, aux_id, -18.0, SendPoint::PostInsert) {
-                    self.status = format!("FX send: {error}");
+                if let Err(_error) = aux.set_send(&rack, aux_id, -18.0, SendPoint::PostInsert) {
+                    self.status = "FX SEND FAILED · old route kept".into();
                     return;
                 }
             }
@@ -7636,8 +7614,8 @@ impl App {
                 let index = self.fx_selection_index().min(length.saturating_sub(1));
                 if length > 1 {
                     if let Some(target) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target) {
-                        if let Err(error) = target.move_to(id, index) {
-                            self.status = format!("FX insert: {error}");
+                        if let Err(_error) = target.move_to(id, index) {
+                            self.status = "FX INSERT FAILED · old rack kept".into();
                             return;
                         }
                     }
@@ -7657,7 +7635,7 @@ impl App {
                     });
                 }
             }
-            Err(error) => self.status = format!("FX add: {error}"),
+            Err(_error) => self.status = "FX ADD FAILED · old rack kept".into(),
         }
     }
 
@@ -7686,7 +7664,7 @@ impl App {
                     format!("removed {} #{id}", effect_kind_label(effect.kind)),
                 );
             }
-            Err(error) => self.status = format!("FX remove: {error}"),
+            Err(_error) => self.status = "FX REMOVE FAILED · old rack kept".into(),
         }
     }
 
@@ -7713,11 +7691,11 @@ impl App {
         }
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        if let Err(error) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        if let Err(_error) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
             .expect("selected effect has a rack")
             .move_to(id, destination)
         {
-            self.status = format!("FX reorder: {error}");
+            self.status = "FX MOVE FAILED · old order kept".into();
             return;
         }
         self.commit_fx_routing(rack, aux, format!("moved FX #{id}"));
@@ -7833,7 +7811,7 @@ impl App {
             effect_id: id,
             provisional: false,
         });
-        self.status = "TYPE ACTIVE · turn to browse · press confirms · Back cancels".into();
+        self.status.clear();
     }
 
     fn set_selected_effect_kind(&mut self, kind: EffectKind) {
@@ -7868,17 +7846,10 @@ impl App {
     }
 
     fn confirm_effect_type_edit(&mut self) {
-        let Some(edit) = self.fx_type_edit.take() else {
+        let Some(_edit) = self.fx_type_edit.take() else {
             return;
         };
-        self.status = format!(
-            "{} type confirmed",
-            if edit.provisional {
-                "new effect"
-            } else {
-                "effect"
-            }
-        );
+        self.status.clear();
     }
 
     fn cancel_effect_type_edit(&mut self) {
@@ -7886,9 +7857,9 @@ impl App {
             return;
         };
         let message = if edit.provisional {
-            "new effect cancelled and removed"
+            "Cancelled · new effect removed"
         } else {
-            "effect type change cancelled"
+            "Cancelled · old FX kept"
         };
         if self.commit_fx_routing(edit.original_rack, edit.original_aux, message.into()) {
             self.fx_type_edit = None;
@@ -7922,11 +7893,11 @@ impl App {
         let aux_id = self.fx_target as u8;
         let mut aux = self.song.aux_routing.clone();
         let Some(bus) = aux.buses.iter().find(|bus| bus.id == aux_id) else {
-            self.status = "add an aux effect before enabling its send".into();
+            self.status = "ADD AUX FX before enabling send".into();
             return;
         };
         if bus.rack.effects.is_empty() {
-            self.status = "add an aux effect before enabling its send".into();
+            self.status = "ADD AUX FX before enabling send".into();
             return;
         }
         let existing = aux.sends.iter().find(|send| send.aux_id == aux_id);
@@ -7944,8 +7915,8 @@ impl App {
             return;
         }
         let value = (current + 3.0 * f32::from(direction.signum())).clamp(-60.0, 12.0);
-        if let Err(error) = aux.set_send(&self.song.insert_rack, aux_id, value, point) {
-            self.status = format!("FX send: {error}");
+        if let Err(_error) = aux.set_send(&self.song.insert_rack, aux_id, value, point) {
+            self.status = "FX SEND FAILED · old route kept".into();
             return;
         }
         self.commit_fx_routing(
@@ -7970,8 +7941,8 @@ impl App {
             SendPoint::PreInsert => SendPoint::PostInsert,
             SendPoint::PostInsert => SendPoint::PreInsert,
         };
-        if let Err(error) = aux.set_send(&self.song.insert_rack, aux_id, send.level_db, point) {
-            self.status = format!("FX send: {error}");
+        if let Err(_error) = aux.set_send(&self.song.insert_rack, aux_id, send.level_db, point) {
+            self.status = "FX SEND FAILED · old route kept".into();
             return;
         }
         self.commit_fx_routing(
@@ -8022,7 +7993,7 @@ impl App {
         if is_aux_target(self.fx_target)
             && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
         {
-            self.status = "aux wet/dry controls are fixed at 100% wet".into();
+            self.status = "AUX MIX FIXED · use send level".into();
             return;
         }
         let current = effect
@@ -8068,7 +8039,7 @@ impl App {
             .map(|effect| crate::effect_schema::controls(effect.kind).len())
             .unwrap_or(0);
         self.fx_parameter = wrapped_index(self.fx_parameter, len, direction);
-        self.status = "FX parameter highlighted · press encoder to edit".into();
+        self.status.clear();
     }
 
     fn begin_fx_value_edit(&mut self) {
@@ -8080,14 +8051,14 @@ impl App {
             Some((self.song.insert_rack.clone(), self.song.aux_routing.clone()));
         self.fx_value_editing = true;
         self.fx_numeric_input = None;
-        self.status = "FX VALUE ACTIVE · turn, press confirms, Back cancels".into();
+        self.status.clear();
     }
 
     fn confirm_fx_value_edit(&mut self) {
         self.fx_value_editing = false;
         self.fx_edit_original = None;
         self.fx_numeric_input = None;
-        self.status = "FX value confirmed".into();
+        self.status.clear();
     }
 
     fn cancel_fx_value_edit(&mut self) {
@@ -8095,7 +8066,7 @@ impl App {
             self.fx_value_editing = false;
             return;
         };
-        if self.commit_fx_routing(rack, aux, "FX value change cancelled".into()) {
+        if self.commit_fx_routing(rack, aux, "Cancelled · old FX value kept".into()) {
             self.fx_value_editing = false;
             self.fx_edit_original = None;
             self.fx_numeric_input = None;
@@ -8110,7 +8081,7 @@ impl App {
         if input.len() < 16 {
             input.push(character);
         }
-        self.status = format!("numeric value · {input}_ · Enter confirms");
+        self.status.clear();
     }
 
     fn commit_fx_numeric_entry(&mut self) {
@@ -8119,7 +8090,7 @@ impl App {
             return;
         };
         let Ok(value) = input.parse::<f32>() else {
-            self.status = format!("invalid number · {input}");
+            self.status = "INVALID VALUE · enter a number".into();
             return;
         };
         let Some(id) = self.selected_effect_id() else {
@@ -8145,7 +8116,7 @@ impl App {
         if is_aux_target(self.fx_target)
             && matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent")
         {
-            self.status = "aux wet/dry controls are fixed at 100% wet".into();
+            self.status = "AUX MIX FIXED · use send level".into();
             return;
         }
         effect.parameters.insert(spec.name.into(), value);
@@ -8168,12 +8139,15 @@ impl App {
             self.status = reason.into();
             return;
         }
-        if let Some(reason) = self
+        if let Some(_reason) = self
             .catalogs
             .get(self.backend_index)
             .and_then(|catalog| catalog.unavailable.as_ref())
         {
-            self.status = format!("{} unavailable · {reason}", self.selected_backend().label());
+            self.status = format!(
+                "{} UNAVAILABLE · choose another",
+                self.selected_backend().label()
+            );
             return;
         }
         if self.presets.is_empty() {
@@ -8182,54 +8156,61 @@ impl App {
         let p = self.presets[self.selected].clone();
         let original_values = match engine::initial_values(&p) {
             Ok(values) => values,
-            Err(error) => {
-                self.status = format!("INVALID PRESET: {error:#}");
+            Err(_error) => {
+                self.status = "INVALID PRESET · choose another".into();
                 return;
             }
         };
         if let Some(engine) = self.engine.as_mut() {
             match engine.load_in_place(&p) {
                 Ok(true) => {
-                    let backend = engine.backend();
                     self.stop_recording();
                     self.stop_playback();
                     self.commit_loaded_preset(p, original_values.clone(), original_values);
-                    self.status = format!("{} sound loaded in place · MIDI ready", backend.label());
+                    self.status.clear();
                     return;
                 }
                 Ok(false) => {}
-                Err(error) => {
+                Err(_error) => {
                     let recovery = self.recover_failed_in_place_load(state);
-                    self.status = format!(
-                        "IN-PLACE LOAD FAILED: {error:#} · {recovery} · select LOAD to retry"
-                    );
+                    self.status = if recovery.contains("restored") {
+                        "LOAD FAILED · old sound restored · retry".into()
+                    } else {
+                        "LOAD FAILED · recovery failed · retry".into()
+                    };
                     return;
                 }
             }
         }
-        let backend_label = p.backend.label();
         match self.replace_engine_process(&p, EngineOwner::SoftwareSynth, state) {
             Ok(audio_route) => {
                 self.stop_recording();
                 self.stop_playback();
                 self.commit_loaded_preset(p, original_values.clone(), original_values);
-                self.status = format!(
-                    "{backend_label} running · MIDI ready{}",
-                    audio_route.map_or_else(String::new, |route| format!(" · {route}"))
-                );
+                self.status = if audio_route.as_deref().is_some_and(|route| {
+                    route.contains("fallback") || route.contains("unavailable")
+                }) {
+                    "AUDIO FALLBACK · check ROUTING".into()
+                } else {
+                    String::new()
+                };
             }
-            Err(e) => {
-                self.status = format!("START FAILED: {e} · select LOAD to retry");
+            Err(error) => {
+                self.status = if error.contains("restored") {
+                    "START FAILED · old sound restored".into()
+                } else {
+                    "START FAILED · retry LOAD".into()
+                };
             }
         }
     }
     fn reset_parameters(&mut self) {
         if self.playing.is_none() {
-            self.status = "load a preset before resetting it".into();
+            self.status = "LOAD a preset before RESET".into();
             return;
         }
         let Some(engine) = &self.engine else {
-            self.status = "engine is not running · reload the preset from Presets".into();
+            self.status = "ENGINE OFFLINE · reload in PRESETS".into();
             return;
         };
         if !engine.supports_parameter_reset() {
@@ -8239,13 +8220,13 @@ impl App {
             );
             return;
         }
-        if let Err(error) = engine.set_mapped_parameters(&self.original_values) {
-            self.status = format!("PARAMETER RESET FAILED: {error:#}");
+        if let Err(_error) = engine.set_mapped_parameters(&self.original_values) {
+            self.status = "RESET FAILED · sound unchanged".into();
             return;
         }
         self.values = self.original_values.clone();
         self.arm_pickup();
-        self.status = "parameters reset · controls waiting for pickup".into();
+        self.status = "RESET · controls waiting for pickup".into();
     }
     fn toggle_idea_recording(&mut self) {
         self.idea_mode = IdeaMode::Record;
@@ -8257,12 +8238,12 @@ impl App {
             self.stop_playback();
         }
         if self.engine.is_none() {
-            self.status = "load a preset before recording".into();
+            self.status = "LOAD a preset before RECORD".into();
             return;
         }
         self.finish_competing_recordings(RecordingOwner::Idea);
         self.recorder.start(Instant::now());
-        self.status = "● RECORDING musical MIDI".into();
+        self.status.clear();
     }
     fn toggle_playback(&mut self) {
         self.idea_mode = IdeaMode::Play;
@@ -8281,7 +8262,7 @@ impl App {
             self.stop_recording();
         }
         if self.engine.is_none() {
-            self.status = "load the idea preset before playing its recording".into();
+            self.status = "LOAD idea sound before PLAY".into();
         } else if self.last.is_empty() {
             self.status = "no recording yet".into();
         } else {
@@ -8313,7 +8294,7 @@ impl App {
                 finished,
                 worker: Some(worker),
             });
-            self.status = "▶ playing recording".into();
+            self.status = "IDEAS · MIDI take".into();
         }
     }
     fn open_ideas(&mut self) {
@@ -8334,7 +8315,7 @@ impl App {
         }
         self.set_screen(Screen::Help);
         self.start_web_help();
-        self.status = format!("HELP · {} · EXIT closes", self.web_help_status);
+        self.status.clear();
     }
     fn close_help(&mut self) {
         self.web_help = None;
@@ -8343,7 +8324,7 @@ impl App {
         self.set_screen(previous);
         self.menu_page_by_screen[previous.index()] = self.help_previous_menu_page.min(3);
         self.page_select_mode = self.help_previous_page_select_mode;
-        self.status = format!("returned to {}", self.screen.label());
+        self.status.clear();
     }
     fn start_web_help(&mut self) {
         if self.web_help.is_some() {
@@ -8376,7 +8357,7 @@ impl App {
             return;
         };
         let Some(target) = line.target.as_deref() else {
-            self.status = "HELP · select a row ending in > to jump".into();
+            self.status = "HELP · select a > row".into();
             return;
         };
         if let Some(index) = help::target_index(&lines, target) {
@@ -8391,11 +8372,11 @@ impl App {
             self.stop_recording();
         }
         let Some(p) = &self.playing else {
-            self.status = "load a preset before saving an idea".into();
+            self.status = "LOAD a preset before SAVE".into();
             return;
         };
         if self.last.is_empty() {
-            self.status = "nothing recorded · record an idea first".into();
+            self.status = "NO TAKE · record an idea first".into();
             return;
         }
         let stamp = SystemTime::now()
@@ -8405,13 +8386,11 @@ impl App {
         let name = format!("{}-{stamp}", recording::safe_name(&p.name));
         match recording::save(&recording::ideas_dir(), &name, p, &self.values, &self.last) {
             Ok(path) => {
-                self.status = format!(
-                    "saved idea {}",
-                    path.file_name().unwrap_or_default().to_string_lossy()
-                );
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                self.status = format!("IDEA SAVED · {}", crate::ui_text::fit_middle(&name, 25));
                 self.ideas = recording::list(&recording::ideas_dir()).unwrap_or_default();
             }
-            Err(e) => self.status = format!("save failed: {e:#}"),
+            Err(_error) => self.status = "IDEA SAVE FAILED · retry SAVE".into(),
         }
     }
     fn inspect_idea(&mut self) {
@@ -8420,8 +8399,27 @@ impl App {
             return;
         };
         match recording::inspect(&recording::ideas_dir(), name) {
-            Ok(text) => self.status = truncate(&text.replace('\n', " "), 120),
-            Err(e) => self.status = format!("inspect failed: {e:#}"),
+            Ok(text) => {
+                let metadata = serde_json::from_str::<serde_json::Value>(&text);
+                self.status = metadata.map_or_else(
+                    |_| "IDEA METADATA INVALID".into(),
+                    |metadata| {
+                        let preset = metadata
+                            .get("preset")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("unknown preset");
+                        let events = metadata
+                            .get("event_count")
+                            .and_then(serde_json::Value::as_u64)
+                            .unwrap_or(0);
+                        format!(
+                            "Preset {} · {events} MIDI events",
+                            crate::ui_text::fit_middle(preset, 18)
+                        )
+                    },
+                );
+            }
+            Err(_error) => self.status = "IDEA INSPECT FAILED · choose another".into(),
         }
     }
     fn delete_idea(&mut self) {
@@ -8431,17 +8429,17 @@ impl App {
         };
         if self.confirm_delete.as_deref() != Some(&name) {
             self.confirm_delete = Some(name.clone());
-            self.status = format!("CONFIRM DELETE {name}: choose Delete again; Back cancels");
+            self.status = "DELETE selected idea? · DEL / Back".into();
             return;
         }
         match recording::delete(&recording::ideas_dir(), &name) {
             Ok(()) => {
-                self.status = format!("deleted {name}");
+                self.status = "Idea deleted".into();
                 self.ideas = recording::list(&recording::ideas_dir()).unwrap_or_default();
                 self.idea_selected = self.idea_selected.min(self.ideas.len().saturating_sub(1));
                 self.confirm_delete = None;
             }
-            Err(e) => self.status = format!("delete failed: {e:#}"),
+            Err(_error) => self.status = "IDEA DELETE FAILED · retry DEL".into(),
         }
     }
     fn load_idea(&mut self, state: &Path, _tx: std::sync::mpsc::Sender<MidiEvent>) {
@@ -8455,15 +8453,15 @@ impl App {
         };
         if self.playing.is_some() && self.confirm_load.as_deref() != Some(&name) {
             self.confirm_load = Some(name.clone());
-            self.status = format!("CONFIRM REPLACE current preset with {name}: choose Load again");
+            self.status = "REPLACE current sound? · LOAD / Back".into();
             return;
         }
         match recording::load_with_parameters(&recording::ideas_dir(), &name) {
             Ok((preset, saved_values, events)) => {
                 let original_values = match engine::initial_values(&preset) {
                     Ok(values) => values,
-                    Err(error) => {
-                        self.status = format!("idea preset is invalid: {error:#}");
+                    Err(_error) => {
+                        self.status = "IDEA INVALID · current sound kept".into();
                         return;
                     }
                 };
@@ -8487,11 +8485,13 @@ impl App {
                             return;
                         }
                         Ok(false) => {}
-                        Err(error) => {
+                        Err(_error) => {
                             let recovery = self.recover_failed_in_place_load(state);
-                            self.status = format!(
-                                "idea sound load failed: {error:#} · {recovery} · select LOAD to retry"
-                            );
+                            self.status = if recovery.contains("restored") {
+                                "LOAD FAILED · old sound restored".into()
+                            } else {
+                                "LOAD FAILED · recovery failed".into()
+                            };
                             return;
                         }
                     }
@@ -8508,18 +8508,17 @@ impl App {
                             &name,
                             false,
                         );
-                        if let Some(route) = audio_route {
-                            self.status.push_str(&format!(" · {route}"));
+                        if audio_route.as_deref().is_some_and(|route| {
+                            route.contains("fallback") || route.contains("unavailable")
+                        }) {
+                            self.status = "AUDIO FALLBACK · check ROUTING".into();
                         }
                         self.confirm_load = None;
                     }
-                    Err(e) => {
-                        self.status =
-                            format!("idea load failed: {e} · previous sound retained · retry LOAD")
-                    }
+                    Err(_error) => self.status = "LOAD FAILED · old sound kept · retry".into(),
                 }
             }
-            Err(e) => self.status = format!("idea read failed: {e:#}"),
+            Err(_error) => self.status = "IDEA READ FAILED · choose another".into(),
         }
     }
     fn finish_idea_load(
@@ -8528,8 +8527,8 @@ impl App {
         original_values: HashMap<u8, f32>,
         saved_values: HashMap<u8, f32>,
         events: Vec<TimedEvent>,
-        name: &str,
-        in_place: bool,
+        _name: &str,
+        _in_place: bool,
     ) {
         let mut values = original_values.clone();
         values.extend(saved_values.iter().map(|(&cc, &value)| (cc, value)));
@@ -8541,20 +8540,15 @@ impl App {
                 .and_then(|engine| engine.set_mapped_parameters(&values).err())
         };
         self.last = events;
-        if let Some(error) = restore_error {
+        if let Some(_error) = restore_error {
             if let Some(engine) = self.engine.as_ref() {
                 let _ = engine.set_mapped_parameters(&original_values);
             }
             self.commit_loaded_preset(preset, original_values.clone(), original_values);
-            self.status = format!(
-                "loaded idea {name}, but parameter restore failed: {error:#} · preset defaults active"
-            );
+            self.status = "PARAM RESTORE FAILED · defaults active".into();
         } else {
             self.commit_loaded_preset(preset, original_values, values);
-            self.status = format!(
-                "loaded idea {name}{} · recording ready",
-                if in_place { " in place" } else { "" }
-            );
+            self.status.clear();
         }
     }
     fn tick(&mut self) {
@@ -8600,8 +8594,8 @@ impl App {
             }
             if tracker.playing && !tracker.available {
                 self.cancel_tracker_gesture();
-                if let Some(error) = tracker.error {
-                    self.status = format!("tracker target unavailable: {error}");
+                if tracker.error.is_some() {
+                    self.status = "FT2 TARGET OFFLINE · STOP / ROUTE".into();
                 }
             }
             self.tracker_fallback = tracker
@@ -8627,7 +8621,7 @@ impl App {
             self.performance_meter
                 .set_audio_unavailable(AudioAvailability::Stopped);
             self.playing = None;
-            self.status = "ENGINE EXITED · select a sound to restart it".into();
+            self.status = "ENGINE EXITED · LOAD a sound".into();
         }
         let done = self.playback.as_ref().is_some_and(|playback| {
             playback
@@ -8637,7 +8631,7 @@ impl App {
         });
         if done {
             self.stop_playback();
-            self.status = "recording playback complete · all notes off".into();
+            self.status = "All Notes Off · playback complete".into();
         }
     }
 
@@ -8731,21 +8725,6 @@ fn midi_input_available(router: Option<&engine::MidiRouter>) -> bool {
     })
 }
 
-fn expected_startup_midi(router: Option<&engine::MidiRouter>) -> Option<String> {
-    let availability = router?.availability();
-    availability
-        .controller
-        .as_ref()
-        .filter(|input| !input.available())
-        .or_else(|| {
-            availability
-                .performance
-                .iter()
-                .find(|input| !input.available())
-        })
-        .map(|input| input.wanted.clone())
-}
-
 fn app_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     catalogs: &[Catalog],
@@ -8768,7 +8747,6 @@ fn app_loop(
             splash_started.elapsed(),
             terminal_keyboard,
             false,
-            None,
             BUILD_BADGE,
         )
     })?;
@@ -8788,16 +8766,8 @@ fn app_loop(
         {
             break;
         }
-        let expected = expected_startup_midi(router.as_ref().ok());
         terminal.draw(|frame| {
-            crate::startup_splash::draw(
-                frame,
-                elapsed,
-                input_available,
-                true,
-                expected.as_deref(),
-                BUILD_BADGE,
-            )
+            crate::startup_splash::draw(frame, elapsed, input_available, true, BUILD_BADGE)
         })?;
         if !input_available && Instant::now() >= next_input_scan {
             router = match router {
@@ -8896,12 +8866,12 @@ fn app_loop(
         app.controller_online = router.availability().controller_available();
         app.performance_inputs = router.availability().performance.clone();
     }
-    if let Some(notice) = controller_notice {
-        app.status = format!("controller auto-wire: {notice}");
+    if controller_notice.is_some() {
+        app.status = "CONTROLLER ROUTE DEGRADED · ROUTING".into();
     }
-    if let Err(e) = &router {
+    if let Err(_error) = &router {
         let notice = if config.midi_autoconnect {
-            format!("keyboard input · preferred MIDI input missing: {e:#}")
+            "MIDI INPUT MISSING · use keyboard / ROUTING".into()
         } else {
             "keyboard input · MIDI controller routing disabled".into()
         };
@@ -8929,7 +8899,7 @@ fn app_loop(
             ));
         }
         if !notices.is_empty() {
-            let notice = format!("keyboard input · {}", notices.join(" · "));
+            let notice = "MIDI INPUT MISSING · use keyboard / ROUTING".into();
             app.status = notice.clone();
             app.controller_fallback = Some(notice);
         }
@@ -10780,8 +10750,8 @@ fn mouse(
 fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let area = f.size();
     a.hits = Hits::default();
-    f.render_widget(Clear, area);
     if area.width < 38 || area.height < 10 {
+        f.render_widget(Clear, area);
         f.render_widget(
             Paragraph::new(
                 "SHSYNTH\nterminal too small\nresize to at least 38×10\nRight-click/Esc: back/exit",
@@ -10796,6 +10766,13 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         );
         return;
     }
+    let uses_shared_status = a.controller_learn.is_some() || a.screen != Screen::Home;
+    let clear_area = if uses_shared_status {
+        rect(area.x, area.y, area.width, area.height.saturating_sub(1))
+    } else {
+        area
+    };
+    f.render_widget(Clear, clear_area);
     if a.controller_learn.is_some() {
         draw_controller_learn(f, a);
         draw_master_status(f, a);
@@ -10837,11 +10814,11 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     draw_pad_buttons(f, a);
     if a.confirm_routing_defaults {
         let z = f.size();
-        let area = rect(z.x + 2, z.y + 4, z.width.saturating_sub(4), 7);
+        let area = rect(z.x + 2, z.y + 3, z.width.saturating_sub(4), 7);
         f.render_widget(Clear, area);
         f.render_widget(
             Paragraph::new(
-                "Save this routing as the default\nfor new patterns?\n\nCONFIRM saves the new default\nCANCEL keeps the previous default",
+                "NEW ROUTING DEFAULT?\nNew Patterns use this route\nCONFIRM saves default\nCANCEL keeps old default\nProject SAVE still completes",
             )
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Yellow))
@@ -10898,14 +10875,17 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
         z.width.saturating_sub(4),
         z.height.saturating_sub(6).min(7),
     );
-    let action = match action {
-        PendingProjectAction::Load(name) => format!("LOAD {name}"),
-        PendingProjectAction::Quit => "QUIT SHR-DAW".into(),
+    let (action, discard) = match action {
+        PendingProjectAction::Load(name) => (
+            format!("LOAD {}", crate::ui_text::fit_middle(name, 29)),
+            "D/LOAD · discard and load",
+        ),
+        PendingProjectAction::Quit => ("QUIT SHR-DAW".into(), "D/LOAD · discard and quit"),
     };
     f.render_widget(Clear, area);
     f.render_widget(
         Paragraph::new(format!(
-            "UNSAVED PROJECT\n{action}\n\nV / SAVE  keep work\nD / LOAD  discard\nEsc / EXIT cancel"
+            "UNSAVED PROJECT\n{action}\nV/SAVE · keep work\n{discard}\nEsc/EXIT · cancel, keep position"
         ))
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::Yellow).bg(Color::Black))
@@ -10979,15 +10959,15 @@ fn draw_home<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             rect(z.x, z.y + z.height.saturating_sub(3), z.width, 2),
         );
     }
-    let status = if let Some(activity) = a.home_activity() {
-        activity
-    } else if a.status == "Ready" {
-        "↑↓ / rotary browse · Enter / click open · Esc quit"
-    } else {
-        &a.status
-    };
+    let status = a.home_activity().or_else(|| {
+        (!status_is_silent(&a.status)
+            && (status_is_fault(&a.status)
+                || status_is_consequential(&a.status)
+                || confirmation_status_active(a)))
+        .then_some(a.status.as_str())
+    });
     f.render_widget(
-        Paragraph::new(truncate(status, z.width as usize))
+        Paragraph::new(truncate(status.unwrap_or(""), z.width as usize))
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::DarkGray).bg(Color::Black)),
         rect(z.x, z.y + z.height.saturating_sub(1), z.width, 1),
@@ -11024,23 +11004,26 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
         if name.is_empty() {
             "NONE".into()
         } else {
-            let state = match crate::midi_endpoint::matching_index(names, name, "endpoint") {
-                Ok(_) => "ONLINE",
-                Err(error) if error.to_string().contains("ambiguous") => "AMBIG",
-                Err(_) => "OFFLINE",
-            };
-            crate::ui_text::label_value(
-                &crate::ui_text::endpoint_label(name, value_width.saturating_sub(10)),
-                state,
-                value_width,
-            )
+            let label = crate::ui_text::endpoint_label(name, value_width);
+            match crate::midi_endpoint::matching_index(names, name, "endpoint") {
+                Ok(_) => label,
+                Err(error) if error.to_string().contains("ambiguous") => {
+                    crate::ui_text::label_value(&label, "AMBIG", value_width)
+                }
+                Err(_) => crate::ui_text::label_value(&label, "OFFLINE", value_width),
+            }
         }
     };
     let profile = a.device_profiles.by_id(&config.external_midi.profile);
-    let device = crate::ui_text::label_value(
-        profile.map_or("RAW MIDI", |profile| profile.model.as_str()),
-        "UNVERIFIED",
-        value_width,
+    let device = profile.map_or_else(
+        || {
+            if config.external_midi.enabled {
+                crate::ui_text::label_value("RAW MIDI", "UNVERIFIED", value_width)
+            } else {
+                "RAW MIDI".into()
+            }
+        },
+        |profile| crate::ui_text::fit_line(&profile.model, value_width),
     );
     let audio_online = config.audio_outputs.len() == 2
         && config
@@ -11088,16 +11071,22 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
             RoutingRow::ClockOutput => {
                 endpoint(&config.controller_clock.output_match, &a.routing_outputs)
             }
-            RoutingRow::AudioOutput => crate::ui_text::label_value(
-                audio_name,
-                if audio_online { "ONLINE" } else { "OFFLINE" },
-                value_width,
-            ),
+            RoutingRow::AudioOutput => {
+                if audio_online {
+                    crate::ui_text::fit_line(audio_name, value_width)
+                } else {
+                    crate::ui_text::label_value(audio_name, "OFFLINE", value_width)
+                }
+            }
         })
         .collect::<Vec<_>>();
     let editing = a.routing.draft.is_some();
     let mut lines = vec![Spans::from(Span::styled(
-        crate::ui_text::label_value("ROUTING", if editing { "EDIT" } else { "BROWSE" }, width),
+        if editing {
+            crate::ui_text::label_value("ROUTING", "EDIT", width)
+        } else {
+            "ROUTING".into()
+        },
         Style::default()
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD),
@@ -11151,7 +11140,24 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
     let role = session.role();
     let draft = session.draft();
     let feedback_lower = session.feedback().to_ascii_lowercase();
-    let mut lines = vec![
+    let save_or_recovery = if role == crate::controller_learn::LearnRole::Confirm {
+        Span::styled(
+            "Enter / rotary click · SAVE + EXIT",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else if session.can_finish() {
+        Span::raw("←/→ browse · S skip · R retry")
+    } else {
+        Span::raw("Master rotary required")
+    };
+    let gesture = if session.can_finish() {
+        "Move once · auto-next after release"
+    } else {
+        "Finish left, right, click and release"
+    };
+    let lines = vec![
         Spans::from(Span::styled(
             format!("MIDI LEARN · {step}/{total}"),
             Style::default()
@@ -11159,20 +11165,14 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
                 .add_modifier(Modifier::BOLD),
         )),
         Spans::from("Controller isolated · synth protected"),
-        Spans::from(""),
         Spans::from(Span::styled(
-            role.label(),
+            crate::ui_text::fit_line(role.label(), usize::from(area.width.saturating_sub(2))),
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         )),
-        Spans::from(if session.can_finish() {
-            "Move once · auto-next after settle/release"
-        } else {
-            "Finish left, finish right, click/release"
-        }),
-        Spans::from(""),
+        Spans::from(gesture),
         Spans::from(Span::styled(
             crate::ui_text::fit_line(
                 session.feedback(),
@@ -11186,14 +11186,13 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
                 },
             ),
         )),
-        Spans::from(""),
         Spans::from(format!(
-            "Mapped: {} controls · {} buttons",
+            "Mapped · {} controls · {} buttons",
             draft.controls.len(),
             draft.pads.len() + draft.cc_buttons.len()
         )),
         Spans::from(format!(
-            "Encoder: turn {} · click {}",
+            "Encoder · turn {} · click {}",
             if draft.encoder_relative_cc.is_some() {
                 "OK"
             } else {
@@ -11205,23 +11204,16 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
                 "--"
             }
         )),
-        Spans::from(""),
+        Spans::from(save_or_recovery),
+        Spans::from("Esc cancel · previous map kept"),
+        Spans::from(if role == crate::controller_learn::LearnRole::Confirm {
+            "Save backs up and activates now"
+        } else if session.can_finish() {
+            "Rotary gestures latch · click saves"
+        } else {
+            "Complete required encoder gestures"
+        }),
     ];
-    if role == crate::controller_learn::LearnRole::Confirm {
-        lines.push(Spans::from(Span::styled(
-            "Rotary click / Enter SAVE + EXIT",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Spans::from("Save makes a backup and activates now"));
-    } else if session.can_finish() {
-        lines.push(Spans::from("←/→ browse · S skip · R retry"));
-        lines.push(Spans::from("Rotary gestures latch · click saves"));
-        lines.push(Spans::from("Esc cancel keeps the previous file"));
-    } else {
-        lines.push(Spans::from("Master rotary required · Esc cancel"));
-    }
     f.render_widget(
         Paragraph::new(lines).block(
             Block::default()
@@ -11240,6 +11232,7 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let rack = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target);
     let rack_length = rack.map(|rack| rack.order.len()).unwrap_or(0);
     let inner_width = usize::from(body.width.saturating_sub(2));
+    let inner_height = usize::from(body.height.saturating_sub(2));
     let mut lines = vec![Spans::from(Span::styled(
         crate::ui_text::label_value(
             &format!("FX {}", fx_target_label(a.fx_target)),
@@ -11280,22 +11273,6 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             ),
             inner_width,
         )));
-        if let Some(meter) = a
-            .engine
-            .as_ref()
-            .and_then(|engine| engine.aux_meter(aux_id))
-        {
-            let peak = meter.output.peak.left.max(meter.output.peak.right);
-            let rms = meter.output.rms.left.max(meter.output.rms.right);
-            lines.push(Spans::from(crate::ui_text::fit_line(
-                &format!(
-                    "RETURN pk {:>5.1} rms {:>5.1} dBFS",
-                    meter_db(peak),
-                    meter_db(rms)
-                ),
-                inner_width,
-            )));
-        }
     } else if a.fx_target > MAX_AUX_BUSES {
         if let Some(meter) = a.engine.as_ref().and_then(Engine::master_meter) {
             let peak = meter.output.peak.left.max(meter.output.peak.right);
@@ -11310,12 +11287,17 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             )));
         }
     }
+    let mut entries = Vec::new();
+    let mut selected_entry = 0;
     if let Some(rack) = rack {
         for (index, id) in rack.order.iter().copied().enumerate() {
             let effect = rack.effect(id).expect("validated rack order");
             let selected = a.fx_selection == FxRackSelection::Effect(id);
+            if selected {
+                selected_entry = index;
+            }
             let marker = if selected { ">" } else { " " };
-            let state = if effect.bypass { "BYP" } else { "ON " };
+            let state = if effect.bypass { " · BYP" } else { "" };
             let type_active = a
                 .fx_type_edit
                 .as_ref()
@@ -11332,10 +11314,10 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             } else {
                 Style::default().fg(Color::White)
             };
-            lines.push(Spans::from(Span::styled(
+            entries.push(Spans::from(Span::styled(
                 crate::ui_text::fit_line(
                     &format!(
-                        "{marker} {:>2}. {:<12} #{id:<3} {state}",
+                        "{marker}{:>2} {:<12} #{id}{state}",
                         index + 1,
                         effect_kind_label(effect.kind)
                     ),
@@ -11346,12 +11328,12 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         }
     }
     let insert_selected = a.fx_selection == FxRackSelection::Insert;
-    lines.push(Spans::from(Span::styled(
+    if insert_selected {
+        selected_entry = entries.len();
+    }
+    entries.push(Spans::from(Span::styled(
         crate::ui_text::fit_line(
-            &format!(
-                "{} + INSERT EFFECT",
-                if insert_selected { ">" } else { " " }
-            ),
+            &format!("{}+ INSERT EFFECT", if insert_selected { ">" } else { " " }),
             inner_width,
         ),
         if insert_selected {
@@ -11360,8 +11342,12 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             Style::default().fg(Color::White)
         },
     )));
-    lines.push(Spans::from(""));
-    lines.push(Spans::from("Stop transport for structural edits"));
+    let visible_entries = inner_height.saturating_sub(lines.len());
+    let offset = selected_entry
+        .saturating_add(1)
+        .saturating_sub(visible_entries)
+        .min(entries.len().saturating_sub(visible_entries));
+    lines.extend(entries.into_iter().skip(offset).take(visible_entries));
     f.render_widget(
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
         body,
@@ -11580,8 +11566,15 @@ fn draw_performance_meter<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let availability = a.performance_meter.audio_availability();
     let clipping = a.performance_meter.clipping(Instant::now());
     let signal_fault = a.performance_meter.non_finite() > 0;
+    let audio_title = match availability {
+        AudioAvailability::Stopped => "STEREO VU · FINAL · STOPPED",
+        AudioAvailability::DirectUnavailable => "STEREO VU · FINAL · UNAVAILABLE",
+        AudioAvailability::Presentation
+        | AudioAvailability::GraphActive
+        | AudioAvailability::LoopActive => "STEREO VU · FINAL OUT · dBFS",
+    };
     let mut audio_heading = vec![Span::styled(
-        "STEREO VU · FINAL OUT · dBFS",
+        audio_title,
         Style::default()
             .fg(Color::White)
             .add_modifier(Modifier::BOLD),
@@ -11619,17 +11612,18 @@ fn draw_performance_meter<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let numeric_peaks = a.performance_meter.numeric_peak_dbfs();
     lines.push(audio_meter_line('L', levels[0], numeric_peaks[0], width));
     lines.push(audio_meter_line('R', levels[1], numeric_peaks[1], width));
-    let route = performance_audio_route(availability);
-    lines.push(Spans::from(Span::styled(
-        truncate(route, width),
-        Style::default().fg(match availability {
-            AudioAvailability::GraphActive => Color::Green,
-            AudioAvailability::LoopActive => Color::Green,
-            AudioAvailability::Presentation => Color::LightYellow,
-            AudioAvailability::Stopped | AudioAvailability::DirectUnavailable => Color::DarkGray,
-        }),
-    )));
     if detailed {
+        let route = performance_audio_route(availability);
+        lines.push(Spans::from(Span::styled(
+            truncate(route, width),
+            Style::default().fg(match availability {
+                AudioAvailability::GraphActive | AudioAvailability::LoopActive => Color::Green,
+                AudioAvailability::Presentation => Color::LightYellow,
+                AudioAvailability::Stopped | AudioAvailability::DirectUnavailable => {
+                    Color::DarkGray
+                }
+            }),
+        )));
         lines.push(Spans::from(vec![
             Span::styled("● RMS smoothed  ", Style::default().fg(Color::Green)),
             Span::styled("● bright peak  ", Style::default().fg(Color::LightYellow)),
@@ -11664,7 +11658,6 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let width = usize::from(body.width.saturating_sub(2));
     let controls = a.engine.as_ref().and_then(Engine::bus_controls);
     let meter = a.engine.as_ref().and_then(Engine::final_bus_meter);
-    let sample_rate = a.engine.as_ref().and_then(Engine::audio_graph_sample_rate);
     if let Some(recording) = a.engine.as_mut().and_then(Engine::final_recording_status) {
         a.final_recording_last = recording;
     }
@@ -11685,18 +11678,12 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .any(|source| source == &input.right_port)
     });
     let mut lines = Vec::new();
-    lines.push(Spans::from(Span::styled(
-        truncate(
-            &format!(
-                "THREE-SOURCE SUM · {}",
-                if active { "ACTIVE" } else { "UNAVAILABLE" }
-            ),
-            width,
-        ),
-        Style::default()
-            .fg(if active { Color::Green } else { Color::Red })
-            .add_modifier(Modifier::BOLD),
-    )));
+    if !active {
+        lines.push(Spans::from(Span::styled(
+            "BUS UNAVAILABLE · retry MIX",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )));
+    }
     for (index, source) in BusSource::ALL.iter().copied().enumerate() {
         let ready = active
             && match source {
@@ -11711,15 +11698,21 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             )
         });
         let selected = a.bus_selected == index;
+        let state = if muted {
+            " · MUTE"
+        } else if !ready {
+            " · OFFLINE"
+        } else {
+            ""
+        };
         lines.push(Spans::from(Span::styled(
             truncate(
                 &format!(
-                    "{} {:<5} {:>4.0}dB {:<4} {}",
+                    "{} {:<5} {:>4.0}dB{}",
                     if selected { ">" } else { " " },
                     source.label(),
                     gain,
-                    if muted { "MUTE" } else { "ON" },
-                    if ready { "READY" } else { "OFFLINE" }
+                    state,
                 ),
                 width,
             ),
@@ -11752,96 +11745,78 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         },
     )));
     let meter = meter.unwrap_or_default();
-    lines.push(Spans::from(truncate(
-        &format!(
-            "FINAL L {:>5.1}  R {:>5.1} dBFS",
-            meter_db(meter.output.peak.left),
-            meter_db(meter.output.peak.right)
-        ),
-        width,
-    )));
+    let clipping = meter.limiter_input.clips > 0 || meter.output.clips > 0;
+    let meter_fault = if clipping {
+        format!(
+            " · CLIP {}/{}",
+            meter.limiter_input.clips, meter.output.clips
+        )
+    } else if meter.limiter_gain_reduction_db > 0.05 {
+        format!(" · GR {:.1}dB", meter.limiter_gain_reduction_db)
+    } else {
+        String::new()
+    };
     lines.push(Spans::from(Span::styled(
         truncate(
             &format!(
-                "PRE CLIP {} · FINAL CLIP {} · GR {:.1}dB",
-                meter.limiter_input.clips, meter.output.clips, meter.limiter_gain_reduction_db
+                "FINAL L {:>5.1} R {:>5.1}{meter_fault}",
+                meter_db(meter.output.peak.left),
+                meter_db(meter.output.peak.right)
             ),
             width,
         ),
-        if meter.limiter_input.clips > 0 || meter.output.clips > 0 {
+        if clipping {
             Style::default().fg(Color::Red)
         } else {
-            Style::default().fg(Color::Green)
+            Style::default().fg(Color::White)
         },
     )));
-    let latency = sample_rate.map_or_else(
-        || "2.5ms lookahead".into(),
-        |rate| {
-            let samples =
-                (rate as f32 * crate::final_bus::LIMITER_LOOKAHEAD_SECONDS).round() as u32;
-            format!(
-                "{samples} samples/{:.3}ms",
-                samples as f64 * 1000.0 / f64::from(rate)
-            )
-        },
-    );
-    lines.push(Spans::from(truncate(
-        &format!("LIMIT -1.0dBFS · knee 3dB · {latency}"),
-        width,
-    )));
-    lines.push(Spans::from(truncate(
-        &format!(
-            "REC {}  {:02}:{:02}  {}",
-            if recording.recording {
-                "ACTIVE"
-            } else if recording.error.is_some() {
-                "ERROR "
-            } else {
-                "STOPPED"
-            },
+    let recording_fault =
+        recording.error.is_some() || recording.dropped_frames > 0 || recording.overflow_events > 0;
+    let recording_line = if let Some(error) = recording.error.as_deref() {
+        crate::ui_text::fit_with_suffix(&format!("RECORDING FAULT · {error}"), " · STOP", width)
+    } else if recording.dropped_frames > 0 || recording.overflow_events > 0 {
+        format!(
+            "DROP {} · OVF {} · HIGH {}f",
+            recording.dropped_frames, recording.overflow_events, recording.writer_high_water_frames
+        )
+    } else if recording.recording {
+        format!(
+            "REC {:02}:{:02} · {}",
             recording.elapsed.as_secs() / 60,
             recording.elapsed.as_secs() % 60,
             format_bytes(recording.bytes)
-        ),
-        width,
-    )));
-    lines.push(Spans::from(truncate(
-        &format!(
-            "DROP {} · OVF {} · HIGH {}f",
-            recording.dropped_frames, recording.overflow_events, recording.writer_high_water_frames
-        ),
-        width,
-    )));
-    if let Some(error) = recording.error {
-        lines.push(Spans::from(Span::styled(
-            truncate(&error, width),
-            Style::default().fg(Color::Red),
-        )));
-    } else if let Some(path) = recording.path {
-        lines.push(Spans::from(truncate(
-            &format!("FILE {}", path.display()),
-            width,
-        )));
-    }
+        )
+    } else if let Some(path) = recording.path.as_deref() {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_default();
+        crate::ui_text::fit_middle(&format!("FILE · {name}"), width)
+    } else {
+        String::new()
+    };
     lines.push(Spans::from(Span::styled(
-        truncate(
-            if a.config.audio_graph.input_direct_monitoring {
-                if a.config.audio_graph.confirm_doubled_monitoring {
-                    "MONITOR software + confirmed direct"
-                } else {
-                    "MONITOR REFUSED · doubled path"
-                }
-            } else {
-                "MONITOR software · direct off"
-            },
-            width,
-        ),
-        Style::default().fg(if a.config.audio_graph.input_direct_monitoring {
-            Color::LightYellow
+        truncate(&recording_line, width),
+        Style::default().fg(if recording_fault {
+            Color::Red
         } else {
-            Color::Green
+            Color::White
         }),
     )));
+    if a.config.audio_graph.input_direct_monitoring {
+        lines.push(Spans::from(Span::styled(
+            truncate(
+                if a.config.audio_graph.confirm_doubled_monitoring {
+                    "MONITOR · software + confirmed direct"
+                } else {
+                    "MONITOR REFUSED · doubled path"
+                },
+                width,
+            ),
+            Style::default().fg(Color::LightYellow),
+        )));
+    }
     lines.truncate(usize::from(body.height.saturating_sub(2)));
     f.render_widget(
         Paragraph::new(lines).block(
@@ -11919,12 +11894,13 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     ];
     let centered = |text: &str, width: usize| {
         let text = truncate(text, width);
-        let left = width.saturating_sub(text.chars().count()) / 2;
+        let text_width = crate::ui_text::width(&text);
+        let left = width.saturating_sub(text_width) / 2;
         format!(
             "{}{}{}",
             " ".repeat(left),
             text,
-            " ".repeat(width.saturating_sub(left + text.chars().count()))
+            " ".repeat(width.saturating_sub(left + text_width))
         )
     };
     for control_row in 0..2 {
@@ -11965,12 +11941,7 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         }
         lines.push(Spans::from(headings));
         lines.push(Spans::from(values));
-        if control_row == 0 {
-            lines.push(Spans::from(""));
-            lines.push(Spans::from(""));
-        }
     }
-    lines.push(Spans::from(""));
     let meter = a.engine.as_ref().and_then(|engine| engine.effect_meter(id));
     let meter_line = if effect.kind == EffectKind::Compressor {
         let gain_reduction_db = if effect.bypass {
@@ -11995,9 +11966,7 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     } else {
         Spans::from(crate::ui_text::fit_line("METER --", inner_width))
     };
-    if lines.len() < usize::from(body.height.saturating_sub(2)) {
-        lines.push(meter_line);
-    }
+    lines.push(meter_line);
     f.render_widget(
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
         body,
@@ -12022,10 +11991,10 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         a.help_offset = a.help_selected + 1 - rows;
     }
     a.hits.list = body;
-    let web_status = if a.web_help_status.is_empty() {
-        "web help unavailable"
+    let web_status = if a.web_help_status == "web help unavailable" {
+        "WEB OFFLINE · local help active"
     } else {
-        &a.web_help_status
+        a.web_help_status.as_str()
     };
     f.render_widget(
         Paragraph::new(truncate(web_status, z.width as usize)).style(
@@ -12083,6 +12052,8 @@ fn draw_tracker_child<B: Backend>(f: &mut Frame<B>, title: &str, details: &str) 
 
 fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let width = usize::from(body.width);
     let player = a.loop_player.status();
     let selected = a
         .loop_imports
@@ -12090,61 +12061,77 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "(inbox empty)".into());
-    let details = if let Some(settings) = &a.song.audio_loop {
+    let mut lines = if let Some(settings) = &a.song.audio_loop {
         let bar_unit = i32::from(a.current_meter().clamp(1, 16));
         let offset_bars = f64::from(settings.offset_beats) / f64::from(bar_unit);
-        let state = if let Some(error) = player.error.as_deref() {
-            format!(
-                "OUTPUT FAULT · {}",
-                truncate(error, z.width.saturating_sub(15) as usize)
-            )
-        } else if player.loaded {
-            "READY".into()
-        } else {
-            "NOT READY".into()
-        };
-        format!(
-            "P{:02}/{:02} · FT2 WAV LOOP\n{}\n{}\nSource {:>6.2} BPM  {}\nProject tempo {:>3} BPM\nRegion beat {} +{}\nOffset {:+.0} bar(s)\nCut {} · meter {}/4\n\n{}  {} / {}\n{} Hz · {}ch\nNative pitch playback",
-            a.tracker_loop_page_number(),
-            a.tracker_page_count(),
-            truncate(
+        let mut lines = vec![
+            Spans::from(format!(
+                "P{:02}/{:02} · FT2 WAV LOOP",
+                a.tracker_loop_page_number(),
+                a.tracker_page_count()
+            )),
+            Spans::from(crate::ui_text::fit_middle(
                 player.file.as_deref().unwrap_or(&settings.file),
-                z.width.saturating_sub(2) as usize
-            ),
-            state,
-            settings.source_bpm(),
-            settings.interpretation.label(),
-            a.current_tempo(),
-            settings.start_beat,
-            settings.length_beats,
-            offset_bars,
-            if a.loop_edit_bars { "BAR" } else { "BEAT" },
-            a.current_meter(),
-            if player.playing { "PLAY" } else { "STOP" },
-            short_time(player.elapsed),
-            short_time(player.duration),
-            player.source_rate,
-            player.source_channels,
-        )
+                width,
+            )),
+        ];
+        if let Some(error) = player.error.as_deref() {
+            lines.push(Spans::from(crate::ui_text::fit_with_suffix(
+                &format!("OUTPUT FAULT · {error}"),
+                " · retry PLAY",
+                width,
+            )));
+        } else if !player.loaded {
+            lines.push(Spans::from("OUTPUT UNAVAILABLE · retry PLAY"));
+        }
+        if !player.duration.is_zero() {
+            // Playback and tracker REC share this sample-relative clock.
+            lines.push(loop_position_bar(&player, body.width));
+        }
+        lines.extend([
+            Spans::from(format!(
+                "Source {:.2} BPM {} · Project {}",
+                settings.source_bpm(),
+                settings.interpretation.label(),
+                a.current_tempo()
+            )),
+            Spans::from(format!(
+                "Region beat {} +{}",
+                settings.start_beat, settings.length_beats
+            )),
+            Spans::from(format!("Offset {offset_bars:+.0} bar(s)")),
+            Spans::from(format!(
+                "Cut {} · meter {}/4",
+                if a.loop_edit_bars { "BAR" } else { "BEAT" },
+                a.current_meter()
+            )),
+            Spans::from(format!(
+                "{} {} / {} · {} Hz {}ch",
+                if player.playing { "PLAY" } else { "STOP" },
+                short_time(player.elapsed),
+                short_time(player.duration),
+                player.source_rate,
+                player.source_channels,
+            )),
+        ]);
+        lines
     } else {
-        format!(
-            "P{:02}/{:02} · FT2 WAV LOOP\nUNLOADED\n\nInbox: {}\nSelected: {}\n\nTurn encoder to choose\nIMPORT copies to private storage\n\nAUTO estimates beat length.\nProject tempo follows WAV.",
-            a.tracker_loop_page_number(),
-            a.tracker_page_count(),
-            truncate(
-                &a.config.loop_player.import_directory.display().to_string(),
-                z.width.saturating_sub(2) as usize
-            ),
-            truncate(&selected, z.width.saturating_sub(2) as usize)
-        )
+        vec![
+            Spans::from(format!(
+                "P{:02}/{:02} · FT2 WAV LOOP",
+                a.tracker_loop_page_number(),
+                a.tracker_page_count()
+            )),
+            Spans::from("No WAV attached"),
+            Spans::from(format!("Inbox · {} WAV file(s)", a.loop_imports.len())),
+            Spans::from(crate::ui_text::fit_middle(
+                &format!("Selected · {selected}"),
+                width,
+            )),
+            Spans::from("IMPORT · copy to private library"),
+            Spans::from("AUTO · measure and snap to bars"),
+        ]
     };
-    let mut lines = details.lines().map(Spans::from).collect::<Vec<_>>();
-    if a.song.audio_loop.is_some() && !player.duration.is_zero() {
-        // Keep the loop playhead sample-relative: playback and tracker REC
-        // share the transport clock which advances `player.elapsed`.
-        lines.insert(3.min(lines.len()), loop_position_bar(&player, z.width));
-    }
-    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
     if body.height >= 15 {
         let availability = a.loop_meter.audio_availability();
         let clipping = a.loop_meter.clipping(Instant::now());
@@ -12197,6 +12184,7 @@ fn draw_tracker_loop<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             usize::from(z.width),
         ));
     }
+    lines.truncate(usize::from(body.height));
     f.render_widget(
         Paragraph::new(lines)
             .alignment(Alignment::Center)
@@ -12215,14 +12203,14 @@ fn draw_tracker_loop_align<B: Backend>(f: &mut Frame<B>, a: &App) {
         let bar_unit = i32::from(a.current_meter().clamp(1, 16));
         let offset_bars = f64::from(settings.offset_beats) / f64::from(bar_unit);
         format!(
-            "LOOP ALIGN\n{}\n\nAUTO measures pulse/length\nand snaps length to bars.\n\nBAR- / BAR+\nmove placement by 1 bar.\n\nLength: {} beat(s)\nOffset: {:+.0} bar(s)\nMeter: {}/4\n\nLeft/right also shift.",
-            truncate(&settings.file, z.width.saturating_sub(2) as usize),
+            "LOOP ALIGN\n{}\nLength {} beats · meter {}/4\nOffset {:+.0} bar(s)\nAUTO · measure and snap\nBAR-/BAR+ · move one bar",
+            crate::ui_text::fit_middle(&settings.file, z.width.saturating_sub(2) as usize),
             settings.length_beats,
-            offset_bars,
             a.current_meter(),
+            offset_bars,
         )
     } else {
-        "LOOP ALIGN\n\nImport a WAV first.\n\nAUTO measures a selected loop.\nBAR- / BAR+ move by bars.\n\nEXIT returns to loop.".into()
+        "LOOP ALIGN\nNo WAV attached\nImport a WAV in FT2 LOOP".into()
     };
     f.render_widget(
         Paragraph::new(details)
@@ -12396,22 +12384,28 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
             };
             let target = a.target_route_issue(&page.target).map_or_else(
                 || format!("TARGET · {target_kind}"),
-                |issue| format!("TARGET · {target_kind} · {issue}"),
+                |issue| crate::ui_text::label_value(&format!("TARGET · {target_kind}"), issue, 35),
             );
             let mut rows = vec![
                 target,
-                format!(
-                    "ENGINE · {}",
-                    software.map_or("—", |route| route.engine.label())
+                crate::ui_text::fixed_label_value(
+                    "ENGINE · ",
+                    9,
+                    software.map_or("—", |route| route.engine.label()),
+                    35,
                 ),
-                format!(
-                    "INSTR · {}",
-                    software.map_or("—", |route| route.instrument.as_str())
+                crate::ui_text::fixed_label_value(
+                    "INSTR · ",
+                    9,
+                    software.map_or("—", |route| route.instrument.as_str()),
+                    35,
                 ),
-                format!("MIDI OUT · {}", midi_output.unwrap_or("—")),
-                format!(
-                    "PROFILE · {}",
-                    page.device_profile.as_deref().unwrap_or("RAW MIDI")
+                crate::ui_text::fixed_label_value("MIDI OUT ", 9, midi_output.unwrap_or("—"), 35),
+                crate::ui_text::fixed_label_value(
+                    "PROFILE ",
+                    9,
+                    page.device_profile.as_deref().unwrap_or("RAW MIDI"),
+                    35,
                 ),
             ];
             for column_index in 0..LANES_PER_PAGE {
@@ -12444,19 +12438,23 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                         column.bank_lsb.to_string()
                     }
                 ));
-                rows.push(format!(
-                    "C{} PROGRAM · {} · {}",
-                    column_index + 1,
-                    if auto {
-                        "AUTO".into()
-                    } else {
-                        sequencer::musician_program(column.program).to_string()
-                    },
-                    if auto {
-                        "machine default".into()
-                    } else {
-                        a.route_program_label(page, column_index)
-                    }
+                rows.push(crate::ui_text::fixed_label_value(
+                    &format!("C{} PROGRAM ", column_index + 1),
+                    11,
+                    &format!(
+                        "{} · {}",
+                        if auto {
+                            "AUTO".into()
+                        } else {
+                            sequencer::musician_program(column.program).to_string()
+                        },
+                        if auto {
+                            "machine default".into()
+                        } else {
+                            a.route_program_label(page, column_index)
+                        }
+                    ),
+                    35,
                 ));
             }
             rows.push(format!(
@@ -12489,7 +12487,7 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 let file = path
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.display().to_string());
+                    .unwrap_or_else(|| "unnamed WAV".into());
                 crate::ui_text::label_value(&file, "INBOX", 35)
             })
             .chain(a.loop_library.iter().map(|entry| {
@@ -12643,6 +12641,92 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     }
 }
 
+fn status_is_fault(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.starts_with("stop ")
+        || [
+            "fault",
+            "fail",
+            "error",
+            "offline",
+            "unavailable",
+            "invalid",
+            "conflict",
+            "refused",
+            "blocked",
+            "missing",
+            "incomplete",
+            "xrun",
+            "overflow",
+            "drop",
+            "exited",
+            "· stop",
+        ]
+        .iter()
+        .any(|needle| message.contains(needle))
+}
+
+fn status_is_consequential(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    [
+        "kept",
+        "restored",
+        "rolled back",
+        "rollback",
+        "all notes off",
+        "applies next start",
+        "unchanged",
+        "private wav",
+        "pickup",
+    ]
+    .iter()
+    .any(|needle| message.contains(needle))
+}
+
+fn status_is_silent(message: &str) -> bool {
+    let message = message.trim().to_ascii_lowercase();
+    message.is_empty()
+        || message == "ready"
+        || message == "midi ready · pickup armed"
+        || message == "synth stopped"
+        || message == "tracker stopped"
+        || message == "tracker rewound · press play to start"
+        || message == "loop preview stopped"
+        || message == "song preview stopped"
+        || message == "controller profile saved and activated"
+        || message == "fx parameter highlighted · press encoder to edit"
+        || message == "fx value confirmed"
+        || message.ends_with(" type confirmed")
+        || message.ends_with(" pages ready")
+        || message.ends_with(" selected · press to edit")
+        || message.starts_with("routing · turn to browse")
+        || message.starts_with("midi learn active")
+        || message.starts_with("ft2 tools ·")
+        || message.starts_with("fx target ·")
+        || message.starts_with("loop page ready")
+        || message.starts_with("loop ready ·")
+        || message == "page routing applied through the project owner"
+}
+
+fn confirmation_status_active(a: &App) -> bool {
+    a.pending_project_action.is_some()
+        || a.confirm_delete.is_some()
+        || a.confirm_load.is_some()
+        || a.confirm_song_save.is_some()
+        || a.confirm_new_project
+        || a.confirm_loop_remove
+        || a.confirm_song_delete.is_some()
+        || a.confirm_pattern_clear
+        || a.confirm_pattern_paste_over.is_some()
+        || a.confirm_pattern_delete.is_some()
+        || a.confirm_drum_pattern_delete.is_some()
+        || a.confirm_routing_defaults
+}
+
+fn operation_status_active(a: &App) -> bool {
+    a.loop_previewing || a.song_previewing || a.playback.is_some()
+}
+
 fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
     let z = f.size();
     if z.height == 0 || z.width == 0 {
@@ -12656,13 +12740,40 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     let indicator_color = transport_color(state, elapsed);
-    let message = a.recording_status_message().unwrap_or_else(|| {
-        if a.status == "Ready" {
-            ""
-        } else {
-            a.status.as_str()
+    let status_age = {
+        let mut clock = a.status_clock.borrow_mut();
+        if clock.text != a.status {
+            clock.text.clone_from(&a.status);
+            clock.since = Instant::now();
         }
+        clock.since.elapsed()
+    };
+    let status = a.status.trim();
+    let status_visible = !status_is_silent(status)
+        && (status_is_fault(status)
+            || confirmation_status_active(a)
+            || operation_status_active(a)
+            || (status_is_consequential(status) && status_age < CONSEQUENTIAL_STATUS_LIFETIME)
+            || status_age < ROUTINE_STATUS_LIFETIME);
+    let recording_status = a.recording_status_message();
+    let combined_status = recording_status.as_ref().and_then(|recording| {
+        (status_visible && status_is_fault(status) && !status_is_fault(recording)).then(|| {
+            format!(
+                "{} · {status}",
+                recording.split(" · ").next().unwrap_or(recording)
+            )
+        })
     });
+    let message = combined_status
+        .as_deref()
+        .or(recording_status.as_deref())
+        .or_else(|| status_visible.then_some(status))
+        .unwrap_or("");
+    let message_color = if status_is_fault(message) {
+        Color::LightYellow
+    } else {
+        Color::Gray
+    };
     f.render_widget(
         Paragraph::new(Spans::from(vec![
             Span::styled(
@@ -12673,8 +12784,11 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
             ),
             Span::raw(" "),
             Span::styled(
-                truncate(message, usize::from(z.width.saturating_sub(2))),
-                Style::default().fg(Color::Gray),
+                crate::ui_text::fit_status(
+                    message,
+                    usize::from(z.width.saturating_sub(2).min(STATUS_TEXT_CELLS)),
+                ),
+                Style::default().fg(message_color),
             ),
         ]))
         .style(Style::default().bg(Color::Black)),
@@ -12792,13 +12906,22 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let now = a
         .playing
         .as_ref()
-        .map(|p| format!("{}: {}", p.backend.label(), p.name))
-        .unwrap_or_else(|| "stopped".into());
+        .map(|preset| {
+            crate::ui_text::fit_middle(
+                &format!("Playing · {}", preset.name),
+                usize::from(head.width),
+            )
+        })
+        .unwrap_or_default();
     let selected_engine = a.selected_backend().label();
     f.render_widget(
-        Paragraph::new(format!(
-            " SHSYNTH//PRESETS  < {selected_engine} >\n running: {now}"
-        ))
+        Paragraph::new(vec![
+            Spans::from(crate::ui_text::fit_line(
+                &format!("PRESETS · {selected_engine}"),
+                usize::from(head.width),
+            )),
+            Spans::from(now),
+        ])
         .style(
             Style::default()
                 .fg(Color::Green)
@@ -12810,7 +12933,10 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .map(|i| {
             let mark = if i == a.selected { "▶" } else { " " };
             Spans::from(Span::styled(
-                format!("{mark} {:02} {}", i + 1, a.presets[i].display_name()),
+                crate::ui_text::fit_line(
+                    &format!("{mark} {:02} {}", i + 1, a.presets[i].display_name()),
+                    usize::from(inner.width),
+                ),
                 if i == a.selected {
                     Style::default()
                         .fg(Color::Black)
@@ -13164,15 +13290,16 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         mode
     };
     let mode = mode.map_or_else(String::new, |mode| format!(" · {mode}"));
+    let location = format!(
+        "O{:02}/{:02} P{:02}{mode}",
+        a.tracker_order + 1,
+        a.song.order.len(),
+        pattern_number
+    );
     f.render_widget(
-        Paragraph::new(truncate(
-            &format!(
-                "{} · O{:02}/{:02} P{:02}{mode}",
-                a.song.name,
-                a.tracker_order + 1,
-                a.song.order.len(),
-                pattern_number
-            ),
+        Paragraph::new(crate::ui_text::label_value(
+            &a.song.name,
+            &location,
             z.width as usize,
         ))
         .style(
@@ -13361,24 +13488,29 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             program,
         )
     } else {
-        format!(
+        let state = if !page.enabled {
+            "PAGE MUTE"
+        } else if !lane.enabled {
+            "MUTE"
+        } else if page.percussion {
+            "DRUM"
+        } else {
+            ""
+        };
+        let base = format!(
             "P{}/{} {} L{} ch{} {} {}{}",
             a.tracker_page + 1,
             a.tracker_page_count(),
-            page.name,
+            truncate(&page.name, 8),
             a.tracker_track + 1,
             sequencer::musician_channel(column.channel),
             truncate(page.target.label(), 10),
-            if !page.enabled {
-                "PAGE MUTE"
-            } else if !lane.enabled {
-                "MUTE"
-            } else if page.percussion {
-                "DRUM"
-            } else {
-                "ON"
-            },
-            route_issue.map_or_else(String::new, |issue| format!(" · {issue}")),
+            state,
+            "",
+        );
+        route_issue.map_or_else(
+            || truncate(base.trim_end(), z.width as usize),
+            |issue| crate::ui_text::label_value(base.trim_end(), issue, z.width as usize),
         )
     };
     f.render_widget(
@@ -13479,10 +13611,21 @@ fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
         (NoteEditorField::Effect, command.0, "this cell"),
         (NoteEditorField::EffectParameter, command.1, "this cell"),
     ];
-    for (index, (field, value, scope)) in values.into_iter().enumerate() {
-        if index >= usize::from(area.height) {
-            break;
-        }
+    let visible_rows = usize::from(area.height);
+    let selected_index = values
+        .iter()
+        .position(|(field, _, _)| editor.field == *field)
+        .unwrap_or(0);
+    let offset = selected_index
+        .saturating_add(1)
+        .saturating_sub(visible_rows)
+        .min(values.len().saturating_sub(visible_rows));
+    for (screen_row, (field, value, scope)) in values
+        .into_iter()
+        .skip(offset)
+        .take(visible_rows)
+        .enumerate()
+    {
         let selected = editor.field == field;
         let marker = if selected && editor.active {
             "*"
@@ -13508,7 +13651,7 @@ fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
         };
         f.render_widget(
             Paragraph::new(truncate(&line, area.width as usize)).style(style),
-            rect(area.x, area.y + index as u16, area.width, 1),
+            rect(area.x, area.y + screen_row as u16, area.width, 1),
         );
     }
 }
@@ -13638,7 +13781,10 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                     let suffix = issue.map_or_else(String::new, |issue| format!(" · {issue}"));
                     let text = format!(
                         "{}{}",
-                        truncate(&base, visible_width.saturating_sub(suffix.chars().count())),
+                        truncate(
+                            &base,
+                            visible_width.saturating_sub(crate::ui_text::width(&suffix))
+                        ),
                         suffix
                     );
                     Spans::from(Span::styled(
@@ -13692,10 +13838,6 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             if let Some(issue) = issue {
                 lines.push(Spans::from(format!("{issue} · data is kept")));
             }
-            lines.push(Spans::from(format!(
-                "turn encoder · {}",
-                a.page_field_confirm_hint()
-            )));
             f.render_widget(
                 Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
                 rect(z.x, z.y + 1, z.width, body_height),
@@ -13747,10 +13889,6 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             if let Some(issue) = issue {
                 lines.push(Spans::from(format!("{issue} · data is kept")));
             }
-            lines.push(Spans::from(format!(
-                "turn encoder · {}",
-                a.page_field_confirm_hint()
-            )));
             f.render_widget(
                 Paragraph::new(lines).block(Block::default().borders(Borders::ALL)),
                 rect(z.x, z.y + 1, z.width, body_height),
@@ -13765,8 +13903,6 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                         format!("▶ {:02}", a.page_channel_draft + 1),
                         Style::default().fg(Color::Black).bg(Color::Green),
                     )),
-                    Spans::from("turn encoder 1–16"),
-                    Spans::from(a.page_field_confirm_hint()),
                 ])
                 .block(Block::default().borders(Borders::ALL)),
                 rect(z.x, z.y + 1, z.width, body_height),
@@ -14004,7 +14140,7 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let s = a.audio_recorder.status();
     let state = if s.recording {
-        "● SYNCHRONIZED TAKE"
+        "SYNCHRONIZED TAKE"
     } else {
         "MULTITRACK RECORDER"
     };
@@ -14029,11 +14165,11 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let path = s
         .path
         .as_deref()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "no saved take yet".into());
+        .and_then(|path| path.file_name())
+        .map(|name| name.to_string_lossy().into_owned());
     a.audio_track_selected = a.audio_track_selected.min(s.tracks.len().saturating_sub(1));
     let selected = s.tracks.get(a.audio_track_selected);
-    let list_rows = 6usize.min(s.tracks.len());
+    let list_rows = 5usize.min(s.tracks.len());
     let offset = a
         .audio_track_selected
         .saturating_add(1)
@@ -14059,10 +14195,10 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 " "
             };
             let arm = if track.armed { "●" } else { "○" };
-            let source = if track.resolved { "ready" } else { "missing" };
+            let source = if track.resolved { "" } else { " · MISSING" };
             lines.push(Spans::from(Span::styled(
                 truncate(
-                    &format!("{marker}{arm} {:02} {} · {source}", index + 1, track.label),
+                    &format!("{marker}{arm} {:02} {}{source}", index + 1, track.label),
                     line_width,
                 ),
                 Style::default().fg(if index == a.audio_track_selected {
@@ -14079,6 +14215,9 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             )));
         }
     }
+    while lines.len() < 6 {
+        lines.push(Spans::from(""));
+    }
     if let Some(track) = selected {
         let source = if track.preferred_source.is_empty() {
             "unassigned".into()
@@ -14090,40 +14229,65 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .map(|db| format!("{db:>5.1} dBFS"))
             .unwrap_or_else(|| "no level".into());
         lines.push(Spans::from(truncate(
-            &format!("Source {source}"),
+            &format!("Source {source} · {peak}"),
             line_width,
         )));
-        lines.push(Spans::from(truncate(
-            &format!("Selected meter {peak}"),
-            line_width,
-        )));
+    } else {
+        lines.push(Spans::from(""));
     }
-    lines.push(Spans::from(truncate(
-        &format!(
-            "24-bit mono stems · {:.1} MiB",
-            s.bytes as f64 / 1_048_576.0
-        ),
-        line_width,
-    )));
-    lines.push(Spans::from(truncate(
-        &format!(
-            "Drop {} · ovf {} · xrun {} · high {}f",
-            s.dropped_frames, s.overflow_events, s.xruns, s.writer_high_water_frames
-        ),
-        line_width,
-    )));
-    lines.push(Spans::from(truncate(
-        s.error.as_deref().unwrap_or(&path),
-        line_width,
-    )));
-    f.render_widget(
-        Paragraph::new(lines).style(Style::default().fg(
-            if s.error.is_some() || s.dropped_frames > 0 || s.incomplete {
-                Color::Yellow
+    let integrity_fault =
+        s.dropped_frames > 0 || s.overflow_events > 0 || s.xruns > 0 || s.incomplete;
+    lines.push(Spans::from(Span::styled(
+        truncate(
+            if integrity_fault {
+                &format!(
+                    "DROP {} · OVF {} · XRUN {}{}",
+                    s.dropped_frames,
+                    s.overflow_events,
+                    s.xruns,
+                    if s.incomplete { " · INCOMPLETE" } else { "" }
+                )
+            } else if s.recording {
+                &format!(
+                    "24-bit stems · {:.1} MiB · high {}f",
+                    s.bytes as f64 / 1_048_576.0,
+                    s.writer_high_water_frames
+                )
             } else {
-                Color::Gray
+                ""
             },
-        )),
+            line_width,
+        ),
+        Style::default().fg(if integrity_fault {
+            Color::Yellow
+        } else {
+            Color::Gray
+        }),
+    )));
+    let result = if let Some(error) = s.error.as_deref() {
+        crate::ui_text::fit_with_suffix(
+            &format!("RECORDER FAULT · {error}"),
+            " · retry",
+            line_width,
+        )
+    } else if !s.recording {
+        path.as_deref()
+            .map(|name| crate::ui_text::fit_middle(&format!("TAKE · {name}"), line_width))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    lines.push(Spans::from(Span::styled(
+        result,
+        Style::default().fg(if s.error.is_some() {
+            Color::Yellow
+        } else {
+            Color::Gray
+        }),
+    )));
+    lines.truncate(usize::from(z.height.saturating_sub(4)));
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().fg(Color::Gray)),
         rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
     );
 }
@@ -16892,6 +17056,178 @@ mod tests {
     }
 
     #[test]
+    fn native_midi_learn_keeps_feedback_cancel_and_recovery_visible() {
+        let mut a = screenshot_app(RuntimeConfig::default());
+        configure_special_screenshot_scenario(&mut a, ScreenshotSpecialScenario::MidiLearn);
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Mapped ·"));
+        assert!(text.contains("Encoder ·"));
+        assert!(text.contains("Esc cancel · previous map kept"));
+        assert!(row_text(&buffer, 12).starts_with('■'));
+    }
+
+    #[test]
+    fn native_unsaved_guard_keeps_every_consequence_and_escape_visible() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerFiles;
+        a.song.name = "夜明け".repeat(32);
+        a.pending_project_action = Some(PendingProjectAction::Load("次の曲".repeat(32)));
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+
+        for expected in [
+            "UNSAVED PROJECT",
+            "V/SAVE · keep work",
+            "D/LOAD · discard and load",
+            "Esc/EXIT · cancel, keep position",
+        ] {
+            assert!(text.contains(expected), "missing {expected:?}: {text}");
+        }
+        assert!(row_text(&buffer, 12).starts_with('■'));
+    }
+
+    #[test]
+    fn native_keyboard_name_modals_fit_without_touching_status() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerFiles;
+        a.project_name_input = Some("夜明けの非常に長いプロジェクト名".repeat(4));
+        let project = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&project).contains("PROJECT NAME"));
+        assert!(row_text(&project, 12).starts_with('■'));
+
+        a.project_name_input = None;
+        a.screen = Screen::AudioRecorder;
+        a.audio_track_name_input = Some("Very long room microphone track name".repeat(4));
+        let track = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&track).contains("TRACK NAME"));
+        assert!(row_text(&track, 12).starts_with('■'));
+    }
+
+    #[test]
+    fn native_fx_rack_scrolls_to_the_last_effect_and_insert_row() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::FxRack;
+        for kind in 0..8 {
+            a.fx_add_kind = kind;
+            a.add_effect();
+            a.confirm_effect_type_edit();
+        }
+        let last = *a.song.insert_rack.order.last().unwrap();
+        a.fx_selection = FxRackSelection::Effect(last);
+
+        let effect_buffer = render_app(&mut a, 40, 13);
+        let effect_text = buffer_text(&effect_buffer);
+        assert!(effect_text.contains(&format!("#{last}")));
+        assert!(row_text(&effect_buffer, 12).starts_with('■'));
+
+        a.fx_selection = FxRackSelection::Insert;
+        let insert_buffer = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&insert_buffer).contains("+ INSERT EFFECT"));
+    }
+
+    #[test]
+    fn native_note_editor_scrolls_to_program_effect_and_parameter_fields() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.open_note_editor();
+        a.note_editor.as_mut().unwrap().field = NoteEditorField::EffectParameter;
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+
+        for expected in ["PROGRAM", "EFFECT", "PARAM"] {
+            assert!(text.contains(expected), "missing {expected:?}: {text}");
+        }
+        assert!(row_text(&buffer, 12).starts_with('‖'));
+    }
+
+    #[test]
+    fn routine_status_expires_but_fault_and_recovery_persist() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Presets;
+        a.status = "Preset saved".into();
+        a.status_clock = RefCell::new(StatusClock {
+            text: a.status.clone(),
+            since: Instant::now() - Duration::from_secs(2),
+        });
+        let expired = render_app(&mut a, 40, 13);
+        assert_eq!(row_text(&expired, 12).trim_end(), "■");
+
+        a.status = "LOAD FAILED · old sound kept · retry".into();
+        a.status_clock = RefCell::new(StatusClock {
+            text: a.status.clone(),
+            since: Instant::now() - Duration::from_secs(30),
+        });
+        let fault = render_app(&mut a, 40, 13);
+        assert!(row_text(&fault, 12).contains("old sound kept · retry"));
+    }
+
+    #[test]
+    fn shared_status_replaces_longer_text_without_stale_cells() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Presets;
+        a.status = "ROUTING FAILED · old route kept · retry".into();
+        let backend = TestBackend::new(40, 13);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        assert!(row_text(terminal.backend().buffer(), 12).contains("retry"));
+
+        a.status = "MIDI OFFLINE".into();
+        terminal.draw(|frame| draw(frame, &mut a)).unwrap();
+        assert_eq!(
+            row_text(terminal.backend().buffer(), 12).trim_end(),
+            "■ MIDI OFFLINE"
+        );
+    }
+
+    #[test]
+    fn native_final_bus_keeps_unavailable_sources_and_final_meter_visible() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Meter;
+        a.config.audio_graph.enabled = true;
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+
+        for expected in [
+            "BUS UNAVAILABLE",
+            "SYNTH",
+            "LOOP",
+            "INPUT",
+            "MASTER",
+            "FINAL L",
+        ] {
+            assert!(text.contains(expected), "missing {expected:?}: {text}");
+        }
+        assert!(row_text(&buffer, 12).starts_with('■'));
+    }
+
+    #[test]
+    fn native_recorder_reserves_source_integrity_and_result_rows() {
+        let mut a = screenshot_app(RuntimeConfig::default());
+        configure_screenshot_scenario(&mut a, ScreenshotScenario::AudioRecorder);
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Source interface:capture_5 ·"));
+        assert!(text.contains("TAKE · dusk-project-001.take"));
+        assert!(!text.contains("ready"));
+        assert!(row_text(&buffer, 12).starts_with('■'));
+    }
+
+    #[test]
     fn note_edit_at_40x20_names_route_default_and_cell_scopes() {
         let p = presets();
         let mut a = app(&p);
@@ -16962,15 +17298,13 @@ mod tests {
             .collect::<String>();
         for expected in [
             "MIX · PERFORMANCE BUS",
-            "THREE-SOURCE SUM · UNAVAILABLE",
+            "BUS UNAVAILABLE",
             "SYNTH",
             "LOOP",
             "INPUT",
             "MASTER",
             "OFFLINE",
-            "LIMIT -1.0dBFS",
-            "REC STOPPED",
-            "MONITOR software",
+            "FINAL L",
         ] {
             assert!(text.contains(expected), "missing {expected:?}");
         }
@@ -18785,7 +19119,7 @@ mod tests {
 
         a.toggle_idea_recording();
         assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Idea));
-        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI recording"));
+        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI take"));
 
         a.set_screen(Screen::Tracker);
         a.current_page_mut().unwrap().target = PageTarget::Midi("Test DIN".into());
@@ -18801,10 +19135,7 @@ mod tests {
         a.toggle_tracker_recording();
         assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Tracker));
         assert!(!a.recorder.is_recording());
-        assert_eq!(
-            a.recording_status_message(),
-            Some("FT2 · pattern recording")
-        );
+        assert_eq!(a.recording_status_message(), Some("FT2 · pattern capture"));
 
         a.toggle_idea_recording();
         assert_eq!(
@@ -18838,7 +19169,7 @@ mod tests {
         perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Home);
         assert_eq!(a.active_recording_owner(), Some(RecordingOwner::Idea));
-        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI recording"));
+        assert_eq!(a.recording_status_message(), Some("IDEAS · MIDI take"));
     }
 
     #[test]
@@ -19874,7 +20205,7 @@ mod tests {
         perform(Action::LoopRemove, &mut a, Path::new("/none"), None);
         perform(Action::LoopRemove, &mut a, Path::new("/none"), None);
         assert!(a.song.audio_loop.is_none());
-        assert_eq!(a.status, "loop removed from Project · private WAV kept");
+        assert_eq!(a.status, "Removed · private WAV kept");
     }
 
     #[test]
@@ -21532,8 +21863,7 @@ mod tests {
         assert!(a.engine.is_none());
         assert!(a.engine_owner.is_none());
         assert!(a.playing.is_none());
-        assert!(a.status.contains("FT2 SYNTH START FAILED"));
-        assert!(a.status.contains("synthetic start failure"));
+        assert_eq!(a.status, "FT2 START FAILED · retry PLAY");
         assert_eq!(
             a.tracker_route.lock().unwrap().destinations(),
             vec![(PageTarget::Software(SoftwareRoute::synthv1("Preset 00")), 0)]
@@ -21661,11 +21991,8 @@ mod tests {
         let original = a.routing_defaults.clone();
         a.save_song();
         assert!(a.confirm_routing_defaults);
-        assert_eq!(
-            a.status,
-            "Save this routing as the default for new patterns?"
-        );
-        let backend = TestBackend::new(40, 20);
+        assert_eq!(a.status, "NEW ROUTING DEFAULT? · YES / NO");
+        let backend = TestBackend::new(40, 13);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
         let text = terminal
@@ -21675,8 +22002,9 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        assert!(text.contains("Save this routing as the default"), "{text}");
-        assert!(text.contains("for new patterns?"), "{text}");
+        assert!(text.contains("NEW ROUTING DEFAULT?"), "{text}");
+        assert!(text.contains("CANCEL keeps old default"), "{text}");
+        assert_eq!(terminal.backend().buffer().get(0, 12).symbol, "■", "{text}");
         a.resolve_routing_defaults_choice(false).unwrap();
         assert_eq!(a.routing_defaults, original);
         assert!(!a.routing_defaults_path.exists());

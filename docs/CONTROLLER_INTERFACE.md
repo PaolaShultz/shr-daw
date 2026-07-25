@@ -31,9 +31,9 @@ claims that JACK or all synth engines are running.
 A terminal computer keyboard is a fully qualified input device, equal to an
 available configured controller or performance MIDI input; it is not described
 as a fallback. Only when none of those inputs is available does the splash
-remain open, show `CONNECT KEYBOARD OR MIDI INPUT` in the normally empty
-recovery rows, and rescan the configured MIDI inputs. `Esc` or `q` can still
-exit from the splash.
+remain open with the `INP` loader cell red and rescan the configured MIDI
+inputs. Rows 1–3 remain empty as part of the fixed splash composition. `Esc` or
+`q` can still exit from the splash.
 
 ## Action inventory
 
@@ -41,14 +41,14 @@ exit from the splash.
 |---|---|
 | Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard, with Save/Discard/Cancel protection for a dirty Project. |
 | Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
-| MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect readiness/final peaks/clips/limiter reduction, and start/stop the callback-boundary final stereo recording. With it disabled: retain the passive CPU and legacy graph meter. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
+| MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect final peaks and active clip/reduction state, and start/stop the callback-boundary final stereo recording. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus disabled, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | While Play or Rec transport is active, the main rotary selects the previous/next column across page boundaries. While transport is paused it moves rows, as it does in Edit; keyboard Up/Down always moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. |
 | FT2 record | Stop Play/Edit and record quantized note-ons and release-based note-offs into the selected page/current pattern through its configured target. Captures join playback on the next loop; Edit note length does not affect REC. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; PLAY, RECORD, and EDIT switch mutually exclusive modes. |
 | FT2 edit | A released musical note writes immediately in the selected column; only overlapping held notes spread across subsequent columns. COL-/COL+ select the edit column. Note length, blank/skip, erase, note off, a 0–32-row ADD value, and PAGE remain available; PLAY, RECORD, and EDIT switch mutually exclusive modes. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
-| FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; explicit `READY`/`NOT READY`/`OUTPUT FAULT`; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
+| FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; silence while output is healthy and concise `OUTPUT FAULT`/retry text when it is not; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter on taller terminals; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
@@ -57,8 +57,8 @@ exit from the splash.
 | Pattern setup | Choose 3/4 or 4/4 and pattern length; CONFIRM performs NEW/CLEAR with that shape, KEEP performs the same operation with the current Pattern's shape, and Exit cancels. |
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
-| Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final path or failure; Exit to Home and panic. |
-| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter together at 40×13 using explicit compact labels and type-aware values. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
+| Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
+| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter together at 40×13 using explicit compact labels and type-aware values. The rack and parameter fields scroll around the current selection, so the selected effect, Insert row, and late cell fields remain visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
 | Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate performance inputs, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
@@ -77,8 +77,16 @@ Every working screen except Home reserves the final row. Its first cell is the
 transport state: steady green `>` for play, steady white `■` for stop, steady
 white `‖` for pause, or red `●` for record. Record alone pulses between normal
 and bright red; the circle never disappears. One space and the current useful
-status or fault may follow. Screen bodies do not add generic gray status lines,
-and the two controller rows sit immediately above the shared status row.
+status or fault may follow, leaving exactly 38 cells. Text is fitted by terminal
+cell width after reserving ownership, consequence, and recovery. Routine
+success lasts at most 1.5 seconds; a retained-work, rollback, pickup, or All
+Notes Off consequence lasts at most three seconds. Confirmations and faults
+remain until resolved, while active recording always names its owner and merges
+any recording fault. An idle transport cell with no message is the normal
+healthy state. Screen bodies do not add generic gray status lines, and the two
+controller rows sit immediately above the shared status row. Working-screen
+frame cleanup stops above that row; only the shared renderer clears and
+replaces it.
 
 Horizontal meters use the same circular LED language everywhere. Every cell is
 `●`: dark gray when unlit, one consistent green at a safe active level, then
@@ -293,11 +301,12 @@ source changes activate immediately. Selecting
 or confirming a MIDI output uses discovery only; it never opens an output as a
 probe and never transmits.
 
-The MIDI row describes the selected ALSA interface port as `ONLINE` or
-`OFFLINE`. The Device row describes only the configured profile and remains
-`UNVERIFIED` for a downstream DIN instrument. `AudioBox · ONLINE` plus
-`D-50 · UNVERIFIED` is therefore the truthful expected presentation; SHR never
-claims that the D-50 itself was detected.
+The MIDI row shows the selected stable ALSA interface identity with an
+`OFFLINE` or `AMBIG` suffix only when discovery cannot resolve it. A known
+Device profile shows its configured model without claiming live detection;
+raw external MIDI remains `UNVERIFIED`. `AudioBox` plus `D-50` is therefore
+the normal concise presentation, while SHR never claims that the D-50 itself
+was detected.
 
 ## FX editor and 40×13 text contract
 

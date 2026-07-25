@@ -75,10 +75,11 @@ IDs are safe, unique names and remain stable when the visible label changes.
 
 The preferred source is an exact JACK name owned by this machine. Blank means
 unassigned. It never means port zero, silence, the first discovered port, or a
-nearby name. Runtime discovery marks that exact preference `ready` or
-`missing`; it never rewrites it. An armed missing track blocks start. Disarm it
-or deliberately assign the correct discovered source. `REFRESH` resolves the
-same remembered name again when the interface returns.
+nearby name. Runtime discovery distinguishes resolved from missing without
+rewriting the preference; the native list labels only the exceptional
+`MISSING` state. An armed missing track blocks start. Disarm it or deliberately
+assign the correct discovered source. `REFRESH` resolves the same remembered
+name again when the interface returns.
 
 Old `capture.input=NAME|LEFT|RIGHT` configuration remains supported. When no
 new `capture.track` lines exist, the first legacy pair becomes one armed linked
@@ -87,8 +88,12 @@ continues to produce two synchronized mono stems in one take directory.
 
 ## The 40×13 workflow
 
-Open **AUDIO**. The list shows an arm dot, track number, label, and `ready` or
-`missing`. Only the selected track has a compact level readout.
+Open **AUDIO**. The selection-following five-row list shows an arm dot, track
+number, and label. Healthy routing is silent; an unresolved remembered source
+adds `MISSING`. The selected track has one compact source-and-level row. The
+last two body rows are reserved for recording integrity/recovery and the final
+take basename, so drops, xruns, incomplete publication, and writer faults
+cannot be displaced by a long track list.
 
 The body ends above the two controller rows. The final terminal row is the
 shared status row; its first cell is steady white `■` while stopped or a red

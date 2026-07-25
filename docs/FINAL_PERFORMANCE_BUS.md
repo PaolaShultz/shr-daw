@@ -34,8 +34,8 @@ new key is blank, the first legacy `capture.input` pair is reused so older
 runtime configuration remains useful. Both exact names must exist and be
 distinct. A similar-looking or adjacent port is never substituted. The owned
 loop client must be loaded and expose its exact configured output ports before
-the bus can activate. The MTR screen reports the three sources as READY or
-OFFLINE.
+the bus can activate. The MTR screen leaves healthy sources unadorned and marks
+only `MUTE` or `OFFLINE`.
 
 Before activation, the synth and loop each have their ordinary direct stereo
 routes. The graph publishes silence while all six source connections and the

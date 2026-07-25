@@ -24,10 +24,11 @@ hardware gain, or unrelated clients. With the owned graph active, the loop is
 also one of the three sources summed exactly once into the Performance Meter's
 post-limiter `FINAL OUT`; the raw loop meter remains loop-only.
 
-The state line explicitly says `READY`, `NOT READY`, or `OUTPUT FAULT`. A white
-position bar with a green playhead sits near the top whenever the attached WAV
-has a valid decoded region. That bar remains visible when output activation
-fails, separating successful decoding and region setup from the JACK fault.
+Healthy output has no state line. Missing or failed output gets a concise
+unavailable/fault line with `PLAY` recovery. A white position bar with a green
+playhead sits near the top whenever the attached WAV has a valid decoded
+region. That bar remains visible when output activation fails, separating
+successful decoding and region setup from the JACK fault.
 
 ### PLAY — import, remove, and transport
 

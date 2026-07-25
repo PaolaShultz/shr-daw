@@ -60,7 +60,8 @@ whose FT2 workspace exposes four musician-facing pages:
    1, and program 1;
 3. `Drums`, a four-track page using the configured external output, MIDI
    channel 10, program 1, and the existing percussion-note mapping;
-4. `Loop Player`, the Project-wide WAV source in an explicit `NOT READY` state.
+4. `Loop Player`, the Project-wide WAV source, initially shown as `No WAV
+   attached`.
 
 The Loop Player is a page in the musician-facing FT2 workflow, not four empty
 MIDI lanes. **SELECT** → **PAGE** opens it directly, so a new
@@ -390,7 +391,9 @@ memory to explicit synthv1 engine/instrument routes and are not rewritten until
 the musician explicitly saves the Project.
 
 If an empty Pattern's routing differs from the current new-Pattern template,
-**SAVE** asks: “Save this routing as the default for new patterns?” Confirming
+**SAVE** asks whether to make it the new routing default. The compact prompt
+states that new Patterns will use the route, that confirming saves the default,
+and that cancelling keeps the old default. Confirming
 queues the private template and writes it only after the Project save succeeds;
 cancelling saves the Project but keeps the old template. A pending, refused, or
 failed Project save leaves the template unchanged. A Pattern with notes never changes that template implicitly, and no

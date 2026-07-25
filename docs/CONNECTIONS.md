@@ -127,11 +127,12 @@ Named sound lists for supported external instruments come from optional
 metadata, not permission or detection. Instruments without one still expose
 the normal MIDI programs 1–128 (stored/sent as values 0–127).
 
-ALSA can report that an AudioBox MIDI output port is online, but a one-way DIN
+ALSA can resolve an AudioBox MIDI output port, but a one-way DIN
 output cannot report whether the downstream Roland D-50 is connected or
 powered. Routing therefore shows the interface availability and the configured
-device profile separately, for example `AudioBox · ONLINE` and
-`D-50 · UNVERIFIED`. It never says `D-50 connected`.
+device profile separately. A resolved `AudioBox` and configured `D-50` need no
+healthy suffix; an unresolved interface adds `OFFLINE` or `AMBIG`, while raw
+external MIDI adds `UNVERIFIED`. It never says `D-50 connected`.
 SHR-DAW does not probe downstream DIN hardware. Advanced users may construct
 arbitrary experimental channel/program chains behind one configured output.
 
