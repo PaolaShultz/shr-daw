@@ -9,8 +9,12 @@ use ratatui::{
 };
 use std::time::Duration;
 
-pub const MINIMUM_VISIBLE: Duration = Duration::from_secs(2);
+pub const MINIMUM_VISIBLE: Duration = Duration::from_secs(3);
 pub const INPUT_RESCAN_INTERVAL: Duration = Duration::from_millis(500);
+const INDICATOR_SWEEP: Duration = Duration::from_millis(2_500);
+const TITLE_STEP: Duration = Duration::from_millis(75);
+const INDICATOR_COUNT: usize = 7;
+const INDICATOR_WIDTH: usize = 4;
 
 pub const fn qualified_input_available(terminal_keyboard: bool, midi_input: bool) -> bool {
     terminal_keyboard || midi_input
@@ -66,15 +70,15 @@ fn thick_meter(label: char, width: u16, elapsed: Duration) -> Vec<Spans<'static>
     let bar_width = usize::from(width.saturating_sub(4)).max(1);
     let rms = animated_level(elapsed);
     let cells = performance_meter::audio_bar(bar_width, rms, performance_meter::AUDIO_FLOOR_DBFS);
-    (0..3)
+    (0..2)
         .map(|row| {
             let mut spans = vec![Span::styled(
-                if row == 1 {
+                if row == 0 {
                     format!("{label} [")
                 } else {
                     "  [".into()
                 },
-                Style::default().fg(Color::White).add_modifier(if row == 1 {
+                Style::default().fg(Color::White).add_modifier(if row == 0 {
                     Modifier::BOLD
                 } else {
                     Modifier::empty()
@@ -87,98 +91,160 @@ fn thick_meter(label: char, width: u16, elapsed: Duration) -> Vec<Spans<'static>
         .collect()
 }
 
-fn meter_area(area: Rect, y: u16) -> Rect {
-    Rect::new(
-        area.x.saturating_add(1),
-        area.y.saturating_add(y),
-        area.width.saturating_sub(2),
-        3,
+fn rows_from_bottom(area: Rect, highest_row: u16, height: u16) -> Option<Rect> {
+    if highest_row >= area.height || height == 0 {
+        return None;
+    }
+    Some(Rect::new(
+        area.x,
+        area.y + area.height - highest_row - 1,
+        area.width,
+        height.min(highest_row + 1),
+    ))
+}
+
+fn title(elapsed: Duration) -> Spans<'static> {
+    const TITLE: &str = "shr - daw";
+    const HIGHLIGHTS: [usize; 7] = [0, 1, 2, 4, 6, 7, 8];
+    let step = (elapsed.as_millis() / TITLE_STEP.as_millis()) as usize;
+    let highlighted = HIGHLIGHTS[step % HIGHLIGHTS.len()];
+    Spans::from(
+        TITLE
+            .chars()
+            .enumerate()
+            .map(|(index, character)| {
+                Span::styled(
+                    character.to_string(),
+                    Style::default()
+                        .fg(if index == highlighted {
+                            Color::LightCyan
+                        } else {
+                            Color::White
+                        })
+                        .add_modifier(Modifier::BOLD),
+                )
+            })
+            .collect::<Vec<_>>(),
     )
+}
+
+fn indicator_lit(elapsed: Duration, index: usize, ready: bool) -> bool {
+    let threshold_millis =
+        INDICATOR_SWEEP.as_millis() * (index + 1) as u128 / INDICATOR_COUNT as u128;
+    ready && elapsed.as_millis() >= threshold_millis
+}
+
+fn indicator_row(
+    width: u16,
+    elapsed: Duration,
+    input_available: bool,
+    controller_checked: bool,
+    build_badge: &str,
+) -> Spans<'static> {
+    let indicators = [
+        ("DEV", build_badge == "DEV"),
+        ("REL", build_badge == "REL"),
+        ("CFG", true),
+        ("SND", true),
+        ("TTY", true),
+        ("CTRL", controller_checked),
+        ("INPT", input_available),
+    ];
+    let content_width = INDICATOR_COUNT * INDICATOR_WIDTH + indicators.len().saturating_sub(1);
+    let left_padding = usize::from(width).saturating_sub(content_width) / 2;
+    let right_padding = usize::from(width)
+        .saturating_sub(content_width)
+        .saturating_sub(left_padding);
+    let black = Style::default().bg(Color::Black);
+    let mut spans = vec![Span::styled(" ".repeat(left_padding), black)];
+    for (index, (label, ready)) in indicators.into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled(" ", black));
+        }
+        let lit = indicator_lit(elapsed, index, ready);
+        spans.push(Span::styled(
+            format!("{label:<width$}", width = INDICATOR_WIDTH),
+            Style::default()
+                .fg(Color::Black)
+                .bg(if lit { Color::Green } else { Color::Red })
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans.push(Span::styled(" ".repeat(right_padding), black));
+    Spans::from(spans)
 }
 
 pub fn draw<B: Backend>(
     frame: &mut Frame<B>,
     elapsed: Duration,
     input_available: bool,
+    controller_checked: bool,
     expected_midi: Option<&str>,
     build_badge: &str,
 ) {
     let area = frame.size();
     frame.render_widget(Clear, area);
 
-    let compact = area.height < 14;
-    let title_y = if compact { 0 } else { 1 };
-    frame.render_widget(
-        Paragraph::new(format!("{build_badge} · SHR-DAW"))
-            .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        Rect::new(area.x, area.y.saturating_add(title_y), area.width, 1),
-    );
-
-    if !compact {
+    if let Some(title_area) = rows_from_bottom(area, 3, 1) {
         frame.render_widget(
-            Paragraph::new("STEREO VU · STARTUP")
-                .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::DarkGray)),
-            Rect::new(area.x, area.y.saturating_add(3), area.width, 1),
+            Paragraph::new(title(elapsed)).alignment(Alignment::Center),
+            title_area,
         );
     }
 
-    let left_y: u16 = if compact { 1 } else { 5 };
-    let right_y = left_y.saturating_add(4);
     let meter_width = area.width.saturating_sub(2);
-    frame.render_widget(
-        Paragraph::new(thick_meter('L', meter_width, elapsed)),
-        meter_area(area, left_y),
-    );
-    frame.render_widget(
-        Paragraph::new(thick_meter('R', meter_width, elapsed)),
-        meter_area(area, right_y),
-    );
+    if let Some(mut meter) = rows_from_bottom(area, 10, 2) {
+        meter.x = meter.x.saturating_add(1);
+        meter.width = meter.width.saturating_sub(2);
+        frame.render_widget(
+            Paragraph::new(thick_meter('L', meter_width, elapsed)),
+            meter,
+        );
+    }
+    if let Some(mut meter) = rows_from_bottom(area, 7, 2) {
+        meter.x = meter.x.saturating_add(1);
+        meter.width = meter.width.saturating_sub(2);
+        frame.render_widget(
+            Paragraph::new(thick_meter('R', meter_width, elapsed)),
+            meter,
+        );
+    }
 
-    let status = if input_available {
-        "LOADING"
-    } else {
-        "CONNECT KEYBOARD OR MIDI INPUT"
-    };
-    let status_y = if compact {
-        area.height.saturating_sub(1)
-    } else {
-        right_y.saturating_add(5)
-    };
-    frame.render_widget(
-        Paragraph::new(status).alignment(Alignment::Center).style(
-            Style::default()
-                .fg(if input_available {
-                    Color::Gray
-                } else {
-                    Color::LightYellow
-                })
-                .add_modifier(if input_available {
-                    Modifier::empty()
-                } else {
-                    Modifier::BOLD
-                }),
-        ),
-        Rect::new(area.x, area.y.saturating_add(status_y), area.width, 1),
-    );
+    if let Some(indicator_area) = rows_from_bottom(area, 0, 1) {
+        frame.render_widget(
+            Paragraph::new(indicator_row(
+                area.width,
+                elapsed,
+                input_available,
+                controller_checked,
+                build_badge,
+            )),
+            indicator_area,
+        );
+    }
 
-    if !compact && !input_available {
-        if let Some(expected) = expected_midi.filter(|name| !name.trim().is_empty()) {
+    if elapsed >= MINIMUM_VISIBLE && !input_available {
+        if let Some(recovery_area) = rows_from_bottom(area, 2, 1) {
+            frame.render_widget(
+                Paragraph::new("CONNECT KEYBOARD OR MIDI INPUT")
+                    .alignment(Alignment::Center)
+                    .style(
+                        Style::default()
+                            .fg(Color::LightYellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                recovery_area,
+            );
+        }
+        if let (Some(expected), Some(expected_area)) = (
+            expected_midi.filter(|name| !name.trim().is_empty()),
+            rows_from_bottom(area, 1, 1),
+        ) {
             frame.render_widget(
                 Paragraph::new(format!("WAITING FOR {expected}"))
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(Color::DarkGray)),
-                Rect::new(
-                    area.x.saturating_add(1),
-                    area.y.saturating_add(status_y.saturating_add(2)),
-                    area.width.saturating_sub(2),
-                    1,
-                ),
+                expected_area,
             );
         }
     }
@@ -189,17 +255,22 @@ mod tests {
     use super::*;
     use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
 
-    fn render(input_available: bool) -> Buffer {
+    fn render(elapsed: Duration, input_available: bool) -> Buffer {
+        render_build(elapsed, input_available, "DEV")
+    }
+
+    fn render_build(elapsed: Duration, input_available: bool, build_badge: &str) -> Buffer {
         let backend = TestBackend::new(40, 13);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
                 draw(
                     frame,
-                    Duration::from_millis(510),
+                    elapsed,
                     input_available,
+                    true,
                     Some("Stage Keyboard"),
-                    "DEV",
+                    build_badge,
                 )
             })
             .unwrap();
@@ -231,15 +302,14 @@ mod tests {
     }
 
     #[test]
-    fn splash_renders_three_circular_led_rows_per_channel_at_40x13() {
-        let buffer = render(true);
+    fn splash_renders_requested_bottom_up_rows_at_40x13() {
+        let buffer = render(Duration::from_millis(2_750), true);
         let output = text(&buffer);
-        assert!(output.contains("DEV · SHR-DAW"));
+        assert!(output.contains("shr - daw"));
         assert!(output.contains("L ["));
         assert!(output.contains("R ["));
-        assert!(output.contains("LOADING"));
 
-        for rows in [1..4, 5..8] {
+        for rows in [2..4, 5..7] {
             for y in rows {
                 let symbols = (0..40)
                     .map(|x| buffer.get(x, y).symbol.as_str())
@@ -250,17 +320,60 @@ mod tests {
             }
         }
         for x in 4..38 {
-            assert_eq!(buffer.get(x, 1).symbol, buffer.get(x, 5).symbol);
-            assert_eq!(buffer.get(x, 1).fg, buffer.get(x, 5).fg);
+            assert_eq!(buffer.get(x, 2).symbol, buffer.get(x, 5).symbol);
+            assert_eq!(buffer.get(x, 2).fg, buffer.get(x, 5).fg);
+        }
+        for y in [0, 1, 4, 7, 8, 10, 11] {
+            assert!((0..40).all(|x| buffer.get(x, y).symbol == " "));
         }
     }
 
     #[test]
-    fn splash_names_missing_input_only_in_waiting_state() {
-        let waiting = text(&render(false));
-        assert!(waiting.contains("CONNECT KEYBOARD OR MIDI INPUT"));
+    fn title_animates_one_bright_glyph_at_a_time() {
+        let first = render(Duration::ZERO, true);
+        let next = render(TITLE_STEP, true);
+        let title_cells = |buffer: &Buffer| {
+            (15..24)
+                .filter(|x| buffer.get(*x, 9).fg == Color::LightCyan)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(title_cells(&first), vec![15]);
+        assert_eq!(title_cells(&next), vec![16]);
+    }
 
-        let loading = text(&render(true));
+    #[test]
+    fn status_boxes_are_exactly_spaced_and_finish_green() {
+        let off = render(Duration::ZERO, true);
+        let debug = render(INDICATOR_SWEEP, true);
+        let release = render_build(INDICATOR_SWEEP, true, "REL");
+        let red = (0..40).filter(|x| off.get(*x, 12).bg == Color::Red).count();
+        let green = (0..40)
+            .filter(|x| debug.get(*x, 12).bg == Color::Green)
+            .count();
+        assert_eq!(red, 28);
+        assert_eq!(green, 24);
+        assert!((3..7).all(|x| debug.get(x, 12).bg == Color::Green));
+        assert!((8..12).all(|x| debug.get(x, 12).bg == Color::Red));
+        assert!((3..7).all(|x| release.get(x, 12).bg == Color::Red));
+        assert!((8..12).all(|x| release.get(x, 12).bg == Color::Green));
+        for x in [0, 1, 2, 7, 12, 17, 22, 27, 32, 37, 38, 39] {
+            assert_eq!(debug.get(x, 12).bg, Color::Black);
+        }
+        let labels = (0..40)
+            .map(|x| debug.get(x, 12).symbol.as_str())
+            .collect::<String>();
+        assert_eq!(labels, "   DEV  REL  CFG  SND  TTY  CTRL INPT   ");
+    }
+
+    #[test]
+    fn splash_names_missing_input_only_after_the_normal_sweep() {
+        let waiting_buffer = render(MINIMUM_VISIBLE, false);
+        let waiting = text(&waiting_buffer);
+        assert!(waiting.contains("CONNECT KEYBOARD OR MIDI INPUT"));
+        assert!(waiting.contains("WAITING FOR Stage Keyboard"));
+
+        let loading = text(&render(MINIMUM_VISIBLE, true));
         assert!(!loading.contains("WAITING FOR"));
+        assert!((33..37).all(|x| waiting_buffer.get(x, 12).bg == Color::Red));
     }
 }

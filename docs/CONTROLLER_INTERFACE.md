@@ -7,20 +7,32 @@ implemented.
 
 ## Startup splash
 
-Startup first shows a 40×13 old-school stereo LED animation with three
-identical horizontal `●` rows for each of the `L` and `R` channels. Unlit LEDs
-are dark gray; lit LEDs use one green below −12 dBFS, yellow from −12 through
-−3 dBFS, and red above −3 dBFS. It does not use square bars, colour inactive
-cells by their scale position, or introduce shade gradients. The animation is
-decorative; L and R use the same simple loading movement, and it does not start
-audio, playback, or MIDI transmission.
+Startup first shows a 40×13 old-school stereo LED animation. Its bottom-aligned
+11-row composition has two identical horizontal `●` rows for each of the `L`
+and `R` channels, with one empty row between channels; two empty rows separate
+the meters from a lowercase `shr - daw` wordmark, where one bright light-blue
+glyph moves quickly across otherwise bright-white text. Two further empty rows
+separate the wordmark from the final indicator row. Unlit meter LEDs are dark
+gray; lit LEDs use one green below −12 dBFS, yellow from −12 through −3 dBFS,
+and red above −3 dBFS. The animation is decorative and does not start audio,
+playback, or MIDI transmission.
 
-The splash remains visible for at least 2 seconds. A terminal computer keyboard
-is a fully qualified input device, equal to an available configured controller
-or performance MIDI input; it is not described as a fallback. Only when none
-of those inputs is available does the splash remain on `CONNECT KEYBOARD OR
-MIDI INPUT` and rescan the configured MIDI inputs. `Esc` or `q` can still exit
-from the splash.
+The final row contains seven identical four-cell, black-separated indicators:
+`DEV`, `REL`, `CFG`, `SND`, `TTY`, `CTRL`, and `INPT`. At 40 columns their 28
+coloured cells, six one-cell black separators, and two three-cell outside
+margins fill the row exactly. They sweep from red to the same green as the
+meters over 2.5 seconds, then hold complete before the three-second minimum
+ends. `DEV` and `REL` are exclusive: the actual build mode turns green and the
+other remains red. Every startup phase turns green only after its corresponding
+fact is true; these are loader phases, not claims that JACK or all synth engines
+are running.
+
+A terminal computer keyboard is a fully qualified input device, equal to an
+available configured controller or performance MIDI input; it is not described
+as a fallback. Only when none of those inputs is available does the splash
+remain open, show `CONNECT KEYBOARD OR MIDI INPUT` in the normally empty
+recovery rows, and rescan the configured MIDI inputs. `Esc` or `q` can still
+exit from the splash.
 
 ## Action inventory
 

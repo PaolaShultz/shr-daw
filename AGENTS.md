@@ -112,7 +112,7 @@ All horizontal LED meters use the existing one-cell `●` glyph, never square ba
 glyphs. Unlit LEDs are dark gray. Lit safe LEDs use one consistent green;
 yellow and red appear only at their documented active thresholds. A held peak
 may use a brighter version of the same threshold colour, but not a different
-shape. The startup splash uses three identical circular-LED rows per channel.
+shape. The startup splash uses two identical circular-LED rows per channel.
 
 Master overlays preserve a one-cell reveal on the left, right, top, and bottom.
 Their launcher stays inside the overlay border; the bottom reveal remains the

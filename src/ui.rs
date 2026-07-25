@@ -8767,6 +8767,7 @@ fn app_loop(
             frame,
             splash_started.elapsed(),
             terminal_keyboard,
+            false,
             None,
             BUILD_BADGE,
         )
@@ -8793,6 +8794,7 @@ fn app_loop(
                 frame,
                 elapsed,
                 input_available,
+                true,
                 expected.as_deref(),
                 BUILD_BADGE,
             )
