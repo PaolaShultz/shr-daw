@@ -844,10 +844,17 @@ impl Pattern {
                     if !page.lanes[lane].enabled {
                         continue;
                     }
-                    // A portable page intentionally defers its channels to the
-                    // loading machine, so cross-page conflicts cannot be
-                    // judged from the Project alone.
-                    if page.target == PageTarget::Default {
+                    // Portable pages defer setup to the loading machine.
+                    // Software routes take their master instrument from the
+                    // route itself, so the stored external-MIDI program fields
+                    // do not constrain pages that share that route/channel.
+                    if matches!(
+                        page.target,
+                        PageTarget::Default
+                            | PageTarget::ActiveInstrument
+                            | PageTarget::Synthv1(_)
+                            | PageTarget::Software(_)
+                    ) {
                         continue;
                     }
                     let key = (page.target.clone(), column.channel);
@@ -893,6 +900,20 @@ impl Pattern {
                 bail!(
                     "a page may contain at most {MAX_SETUP_MESSAGES_PER_PAGE} setup messages of 1..=256 bytes"
                 );
+            }
+            if matches!(
+                page.target,
+                PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_)
+            ) && page.setup.iter().any(|message| match message.as_slice() {
+                [status, ..] if status & 0xf0 == 0xc0 => true,
+                [status, controller, ..]
+                    if status & 0xf0 == 0xb0 && matches!(controller, 0 | 32) =>
+                {
+                    true
+                }
+                _ => false,
+            }) {
+                bail!("software page setup cannot replace its route-owned bank/program selection");
             }
         }
         if self.rows.is_empty() || self.rows.len() > 256 {
@@ -2102,6 +2123,14 @@ impl Drop for Sequencer {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum NoteOwner {
+    Lane(usize),
+    Live,
+}
+
+type NoteOwners = BTreeMap<(PageTarget, u8, u8), BTreeSet<NoteOwner>>;
+
 fn run_transport(
     rx: mpsc::Receiver<Transport>,
     status: Arc<Mutex<SequencerStatus>>,
@@ -2116,8 +2145,8 @@ fn run_transport(
     let mut started = Instant::now();
     let mut muted = BTreeSet::new();
     let mut active_notes: BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)> = BTreeMap::new();
-    let mut note_owners: BTreeMap<(PageTarget, u8, u8), BTreeSet<usize>> = BTreeMap::new();
-    let mut thru_notes: BTreeMap<(PageTarget, u8), BTreeSet<u8>> = BTreeMap::new();
+    let mut note_owners: NoteOwners = BTreeMap::new();
+    let mut live_notes = BTreeSet::new();
     let mut transport_targets = BTreeSet::new();
     let mut transport_tempo = config.default_tempo;
     let mut loop_origin_beat = 0.0;
@@ -2129,9 +2158,9 @@ fn run_transport(
             .min(Duration::from_millis(50));
         match rx.recv_timeout(timeout) {
             Ok(Transport::Play(generation, song, order, row)) => {
-                cleanup_lanes(&mut outputs, &mut active_notes);
-                note_owners.clear();
-                cleanup_thru(&mut outputs, &mut thru_notes);
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                active_notes.clear();
+                live_notes.clear();
                 match playback_schedules(&song, &config, order, row) {
                     Ok((first, repeat)) => {
                         messages = first;
@@ -2175,6 +2204,7 @@ fn run_transport(
                 muted.clear();
                 active_notes.clear();
                 note_owners.clear();
+                live_notes.clear();
                 if config.send_transport {
                     for target in &transport_targets {
                         let _ = outputs.send(target, &[0xfa]);
@@ -2213,9 +2243,9 @@ fn run_transport(
                 messages.clear();
                 repeat_messages.clear();
                 index = 0;
-                cleanup_lanes(&mut outputs, &mut active_notes);
-                note_owners.clear();
-                cleanup_thru(&mut outputs, &mut thru_notes);
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                active_notes.clear();
+                live_notes.clear();
                 if config.send_transport {
                     for target in &transport_targets {
                         let _ = outputs.send(target, &[0xfc]);
@@ -2232,8 +2262,14 @@ fn run_transport(
                     muted.insert(lane);
                     if let Some((target, channel, notes)) = active_notes.remove(&lane) {
                         for note in notes {
-                            if release_note_owner(&mut note_owners, lane, &target, channel, note) {
-                                let _ = outputs.send(&target, &[0x80 | channel, note, 0]);
+                            if release_note_owner(
+                                &mut note_owners,
+                                NoteOwner::Lane(lane),
+                                &target,
+                                channel,
+                                note,
+                            ) {
+                                outputs.send_cleanup(&target, &[0x80 | channel, note, 0]);
                             }
                         }
                     }
@@ -2242,33 +2278,56 @@ fn run_transport(
                 }
             }
             Ok(Transport::Thru(target, message)) => {
-                if let Err(error) = outputs.send(&target, &message) {
-                    if let Ok(mut s) = status.lock() {
-                        s.available = false;
-                        s.error = Some(error);
-                    }
-                } else if let [status, note, velocity, ..] = message.as_slice() {
+                let mut suppress = false;
+                if let [status, note, velocity, ..] = message.as_slice() {
                     let channel = status & 0x0f;
+                    let key = (target.clone(), channel, *note);
                     match status & 0xf0 {
                         0x90 if *velocity > 0 => {
-                            thru_notes
-                                .entry((target.clone(), channel))
-                                .or_default()
-                                .insert(*note);
+                            suppress = !claim_note_owner(
+                                &mut note_owners,
+                                NoteOwner::Live,
+                                &target,
+                                channel,
+                                *note,
+                            );
+                            live_notes.insert(key);
                         }
                         0x80 | 0x90 => {
-                            if let Some(notes) = thru_notes.get_mut(&(target.clone(), channel)) {
-                                notes.remove(note);
-                            }
+                            suppress = !release_note_owner(
+                                &mut note_owners,
+                                NoteOwner::Live,
+                                &target,
+                                channel,
+                                *note,
+                            );
+                            live_notes.remove(&key);
                         }
                         _ => {}
                     }
                 }
+                if !suppress {
+                    if let Err(error) = outputs.send(&target, &message) {
+                        if let Ok(mut s) = status.lock() {
+                            s.available = false;
+                            s.error = Some(error);
+                        }
+                    }
+                }
             }
             Ok(Transport::CancelThru(target, channel)) => {
-                if let Some(notes) = thru_notes.remove(&(target.clone(), channel)) {
-                    for note in notes {
-                        let _ = outputs.send(&target, &[0x80 | channel, note, 0]);
+                let matching = live_notes
+                    .iter()
+                    .filter(|(candidate, candidate_channel, _)| {
+                        candidate == &target && *candidate_channel == channel
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                for (_, _, note) in matching {
+                    live_notes.remove(&(target.clone(), channel, note));
+                    if release_note_owner(&mut note_owners, NoteOwner::Live, &target, channel, note)
+                    {
+                        outputs.send_cleanup(&target, &[0x80 | channel, note, 0]);
                     }
                 }
             }
@@ -2289,9 +2348,9 @@ fn run_transport(
             }
             Ok(Transport::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 clock.stop();
-                cleanup_lanes(&mut outputs, &mut active_notes);
-                note_owners.clear();
-                cleanup_thru(&mut outputs, &mut thru_notes);
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                active_notes.clear();
+                live_notes.clear();
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -2312,7 +2371,7 @@ fn run_transport(
                 }
             }
             let muted_message = message.lane.is_some_and(|lane| muted.contains(&lane));
-            let mut shared_note_off = false;
+            let mut owned_note_suppressed = false;
             if !muted_message {
                 if let (Some(lane), Some(target), [midi_status, note, ..]) = (
                     message.lane,
@@ -2322,20 +2381,28 @@ fn run_transport(
                     let channel = midi_status & 0x0f;
                     match midi_status & 0xf0 {
                         0x90 if message.bytes.get(2).copied().unwrap_or(0) > 0 => {
-                            note_owners
-                                .entry((target.clone(), channel, *note))
-                                .or_default()
-                                .insert(lane);
+                            owned_note_suppressed = !claim_note_owner(
+                                &mut note_owners,
+                                NoteOwner::Lane(lane),
+                                target,
+                                channel,
+                                *note,
+                            );
                         }
                         0x80 | 0x90 => {
-                            shared_note_off =
-                                !release_note_owner(&mut note_owners, lane, target, channel, *note);
+                            owned_note_suppressed = !release_note_owner(
+                                &mut note_owners,
+                                NoteOwner::Lane(lane),
+                                target,
+                                channel,
+                                *note,
+                            );
                         }
                         _ => {}
                     }
                 }
             }
-            let send_error = if message.bytes.is_empty() || muted_message || shared_note_off {
+            let send_error = if message.bytes.is_empty() || muted_message || owned_note_suppressed {
                 None
             } else {
                 message
@@ -2367,8 +2434,9 @@ fn run_transport(
             index += 1;
         }
         if !messages.is_empty() && index == messages.len() {
-            cleanup_lanes(&mut outputs, &mut active_notes);
-            note_owners.clear();
+            cleanup_owned_notes(&mut outputs, &mut note_owners);
+            active_notes.clear();
+            live_notes.clear();
             if !repeat_messages.is_empty() {
                 messages = std::mem::take(&mut repeat_messages);
             }
@@ -2477,6 +2545,13 @@ impl DestinationPool {
         result
     }
 
+    fn send_cleanup(&mut self, target: &PageTarget, bytes: &[u8]) {
+        if self.send(target, bytes).is_err() {
+            self.refresh(target);
+            let _ = self.send(target, bytes);
+        }
+    }
+
     fn error(&self, target: &PageTarget) -> Option<String> {
         self.destinations
             .get(target)
@@ -2525,38 +2600,43 @@ fn update_target_status(
     }
 }
 
-fn cleanup_lanes(
-    outputs: &mut DestinationPool,
-    active: &mut BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)>,
-) {
-    for (target, message) in planned_lane_cleanup(&std::mem::take(active)) {
-        let _ = outputs.send(&target, &message);
+fn cleanup_owned_notes(outputs: &mut DestinationPool, owners: &mut NoteOwners) {
+    for (target, message) in planned_note_cleanup(owners) {
+        outputs.send_cleanup(&target, &message);
     }
+    owners.clear();
 }
 
-fn planned_lane_cleanup(
-    active: &BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)>,
-) -> Vec<(PageTarget, Vec<u8>)> {
-    active
-        .values()
-        .flat_map(|(target, channel, notes)| {
-            notes
-                .iter()
-                .map(move |note| (target.clone(), vec![0x80 | channel, *note, 0]))
-        })
+fn planned_note_cleanup(owners: &NoteOwners) -> Vec<(PageTarget, Vec<u8>)> {
+    owners
+        .keys()
+        .map(|(target, channel, note)| (target.clone(), vec![0x80 | channel, *note, 0]))
         .collect()
 }
 
+fn claim_note_owner(
+    owners: &mut NoteOwners,
+    owner: NoteOwner,
+    target: &PageTarget,
+    channel: u8,
+    note: u8,
+) -> bool {
+    let lanes = owners.entry((target.clone(), channel, note)).or_default();
+    let first = lanes.is_empty();
+    lanes.insert(owner);
+    first
+}
+
 fn release_note_owner(
-    owners: &mut BTreeMap<(PageTarget, u8, u8), BTreeSet<usize>>,
-    lane: usize,
+    owners: &mut NoteOwners,
+    owner: NoteOwner,
     target: &PageTarget,
     channel: u8,
     note: u8,
 ) -> bool {
     let key = (target.clone(), channel, note);
     let last = if let Some(lanes) = owners.get_mut(&key) {
-        lanes.remove(&lane);
+        lanes.remove(&owner);
         lanes.is_empty()
     } else {
         true
@@ -2565,17 +2645,6 @@ fn release_note_owner(
         owners.remove(&key);
     }
     last
-}
-
-fn cleanup_thru(
-    outputs: &mut DestinationPool,
-    active: &mut BTreeMap<(PageTarget, u8), BTreeSet<u8>>,
-) {
-    for ((target, channel), notes) in std::mem::take(active) {
-        for note in notes {
-            let _ = outputs.send(&target, &[0x80 | channel, note, 0]);
-        }
-    }
 }
 
 fn rescale_schedule(
@@ -4007,17 +4076,26 @@ mod tests {
 
     #[test]
     fn cleanup_is_owned_by_lane_destination_and_channel() {
-        let active = BTreeMap::from([
-            (0, (PageTarget::Midi("A".into()), 0, BTreeSet::from([60]))),
-            (1, (PageTarget::Midi("A".into()), 1, BTreeSet::from([61]))),
-            (2, (PageTarget::ActiveInstrument, 0, BTreeSet::from([62]))),
+        let owners = BTreeMap::from([
+            (
+                (PageTarget::Midi("A".into()), 0, 60),
+                BTreeSet::from([NoteOwner::Lane(0)]),
+            ),
+            (
+                (PageTarget::Midi("A".into()), 1, 61),
+                BTreeSet::from([NoteOwner::Lane(1)]),
+            ),
+            (
+                (PageTarget::ActiveInstrument, 0, 62),
+                BTreeSet::from([NoteOwner::Lane(2)]),
+            ),
         ]);
         assert_eq!(
-            planned_lane_cleanup(&active),
+            planned_note_cleanup(&owners),
             vec![
+                (PageTarget::ActiveInstrument, vec![0x80, 62, 0]),
                 (PageTarget::Midi("A".into()), vec![0x80, 60, 0]),
                 (PageTarget::Midi("A".into()), vec![0x81, 61, 0]),
-                (PageTarget::ActiveInstrument, vec![0x80, 62, 0]),
             ]
         );
     }
@@ -4026,11 +4104,191 @@ mod tests {
     fn shared_note_is_released_only_after_its_last_lane_owner() {
         let target = PageTarget::Midi("shared".into());
         let key = (target.clone(), 3, 60);
-        let mut owners = BTreeMap::from([(key.clone(), BTreeSet::from([0, 1]))]);
-        assert!(!release_note_owner(&mut owners, 0, &target, 3, 60));
-        assert_eq!(owners[&key], BTreeSet::from([1]));
-        assert!(release_note_owner(&mut owners, 1, &target, 3, 60));
+        let mut owners = BTreeMap::from([(
+            key.clone(),
+            BTreeSet::from([NoteOwner::Lane(0), NoteOwner::Lane(4)]),
+        )]);
+        assert!(!release_note_owner(
+            &mut owners,
+            NoteOwner::Lane(0),
+            &target,
+            3,
+            60
+        ));
+        assert_eq!(owners[&key], BTreeSet::from([NoteOwner::Lane(4)]));
+        assert!(release_note_owner(
+            &mut owners,
+            NoteOwner::Lane(4),
+            &target,
+            3,
+            60
+        ));
         assert!(!owners.contains_key(&key));
+    }
+
+    #[test]
+    fn two_shared_four_lane_pages_schedule_eight_independent_note_ons() {
+        let route = SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf0:band.sf2:0:32".into(),
+        };
+        let mut song = Song::new(&config());
+        pages_mut(&mut song)[0].target = PageTarget::Software(route.clone());
+        for column in &mut pages_mut(&mut song)[0].columns {
+            column.channel = 0;
+        }
+        let second_page = song
+            .add_page(PageTarget::Software(route.clone()), 0)
+            .unwrap();
+        let first_lane = 0;
+        let second_lane = second_page * LANES_PER_PAGE;
+        let row = &mut song.patterns.get_mut(&0).unwrap().rows[0];
+        for lane in 0..LANES_PER_PAGE {
+            row[first_lane + lane].note = Note::On(36 + lane as u8);
+            row[second_lane + lane].note = Note::On(48 + lane as u8);
+        }
+
+        let note_ons = schedule(&song, &config(), 0, 0)
+            .unwrap()
+            .into_iter()
+            .filter(|message| {
+                message.target == Some(PageTarget::Software(route.clone()))
+                    && matches!(message.bytes.as_slice(), [status, _, velocity]
+                        if status & 0xf0 == 0x90 && *velocity > 0)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(note_ons.len(), 8);
+        assert_eq!(
+            note_ons
+                .iter()
+                .filter_map(|message| message.lane)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            8
+        );
+    }
+
+    #[test]
+    fn shared_software_route_and_channel_round_trip_on_repeated_pages() {
+        let route = SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf1:orchestra.sf3:0:89".into(),
+        };
+        let mut song = Song::new(&config());
+        pages_mut(&mut song)[0].target = PageTarget::Software(route.clone());
+        pages_mut(&mut song)[0].column_mut(0).channel = 2;
+        let repeated = song
+            .add_page(PageTarget::Software(route.clone()), 2)
+            .unwrap();
+        pages_mut(&mut song)[repeated].column_mut(1).channel = 2;
+
+        let decoded = decode(&encode(&song).unwrap()).unwrap();
+        assert_eq!(
+            pages(&decoded)[0].target,
+            PageTarget::Software(route.clone())
+        );
+        assert_eq!(
+            pages(&decoded)[repeated].target,
+            PageTarget::Software(route)
+        );
+        assert_eq!(pages(&decoded)[0].column(0).channel, 2);
+        assert_eq!(pages(&decoded)[repeated].column(1).channel, 2);
+    }
+
+    #[test]
+    fn muting_one_shared_note_owner_keeps_the_other_page_sounding() {
+        let target = PageTarget::Software(SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf0:band.sf2:0:32".into(),
+        });
+        let mut owners = NoteOwners::new();
+        assert!(claim_note_owner(
+            &mut owners,
+            NoteOwner::Lane(0),
+            &target,
+            0,
+            60
+        ));
+        assert!(!claim_note_owner(
+            &mut owners,
+            NoteOwner::Lane(4),
+            &target,
+            0,
+            60
+        ));
+        assert!(!release_note_owner(
+            &mut owners,
+            NoteOwner::Lane(0),
+            &target,
+            0,
+            60
+        ));
+        assert_eq!(
+            owners[&(target, 0, 60)],
+            BTreeSet::from([NoteOwner::Lane(4)])
+        );
+    }
+
+    #[test]
+    fn audition_release_does_not_cut_a_scheduled_owner() {
+        let target = PageTarget::Software(SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf0:band.sf2:0:32".into(),
+        });
+        let mut owners = NoteOwners::new();
+        assert!(claim_note_owner(
+            &mut owners,
+            NoteOwner::Lane(4),
+            &target,
+            0,
+            60
+        ));
+        assert!(!claim_note_owner(
+            &mut owners,
+            NoteOwner::Live,
+            &target,
+            0,
+            60
+        ));
+        assert!(!release_note_owner(
+            &mut owners,
+            NoteOwner::Live,
+            &target,
+            0,
+            60
+        ));
+        assert_eq!(
+            owners[&(target, 0, 60)],
+            BTreeSet::from([NoteOwner::Lane(4)])
+        );
+    }
+
+    #[test]
+    fn cleanup_deduplicates_shared_notes_and_covers_every_used_channel() {
+        let target = PageTarget::Software(SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf0:band.sf2:0:32".into(),
+        });
+        let owners = NoteOwners::from([
+            (
+                (target.clone(), 0, 60),
+                BTreeSet::from([NoteOwner::Lane(0), NoteOwner::Lane(4)]),
+            ),
+            (
+                (target.clone(), 2, 67),
+                BTreeSet::from([NoteOwner::Lane(8)]),
+            ),
+            ((target.clone(), 9, 36), BTreeSet::from([NoteOwner::Live])),
+        ]);
+        assert_eq!(
+            planned_note_cleanup(&owners),
+            [
+                (target.clone(), vec![0x80, 60, 0]),
+                (target.clone(), vec![0x82, 67, 0]),
+                (target, vec![0x89, 36, 0]),
+            ]
+        );
+        assert_eq!(panic_messages([0, 2, 9]).len(), 9);
     }
 
     #[test]
@@ -4069,6 +4327,25 @@ mod tests {
     }
 
     #[test]
+    fn software_route_owns_bank_and_program_while_other_channel_setup_remains_valid() {
+        let mut song = Song::new(&config());
+        pages_mut(&mut song)[0].target = PageTarget::Software(SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf0:band.sf2:0:32".into(),
+        });
+        pages_mut(&mut song)[0].setup = vec![vec![0xb0, 7, 100], vec![0xb0, 10, 64]];
+        assert!(encode(&song).is_ok());
+
+        for selection in [vec![0xc0, 4], vec![0xb0, 0, 1], vec![0xb0, 32, 2]] {
+            pages_mut(&mut song)[0].setup = vec![selection];
+            assert!(encode(&song)
+                .unwrap_err()
+                .to_string()
+                .contains("route-owned bank/program"));
+        }
+    }
+
+    #[test]
     fn schedule_rejects_out_of_range_start_without_zero_time_loop() {
         let song = Song::new(&config());
         assert!(schedule(&song, &config(), song.order.len(), 0).is_err());
@@ -4096,13 +4373,12 @@ mod tests {
 
     #[test]
     fn stopped_lane_cleanup_follows_a_later_pattern_target() {
-        let first = PageTarget::Midi("first".into());
         let second = PageTarget::Midi("second".into());
-        let mut active = BTreeMap::new();
-        update_active_notes(&mut active, Some(0), Some(&first), &[0x90, 60, 100]);
-        update_active_notes(&mut active, Some(0), Some(&first), &[0x80, 60, 0]);
-        update_active_notes(&mut active, Some(0), Some(&second), &[0x95, 62, 100]);
-        assert_eq!(planned_lane_cleanup(&active), [(second, vec![0x85, 62, 0])]);
+        let owners = BTreeMap::from([(
+            (second.clone(), 5, 62),
+            BTreeSet::from([NoteOwner::Lane(0)]),
+        )]);
+        assert_eq!(planned_note_cleanup(&owners), [(second, vec![0x85, 62, 0])]);
     }
 
     #[test]

@@ -72,15 +72,18 @@ own configured FluidSynth when selected.
 ## Software instruments
 
 SHR-DAW supports synthv1, Yoshimi, and FluidSynth as separately installed
-programs. Only one SHR-DAW-managed software synth runs at a time. The
-standalone Software Synth workspace keeps its sound after leaving Presets or
-Playback. FT2 uses the engine/instrument pair saved by its current Pattern; if
-the Project is genuinely new, empty, unsaved, and otherwise still at its
-defaults, entering FT2 assigns the current standalone selection to page 1 and
-transfers ownership without restarting it. With no standalone instrument, FT2
-loads the first available synthv1 preset. A different explicit FT2 route
-replaces the standalone engine when needed. Global panic,
-replacement, and application shutdown stop only a process SHR-DAW owns.
+programs. Only one SHR-DAW-managed software-engine process runs at a time.
+synthv1 and Yoshimi provide one current preset; one FluidSynth process may play
+several SoundFont presets on different MIDI channels while retaining one
+stereo JACK source. The standalone Software Synth workspace keeps its sound
+after leaving Presets or Playback. FT2 uses the engine/instrument pair saved by
+its current Pattern; if the Project is genuinely new, empty, unsaved, and
+otherwise still at its defaults, entering FT2 assigns the current standalone
+selection to page 1 and transfers ownership without restarting it. With no
+standalone instrument, FT2 loads the first available synthv1 preset. A
+different explicit FT2 backend replaces the standalone engine when needed.
+Global panic, replacement, and application shutdown stop only a process
+SHR-DAW owns.
 
 Panic sends sustain off, All Notes Off, and All Sound Off on all 16 channels.
 For synthv1 0.9.29 those 48 messages are spaced by 100 microseconds because

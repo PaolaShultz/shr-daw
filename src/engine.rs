@@ -9,6 +9,7 @@ use crate::pads::{EncoderAction, PadAction, PadConfig};
 use crate::preset::{self, BackendKind, Preset, PresetId};
 use anyhow::{anyhow, bail, Context, Result};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
@@ -46,11 +47,18 @@ pub struct Engine {
     output: SharedOutput,
     control_routes: Vec<(u8, u8)>,
     fluid_soundfonts: Vec<(PathBuf, u16)>,
+    fluid_selections: BTreeMap<u8, (u16, u8)>,
     audio_graph: Option<OwnedAudioGraph>,
     final_recording_last: crate::audio_recorder::FinalMixRecorderStatus,
     audio_graph_fallback: Option<String>,
     audio_route_notice: Option<String>,
     midi_lifecycle: Option<MidiLifecycle>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FluidSynthPart {
+    pub preset: Preset,
+    pub channel: u8,
 }
 
 pub type SharedOutput = Arc<Mutex<Option<MidiOutputConnection>>>;
@@ -644,6 +652,7 @@ impl Engine {
             output,
             control_routes: Vec::new(),
             fluid_soundfonts: Vec::new(),
+            fluid_selections: BTreeMap::new(),
             audio_graph: None,
             final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
             audio_graph_fallback: None,
@@ -686,13 +695,40 @@ impl Engine {
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
     ) -> Result<Self> {
+        let fluid_parts = (preset.backend == BackendKind::FluidSynth)
+            .then(|| FluidSynthPart {
+                preset: preset.clone(),
+                channel: 0,
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        Self::start_with_routing_and_parts(
+            preset,
+            &fluid_parts,
+            state,
+            output,
+            config,
+            rack,
+            aux_routing,
+        )
+    }
+
+    pub fn start_with_routing_and_parts(
+        preset: &Preset,
+        fluid_parts: &[FluidSynthPart],
+        state: &Path,
+        output: SharedOutput,
+        config: &RuntimeConfig,
+        rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
+    ) -> Result<Self> {
         fs::create_dir_all(state)?;
         let EnginePreflight {
             controller,
             fluid_soundfonts,
             backend_config,
             mut command,
-        } = preflight_start(preset, state, config)?;
+        } = preflight_start(preset, fluid_parts, state, config)?;
 
         stop_managed(state)?;
         if preset.backend == BackendKind::Synthv1 {
@@ -784,7 +820,7 @@ impl Engine {
             return Err(error);
         }
 
-        let engine = Self {
+        let mut engine = Self {
             backend: preset.backend,
             managed_client_name: Some(backend_config.client_name.clone()),
             stdin: child.stdin.take(),
@@ -801,6 +837,7 @@ impl Engine {
                 Vec::new()
             },
             fluid_soundfonts,
+            fluid_selections: BTreeMap::new(),
             audio_graph,
             final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
             audio_graph_fallback,
@@ -808,7 +845,7 @@ impl Engine {
             midi_lifecycle: None,
         };
         if preset.backend == BackendKind::FluidSynth {
-            engine.select_fluidsynth(preset)?;
+            engine.configure_fluidsynth_parts(fluid_parts)?;
         }
         Ok(engine)
     }
@@ -1036,7 +1073,10 @@ impl Engine {
             (BackendKind::FluidSynth, PresetId::FluidSynth { .. }) => {
                 fluidsynth_selection(preset, &self.fluid_soundfonts)?;
                 self.panic();
-                self.select_fluidsynth(preset)?;
+                self.configure_fluidsynth_parts(&[FluidSynthPart {
+                    preset: preset.clone(),
+                    channel: 0,
+                }])?;
             }
             _ => return Ok(false),
         }
@@ -1064,15 +1104,52 @@ impl Engine {
         Ok(())
     }
 
-    fn select_fluidsynth(&self, preset: &Preset) -> Result<()> {
-        let (effective_bank, program) = fluidsynth_selection(preset, &self.fluid_soundfonts)?;
-        for channel in 0..16u8 {
-            self.send(&[0xb0 | channel, 0, (effective_bank >> 7) as u8])?;
-            self.send(&[0xb0 | channel, 32, (effective_bank & 0x7f) as u8])?;
-            self.send(&[0xc0 | channel, program])?;
+    pub fn configure_fluidsynth_parts(&mut self, parts: &[FluidSynthPart]) -> Result<()> {
+        if self.backend != BackendKind::FluidSynth {
+            bail!("{} is not a FluidSynth process", self.backend.label());
+        }
+        let selections = validate_fluidsynth_parts(parts, &self.fluid_soundfonts)?;
+        for (channel, selection) in selections {
+            if self.fluid_selections.get(&channel) == Some(&selection) {
+                continue;
+            }
+            self.select_fluidsynth_channel(channel, selection)?;
+            self.fluid_selections.insert(channel, selection);
         }
         Ok(())
     }
+
+    pub fn fluidsynth_channel_conflicts(&self, preset: &Preset, channel: u8) -> Result<bool> {
+        if channel > 15 {
+            bail!("FluidSynth MIDI channel must be 1..=16");
+        }
+        let selection = fluidsynth_selection(preset, &self.fluid_soundfonts)?;
+        Ok(self
+            .fluid_selections
+            .get(&channel)
+            .is_some_and(|current| *current != selection))
+    }
+
+    fn select_fluidsynth_channel(&self, channel: u8, selection: (u16, u8)) -> Result<()> {
+        for message in fluidsynth_channel_messages(channel, selection)? {
+            self.send(&message)?;
+        }
+        Ok(())
+    }
+}
+
+fn fluidsynth_channel_messages(
+    channel: u8,
+    (effective_bank, program): (u16, u8),
+) -> Result<Vec<Vec<u8>>> {
+    if channel > 15 {
+        bail!("FluidSynth MIDI channel must be 1..=16");
+    }
+    Ok(vec![
+        vec![0xb0 | channel, 0, (effective_bank >> 7) as u8],
+        vec![0xb0 | channel, 32, (effective_bank & 0x7f) as u8],
+        vec![0xc0 | channel, program],
+    ])
 }
 
 struct EnginePreflight {
@@ -1083,11 +1160,28 @@ struct EnginePreflight {
 }
 
 pub fn validate_start(preset: &Preset, state: &Path, config: &RuntimeConfig) -> Result<()> {
-    preflight_start(preset, state, config).map(|_| ())
+    let fluid_parts = (preset.backend == BackendKind::FluidSynth)
+        .then(|| FluidSynthPart {
+            preset: preset.clone(),
+            channel: 0,
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
+    preflight_start(preset, &fluid_parts, state, config).map(|_| ())
+}
+
+pub fn validate_start_with_parts(
+    preset: &Preset,
+    fluid_parts: &[FluidSynthPart],
+    state: &Path,
+    config: &RuntimeConfig,
+) -> Result<()> {
+    preflight_start(preset, fluid_parts, state, config).map(|_| ())
 }
 
 fn preflight_start(
     preset: &Preset,
+    fluid_parts: &[FluidSynthPart],
     state: &Path,
     config: &RuntimeConfig,
 ) -> Result<EnginePreflight> {
@@ -1107,7 +1201,15 @@ fn preflight_start(
         safe_command_path(path)?;
     }
     if preset.backend == BackendKind::FluidSynth {
-        fluidsynth_selection(preset, &fluid_soundfonts)?;
+        if fluid_parts.is_empty() {
+            bail!("FluidSynth start requires at least one preset/channel part");
+        }
+        validate_fluidsynth_parts(fluid_parts, &fluid_soundfonts)?;
+    } else if !fluid_parts.is_empty() {
+        bail!(
+            "FluidSynth parts cannot be assigned to {}",
+            preset.backend.label()
+        );
     }
     let backend_config = backend_config(config, preset.backend);
     if !crate::fsutil::command_exists(&backend_config.command) {
@@ -1124,6 +1226,34 @@ fn preflight_start(
         backend_config,
         command,
     })
+}
+
+fn validate_fluidsynth_parts(
+    parts: &[FluidSynthPart],
+    soundfonts: &[(PathBuf, u16)],
+) -> Result<BTreeMap<u8, (u16, u8)>> {
+    let mut selections = BTreeMap::new();
+    for part in parts {
+        if part.channel > 15 {
+            bail!("FluidSynth MIDI channel must be 1..=16");
+        }
+        if part.preset.backend != BackendKind::FluidSynth {
+            bail!(
+                "{} cannot be assigned inside one FluidSynth process",
+                part.preset.backend.label()
+            );
+        }
+        let selection = fluidsynth_selection(&part.preset, soundfonts)?;
+        if let Some(previous) = selections.insert(part.channel, selection) {
+            if previous != selection {
+                bail!(
+                    "FluidSynth channel {} requires incompatible preset selections",
+                    part.channel + 1
+                );
+            }
+        }
+    }
+    Ok(selections)
 }
 
 fn fluidsynth_selection(preset: &Preset, soundfonts: &[(PathBuf, u16)]) -> Result<(u16, u8)> {
@@ -3388,6 +3518,94 @@ mod tests {
             fluidsynth_selection(&preset, &[(path, 256)]).unwrap(),
             (258, 9)
         );
+    }
+
+    fn fluid_preset(path: &str, bank: u16, program: u8) -> Preset {
+        Preset {
+            backend: BackendKind::FluidSynth,
+            name: format!("{path}:{bank}:{program}"),
+            category: None,
+            id: PresetId::FluidSynth {
+                soundfont: PathBuf::from(path),
+                soundfont_index: 0,
+                bank,
+                program,
+            },
+        }
+    }
+
+    #[test]
+    fn fluidsynth_channel_selection_never_broadcasts_to_unrelated_channels() {
+        assert_eq!(
+            fluidsynth_channel_messages(2, (258, 9)).unwrap(),
+            [vec![0xb2, 0, 2], vec![0xb2, 32, 2], vec![0xc2, 9]]
+        );
+        assert!(fluidsynth_channel_messages(16, (0, 0)).is_err());
+    }
+
+    #[test]
+    fn fluidsynth_part_validation_deduplicates_identical_channel_selection() {
+        let path = PathBuf::from("configured.sf2");
+        let preset = fluid_preset("configured.sf2", 2, 9);
+        let parts = [
+            FluidSynthPart {
+                preset: preset.clone(),
+                channel: 0,
+            },
+            FluidSynthPart { preset, channel: 0 },
+        ];
+        assert_eq!(
+            validate_fluidsynth_parts(&parts, &[(path, 256)]).unwrap(),
+            BTreeMap::from([(0, (258, 9))])
+        );
+    }
+
+    #[test]
+    fn fluidsynth_part_validation_preserves_soundfont_identity() {
+        let first = fluid_preset("first.sf2", 0, 9);
+        let second = fluid_preset("second.sf2", 0, 9);
+        let fonts = [
+            (PathBuf::from("first.sf2"), 0),
+            (PathBuf::from("second.sf2"), 128),
+        ];
+        assert_eq!(
+            validate_fluidsynth_parts(
+                &[
+                    FluidSynthPart {
+                        preset: first,
+                        channel: 0,
+                    },
+                    FluidSynthPart {
+                        preset: second,
+                        channel: 1,
+                    },
+                ],
+                &fonts,
+            )
+            .unwrap(),
+            BTreeMap::from([(0, (0, 9)), (1, (128, 9))])
+        );
+    }
+
+    #[test]
+    fn fluidsynth_part_validation_rejects_incompatible_same_channel_selection() {
+        let error = validate_fluidsynth_parts(
+            &[
+                FluidSynthPart {
+                    preset: fluid_preset("configured.sf2", 0, 1),
+                    channel: 0,
+                },
+                FluidSynthPart {
+                    preset: fluid_preset("configured.sf2", 0, 2),
+                    channel: 0,
+                },
+            ],
+            &[(PathBuf::from("configured.sf2"), 0)],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("channel 1"));
+        assert!(error.contains("incompatible"));
     }
 
     #[test]

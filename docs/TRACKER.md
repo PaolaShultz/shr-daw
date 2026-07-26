@@ -91,12 +91,34 @@ part of a genuinely new, empty, unsaved default Project, entering FT2 may
 replace its factory route with the currently loaded Player engine/instrument.
 A loaded/saved Project or an unsaved Project with any explicit change is never
 retargeted, even when its Pattern has no notes.
-Columns may share a destination/channel only when their master bank
-and program match, because MIDI program selection is channel-wide. Pages play
-together, so one pattern can control several hardware instruments and its
-Pattern-owned SHR-DAW software instrument. Because SHR owns only one synth host
-at a time, playback refuses an Arrangement that would require two different
-software routes instead of sending both through the wrong engine or sound.
+For external MIDI, columns may share a destination/channel only when their
+master bank and program match, because MIDI program selection is channel-wide.
+A software route owns its preset instead of using those external master-program
+fields.
+
+Pages play together, and page count is not an instrument or polyphony limit.
+Any number of pages and columns may share the exact same software
+route/channel. Their four lanes remain independent: two shared pages provide
+eight simultaneous tracker lanes, and further pages extend that pool within
+the Project and synth voice limits. The same route may also be used on several
+channels.
+
+SHR still owns one synth host at a time. synthv1 and Yoshimi expose one current
+preset, while one owned FluidSynth process is multitimbral: each distinct
+SoundFont preset/channel pair is selected once without changing other
+channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
+on 10 play together through the existing stereo synth output. Channel 10 is
+the normal percussion-page default, not a reservation; an explicit Project may
+route it differently.
+
+Two different FluidSynth presets cannot share one channel in the current
+playback loop. SHR selects stable channel parts before scheduling, and note
+tails plus Pattern/Arrangement loop boundaries are not treated as safe dynamic
+preset-change points. Consequently even apparently non-overlapping uses on one
+channel are refused for now with a channel-conflict error. Identical
+route/channel sharing is safe and is never that conflict. FluidSynth plus
+synthv1 or Yoshimi is also refused because that would require a second managed
+backend; external MIDI pages and the WAV loop remain independent.
 
 Computer-keyboard notes and ordinary incoming musical MIDI audition the
 selected page's target, channel, program, and drum mapping throughout the FT2

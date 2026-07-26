@@ -1,10 +1,11 @@
 # How SHR-DAW works
 
 SHR-DAW is a small music workstation built from several deliberately separate
-parts: role-separated controller/performance inputs, one managed software instrument, an FT2-style MIDI
-sequencer, a private WAV loop player, a synchronized raw multitrack recorder,
-and an optional owned final performance bus. This guide connects those parts and explains what the musician
-can do with them. For exact configuration keys use
+parts: role-separated controller/performance inputs, one managed software
+engine, an FT2-style MIDI sequencer, a private WAV loop player, a synchronized
+raw multitrack recorder, and an optional owned final performance bus. This
+guide connects those parts and explains what the musician can do with them.
+For exact configuration keys use
 [Configuration and routing](CONFIGURATION.md); for the DSP and real-time
 contract use [Audio graph and DSP contract](AUDIO_GRAPH.md).
 
@@ -131,12 +132,15 @@ SHR-DAW browses three separately installed instrument hosts:
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks; and
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts.
 
-Only one SHR-managed software instrument runs at a time. Loading another sound
-may reuse the current owned process or replace it; replacement sends All Notes
-Off, performs a clean shutdown, and starts the next configured host. SHR-DAW
-records enough process identity to stop only the engine it started. It neither
-layers managed engines nor kills an unrelated synthv1, Yoshimi, or FluidSynth
-process opened by the user.
+Only one SHR-managed software engine process runs at a time. synthv1 and
+Yoshimi retain one current preset. FluidSynth is the exception at the
+instrument level, not the process level: its one owned process may hold several
+SoundFont presets on compatible MIDI channels while producing the same one
+stereo source. Loading another standalone sound may reuse or replace the owned
+process; replacement sends All Notes Off, performs a clean shutdown, and
+starts the next configured host. SHR-DAW records enough process identity to
+stop only the engine it started. It neither layers managed backends nor kills
+an unrelated synthv1, Yoshimi, or FluidSynth process opened by the user.
 
 A managed host becomes ready only after SHR resolves one unambiguous stereo
 JACK output pair for it; a MIDI JACK/ALSA port alone is not readiness. Exact
@@ -152,11 +156,23 @@ ALSA destinations, while physical MIDI devices continue to require their
 stable exact identities.
 
 SHR's FluidSynth process uses JACK audio, ALSA sequencer MIDI, and its piped
-command input; it does not open FluidSynth's TCP server. Interactive setup also
-offers to mask the distribution's always-running FluidSynth unit and blanket
-`amidiminder` patcher. This keeps a controller from reaching the same synth or
-hardware destination through an unowned background route while leaving all
-three engines available on demand.
+command input; it does not open FluidSynth's TCP server. Startup loads the
+configured SoundFonts once. Each planned channel receives only its effective
+14-bit SoundFont bank and program, using a non-overlapping bank offset for each
+configured SoundFont. The persisted route includes the configured SoundFont
+identity as well as bank/program, so equal bank/program numbers in different
+files remain different sounds. Identical route/channel pairs are deduplicated;
+selecting one channel does not broadcast a program change to the other 15.
+All FluidSynth parts still cross the same stereo JACK boundary. They share the
+managed synth strip, source effects, meters, final-bus routing, and recording
+path; there are no per-instrument EQ/compressor/aux strips, stems, or JACK
+outputs. MIDI channel volume and pan remain ordinary channel messages where a
+Project uses them.
+
+Interactive setup also offers to mask the distribution's always-running
+FluidSynth unit and blanket `amidiminder` patcher. This keeps a controller from
+reaching the same synth or hardware destination through an unowned background
+route while leaving all three engines available on demand.
 
 Commands, client names, preset roots, SoundFonts, MIDI ports, and JACK ports
 are configuration. The engine code does not assume the development hardware.
@@ -219,17 +235,25 @@ configured external output, or an exact saved ALSA MIDI port. An `AUTO` page per
 device/channel/bank/program route and resolves the current machine defaults at
 playback. An explicit page's columns show channel 1–16 and program 1–128 while
 storing their zero-based MIDI values, plus bank MSB/LSB, lane name, and mute
-state. Two columns may share
-the same destination/channel only when their master bank/program selections
-match, because MIDI program changes affect the whole channel.
+state. External-MIDI columns may share the same destination/channel only when
+their master bank/program selections match, because MIDI program changes affect
+the whole channel. Software pages take their preset from the saved route, so
+their external bank/program fields do not impose that restriction and stored
+setup messages cannot replace the route-owned bank/program.
 
 This separation makes several useful routes possible in one Pattern: one page
 can play its named software instrument, another can address a drum machine,
-and another can play a hardware synth on a different port. A disconnected
-exact target is displayed as `OFFLINE` and never substitutes another port; its
-name and notes stay in the Project. Destinations are re-resolved on each play,
-so a returned interface is selected without editing the Project. Ambiguous
-stable identities are reported and not guessed.
+and another can play a hardware synth on a different port. FluidSynth pages
+add a second axis: several saved presets may play through one owned process
+when each MIDI channel has one stable preset. Repeating an identical
+route/channel across pages does not create another engine part or collapse
+lanes; every page still contributes four independent lanes. Different presets
+on one channel are refused across the whole playback loop because note tails
+and Pattern/Arrangement boundaries are not yet safe dynamic preset-change
+points. A disconnected exact target is displayed as `OFFLINE` and never
+substitutes another port; its name and notes stay in the Project. Destinations
+are re-resolved on each play, so a returned interface is selected without
+editing the Project. Ambiguous stable identities are reported and not guessed.
 
 External MIDI device profiles optionally add bank labels and program names to
 the column and cell program browsers. They remain JSON data, can be privately
@@ -453,12 +477,16 @@ fails.
 
 ## Note ownership and failure behavior
 
-MIDI notes are owned by their route, page, column/lane, and playback source.
-Two lanes may hold the same note on the same destination/channel; SHR-DAW sends
-note-off only after the last owner releases it. Stop, page/lane mute, route
-change, Project replacement, Idea/take stop, recorder stop, panic, and exit
-clean up only the activity each action owns. This prevents one lane or screen
-from cutting off another shared note.
+MIDI notes are owned by physical destination, software route, channel, note,
+column/lane, and playback source. Owners are global across Pattern pages, not
+reset per four-lane page. Two lanes on different pages may therefore hold the
+same note on the same destination/channel; SHR-DAW sends note-off only after
+the last owner releases it. Scheduled notes and live audition use the same
+ledger, so an audition release cannot cut a matching tracker note. Stop,
+page/lane mute, route change, Project replacement, Idea/take stop, recorder
+stop, panic, output failure, and exit deduplicate cleanup by the physical note
+while retaining the all-channel engine panic. This prevents one page, lane, or
+screen from cutting off another shared note.
 
 Missing JACK leaves browsing and external-MIDI sequencing usable. A missing
 controller leaves the computer keyboard active. Audio resolves preferred,

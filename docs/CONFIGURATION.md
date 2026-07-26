@@ -47,6 +47,13 @@ rejected when malformed or out of range. Commands, clients, paths, and ports
 remain data: copy the template and change them for the actual machine instead
 of editing Rust constants.
 
+FluidSynth loads every valid repeated `fluidsynth.soundfont` once when its
+owned process starts. List order assigns each file a non-overlapping effective
+MIDI-bank offset. Saved software routes include the configured SoundFont index,
+filename, bank, and program; an unambiguous filename/bank/program fallback
+keeps a Project usable if distinct SoundFonts are reordered. A missing or
+ambiguous required SoundFont/preset is refused rather than substituted.
+
 `display.note_names` changes Playback chord roots, slash bass notes, and the
 held-note row together. It does not transpose MIDI or alter the keyboard-state
 positions. The default is `german`, matching the existing central-European B

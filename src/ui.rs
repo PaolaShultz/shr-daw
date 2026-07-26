@@ -45,7 +45,7 @@ use ratatui::{
 };
 use serde::Serialize;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io::{self, IsTerminal, Stdout};
 use std::path::{Path, PathBuf};
@@ -482,10 +482,40 @@ enum EngineOwner {
     Tracker(SoftwareRoute),
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct SoftwarePart {
+    route: SoftwareRoute,
+    channel: u8,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SoftwarePlaybackPlan {
+    parts: BTreeSet<SoftwarePart>,
+}
+
+impl SoftwarePlaybackPlan {
+    fn primary_route(&self) -> Option<&SoftwareRoute> {
+        self.parts.first().map(|part| &part.route)
+    }
+
+    fn contains_route(&self, route: &SoftwareRoute) -> bool {
+        self.parts.iter().any(|part| &part.route == route)
+    }
+}
+
+#[derive(Clone)]
+struct ResolvedSoftwarePlan {
+    plan: SoftwarePlaybackPlan,
+    primary: Preset,
+    fluid_parts: Vec<engine::FluidSynthPart>,
+}
+
 #[derive(Clone)]
 struct EngineSession {
     preset: Preset,
     owner: EngineOwner,
+    tracker_plan: Option<SoftwarePlaybackPlan>,
+    fluid_parts: Vec<engine::FluidSynthPart>,
     values: HashMap<u8, f32>,
     original_values: HashMap<u8, f32>,
 }
@@ -601,6 +631,7 @@ struct App {
     screen: Screen,
     engine: Option<Engine>,
     engine_owner: Option<EngineOwner>,
+    tracker_engine_plan: Option<SoftwarePlaybackPlan>,
     engine_state: PathBuf,
     #[cfg(test)]
     tracker_engine_start_override: Option<std::result::Result<(), String>>,
@@ -995,32 +1026,84 @@ fn take_engine_when_owned<T>(
     }
 }
 
-fn scheduled_software_route(
+fn scheduled_software_plan(
     messages: &[sequencer::ScheduledMessage],
-) -> Result<Option<SoftwareRoute>> {
-    let routes = messages
+) -> Result<Option<SoftwarePlaybackPlan>> {
+    let parts = messages
         .iter()
         .filter(|message| {
             matches!(message.bytes.as_slice(), [status, _, velocity, ..]
                 if status & 0xf0 == 0x90 && *velocity > 0)
         })
-        .filter_map(|message| match message.target.as_ref()? {
-            PageTarget::Software(route) => Some(route.clone()),
-            PageTarget::Synthv1(name) => Some(SoftwareRoute::synthv1(name)),
-            _ => None,
+        .filter_map(|message| {
+            let route = match message.target.as_ref()? {
+                PageTarget::Software(route) => route.clone(),
+                PageTarget::Synthv1(name) => SoftwareRoute::synthv1(name),
+                _ => return None,
+            };
+            Some(SoftwarePart {
+                route,
+                channel: message.bytes[0] & 0x0f,
+            })
         })
-        .collect::<std::collections::BTreeSet<_>>();
-    if routes.len() > 1 {
+        .collect::<BTreeSet<_>>();
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    let backends = parts
+        .iter()
+        .map(|part| part.route.engine)
+        .collect::<BTreeSet<_>>();
+    if backends.len() > 1 {
         bail!(
-            "arrangement uses multiple software instruments ({}) · play one instrument per arrangement",
-            routes
+            "arrangement mixes software backends ({}) · one managed engine can run at a time",
+            backends
                 .iter()
-                .map(|route| format!("{}:{}", route.engine.label(), route.instrument))
+                .map(|backend| backend.label())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
     }
-    Ok(routes.into_iter().next())
+    let backend = *backends.first().context("software backend missing")?;
+    let routes = parts
+        .iter()
+        .map(|part| part.route.clone())
+        .collect::<BTreeSet<_>>();
+    if backend != BackendKind::FluidSynth && routes.len() > 1 {
+        bail!(
+            "arrangement uses multiple {} instruments ({}) · that backend exposes one preset at a time",
+            backend.label(),
+            routes
+                .iter()
+                .map(|route| route.instrument.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    if backend == BackendKind::FluidSynth {
+        let mut channel_routes = BTreeMap::<u8, SoftwareRoute>::new();
+        for part in &parts {
+            if let Some(previous) = channel_routes.insert(part.channel, part.route.clone()) {
+                if previous != part.route {
+                    bail!(
+                        "FluidSynth channel {} requires both {} and {} · keep one stable preset per channel across the playback loop",
+                        part.channel + 1,
+                        previous.instrument,
+                        part.route.instrument
+                    );
+                }
+            }
+        }
+    }
+    Ok(Some(SoftwarePlaybackPlan { parts }))
+}
+
+fn legacy_fluidsynth_route_id(route_id: &str) -> &str {
+    route_id
+        .strip_prefix("sf")
+        .and_then(|rest| rest.split_once(':'))
+        .filter(|(index, _)| !index.is_empty() && index.chars().all(|ch| ch.is_ascii_digit()))
+        .map_or(route_id, |(_, portable)| portable)
 }
 
 fn first_letter_index<I, S>(items: I, letter: char) -> Option<usize>
@@ -1401,6 +1484,7 @@ impl App {
             screen: Screen::Home,
             engine: None,
             engine_owner: None,
+            tracker_engine_plan: None,
             engine_state,
             #[cfg(test)]
             tracker_engine_start_override: Some(Ok(())),
@@ -2923,6 +3007,7 @@ impl App {
             self.performance_meter
                 .set_audio_unavailable(AudioAvailability::Stopped);
             self.playing = None;
+            self.tracker_engine_plan = None;
         }
     }
 
@@ -2954,13 +3039,93 @@ impl App {
     }
 
     fn preset_for_route(&self, route: &SoftwareRoute) -> Option<Preset> {
-        self.catalogs
+        let catalog = self
+            .catalogs
             .iter()
-            .find(|catalog| catalog.backend == route.engine)?
+            .find(|catalog| catalog.backend == route.engine)?;
+        if let Some(preset) = catalog
             .presets
             .iter()
             .find(|preset| preset.route_id() == route.instrument)
             .cloned()
+        {
+            return Some(preset);
+        }
+        let mut legacy = catalog
+            .presets
+            .iter()
+            .filter(|preset| {
+                preset.legacy_route_id().as_deref()
+                    == Some(legacy_fluidsynth_route_id(&route.instrument))
+            })
+            .cloned();
+        let preset = legacy.next()?;
+        legacy.next().is_none().then_some(preset)
+    }
+
+    fn resolve_software_plan(&self, plan: &SoftwarePlaybackPlan) -> Result<ResolvedSoftwarePlan> {
+        let primary_route = plan.primary_route().context("software plan is empty")?;
+        let primary = self
+            .preset_for_route(primary_route)
+            .with_context(|| format!("software preset is missing: {}", primary_route.instrument))?;
+        let mut fluid_parts = Vec::new();
+        for part in &plan.parts {
+            let preset = self.preset_for_route(&part.route).with_context(|| {
+                format!(
+                    "{} preset is missing: {}",
+                    part.route.engine.label(),
+                    part.route.instrument
+                )
+            })?;
+            if preset.backend != primary.backend {
+                bail!(
+                    "software plan mixes {} and {}",
+                    primary.backend.label(),
+                    preset.backend.label()
+                );
+            }
+            if primary.backend == BackendKind::FluidSynth {
+                fluid_parts.push(engine::FluidSynthPart {
+                    preset,
+                    channel: part.channel,
+                });
+            }
+        }
+        Ok(ResolvedSoftwarePlan {
+            plan: plan.clone(),
+            primary,
+            fluid_parts,
+        })
+    }
+
+    fn software_plan_for_route(
+        &self,
+        route: SoftwareRoute,
+        channels: impl IntoIterator<Item = u8>,
+    ) -> SoftwarePlaybackPlan {
+        SoftwarePlaybackPlan {
+            parts: channels
+                .into_iter()
+                .map(|channel| SoftwarePart {
+                    route: route.clone(),
+                    channel,
+                })
+                .collect(),
+        }
+    }
+
+    fn current_page_software_plan(&self) -> Option<SoftwarePlaybackPlan> {
+        let route = self.tracker_software_route()?;
+        let page = self.current_page()?;
+        Some(
+            self.software_plan_for_route(
+                route,
+                page.columns
+                    .iter()
+                    .enumerate()
+                    .map(|(column, _)| page.runtime_channel(column, &self.config.external_midi)),
+            ),
+        )
     }
 
     fn first_software_route(&self) -> Option<SoftwareRoute> {
@@ -2991,28 +3156,105 @@ impl App {
     }
 
     fn ensure_tracker_engine(&mut self) -> bool {
-        let Some(route) = self.tracker_software_route() else {
+        let Some(plan) = self.current_page_software_plan() else {
             self.unload_owned_engine(|owner| matches!(owner, EngineOwner::Tracker(_)));
             return true;
         };
-        self.ensure_tracker_engine_for(&route)
+        self.ensure_tracker_engine_plan(&plan)
     }
 
     fn ensure_tracker_engine_for(&mut self, route: &SoftwareRoute) -> bool {
-        let same_owner = self
-            .engine_owner
+        let channel = self.current_page().map_or(0, |page| {
+            page.runtime_channel(self.tracker_track, &self.config.external_midi)
+        });
+        self.ensure_tracker_engine_plan(&self.software_plan_for_route(route.clone(), [channel]))
+    }
+
+    fn ensure_tracker_engine_plan(&mut self, plan: &SoftwarePlaybackPlan) -> bool {
+        let resolved = match self.resolve_software_plan(plan) {
+            Ok(resolved) => resolved,
+            Err(_error) => {
+                self.status = "INSTRUMENT MISSING · old sound kept".into();
+                return false;
+            }
+        };
+        let same_backend = self
+            .engine
             .as_ref()
-            .is_some_and(|owner| owner == &EngineOwner::Tracker(route.clone()));
-        if same_owner && self.engine.as_mut().is_some_and(|engine| engine.alive()) {
+            .is_some_and(|engine| engine.backend() == resolved.primary.backend);
+        let same_route = self.engine_owner.as_ref().is_some_and(|owner| {
+            owner
+                == &EngineOwner::Tracker(
+                    resolved
+                        .plan
+                        .primary_route()
+                        .expect("resolved plan")
+                        .clone(),
+                )
+        });
+        if same_backend
+            && self.engine.as_mut().is_some_and(|engine| engine.alive())
+            && resolved.primary.backend == BackendKind::FluidSynth
+        {
+            let conflicts_while_playing = self.sequencer.status().playing
+                && resolved.fluid_parts.iter().any(|part| {
+                    self.engine.as_ref().is_some_and(|engine| {
+                        engine
+                            .fluidsynth_channel_conflicts(&part.preset, part.channel)
+                            .unwrap_or(true)
+                    })
+                });
+            if conflicts_while_playing {
+                self.status = "CHANNEL IN USE · stop before changing its FluidSynth preset".into();
+                return false;
+            }
+            if let Some(engine) = self.engine.as_mut() {
+                if let Err(_error) = engine.configure_fluidsynth_parts(&resolved.fluid_parts) {
+                    self.status = "FT2 PRESET FAILED · old channels kept".into();
+                    return false;
+                }
+            }
+            self.engine_owner = Some(EngineOwner::Tracker(
+                resolved.plan.primary_route().unwrap().clone(),
+            ));
+            let mut combined = self.tracker_engine_plan.clone().unwrap_or_default();
+            for part in resolved.plan.parts {
+                combined
+                    .parts
+                    .retain(|existing| existing.channel != part.channel);
+                combined.parts.insert(part);
+            }
+            self.tracker_engine_plan = Some(combined);
+            self.playing = Some(resolved.primary);
             return true;
         }
-        let Some(preset) = self.preset_for_route(route) else {
+        if same_route
+            && self.engine.as_mut().is_some_and(|engine| engine.alive())
+            && resolved.primary.backend != BackendKind::FluidSynth
+        {
+            self.tracker_engine_plan = Some(resolved.plan);
+            return true;
+        }
+        let preset = resolved.primary.clone();
+        let owner = EngineOwner::Tracker(plan.primary_route().unwrap().clone());
+        let tracker_plan = resolved.plan.clone();
+        let fluid_parts = resolved.fluid_parts.clone();
+        if self
+            .preset_for_route(plan.primary_route().unwrap())
+            .is_none()
+        {
             self.status = "INSTRUMENT MISSING · old sound kept".into();
             return false;
-        };
+        }
         self.release_tracker_audition();
         let state = self.engine_state.clone();
-        match self.replace_engine_process(&preset, EngineOwner::Tracker(route.clone()), &state) {
+        match self.replace_engine_process_with_plan(
+            &preset,
+            owner,
+            Some(tracker_plan),
+            &fluid_parts,
+            &state,
+        ) {
             Ok(_) => true,
             Err(_error) => {
                 self.status = "FT2 START FAILED · retry PLAY".into();
@@ -3022,15 +3264,28 @@ impl App {
     }
 
     fn engine_session(&self) -> Option<EngineSession> {
+        let fluid_parts = self
+            .tracker_engine_plan
+            .as_ref()
+            .and_then(|plan| self.resolve_software_plan(plan).ok())
+            .map(|resolved| resolved.fluid_parts)
+            .unwrap_or_default();
         Some(EngineSession {
             preset: self.playing.clone()?,
             owner: self.engine_owner.clone()?,
+            tracker_plan: self.tracker_engine_plan.clone(),
+            fluid_parts,
             values: self.values.clone(),
             original_values: self.original_values.clone(),
         })
     }
 
-    fn start_engine_process(&mut self, preset: &Preset, state: &Path) -> Result<Engine> {
+    fn start_engine_process_with_parts(
+        &mut self,
+        preset: &Preset,
+        fluid_parts: &[engine::FluidSynthPart],
+        state: &Path,
+    ) -> Result<Engine> {
         #[cfg(test)]
         if let Some(result) = self.engine_start_script.pop_front() {
             result.map_err(anyhow::Error::msg)?;
@@ -3041,14 +3296,26 @@ impl App {
             result.clone().map_err(anyhow::Error::msg)?;
             return Engine::start_test_process(preset.backend, Arc::clone(&self.midi_output));
         }
-        Engine::start_with_routing(
-            preset,
-            state,
-            Arc::clone(&self.midi_output),
-            &self.config,
-            &self.song.insert_rack,
-            &self.song.aux_routing,
-        )
+        if fluid_parts.is_empty() {
+            Engine::start_with_routing(
+                preset,
+                state,
+                Arc::clone(&self.midi_output),
+                &self.config,
+                &self.song.insert_rack,
+                &self.song.aux_routing,
+            )
+        } else {
+            Engine::start_with_routing_and_parts(
+                preset,
+                fluid_parts,
+                state,
+                Arc::clone(&self.midi_output),
+                &self.config,
+                &self.song.insert_rack,
+                &self.song.aux_routing,
+            )
+        }
     }
 
     fn install_engine_session(&mut self, mut engine: Engine, session: EngineSession) {
@@ -3059,6 +3326,7 @@ impl App {
         }
         self.engine = Some(engine);
         self.engine_owner = Some(session.owner);
+        self.tracker_engine_plan = session.tracker_plan;
         self.playing = Some(session.preset);
         self.values = session.values;
         self.original_values = session.original_values;
@@ -3071,13 +3339,34 @@ impl App {
         owner: EngineOwner,
         state: &Path,
     ) -> std::result::Result<Option<String>, String> {
+        self.replace_engine_process_with_plan(preset, owner, None, &[], state)
+    }
+
+    fn replace_engine_process_with_plan(
+        &mut self,
+        preset: &Preset,
+        owner: EngineOwner,
+        tracker_plan: Option<SoftwarePlaybackPlan>,
+        fluid_parts: &[engine::FluidSynthPart],
+        state: &Path,
+    ) -> std::result::Result<Option<String>, String> {
         #[cfg(not(test))]
-        engine::validate_start(preset, state, &self.config)
-            .map_err(|error| format!("precheck failed: {error:#}"))?;
-        #[cfg(test)]
-        if self.tracker_engine_start_override.is_none() {
+        if fluid_parts.is_empty() {
             engine::validate_start(preset, state, &self.config)
                 .map_err(|error| format!("precheck failed: {error:#}"))?;
+        } else {
+            engine::validate_start_with_parts(preset, fluid_parts, state, &self.config)
+                .map_err(|error| format!("precheck failed: {error:#}"))?;
+        }
+        #[cfg(test)]
+        if self.tracker_engine_start_override.is_none() {
+            if fluid_parts.is_empty() {
+                engine::validate_start(preset, state, &self.config)
+                    .map_err(|error| format!("precheck failed: {error:#}"))?;
+            } else {
+                engine::validate_start_with_parts(preset, fluid_parts, state, &self.config)
+                    .map_err(|error| format!("precheck failed: {error:#}"))?;
+            }
         }
         let previous = self.engine_session();
         if let Some(engine) = self.engine.as_mut() {
@@ -3091,8 +3380,9 @@ impl App {
         }
         drop(self.engine.take());
         self.engine_owner = None;
+        self.tracker_engine_plan = None;
         self.playing = None;
-        match self.start_engine_process(preset, state) {
+        match self.start_engine_process_with_parts(preset, fluid_parts, state) {
             Ok(mut engine) => {
                 engine.bind_midi_lifecycle(self.midi_lifecycle.clone());
                 let audio_route = engine.audio_route_status();
@@ -3105,13 +3395,18 @@ impl App {
                 }
                 self.engine = Some(engine);
                 self.engine_owner = Some(owner);
+                self.tracker_engine_plan = tracker_plan;
                 self.playing = Some(preset.clone());
                 Ok(audio_route)
             }
             Err(start_error) => {
                 let restoration = previous.map(|session| {
                     let old_preset = session.preset.clone();
-                    match self.start_engine_process(&old_preset, state) {
+                    match self.start_engine_process_with_parts(
+                        &old_preset,
+                        &session.fluid_parts,
+                        state,
+                    ) {
                         Ok(engine) => {
                             self.install_engine_session(engine, session);
                             "previous engine restored".to_string()
@@ -3135,13 +3430,20 @@ impl App {
         let Some(previous) = self.engine_session() else {
             return "no previous engine was available".into();
         };
-        match self.replace_engine_process(&previous.preset, previous.owner.clone(), state) {
+        match self.replace_engine_process_with_plan(
+            &previous.preset,
+            previous.owner.clone(),
+            previous.tracker_plan.clone(),
+            &previous.fluid_parts,
+            state,
+        ) {
             Ok(_) => {
                 if let Some(engine) = self.engine.as_ref() {
                     let _ = engine.set_mapped_parameters(&previous.values);
                 }
                 self.playing = Some(previous.preset);
                 self.engine_owner = Some(previous.owner);
+                self.tracker_engine_plan = previous.tracker_plan;
                 self.values = previous.values;
                 self.original_values = previous.original_values;
                 self.arm_pickup();
@@ -4721,12 +5023,17 @@ impl App {
             PageTarget::ActiveInstrument => false,
             PageTarget::Synthv1(name) => {
                 self.engine.is_some()
-                    && self.engine_owner.as_ref()
-                        == Some(&EngineOwner::Tracker(SoftwareRoute::synthv1(name)))
+                    && self
+                        .tracker_engine_plan
+                        .as_ref()
+                        .is_some_and(|plan| plan.contains_route(&SoftwareRoute::synthv1(name)))
             }
             PageTarget::Software(route) => {
                 self.engine.is_some()
-                    && self.engine_owner.as_ref() == Some(&EngineOwner::Tracker(route.clone()))
+                    && self
+                        .tracker_engine_plan
+                        .as_ref()
+                        .is_some_and(|plan| plan.contains_route(route))
             }
             PageTarget::ConfiguredExternal => {
                 self.config.external_midi.enabled
@@ -5176,15 +5483,21 @@ impl App {
         } else {
             None
         };
-        match scheduled_software_route(&messages) {
-            Ok(Some(route)) if !self.ensure_tracker_engine_for(&route) => return,
+        match scheduled_software_plan(&messages) {
+            Ok(Some(plan)) if !self.ensure_tracker_engine_plan(&plan) => return,
             Ok(Some(_)) => {}
             // A blank software page is not a scheduled instrument. Keep an
             // already-owned FT2 engine available for live input, but do not
             // start one merely because a loop-only Project retains that page.
             Ok(None) => {}
-            Err(_error) => {
-                self.status = "FT2 PLAY FAILED · fix routing, retry".into();
+            Err(error) => {
+                self.status = if error.to_string().contains("FluidSynth channel") {
+                    "FLUID CHANNEL CONFLICT · one preset per channel".into()
+                } else if error.to_string().contains("mixes software backends") {
+                    "MIXED SOFTWARE ENGINES · choose one backend".into()
+                } else {
+                    "FT2 PLAY FAILED · fix routing, retry".into()
+                };
                 return;
             }
         }
@@ -6306,14 +6619,18 @@ impl App {
                             self.status = "PREVIEW EMPTY · no notes or loop".into();
                             return;
                         }
-                        match scheduled_software_route(&messages) {
-                            Ok(Some(route)) if !self.ensure_tracker_engine_for(&route) => return,
+                        match scheduled_software_plan(&messages) {
+                            Ok(Some(plan)) if !self.ensure_tracker_engine_plan(&plan) => return,
                             Ok(Some(_)) => {}
                             Ok(None) => self.unload_owned_engine(|owner| {
                                 matches!(owner, EngineOwner::Tracker(_))
                             }),
-                            Err(_error) => {
-                                self.status = "PREVIEW ROUTE FAILED · ROUTING".into();
+                            Err(error) => {
+                                self.status = if error.to_string().contains("FluidSynth channel") {
+                                    "PREVIEW CHANNEL CONFLICT · one preset per channel".into()
+                                } else {
+                                    "PREVIEW ROUTE FAILED · ROUTING".into()
+                                };
                                 return;
                             }
                         }
@@ -22617,17 +22934,19 @@ mod tests {
     }
 
     #[test]
-    fn arrangement_refuses_to_misroute_two_pattern_owned_synth_presets() {
+    fn arrangement_refuses_two_single_preset_backend_sounds() {
         let p = presets();
         let mut a = app(&p);
         let empty = sequencer::schedule(&a.song, &a.config.external_midi, 0, 0).unwrap();
-        assert_eq!(scheduled_software_route(&empty).unwrap(), None);
+        assert_eq!(scheduled_software_plan(&empty).unwrap(), None);
 
         a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let one_route = sequencer::schedule(&a.song, &a.config.external_midi, 0, 0).unwrap();
         assert_eq!(
-            scheduled_software_route(&one_route).unwrap(),
-            Some(SoftwareRoute::synthv1("Preset 00"))
+            scheduled_software_plan(&one_route)
+                .unwrap()
+                .and_then(|plan| plan.primary_route().cloned()),
+            Some(SoftwareRoute::synthv1("Preset 00")),
         );
         let mut second = a.song.patterns[&0].pages[0].clone();
         second.name = "SECOND SYNTH".into();
@@ -22640,10 +22959,136 @@ mod tests {
         }
         pattern.rows[0][second_page_lane].note = Note::On(64);
         let two_routes = sequencer::schedule(&a.song, &a.config.external_midi, 0, 0).unwrap();
-        assert!(scheduled_software_route(&two_routes)
+        assert!(scheduled_software_plan(&two_routes)
             .unwrap_err()
             .to_string()
-            .contains("multiple software instruments"));
+            .contains("exposes one preset"));
+    }
+
+    fn fluid_route(instrument: &str) -> SoftwareRoute {
+        SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: instrument.into(),
+        }
+    }
+
+    fn planned_note(
+        route: SoftwareRoute,
+        channel: u8,
+        note: u8,
+        lane: usize,
+    ) -> sequencer::ScheduledMessage {
+        sequencer::ScheduledMessage {
+            at: Duration::ZERO,
+            bytes: vec![0x90 | channel, note, 100],
+            order: 0,
+            row: 0,
+            lane: Some(lane),
+            target: Some(PageTarget::Software(route)),
+        }
+    }
+
+    #[test]
+    fn fluidsynth_multipart_plan_accepts_bass_keys_pad_and_channel_ten_drums() {
+        let messages = vec![
+            planned_note(fluid_route("sf0:band.sf2:0:32"), 0, 36, 0),
+            planned_note(fluid_route("sf0:band.sf2:0:4"), 1, 60, 4),
+            planned_note(fluid_route("sf1:pads.sf2:0:89"), 2, 67, 8),
+            planned_note(fluid_route("sf0:band.sf2:128:0"), 9, 36, 12),
+        ];
+        let plan = scheduled_software_plan(&messages).unwrap().unwrap();
+        assert_eq!(plan.parts.len(), 4);
+        let mut channels = plan
+            .parts
+            .iter()
+            .map(|part| part.channel)
+            .collect::<Vec<_>>();
+        channels.sort_unstable();
+        assert_eq!(channels, [0, 1, 2, 9]);
+    }
+
+    #[test]
+    fn fluidsynth_plan_deduplicates_shared_route_channel_without_dropping_notes() {
+        let route = fluid_route("sf0:band.sf2:0:32");
+        let messages = (0..8)
+            .map(|lane| planned_note(route.clone(), 0, 36 + lane as u8, lane))
+            .collect::<Vec<_>>();
+        let plan = scheduled_software_plan(&messages).unwrap().unwrap();
+        assert_eq!(plan.parts.len(), 1);
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.bytes[0] & 0xf0 == 0x90)
+                .count(),
+            8
+        );
+    }
+
+    #[test]
+    fn fluidsynth_same_preset_can_occupy_several_channels() {
+        let route = fluid_route("sf0:band.sf2:0:32");
+        let messages = vec![
+            planned_note(route.clone(), 0, 36, 0),
+            planned_note(route.clone(), 1, 40, 1),
+            planned_note(route, 9, 42, 2),
+        ];
+        let plan = scheduled_software_plan(&messages).unwrap().unwrap();
+        assert_eq!(plan.parts.len(), 3);
+    }
+
+    #[test]
+    fn fluidsynth_conflicting_stable_channel_assignments_are_clear() {
+        let error = scheduled_software_plan(&[
+            planned_note(fluid_route("sf0:band.sf2:0:32"), 0, 36, 0),
+            planned_note(fluid_route("sf1:other.sf2:0:48"), 0, 60, 4),
+        ])
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("FluidSynth channel 1"));
+        assert!(error.contains("one stable preset per channel"));
+    }
+
+    #[test]
+    fn fluidsynth_with_external_midi_is_valid_but_mixed_software_backends_are_not() {
+        let mut fluid_and_external = vec![planned_note(fluid_route("sf0:band.sf2:0:32"), 0, 36, 0)];
+        fluid_and_external.push(sequencer::ScheduledMessage {
+            target: Some(PageTarget::Midi("DIN".into())),
+            ..planned_note(fluid_route("ignored"), 4, 60, 4)
+        });
+        assert_eq!(
+            scheduled_software_plan(&fluid_and_external)
+                .unwrap()
+                .unwrap()
+                .parts
+                .len(),
+            1
+        );
+
+        let mixed = [
+            planned_note(fluid_route("sf0:band.sf2:0:32"), 0, 36, 0),
+            planned_note(SoftwareRoute::synthv1("Bass"), 1, 60, 4),
+        ];
+        assert!(scheduled_software_plan(&mixed)
+            .unwrap_err()
+            .to_string()
+            .contains("mixes software backends"));
+    }
+
+    #[test]
+    fn legacy_single_fluidsynth_project_still_builds_one_part() {
+        assert_eq!(
+            legacy_fluidsynth_route_id("sf7:TimGM6mb.sf2:0:32"),
+            "TimGM6mb.sf2:0:32"
+        );
+        let plan =
+            scheduled_software_plan(&[planned_note(fluid_route("TimGM6mb.sf2:0:32"), 0, 36, 0)])
+                .unwrap()
+                .unwrap();
+        assert_eq!(plan.parts.len(), 1);
+        assert_eq!(
+            plan.primary_route().unwrap().instrument,
+            "TimGM6mb.sf2:0:32"
+        );
     }
 
     #[test]

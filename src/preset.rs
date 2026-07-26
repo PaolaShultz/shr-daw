@@ -113,6 +113,7 @@ impl Preset {
                 .unwrap_or_else(|| self.name.clone()),
             PresetId::FluidSynth {
                 soundfont,
+                soundfont_index,
                 bank,
                 program,
                 ..
@@ -121,9 +122,26 @@ impl Preset {
                     .file_name()
                     .and_then(|name| name.to_str())
                     .unwrap_or("soundfont");
-                format!("{soundfont}:{bank}:{program}")
+                format!("sf{soundfont_index}:{soundfont}:{bank}:{program}")
             }
         }
+    }
+
+    pub fn legacy_route_id(&self) -> Option<String> {
+        let PresetId::FluidSynth {
+            soundfont,
+            bank,
+            program,
+            ..
+        } = &self.id
+        else {
+            return None;
+        };
+        let soundfont = soundfont
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("soundfont");
+        Some(format!("{soundfont}:{bank}:{program}"))
     }
 }
 
@@ -654,6 +672,24 @@ mod tests {
             },
         };
         assert_eq!(preset.display_name(), "Warm Pad");
+        assert_eq!(preset.route_id(), "sf0:tim.sf2:2:9");
+        assert_eq!(preset.legacy_route_id().as_deref(), Some("tim.sf2:2:9"));
+    }
+
+    #[test]
+    fn fluidsynth_route_identity_distinguishes_configured_soundfonts() {
+        let preset = |index| Preset {
+            backend: BackendKind::FluidSynth,
+            name: "Same Program".into(),
+            category: None,
+            id: PresetId::FluidSynth {
+                soundfont: format!("/fonts/{index}/same.sf2").into(),
+                soundfont_index: index,
+                bank: 0,
+                program: 9,
+            },
+        };
+        assert_ne!(preset(0).route_id(), preset(1).route_id());
     }
 
     #[test]
