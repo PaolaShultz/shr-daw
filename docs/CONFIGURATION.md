@@ -469,6 +469,7 @@ and each page stores:
 - its target;
 - four column channel/bank/program setups, with channels 1–16;
 - page velocity, mute, and percussion settings;
+- note-entry mode, One-column anchor, and optional drum-role/choke overrides;
 - four lane names and lane mute states;
 - a reserved list of MIDI setup messages for later use.
 
@@ -482,7 +483,9 @@ route then chooses **ENGINE** before **INSTR**; an external route chooses
 `AUTO` channel and does not permit channel/bank/program editing because those
 values would bind the Project to one machine. **CHANNEL**
 chooses 1–16. Encoder press confirms a field. **DONE** keeps all page changes;
-**SYS** → **EXIT** restores the Project from before TRACKS opened. On the
+**SYS** → **ENTRY** chooses Manual, One column anchored at C1–C4, or Drum auto
+for future notes; **SYS** → **EXIT** restores the Project from before TRACKS
+opened. On the
 **COLUMN** and **BANK** pages, **COL−/COL+**, **PROG−/PROG+**, and the bank
 controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
@@ -547,12 +550,13 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 5
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 6
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
-channel/bank/program setups, every cell field, the source insert rack, aux
-routing, master rack, explicit software engine/instrument identity, and optional
-external profile metadata. A format-4-or-newer `default` target plus four `default`
+channel/bank/program setups, per-page entry mode/anchor and drum classification,
+every cell field, the source insert rack, aux routing, master rack, explicit
+software engine/instrument identity, and optional external profile metadata. A
+format-4-or-newer `default` target plus four `default`
 column markers is the canonical portable/unassigned state; it is not channel
 zero, mute, or disabled. Versions 0 and 1 migrate with empty effects routing;
 version 2 retains its source rack and gains empty aux/master routing; format 3
@@ -560,6 +564,17 @@ keeps every explicit target/channel unchanged. Version 0
 page-wide channel/bank/program data is copied to all four columns. Unknown
 newer versions, unknown fields, and invalid effect data are refused rather than
 partly loaded or written back.
+
+Format 6 stores note-entry layout on `pattern_page` and optional non-GM
+classification as repeated
+`pattern_drum_class=PATTERN|PAGE|NOTE|ROLE|CHOKE` records. `ROLE` is `core`,
+`long`, or `other`; `CHOKE` is `-` or group 1–127. General MIDI is used when no
+override exists: notes 35–40 are core, 42/44 are short hi-hats in choke group
+1, 46 is a long hi-hat in that group, and 49/51/52/53/55/57/59 are long-tail
+cymbals. Every unknown note is short `other`, never a cymbal. Project/kit
+tooling may write overrides for non-GM maps; the Tracks UI owns mode and anchor
+selection. Formats 0–5 retain their explicit percussion-page auto layout;
+other pages load as Manual/C1, and all load with no classification overrides.
 
 On **FILES**, **NEW PRJ** requires a second press and creates the next available
 `project-001` style unsaved name. **SAVE AS** writes a non-overwriting
@@ -680,9 +695,10 @@ programs are zero-based MIDI values, while every FT2 screen shows channels
 
 FT2 **REC** uses the selected page's exact online target, including a
 Pattern-owned software instrument or configured/exact MIDI output. It refuses
-an offline target rather than substituting another destination. Recording loops
-only the selected pattern, writes only the visible page's four lanes, and does
-not advance through or alter other order entries.
+an offline target rather than substituting another destination. REC from stop
+loops only the selected Pattern. REC during Play follows the current
+Arrangement; each note-off is written to its allocated global page/lane in the
+Pattern active at release, without rewriting unrelated order entries.
 
 Pattern setup offers 4/4 row counts of 8, 16, 32, 64, and 128, or matching 3/4
 counts of 6, 12, 24, 48, and 96. New patterns are distinct pattern records and

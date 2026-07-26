@@ -45,8 +45,8 @@ or `q` can still exit from the splash.
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | While Play or Rec transport is active, the main rotary selects the previous/next column across page boundaries. While transport is paused it moves rows, as it does in Edit; keyboard Up/Down always moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. |
-| FT2 record | Stop Play/Edit and record quantized note-ons and release-based note-offs into the selected page/current pattern through its configured target. Captures join playback on the next loop; Edit note length does not affect REC. Rotary turns are ignored while any recorded notes are held and work again after every Note Off; PLAY, RECORD, and EDIT switch mutually exclusive modes. |
-| FT2 edit | A released musical note writes immediately in the selected column; only overlapping held notes spread across subsequent columns. COL-/COL+ select the edit column. Note length, blank/skip, erase, note off, a 0–32-row ADD value, and PAGE remain available; PLAY, RECORD, and EDIT switch mutually exclusive modes. N00B may remain on so only allowed scale notes are entered. Command notes are consumed for editing and never doubled through the synth. |
+| FT2 record | Record quantized note-ons and release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. Stopped REC loops the selected Pattern; REC during Play punches into the Arrangement. Exact page/lane owners survive cursor moves and boundaries. Rotary turns are ignored while recorded notes are held; Edit note length does not affect REC. |
+| FT2 edit | Manual writes from the selected column, One column writes to its persisted C1–C4 monophonic anchor, and Drum auto safely allocates simultaneous hits without moving the cursor. Note length, blank/skip, erase, note off, 0–32-row ADD, and PAGE remain available. N00B may filter melodic input. Command notes stay controls. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
 | FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; silence while output is healthy and concise `OUTPUT FAULT`/retry text when it is not; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter on taller terminals; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
@@ -55,7 +55,7 @@ or `q` can still exit from the splash.
 | Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; load into the percussion page; save that page separately; confirmed deletion of user saves only; list navigation. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
 | FT2 arrange | Select arrangement step; append/insert current pattern; duplicate/remove step; move step earlier/later; jump to referenced pattern; play from selected step; back and panic. |
 | Pattern setup | Choose 3/4 or 4/4 and pattern length; CONFIRM performs NEW/CLEAR with that shape, KEEP performs the same operation with the current Pattern's shape, and Exit cancels. |
-| Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, and program; confirm all changes; or exit and restore the original Project. |
+| Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, program, and the per-page Manual/One-column/Drum-auto entry layout; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
 | FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
@@ -117,14 +117,15 @@ active field first, then cancels the overlay draft and closes, before a later
 Back can leave the caller. Four-button page-selection state and every layout's
 previous page are restored deterministically.
 
-FT2 demonstrates seven caller-specific adapters: PAGE navigates four-column
+FT2 demonstrates eight caller-specific adapters: PAGE navigates four-column
 locations and links to Tracks; PATTERN navigates the Project's existing Pattern
 owners and links to Pattern/Project tools; SONG navigates Arrangement steps and
 links to its detailed editors; ROUTE edits a detached copy of the active page
 and applies it only through the existing Project/route synchronization path;
 Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
-Pattern Setup LNGTH chooses every value from 1 through 32 plus 48, 64, 96,
-128, 192, and 256.
+Tracks ENTRY chooses Manual, One column C1–C4, or Drum auto; Pattern Setup
+LNGTH chooses every value from 1 through 32 plus 48, 64, 96, 128, 192, and
+256.
 The Loop Player's LIBRARY launcher uses it for one combined inbox/private
 browser. Selection is silent until PLAY explicitly previews it; changing
 selection, STOP, Back, closing the browser, or leaving the Loop Player stops
@@ -276,7 +277,7 @@ Blank physical positions and wholly empty pages are omitted.
 | Tracks | Ops | Add four lanes | Target | Channel | Done |
 | Tracks | Column | Column− | Column+ | Program− | Program+ |
 | Tracks | Bank | MSB− | MSB+ | LSB− | LSB+ |
-| Tracks | Sys | Panic | — | Help | Exit/cancel |
+| Tracks | Sys | Panic | Entry layout | Help | Exit/cancel |
 | Target/channel editor | Ops | Confirm | — | — | — |
 | Target/channel editor | Sys | Panic | — | Help | Exit/cancel |
 | Audio recorder | Record | — | — | Record/toggle | Arm selected |

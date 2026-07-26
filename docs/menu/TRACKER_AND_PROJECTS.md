@@ -73,14 +73,13 @@ help. `EXIT` returns Home.
 ## FT2 Pattern — real-time Record context
 
 Record uses the selected page's exact online Pattern-owned software or hardware
-instrument. Incoming notes are auditioned on that target/channel, quantized
-into the current transport position, and written to the selected page. Between
-notes, the rotary can select another column or page without restarting
-recording or transport. Turns are ignored—not queued—while recorded notes
-remain held, and work again after every matching Note Off. REC always owns its
-Pattern loop; pressing REC again stops it and returns to stopped Play mode.
-Key release writes a quantized note-off, independently of the Edit note-length
-setting. New captures join playback on the next Pattern repetition.
+instrument and its persisted Manual, One-column, or Drum-auto entry layout.
+Incoming notes are quantized into the current transport position. Each note-on
+owns its exact page/lane until its release, even across a loop or Arrangement
+boundary. Turns are ignored—not queued—while recorded notes remain held. REC
+from stopped transport owns its Pattern loop; REC during Play punches into the
+current Arrangement and punch-out returns to Play. Key release writes a
+quantized note-off independently of Edit note length.
 
 ### MODE — transport and capture
 
@@ -100,18 +99,14 @@ the recording context safely.
 
 ## FT2 Pattern — Edit context
 
-In Edit, a released melodic note writes immediately into the selected column.
-Only overlapping notes that are physically held together form a chord and fill
-subsequent columns. Command-pad notes are consumed as controls and are not doubled into
-the Pattern or synth. The persistent ADD value chooses any advance from 0
-through 32 rows after entry, blank, erase, or note-off; 0 stays on the current
-row.
-
-On a percussion page, entry searches earlier rows across all four columns and
-reuses each drum voice's most recent column. New bass drums and snares prefer
-columns 1 and 2; other new voices begin in columns 3 and 4. Occupied cells are
-preserved, and simultaneous voices that want the same column fall through to a
-free one. Melodic pages still fill from the selected column.
+In Edit, Manual writes from the selected column, One column redirects every
+note to its displayed C1–C4 monophonic anchor, and Drum auto allocates a whole
+simultaneous group without overwriting existing row cells or unrelated active
+cymbal tails. Automatic placement never moves the visible lane cursor.
+Command-pad notes remain controls. The persistent ADD value chooses any
+advance from 0 through 32 rows after entry, blank, erase, or note-off; 0 stays
+on the current row. `DRUM LANES FULL` rejects an unplaceable hit/group without
+changing the Pattern.
 
 ### MODE — leave Edit for Play or Record
 
@@ -473,8 +468,9 @@ selected column. The configured bank-select order is honored during playback.
 
 ![Populated Tracks screen with the SYS page](../images/menu/tracks-sys.png)
 
-`PANIC` and `HELP` remain available. `EXIT` cancels the entire Tracks draft and
-restores the original Project.
+`PANIC` and `HELP` remain available. `ENTRY` opens Manual, One column C1–C4,
+and Drum auto choices for the selected page. `EXIT` cancels the entire Tracks
+draft and restores the original Project.
 
 ## Target field editor
 

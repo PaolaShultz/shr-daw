@@ -274,6 +274,23 @@ The FT2 screen has three explicit modes:
   advance determines the next cursor position. Its independent 1/1–1/128
   length selector writes the existing gate/note-off representation.
 
+Every Pattern page separately persists a note-entry layout. Manual starts at
+the musician's selected column. One column redirects every future note and
+recorded release to its persisted C1–C4 anchor, making it intentionally
+monophonic without changing that column's route. Drum auto performs a
+deterministic, atomic four-lane allocation when notes are inserted. Alternating
+core hits reuse a compact primary lane, simultaneous/quantized groups claim
+distinct empty cells, and fills spill without overwriting the target row.
+Automatic writes never move the visible lane cursor.
+
+Drum auto classifies notes as core, long-tail, or other percussion, with an
+optional choke group. General MIDI cymbals and hi-hats provide defaults;
+unknown notes are ordinary short percussion, and a page may persist non-GM
+overrides. Unrelated active cymbal lanes are excluded during placement.
+Same-note retriggers and matching choke groups may reuse the relevant lane.
+This is not a scheduler rule: once a cell is stored, the existing lane
+scheduler interrupts the previous same-lane note for every sound.
+
 **N00B is an independent filter switch, not a fourth mode.** It can remain on
 through Play, Record, and Edit. The chosen root plus major or natural-minor
 scale gates input on the selected melodic page: accepted notes retain their
@@ -488,6 +505,15 @@ stop, panic, output failure, and exit deduplicate cleanup by the physical note
 while retaining the all-channel engine panic. This prevents one page, lane, or
 screen from cutting off another shared note.
 
+Realtime FT2 capture adds a bounded input-owner ledger above that unchanged
+playback ledger. Each note-on remembers its exact Pattern, page, lane, start
+row, and generation. A note-off closes only the current generation for that
+lane; an older overwritten One-column note cannot close the newer note, and
+repeated identical owners require their final release. Pattern wrap and
+Arrangement transitions write the release into the same global page/lane
+identity. Stop, mute, panic, route/output failure, Project replacement, and
+exit discard every capture owner and run the normal destination cleanup.
+
 Missing JACK leaves browsing and external-MIDI sequencing usable. A missing
 controller leaves the computer keyboard active. Audio resolves preferred,
 ordered internal, then final headphone routes in memory. A missing external
@@ -499,9 +525,12 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 5 persists the complete tracker state and effects routing plus
-explicit software engine/instrument identities and optional external profile
-metadata. Format 3 remains loadable and keeps its
+Project format 6 persists the complete tracker state and effects routing plus
+per-page entry mode/anchor, drum-role/choke overrides, explicit software
+engine/instrument identities, and optional external profile metadata. Format 5
+and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
+marked percussion pages retain their prior automatic drum entry. Format 3
+remains loadable and keeps its
 device/channel routes explicit.
 Formats 0 and 1 migrate with empty effects; format 2 retains its source rack and
 gains empty aux/master routing. Unknown newer formats, fields, malformed rack

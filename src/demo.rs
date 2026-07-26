@@ -137,9 +137,6 @@ fn validate_demo_dir(root: &Path) -> Result<()> {
         validate_midi(&midi, demo.tracks.len())
             .with_context(|| format!("invalid demo MIDI: {}", demo.id))?;
         let project_text = fs::read_to_string(root.join(&demo.project))?;
-        if !project_text.starts_with(&format!("SHSYNTH-SONG {}\n", sequencer::SONG_VERSION)) {
-            bail!("demo Project is not saved in the current format");
-        }
         let song = sequencer::decode(&project_text)
             .with_context(|| format!("invalid native demo Project: {}", demo.id))?;
         if song.name != demo.title || song.patterns.len() != 1 {
@@ -187,7 +184,7 @@ fn validate_demo_dir(root: &Path) -> Result<()> {
 }
 
 #[test]
-fn bundled_demo_manifest_is_complete_current_and_loadable() {
+fn bundled_demo_manifest_is_complete_supported_and_loadable() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let generator = Command::new("python3")
         .arg(root.join("scripts/generate_demo_songs.py"))

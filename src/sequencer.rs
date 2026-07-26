@@ -14,7 +14,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 5;
+pub const SONG_VERSION: u8 = 6;
 pub const LANES_PER_PAGE: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_PATTERNS: usize = 256;
@@ -102,6 +102,15 @@ pub struct Page {
     pub columns: [ColumnSetup; LANES_PER_PAGE],
     pub velocity: u8,
     pub percussion: bool,
+    /// Controls only where future edit/record note events are stored. Playback
+    /// always follows the four ordinary tracker lanes.
+    pub entry_mode: NoteEntryMode,
+    /// Zero-based One-column destination. It remains stored while another
+    /// entry mode is selected.
+    pub entry_anchor: u8,
+    /// Per-kit exceptions to the General MIDI drum classification used only by
+    /// Drum-auto placement.
+    pub drum_class_overrides: BTreeMap<u8, DrumNoteClass>,
     pub target: PageTarget,
     /// Optional convenience metadata for labels and bank protocol. Raw MIDI
     /// routing remains complete when this is `None`.
@@ -110,6 +119,67 @@ pub struct Page {
     /// and routed, but deliberately has no editor yet.
     pub setup: Vec<Vec<u8>>,
     pub lanes: Vec<Lane>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum NoteEntryMode {
+    #[default]
+    Manual,
+    OneColumn,
+    DrumAuto,
+}
+
+impl NoteEntryMode {
+    pub const fn compact_label(self, anchor: u8) -> &'static str {
+        match (self, anchor) {
+            (Self::Manual, _) => "MANUAL",
+            (Self::OneColumn, 0) => "ONE C1",
+            (Self::OneColumn, 1) => "ONE C2",
+            (Self::OneColumn, 2) => "ONE C3",
+            (Self::OneColumn, _) => "ONE C4",
+            (Self::DrumAuto, _) => "DRUM AUTO",
+        }
+    }
+}
+
+const fn legacy_entry_mode(percussion: bool) -> NoteEntryMode {
+    if percussion {
+        NoteEntryMode::DrumAuto
+    } else {
+        NoteEntryMode::Manual
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DrumRole {
+    Core,
+    LongTail,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DrumNoteClass {
+    pub role: DrumRole,
+    pub choke_group: Option<u8>,
+}
+
+impl DrumNoteClass {
+    pub const fn new(role: DrumRole, choke_group: Option<u8>) -> Self {
+        Self { role, choke_group }
+    }
+
+    /// General MIDI provides a useful placement default without making MIDI
+    /// channel 10 itself a percussion classifier. Unknown notes deliberately
+    /// fall back to ordinary short percussion.
+    pub const fn general_midi(note: u8) -> Self {
+        match note {
+            35..=40 => Self::new(DrumRole::Core, None),
+            42 | 44 => Self::new(DrumRole::Other, Some(1)),
+            46 => Self::new(DrumRole::LongTail, Some(1)),
+            49 | 51 | 52 | 53 | 55 | 57 | 59 => Self::new(DrumRole::LongTail, None),
+            _ => Self::new(DrumRole::Other, None),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -617,6 +687,9 @@ impl Page {
             }; LANES_PER_PAGE],
             velocity: 96,
             percussion,
+            entry_mode: legacy_entry_mode(percussion),
+            entry_anchor: 0,
+            drum_class_overrides: BTreeMap::new(),
             target: PageTarget::ConfiguredExternal,
             device_profile: None,
             setup: Vec::new(),
@@ -656,6 +729,13 @@ impl Page {
                 .copied()
                 .unwrap_or(config.melody_channel)
         }
+    }
+
+    pub fn drum_class(&self, note: u8) -> DrumNoteClass {
+        self.drum_class_overrides
+            .get(&note)
+            .copied()
+            .unwrap_or_else(|| DrumNoteClass::general_midi(note))
     }
 }
 
@@ -821,6 +901,7 @@ impl Pattern {
                 validate_label(&lane.name, "pattern lane name", 64)?;
             }
             if page.velocity > 127
+                || usize::from(page.entry_anchor) >= LANES_PER_PAGE
                 || page.columns.iter().any(|column| {
                     column.channel > 15
                         || column.bank_msb > 127
@@ -829,6 +910,14 @@ impl Pattern {
                 })
             {
                 bail!("pattern page MIDI value out of range");
+            }
+            if page.drum_class_overrides.iter().any(|(note, class)| {
+                *note > 127
+                    || class
+                        .choke_group
+                        .is_some_and(|group| !(1..=127).contains(&group))
+            }) {
+                bail!("pattern page drum classification out of range");
             }
             if page.target == PageTarget::Default
                 && (page
@@ -927,6 +1016,155 @@ impl Pattern {
         }
         Ok(())
     }
+}
+
+fn previous_drum_lane(
+    pattern: &Pattern,
+    row_index: usize,
+    page_index: usize,
+    matches: impl Fn(u8) -> bool,
+) -> Option<usize> {
+    let page_start = page_index.checked_mul(LANES_PER_PAGE)?;
+    pattern.rows.iter().take(row_index).rev().find_map(|row| {
+        (0..LANES_PER_PAGE).find(|lane| {
+            row.get(page_start + lane)
+                .is_some_and(|cell| matches!(cell.note, Note::On(note) if matches(note)))
+        })
+    })
+}
+
+fn lane_drum_state_at(
+    pattern: &Pattern,
+    row_index: usize,
+    page_index: usize,
+    lane: usize,
+) -> Option<(u8, DrumNoteClass)> {
+    let page = pattern.pages.get(page_index)?;
+    let lane_index = page_index.checked_mul(LANES_PER_PAGE)?.checked_add(lane)?;
+    let mut active = None;
+    for (source_row, row) in pattern.rows.iter().enumerate().take(row_index) {
+        let cell = row.get(lane_index)?;
+        match cell.note {
+            Note::On(note) => {
+                let class = page.drum_class(note);
+                active = Some((note, class));
+                let explicit_later_release = cell.gate == Some(100)
+                    && pattern
+                        .rows
+                        .iter()
+                        .skip(source_row + 1)
+                        .any(|later| !matches!(later[lane_index].note, Note::Empty));
+                if matches!(cell.command, Command::Cut(_))
+                    || (class.role != DrumRole::LongTail && !explicit_later_release)
+                {
+                    active = None;
+                }
+            }
+            Note::Off => active = None,
+            Note::Empty => {
+                if matches!(cell.command, Command::Cut(_)) {
+                    active = None;
+                }
+            }
+        }
+    }
+    active
+}
+
+fn related_drum_voice(old_note: u8, old: DrumNoteClass, note: u8, new: DrumNoteClass) -> bool {
+    old_note == note
+        || old
+            .choke_group
+            .zip(new.choke_group)
+            .is_some_and(|(old_group, new_group)| old_group == new_group)
+}
+
+fn drum_auto_release_cell(cell: &Cell) -> bool {
+    let mut release = cell.clone();
+    release.note = Note::Empty;
+    cell.note == Note::Off && release == Cell::default()
+}
+
+/// Allocate one simultaneous Drum-auto group without mutating the Pattern.
+/// `live_active` supplements stored gate/tail state during realtime capture.
+/// The caller must write the whole returned group or none of it.
+pub fn drum_auto_lanes(
+    pattern: &Pattern,
+    row_index: usize,
+    page_index: usize,
+    notes: &[u8],
+    live_active: &[(usize, u8)],
+) -> Option<Vec<usize>> {
+    let page = pattern.pages.get(page_index)?;
+    let row = pattern.rows.get(row_index)?;
+    let page_start = page_index.checked_mul(LANES_PER_PAGE)?;
+    let mut active = (0..LANES_PER_PAGE)
+        .map(|lane| lane_drum_state_at(pattern, row_index, page_index, lane))
+        .collect::<Vec<_>>();
+    for &(lane, note) in live_active {
+        if lane < LANES_PER_PAGE {
+            active[lane] = Some((note, page.drum_class(note)));
+        }
+    }
+    let mut claimed = [false; LANES_PER_PAGE];
+    let mut assignments = Vec::with_capacity(notes.len());
+
+    for &note in notes {
+        let class = page.drum_class(note);
+        let exact_history = previous_drum_lane(pattern, row_index, page_index, |old| old == note);
+        let core_history = (class.role == DrumRole::Core).then(|| {
+            previous_drum_lane(pattern, row_index, page_index, |old| {
+                page.drum_class(old).role == DrumRole::Core
+            })
+        });
+        let mut candidates = Vec::with_capacity(LANES_PER_PAGE + 4);
+        for lane in 0..LANES_PER_PAGE {
+            if active[lane].is_some_and(|(old_note, old_class)| {
+                related_drum_voice(old_note, old_class, note, class)
+            }) {
+                candidates.push(lane);
+            }
+        }
+        if let Some(lane) = exact_history {
+            candidates.push(lane);
+        }
+        if let Some(lane) = core_history.flatten() {
+            candidates.push(lane);
+        }
+        candidates.extend(match class.role {
+            DrumRole::Core => [0, 1, 2, 3],
+            DrumRole::LongTail => [2, 3, 1, 0],
+            DrumRole::Other if class.choke_group.is_some() => [1, 2, 3, 0],
+            DrumRole::Other => [2, 3, 1, 0],
+        });
+        candidates.extend(0..LANES_PER_PAGE);
+        candidates.dedup();
+
+        let lane = candidates.into_iter().find(|lane| {
+            if *lane >= LANES_PER_PAGE || claimed[*lane] {
+                return false;
+            }
+            let Some(cell) = row.get(page_start + *lane) else {
+                return false;
+            };
+            if *cell != Cell::default()
+                && !(drum_auto_release_cell(cell)
+                    && active[*lane].is_some_and(|(old_note, old_class)| {
+                        related_drum_voice(old_note, old_class, note, class)
+                            || (old_class.role == DrumRole::Core && class.role == DrumRole::Core)
+                    }))
+            {
+                return false;
+            }
+            active[*lane].is_none_or(|(old_note, old_class)| {
+                old_class.role != DrumRole::LongTail
+                    || related_drum_voice(old_note, old_class, note, class)
+            })
+        })?;
+        claimed[lane] = true;
+        assignments.push(lane);
+    }
+    Some(assignments)
 }
 
 fn validate_label(value: &str, description: &str, max_chars: usize) -> Result<()> {
@@ -1040,7 +1278,7 @@ pub fn encode(song: &Song) -> Result<String> {
         ));
         for (page_index, page) in pattern.pages.iter().enumerate() {
             out.push_str(&format!(
-                "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}|{}\n",
+                "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}|{}|{}|{}\n",
                 escape(&page.name),
                 u8::from(page.enabled),
                 page.velocity,
@@ -1049,8 +1287,19 @@ pub fn encode(song: &Song) -> Result<String> {
                 page.device_profile
                     .as_deref()
                     .map(escape)
-                    .unwrap_or_else(|| "-".into())
+                    .unwrap_or_else(|| "-".into()),
+                entry_mode_text(page.entry_mode),
+                page.entry_anchor + 1
             ));
+            for (note, class) in &page.drum_class_overrides {
+                out.push_str(&format!(
+                    "pattern_drum_class={number}|{page_index}|{note}|{}|{}\n",
+                    drum_role_text(class.role),
+                    class
+                        .choke_group
+                        .map_or_else(|| "-".into(), |group| group.to_string())
+                ));
+            }
             for (column_index, column) in page.columns.iter().enumerate() {
                 let (channel, bank_msb, bank_lsb, program) = if page.target == PageTarget::Default {
                     (
@@ -1134,6 +1383,7 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut pattern_lanes = Vec::new();
     let mut pattern_columns = Vec::new();
     let mut pattern_setup = Vec::new();
+    let mut pattern_drum_classes = Vec::new();
     let mut cells = Vec::new();
     for line in lines.filter(|line| !line.trim().is_empty() && !line.starts_with('#')) {
         let (key, value) = line.split_once('=').context("invalid song line")?;
@@ -1220,46 +1470,86 @@ pub fn decode(text: &str) -> Result<Song> {
                     (
                         0,
                         [_, _, name, enabled, channel, bank_msb, bank_lsb, program, velocity, percussion, target],
+                    ) => {
+                        let percussion = binary_flag(percussion, "pattern page percussion")?;
+                        (
+                            Page {
+                                name: unescape(name)?,
+                                enabled: binary_flag(enabled, "pattern page enabled")?,
+                                columns: [ColumnSetup {
+                                    channel: one_based_channel(channel)?,
+                                    bank_msb: midi_value(bank_msb)?,
+                                    bank_lsb: midi_value(bank_lsb)?,
+                                    program: midi_value(program)?,
+                                }; LANES_PER_PAGE],
+                                velocity: midi_value(velocity)?,
+                                percussion,
+                                entry_mode: legacy_entry_mode(percussion),
+                                entry_anchor: 0,
+                                drum_class_overrides: BTreeMap::new(),
+                                target: parse_target(target, version)?,
+                                device_profile: None,
+                                setup: Vec::new(),
+                                lanes: Vec::new(),
+                            },
+                            true,
+                        )
+                    }
+                    (1..=4, [_, _, name, enabled, velocity, percussion, target]) => {
+                        let percussion = binary_flag(percussion, "pattern page percussion")?;
+                        (
+                            Page {
+                                name: unescape(name)?,
+                                enabled: binary_flag(enabled, "pattern page enabled")?,
+                                columns: [ColumnSetup::default(); LANES_PER_PAGE],
+                                velocity: midi_value(velocity)?,
+                                percussion,
+                                entry_mode: legacy_entry_mode(percussion),
+                                entry_anchor: 0,
+                                drum_class_overrides: BTreeMap::new(),
+                                target: parse_target(target, version)?,
+                                device_profile: None,
+                                setup: Vec::new(),
+                                lanes: Vec::new(),
+                            },
+                            false,
+                        )
+                    }
+                    (5, [_, _, name, enabled, velocity, percussion, target, profile]) => {
+                        let percussion = binary_flag(percussion, "pattern page percussion")?;
+                        (
+                            Page {
+                                name: unescape(name)?,
+                                enabled: binary_flag(enabled, "pattern page enabled")?,
+                                columns: [ColumnSetup::default(); LANES_PER_PAGE],
+                                velocity: midi_value(velocity)?,
+                                percussion,
+                                entry_mode: legacy_entry_mode(percussion),
+                                entry_anchor: 0,
+                                drum_class_overrides: BTreeMap::new(),
+                                target: parse_target(target, version)?,
+                                device_profile: (*profile != "-")
+                                    .then(|| unescape(profile))
+                                    .transpose()?,
+                                setup: Vec::new(),
+                                lanes: Vec::new(),
+                            },
+                            false,
+                        )
+                    }
+                    (
+                        6,
+                        [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor],
                     ) => (
                         Page {
                             name: unescape(name)?,
                             enabled: binary_flag(enabled, "pattern page enabled")?,
-                            columns: [ColumnSetup {
-                                channel: one_based_channel(channel)?,
-                                bank_msb: midi_value(bank_msb)?,
-                                bank_lsb: midi_value(bank_lsb)?,
-                                program: midi_value(program)?,
-                            }; LANES_PER_PAGE],
-                            velocity: midi_value(velocity)?,
-                            percussion: binary_flag(percussion, "pattern page percussion")?,
-                            target: parse_target(target, version)?,
-                            device_profile: None,
-                            setup: Vec::new(),
-                            lanes: Vec::new(),
-                        },
-                        true,
-                    ),
-                    (1..=4, [_, _, name, enabled, velocity, percussion, target]) => (
-                        Page {
-                            name: unescape(name)?,
-                            enabled: binary_flag(enabled, "pattern page enabled")?,
                             columns: [ColumnSetup::default(); LANES_PER_PAGE],
                             velocity: midi_value(velocity)?,
                             percussion: binary_flag(percussion, "pattern page percussion")?,
-                            target: parse_target(target, version)?,
-                            device_profile: None,
-                            setup: Vec::new(),
-                            lanes: Vec::new(),
-                        },
-                        false,
-                    ),
-                    (5, [_, _, name, enabled, velocity, percussion, target, profile]) => (
-                        Page {
-                            name: unescape(name)?,
-                            enabled: binary_flag(enabled, "pattern page enabled")?,
-                            columns: [ColumnSetup::default(); LANES_PER_PAGE],
-                            velocity: midi_value(velocity)?,
-                            percussion: binary_flag(percussion, "pattern page percussion")?,
+                            entry_mode: parse_entry_mode(entry_mode)?,
+                            entry_anchor: one_based_entry_anchor(entry_anchor)?,
+                            drum_class_overrides: BTreeMap::new(),
                             target: parse_target(target, version)?,
                             device_profile: (*profile != "-")
                                 .then(|| unescape(profile))
@@ -1284,6 +1574,7 @@ pub fn decode(text: &str) -> Result<Song> {
             "pattern_lane" => pattern_lanes.push(value.to_owned()),
             "pattern_column" if version >= 1 => pattern_columns.push(value.to_owned()),
             "pattern_setup" => pattern_setup.push(value.to_owned()),
+            "pattern_drum_class" if version >= 6 => pattern_drum_classes.push(value.to_owned()),
             "cell" => cells.push(value.to_owned()),
             _ => bail!("unknown song field {key}; file was not changed"),
         }
@@ -1300,6 +1591,7 @@ pub fn decode(text: &str) -> Result<Song> {
         attach_pattern_columns(&mut patterns, pattern_columns, version)?;
     }
     attach_pattern_setup(&mut patterns, pattern_setup)?;
+    attach_pattern_drum_classes(&mut patterns, pattern_drum_classes)?;
     let total_cells = patterns.values().try_fold(0usize, |total, pattern| {
         total
             .checked_add(
@@ -1460,6 +1752,42 @@ fn attach_pattern_setup(patterns: &mut BTreeMap<u16, Pattern>, setup: Vec<String
             bail!("page exceeds {MAX_SETUP_MESSAGES_PER_PAGE} setup messages");
         }
         page.setup.push(parse_setup_message(f[2])?);
+    }
+    Ok(())
+}
+
+fn attach_pattern_drum_classes(
+    patterns: &mut BTreeMap<u16, Pattern>,
+    classes: Vec<String>,
+) -> Result<()> {
+    for value in classes {
+        let f = value.split('|').collect::<Vec<_>>();
+        if f.len() != 5 {
+            bail!("invalid pattern drum classification");
+        }
+        let pattern = patterns
+            .get_mut(&f[0].parse::<u16>()?)
+            .context("drum classification pattern missing")?;
+        let page = pattern
+            .pages
+            .get_mut(f[1].parse::<usize>()?)
+            .context("drum classification page missing")?;
+        let note = midi_value(f[2])?;
+        let class = DrumNoteClass {
+            role: parse_drum_role(f[3])?,
+            choke_group: if f[4] == "-" {
+                None
+            } else {
+                let group = midi_value(f[4])?;
+                if group == 0 {
+                    bail!("drum choke group must be 1..=127");
+                }
+                Some(group)
+            },
+        };
+        if page.drum_class_overrides.insert(note, class).is_some() {
+            bail!("duplicate drum classification for note {note}");
+        }
     }
     Ok(())
 }
@@ -2846,6 +3174,9 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
         }; LANES_PER_PAGE],
         velocity: 64,
         percussion: false,
+        entry_mode: NoteEntryMode::Manual,
+        entry_anchor: 0,
+        drum_class_overrides: BTreeMap::new(),
         target: PageTarget::ConfiguredExternal,
         device_profile: None,
         setup: Vec::new(),
@@ -2955,6 +3286,36 @@ fn target_text(target: &PageTarget) -> String {
         ),
     }
 }
+fn entry_mode_text(mode: NoteEntryMode) -> &'static str {
+    match mode {
+        NoteEntryMode::Manual => "manual",
+        NoteEntryMode::OneColumn => "one",
+        NoteEntryMode::DrumAuto => "drum",
+    }
+}
+fn parse_entry_mode(value: &str) -> Result<NoteEntryMode> {
+    match value {
+        "manual" => Ok(NoteEntryMode::Manual),
+        "one" => Ok(NoteEntryMode::OneColumn),
+        "drum" => Ok(NoteEntryMode::DrumAuto),
+        _ => bail!("invalid note-entry mode"),
+    }
+}
+fn drum_role_text(role: DrumRole) -> &'static str {
+    match role {
+        DrumRole::Core => "core",
+        DrumRole::LongTail => "long",
+        DrumRole::Other => "other",
+    }
+}
+fn parse_drum_role(value: &str) -> Result<DrumRole> {
+    match value {
+        "core" => Ok(DrumRole::Core),
+        "long" => Ok(DrumRole::LongTail),
+        "other" => Ok(DrumRole::Other),
+        _ => bail!("invalid drum role"),
+    }
+}
 fn parse_target(value: &str, version: u8) -> Result<PageTarget> {
     match value {
         "default" if version >= 4 => Ok(PageTarget::Default),
@@ -2999,6 +3360,13 @@ fn one_based_channel(v: &str) -> Result<u8> {
         bail!("channel out of range");
     }
     Ok(n - 1)
+}
+fn one_based_entry_anchor(v: &str) -> Result<u8> {
+    let anchor = v.parse::<u8>()?;
+    if !(1..=LANES_PER_PAGE as u8).contains(&anchor) {
+        bail!("entry anchor out of range");
+    }
+    Ok(anchor - 1)
 }
 fn midi_value(v: &str) -> Result<u8> {
     let n = v.parse::<u8>()?;
@@ -3094,15 +3462,46 @@ mod tests {
     }
     fn without_v5_profile_fields(text: &str) -> String {
         text.lines()
+            .filter(|line| !line.starts_with("pattern_drum_class="))
             .map(|line| {
                 if line.starts_with("pattern_page=") {
-                    line.rsplit_once('|').unwrap().0
+                    let without_anchor = line.rsplit_once('|').unwrap().0;
+                    let without_mode = without_anchor.rsplit_once('|').unwrap().0;
+                    without_mode.rsplit_once('|').unwrap().0
                 } else {
                     line
                 }
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+    fn as_v5(text: &str) -> String {
+        text.lines()
+            .filter(|line| !line.starts_with("pattern_drum_class="))
+            .map(|line| {
+                if line.starts_with("SHSYNTH-SONG 6") {
+                    "SHSYNTH-SONG 5"
+                } else if line.starts_with("pattern_page=") {
+                    let without_anchor = line.rsplit_once('|').unwrap().0;
+                    without_anchor.rsplit_once('|').unwrap().0
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn enter_drums(pattern: &mut Pattern, row: usize, notes: &[u8]) -> Option<Vec<usize>> {
+        let lanes = drum_auto_lanes(pattern, row, 0, notes, &[])?;
+        for (&note, &lane) in notes.iter().zip(&lanes) {
+            pattern.rows[row][lane] = Cell {
+                note: Note::On(note),
+                velocity: Some(100),
+                ..Cell::default()
+            };
+        }
+        Some(lanes)
     }
 
     #[test]
@@ -3177,7 +3576,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::ActiveInstrument;
         let before = encode(&song).unwrap();
-        assert!(before.contains("|instrument|-\n"));
+        assert!(before.contains("|instrument|-|manual|1\n"));
         let base = env::temp_dir().join(format!("shr-legacy-routing-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         save(&base, &song, false).unwrap();
@@ -3192,7 +3591,7 @@ mod tests {
         assert_eq!(fs::read_to_string(path).unwrap(), before);
         assert!(encode(&loaded)
             .unwrap()
-            .contains("|software:synthv1:First Sound|-\n"));
+            .contains("|software:synthv1:First Sound|-|manual|1\n"));
         let _ = fs::remove_dir_all(base);
     }
     #[test]
@@ -3228,10 +3627,130 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 5\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 6\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
+    }
+
+    #[test]
+    fn version_five_projects_preserve_manual_and_explicit_percussion_entry_defaults() {
+        let current = encode(&Song::new(&config())).unwrap();
+        let old = as_v5(&current);
+        let loaded = decode(&old).unwrap();
+        for page in loaded.patterns.values().flat_map(|pattern| &pattern.pages) {
+            assert_eq!(page.entry_mode, legacy_entry_mode(page.percussion));
+            assert_eq!(page.entry_anchor, 0);
+            assert!(page.drum_class_overrides.is_empty());
+        }
+        assert!(loaded
+            .patterns
+            .values()
+            .flat_map(|pattern| &pattern.pages)
+            .any(|page| !page.percussion && page.entry_mode == NoteEntryMode::Manual));
+    }
+
+    #[test]
+    fn page_entry_modes_anchors_and_drum_classes_round_trip_independently() {
+        let mut song = Song::new(&config());
+        let pages = &mut song.patterns.get_mut(&0).unwrap().pages;
+        pages[0].entry_mode = NoteEntryMode::OneColumn;
+        pages[0].entry_anchor = 2;
+        pages[1].entry_mode = NoteEntryMode::DrumAuto;
+        pages[1]
+            .drum_class_overrides
+            .insert(60, DrumNoteClass::new(DrumRole::LongTail, Some(7)));
+        let loaded = decode(&encode(&song).unwrap()).unwrap();
+        let pages = &loaded.patterns[&0].pages;
+        assert_eq!(pages[0].entry_mode, NoteEntryMode::OneColumn);
+        assert_eq!(pages[0].entry_anchor, 2);
+        assert_eq!(pages[1].entry_mode, NoteEntryMode::DrumAuto);
+        assert_eq!(
+            pages[1].drum_class(60),
+            DrumNoteClass::new(DrumRole::LongTail, Some(7))
+        );
+    }
+
+    #[test]
+    fn drum_auto_compacts_core_hits_and_splits_simultaneous_strikes() {
+        let mut pattern = Pattern::new(8, 120, 4, vec![Page::new("DRUMS", 9, true, 0)]);
+        assert_eq!(enter_drums(&mut pattern, 0, &[36]), Some(vec![0]));
+        assert_eq!(enter_drums(&mut pattern, 1, &[38]), Some(vec![0]));
+        let lanes = enter_drums(&mut pattern, 2, &[36, 38, 42, 45]).unwrap();
+        assert_eq!(lanes.len(), LANES_PER_PAGE);
+        assert_eq!(lanes.iter().copied().collect::<BTreeSet<_>>().len(), 4);
+        assert_eq!(
+            pattern.rows[2]
+                .iter()
+                .filter(|cell| matches!(cell.note, Note::On(_)))
+                .count(),
+            4
+        );
+    }
+
+    #[test]
+    fn drum_auto_preserves_existing_row_events_and_is_atomic_when_full() {
+        let mut pattern = Pattern::new(4, 120, 4, vec![Page::new("DRUMS", 9, true, 0)]);
+        pattern.rows[1][0].note = Note::On(36);
+        pattern.rows[1][1].note = Note::On(38);
+        let lanes = enter_drums(&mut pattern, 1, &[45]).unwrap();
+        assert!(!lanes.contains(&0));
+        assert!(!lanes.contains(&1));
+        assert_eq!(pattern.rows[1][0].note, Note::On(36));
+        assert_eq!(pattern.rows[1][1].note, Note::On(38));
+
+        let before = pattern.rows[1].clone();
+        pattern.rows[1][3].note = Note::On(49);
+        let full = pattern.rows[1].clone();
+        assert_eq!(drum_auto_lanes(&pattern, 1, 0, &[51], &[]), None);
+        assert_eq!(pattern.rows[1], full);
+        assert_ne!(pattern.rows[1], before);
+    }
+
+    #[test]
+    fn drum_auto_avoids_unrelated_cymbal_tails_and_honours_choke_groups() {
+        let mut pattern = Pattern::new(8, 120, 4, vec![Page::new("DRUMS", 9, true, 0)]);
+        let cymbal_lane = enter_drums(&mut pattern, 0, &[49]).unwrap()[0];
+        let kick_lane = enter_drums(&mut pattern, 1, &[36]).unwrap()[0];
+        assert_ne!(kick_lane, cymbal_lane);
+        let second_cymbal = enter_drums(&mut pattern, 2, &[51]).unwrap()[0];
+        assert_ne!(second_cymbal, cymbal_lane);
+
+        let mut hats = Pattern::new(4, 120, 4, vec![Page::new("HATS", 4, true, 0)]);
+        let open_lane = enter_drums(&mut hats, 0, &[46]).unwrap()[0];
+        let closed_lane = enter_drums(&mut hats, 1, &[42]).unwrap()[0];
+        assert_eq!(closed_lane, open_lane);
+    }
+
+    #[test]
+    fn drum_auto_is_deterministic_and_unknown_notes_are_short_other_percussion() {
+        let mut first = Pattern::new(8, 120, 4, vec![Page::new("KIT", 2, true, 0)]);
+        first.rows[0][0].note = Note::On(36);
+        first.rows[0][2].note = Note::On(49);
+        let second = first.clone();
+        let notes = [38, 60, 51];
+        assert_eq!(
+            drum_auto_lanes(&first, 3, 0, &notes, &[]),
+            drum_auto_lanes(&second, 3, 0, &notes, &[])
+        );
+        assert_eq!(first.pages[0].drum_class(60).role, DrumRole::Other);
+    }
+
+    #[test]
+    fn playback_still_interrupts_a_cymbal_explicitly_stored_in_the_same_lane() {
+        let cfg = config();
+        let mut song = Song::new_with_pages(&cfg, vec![Page::new("DRUMS", 9, true, 0)]);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.rows[0][0].note = Note::On(49);
+        pattern.rows[1][0].note = Note::On(36);
+        let scheduled = schedule(&song, &cfg, 0, 0).unwrap();
+        let kick = scheduled
+            .iter()
+            .find(|message| message.bytes == [0x99, 36, 96])
+            .unwrap();
+        assert!(scheduled.iter().any(|message| {
+            message.at == kick.at && message.lane == Some(0) && message.bytes == [0x89, 49, 0]
+        }));
     }
     #[test]
     fn current_format_loop_round_trips_and_old_shapes_are_rejected() {
@@ -3268,7 +3787,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 5\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 6\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -4177,10 +4696,13 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Software(route.clone());
         pages_mut(&mut song)[0].column_mut(0).channel = 2;
+        pages_mut(&mut song)[0].entry_mode = NoteEntryMode::OneColumn;
+        pages_mut(&mut song)[0].entry_anchor = 1;
         let repeated = song
             .add_page(PageTarget::Software(route.clone()), 2)
             .unwrap();
         pages_mut(&mut song)[repeated].column_mut(1).channel = 2;
+        pages_mut(&mut song)[repeated].entry_mode = NoteEntryMode::DrumAuto;
 
         let decoded = decode(&encode(&song).unwrap()).unwrap();
         assert_eq!(
@@ -4193,6 +4715,12 @@ mod tests {
         );
         assert_eq!(pages(&decoded)[0].column(0).channel, 2);
         assert_eq!(pages(&decoded)[repeated].column(1).channel, 2);
+        assert_eq!(pages(&decoded)[0].entry_mode, NoteEntryMode::OneColumn);
+        assert_eq!(pages(&decoded)[0].entry_anchor, 1);
+        assert_eq!(
+            pages(&decoded)[repeated].entry_mode,
+            NoteEntryMode::DrumAuto
+        );
     }
 
     #[test]
@@ -4425,14 +4953,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 5\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 6\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 5", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 6", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -4441,14 +4969,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 5\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 6\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 5", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 6", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -4465,8 +4993,8 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 5\n"));
-        assert!(encoded.contains("|default|-\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 6\n"));
+        assert!(encoded.contains("|default|-|manual|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
         assert_eq!(decoded, song);
@@ -4481,7 +5009,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 5", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 6", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -4502,7 +5030,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 5",
+            "SHSYNTH-SONG 6",
             "SHSYNTH-SONG 4",
             1,
         );

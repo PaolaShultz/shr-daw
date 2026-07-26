@@ -124,6 +124,7 @@ pub enum Action {
     OpenPatternLengthOverlay,
     OpenNoteLengthOverlay,
     OpenTrackerAdvanceOverlay,
+    OpenEntryLayoutOverlay,
     OpenEffectsOverlay,
     OpenAudioRecorder,
     OpenFxRack,
@@ -862,7 +863,7 @@ const PAGES: [MenuPage; 4] = [
         "SYS",
         [
             on("PANIC", Action::StopAll),
-            off(""),
+            on("ENTRY", Action::OpenEntryLayoutOverlay),
             on("HELP", Action::OpenHelp),
             on("EXIT", Action::Back),
         ],

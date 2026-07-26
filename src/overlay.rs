@@ -16,6 +16,7 @@ pub enum OverlayKind {
     TrackerPatternLength,
     TrackerNoteLength,
     TrackerAdvance,
+    TrackerEntryLayout,
     LoopLibrary,
     MixEffects,
 }
@@ -37,6 +38,7 @@ impl OverlayKind {
             Action::OpenPatternLengthOverlay => Some(Self::TrackerPatternLength),
             Action::OpenNoteLengthOverlay => Some(Self::TrackerNoteLength),
             Action::OpenTrackerAdvanceOverlay => Some(Self::TrackerAdvance),
+            Action::OpenEntryLayoutOverlay => Some(Self::TrackerEntryLayout),
             Action::LoopImport | Action::OpenLoopLibrary => Some(Self::LoopLibrary),
             Action::OpenEffectsOverlay => Some(Self::MixEffects),
             _ => None,
@@ -52,6 +54,7 @@ impl OverlayKind {
             Self::TrackerPatternLength => "PATTERN LENGTH",
             Self::TrackerNoteLength => "NOTE LENGTH",
             Self::TrackerAdvance => "EDIT ADD",
+            Self::TrackerEntryLayout => "PAGE NOTE ENTRY",
             Self::LoopLibrary => "LOOP BROWSER",
             Self::MixEffects => "EFFECTS ROUTING",
         }

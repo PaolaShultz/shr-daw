@@ -52,7 +52,8 @@ the same pattern until you explicitly clone or paste a new pattern.
 
 Each FT2 Pattern owns its own rows, meter, master tempo, pages, page targets,
 per-column MIDI channels/banks/programs, velocity defaults, mutes, percussion
-settings, lane settings, and cell data. A new Project starts with one pattern
+settings, note-entry mode/anchor, drum classification overrides, lane settings,
+and cell data. A new Project starts with one pattern
 whose FT2 workspace exposes four musician-facing pages:
 
 1. `Software Synth`, a four-track page using the first available synthv1 preset;
@@ -137,7 +138,8 @@ target only when a song intentionally belongs to particular hardware.
 
 Use FT2 **SELECT** → **PAGE** to browse every page/column without leaving the
 Pattern. Its final row opens the full **TRACKS** screen. There you can add or
-select a page, choose a column, and set its target, channel, bank, and program.
+select a page, choose a column, set its target, channel, bank, and program, and
+open **SYS** → **ENTRY** to choose that page's note-entry layout.
 **DONE** validates shared-channel compatibility and keeps the changes. Internal
 routes use `TARGET → ENGINE → INSTR`; external routes use
 `TARGET → MIDI OUT → CH → INSTR/PROG`. **SYS**
@@ -158,12 +160,30 @@ the usable inner area is 36×9 at `(2,2)`; row 13 remains the shared status row.
 
 ## Step editing
 
-Step entry accepts notes and chords from any configured musical input. Releasing
-a melodic note commits it immediately to the selected column, so a bass line or
-melody stays in that column. Only notes held at the same time form a chord and
-fill subsequent columns, keeping their velocities. **ADD** opens an overlay for
-every persistent advance from 0 through 32 rows for note/chord entry, blank,
-erase, and note-off; 0 keeps the current row. The FT2 title shows `EDIT +n`.
+Step entry accepts notes and chords from any configured musical input.
+**TRACKS** → **SYS** → **ENTRY** selects one persisted layout for each page:
+
+- **Manual** is the backward-compatible default. A note starts in the selected
+  column and a chord continues through later columns.
+- **One column** stores every note in the chosen C1–C4 anchor. It is deliberately
+  monophonic: a new note interrupts the earlier note in that lane, and a chord
+  collapses in deterministic pitch order to its final note. The selected cursor
+  does not move to the anchor.
+- **Drum auto** allocates each simultaneous percussion group across the current
+  page's four ordinary lanes. Kick and snare share a compact primary lane when
+  they alternate, while simultaneous hits spill into distinct safe lanes.
+  Toms, fills, hats, cymbals, and other percussion reuse established lanes when
+  safe and never overwrite an existing target-row cell.
+
+Changing layout affects future entry and recording only; it never rearranges
+existing Pattern data or changes column routing. The compact layout label and
+One-column anchor appear in the FT2 footer and Tracks screen. Legacy ordinary
+pages load as Manual; legacy pages with the persisted percussion flag retain
+their prior automatic drum layout.
+
+**ADD** opens an overlay for every persistent advance from 0 through 32 rows
+for note/chord entry, blank, erase, and note-off; 0 keeps the current row. The
+FT2 title shows `EDIT +n`.
 A computer keyboard can enter notes with `Z S X D C V G B H N J M`.
 Those lowercase letter keys remain musical in REC as well as Play/Edit; in REC,
 use uppercase `S` or Space for Stop and Esc or uppercase `B` for Back so the
@@ -175,19 +195,20 @@ selected duration writes the existing gate/explicit note-off representation;
 it does not change the independent **ADD** cursor advance or create a second
 timing system.
 
-Percussion pages keep drum voices visually stable during Edit. For each
-played note, SHR searches all four columns in earlier rows of
-the current Pattern, newest row first, and reuses the column where that exact
-GM drum note last appeared. The two GM bass-drum notes share a family fallback,
-as do the acoustic and electric snare; with no history, bass drums start in
-column 1 and snares in column 2. Other new drum voices start in columns 3–4 so
-the kick/snare homes remain available. Simultaneous voices cannot share one
-cell, so a collision uses the next free column. An unrelated note or command
-already on the destination row is never overwritten; a note-off in a voice's
-own reused/home column can be replaced by its new hit. If all four columns are
-occupied, the status reports the ignored note. Existing Patterns are not
-rearranged, and melodic pages retain selected-column, left-to-right chord
-entry.
+Drum auto also checks sounding lane state. An unrelated long-tail cymbal makes
+its lane unavailable, so later kick, snare, tom, clap, hat, or ornament hits
+spill elsewhere. Another cymbal does the same when capacity permits. A
+same-note retrigger or matching explicit choke group may reuse that lane; the
+new same-lane note then performs the tracker’s ordinary interruption. General
+MIDI cymbals and hi-hat group 1 are the defaults. Unknown notes predictably
+fall back to short `other percussion`, never cymbal. A page can persist non-GM
+role/choke overrides. If a whole group cannot fit, `DRUM LANES FULL` leaves
+the Pattern unchanged; Drum auto does not create a page or drop a hit silently.
+
+This protection is placement only. Playback never reallocates a note or gives
+cymbals special ownership: any note already stored in the same lane interrupts
+the previous lane note. Manual entry into a cymbal lane and every One-column
+entry therefore keep normal monophonic interruption.
 
 The editor can add a note, note-off, or blank step. It can also change the page
 program and pattern master tempo, mute a lane, and move through rows, lanes,
@@ -232,17 +253,22 @@ the previous value and selection.
 
 ## Real-time recording
 
-**REC** stops any current Play or Edit mode, starts the selected Pattern from
-row 1, and records into the selected page; pressing **REC** again stops and
-returns to stopped Play mode. Between notes, the main rotary may
+From stopped transport, **REC** starts the selected Pattern from row 1 and
+loops it. Pressing **REC** during Play punches into the current Arrangement
+position without replacing that schedule; punch-out returns to Play. Between
+notes, the main rotary may
 select another column or page without leaving REC, and later notes use that
 selected page. While one or more recorded notes are held, rotary turns are
 ignored rather than queued; movement resumes only after every matching Note Off.
-Played notes are placed on the selected page's four lanes and quantized to
-pattern rows. REC ignores the Edit note-length setting: releasing a key writes
-a quantized note-off for that same lane, so the recorded duration follows the
-performance. Newly captured notes and releases are published to the next loop
-cycle without restarting the cycle currently sounding. Each assigned lane
+Played notes use the active page's Manual, One-column, or Drum-auto allocator
+and are quantized to Pattern rows. Events quantized to one row occupy distinct
+Drum-auto lanes. REC ignores the Edit note-length setting: each note-on records
+its exact Pattern/page/lane owner, and its matching release writes the
+quantized note-off in that lane even after cursor movement, a Pattern loop, or
+an Arrangement boundary. Repeated identical input notes keep independent
+owners and cannot release one another early. Newly captured notes and releases
+are published to the next stopped-record loop without restarting its current
+cycle. Each assigned lane
 auditions through that column's channel and the selected page's exact
 Pattern-owned software or hardware instrument. It does not leak into an
 unrelated standalone Player instrument.
@@ -252,11 +278,11 @@ controller mappings.
 
 Real-time recording accepts the selected page when its exact target is online,
 including the factory Software Synth page. An offline or missing target refuses
-**REC** instead of substituting another destination. Real-time REC retains its
-separate active-note lane allocator so note releases remain paired with
-overlapping held notes; the history-based drum placement above applies only to
-Edit. Repeated **RECORD**, **STOP**, **EXIT**, and **PANIC** release auditioned
-notes.
+**REC** instead of substituting another destination. Stop, mute, panic, target
+failure, route interruption, Project replacement, and exit clear every recorded
+input owner and release auditioned notes. A Drum-auto capacity fault keeps
+recording and transport responsive, reports `DRUM LANES FULL`, and leaves
+existing cells unchanged.
 
 ## WAV loops
 
@@ -397,13 +423,17 @@ The FX rack and editor always show the owning Project plus `NEW`, `SAVED`, or
 `DIRTY`; source, AUX, and master racks are all Project data.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 5
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 6
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
-messages, cells, source insert rack, two aux routes, and master rack. Portable
+messages, per-page entry mode/anchor and drum-role overrides, cells, source
+insert rack, two aux routes, and master rack. Portable
 pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
 external-device profiles are stored separately from raw output/channel/bank/
 program data.
+Format 5 and older ordinary pages load as Manual with anchor C1 and no
+overrides. Pages carrying the old explicit percussion flag retain their prior
+automatic drum entry.
 Versions 0 and 1 gain empty effects routing; version 2 retains its source rack and gains
 empty aux/master routing. Format 3 routes stay explicit. Version 0 page-wide setups copy the old
 channel/bank/program into all four columns. Unknown newer versions, fields, or

@@ -383,8 +383,12 @@ struct NoteEditor {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RecordedLane {
+    pattern: u16,
+    order: usize,
+    page: usize,
     lane: usize,
     start_row: usize,
+    token: u64,
 }
 
 #[derive(Debug)]
@@ -396,6 +400,8 @@ struct TrackerRecording {
     last_row: usize,
     next_lane: usize,
     active_lanes: HashMap<(u8, u8), Vec<RecordedLane>>,
+    lane_owners: HashMap<(usize, usize), u64>,
+    next_token: u64,
     notes: usize,
 }
 
@@ -1291,99 +1297,6 @@ where
         return Err((RoutingTransactionStage::Activate, error));
     }
     Ok(())
-}
-
-fn drum_home_lane(note: u8) -> Option<usize> {
-    match note {
-        35 | 36 => Some(0), // Acoustic Bass Drum / Bass Drum 1
-        38 | 40 => Some(1), // Acoustic Snare / Electric Snare
-        _ => None,
-    }
-}
-
-fn previous_drum_lane(
-    pattern: &sequencer::Pattern,
-    row_index: usize,
-    page_index: usize,
-    matches: impl Fn(u8) -> bool,
-) -> Option<usize> {
-    let page_start = page_index.checked_mul(LANES_PER_PAGE)?;
-    pattern.rows.iter().take(row_index).rev().find_map(|row| {
-        (0..LANES_PER_PAGE).find(|lane| {
-            row.get(page_start + lane)
-                .is_some_and(|cell| matches!(cell.note, Note::On(note) if matches(note)))
-        })
-    })
-}
-
-fn drum_entry_lanes(
-    pattern: &sequencer::Pattern,
-    row_index: usize,
-    page_index: usize,
-    notes: &[(u8, u8)],
-) -> Vec<Option<usize>> {
-    let Some(row) = pattern.rows.get(row_index) else {
-        return vec![None; notes.len()];
-    };
-    let Some(page_start) = page_index.checked_mul(LANES_PER_PAGE) else {
-        return vec![None; notes.len()];
-    };
-    let mut claimed = [false; LANES_PER_PAGE];
-    let mut assignments = Vec::with_capacity(notes.len());
-
-    for &(note, _) in notes {
-        let exact_history = previous_drum_lane(pattern, row_index, page_index, |old| old == note);
-        let family_history = drum_home_lane(note).and_then(|family| {
-            previous_drum_lane(pattern, row_index, page_index, |old| {
-                old != note && drum_home_lane(old) == Some(family)
-            })
-        });
-        let current_match = (0..LANES_PER_PAGE).find(|lane| {
-            row.get(page_start + lane)
-                .is_some_and(|cell| cell.note == Note::On(note))
-        });
-
-        let mut candidates = Vec::with_capacity(LANES_PER_PAGE + 4);
-        candidates.extend(current_match.map(|lane| (lane, true)));
-        candidates.extend(exact_history.map(|lane| (lane, true)));
-        candidates.extend(family_history.map(|lane| (lane, true)));
-        candidates.extend(drum_home_lane(note).map(|lane| (lane, true)));
-        // Leave the first two columns open for a new kick and snare when the
-        // Pattern has not established a home for this drum yet.
-        candidates.extend([2, 3, 0, 1].map(|lane| (lane, false)));
-
-        let lane = candidates
-            .into_iter()
-            .find(|&(lane, may_replace_note_off)| {
-                if lane >= LANES_PER_PAGE || claimed[lane] {
-                    return false;
-                }
-                row.get(page_start + lane).is_some_and(|cell| {
-                    *cell == Cell::default()
-                        || cell.note == Note::On(note)
-                        || (may_replace_note_off && cell.note == Note::Off)
-                })
-            })
-            .map(|(lane, _)| lane);
-        if let Some(lane) = lane {
-            claimed[lane] = true;
-        }
-        assignments.push(lane);
-    }
-
-    assignments
-}
-
-fn write_step_note(cell: &mut Cell, note: u8, velocity: u8) {
-    if cell.note == Note::On(note) {
-        cell.velocity = Some(velocity);
-    } else {
-        *cell = Cell {
-            note: Note::On(note),
-            velocity: Some(velocity),
-            ..Cell::default()
-        };
-    }
 }
 
 impl App {
@@ -2341,6 +2254,7 @@ impl App {
             OverlayKind::TrackerPatternLength => pattern_length_choices().len(),
             OverlayKind::TrackerNoteLength => NoteLength::ALL.len(),
             OverlayKind::TrackerAdvance => 33,
+            OverlayKind::TrackerEntryLayout => 6,
             OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
             OverlayKind::MixEffects => MAX_AUX_BUSES + 2,
         }
@@ -2370,6 +2284,7 @@ impl App {
             OverlayKind::TrackerNoteLength | OverlayKind::TrackerAdvance => {
                 caller == Screen::Tracker && self.tracker_mode == TrackerMode::Edit
             }
+            OverlayKind::TrackerEntryLayout => caller == Screen::TrackerPages,
             OverlayKind::TrackerPatternLength => {
                 caller == Screen::TrackerFiles && self.confirm_pattern_clear
             }
@@ -2410,6 +2325,15 @@ impl App {
                 .position(|length| *length == self.note_length)
                 .unwrap_or(0),
             OverlayKind::TrackerAdvance => self.tracker_advance.min(32),
+            OverlayKind::TrackerEntryLayout => {
+                self.current_page().map_or(0, |page| match page.entry_mode {
+                    sequencer::NoteEntryMode::Manual => 0,
+                    sequencer::NoteEntryMode::OneColumn => {
+                        1 + usize::from(page.entry_anchor.min(3))
+                    }
+                    sequencer::NoteEntryMode::DrumAuto => 5,
+                })
+            }
             OverlayKind::LoopLibrary if action == Action::LoopImport => self
                 .loop_selected
                 .min(self.loop_imports.len().saturating_sub(1)),
@@ -2848,6 +2772,21 @@ impl App {
                 self.set_tracker_advance(selection.min(32));
                 self.close_overlay(false);
                 self.status = format!("EDIT ADD {} row(s)", self.tracker_advance);
+            }
+            OverlayKind::TrackerEntryLayout => {
+                if let Some(page) = self.current_page_mut() {
+                    match selection.min(5) {
+                        0 => page.entry_mode = sequencer::NoteEntryMode::Manual,
+                        1..=4 => {
+                            page.entry_mode = sequencer::NoteEntryMode::OneColumn;
+                            page.entry_anchor = (selection - 1) as u8;
+                        }
+                        _ => page.entry_mode = sequencer::NoteEntryMode::DrumAuto,
+                    }
+                    let label = page.entry_mode.compact_label(page.entry_anchor).to_owned();
+                    self.close_overlay(false);
+                    self.status = format!("PAGE ENTRY · {label}");
+                }
             }
             OverlayKind::LoopLibrary => {
                 self.stop_loop_preview(false);
@@ -4342,39 +4281,6 @@ impl App {
             self.status = "N00B · note outside scale ignored".into();
             return;
         }
-        if self.current_page().is_some_and(|page| page.percussion) {
-            let pattern_number = self.tracker_pattern_number();
-            let assignment = self.song.patterns.get(&pattern_number).and_then(|pattern| {
-                drum_entry_lanes(
-                    pattern,
-                    self.tracker_row,
-                    self.tracker_page,
-                    &[(note, velocity)],
-                )
-                .into_iter()
-                .next()
-                .flatten()
-            });
-            let Some(lane) = assignment else {
-                self.status = format!(
-                    "drum row {:02X} has no free column · note ignored",
-                    self.tracker_row
-                );
-                return;
-            };
-            let page_start = self.tracker_page * LANES_PER_PAGE;
-            if let Some(cell) = self
-                .song
-                .patterns
-                .get_mut(&pattern_number)
-                .and_then(|pattern| pattern.rows.get_mut(self.tracker_row))
-                .and_then(|row| row.get_mut(page_start + lane))
-            {
-                write_step_note(cell, note, velocity);
-                self.advance_tracker_row();
-            }
-            return;
-        }
         self.write_edit_notes(&[(note, velocity)]);
     }
     fn commit_tracker_gesture(&mut self, now: Instant) {
@@ -4401,61 +4307,6 @@ impl App {
                 self.tracker_page,
                 self.tracker_track,
             ));
-        let pattern_number = self.song.order.get(order).copied().unwrap_or(0);
-        let percussion = self
-            .song
-            .patterns
-            .get(&pattern_number)
-            .and_then(|pattern| pattern.pages.get(page_index))
-            .is_some_and(|page| page.percussion);
-        if percussion {
-            let assignments = self
-                .song
-                .patterns
-                .get(&pattern_number)
-                .map(|pattern| drum_entry_lanes(pattern, row_index, page_index, &gesture.notes))
-                .unwrap_or_else(|| vec![None; gesture.notes.len()]);
-            let note_count = gesture.notes.len();
-            let page_start = page_index * LANES_PER_PAGE;
-            let mut entered = 0;
-            if let Some(row) = self
-                .song
-                .patterns
-                .get_mut(&pattern_number)
-                .and_then(|pattern| pattern.rows.get_mut(row_index))
-            {
-                for ((note, velocity), lane) in
-                    gesture.notes.into_iter().zip(assignments.into_iter())
-                {
-                    let Some(lane) = lane else {
-                        continue;
-                    };
-                    if let Some(cell) = row.get_mut(page_start + lane) {
-                        write_step_note(cell, note, velocity);
-                        entered += 1;
-                    }
-                }
-            }
-            self.tracker_order = order;
-            self.tracker_row = row_index;
-            if entered == 0 {
-                self.status = format!("drum row {row_index:02X} full · gesture ignored");
-            } else {
-                self.advance_tracker_row();
-                self.status = if entered == note_count {
-                    format!(
-                        "drum gesture entered · advanced {} row(s)",
-                        self.tracker_advance
-                    )
-                } else {
-                    format!(
-                        "drum gesture entered {entered}/{note_count} · row full · advanced {} row(s)",
-                        self.tracker_advance
-                    )
-                };
-            }
-            return;
-        }
         self.tracker_order = order;
         self.tracker_row = row_index;
         self.tracker_page = page_index;
@@ -4519,6 +4370,7 @@ impl App {
         self.cancel_tracker_gesture();
         if let Some(recording) = self.tracker_recording.as_mut() {
             recording.active_lanes.clear();
+            recording.lane_owners.clear();
         }
         self.release_tracker_audition();
     }
@@ -4614,20 +4466,48 @@ impl App {
         let page_index = self.tracker_page;
         let first_lane = self.tracker_track;
         let (span, gate) = self.note_row_span_and_gate();
+        let Some(page) = self
+            .song
+            .patterns
+            .get(&pattern_number)
+            .and_then(|pattern| pattern.pages.get(page_index))
+            .cloned()
+        else {
+            return;
+        };
+        let assignments = match page.entry_mode {
+            sequencer::NoteEntryMode::Manual => notes
+                .iter()
+                .enumerate()
+                .map(|(offset, _)| (first_lane + offset) % LANES_PER_PAGE)
+                .collect::<Vec<_>>(),
+            sequencer::NoteEntryMode::OneColumn => {
+                vec![usize::from(page.entry_anchor); notes.len()]
+            }
+            sequencer::NoteEntryMode::DrumAuto => {
+                let Some(assignments) =
+                    self.song.patterns.get(&pattern_number).and_then(|pattern| {
+                        sequencer::drum_auto_lanes(
+                            pattern,
+                            row_index,
+                            page_index,
+                            &notes.iter().map(|(note, _)| *note).collect::<Vec<_>>(),
+                            &[],
+                        )
+                    })
+                else {
+                    self.status = "DRUM LANES FULL · pattern unchanged".into();
+                    return;
+                };
+                assignments
+            }
+        };
         let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
             return;
         };
         let page_start = page_index * LANES_PER_PAGE;
-        let assignments = notes
-            .iter()
-            .enumerate()
-            .map(|(offset, _)| Some((first_lane + offset) % LANES_PER_PAGE))
-            .collect::<Vec<_>>();
         let mut entered = 0;
         for ((note, velocity), lane) in notes.iter().copied().zip(assignments) {
-            let Some(lane) = lane else {
-                continue;
-            };
             let lane = page_start + lane;
             if let Some(cell) = pattern
                 .rows
@@ -4668,6 +4548,12 @@ impl App {
         }
         self.status = if entered == 0 {
             format!("row {row_index:02X} full · note ignored")
+        } else if page.entry_mode == sequencer::NoteEntryMode::OneColumn && notes.len() > 1 {
+            format!(
+                "ONE C{} · chord collapsed · next row {:02X}",
+                page.entry_anchor + 1,
+                self.tracker_row
+            )
         } else if entered == notes.len() {
             format!(
                 "EDIT note entered · length {} · next row {:02X}",
@@ -5386,12 +5272,50 @@ impl App {
             let muted = !page.enabled;
             let name = page.name.clone();
             self.sequencer.mute_page(page_index, muted);
+            if muted {
+                self.discard_tracker_record_owners(page_index, None);
+            }
             self.status = if muted {
                 format!("PAGE MUTED · {}", crate::ui_text::fit_middle(&name, 25))
             } else {
                 String::new()
             };
         }
+    }
+
+    fn toggle_tracker_lane_mute(&mut self) {
+        let page_index = self.tracker_page;
+        let track = self.tracker_track;
+        let global_lane = page_index * LANES_PER_PAGE + track;
+        if let Some(lane) = self
+            .current_page_mut()
+            .and_then(|page| page.lanes.get_mut(track))
+        {
+            lane.enabled = !lane.enabled;
+            let muted = !lane.enabled;
+            let name = lane.name.clone();
+            self.sequencer.mute(global_lane, muted);
+            if muted {
+                self.discard_tracker_record_owners(page_index, Some(track));
+            }
+            self.status = format!("{} {}", name, if muted { "muted" } else { "enabled" });
+        }
+    }
+
+    fn discard_tracker_record_owners(&mut self, page: usize, lane: Option<usize>) {
+        let Some(recording) = self.tracker_recording.as_mut() else {
+            return;
+        };
+        for owners in recording.active_lanes.values_mut() {
+            owners
+                .retain(|owner| owner.page != page || lane.is_some_and(|lane| owner.lane != lane));
+        }
+        recording
+            .active_lanes
+            .retain(|_, owners| !owners.is_empty());
+        recording.lane_owners.retain(|(owner_page, owner_lane), _| {
+            *owner_page != page || lane.is_some_and(|lane| *owner_lane != lane)
+        });
     }
     fn set_tracker_tempo(&mut self, bpm: u16) {
         let tempo = self.apply_tracker_tempo(bpm);
@@ -5556,8 +5480,12 @@ impl App {
     }
 
     fn toggle_tracker_recording(&mut self) {
-        if self.tracker_recording.is_some() {
-            self.finish_tracker_recording(false);
+        if let Some(return_to_play) = self
+            .tracker_recording
+            .as_ref()
+            .map(|recording| recording.return_to_play)
+        {
+            self.finish_tracker_recording(return_to_play);
             return;
         }
         let transport = self.sequencer.status();
@@ -5582,27 +5510,36 @@ impl App {
         let pattern = self.tracker_pattern_number();
         let order = self.tracker_order;
         let page_index = self.tracker_page;
-        self.tracker_row = 0;
+        let return_to_play = transport.playing;
+        self.tracker_row = if return_to_play {
+            transport.row.min(self.tracker_rows().saturating_sub(1))
+        } else {
+            0
+        };
         self.tracker_recording = Some(TrackerRecording {
             pattern,
             order,
             page: page_index,
-            return_to_play: false,
+            return_to_play,
             last_row: self.tracker_row,
             next_lane: self.tracker_track,
             active_lanes: HashMap::new(),
+            lane_owners: HashMap::new(),
+            next_token: 1,
             notes: 0,
         });
         self.tracker_mode = TrackerMode::Rec;
         self.sync_tracker_route();
         self.reset_context_page();
-        // Play replaces the current schedule and performs its own note cleanup.
-        // Avoid a queued Stop between the old and recording schedules: that
-        // transiently reports a stopped transport while REC is already active.
-        self.sequencer
-            .play(&self.tracker_record_song(pattern, page_index), 0, 0);
+        if !return_to_play {
+            // Play replaces the current schedule and performs its own note cleanup.
+            // Avoid a queued Stop between the old and recording schedules: that
+            // transiently reports a stopped transport while REC is already active.
+            self.sequencer
+                .play(&self.tracker_record_song(pattern, page_index), 0, 0);
+        }
         self.status = format!(
-            "REC pattern {pattern} · {} only · selected target",
+            "REC pattern {pattern} · {} · selected target",
             self.current_pages()
                 .get(page_index)
                 .map_or("page", |page| page.name.as_str())
@@ -5617,21 +5554,30 @@ impl App {
         let Some(recording) = self.tracker_recording.take() else {
             return false;
         };
-        let pattern = recording.pattern;
-        if let Some(page) = self
-            .song
-            .patterns
-            .get(&pattern)
-            .and_then(|pattern| pattern.pages.get(recording.page))
-        {
-            for channel in page
-                .columns
-                .iter()
-                .enumerate()
-                .map(|(lane, _)| page.runtime_channel(lane, &self.config.external_midi))
-                .collect::<std::collections::BTreeSet<_>>()
+        let mut pages = BTreeSet::from([(recording.pattern, recording.page)]);
+        pages.extend(
+            recording
+                .active_lanes
+                .values()
+                .flatten()
+                .map(|active| (active.pattern, active.page)),
+        );
+        for (pattern_number, page_index) in pages {
+            if let Some(page) = self
+                .song
+                .patterns
+                .get(&pattern_number)
+                .and_then(|pattern| pattern.pages.get(page_index))
             {
-                self.tracker_live_input.cancel(&page.target, channel);
+                for channel in page
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .map(|(lane, _)| page.runtime_channel(lane, &self.config.external_midi))
+                    .collect::<BTreeSet<_>>()
+                {
+                    self.tracker_live_input.cancel(&page.target, channel);
+                }
             }
         }
         if !return_to_play {
@@ -5674,26 +5620,52 @@ impl App {
         if !note_on {
             let released = self.tracker_recording.as_mut().and_then(|recording| {
                 let key = (channel, note);
-                let released = recording
-                    .active_lanes
-                    .get_mut(&key)
-                    .and_then(Vec::pop)
-                    .map(|active| (recording.pattern, recording.page, active));
+                let released =
+                    recording
+                        .active_lanes
+                        .get_mut(&key)
+                        .and_then(Vec::pop)
+                        .map(|active| {
+                            let mut owns_lane =
+                                recording.lane_owners.get(&(active.page, active.lane))
+                                    == Some(&active.token);
+                            if owns_lane {
+                                let replacement = recording
+                                    .active_lanes
+                                    .iter()
+                                    .filter(|((_, active_note), _)| *active_note == note)
+                                    .flat_map(|(_, owners)| owners)
+                                    .filter(|other| {
+                                        other.page == active.page && other.lane == active.lane
+                                    })
+                                    .max_by_key(|other| other.token)
+                                    .map(|other| other.token);
+                                if let Some(token) = replacement {
+                                    recording
+                                        .lane_owners
+                                        .insert((active.page, active.lane), token);
+                                    owns_lane = false;
+                                } else {
+                                    recording.lane_owners.remove(&(active.page, active.lane));
+                                }
+                            }
+                            (recording.pattern, owns_lane, active)
+                        });
                 let empty = recording.active_lanes.get(&key).is_some_and(Vec::is_empty);
                 if empty {
                     recording.active_lanes.remove(&key);
                 }
                 released
             });
-            if let Some((pattern_number, page, active)) = released {
+            if let Some((pattern_number, true, active)) = released {
                 if let Some(pattern) = self.song.patterns.get_mut(&pattern_number) {
                     let rows = pattern.rows.len();
                     if rows > 0 {
                         let mut release_row = transport_row.min(rows - 1);
-                        if release_row == active.start_row {
+                        if pattern_number == active.pattern && release_row == active.start_row {
                             release_row = (release_row + 1) % rows;
                         }
-                        let lane = page * LANES_PER_PAGE + active.lane;
+                        let lane = active.page * LANES_PER_PAGE + active.lane;
                         if let Some(cell) = pattern
                             .rows
                             .get_mut(release_row)
@@ -5712,37 +5684,69 @@ impl App {
             }
             return;
         }
-        let Some(recording) = self.tracker_recording.as_mut() else {
+        let Some(recording) = self.tracker_recording.as_ref() else {
             return;
         };
-        let Some(pattern) = self.song.patterns.get_mut(&recording.pattern) else {
+        let pattern_number = recording.pattern;
+        let order = recording.order;
+        let page_index = recording.page;
+        let next_lane = recording.next_lane;
+        let Some(pattern) = self.song.patterns.get(&pattern_number) else {
             return;
         };
         let row = transport_row.min(pattern.rows.len().saturating_sub(1));
-        let first_lane = recording.page * LANES_PER_PAGE;
-        let lane = (0..LANES_PER_PAGE)
-            .map(|offset| (recording.next_lane + offset) % LANES_PER_PAGE)
-            .find(|lane| {
-                !recording
-                    .active_lanes
-                    .values()
-                    .flatten()
-                    .any(|active| active.lane == *lane)
-                    && matches!(pattern.rows[row][first_lane + lane].note, Note::Empty)
+        let Some(page) = pattern.pages.get(page_index) else {
+            return;
+        };
+        let first_lane = page_index * LANES_PER_PAGE;
+        let mut live_active = recording
+            .active_lanes
+            .iter()
+            .flat_map(|((_, active_note), owners)| {
+                owners
+                    .iter()
+                    .filter(move |active| active.page == page_index)
+                    .map(move |active| (active.token, active.lane, *active_note))
             })
-            .or_else(|| {
-                (0..LANES_PER_PAGE)
-                    .map(|offset| (recording.next_lane + offset) % LANES_PER_PAGE)
-                    .find(|lane| {
-                        !recording
-                            .active_lanes
-                            .values()
-                            .flatten()
-                            .any(|active| active.lane == *lane)
-                    })
-            });
+            .collect::<Vec<_>>();
+        live_active.sort_by_key(|(token, _, _)| *token);
+        let live_active = live_active
+            .into_iter()
+            .map(|(_, lane, active_note)| (lane, active_note))
+            .collect::<Vec<_>>();
+        let lane = match page.entry_mode {
+            sequencer::NoteEntryMode::Manual => (0..LANES_PER_PAGE)
+                .map(|offset| (next_lane + offset) % LANES_PER_PAGE)
+                .find(|lane| {
+                    !live_active
+                        .iter()
+                        .any(|(active_lane, _)| active_lane == lane)
+                        && matches!(pattern.rows[row][first_lane + lane].note, Note::Empty)
+                })
+                .or_else(|| {
+                    (0..LANES_PER_PAGE)
+                        .map(|offset| (next_lane + offset) % LANES_PER_PAGE)
+                        .find(|lane| {
+                            !live_active
+                                .iter()
+                                .any(|(active_lane, _)| active_lane == lane)
+                        })
+                }),
+            sequencer::NoteEntryMode::OneColumn => Some(usize::from(page.entry_anchor)),
+            sequencer::NoteEntryMode::DrumAuto => {
+                sequencer::drum_auto_lanes(pattern, row, page_index, &[note], &live_active)
+                    .and_then(|lanes| lanes.into_iter().next())
+            }
+        };
         let Some(lane) = lane else {
-            self.status = format!("REC row {row:02X} full · note ignored");
+            self.status = if page.entry_mode == sequencer::NoteEntryMode::DrumAuto {
+                "DRUM LANES FULL · pattern unchanged".into()
+            } else {
+                format!("REC row {row:02X} full · note ignored")
+            };
+            return;
+        };
+        let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
             return;
         };
         pattern.rows[row][first_lane + lane] = Cell {
@@ -5751,17 +5755,25 @@ impl App {
             gate: Some(100),
             ..Cell::default()
         };
+        let Some(recording) = self.tracker_recording.as_mut() else {
+            return;
+        };
+        let token = recording.next_token;
+        recording.next_token = recording.next_token.wrapping_add(1).max(1);
+        recording.lane_owners.insert((page_index, lane), token);
         recording
             .active_lanes
             .entry((channel, note))
             .or_default()
             .push(RecordedLane {
+                pattern: pattern_number,
+                order,
+                page: page_index,
                 lane,
                 start_row: row,
+                token,
             });
-        recording.next_lane = (lane + 1) % LANES_PER_PAGE;
         recording.notes += 1;
-        self.tracker_track = lane;
         self.tracker_row = row;
         self.status = format!(
             "REC pattern {} · row {row:02X} · lane {}",
@@ -5772,7 +5784,11 @@ impl App {
     }
 
     fn refresh_tracker_record_loop(&self) {
-        if let Some(recording) = self.tracker_recording.as_ref() {
+        if let Some(recording) = self
+            .tracker_recording
+            .as_ref()
+            .filter(|recording| !recording.return_to_play)
+        {
             self.sequencer
                 .refresh_loop(&self.tracker_record_song(recording.pattern, recording.page));
         }
@@ -7400,7 +7416,23 @@ impl App {
             return;
         }
         self.cancel_tracker_gesture();
-        if let Some(cell) = self.tracker_cell_mut() {
+        let lane = self.current_page().map_or(self.tracker_track, |page| {
+            if page.entry_mode == sequencer::NoteEntryMode::OneColumn {
+                usize::from(page.entry_anchor)
+            } else {
+                self.tracker_track
+            }
+        });
+        let pattern_number = self.tracker_pattern_number();
+        let row = self.tracker_row;
+        let page_start = self.tracker_page * LANES_PER_PAGE;
+        if let Some(cell) = self
+            .song
+            .patterns
+            .get_mut(&pattern_number)
+            .and_then(|pattern| pattern.rows.get_mut(row))
+            .and_then(|row| row.get_mut(page_start + lane))
+        {
             cell.note = Note::Off;
             cell.velocity = None;
             cell.program = None;
@@ -9184,7 +9216,10 @@ impl App {
             if tracker.playing && !tracker.available {
                 self.cancel_tracker_gesture();
                 if tracker.error.is_some() {
-                    self.status = "FT2 TARGET OFFLINE · STOP / ROUTE".into();
+                    if self.tracker_recording.is_some() {
+                        self.finish_tracker_recording(false);
+                    }
+                    self.status = "FT2 TARGET OFFLINE · recording stopped".into();
                 }
             }
             self.tracker_fallback = tracker
@@ -9240,7 +9275,6 @@ impl App {
                 if let Some(recording) = self.tracker_recording.as_mut() {
                     recording.order = order;
                     recording.pattern = self.song.order.get(order).copied().unwrap_or(0);
-                    recording.active_lanes.clear();
                 }
             }
             self.tracker_order = self
@@ -9950,6 +9984,14 @@ fn perform(
                 a.set_tracker_mode(TrackerMode::Play);
                 return false;
             }
+            Action::TrackerMute => {
+                a.toggle_tracker_lane_mute();
+                return false;
+            }
+            Action::TrackerPageMute => {
+                a.toggle_tracker_page_mute();
+                return false;
+            }
             Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
             _ => return false,
         }
@@ -10251,6 +10293,7 @@ fn perform(
         | Action::OpenPatternLengthOverlay
         | Action::OpenNoteLengthOverlay
         | Action::OpenTrackerAdvanceOverlay
+        | Action::OpenEntryLayoutOverlay
         | Action::OpenEffectsOverlay => a.open_overlay(action),
         Action::OpenAudioRecorder => {
             a.set_tracker_edit(false);
@@ -10426,20 +10469,7 @@ fn perform(
         Action::LoopPreview => a.toggle_loop_preview(),
         Action::LoopPreviewStop => a.stop_loop_preview(true),
         Action::TapTempo => a.tap_tracker_tempo(),
-        Action::TrackerMute => {
-            let global_lane = a.tracker_page * LANES_PER_PAGE + a.tracker_track;
-            let track = a.tracker_track;
-            if let Some(lane) = a
-                .current_page_mut()
-                .and_then(|page| page.lanes.get_mut(track))
-            {
-                lane.enabled = !lane.enabled;
-                let muted = !lane.enabled;
-                let name = lane.name.clone();
-                a.sequencer.mute(global_lane, muted);
-                a.status = format!("{} {}", name, if muted { "muted" } else { "enabled" });
-            }
-        }
+        Action::TrackerMute => a.toggle_tracker_lane_mute(),
         Action::TrackerPageMute => a.toggle_tracker_page_mute(),
         Action::NextTrackerPage => a.move_tracker_page(1),
         Action::PreviewSong => a.preview_song(),
@@ -13425,6 +13455,14 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 }
             })
             .collect(),
+        OverlayKind::TrackerEntryLayout => vec![
+            "MANUAL · selected column".into(),
+            "ONE COLUMN · anchor C1".into(),
+            "ONE COLUMN · anchor C2".into(),
+            "ONE COLUMN · anchor C3".into(),
+            "ONE COLUMN · anchor C4".into(),
+            "DRUM AUTO · four safe lanes".into(),
+        ],
         OverlayKind::LoopLibrary => a
             .loop_imports
             .iter()
@@ -14437,21 +14475,19 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             "PAGE MUTE"
         } else if !lane.enabled {
             "MUTE"
-        } else if page.percussion {
-            "DRUM"
         } else {
             ""
         };
         let base = format!(
-            "P{}/{} {} L{} ch{} {} {}{}",
+            "P{}/{} {} {} L{} ch{} {} {}",
             a.tracker_page + 1,
             a.tracker_page_count(),
             truncate(&page.name, 8),
+            page.entry_mode.compact_label(page.entry_anchor),
             a.tracker_track + 1,
             sequencer::musician_channel(column.channel),
             truncate(page.target.label(), 10),
             state,
-            "",
         );
         route_issue.map_or_else(
             || truncate(base.trim_end(), z.width as usize),
@@ -14670,12 +14706,13 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 sequencer::musician_channel(column.channel).to_string()
             };
             format!(
-                "C{} ch{} b{}/{} {}",
+                "C{} ch{} {} · {}",
                 a.tracker_track + 1,
                 channel,
-                column.bank_msb,
-                column.bank_lsb,
-                a.tracker_program_label(column.program)
+                a.tracker_program_label(column.program),
+                a.current_page().map_or("MANUAL", |page| {
+                    page.entry_mode.compact_label(page.entry_anchor)
+                })
             )
         })
         .unwrap_or_else(|| "no column".into());
@@ -14714,13 +14751,13 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                         )
                     };
                     let base = format!(
-                        "{}{:02} {:<8} C{} ch{} p{:03} {}",
+                        "{}{:02} {:<8} {:<9} C{} ch{} {}",
                         if index == a.tracker_page { "▶" } else { " " },
                         index + 1,
                         truncate(&page.name, 8),
+                        page.entry_mode.compact_label(page.entry_anchor),
                         a.tracker_track + 1,
                         channel,
-                        sequencer::musician_program(page.column(a.tracker_track).program),
                         truncate(page.target.label(), 7),
                     );
                     let suffix = issue.map_or_else(String::new, |issue| format!(" · {issue}"));
@@ -15811,6 +15848,8 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
                 last_row: 7,
                 next_lane: 2,
                 active_lanes: HashMap::new(),
+                lane_owners: HashMap::new(),
+                next_token: 1,
                 notes: 11,
             });
             app.status = "REC pattern 0 · EXT only · 11 notes".into();
@@ -20014,10 +20053,16 @@ mod tests {
             active_lanes: HashMap::from([(
                 (0, 60),
                 vec![RecordedLane {
+                    pattern: 0,
+                    order: 0,
+                    page: 0,
                     lane: LANES_PER_PAGE - 1,
                     start_row: 7,
+                    token: 1,
                 }],
             )]),
+            lane_owners: HashMap::from([((0, LANES_PER_PAGE - 1), 1)]),
+            next_token: 2,
             notes: 1,
         });
 
@@ -21144,7 +21189,7 @@ mod tests {
         assert!(a
             .tracker_recording
             .as_ref()
-            .is_some_and(|recording| !recording.return_to_play));
+            .is_some_and(|recording| recording.return_to_play));
         assert_eq!(a.tracker_mode, TrackerMode::Rec);
         assert!(a.sequencer.status().playing);
 
@@ -21156,22 +21201,24 @@ mod tests {
         );
         assert!(a.tracker_recording.is_none());
         assert_eq!(a.tracker_mode, TrackerMode::Play);
-        assert!(!a.sequencer.status().playing);
-        assert!(a.status.contains("REC stopped"));
+        assert!(a.sequencer.status().playing);
+        assert!(a.status.contains("REC punch-out"));
 
         key(KeyCode::Char('r'), &mut a, Path::new("/none"), &tx);
         assert!(a.tracker_recording.is_some());
         assert!(a
             .tracker_recording
             .as_ref()
-            .is_some_and(|recording| !recording.return_to_play));
+            .is_some_and(|recording| recording.return_to_play));
         assert!(a.sequencer.status().playing);
         key(KeyCode::Char('r'), &mut a, Path::new("/none"), &tx);
         assert!(a.tracker_recording.is_none());
         assert_eq!(a.tracker_mode, TrackerMode::Play);
-        assert!(!a.sequencer.status().playing);
-        assert!(a.status.contains("REC stopped"));
+        assert!(a.sequencer.status().playing);
+        assert!(a.status.contains("REC punch-out"));
 
+        a.toggle_tracker_playback();
+        assert!(!a.sequencer.status().playing);
         a.toggle_tracker_playback();
         assert!(a.sequencer.status().playing);
         perform(Action::TrackerEdit, &mut a, Path::new("/none"), None);
@@ -21746,6 +21793,152 @@ mod tests {
     }
 
     #[test]
+    fn page_entry_overlay_selects_one_column_anchor_without_moving_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_track = 3;
+        a.open_page_manager();
+        a.open_overlay(Action::OpenEntryLayoutOverlay);
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerEntryLayout)
+        );
+        a.overlay.as_mut().unwrap().selection = 2;
+        a.activate_overlay();
+        let page = a.current_page().unwrap();
+        assert_eq!(page.entry_mode, sequencer::NoteEntryMode::OneColumn);
+        assert_eq!(page.entry_anchor, 1);
+        assert_eq!(a.tracker_track, 3);
+        assert_eq!(a.status, "PAGE ENTRY · ONE C2");
+    }
+
+    #[test]
+    fn manual_and_one_column_step_entry_keep_literal_monophonic_lanes() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.tracker_page = a.percussion_page_index().unwrap();
+        a.current_page_mut().unwrap().entry_mode = sequencer::NoteEntryMode::Manual;
+        a.tracker_track = 3;
+        a.tracker_single_note(36, 100);
+        let page_start = a.tracker_page * LANES_PER_PAGE;
+        assert_eq!(
+            a.song.patterns[&0].rows[0][page_start + 3].note,
+            Note::On(36)
+        );
+
+        a.tracker_page = 0;
+        a.tracker_track = 0;
+        a.tracker_row = 0;
+        let page = a.current_page_mut().unwrap();
+        page.entry_mode = sequencer::NoteEntryMode::OneColumn;
+        page.entry_anchor = 2;
+        for note in [40, 43, 47, 50] {
+            a.tracker_single_note(note, 96);
+        }
+        for (row, note) in [40, 43, 47, 50].into_iter().enumerate() {
+            let cells = &a.song.patterns[&0].rows[row][..LANES_PER_PAGE];
+            assert_eq!(cells[2].note, Note::On(note));
+            assert!(cells
+                .iter()
+                .enumerate()
+                .all(|(lane, cell)| lane == 2 || cell.note == Note::Empty));
+        }
+        assert_eq!(a.tracker_track, 0);
+        a.tracker_note_off();
+        assert_eq!(a.song.patterns[&0].rows[4][2].note, Note::Off);
+        assert_eq!(a.tracker_track, 0);
+    }
+
+    #[test]
+    fn entry_layout_uses_page_metadata_instead_of_midi_channel_ten() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        {
+            let page = a.current_page_mut().unwrap();
+            page.percussion = false;
+            page.entry_mode = sequencer::NoteEntryMode::Manual;
+            for column in &mut page.columns {
+                column.channel = 9;
+            }
+        }
+        a.tracker_track = 3;
+        a.tracker_single_note(60, 100);
+        assert_eq!(a.song.patterns[&0].rows[0][3].note, Note::On(60));
+
+        a.tracker_page = a.percussion_page_index().unwrap();
+        {
+            let page = a.current_page_mut().unwrap();
+            page.entry_mode = sequencer::NoteEntryMode::DrumAuto;
+            for column in &mut page.columns {
+                column.channel = 2;
+            }
+        }
+        a.tracker_row = 0;
+        a.write_edit_notes(&[(36, 100), (38, 100)]);
+        let start = a.tracker_page * LANES_PER_PAGE;
+        assert_eq!(
+            a.song.patterns[&0].rows[0][start..start + LANES_PER_PAGE]
+                .iter()
+                .filter(|cell| matches!(cell.note, Note::On(_)))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn manual_and_one_column_cymbals_keep_normal_same_lane_storage() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.tracker_page = a.percussion_page_index().unwrap();
+        a.current_page_mut().unwrap().entry_mode = sequencer::NoteEntryMode::Manual;
+        a.tracker_track = 2;
+        a.tracker_single_note(49, 100);
+        a.tracker_single_note(36, 100);
+        let start = a.tracker_page * LANES_PER_PAGE;
+        assert_eq!(a.song.patterns[&0].rows[0][start + 2].note, Note::On(49));
+        assert_eq!(a.song.patterns[&0].rows[1][start + 2].note, Note::On(36));
+
+        a.current_page_mut().unwrap().entry_mode = sequencer::NoteEntryMode::OneColumn;
+        a.current_page_mut().unwrap().entry_anchor = 1;
+        a.tracker_row = 2;
+        a.tracker_single_note(51, 100);
+        a.tracker_single_note(38, 100);
+        assert_eq!(a.song.patterns[&0].rows[2][start + 1].note, Note::On(51));
+        assert_eq!(a.song.patterns[&0].rows[3][start + 1].note, Note::On(38));
+    }
+
+    #[test]
+    fn one_column_chords_collapse_in_deterministic_gesture_order() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.current_page_mut().unwrap().entry_mode = sequencer::NoteEntryMode::OneColumn;
+        a.current_page_mut().unwrap().entry_anchor = 1;
+        let start = Instant::now();
+        for note in [67, 60, 64] {
+            a.tracker_gesture.observe(start, &[0x90, note, 90]);
+            a.tracker_gesture
+                .observe(start + Duration::from_millis(1), &[0x80, note, 0]);
+        }
+        a.commit_tracker_gesture(start + Duration::from_millis(60));
+        assert_eq!(a.song.patterns[&0].rows[0][1].note, Note::On(67));
+        assert!(a.song.patterns[&0].rows[0]
+            .iter()
+            .take(LANES_PER_PAGE)
+            .enumerate()
+            .all(|(lane, cell)| lane == 1 || cell.note == Note::Empty));
+        assert!(a.status.contains("chord collapsed"));
+    }
+
+    #[test]
     fn tracker_gesture_commits_once_sorted_across_four_lanes() {
         let p = presets();
         let mut a = app(&p);
@@ -21825,6 +22018,7 @@ mod tests {
         a.screen = Screen::Tracker;
         a.set_tracker_edit(true);
         a.tracker_page = a.percussion_page_index().unwrap();
+        a.current_page_mut().unwrap().entry_mode = sequencer::NoteEntryMode::DrumAuto;
         a.tracker_row = 4;
         let page_start = a.tracker_page * LANES_PER_PAGE;
         let pattern = a.song.patterns.get_mut(&0).unwrap();
@@ -21855,6 +22049,7 @@ mod tests {
         a.screen = Screen::Tracker;
         a.set_tracker_edit(true);
         a.tracker_page = a.percussion_page_index().unwrap();
+        a.current_page_mut().unwrap().entry_mode = sequencer::NoteEntryMode::DrumAuto;
         let page_start = a.tracker_page * LANES_PER_PAGE;
         a.tracker_single_note(35, 100);
         assert_eq!(a.song.patterns[&0].rows[0][page_start].note, Note::On(35));
@@ -21863,16 +22058,10 @@ mod tests {
         assert_eq!(a.song.patterns[&0].rows[1][page_start].note, Note::On(36));
 
         a.tracker_single_note(38, 102);
-        assert_eq!(
-            a.song.patterns[&0].rows[2][page_start + 1].note,
-            Note::On(38)
-        );
+        assert_eq!(a.song.patterns[&0].rows[2][page_start].note, Note::On(38));
 
         a.tracker_single_note(40, 103);
-        assert_eq!(
-            a.song.patterns[&0].rows[3][page_start + 1].note,
-            Note::On(40)
-        );
+        assert_eq!(a.song.patterns[&0].rows[3][page_start].note, Note::On(40));
     }
 
     #[test]
@@ -21882,6 +22071,7 @@ mod tests {
         a.screen = Screen::Tracker;
         a.set_tracker_edit(true);
         a.tracker_page = a.percussion_page_index().unwrap();
+        a.current_page_mut().unwrap().entry_mode = sequencer::NoteEntryMode::DrumAuto;
         a.tracker_row = 3;
         let page_start = a.tracker_page * LANES_PER_PAGE;
         let pattern = a.song.patterns.get_mut(&0).unwrap();
@@ -21903,10 +22093,11 @@ mod tests {
         a.commit_tracker_gesture(start + Duration::from_millis(60));
 
         let row = &a.song.patterns[&0].rows[3][page_start..page_start + LANES_PER_PAGE];
-        assert_eq!(row[2].note, Note::On(42));
+        assert_eq!(row[1].note, Note::On(42));
+        assert_eq!(row[2].note, Note::On(57));
         assert_eq!(row[3].note, Note::On(51));
         assert_eq!(row[3].command, Command::Retrigger(2));
-        assert_eq!(row[0].note, Note::On(57));
+        assert_eq!(row[0], Cell::default());
     }
 
     #[test]
@@ -21922,8 +22113,8 @@ mod tests {
         pattern.rows[0][page_start + 3].note = Note::On(51);
 
         assert_eq!(
-            drum_entry_lanes(pattern, 0, a.tracker_page, &[(57, 99)]),
-            [None]
+            sequencer::drum_auto_lanes(pattern, 0, a.tracker_page, &[57], &[]),
+            None
         );
         assert_eq!(pattern.rows[0][page_start + 1].note, Note::Off);
     }
@@ -22429,6 +22620,7 @@ mod tests {
         a.record_tracker_midi(&[0x90, 60, 100]);
         a.record_tracker_midi(&[0x90, 60, 101]);
         a.record_tracker_midi(&[0x91, 60, 102]);
+        assert_eq!(a.tracker_track, 0);
         let recording = a.tracker_recording.as_ref().unwrap();
         assert_eq!(
             recording.active_lanes[&(0, 60)]
@@ -22481,6 +22673,193 @@ mod tests {
         assert_eq!(pattern.rows[1][0].note, Note::On(60));
         assert_eq!(pattern.rows[1][0].gate, Some(100));
         assert_eq!(pattern.rows[4][0].note, Note::Off);
+        assert!(a
+            .tracker_recording
+            .as_ref()
+            .unwrap()
+            .active_lanes
+            .is_empty());
+        a.stop_tracker_recording();
+    }
+
+    #[test]
+    fn tracker_mute_discards_only_its_allocated_recording_owners() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.toggle_tracker_recording();
+        a.record_tracker_midi_at(1, &[0x90, 60, 100]);
+        a.record_tracker_midi_at(1, &[0x90, 64, 100]);
+
+        assert!(a.current_page().unwrap().lanes[0].enabled);
+        perform(Action::TrackerMute, &mut a, Path::new("/none"), None);
+        assert!(!a.current_page().unwrap().lanes[0].enabled, "{}", a.status);
+        let recording = a.tracker_recording.as_ref().unwrap();
+        assert!(recording
+            .active_lanes
+            .values()
+            .flatten()
+            .all(|owner| owner.lane != 0));
+        assert!(recording
+            .active_lanes
+            .values()
+            .flatten()
+            .any(|owner| owner.lane == 1));
+
+        a.toggle_tracker_page_mute();
+        let recording = a.tracker_recording.as_ref().unwrap();
+        assert!(recording.active_lanes.is_empty());
+        assert!(recording.lane_owners.is_empty());
+        a.stop_tracker_recording();
+    }
+
+    #[test]
+    fn one_column_realtime_note_off_tracks_the_current_column_owner() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        let page = a.current_page_mut().unwrap();
+        page.target = PageTarget::ConfiguredExternal;
+        page.entry_mode = sequencer::NoteEntryMode::OneColumn;
+        page.entry_anchor = 2;
+        a.tracker_track = 0;
+        a.toggle_tracker_recording();
+
+        a.record_tracker_midi_at(1, &[0x90, 40, 100]);
+        a.record_tracker_midi_at(2, &[0x90, 43, 101]);
+        a.record_tracker_midi_at(3, &[0x80, 40, 0]);
+        assert_eq!(a.song.patterns[&0].rows[3][2].note, Note::Empty);
+        a.record_tracker_midi_at(4, &[0x80, 43, 0]);
+        assert_eq!(a.song.patterns[&0].rows[4][2].note, Note::Off);
+        assert_eq!(a.tracker_track, 0);
+        assert!(a
+            .tracker_recording
+            .as_ref()
+            .unwrap()
+            .active_lanes
+            .is_empty());
+        a.stop_tracker_recording();
+    }
+
+    #[test]
+    fn identical_one_column_recording_owners_require_the_final_release() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        let page = a.current_page_mut().unwrap();
+        page.target = PageTarget::ConfiguredExternal;
+        page.entry_mode = sequencer::NoteEntryMode::OneColumn;
+        page.entry_anchor = 1;
+        a.toggle_tracker_recording();
+
+        a.record_tracker_midi_at(2, &[0x90, 60, 100]);
+        a.record_tracker_midi_at(3, &[0x91, 60, 101]);
+        a.record_tracker_midi_at(4, &[0x80, 60, 0]);
+        assert_eq!(a.song.patterns[&0].rows[4][1].note, Note::Empty);
+        assert_eq!(
+            a.tracker_recording.as_ref().unwrap().active_lanes[&(1, 60)].len(),
+            1
+        );
+        a.record_tracker_midi_at(5, &[0x81, 60, 0]);
+        assert_eq!(a.song.patterns[&0].rows[5][1].note, Note::Off);
+        a.stop_tracker_recording();
+    }
+
+    #[test]
+    fn drum_auto_realtime_quantized_hits_use_distinct_lanes_without_cursor_motion() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        a.tracker_page = a.percussion_page_index().unwrap();
+        let page = a.current_page_mut().unwrap();
+        page.target = PageTarget::ConfiguredExternal;
+        page.entry_mode = sequencer::NoteEntryMode::DrumAuto;
+        for column in &mut page.columns {
+            column.channel = 2;
+        }
+        a.tracker_track = 0;
+        a.toggle_tracker_recording();
+        for note in [36, 38, 42, 49] {
+            a.record_tracker_midi_at(3, &[0x92, note, 100]);
+        }
+        let page_start = a.tracker_page * LANES_PER_PAGE;
+        assert_eq!(
+            a.song.patterns[&0].rows[3][page_start..page_start + LANES_PER_PAGE]
+                .iter()
+                .filter(|cell| matches!(cell.note, Note::On(_)))
+                .count(),
+            4
+        );
+        assert_eq!(a.tracker_track, 0);
+        let allocated = a
+            .tracker_recording
+            .as_ref()
+            .unwrap()
+            .active_lanes
+            .iter()
+            .map(|((_, note), owners)| (*note, owners[0].lane))
+            .collect::<BTreeMap<_, _>>();
+        let before = a.song.patterns[&0].rows[3].clone();
+        a.record_tracker_midi_at(3, &[0x92, 45, 100]);
+        assert_eq!(a.status, "DRUM LANES FULL · pattern unchanged");
+        assert_eq!(a.song.patterns[&0].rows[3], before);
+        for (offset, note) in [36, 38, 42, 49].into_iter().enumerate() {
+            a.record_tracker_midi_at(4 + offset, &[0x82, note, 0]);
+            assert_eq!(
+                a.song.patterns[&0].rows[4 + offset][page_start + allocated[&note]].note,
+                Note::Off
+            );
+        }
+        a.stop_tracker_recording();
+    }
+
+    #[test]
+    fn realtime_release_crosses_pattern_boundary_in_the_allocated_lane() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        let page = a.current_page_mut().unwrap();
+        page.target = PageTarget::ConfiguredExternal;
+        page.entry_mode = sequencer::NoteEntryMode::OneColumn;
+        page.entry_anchor = 3;
+        let next = sequencer::Pattern::empty_like_setup(8, a.current_pattern().unwrap());
+        a.song.patterns.insert(1, next);
+        a.song.order.push(1);
+        a.toggle_tracker_recording();
+        a.record_tracker_midi_at(7, &[0x90, 48, 100]);
+        {
+            let recording = a.tracker_recording.as_mut().unwrap();
+            recording.pattern = 1;
+            recording.order = 1;
+        }
+        a.record_tracker_midi_at(0, &[0x80, 48, 0]);
+        assert_eq!(a.song.patterns[&1].rows[0][3].note, Note::Off);
+        assert_eq!(a.song.patterns[&0].rows[7][3].note, Note::On(48));
+        a.stop_tracker_recording();
+    }
+
+    #[test]
+    fn realtime_release_wraps_pattern_loop_without_losing_lane_ownership() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        let page = a.current_page_mut().unwrap();
+        page.target = PageTarget::ConfiguredExternal;
+        page.entry_mode = sequencer::NoteEntryMode::OneColumn;
+        page.entry_anchor = 2;
+        a.toggle_tracker_recording();
+        let last = a.tracker_rows() - 1;
+        a.record_tracker_midi_at(last, &[0x90, 52, 100]);
+        a.record_tracker_midi_at(0, &[0x80, 52, 0]);
+        assert_eq!(a.song.patterns[&0].rows[last][2].note, Note::On(52));
+        assert_eq!(a.song.patterns[&0].rows[0][2].note, Note::Off);
         assert!(a
             .tracker_recording
             .as_ref()
