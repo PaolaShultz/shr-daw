@@ -49,7 +49,7 @@ or `q` can still exit from the splash.
 | FT2 edit | Manual writes from the selected column, One column writes to its persisted C1–C4 monophonic anchor, and Drum auto safely allocates simultaneous hits without moving the cursor. Note length, blank/skip, erase, note off, 0–32-row ADD, and PAGE remain available. N00B may filter melodic input. Command notes stay controls. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
 | Live Patterns | Browse four existing Patterns at a time without launch; distinguish selection/current/queue; replace or cancel Pattern/bar-boundary queues; deliberate immediate launch and current retrigger; capture only successful activations with Append/Replace confirmation; transient four-lane mute, velocity, gate, and transpose; literal Stop, Panic, keyboard equivalents, and preserved FT2 cursor. |
-| Loop Mix | Fourth musician-facing FT2 page; select one of four private WAV slots without launch; queue independent launch/stop at the next bar; replace/cancel commands; show play/stop/queue/mute/missing/fault states; smoothed level and bipolar filter; import/attach/remove only the selected slot; isolate faults; shared library overlay and align child. |
+| Loop Mix | Pattern-owned fourth musician-facing FT2 page; select one of four private WAV slots without launch; queue independent launch/stop at the next Pattern-local bar; replace/cancel commands; show play/stop/queue/mute/missing/fault states; smoothed level and bipolar filter; import/attach/remove only the FT2 cursor Pattern's selected slot; isolate faults; shared library overlay and align child. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
@@ -131,7 +131,9 @@ Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
 Tracks ENTRY chooses Manual, One column C1–C4, or Drum auto; Pattern Setup
 LNGTH chooses every value from 1 through 32 plus 48, 64, 96, 128, 192, and
 256.
-Loop Mix's LIBRARY launcher uses it for one combined inbox/private
+Loop Mix preserves slot and command-page context while the FT2 cursor remains
+on one Pattern, then resets that context safely on Pattern or Project change.
+Its LIBRARY launcher uses the overlay for one combined inbox/private
 browser. Selection is silent until PLAY explicitly previews it; changing
 selection, STOP, Back, closing the browser, or leaving the browser stops
 that preview. Activating an inbox selection imports and loads it, while

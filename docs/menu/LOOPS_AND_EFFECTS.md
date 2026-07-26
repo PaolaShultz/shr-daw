@@ -9,8 +9,10 @@ The loop player and graph operate only on resources owned by SHR-DAW.
 
 ## FT2 Loop Mix
 
-A Project may attach four privately imported mono or stereo WAVs. Every active
-slot must match the Project tempo and JACK sample rate; playback stays native
+Every FT2 Pattern owns four optional references to privately imported mono or
+stereo WAVs. The page shows the Pattern under the FT2 cursor; browsing does not
+change the sounding Pattern. Every active
+slot must match its Pattern tempo and JACK sample rate; playback stays native
 pitch/speed with no time-stretching. The four fixed renderers sum inside one
 owned Loop JACK client, so the existing `LOOP OUT` meter and final bus receive
 the complete Loop source once.
@@ -19,11 +21,31 @@ Selection is white and never launches. Rows separately show playing, stopped,
 queued launch/stop, muted, missing, and faulted slots. One bad WAV does not stop
 the other three.
 
+These ownership and state shots use the same real renderer without starting
+audio:
+
+![Pattern A with all four Loop Mix slots populated](../images/menu/loop-pattern-a.png)
+
+![Pattern B with different Loop Mix material](../images/menu/loop-pattern-b.png)
+
+![An empty Pattern Loop Mix](../images/menu/loop-pattern-empty.png)
+
+![Stopped, incompatible, queued-stop, and missing slot states](../images/menu/loop-slot-states.png)
+
+![Pattern CLEAR confirmation explicitly detaching attached loops](../images/menu/pattern-clear-attached-loops.png)
+
+![Live Pattern rows showing current and queued loop ownership](../images/menu/live-pattern-loop-switch.png)
+
+The root Loop Mix tour is the native 40×13 view; smaller terminals fall back
+without taking the shared status row:
+
+![Compact Loop Mix fallback](../images/menu/loop-compact.png)
+
 ### PLAY — bar-quantized slot transport
 
 ![Populated Loop Mix with the PLAY page](../images/menu/ft2-loop-play.png)
 
-`STOP` and `LAUNCH` queue the selected slot for the next Project bar.
+`STOP` and `LAUNCH` queue the selected slot for the next Pattern-local bar.
 `SLOT-`/`SLOT+` change selection without playback. A later command replaces
 the earlier queue.
 
@@ -32,7 +54,7 @@ the earlier queue.
 ![Populated Loop Mix with the MIX page](../images/menu/ft2-loop-mix.png)
 
 `LEVEL-`/`LEVEL+` adjust the selected slot's smoothed 0–150% level. `MUTE`
-affects only that slot. `REMOVE` requires confirmation, clears only its Project
+affects only that slot. `REMOVE` requires confirmation, clears only its Pattern
 reference, and keeps the private WAV.
 
 ### FILTER — bipolar shaping and queue cancel
@@ -67,19 +89,19 @@ a failed import removes its private copy. The browser has no deletion action.
 ![Shared inbox/private loop overlay over Loop Mix](../images/menu/overlay-loop-library.png)
 
 The caller remains visible while the overlay identifies each file's source and
-Project relationship.
+saved-Pattern relationship.
 
 ## Loop Align
 
 Align performs bounded offline pulse/duration analysis, can snap interpreted
-length to complete Project bars, and can shift placement without destructively
+length to complete Pattern bars, and can shift placement without destructively
 editing the audio file.
 
 ### OPS — analyze and place
 
 ![Populated Loop Align screen with the OPS page](../images/menu/loop-align-ops.png)
 
-`AUTO` analyzes the attached file and proposes a bar-aligned beat length.
+`AUTO` analyzes the attached file and proposes a Pattern-bar-aligned beat length.
 `BAR-` and `BAR+` move its placement by exactly one bar. `DONE` keeps the
 settings and returns to WAV Loop.
 

@@ -14,7 +14,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 7;
+pub const SONG_VERSION: u8 = 8;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
@@ -38,7 +38,6 @@ pub struct Song {
     pub name: String,
     pub steps_per_beat: u8,
     pub gate_percent: u8,
-    pub audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT],
     pub insert_rack: InsertRack,
     pub aux_routing: ProjectAuxRouting,
     pub order: Vec<u16>,
@@ -275,6 +274,7 @@ pub struct Lane {
 pub struct Pattern {
     pub tempo: u16,
     pub meter: u8,
+    pub audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT],
     pub pages: Vec<Page>,
     pub rows: Vec<Vec<Cell>>,
 }
@@ -435,7 +435,6 @@ impl Song {
             name: "untitled".into(),
             steps_per_beat: config.steps_per_beat,
             gate_percent: config.gate_percent,
-            audio_loops: std::array::from_fn(|_| None),
             insert_rack: InsertRack::default(),
             aux_routing: ProjectAuxRouting::default(),
             order: vec![0],
@@ -453,21 +452,6 @@ impl Song {
         }
         if self.patterns.is_empty() || self.patterns.len() > MAX_PROJECT_PATTERNS {
             bail!("project needs 1..={MAX_PROJECT_PATTERNS} patterns");
-        }
-        for audio_loop in self.audio_loops.iter().flatten() {
-            if validate_label(&audio_loop.file, "private loop filename", 255).is_err()
-                || Path::new(&audio_loop.file)
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    != Some(audio_loop.file.as_str())
-                || !(2_000..=30_000).contains(&audio_loop.source_bpm_x100)
-                || audio_loop.length_beats == 0
-                || !(-16_384..=16_384).contains(&audio_loop.offset_beats)
-                || audio_loop.level_x1000 > 1_500
-                || !(-1_000..=1_000).contains(&audio_loop.filter_x1000)
-            {
-                bail!("invalid private loop settings");
-            }
         }
         self.insert_rack
             .validate()
@@ -674,7 +658,6 @@ pub fn save_routing_defaults(path: &Path, pages: &[Page]) -> Result<()> {
         name: "FT2 routing defaults".into(),
         steps_per_beat: 4,
         gate_percent: 80,
-        audio_loops: std::array::from_fn(|_| None),
         insert_rack: InsertRack::default(),
         aux_routing: ProjectAuxRouting::default(),
         order: vec![0],
@@ -833,13 +816,15 @@ impl Song {
 
 impl Pattern {
     pub fn new(rows: usize, tempo: u16, meter: u8, pages: Vec<Page>) -> Self {
-        let tracks = pages.len() * LANES_PER_PAGE;
-        Self {
+        let mut pattern = Self {
             tempo: tempo.clamp(20, 300),
             meter,
+            audio_loops: std::array::from_fn(|_| None),
             pages,
-            rows: vec![vec![Cell::default(); tracks]; rows],
-        }
+            rows: Vec::new(),
+        };
+        let _ = pattern.resize_rows(rows);
+        pattern
     }
 
     #[cfg(test)]
@@ -858,6 +843,17 @@ impl Pattern {
 
     pub fn empty_like_setup(rows: usize, setup: &Pattern) -> Self {
         Self::new(rows, setup.tempo, setup.meter, setup.pages.clone())
+    }
+
+    /// Change only the tracker length. Pattern-owned Loop Mix material and
+    /// page/routing setup remain attached.
+    pub fn resize_rows(&mut self, rows: usize) -> Result<()> {
+        if !(1..=256).contains(&rows) {
+            bail!("pattern must have 1..=256 rows");
+        }
+        self.rows
+            .resize(rows, vec![Cell::default(); self.total_lanes()]);
+        Ok(())
     }
 
     #[cfg(test)]
@@ -913,6 +909,9 @@ impl Pattern {
         }
         if self.pages.is_empty() || self.pages.len() > 64 {
             bail!("pattern needs 1..=64 pages");
+        }
+        for audio_loop in self.audio_loops.iter().flatten() {
+            validate_loop_settings(audio_loop)?;
         }
         if self
             .pages
@@ -1202,6 +1201,23 @@ fn validate_label(value: &str, description: &str, max_chars: usize) -> Result<()
     Ok(())
 }
 
+fn validate_loop_settings(audio_loop: &LoopSettings) -> Result<()> {
+    if validate_label(&audio_loop.file, "private loop filename", 255).is_err()
+        || Path::new(&audio_loop.file)
+            .file_name()
+            .and_then(|name| name.to_str())
+            != Some(audio_loop.file.as_str())
+        || !(2_000..=30_000).contains(&audio_loop.source_bpm_x100)
+        || audio_loop.length_beats == 0
+        || !(-16_384..=16_384).contains(&audio_loop.offset_beats)
+        || audio_loop.level_x1000 > 1_500
+        || !(-1_000..=1_000).contains(&audio_loop.filter_x1000)
+    {
+        bail!("invalid private loop settings");
+    }
+    Ok(())
+}
+
 pub fn songs_dir() -> PathBuf {
     env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -1272,28 +1288,6 @@ pub fn encode(song: &Song) -> Result<String> {
             .collect::<Vec<_>>()
             .join(",")
     );
-    for (slot, audio_loop) in song.audio_loops.iter().enumerate() {
-        let Some(audio_loop) = audio_loop else {
-            continue;
-        };
-        let interpretation = match audio_loop.interpretation {
-            BpmInterpretation::Half => "half",
-            BpmInterpretation::Normal => "normal",
-            BpmInterpretation::Double => "double",
-        };
-        out.push_str(&format!(
-            "loop_slot={}|{}|{}|{}|{}|{}|{}|{}|{}\n",
-            slot + 1,
-            escape(&audio_loop.file),
-            audio_loop.source_bpm_x100,
-            interpretation,
-            audio_loop.start_beat,
-            audio_loop.length_beats,
-            audio_loop.offset_beats,
-            audio_loop.level_x1000,
-            audio_loop.filter_x1000
-        ));
-    }
     out.push_str(&format!(
         "insert_rack={}\n",
         escape(&serde_json::to_string(&song.insert_rack)?)
@@ -1309,6 +1303,28 @@ pub fn encode(song: &Song) -> Result<String> {
             pattern.tempo,
             pattern.meter
         ));
+        for (slot, audio_loop) in pattern.audio_loops.iter().enumerate() {
+            let Some(audio_loop) = audio_loop else {
+                continue;
+            };
+            let interpretation = match audio_loop.interpretation {
+                BpmInterpretation::Half => "half",
+                BpmInterpretation::Normal => "normal",
+                BpmInterpretation::Double => "double",
+            };
+            out.push_str(&format!(
+                "pattern_loop={number}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+                slot + 1,
+                escape(&audio_loop.file),
+                audio_loop.source_bpm_x100,
+                interpretation,
+                audio_loop.start_beat,
+                audio_loop.length_beats,
+                audio_loop.offset_beats,
+                audio_loop.level_x1000,
+                audio_loop.filter_x1000
+            ));
+        }
         for (page_index, page) in pattern.pages.iter().enumerate() {
             out.push_str(&format!(
                 "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}|{}|{}|{}\n",
@@ -1407,7 +1423,8 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut name = None;
     let mut steps = None;
     let mut gate = None;
-    let mut audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT] = std::array::from_fn(|_| None);
+    let mut legacy_audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT] =
+        std::array::from_fn(|_| None);
     let mut insert_rack = None;
     let mut aux_routing = None;
     let mut order = None;
@@ -1417,6 +1434,7 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut pattern_columns = Vec::new();
     let mut pattern_setup = Vec::new();
     let mut pattern_drum_classes = Vec::new();
+    let mut pattern_loops = Vec::new();
     let mut cells = Vec::new();
     for line in lines.filter(|line| !line.trim().is_empty() && !line.starts_with('#')) {
         let (key, value) = line.split_once('=').context("invalid song line")?;
@@ -1430,7 +1448,7 @@ pub fn decode(text: &str) -> Result<Song> {
                     bail!("invalid loop settings");
                 }
                 set_once(
-                    &mut audio_loops[0],
+                    &mut legacy_audio_loops[0],
                     LoopSettings::new(
                         unescape(f[0])?,
                         f[1].parse()?,
@@ -1442,7 +1460,7 @@ pub fn decode(text: &str) -> Result<Song> {
                     "loop",
                 )?;
             }
-            "loop_slot" if version >= 7 => {
+            "loop_slot" if version == 7 => {
                 let f = value.split('|').collect::<Vec<_>>();
                 if f.len() != 9 {
                     bail!("invalid loop slot settings");
@@ -1453,7 +1471,7 @@ pub fn decode(text: &str) -> Result<Song> {
                     .filter(|slot| *slot < LOOP_SLOT_COUNT)
                     .context("loop slot must be 1..=4")?;
                 set_once(
-                    &mut audio_loops[slot],
+                    &mut legacy_audio_loops[slot],
                     LoopSettings {
                         file: unescape(f[1])?,
                         source_bpm_x100: f[2].parse()?,
@@ -1505,6 +1523,7 @@ pub fn decode(text: &str) -> Result<Song> {
                                 Pattern {
                                     tempo: tempo.parse()?,
                                     meter: meter.parse()?,
+                                    audio_loops: std::array::from_fn(|_| None),
                                     pages: Vec::new(),
                                     rows: vec![Vec::new(); rows],
                                 },
@@ -1591,7 +1610,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        6..=7,
+                        6..=8,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor],
                     ) => (
                         Page {
@@ -1628,6 +1647,7 @@ pub fn decode(text: &str) -> Result<Song> {
             "pattern_column" if version >= 1 => pattern_columns.push(value.to_owned()),
             "pattern_setup" => pattern_setup.push(value.to_owned()),
             "pattern_drum_class" if version >= 6 => pattern_drum_classes.push(value.to_owned()),
+            "pattern_loop" if version == 8 => pattern_loops.push(value.to_owned()),
             "cell" => cells.push(value.to_owned()),
             _ => bail!("unknown song field {key}; file was not changed"),
         }
@@ -1645,6 +1665,13 @@ pub fn decode(text: &str) -> Result<Song> {
     }
     attach_pattern_setup(&mut patterns, pattern_setup)?;
     attach_pattern_drum_classes(&mut patterns, pattern_drum_classes)?;
+    if version == 8 {
+        attach_pattern_loops(&mut patterns, pattern_loops)?;
+    } else {
+        for pattern in patterns.values_mut() {
+            pattern.audio_loops = legacy_audio_loops.clone();
+        }
+    }
     let total_cells = patterns.values().try_fold(0usize, |total, pattern| {
         total
             .checked_add(
@@ -1696,7 +1723,6 @@ pub fn decode(text: &str) -> Result<Song> {
         name: name.context("missing name")?,
         steps_per_beat: steps.context("missing steps")?,
         gate_percent: gate.context("missing gate")?,
-        audio_loops,
         insert_rack: if version >= 2 {
             insert_rack.context("missing insert rack")?
         } else {
@@ -1735,6 +1761,41 @@ fn attach_pattern_lanes(patterns: &mut BTreeMap<u16, Pattern>, lanes: Vec<String
             name: unescape(f[3])?,
             enabled: binary_flag(f[4], "pattern lane enabled")?,
         });
+    }
+    Ok(())
+}
+
+fn attach_pattern_loops(patterns: &mut BTreeMap<u16, Pattern>, loops: Vec<String>) -> Result<()> {
+    let mut occupied = BTreeSet::new();
+    for value in loops {
+        let f = value.split('|').collect::<Vec<_>>();
+        if f.len() != 10 {
+            bail!("invalid Pattern Loop Mix settings");
+        }
+        let pattern_number = f[0].parse::<u16>()?;
+        let slot = f[1]
+            .parse::<usize>()?
+            .checked_sub(1)
+            .filter(|slot| *slot < LOOP_SLOT_COUNT)
+            .context("Pattern Loop Mix slot must be 1..=4")?;
+        if !occupied.insert((pattern_number, slot)) {
+            bail!("duplicate Pattern Loop Mix slot");
+        }
+        let settings = LoopSettings {
+            file: unescape(f[2])?,
+            source_bpm_x100: f[3].parse()?,
+            interpretation: parse_bpm_interpretation(f[4])?,
+            start_beat: f[5].parse()?,
+            length_beats: f[6].parse()?,
+            offset_beats: f[7].parse()?,
+            level_x1000: f[8].parse()?,
+            filter_x1000: f[9].parse()?,
+        };
+        validate_loop_settings(&settings)?;
+        patterns
+            .get_mut(&pattern_number)
+            .context("Pattern Loop Mix owner is missing")?
+            .audio_loops[slot] = Some(settings);
     }
     Ok(())
 }
@@ -2387,6 +2448,12 @@ pub struct SequencerStatus {
     pub live_prepare: Option<crate::live_performance::QueuedPattern>,
     pub live_activation_serial: u64,
     pub live_activation: Option<crate::live_performance::ActivatedPattern>,
+    /// Pattern-owned Loop Mix transport identity. `loop_order` distinguishes
+    /// repeated Arrangement references to the same Pattern.
+    pub loop_pattern: Option<u16>,
+    pub loop_order: Option<usize>,
+    pub loop_row: usize,
+    pub loop_activation_serial: u64,
 }
 enum Transport {
     Play(u64, Song, usize, usize),
@@ -2573,6 +2640,8 @@ fn run_transport(
     let mut transport_targets = BTreeSet::new();
     let mut transport_tempo = config.default_tempo;
     let mut loop_origin_beat = 0.0;
+    let mut playback_song: Option<Song> = None;
+    let mut sounding_loop_order: Option<usize> = None;
     let mut live: Option<LiveRuntime> = None;
     loop {
         let timeout = messages
@@ -2623,9 +2692,12 @@ fn run_transport(
                     .get(order)
                     .and_then(|number| song.patterns.get(number))
                     .map_or(config.default_tempo, |pattern| pattern.tempo);
-                let first_origin_beat = crate::loop_player::song_position_beats(&song, order, row);
-                loop_origin_beat = crate::loop_player::song_position_beats(&song, order, 0);
+                let first_origin_beat = row as f64 / f64::from(song.steps_per_beat);
+                loop_origin_beat = 0.0;
                 clock.play(first_origin_beat, transport_tempo);
+                let loop_pattern = song.order.get(order).copied();
+                playback_song = Some(song);
+                sounding_loop_order = Some(order);
                 muted.clear();
                 active_notes.clear();
                 note_owners.clear();
@@ -2642,6 +2714,10 @@ fn run_transport(
                     s.playing = true;
                     s.order = order;
                     s.row = row;
+                    s.loop_pattern = loop_pattern;
+                    s.loop_order = Some(order);
+                    s.loop_row = row;
+                    s.loop_activation_serial = s.loop_activation_serial.wrapping_add(1);
                 }
             }
             Ok(Transport::RefreshLoop(song)) => match schedule(&song, &config, 0, 0) {
@@ -2683,8 +2759,12 @@ fn run_transport(
                     s.live_pattern = None;
                     s.queued_pattern = None;
                     s.live_prepare = None;
+                    s.loop_pattern = None;
+                    s.loop_order = None;
                 }
                 live = None;
+                playback_song = None;
+                sounding_loop_order = None;
             }
             Ok(Transport::Mute(lane, value)) => {
                 if value {
@@ -2784,11 +2864,15 @@ fn run_transport(
                 active_notes.clear();
                 live_notes.clear();
                 live = None;
+                playback_song = None;
+                sounding_loop_order = None;
                 if let Ok(mut status) = status.lock() {
                     status.playing = false;
                     status.live_pattern = None;
                     status.queued_pattern = None;
                     status.live_prepare = None;
+                    status.loop_pattern = None;
+                    status.loop_order = None;
                 }
                 let _ = reply.send(());
             }
@@ -2916,6 +3000,8 @@ fn run_transport(
                             queued: None,
                             pending: None,
                         });
+                        playback_song = None;
+                        sounding_loop_order = None;
                         publish_live_activation(&status, requested);
                         update_target_status(&status, &outputs, &transport_targets);
                     }
@@ -2949,6 +3035,11 @@ fn run_transport(
             if due_bar_launch {
                 let queued = runtime.queued.take().expect("bar launch was queued");
                 if queued.requires_engine_prepare {
+                    // The boundary belongs to the queued Pattern even while its
+                    // managed instrument is prepared. Invalidate the outgoing
+                    // Pattern's loop renderers synchronously so none can sound
+                    // underneath the replacement or its recovery path.
+                    clock.restart_cycle(0.0);
                     stage_live_prepare(
                         runtime,
                         queued,
@@ -2993,6 +3084,25 @@ fn run_transport(
             .filter(|m| started + m.at <= Instant::now())
         {
             if message.bytes.is_empty() {
+                if live.is_none() && sounding_loop_order != Some(message.order) {
+                    if let Some(song) = playback_song.as_ref() {
+                        if let Some(pattern_number) = song.order.get(message.order).copied() {
+                            let pattern = &song.patterns[&pattern_number];
+                            transport_tempo = pattern.tempo;
+                            clock
+                                .restart_cycle(message.row as f64 / f64::from(song.steps_per_beat));
+                            clock.tempo(f64::from(transport_tempo));
+                            sounding_loop_order = Some(message.order);
+                            if let Ok(mut state) = status.lock() {
+                                state.loop_pattern = Some(pattern_number);
+                                state.loop_order = Some(message.order);
+                                state.loop_row = message.row;
+                                state.loop_activation_serial =
+                                    state.loop_activation_serial.wrapping_add(1);
+                            }
+                        }
+                    }
+                }
                 if let Some(next) = messages[index + 1..]
                     .iter()
                     .find(|candidate| candidate.bytes.is_empty() && candidate.at > message.at)
@@ -3082,6 +3192,7 @@ fn run_transport(
                     .is_some_and(|queued| queued.requires_engine_prepare)
                 {
                     let queued = queued_command.expect("queued engine preparation");
+                    clock.restart_cycle(0.0);
                     stage_live_prepare(
                         runtime,
                         queued,
@@ -3169,6 +3280,7 @@ fn run_transport(
                 index = 0;
                 started = Instant::now();
                 clock.restart_cycle(loop_origin_beat);
+                sounding_loop_order = None;
             }
         }
     }
@@ -3345,6 +3457,10 @@ fn publish_live_activation(
             pattern: requested.pattern,
             retrigger: requested.retrigger,
         });
+        status.loop_pattern = Some(requested.pattern);
+        status.loop_order = None;
+        status.loop_row = 0;
+        status.loop_activation_serial = status.loop_activation_serial.wrapping_add(1);
         status.playing = true;
         status.error = None;
     }
@@ -4088,7 +4204,7 @@ mod tests {
         text.lines()
             .filter(|line| !line.starts_with("pattern_drum_class="))
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 7") {
+                if line.starts_with("SHSYNTH-SONG 8") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -4301,7 +4417,7 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 7\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 8\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
@@ -4430,8 +4546,11 @@ mod tests {
     fn current_format_loop_round_trips_and_old_shapes_are_rejected() {
         let mut with_loop = Song::new(&config());
         with_loop.patterns.get_mut(&0).unwrap().meter = 3;
+        let second = Pattern::empty_like_setup(32, &with_loop.patterns[&0]);
+        let second_number = with_loop.append_pattern(second).unwrap();
         for slot in 0..LOOP_SLOT_COUNT {
-            with_loop.audio_loops[slot] = Some(LoopSettings {
+            let owner = if slot % 2 == 0 { 0 } else { second_number };
+            with_loop.patterns.get_mut(&owner).unwrap().audio_loops[slot] = Some(LoopSettings {
                 file: format!("stem-{}.wav", slot + 1),
                 source_bpm_x100: 12_000,
                 interpretation: BpmInterpretation::Half,
@@ -4445,7 +4564,8 @@ mod tests {
         assert_eq!(decode(&encode(&with_loop).unwrap()).unwrap(), with_loop);
         let encoded = encode(&with_loop).unwrap();
         for slot in 1..=LOOP_SLOT_COUNT {
-            assert!(encoded.contains(&format!("loop_slot={slot}|stem-{slot}.wav|")));
+            let owner = if slot % 2 == 1 { 0 } else { second_number };
+            assert!(encoded.contains(&format!("pattern_loop={owner}|{slot}|stem-{slot}.wav|")));
         }
 
         let missing_offset = encoded.replace("|0|12|-4|700|-750\n", "|0|12\n");
@@ -4460,10 +4580,41 @@ mod tests {
     }
 
     #[test]
+    fn version_seven_global_slots_migrate_to_every_distinct_pattern() {
+        let mut current = Song::new(&config());
+        let clone = current.patterns[&0].clone();
+        let second = current.append_pattern(clone).unwrap();
+        let legacy = encode(&current)
+            .unwrap()
+            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 7", 1)
+            .replacen(
+                "insert_rack=",
+                "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
+                1,
+            );
+        let migrated = decode(&legacy).unwrap();
+        assert_eq!(
+            migrated.patterns[&0].audio_loops,
+            migrated.patterns[&second].audio_loops
+        );
+        assert_eq!(
+            migrated.patterns[&0].audio_loops[0]
+                .as_ref()
+                .map(|settings| settings.file.as_str()),
+            Some("shared.wav")
+        );
+        assert!(encode(&migrated)
+            .unwrap()
+            .contains(&format!("pattern_loop={second}|1|shared.wav|")));
+    }
+
+    #[test]
     fn version_six_single_loop_migrates_to_slot_one_without_rewriting_the_file() {
-        let current = encode(&Song::new(&config())).unwrap();
+        let mut source = Song::new(&config());
+        let second = source.append_pattern(source.patterns[&0].clone()).unwrap();
+        let current = encode(&source).unwrap();
         let legacy = current
-            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 6", 1)
+            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -4471,7 +4622,7 @@ mod tests {
             );
         let migrated = decode(&legacy).unwrap();
         assert_eq!(
-            migrated.audio_loops[0],
+            migrated.patterns[&0].audio_loops[0],
             Some(LoopSettings {
                 file: "legacy.wav".into(),
                 source_bpm_x100: 9_876,
@@ -4483,10 +4634,16 @@ mod tests {
                 filter_x1000: 0,
             })
         );
-        assert!(migrated.audio_loops[1..].iter().all(Option::is_none));
+        assert!(migrated.patterns[&0].audio_loops[1..]
+            .iter()
+            .all(Option::is_none));
+        assert_eq!(
+            migrated.patterns[&0].audio_loops,
+            migrated.patterns[&second].audio_loops
+        );
         assert!(encode(&migrated)
             .unwrap()
-            .contains("loop_slot=1|legacy.wav|9876|double|5|14|-8|1000|0"));
+            .contains("pattern_loop=0|1|legacy.wav|9876|double|5|14|-8|1000|0"));
 
         let base = env::temp_dir().join(format!("shr-v6-migration-{}", std::process::id()));
         fs::create_dir_all(&base).unwrap();
@@ -4495,6 +4652,101 @@ mod tests {
         assert_eq!(load(&base, "legacy").unwrap(), migrated);
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn pattern_operations_copy_detach_retain_and_never_delete_private_wavs() {
+        let mut song = Song::new(&config());
+        let settings = LoopSettings {
+            file: "shared-private.wav".into(),
+            source_bpm_x100: 12_000,
+            interpretation: BpmInterpretation::Normal,
+            start_beat: 2,
+            length_beats: 16,
+            offset_beats: -4,
+            level_x1000: 875,
+            filter_x1000: 250,
+        };
+        song.patterns.get_mut(&0).unwrap().audio_loops[2] = Some(settings.clone());
+
+        let clone_number = song.append_pattern(song.patterns[&0].clone()).unwrap();
+        assert_eq!(
+            song.patterns[&clone_number].audio_loops[2],
+            Some(settings.clone())
+        );
+        song.patterns.get_mut(&clone_number).unwrap().audio_loops[2]
+            .as_mut()
+            .unwrap()
+            .level_x1000 = 500;
+        assert_eq!(
+            song.patterns[&0].audio_loops[2]
+                .as_ref()
+                .unwrap()
+                .level_x1000,
+            875,
+            "a cloned Pattern owns an independent settings copy"
+        );
+
+        song.patterns.get_mut(&0).unwrap().resize_rows(24).unwrap();
+        assert_eq!(song.patterns[&0].audio_loops[2], Some(settings.clone()));
+
+        let cleared = Pattern::empty_like_setup(24, &song.patterns[&0]);
+        assert!(cleared.audio_loops.iter().all(Option::is_none));
+        assert_eq!(cleared.pages, song.patterns[&0].pages);
+
+        let base = env::temp_dir().join(format!("shr-pattern-loop-clean-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let wav = base.join(&settings.file);
+        fs::write(&wav, b"private fixture").unwrap();
+        song.order.retain(|number| *number != clone_number);
+        song.delete_unused_pattern(clone_number).unwrap();
+        assert!(wav.exists(), "Pattern CLEAN must not delete a private WAV");
+        fs::remove_dir_all(base).unwrap();
+
+        let new_pattern = Pattern::empty_like_setup(32, &song.patterns[&0]);
+        assert_eq!(new_pattern.audio_loops.len(), LOOP_SLOT_COUNT);
+        assert!(new_pattern.audio_loops.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn format_eight_refuses_malformed_duplicate_and_unowned_loop_records() {
+        let song = Song::new(&config());
+        let encoded = encode(&song).unwrap();
+        let record = "pattern_loop=0|1|safe.wav|12000|normal|0|4|0|1000|0\n";
+        let valid = encoded.replacen("pattern_page=", &format!("{record}pattern_page="), 1);
+        assert!(decode(&valid).is_ok());
+        assert!(decode(&valid.replacen(record, &format!("{record}{record}"), 1)).is_err());
+        assert!(decode(&valid.replace("pattern_loop=0|1|", "pattern_loop=999|1|")).is_err());
+        assert!(decode(&valid.replace("pattern_loop=0|1|", "pattern_loop=0|5|")).is_err());
+        assert!(decode(&valid.replace("|1000|0\n", "|1501|0\n")).is_err());
+        assert!(decode(&valid.replace("safe.wav", "../safe.wav")).is_err());
+    }
+
+    #[test]
+    fn repeated_arrangement_references_share_one_pattern_loop_owner() {
+        let mut song = Song::new(&config());
+        song.order = vec![0, 0, 0];
+        song.patterns.get_mut(&0).unwrap().audio_loops[0] = Some(LoopSettings::new(
+            "shared.wav".into(),
+            12_000,
+            BpmInterpretation::Normal,
+            0,
+            4,
+            0,
+        ));
+        song.patterns.get_mut(&0).unwrap().audio_loops[0]
+            .as_mut()
+            .unwrap()
+            .filter_x1000 = -300;
+        for pattern_number in &song.order {
+            assert_eq!(
+                song.patterns[pattern_number].audio_loops[0]
+                    .as_ref()
+                    .unwrap()
+                    .filter_x1000,
+                -300
+            );
+        }
     }
     #[test]
     fn current_song_format_round_trips_every_cell_field() {
@@ -4507,7 +4759,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 7\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 8\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -5673,14 +5925,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 7\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 8\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -5689,14 +5941,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 7\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 8\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -5713,7 +5965,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 7\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 8\n"));
         assert!(encoded.contains("|default|-|manual|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -5729,7 +5981,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -5750,7 +6002,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 7",
+            "SHSYNTH-SONG 8",
             "SHSYNTH-SONG 4",
             1,
         );

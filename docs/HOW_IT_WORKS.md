@@ -480,16 +480,20 @@ Transient lane mute/velocity/gate/transpose shapes a runtime Pattern copy.
 Stored cells and persisted lane settings remain unchanged. The state belongs
 to the open Project and is dropped on Project replacement.
 
-A Project may attach four privately imported mono or stereo WAVs. The import
-inbox is only a browser source; each selected file is validated and copied
-without replacement below the private SHR data directory. Every slot saves
-filename, interpreted source BPM, half/normal/double mode, non-destructive cut,
-whole-bar placement offset, level, and bipolar filter.
+Every Pattern owns four optional references to privately imported mono or stereo
+WAVs. This keeps its MIDI pages and Loop Mix material together without making
+decoded audio into MIDI lanes. Repeated Arrangement steps share the Pattern
+record; a clone copies references/settings into an independent Pattern but
+never copies the WAV. The import inbox is only a browser source; each selected
+file is validated and copied without replacement below the private SHR data
+directory. Every populated slot saves filename, interpreted source BPM,
+half/normal/double mode, non-destructive cut, whole-bar placement offset, level,
+and bipolar filter.
 
 Loop analysis is offline, outside the JACK callback. `AUTO` uses bounded pulse
 and duration analysis when useful and proposes a whole-bar interpretation.
 Playback remains native-speed and requires every active slot's interpreted BPM
-to equal the Project tempo and its sample rate to match JACK. Incompatible
+to equal its Pattern tempo and its sample rate to match JACK. Incompatible
 slots are refused rather than drifting. Each decoded WAV is bounded to
 6,000,000 frames, about 125 seconds at 48 kHz.
 
@@ -501,11 +505,23 @@ pair into the sum and removes the direct links, so there is never a parallel
 doubled path. `LOOP OUT` means the complete four-slot Loop source; `FINAL OUT`
 includes all three logical bus sources.
 
-The slots share the FT2 transport origin and bar scheduler but launch/stop
-independently. Different whole-bar lengths retain phase. The summed Loop source
+Only the active and incoming Pattern are prepared; saved Patterns add no JACK
+clients, callback renderers, mixer sources, or eager decoding. Each Pattern
+activation invalidates old runtime queues and publishes one fixed four-slot
+renderer set through a single bounded atomic handoff. The callback swaps only
+pointers; the owner thread reclaims the retired set. Outgoing audio becomes
+silent at the MIDI boundary even if incoming preparation is late. Healthy
+prepared slots start at the same boundary; failed ones remain silent and
+faulted.
+
+The slots share the owning Pattern's local transport origin, meter, tempo, and
+bar scheduler but launch/stop independently. Every Arrangement step and Live
+retrigger restarts local phase. Starting at a middle row seeks from that local
+beat; preceding Arrangement steps never contribute phase. Different whole-bar
+lengths retain phase. The summed Loop source
 receives only its final-bus level/mute, then shares the
 master, limiter, final meter, recorder, and playback with the other sources.
-Project `REMOVE` detaches only the selected slot while keeping the private WAV.
+`REMOVE` detaches only the selected Pattern slot while keeping the private WAV.
 `LIBRARY` opens the shared overlay for that slot and browses inbox and private
 files without auto-preview.
 Controller PLAY explicitly previews the selection. Changing selection, STOP,
@@ -550,11 +566,14 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 7 persists the complete tracker state, four Loop Mix slots,
+Project format 8 persists the complete tracker state, exactly four optional
+Loop Mix slots under each Pattern,
 effects routing, per-page entry mode/anchor, drum-role/choke overrides,
 explicit software engine/instrument identities, and optional external profile
-metadata. Format 6's single WAV record migrates in memory to slot 1 without
-rewriting the file. Format 5
+metadata. Format 7's former Project-global four slots migrate in memory into
+every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
+every Pattern. Neither migration copies audio or rewrites the file; only an
+explicit save writes format 8. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3
 remains loadable and keeps its
@@ -569,7 +588,7 @@ chooses a numbered non-overwriting copy. Rename publishes the complete new
 Project before removing the old filename and refuses collisions. New Ideas,
 audio recordings, imported loops, and user drum patterns likewise choose or
 require unused destinations. Destructive deletion is explicit and scoped:
-Pattern cleanup checks zero Arrangement references, and Project loop removal
+Pattern cleanup checks zero Arrangement references, and Pattern loop removal
 keeps the WAV. The current loop browser has no file-deletion workflow.
 
 Configuration lives below

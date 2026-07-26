@@ -22,8 +22,8 @@ configuration, or the architecture contracts.
 - [In-app help](HELP.md) — the compact help text shown by `?` or F1.
 - [Tracker guide](TRACKER.md) — FT2 editing, pages, routing, Arrangement,
   drums, loops, and Project files.
-- [Live performance](LIVE_PERFORMANCE.md) — Live Pattern launch/capture and
-  transient lane shaping plus the four-WAV Loop Mix.
+- [Live performance](LIVE_PERFORMANCE.md) — Live Pattern launch/capture,
+  transient lane shaping, and Pattern-owned four-WAV Loop Mix transitions.
 - [Public-domain demo songs](DEMO_SONGS.md) — tempos, keys, parts, restyle
   ideas, clearance records, and installed discovery.
 - [Controller interface](CONTROLLER_INTERFACE.md) — complete four-page action

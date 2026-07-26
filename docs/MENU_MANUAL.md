@@ -17,9 +17,9 @@ The manual is split into three chapters so it remains usable on a phone:
    across Play/Record/Edit; separate Edit note length; Projects;
    Pattern tools; drum patterns; Arrangement; Live Patterns; the Tracks
    screen; and routing fields.
-3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — four-slot Loop Mix, the shared
-   loop browser, alignment, the effects rack and its contexts, and the
-   parameter editor.
+3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — Pattern-owned four-slot Loop
+   Mix, the shared loop browser, alignment, the effects rack and its contexts,
+   and the parameter editor.
 
 ## How to read a screen
 

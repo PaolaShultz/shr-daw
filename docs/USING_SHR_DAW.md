@@ -85,11 +85,13 @@ The same screen gives the selected page's four MIDI lanes transient mute,
 velocity, gate, and transpose controls. They leave cell data unchanged, survive
 navigation, and reset safely when another Project loads.
 
-**Loop Mix** keeps four private WAV slots separate from Patterns. Each slot can
-queue launch/stop at the next bar and has smoothed level, mute, and a bipolar
-low-pass/neutral/high-pass filter. All active WAVs must match the Project tempo
-and JACK sample rate; SHR-DAW does not time-stretch them. One bad slot does not
-stop the others.
+**Loop Mix** is decoded audio, not fake MIDI lanes, but its four private WAV
+slots belong to the selected FT2 Pattern. Browsing another Pattern changes the
+editor without changing the sound. Arrangement and Live Pattern boundaries
+switch MIDI and loops together and restart Pattern-local phase; repeated
+references share settings but each step restarts. All active WAVs must match
+their owning Pattern's tempo and JACK sample rate. One bad slot does not stop
+healthy loops or MIDI, and SHR-DAW does not time-stretch them.
 
 See [Live performance](LIVE_PERFORMANCE.md) for exact controls, capture,
 ownership, routing, realtime limits, and unsupported DJ features.

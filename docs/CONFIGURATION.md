@@ -561,13 +561,14 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 7
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 8
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor and drum classification,
-every cell field, four optional Loop Mix slots, the source insert rack, aux
-routing, master rack, explicit software engine/instrument identity, and
-optional external profile metadata. A
+every cell field, exactly four optional Loop Mix slots, explicit software
+engine/instrument identity, and optional external profile metadata. The Project
+continues to own the source insert rack, aux routing, master rack, final-bus
+routing, recording configuration, and unrelated Project state. A
 format-4-or-newer `default` target plus four `default`
 column markers is the canonical portable/unassigned state; it is not channel
 zero, mute, or disabled. Versions 0 and 1 migrate with empty effects routing;
@@ -577,13 +578,18 @@ page-wide channel/bank/program data is copied to all four columns. Unknown
 newer versions, unknown fields, and invalid effect data are refused rather than
 partly loaded or written back.
 
-Format 7 writes each populated WAV slot as
-`loop_slot=SLOT|FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET|LEVEL|FILTER`.
-Slots are 1–4, level is 0–1500, and filter is -1000..1000. Format 6's one
-`loop=FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET` record migrates in memory
-to slot 1 with unity level (`1000`) and neutral filter (`0`). Loading,
-previewing, or inspecting a format-6 Project does not rewrite it. An explicit
-save writes the current format. Unknown newer formats remain refused.
+Format 8 writes each populated WAV slot under its owner as
+`pattern_loop=PATTERN|SLOT|FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET|LEVEL|FILTER`.
+Slots are 1–4, level is 0–1500, and filter is -1000..1000. Duplicate, missing,
+unknown, malformed, unsafe, or over-limit ownership is refused before the
+current Project changes. Format 7's
+`loop_slot=SLOT|FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET|LEVEL|FILTER`
+records migrate in memory into every distinct Pattern. Format 6's one
+`loop=FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET` record migrates to slot 1
+of every Pattern with unity level (`1000`) and neutral filter (`0`). Only
+filenames/settings are copied; private WAVs are not. Loading, previewing, or
+inspecting an old Project does not rewrite it. Explicit save writes format 8.
+Unknown newer formats remain refused.
 
 Format 6 stores note-entry layout on `pattern_page` and optional non-GM
 classification as repeated
@@ -635,7 +641,7 @@ ports leave the MIDI tracker usable and produce a useful error.
 `loop.import_directory` is only the browseable inbox. A chosen WAV is validated
 and copied without replacement to
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/loops/`, or the matching
-`SHSYNTH_USER_DIR` tree set by the local launcher. Each Project slot retains
+`SHSYNTH_USER_DIR` tree set by the local launcher. Each Pattern slot retains
 the private filename, source BPM, cut region, bar placement offset, level, and
 bipolar filter. Disk I/O, decoding, allocation, import, and auto-alignment
 analysis happen outside the JACK callback.
@@ -647,7 +653,9 @@ pair to `loop.output`. Its optional MusicRadar download adds private 85, 110,
 120, and 140 BPM drum loops to the same inbox after explicit confirmation; the
 raw files are not part of the public package.
 
-The callback sums four fixed renderer positions and publishes one bounded
+Stored Patterns are not decoded eagerly. Preparation holds at most the active
+and incoming Pattern and publishes a fixed four-slot state. The callback sums
+four fixed renderer positions and publishes one bounded
 stereo `LOOP OUT` snapshot after each slot's region, phase, filter, level,
 transport gate, and edge fades. It uses the same client,
 `output_l`/`output_r` ports, and destinations above; it does not create a graph
@@ -656,11 +664,11 @@ unload, load failure, oversize, and client loss clear stale levels without
 faulting healthy slots.
 
 **TOOLS** → **LOOP** → **REMOVE** requires a second press and clears only the
-selected Project slot. It never deletes the imported WAV from private storage.
+selected Pattern slot. It never deletes the imported WAV from private storage.
 The **LIBRARY** action opens the shared browse overlay for that slot,
 which lists regular inbox and private WAV files, marks their ownership and
 saved-Project references, and imports or attaches the rotary-selected file to
-the current Project without exposing unsafe paths. `INBOX` imports and loads;
+the FT2 cursor's Pattern without exposing unsafe paths. `INBOX` imports and loads;
 `PRIVATE`, `CURRENT`, and `SAVED` attach and load. This overlay does not delete
 files.
 
@@ -669,12 +677,13 @@ missing, and faulted states remain visible on their own rows; one fault does
 not hide or stop healthy slots.
 
 Loop playback is native-speed and native-pitch. Every active slot must have an
-interpreted BPM equal to the Project tempo; incompatible combinations are
+interpreted BPM equal to the owning Pattern tempo; incompatible combinations are
 refused instead of drifting. Every WAV must also match the JACK sample rate.
 Choose 44100 Hz in JACK setup for 44.1 kHz loops, or 48000 Hz for 48 kHz
 loops, and restart JACK yourself when safe. Each decoded WAV is capped at
 6,000,000 frames, about 46 MiB of stereo memory and 125 seconds at 48 kHz.
-Different whole-bar lengths remain phase-aligned at the shared tempo.
+Different whole-bar lengths remain phase-aligned at that Pattern's tempo and
+meter. Pattern changes restart local phase and stop empty outgoing slots.
 
 See [Live performance](LIVE_PERFORMANCE.md) for launch/stop scheduling,
 filter/level bounds, controller and keyboard access, and unsupported DJ

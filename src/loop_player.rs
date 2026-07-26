@@ -5,7 +5,7 @@
 use crate::config::{ControllerClockConfig, LoopPlayerConfig};
 use crate::dsp::{AtomicMeter, MeterAccumulator, MeterSnapshot, StereoFrame, MAX_METER_WINDOW};
 use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
-use crate::sequencer::{LoopSettings, Song};
+use crate::sequencer::LoopSettings;
 use alsa::seq::{Addr, EvQueueControl, Event, EventType, PortCap, PortType, Seq};
 use alsa::Direction;
 use anyhow::{bail, Context, Result};
@@ -15,7 +15,7 @@ use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -43,6 +43,7 @@ const CONTROL_SMOOTH_SECONDS: f32 = 0.015;
 pub struct TransportClock {
     playing: AtomicBool,
     generation: AtomicU64,
+    loop_generation: AtomicU64,
     origin_beat: AtomicU64,
     bpm_x100: AtomicU64,
     controller_tx: Option<mpsc::Sender<ControllerClockCommand>>,
@@ -81,6 +82,7 @@ impl TransportClock {
         Self {
             playing: AtomicBool::new(false),
             generation: AtomicU64::new(0),
+            loop_generation: AtomicU64::new(u64::MAX),
             origin_beat: AtomicU64::new(0),
             bpm_x100: AtomicU64::new(u64::from(initial_bpm) * 100),
             controller_tx,
@@ -108,6 +110,15 @@ impl TransportClock {
                 let _ = tx.send(ControllerClockCommand::Stop);
             }
         }
+    }
+
+    /// Authorize the fixed loop renderers for the current transport
+    /// generation. A Pattern boundary increments `generation`, making every
+    /// outgoing renderer silent until the incoming Pattern has been prepared
+    /// and armed outside the callback.
+    pub fn arm_loops(&self) {
+        self.loop_generation
+            .store(self.generation.load(Ordering::Acquire), Ordering::Release);
     }
 
     pub fn tempo(&self, bpm: f64) {
@@ -551,7 +562,11 @@ pub fn library_entries(
     for name in crate::sequencer::list(projects) {
         let song = crate::sequencer::load(projects, &name)
             .with_context(|| format!("inspect saved Project {name}"))?;
-        for settings in song.audio_loops.iter().flatten() {
+        for settings in song
+            .patterns
+            .values()
+            .flat_map(|pattern| pattern.audio_loops.iter().flatten())
+        {
             *references.entry(settings.file.clone()).or_default() += 1;
         }
     }
@@ -627,11 +642,11 @@ pub struct LoopAlignment {
     pub transient_detected: bool,
 }
 
-pub fn analyze_alignment(decoded: &DecodedLoop, project_bpm: u16, meter: u8) -> LoopAlignment {
+pub fn analyze_alignment(decoded: &DecodedLoop, pattern_bpm: u16, meter: u8) -> LoopAlignment {
     let duration = decoded.duration().as_secs_f64().max(0.001);
     let meter = u32::from(meter.clamp(1, 16));
     let estimated = estimate_bpm(decoded);
-    let measured_bpm = estimated.unwrap_or(f64::from(project_bpm));
+    let measured_bpm = estimated.unwrap_or(f64::from(pattern_bpm));
     let measured_beats = (duration * measured_bpm / 60.0).round().max(1.0) as u32;
     let bars = ((measured_beats as f64 / f64::from(meter)).round() as u32).max(1);
     let length_beats = bars.saturating_mul(meter).max(1);
@@ -738,7 +753,8 @@ pub fn render_sample(
     ]
 }
 
-pub fn song_position_beats(song: &Song, order: usize, row: usize) -> f64 {
+#[cfg(test)]
+pub fn song_position_beats(song: &crate::sequencer::Song, order: usize, row: usize) -> f64 {
     let prior_rows = song
         .order
         .iter()
@@ -792,6 +808,8 @@ struct PreparedLoop {
 struct SlotControl {
     running: AtomicBool,
     muted: AtomicBool,
+    tempo_fault: AtomicBool,
+    pattern_generation: AtomicU64,
     queued: AtomicU8,
     level_x1000: AtomicU32,
     filter_bits: AtomicU32,
@@ -802,6 +820,8 @@ impl SlotControl {
         Self {
             running: AtomicBool::new(false),
             muted: AtomicBool::new(false),
+            tempo_fault: AtomicBool::new(false),
+            pattern_generation: AtomicU64::new(u64::MAX),
             queued: AtomicU8::new(0),
             level_x1000: AtomicU32::new(
                 settings.map_or(1000, |settings| u32::from(settings.level_x1000)),
@@ -854,6 +874,64 @@ impl Default for LoopSlot {
     }
 }
 
+fn prepare_loop_slot(
+    decoded: DecodedLoop,
+    settings: &LoopSettings,
+    pattern_bpm: f64,
+    meter: u8,
+) -> Result<LoopSlot> {
+    if decoded.samples.is_empty()
+        || !(8_000..=384_000).contains(&decoded.sample_rate)
+        || !matches!(decoded.channels, 1 | 2)
+        || decoded
+            .samples
+            .iter()
+            .flatten()
+            .any(|sample| !sample.is_finite())
+    {
+        bail!("invalid decoded WAV loop");
+    }
+    if !(2_000..=30_000).contains(&settings.source_bpm_x100)
+        || settings.length_beats == 0
+        || !(-16_384..=16_384).contains(&settings.offset_beats)
+        || settings.level_x1000 > 1_500
+        || !(-1_000..=1_000).contains(&settings.filter_x1000)
+    {
+        bail!("invalid private loop settings");
+    }
+    let source_rate = decoded.sample_rate;
+    let source_channels = decoded.channels;
+    let interpreted = settings.interpreted_bpm();
+    require_compatible_tempo(interpreted, pattern_bpm)?;
+    let start = beat_to_frame(f64::from(settings.start_beat), interpreted, source_rate)
+        .min(decoded.samples.len().saturating_sub(1));
+    let requested = beat_to_frame(f64::from(settings.length_beats), interpreted, source_rate);
+    let length = requested
+        .max(1)
+        .min(decoded.samples.len().saturating_sub(start));
+    Ok(LoopSlot {
+        prepared: Some(PreparedLoop {
+            samples: Arc::new(decoded.samples),
+            source_rate,
+            interpreted_bpm: interpreted,
+            region_start: start,
+            region_len: length,
+            offset_beats: settings.offset_beats,
+            meter: meter.clamp(1, 16),
+        }),
+        status: LoopStatus {
+            file: Some(settings.file.clone()),
+            source_rate,
+            source_channels,
+            duration: Duration::from_secs_f64(length as f64 / f64::from(source_rate)),
+            ..LoopStatus::default()
+        },
+        position: Arc::new(AtomicU64::new(0)),
+        meter: Arc::new(AtomicMeter::default()),
+        control: Arc::new(SlotControl::new(Some(settings))),
+    })
+}
+
 pub struct LoopPlayer {
     config: LoopPlayerConfig,
     clock: Arc<TransportClock>,
@@ -867,6 +945,8 @@ struct Active {
     jack: JackClient,
     callback: Box<CallbackData>,
     client_state: Arc<LoopClientState>,
+    publication: Arc<RendererPublication>,
+    sample_rate: u32,
 }
 
 impl LoopPlayer {
@@ -890,68 +970,17 @@ impl LoopPlayer {
         slot: usize,
         decoded: DecodedLoop,
         settings: &LoopSettings,
-        project_bpm: f64,
+        pattern_bpm: f64,
         meter: u8,
     ) -> Result<()> {
         let slot = checked_slot(slot)?;
-        if decoded.samples.is_empty()
-            || !(8_000..=384_000).contains(&decoded.sample_rate)
-            || !matches!(decoded.channels, 1 | 2)
-            || decoded
-                .samples
-                .iter()
-                .flatten()
-                .any(|sample| !sample.is_finite())
-        {
-            bail!("invalid decoded WAV loop");
-        }
-        if !(2_000..=30_000).contains(&settings.source_bpm_x100)
-            || settings.length_beats == 0
-            || !(-16_384..=16_384).contains(&settings.offset_beats)
-            || settings.level_x1000 > 1_500
-            || !(-1_000..=1_000).contains(&settings.filter_x1000)
-        {
-            bail!("invalid private loop settings");
-        }
-        let source_rate = decoded.sample_rate;
-        let source_channels = decoded.channels;
-        let interpreted = settings.interpreted_bpm();
-        require_compatible_tempo(interpreted, project_bpm)?;
-        let start = beat_to_frame(f64::from(settings.start_beat), interpreted, source_rate)
-            .min(decoded.samples.len().saturating_sub(1));
-        let requested = beat_to_frame(f64::from(settings.length_beats), interpreted, source_rate);
-        let length = requested
-            .max(1)
-            .min(decoded.samples.len().saturating_sub(start));
-        let prepared = PreparedLoop {
-            samples: Arc::new(decoded.samples),
-            source_rate,
-            interpreted_bpm: interpreted,
-            region_start: start,
-            region_len: length,
-            offset_beats: settings.offset_beats,
-            meter: meter.clamp(1, 16),
-        };
-        let next_status = LoopStatus {
-            file: Some(settings.file.clone()),
-            source_rate,
-            source_channels,
-            duration: Duration::from_secs_f64(length as f64 / f64::from(source_rate)),
-            ..LoopStatus::default()
-        };
-        let previous_prepared = self.slots[slot].prepared.clone();
-        let previous_status = self.slots[slot].status.clone();
-        let previous_control = Arc::clone(&self.slots[slot].control);
-        self.slots[slot].prepared = Some(prepared);
-        self.slots[slot].status = next_status;
-        self.slots[slot].control = Arc::new(SlotControl::new(Some(settings)));
-        self.slots[slot].position.store(0, Ordering::Release);
-        self.slots[slot].meter.publish(MeterSnapshot::default());
+        let mut next = prepare_loop_slot(decoded, settings, pattern_bpm, meter)?;
+        next.position = Arc::clone(&self.slots[slot].position);
+        next.meter = Arc::clone(&self.slots[slot].meter);
+        let previous = std::mem::replace(&mut self.slots[slot], next);
         self.preview = false;
         if let Err(error) = self.rebuild_backend() {
-            self.slots[slot].prepared = previous_prepared;
-            self.slots[slot].status = previous_status;
-            self.slots[slot].control = previous_control;
+            self.slots[slot] = previous;
             let restoration = self.rebuild_backend();
             self.slots[slot].status.error = Some(error.to_string());
             return Err(match restoration {
@@ -962,14 +991,79 @@ impl LoopPlayer {
             });
         }
         self.slots[slot].status.loaded = true;
+        let generation = self.clock.generation.load(Ordering::Acquire);
+        if self.clock.loop_generation.load(Ordering::Acquire) == generation {
+            self.slots[slot]
+                .control
+                .pattern_generation
+                .store(generation, Ordering::Release);
+        }
         Ok(())
+    }
+
+    /// Replace all four Pattern-owned slots as one bounded backend
+    /// transaction. WAV decoding has already completed on the caller thread;
+    /// the callback still sees exactly four fixed renderers and one stereo
+    /// sum.
+    pub fn replace_pattern_slots(
+        &mut self,
+        mut inputs: [Option<(DecodedLoop, LoopSettings)>; LOOP_SLOTS],
+        mut faults: [Option<(String, String)>; LOOP_SLOTS],
+        pattern_bpm: f64,
+        meter: u8,
+    ) -> Result<[bool; LOOP_SLOTS]> {
+        let mut next = std::array::from_fn(|_| LoopSlot::default());
+        let mut failed = [false; LOOP_SLOTS];
+        for slot in 0..LOOP_SLOTS {
+            if let Some((decoded, settings)) = inputs[slot].take() {
+                match prepare_loop_slot(decoded, &settings, pattern_bpm, meter) {
+                    Ok(prepared) => next[slot] = prepared,
+                    Err(error) => {
+                        next[slot].status.file = Some(settings.file);
+                        next[slot].status.error = Some(error.to_string());
+                        failed[slot] = true;
+                    }
+                }
+            } else if let Some((file, error)) = faults[slot].take() {
+                next[slot].status.file = Some(file);
+                next[slot].status.error = Some(error);
+                failed[slot] = true;
+            }
+            next[slot].position = Arc::clone(&self.slots[slot].position);
+            next[slot].meter = Arc::clone(&self.slots[slot].meter);
+        }
+        let previous = std::mem::replace(&mut self.slots, next);
+        self.preview = false;
+        if let Err(error) = self.rebuild_backend_isolated(&mut failed) {
+            self.slots = previous;
+            let restoration = self.rebuild_backend();
+            return Err(match restoration {
+                Ok(()) => error,
+                Err(restore) => {
+                    anyhow::anyhow!("{error:#} · previous Pattern restore failed: {restore:#}")
+                }
+            });
+        }
+        for slot in &mut self.slots {
+            slot.status.loaded = slot.prepared.is_some();
+        }
+        Ok(failed)
     }
 
     pub fn status(&self) -> LoopStatus {
         self.slot_status(0)
     }
 
+    pub fn backend_active(&self) -> bool {
+        self.active
+            .as_ref()
+            .is_some_and(|active| active.client_state.active.load(Ordering::Acquire))
+    }
+
     pub fn slot_status(&self, slot: usize) -> LoopStatus {
+        if let Some(active) = self.active.as_ref() {
+            active.publication.reclaim_retired();
+        }
         let Ok(slot) = checked_slot(slot) else {
             return LoopStatus {
                 error: Some("loop slot must be 1..=4".into()),
@@ -985,6 +1079,9 @@ impl LoopPlayer {
         status.running = source.control.running.load(Ordering::Acquire);
         status.muted = source.control.muted.load(Ordering::Acquire);
         status.queued = source.control.queued();
+        if source.control.tempo_fault.load(Ordering::Acquire) {
+            status.error = Some("loop tempo no longer matches Pattern tempo".into());
+        }
         status.playing = status.loaded
             && status.running
             && !status.muted
@@ -1073,6 +1170,16 @@ impl LoopPlayer {
         Ok(())
     }
 
+    pub fn arm_pattern(&self) {
+        let generation = self.clock.generation.load(Ordering::Acquire);
+        for slot in &self.slots {
+            slot.control
+                .pattern_generation
+                .store(generation, Ordering::Release);
+        }
+        self.clock.arm_loops();
+    }
+
     #[doc(hidden)]
     pub(crate) fn set_preview_status(&mut self, status: LoopStatus) {
         self.set_slot_preview_status(0, status);
@@ -1103,7 +1210,17 @@ impl LoopPlayer {
         self.preview = true;
         if running {
             self.clock.play(0.0, 120);
+            self.arm_pattern();
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn slot_control_values(&self, slot: usize) -> (u16, i16) {
+        let source = &self.slots[slot.min(LOOP_SLOTS - 1)].control;
+        (
+            source.level_x1000.load(Ordering::Acquire) as u16,
+            (f32::from_bits(source.filter_bits.load(Ordering::Acquire)) * 1000.0).round() as i16,
+        )
     }
 
     pub fn stop(&self) {
@@ -1125,22 +1242,81 @@ impl LoopPlayer {
         let Ok(slot) = checked_slot(slot) else {
             return;
         };
-        self.slots[slot] = LoopSlot::default();
+        let mut empty = LoopSlot::default();
+        empty.position = Arc::clone(&self.slots[slot].position);
+        empty.meter = Arc::clone(&self.slots[slot].meter);
+        self.slots[slot] = empty;
         let _ = self.rebuild_backend();
         self.preview = false;
     }
 
     fn rebuild_backend(&mut self) -> Result<()> {
-        self.stop_backend();
+        self.rebuild_backend_mode(None)
+    }
+
+    fn rebuild_backend_isolated(&mut self, failed: &mut [bool; LOOP_SLOTS]) -> Result<()> {
+        self.rebuild_backend_mode(Some(failed))
+    }
+
+    fn rebuild_backend_mode(&mut self, mut failed: Option<&mut [bool; LOOP_SLOTS]>) -> Result<()> {
+        if let Some(active) = self.active.as_ref() {
+            active.publication.reclaim_retired();
+        }
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|active| !active.client_state.active.load(Ordering::Acquire))
+        {
+            self.stop_backend();
+        }
         self.clear_meter();
+        let active_rate = self
+            .active
+            .as_ref()
+            .filter(|active| active.client_state.active.load(Ordering::Acquire))
+            .map(|active| active.sample_rate);
+        let mut jack =
+            if active_rate.is_none() && self.slots.iter().any(|slot| slot.prepared.is_some()) {
+                Some(JackClient::open(&self.config.client_name)?)
+            } else {
+                None
+            };
+        let jack_rate = active_rate
+            .or_else(|| jack.as_ref().map(JackClient::sample_rate))
+            .unwrap_or(0);
+        for slot in 0..LOOP_SLOTS {
+            let Some(source_rate) = self.slots[slot]
+                .prepared
+                .as_ref()
+                .map(|prepared| prepared.source_rate)
+            else {
+                continue;
+            };
+            if let Err(error) = require_native_rate(source_rate, jack_rate) {
+                if let Some(failed) = failed.as_deref_mut() {
+                    self.slots[slot].prepared = None;
+                    self.slots[slot].status.error = Some(error.to_string());
+                    failed[slot] = true;
+                } else {
+                    return Err(error);
+                }
+            }
+        }
+
+        let renderers = self.build_renderers()?;
+        if active_rate.is_some() {
+            let active = self.active.as_ref().expect("active Loop backend");
+            active
+                .publication
+                .publish(RendererSet { slots: renderers })?;
+            return Ok(());
+        }
+
+        self.stop_backend();
         if self.slots.iter().all(|slot| slot.prepared.is_none()) {
             return Ok(());
         }
-        let mut jack = JackClient::open(&self.config.client_name)?;
-        let jack_rate = jack.sample_rate();
-        for slot in self.slots.iter().filter_map(|slot| slot.prepared.as_ref()) {
-            require_native_rate(slot.source_rate, jack_rate)?;
-        }
+        let mut jack = jack.take().context("missing prepared JACK Loop client")?;
         let left = jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[0], PortDirection::Output)?;
         let right = jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[1], PortDirection::Output)?;
         let client_state = Arc::new(LoopClientState {
@@ -1148,24 +1324,15 @@ impl LoopPlayer {
             published_meter: Arc::clone(&self.meter),
             slot_meters: std::array::from_fn(|slot| Arc::clone(&self.slots[slot].meter)),
         });
-        let mut renderers: [Option<LoopRenderer>; LOOP_SLOTS] = std::array::from_fn(|_| None);
-        for (slot, renderer) in renderers.iter_mut().enumerate() {
-            if let Some(prepared) = self.slots[slot].prepared.as_ref() {
-                *renderer = Some(LoopRenderer::new(
-                    prepared,
-                    Arc::clone(&self.clock),
-                    Arc::clone(&self.slots[slot].position),
-                    Arc::clone(&self.slots[slot].meter),
-                    Arc::clone(&self.slots[slot].control),
-                )?);
-            }
-        }
+        let publication = Arc::new(RendererPublication::default());
+        let active_renderers = Box::into_raw(Box::new(RendererSet { slots: renderers }));
         let mut callback = Box::new(CallbackData {
             left,
             right,
             port_get_buffer: jack.port_get_buffer(),
             renderer: LoopMixerRenderer {
-                slots: renderers,
+                active: active_renderers,
+                publication: Arc::clone(&publication),
                 meter: MeterAccumulator::new(MAX_LOOP_CALLBACK_FRAMES)?,
                 client_state: Arc::clone(&client_state),
             },
@@ -1188,13 +1355,32 @@ impl LoopPlayer {
             jack,
             callback,
             client_state,
+            publication,
+            sample_rate: jack_rate,
         });
         Ok(())
+    }
+
+    fn build_renderers(&self) -> Result<[Option<LoopRenderer>; LOOP_SLOTS]> {
+        let mut renderers = std::array::from_fn(|_| None);
+        for (slot, renderer) in renderers.iter_mut().enumerate() {
+            if let Some(prepared) = self.slots[slot].prepared.as_ref() {
+                *renderer = Some(LoopRenderer::new(
+                    prepared,
+                    Arc::clone(&self.clock),
+                    Arc::clone(&self.slots[slot].position),
+                    Arc::clone(&self.slots[slot].meter),
+                    Arc::clone(&self.slots[slot].control),
+                )?);
+            }
+        }
+        Ok(renderers)
     }
 
     fn stop_backend(&mut self) {
         if let Some(mut active) = self.active.take() {
             active.jack.deactivate();
+            active.publication.clear_quiescent();
             // Keep the callback allocation alive until JACK is inactive.
             drop(active.callback);
         }
@@ -1219,10 +1405,162 @@ struct CallbackData {
     renderer: LoopMixerRenderer,
 }
 
-struct LoopMixerRenderer {
+const PUBLICATION_IDLE: u8 = 0;
+const PUBLICATION_PENDING: u8 = 1;
+const PUBLICATION_SWAPPING: u8 = 2;
+const PUBLICATION_RETIRED: u8 = 3;
+const PUBLICATION_RECLAIMING: u8 = 4;
+
+struct RendererSet {
     slots: [Option<LoopRenderer>; LOOP_SLOTS],
+}
+
+/// One fixed pending renderer set crosses into the callback. The callback only
+/// swaps raw pointers and retires the previous fixed set; allocation and
+/// destruction both remain on the owner thread.
+struct RendererPublication {
+    state: AtomicU8,
+    pending: AtomicPtr<RendererSet>,
+    retired: AtomicPtr<RendererSet>,
+}
+
+impl Default for RendererPublication {
+    fn default() -> Self {
+        Self {
+            state: AtomicU8::new(PUBLICATION_IDLE),
+            pending: AtomicPtr::new(std::ptr::null_mut()),
+            retired: AtomicPtr::new(std::ptr::null_mut()),
+        }
+    }
+}
+
+impl RendererPublication {
+    fn publish(&self, next: RendererSet) -> Result<()> {
+        self.reclaim_retired();
+        if self.state.load(Ordering::Acquire) != PUBLICATION_IDLE {
+            bail!("incoming Pattern Loop Mix preparation is late");
+        }
+        let next = Box::into_raw(Box::new(next));
+        self.pending.store(next, Ordering::Release);
+        if self
+            .state
+            .compare_exchange(
+                PUBLICATION_IDLE,
+                PUBLICATION_PENDING,
+                Ordering::Release,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            let next = self.pending.swap(std::ptr::null_mut(), Ordering::AcqRel);
+            if !next.is_null() {
+                // SAFETY: publication did not transfer ownership to the
+                // callback because the state transition failed.
+                unsafe { drop(Box::from_raw(next)) };
+            }
+            bail!("incoming Pattern Loop Mix publication is busy");
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn adopt_pending(&self, active: &mut *mut RendererSet) {
+        if self
+            .state
+            .compare_exchange(
+                PUBLICATION_PENDING,
+                PUBLICATION_SWAPPING,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
+            .is_err()
+        {
+            return;
+        }
+        let next = self.pending.swap(std::ptr::null_mut(), Ordering::AcqRel);
+        if next.is_null() {
+            self.state.store(PUBLICATION_IDLE, Ordering::Release);
+            return;
+        }
+        let previous = std::mem::replace(active, next);
+        self.retired.store(previous, Ordering::Release);
+        self.state.store(PUBLICATION_RETIRED, Ordering::Release);
+    }
+
+    fn reclaim_retired(&self) {
+        if self
+            .state
+            .compare_exchange(
+                PUBLICATION_RETIRED,
+                PUBLICATION_RECLAIMING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            return;
+        }
+        let retired = self.retired.swap(std::ptr::null_mut(), Ordering::AcqRel);
+        if !retired.is_null() {
+            // SAFETY: the callback published this pointer only after switching
+            // away from it, and RECLAIMING prevents another adoption.
+            unsafe { drop(Box::from_raw(retired)) };
+        }
+        self.state.store(PUBLICATION_IDLE, Ordering::Release);
+    }
+
+    fn clear_quiescent(&self) {
+        let pending = self.pending.swap(std::ptr::null_mut(), Ordering::AcqRel);
+        let retired = self.retired.swap(std::ptr::null_mut(), Ordering::AcqRel);
+        for pointer in [pending, retired] {
+            if !pointer.is_null() {
+                // SAFETY: JACK has been deactivated before this cleanup, so no
+                // callback can own either publication pointer.
+                unsafe { drop(Box::from_raw(pointer)) };
+            }
+        }
+        self.state.store(PUBLICATION_IDLE, Ordering::Release);
+    }
+}
+
+struct LoopMixerRenderer {
+    active: *mut RendererSet,
+    publication: Arc<RendererPublication>,
     meter: MeterAccumulator,
     client_state: Arc<LoopClientState>,
+}
+
+impl LoopMixerRenderer {
+    #[inline]
+    fn slots(&self) -> &[Option<LoopRenderer>; LOOP_SLOTS] {
+        // SAFETY: `active` is created from a Box, remains owned by this
+        // renderer, and changes only in the callback before this borrow.
+        unsafe { &(*self.active).slots }
+    }
+
+    #[inline]
+    fn slots_mut(&mut self) -> &mut [Option<LoopRenderer>; LOOP_SLOTS] {
+        // SAFETY: the JACK callback is the only caller while active. Tests own
+        // the renderer exclusively.
+        unsafe { &mut (*self.active).slots }
+    }
+
+    #[inline]
+    fn adopt_pending(&mut self) {
+        self.publication.adopt_pending(&mut self.active);
+    }
+}
+
+impl Drop for LoopMixerRenderer {
+    fn drop(&mut self) {
+        self.publication.clear_quiescent();
+        if !self.active.is_null() {
+            // SAFETY: callback deactivation precedes CallbackData destruction,
+            // and `active` is the one remaining owned RendererSet.
+            unsafe { drop(Box::from_raw(self.active)) };
+            self.active = std::ptr::null_mut();
+        }
+    }
 }
 
 struct LoopRenderer {
@@ -1338,7 +1676,7 @@ unsafe extern "C" fn shutdown_callback(argument: *mut c_void) {
 #[inline]
 fn clear_mixer_meter(data: &mut LoopMixerRenderer) {
     data.meter.reset();
-    for slot in data.slots.iter_mut().flatten() {
+    for slot in data.slots_mut().iter_mut().flatten() {
         slot.published_meter.publish(MeterSnapshot::default());
     }
     data.client_state
@@ -1348,6 +1686,7 @@ fn clear_mixer_meter(data: &mut LoopMixerRenderer) {
 
 #[inline]
 fn render_mixer_output(data: &mut LoopMixerRenderer, left: &mut [f32], right: &mut [f32]) {
+    data.adopt_pending();
     left.fill(0.0);
     right.fill(0.0);
     if left.len() != right.len()
@@ -1358,7 +1697,7 @@ fn render_mixer_output(data: &mut LoopMixerRenderer, left: &mut [f32], right: &m
         return;
     }
     if data
-        .slots
+        .slots()
         .iter()
         .flatten()
         .all(|slot| !slot.clock.playing.load(Ordering::Acquire))
@@ -1366,7 +1705,7 @@ fn render_mixer_output(data: &mut LoopMixerRenderer, left: &mut [f32], right: &m
         clear_mixer_meter(data);
         return;
     }
-    for slot in data.slots.iter_mut().flatten() {
+    for slot in data.slots_mut().iter_mut().flatten() {
         render_slot(slot, left, right);
     }
     for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
@@ -1394,12 +1733,30 @@ fn render_slot(data: &mut LoopRenderer, left: &mut [f32], right: &mut [f32]) {
         data.phase = data.region_start as f64 + beat_phase * data.region_len as f64;
         apply_queued_command(data);
     }
+    if data.clock.loop_generation.load(Ordering::Acquire) != generation {
+        data.meter.reset();
+        data.published_meter.publish(MeterSnapshot::default());
+        return;
+    }
+    if data.control.pattern_generation.load(Ordering::Acquire) != generation {
+        data.meter.reset();
+        data.published_meter.publish(MeterSnapshot::default());
+        return;
+    }
     let target_level = data.control.level_x1000.load(Ordering::Acquire) as f32 / 1000.0;
     let target_filter =
         f32::from_bits(data.control.filter_bits.load(Ordering::Acquire)).clamp(-1.0, 1.0);
     let smooth = smoothing_coefficient(data.source_rate);
     let end = (data.region_start + data.region_len) as f64;
     let bpm = data.clock.bpm_x100.load(Ordering::Acquire) as f64 / 100.0;
+    if (data.interpreted_bpm - bpm).abs() > 0.01 {
+        data.control.tempo_fault.store(true, Ordering::Release);
+        data.control.running.store(false, Ordering::Release);
+        data.meter.reset();
+        data.published_meter.publish(MeterSnapshot::default());
+        return;
+    }
+    data.control.tempo_fault.store(false, Ordering::Release);
     let origin = data.clock.origin_beat.load(Ordering::Acquire) as f64 / BEAT_UNITS;
     data.meter.reset();
     for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
@@ -1503,12 +1860,12 @@ fn checked_slot(slot: usize) -> Result<usize> {
     Ok(slot)
 }
 
-fn require_compatible_tempo(interpreted_bpm: f64, project_bpm: f64) -> Result<()> {
-    if (interpreted_bpm - project_bpm).abs() > 0.01 {
+fn require_compatible_tempo(interpreted_bpm: f64, pattern_bpm: f64) -> Result<()> {
+    if (interpreted_bpm - pattern_bpm).abs() > 0.01 {
         bail!(
             "loop is {:.2} BPM but Project is {:.2} BPM; time-stretching is not available",
             interpreted_bpm,
-            project_bpm
+            pattern_bpm
         );
     }
     Ok(())
@@ -1527,6 +1884,7 @@ fn require_native_rate(source_rate: u32, jack_rate: u32) -> Result<()> {
 mod tests {
     use super::*;
     use crate::dsp::allocation_test::assert_no_allocations;
+    use crate::sequencer::Song;
     use hound::{SampleFormat, WavSpec, WavWriter};
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -1807,12 +2165,21 @@ mod tests {
         render_slot(renderer, left, right);
     }
 
+    fn play_test_renderer(renderer: &LoopRenderer) {
+        renderer.clock.play(0.0, 120);
+        renderer.control.pattern_generation.store(
+            renderer.clock.generation.load(Ordering::Acquire),
+            Ordering::Release,
+        );
+        renderer.clock.arm_loops();
+    }
+
     fn test_mixer(samples: [[[f32; 2]; 4]; LOOP_SLOTS]) -> LoopMixerRenderer {
         let mut renderers = Vec::new();
         let mut slot_meters = Vec::new();
         for samples in samples {
             let (renderer, meter) = test_renderer(samples.to_vec());
-            renderer.clock.play(0.0, 120);
+            play_test_renderer(&renderer);
             renderers.push(renderer);
             slot_meters.push(meter);
         }
@@ -1823,8 +2190,12 @@ mod tests {
             slot_meters: std::array::from_fn(|slot| Arc::clone(&slot_meters[slot])),
         });
         let mut renderers = renderers.into_iter();
-        LoopMixerRenderer {
+        let active = Box::into_raw(Box::new(RendererSet {
             slots: std::array::from_fn(|_| Some(renderers.next().unwrap())),
+        }));
+        LoopMixerRenderer {
+            active,
+            publication: Arc::new(RendererPublication::default()),
             meter: MeterAccumulator::new(4).unwrap(),
             client_state,
         }
@@ -1873,7 +2244,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_alignment_falls_back_to_project_tempo_for_flat_audio() {
+    fn auto_alignment_falls_back_to_pattern_tempo_for_flat_audio() {
         let decoded = DecodedLoop {
             samples: vec![[0.0, 0.0]; 48_000 * 3],
             sample_rate: 48_000,
@@ -2053,7 +2424,7 @@ mod tests {
     #[test]
     fn loop_callback_meter_accumulates_publishes_and_separates_stereo() {
         let (mut renderer, published) = test_renderer(vec![[0.5, 0.25]; 4]);
-        renderer.clock.play(0.0, 120);
+        play_test_renderer(&renderer);
         let mut left = [0.0; 4];
         let mut right = [0.0; 4];
 
@@ -2088,7 +2459,7 @@ mod tests {
         assert!((peak.left - 0.5).abs() < 0.000_01);
         assert!((peak.right - 0.1).abs() < 0.000_01);
 
-        mixer.slots[2]
+        mixer.slots_mut()[2]
             .as_ref()
             .unwrap()
             .control
@@ -2120,7 +2491,7 @@ mod tests {
         let (mut boundary, _) = test_renderer(vec![[0.2, 0.2]; 64]);
         boundary.source_rate = 20;
         boundary.meter_beats = 1;
-        boundary.clock.play(0.0, 120);
+        play_test_renderer(&boundary);
         let mut left = [0.0; 4];
         let mut right = [0.0; 4];
         render_output(&mut boundary, &mut left, &mut right);
@@ -2141,7 +2512,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         let (mut neutral, _) = test_renderer(alternating.clone());
-        neutral.clock.play(0.0, 120);
+        play_test_renderer(&neutral);
         neutral.filter = 0.0;
         neutral
             .control
@@ -2156,7 +2527,7 @@ mod tests {
         assert!(left[2].abs() < 0.5, "level change must be smoothed");
 
         let (mut lowpass, _) = test_renderer(alternating);
-        lowpass.clock.play(0.0, 120);
+        play_test_renderer(&lowpass);
         lowpass.filter = -1.0;
         lowpass
             .control
@@ -2169,7 +2540,7 @@ mod tests {
         assert!(tail_peak < 0.1, "low-pass must attenuate alternating highs");
 
         let (mut highpass, _) = test_renderer(vec![[0.4, -0.4]; 4096]);
-        highpass.clock.play(0.0, 120);
+        play_test_renderer(&highpass);
         highpass.filter = 1.0;
         highpass
             .control
@@ -2197,7 +2568,7 @@ mod tests {
     #[test]
     fn stopped_silent_and_restarted_loop_cannot_leave_stale_meter_levels() {
         let (mut renderer, published) = test_renderer(vec![[0.8, 0.4]; 4]);
-        renderer.clock.play(0.0, 120);
+        play_test_renderer(&renderer);
         let mut left = [0.0; 4];
         let mut right = [0.0; 4];
         render_output(&mut renderer, &mut left, &mut right);
@@ -2223,7 +2594,7 @@ mod tests {
         assert_eq!(published.load(), MeterSnapshot::default());
 
         renderer.samples = Arc::new(vec![[0.1, 0.2]; 4]);
-        renderer.clock.play(0.0, 120);
+        play_test_renderer(&renderer);
         render_output(&mut renderer, &mut left, &mut right);
         assert_eq!(published.load().peak, StereoFrame::new(0.1, 0.2));
     }
@@ -2264,13 +2635,165 @@ mod tests {
         assert_eq!(player.meter.load(), MeterSnapshot::default());
 
         let (mut renderer, published) = test_renderer(vec![[0.5, 0.5]; 4]);
-        renderer.clock.play(0.0, 120);
+        play_test_renderer(&renderer);
         let mut left = vec![1.0; MAX_LOOP_CALLBACK_FRAMES + 1];
         let mut right = vec![1.0; MAX_LOOP_CALLBACK_FRAMES + 1];
         render_output(&mut renderer, &mut left, &mut right);
         assert!(left.iter().all(|sample| *sample == 0.0));
         assert!(right.iter().all(|sample| *sample == 0.0));
         assert_eq!(published.load(), MeterSnapshot::default());
+    }
+
+    #[test]
+    fn pattern_boundary_silences_outgoing_until_incoming_generation_is_armed() {
+        let (mut renderer, published) = test_renderer(vec![[0.6, 0.3]; 16]);
+        play_test_renderer(&renderer);
+        let mut left = [0.0; 4];
+        let mut right = [0.0; 4];
+        render_output(&mut renderer, &mut left, &mut right);
+        assert!(left.iter().any(|sample| *sample != 0.0));
+
+        renderer.clock.restart_cycle(0.0);
+        render_output(&mut renderer, &mut left, &mut right);
+        assert_eq!(left, [0.0; 4]);
+        assert_eq!(right, [0.0; 4]);
+        assert_eq!(published.load(), MeterSnapshot::default());
+
+        renderer.clock.arm_loops();
+        render_output(&mut renderer, &mut left, &mut right);
+        assert_eq!(
+            left, [0.0; 4],
+            "arming the new transport generation must not re-authorize an outgoing renderer"
+        );
+
+        renderer.control.pattern_generation.store(
+            renderer.clock.generation.load(Ordering::Acquire),
+            Ordering::Release,
+        );
+        renderer.clock.arm_loops();
+        render_output(&mut renderer, &mut left, &mut right);
+        assert_eq!(left[1], 0.6);
+        assert_eq!(right[1], 0.3);
+        assert_eq!(renderer.transport_frames, 4);
+    }
+
+    #[test]
+    fn pattern_preparation_rebuilds_identical_wav_references_with_each_patterns_settings() {
+        let decoded = DecodedLoop {
+            samples: vec![[0.25, -0.25]; 8_000],
+            sample_rate: 8_000,
+            channels: 2,
+        };
+        let first = LoopSettings::new(
+            "shared.wav".into(),
+            12_000,
+            crate::sequencer::BpmInterpretation::Normal,
+            0,
+            1,
+            0,
+        );
+        let second = LoopSettings {
+            start_beat: 1,
+            offset_beats: 4,
+            level_x1000: 600,
+            filter_x1000: -500,
+            ..first.clone()
+        };
+        let first_slot = prepare_loop_slot(decoded.clone(), &first, 120.0, 4).unwrap();
+        let second_slot = prepare_loop_slot(decoded, &second, 120.0, 3).unwrap();
+        let first_prepared = first_slot.prepared.unwrap();
+        let second_prepared = second_slot.prepared.unwrap();
+
+        assert_eq!(first_prepared.region_start, 0);
+        assert_eq!(second_prepared.region_start, 4_000);
+        assert_eq!(first_prepared.offset_beats, 0);
+        assert_eq!(second_prepared.offset_beats, 4);
+        assert_eq!(first_prepared.meter, 4);
+        assert_eq!(second_prepared.meter, 3);
+        assert_eq!(second_slot.control.level_x1000.load(Ordering::Acquire), 600);
+        assert_eq!(
+            f32::from_bits(second_slot.control.filter_bits.load(Ordering::Acquire)),
+            -0.5
+        );
+    }
+
+    #[test]
+    fn tracker_tempo_incompatibility_faults_only_the_affected_loop_renderer() {
+        let (mut incompatible, _) = test_renderer(vec![[0.5, 0.25]; 16]);
+        let (mut healthy, _) = test_renderer(vec![[0.2, 0.1]; 16]);
+        play_test_renderer(&incompatible);
+        play_test_renderer(&healthy);
+        incompatible.clock.tempo(121.0);
+        let mut left = [0.0; 4];
+        let mut right = [0.0; 4];
+        render_output(&mut incompatible, &mut left, &mut right);
+        assert_eq!(left, [0.0; 4]);
+        assert!(incompatible.control.tempo_fault.load(Ordering::Acquire));
+        assert!(!incompatible.control.running.load(Ordering::Acquire));
+
+        render_output(&mut healthy, &mut left, &mut right);
+        assert!(left.iter().any(|sample| *sample != 0.0));
+        assert!(!healthy.control.tempo_fault.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn pattern_preparation_shape_is_fixed_to_four_slots_and_one_callback_sum() {
+        let source = include_str!("loop_player.rs");
+        assert!(source.contains("inputs: [Option<(DecodedLoop, LoopSettings)>; LOOP_SLOTS]"));
+        assert!(source.contains("slots: [Option<LoopRenderer>; LOOP_SLOTS]"));
+        assert!(source.contains("renderer: LoopMixerRenderer"));
+        let callback = source
+            .split("unsafe extern \"C\" fn process_callback")
+            .nth(1)
+            .unwrap()
+            .split("unsafe extern \"C\" fn shutdown_callback")
+            .next()
+            .unwrap();
+        for forbidden in [
+            "Mutex",
+            "File::",
+            "DecodedLoop",
+            "format!",
+            "Vec::",
+            "Box::",
+            "loop {",
+        ] {
+            assert!(
+                !callback.contains(forbidden),
+                "callback contains forbidden work: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn fixed_pending_pattern_publication_swaps_and_reclaims_outside_the_callback() {
+        let mut mixer = test_mixer([[[0.1, 0.1]; 4]; LOOP_SLOTS]);
+        let slots = std::array::from_fn(|slot| {
+            let (renderer, _) = test_renderer(vec![[0.2 + slot as f32 * 0.1; 2]; 4]);
+            play_test_renderer(&renderer);
+            Some(renderer)
+        });
+        mixer.publication.publish(RendererSet { slots }).unwrap();
+        assert_eq!(
+            mixer.publication.state.load(Ordering::Acquire),
+            PUBLICATION_PENDING
+        );
+
+        let mut left = [0.0; 4];
+        let mut right = [0.0; 4];
+        assert_no_allocations(|| render_mixer_output(&mut mixer, &mut left, &mut right));
+        assert!((left[1] - 1.4).abs() < 0.000_01);
+        assert!((right[1] - 1.4).abs() < 0.000_01);
+        assert_eq!(
+            mixer.publication.state.load(Ordering::Acquire),
+            PUBLICATION_RETIRED
+        );
+
+        mixer.publication.reclaim_retired();
+        assert_eq!(
+            mixer.publication.state.load(Ordering::Acquire),
+            PUBLICATION_IDLE
+        );
     }
 
     #[test]
@@ -2306,7 +2829,7 @@ mod tests {
 
         let mut song = Song::new(&crate::config::RuntimeConfig::default().external_midi);
         song.name = "saved".into();
-        song.audio_loops[0] = Some(LoopSettings {
+        song.patterns.get_mut(&0).unwrap().audio_loops[0] = Some(LoopSettings {
             file: "used.wav".into(),
             source_bpm_x100: 12_000,
             interpretation: crate::sequencer::BpmInterpretation::Normal,

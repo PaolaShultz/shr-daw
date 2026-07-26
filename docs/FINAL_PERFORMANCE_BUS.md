@@ -26,9 +26,9 @@ insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
 basic three-source summing headroom. These live performance controls are not
-Project data; current Project format 7 stores the effect racks/routing and the
-four Loop Mix slot settings, but not these final-bus levels or mutes. JACK
-assignments remain machine configuration.
+Project data; current Project format 8 stores effect racks/routing at Project
+scope and four Loop Mix settings under each Pattern, but not these final-bus
+levels or mutes. JACK assignments remain machine configuration.
 
 ## Exact routing and availability
 
@@ -37,7 +37,8 @@ new key is blank, the first legacy `capture.input` pair is reused so older
 runtime configuration remains useful. Both exact names must exist and be
 distinct. A similar-looking or adjacent port is never substituted. The owned
 Loop Mix client must be loaded and expose its exact configured output ports
-before the bus can activate. Its four renderers sum to that pair before the
+before the bus can activate. Exactly four renderers serve only the active
+Pattern and sum to that pair before the
 graph, so the bus, limiter, final meter, and recorder receive the complete Loop
 sum once. The MTR screen leaves healthy sources unadorned and marks
 only `MUTE` or `OFFLINE`.

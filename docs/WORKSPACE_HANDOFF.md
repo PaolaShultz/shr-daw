@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.98`.
+corrected starting point; the current checked-progress version is `0.3.99`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -37,6 +37,57 @@ roadmap, and helper text now follow the format-6 implementation and the three
 FT2 entry layouts. The private `user/docs-pruning-20260725/` material remains
 unpublished reference only; it is not an active task or a public source of
 truth.
+
+Version `0.3.99` corrects FT2 Loop Mix ownership. Project format 8 stores
+exactly four optional Loop Mix records under each Pattern; format 7's four
+Project-global slots and format 6's single slot migrate in memory into every
+distinct Pattern without rewriting the source Project. Repeated Arrangement
+references share one Pattern record, while clone and paste-new copy the
+references/settings into an independent Pattern. Resize retains them; confirmed
+CLEAR detaches them; CLEAN and every other Pattern operation leave the shared
+private WAV library untouched. Effects, final-bus routing, recorder
+configuration, and unrelated state remain Project-owned.
+
+Ordinary Arrangement and Live Pattern boundaries now change MIDI and Loop Mix
+ownership together. Each step, including a repeated Pattern reference,
+restarts Pattern-local phase; middle-row and later-step starts use only the
+incoming Pattern's local row, tempo, and meter. Browsing changes the editor
+owner without changing sounding loops. Outgoing slots are invalidated at the
+boundary, empty slots remain silent, and missing, incompatible, failed, or
+late incoming slots fault independently while healthy loops and MIDI continue.
+Stop, Panic, Project replacement, JACK shutdown, application shutdown, and
+exit stop all owned loop state.
+
+The runtime retains one Loop JACK client, one summed stereo source, and exactly
+four active callback renderers. Only the active and one incoming Pattern are
+prepared outside the callback. One fixed pending renderer set is published by
+an atomic pointer swap and reclaimed by the owner thread; callback tests forbid
+allocation, locking, file access, formatting, decoding, and unbounded work.
+Pattern switches do not duplicate direct/final-bus routes, and the final
+recorder receives the active Pattern's complete Loop sum once.
+
+The complete `0.3.99` acceptance pass on 2026-07-26 used Rust 1.85. Locked
+check and debug build passed; the complete suite ran 782 tests with 778 passing,
+zero failing, and four intentionally ignored private DSP audition-pack
+generators. All 132 deterministic screenshots passed exhaustive drift
+validation. New populated coverage includes Pattern A, a different Pattern B,
+an empty Pattern, all four slots, active/queued/stopped/muted/missing/
+incompatible/faulted states, attached-loop CLEAR confirmation, Live switching,
+all Loop Mix command pages, native 40×13, and compact fallback. ShellCheck,
+ten cleared demo arrangements, local Markdown/image references, `git
+diff --check`, Cargo metadata, the plain `shr` launcher, `DEV` rendering tests,
+and the 139-note zk index passed. A loop-only transport fixture initially
+failed because it did not select the new test-only batch-decode override; the
+fixture was repaired and the full suite reran cleanly.
+
+Source inspection also repaired three transition hazards before acceptance:
+browsing a non-sounding Pattern can no longer apply runtime controls to the
+sounding owner; identical WAV references are rebuilt with the incoming
+Pattern's settings instead of reusing stale cuts or levels; and failed managed
+instrument/backend replacement cannot re-arm outgoing loops. No JACK server,
+synth, MIDI transmission, playback, recording, audible test, or physical
+hardware test was started. Temporary visual evidence remains ignored below
+`user/acceptance-pattern-loops-20260726/`.
 
 Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical
@@ -80,7 +131,8 @@ SYS through one narrow tested exception. Test-only expectations were corrected
 for finite meter-floor reset and elapsed peak decay. One combined screenshot
 render/check invocation received a transient SIGTERM; independent full
 regeneration and a separate exhaustive drift check then passed. Package version
-is `0.3.98`; `src/sequencer.rs` remains `SONG_VERSION = 7`.
+was `0.3.98`; at that acceptance point `src/sequencer.rs` remained
+`SONG_VERSION = 7`.
 
 Version `0.3.97` adds two distinct FT2 performance systems. Live Patterns
 browses four Patterns at a time, queues Pattern- or bar-boundary activation,

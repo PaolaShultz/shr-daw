@@ -7,7 +7,7 @@ product, installation, FT2, and hardware documents linked below.
 ## Version numbering
 
 The package uses `major.minor.patch` numbering. Version `0.3.92` corrected the
-unintended `0.392.0`; the current checked-progress version is `0.3.98`.
+unintended `0.392.0`; the current checked-progress version is `0.3.99`.
 
 - Meaningful checked progress before the next milestone increments the patch:
   `0.3.98`, `0.3.99`, and so on.
@@ -73,6 +73,11 @@ audio hardware, musical quality, or 18×18 full duplex.
 Outcome: FT2 has the complete functionality the owner intends, without the
 current short-wired or partial flows and without unrelated future ideas
 obstructing that work.
+
+The current base already stores Loop Mix under its owning Pattern and switches
+MIDI/loops together. This milestone must preserve that boundary; playlists,
+companion mode, a standalone Pattern library, cue routing, time-stretching,
+extra mixer strips, and additional buses are not implied by it.
 
 The exact functionality inventory is still owner input. Until it is stated and
 captured, this roadmap deliberately does not invent it. For each supplied item:

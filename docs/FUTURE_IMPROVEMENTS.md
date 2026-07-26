@@ -149,6 +149,13 @@ and configured live-input pair, then pass through the master, final
 limiter/meter/recorder and playback. The raw synchronized multitrack recorder
 remains a separate workflow.
 
+Loop Mix settings now belong to each FT2 Pattern, while one fixed four-renderer
+client serves only the active Pattern and one bounded incoming preparation.
+That ownership correction does not imply playlists, companion mode, a
+standalone Pattern library, cue/headphone routing, time-stretching, more mixer
+strips, or additional audio buses. Those remain separate future product
+decisions, not architectural follow-ons.
+
 The graph uses internal preallocated mixer, send-tap, and return nodes rather
 than relying on implicit JACK summing. That makes independent send/return gain,
 pre/post placement, return metering, and exactly-once mixing explicit and

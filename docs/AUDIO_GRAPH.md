@@ -81,7 +81,7 @@ alive until client deactivation returns.
 
 ## Project data and typed graph model
 
-Project format 7 stores the managed-source `InsertRack` and
+Project format 8 stores the managed-source `InsertRack` and
 `ProjectAuxRouting` as strict JSON inside the versioned `.shsong` line format.
 Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
 rack and adds empty aux/master routing; format 3 retains explicit routes.
@@ -90,8 +90,11 @@ data, and newer Project/effect versions are refused on load and on overwrite.
 Rack order is a separate list of stable effect IDs, so moving an effect does
 not recreate its identity.
 
-The four Project WAV slots are mixed inside the one owned Loop client before
-this graph. The graph still sees exactly one logical stereo Loop source, so
+The active Pattern's four WAV slots are mixed inside the one owned Loop client
+before this graph. One prepared incoming four-renderer set is published through
+a bounded atomic pointer handoff; the callback never allocates or frees it, and
+the owner thread reclaims the retired set. Stored Patterns create no additional
+clients or sources. The graph still sees exactly one logical stereo Loop source, so
 direct/final-bus publication and rollback are unchanged and the complete
 four-slot sum reaches the limiter and final recorder exactly once.
 

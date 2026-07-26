@@ -292,16 +292,18 @@ quantization, and `m`/`v`/`g`/`t` lane shaping.
 
 ## Loops and audio
 
-Loop Mix has four independent Project slots. SLOT-/SLOT+ changes selection
-without launch. LAUNCH and STOP queue the selected slot for the next bar; a new
+Loop Mix has four slots owned by the FT2 cursor's Pattern. Browsing changes the
+editor, not the sounding Pattern. SLOT-/SLOT+ changes selection without launch.
+LAUNCH and STOP queue the selected slot for the next Pattern-local bar; a new
 command replaces the queue and CANCEL removes it. MIX controls smoothed level
 and mute. FILTER turns left for low-pass, right for high-pass, with neutral at
 centre. Keyboard: `p`/`P` launch/stop, `c` cancel, `m` mute, `,`/`.` filter,
 and `0` neutral.
 
-Every active WAV must match the Project's interpreted tempo and JACK's sample
-rate. Playback stays native speed/pitch; there is no time-stretching. Different
-whole-bar lengths remain aligned. A failed slot is isolated.
+Every active WAV must match its Pattern's interpreted tempo and JACK's sample
+rate. Playback stays native speed/pitch; there is no time-stretching. Pattern
+changes switch MIDI and loops together and restart local phase. A failed slot
+is isolated while healthy loops and MIDI continue.
 
 `LIBRARY` opens an overlay for the selected slot. Browsing is silent.
 Controller PLAY explicitly previews the WAV; repeated PLAY, selection change,

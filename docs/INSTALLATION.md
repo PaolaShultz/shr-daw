@@ -177,8 +177,9 @@ live `jackd` process owns JACK, setup can create a backed-up `~/.jackdrc` for
 the musician's next explicit JACK start. It never enables, starts, stops, or
 restarts JACK. Choose a sample rate that matches the WAV loops you intend to
 use, normally 48000 Hz for the installed cleared loops. Every active Loop Mix
-slot must also have an interpreted BPM matching the Project tempo; SHR-DAW
-refuses a mismatch rather than time-stretching or allowing drift. Three
+slot must also have an interpreted BPM matching its owning Pattern tempo;
+SHR-DAW stops/faults that slot on mismatch rather than time-stretching or
+allowing drift, while MIDI and healthy slots continue. Three
 periods is the safe USB default; lower latency should be earned with xrun
 measurement.
 

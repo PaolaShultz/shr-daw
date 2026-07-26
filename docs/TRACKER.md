@@ -61,7 +61,7 @@ whose FT2 workspace exposes four musician-facing pages:
    1, and program 1;
 3. `Drums`, a four-track page using the configured external output, MIDI
    channel 10, program 1, and the existing percussion-note mapping;
-4. `Loop Mix`, the Project-wide four-slot WAV source.
+4. `Loop Mix`, that Pattern's four-slot decoded-WAV source.
 
 Loop Mix is a page in the musician-facing FT2 workflow, not four empty
 MIDI lanes. **SELECT** → **PAGE** opens it directly, so a new
@@ -73,8 +73,9 @@ already owns a loaded instrument, page 1 adopts that exact instrument and the
 same managed engine session becomes FT2-owned without a restart. Otherwise
 page 1 loads the first available synthv1 preset.
 
-Live Pattern state and the four Loop Mix slots are runtime performance
-contexts; they do not replace Pattern pages or Arrangement Steps.
+Loop Mix settings are saved with their Pattern. Launch, stop, mute, queued
+commands, playback position, faults, and Live Pattern shaping remain runtime
+performance state; none of them creates MIDI lanes or Arrangement Steps.
 
 Channels and programs are zero-based in MIDI bytes and in the in-memory model.
 Every musician-facing screen shows channels 1–16 and programs 1–128.
@@ -310,17 +311,26 @@ choose a whole-bar length. **BPM-**/**BPM+** and **BPM x** correct source
 interpretation; **UNIT** changes cut adjustment between beats and bars.
 **ALIGN** re-runs bounded offline analysis or moves placement by a whole bar.
 
-Each slot queues launch/stop for the next bar. A later command replaces the
-earlier one, and Cancel removes it. All active slots must match the Project's
-interpreted tempo and JACK's sample rate; there is no time-stretching or
-callback resampling. Different whole-bar lengths stay phase-aligned. A missing,
-corrupt, incompatible, or failed slot is isolated while healthy slots continue.
+Each slot queues launch/stop for the next Pattern-local bar. A later command
+replaces the earlier one, and Cancel removes it. All active slots must match
+their Pattern's interpreted tempo and JACK's sample rate; there is no
+time-stretching or callback resampling. Different whole-bar lengths stay
+phase-aligned under that Pattern's tempo and meter. A missing, corrupt,
+incompatible, late, or failed slot is isolated while healthy slots and MIDI
+continue.
+
+The screen always edits the Pattern under the FT2 cursor, but browsing another
+Pattern does not change the sounding Pattern. At an Arrangement or Live Pattern
+boundary, the outgoing slots stop and the incoming Pattern's prepared slots
+start with MIDI. Every Arrangement step is a fresh instance: a repeated
+reference restarts phase at Pattern-local beat zero, while playback begun at a
+middle row seeks from that local row without adding earlier Pattern durations.
 
 **LIBRARY** opens the private browser for the selected slot. Browsing is
 silent; preview is explicit and stops on selection change, Stop, Back, browser
 close, or leave. `INBOX` imports; `PRIVATE`, `CURRENT`, and `SAVED` attach an
 existing private file. **REMOVE** requires confirmation, clears only the
-selected Project slot, and keeps the private WAV.
+selected Pattern slot, and keeps the private WAV.
 
 See [Live performance](LIVE_PERFORMANCE.md#loop-mix) for level/filter controls,
 bar scheduling, routing, realtime limits, and the deliberately unsupported DJ
@@ -329,9 +339,11 @@ features.
 ## Copy and Paste
 
 Pattern copy stores the complete current FT2 Pattern, including rows, pages,
-routes, channels, programs, mutes, meter, and tempo. Paste can create a new
-pattern or paste over the current pattern after confirmation. Clone remains the
-fast one-step way to copy the selected pattern into a new arrangement step.
+routes, channels, programs, mutes, meter, tempo, and all four Loop Mix
+references/settings. Paste-new and Clone make independent Pattern copies;
+paste-over replaces the destination Pattern's loops only after its existing
+confirmation. Repeated Arrangement references do not clone: editing the shared
+Pattern changes every step that references it.
 
 The FT2 tools clipboard can copy and paste one lane/column or one full page
 block. Lane and page paste keep note, velocity, program, gate, and command
@@ -385,11 +397,14 @@ for either meter.
 
 The Files screen saves, loads, previews, and deletes the whole Project. Its
 **PATTERN** child keeps create, clone, copy, paste, resize, clear, transpose,
-and drum-library operations together. New patterns are distinct records. Clone copies the selected
-pattern. Arrangement repeat/duplicate adds another step that references the
-same pattern. **CLEAN** offers only Pattern records with zero Arrangement
-references, confirms deletion, preserves at least one Pattern, and never
-rewrites an Arrangement step.
+and drum-library operations together. NEW starts with empty Loop Mix slots.
+Clone copies all MIDI and Loop Mix settings into an independent Pattern.
+Resize retains Loop Mix settings. Confirmed CLEAR keeps established page/routing
+setup but clears cells and explicitly detaches attached loops. Arrangement
+repeat/duplicate adds another step that references the same Pattern. **CLEAN**
+offers only Pattern records with zero Arrangement references, confirms
+deletion, preserves at least one Pattern, and never deletes private WAV files
+or rewrites an Arrangement step.
 
 **NEW PRJ** requires a second press before replacing the in-memory Project and
 chooses the next free `project-001` style name. **SAVE AS** immediately writes
@@ -408,17 +423,20 @@ The FX rack and editor always show the owning Project plus `NEW`, `SAVED`, or
 `DIRTY`; source, AUX, and master racks are all Project data.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 7
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 8
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor and drum-role overrides, cells, source
 insert rack, two aux routes, and master rack. Portable
 pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
 external-device profiles are stored separately from raw output/channel/bank/
-program data. It also stores four optional Loop Mix slot records.
-Format 6's single `loop=` record migrates in memory to slot 1 with its filename,
-BPM interpretation, cut, and placement unchanged; level becomes unity and the
-filter neutral. Loading or inspecting does not rewrite the old file.
+program data. Each Pattern also stores exactly four optional Loop Mix slot
+records. Format 7's four Project-global slots migrate in memory into every
+distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
+of every Pattern with its filename, BPM interpretation, cut, and placement
+unchanged; level becomes unity and the filter neutral. Only references and
+settings are copied, never WAV files. Loading, previewing, or inspecting does
+not rewrite an old file; explicit save writes format 8.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.

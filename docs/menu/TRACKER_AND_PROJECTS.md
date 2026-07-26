@@ -223,7 +223,8 @@ Pattern editor.
 Live Patterns performs existing tracker Patterns without changing the saved
 Arrangement. Browsing changes the white selection only. Green `PLAY` and yellow
 `Q` identify current and queued Patterns independently, while the lower rows
-show transient lane shaping.
+show transient lane shaping. Each row's loop count belongs to that Pattern;
+launch and retrigger switch/restart its MIDI and Loop Mix together.
 
 ### LAUNCH — select, queue, cancel, retrigger
 
@@ -330,16 +331,19 @@ Arrangement behind the user's back. Transposition affects melodic pages only.
 
 ![Populated Pattern tools with the OPS page](../images/menu/pattern-tools-ops.png)
 
-`NEW` opens Pattern setup. `CLONE` creates a separate copy and selects it.
-`CLEAR` opens a confirmed clear/resize setup. `DRUMS` opens reusable rhythms.
+`BLANK` opens Pattern setup with empty Loop Mix slots. `CLONE` creates a
+separate copy of MIDI and all four loop references/settings and selects it.
+`CLEAR` opens a confirmed clear/resize setup; when loops are attached the prompt
+states how many will detach. `DRUMS` opens reusable rhythms.
 
 ### CLIP — Pattern clipboard and cleanup
 
 ![Populated Pattern tools with the CLIP page](../images/menu/pattern-tools-clip.png)
 
-`COPY` stores the current Pattern in memory. `NEW` creates a new Pattern from
-it. `OVER` asks before replacing the current Pattern. `CLEAN` deletes
-only Patterns not referenced by any Arrangement step.
+`COPY` stores the complete Pattern, including Loop Mix, in memory. `PASTE+`
+creates an independent new Pattern from it. `OVER` asks before replacing the
+current Pattern, including its loops. `CLEAN` deletes only Patterns not
+referenced by any Arrangement step and never deletes private WAV files.
 
 ### TRANS — transpose melody only
 

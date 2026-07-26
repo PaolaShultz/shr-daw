@@ -83,8 +83,9 @@ four MIDI lanes live, and optionally capture successful launches.
 
 <img src="docs/images/shr-daw-ft2-loop.png" alt="Four-slot Loop Mix with playing, queued, muted, and fault states" width="100%">
 
-Launch and stop four private native-rate WAV loops independently, with
-smoothed level and bipolar DJ-style filtering.
+Each FT2 Pattern owns four private native-rate WAV references. Arrangement and
+Live Pattern changes switch MIDI and loops together; launch/stop, smoothed
+level, and bipolar filtering remain available per slot.
 
 ### Audio recorder
 

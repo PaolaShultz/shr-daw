@@ -106,10 +106,11 @@ By default, the active engine connects directly to the configured playback
 pair. With the opt-in owned effects graph enabled, that same one engine instead
 passes through source inserts, two aux returns, the master rack, and final
 meter. Activation is transactional and restores the direct path on failure.
-The complete internally summed four-slot Loop Mix joins the graph as one of
-its three exact stereo sources and is removed from direct playback for the
-duration, preventing a doubled path. The raw multitrack recorder remains
-separate.
+The active Pattern's complete internally summed four-slot Loop Mix joins the
+graph as one of its three exact stereo sources and is removed from direct
+playback for the duration, preventing a doubled path. Pattern changes replace
+the renderer content without adding ports or connections. The raw multitrack
+recorder remains separate.
 
 ## External MIDI instruments
 
