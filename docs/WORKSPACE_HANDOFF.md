@@ -30,6 +30,15 @@ failure/recovery drills. D01–D10 remain unanswered. P01–P08 retain their hon
 owner/physical gates; machine evidence obtained for P05, P06, and P08 is
 recorded without claiming user observation.
 
+The active documentation task is a full noise/ownership pass over all tracked
+Markdown: preserve every unique contract, command, decision, provenance fact,
+and evidence result while removing semantic duplication, stale narration, and
+repeated rationale. Necessary facts may be moved or added to their focused
+owner when current tracked docs or code already establish them. Continue from
+the private `user/docs-pruning-20260725/LEDGER.md` using its adjacent
+`NEXT_THREAD_PROMPT.md`; do not publish either working file. This task changes
+documentation only and has no build, code, image, audio, commit, or push scope.
+
 The complete deterministic documentation screenshot set is reconciled to the
 current UI; physical approval remains the next gate for UI/controller work.
 The repository-only fullscreen-EQ and exact-font pass on 2026-07-25 completed
@@ -252,9 +261,40 @@ complete. Detailed UI contracts live in `docs/CONTROLLER_INTERFACE.md`,
 `docs/TRACKER.md`, and the focused routing/effects documents linked from
 `docs/README.md`.
 
+## Terminal project-note layer
+
+This machine is operated through a TTY. Its terminal-only `zk` notebook is
+rooted at `/home/patch/p`, covering `shsynth`, `shr-skills`, and later project
+directories below that root without copying or moving their Markdown. The
+entry point is `/home/patch/p/Project Hub.md`. Configuration, the rebuildable
+SQLite index, and its template are below `/home/patch/p/.zk/`, outside both Git
+repositories.
+
+Use:
+
+```sh
+pnotes
+pnotes search words
+```
+
+The first command opens all indexed notes in an `fzf` picker; the second
+full-text filters before opening the picker. The wrapper is
+`~/.local/bin/pnotes`. Direct `zk` commands must use
+`--notebook-dir=/home/patch/p --working-dir=/home/patch/p` when invoked from
+elsewhere.
+
+The index excludes `.git`, `target`, `user`, `node_modules`, and `.zk`
+subtrees; keep `shsynth/user/` excluded. The notebook uses normal Markdown
+links, `nano` for editing, `less` for paging, and `sed` for previews. Installed
+components are ARM64 `zk` 0.15.5 at `~/.local/opt/zk-0.15.5/` and Debian `fzf`
+0.38.0. There is no resident process. Plan about 25 MiB disk, 31 MiB RAM while
+actively searching, and zero RAM while idle, suitable for the planned 2 GB Pi
+5.
+
 ## Installed tools and current validation boundary
 
-Rust 1.85, `gh`, `xmllint` (`libxml2-utils`), and `shellcheck` are installed.
+Rust 1.85, `gh`, `xmllint` (`libxml2-utils`), `shellcheck`, `zk`, and `fzf` are
+installed.
 Use the scoped validation policy in `AGENTS.md`; historical full
 suites, release builds, benchmarks, and screenshot batches are evidence in
 their dated documents, not instructions to repeat them. No current physical or
