@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.97`.
+corrected starting point; the current checked-progress version is `0.3.98`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -37,6 +37,50 @@ roadmap, and helper text now follow the format-6 implementation and the three
 FT2 entry layouts. The private `user/docs-pruning-20260725/` material remains
 unpublished reference only; it is not an active task or a public source of
 truth.
+
+Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
+Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical
+meters as three groups of six and columns 21–40 show the active TAKE, CHANNEL,
+or SYS commands. Rows 11–12 label channels and shared status alone owns row 13;
+the screen omits normal controller rows only at native size. Smoothed RMS uses
+the −48/−36/−30/−24/−18/−12/−6/−3/−1 dBFS ladder, with green/yellow/red
+thresholds, same-colour held sample peak, clip hold, and distinct silence,
+missing, and fault states. Selection never hides a channel and survives normal
+navigation with its command page; Project replacement resets both. Recorder
+setup/routing, the final-bus MTR, Live Patterns, Loop Mix, and future mixer
+strips remain separate.
+
+The complete `0.3.98` acceptance pass on 2026-07-26 used Rust 1.85. Locked
+check and debug build passed; the complete suite ran 771 tests with 767 passing
+and four intentionally ignored private DSP renderers passing separately. All
+125 deterministic screenshots passed complete regeneration and 960×624
+integer-pixel/drift validation. The 13 new Levels images cover native nominal,
+quiet, yellow/red/clip, missing/fault, selected first/middle/last, TAKE,
+CHANNEL, SYS, record, stop, and compact fallback states. ShellCheck, Python
+helper syntax, all 27 isolated audio-policy cases, 300 local documentation/image
+references across 47 Markdown files, and `git diff --check` passed. The zk index
+rebuilt 139 notes and finds the new feature from `Project Hub.md`.
+
+The hardware-free production recorder stress wrote 96,000 equal frames across
+18 channels at 48 kHz/128 frames per callback with zero drops or overflows and
+verified channel identity below the one ignored
+`user/acceptance-20260726-input-monitor/` directory. The new recorder callback
+publication is a fixed 18-channel atomic snapshot with bounded callback loops,
+and tests prohibit allocation, locking, file access, formatting, and unbounded
+loops. The meter and take clients are mutually exclusive, connect only exact
+configured sources, and do not change unrelated or final-bus routes. No JACK
+server, synth, MIDI transmission, audible test, recording hardware, or physical
+equipment was started. Plain `shr` resolved through this checkout's
+`scripts/local.sh` to `target/debug/shr`, and its screenshot manifest showed
+`DEV`.
+
+Acceptance repaired the Levels transport page to retain repository-wide Stop
+and Record positions while preserving both literal Stop and Panic together on
+SYS through one narrow tested exception. Test-only expectations were corrected
+for finite meter-floor reset and elapsed peak decay. One combined screenshot
+render/check invocation received a transient SIGTERM; independent full
+regeneration and a separate exhaustive drift check then passed. Package version
+is `0.3.98`; `src/sequencer.rs` remains `SONG_VERSION = 7`.
 
 Version `0.3.97` adds two distinct FT2 performance systems. Live Patterns
 browses four Patterns at a time, queues Pattern- or bar-boundary activation,

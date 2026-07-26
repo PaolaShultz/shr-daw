@@ -59,6 +59,7 @@ or `q` can still exit from the splash.
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, program, and the per-page Manual/One-column/Drum-auto entry layout; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
+| 18-channel Levels | Show all 18 recording inputs simultaneously as three groups of six fixed nine-LED dBFS meters. Encoder, Left/Right, `j`/`k`, or pointer selects without scrolling; encoder click/Enter/Space arms the selected channel. Visible TAKE, CHANNEL, and SYS pages provide setup, record, literal Stop, reset, previous/next, arm, refresh, Panic, Help, and Exit. At native 40×13 it omits controller rows but keeps shared row 13; compact geometry falls back rather than cropping. |
 | FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
 | Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate performance inputs, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
@@ -75,7 +76,9 @@ union of every normal and contextual menu and checks every action in this
 ## Shared status row and master overlays
 
 Every working screen except Home and the native 40×13 fullscreen EQ reserves
-the final row. Its first cell is the
+the final row. Native 18-channel Levels is a separate exception only to the
+controller rows: it still reserves that shared row while using rows 1–12 for
+meters, labels, and visible right-side commands. Its first status cell is the
 transport state: steady green `>` for play, steady white `■` for stop, steady
 white `‖` for pause, or red `●` for record. Record alone pulses between normal
 and bright red; the circle never disappears. One space and the current useful
@@ -92,6 +95,7 @@ replaces it. The fullscreen EQ deliberately owns all thirteen rows: its final
 row is the 50 Hz–20 kHz logarithmic axis, temporarily replaced only by a useful
 pickup, range, or fault message. It has no visible controller rows. A compact
 terminal falls back to the ordinary FX editor and shared status layout.
+Levels likewise falls back to its compact ordinary layout below 40×13.
 
 Horizontal meters use the same circular LED language everywhere. Every cell is
 `●`: dark gray when unlit, one consistent green at a safe active level, then
@@ -285,10 +289,13 @@ Blank physical positions and wholly empty pages are omitted.
 | Tracks | Sys | Panic | Entry layout | Help | Exit/cancel |
 | Target/channel editor | Ops | Confirm | — | — | — |
 | Target/channel editor | Sys | Panic | — | Help | Exit/cancel |
-| Audio recorder | Record | — | — | Record/toggle | Arm selected |
+| Audio recorder | Record | Open 18-channel Levels | — | Record/toggle | Arm selected |
 | Audio recorder | Track | Previous track | Next track | Assign source | Name track |
 | Audio recorder | Setup | Arm all resolved | Disarm all | Refresh sources | — |
 | Audio recorder | Sys | Panic | — | Help | Exit |
+| 18-channel Levels | Take | Stop | Recorder setup | Record/toggle | Reset holds |
+| 18-channel Levels | Channel | Previous | Next | Arm selected | Refresh sources |
+| 18-channel Levels | Sys | Stop | Panic | Help | Exit |
 | Routing | Edit | Previous row/value | Next row/value | Edit/OK | Cancel |
 | Routing | Sys | Panic | Help | — | Exit |
 

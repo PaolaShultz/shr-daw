@@ -32,7 +32,8 @@ private WAV loop  --> direct JACK playback (graph disabled)
 managed synth SOURCE/AUX --+
 private WAV loop -----------+-> MASTER -> limiter -> FINAL OUT
 configured stereo input ----+                +-> final WAV + playback
-configured JACK sources -> shared callback timeline -> mono stems + manifest
+configured JACK sources -> fixed 18-channel meter snapshot
+                        \-> shared callback timeline -> mono stems + manifest
 ```
 
 The raw-stem recorder remains separate. When enabled, the final bus owns the
@@ -195,7 +196,9 @@ SHR-DAW uses “record” for three intentionally different jobs:
    and auditions through the page's exact online software or hardware target.
 3. **Audio recording** captures every armed exact JACK source on one shared
    callback timeline. It writes separate mono 24-bit stems and a session
-   manifest. It records arriving audio, not the MIDI events that produced it.
+   manifest. Its separate Levels overview compares the first 18 configured
+   source levels at once. It records arriving audio, not the MIDI events that
+   produced it.
 
 Idea take playback runs independently of screen redraw. Stop, route changes,
 replacement, panic, and exit release the exact notes still owned by that take.
@@ -209,7 +212,14 @@ and the manifest finalize. Recognized interrupted stems recover only their
 common whole-frame prefix and remain visibly incomplete; `.part` symlinks are
 never followed. Overflow, xrun, source/JACK loss, callback mismatch, RIFF limit,
 disk or finalization errors prevent a successful state. The recorder does not
-software-monitor, so use safe hardware direct monitoring. See [the complete
+provide audible software monitoring, so use safe hardware direct monitoring.
+
+The Levels client and take client are mutually exclusive owners of the same
+exact configured inputs. The meter callback computes bounded RMS/sample peaks
+for 18 fixed slots and publishes them through atomics; it allocates, locks,
+formats, and performs file I/O exactly zero times. UI smoothing, peak hold,
+decay, and labels happen outside the callback. This metering neither duplicates
+the final-bus route nor changes unrelated JACK connections. See [the complete
 recorder contract](MULTITRACK_RECORDING.md).
 
 ## Projects, Patterns, pages, and columns

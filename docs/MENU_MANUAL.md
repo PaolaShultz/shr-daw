@@ -10,8 +10,8 @@ MIDI port, or claim to show a live audio measurement.
 The manual is split into three chapters so it remains usable on a phone:
 
 1. [Everyday screens](menu/EVERYDAY_SCREENS.md) — Home, Presets, Playback,
-   Ideas, MIDI Learn, Help, synchronized multitrack recording, the performance
-   meter, and Routing.
+   Ideas, MIDI Learn, Help, synchronized multitrack recording and its
+   18-channel Levels overview, the performance meter, and Routing.
 2. [FT2, Projects, and Patterns](menu/TRACKER_AND_PROJECTS.md) — the tracker in
    Play, Record, Edit, and Cell Edit; Tools; the N00B scale-filter switch
    across Play/Record/Edit; separate Edit note length; Projects;
@@ -47,6 +47,11 @@ positions:
 - `PANIC` stops owned playback and sends All Notes Off. It does not kill an
   unrelated synth or JACK client.
 
+Home has no shared status row. The native fullscreen EQ owns all thirteen
+rows. The native 18-channel Levels overview is the third layout exception: it
+omits the controller strip so all meters fit, but keeps the unchanged shared
+status renderer on row 13. Its visible command pages occupy only the right half.
+
 A master overlay temporarily changes that strip. The caller remains visible
 around a centered double border, whose bottom edge shows only the highlighted
 action that opened the overlay near its original physical item position. The
@@ -76,6 +81,7 @@ flowchart TD
     H0[Home] --> P[Software Synths / Presets]
     H0 --> T[FT2 Pattern]
     H0 --> A[Recorder]
+    A --> LV[18-channel Levels]
     H0 --> M[Performance]
     H0 --> ML[MIDI Learn]
     H0 --> RTE[Routing editor]

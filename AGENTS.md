@@ -90,20 +90,23 @@ tracker, synth hosts, MIDI routing, loops, recording, JACK/ALSA integration,
 and a small controller. Keep live-audio paths bounded and responsive.
 
 Treat the 40×13 display as content-first and do not change its established
-tty1 `Uni2-TerminusBold24x12` font. Home and the native-size fullscreen EQ
-editor are the only screens
-without the shared working-screen layout. Every other screen reserves row 13,
-the final terminal row, for one shared status renderer. The two controller rows
-sit immediately above it. The fullscreen EQ instead owns all thirteen rows,
-uses the last row for its logarithmic frequency axis or a transient
-pickup/fault/range message, and shows no controller rows. Below 40×13 it falls
-back to the ordinary compact FX editor and shared layout. Other screen bodies,
-screen-specific footers, overlays, and later cleanup passes must not draw or
-clear the final row. Remove or fold redundant gray status-like lines in screen
-bodies instead of stacking local commentary above the shared status row. Omit
-healthy or obvious labels such as `AVAILABLE`, `ONLINE`, `CONNECTED`, and
-`IDLE`; assume the musician understands the current screen and controls. Keep
-navigation actions literal: changing a page or order must preserve the selected
+tty1 `Uni2-TerminusBold24x12` font. Home, the native-size fullscreen EQ editor,
+and the native 18-channel input-meter overview are the only screens without
+the shared working-screen layout. Every other screen reserves row 13, the final
+terminal row, for one shared status renderer. The two controller rows sit
+immediately above it. The native input-meter overview also reserves row 13 for
+that unchanged shared status renderer but uses rows 1–12 for its meters,
+channel labels, and visible right-side commands; it shows no controller rows.
+The fullscreen EQ instead owns all thirteen rows, uses the last row for its
+logarithmic frequency axis or a transient pickup/fault/range message, and shows
+no controller rows. Below 40×13 both native exceptions fall back to their
+ordinary compact screen and shared layout. Other screen bodies, screen-specific
+footers, overlays, and later cleanup passes must not draw or clear the final
+row. Remove or fold redundant gray status-like lines in screen bodies instead
+of stacking local commentary above the shared status row. Omit healthy or
+obvious labels such as `AVAILABLE`, `ONLINE`, `CONNECTED`, and `IDLE`; assume
+the musician understands the current screen and controls. Keep navigation
+actions literal: changing a page or order must preserve the selected
 lane/column/cursor unless the requested behavior explicitly says otherwise.
 
 The status row begins with exactly one transport cell. Use `>` in steady green

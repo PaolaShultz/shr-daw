@@ -15,10 +15,10 @@ configuration, or the architecture contracts.
 
 - [First run](FIRST_RUN.md) — configure hardware and open SHR-DAW.
 - [Using SHR-DAW](USING_SHR_DAW.md) — instruments, screens, MIDI Ideas,
-  source/aux/master effects, performance meters, recording, and commands.
+  source/aux/master effects, 18-channel input levels, recording, and commands.
 - [Complete screen and menu manual](MENU_MANUAL.md) — deterministic images
-  covering every populated 40×13 screen, contextual editor, and controller
-  menu page, with explanations.
+  covering every populated 40×13 screen, contextual editor, visible Levels
+  command page, and controller menu page, with explanations.
 - [In-app help](HELP.md) — the compact help text shown by `?` or F1.
 - [Tracker guide](TRACKER.md) — FT2 editing, pages, routing, Arrangement,
   drums, loops, and Project files.
@@ -59,8 +59,8 @@ configuration, or the architecture contracts.
 - [Final stereo performance bus](FINAL_PERFORMANCE_BUS.md) — exact three-source
   topology, limiter, monitoring safety, final WAV capture, and hardware acceptance.
 - [Synchronized multitrack recording](MULTITRACK_RECORDING.md) — exact JACK
-  source mapping, shared callback timeline, mono stems, manifests, recovery,
-  and the non-audible stress helper.
+  source mapping, fixed 18-channel RMS/peak overview, shared callback timeline,
+  mono stems, manifests, recovery, and the non-audible stress helper.
 - [MR18 acceptance plan](MR18_TEST_PLAN.md) — readiness gates and a printable,
   safety-first 18×18 full-duplex 48 kHz hardware procedure.
 - [Three-minute multitrack presentation](MULTITRACK_PRESENTATION.md) — truthful

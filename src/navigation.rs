@@ -19,6 +19,7 @@ pub enum Screen {
     TrackerLoop,
     TrackerLoopAlign,
     AudioRecorder,
+    MultichannelMonitor,
     FxRack,
     FxEditor,
     Meter,
@@ -26,9 +27,9 @@ pub enum Screen {
 }
 
 impl Screen {
-    pub const COUNT: usize = 18;
+    pub const COUNT: usize = 19;
     #[cfg(test)]
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -43,6 +44,7 @@ impl Screen {
         Self::TrackerLoop,
         Self::TrackerLoopAlign,
         Self::AudioRecorder,
+        Self::MultichannelMonitor,
         Self::FxRack,
         Self::FxEditor,
         Self::Meter,
@@ -65,10 +67,11 @@ impl Screen {
             Self::TrackerLoop => 11,
             Self::TrackerLoopAlign => 12,
             Self::AudioRecorder => 13,
-            Self::FxRack => 14,
-            Self::FxEditor => 15,
-            Self::Meter => 16,
-            Self::Routing => 17,
+            Self::MultichannelMonitor => 14,
+            Self::FxRack => 15,
+            Self::FxEditor => 16,
+            Self::Meter => 17,
+            Self::Routing => 18,
         }
     }
 
@@ -89,6 +92,7 @@ impl Screen {
             Self::TrackerLoop => "LOOP MIX",
             Self::TrackerLoopAlign => "LOOP ALIGN",
             Self::AudioRecorder => "AUDIO",
+            Self::MultichannelMonitor => "18CH MONITOR",
             Self::FxRack => "FX RACK",
             Self::FxEditor => "FX EDIT",
             Self::Meter => "MIX",
@@ -132,6 +136,7 @@ pub enum Action {
     OpenEntryLayoutOverlay,
     OpenEffectsOverlay,
     OpenAudioRecorder,
+    OpenMultichannelMonitor,
     OpenFxRack,
     OpenFxEditor,
     OpenMeter,
@@ -294,6 +299,8 @@ pub enum Action {
     SelectFourFour,
     ConfirmPatternClear,
     AudioRecordToggle,
+    AudioStop,
+    ResetInputMeters,
     AudioToggleArm,
     AudioArmAll,
     AudioDisarmAll,
@@ -992,7 +999,7 @@ const AUDIO: [MenuPage; 4] = [
     page(
         "RECORD",
         [
-            off(""),
+            on("MONITOR", Action::OpenMultichannelMonitor),
             off(""),
             on("RECORD", Action::AudioRecordToggle),
             on("ARM", Action::AudioToggleArm),
@@ -1021,6 +1028,37 @@ const AUDIO: [MenuPage; 4] = [
         [
             on("PANIC", Action::StopAll),
             off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+
+const MULTICHANNEL_MONITOR: [MenuPage; 4] = [
+    page(
+        "TAKE",
+        [
+            on("STOP", Action::AudioStop),
+            on("SETUP", Action::OpenAudioRecorder),
+            on("RECORD", Action::AudioRecordToggle),
+            on("RESET", Action::ResetInputMeters),
+        ],
+    ),
+    page(
+        "CHANNEL",
+        [
+            on("PREV", Action::AudioPreviousTrack),
+            on("NEXT", Action::AudioNextTrack),
+            on("ARM", Action::AudioToggleArm),
+            on("REFRESH", Action::AudioRefreshSources),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("STOP", Action::AudioStop),
+            on("PANIC", Action::StopAll),
             on("HELP", Action::OpenHelp),
             on("EXIT", Action::Back),
         ],
@@ -1224,6 +1262,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
         (Screen::AudioRecorder, _) => &AUDIO,
+        (Screen::MultichannelMonitor, _) => &MULTICHANNEL_MONITOR,
         (Screen::FxRack, MenuContext::FxEmpty) => &FX_RACK_EMPTY,
         (Screen::FxRack, MenuContext::FxType) => &FX_TYPE,
         (Screen::FxRack, _) => &FX_RACK,
@@ -1354,11 +1393,17 @@ mod tests {
             (Screen::TrackerLoop, MenuContext::Normal),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
+            (Screen::MultichannelMonitor, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
         ];
         for (screen, context) in contexts {
             let menu = pages(screen, context);
-            assert_eq!(menu[3].slots[0].label, "PANIC");
+            if screen == Screen::MultichannelMonitor {
+                assert_eq!(menu[3].slots[0].label, "STOP");
+                assert_eq!(menu[3].slots[1].label, "PANIC");
+            } else {
+                assert_eq!(menu[3].slots[0].label, "PANIC");
+            }
             assert_eq!(menu[3].slots[3].label, "EXIT");
             assert!(menu[3].slots[3].dispatch().is_some());
             assert!(menu
@@ -1497,6 +1542,13 @@ mod tests {
             }
             for page in pages(screen, MenuContext::Normal) {
                 for slot in page.slots {
+                    if matches!(
+                        (screen, slot.dispatch()),
+                        (Screen::MultichannelMonitor, Some(Action::OpenAudioRecorder))
+                            | (Screen::AudioRecorder, Some(Action::OpenMultichannelMonitor))
+                    ) {
+                        continue;
+                    }
                     assert!(
                         !slot
                             .dispatch()
@@ -1529,6 +1581,13 @@ mod tests {
                 for menu_page in pages(screen, context) {
                     for (position, slot) in menu_page.slots.iter().enumerate() {
                         let expected = match slot.label {
+                            "PANIC"
+                                if screen == Screen::MultichannelMonitor
+                                    && context != MenuContext::RoutingDefaults
+                                    && menu_page.label == "SYS" =>
+                            {
+                                Some(1)
+                            }
                             "STOP" | "PANIC" => Some(0),
                             "PLAY" | "LOAD" | "PREVIEW" => Some(1),
                             "RECORD" | "REC" => Some(2),
@@ -1691,6 +1750,7 @@ mod tests {
             (Screen::TrackerLoop, MenuContext::Normal),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
+            (Screen::MultichannelMonitor, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
             (Screen::FxRack, MenuContext::Normal),
             (Screen::FxRack, MenuContext::FxEmpty),
@@ -1821,6 +1881,8 @@ mod tests {
             Action::LiveShapeGate,
             Action::LiveShapeTranspose,
             Action::AudioRecordToggle,
+            Action::AudioStop,
+            Action::ResetInputMeters,
             Action::AudioToggleArm,
             Action::AudioArmAll,
             Action::AudioDisarmAll,

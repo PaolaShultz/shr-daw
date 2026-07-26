@@ -3,6 +3,7 @@
 [Controller basics](#controller-basics)
 [Presets and playback](#presets-and-playback)
 [Effects graph](#effects-graph)
+[18-channel input levels](#18-channel-input-levels)
 [Performance meters](#performance-meters)
 [MIDI ideas](#midi-ideas)
 [FT2 tracker](#ft2-tracker)
@@ -35,8 +36,10 @@ interpretation.
 The controller menu has four pages. Page 1 is OPS. On child screens, page
 4 item 4 is EXIT and returns one level. Empty buttons are hidden and silent.
 
-Home is the only screen without the shared working-screen status row. On every
-other screen the two controller rows sit immediately above it. The first status
+Home is the only screen without the shared working-screen status row. The
+native fullscreen EQ owns all thirteen rows. The native 18-channel Levels
+screen keeps the shared final row but omits the two controller rows; every
+other working screen places those rows immediately above status. The first status
 cell is steady green `>` for play, steady white `■` for stop, steady white `‖`
 for pause, or red `●` for record; record alone pulses between red and bright
 red without hiding the circle.
@@ -152,6 +155,22 @@ MUTE toggles it, and REC starts/stops the final stereo WAV at callback
 boundaries. RESET clears presentation holds and, when the bus is unavailable,
 retries the same exact remembered source mapping. Source and master changes are
 smoothed; there are no pan, solo, aux, or per-input effect controls.
+
+## 18-channel input levels
+
+Audio Recorder **MONITOR** opens Levels. At native 40×13 all 18 inputs stay
+visible as three groups of six; selection never scrolls or banks them. Each
+nine-LED column is smoothed RMS at −48, −36, −30, −24, −18, −12, −6, −3, and
+−1 dBFS. Green covers −48 through −18, yellow −12 through −3, and red −1. A
+brighter LED in the same colour is the held sample peak.
+
+Turn the encoder or use Left/Right or `j`/`k` to select a channel. Click/Enter
+or Space toggles its arm. PageUp/PageDown shows TAKE, CHANNEL, and SYS commands
+in the right half; `r` records, `s` stops, `x` resets holds, `u` returns to
+setup, and uppercase `S` panics. The shared final row remains the only status
+row. `M`, `F`, and held `C` distinguish missing, faulted, and clipped channels
+from ordinary silence. This is a recording overview, not the MTR final-bus
+mixer, Audio Recorder setup, route detail, audible monitor, or mixer strip.
 
 ## MIDI ideas
 

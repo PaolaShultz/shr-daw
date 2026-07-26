@@ -3,10 +3,11 @@
 SHR-DAW's raw recorder records a deliberately configured collection of JACK audio source
 ports as one synchronized take. It is interface-neutral: an MR18, a two-input
 sound card, a virtual JACK source, or another multichannel USB interface uses
-the same recorder. It does not monitor, mix, process, overdub, or edit these
-inputs. It remains distinct from the owned performance bus and its one-file
+the same recorder. It does not audibly monitor, mix, process, overdub, or edit
+these inputs; its Levels screen does meter the first 18 configured sources. It
+remains distinct from the owned performance bus and its one-file
 post-limiter [final stereo recording](FINAL_PERFORMANCE_BUS.md#final-recording).
-Use the interface or mixer for safe low-latency raw-input monitoring.
+Use the interface or mixer for safe low-latency audible raw-input monitoring.
 
 ## What one take guarantees
 
@@ -113,6 +114,42 @@ recorder state or faults may follow after one space.
 Keyboard equivalents are `R`, arrows or `J`/`K`, Space, `A`, `X`, `S`, `N`,
 and `F`. Track edits save to private runtime configuration. They are refused
 during a take.
+
+### The 18-channel Levels overview
+
+Audio Recorder **MONITOR** opens a separate overview whose purpose is level
+comparison, not track setup. At exactly 40×13, columns 1–20 hold all 18 meters
+as `6 + blank + 6 + blank + 6`. Rows 2–10 are the nine circular LEDs and rows
+11–12 hold compact channel labels. Columns 21–40 are a visible TAKE, CHANNEL,
+or SYS command page. The two normal controller rows are intentionally omitted,
+but row 13 remains owned only by the shared status renderer.
+
+The ascending dBFS ladder is −48, −36, −30, −24, −18, −12, −6, −3, and −1.
+Smoothed RMS fills it. A brighter same-colour sample-peak LED holds for 900 ms,
+then decays at 24 dB per second. Green covers −48 through −18, yellow −12
+through −3, and red −1. A two-second held `C` indicates an actual clipped or
+non-finite sample, while normal near-peak activity retains its ordinary meter
+colour. Dark-gray LEDs with a normal number are silence; `M` is an unresolved
+configured source and `F` is a meter/callback fault. The shared row reports the
+current useful fault or recovery rather than repeating 18 routes.
+
+Encoder turn, keyboard Left/Right or `j`/`k`, and pointer clicks select one
+channel without changing the visible set. Encoder click, Enter, or Space
+toggles that channel's arm. TAKE offers SETUP, RECORD, STOP, and RESET; CHANNEL
+offers PREV, NEXT, ARM, and REFRESH; SYS offers STOP, PANIC, HELP, and EXIT.
+PageUp/PageDown changes the visible command page. Selection and page survive
+ordinary navigation and reset only when a new or loaded Project replaces the
+owning context.
+
+Below native geometry the screen uses the ordinary compact layout and shared
+controller/status rows; it never crops or banks the 18-channel overview.
+Metering and recording use mutually exclusive recorder-owned JACK clients and
+the same exact configured sources, so opening Levels never duplicates a route
+beside an active take or changes unrelated connections. The meter callback
+publishes one fixed 18-channel atomic snapshot: bounded channel/frame loops,
+no allocation, locking, file access, logging, or formatting. Stop closes the
+owned take literally. Panic also closes the owned meter client and follows the
+global All Notes Off contract; clean shutdown closes either owned client.
 
 ## Session directory and manifest
 

@@ -18,10 +18,11 @@ preallocated ring. Disk writing happens off the audio thread.” On screen:
 `One shared start/stop callback boundary`.
 
 **0:55–1:25 — musician workflow.** Select several tracks named `Input 1 ·
-Vocal`, `Input 5 · Bass mic`, and `Line L/R`. Show `ready`, arm dots, source
-assignment, NAME, ALL/NONE, then RECORD. Say: “I name what the musician is
-recording, deliberately assign the discovered source, arm the tracks I need,
-and start one synchronized take. A missing source stays missing and blocks
+Vocal`, `Input 5 · Bass mic`, and `Line L/R`. Show arm dots, source assignment,
+NAME, ALL/NONE, then open Levels. All 18 nine-segment columns remain visible;
+show one quiet group, nominal green, yellow/red peaks, and a missing `M`. Say:
+“I name and route inputs in setup, then compare every recording level at once.
+Selection never hides a channel. A missing source stays missing and blocks
 start; SHR never substitutes a nearby port.”
 
 **1:25–1:55 — result.** Stop. Show one `.take` directory, its separate mono WAV
@@ -59,11 +60,16 @@ partial, failed, or synthetic run.
 ## Required close-ups
 
 1. Old stereo limitation.
-2. 40×13 list with independently named tracks and one selected meter.
-3. Exact source shown `ready`; another exact preference shown `missing`.
+2. 40×13 Levels overview with all 18 meters in three groups of six.
+3. Quiet, nominal, yellow/red, clipped, missing, and faulted meter examples.
 4. Several arm dots, elapsed time, active count, drop/xrun/high-water summary.
 5. Separate mono 24-bit WAV filenames.
 6. Manifest with equal frames, complete state, and zero counters.
 7. Generic JACK statement before naming MR18.
 8. MR18 acceptance card clearly labelled `PLANNED` or a dated measured `PASS`.
 9. Synthetic fallback card containing the word `SYNTHETIC` throughout.
+
+Keep the Audio setup list and Levels overview visibly separate. Levels uses
+−48, −36, −30, −24, −18, −12, −6, −3, and −1 dBFS, with RMS fill and a
+brighter same-colour held peak. Do not add selected-channel numeric/route
+detail or imply that visual metering is audible software monitoring.

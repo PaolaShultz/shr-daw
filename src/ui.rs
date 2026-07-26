@@ -13,6 +13,7 @@ use crate::final_bus::{
 };
 use crate::geometry::{contains, rect, visible_index};
 use crate::help::{self, HelpKind};
+use crate::multichannel_meter::{self, MultichannelMeter};
 use crate::navigation::{self, Action, MenuContext, Screen, SlotState};
 use crate::overlay::{
     self, CloseBehavior, OverlayDraft, OverlayKind, OverlayLauncher, OverlayState, RouteDraft,
@@ -284,6 +285,7 @@ struct Hits {
     list: Rect,
     actions: Vec<(Rect, Action)>,
     menu_pages: Vec<(Rect, usize)>,
+    monitor_channels: Vec<(Rect, usize)>,
 }
 impl Hits {
     fn action(&self, x: u16, y: u16) -> Option<Action> {
@@ -737,6 +739,7 @@ struct App {
     audio_recorder: AudioRecorder,
     capture_sources: Vec<String>,
     audio_track_selected: usize,
+    multichannel_meter: MultichannelMeter,
     loop_player: crate::loop_player::LoopPlayer,
     loop_slot_selected: usize,
     loop_imports: Vec<PathBuf>,
@@ -1515,6 +1518,7 @@ impl App {
             audio_recorder,
             capture_sources: available_ports.capture_sources,
             audio_track_selected: 0,
+            multichannel_meter: MultichannelMeter::default(),
             loop_player,
             loop_slot_selected: 0,
             loop_imports,
@@ -2838,6 +2842,11 @@ impl App {
 
     fn set_screen(&mut self, screen: Screen) {
         let previous = self.screen;
+        if previous == Screen::MultichannelMonitor
+            && !matches!(screen, Screen::MultichannelMonitor | Screen::Help)
+        {
+            self.audio_recorder.stop_monitoring();
+        }
         let playback_filter_was_active =
             self.playback_noob && self.screen_keeps_playback_workspace_active(previous);
         let playback_filter_will_be_active =
@@ -2866,7 +2875,9 @@ impl App {
             if self.screen == Screen::TrackerFiles && self.song_previewing {
                 self.stop_song_preview();
             }
-            self.menu_page_by_screen[screen.index()] = 0;
+            if screen != Screen::MultichannelMonitor {
+                self.menu_page_by_screen[screen.index()] = 0;
+            }
             self.page_select_mode = false;
             self.prepare_confirmation_action(Action::Noop);
         }
@@ -3640,6 +3651,7 @@ impl App {
         self.loop_meter
             .set_audio_unavailable(AudioAvailability::Stopped);
         let _ = self.audio_recorder.stop();
+        self.audio_recorder.stop_monitoring();
         self.stop_recording();
         self.stop_playback();
         if let Some(engine) = self.engine.as_mut() {
@@ -6917,6 +6929,7 @@ impl App {
         self.live_activation_seen = 0;
         self.live_prepare_seen = None;
         self.loop_slot_selected = 0;
+        self.reset_multichannel_monitor_context();
         self.mark_project_clean();
         self.song_file_stem = None;
         self.tracker_order = 0;
@@ -7087,6 +7100,7 @@ impl App {
                 self.live_activation_seen = 0;
                 self.live_prepare_seen = None;
                 self.loop_slot_selected = 0;
+                self.reset_multichannel_monitor_context();
                 self.song_file_stem = Some(name.to_owned());
                 self.mark_project_clean();
                 self.tracker_order = 0;
@@ -8023,7 +8037,15 @@ impl App {
                 .update_configuration(self.config.capture.clone(), self.capture_sources.clone())
         });
         self.status = match result {
-            Ok(()) => message,
+            Ok(()) => {
+                if !cfg!(test)
+                    && self.screen == Screen::MultichannelMonitor
+                    && self.audio_recorder.start_monitoring().is_err()
+                {
+                    return self.status = "INPUT MONITOR FAULT · check SETUP".into();
+                }
+                message
+            }
             Err(_error) => "CAPTURE SAVE FAILED · old setup kept".into(),
         };
     }
@@ -8031,6 +8053,87 @@ impl App {
     fn move_audio_track(&mut self, direction: i8) {
         let length = self.audio_recorder.status().tracks.len();
         self.audio_track_selected = wrapped_index(self.audio_track_selected, length, direction);
+    }
+
+    fn move_monitor_channel(&mut self, direction: i8) {
+        let length = self
+            .audio_recorder
+            .status()
+            .tracks
+            .len()
+            .min(crate::audio_recorder::MONITOR_CHANNELS);
+        if length == 0 {
+            self.audio_track_selected = 0;
+        } else if direction < 0 {
+            self.audio_track_selected = self.audio_track_selected.saturating_sub(1);
+        } else {
+            self.audio_track_selected = (self.audio_track_selected + 1).min(length - 1);
+        }
+        self.status.clear();
+    }
+
+    fn open_multichannel_monitor(&mut self) {
+        self.set_tracker_edit(false);
+        self.set_screen(Screen::MultichannelMonitor);
+        self.audio_track_selected = self
+            .audio_track_selected
+            .min(crate::audio_recorder::MONITOR_CHANNELS - 1)
+            .min(self.audio_recorder.status().tracks.len().saturating_sub(1));
+        if !cfg!(test) {
+            if let Err(_error) = self.audio_recorder.start_monitoring() {
+                self.status = "INPUT MONITOR FAULT · check SETUP".into();
+                return;
+            }
+        }
+        self.refresh_monitor_status();
+    }
+
+    fn refresh_monitor_status(&mut self) {
+        let status = self.audio_recorder.status();
+        if status.recording {
+            return;
+        }
+        if status.error.is_some() {
+            self.status = "INPUT MONITOR FAULT · STOP / SETUP".into();
+            return;
+        }
+        let missing = status
+            .tracks
+            .iter()
+            .take(crate::audio_recorder::MONITOR_CHANNELS)
+            .filter(|track| !track.resolved)
+            .count();
+        self.status = if missing > 0 {
+            format!("{missing} INPUTS MISSING · SETUP")
+        } else {
+            String::new()
+        };
+    }
+
+    fn stop_audio_recording(&mut self) {
+        if self.audio_recorder.status().recording {
+            let result = self.audio_recorder.stop();
+            self.status = match result {
+                Ok(()) => "Take finalized".into(),
+                Err(_error) => "TAKE INCOMPLETE · retry STOP".into(),
+            };
+        }
+        if self.screen == Screen::MultichannelMonitor {
+            if !cfg!(test) && self.audio_recorder.start_monitoring().is_err() {
+                self.status = "INPUT MONITOR FAULT · check SETUP".into();
+            }
+        }
+    }
+
+    fn reset_input_meters(&mut self) {
+        self.multichannel_meter.clear_holds();
+        self.status = "input peak and clip holds cleared".into();
+    }
+
+    fn reset_multichannel_monitor_context(&mut self) {
+        self.audio_track_selected = 0;
+        self.menu_page_by_screen[Screen::MultichannelMonitor.index()] = 0;
+        self.multichannel_meter = MultichannelMeter::default();
     }
 
     fn toggle_audio_track_arm(&mut self, state: &Path) {
@@ -8093,7 +8196,15 @@ impl App {
             .audio_recorder
             .update_configuration(self.config.capture.clone(), self.capture_sources.clone());
         self.status = match result {
-            Ok(()) => String::new(),
+            Ok(()) => {
+                if !cfg!(test)
+                    && self.screen == Screen::MultichannelMonitor
+                    && self.audio_recorder.start_monitoring().is_err()
+                {
+                    return self.status = "INPUT MONITOR FAULT · check SETUP".into();
+                }
+                String::new()
+            }
             Err(_error) => "SOURCE REFRESH FAILED · retry".into(),
         };
     }
@@ -8171,18 +8282,19 @@ impl App {
 
     fn toggle_audio_recording(&mut self) {
         if self.audio_recorder.status().recording {
-            let result = self.audio_recorder.stop();
-            self.status = match result {
-                Ok(()) => "Take finalized".into(),
-                Err(_error) => "TAKE INCOMPLETE · retry STOP".into(),
-            };
+            self.stop_audio_recording();
             return;
         }
         self.finish_competing_recordings(RecordingOwner::Multitrack);
         let result = self.audio_recorder.start(None);
         self.status = match result {
             Ok(()) => String::new(),
-            Err(_error) => "RECORDER START FAILED · check sources".into(),
+            Err(_error) => {
+                if !cfg!(test) {
+                    let _ = self.audio_recorder.start_monitoring();
+                }
+                "RECORDER START FAILED · check sources".into()
+            }
         };
     }
     fn commit_loaded_preset(
@@ -9712,6 +9824,34 @@ impl App {
                     .set_audio_unavailable(AudioAvailability::Stopped);
             }
         }
+        if self.screen == Screen::MultichannelMonitor {
+            self.multichannel_meter
+                .update(self.audio_recorder.meter_snapshot(), now);
+            let recorder = self.audio_recorder.status();
+            let levels = self.multichannel_meter.levels(now);
+            if let Some(channel) = levels.iter().position(|level| level.non_finite) {
+                self.status = format!("INPUT FAULT CH {:02} · STOP / SETUP", channel + 1);
+            } else if let Some(channel) = levels.iter().position(|level| level.clipping) {
+                self.status = format!("RECORDER · CLIP CH {:02}", channel + 1);
+            } else if recorder.error.is_some() {
+                self.status = "INPUT MONITOR FAULT · STOP / SETUP".into();
+            } else if !recorder.recording {
+                let missing = recorder
+                    .tracks
+                    .iter()
+                    .take(crate::audio_recorder::MONITOR_CHANNELS)
+                    .filter(|track| !track.resolved)
+                    .count();
+                if missing > 0 {
+                    self.status = format!("{missing} INPUTS MISSING · SETUP");
+                } else if self.status.starts_with("RECORDER · CLIP")
+                    || self.status.starts_with("INPUT FAULT")
+                    || self.status.contains("INPUTS MISSING")
+                {
+                    self.status.clear();
+                }
+            }
+        }
         if self.screen == Screen::Tracker
             && self.tracker_mode == TrackerMode::Edit
             && self.note_editor.is_none()
@@ -10618,6 +10758,8 @@ fn perform(
                 a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), -1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(-1);
+            } else if a.screen == Screen::MultichannelMonitor {
+                a.move_monitor_channel(-1);
             } else if a.screen == Screen::Meter {
                 a.move_bus_selection(-1);
             } else if a.screen == Screen::TrackerPages {
@@ -10669,6 +10811,8 @@ fn perform(
                 a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), 1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(1);
+            } else if a.screen == Screen::MultichannelMonitor {
+                a.move_monitor_channel(1);
             } else if a.screen == Screen::Meter {
                 a.move_bus_selection(1);
             } else if a.screen == Screen::TrackerPages {
@@ -10787,6 +10931,7 @@ fn perform(
                 a.status = "loop alignment set".into();
             }
             Screen::AudioRecorder => a.toggle_audio_track_arm(state),
+            Screen::MultichannelMonitor => a.toggle_audio_track_arm(state),
             Screen::Meter => a.toggle_bus_mute(),
             Screen::FxRack => {
                 if a.fx_type_edit.is_some() {
@@ -10878,6 +11023,7 @@ fn perform(
             a.set_screen(Screen::AudioRecorder);
             a.status.clear();
         }
+        Action::OpenMultichannelMonitor => a.open_multichannel_monitor(),
         Action::OpenFxRack => {
             if !matches!(a.screen, Screen::FxRack | Screen::FxEditor) {
                 a.fx_rack_parent = a.screen;
@@ -10987,6 +11133,7 @@ fn perform(
                 | Screen::Ideas
                 | Screen::Tracker
                 | Screen::AudioRecorder
+                | Screen::MultichannelMonitor
                 | Screen::Meter
                 | Screen::Routing => Screen::Home,
                 Screen::Playback => Screen::Presets,
@@ -11192,6 +11339,8 @@ fn perform(
         }
         Action::ConfirmPatternClear => a.apply_pattern_clear(),
         Action::AudioRecordToggle => a.toggle_audio_recording(),
+        Action::AudioStop => a.stop_audio_recording(),
+        Action::ResetInputMeters => a.reset_input_meters(),
         Action::AudioToggleArm => a.toggle_audio_track_arm(state),
         Action::AudioArmAll => a.set_all_audio_arms(state, true),
         Action::AudioDisarmAll => a.set_all_audio_arms(state, false),
@@ -11736,9 +11885,34 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             _ => {}
         }
     }
+    if a.screen == Screen::MultichannelMonitor {
+        let action = match code {
+            KeyCode::Left | KeyCode::Char('k') => Some(Action::AudioPreviousTrack),
+            KeyCode::Right | KeyCode::Char('j') => Some(Action::AudioNextTrack),
+            KeyCode::Char('r') => Some(Action::AudioRecordToggle),
+            KeyCode::Char('s') => Some(Action::AudioStop),
+            KeyCode::Char('S') => Some(Action::StopAll),
+            KeyCode::Char(' ') => Some(Action::AudioToggleArm),
+            KeyCode::Char('u') => Some(Action::OpenAudioRecorder),
+            KeyCode::Char('x') => Some(Action::ResetInputMeters),
+            KeyCode::PageUp => {
+                a.cycle_menu_page(-1);
+                None
+            }
+            KeyCode::PageDown => {
+                a.cycle_menu_page(1);
+                None
+            }
+            _ => None,
+        };
+        if let Some(action) = action {
+            return perform(action, a, state, Some(tx));
+        }
+    }
     if a.screen == Screen::AudioRecorder {
         let action = match code {
             KeyCode::Char('r') => Some(Action::AudioRecordToggle),
+            KeyCode::Char('v') => Some(Action::OpenMultichannelMonitor),
             KeyCode::Char('k') => Some(Action::AudioPreviousTrack),
             KeyCode::Char('j') => Some(Action::AudioNextTrack),
             KeyCode::Char(' ') => Some(Action::AudioToggleArm),
@@ -11966,7 +12140,28 @@ fn mouse(
             }
         }
         MouseEventKind::Down(MouseButton::Left) => {
-            if a.screen == Screen::Home && contains(a.hits.list, m.column, m.row) {
+            if a.screen == Screen::MultichannelMonitor {
+                if let Some((_, channel)) = a
+                    .hits
+                    .monitor_channels
+                    .iter()
+                    .find(|(area, _)| contains(*area, m.column, m.row))
+                    .copied()
+                {
+                    a.audio_track_selected = channel;
+                    a.status.clear();
+                } else if let Some((_, page)) = a
+                    .hits
+                    .menu_pages
+                    .iter()
+                    .find(|(area, _)| contains(*area, m.column, m.row))
+                    .copied()
+                {
+                    a.select_menu_page(page);
+                } else if let Some(action) = a.hits.action(m.column, m.row) {
+                    perform(action, a, state, Some(tx));
+                }
+            } else if a.screen == Screen::Home && contains(a.hits.list, m.column, m.row) {
                 let index = visible_index(a.hits.list, a.home_offset, m.column, m.row).unwrap();
                 if index < HOME_ENTRIES.len() {
                     if index == a.home_selected {
@@ -12101,12 +12296,17 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
         Screen::AudioRecorder => draw_audio_recorder(f, a),
+        Screen::MultichannelMonitor => draw_multichannel_monitor(f, a),
         Screen::FxRack => draw_fx_rack(f, a),
         Screen::FxEditor => draw_fx_editor(f, a),
         Screen::Meter => draw_performance_meter(f, a),
         Screen::Routing => draw_routing(f, a),
     }
     if fullscreen_eq {
+        return;
+    }
+    if a.screen == Screen::MultichannelMonitor && area.width == 40 && area.height == 13 {
+        draw_master_status(f, a);
         return;
     }
     if a.overlay.is_some() {
@@ -16027,6 +16227,235 @@ fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
     );
 }
+
+fn monitor_led_style(cell: multichannel_meter::MeterCell) -> Style {
+    let color = match (cell.state, cell.color) {
+        (LedState::Off, _) => Color::DarkGray,
+        (LedState::Level, MeterColor::Green) => Color::Green,
+        (LedState::Level, MeterColor::Yellow) => Color::Yellow,
+        (LedState::Level, MeterColor::Red) => Color::Red,
+        (LedState::Peak, MeterColor::Green) => Color::LightGreen,
+        (LedState::Peak, MeterColor::Yellow) => Color::LightYellow,
+        (LedState::Peak, MeterColor::Red) => Color::LightRed,
+    };
+    Style::default()
+        .fg(color)
+        .add_modifier(if cell.state == LedState::Peak {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        })
+}
+
+const fn monitor_column(channel: usize) -> u16 {
+    (channel + channel / 6) as u16
+}
+
+fn draw_multichannel_monitor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    if z.width != 40 || z.height != 13 {
+        draw_compact_multichannel_monitor(f, a);
+        return;
+    }
+    a.hits.actions.clear();
+    a.hits.menu_pages.clear();
+    a.hits.monitor_channels.clear();
+    let status = a.audio_recorder.status();
+    let channel_count = status
+        .tracks
+        .len()
+        .min(crate::audio_recorder::MONITOR_CHANNELS);
+    a.audio_track_selected = a.audio_track_selected.min(channel_count.saturating_sub(1));
+    let page = &navigation::pages(a.screen, a.menu_context())[a.menu_page()];
+    let title = format!(
+        "{BUILD_BADGE} 18CH LEVELS · CH {:02} · {}",
+        a.audio_track_selected + 1,
+        page.label
+    );
+    f.render_widget(
+        Paragraph::new(crate::ui_text::fit_line(&title, 40)).style(
+            Style::default()
+                .fg(if status.recording {
+                    Color::Red
+                } else {
+                    Color::Green
+                })
+                .add_modifier(Modifier::BOLD),
+        ),
+        rect(z.x, z.y, 40, 1),
+    );
+
+    let now = Instant::now();
+    let levels = a.multichannel_meter.levels(now);
+    for channel in 0..crate::audio_recorder::MONITOR_CHANNELS {
+        let x = z.x + monitor_column(channel);
+        let cells = a.multichannel_meter.cells(channel);
+        for row in 0..9 {
+            let cell = cells[8 - row];
+            f.render_widget(
+                Paragraph::new("●").style(monitor_led_style(cell)),
+                rect(x, z.y + 1 + row as u16, 1, 1),
+            );
+        }
+        let track = status.tracks.get(channel);
+        let missing = track.is_none_or(|track| !track.resolved);
+        let fault = status.error.is_some() && track.is_some_and(|track| track.resolved)
+            || levels[channel].non_finite;
+        let clip = levels[channel].clipping;
+        let tens = if fault {
+            'F'
+        } else if missing {
+            'M'
+        } else if clip {
+            'C'
+        } else if channel + 1 >= 10 {
+            char::from_digit(((channel + 1) / 10) as u32, 10).unwrap_or(' ')
+        } else {
+            ' '
+        };
+        let ones = char::from_digit(((channel + 1) % 10) as u32, 10).unwrap_or('0');
+        let selected = channel == a.audio_track_selected;
+        let state_color = if fault {
+            Color::Red
+        } else if missing {
+            Color::Yellow
+        } else if clip {
+            Color::LightRed
+        } else if selected {
+            Color::Black
+        } else {
+            Color::Gray
+        };
+        let label_style = Style::default()
+            .fg(state_color)
+            .bg(if selected {
+                Color::Yellow
+            } else {
+                Color::Black
+            })
+            .add_modifier(if selected || fault || clip {
+                Modifier::BOLD
+            } else {
+                Modifier::empty()
+            });
+        f.render_widget(
+            Paragraph::new(tens.to_string()).style(label_style),
+            rect(x, z.y + 10, 1, 1),
+        );
+        f.render_widget(
+            Paragraph::new(ones.to_string()).style(label_style),
+            rect(x, z.y + 11, 1, 1),
+        );
+        a.hits
+            .monitor_channels
+            .push((rect(x, z.y + 1, 1, 11), channel));
+    }
+
+    let panel = rect(z.x + 20, z.y + 1, 20, 11);
+    f.render_widget(Clear, panel);
+    f.render_widget(
+        Paragraph::new("COMMAND PAGES").style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        rect(panel.x, panel.y, panel.width, 1),
+    );
+    let pages = navigation::pages(a.screen, a.menu_context());
+    let mut page_row = 1u16;
+    for (index, candidate) in pages.iter().enumerate() {
+        if !candidate.available() {
+            continue;
+        }
+        let active = index == a.menu_page();
+        let area = rect(panel.x, panel.y + page_row, panel.width, 1);
+        f.render_widget(
+            Paragraph::new(format!(
+                "{} P{} {}",
+                if active { ">" } else { " " },
+                index + 1,
+                candidate.label
+            ))
+            .style(
+                Style::default()
+                    .fg(if active {
+                        Color::LightYellow
+                    } else {
+                        Color::DarkGray
+                    })
+                    .add_modifier(if active {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+            ),
+            area,
+        );
+        a.hits.menu_pages.push((area, index));
+        page_row += 1;
+    }
+    for (index, slot) in page.slots.iter().enumerate() {
+        if slot.state != SlotState::Enabled {
+            continue;
+        }
+        let area = rect(panel.x, panel.y + 5 + index as u16, panel.width, 1);
+        f.render_widget(
+            Paragraph::new(format!("[{}] {}", index + 1, slot.label)).style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            area,
+        );
+        if let Some(action) = slot.dispatch() {
+            a.hits.actions.push((area, action));
+        }
+    }
+}
+
+fn draw_compact_multichannel_monitor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let status = a.audio_recorder.status();
+    let configured = status
+        .tracks
+        .len()
+        .min(crate::audio_recorder::MONITOR_CHANNELS);
+    let missing = status
+        .tracks
+        .iter()
+        .take(crate::audio_recorder::MONITOR_CHANNELS)
+        .filter(|track| !track.resolved)
+        .count();
+    let lines = vec![
+        Spans::from(Span::styled(
+            "18CH INPUT LEVELS · COMPACT",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from("Native overview requires exact 40×13"),
+        Spans::from("Resize to see all nine-segment meters"),
+        Spans::from(format!(
+            "CH {:02} · {configured}/18 configured · {missing} missing",
+            a.audio_track_selected + 1
+        )),
+        Spans::from(if status.recording {
+            "Recording · STOP remains available"
+        } else if a.audio_recorder.monitoring() {
+            "Monitoring · commands remain below"
+        } else {
+            "Stopped · commands remain below"
+        }),
+    ];
+    f.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(Color::Gray))
+            .block(Block::default().borders(Borders::ALL)),
+        body,
+    );
+}
+
 fn truncate(s: &str, n: usize) -> String {
     crate::ui_text::fit_line(s, n)
 }
@@ -16082,6 +16511,10 @@ pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
             "shr-daw-audio-recorder.png",
             ScreenshotScenario::AudioRecorder,
         ),
+        (
+            "shr-daw-input-monitor.png",
+            ScreenshotScenario::MultichannelMonitor,
+        ),
         ("shr-daw-performance-meter.png", ScreenshotScenario::Meter),
     ];
     let mut frames = Vec::new();
@@ -16110,10 +16543,14 @@ pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
     for scenario in ScreenshotSpecialScenario::ALL {
         let mut app = screenshot_app(config.clone());
         configure_special_screenshot_scenario(&mut app, scenario);
-        frames.push(render_screenshot_frame(
-            &mut app,
-            format!("menu/{}.png", scenario.slug()),
-        )?);
+        let name = format!("menu/{}.png", scenario.slug());
+        frames.push(
+            if matches!(scenario, ScreenshotSpecialScenario::InputMonitorCompact) {
+                render_screenshot_frame_at(&mut app, name, 38, 12)?
+            } else {
+                render_screenshot_frame(&mut app, name)?
+            },
+        );
     }
     Ok(serde_json::to_string_pretty(&ScreenshotSet {
         cols: SCREENSHOT_COLS,
@@ -16123,19 +16560,39 @@ pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
 }
 
 fn render_screenshot_frame(app: &mut App, name: String) -> Result<ScreenshotFrame> {
-    let backend = TestBackend::new(SCREENSHOT_COLS, SCREENSHOT_ROWS);
+    render_screenshot_frame_at(app, name, SCREENSHOT_COLS, SCREENSHOT_ROWS)
+}
+
+fn render_screenshot_frame_at(
+    app: &mut App,
+    name: String,
+    width: u16,
+    height: u16,
+) -> Result<ScreenshotFrame> {
+    let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend)?;
     terminal.draw(|frame| draw(frame, app))?;
-    let cells = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .map(|cell| ScreenshotCell {
-            symbol: cell.symbol.clone(),
-            fg: color_rgb(cell.fg, true),
-            bg: color_rgb(cell.bg, false),
-            bold: cell.modifier.contains(Modifier::BOLD),
+    let source = terminal.backend().buffer();
+    let cells = (0..SCREENSHOT_ROWS)
+        .flat_map(|y| {
+            (0..SCREENSHOT_COLS).map(move |x| {
+                if x < width && y < height {
+                    let cell = source.get(x, y);
+                    ScreenshotCell {
+                        symbol: cell.symbol.clone(),
+                        fg: color_rgb(cell.fg, true),
+                        bg: color_rgb(cell.bg, false),
+                        bold: cell.modifier.contains(Modifier::BOLD),
+                    }
+                } else {
+                    ScreenshotCell {
+                        symbol: " ".into(),
+                        fg: [0, 0, 0],
+                        bg: [0, 0, 0],
+                        bold: false,
+                    }
+                }
+            })
         })
         .collect();
     Ok(ScreenshotFrame { name, cells })
@@ -16178,6 +16635,7 @@ enum ScreenshotScenario {
     TrackerLoop,
     TrackerLoopAlign,
     AudioRecorder,
+    MultichannelMonitor,
     FxRack,
     FxRackEmpty,
     FxType,
@@ -16187,7 +16645,7 @@ enum ScreenshotScenario {
 }
 
 impl ScreenshotScenario {
-    const ALL: [Self; 29] = [
+    const ALL: [Self; 30] = [
         Self::Presets,
         Self::Playback,
         Self::Ideas,
@@ -16211,6 +16669,7 @@ impl ScreenshotScenario {
         Self::TrackerLoop,
         Self::TrackerLoopAlign,
         Self::AudioRecorder,
+        Self::MultichannelMonitor,
         Self::FxRack,
         Self::FxRackEmpty,
         Self::FxType,
@@ -16240,6 +16699,7 @@ impl ScreenshotScenario {
             Self::TrackerLoop => Screen::TrackerLoop,
             Self::TrackerLoopAlign => Screen::TrackerLoopAlign,
             Self::AudioRecorder => Screen::AudioRecorder,
+            Self::MultichannelMonitor => Screen::MultichannelMonitor,
             Self::FxRack | Self::FxRackEmpty | Self::FxType => Screen::FxRack,
             Self::FxEditor => Screen::FxEditor,
             Self::Meter => Screen::Meter,
@@ -16272,6 +16732,7 @@ impl ScreenshotScenario {
             Self::TrackerLoop => "ft2-loop",
             Self::TrackerLoopAlign => "loop-align",
             Self::AudioRecorder => "audio-recorder",
+            Self::MultichannelMonitor => "input-monitor",
             Self::FxRack => "fx-rack",
             Self::FxRackEmpty => "fx-rack-empty",
             Self::FxType => "fx-type",
@@ -16296,10 +16757,19 @@ enum ScreenshotSpecialScenario {
     EditAddOverlay,
     LoopLibraryOverlay,
     MixEffectsOverlay,
+    InputMonitorQuiet,
+    InputMonitorPeaks,
+    InputMonitorFault,
+    InputMonitorFirst,
+    InputMonitorMiddle,
+    InputMonitorLast,
+    InputMonitorRecord,
+    InputMonitorStop,
+    InputMonitorCompact,
 }
 
 impl ScreenshotSpecialScenario {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 21] = [
         Self::Home,
         Self::MidiLearn,
         Self::FxEditorEq,
@@ -16312,6 +16782,15 @@ impl ScreenshotSpecialScenario {
         Self::EditAddOverlay,
         Self::LoopLibraryOverlay,
         Self::MixEffectsOverlay,
+        Self::InputMonitorQuiet,
+        Self::InputMonitorPeaks,
+        Self::InputMonitorFault,
+        Self::InputMonitorFirst,
+        Self::InputMonitorMiddle,
+        Self::InputMonitorLast,
+        Self::InputMonitorRecord,
+        Self::InputMonitorStop,
+        Self::InputMonitorCompact,
     ];
 
     const fn slug(self) -> &'static str {
@@ -16328,6 +16807,15 @@ impl ScreenshotSpecialScenario {
             Self::EditAddOverlay => "overlay-edit-add",
             Self::LoopLibraryOverlay => "overlay-loop-library",
             Self::MixEffectsOverlay => "overlay-performance-fx",
+            Self::InputMonitorQuiet => "input-monitor-quiet",
+            Self::InputMonitorPeaks => "input-monitor-peaks",
+            Self::InputMonitorFault => "input-monitor-fault",
+            Self::InputMonitorFirst => "input-monitor-selected-first",
+            Self::InputMonitorMiddle => "input-monitor-selected-middle",
+            Self::InputMonitorLast => "input-monitor-selected-last",
+            Self::InputMonitorRecord => "input-monitor-record",
+            Self::InputMonitorStop => "input-monitor-stop",
+            Self::InputMonitorCompact => "input-monitor-compact",
         }
     }
 }
@@ -16589,11 +17077,42 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
                         preferred_source: format!("interface:capture_{}", index + 1),
                         resolved: index != 10,
                         peak_dbfs: (index == 4).then_some(-9.4),
+                        rms_dbfs: None,
+                        sample_peak_dbfs: None,
+                        clipped: false,
+                        non_finite: false,
                     })
                     .collect(),
                 error: None,
                 ..RecorderStatus::default()
             });
+        }
+        Screen::MultichannelMonitor => {
+            app.audio_track_selected = 7;
+            app.audio_recorder.set_preview_status(RecorderStatus {
+                recording: false,
+                active_tracks: 18,
+                tracks: (0..18)
+                    .map(|index| {
+                        let rms = -24.0 + (index % 6) as f32 * 2.0;
+                        RecorderTrackStatus {
+                            label: format!("Input {}", index + 1),
+                            armed: true,
+                            preferred_source: format!("interface:capture_{}", index + 1),
+                            resolved: true,
+                            peak_dbfs: Some(rms + 7.0),
+                            rms_dbfs: Some(rms),
+                            sample_peak_dbfs: Some(rms + 7.0),
+                            clipped: false,
+                            non_finite: false,
+                        }
+                    })
+                    .collect(),
+                ..RecorderStatus::default()
+            });
+            app.multichannel_meter
+                .seed(app.audio_recorder.meter_snapshot(), Instant::now());
+            app.status.clear();
         }
         Screen::Meter => {
             app.performance_meter.seed_presentation(
@@ -16627,6 +17146,7 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
         | ScreenshotScenario::TrackerFiles
         | ScreenshotScenario::TrackerLoop
         | ScreenshotScenario::AudioRecorder
+        | ScreenshotScenario::MultichannelMonitor
         | ScreenshotScenario::Meter => {}
         ScreenshotScenario::Ideas => {
             app.ideas = vec![
@@ -16959,6 +17479,83 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
                 overlay.selection = 3;
             }
         }
+        ScreenshotSpecialScenario::InputMonitorQuiet
+        | ScreenshotSpecialScenario::InputMonitorPeaks
+        | ScreenshotSpecialScenario::InputMonitorFault
+        | ScreenshotSpecialScenario::InputMonitorFirst
+        | ScreenshotSpecialScenario::InputMonitorMiddle
+        | ScreenshotSpecialScenario::InputMonitorLast
+        | ScreenshotSpecialScenario::InputMonitorRecord
+        | ScreenshotSpecialScenario::InputMonitorStop
+        | ScreenshotSpecialScenario::InputMonitorCompact => {
+            configure_screenshot_scenario(app, ScreenshotScenario::MultichannelMonitor);
+            let mut status = app.audio_recorder.status();
+            match scenario {
+                ScreenshotSpecialScenario::InputMonitorQuiet => {
+                    for (index, track) in status.tracks.iter_mut().enumerate() {
+                        let rms = -44.0 + (index % 6) as f32;
+                        track.rms_dbfs = Some(rms);
+                        track.sample_peak_dbfs = Some(rms + 5.0);
+                        track.peak_dbfs = Some(rms + 5.0);
+                    }
+                    app.status = "quiet active take · raise input gain near source".into();
+                }
+                ScreenshotSpecialScenario::InputMonitorPeaks => {
+                    for (index, track) in status.tracks.iter_mut().enumerate() {
+                        let rms = if index < 6 {
+                            -12.0
+                        } else if index < 12 {
+                            -6.0
+                        } else {
+                            -3.0
+                        };
+                        track.rms_dbfs = Some(rms);
+                        track.sample_peak_dbfs = Some(if index == 16 { 0.0 } else { rms + 2.0 });
+                        track.peak_dbfs = track.sample_peak_dbfs;
+                        track.clipped = index == 16;
+                    }
+                    app.status = "RECORDER · CLIP CH 17".into();
+                }
+                ScreenshotSpecialScenario::InputMonitorFault => {
+                    for index in [2, 10] {
+                        status.tracks[index].resolved = false;
+                        status.tracks[index].rms_dbfs = None;
+                        status.tracks[index].sample_peak_dbfs = None;
+                    }
+                    status.tracks[14].non_finite = true;
+                    app.status = "INPUT FAULT CH 15 · 2 INPUTS MISSING".into();
+                }
+                ScreenshotSpecialScenario::InputMonitorFirst => {
+                    app.audio_track_selected = 0;
+                    app.status.clear();
+                }
+                ScreenshotSpecialScenario::InputMonitorMiddle => {
+                    app.audio_track_selected = 8;
+                    app.status.clear();
+                }
+                ScreenshotSpecialScenario::InputMonitorLast => {
+                    app.audio_track_selected = 17;
+                    app.status.clear();
+                }
+                ScreenshotSpecialScenario::InputMonitorRecord => {
+                    status.recording = true;
+                    status.sample_rate = 48_000;
+                    status.elapsed = Duration::from_secs(83);
+                    app.status.clear();
+                }
+                ScreenshotSpecialScenario::InputMonitorStop => {
+                    status.recording = false;
+                    app.status = "Take finalized".into();
+                }
+                ScreenshotSpecialScenario::InputMonitorCompact => {
+                    app.status = "compact fallback · resize to exact 40×13".into();
+                }
+                _ => unreachable!(),
+            }
+            app.audio_recorder.set_preview_status(status);
+            app.multichannel_meter
+                .seed(app.audio_recorder.meter_snapshot(), Instant::now());
+        }
     }
 }
 
@@ -17187,6 +17784,11 @@ mod tests {
             defaults,
         );
         app.web_help_enabled = false;
+        app
+    }
+    fn monitor_app() -> App {
+        let mut app = screenshot_app(RuntimeConfig::default());
+        configure_screenshot_scenario(&mut app, ScreenshotScenario::MultichannelMonitor);
         app
     }
 
@@ -18175,10 +18777,283 @@ mod tests {
         render(40, 13, Screen::TrackerLoop);
         render(40, 13, Screen::TrackerLoopAlign);
         render(40, 13, Screen::AudioRecorder);
+        render(40, 13, Screen::MultichannelMonitor);
         render(40, 13, Screen::FxRack);
         render(40, 13, Screen::FxEditor);
         render(40, 13, Screen::Meter);
         render(40, 13, Screen::Routing);
+    }
+
+    #[test]
+    fn native_input_monitor_renders_exactly_18_nine_segment_columns_in_three_groups() {
+        let mut app = monitor_app();
+        let buffer = render_app(&mut app, 40, 13);
+        let positions = (0..crate::audio_recorder::MONITOR_CHANNELS)
+            .map(monitor_column)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            positions,
+            [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19]
+        );
+        for row in 1..=9 {
+            assert_eq!(
+                positions
+                    .iter()
+                    .filter(|column| buffer_cell(&buffer, **column, row).symbol == "●")
+                    .count(),
+                18
+            );
+            assert_eq!(buffer_cell(&buffer, 6, row).symbol, " ");
+            assert_eq!(buffer_cell(&buffer, 13, row).symbol, " ");
+        }
+        assert_eq!(app.hits.monitor_channels.len(), 18);
+        assert!(app
+            .hits
+            .monitor_channels
+            .iter()
+            .all(|(area, _)| area.x < 20 && area.height == 11));
+    }
+
+    #[test]
+    fn native_input_monitor_uses_labels_on_rows_11_12_and_shared_status_only_on_13() {
+        let mut app = monitor_app();
+        let buffer = render_app(&mut app, 40, 13);
+        assert_eq!(buffer_cell(&buffer, monitor_column(9), 10).symbol, "1");
+        assert_eq!(buffer_cell(&buffer, monitor_column(9), 11).symbol, "0");
+        assert!(row_text(&buffer, 12).starts_with('■'));
+        assert!(app
+            .hits
+            .actions
+            .iter()
+            .all(|(area, _)| area.x >= 20 && area.bottom() <= 12));
+        assert!(!row_text(&buffer, 10).contains("[PANIC]"));
+        assert!(!row_text(&buffer, 11).contains("[EXIT]"));
+    }
+
+    #[test]
+    fn input_monitor_command_pages_are_visible_real_and_never_cover_meters() {
+        let mut app = monitor_app();
+        for (page, expected) in [(0, "SETUP"), (1, "PREV"), (3, "PANIC")] {
+            app.select_menu_page(page);
+            let buffer = render_app(&mut app, 40, 13);
+            assert!(row_text(&buffer, 0).contains(
+                navigation::pages(Screen::MultichannelMonitor, MenuContext::Normal)[page].label
+            ));
+            assert!(buffer_text(&buffer).contains(expected));
+            assert!(app.hits.actions.iter().all(|(area, _)| area.x >= 20));
+            for row in 1..=9 {
+                assert_eq!(buffer_cell(&buffer, 0, row).symbol, "●");
+                assert_eq!(buffer_cell(&buffer, 19, row).symbol, "●");
+            }
+        }
+        let actions = navigation::pages(Screen::MultichannelMonitor, MenuContext::Normal)
+            .iter()
+            .flat_map(|page| page.slots)
+            .filter_map(|slot| slot.dispatch())
+            .collect::<Vec<_>>();
+        assert!(actions.contains(&Action::AudioStop));
+        assert!(actions.contains(&Action::StopAll));
+        assert!(!actions.iter().any(|action| matches!(
+            action,
+            Action::IdeaPlayToggle
+                | Action::TrackerPlayToggle
+                | Action::LiveLaunch
+                | Action::NewProject
+        )));
+    }
+
+    #[test]
+    fn monitor_selection_keyboard_encoder_and_pointer_are_equivalent_and_bounded() {
+        let mut encoder = monitor_app();
+        encoder.audio_track_selected = 8;
+        let (tx, _rx) = mpsc::channel();
+        dispatch_encoder_input(
+            crate::pads::EncoderAction::Down,
+            &mut encoder,
+            Path::new("/none"),
+            &tx,
+            false,
+        );
+        let mut keyboard = monitor_app();
+        keyboard.audio_track_selected = 8;
+        key(KeyCode::Right, &mut keyboard, Path::new("/none"), &tx);
+        assert_eq!(encoder.audio_track_selected, keyboard.audio_track_selected);
+        encoder.audio_track_selected = 0;
+        encoder.move_monitor_channel(-1);
+        assert_eq!(encoder.audio_track_selected, 0);
+        encoder.audio_track_selected = 17;
+        encoder.move_monitor_channel(1);
+        assert_eq!(encoder.audio_track_selected, 17);
+
+        let mut pointer = monitor_app();
+        render_app(&mut pointer, 40, 13);
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: monitor_column(17),
+                row: 5,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut pointer,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(pointer.audio_track_selected, 17);
+    }
+
+    #[test]
+    fn monitor_selection_and_page_survive_navigation_without_changing_visibility() {
+        let mut app = monitor_app();
+        app.audio_track_selected = 12;
+        app.select_menu_page(3);
+        let before = render_app(&mut app, 40, 13);
+        let before_dots = before
+            .content
+            .iter()
+            .filter(|cell| cell.symbol == "●")
+            .count();
+        app.set_screen(Screen::AudioRecorder);
+        app.open_multichannel_monitor();
+        let after = render_app(&mut app, 40, 13);
+        assert_eq!(app.audio_track_selected, 12);
+        assert_eq!(app.menu_page(), 3);
+        assert_eq!(
+            after
+                .content
+                .iter()
+                .filter(|cell| cell.symbol == "●")
+                .count(),
+            before_dots
+        );
+        assert!(!buffer_text(&after).contains("Source "));
+        assert!(!buffer_text(&after).contains(" dBFS"));
+    }
+
+    #[test]
+    fn replacing_project_resets_monitor_selection_page_and_holds() {
+        let mut app = monitor_app();
+        app.audio_track_selected = 17;
+        app.select_menu_page(3);
+        app.confirm_new_project = true;
+        app.new_project();
+        assert_eq!(app.audio_track_selected, 0);
+        assert_eq!(
+            app.menu_page_by_screen[Screen::MultichannelMonitor.index()],
+            0
+        );
+        assert!(app
+            .multichannel_meter
+            .levels(Instant::now())
+            .iter()
+            .all(|level| level.rms_dbfs <= -120.0 && level.peak_dbfs <= -120.0));
+        let source = include_str!("ui.rs");
+        let load = source
+            .split("fn load_song_named")
+            .nth(1)
+            .and_then(|text| text.split("fn ").next())
+            .expect("load-song source");
+        assert!(load.contains("reset_multichannel_monitor_context()"));
+    }
+
+    #[test]
+    fn monitor_labels_distinguish_silence_missing_fault_and_clip() {
+        let mut silence = monitor_app();
+        let mut silent_status = silence.audio_recorder.status();
+        for track in &mut silent_status.tracks {
+            track.rms_dbfs = None;
+            track.sample_peak_dbfs = None;
+        }
+        silence.audio_recorder.set_preview_status(silent_status);
+        silence
+            .multichannel_meter
+            .seed(silence.audio_recorder.meter_snapshot(), Instant::now());
+        let silent = render_app(&mut silence, 40, 13);
+        assert_eq!(buffer_cell(&silent, monitor_column(2), 10).symbol, " ");
+
+        let mut fault = screenshot_app(RuntimeConfig::default());
+        configure_special_screenshot_scenario(
+            &mut fault,
+            ScreenshotSpecialScenario::InputMonitorFault,
+        );
+        let fault_buffer = render_app(&mut fault, 40, 13);
+        assert_eq!(
+            buffer_cell(&fault_buffer, monitor_column(2), 10).symbol,
+            "M"
+        );
+        assert_eq!(
+            buffer_cell(&fault_buffer, monitor_column(14), 10).symbol,
+            "F"
+        );
+
+        let mut clip = screenshot_app(RuntimeConfig::default());
+        configure_special_screenshot_scenario(
+            &mut clip,
+            ScreenshotSpecialScenario::InputMonitorPeaks,
+        );
+        let clip_buffer = render_app(&mut clip, 40, 13);
+        assert_eq!(
+            buffer_cell(&clip_buffer, monitor_column(16), 10).symbol,
+            "C"
+        );
+        assert!(row_text(&clip_buffer, 12).contains("CLIP CH 17"));
+    }
+
+    #[test]
+    fn monitor_leds_use_dark_unlit_and_brighter_same_color_peak() {
+        let mut app = monitor_app();
+        let mut status = app.audio_recorder.status();
+        status.tracks[0].rms_dbfs = None;
+        status.tracks[0].sample_peak_dbfs = None;
+        status.tracks[1].rms_dbfs = Some(-18.0);
+        status.tracks[1].sample_peak_dbfs = Some(-3.0);
+        app.audio_recorder.set_preview_status(status);
+        app.multichannel_meter
+            .seed(app.audio_recorder.meter_snapshot(), Instant::now());
+        let buffer = render_app(&mut app, 40, 13);
+        assert_eq!(
+            buffer_cell(&buffer, monitor_column(0), 9).fg,
+            Color::DarkGray
+        );
+        assert_eq!(buffer_cell(&buffer, monitor_column(1), 9).fg, Color::Green);
+        assert_eq!(
+            buffer_cell(&buffer, monitor_column(1), 2).fg,
+            Color::LightYellow
+        );
+        assert!(buffer_cell(&buffer, monitor_column(1), 2)
+            .modifier
+            .contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn monitor_record_and_stop_keep_exact_shared_transport_cell() {
+        let mut record = screenshot_app(RuntimeConfig::default());
+        configure_special_screenshot_scenario(
+            &mut record,
+            ScreenshotSpecialScenario::InputMonitorRecord,
+        );
+        let record_buffer = render_app(&mut record, 40, 13);
+        assert_eq!(buffer_cell(&record_buffer, 0, 12).symbol, "●");
+        assert!(matches!(
+            buffer_cell(&record_buffer, 0, 12).fg,
+            Color::Red | Color::LightRed
+        ));
+
+        let mut stop = monitor_app();
+        let stop_buffer = render_app(&mut stop, 40, 13);
+        assert_eq!(buffer_cell(&stop_buffer, 0, 12).symbol, "■");
+        assert_eq!(buffer_cell(&stop_buffer, 0, 12).fg, Color::White);
+    }
+
+    #[test]
+    fn input_monitor_falls_back_to_shared_compact_layout_below_native_geometry() {
+        let mut app = monitor_app();
+        let buffer = render_app(&mut app, 38, 12);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("COMPACT"));
+        assert!(text.contains("requires exact 40×13"));
+        assert!(row_text(&buffer, 11).starts_with('■'));
+        assert!(row_text(&buffer, 9).contains("1:TA"));
+        assert!(row_text(&buffer, 10).contains("[SETUP]"));
     }
 
     #[test]

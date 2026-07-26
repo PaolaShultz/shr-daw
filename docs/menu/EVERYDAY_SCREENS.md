@@ -207,7 +207,8 @@ separate below the two controller rows. It never starts or restarts JACK.
 ![Populated Audio recorder screen with the RECORD controller page](../images/menu/audio-recorder-record.png)
 
 `RECORD` starts all armed tracks at one callback boundary. `ARM` toggles the
-selected track. An armed missing source prevents a take from starting.
+selected track. `MONITOR` opens the separate 18-channel Levels overview. An
+armed missing source prevents a take from starting.
 
 ### TRACK — choose the inputs
 
@@ -231,6 +232,69 @@ discovers current JACK audio sources without changing assignments.
 
 `PANIC` stops owned activity. `HELP` opens help. `EXIT` returns Home without
 silently changing recorder state.
+
+## 18-channel input Levels
+
+This native overview keeps exactly 18 recording inputs visible as three groups
+of six. It is not a route/setup inspector, the Synth/Loop/Input final-bus MTR,
+Live Patterns, Loop Mix, or a full mixer strip.
+
+![Native 18-channel Levels overview](../images/menu/input-monitor-take.png)
+
+Rows 2–10 are nine circular-LED thresholds at −48, −36, −30, −24, −18, −12,
+−6, −3, and −1 dBFS. Green covers −48 through −18, yellow −12 through −3,
+and red −1. Smoothed RMS fills the column; a brighter LED of the same colour
+holds sample peak and then decays. Normal silence stays dark gray. `M` means a
+configured input is missing, `F` is a meter/callback fault, and held `C` marks
+genuine clipping.
+
+At exact 40×13 the meter columns occupy only columns 1–20 and the visible
+command page only columns 21–40. The two ordinary controller rows are omitted;
+row 13 remains the unchanged shared status renderer. Below native size a
+compact ordinary screen replaces the overview instead of cropping or banking
+channels.
+
+### TAKE — setup and take control
+
+![Levels TAKE command page](../images/menu/input-monitor-take.png)
+
+`SETUP` returns to Audio Recorder naming/routing. `RECORD`, literal `STOP`, and
+`RESET` start a take, stop it, or clear presentation holds. Keyboard `u`, `r`,
+`s`, and `x` are equivalent.
+
+### CHANNEL — select without hiding
+
+![Levels CHANNEL command page](../images/menu/input-monitor-channel.png)
+
+Encoder turn, Left/Right, `j`/`k`, `PREV`/`NEXT`, or a pointer click selects a
+channel without changing the 18 visible meters. Encoder click, Enter, Space,
+or `ARM` toggles only that channel; `REFRESH` resolves remembered exact sources.
+
+### SYS — literal safety
+
+![Levels SYS command page](../images/menu/input-monitor-sys.png)
+
+`STOP`, `PANIC`, `HELP`, and `EXIT` remain visible; literal `STOP` is also on
+TAKE. Panic also closes the recorder-owned meter client and follows global All
+Notes Off. Monitoring and recording clients are mutually exclusive, and
+shutdown closes either one.
+
+### Populated level and state examples
+
+![Quiet but active input](../images/menu/input-monitor-quiet.png)
+![Nominal recording input](../images/shr-daw-input-monitor.png)
+![Yellow, red, and clipped peaks](../images/menu/input-monitor-peaks.png)
+![Missing and faulted inputs](../images/menu/input-monitor-fault.png)
+![First channel selected](../images/menu/input-monitor-selected-first.png)
+![Middle channel selected](../images/menu/input-monitor-selected-middle.png)
+![Last channel selected](../images/menu/input-monitor-selected-last.png)
+![Record transport status](../images/menu/input-monitor-record.png)
+![Stop transport status](../images/menu/input-monitor-stop.png)
+![Compact fallback](../images/menu/input-monitor-compact.png)
+
+Selection and command page survive ordinary navigation and reset with a new or
+loaded Project. The right side is operational command space, not a numeric
+RMS/peak, route, or metadata detail panel.
 
 ## Performance meter
 

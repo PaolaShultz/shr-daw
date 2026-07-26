@@ -19,8 +19,9 @@ routing, firmware, clock, or other state was read or changed, so there is
 nothing from that loan to restore and no MR18 evidence to preserve as a pass or
 failure.
 
-The current synchronized recorder supplies the 18-channel capture foundation;
-the current performance bus supplies stereo playback, not 18 independent
+The current synchronized recorder supplies the 18-channel capture foundation
+and a fixed all-input Levels overview; neither is an MR18 hardware result. The
+current performance bus supplies stereo playback, not 18 independent
 playback channels. The 18-output path and its hardware-independent identity,
 failure, retry, and result collection must therefore be implemented and
 rehearsed before the next loan. Do not use borrowed-hardware time to invent

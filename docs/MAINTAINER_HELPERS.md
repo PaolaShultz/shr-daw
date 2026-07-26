@@ -469,7 +469,10 @@ The default command uses the installed Rust 1.85 toolchain when present and
 runs `shr screenshots`. Rust renders the real application `draw` function into
 40×13 ratatui test buffers seeded by the deterministic `ScreenshotScenario`
 and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The current manifest
-contains 112 overview/menu/context/overlay frames. JSON supplies
+contains 125 overview/menu/context/overlay frames. The compact Levels fallback
+is rendered at 38×12 and padded with black to the manifest's 40×13 canvas so
+the same renderer can prove the non-native path without changing image
+dimensions. JSON supplies
 each cell's symbol, foreground,
 background, and bold state. No JACK server, engine, MIDI port, or private user
 file is involved.

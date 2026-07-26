@@ -93,6 +93,13 @@ smoothed level and bipolar DJ-style filtering.
 Map exact JACK inputs and record one callback-aligned take as separate mono
 stems.
 
+### 18-channel input levels
+
+<img src="docs/images/shr-daw-input-monitor.png" alt="All 18 recording inputs shown as three groups of six vertical meters" width="100%">
+
+Compare all 18 recording levels at once while keeping setup, routing, and the
+final-bus mixer separate.
+
 ### Performance bus
 
 <img src="docs/images/shr-daw-performance-meter.png" alt="Final performance bus with source, limiter, meter, and recording status" width="100%">

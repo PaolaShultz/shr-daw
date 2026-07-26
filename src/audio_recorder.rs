@@ -18,6 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const MAX_CAPTURE_TRACKS: usize = 64;
+pub const MONITOR_CHANNELS: usize = 18;
 const MANIFEST_VERSION: u32 = 1;
 const WAV_MAX_DATA_BYTES: u64 = u32::MAX as u64 - 36;
 const MONO_WAV_MAX_FRAMES: u64 = WAV_MAX_DATA_BYTES / 3;
@@ -33,6 +34,79 @@ const FAULT_SOURCE_LOST: u32 = 4;
 const FAULT_XRUN: u32 = 5;
 const FAULT_NULL_BUFFER: u32 = 6;
 const FAULT_WRITER: u32 = 7;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RecorderMeterSample {
+    pub rms: f32,
+    pub sample_peak: f32,
+    pub clip_count: u64,
+    pub non_finite_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RecorderMeterSnapshot {
+    pub channels: [RecorderMeterSample; MONITOR_CHANNELS],
+    pub sequence: u64,
+}
+
+struct RecorderMeterPublication {
+    sequence: AtomicU64,
+    rms: [AtomicU32; MONITOR_CHANNELS],
+    sample_peak: [AtomicU32; MONITOR_CHANNELS],
+    clips: [AtomicU64; MONITOR_CHANNELS],
+    non_finite: [AtomicU64; MONITOR_CHANNELS],
+}
+
+impl Default for RecorderMeterPublication {
+    fn default() -> Self {
+        Self {
+            sequence: AtomicU64::new(0),
+            rms: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            sample_peak: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            clips: std::array::from_fn(|_| AtomicU64::new(0)),
+            non_finite: std::array::from_fn(|_| AtomicU64::new(0)),
+        }
+    }
+}
+
+impl RecorderMeterPublication {
+    fn reset(&self) {
+        self.sequence.fetch_add(1, Ordering::AcqRel);
+        for index in 0..MONITOR_CHANNELS {
+            self.rms[index].store(0.0f32.to_bits(), Ordering::Relaxed);
+            self.sample_peak[index].store(0.0f32.to_bits(), Ordering::Relaxed);
+            self.clips[index].store(0, Ordering::Relaxed);
+            self.non_finite[index].store(0, Ordering::Relaxed);
+        }
+        self.sequence.fetch_add(1, Ordering::Release);
+    }
+
+    fn snapshot(&self) -> RecorderMeterSnapshot {
+        let mut result = RecorderMeterSnapshot::default();
+        // A callback can overlap the UI read. Three bounded attempts avoid an
+        // unbounded realtime-adjacent spin; the final coherent-or-latest copy
+        // is still finite and safe if the callback remains active throughout.
+        for _ in 0..3 {
+            let before = self.sequence.load(Ordering::Acquire);
+            if before & 1 != 0 {
+                continue;
+            }
+            result.channels = std::array::from_fn(|index| RecorderMeterSample {
+                rms: f32::from_bits(self.rms[index].load(Ordering::Relaxed)),
+                sample_peak: f32::from_bits(self.sample_peak[index].load(Ordering::Relaxed)),
+                clip_count: self.clips[index].load(Ordering::Relaxed),
+                non_finite_count: self.non_finite[index].load(Ordering::Relaxed),
+            });
+            let after = self.sequence.load(Ordering::Acquire);
+            result.sequence = after;
+            if before == after && after & 1 == 0 {
+                return result;
+            }
+        }
+        result.sequence = self.sequence.load(Ordering::Acquire);
+        result
+    }
+}
 
 struct InterleavedRing {
     samples: Box<[UnsafeCell<f32>]>,
@@ -517,6 +591,10 @@ pub struct RecorderTrackStatus {
     pub preferred_source: String,
     pub resolved: bool,
     pub peak_dbfs: Option<f32>,
+    pub rms_dbfs: Option<f32>,
+    pub sample_peak_dbfs: Option<f32>,
+    pub clipped: bool,
+    pub non_finite: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -555,6 +633,8 @@ struct CallbackData {
     port_ids: Box<[u32]>,
     buffers: Box<[UnsafeCell<*const f32>]>,
     peaks: Arc<[AtomicU32]>,
+    meter_channels: Box<[usize]>,
+    meter: Arc<RecorderMeterPublication>,
     maximum_callback_frames: usize,
     port_get_buffer: PortGetBuffer,
 }
@@ -565,6 +645,8 @@ pub struct AudioRecorder {
     available_sources: Vec<String>,
     status: Arc<Mutex<SharedStatus>>,
     active: Option<Active>,
+    monitor: Option<MonitorActive>,
+    meter: Arc<RecorderMeterPublication>,
 }
 
 struct Active {
@@ -581,9 +663,31 @@ struct Active {
     callback_data: Box<CallbackData>,
 }
 
+struct MonitorCallbackData {
+    enabled: Arc<AtomicBool>,
+    fault: Arc<AtomicU32>,
+    callback_violations: Arc<AtomicU64>,
+    ports: Box<[*mut JackPort]>,
+    port_ids: Box<[u32]>,
+    buffers: Box<[UnsafeCell<*const f32>]>,
+    meter_channels: Box<[usize]>,
+    meter: Arc<RecorderMeterPublication>,
+    maximum_callback_frames: usize,
+    port_get_buffer: PortGetBuffer,
+}
+unsafe impl Send for MonitorCallbackData {}
+
+struct MonitorActive {
+    jack: JackClient,
+    enabled: Arc<AtomicBool>,
+    fault: Arc<AtomicU32>,
+    callback_data: Box<MonitorCallbackData>,
+}
+
 impl AudioRecorder {
     pub fn new(config: AudioCaptureConfig, available_sources: Vec<String>) -> Self {
         let public = idle_status(&config, &available_sources);
+        let meter = Arc::new(RecorderMeterPublication::default());
         Self {
             config,
             available_sources,
@@ -592,6 +696,8 @@ impl AudioRecorder {
                 public,
             })),
             active: None,
+            monitor: None,
+            meter,
         }
     }
 
@@ -631,8 +737,131 @@ impl AudioRecorder {
                 public.incomplete = true;
                 public.error = Some(fault_message(fault).into());
             }
+        } else if let Some(monitor) = &self.monitor {
+            let fault = monitor.fault.load(Ordering::Acquire);
+            if fault != FAULT_NONE && public.error.is_none() {
+                public.error = Some(fault_message(fault).into());
+            }
+        }
+        let meter = self.meter.snapshot();
+        for (track, sample) in public
+            .tracks
+            .iter_mut()
+            .take(MONITOR_CHANNELS)
+            .zip(meter.channels)
+        {
+            track.rms_dbfs = amplitude_dbfs(sample.rms);
+            track.sample_peak_dbfs = amplitude_dbfs(sample.sample_peak);
+            track.clipped = sample.clip_count > 0 || sample.sample_peak >= 1.0;
+            track.non_finite = sample.non_finite_count > 0;
         }
         public
+    }
+
+    pub fn meter_snapshot(&self) -> RecorderMeterSnapshot {
+        self.meter.snapshot()
+    }
+
+    pub fn monitoring(&self) -> bool {
+        self.monitor.is_some()
+    }
+
+    pub fn start_monitoring(&mut self) -> Result<()> {
+        if self.active.is_some() {
+            return Ok(());
+        }
+        if self.monitor.is_some() {
+            return Ok(());
+        }
+        let configured = self.config.effective_tracks();
+        let monitored = configured
+            .iter()
+            .take(MONITOR_CHANNELS)
+            .enumerate()
+            .filter(|(_, track)| {
+                !track.preferred_source.is_empty()
+                    && self
+                        .available_sources
+                        .iter()
+                        .any(|source| source == &track.preferred_source)
+            })
+            .map(|(index, track)| (index, track.clone()))
+            .collect::<Vec<_>>();
+        if monitored.is_empty() {
+            bail!("no resolved recording inputs to monitor");
+        }
+        self.meter.reset();
+        let enabled = Arc::new(AtomicBool::new(false));
+        let fault = Arc::new(AtomicU32::new(FAULT_NONE));
+        let callback_violations = Arc::new(AtomicU64::new(0));
+        let mut jack = JackClient::open(&self.config.client_name)?;
+        let mut ports = Vec::with_capacity(monitored.len());
+        let mut port_ids = Vec::with_capacity(monitored.len());
+        for (channel, _) in &monitored {
+            let port = jack
+                .register_audio_port(&format!("meter_{:02}", channel + 1), PortDirection::Input)?;
+            port_ids.push(jack.port_id(port)?);
+            ports.push(port);
+        }
+        let mut callback_data = Box::new(MonitorCallbackData {
+            enabled: Arc::clone(&enabled),
+            fault: Arc::clone(&fault),
+            callback_violations,
+            ports: ports.into_boxed_slice(),
+            port_ids: port_ids.into_boxed_slice(),
+            buffers: (0..monitored.len())
+                .map(|_| UnsafeCell::new(std::ptr::null()))
+                .collect(),
+            meter_channels: monitored
+                .iter()
+                .map(|(channel, _)| *channel)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            meter: Arc::clone(&self.meter),
+            maximum_callback_frames: self.config.maximum_callback_frames,
+            port_get_buffer: jack.port_get_buffer(),
+        });
+        let callback_pointer = ((&mut *callback_data) as *mut MonitorCallbackData).cast();
+        // SAFETY: callback data remains boxed until JACK deactivation returns.
+        unsafe {
+            jack.set_process_callback(monitor_process_callback, callback_pointer)?;
+            jack.set_shutdown_callback(monitor_shutdown_callback, callback_pointer);
+            jack.set_xrun_callback(monitor_xrun_callback, callback_pointer)?;
+            jack.set_port_connect_callback(monitor_port_connect_callback, callback_pointer)?;
+        }
+        jack.activate().context("activate JACK input monitor")?;
+        for ((_, track), port) in monitored.iter().zip(callback_data.ports.iter()) {
+            if let Err(error) = jack.connect_external_to_port(&track.preferred_source, *port) {
+                jack.deactivate();
+                return Err(error).with_context(|| {
+                    format!(
+                        "connect monitored JACK source {} for {}",
+                        track.preferred_source, track.label
+                    )
+                });
+            }
+        }
+        enabled.store(true, Ordering::Release);
+        if let Ok(mut status) = self.status.lock() {
+            status.public.error = None;
+            status.public.incomplete = false;
+        }
+        self.monitor = Some(MonitorActive {
+            jack,
+            enabled,
+            fault,
+            callback_data,
+        });
+        Ok(())
+    }
+
+    pub fn stop_monitoring(&mut self) {
+        let Some(mut monitor) = self.monitor.take() else {
+            return;
+        };
+        monitor.enabled.store(false, Ordering::Release);
+        monitor.jack.deactivate();
+        drop(monitor.callback_data);
     }
 
     pub fn update_configuration(
@@ -643,8 +872,10 @@ impl AudioRecorder {
         if self.active.is_some() {
             bail!("stop recording before changing capture tracks");
         }
+        self.stop_monitoring();
         self.config = config;
         self.available_sources = available_sources;
+        self.meter.reset();
         if let Ok(mut status) = self.status.lock() {
             status.started = Instant::now();
             status.public = idle_status(&self.config, &self.available_sources);
@@ -654,6 +885,17 @@ impl AudioRecorder {
 
     #[doc(hidden)]
     pub(crate) fn set_preview_status(&self, status: RecorderStatus) {
+        self.meter.reset();
+        self.meter.sequence.fetch_add(1, Ordering::AcqRel);
+        for (index, track) in status.tracks.iter().take(MONITOR_CHANNELS).enumerate() {
+            let rms = track.rms_dbfs.map(dbfs_amplitude).unwrap_or(0.0);
+            let peak = track.sample_peak_dbfs.map(dbfs_amplitude).unwrap_or(0.0);
+            self.meter.rms[index].store(rms.to_bits(), Ordering::Relaxed);
+            self.meter.sample_peak[index].store(peak.to_bits(), Ordering::Relaxed);
+            self.meter.clips[index].store(u64::from(track.clipped), Ordering::Relaxed);
+            self.meter.non_finite[index].store(u64::from(track.non_finite), Ordering::Relaxed);
+        }
+        self.meter.sequence.fetch_add(1, Ordering::Release);
         if let Ok(mut shared) = self.status.lock() {
             shared.started = Instant::now() - status.elapsed;
             shared.public = status;
@@ -672,11 +914,21 @@ impl AudioRecorder {
         if self.active.is_some() {
             bail!("audio recording is already active");
         }
+        self.stop_monitoring();
         let configured = self.config.effective_tracks();
         let armed = configured
             .iter()
             .filter(|track| track.armed)
             .cloned()
+            .collect::<Vec<_>>();
+        let meter_channels = armed
+            .iter()
+            .map(|track| {
+                configured
+                    .iter()
+                    .position(|candidate| candidate.id == track.id)
+                    .unwrap_or(MONITOR_CHANNELS)
+            })
             .collect::<Vec<_>>();
         if armed.is_empty() {
             bail!("no recording tracks are armed");
@@ -720,6 +972,7 @@ impl AudioRecorder {
             .map(|_| AtomicU32::new(0.0f32.to_bits()))
             .collect::<Vec<_>>()
             .into();
+        self.meter.reset();
 
         let mut jack = JackClient::open(&self.config.client_name)?;
         let sample_rate = jack.sample_rate();
@@ -748,6 +1001,8 @@ impl AudioRecorder {
                 .map(|_| UnsafeCell::new(std::ptr::null()))
                 .collect(),
             peaks: Arc::clone(&peaks),
+            meter_channels: meter_channels.into_boxed_slice(),
+            meter: Arc::clone(&self.meter),
             maximum_callback_frames: self.config.maximum_callback_frames,
             port_get_buffer: jack.port_get_buffer(),
         });
@@ -907,6 +1162,7 @@ impl AudioRecorder {
 impl Drop for AudioRecorder {
     fn drop(&mut self) {
         let _ = self.stop();
+        self.stop_monitoring();
     }
 }
 
@@ -931,8 +1187,24 @@ fn status_tracks(tracks: &[CaptureTrackConfig], sources: &[String]) -> Vec<Recor
                     .iter()
                     .any(|source| source == &track.preferred_source),
             peak_dbfs: None,
+            rms_dbfs: None,
+            sample_peak_dbfs: None,
+            clipped: false,
+            non_finite: false,
         })
         .collect()
+}
+
+fn amplitude_dbfs(amplitude: f32) -> Option<f32> {
+    (amplitude.is_finite() && amplitude > 0.0).then(|| 20.0 * amplitude.log10())
+}
+
+fn dbfs_amplitude(dbfs: f32) -> f32 {
+    if dbfs.is_finite() {
+        10.0f32.powf(dbfs / 20.0)
+    } else {
+        0.0
+    }
 }
 
 #[derive(Clone)]
@@ -1396,9 +1668,15 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
         let buffer = unsafe { *buffer.get() };
         let mut peak = 0.0f32;
         for frame in 0..frames {
-            peak = peak.max(unsafe { *buffer.add(frame) }.abs());
+            let sample = unsafe { *buffer.add(frame) };
+            if sample.is_finite() {
+                peak = peak.max(sample.abs());
+            }
         }
         data.peaks[channel].fetch_max(peak.to_bits(), Ordering::Relaxed);
+    }
+    unsafe {
+        publish_meter_block(&data.meter, &data.meter_channels, &data.buffers, frames);
     }
     if !unsafe { data.ring.push_cells(&data.buffers, frames) } {
         set_fault(data, FAULT_OVERFLOW);
@@ -1407,6 +1685,152 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
     data.accepted_frames
         .fetch_add(frames as u64, Ordering::Relaxed);
     0
+}
+
+unsafe extern "C" fn monitor_process_callback(frames: c_uint, argument: *mut c_void) -> c_int {
+    // SAFETY: the owner keeps callback data pinned until deactivation returns.
+    let data = unsafe { &*argument.cast::<MonitorCallbackData>() };
+    if !data.enabled.load(Ordering::Acquire) {
+        return 0;
+    }
+    let frames = frames as usize;
+    if frames == 0 || frames > data.maximum_callback_frames {
+        data.callback_violations.fetch_add(1, Ordering::Relaxed);
+        data.fault
+            .compare_exchange(
+                FAULT_NONE,
+                FAULT_CALLBACK_SIZE,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            )
+            .ok();
+        return 0;
+    }
+    for (index, port) in data.ports.iter().enumerate() {
+        unsafe {
+            *data.buffers[index].get() =
+                (data.port_get_buffer)(*port, frames as c_uint).cast::<f32>();
+        }
+    }
+    if data
+        .buffers
+        .iter()
+        .any(|buffer| unsafe { (*buffer.get()).is_null() })
+    {
+        data.fault
+            .compare_exchange(
+                FAULT_NONE,
+                FAULT_NULL_BUFFER,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            )
+            .ok();
+        return 0;
+    }
+    unsafe {
+        publish_meter_block(&data.meter, &data.meter_channels, &data.buffers, frames);
+    }
+    0
+}
+
+unsafe extern "C" fn monitor_shutdown_callback(argument: *mut c_void) {
+    let data = unsafe { &*argument.cast::<MonitorCallbackData>() };
+    if data.enabled.load(Ordering::Acquire) {
+        data.fault
+            .compare_exchange(
+                FAULT_NONE,
+                FAULT_JACK_SHUTDOWN,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            )
+            .ok();
+    }
+}
+
+unsafe extern "C" fn monitor_xrun_callback(argument: *mut c_void) -> c_int {
+    let data = unsafe { &*argument.cast::<MonitorCallbackData>() };
+    if data.enabled.load(Ordering::Acquire) {
+        data.fault
+            .compare_exchange(FAULT_NONE, FAULT_XRUN, Ordering::AcqRel, Ordering::Relaxed)
+            .ok();
+    }
+    0
+}
+
+unsafe extern "C" fn monitor_port_connect_callback(
+    first: c_uint,
+    second: c_uint,
+    connected: c_int,
+    argument: *mut c_void,
+) {
+    if connected != 0 {
+        return;
+    }
+    let data = unsafe { &*argument.cast::<MonitorCallbackData>() };
+    if !data.enabled.load(Ordering::Acquire) {
+        return;
+    }
+    if data
+        .port_ids
+        .iter()
+        .any(|port| *port == first || *port == second)
+    {
+        data.fault
+            .compare_exchange(
+                FAULT_NONE,
+                FAULT_SOURCE_LOST,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            )
+            .ok();
+    }
+}
+
+unsafe fn publish_meter_block(
+    meter: &RecorderMeterPublication,
+    meter_channels: &[usize],
+    buffers: &[UnsafeCell<*const f32>],
+    frames: usize,
+) {
+    meter.sequence.fetch_add(1, Ordering::AcqRel);
+    for (source, channel) in buffers.iter().zip(meter_channels.iter().copied()) {
+        if channel >= MONITOR_CHANNELS {
+            continue;
+        }
+        let buffer = unsafe { *source.get() };
+        let mut sum_squares = 0.0f64;
+        let mut peak = 0.0f32;
+        let mut clips = 0u64;
+        let mut non_finite = 0u64;
+        for frame in 0..frames {
+            let sample = unsafe { *buffer.add(frame) };
+            if sample.is_finite() {
+                let absolute = sample.abs();
+                peak = peak.max(absolute);
+                clips = clips.saturating_add(u64::from(absolute >= 1.0));
+                let sample = f64::from(sample);
+                sum_squares += sample * sample;
+            } else {
+                non_finite = non_finite.saturating_add(1);
+            }
+        }
+        let rms = if frames == 0 {
+            0.0
+        } else {
+            (sum_squares / frames as f64)
+                .sqrt()
+                .min(f64::from(f32::MAX)) as f32
+        };
+        meter.rms[channel].store(rms.to_bits(), Ordering::Relaxed);
+        meter.sample_peak[channel].store(peak.to_bits(), Ordering::Relaxed);
+        if clips > 0 {
+            meter.clips[channel].fetch_add(clips, Ordering::Relaxed);
+        }
+        if non_finite > 0 {
+            meter.non_finite[channel].fetch_add(non_finite, Ordering::Relaxed);
+        }
+    }
+    meter.sequence.fetch_add(1, Ordering::Release);
 }
 
 unsafe extern "C" fn shutdown_callback(argument: *mut c_void) {
@@ -2581,6 +3005,8 @@ mod tests {
             port_ids: vec![42].into_boxed_slice(),
             buffers: Vec::<UnsafeCell<*const f32>>::new().into_boxed_slice(),
             peaks: Vec::<AtomicU32>::new().into(),
+            meter_channels: Vec::new().into_boxed_slice(),
+            meter: Arc::new(RecorderMeterPublication::default()),
             maximum_callback_frames: 256,
             port_get_buffer: dummy_buffer,
         };
@@ -2607,6 +3033,64 @@ mod tests {
             port_connect_callback(7, 42, 0, (&data as *const CallbackData).cast_mut().cast())
         };
         assert_eq!(fault.load(Ordering::Acquire), FAULT_SOURCE_LOST);
+    }
+
+    #[test]
+    fn fixed_18_channel_publication_reports_rms_peak_clip_and_non_finite() {
+        let first = [0.0f32, 0.5, -0.5, 1.0];
+        let second = [f32::NAN, f32::INFINITY, 0.25, -0.25];
+        let buffers = [
+            UnsafeCell::new(first.as_ptr()),
+            UnsafeCell::new(second.as_ptr()),
+        ];
+        let publication = RecorderMeterPublication::default();
+        unsafe {
+            publish_meter_block(&publication, &[0, 17], &buffers, first.len());
+        }
+        let snapshot = publication.snapshot();
+        assert_eq!(snapshot.channels.len(), MONITOR_CHANNELS);
+        assert_eq!(snapshot.sequence & 1, 0);
+        assert!((snapshot.channels[0].rms - (0.375f32).sqrt()).abs() < 1.0e-6);
+        assert_eq!(snapshot.channels[0].sample_peak, 1.0);
+        assert_eq!(snapshot.channels[0].clip_count, 1);
+        assert_eq!(snapshot.channels[17].non_finite_count, 2);
+        assert!(snapshot.channels[17].rms.is_finite());
+        assert!(snapshot.channels[17].sample_peak.is_finite());
+        assert_eq!(snapshot.channels[1], RecorderMeterSample::default());
+    }
+
+    #[test]
+    fn callbacks_remain_allocation_lock_io_format_and_unbounded_loop_free() {
+        let source = include_str!("audio_recorder.rs");
+        for name in ["process_callback", "monitor_process_callback"] {
+            let callback = source
+                .split(&format!("fn {name}"))
+                .nth(1)
+                .and_then(|text| text.split("\n}\n").next())
+                .expect("callback source");
+            for forbidden in [
+                ".lock(", "Vec::", "vec![", "format!(", "File::", "fs::", "while ",
+            ] {
+                assert!(
+                    !callback.contains(forbidden),
+                    "{name} contains realtime-forbidden {forbidden}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn monitor_and_recording_clients_are_mutually_exclusive_in_start_path() {
+        let source = include_str!("audio_recorder.rs");
+        let start = source
+            .split("pub fn start(&mut self")
+            .nth(1)
+            .and_then(|text| text.split("pub fn stop(&mut self").next())
+            .expect("recording start source");
+        assert!(
+            start.find("self.stop_monitoring()").unwrap() < start.find("JackClient::open").unwrap()
+        );
+        assert!(!start.contains("self.monitor = Some"));
     }
 
     #[test]

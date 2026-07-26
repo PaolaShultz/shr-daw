@@ -47,6 +47,16 @@ rejected when malformed or out of range. Commands, clients, paths, and ports
 remain data: copy the template and change them for the actual machine instead
 of editing Rust constants.
 
+The 18-channel Levels overview needs no additional key and adds no Project
+data. It uses the first 18 ordered `capture.track` records and their exact
+resolved sources. Fewer configured tracks remain visibly missing; extra tracks
+still belong to Audio Recorder setup/capture but are outside this fixed native
+overview. The recorder-owned meter and take clients are mutually exclusive and
+use `capture.client`; neither guesses a source or changes unrelated routes.
+Keyboard actions are built in, while physical menu/encoder messages continue
+to come from the selected controller profile or learned `controller.conf`
+mapping rather than a hardware name compiled into Rust.
+
 FluidSynth loads every valid repeated `fluidsynth.soundfont` once when its
 owned process starts. List order assigns each file a non-overlapping effective
 MIDI-bank offset. Saved software routes include the configured SoundFont index,

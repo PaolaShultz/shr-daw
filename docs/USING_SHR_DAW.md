@@ -54,7 +54,9 @@ press -> hear -> see notes -> read a chord name -> change -> compare -> ask why
 ## Screens
 
 Home opens Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing,
-Effects, Ideas, or Help. The master rotary browses the current content; press
+Effects, Ideas, or Help. Recorder's Audio screen owns setup, naming, assignment,
+and take routing; its Levels screen keeps all 18 recording inputs visible at
+once. The master rotary browses the current content; press
 it to select or confirm. Back returns one level, and controller MIDI never
 quits the application.
 
@@ -120,8 +122,40 @@ The Audio Recorder writes every armed exact source as a separate mono 24-bit
 WAV with one shared timeline and manifest. Select a musician-friendly track,
 assign a discovered source deliberately, name it, and arm it. A missing exact
 preference remains `missing` and blocks start until assigned or disarmed.
-The screen shows elapsed time, armed count, selected-track level, writer
+The setup screen shows elapsed time, armed count, selected-track level, writer
 high-water, drops, overflows, xruns, saved path, and errors.
+
+Open **MONITOR** from Audio Recorder to see the dedicated 18-channel Levels
+overview. At exactly 40×13 it always shows 18 one-column, nine-LED vertical
+meters as three groups of six. Their thresholds are −48, −36, −30, −24, −18,
+−12, −6, −3, and −1 dBFS: green through −18, yellow from −12 through −3, and
+red at −1. Smoothed RMS fills the meter; a brighter LED of the same threshold
+colour holds sample peak, then decays predictably. A held red `C` marks a real
+clip without making ordinary near-peak yellow or red activity look broken.
+
+The encoder, Left/Right, or `j`/`k` selects a channel without hiding or changing
+any meter. Click/Enter or Space toggles its arm state. The right-hand command
+area has visible TAKE, CHANNEL, and SYS pages for setup, record, literal Stop,
+reset, channel selection/arm/refresh, Panic, Help, and Exit. PageUp/PageDown
+changes that visible page. `r`, `s`, `x`, `u`, and uppercase `S` provide Record,
+Stop, Reset, Setup, and Panic. Selection and page survive ordinary navigation;
+a new or loaded Project resets both.
+
+The native Levels screen alone omits the two usual controller rows so rows
+2–10 can hold all nine LEDs and rows 11–12 can label all channels. Row 13
+remains the normal shared status renderer and command pages remain visible at
+the right. Smaller terminals get an ordinary compact screen with the shared
+controller/status layout instead of a cropped or banked meter.
+
+Silence is nine dark-gray LEDs with a normal channel number. `M` on the label
+means the configured source is missing, `F` means a monitor/callback fault, and
+the shared row gives the useful recovery. The meter client and recording client
+are recorder-owned and mutually exclusive, so the overview adds no duplicate
+route while a take is running. It is visual metering, not audible software
+monitoring, a selected-channel inspector, a route browser, or a full mixer.
+Stop closes the owned take; Panic also stops recorder monitoring and preserves
+normal All Notes Off cleanup. Application shutdown closes whichever recorder
+client it owns.
 
 If recording is interrupted, the temporary `*.take.part` session remains. On
 the next start, recognized mono stems recover only their common complete frames

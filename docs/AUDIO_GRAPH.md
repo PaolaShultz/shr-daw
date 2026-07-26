@@ -154,6 +154,20 @@ The graph plan, filter coefficients, port resolution, delay memory, and all
 callback buffers are prepared before activation. External connection failure
 or rejected validation leaves the old graph and direct route unchanged.
 
+The synchronized raw recorder remains outside this Synth/Loop/Input graph.
+Its dedicated Levels overview opens at most one recorder-owned meter client
+for the first 18 exact configured capture sources. Starting a take deactivates
+that client before activating the recording client; returning to Levels may
+activate metering again only after the take has stopped. It does not add a
+software-audible monitor, duplicate the final-bus input, or touch unrelated
+JACK connections.
+
+The meter callback publishes a fixed 18-channel RMS/sample-peak/clip snapshot
+through atomics. Its channel and frame loops are bounded by 18 and the
+configured maximum callback frames, with no allocation, locks, file access,
+formatting, decoder work, or unbounded retry. UI-only code performs smoothing,
+900 ms peak hold, 24 dB/s decay, clipping hold, colour selection, and text.
+
 ## Initial hard bounds
 
 These are rejection limits, not targets and not silent truncation points:

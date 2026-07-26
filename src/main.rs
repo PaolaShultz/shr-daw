@@ -25,6 +25,7 @@ mod live_performance;
 mod loop_player;
 mod midi;
 mod midi_endpoint;
+mod multichannel_meter;
 mod navigation;
 mod note_lifecycle;
 mod overlay;
