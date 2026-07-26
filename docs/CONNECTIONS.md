@@ -106,9 +106,10 @@ By default, the active engine connects directly to the configured playback
 pair. With the opt-in owned effects graph enabled, that same one engine instead
 passes through source inserts, two aux returns, the master rack, and final
 meter. Activation is transactional and restores the direct path on failure.
-The owned WAV loop joins the graph as one of its three exact stereo sources
-and is removed from direct playback for the duration, preventing a doubled
-path. The raw multitrack recorder remains separate.
+The complete internally summed four-slot Loop Mix joins the graph as one of
+its three exact stereo sources and is removed from direct playback for the
+duration, preventing a doubled path. The raw multitrack recorder remains
+separate.
 
 ## External MIDI instruments
 
@@ -152,8 +153,8 @@ path or its additional CPU work.
 
 Those JACK capture inputs remain available to the raw multitrack recorder. The
 optional owned final bus additionally resolves exactly one configured stereo
-capture pair and software-monitors it alongside the managed synth and owned WAV
-loop. The resulting limited stereo samples feed both playback and the dedicated
+capture pair and software-monitors it alongside the managed synth and complete
+Loop Mix sum. The resulting limited stereo samples feed both playback and the dedicated
 24-bit final-mix recorder. This is not a free-routing mixer and does not add
 per-interface-channel processing.
 

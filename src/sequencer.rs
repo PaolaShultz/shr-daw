@@ -14,8 +14,9 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 6;
+pub const SONG_VERSION: u8 = 7;
 pub const LANES_PER_PAGE: usize = 4;
+pub const LOOP_SLOT_COUNT: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_PATTERNS: usize = 256;
 const MAX_ARRANGEMENT_STEPS: usize = 4096;
@@ -37,7 +38,7 @@ pub struct Song {
     pub name: String,
     pub steps_per_beat: u8,
     pub gate_percent: u8,
-    pub audio_loop: Option<LoopSettings>,
+    pub audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT],
     pub insert_rack: InsertRack,
     pub aux_routing: ProjectAuxRouting,
     pub order: Vec<u16>,
@@ -81,9 +82,33 @@ pub struct LoopSettings {
     pub length_beats: u32,
     /// Placement offset in song beats. Positive values move the loop later.
     pub offset_beats: i32,
+    /// Linear level in thousandths. 1000 is unity; 1500 is the bounded maximum.
+    pub level_x1000: u16,
+    /// Bipolar DJ-filter position in thousandths. Zero is neutral.
+    pub filter_x1000: i16,
 }
 
 impl LoopSettings {
+    pub fn new(
+        file: String,
+        source_bpm_x100: u32,
+        interpretation: BpmInterpretation,
+        start_beat: u32,
+        length_beats: u32,
+        offset_beats: i32,
+    ) -> Self {
+        Self {
+            file,
+            source_bpm_x100,
+            interpretation,
+            start_beat,
+            length_beats,
+            offset_beats,
+            level_x1000: 1000,
+            filter_x1000: 0,
+        }
+    }
+
     pub fn source_bpm(&self) -> f64 {
         f64::from(self.source_bpm_x100) / 100.0
     }
@@ -410,7 +435,7 @@ impl Song {
             name: "untitled".into(),
             steps_per_beat: config.steps_per_beat,
             gate_percent: config.gate_percent,
-            audio_loop: None,
+            audio_loops: std::array::from_fn(|_| None),
             insert_rack: InsertRack::default(),
             aux_routing: ProjectAuxRouting::default(),
             order: vec![0],
@@ -429,7 +454,7 @@ impl Song {
         if self.patterns.is_empty() || self.patterns.len() > MAX_PROJECT_PATTERNS {
             bail!("project needs 1..={MAX_PROJECT_PATTERNS} patterns");
         }
-        if let Some(audio_loop) = &self.audio_loop {
+        for audio_loop in self.audio_loops.iter().flatten() {
             if validate_label(&audio_loop.file, "private loop filename", 255).is_err()
                 || Path::new(&audio_loop.file)
                     .file_name()
@@ -438,6 +463,8 @@ impl Song {
                 || !(2_000..=30_000).contains(&audio_loop.source_bpm_x100)
                 || audio_loop.length_beats == 0
                 || !(-16_384..=16_384).contains(&audio_loop.offset_beats)
+                || audio_loop.level_x1000 > 1_500
+                || !(-1_000..=1_000).contains(&audio_loop.filter_x1000)
             {
                 bail!("invalid private loop settings");
             }
@@ -647,7 +674,7 @@ pub fn save_routing_defaults(path: &Path, pages: &[Page]) -> Result<()> {
         name: "FT2 routing defaults".into(),
         steps_per_beat: 4,
         gate_percent: 80,
-        audio_loop: None,
+        audio_loops: std::array::from_fn(|_| None),
         insert_rack: InsertRack::default(),
         aux_routing: ProjectAuxRouting::default(),
         order: vec![0],
@@ -1245,20 +1272,26 @@ pub fn encode(song: &Song) -> Result<String> {
             .collect::<Vec<_>>()
             .join(",")
     );
-    if let Some(audio_loop) = &song.audio_loop {
+    for (slot, audio_loop) in song.audio_loops.iter().enumerate() {
+        let Some(audio_loop) = audio_loop else {
+            continue;
+        };
         let interpretation = match audio_loop.interpretation {
             BpmInterpretation::Half => "half",
             BpmInterpretation::Normal => "normal",
             BpmInterpretation::Double => "double",
         };
         out.push_str(&format!(
-            "loop={}|{}|{}|{}|{}|{}\n",
+            "loop_slot={}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+            slot + 1,
             escape(&audio_loop.file),
             audio_loop.source_bpm_x100,
             interpretation,
             audio_loop.start_beat,
             audio_loop.length_beats,
-            audio_loop.offset_beats
+            audio_loop.offset_beats,
+            audio_loop.level_x1000,
+            audio_loop.filter_x1000
         ));
     }
     out.push_str(&format!(
@@ -1374,7 +1407,7 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut name = None;
     let mut steps = None;
     let mut gate = None;
-    let mut audio_loop = None;
+    let mut audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT] = std::array::from_fn(|_| None);
     let mut insert_rack = None;
     let mut aux_routing = None;
     let mut order = None;
@@ -1391,27 +1424,47 @@ pub fn decode(text: &str) -> Result<Song> {
             "name" => set_once(&mut name, unescape(value)?, "name")?,
             "steps" => set_once(&mut steps, value.parse()?, "steps")?,
             "gate" => set_once(&mut gate, value.parse()?, "gate")?,
-            "loop" => {
+            "loop" if version <= 6 => {
                 let f = value.split('|').collect::<Vec<_>>();
                 if f.len() != 6 {
                     bail!("invalid loop settings");
                 }
                 set_once(
-                    &mut audio_loop,
-                    LoopSettings {
-                        file: unescape(f[0])?,
-                        source_bpm_x100: f[1].parse()?,
-                        interpretation: match f[2] {
-                            "half" => BpmInterpretation::Half,
-                            "normal" => BpmInterpretation::Normal,
-                            "double" => BpmInterpretation::Double,
-                            _ => bail!("invalid loop BPM interpretation"),
-                        },
-                        start_beat: f[3].parse()?,
-                        length_beats: f[4].parse()?,
-                        offset_beats: f[5].parse()?,
-                    },
+                    &mut audio_loops[0],
+                    LoopSettings::new(
+                        unescape(f[0])?,
+                        f[1].parse()?,
+                        parse_bpm_interpretation(f[2])?,
+                        f[3].parse()?,
+                        f[4].parse()?,
+                        f[5].parse()?,
+                    ),
                     "loop",
+                )?;
+            }
+            "loop_slot" if version >= 7 => {
+                let f = value.split('|').collect::<Vec<_>>();
+                if f.len() != 9 {
+                    bail!("invalid loop slot settings");
+                }
+                let slot = f[0]
+                    .parse::<usize>()?
+                    .checked_sub(1)
+                    .filter(|slot| *slot < LOOP_SLOT_COUNT)
+                    .context("loop slot must be 1..=4")?;
+                set_once(
+                    &mut audio_loops[slot],
+                    LoopSettings {
+                        file: unescape(f[1])?,
+                        source_bpm_x100: f[2].parse()?,
+                        interpretation: parse_bpm_interpretation(f[3])?,
+                        start_beat: f[4].parse()?,
+                        length_beats: f[5].parse()?,
+                        offset_beats: f[6].parse()?,
+                        level_x1000: f[7].parse()?,
+                        filter_x1000: f[8].parse()?,
+                    },
+                    "loop_slot",
                 )?;
             }
             "insert_rack" if version >= 2 => set_once(
@@ -1538,7 +1591,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        6,
+                        6..=7,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor],
                     ) => (
                         Page {
@@ -1643,7 +1696,7 @@ pub fn decode(text: &str) -> Result<Song> {
         name: name.context("missing name")?,
         steps_per_beat: steps.context("missing steps")?,
         gate_percent: gate.context("missing gate")?,
-        audio_loop,
+        audio_loops,
         insert_rack: if version >= 2 {
             insert_rack.context("missing insert rack")?
         } else {
@@ -2327,6 +2380,13 @@ pub struct SequencerStatus {
     pub generation: u64,
     pub targets: BTreeMap<PageTarget, Option<String>>,
     pub fallbacks: BTreeMap<PageTarget, String>,
+    pub live_pattern: Option<u16>,
+    pub queued_pattern: Option<crate::live_performance::QueuedPattern>,
+    /// A quantized launch has reached its boundary and is waiting for the UI
+    /// thread to replace/configure the single managed software engine.
+    pub live_prepare: Option<crate::live_performance::QueuedPattern>,
+    pub live_activation_serial: u64,
+    pub live_activation: Option<crate::live_performance::ActivatedPattern>,
 }
 enum Transport {
     Play(u64, Song, usize, usize),
@@ -2336,6 +2396,11 @@ enum Transport {
     Thru(PageTarget, Vec<u8>),
     CancelThru(PageTarget, u8),
     Tempo(u16),
+    PrepareLiveSwitch(mpsc::Sender<()>),
+    LiveQueue(Song, crate::live_performance::QueuedPattern, bool),
+    LivePrepared(bool, Option<String>),
+    LiveCancel,
+    LiveImmediate(Song, u16, bool),
     Shutdown,
 }
 
@@ -2430,6 +2495,36 @@ impl Sequencer {
     pub fn tempo(&self, bpm: u16) {
         let _ = self.tx.send(Transport::Tempo(bpm.clamp(20, 300)));
     }
+    /// Stop scheduled owners and wait until their exact note-offs have been
+    /// sent before the UI replaces the one managed software engine.
+    pub fn prepare_live_switch(&self) -> bool {
+        let (tx, rx) = mpsc::channel();
+        self.tx.send(Transport::PrepareLiveSwitch(tx)).is_ok()
+            && rx.recv_timeout(Duration::from_secs(2)).is_ok()
+    }
+    pub fn live_queue(
+        &self,
+        song: &Song,
+        queued: crate::live_performance::QueuedPattern,
+        requires_engine_prepare: bool,
+    ) {
+        let _ = self.tx.send(Transport::LiveQueue(
+            song.clone(),
+            queued,
+            requires_engine_prepare,
+        ));
+    }
+    pub fn live_prepared(&self, success: bool, error: Option<String>) {
+        let _ = self.tx.send(Transport::LivePrepared(success, error));
+    }
+    pub fn live_cancel(&self) {
+        let _ = self.tx.send(Transport::LiveCancel);
+    }
+    pub fn live_immediate(&self, song: &Song, pattern: u16, retrigger: bool) {
+        let _ = self
+            .tx
+            .send(Transport::LiveImmediate(song.clone(), pattern, retrigger));
+    }
     pub fn thru(&self, message: &[u8]) {
         if self.config.live_thru {
             let _ = self.tx.send(Transport::Thru(
@@ -2478,6 +2573,7 @@ fn run_transport(
     let mut transport_targets = BTreeSet::new();
     let mut transport_tempo = config.default_tempo;
     let mut loop_origin_beat = 0.0;
+    let mut live: Option<LiveRuntime> = None;
     loop {
         let timeout = messages
             .get(index)
@@ -2486,6 +2582,7 @@ fn run_transport(
             .min(Duration::from_millis(50));
         match rx.recv_timeout(timeout) {
             Ok(Transport::Play(generation, song, order, row)) => {
+                live = None;
                 cleanup_owned_notes(&mut outputs, &mut note_owners);
                 active_notes.clear();
                 live_notes.clear();
@@ -2583,7 +2680,11 @@ fn run_transport(
                     if s.generation == generation {
                         s.playing = false;
                     }
+                    s.live_pattern = None;
+                    s.queued_pattern = None;
+                    s.live_prepare = None;
                 }
+                live = None;
             }
             Ok(Transport::Mute(lane, value)) => {
                 if value {
@@ -2674,6 +2775,153 @@ fn run_transport(
                 transport_tempo = bpm;
                 clock.tempo(f64::from(bpm));
             }
+            Ok(Transport::PrepareLiveSwitch(reply)) => {
+                clock.stop();
+                messages.clear();
+                repeat_messages.clear();
+                index = 0;
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                active_notes.clear();
+                live_notes.clear();
+                live = None;
+                if let Ok(mut status) = status.lock() {
+                    status.playing = false;
+                    status.live_pattern = None;
+                    status.queued_pattern = None;
+                    status.live_prepare = None;
+                }
+                let _ = reply.send(());
+            }
+            Ok(Transport::LiveQueue(song, queued, requires_engine_prepare)) => {
+                if let Some(runtime) = live.as_mut() {
+                    runtime.queued = Some(QueuedLive {
+                        song,
+                        requested: queued,
+                        requires_engine_prepare,
+                    });
+                    if let Ok(mut status) = status.lock() {
+                        status.queued_pattern = Some(queued);
+                        status.live_prepare = None;
+                        status.error = None;
+                    }
+                } else {
+                    publish_live_failure(&status, "Live Patterns is not playing".into());
+                }
+            }
+            Ok(Transport::LivePrepared(success, prepare_error)) => {
+                let pending = live.as_mut().and_then(|runtime| runtime.pending.take());
+                if let Some(pending) = pending {
+                    if success {
+                        match activate_live_pattern(
+                            &pending.song,
+                            pending.requested,
+                            &config,
+                            &mut outputs,
+                            &mut messages,
+                            &mut active_notes,
+                            &mut note_owners,
+                            true,
+                        ) {
+                            Ok(targets) => {
+                                muted.clear();
+                                let runtime = live.as_mut().expect("pending Live runtime");
+                                runtime.current = pending.requested.pattern;
+                                runtime.current_song = pending.song;
+                                transport_targets = targets;
+                                index = 0;
+                                started = Instant::now();
+                                transport_tempo =
+                                    runtime.current_song.patterns[&runtime.current].tempo;
+                                clock.play(0.0, transport_tempo);
+                                publish_live_activation(&status, pending.requested);
+                                update_target_status(&status, &outputs, &transport_targets);
+                            }
+                            Err(error) => publish_live_failure(&status, error),
+                        }
+                    } else {
+                        let error = prepare_error
+                            .unwrap_or_else(|| "managed instrument could not be prepared".into());
+                        publish_live_failure(&status, error.clone());
+                        if let Some(runtime) = live.as_mut() {
+                            let fallback = crate::live_performance::QueuedPattern {
+                                pattern: runtime.current,
+                                quantization: crate::live_performance::LaunchQuantization::Pattern,
+                                retrigger: true,
+                            };
+                            if let Ok(targets) = activate_live_pattern(
+                                &runtime.current_song,
+                                fallback,
+                                &config,
+                                &mut outputs,
+                                &mut messages,
+                                &mut active_notes,
+                                &mut note_owners,
+                                true,
+                            ) {
+                                muted.clear();
+                                transport_targets = targets;
+                                index = 0;
+                                started = Instant::now();
+                                transport_tempo =
+                                    runtime.current_song.patterns[&runtime.current].tempo;
+                                clock.play(0.0, transport_tempo);
+                                update_target_status(&status, &outputs, &transport_targets);
+                                if let Ok(mut status) = status.lock() {
+                                    status.playing = true;
+                                    status.error = Some(error);
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Ok(mut status) = status.lock() {
+                    status.live_prepare = None;
+                }
+            }
+            Ok(Transport::LiveCancel) => {
+                if let Some(runtime) = live.as_mut() {
+                    runtime.queued = None;
+                }
+                if let Ok(mut status) = status.lock() {
+                    status.queued_pattern = None;
+                    status.live_prepare = None;
+                }
+            }
+            Ok(Transport::LiveImmediate(song, pattern, retrigger)) => {
+                let requested = crate::live_performance::QueuedPattern {
+                    pattern,
+                    quantization: crate::live_performance::LaunchQuantization::Pattern,
+                    retrigger,
+                };
+                match activate_live_pattern(
+                    &song,
+                    requested,
+                    &config,
+                    &mut outputs,
+                    &mut messages,
+                    &mut active_notes,
+                    &mut note_owners,
+                    true,
+                ) {
+                    Ok(targets) => {
+                        muted.clear();
+                        transport_targets = targets;
+                        index = 0;
+                        started = Instant::now();
+                        transport_tempo = song.patterns[&pattern].tempo;
+                        clock.play(0.0, transport_tempo);
+                        live = Some(LiveRuntime {
+                            current_song: song,
+                            current: pattern,
+                            queued: None,
+                            pending: None,
+                        });
+                        publish_live_activation(&status, requested);
+                        update_target_status(&status, &outputs, &transport_targets);
+                    }
+                    Err(error) => publish_live_failure(&status, error),
+                }
+            }
             Ok(Transport::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 clock.stop();
                 cleanup_owned_notes(&mut outputs, &mut note_owners);
@@ -2682,6 +2930,63 @@ fn run_transport(
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+        if let Some(runtime) = live.as_mut() {
+            let due_bar_launch = runtime.queued.as_ref().is_some_and(|queued| {
+                queued.requested.quantization == crate::live_performance::LaunchQuantization::Bar
+                    && messages.get(index).is_some_and(|message| {
+                        message.bytes.is_empty()
+                            && started + message.at <= Instant::now()
+                            && crate::live_performance::is_launch_boundary(
+                                queued.requested.quantization,
+                                message.row,
+                                runtime.current_song.patterns[&runtime.current].rows.len(),
+                                runtime.current_song.steps_per_beat,
+                                runtime.current_song.patterns[&runtime.current].meter,
+                            )
+                    })
+            });
+            if due_bar_launch {
+                let queued = runtime.queued.take().expect("bar launch was queued");
+                if queued.requires_engine_prepare {
+                    stage_live_prepare(
+                        runtime,
+                        queued,
+                        &status,
+                        &mut outputs,
+                        &mut messages,
+                        &mut active_notes,
+                        &mut note_owners,
+                    );
+                    index = 0;
+                } else {
+                    match activate_live_pattern(
+                        &queued.song,
+                        queued.requested,
+                        &config,
+                        &mut outputs,
+                        &mut messages,
+                        &mut active_notes,
+                        &mut note_owners,
+                        false,
+                    ) {
+                        Ok(targets) => {
+                            muted.clear();
+                            runtime.current = queued.requested.pattern;
+                            runtime.current_song = queued.song;
+                            transport_targets = targets;
+                            index = 0;
+                            started = Instant::now();
+                            transport_tempo = runtime.current_song.patterns[&runtime.current].tempo;
+                            clock.restart_cycle(0.0);
+                            clock.tempo(f64::from(transport_tempo));
+                            publish_live_activation(&status, queued.requested);
+                            update_target_status(&status, &outputs, &transport_targets);
+                        }
+                        Err(error) => publish_live_failure(&status, error),
+                    }
+                }
+            }
         }
         while let Some(message) = messages
             .get(index)
@@ -2747,6 +3052,14 @@ fn run_transport(
                 );
             }
             if let Some(error) = send_error {
+                if let Some(target) = message.target.clone() {
+                    release_target_notes(
+                        &mut outputs,
+                        &mut note_owners,
+                        &mut active_notes,
+                        &target,
+                    );
+                }
                 if let Ok(mut s) = status.lock() {
                     s.available = false;
                     if let Some(target) = &message.target {
@@ -2762,16 +3075,286 @@ fn run_transport(
             index += 1;
         }
         if !messages.is_empty() && index == messages.len() {
-            cleanup_owned_notes(&mut outputs, &mut note_owners);
-            active_notes.clear();
-            live_notes.clear();
-            if !repeat_messages.is_empty() {
-                messages = std::mem::take(&mut repeat_messages);
+            if let Some(runtime) = live.as_mut() {
+                let queued_command = runtime.queued.take();
+                if queued_command
+                    .as_ref()
+                    .is_some_and(|queued| queued.requires_engine_prepare)
+                {
+                    let queued = queued_command.expect("queued engine preparation");
+                    stage_live_prepare(
+                        runtime,
+                        queued,
+                        &status,
+                        &mut outputs,
+                        &mut messages,
+                        &mut active_notes,
+                        &mut note_owners,
+                    );
+                    index = 0;
+                    continue;
+                }
+                let queued_activation = queued_command.is_some();
+                let (next_song, requested) = queued_command.as_ref().map_or_else(
+                    || {
+                        (
+                            &runtime.current_song,
+                            crate::live_performance::QueuedPattern {
+                                pattern: runtime.current,
+                                quantization: crate::live_performance::LaunchQuantization::Pattern,
+                                retrigger: true,
+                            },
+                        )
+                    },
+                    |queued| (&queued.song, queued.requested),
+                );
+                match activate_live_pattern(
+                    next_song,
+                    requested,
+                    &config,
+                    &mut outputs,
+                    &mut messages,
+                    &mut active_notes,
+                    &mut note_owners,
+                    false,
+                ) {
+                    Ok(targets) => {
+                        muted.clear();
+                        runtime.current = requested.pattern;
+                        if let Some(queued) = queued_command {
+                            runtime.current_song = queued.song;
+                        }
+                        transport_targets = targets;
+                        index = 0;
+                        started = Instant::now();
+                        transport_tempo = runtime.current_song.patterns[&requested.pattern].tempo;
+                        clock.restart_cycle(0.0);
+                        clock.tempo(f64::from(transport_tempo));
+                        if queued_activation {
+                            publish_live_activation(&status, requested);
+                        }
+                        update_target_status(&status, &outputs, &transport_targets);
+                    }
+                    Err(error) => {
+                        publish_live_failure(&status, error);
+                        let fallback = crate::live_performance::QueuedPattern {
+                            pattern: runtime.current,
+                            quantization: crate::live_performance::LaunchQuantization::Pattern,
+                            retrigger: true,
+                        };
+                        if let Ok(targets) = activate_live_pattern(
+                            &runtime.current_song,
+                            fallback,
+                            &config,
+                            &mut outputs,
+                            &mut messages,
+                            &mut active_notes,
+                            &mut note_owners,
+                            false,
+                        ) {
+                            muted.clear();
+                            transport_targets = targets;
+                            index = 0;
+                            started = Instant::now();
+                        }
+                    }
+                }
+            } else {
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                active_notes.clear();
+                live_notes.clear();
+                if !repeat_messages.is_empty() {
+                    messages = std::mem::take(&mut repeat_messages);
+                }
+                index = 0;
+                started = Instant::now();
+                clock.restart_cycle(loop_origin_beat);
             }
-            index = 0;
-            started = Instant::now();
-            clock.restart_cycle(loop_origin_beat);
         }
+    }
+}
+
+struct LiveRuntime {
+    current_song: Song,
+    current: u16,
+    queued: Option<QueuedLive>,
+    pending: Option<QueuedLive>,
+}
+
+struct QueuedLive {
+    song: Song,
+    requested: crate::live_performance::QueuedPattern,
+    requires_engine_prepare: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stage_live_prepare(
+    runtime: &mut LiveRuntime,
+    queued: QueuedLive,
+    status: &Arc<Mutex<SequencerStatus>>,
+    outputs: &mut DestinationPool,
+    messages: &mut Vec<ScheduledMessage>,
+    active_notes: &mut BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)>,
+    note_owners: &mut NoteOwners,
+) {
+    cleanup_owned_notes(outputs, note_owners);
+    active_notes.clear();
+    messages.clear();
+    if let Ok(mut status) = status.lock() {
+        status.live_prepare = Some(queued.requested);
+        status.queued_pattern = Some(queued.requested);
+        status.playing = false;
+        status.error = None;
+    }
+    runtime.pending = Some(queued);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn activate_live_pattern(
+    song: &Song,
+    requested: crate::live_performance::QueuedPattern,
+    config: &ExternalMidiConfig,
+    outputs: &mut DestinationPool,
+    messages: &mut Vec<ScheduledMessage>,
+    active_notes: &mut BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)>,
+    note_owners: &mut NoteOwners,
+    cleanup: bool,
+) -> std::result::Result<BTreeSet<PageTarget>, String> {
+    let pattern = song
+        .patterns
+        .get(&requested.pattern)
+        .ok_or_else(|| format!("Pattern {:02} is missing", requested.pattern))?;
+    let targets = pattern
+        .pages
+        .iter()
+        .filter(|page| page.enabled)
+        .map(|page| page.target.clone())
+        .collect::<BTreeSet<_>>();
+    for target in &targets {
+        outputs.refresh(target);
+    }
+    if let Some((target, error)) = targets
+        .iter()
+        .find_map(|target| outputs.error(target).map(|error| (target, error)))
+    {
+        return Err(format!("{}: {error}", target.label()));
+    }
+    let mut live_song = song.clone();
+    live_song.order = vec![requested.pattern];
+    let mut scheduled = schedule(&live_song, config, 0, 0).map_err(|error| error.to_string())?;
+    strip_live_boundary_releases(pattern, &mut scheduled);
+    if cleanup {
+        cleanup_owned_notes(outputs, note_owners);
+        active_notes.clear();
+    } else {
+        transfer_held_lanes(pattern, config, active_notes, &mut scheduled);
+    }
+    *messages = scheduled;
+    Ok(targets)
+}
+
+fn strip_live_boundary_releases(pattern: &Pattern, messages: &mut Vec<ScheduledMessage>) {
+    let boundary = messages
+        .iter()
+        .filter(|message| message.bytes.is_empty())
+        .map(|message| message.at)
+        .max()
+        .unwrap_or_default();
+    let held_lanes = (0..pattern.total_lanes())
+        .filter(|lane| {
+            pattern
+                .rows
+                .iter()
+                .rev()
+                .find_map(|row| match row[*lane].note {
+                    Note::On(_) => Some(row[*lane].gate == Some(100)),
+                    Note::Off => Some(false),
+                    Note::Empty => None,
+                })
+                .unwrap_or(false)
+        })
+        .collect::<BTreeSet<_>>();
+    messages.retain(|message| {
+        !(message.at == boundary
+            && message.lane.is_some_and(|lane| held_lanes.contains(&lane))
+            && message
+                .bytes
+                .first()
+                .is_some_and(|status| status & 0xf0 == 0x80))
+    });
+}
+
+fn transfer_held_lanes(
+    pattern: &Pattern,
+    config: &ExternalMidiConfig,
+    active_notes: &BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)>,
+    messages: &mut Vec<ScheduledMessage>,
+) {
+    for (&lane, (old_target, old_channel, notes)) in active_notes {
+        let next = pattern.rows.iter().enumerate().find_map(|(row, cells)| {
+            cells.get(lane).and_then(|cell| match cell.note {
+                Note::On(note) => Some((row, Some(note))),
+                Note::Off => Some((row, None)),
+                Note::Empty => None,
+            })
+        });
+        let Some((row, next_note)) = next else {
+            continue;
+        };
+        let page = &pattern.pages[lane / LANES_PER_PAGE];
+        let at = messages
+            .iter()
+            .find(|message| message.bytes.is_empty() && message.row == row)
+            .map_or(Duration::ZERO, |message| message.at);
+        for &old_note in notes {
+            let same = next_note.is_some_and(|note| {
+                note == old_note
+                    && page.target == *old_target
+                    && page.runtime_channel(lane % LANES_PER_PAGE, config) == *old_channel
+            });
+            if !same {
+                let release = ScheduledMessage {
+                    at,
+                    bytes: vec![0x80 | old_channel, old_note, 0],
+                    order: 0,
+                    row,
+                    lane: Some(lane),
+                    target: Some(old_target.clone()),
+                };
+                let insert_at = messages
+                    .iter()
+                    .position(|message| message.at >= at)
+                    .unwrap_or(messages.len());
+                messages.insert(insert_at, release);
+            }
+        }
+    }
+}
+
+fn publish_live_activation(
+    status: &Arc<Mutex<SequencerStatus>>,
+    requested: crate::live_performance::QueuedPattern,
+) {
+    if let Ok(mut status) = status.lock() {
+        status.live_activation_serial = status.live_activation_serial.wrapping_add(1);
+        status.live_pattern = Some(requested.pattern);
+        status.queued_pattern = None;
+        status.live_prepare = None;
+        status.live_activation = Some(crate::live_performance::ActivatedPattern {
+            serial: status.live_activation_serial,
+            pattern: requested.pattern,
+            retrigger: requested.retrigger,
+        });
+        status.playing = true;
+        status.error = None;
+    }
+}
+
+fn publish_live_failure(status: &Arc<Mutex<SequencerStatus>>, error: String) {
+    if let Ok(mut status) = status.lock() {
+        status.queued_pattern = None;
+        status.live_prepare = None;
+        status.error = Some(error);
     }
 }
 
@@ -2933,6 +3516,24 @@ fn cleanup_owned_notes(outputs: &mut DestinationPool, owners: &mut NoteOwners) {
         outputs.send_cleanup(&target, &message);
     }
     owners.clear();
+}
+
+fn release_target_notes(
+    outputs: &mut DestinationPool,
+    owners: &mut NoteOwners,
+    active_notes: &mut BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)>,
+    target: &PageTarget,
+) {
+    let matching = owners
+        .keys()
+        .filter(|(candidate, _, _)| candidate == target)
+        .cloned()
+        .collect::<Vec<_>>();
+    for (target, channel, note) in matching {
+        outputs.send_cleanup(&target, &[0x80 | channel, note, 0]);
+        owners.remove(&(target, channel, note));
+    }
+    active_notes.retain(|_, (candidate, _, _)| candidate != target);
 }
 
 fn planned_note_cleanup(owners: &NoteOwners) -> Vec<(PageTarget, Vec<u8>)> {
@@ -3301,6 +3902,14 @@ fn parse_entry_mode(value: &str) -> Result<NoteEntryMode> {
         _ => bail!("invalid note-entry mode"),
     }
 }
+fn parse_bpm_interpretation(value: &str) -> Result<BpmInterpretation> {
+    match value {
+        "half" => Ok(BpmInterpretation::Half),
+        "normal" => Ok(BpmInterpretation::Normal),
+        "double" => Ok(BpmInterpretation::Double),
+        _ => bail!("invalid loop BPM interpretation"),
+    }
+}
 fn drum_role_text(role: DrumRole) -> &'static str {
     match role {
         DrumRole::Core => "core",
@@ -3479,7 +4088,7 @@ mod tests {
         text.lines()
             .filter(|line| !line.starts_with("pattern_drum_class="))
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 6") {
+                if line.starts_with("SHSYNTH-SONG 7") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -3502,6 +4111,71 @@ mod tests {
             };
         }
         Some(lanes)
+    }
+
+    #[test]
+    fn live_pattern_boundary_preserves_valid_holds_and_releases_changes_before_note_on() {
+        let cfg = config();
+        let mut song = Song::new(&cfg);
+        {
+            let pattern = song.patterns.get_mut(&0).unwrap();
+            pattern.rows.truncate(4);
+            pattern.rows[3][0] = Cell {
+                note: Note::On(60),
+                gate: Some(100),
+                ..Cell::default()
+            };
+        }
+        let pattern = song.patterns[&0].clone();
+        let mut scheduled = schedule(&song, &cfg, 0, 0).unwrap();
+        let boundary = scheduled
+            .iter()
+            .filter(|message| message.bytes.is_empty())
+            .map(|message| message.at)
+            .max()
+            .unwrap();
+        assert!(scheduled
+            .iter()
+            .any(|message| message.at == boundary && message.bytes == [0x80, 60, 0]));
+        strip_live_boundary_releases(&pattern, &mut scheduled);
+        assert!(!scheduled
+            .iter()
+            .any(|message| message.at == boundary && message.bytes == [0x80, 60, 0]));
+
+        let mut next = Pattern::empty_like_setup(4, &pattern);
+        next.rows[0][0].note = Note::On(61);
+        let mut next_song = song.clone();
+        next_song.patterns.insert(0, next.clone());
+        let mut next_schedule = schedule(&next_song, &cfg, 0, 0).unwrap();
+        let active = BTreeMap::from([(
+            0,
+            (
+                next.pages[0].target.clone(),
+                next.pages[0].runtime_channel(0, &cfg),
+                BTreeSet::from([60]),
+            ),
+        )]);
+        transfer_held_lanes(&next, &cfg, &active, &mut next_schedule);
+        let release = next_schedule
+            .iter()
+            .position(|message| message.bytes == [0x80, 60, 0])
+            .unwrap();
+        let attack = next_schedule
+            .iter()
+            .position(|message| message.bytes == [0x90, 61, 96])
+            .unwrap();
+        assert!(
+            release < attack,
+            "old owner must release before the new note"
+        );
+
+        next.rows[0][0].note = Note::On(60);
+        next_song.patterns.insert(0, next.clone());
+        let mut same_schedule = schedule(&next_song, &cfg, 0, 0).unwrap();
+        transfer_held_lanes(&next, &cfg, &active, &mut same_schedule);
+        assert!(!same_schedule
+            .iter()
+            .any(|message| message.at == Duration::ZERO && message.bytes == [0x80, 60, 0]));
     }
 
     #[test]
@@ -3627,7 +4301,7 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 6\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 7\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
@@ -3756,17 +4430,25 @@ mod tests {
     fn current_format_loop_round_trips_and_old_shapes_are_rejected() {
         let mut with_loop = Song::new(&config());
         with_loop.patterns.get_mut(&0).unwrap().meter = 3;
-        with_loop.audio_loop = Some(LoopSettings {
-            file: "D-sharp-minor.wav".into(),
-            source_bpm_x100: 12_000,
-            interpretation: BpmInterpretation::Half,
-            start_beat: 3,
-            length_beats: 12,
-            offset_beats: -4,
-        });
+        for slot in 0..LOOP_SLOT_COUNT {
+            with_loop.audio_loops[slot] = Some(LoopSettings {
+                file: format!("stem-{}.wav", slot + 1),
+                source_bpm_x100: 12_000,
+                interpretation: BpmInterpretation::Half,
+                start_beat: slot as u32,
+                length_beats: 12 + slot as u32 * 3,
+                offset_beats: slot as i32 * 3 - 4,
+                level_x1000: 700 + slot as u16 * 200,
+                filter_x1000: -750 + slot as i16 * 500,
+            });
+        }
         assert_eq!(decode(&encode(&with_loop).unwrap()).unwrap(), with_loop);
+        let encoded = encode(&with_loop).unwrap();
+        for slot in 1..=LOOP_SLOT_COUNT {
+            assert!(encoded.contains(&format!("loop_slot={slot}|stem-{slot}.wav|")));
+        }
 
-        let missing_offset = encode(&with_loop).unwrap().replace("|3|12|-4\n", "|3|12\n");
+        let missing_offset = encoded.replace("|0|12|-4|700|-750\n", "|0|12\n");
         assert!(decode(&missing_offset).is_err());
 
         let old_shared_pages = encode(&with_loop)
@@ -3775,6 +4457,44 @@ mod tests {
             .replace("pattern_page=0|", "page=")
             .replace("pattern_lane=0|", "lane=");
         assert!(decode(&old_shared_pages).is_err());
+    }
+
+    #[test]
+    fn version_six_single_loop_migrates_to_slot_one_without_rewriting_the_file() {
+        let current = encode(&Song::new(&config())).unwrap();
+        let legacy = current
+            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 6", 1)
+            .replacen(
+                "insert_rack=",
+                "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
+                1,
+            );
+        let migrated = decode(&legacy).unwrap();
+        assert_eq!(
+            migrated.audio_loops[0],
+            Some(LoopSettings {
+                file: "legacy.wav".into(),
+                source_bpm_x100: 9_876,
+                interpretation: BpmInterpretation::Double,
+                start_beat: 5,
+                length_beats: 14,
+                offset_beats: -8,
+                level_x1000: 1_000,
+                filter_x1000: 0,
+            })
+        );
+        assert!(migrated.audio_loops[1..].iter().all(Option::is_none));
+        assert!(encode(&migrated)
+            .unwrap()
+            .contains("loop_slot=1|legacy.wav|9876|double|5|14|-8|1000|0"));
+
+        let base = env::temp_dir().join(format!("shr-v6-migration-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let path = base.join("legacy.shsong");
+        fs::write(&path, &legacy).unwrap();
+        assert_eq!(load(&base, "legacy").unwrap(), migrated);
+        assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
+        let _ = fs::remove_dir_all(base);
     }
     #[test]
     fn current_song_format_round_trips_every_cell_field() {
@@ -3787,7 +4507,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 6\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 7\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -4953,14 +5673,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 6\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 7\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 6", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -4969,14 +5689,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 6\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 7\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 6", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -4993,7 +5713,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 6\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 7\n"));
         assert!(encoded.contains("|default|-|manual|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -5009,7 +5729,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 6", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 7", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -5030,7 +5750,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 6",
+            "SHSYNTH-SONG 7",
             "SHSYNTH-SONG 4",
             1,
         );

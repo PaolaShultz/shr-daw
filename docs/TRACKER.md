@@ -61,10 +61,9 @@ whose FT2 workspace exposes four musician-facing pages:
    1, and program 1;
 3. `Drums`, a four-track page using the configured external output, MIDI
    channel 10, program 1, and the existing percussion-note mapping;
-4. `Loop Player`, the Project-wide WAV source, initially shown as `No WAV
-   attached`.
+4. `Loop Mix`, the Project-wide four-slot WAV source.
 
-The Loop Player is a page in the musician-facing FT2 workflow, not four empty
+Loop Mix is a page in the musician-facing FT2 workflow, not four empty
 MIDI lanes. **SELECT** → **PAGE** opens it directly, so a new
 Project does not require adding or naming a page before importing a WAV.
 The blank Pattern, unloaded loop state, loop inbox, and startup MIDI-output
@@ -74,12 +73,8 @@ already owns a loaded instrument, page 1 adopts that exact instrument and the
 same managed engine session becomes FT2-owned without a restart. Otherwise
 page 1 loads the first available synthv1 preset.
 
-The Loop Player's white position bar uses a green playhead to show the
-approximate position within the selected WAV region while the shared FT2
-transport plays or records. The bar remains visible at the top of the loop
-page whenever a valid WAV region is selected; an output fault leaves it at the
-start and reports the fault explicitly instead of using colour as the only
-state cue.
+Live Pattern state and the four Loop Mix slots are runtime performance
+contexts; they do not replace Pattern pages or Arrangement Steps.
 
 Channels and programs are zero-based in MIDI bytes and in the in-memory model.
 Every musician-facing screen shows channels 1–16 and programs 1–128.
@@ -284,64 +279,52 @@ input owner and release auditioned notes. A Drum-auto capacity fault keeps
 recording and transport responsive, reports `DRUM LANES FULL`, and leaves
 existing cells unchanged.
 
-## WAV loops
+## Live Patterns
 
-Open **TOOLS**, then **LOOP** to import a mono or stereo WAV from the configured
-inbox. Import validates it, estimates the loop length from transient pulses
-when possible, snaps the length to whole Project bars, and copies it into private
-storage below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/loops/`; user audio never enters the
-tracked repository. The Project stores only the imported filename, source BPM,
-1/2x/1x/2x interpretation, non-destructive start/length in beats, and a
-bar-based placement offset. Meter comes from the Pattern.
+Open **TOOLS** → **LIVE** to browse four launchable Patterns at a time without
+changing playback. Selection, current playback, and the replaceable queue have
+distinct screen states. Launches can use the next Pattern boundary or the next
+complete bar; immediate launch is a separate deliberate action. Queue cancel,
+current-Pattern retrigger, literal Stop, and Panic remain directly reachable.
 
-WAV has no dependable standard BPM metadata, so SHR-DAW does not invent it.
-Import and **AUTO** estimate pulse spacing when the audio has useful
-transients; otherwise they use duration and the current tempo to choose a whole
-bar length. The current Pattern tempo is then set from the interpreted WAV BPM.
-Correct **BPM-**/**BPM+** when needed; these controls also update the Pattern
-tempo. **BPM x** cycles half, normal, and double interpretations (120 gives
-60, 120, and 240). **UNIT** changes whether CUT controls move one beat or one
-measure.
+Successful activations can be captured into a temporary list, then explicitly
+appended to or used to replace the Arrangement. Cancelling leaves the original
+Arrangement unchanged. The four lanes on the selected Pattern page also have
+transient live mute, velocity, gate, and transpose shaping which resets only
+when another Project loads or is created.
 
-The loop screen's **ALIGN** child has **AUTO**, **BAR-**, and **BAR+**. **AUTO**
-re-runs the offline pulse/length estimate and resets placement to bar zero.
-**BAR-** and **BAR+** move the whole WAV placement one Project bar left or right
-without changing the cut region.
+The full keyboard/controller workflow, exact held-note transfer, failure
+behavior, and capture confirmation contract are in [Live
+performance](LIVE_PERFORMANCE.md#live-patterns).
 
-The loop follows FT2 rewind/play, stop, restart, order/pattern
-transitions, and looping. It plays at native speed and pitch; beat detection
-adjusts the Pattern tempo to the WAV, not the WAV to the previous Pattern
-tempo. A loop-only Project does not start the default software synth merely
-because its blank Software Synth page exists. The loop player requires the JACK
-server sample rate to match the WAV
-sample rate. For a 44.1 kHz loop, configure/restart JACK at 44100 Hz before
-loading it. A bounded 5 ms fade is applied at cut/loop edges. The 40×13 screen
-shows text for filename, BPMs, region, state, elapsed/total time, rate, and
-channels. A decoded loop is limited to 6,000,000 frames (about 125 seconds at
-48 kHz) so one imported file cannot exhaust Raspberry Pi memory.
+## WAV Loop Mix
 
-From **TOOLS** → **LOOP**, choose **LIBRARY** to open the shared overlay over
-the loop page. Turn the master rotary to browse inbox and private WAVs. Browsing
-is silent; controller **PLAY** explicitly previews the selected WAV. Repeated
-PLAY, selection change, **STOP**, Back, closing the browser, or leaving Loop
-Player stops the preview. Press the rotary/Enter to import or attach and load
-the selected file. Inbox, current, private, and saved-Project entries are
-labelled in the overlay.
+Open **TOOLS** → **LOOP** for four independent private mono/stereo WAV slots.
+Each stores its filename, source BPM, half/normal/double interpretation,
+non-destructive start and length, whole-bar offset, level, and bipolar filter.
+The selected slot is not launched by browsing it.
 
-Activating an `INBOX` entry imports it into private storage and loads it.
-Activating `PRIVATE`, `CURRENT`, or `SAVED` attaches the existing private file
-and loads it. A failed preview or import preserves selection and FT2 caller
-state for retry; failed import removes the private copy and leaves the Project
-unchanged. The browser has no deletion action.
+WAV has no dependable standard BPM metadata, so import and **AUTO** estimate
+pulse spacing when useful and otherwise use duration plus the current tempo to
+choose a whole-bar length. **BPM-**/**BPM+** and **BPM x** correct source
+interpretation; **UNIT** changes cut adjustment between beats and bars.
+**ALIGN** re-runs bounded offline analysis or moves placement by a whole bar.
 
-Press **REMOVE** twice to detach the loop from the
-Project and unload its JACK client. The imported private WAV is kept on disk so
-another Project can still use it.
+Each slot queues launch/stop for the next bar. A later command replaces the
+earlier one, and Cancel removes it. All active slots must match the Project's
+interpreted tempo and JACK's sample rate; there is no time-stretching or
+callback resampling. Different whole-bar lengths stay phase-aligned. A missing,
+corrupt, incompatible, or failed slot is isolated while healthy slots continue.
 
-**LIBRARY** is separate from Remove: its overlay browses inbox and imported
-private WAVs and marks the current loop and saved-Project references without
-leaving the Loop Player.
+**LIBRARY** opens the private browser for the selected slot. Browsing is
+silent; preview is explicit and stops on selection change, Stop, Back, browser
+close, or leave. `INBOX` imports; `PRIVATE`, `CURRENT`, and `SAVED` attach an
+existing private file. **REMOVE** requires confirmation, clears only the
+selected Project slot, and keeps the private WAV.
+
+See [Live performance](LIVE_PERFORMANCE.md#loop-mix) for level/filter controls,
+bar scheduling, routing, realtime limits, and the deliberately unsupported DJ
+features.
 
 ## Copy and Paste
 
@@ -425,14 +408,17 @@ The FX rack and editor always show the owning Project plus `NEW`, `SAVED`, or
 `DIRTY`; source, AUX, and master racks are all Project data.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 6
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 7
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor and drum-role overrides, cells, source
 insert rack, two aux routes, and master rack. Portable
 pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
 external-device profiles are stored separately from raw output/channel/bank/
-program data.
+program data. It also stores four optional Loop Mix slot records.
+Format 6's single `loop=` record migrates in memory to slot 1 with its filename,
+BPM interpretation, cut, and placement unchanged; level becomes unity and the
+filter neutral. Loading or inspecting does not rewrite the old file.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.

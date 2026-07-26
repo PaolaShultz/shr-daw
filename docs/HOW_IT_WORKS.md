@@ -456,44 +456,56 @@ source kinds: managed instrument, owned loop player, and one stereo live-input
 pair. It deliberately has no general strips, pan, solo, hardware insert,
 per-input effect chain, or arbitrary wiring.
 
-## WAV loops and the final bus
+## Live Patterns, Loop Mix, and the final bus
 
-A Project may attach one privately imported mono or stereo WAV. The import
-inbox is only a browser source; the selected file is validated and copied
-without replacement below the private SHR data directory. The Project saves
-the private filename, interpreted source BPM, half/normal/double mode,
-non-destructive cut region in beats, and whole-bar placement offset.
+Live Patterns is a sequencer-owned performance view over existing Pattern
+records. Browsing is UI state only. A successful activation is scheduled at a
+Pattern/bar boundary, validated against its exact targets, and published to
+capture only after it actually starts. Quantized transitions retain held lanes
+whose destination/channel/note remains valid; changed owners release before
+new events. A different managed instrument is prepared at the boundary after
+old notes release, never layered in advance.
+
+Transient lane mute/velocity/gate/transpose shapes a runtime Pattern copy.
+Stored cells and persisted lane settings remain unchanged. The state belongs
+to the open Project and is dropped on Project replacement.
+
+A Project may attach four privately imported mono or stereo WAVs. The import
+inbox is only a browser source; each selected file is validated and copied
+without replacement below the private SHR data directory. Every slot saves
+filename, interpreted source BPM, half/normal/double mode, non-destructive cut,
+whole-bar placement offset, level, and bipolar filter.
 
 Loop analysis is offline, outside the JACK callback. `AUTO` uses bounded pulse
 and duration analysis when useful and proposes a whole-bar interpretation.
-Tempo matching changes the current Pattern tempo to follow the WAV—it does not
-stretch or pitch-shift the WAV to the old tempo. Playback remains native-speed
-and requires the WAV sample rate to match JACK. Decoded audio is bounded to
+Playback remains native-speed and requires every active slot's interpreted BPM
+to equal the Project tempo and its sample rate to match JACK. Incompatible
+slots are refused rather than drifting. Each decoded WAV is bounded to
 6,000,000 frames, about 125 seconds at 48 kHz.
 
-The loop player remains a separate owned JACK client. Its callback meters the
-generated left/right samples after region selection, interpolation, transport
-gating, and edge fades. In direct mode its ports connect to playback. An active
-performance bus transaction moves those exact ports into the sum and removes
-the direct loop links, so there is never a parallel doubled path. `LOOP OUT`
-still means only the loop; `FINAL OUT` includes all three bus sources.
+The four fixed renderers share one owned JACK client and sum internally after
+region/phase, smoothed level, and the neutral/low-pass/high-pass filter. The
+callback allocates and locks nothing. In direct mode its one output pair
+connects to playback. An active performance-bus transaction moves that exact
+pair into the sum and removes the direct links, so there is never a parallel
+doubled path. `LOOP OUT` means the complete four-slot Loop source; `FINAL OUT`
+includes all three logical bus sources.
 
-The player follows FT2 rewind/play, Pattern/Arrangement transitions,
-looping, and stop. The loop receives only its bus level/mute, then shares the
+The slots share the FT2 transport origin and bar scheduler but launch/stop
+independently. Different whole-bar lengths retain phase. The summed Loop source
+receives only its final-bus level/mute, then shares the
 master, limiter, final meter, recorder, and playback with the other sources.
-Project `REMOVE` detaches the loop and unloads the owned JACK client while
-keeping the private WAV. `LIBRARY` opens the shared overlay over the Loop
-Player and browses both inbox and private files without auto-preview.
+Project `REMOVE` detaches only the selected slot while keeping the private WAV.
+`LIBRARY` opens the shared overlay for that slot and browses inbox and private
+files without auto-preview.
 Controller PLAY explicitly previews the selection. Changing selection, STOP,
-Back, closing/leaving the browser, or leaving Loop Player stops preview.
+Back, closing/leaving the browser, or leaving Loop Mix stops preview.
 Activating an inbox entry imports and loads it; activating a
 private/current/saved entry attaches and loads it. Failed preview/import keeps
 the caller and selection for retry, and import failure rolls back its private
 copy and Project attachment. It does not delete existing library files. The
-loop screen is silent when healthy and shows concise unavailable/fault plus
-`PLAY` recovery when output is not usable; a valid decoded region keeps its
-white position bar and green playhead visible even when output activation
-fails.
+screen shows only active, queued, muted, missing, and fault states. One bad slot
+does not stop healthy slots. See [Live performance](LIVE_PERFORMANCE.md).
 
 ## Note ownership and failure behavior
 
@@ -528,9 +540,11 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 6 persists the complete tracker state and effects routing plus
-per-page entry mode/anchor, drum-role/choke overrides, explicit software
-engine/instrument identities, and optional external profile metadata. Format 5
+Project format 7 persists the complete tracker state, four Loop Mix slots,
+effects routing, per-page entry mode/anchor, drum-role/choke overrides,
+explicit software engine/instrument identities, and optional external profile
+metadata. Format 6's single WAV record migrates in memory to slot 1 without
+rewriting the file. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3
 remains loadable and keeps its

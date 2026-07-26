@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.96`.
+corrected starting point; the current checked-progress version is `0.3.97`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -37,6 +37,41 @@ roadmap, and helper text now follow the format-6 implementation and the three
 FT2 entry layouts. The private `user/docs-pruning-20260725/` material remains
 unpublished reference only; it is not an active task or a public source of
 truth.
+
+Version `0.3.97` adds two distinct FT2 performance systems. Live Patterns
+browses four Patterns at a time, queues Pattern- or bar-boundary activation,
+supports immediate launch and deliberate retrigger, preserves tracker
+selection, and can capture only successful activation boundaries for an
+explicit append/replace confirmation. Its four transient lane controls are
+mute, velocity, gate, and transpose. Loop Mix owns four private WAV slots with
+independent bar-queued launch/stop, mute, level, DJ filter, region, offset,
+tempo interpretation, and isolated missing/fault state while retaining the
+single logical Loop source in direct or final-bus routing. Project format 7
+stores all four slots; format 6's single loop migrates in memory to slot 1
+without inspection rewriting the file.
+
+The complete `0.3.97` acceptance pass on 2026-07-26 used Rust 1.85. Locked
+check and debug build passed; the complete suite ran 752 tests with 748 passing
+and four intentionally ignored private DSP renderers passing separately. All
+112 screenshots passed native 40×13 rendering and exhaustive pixel/drift
+validation; ShellCheck, 27 isolated audio-policy cases, and ten deterministic
+demos also passed. Connected trials used one ignored
+`user/acceptance-20260726-live-performance/` directory and covered
+computer-keyboard and injected connected-ALSA Pattern launch, both quantized
+boundaries, queue replacement/cancel, retrigger, capture, all lane controls,
+exact transformed note ownership, managed synthv1 and external MIDI routes,
+four simultaneous 48 kHz stereo WAV slots, slot-local level/mute/filter/remove,
+direct and final-bus routing, non-silent capture, Stop, Panic, Project
+replacement, and clean signal shutdown. The final 24-bit stereo bus recording
+contained all four distinguishable loop sources exactly once; removing slot 4
+removed only its frequency pair while slots 1–3 and the graph remained active.
+Two runtime defects found during acceptance were repaired: selected-slot
+removal no longer stops unrelated slots, and multi-slot Project load now
+suspends/rebuilds the final bus as one transaction instead of mistaking an
+owned Loop client rebuild for source loss. Process, JACK, and ALSA state matched
+the starting baseline afterward. The MiniLab 3 was connected and received
+injected command-pad traffic, but it was not physically actuated and no
+listening claim was made.
 
 The complete `0.3.96` acceptance pass on 2026-07-26 used Rust 1.85. Locked
 check and debug build passed; all 737 tests ran with 733 passing and four

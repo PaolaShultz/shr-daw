@@ -6,7 +6,7 @@ instantiated:
 
 ```text
 managed software instrument -> source inserts/optional aux sends --\
-owned native-rate WAV loop -----------------------------------------+-> stereo sum
+owned four-slot native-rate Loop Mix sum ---------------------------+-> stereo sum
 configured JACK capture L/R ---------------------------------------/
     -> optional aux returns, where routed from the managed source
     -> master insert rack
@@ -17,15 +17,18 @@ configured JACK capture L/R ---------------------------------------/
     -> configured JACK playback L/R
 ```
 
-The loop and external-input strips do not gain individual insert racks, aux
-sends, pan, solo, automation, or waveform editing. Their only controls are a
-smoothed level and mute. The managed source keeps its existing Project-owned
+The logical Loop and external-input bus strips do not gain individual insert
+racks, aux sends, pan, solo, automation, or waveform editing. Their bus
+controls remain a smoothed level and mute. Loop Mix applies its four
+slot-local level/filter/mute controls before this one logical source. The
+managed source keeps its existing Project-owned
 insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
 basic three-source summing headroom. These live performance controls are not
-Project data; current Project format 6 stores the effect racks and routing, not
-these live levels or mutes. JACK assignments remain machine configuration.
+Project data; current Project format 7 stores the effect racks/routing and the
+four Loop Mix slot settings, but not these final-bus levels or mutes. JACK
+assignments remain machine configuration.
 
 ## Exact routing and availability
 
@@ -33,8 +36,10 @@ The configured input is `audio.graph.input=LABEL|LEFT|RIGHT`. When that optional
 new key is blank, the first legacy `capture.input` pair is reused so older
 runtime configuration remains useful. Both exact names must exist and be
 distinct. A similar-looking or adjacent port is never substituted. The owned
-loop client must be loaded and expose its exact configured output ports before
-the bus can activate. The MTR screen leaves healthy sources unadorned and marks
+Loop Mix client must be loaded and expose its exact configured output ports
+before the bus can activate. Its four renderers sum to that pair before the
+graph, so the bus, limiter, final meter, and recorder receive the complete Loop
+sum once. The MTR screen leaves healthy sources unadorned and marks
 only `MUTE` or `OFFLINE`.
 
 Before activation, the synth and loop each have their ordinary direct stereo

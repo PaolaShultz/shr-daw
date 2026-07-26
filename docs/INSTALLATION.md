@@ -176,8 +176,11 @@ On Patchbox, setup detects and retains the shared `jack.service` and its
 live `jackd` process owns JACK, setup can create a backed-up `~/.jackdrc` for
 the musician's next explicit JACK start. It never enables, starts, stops, or
 restarts JACK. Choose a sample rate that matches the WAV loops you intend to
-use, normally 48000 Hz for the installed cleared loops. Three periods is the
-safe USB default; lower latency should be earned with xrun measurement.
+use, normally 48000 Hz for the installed cleared loops. Every active Loop Mix
+slot must also have an interpreted BPM matching the Project tempo; SHR-DAW
+refuses a mismatch rather than time-stretching or allowing drift. Three
+periods is the safe USB default; lower latency should be earned with xrun
+measurement.
 
 ## Optional dedicated audio CPU
 

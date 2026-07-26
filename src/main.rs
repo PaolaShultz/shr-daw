@@ -21,6 +21,7 @@ mod geometry;
 mod gm;
 mod help;
 mod jack;
+mod live_performance;
 mod loop_player;
 mod midi;
 mod midi_endpoint;
@@ -349,6 +350,8 @@ fn checkpoint_loop_source(
             start_beat: 0,
             length_beats: 1,
             offset_beats: 0,
+            level_x1000: 1000,
+            filter_x1000: 0,
         },
     )?;
     Ok(Some(player))

@@ -15,9 +15,9 @@ The manual is split into three chapters so it remains usable on a phone:
 2. [FT2, Projects, and Patterns](menu/TRACKER_AND_PROJECTS.md) — the tracker in
    Play, Record, Edit, and Cell Edit; Tools; the N00B scale-filter switch
    across Play/Record/Edit; separate Edit note length; Projects;
-   Pattern tools; drum patterns; Arrangement; the Tracks screen; and routing
-   fields.
-3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — WAV loop setup, the shared
+   Pattern tools; drum patterns; Arrangement; Live Patterns; the Tracks
+   screen; and routing fields.
+3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — four-slot Loop Mix, the shared
    loop browser, alignment, the effects rack and its contexts, and the
    parameter editor.
 
@@ -95,7 +95,8 @@ flowchart TD
     ON --> F[Project Files / Pattern tools]
     ON --> AR[Arrangement]
     ON --> TT[FT2 Tools]
-    TT --> L[WAV Loop]
+    TT --> LP[Live Patterns]
+    TT --> L[Loop Mix]
     F --> PT[Pattern tools]
     PT --> D[Drum patterns]
     PT --> PS[Pattern setup]
@@ -120,8 +121,8 @@ return to their parent first.
 - **Audio recording** means one synchronized take containing a 24-bit mono WAV
   for each armed JACK source plus a versioned session manifest. A legacy stereo
   input remains a linked two-track configuration.
-- **Remove Loop** detaches the WAV from the Project and unloads SHR-DAW's loop
-  JACK client. It never deletes the private WAV. The current loop browser
+- **Remove Loop** detaches the selected WAV slot from the Project. It never
+  deletes the private WAV. The current loop browser
   imports inbox files or attaches existing private files; it has no deletion
   workflow.
 - With the graph active, FX edits require stopped transport and no active

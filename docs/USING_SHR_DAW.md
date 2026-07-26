@@ -59,8 +59,8 @@ it to select or confirm. Back returns one level, and controller MIDI never
 quits the application.
 
 Software Synths leads from Presets to Playback and MIDI Ideas. FT2 owns
-Patterns, pages, Arrangement, Projects, drums, and the fourth musician-facing
-Loop Player page. Recorder captures raw synchronized stems; Performance owns
+Patterns, pages, Arrangement, Projects, drums, Live Patterns, and the fourth
+musician-facing Loop Mix page. Recorder captures raw synchronized stems; Performance owns
 the optional final bus and stereo recording. Routing edits machine choices,
 while MIDI Learn configures the controller without forwarding learned input.
 
@@ -70,6 +70,27 @@ workflow, use the [visual menu manual](MENU_MANUAL.md), [tracker
 guide](TRACKER.md), and [controller interface](CONTROLLER_INTERFACE.md).
 Controller-clock setup belongs in [Configuration and
 routing](CONFIGURATION.md#dedicated-controller-clock-and-transport).
+
+## Live performance
+
+**Live Patterns** browses four existing tracker Patterns at a time without
+launching them. A launch queues for the selected Pattern or bar boundary;
+retrigger, queue replacement/cancel, deliberate immediate launch, and literal
+Stop remain visible. Optional capture records only successful activations and
+requires Append/Replace confirmation before the Arrangement changes.
+
+The same screen gives the selected page's four MIDI lanes transient mute,
+velocity, gate, and transpose controls. They leave cell data unchanged, survive
+navigation, and reset safely when another Project loads.
+
+**Loop Mix** keeps four private WAV slots separate from Patterns. Each slot can
+queue launch/stop at the next bar and has smoothed level, mute, and a bipolar
+low-pass/neutral/high-pass filter. All active WAVs must match the Project tempo
+and JACK sample rate; SHR-DAW does not time-stretch them. One bad slot does not
+stop the others.
+
+See [Live performance](LIVE_PERFORMANCE.md) for exact controls, capture,
+ownership, routing, realtime limits, and unsupported DJ features.
 
 ## MIDI ideas
 
@@ -125,7 +146,7 @@ MTR controls Synth/Loop/Input levels and mutes, master level, the linked
 limiter, `FINAL OUT`, and final stereo recording.
 
 `FINAL OUT` is the post-limiter buffer shared by recording and playback. The
-Loop Player's separate `LOOP OUT` still measures only its WAV. RESET clears
+Loop Mix's separate `LOOP OUT` measures the complete four-slot sum. RESET clears
 presentation holds, not audio state. MTR does not report callback timing or
 xruns; see [Final performance bus](FINAL_PERFORMANCE_BUS.md) for the exact
 meter, limiter, monitoring, recording, and control contract.

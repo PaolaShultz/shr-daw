@@ -16,12 +16,14 @@ configuration, or the architecture contracts.
 - [First run](FIRST_RUN.md) — configure hardware and open SHR-DAW.
 - [Using SHR-DAW](USING_SHR_DAW.md) — instruments, screens, MIDI Ideas,
   source/aux/master effects, performance meters, recording, and commands.
-- [Complete screen and menu manual](MENU_MANUAL.md) — 97 deterministic images
+- [Complete screen and menu manual](MENU_MANUAL.md) — deterministic images
   covering every populated 40×13 screen, contextual editor, and controller
   menu page, with explanations.
 - [In-app help](HELP.md) — the compact help text shown by `?` or F1.
 - [Tracker guide](TRACKER.md) — FT2 editing, pages, routing, Arrangement,
   drums, loops, and Project files.
+- [Live performance](LIVE_PERFORMANCE.md) — Live Pattern launch/capture and
+  transient lane shaping plus the four-WAV Loop Mix.
 - [Public-domain demo songs](DEMO_SONGS.md) — tempos, keys, parts, restyle
   ideas, clearance records, and installed discovery.
 - [Controller interface](CONTROLLER_INTERFACE.md) — complete four-page action

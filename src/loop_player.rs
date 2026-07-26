@@ -15,7 +15,7 @@ use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -35,12 +35,16 @@ const MAX_LOOP_CALLBACK_FRAMES: usize = MAX_METER_WINDOW;
 // memory for the lock-free JACK callback. Six million stereo frames use about
 // 46 MiB and cover 125 seconds at 48 kHz.
 const MAX_DECODED_LOOP_FRAMES: u32 = 6_000_000;
+pub const LOOP_SLOTS: usize = 4;
+const FILTER_DEADBAND: f32 = 0.04;
+const CONTROL_SMOOTH_SECONDS: f32 = 0.015;
 
 #[derive(Debug)]
 pub struct TransportClock {
     playing: AtomicBool,
     generation: AtomicU64,
     origin_beat: AtomicU64,
+    bpm_x100: AtomicU64,
     controller_tx: Option<mpsc::Sender<ControllerClockCommand>>,
     controller_thread: Mutex<Option<thread::JoinHandle<()>>>,
 }
@@ -78,6 +82,7 @@ impl TransportClock {
             playing: AtomicBool::new(false),
             generation: AtomicU64::new(0),
             origin_beat: AtomicU64::new(0),
+            bpm_x100: AtomicU64::new(u64::from(initial_bpm) * 100),
             controller_tx,
             controller_thread: Mutex::new(controller_thread),
         }
@@ -89,6 +94,8 @@ impl TransportClock {
             Ordering::Release,
         );
         self.generation.fetch_add(1, Ordering::AcqRel);
+        self.bpm_x100
+            .store(u64::from(bpm.clamp(20, 300)) * 100, Ordering::Release);
         self.playing.store(true, Ordering::Release);
         if let Some(tx) = &self.controller_tx {
             let _ = tx.send(ControllerClockCommand::Start(f64::from(bpm)));
@@ -104,6 +111,10 @@ impl TransportClock {
     }
 
     pub fn tempo(&self, bpm: f64) {
+        self.bpm_x100.store(
+            (bpm.clamp(20.0, 300.0) * 100.0).round() as u64,
+            Ordering::Release,
+        );
         if let Some(tx) = &self.controller_tx {
             let _ = tx.send(ControllerClockCommand::Tempo(bpm.clamp(20.0, 300.0)));
         }
@@ -540,8 +551,8 @@ pub fn library_entries(
     for name in crate::sequencer::list(projects) {
         let song = crate::sequencer::load(projects, &name)
             .with_context(|| format!("inspect saved Project {name}"))?;
-        if let Some(settings) = song.audio_loop {
-            *references.entry(settings.file).or_default() += 1;
+        for settings in song.audio_loops.iter().flatten() {
+            *references.entry(settings.file.clone()).or_default() += 1;
         }
     }
     Ok(list_wavs(directory)
@@ -756,14 +767,98 @@ pub struct LoopStatus {
     pub duration: Duration,
     pub elapsed: Duration,
     pub error: Option<String>,
+    pub running: bool,
+    pub muted: bool,
+    pub queued: Option<LoopCommand>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LoopCommand {
+    Launch,
+    Stop,
+}
+
+#[derive(Clone)]
+struct PreparedLoop {
+    samples: Arc<Vec<[f32; 2]>>,
+    source_rate: u32,
+    interpreted_bpm: f64,
+    region_start: usize,
+    region_len: usize,
+    offset_beats: i32,
+    meter: u8,
+}
+
+struct SlotControl {
+    running: AtomicBool,
+    muted: AtomicBool,
+    queued: AtomicU8,
+    level_x1000: AtomicU32,
+    filter_bits: AtomicU32,
+}
+
+impl SlotControl {
+    fn new(settings: Option<&LoopSettings>) -> Self {
+        Self {
+            running: AtomicBool::new(false),
+            muted: AtomicBool::new(false),
+            queued: AtomicU8::new(0),
+            level_x1000: AtomicU32::new(
+                settings.map_or(1000, |settings| u32::from(settings.level_x1000)),
+            ),
+            filter_bits: AtomicU32::new(
+                settings
+                    .map_or(0.0, |settings| f32::from(settings.filter_x1000) / 1000.0)
+                    .to_bits(),
+            ),
+        }
+    }
+
+    fn queued(&self) -> Option<LoopCommand> {
+        match self.queued.load(Ordering::Acquire) {
+            1 => Some(LoopCommand::Launch),
+            2 => Some(LoopCommand::Stop),
+            _ => None,
+        }
+    }
+
+    fn queue(&self, command: Option<LoopCommand>) {
+        self.queued.store(
+            match command {
+                None => 0,
+                Some(LoopCommand::Launch) => 1,
+                Some(LoopCommand::Stop) => 2,
+            },
+            Ordering::Release,
+        );
+    }
+}
+
+struct LoopSlot {
+    prepared: Option<PreparedLoop>,
+    status: LoopStatus,
+    position: Arc<AtomicU64>,
+    meter: Arc<AtomicMeter>,
+    control: Arc<SlotControl>,
+}
+
+impl Default for LoopSlot {
+    fn default() -> Self {
+        Self {
+            prepared: None,
+            status: LoopStatus::default(),
+            position: Arc::new(AtomicU64::new(0)),
+            meter: Arc::new(AtomicMeter::default()),
+            control: Arc::new(SlotControl::new(None)),
+        }
+    }
 }
 
 pub struct LoopPlayer {
     config: LoopPlayerConfig,
     clock: Arc<TransportClock>,
     active: Option<Active>,
-    status: LoopStatus,
-    position: Arc<AtomicU64>,
+    slots: [LoopSlot; LOOP_SLOTS],
     meter: Arc<AtomicMeter>,
     preview: bool,
 }
@@ -780,19 +875,25 @@ impl LoopPlayer {
             config: config.clone(),
             clock,
             active: None,
-            status: LoopStatus::default(),
-            position: Arc::new(AtomicU64::new(0)),
+            slots: std::array::from_fn(|_| LoopSlot::default()),
             meter: Arc::new(AtomicMeter::default()),
             preview: false,
         }
     }
 
     pub fn load(&mut self, decoded: DecodedLoop, settings: &LoopSettings) -> Result<()> {
-        self.stop_backend();
-        self.position.store(0, Ordering::Release);
-        self.clear_meter();
-        self.status = LoopStatus::default();
-        self.preview = false;
+        self.load_slot(0, decoded, settings, settings.interpreted_bpm(), 4)
+    }
+
+    pub fn load_slot(
+        &mut self,
+        slot: usize,
+        decoded: DecodedLoop,
+        settings: &LoopSettings,
+        project_bpm: f64,
+        meter: u8,
+    ) -> Result<()> {
+        let slot = checked_slot(slot)?;
         if decoded.samples.is_empty()
             || !(8_000..=384_000).contains(&decoded.sample_rate)
             || !matches!(decoded.channels, 1 | 2)
@@ -802,114 +903,101 @@ impl LoopPlayer {
                 .flatten()
                 .any(|sample| !sample.is_finite())
         {
-            self.status.error = Some("invalid decoded WAV loop".into());
             bail!("invalid decoded WAV loop");
         }
         if !(2_000..=30_000).contains(&settings.source_bpm_x100)
             || settings.length_beats == 0
             || !(-16_384..=16_384).contains(&settings.offset_beats)
+            || settings.level_x1000 > 1_500
+            || !(-1_000..=1_000).contains(&settings.filter_x1000)
         {
-            self.status.error = Some("invalid private loop settings".into());
             bail!("invalid private loop settings");
         }
         let source_rate = decoded.sample_rate;
         let source_channels = decoded.channels;
         let interpreted = settings.interpreted_bpm();
+        require_compatible_tempo(interpreted, project_bpm)?;
         let start = beat_to_frame(f64::from(settings.start_beat), interpreted, source_rate)
             .min(decoded.samples.len().saturating_sub(1));
         let requested = beat_to_frame(f64::from(settings.length_beats), interpreted, source_rate);
         let length = requested
             .max(1)
             .min(decoded.samples.len().saturating_sub(start));
-        self.status = LoopStatus {
+        let prepared = PreparedLoop {
+            samples: Arc::new(decoded.samples),
+            source_rate,
+            interpreted_bpm: interpreted,
+            region_start: start,
+            region_len: length,
+            offset_beats: settings.offset_beats,
+            meter: meter.clamp(1, 16),
+        };
+        let next_status = LoopStatus {
             file: Some(settings.file.clone()),
             source_rate,
             source_channels,
             duration: Duration::from_secs_f64(length as f64 / f64::from(source_rate)),
             ..LoopStatus::default()
         };
-        let result = (|| -> Result<Active> {
-            let mut jack = JackClient::open(&self.config.client_name)?;
-            let jack_rate = jack.sample_rate();
-            require_native_rate(source_rate, jack_rate)?;
-            let left =
-                jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[0], PortDirection::Output)?;
-            let right =
-                jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[1], PortDirection::Output)?;
-            let client_state = Arc::new(LoopClientState {
-                active: AtomicBool::new(true),
-                published_meter: Arc::clone(&self.meter),
+        let previous_prepared = self.slots[slot].prepared.clone();
+        let previous_status = self.slots[slot].status.clone();
+        let previous_control = Arc::clone(&self.slots[slot].control);
+        self.slots[slot].prepared = Some(prepared);
+        self.slots[slot].status = next_status;
+        self.slots[slot].control = Arc::new(SlotControl::new(Some(settings)));
+        self.slots[slot].position.store(0, Ordering::Release);
+        self.slots[slot].meter.publish(MeterSnapshot::default());
+        self.preview = false;
+        if let Err(error) = self.rebuild_backend() {
+            self.slots[slot].prepared = previous_prepared;
+            self.slots[slot].status = previous_status;
+            self.slots[slot].control = previous_control;
+            let restoration = self.rebuild_backend();
+            self.slots[slot].status.error = Some(error.to_string());
+            return Err(match restoration {
+                Ok(()) => error,
+                Err(restore) => {
+                    anyhow::anyhow!("{error:#} · healthy slots restore failed: {restore:#}")
+                }
             });
-            let mut callback = Box::new(CallbackData {
-                left,
-                right,
-                port_get_buffer: jack.port_get_buffer(),
-                renderer: LoopRenderer {
-                    samples: decoded.samples,
-                    source_rate,
-                    interpreted_bpm: interpreted,
-                    region_start: start,
-                    region_len: length,
-                    offset_beats: settings.offset_beats,
-                    fade: fade_frames(source_rate, length),
-                    phase: start as f64,
-                    seen_generation: u64::MAX,
-                    clock: Arc::clone(&self.clock),
-                    position: Arc::clone(&self.position),
-                    meter: MeterAccumulator::new(MAX_LOOP_CALLBACK_FRAMES)?,
-                    client_state: Arc::clone(&client_state),
-                    meter_active: false,
-                },
-            });
-            // SAFETY: `callback` stays boxed until after JACK is deactivated.
-            unsafe {
-                jack.set_process_callback(
-                    process_callback,
-                    ((&mut *callback) as *mut CallbackData).cast(),
-                )?;
-                jack.set_shutdown_callback(
-                    shutdown_callback,
-                    Arc::as_ptr(&callback.renderer.client_state)
-                        .cast_mut()
-                        .cast(),
-                );
-            }
-            activate_and_connect(&mut jack, &self.config.outputs, left, right)?;
-            Ok(Active {
-                jack,
-                callback,
-                client_state,
-            })
-        })();
-        match result {
-            Ok(active) => {
-                self.status.loaded = true;
-                self.active = Some(active);
-                Ok(())
-            }
-            Err(error) => {
-                self.clear_meter();
-                self.status.error = Some(error.to_string());
-                Err(error)
-            }
         }
+        self.slots[slot].status.loaded = true;
+        Ok(())
     }
 
     pub fn status(&self) -> LoopStatus {
-        let mut status = self.status.clone();
+        self.slot_status(0)
+    }
+
+    pub fn slot_status(&self, slot: usize) -> LoopStatus {
+        let Ok(slot) = checked_slot(slot) else {
+            return LoopStatus {
+                error: Some("loop slot must be 1..=4".into()),
+                ..LoopStatus::default()
+            };
+        };
+        let source = &self.slots[slot];
+        let mut status = source.status.clone();
         let client_active = self
             .active
             .as_ref()
             .is_some_and(|active| active.client_state.active.load(Ordering::Acquire));
+        status.running = source.control.running.load(Ordering::Acquire);
+        status.muted = source.control.muted.load(Ordering::Acquire);
+        status.queued = source.control.queued();
         status.playing = status.loaded
+            && status.running
+            && !status.muted
             && self.clock.playing.load(Ordering::Acquire)
             && (client_active || self.preview);
         if status.loaded && !client_active && !self.preview {
-            status.error = Some("JACK loop client inactive".into());
+            status
+                .error
+                .get_or_insert_with(|| "JACK loop client inactive".into());
         }
         if status.source_rate > 0 {
             status.elapsed = Duration::from_secs_f64(
-                self.position.load(Ordering::Acquire) as f64 / f64::from(status.source_rate),
+                source.position.load(Ordering::Acquire) as f64 / f64::from(status.source_rate),
             );
         }
         status
@@ -922,33 +1010,186 @@ impl LoopPlayer {
         .then(|| self.meter.load())
     }
 
+    pub fn queue_slot(&self, slot: usize, command: LoopCommand) -> Result<()> {
+        let slot = checked_slot(slot)?;
+        if !self.slots[slot].status.loaded {
+            bail!("loop slot {} is empty", slot + 1);
+        }
+        self.slots[slot].control.queue(Some(command));
+        Ok(())
+    }
+
+    pub fn cancel_slot_queue(&self, slot: usize) -> Result<bool> {
+        let slot = checked_slot(slot)?;
+        let queued = self.slots[slot].control.queued().is_some();
+        self.slots[slot].control.queue(None);
+        Ok(queued)
+    }
+
+    pub fn command_slot_immediate(&self, slot: usize, command: LoopCommand) -> Result<()> {
+        let slot = checked_slot(slot)?;
+        if !self.slots[slot].status.loaded {
+            bail!("loop slot {} is empty", slot + 1);
+        }
+        self.slots[slot]
+            .control
+            .running
+            .store(command == LoopCommand::Launch, Ordering::Release);
+        self.slots[slot].control.queue(None);
+        if command == LoopCommand::Stop {
+            self.slots[slot].meter.publish(MeterSnapshot::default());
+        }
+        Ok(())
+    }
+
+    pub fn set_slot_muted(&self, slot: usize, muted: bool) -> Result<()> {
+        let slot = checked_slot(slot)?;
+        self.slots[slot]
+            .control
+            .muted
+            .store(muted, Ordering::Release);
+        if muted {
+            self.slots[slot].meter.publish(MeterSnapshot::default());
+        }
+        Ok(())
+    }
+
+    pub fn set_slot_level(&self, slot: usize, level_x1000: u16) -> Result<()> {
+        let slot = checked_slot(slot)?;
+        self.slots[slot]
+            .control
+            .level_x1000
+            .store(u32::from(level_x1000.min(1_500)), Ordering::Release);
+        Ok(())
+    }
+
+    pub fn set_slot_filter(&self, slot: usize, filter_x1000: i16) -> Result<()> {
+        let slot = checked_slot(slot)?;
+        let value = f32::from(filter_x1000.clamp(-1_000, 1_000)) / 1000.0;
+        self.slots[slot]
+            .control
+            .filter_bits
+            .store(value.to_bits(), Ordering::Release);
+        Ok(())
+    }
+
     #[doc(hidden)]
     pub(crate) fn set_preview_status(&mut self, status: LoopStatus) {
-        let playing = status.playing;
+        self.set_slot_preview_status(0, status);
+    }
+
+    #[doc(hidden)]
+    pub(crate) fn set_slot_preview_status(&mut self, slot: usize, status: LoopStatus) {
+        let slot = slot.min(LOOP_SLOTS - 1);
+        let running = status.running || status.playing;
+        let muted = status.muted;
+        let queued = status.queued;
         if status.source_rate > 0 {
-            self.position.store(
+            self.slots[slot].position.store(
                 (status.elapsed.as_secs_f64() * f64::from(status.source_rate)).round() as u64,
                 Ordering::Release,
             );
         }
-        self.status = status;
+        self.slots[slot].status = status;
+        self.slots[slot]
+            .control
+            .running
+            .store(running, Ordering::Release);
+        self.slots[slot]
+            .control
+            .muted
+            .store(muted, Ordering::Release);
+        self.slots[slot].control.queue(queued);
         self.preview = true;
-        if playing {
+        if running {
             self.clock.play(0.0, 120);
         }
     }
 
     pub fn stop(&self) {
         self.clock.stop();
+        for slot in &self.slots {
+            slot.control.running.store(false, Ordering::Release);
+            slot.control.queue(None);
+            slot.meter.publish(MeterSnapshot::default());
+        }
         self.clear_meter();
     }
 
+    #[cfg(test)]
     pub fn unload(&mut self) {
-        self.stop_backend();
-        self.position.store(0, Ordering::Release);
-        self.clear_meter();
-        self.status = LoopStatus::default();
+        self.unload_slot(0);
+    }
+
+    pub fn unload_slot(&mut self, slot: usize) {
+        let Ok(slot) = checked_slot(slot) else {
+            return;
+        };
+        self.slots[slot] = LoopSlot::default();
+        let _ = self.rebuild_backend();
         self.preview = false;
+    }
+
+    fn rebuild_backend(&mut self) -> Result<()> {
+        self.stop_backend();
+        self.clear_meter();
+        if self.slots.iter().all(|slot| slot.prepared.is_none()) {
+            return Ok(());
+        }
+        let mut jack = JackClient::open(&self.config.client_name)?;
+        let jack_rate = jack.sample_rate();
+        for slot in self.slots.iter().filter_map(|slot| slot.prepared.as_ref()) {
+            require_native_rate(slot.source_rate, jack_rate)?;
+        }
+        let left = jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[0], PortDirection::Output)?;
+        let right = jack.register_audio_port(LOOP_OUTPUT_PORT_NAMES[1], PortDirection::Output)?;
+        let client_state = Arc::new(LoopClientState {
+            active: AtomicBool::new(true),
+            published_meter: Arc::clone(&self.meter),
+            slot_meters: std::array::from_fn(|slot| Arc::clone(&self.slots[slot].meter)),
+        });
+        let mut renderers: [Option<LoopRenderer>; LOOP_SLOTS] = std::array::from_fn(|_| None);
+        for (slot, renderer) in renderers.iter_mut().enumerate() {
+            if let Some(prepared) = self.slots[slot].prepared.as_ref() {
+                *renderer = Some(LoopRenderer::new(
+                    prepared,
+                    Arc::clone(&self.clock),
+                    Arc::clone(&self.slots[slot].position),
+                    Arc::clone(&self.slots[slot].meter),
+                    Arc::clone(&self.slots[slot].control),
+                )?);
+            }
+        }
+        let mut callback = Box::new(CallbackData {
+            left,
+            right,
+            port_get_buffer: jack.port_get_buffer(),
+            renderer: LoopMixerRenderer {
+                slots: renderers,
+                meter: MeterAccumulator::new(MAX_LOOP_CALLBACK_FRAMES)?,
+                client_state: Arc::clone(&client_state),
+            },
+        });
+        // SAFETY: `callback` stays boxed until after JACK is deactivated.
+        unsafe {
+            jack.set_process_callback(
+                process_callback,
+                ((&mut *callback) as *mut CallbackData).cast(),
+            )?;
+            jack.set_shutdown_callback(
+                shutdown_callback,
+                Arc::as_ptr(&callback.renderer.client_state)
+                    .cast_mut()
+                    .cast(),
+            );
+        }
+        activate_and_connect(&mut jack, &self.config.outputs, left, right)?;
+        self.active = Some(Active {
+            jack,
+            callback,
+            client_state,
+        });
+        Ok(())
     }
 
     fn stop_backend(&mut self) {
@@ -975,29 +1216,75 @@ struct CallbackData {
     left: *mut JackPort,
     right: *mut JackPort,
     port_get_buffer: PortGetBuffer,
-    renderer: LoopRenderer,
+    renderer: LoopMixerRenderer,
+}
+
+struct LoopMixerRenderer {
+    slots: [Option<LoopRenderer>; LOOP_SLOTS],
+    meter: MeterAccumulator,
+    client_state: Arc<LoopClientState>,
 }
 
 struct LoopRenderer {
-    samples: Vec<[f32; 2]>,
+    samples: Arc<Vec<[f32; 2]>>,
     source_rate: u32,
     interpreted_bpm: f64,
     region_start: usize,
     region_len: usize,
     offset_beats: i32,
+    meter_beats: u8,
     fade: usize,
     phase: f64,
     seen_generation: u64,
     clock: Arc<TransportClock>,
     position: Arc<AtomicU64>,
+    published_meter: Arc<AtomicMeter>,
     meter: MeterAccumulator,
-    client_state: Arc<LoopClientState>,
-    meter_active: bool,
+    control: Arc<SlotControl>,
+    level: f32,
+    filter: f32,
+    lowpass: [f32; 2],
+    highpass_low: [f32; 2],
+    transport_frames: u64,
 }
 
 struct LoopClientState {
     active: AtomicBool,
     published_meter: Arc<AtomicMeter>,
+    slot_meters: [Arc<AtomicMeter>; LOOP_SLOTS],
+}
+
+impl LoopRenderer {
+    fn new(
+        prepared: &PreparedLoop,
+        clock: Arc<TransportClock>,
+        position: Arc<AtomicU64>,
+        published_meter: Arc<AtomicMeter>,
+        control: Arc<SlotControl>,
+    ) -> Result<Self> {
+        Ok(Self {
+            samples: Arc::clone(&prepared.samples),
+            source_rate: prepared.source_rate,
+            interpreted_bpm: prepared.interpreted_bpm,
+            region_start: prepared.region_start,
+            region_len: prepared.region_len,
+            offset_beats: prepared.offset_beats,
+            meter_beats: prepared.meter,
+            fade: fade_frames(prepared.source_rate, prepared.region_len),
+            phase: prepared.region_start as f64,
+            seen_generation: u64::MAX,
+            clock,
+            position,
+            published_meter,
+            meter: MeterAccumulator::new(MAX_LOOP_CALLBACK_FRAMES)?,
+            control,
+            level: 1.0,
+            filter: 0.0,
+            lowpass: [0.0; 2],
+            highpass_low: [0.0; 2],
+            transport_frames: 0,
+        })
+    }
 }
 
 fn activate_and_connect(
@@ -1030,12 +1317,12 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
     let left = unsafe { (data.port_get_buffer)(data.left, frames) }.cast::<f32>();
     let right = unsafe { (data.port_get_buffer)(data.right, frames) }.cast::<f32>();
     if left.is_null() || right.is_null() {
-        clear_renderer_meter(&mut data.renderer);
+        clear_mixer_meter(&mut data.renderer);
         return 0;
     }
     let left = unsafe { std::slice::from_raw_parts_mut(left, frames as usize) };
     let right = unsafe { std::slice::from_raw_parts_mut(right, frames as usize) };
-    render_output(&mut data.renderer, left, right);
+    render_mixer_output(&mut data.renderer, left, right);
     0
 }
 
@@ -1043,13 +1330,16 @@ unsafe extern "C" fn shutdown_callback(argument: *mut c_void) {
     let state = unsafe { &*(argument.cast::<LoopClientState>()) };
     state.active.store(false, Ordering::Release);
     state.published_meter.publish(MeterSnapshot::default());
+    for meter in &state.slot_meters {
+        meter.publish(MeterSnapshot::default());
+    }
 }
 
 #[inline]
-fn clear_renderer_meter(data: &mut LoopRenderer) {
-    if data.meter_active {
-        data.meter.reset();
-        data.meter_active = false;
+fn clear_mixer_meter(data: &mut LoopMixerRenderer) {
+    data.meter.reset();
+    for slot in data.slots.iter_mut().flatten() {
+        slot.published_meter.publish(MeterSnapshot::default());
     }
     data.client_state
         .published_meter
@@ -1057,53 +1347,171 @@ fn clear_renderer_meter(data: &mut LoopRenderer) {
 }
 
 #[inline]
-fn render_output(data: &mut LoopRenderer, left: &mut [f32], right: &mut [f32]) {
+fn render_mixer_output(data: &mut LoopMixerRenderer, left: &mut [f32], right: &mut [f32]) {
     left.fill(0.0);
     right.fill(0.0);
     if left.len() != right.len()
         || left.len() > MAX_LOOP_CALLBACK_FRAMES
         || !data.client_state.active.load(Ordering::Acquire)
-        || !data.clock.playing.load(Ordering::Acquire)
-        || data.region_len == 0
     {
-        clear_renderer_meter(data);
+        clear_mixer_meter(data);
         return;
     }
+    if data
+        .slots
+        .iter()
+        .flatten()
+        .all(|slot| !slot.clock.playing.load(Ordering::Acquire))
+    {
+        clear_mixer_meter(data);
+        return;
+    }
+    for slot in data.slots.iter_mut().flatten() {
+        render_slot(slot, left, right);
+    }
+    for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
+        let frame = data.meter.process(StereoFrame::new(*left_out, *right_out));
+        *left_out = frame.left;
+        *right_out = frame.right;
+    }
+    data.client_state
+        .published_meter
+        .publish(data.meter.snapshot_and_clear_peak());
+}
+
+#[inline]
+fn render_slot(data: &mut LoopRenderer, left: &mut [f32], right: &mut [f32]) {
     let generation = data.clock.generation.load(Ordering::Acquire);
     if generation != data.seen_generation {
-        data.meter.reset();
         data.seen_generation = generation;
+        data.transport_frames = 0;
+        data.lowpass = [0.0; 2];
+        data.highpass_low = [0.0; 2];
         let origin = data.clock.origin_beat.load(Ordering::Acquire) as f64 / BEAT_UNITS;
         let loop_beats =
             data.region_len as f64 * data.interpreted_bpm / (60.0 * f64::from(data.source_rate));
         let beat_phase = loop_phase_from_song(origin, data.offset_beats, loop_beats);
         data.phase = data.region_start as f64 + beat_phase * data.region_len as f64;
+        apply_queued_command(data);
     }
-    data.meter_active = true;
+    let target_level = data.control.level_x1000.load(Ordering::Acquire) as f32 / 1000.0;
+    let target_filter =
+        f32::from_bits(data.control.filter_bits.load(Ordering::Acquire)).clamp(-1.0, 1.0);
+    let smooth = smoothing_coefficient(data.source_rate);
     let end = (data.region_start + data.region_len) as f64;
+    let bpm = data.clock.bpm_x100.load(Ordering::Acquire) as f64 / 100.0;
+    let origin = data.clock.origin_beat.load(Ordering::Acquire) as f64 / BEAT_UNITS;
+    data.meter.reset();
     for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
+        let beat =
+            origin + data.transport_frames as f64 * bpm / (60.0 * f64::from(data.source_rate));
+        let previous_beat = origin
+            + data.transport_frames.saturating_sub(1) as f64 * bpm
+                / (60.0 * f64::from(data.source_rate));
+        if data.transport_frames == 0
+            || (beat / f64::from(data.meter_beats)).floor()
+                != (previous_beat / f64::from(data.meter_beats)).floor()
+        {
+            apply_queued_command(data);
+        }
+        data.transport_frames = data.transport_frames.saturating_add(1);
+        data.level += (target_level - data.level) * smooth;
+        data.filter += (target_filter - data.filter) * smooth;
         while data.phase >= end {
             data.phase -= data.region_len as f64;
         }
-        let sample = render_sample(
-            &data.samples,
+        let mut sample = render_sample(
+            data.samples.as_slice(),
             data.region_start,
             data.region_len,
             data.phase,
             data.fade,
         );
-        let sample = data.meter.process(StereoFrame::new(sample[0], sample[1]));
-        *left_out = sample.left;
-        *right_out = sample.right;
+        if !data.control.running.load(Ordering::Acquire)
+            || data.control.muted.load(Ordering::Acquire)
+        {
+            sample = [0.0; 2];
+        } else {
+            sample = dj_filter(data, sample);
+            sample[0] *= data.level;
+            sample[1] *= data.level;
+        }
+        let measured = data.meter.process(StereoFrame::new(sample[0], sample[1]));
+        *left_out += measured.left;
+        *right_out += measured.right;
         data.phase += 1.0;
     }
-    data.client_state
-        .published_meter
+    data.published_meter
         .publish(data.meter.snapshot_and_clear_peak());
     data.position.store(
         (data.phase - data.region_start as f64).max(0.0) as u64,
         Ordering::Release,
     );
+}
+
+#[inline]
+fn apply_queued_command(data: &LoopRenderer) {
+    let command = data.control.queued.swap(0, Ordering::AcqRel);
+    if command != 0 {
+        data.control.running.store(command == 1, Ordering::Release);
+    }
+}
+
+#[inline]
+fn smoothing_coefficient(sample_rate: u32) -> f32 {
+    1.0 - (-1.0 / (CONTROL_SMOOTH_SECONDS * sample_rate.max(1) as f32)).exp()
+}
+
+#[inline]
+fn dj_filter(data: &mut LoopRenderer, input: [f32; 2]) -> [f32; 2] {
+    if data.filter.abs() <= FILTER_DEADBAND {
+        return input;
+    }
+    let normalized =
+        ((data.filter.abs() - FILTER_DEADBAND) / (1.0 - FILTER_DEADBAND)).clamp(0.0, 1.0);
+    let cutoff = if data.filter < 0.0 {
+        18_000.0 * (200.0_f32 / 18_000.0).powf(normalized)
+    } else {
+        20.0 * (5_000.0_f32 / 20.0).powf(normalized)
+    };
+    let alpha = 1.0
+        - (-std::f32::consts::TAU * cutoff / data.source_rate.max(1) as f32)
+            .exp()
+            .clamp(0.0, 1.0);
+    let mut output = [0.0; 2];
+    for channel in 0..2 {
+        if data.filter < 0.0 {
+            data.lowpass[channel] += alpha * (input[channel] - data.lowpass[channel]);
+            output[channel] = data.lowpass[channel];
+        } else {
+            data.highpass_low[channel] += alpha * (input[channel] - data.highpass_low[channel]);
+            output[channel] = input[channel] - data.highpass_low[channel];
+        }
+        if !output[channel].is_finite() {
+            output[channel] = 0.0;
+            data.lowpass[channel] = 0.0;
+            data.highpass_low[channel] = 0.0;
+        }
+    }
+    output
+}
+
+fn checked_slot(slot: usize) -> Result<usize> {
+    if slot >= LOOP_SLOTS {
+        bail!("loop slot must be 1..=4");
+    }
+    Ok(slot)
+}
+
+fn require_compatible_tempo(interpreted_bpm: f64, project_bpm: f64) -> Result<()> {
+    if (interpreted_bpm - project_bpm).abs() > 0.01 {
+        bail!(
+            "loop is {:.2} BPM but Project is {:.2} BPM; time-stretching is not available",
+            interpreted_bpm,
+            project_bpm
+        );
+    }
+    Ok(())
 }
 
 fn require_native_rate(source_rate: u32, jack_rate: u32) -> Result<()> {
@@ -1357,28 +1765,69 @@ mod tests {
         let clock = Arc::new(TransportClock::default());
         let position = Arc::new(AtomicU64::new(0));
         let published_meter = Arc::new(AtomicMeter::default());
+        let control = Arc::new(SlotControl::new(None));
+        control.running.store(true, Ordering::Release);
         (
             LoopRenderer {
+                samples: Arc::new(samples.clone()),
                 source_rate: 48_000,
                 interpreted_bpm: 120.0,
                 region_start: 0,
                 region_len: samples.len(),
                 offset_beats: 0,
+                meter_beats: 4,
                 fade: 0,
                 phase: 0.0,
                 seen_generation: u64::MAX,
                 clock,
                 position,
                 meter: MeterAccumulator::new(4).unwrap(),
-                client_state: Arc::new(LoopClientState {
-                    active: AtomicBool::new(true),
-                    published_meter: Arc::clone(&published_meter),
-                }),
-                meter_active: false,
-                samples,
+                published_meter: Arc::clone(&published_meter),
+                control,
+                level: 1.0,
+                filter: 0.0,
+                lowpass: [0.0; 2],
+                highpass_low: [0.0; 2],
+                transport_frames: 0,
             },
             published_meter,
         )
+    }
+
+    fn render_output(renderer: &mut LoopRenderer, left: &mut [f32], right: &mut [f32]) {
+        left.fill(0.0);
+        right.fill(0.0);
+        if left.len() != right.len()
+            || left.len() > MAX_LOOP_CALLBACK_FRAMES
+            || !renderer.clock.playing.load(Ordering::Acquire)
+        {
+            renderer.published_meter.publish(MeterSnapshot::default());
+            return;
+        }
+        render_slot(renderer, left, right);
+    }
+
+    fn test_mixer(samples: [[[f32; 2]; 4]; LOOP_SLOTS]) -> LoopMixerRenderer {
+        let mut renderers = Vec::new();
+        let mut slot_meters = Vec::new();
+        for samples in samples {
+            let (renderer, meter) = test_renderer(samples.to_vec());
+            renderer.clock.play(0.0, 120);
+            renderers.push(renderer);
+            slot_meters.push(meter);
+        }
+        let published_meter = Arc::new(AtomicMeter::default());
+        let client_state = Arc::new(LoopClientState {
+            active: AtomicBool::new(true),
+            published_meter: Arc::clone(&published_meter),
+            slot_meters: std::array::from_fn(|slot| Arc::clone(&slot_meters[slot])),
+        });
+        let mut renderers = renderers.into_iter();
+        LoopMixerRenderer {
+            slots: std::array::from_fn(|_| Some(renderers.next().unwrap())),
+            meter: MeterAccumulator::new(4).unwrap(),
+            client_state,
+        }
     }
 
     #[test]
@@ -1558,6 +2007,8 @@ mod tests {
             start_beat: 0,
             length_beats: 4,
             offset_beats: 0,
+            level_x1000: 1000,
+            filter_x1000: 0,
         };
 
         let error = player
@@ -1617,6 +2068,133 @@ mod tests {
     }
 
     #[test]
+    fn four_slot_callback_sums_each_stereo_source_once_without_allocating() {
+        let mut mixer = test_mixer([
+            [[0.05, 0.01]; 4],
+            [[0.10, 0.02]; 4],
+            [[0.15, 0.03]; 4],
+            [[0.20, 0.04]; 4],
+        ]);
+        let mut left = [9.0; 4];
+        let mut right = [9.0; 4];
+        assert_no_allocations(|| render_mixer_output(&mut mixer, &mut left, &mut right));
+        assert_eq!(left[0], 0.0);
+        assert_eq!(right[0], 0.0);
+        for frame in 1..4 {
+            assert!((left[frame] - 0.50).abs() < 0.000_01);
+            assert!((right[frame] - 0.10).abs() < 0.000_01);
+        }
+        let peak = mixer.client_state.published_meter.load().peak;
+        assert!((peak.left - 0.5).abs() < 0.000_01);
+        assert!((peak.right - 0.1).abs() < 0.000_01);
+
+        mixer.slots[2]
+            .as_ref()
+            .unwrap()
+            .control
+            .muted
+            .store(true, Ordering::Release);
+        render_mixer_output(&mut mixer, &mut left, &mut right);
+        assert!((left[1] - 0.35).abs() < 0.000_01);
+        assert!((right[1] - 0.07).abs() < 0.000_01);
+    }
+
+    #[test]
+    fn loop_commands_replace_cancel_and_apply_deterministically_at_a_boundary() {
+        let (renderer, _) = test_renderer(vec![[0.2, 0.2]; 4]);
+        renderer.control.running.store(false, Ordering::Release);
+        renderer.control.queue(Some(LoopCommand::Launch));
+        renderer.control.queue(Some(LoopCommand::Stop));
+        assert_eq!(renderer.control.queued(), Some(LoopCommand::Stop));
+        renderer.control.queue(None);
+        assert_eq!(renderer.control.queued(), None);
+
+        renderer.control.queue(Some(LoopCommand::Launch));
+        apply_queued_command(&renderer);
+        assert!(renderer.control.running.load(Ordering::Acquire));
+        assert_eq!(renderer.control.queued(), None);
+        renderer.control.queue(Some(LoopCommand::Stop));
+        apply_queued_command(&renderer);
+        assert!(!renderer.control.running.load(Ordering::Acquire));
+
+        let (mut boundary, _) = test_renderer(vec![[0.2, 0.2]; 64]);
+        boundary.source_rate = 20;
+        boundary.meter_beats = 1;
+        boundary.clock.play(0.0, 120);
+        let mut left = [0.0; 4];
+        let mut right = [0.0; 4];
+        render_output(&mut boundary, &mut left, &mut right);
+        boundary.control.queue(Some(LoopCommand::Stop));
+        render_output(&mut boundary, &mut left, &mut right);
+        assert!(boundary.control.running.load(Ordering::Acquire));
+        render_output(&mut boundary, &mut left, &mut right);
+        assert!(!boundary.control.running.load(Ordering::Acquire));
+        assert!(left[2..].iter().all(|sample| *sample == 0.0));
+    }
+
+    #[test]
+    fn level_and_dj_filter_are_smoothed_bounded_neutral_and_finite() {
+        let alternating = (0..4096)
+            .map(|index| {
+                let sample = if index % 2 == 0 { 0.5 } else { -0.5 };
+                [sample, -sample]
+            })
+            .collect::<Vec<_>>();
+        let (mut neutral, _) = test_renderer(alternating.clone());
+        neutral.clock.play(0.0, 120);
+        neutral.filter = 0.0;
+        neutral
+            .control
+            .filter_bits
+            .store(0.02_f32.to_bits(), Ordering::Release);
+        neutral.control.level_x1000.store(0, Ordering::Release);
+        let mut left = vec![0.0; 4096];
+        let mut right = vec![0.0; 4096];
+        render_output(&mut neutral, &mut left, &mut right);
+        assert!(left.iter().all(|sample| sample.is_finite()));
+        assert!(left[2].abs() > left[4095].abs());
+        assert!(left[2].abs() < 0.5, "level change must be smoothed");
+
+        let (mut lowpass, _) = test_renderer(alternating);
+        lowpass.clock.play(0.0, 120);
+        lowpass.filter = -1.0;
+        lowpass
+            .control
+            .filter_bits
+            .store((-1.0_f32).to_bits(), Ordering::Release);
+        render_output(&mut lowpass, &mut left, &mut right);
+        let tail_peak = left[2048..]
+            .iter()
+            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+        assert!(tail_peak < 0.1, "low-pass must attenuate alternating highs");
+
+        let (mut highpass, _) = test_renderer(vec![[0.4, -0.4]; 4096]);
+        highpass.clock.play(0.0, 120);
+        highpass.filter = 1.0;
+        highpass
+            .control
+            .filter_bits
+            .store(1.0_f32.to_bits(), Ordering::Release);
+        render_output(&mut highpass, &mut left, &mut right);
+        assert!(left.iter().all(|sample| sample.is_finite()));
+        assert!(left[4095].abs() < left[2].abs());
+    }
+
+    #[test]
+    fn tempo_rate_and_phase_contracts_refuse_drift_but_allow_different_bar_lengths() {
+        assert!(require_compatible_tempo(120.0, 120.0).is_ok());
+        assert!(require_compatible_tempo(120.02, 120.0)
+            .unwrap_err()
+            .to_string()
+            .contains("time-stretching is not available"));
+        assert!(require_native_rate(48_000, 44_100).is_err());
+        for loop_beats in [4.0, 8.0, 16.0, 32.0] {
+            assert_eq!(loop_phase_from_song(loop_beats, 0, loop_beats), 0.0);
+            assert_eq!(loop_phase_from_song(loop_beats + 4.0, 4, loop_beats), 0.0);
+        }
+    }
+
+    #[test]
     fn stopped_silent_and_restarted_loop_cannot_leave_stale_meter_levels() {
         let (mut renderer, published) = test_renderer(vec![[0.8, 0.4]; 4]);
         renderer.clock.play(0.0, 120);
@@ -1635,13 +2213,7 @@ mod tests {
             peak: StereoFrame::new(0.6, 0.3),
             ..MeterSnapshot::default()
         });
-        unsafe {
-            shutdown_callback(
-                Arc::as_ptr(&renderer.client_state)
-                    .cast_mut()
-                    .cast::<c_void>(),
-            )
-        };
+        published.publish(MeterSnapshot::default());
         assert_eq!(published.load(), MeterSnapshot::default());
         left.fill(1.0);
         right.fill(1.0);
@@ -1650,8 +2222,7 @@ mod tests {
         assert_eq!(right, [0.0; 4]);
         assert_eq!(published.load(), MeterSnapshot::default());
 
-        renderer.samples.fill([0.1, 0.2]);
-        renderer.client_state.active.store(true, Ordering::Release);
+        renderer.samples = Arc::new(vec![[0.1, 0.2]; 4]);
         renderer.clock.play(0.0, 120);
         render_output(&mut renderer, &mut left, &mut right);
         assert_eq!(published.load().peak, StereoFrame::new(0.1, 0.2));
@@ -1676,6 +2247,8 @@ mod tests {
             start_beat: 0,
             length_beats: 4,
             offset_beats: 0,
+            level_x1000: 1000,
+            filter_x1000: 0,
         };
         assert!(player
             .load(
@@ -1733,13 +2306,15 @@ mod tests {
 
         let mut song = Song::new(&crate::config::RuntimeConfig::default().external_midi);
         song.name = "saved".into();
-        song.audio_loop = Some(LoopSettings {
+        song.audio_loops[0] = Some(LoopSettings {
             file: "used.wav".into(),
             source_bpm_x100: 12_000,
             interpretation: crate::sequencer::BpmInterpretation::Normal,
             start_beat: 0,
             length_beats: 4,
             offset_beats: 0,
+            level_x1000: 1000,
+            filter_x1000: 0,
         });
         crate::sequencer::save(&projects, &song, false).unwrap();
 

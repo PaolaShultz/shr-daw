@@ -7,6 +7,7 @@
 [MIDI ideas](#midi-ideas)
 [FT2 tracker](#ft2-tracker)
 [Pages and hardware MIDI](#pages-and-hardware-midi)
+[Live performance](#live-performance)
 [Loops and audio](#loops-and-audio)
 [Trouble spots](#trouble-spots)
 
@@ -257,30 +258,42 @@ only user saves can be deleted.
 FILES CLEAN deletes only a zero-reference Pattern and never edits Arrangement
 steps.
 
+## Live performance
+
+FT2 TOOLS `LIVE` opens Live Patterns. Browse without launching. LAUNCH queues
+the selected Pattern for the chosen Pattern or bar boundary; NOW is immediate,
+RETRIG repeats the current Pattern, and CANCEL removes the queue. CAPTURE keeps
+only successful boundary activations, then APPEND or REPLACE explicitly
+confirms an Arrangement change.
+
+SHAPE controls transient mute, velocity, gate, and transpose for the selected
+page's four MIDI lanes. The values survive navigation but reset on Project
+load/new. Keyboard: `l`/`L` launch/now, `c` cancel, `r` retrigger, `q`
+quantization, and `m`/`v`/`g`/`t` lane shaping.
+
 ## Loops and audio
 
-Loop import copies WAV files from the configured inbox into private storage.
-Source BPM is manual unless AUTO align can measure a useful pulse.
+Loop Mix has four independent Project slots. SLOT-/SLOT+ changes selection
+without launch. LAUNCH and STOP queue the selected slot for the next bar; a new
+command replaces the queue and CANCEL removes it. MIX controls smoothed level
+and mute. FILTER turns left for low-pass, right for high-pass, with neutral at
+centre. Keyboard: `p`/`P` launch/stop, `c` cancel, `m` mute, `,`/`.` filter,
+and `0` neutral.
 
-Tempo matching sets the current Pattern tempo from the WAV; the WAV plays at
-native speed and pitch. The loop sample rate must match JACK. Use UNIT to edit
-by beat or bar, and ALIGN to snap/move placement by bars. Loop Player PLAY
-`REMOVE` is confirmed and detaches the Project loop without deleting the WAV.
-Loop Player SYS `LIBRARY` opens an overlay over the loop page. Browsing is
-silent. Controller PLAY explicitly previews the selected WAV; repeated PLAY,
-selection change, STOP, Back, browser close, or leaving Loop Player stops that
-preview. Press the rotary/Enter to import or attach and load. Failure keeps the
-selection and FT2 context for retry without attaching a partial import.
-`INBOX` imports; `PRIVATE`, `CURRENT`, and `SAVED` attach the existing file.
+Every active WAV must match the Project's interpreted tempo and JACK's sample
+rate. Playback stays native speed/pitch; there is no time-stretching. Different
+whole-bar lengths remain aligned. A failed slot is isolated.
+
+`LIBRARY` opens an overlay for the selected slot. Browsing is silent.
+Controller PLAY explicitly previews the WAV; repeated PLAY, selection change,
+STOP, Back, browser close, or leaving the browser stops preview. Press the
+rotary/Enter to import or attach. `INBOX` imports; `PRIVATE`, `CURRENT`, and
+`SAVED` attach the existing file. Failure keeps selection and FT2 context.
 The browser does not delete WAVs.
 
-Healthy loop output needs no label. An unavailable or failed output reports a
-short fault with `PLAY` recovery. A valid decoded region keeps its white
-position bar and green playhead even during an output fault.
-
-The normal Loop screen's circular-LED `LOOP OUT` bars show only that WAV after its cut,
-position, interpolation, transport gate, and edge fades. They do not include
-the loaded synth, effects, recorder input, hardware gain, or other JACK clients.
+`LOOP OUT` is the summed four-slot source after each slot's cut, phase, filter,
+level, transport gate, and edge fades. It does not include the loaded synth,
+effects, recorder input, hardware gain, or other JACK clients.
 
 The audio recorder arms independently named JACK inputs and writes one 24-bit
 mono WAV per input in a synchronized take directory. Select a track, assign an

@@ -48,7 +48,8 @@ or `q` can still exit from the splash.
 | FT2 record | Record quantized note-ons and release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. Stopped REC loops the selected Pattern; REC during Play punches into the Arrangement. Exact page/lane owners survive cursor moves and boundaries. Rotary turns are ignored while recorded notes are held; Edit note length does not affect REC. |
 | FT2 edit | Manual writes from the selected column, One column writes to its persisted C1–C4 monophonic anchor, and Drum auto safely allocates simultaneous hits without moving the cursor. Note length, blank/skip, erase, note off, 0–32-row ADD, and PAGE remain available. N00B may filter melodic input. Command notes stay controls. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
-| FT2 loop | Fourth musician-facing FT2 page; import or attach WAV; silence while output is healthy and concise `OUTPUT FAULT`/retry text when it is not; persistent valid-region position bar/playhead; separate loop-only stereo RMS/peak/`MAX`/clip meter on taller terminals; confirmed Project detach without deleting the private WAV; rewind/play; source BPM and half/normal/double interpretation; start/length cuts in beat or bar units; shared inbox/private Library overlay; align child screen for auto bar alignment and one-bar placement shifts. |
+| Live Patterns | Browse four existing Patterns at a time without launch; distinguish selection/current/queue; replace or cancel Pattern/bar-boundary queues; deliberate immediate launch and current retrigger; capture only successful activations with Append/Replace confirmation; transient four-lane mute, velocity, gate, and transpose; literal Stop, Panic, keyboard equivalents, and preserved FT2 cursor. |
+| Loop Mix | Fourth musician-facing FT2 page; select one of four private WAV slots without launch; queue independent launch/stop at the next bar; replace/cancel commands; show play/stop/queue/mute/missing/fault states; smoothed level and bipolar filter; import/attach/remove only the selected slot; isolate faults; shared library overlay and align child. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
@@ -126,9 +127,9 @@ Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
 Tracks ENTRY chooses Manual, One column C1–C4, or Drum auto; Pattern Setup
 LNGTH chooses every value from 1 through 32 plus 48, 64, 96, 128, 192, and
 256.
-The Loop Player's LIBRARY launcher uses it for one combined inbox/private
+Loop Mix's LIBRARY launcher uses it for one combined inbox/private
 browser. Selection is silent until PLAY explicitly previews it; changing
-selection, STOP, Back, closing the browser, or leaving the Loop Player stops
+selection, STOP, Back, closing the browser, or leaving the browser stops
 that preview. Activating an inbox selection imports and loads it, while
 activating a private/current/saved selection attaches and loads it. A failed
 preview or import keeps the selection and caller context for retry. MTR's FX
@@ -234,14 +235,18 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 | Play | Cell edit | Play | Record | Edit |
 | FT2 | Select | Page overlay | Pattern overlay | Song overlay | Route overlay |
 | FT2 | Sys | Panic | N00B | Help | Exit |
-| FT2 tools | Ops | Arrange | Loop | FX | Mute lane |
+| FT2 tools | Ops | Arrange | Live Patterns | FX | Loop Mix |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
-| FT2 tools | Page | Mute page (`MUTE PG`) | — | — | — |
+| FT2 tools | Page | Mute page (`MUTE PG`) | Mute lane (`MUTE`) | — | — |
 | FT2 tools | Sys | Panic | Help | — | Exit |
-| FT2 loop | Play | Rewind | Play | Import | Remove |
-| FT2 loop | BPM | BPM− | BPM+ | BPM x | Unit |
-| FT2 loop | Cut | Start− | Start+ | Length− | Length+ |
-| FT2 loop | Sys | Panic | Align | Library | Exit |
+| Live Patterns | Launch | Launch | Cancel queue | Retrigger current | Immediate |
+| Live Patterns | Timing | Stop | Pattern boundary | Bar boundary | Capture |
+| Live Patterns | Shape | Mute | Velocity | Gate | Transpose |
+| Live Patterns | Sys | Panic | Append capture | Replace Arrangement | Exit |
+| Loop Mix | Play | Stop slot | Launch slot | Previous slot | Next slot |
+| Loop Mix | Mix | Level− | Level+ | Mute | Remove |
+| Loop Mix | Filter | Filter− | Filter+ | Cancel queue | Align |
+| Loop Mix | Sys | Panic | Import | Library | Exit |
 | FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
 | FT2 loop align | Sys | Panic | Help | — | Exit |
 | FT2 record | Mode | — | Play | Record/stop | Edit |
@@ -370,6 +375,12 @@ on configured CCs. Preset load, idea load, and in-place reset re-arm pickup;
 the verified synthv1 0.9.29 indices/ranges and green/yellow/red ±0.03 indicators
 are unchanged. `MAPPED_CONTROL_CAPACITY` reserves 16 entries while only the 12
 schema-verified controls are populated.
+
+Live Pattern lane shaping and Loop Mix use the profile/configured relative
+master encoder plus visible action selection, with equivalent keyboard paths.
+They add no hard-coded hardware CC and no hidden absolute-knob mode. If a
+future profile maps an absolute continuous control, it must use the same pickup
+crossing rule and re-arm whenever a Project or runtime value resets.
 
 `Action` and the empty menu slots remain extension points. Future features are
 not shown on the hardware menu until they actually dispatch a working action.

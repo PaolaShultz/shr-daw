@@ -13,7 +13,8 @@ effects, and JACK recording.
 
 - Play synthv1, Yoshimi, or FluidSynth through one safely managed engine.
 - Build routed multi-page Patterns, Arrangements, drum parts, and private WAV
-  loop performances in the FT2 workspace.
+  loop performances in the FT2 workspace, including quantized Live Patterns
+  and a four-slot Loop Mix.
 - Save free-timed MIDI Ideas, synchronized raw JACK stems, or the protected
   final stereo performance mix.
 - Use the computer keyboard, mouse, or a configured four-, five-, or
@@ -71,12 +72,19 @@ capture MIDI Ideas.
 
 Edit routed melodic or percussion pages and arrange reusable Patterns.
 
-### Loop Player
+### Live Patterns
 
-<img src="docs/images/shr-daw-ft2-loop.png" alt="FT2 Loop Player with region controls and loop-only stereo meter" width="100%">
+<img src="docs/images/shr-daw-live-patterns.png" alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" width="100%">
 
-Attach a private WAV, align its playable region, and follow it with FT2
-transport.
+Browse without launching, queue or retrigger at Pattern/bar boundaries, shape
+four MIDI lanes live, and optionally capture successful launches.
+
+### Loop Mix
+
+<img src="docs/images/shr-daw-ft2-loop.png" alt="Four-slot Loop Mix with playing, queued, muted, and fault states" width="100%">
+
+Launch and stop four private native-rate WAV loops independently, with
+smoothed level and bipolar DJ-style filtering.
 
 ### Audio recorder
 
@@ -99,6 +107,7 @@ tour without duplicating its controls here.
 
 - [First run](docs/FIRST_RUN.md) and [Using SHR-DAW](docs/USING_SHR_DAW.md)
 - [Tracker guide](docs/TRACKER.md) and [screen and menu manual](docs/MENU_MANUAL.md)
+- [Live performance](docs/LIVE_PERFORMANCE.md)
 - [Configuration and routing](docs/CONFIGURATION.md) and
   [controller interface](docs/CONTROLLER_INTERFACE.md)
 - [How it works](docs/HOW_IT_WORKS.md), [audio graph](docs/AUDIO_GRAPH.md), and

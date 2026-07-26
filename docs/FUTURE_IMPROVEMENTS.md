@@ -144,9 +144,10 @@ hiding both behaviors behind a generic “effect” switch.
 ### Current architecture boundary
 
 SHR-DAW now owns a bounded three-source stereo sum. The managed source's dry
-path and two wet returns meet the owned loop and configured live-input pair,
-then pass through the master, final limiter/meter/recorder and playback. The raw
-synchronized multitrack recorder remains a separate workflow.
+path and two wet returns meet the complete internally summed four-slot Loop Mix
+and configured live-input pair, then pass through the master, final
+limiter/meter/recorder and playback. The raw synchronized multitrack recorder
+remains a separate workflow.
 
 The graph uses internal preallocated mixer, send-tap, and return nodes rather
 than relying on implicit JACK summing. That makes independent send/return gain,

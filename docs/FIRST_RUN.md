@@ -66,6 +66,9 @@ before enabling the three-source final bus.
   notes with `Z S X D C V G B H N J M` whenever convenient.
 - Open **FILES** in FT2 to load one of the seeded demo Projects; its `AUTO`
   pages use whatever MIDI destination and channels this machine currently has.
+- Open **LIVE** from FT2 tools to queue existing tracker Patterns without
+  changing the saved Arrangement, or open **LOOP** to perform up to four
+  tempo-compatible private WAV slots.
 - Add external MIDI instruments and audio hardware only when useful.
 
 Computer-keyboard step entry is available, while free live performance of a

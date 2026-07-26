@@ -185,16 +185,17 @@ half-edited draft never leaks into the Project.
 
 ## FT2 Tools
 
-This detailed child screen remains for Arrangement, clip operations, WAV loops,
-effects, and muting. Open it from the SONG overlay's `OPEN LOOP / PAGE TOOLS` row.
+This detailed child screen remains for Arrangement, Live Patterns, clip
+operations, Loop Mix, effects, and muting. Open it from the SONG overlay's
+`OPEN LOOP / PAGE TOOLS` row.
 Quick Page, Pattern, Song, and Route selection stays in the master overlays.
 
 ### OPS — open focused tools
 
 ![Populated FT2 Tools screen with the OPS page](../images/menu/ft2-tools-ops.png)
 
-`ARR` opens the Pattern order. `LOOP` opens WAV-loop setup. `FX` opens the
-Project effects rack. `MUTE` toggles the selected lane.
+`ARR` opens the saved Arrangement. `LIVE` opens Live Patterns. `FX` opens the
+Project effects rack. `LOOP` opens the four-slot Loop Mix.
 
 ### CLIP — lane and page clipboard
 
@@ -207,8 +208,8 @@ four-lane page. These are in-memory editing clipboards, not saved Projects.
 
 ![Populated FT2 Tools screen with the PAGE page](../images/menu/ft2-tools-page.png)
 
-`MUTE PG` toggles the current four-lane page. Loop import, attachment, detach,
-and alignment remain on the separate Loop screen opened from OPS.
+`MUTE PG` toggles the current four-lane page. `MUTE` toggles the selected
+stored tracker lane. Transient performance mute remains on Live Patterns.
 
 ### SYS — safety, help, and return
 
@@ -216,6 +217,47 @@ and alignment remain on the separate Loop screen opened from OPS.
 
 `PANIC` and `HELP` retain their normal meanings. `EXIT` returns to the
 Pattern editor.
+
+## Live Patterns
+
+Live Patterns performs existing tracker Patterns without changing the saved
+Arrangement. Browsing changes the white selection only. Green `PLAY` and yellow
+`Q` identify current and queued Patterns independently, while the lower rows
+show transient lane shaping.
+
+### LAUNCH — select, queue, cancel, retrigger
+
+![Populated Live Patterns with the LAUNCH page](../images/menu/live-patterns-launch.png)
+
+`LAUNCH` queues the selected Pattern. `CANCEL` removes the queue. `RETRIG`
+queues the current Pattern deliberately. `NOW` is the distinct immediate
+action.
+
+### TIMING — boundary and capture
+
+![Populated Live Patterns with the TIMING page](../images/menu/live-patterns-timing.png)
+
+`STOP` is literal transport stop. `PAT Q` and `BAR Q` choose the next Pattern
+or complete-bar boundary. `CAPTURE` arms/stages/cancels temporary launch
+capture without silently changing Arrangement.
+
+### SHAPE — transient four-lane performance
+
+![Populated Live Patterns with the SHAPE page](../images/menu/live-patterns-shape.png)
+
+`MUTE`, `VEL`, `GATE`, and `TRANS` affect the selected page/lane runtime copy.
+Values survive navigation in this Project and reset on Project load/new.
+
+### SYS — safety and capture confirmation
+
+![Populated Live Patterns with the SYS page](../images/menu/live-patterns-sys.png)
+
+`PANIC` remains global. `APPEND` or `REPLACE` explicitly confirms a staged
+capture; repeated launches remain repeated Pattern references. `EXIT` returns
+without moving the editor cursor.
+
+See [Live performance](../LIVE_PERFORMANCE.md) for exact boundary ownership,
+keyboard equivalents, failures, and deliberate limits.
 
 ## N00B filter and Edit note length
 

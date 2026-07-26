@@ -7,62 +7,50 @@ WAV loops and the owned effects graph require a running JACK server, but the
 screenshots below are deterministic presentation states and never start JACK.
 The loop player and graph operate only on resources owned by SHR-DAW.
 
-## FT2 WAV Loop
+## FT2 Loop Mix
 
-A Project may attach one privately imported mono or stereo WAV. Import copies
-the selected inbox file beneath the user's SHR-DAW data directory. The player
-uses native pitch and requires the WAV sample rate to match JACK; it does not
-time-stretch or pitch-shift audio to force a fit. The normal screen's stereo
-`LOOP OUT` circular-LED bars show smoothed RMS, a brighter held peak,
-independent session `MAX` values, and clip state for this WAV alone. They are deterministic preview
-values in the screenshots below, not a live JACK measurement.
+A Project may attach four privately imported mono or stereo WAVs. Every active
+slot must match the Project tempo and JACK sample rate; playback stays native
+pitch/speed with no time-stretching. The four fixed renderers sum inside one
+owned Loop JACK client, so the existing `LOOP OUT` meter and final bus receive
+the complete Loop source once.
 
-The meter tap is after the chosen region, interpolation, transport gate, and
-edge fades, immediately before the loop player's existing two JACK outputs.
-It does not include the synth, source/aux/master effects, recorder input,
-hardware gain, or unrelated clients. With the owned graph active, the loop is
-also one of the three sources summed exactly once into the Performance Meter's
-post-limiter `FINAL OUT`; the raw loop meter remains loop-only.
+Selection is white and never launches. Rows separately show playing, stopped,
+queued launch/stop, muted, missing, and faulted slots. One bad WAV does not stop
+the other three.
 
-Healthy output has no state line. Missing or failed output gets a concise
-unavailable/fault line with `PLAY` recovery. A white position bar with a green
-playhead sits near the top whenever the attached WAV has a valid decoded
-region. That bar remains visible when output activation fails, separating
-successful decoding and region setup from the JACK fault.
+### PLAY — bar-quantized slot transport
 
-### PLAY — import, remove, and transport
+![Populated Loop Mix with the PLAY page](../images/menu/ft2-loop-play.png)
 
-![Populated FT2 WAV Loop screen with the PLAY page](../images/menu/ft2-loop-play.png)
+`STOP` and `LAUNCH` queue the selected slot for the next Project bar.
+`SLOT-`/`SLOT+` change selection without playback. A later command replaces
+the earlier queue.
 
-`REWIND` stops owned transport and returns to the Arrangement beginning.
-`PLAY` starts or stops tracker and loop transport. `IMPORT` copies and loads
-the selected inbox WAV. `REMOVE` requires confirmation, detaches the loop from
-the Project, and unloads SHR-DAW's loop JACK client without deleting the WAV.
+### MIX — level, mute, and remove
 
-### BPM — interpret source tempo
+![Populated Loop Mix with the MIX page](../images/menu/ft2-loop-mix.png)
 
-![Populated FT2 WAV Loop screen with the BPM page](../images/menu/ft2-loop-bpm.png)
+`LEVEL-`/`LEVEL+` adjust the selected slot's smoothed 0–150% level. `MUTE`
+affects only that slot. `REMOVE` requires confirmation, clears only its Project
+reference, and keeps the private WAV.
 
-`BPM-` and `BPM+` change the interpreted source tempo. `BPM x` cycles half,
-normal, and double interpretation. `UNIT` switches cut adjustment between
-single beats and whole bars. Tempo matching changes the current Pattern tempo;
-it does not alter the WAV samples.
+### FILTER — bipolar shaping and queue cancel
 
-### CUT — choose the beat region
+![Populated Loop Mix with the FILTER page](../images/menu/ft2-loop-filter.png)
 
-![Populated FT2 WAV Loop screen with the CUT page](../images/menu/ft2-loop-cut.png)
+`FILTER-` moves from neutral toward low-pass; `FILTER+` moves toward high-pass.
+The centre deadband is neutral and changes are smoothed. `CANCEL` removes the
+selected slot's queued command. `ALIGN` opens bounded offline analysis and
+whole-bar placement.
 
-`START-` and `START+` move the region's first beat. `LEN-` and `LEN+` change
-its length. The active `UNIT` determines whether each press means one beat or
-one whole Project bar.
+### SYS — safety, import, library, and return
 
-### SYS — safety, align, library, and return
+![Populated Loop Mix with the SYS page](../images/menu/ft2-loop-sys.png)
 
-![Populated FT2 WAV Loop screen with the SYS page](../images/menu/ft2-loop-sys.png)
-
-`PANIC` remains reachable. `ALIGN` opens offline analysis and placement
-adjustment. `LIBRARY` opens the shared loop browser. `EXIT` returns to the
-calling FT2 Pattern or Song context with its location and cursor unchanged.
+`PANIC` remains reachable. `IMPORT` attaches the selected inbox WAV to the
+selected slot. `LIBRARY` opens the shared loop browser for that slot. `EXIT`
+returns to the caller without moving its cursor.
 
 ## Private loop browser
 
@@ -70,13 +58,13 @@ calling FT2 Pattern or Song context with its location and cursor unchanged.
 `INBOX`, `CURRENT`, `PRIVATE`, and `SAVED` entries. Turning the rotary changes
 selection silently. Controller `PLAY` at position 6 explicitly previews the
 selection; pressing it again stops. Changing selection, controller `STOP`,
-Back, the highlighted `LIBRARY` launcher, or leaving the Loop Player stops the
+Back, the highlighted `LIBRARY` launcher, or leaving the browser stops the
 preview. Pressing the rotary/Enter commits the selected file: `INBOX` imports
 first, while the other types attach an existing private WAV. A failed preview
 or import leaves the browser selection and caller state in place for retry, and
 a failed import removes its private copy. The browser has no deletion action.
 
-![Shared inbox/private loop overlay over the Loop Player](../images/menu/overlay-loop-library.png)
+![Shared inbox/private loop overlay over Loop Mix](../images/menu/overlay-loop-library.png)
 
 The caller remains visible while the overlay identifies each file's source and
 Project relationship.
@@ -99,7 +87,7 @@ settings and returns to WAV Loop.
 
 ![Populated Loop Align screen with the SYS page](../images/menu/loop-align-sys.png)
 
-`PANIC` and `HELP` stay available. `EXIT` returns to WAV Loop without
+`PANIC` and `HELP` stay available. `EXIT` returns to Loop Mix without
 performing another automatic analysis.
 
 ## FX Rack
