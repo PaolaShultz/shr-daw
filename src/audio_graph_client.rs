@@ -19,6 +19,7 @@ use crate::final_bus::{
     BusControls, BusSource, FinalBusMeterSnapshot, FinalBusMeters, FinalBusProcessor,
 };
 use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
+use crate::master_strip::{MasterStripControls, MasterStripSettings};
 use anyhow::{anyhow, bail, Context, Result};
 use libc::{c_int, c_uint, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -173,6 +174,7 @@ pub(crate) struct OwnedAudioGraph {
     callback: Box<CallbackData>,
     routes: BoundaryRoutes,
     controls: std::sync::Arc<BusControls>,
+    strip_controls: std::sync::Arc<MasterStripControls>,
     meters: std::sync::Arc<FinalBusMeters>,
     final_recorder: FinalMixRecorder,
     monitoring: Monitoring,
@@ -209,6 +211,7 @@ impl OwnedAudioGraph {
         recording: &AudioCaptureConfig,
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
+        master_strip: &MasterStripSettings,
     ) -> Result<Self> {
         let PerformanceBusPorts {
             synth: source_ports,
@@ -294,11 +297,17 @@ impl OwnedAudioGraph {
             ],
         };
         let controls = std::sync::Arc::new(BusControls::default());
+        let strip_controls = std::sync::Arc::new(
+            MasterStripControls::new(sample_rate, master_strip)
+                .map_err(anyhow::Error::msg)
+                .context("prepare MASTER STRIP controls")?,
+        );
         let meters = std::sync::Arc::new(FinalBusMeters::default());
         let final_bus = FinalBusProcessor::new(
             sample_rate,
             config.maximum_callback_frames as usize,
             std::sync::Arc::clone(&controls),
+            std::sync::Arc::clone(&strip_controls),
             std::sync::Arc::clone(&meters),
         )
         .map_err(anyhow::Error::msg)
@@ -355,6 +364,7 @@ impl OwnedAudioGraph {
             callback,
             routes,
             controls,
+            strip_controls,
             meters,
             final_recorder,
             monitoring,
@@ -395,6 +405,10 @@ impl OwnedAudioGraph {
 
     pub(crate) fn bus_controls(&self) -> std::sync::Arc<BusControls> {
         std::sync::Arc::clone(&self.controls)
+    }
+
+    pub(crate) fn master_strip_controls(&self) -> std::sync::Arc<MasterStripControls> {
+        std::sync::Arc::clone(&self.strip_controls)
     }
 
     pub(crate) fn final_recording_status(&mut self) -> FinalMixRecorderStatus {
@@ -973,6 +987,9 @@ mod tests {
             assert!(controls.set_source_gain_db(source, 0.0));
         }
         let meters = std::sync::Arc::new(FinalBusMeters::default());
+        let strip_controls = std::sync::Arc::new(
+            MasterStripControls::new(48_000, &MasterStripSettings::default()).unwrap(),
+        );
         let recorder =
             FinalMixRecorder::new(std::env::temp_dir(), 48_000, 4096, maximum_frames as usize)
                 .unwrap();
@@ -989,8 +1006,14 @@ mod tests {
             client_lost: AtomicBool::new(false),
             source_lost: AtomicBool::new(false),
             timing: CallbackTimingCounters::default(),
-            final_bus: FinalBusProcessor::new(48_000, maximum_frames as usize, controls, meters)
-                .unwrap(),
+            final_bus: FinalBusProcessor::new(
+                48_000,
+                maximum_frames as usize,
+                controls,
+                strip_controls,
+                meters,
+            )
+            .unwrap(),
             final_capture: recorder.capture_handle(),
             final_buffer: vec![StereoFrame::SILENCE; maximum_frames as usize].into_boxed_slice(),
         }
@@ -1234,9 +1257,24 @@ mod tests {
                 ProcessStatus::Complete
             );
         });
-        assert_eq!(&output_left[..120], &[0.0; 120]);
-        assert_eq!(&output_left[120..], &[0.25; 8]);
-        assert_eq!(&output_right[120..], &[-0.5; 8]);
+        assert_eq!(output_left, [0.0; 128]);
+        assert_eq!(output_right, [0.0; 128]);
+
+        assert_no_allocations(|| {
+            assert_eq!(
+                process_block(
+                    &mut callback,
+                    128,
+                    [&silence, &silence, &silence, &silence, &silence, &silence],
+                    &mut output_left,
+                    &mut output_right,
+                ),
+                ProcessStatus::Complete
+            );
+        });
+        assert_eq!(&output_left[..5], &[0.0; 5]);
+        assert_eq!(&output_left[5..], &[0.25; 123]);
+        assert_eq!(&output_right[5..], &[-0.5; 123]);
     }
 
     #[test]

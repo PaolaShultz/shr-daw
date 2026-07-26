@@ -11,7 +11,8 @@ configured JACK capture L/R ---------------------------------------/
     -> optional aux returns, where routed from the managed source
     -> master insert rack
     -> master level
-    -> linked sample-peak limiter
+    -> fixed Project MASTER STRIP
+       INPUT -> TONE -> GLUE -> COLOR -> IMAGE -> LOUD/true-peak limiter
     -> FINAL meter
     -> final 24-bit stereo WAV tap
     -> configured JACK playback L/R
@@ -26,9 +27,10 @@ insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
 basic three-source summing headroom. These live performance controls are not
-Project data; current Project format 8 stores effect racks/routing at Project
-scope and four Loop Mix settings under each Pattern, but not these final-bus
-levels or mutes. JACK assignments remain machine configuration.
+Project data; current Project format 9 stores effect racks/routing and the
+fixed MASTER STRIP at Project scope and four Loop Mix settings under each
+Pattern, but not these final-bus levels or mutes. JACK assignments remain
+machine configuration.
 
 ## Exact routing and availability
 
@@ -60,39 +62,32 @@ monitoring. Enabling both without
 the delayed software copy and direct copy can comb-filter or sound doubled.
 Confirmation is deliberately explicit; it does not change interface hardware.
 
-## Limiter
+## MASTER STRIP and limiter
 
-The last processor is a dedicated stereo-linked lookahead limiter, not a
-compressor preset:
+The Project-owned strip follows the live master level in one fixed stereo
+order. Its optional INPUT, broad TONE, full-band linked GLUE, declared ADAA
+COLOR, and conservative M/S IMAGE stages default bypassed. LOUD is a 0..+6 dB
+push into an unbypassable stereo-linked true-peak limiter. The ceiling is
+-2.0..-0.5 dBTP and defaults to -1.0 dBTP.
 
-- sample-peak ceiling: -1.0 dBFS;
-- soft knee: 3.0 dB;
-- detector: the larger absolute left/right sample, with one shared gain so the
-  stereo image is preserved;
-- lookahead target: 2.5 ms, exactly 120 samples at 48 kHz and 110 samples at
-  44.1 kHz (2.494331 ms at that integer rate);
-- release time constant: 100 ms, with an attack/hold covering the lookahead;
-- automatic makeup: none; and
-- bypass: not exposed, so the protection cannot be removed accidentally.
+The limiter uses fixed 8×, 24-tap-per-phase interpolation before its detector
+and again after limiting for the published true-peak result. The larger
+reconstructed channel peak controls one shared gain. Its 2.5 ms look-ahead has
+a shaped attack, 1 ms hold, 100 ms release, and a 0.25 dB internal guard. The
+supported post-limiter tolerance is +0.30 dBTP. The final numerical clamp is a
+counted safety boundary, not the normal limiting mechanism.
 
-The delay is allocated and cleared before callback use. Processing performs no
-allocation, file access, locks, logging, formatting, sleeping, or unbounded
-work. Non-finite input becomes silence; invalid internal indices or envelope
-state reset deterministically. A final finite clamp guarantees that published
-samples do not exceed the declared sample ceiling.
+Complete fixed strip latency is 1 COLOR alignment sample, 12 interpolation
+delay samples, and `round(rate * 0.0025)` look-ahead samples: 133 samples
+(2.770833 ms) at 48 kHz and 123 samples (2.789116 ms) at 44.1 kHz. JACK and the
+interface add their own periods, safety buffers, and converter delays. SHR
+does not hide those in the software figure. For example, one 128-frame period
+is 2.667 ms at 48 kHz.
 
-This is **not true-peak or inter-sample-peak limiting**. It has no oversampled
-detector. The -1 dBFS sample ceiling provides pragmatic headroom, not a promise
-about reconstructed analogue peaks. The MTR screen shows pre-limiter clips,
-final clips, final L/R peak, and bounded maximum gain reduction for the latest
-block.
-
-The limiter adds the exact delay above. JACK and the interface add their own
-buffering in addition: capture/playback periods, driver safety buffering, and
-converter latency depend on the active server and hardware. SHR does not hide
-those as part of the 2.5 ms figure. For example, a 128-frame period is 2.667 ms
-at 48 kHz, but the number of periods and converter delays must be observed in a
-real full-duplex test.
+The final snapshot distinguishes input/output sample peak, output dBTP,
+GLUE/limiter gain reduction, correlation, and LUFS-M/S/I. Details, exact
+parameters, algorithms, provenance, exclusions, and repeatable measurements
+are in [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
 
 ## Final recording
 
@@ -106,7 +101,7 @@ publication.
 The result is one conventional little-endian PCM RIFF/WAVE file: two
 interleaved channels, 24 bits, and the active JACK sample rate. It includes the
 three-source sum, managed-source aux returns, master rack, master level, and
-limiter. It excludes raw recorder stems, unrelated JACK clients, interface
+complete MASTER STRIP. It excludes raw recorder stems, unrelated JACK clients, interface
 direct monitoring, hardware mixer/insert processing after JACK playback, and
 any downstream speaker/headphone processing.
 
@@ -146,7 +141,7 @@ Maintainers can exercise the production hardware-independent path with:
 shr final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]
 ```
 
-It uses three distinguishable stereo sources, the production faders/limiter,
+It uses three distinguishable stereo sources, the production faders/strip,
 bounded callback handoff, stereo writer, and full PCM equality check without
 opening JACK, starting a synth, transmitting MIDI, or producing sound. See
 [maintainer helpers](MAINTAINER_HELPERS.md#synthetic-final-mix-stress).

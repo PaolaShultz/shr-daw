@@ -13,6 +13,10 @@ use crate::final_bus::{
 };
 use crate::geometry::{contains, rect, visible_index};
 use crate::help::{self, HelpKind};
+use crate::master_strip::{
+    GlueAttack, GlueRatio, GlueRelease, GlueSidechainHpf, HighShelfFrequency, HpfFrequency,
+    ImageSideHpf, LowShelfFrequency,
+};
 use crate::multichannel_meter::{self, MultichannelMeter};
 use crate::navigation::{self, Action, MenuContext, Screen, SlotState};
 use crate::overlay::{
@@ -794,6 +798,11 @@ struct App {
     fx_numeric_input: Option<String>,
     fx_pickup: FxPickup,
     fx_rack_parent: Screen,
+    master_strip_parent: Screen,
+    master_strip_parent_menu_page: usize,
+    master_strip_section: MasterStripSection,
+    master_strip_parameter: usize,
+    master_strip_meter_preview: Option<crate::final_bus::FinalBusMeterSnapshot>,
     controller_config: engine::SharedControllerConfig,
     learn_mode: engine::SharedLearnMode,
     fx_control_mode: engine::SharedFxControlMode,
@@ -843,6 +852,50 @@ struct FxTypeEdit {
 enum FxRackSelection {
     Effect(EffectId),
     Insert,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum MasterStripSection {
+    #[default]
+    Input,
+    Tone,
+    Glue,
+    Color,
+    Image,
+    Loud,
+}
+
+impl MasterStripSection {
+    const ALL: [Self; 6] = [
+        Self::Input,
+        Self::Tone,
+        Self::Glue,
+        Self::Color,
+        Self::Image,
+        Self::Loud,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Input => "INPUT",
+            Self::Tone => "TONE",
+            Self::Glue => "GLUE",
+            Self::Color => "COLOR",
+            Self::Image => "IMAGE",
+            Self::Loud => "LOUD",
+        }
+    }
+
+    const fn parameter_count(self) -> usize {
+        match self {
+            Self::Input => 2,
+            Self::Tone => 4,
+            Self::Glue => 7,
+            Self::Color => 4,
+            Self::Image => 2,
+            Self::Loud => 2,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1044,7 +1097,10 @@ fn is_tracker_screen(screen: Screen) -> bool {
 }
 
 fn is_fx_screen(screen: Screen) -> bool {
-    matches!(screen, Screen::FxRack | Screen::FxEditor)
+    matches!(
+        screen,
+        Screen::FxRack | Screen::FxEditor | Screen::MasterStrip | Screen::MasterStripAdvanced
+    )
 }
 
 fn take_engine_when_owned<T>(
@@ -1164,6 +1220,14 @@ fn wrapped_index(current: usize, len: usize, direction: i8) -> usize {
         std::cmp::Ordering::Greater => (current + 1) % len,
         std::cmp::Ordering::Equal => current,
     }
+}
+
+fn cycle_copy<T: Copy + PartialEq>(values: &[T], current: T, direction: i8) -> T {
+    let index = values
+        .iter()
+        .position(|value| *value == current)
+        .unwrap_or(0);
+    values[wrapped_index(index, values.len(), direction)]
 }
 
 fn wrapped_offset(current: usize, len: usize, amount: isize) -> usize {
@@ -1577,6 +1641,11 @@ impl App {
             fx_numeric_input: None,
             fx_pickup: FxPickup::default(),
             fx_rack_parent: Screen::Home,
+            master_strip_parent: Screen::FxRack,
+            master_strip_parent_menu_page: 0,
+            master_strip_section: MasterStripSection::default(),
+            master_strip_parameter: 0,
+            master_strip_meter_preview: None,
             controller_config: Arc::new(std::sync::RwLock::new(crate::pads::PadConfig::default())),
             learn_mode: Arc::new(AtomicBool::new(false)),
             fx_control_mode: Arc::new(AtomicBool::new(false)),
@@ -3288,6 +3357,7 @@ impl App {
                 &self.config,
                 &self.song.insert_rack,
                 &self.song.aux_routing,
+                &self.song.master_strip,
             )
         } else {
             Engine::start_with_routing_and_parts(
@@ -3298,6 +3368,7 @@ impl App {
                 &self.config,
                 &self.song.insert_rack,
                 &self.song.aux_routing,
+                &self.song.master_strip,
             )
         }
     }
@@ -6601,8 +6672,12 @@ impl App {
         let Some(engine) = self.engine.as_mut() else {
             return;
         };
-        match engine.retry_audio_graph(&self.config, &self.song.insert_rack, &self.song.aux_routing)
-        {
+        match engine.retry_audio_graph(
+            &self.config,
+            &self.song.insert_rack,
+            &self.song.aux_routing,
+            &self.song.master_strip,
+        ) {
             Ok(true) => {}
             Ok(false) => {}
             Err(error) => {
@@ -7185,7 +7260,11 @@ impl App {
         let mut song =
             Song::new_with_pages(&self.config.external_midi, self.routing_defaults.clone());
         song.name = name.clone();
-        if let Err(status) = self.publish_fx_routing_runtime(&song.insert_rack, &song.aux_routing) {
+        if let Err(status) = self.publish_project_audio_runtime(
+            &song.insert_rack,
+            &song.aux_routing,
+            &song.master_strip,
+        ) {
             self.confirm_new_project = false;
             self.status = status;
             return;
@@ -7358,9 +7437,11 @@ impl App {
                 if let Some(first) = self.first_synthv1_name() {
                     sequencer::upgrade_legacy_synth_routes(&mut song, &first);
                 }
-                if let Err(status) =
-                    self.publish_fx_routing_runtime(&song.insert_rack, &song.aux_routing)
-                {
+                if let Err(status) = self.publish_project_audio_runtime(
+                    &song.insert_rack,
+                    &song.aux_routing,
+                    &song.master_strip,
+                ) {
                     self.status = status;
                     return;
                 }
@@ -8401,10 +8482,11 @@ impl App {
                 Err(_error) => "TAKE INCOMPLETE · retry STOP".into(),
             };
         }
-        if self.screen == Screen::MultichannelMonitor {
-            if !cfg!(test) && self.audio_recorder.start_monitoring().is_err() {
-                self.status = "INPUT MONITOR FAULT · check SETUP".into();
-            }
+        if self.screen == Screen::MultichannelMonitor
+            && !cfg!(test)
+            && self.audio_recorder.start_monitoring().is_err()
+        {
+            self.status = "INPUT MONITOR FAULT · check SETUP".into();
         }
     }
 
@@ -8691,6 +8773,296 @@ impl App {
             return Some("STOP TRANSPORT · FX structure locked");
         }
         None
+    }
+
+    fn move_master_strip_selection(&mut self, direction: i8) {
+        if self.screen == Screen::MasterStripAdvanced {
+            self.master_strip_parameter = wrapped_index(
+                self.master_strip_parameter,
+                self.master_strip_section.parameter_count(),
+                direction,
+            );
+            self.status = self.master_strip_parameter_value();
+        } else {
+            let current = MasterStripSection::ALL
+                .iter()
+                .position(|section| *section == self.master_strip_section)
+                .unwrap_or(0);
+            self.master_strip_section = MasterStripSection::ALL
+                [wrapped_index(current, MasterStripSection::ALL.len(), direction)];
+            self.master_strip_parameter = 0;
+            self.status = format!("{} selected", self.master_strip_section.label());
+        }
+    }
+
+    fn master_strip_edit_allowed(&mut self) -> bool {
+        if self
+            .engine
+            .as_ref()
+            .is_some_and(Engine::final_recording_active)
+        {
+            self.status = "FINAL RECORDING · MASTER STRIP edit rejected".into();
+            false
+        } else {
+            true
+        }
+    }
+
+    fn commit_master_strip(
+        &mut self,
+        settings: crate::master_strip::MasterStripSettings,
+        message: String,
+    ) {
+        if !self.master_strip_edit_allowed() {
+            return;
+        }
+        if let Err(_error) = settings.validate() {
+            self.status = "MASTER STRIP value rejected".into();
+            return;
+        }
+        if let Some(engine) = self.engine.as_ref() {
+            match engine.apply_master_strip(&settings) {
+                Ok(true) => {}
+                Ok(false) => {
+                    self.song.master_strip = settings;
+                    self.status = if self.config.audio_graph.enabled {
+                        "Saved · active processing unavailable".into()
+                    } else {
+                        "Saved · applies when final bus starts".into()
+                    };
+                    return;
+                }
+                Err(_error) => {
+                    self.status = "MASTER STRIP runtime rejected · old value kept".into();
+                    return;
+                }
+            }
+        }
+        self.song.master_strip = settings;
+        self.status = message;
+    }
+
+    fn toggle_master_strip_bypass(&mut self) {
+        let mut settings = self.song.master_strip.clone();
+        let bypass = match self.master_strip_section {
+            MasterStripSection::Input => {
+                settings.input_bypass = !settings.input_bypass;
+                settings.input_bypass
+            }
+            MasterStripSection::Tone => {
+                settings.tone_bypass = !settings.tone_bypass;
+                settings.tone_bypass
+            }
+            MasterStripSection::Glue => {
+                settings.glue_bypass = !settings.glue_bypass;
+                settings.glue_bypass
+            }
+            MasterStripSection::Color => {
+                settings.color_bypass = !settings.color_bypass;
+                settings.color_bypass
+            }
+            MasterStripSection::Image => {
+                settings.image_bypass = !settings.image_bypass;
+                settings.image_bypass
+            }
+            MasterStripSection::Loud => {
+                self.status = "LOUD true-peak protection cannot be bypassed".into();
+                return;
+            }
+        };
+        self.commit_master_strip(
+            settings,
+            format!(
+                "{} {}",
+                self.master_strip_section.label(),
+                if bypass { "bypassed" } else { "active" }
+            ),
+        );
+    }
+
+    fn toggle_master_strip_compare(&mut self) {
+        let mut settings = self.song.master_strip.clone();
+        settings.compare = !settings.compare;
+        let compare = settings.compare;
+        self.commit_master_strip(
+            settings,
+            if compare {
+                "COMPARE · optional strip stages out · limiter protected".into()
+            } else {
+                "COMPARE · edited strip active".into()
+            },
+        );
+    }
+
+    fn reset_master_strip_loudness(&mut self) {
+        if self
+            .engine
+            .as_ref()
+            .is_some_and(Engine::reset_master_strip_loudness)
+        {
+            self.status = "LUFS-I reset".into();
+        } else {
+            self.status = "LUFS-I reset applies when final bus starts".into();
+        }
+    }
+
+    fn adjust_master_strip_parameter(&mut self, direction: i8) {
+        if !self.master_strip_edit_allowed() {
+            return;
+        }
+        let step = if direction < 0 { -1.0 } else { 1.0 };
+        let mut settings = self.song.master_strip.clone();
+        let index = self.master_strip_parameter;
+        match (self.master_strip_section, index) {
+            (MasterStripSection::Input, 0) => {
+                settings.input_trim_db = (settings.input_trim_db + step * 0.5).clamp(-12.0, 12.0)
+            }
+            (MasterStripSection::Input, 1) => {
+                settings.input_hpf = cycle_copy(&HpfFrequency::ALL, settings.input_hpf, direction)
+            }
+            (MasterStripSection::Tone, 0) => {
+                settings.low_shelf_frequency = cycle_copy(
+                    &LowShelfFrequency::ALL,
+                    settings.low_shelf_frequency,
+                    direction,
+                )
+            }
+            (MasterStripSection::Tone, 1) => {
+                settings.low_shelf_db = (settings.low_shelf_db + step * 0.5).clamp(-6.0, 6.0)
+            }
+            (MasterStripSection::Tone, 2) => {
+                settings.high_shelf_frequency = cycle_copy(
+                    &HighShelfFrequency::ALL,
+                    settings.high_shelf_frequency,
+                    direction,
+                )
+            }
+            (MasterStripSection::Tone, 3) => {
+                settings.high_shelf_db = (settings.high_shelf_db + step * 0.5).clamp(-6.0, 6.0)
+            }
+            (MasterStripSection::Glue, 0) => {
+                settings.glue_threshold_db = (settings.glue_threshold_db + step).clamp(-30.0, 0.0)
+            }
+            (MasterStripSection::Glue, 1) => {
+                settings.glue_ratio = cycle_copy(&GlueRatio::ALL, settings.glue_ratio, direction)
+            }
+            (MasterStripSection::Glue, 2) => {
+                settings.glue_attack = cycle_copy(&GlueAttack::ALL, settings.glue_attack, direction)
+            }
+            (MasterStripSection::Glue, 3) => {
+                settings.glue_release =
+                    cycle_copy(&GlueRelease::ALL, settings.glue_release, direction)
+            }
+            (MasterStripSection::Glue, 4) => {
+                settings.glue_sidechain_hpf = cycle_copy(
+                    &GlueSidechainHpf::ALL,
+                    settings.glue_sidechain_hpf,
+                    direction,
+                )
+            }
+            (MasterStripSection::Glue, 5) => {
+                settings.glue_mix_percent =
+                    (settings.glue_mix_percent + step * 5.0).clamp(0.0, 100.0)
+            }
+            (MasterStripSection::Glue, 6) => {
+                settings.glue_makeup_db = (settings.glue_makeup_db + step * 0.5).clamp(0.0, 6.0)
+            }
+            (MasterStripSection::Color, 0) => {
+                settings.color_drive_db = (settings.color_drive_db + step * 0.5).clamp(0.0, 12.0)
+            }
+            (MasterStripSection::Color, 1) => {
+                settings.color_character_percent =
+                    (settings.color_character_percent + step * 5.0).clamp(-100.0, 100.0)
+            }
+            (MasterStripSection::Color, 2) => {
+                settings.color_mix_percent =
+                    (settings.color_mix_percent + step * 5.0).clamp(0.0, 100.0)
+            }
+            (MasterStripSection::Color, 3) => {
+                settings.color_trim_db = (settings.color_trim_db + step * 0.5).clamp(-6.0, 0.0)
+            }
+            (MasterStripSection::Image, 0) => {
+                settings.image_width_percent =
+                    (settings.image_width_percent + step * 5.0).clamp(50.0, 150.0)
+            }
+            (MasterStripSection::Image, 1) => {
+                settings.image_side_hpf =
+                    cycle_copy(&ImageSideHpf::ALL, settings.image_side_hpf, direction)
+            }
+            (MasterStripSection::Loud, 0) => {
+                settings.loud_db = (settings.loud_db + step * 0.5).clamp(0.0, 6.0)
+            }
+            (MasterStripSection::Loud, 1) => {
+                settings.ceiling_dbtp = (settings.ceiling_dbtp + step * 0.1).clamp(-2.0, -0.5)
+            }
+            _ => return,
+        }
+        let message = self.master_strip_parameter_value_for(&settings);
+        self.commit_master_strip(settings, message);
+    }
+
+    fn master_strip_parameter_value(&self) -> String {
+        self.master_strip_parameter_value_for(&self.song.master_strip)
+    }
+
+    fn master_strip_parameter_value_for(
+        &self,
+        settings: &crate::master_strip::MasterStripSettings,
+    ) -> String {
+        match (self.master_strip_section, self.master_strip_parameter) {
+            (MasterStripSection::Input, 0) => format!("TRIM {:+.1} dB", settings.input_trim_db),
+            (MasterStripSection::Input, 1) => format!("HPF {}", settings.input_hpf.label()),
+            (MasterStripSection::Tone, 0) => {
+                format!("LOW {:.0} Hz", settings.low_shelf_frequency.hz())
+            }
+            (MasterStripSection::Tone, 1) => format!("LOW {:+.1} dB", settings.low_shelf_db),
+            (MasterStripSection::Tone, 2) => {
+                format!("HIGH {:.0} Hz", settings.high_shelf_frequency.hz())
+            }
+            (MasterStripSection::Tone, 3) => format!("HIGH {:+.1} dB", settings.high_shelf_db),
+            (MasterStripSection::Glue, 0) => {
+                format!("THRESH {:.0} dB", settings.glue_threshold_db)
+            }
+            (MasterStripSection::Glue, 1) => {
+                format!("RATIO {}", settings.glue_ratio.label())
+            }
+            (MasterStripSection::Glue, 2) => {
+                format!("ATTACK {:.0} ms", settings.glue_attack.milliseconds())
+            }
+            (MasterStripSection::Glue, 3) => {
+                format!("RELEASE {:.0} ms", settings.glue_release.milliseconds())
+            }
+            (MasterStripSection::Glue, 4) => format!(
+                "SC HPF {}",
+                settings
+                    .glue_sidechain_hpf
+                    .hz()
+                    .map_or("OFF".into(), |hz| format!("{hz:.0} Hz"))
+            ),
+            (MasterStripSection::Glue, 5) => format!("MIX {:.0}%", settings.glue_mix_percent),
+            (MasterStripSection::Glue, 6) => {
+                format!("MAKEUP +{:.1} dB", settings.glue_makeup_db)
+            }
+            (MasterStripSection::Color, 0) => {
+                format!("DRIVE +{:.1} dB", settings.color_drive_db)
+            }
+            (MasterStripSection::Color, 1) => {
+                format!("CHARACTER {:+.0}%", settings.color_character_percent)
+            }
+            (MasterStripSection::Color, 2) => format!("MIX {:.0}%", settings.color_mix_percent),
+            (MasterStripSection::Color, 3) => format!("TRIM {:.1} dB", settings.color_trim_db),
+            (MasterStripSection::Image, 0) => {
+                format!("WIDTH {:.0}%", settings.image_width_percent)
+            }
+            (MasterStripSection::Image, 1) => {
+                format!("SIDE HPF {:.0} Hz", settings.image_side_hpf.hz())
+            }
+            (MasterStripSection::Loud, 0) => format!("LOUD +{:.1} dB", settings.loud_db),
+            (MasterStripSection::Loud, 1) => {
+                format!("CEIL {:.1} dBTP", settings.ceiling_dbtp)
+            }
+            _ => self.master_strip_section.label().into(),
+        }
     }
 
     fn move_bus_selection(&mut self, direction: i8) {
@@ -9043,6 +9415,33 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    fn publish_project_audio_runtime(
+        &mut self,
+        rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
+        strip: &crate::master_strip::MasterStripSettings,
+    ) -> std::result::Result<(), String> {
+        let old_rack = self.song.insert_rack.clone();
+        let old_aux = self.song.aux_routing.clone();
+        let old_strip = self.song.master_strip.clone();
+        self.publish_fx_routing_runtime(rack, aux_routing)?;
+        let Some(engine) = self.engine.as_mut() else {
+            return Ok(());
+        };
+        match engine.apply_master_strip(strip) {
+            Ok(_) => Ok(()),
+            Err(_error) => {
+                let rack_restored = engine.publish_fx_routing(&old_rack, &old_aux).is_ok();
+                let strip_restored = engine.apply_master_strip(&old_strip).is_ok();
+                if rack_restored && strip_restored {
+                    Err("PROJECT AUDIO NOT APPLIED · old graph kept".into())
+                } else {
+                    Err("PROJECT AUDIO ROLLBACK FAILED · stop final bus".into())
+                }
+            }
+        }
     }
 
     fn add_effect(&mut self) {
@@ -11090,6 +11489,8 @@ fn perform(
                 } else {
                     a.move_fx_parameter(-1);
                 }
+            } else if matches!(a.screen, Screen::MasterStrip | Screen::MasterStripAdvanced) {
+                a.move_master_strip_selection(-1);
             }
         }
         Action::Down => {
@@ -11143,6 +11544,8 @@ fn perform(
                 } else {
                     a.move_fx_parameter(1);
                 }
+            } else if matches!(a.screen, Screen::MasterStrip | Screen::MasterStripAdvanced) {
+                a.move_master_strip_selection(1);
             }
         }
         Action::PageUp => {
@@ -11261,6 +11664,12 @@ fn perform(
                     a.begin_fx_value_edit();
                 }
             }
+            Screen::MasterStrip => {
+                a.master_strip_parameter = 0;
+                a.set_screen(Screen::MasterStripAdvanced);
+                a.status = a.master_strip_parameter_value();
+            }
+            Screen::MasterStripAdvanced => a.adjust_master_strip_parameter(1),
             Screen::Routing => {
                 if a.routing.draft.is_some() {
                     a.confirm_routing_edit(state);
@@ -11363,6 +11772,22 @@ fn perform(
                 a.status = "FX rack is empty".into();
             }
         }
+        Action::OpenMasterStrip => {
+            if a.screen == Screen::FxRack && a.fx_target != MAX_AUX_BUSES + 1 {
+                a.status = "TARGET MASTER · then open STRIP".into();
+                return false;
+            }
+            a.master_strip_parent = a.screen;
+            a.master_strip_parent_menu_page = a.menu_page();
+            a.master_strip_parameter = 0;
+            a.set_screen(Screen::MasterStrip);
+            a.status.clear();
+        }
+        Action::MasterStripDecrease => a.adjust_master_strip_parameter(-1),
+        Action::MasterStripIncrease => a.adjust_master_strip_parameter(1),
+        Action::MasterStripBypass => a.toggle_master_strip_bypass(),
+        Action::MasterStripCompare => a.toggle_master_strip_compare(),
+        Action::MasterStripResetLoudness => a.reset_master_strip_loudness(),
         Action::OpenMeter => {
             a.set_tracker_edit(false);
             a.set_screen(Screen::Meter);
@@ -11439,6 +11864,7 @@ fn perform(
             if is_tracker_screen(a.screen) {
                 a.set_tracker_edit(false);
             }
+            let leaving_master_strip = a.screen == Screen::MasterStrip;
             let next_screen = match a.screen {
                 Screen::Home => Screen::Home,
                 Screen::Presets
@@ -11458,9 +11884,14 @@ fn perform(
                 Screen::TrackerLoopAlign => Screen::TrackerLoop,
                 Screen::FxRack => a.fx_rack_parent,
                 Screen::FxEditor => Screen::FxRack,
+                Screen::MasterStrip => a.master_strip_parent,
+                Screen::MasterStripAdvanced => Screen::MasterStrip,
                 Screen::Help => a.help_previous,
             };
             a.set_screen(next_screen);
+            if leaving_master_strip {
+                a.menu_page_by_screen[next_screen.index()] = a.master_strip_parent_menu_page.min(3);
+            }
         }
         Action::ResetParameters => a.reset_parameters(),
         Action::IdeaRecordToggle => a.toggle_idea_recording(),
@@ -12611,6 +13042,8 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::MultichannelMonitor => draw_multichannel_monitor(f, a),
         Screen::FxRack => draw_fx_rack(f, a),
         Screen::FxEditor => draw_fx_editor(f, a),
+        Screen::MasterStrip => draw_master_strip(f, a),
+        Screen::MasterStripAdvanced => draw_master_strip_advanced(f, a),
         Screen::Meter => draw_performance_meter(f, a),
         Screen::Routing => draw_routing(f, a),
     }
@@ -13180,6 +13613,336 @@ fn meter_db(value: f32) -> f32 {
     }
 }
 
+fn master_strip_section_bypassed(
+    settings: &crate::master_strip::MasterStripSettings,
+    section: MasterStripSection,
+) -> bool {
+    match section {
+        MasterStripSection::Input => settings.input_bypass,
+        MasterStripSection::Tone => settings.tone_bypass,
+        MasterStripSection::Glue => settings.glue_bypass,
+        MasterStripSection::Color => settings.color_bypass,
+        MasterStripSection::Image => settings.image_bypass,
+        MasterStripSection::Loud => false,
+    }
+}
+
+fn master_strip_meter_line(label: &str, db: f32, suffix: String) -> Spans<'static> {
+    let thresholds = [-36.0, -24.0, -18.0, -12.0, -9.0, -6.0, -3.0, -1.0];
+    let mut spans = vec![Span::styled(
+        format!("{label:<4}"),
+        Style::default().fg(Color::White),
+    )];
+    for (index, threshold) in thresholds.iter().enumerate() {
+        let lit = db >= *threshold;
+        let color = if !lit {
+            Color::DarkGray
+        } else if *threshold >= -1.0 {
+            Color::Red
+        } else if *threshold >= -3.0 {
+            Color::LightYellow
+        } else {
+            Color::Green
+        };
+        spans.push(Span::styled("●", Style::default().fg(color)));
+        if index + 1 < thresholds.len() {
+            spans.push(Span::raw(" "));
+        }
+    }
+    spans.push(Span::styled(
+        format!(" {db:>5.1}{suffix}"),
+        Style::default().fg(Color::White),
+    ));
+    Spans::from(spans)
+}
+
+fn selected_master_strip_meter(
+    section: MasterStripSection,
+    meter: crate::final_bus::FinalBusMeterSnapshot,
+) -> Spans<'static> {
+    let input_db = meter_db(meter.input.peak.left.max(meter.input.peak.right));
+    let output_db = meter_db(meter.output.peak.left.max(meter.output.peak.right));
+    match section {
+        MasterStripSection::Input => master_strip_meter_line("IN", input_db, " dBFS".into()),
+        MasterStripSection::Tone | MasterStripSection::Color => {
+            master_strip_meter_line("OUT", output_db, " dBFS".into())
+        }
+        MasterStripSection::Glue => Spans::from(vec![
+            Span::styled("GLUE ", Style::default().fg(Color::White)),
+            Span::styled(
+                format!("{:>5.1} dB GR", meter.glue_gain_reduction_db),
+                Style::default().fg(Color::LightRed),
+            ),
+        ]),
+        MasterStripSection::Image => Spans::from(Span::styled(
+            format!(
+                "COR {:+.2}{}",
+                meter.correlation,
+                if meter.correlation < -0.2 {
+                    " · NEGATIVE!"
+                } else {
+                    ""
+                }
+            ),
+            Style::default().fg(if meter.correlation < -0.2 {
+                Color::Red
+            } else {
+                Color::White
+            }),
+        )),
+        MasterStripSection::Loud => {
+            master_strip_meter_line("OUT", meter.output_true_peak_dbtp, " dBTP".into())
+        }
+    }
+}
+
+fn draw_master_strip<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let width = usize::from(body.width.saturating_sub(2));
+    let settings = &a.song.master_strip;
+    let meter = a
+        .engine
+        .as_ref()
+        .and_then(Engine::final_bus_meter)
+        .or(a.master_strip_meter_preview)
+        .unwrap_or_default();
+    let title = crate::ui_text::label_value(
+        "MASTER STRIP",
+        if settings.compare {
+            "COMPARE"
+        } else {
+            "EDITED"
+        },
+        width,
+    );
+    let mut lines = vec![
+        Spans::from(Span::styled(
+            title,
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from(Span::styled(
+            project_owner_line(a, width),
+            Style::default().fg(Color::White),
+        )),
+    ];
+    for row in 0..2 {
+        let mut spans = Vec::new();
+        for section in MasterStripSection::ALL
+            .iter()
+            .copied()
+            .skip(row * 3)
+            .take(3)
+        {
+            let selected = section == a.master_strip_section;
+            let bypassed = master_strip_section_bypassed(settings, section);
+            let label = format!(
+                "{:^12}",
+                format!("{}{}", section.label(), if bypassed { "·B" } else { "" })
+            );
+            spans.push(Span::styled(
+                label,
+                if selected {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else if bypassed {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::White)
+                },
+            ));
+        }
+        lines.push(Spans::from(spans));
+    }
+    lines.push(Spans::from(Span::styled(
+        crate::ui_text::fit_line(&a.master_strip_parameter_value(), width),
+        Style::default().fg(Color::LightYellow),
+    )));
+    lines.push(selected_master_strip_meter(a.master_strip_section, meter));
+    let warning = if meter.correlation < -0.2 {
+        " · NEGATIVE!"
+    } else {
+        ""
+    };
+    lines.push(Spans::from(Span::styled(
+        crate::ui_text::fit_line(
+            &format!(
+                "M {:+.1}  S {:+.1}  I {:+.1} LUFS",
+                meter.loudness_m_lufs, meter.loudness_s_lufs, meter.loudness_i_lufs
+            ),
+            width,
+        ),
+        Style::default().fg(Color::White),
+    )));
+    lines.push(Spans::from(Span::styled(
+        crate::ui_text::fit_line(
+            &format!(
+                "GLUE {:.1}dB  LIM {:.1}dB  COR {:+.2}{warning}",
+                meter.glue_gain_reduction_db, meter.limiter_gain_reduction_db, meter.correlation
+            ),
+            width,
+        ),
+        Style::default().fg(if meter.correlation < -0.2 {
+            Color::Red
+        } else {
+            Color::White
+        }),
+    )));
+    lines.truncate(usize::from(body.height.saturating_sub(2)));
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(" FX · FIXED MASTER STRIP ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        ),
+        body,
+    );
+}
+
+fn master_strip_parameter_rows(a: &App) -> Vec<String> {
+    let mut rows = Vec::new();
+    for index in 0..a.master_strip_section.parameter_count() {
+        let mut copy = AppMasterStripParameterView {
+            section: a.master_strip_section,
+            parameter: index,
+        };
+        rows.push(copy.value(&a.song.master_strip));
+    }
+    rows
+}
+
+struct AppMasterStripParameterView {
+    section: MasterStripSection,
+    parameter: usize,
+}
+
+impl AppMasterStripParameterView {
+    fn value(&mut self, settings: &crate::master_strip::MasterStripSettings) -> String {
+        match (self.section, self.parameter) {
+            (MasterStripSection::Input, 0) => {
+                format!("TRIM       {:+.1} dB", settings.input_trim_db)
+            }
+            (MasterStripSection::Input, 1) => format!("HPF        {}", settings.input_hpf.label()),
+            (MasterStripSection::Tone, 0) => {
+                format!("LOW FREQ   {:.0} Hz", settings.low_shelf_frequency.hz())
+            }
+            (MasterStripSection::Tone, 1) => format!("LOW GAIN   {:+.1} dB", settings.low_shelf_db),
+            (MasterStripSection::Tone, 2) => {
+                format!("HIGH FREQ  {:.0} Hz", settings.high_shelf_frequency.hz())
+            }
+            (MasterStripSection::Tone, 3) => {
+                format!("HIGH GAIN  {:+.1} dB", settings.high_shelf_db)
+            }
+            (MasterStripSection::Glue, 0) => {
+                format!("THRESHOLD  {:.0} dB", settings.glue_threshold_db)
+            }
+            (MasterStripSection::Glue, 1) => format!("RATIO      {}", settings.glue_ratio.label()),
+            (MasterStripSection::Glue, 2) => {
+                format!("ATTACK     {:.0} ms", settings.glue_attack.milliseconds())
+            }
+            (MasterStripSection::Glue, 3) => {
+                format!("RELEASE    {:.0} ms", settings.glue_release.milliseconds())
+            }
+            (MasterStripSection::Glue, 4) => format!(
+                "SC HPF     {}",
+                settings
+                    .glue_sidechain_hpf
+                    .hz()
+                    .map_or("OFF".into(), |hz| format!("{hz:.0} Hz"))
+            ),
+            (MasterStripSection::Glue, 5) => {
+                format!("PARALLEL   {:.0}%", settings.glue_mix_percent)
+            }
+            (MasterStripSection::Glue, 6) => {
+                format!("MAKEUP     +{:.1} dB", settings.glue_makeup_db)
+            }
+            (MasterStripSection::Color, 0) => {
+                format!("DRIVE      +{:.1} dB", settings.color_drive_db)
+            }
+            (MasterStripSection::Color, 1) => {
+                format!("CHARACTER  {:+.0}%", settings.color_character_percent)
+            }
+            (MasterStripSection::Color, 2) => {
+                format!("MIX        {:.0}%", settings.color_mix_percent)
+            }
+            (MasterStripSection::Color, 3) => {
+                format!("TRIM       {:.1} dB", settings.color_trim_db)
+            }
+            (MasterStripSection::Image, 0) => {
+                format!("WIDTH      {:.0}%", settings.image_width_percent)
+            }
+            (MasterStripSection::Image, 1) => {
+                format!("SIDE HPF   {:.0} Hz", settings.image_side_hpf.hz())
+            }
+            (MasterStripSection::Loud, 0) => format!("LOUD       +{:.1} dB", settings.loud_db),
+            (MasterStripSection::Loud, 1) => {
+                format!("CEILING    {:.1} dBTP", settings.ceiling_dbtp)
+            }
+            _ => String::new(),
+        }
+    }
+}
+
+fn draw_master_strip_advanced<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let width = usize::from(body.width.saturating_sub(2));
+    let rows = master_strip_parameter_rows(a);
+    let visible = usize::from(body.height.saturating_sub(4));
+    let offset = a
+        .master_strip_parameter
+        .saturating_add(1)
+        .saturating_sub(visible);
+    let state = if master_strip_section_bypassed(&a.song.master_strip, a.master_strip_section) {
+        "BYP"
+    } else {
+        "ON"
+    };
+    let mut lines = vec![
+        Spans::from(Span::styled(
+            crate::ui_text::label_value(a.master_strip_section.label(), state, width),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from(Span::styled(
+            project_owner_line(a, width),
+            Style::default().fg(Color::White),
+        )),
+    ];
+    for (index, row) in rows.iter().enumerate().skip(offset).take(visible) {
+        lines.push(Spans::from(Span::styled(
+            crate::ui_text::fit_line(
+                &format!(
+                    "{} {row}",
+                    if index == a.master_strip_parameter {
+                        ">"
+                    } else {
+                        " "
+                    }
+                ),
+                width,
+            ),
+            if index == a.master_strip_parameter {
+                Style::default().fg(Color::Black).bg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::White)
+            },
+        )));
+    }
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(" MASTER STRIP · DETAIL ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        ),
+        body,
+    );
+}
+
 fn compressor_gain_reduction_meter(gain_reduction_db: f32, width: usize) -> Spans<'static> {
     let gain_reduction_db = if gain_reduction_db.is_finite() {
         gain_reduction_db.max(0.0)
@@ -13563,12 +14326,9 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         },
     )));
     let meter = meter.unwrap_or_default();
-    let clipping = meter.limiter_input.clips > 0 || meter.output.clips > 0;
+    let clipping = meter.input.clips > 0 || meter.output.clips > 0;
     let meter_fault = if clipping {
-        format!(
-            " · CLIP {}/{}",
-            meter.limiter_input.clips, meter.output.clips
-        )
+        format!(" · CLIP {}/{}", meter.input.clips, meter.output.clips)
     } else if meter.limiter_gain_reduction_db > 0.05 {
         format!(" · GR {:.1}dB", meter.limiter_gain_reduction_db)
     } else {
@@ -16608,7 +17368,7 @@ fn draw_multichannel_monitor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
 
     let now = Instant::now();
     let levels = a.multichannel_meter.levels(now);
-    for channel in 0..crate::audio_recorder::MONITOR_CHANNELS {
+    for (channel, level) in levels.iter().enumerate() {
         let x = z.x + monitor_column(channel);
         let cells = a.multichannel_meter.cells(channel);
         for row in 0..9 {
@@ -16620,9 +17380,9 @@ fn draw_multichannel_monitor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         }
         let track = status.tracks.get(channel);
         let missing = track.is_none_or(|track| !track.resolved);
-        let fault = status.error.is_some() && track.is_some_and(|track| track.resolved)
-            || levels[channel].non_finite;
-        let clip = levels[channel].clipping;
+        let fault =
+            status.error.is_some() && track.is_some_and(|track| track.resolved) || level.non_finite;
+        let clip = level.clipping;
         let tens = if fault {
             'F'
         } else if missing {
@@ -16837,6 +17597,7 @@ pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
             ScreenshotScenario::MultichannelMonitor,
         ),
         ("shr-daw-performance-meter.png", ScreenshotScenario::Meter),
+        ("shr-daw-master-strip.png", ScreenshotScenario::MasterStrip),
     ];
     let mut frames = Vec::new();
     for (name, scenario) in readme_screens {
@@ -16870,6 +17631,7 @@ pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
                 scenario,
                 ScreenshotSpecialScenario::InputMonitorCompact
                     | ScreenshotSpecialScenario::LoopCompact
+                    | ScreenshotSpecialScenario::MasterStripCompact
             ) {
                 render_screenshot_frame_at(&mut app, name, 38, 12)?
             } else {
@@ -16935,7 +17697,7 @@ fn screenshot_name_slug(label: &str) -> String {
     slug.trim_matches('-').to_owned()
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ScreenshotScenario {
     Presets,
     Playback,
@@ -16965,12 +17727,14 @@ enum ScreenshotScenario {
     FxRackEmpty,
     FxType,
     FxEditor,
+    MasterStrip,
+    MasterStripAdvanced,
     Meter,
     Routing,
 }
 
 impl ScreenshotScenario {
-    const ALL: [Self; 30] = [
+    const ALL: [Self; 32] = [
         Self::Presets,
         Self::Playback,
         Self::Ideas,
@@ -16999,6 +17763,8 @@ impl ScreenshotScenario {
         Self::FxRackEmpty,
         Self::FxType,
         Self::FxEditor,
+        Self::MasterStrip,
+        Self::MasterStripAdvanced,
         Self::Meter,
         Self::Routing,
     ];
@@ -17027,6 +17793,8 @@ impl ScreenshotScenario {
             Self::MultichannelMonitor => Screen::MultichannelMonitor,
             Self::FxRack | Self::FxRackEmpty | Self::FxType => Screen::FxRack,
             Self::FxEditor => Screen::FxEditor,
+            Self::MasterStrip => Screen::MasterStrip,
+            Self::MasterStripAdvanced => Screen::MasterStripAdvanced,
             Self::Meter => Screen::Meter,
             Self::Routing => Screen::Routing,
         }
@@ -17062,6 +17830,8 @@ impl ScreenshotScenario {
             Self::FxRackEmpty => "fx-rack-empty",
             Self::FxType => "fx-type",
             Self::FxEditor => "fx-editor",
+            Self::MasterStrip => "master-strip",
+            Self::MasterStripAdvanced => "master-strip-detail",
             Self::Meter => "performance-meter",
             Self::Routing => "routing",
         }
@@ -17098,10 +17868,11 @@ enum ScreenshotSpecialScenario {
     InputMonitorRecord,
     InputMonitorStop,
     InputMonitorCompact,
+    MasterStripCompact,
 }
 
 impl ScreenshotSpecialScenario {
-    const ALL: [Self; 28] = [
+    const ALL: [Self; 29] = [
         Self::Home,
         Self::MidiLearn,
         Self::FxEditorEq,
@@ -17130,6 +17901,7 @@ impl ScreenshotSpecialScenario {
         Self::InputMonitorRecord,
         Self::InputMonitorStop,
         Self::InputMonitorCompact,
+        Self::MasterStripCompact,
     ];
 
     const fn slug(self) -> &'static str {
@@ -17162,6 +17934,7 @@ impl ScreenshotSpecialScenario {
             Self::InputMonitorRecord => "input-monitor-record",
             Self::InputMonitorStop => "input-monitor-stop",
             Self::InputMonitorCompact => "input-monitor-compact",
+            Self::MasterStripCompact => "master-strip-compact",
         }
     }
 }
@@ -17663,6 +18436,53 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
             app.fx_parameter = 2;
             app.status = "COMPRESSOR · ratio selected · graph inactive".into();
         }
+        ScreenshotScenario::MasterStrip | ScreenshotScenario::MasterStripAdvanced => {
+            app.song.master_strip.input_bypass = false;
+            app.song.master_strip.input_trim_db = 1.5;
+            app.song.master_strip.input_hpf = HpfFrequency::Hz30;
+            app.song.master_strip.tone_bypass = false;
+            app.song.master_strip.low_shelf_db = 1.0;
+            app.song.master_strip.high_shelf_db = 1.5;
+            app.song.master_strip.glue_bypass = false;
+            app.song.master_strip.glue_threshold_db = -16.0;
+            app.song.master_strip.color_bypass = false;
+            app.song.master_strip.color_drive_db = 3.0;
+            app.song.master_strip.image_bypass = false;
+            app.song.master_strip.image_width_percent = 110.0;
+            app.song.master_strip.loud_db = 2.0;
+            app.master_strip_section = if scenario == ScreenshotScenario::MasterStripAdvanced {
+                MasterStripSection::Glue
+            } else {
+                MasterStripSection::Loud
+            };
+            app.master_strip_parameter = if scenario == ScreenshotScenario::MasterStripAdvanced {
+                4
+            } else {
+                0
+            };
+            app.master_strip_meter_preview = Some(crate::final_bus::FinalBusMeterSnapshot {
+                input: crate::dsp::MeterSnapshot {
+                    peak: crate::dsp::StereoFrame::new(0.62, 0.57),
+                    rms: crate::dsp::StereoFrame::new(0.25, 0.23),
+                    clips: 0,
+                    non_finite: 0,
+                },
+                output: crate::dsp::MeterSnapshot {
+                    peak: crate::dsp::StereoFrame::new(0.84, 0.79),
+                    rms: crate::dsp::StereoFrame::new(0.31, 0.29),
+                    clips: 0,
+                    non_finite: 0,
+                },
+                output_true_peak_dbtp: -1.1,
+                glue_gain_reduction_db: 1.8,
+                limiter_gain_reduction_db: 2.4,
+                correlation: 0.76,
+                loudness_m_lufs: -12.8,
+                loudness_s_lufs: -13.4,
+                loudness_i_lufs: -14.1,
+            });
+            app.status = "Project strip · deterministic DSP preview".into();
+        }
         ScreenshotScenario::Routing => {
             app.routing_inputs = vec!["Arturia MiniLab 3".into(), "KeyStep 37".into()];
             app.routing_outputs = vec!["USB MIDI Interface".into(), "Roland D-50".into()];
@@ -17948,6 +18768,10 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
         ScreenshotSpecialScenario::LoopCompact => {
             configure_screenshot_scenario(app, ScreenshotScenario::TrackerLoop);
             app.status = "PAT 00 Loop Mix · compact fallback".into();
+        }
+        ScreenshotSpecialScenario::MasterStripCompact => {
+            configure_screenshot_scenario(app, ScreenshotScenario::MasterStrip);
+            app.status = "Project MASTER STRIP · compact fallback".into();
         }
         ScreenshotSpecialScenario::MixEffectsOverlay => {
             configure_screenshot_scenario(app, ScreenshotScenario::Meter);
@@ -19257,6 +20081,8 @@ mod tests {
         render(40, 13, Screen::MultichannelMonitor);
         render(40, 13, Screen::FxRack);
         render(40, 13, Screen::FxEditor);
+        render(40, 13, Screen::MasterStrip);
+        render(40, 13, Screen::MasterStripAdvanced);
         render(40, 13, Screen::Meter);
         render(40, 13, Screen::Routing);
     }
@@ -20560,6 +21386,63 @@ mod tests {
         assert_eq!(a.fx_rack_parent, Screen::Meter);
         perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Meter);
+    }
+
+    #[test]
+    fn master_strip_preserves_caller_selection_and_status_row_ownership() {
+        let p = presets();
+        for caller in [Screen::FxRack, Screen::Meter] {
+            let mut a = app(&p);
+            a.screen = caller;
+            if caller == Screen::FxRack {
+                a.fx_target = MAX_AUX_BUSES + 1;
+            }
+            a.tracker_row = 17;
+            a.tracker_track = 3;
+            a.fx_selection = FxRackSelection::Insert;
+            a.select_menu_page(1);
+            perform(Action::OpenMasterStrip, &mut a, Path::new("/none"), None);
+            assert_eq!(a.screen, Screen::MasterStrip);
+            assert_eq!(a.master_strip_parent, caller);
+            assert_eq!(a.master_strip_parent_menu_page, 1, "{caller:?}");
+            let native = render_app(&mut a, 40, 13);
+            assert!(row_text(&native, 12).starts_with('■'));
+            assert!(buffer_text(&native).contains("MASTER STRIP"));
+
+            a.master_strip_section = MasterStripSection::Glue;
+            perform(Action::Activate, &mut a, Path::new("/none"), None);
+            assert_eq!(a.screen, Screen::MasterStripAdvanced);
+            perform(
+                Action::MasterStripIncrease,
+                &mut a,
+                Path::new("/none"),
+                None,
+            );
+            assert_eq!(a.song.master_strip.glue_threshold_db, -17.0);
+            assert!(a.project_is_dirty());
+            perform(Action::Back, &mut a, Path::new("/none"), None);
+            assert_eq!(a.screen, Screen::MasterStrip);
+            perform(Action::Back, &mut a, Path::new("/none"), None);
+            assert_eq!(a.screen, caller);
+            assert_eq!(a.menu_page(), 1, "{caller:?}");
+            assert_eq!(a.tracker_row, 17);
+            assert_eq!(a.tracker_track, 3);
+            assert_eq!(a.fx_selection, FxRackSelection::Insert);
+        }
+    }
+
+    #[test]
+    fn master_strip_compacts_and_keeps_true_peak_protection_unbypassable() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::MasterStrip;
+        a.master_strip_section = MasterStripSection::Loud;
+        let before = a.song.master_strip.clone();
+        perform(Action::MasterStripBypass, &mut a, Path::new("/none"), None);
+        assert_eq!(a.song.master_strip, before);
+        assert!(a.status.contains("cannot be bypassed"));
+        let compact = render_app(&mut a, 38, 12);
+        assert!(row_text(&compact, 11).starts_with('■'));
     }
 
     #[test]

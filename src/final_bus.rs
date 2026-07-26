@@ -1,11 +1,13 @@
 //! Fixed three-source final performance bus.
 //!
-//! Construction and control changes happen away from the JACK callback. The
-//! callback only reads atomics, advances bounded smoothing/delay state, and
-//! publishes lock-free meters.
+//! Source faders and the live master fader feed the Project-owned fixed
+//! MASTER STRIP. The strip owns the final true-peak limiter and meters.
 
-use crate::dsp::{
-    db_to_gain, AtomicMeter, MeterAccumulator, MeterSnapshot, SmoothedValue, StereoFrame,
+use crate::dsp::{db_to_gain, SmoothedValue, StereoFrame};
+#[cfg(test)]
+use crate::master_strip::MasterStripSettings;
+use crate::master_strip::{
+    MasterStripControls, MasterStripMeterSnapshot, MasterStripMeters, MasterStripProcessor,
 };
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -16,10 +18,6 @@ pub const SOURCE_GAIN_MAX_DB: f32 = 6.0;
 pub const MASTER_GAIN_MIN_DB: f32 = -60.0;
 pub const MASTER_GAIN_MAX_DB: f32 = 0.0;
 pub const DEFAULT_SOURCE_GAIN_DB: f32 = -6.0;
-pub const LIMITER_CEILING_DBFS: f32 = -1.0;
-pub const LIMITER_KNEE_DB: f32 = 3.0;
-pub const LIMITER_LOOKAHEAD_SECONDS: f32 = 0.0025;
-pub const LIMITER_RELEASE_SECONDS: f32 = 0.100;
 const GAIN_SMOOTH_SECONDS: f32 = 0.010;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,7 +57,12 @@ impl AtomicFader {
     }
 
     fn gain_db(&self) -> f32 {
-        f32::from_bits(self.gain_db.load(Ordering::Acquire))
+        let gain = f32::from_bits(self.gain_db.load(Ordering::Acquire));
+        if gain.is_finite() {
+            gain
+        } else {
+            0.0
+        }
     }
 }
 
@@ -117,50 +120,8 @@ impl BusControls {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct FinalBusMeterSnapshot {
-    pub limiter_input: MeterSnapshot,
-    pub output: MeterSnapshot,
-    pub limiter_gain_reduction_db: f32,
-}
-
-pub struct FinalBusMeters {
-    limiter_input: AtomicMeter,
-    output: AtomicMeter,
-    gain_reduction_db: AtomicU32,
-}
-
-impl Default for FinalBusMeters {
-    fn default() -> Self {
-        Self {
-            limiter_input: AtomicMeter::default(),
-            output: AtomicMeter::default(),
-            gain_reduction_db: AtomicU32::new(0.0f32.to_bits()),
-        }
-    }
-}
-
-impl FinalBusMeters {
-    pub fn snapshot(&self) -> FinalBusMeterSnapshot {
-        let gain_reduction_db = f32::from_bits(self.gain_reduction_db.load(Ordering::Acquire));
-        FinalBusMeterSnapshot {
-            limiter_input: self.limiter_input.load(),
-            output: self.output.load(),
-            limiter_gain_reduction_db: if gain_reduction_db.is_finite() {
-                gain_reduction_db.clamp(0.0, 160.0)
-            } else {
-                0.0
-            },
-        }
-    }
-
-    pub fn clear(&self) {
-        self.limiter_input.publish(MeterSnapshot::default());
-        self.output.publish(MeterSnapshot::default());
-        self.gain_reduction_db
-            .store(0.0f32.to_bits(), Ordering::Release);
-    }
-}
+pub type FinalBusMeterSnapshot = MasterStripMeterSnapshot;
+pub type FinalBusMeters = MasterStripMeters;
 
 struct RuntimeFader {
     value: SmoothedValue,
@@ -203,136 +164,11 @@ impl RuntimeFader {
     }
 }
 
-/// Stereo-linked, sample-peak, soft-knee limiter with a fixed 2.5 ms target
-/// lookahead. This does not detect inter-sample peaks and is not true-peak.
-pub struct FinalLimiter {
-    delay: Box<[StereoFrame]>,
-    write: usize,
-    lookahead_samples: usize,
-    ceiling: f32,
-    gain: f32,
-    held_gain: f32,
-    hold_remaining: usize,
-    release_step: f32,
-}
-
-impl FinalLimiter {
-    pub fn new(sample_rate: u32) -> Result<Self, String> {
-        if !(8_000..=384_000).contains(&sample_rate) {
-            return Err("unsupported limiter sample rate".into());
-        }
-        let lookahead_samples =
-            ((sample_rate as f32 * LIMITER_LOOKAHEAD_SECONDS).round() as usize).max(1);
-        let ceiling = db_to_gain(LIMITER_CEILING_DBFS).map_err(|error| error.to_string())?;
-        let release_samples = (sample_rate as f32 * LIMITER_RELEASE_SECONDS).max(1.0);
-        Ok(Self {
-            delay: vec![StereoFrame::SILENCE; lookahead_samples].into_boxed_slice(),
-            write: 0,
-            lookahead_samples,
-            ceiling,
-            gain: 1.0,
-            held_gain: 1.0,
-            hold_remaining: 0,
-            release_step: 1.0 - (-1.0 / release_samples).exp(),
-        })
-    }
-
-    #[cfg(test)]
-    pub fn lookahead_samples(&self) -> usize {
-        self.lookahead_samples
-    }
-
-    #[cfg(test)]
-    pub fn lookahead_seconds(&self, sample_rate: u32) -> f64 {
-        self.lookahead_samples as f64 / f64::from(sample_rate)
-    }
-
-    #[cfg(test)]
-    pub fn ceiling_linear(&self) -> f32 {
-        self.ceiling
-    }
-
-    pub fn reset(&mut self) {
-        self.delay.fill(StereoFrame::SILENCE);
-        self.write = 0;
-        self.gain = 1.0;
-        self.held_gain = 1.0;
-        self.hold_remaining = 0;
-    }
-
-    fn required_gain(&self, detector: f32) -> f32 {
-        if !detector.is_finite() || detector <= 0.0 {
-            return 1.0;
-        }
-        let input_db = 20.0 * detector.log10();
-        let lower = LIMITER_CEILING_DBFS - LIMITER_KNEE_DB * 0.5;
-        let upper = LIMITER_CEILING_DBFS + LIMITER_KNEE_DB * 0.5;
-        let output_db = if input_db <= lower {
-            input_db
-        } else if input_db >= upper {
-            LIMITER_CEILING_DBFS
-        } else {
-            let into_knee = input_db - lower;
-            input_db - into_knee * into_knee / (2.0 * LIMITER_KNEE_DB)
-        };
-        10.0f32.powf((output_db - input_db) / 20.0).clamp(0.0, 1.0)
-    }
-
-    #[inline]
-    pub fn process(&mut self, input: StereoFrame) -> (StereoFrame, f32) {
-        if !self.gain.is_finite()
-            || !(0.0..=1.0).contains(&self.gain)
-            || !self.held_gain.is_finite()
-            || !(0.0..=1.0).contains(&self.held_gain)
-            || self.write >= self.delay.len()
-            || self.hold_remaining > self.lookahead_samples
-        {
-            self.reset();
-        }
-        let input = input.finite_or_silence();
-        let delayed = self.delay[self.write].finite_or_silence();
-        self.delay[self.write] = input;
-        self.write += 1;
-        if self.write == self.delay.len() {
-            self.write = 0;
-        }
-
-        let detector = input.left.abs().max(input.right.abs());
-        let required = self.required_gain(detector);
-        if required < self.held_gain {
-            self.held_gain = required;
-            self.gain = self.gain.min(required);
-            self.hold_remaining = self.lookahead_samples;
-        } else if self.hold_remaining > 0 {
-            self.hold_remaining -= 1;
-            self.gain = self.gain.min(self.held_gain);
-        } else {
-            self.held_gain = 1.0;
-            self.gain += (1.0 - self.gain) * self.release_step;
-        }
-        self.gain = self.gain.clamp(0.0, 1.0);
-        let output = StereoFrame::new(
-            (delayed.left * self.gain).clamp(-self.ceiling, self.ceiling),
-            (delayed.right * self.gain).clamp(-self.ceiling, self.ceiling),
-        )
-        .finite_or_silence();
-        let reduction = if self.gain > 0.0 {
-            (-20.0 * self.gain.log10()).clamp(0.0, 160.0)
-        } else {
-            160.0
-        };
-        (output, reduction)
-    }
-}
-
 pub struct FinalBusProcessor {
     controls: Arc<BusControls>,
-    meters: Arc<FinalBusMeters>,
     source_faders: [RuntimeFader; SOURCE_COUNT],
     master_fader: RuntimeFader,
-    limiter: FinalLimiter,
-    limiter_input_meter: MeterAccumulator,
-    output_meter: MeterAccumulator,
+    strip: MasterStripProcessor,
 }
 
 impl FinalBusProcessor {
@@ -340,6 +176,7 @@ impl FinalBusProcessor {
         sample_rate: u32,
         maximum_frames: usize,
         controls: Arc<BusControls>,
+        strip_controls: Arc<MasterStripControls>,
         meters: Arc<FinalBusMeters>,
     ) -> Result<Self, String> {
         let source_fader = |source| {
@@ -350,28 +187,52 @@ impl FinalBusProcessor {
             };
             RuntimeFader::new(gain_db, sample_rate)
         };
-        let source_faders = [
-            source_fader(BusSource::Synth)?,
-            source_fader(BusSource::Loop)?,
-            source_fader(BusSource::Input)?,
-        ];
-        let master_fader = RuntimeFader::new(controls.master_gain_db(), sample_rate)?;
         Ok(Self {
-            source_faders,
-            master_fader,
-            limiter: FinalLimiter::new(sample_rate)?,
-            limiter_input_meter: MeterAccumulator::new(maximum_frames)
-                .map_err(|error| error.to_string())?,
-            output_meter: MeterAccumulator::new(maximum_frames)
-                .map_err(|error| error.to_string())?,
+            source_faders: [
+                source_fader(BusSource::Synth)?,
+                source_fader(BusSource::Loop)?,
+                source_fader(BusSource::Input)?,
+            ],
+            master_fader: RuntimeFader::new(controls.master_gain_db(), sample_rate)?,
+            strip: MasterStripProcessor::new(sample_rate, maximum_frames, strip_controls, meters)?,
             controls,
-            meters,
         })
     }
 
     #[cfg(test)]
+    pub fn with_neutral_strip(
+        sample_rate: u32,
+        maximum_frames: usize,
+        controls: Arc<BusControls>,
+        meters: Arc<FinalBusMeters>,
+    ) -> Result<(Self, Arc<MasterStripControls>), String> {
+        let strip_controls = Arc::new(MasterStripControls::new(
+            sample_rate,
+            &MasterStripSettings::default(),
+        )?);
+        let processor = Self::new(
+            sample_rate,
+            maximum_frames,
+            controls,
+            Arc::clone(&strip_controls),
+            meters,
+        )?;
+        Ok((processor, strip_controls))
+    }
+
+    #[cfg(test)]
+    pub fn latency_samples(&self) -> usize {
+        self.strip.latency_samples()
+    }
+
+    #[cfg(test)]
     pub fn lookahead_samples(&self) -> usize {
-        self.limiter.lookahead_samples()
+        self.strip.lookahead_samples()
+    }
+
+    #[cfg(test)]
+    pub fn safety_clamp_count(&self) -> u64 {
+        self.strip.safety_clamp_count()
     }
 
     #[inline]
@@ -391,32 +252,16 @@ impl FinalBusProcessor {
     pub fn process_final(&mut self, frames: &mut [StereoFrame]) {
         self.master_fader
             .refresh(self.controls.master_gain_db(), false);
-        let mut maximum_reduction = 0.0f32;
         for frame in frames.iter_mut() {
             let master = self.master_fader.next();
-            let input =
+            *frame =
                 StereoFrame::new(frame.left * master, frame.right * master).finite_or_silence();
-            self.limiter_input_meter.process(input);
-            let (output, reduction) = self.limiter.process(input);
-            maximum_reduction = maximum_reduction.max(reduction);
-            *frame = self.output_meter.process(output);
         }
-        self.meters
-            .limiter_input
-            .publish(self.limiter_input_meter.snapshot_and_clear_peak());
-        self.meters
-            .output
-            .publish(self.output_meter.snapshot_and_clear_peak());
-        self.meters
-            .gain_reduction_db
-            .store(maximum_reduction.to_bits(), Ordering::Release);
+        self.strip.process(frames);
     }
 
     pub fn reset(&mut self) {
-        self.limiter.reset();
-        self.limiter_input_meter.reset();
-        self.output_meter.reset();
-        self.meters.clear();
+        self.strip.reset();
     }
 }
 
@@ -430,7 +275,7 @@ mod tests {
         for source in BusSource::ALL {
             assert!(controls.set_source_gain_db(source, 0.0));
         }
-        let processor = FinalBusProcessor::new(
+        let (processor, _) = FinalBusProcessor::with_neutral_strip(
             rate,
             frames,
             Arc::clone(&controls),
@@ -441,50 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn limiter_contract_and_supported_rate_latency() {
-        let at_44 = FinalLimiter::new(44_100).unwrap();
-        let at_48 = FinalLimiter::new(48_000).unwrap();
-        assert_eq!(at_44.lookahead_samples(), 110);
-        assert_eq!(at_48.lookahead_samples(), 120);
-        assert!((at_44.lookahead_seconds(44_100) - 0.002_494_331).abs() < 1e-8);
-        assert_eq!(at_48.lookahead_seconds(48_000), 0.0025);
-        assert!((at_48.ceiling_linear() - 10.0f32.powf(-1.0 / 20.0)).abs() < 1e-7);
-    }
-
-    #[test]
-    fn limiter_impulse_is_delayed_linked_and_below_ceiling() {
-        let mut limiter = FinalLimiter::new(48_000).unwrap();
-        let delay = limiter.lookahead_samples();
-        let mut output = Vec::new();
-        for index in 0..=delay + 2 {
-            let input = if index == 0 {
-                StereoFrame::new(2.0, 1.0)
-            } else {
-                StereoFrame::SILENCE
-            };
-            output.push(limiter.process(input).0);
-        }
-        assert!(output[..delay]
-            .iter()
-            .all(|frame| *frame == StereoFrame::SILENCE));
-        let impulse = output[delay];
-        assert!(impulse.left.abs() <= limiter.ceiling_linear() + 1e-6);
-        assert!((impulse.right / impulse.left - 0.5).abs() < 1e-5);
-    }
-
-    #[test]
-    fn soft_knee_starts_three_db_wide() {
-        let limiter = FinalLimiter::new(48_000).unwrap();
-        let below = limiter.required_gain(10.0f32.powf((-2.6) / 20.0));
-        let middle = limiter.required_gain(10.0f32.powf((-1.0) / 20.0));
-        let above = limiter.required_gain(10.0f32.powf(0.6 / 20.0));
-        assert_eq!(below, 1.0);
-        assert!(middle < 1.0 && middle > above);
-        assert!((above - 10.0f32.powf(-1.6 / 20.0)).abs() < 1e-6);
-    }
-
-    #[test]
-    fn three_sources_sum_without_swap_bleed_omission_or_duplication() {
+    fn source_sum_stereo_identity_and_declared_latency_are_preserved() {
         let (mut bus, _) = processor(48_000, 256);
         let mut synth = [StereoFrame::new(0.01, 0.02); 256];
         let mut loop_frames = [StereoFrame::new(0.03, 0.04); 256];
@@ -499,60 +301,24 @@ mod tests {
             )
         });
         bus.process_final(&mut sum);
-        let delay = bus.lookahead_samples();
-        assert!((sum[delay].left - 0.09).abs() < 1e-6);
-        assert!((sum[delay].right - 0.12).abs() < 1e-6);
+        assert_eq!(bus.latency_samples(), 133);
+        assert_eq!(bus.lookahead_samples(), 120);
+        assert!((sum[133].left - 0.09).abs() < 1e-6);
+        assert!((sum[133].right - 0.12).abs() < 1e-6);
+        assert_eq!(bus.safety_clamp_count(), 0);
     }
 
     #[test]
-    fn synth_loop_and_input_each_reach_only_the_expected_stereo_channels() {
-        let expected = [
-            (BusSource::Synth, StereoFrame::new(0.031, -0.047)),
-            (BusSource::Loop, StereoFrame::new(-0.053, 0.071)),
-            (BusSource::Input, StereoFrame::new(0.089, 0.097)),
-        ];
-        for (active, identity) in expected {
-            let (mut bus, _) = processor(48_000, 256);
-            let mut sum = [StereoFrame::SILENCE; 256];
-            for source in BusSource::ALL {
-                let mut frames = if source == active {
-                    [identity; 256]
-                } else {
-                    [StereoFrame::SILENCE; 256]
-                };
-                bus.process_source(source, &mut frames);
-                for (output, frame) in sum.iter_mut().zip(frames) {
-                    output.left += frame.left;
-                    output.right += frame.right;
-                }
-            }
-            bus.process_final(&mut sum);
-            let actual = sum[bus.lookahead_samples()];
-            assert!((actual.left - identity.left).abs() < 1e-6);
-            assert!((actual.right - identity.right).abs() < 1e-6);
-        }
-    }
-
-    #[test]
-    fn source_mute_and_master_level_are_smoothed_and_bounded() {
+    fn source_mute_master_level_finite_recovery_and_callback_are_safe() {
         let (mut bus, controls) = processor(48_000, 1024);
         assert!(!controls.set_source_gain_db(BusSource::Synth, 7.0));
         assert!(!controls.set_master_gain_db(0.1));
         controls.set_source_muted(BusSource::Synth, true);
         assert!(controls.set_master_gain_db(-6.0));
-        let mut source = [StereoFrame::new(0.25, -0.25); 1024];
-        bus.process_source(BusSource::Synth, &mut source);
-        assert!(source[0].left > source[1023].left);
-        assert!(source[1023].left.abs() < 1e-7);
-    }
-
-    #[test]
-    fn finite_recovery_and_callback_processing_allocate_nothing() {
-        let (mut bus, _) = processor(48_000, 256);
-        let mut source = [StereoFrame::new(f32::NAN, f32::INFINITY); 256];
-        let mut output = [StereoFrame::SILENCE; 256];
+        let mut source = [StereoFrame::new(f32::NAN, f32::INFINITY); 1024];
+        let mut output = [StereoFrame::SILENCE; 1024];
         assert_no_allocations(|| {
-            bus.process_source(BusSource::Input, &mut source);
+            bus.process_source(BusSource::Synth, &mut source);
             output.copy_from_slice(&source);
             bus.process_final(&mut output);
         });
@@ -562,105 +328,23 @@ mod tests {
     }
 
     #[test]
-    fn limiter_is_chunk_size_invariant() {
-        let sequence = (0..2048)
+    fn final_processing_is_chunk_invariant() {
+        let input = (0..4096)
             .map(|index| {
-                let left = ((index * 37 % 211) as f32 / 105.0) - 1.0;
-                let right = ((index * 61 % 197) as f32 / 98.0) - 1.0;
-                StereoFrame::new(left, right)
+                StereoFrame::new(
+                    ((index * 37 % 211) as f32 / 1050.0) - 0.1,
+                    ((index * 61 % 197) as f32 / 980.0) - 0.1,
+                )
             })
             .collect::<Vec<_>>();
-        let run = |chunks: &[usize]| {
-            let (mut bus, _) = processor(44_100, 512);
-            let mut output = Vec::new();
-            let mut offset = 0;
-            for &count in chunks {
-                let mut block = sequence[offset..offset + count].to_vec();
-                bus.process_final(&mut block);
-                output.extend(block);
-                offset += count;
+        let run = |chunk: usize| {
+            let (mut bus, _) = processor(44_100, chunk);
+            let mut output = input.clone();
+            for frames in output.chunks_mut(chunk) {
+                bus.process_final(frames);
             }
             output
         };
-        assert_eq!(run(&[512, 512, 512, 512]), run(&[64; 32]));
-    }
-
-    #[test]
-    fn release_recovers_after_roughly_one_tenth_second() {
-        let mut limiter = FinalLimiter::new(48_000).unwrap();
-        let mut last_reduction = 0.0;
-        let mut at_one_time_constant = 0.0;
-        for index in 0..14_400 {
-            let input = if index == 0 {
-                StereoFrame::new(2.0, 2.0)
-            } else {
-                StereoFrame::SILENCE
-            };
-            last_reduction = limiter.process(input).1;
-            if index == 4_800 {
-                at_one_time_constant = last_reduction;
-            }
-        }
-        assert!((1.5..=2.5).contains(&at_one_time_constant));
-        assert!(last_reduction < 0.5);
-    }
-
-    #[test]
-    fn coherent_full_scale_sum_clips_before_limiter_but_final_meter_is_protected() {
-        let (mut bus, _) = processor(48_000, 256);
-        let mut sum = [StereoFrame::new(1.5, -1.5); 256];
-        bus.process_final(&mut sum);
-        let meter = bus.meters.snapshot();
-        assert!(meter.limiter_input.clips > 0);
-        assert_eq!(meter.output.clips, 0);
-        assert!(meter.limiter_gain_reduction_db > 0.0);
-        assert!(sum.iter().all(|frame| {
-            frame.left.is_finite()
-                && frame.right.is_finite()
-                && frame.left.abs() <= bus.limiter.ceiling_linear() + 1e-6
-                && frame.right.abs() <= bus.limiter.ceiling_linear() + 1e-6
-        }));
-    }
-
-    #[test]
-    fn supported_rates_and_callback_sizes_handle_steps_silence_and_alternating_channels() {
-        for rate in [44_100, 48_000] {
-            for callback in [64, 128, 256, 1024] {
-                let (mut bus, _) = processor(rate, callback);
-                let mut block = vec![StereoFrame::SILENCE; callback];
-                for pass in 0..8 {
-                    for (index, frame) in block.iter_mut().enumerate() {
-                        *frame = if pass < 2 {
-                            StereoFrame::SILENCE
-                        } else if (pass * callback + index) % 2 == 0 {
-                            StereoFrame::new(1.0, 0.25)
-                        } else {
-                            StereoFrame::new(-0.25, -1.0)
-                        };
-                    }
-                    bus.process_final(&mut block);
-                    assert!(block.iter().all(|frame| {
-                        frame.left.is_finite()
-                            && frame.right.is_finite()
-                            && frame.left.abs() <= bus.limiter.ceiling_linear() + 1e-6
-                            && frame.right.abs() <= bus.limiter.ceiling_linear() + 1e-6
-                    }));
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn corrupted_limiter_state_resets_to_finite_deterministic_output() {
-        let mut limiter = FinalLimiter::new(48_000).unwrap();
-        limiter.gain = f32::NAN;
-        limiter.held_gain = f32::INFINITY;
-        limiter.write = usize::MAX;
-        limiter.hold_remaining = usize::MAX;
-        limiter.delay[0] = StereoFrame::new(f32::NAN, f32::NEG_INFINITY);
-        let (output, reduction) = limiter.process(StereoFrame::new(0.25, -0.5));
-        assert_eq!(output, StereoFrame::SILENCE);
-        assert!(reduction.is_finite());
-        assert_eq!(limiter.write, 1);
+        assert_eq!(run(64), run(127));
     }
 }

@@ -300,7 +300,8 @@ RMS/peak, route, or metadata detail panel.
 
 With the final bus enabled, MTR selects the managed Synth, Loop, or exact Input
 source, controls its bounded level/mute, shows readiness and the post-limiter
-final meter, and controls final stereo recording. With the graph disabled it
+true-peak final meter, opens the fixed MASTER STRIP, and controls final stereo
+recording. With the graph disabled it
 keeps the CPU/legacy meter presentation without pretending that direct output
 is being measured. CPU is whole-core `/proc/stat` activity, not callback timing
 or xruns.

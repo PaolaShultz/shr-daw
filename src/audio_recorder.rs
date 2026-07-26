@@ -1925,7 +1925,7 @@ pub struct FinalMixStressReport {
 }
 
 /// JACK-free, non-audible soak of the production three-source faders, final
-/// limiter/meter, callback recorder handoff, stereo writer, and publication.
+/// fixed strip/meter, callback recorder handoff, stereo writer, and publication.
 pub fn run_final_mix_stress(
     destination: &Path,
     duration: Duration,
@@ -1951,10 +1951,16 @@ pub fn run_final_mix_stress(
     fs::create_dir_all(destination)?;
     let controls = Arc::new(crate::final_bus::BusControls::default());
     let meters = Arc::new(crate::final_bus::FinalBusMeters::default());
+    let strip_settings = crate::master_strip::MasterStripSettings::default();
+    let strip_controls = Arc::new(
+        crate::master_strip::MasterStripControls::new(sample_rate, &strip_settings)
+            .map_err(anyhow::Error::msg)?,
+    );
     let mut bus = crate::final_bus::FinalBusProcessor::new(
         sample_rate,
         callback_frames,
         controls,
+        strip_controls,
         Arc::clone(&meters),
     )
     .map_err(anyhow::Error::msg)?;
@@ -2004,7 +2010,7 @@ pub fn run_final_mix_stress(
                 .as_nanos()
                 .min(u128::from(u64::MAX)) as u64,
         );
-        let ceiling = 10.0f32.powf(crate::final_bus::LIMITER_CEILING_DBFS / 20.0) + 1e-6;
+        let ceiling = 10.0f32.powf(strip_settings.ceiling_dbtp / 20.0) + 1e-6;
         for frame in &output[..count] {
             if !frame.left.is_finite()
                 || !frame.right.is_finite()

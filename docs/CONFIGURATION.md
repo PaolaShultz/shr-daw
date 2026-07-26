@@ -240,8 +240,8 @@ setting is active. See
 The opt-in SHR-owned JACK client sums exactly the managed software instrument,
 the owned WAV loop, and one configured stereo capture pair. The instrument
 retains its Project-persisted source insert rack and two aux buses; all three
-sources then pass through the master rack, master level, linked sample-peak
-limiter, final meter, final stereo recorder tap, and playback. It remains
+sources then pass through the master rack, live master level, fixed Project
+MASTER STRIP, final meter, final stereo recorder tap, and playback. It remains
 disabled by default:
 
 ```text
@@ -289,7 +289,8 @@ destination published by the owned synth. Zero or multiple matches fail
 instead of choosing a nearby endpoint.
 
 Software monitoring means the configured capture pair passes through the final
-bus and adds JACK-buffer plus 2.5 ms limiter lookahead latency. Interface direct
+bus and adds JACK-buffer plus complete strip latency: 133 samples
+(2.770833 ms) at 48 kHz or 123 samples (2.789116 ms) at 44.1 kHz. Interface direct
 monitoring is outside SHR-DAW. If both are declared, activation is refused
 unless `audio.graph.confirm_doubled_monitoring=true` deliberately acknowledges
 the doubled/comb-filtered path. See [Final performance bus](FINAL_PERFORMANCE_BUS.md).
@@ -302,6 +303,14 @@ not publish a runtime plan. With the graph enabled, stop transport and all
 recording before an FX change can rebuild and publish the owned graph. Projects
 save their racks in either mode, but direct playback does not process or meter
 them.
+
+The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
+numerical controls and smoothed section bypasses may change during playback
+because no topology is rebuilt. Final recording rejects those edits. When the
+owned graph is disabled, the same edits update only Project format 9 state.
+The true-peak limiter remains active whenever the final bus is active and has
+no bypass. Exact ranges and latency are in
+[Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
 
 Each rack holds at most eight effects; the complete graph holds at most 16,
 including at most two reverbs. Source and master racks offer Utility, EQ,
@@ -561,14 +570,15 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 8
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 9
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor and drum classification,
 every cell field, exactly four optional Loop Mix slots, explicit software
 engine/instrument identity, and optional external profile metadata. The Project
-continues to own the source insert rack, aux routing, master rack, final-bus
-routing, recording configuration, and unrelated Project state. A
+continues to own the source insert rack, aux routing, master rack, fixed MASTER
+STRIP, final-bus routing, recording configuration, and unrelated Project
+state. A
 format-4-or-newer `default` target plus four `default`
 column markers is the canonical portable/unassigned state; it is not channel
 zero, mute, or disabled. Versions 0 and 1 migrate with empty effects routing;
@@ -578,7 +588,7 @@ page-wide channel/bank/program data is copied to all four columns. Unknown
 newer versions, unknown fields, and invalid effect data are refused rather than
 partly loaded or written back.
 
-Format 8 writes each populated WAV slot under its owner as
+Formats 8 and 9 write each populated WAV slot under its owner as
 `pattern_loop=PATTERN|SLOT|FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET|LEVEL|FILTER`.
 Slots are 1–4, level is 0–1500, and filter is -1000..1000. Duplicate, missing,
 unknown, malformed, unsafe, or over-limit ownership is refused before the
@@ -588,8 +598,10 @@ records migrate in memory into every distinct Pattern. Format 6's one
 `loop=FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET` record migrates to slot 1
 of every Pattern with unity level (`1000`) and neutral filter (`0`). Only
 filenames/settings are copied; private WAVs are not. Loading, previewing, or
-inspecting an old Project does not rewrite it. Explicit save writes format 8.
-Unknown newer formats remain refused.
+inspecting an old Project does not rewrite it. Formats 0–8 also gain a neutral
+fixed strip only in memory. Explicit save writes format 9. Unknown newer
+formats and malformed, non-finite, out-of-range, unknown-field, or newer
+MASTER STRIP records remain refused.
 
 Format 6 stores note-entry layout on `pattern_page` and optional non-GM
 classification as repeated

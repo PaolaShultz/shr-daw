@@ -419,11 +419,13 @@ only after a successful Project write, DISCARD performs the requested action,
 and CANCEL or any failed/pending save keeps the Project and exact
 order/page/lane/row position.
 
-The FX rack and editor always show the owning Project plus `NEW`, `SAVED`, or
-`DIRTY`; source, AUX, and master racks are all Project data.
+The FX rack, editor, and fixed MASTER STRIP always show the owning Project plus
+`NEW`, `SAVED`, or `DIRTY`; source, AUX, master racks, and strip are all
+Project data. The strip remains global when Arrangement or Live Patterns
+changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 8
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 9
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor and drum-role overrides, cells, source
 insert rack, two aux routes, and master rack. Portable
@@ -436,7 +438,8 @@ distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 8.
+not rewrite an old file; explicit save writes format 9. Formats 0–8 gain a
+neutral fixed strip only in memory.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.

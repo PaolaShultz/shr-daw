@@ -124,12 +124,21 @@ transport and all recording before an FX change can publish a replacement
 plan. With the graph disabled, the same editor can design and save the Project
 silently, but direct playback will not process or meter it.
 
+On the MASTER rack, ORDER STRIP opens the fixed mastering processor; MTR NAV
+STRIP reaches the same Project state. Its front page selects INPUT, broad TONE,
+linked full-band GLUE, declared harmonic COLOR, conservative M/S IMAGE, or
+LOUD/CEIL. DETAIL exposes only that section's values. Optional sections have
+smoothed BYPASS. A/B keeps the same delay and protected true-peak limiter.
+RESET I clears LUFS-I. Playback allows smoothed value changes, but a final
+recording rejects them; with no owned graph they change only the Project.
+
 ## Performance meters
 
 Home PERFORMANCE, or keyboard m, opens the meter/mix surface. With the
 owned graph disabled it retains the passive CPU and legacy output view. With
 the graph enabled it shows Synth, Loop, and Input readiness, level and mute;
-master level; final L/R peak and clip; limiter gain reduction; and final-record
+master level; final sample peak and dBTP; GLUE/limiter gain reduction,
+correlation, LUFS-M/S/I; and final-record
 elapsed time, size, drop/error state, and path.
 
 Stereo bars use circular `●` LEDs for live smoothed RMS and a brighter,
@@ -143,8 +152,8 @@ equal values, and other controls leave them alone. Stopped, unavailable, and
 new meter sessions cannot carry an old `MAX` forward.
 
 FINAL OUT is available only for the active owned graph. It measures after all
-three required sources, master inserts, master level, and linked limiter. The
-same final limited buffer feeds the stereo recorder and playback. Direct
+three required sources, master inserts, live master level, fixed strip, and
+linked 8× true-peak limiter. The same final buffer feeds the stereo recorder and playback. Direct
 playback reports this final-bus meter unavailable and stays direct.
 
 The FT2 WAV Loop screen's `LOOP OUT` still measures only the rendered loop. When

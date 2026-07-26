@@ -19,7 +19,7 @@ The manual is split into three chapters so it remains usable on a phone:
    screen; and routing fields.
 3. [Loops and effects](menu/LOOPS_AND_EFFECTS.md) — Pattern-owned four-slot Loop
    Mix, the shared loop browser, alignment, the effects rack and its contexts,
-   and the parameter editor.
+   the fixed MASTER STRIP, and the parameter editor.
 
 ## How to read a screen
 

@@ -6,7 +6,7 @@ sound card, a virtual JACK source, or another multichannel USB interface uses
 the same recorder. It does not audibly monitor, mix, process, overdub, or edit
 these inputs; its Levels screen does meter the first 18 configured sources. It
 remains distinct from the owned performance bus and its one-file
-post-limiter [final stereo recording](FINAL_PERFORMANCE_BUS.md#final-recording).
+post-strip [final stereo recording](FINAL_PERFORMANCE_BUS.md#final-recording).
 Use the interface or mixer for safe low-latency audible raw-input monitoring.
 
 ## What one take guarantees

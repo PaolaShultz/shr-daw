@@ -22,14 +22,16 @@ pub enum Screen {
     MultichannelMonitor,
     FxRack,
     FxEditor,
+    MasterStrip,
+    MasterStripAdvanced,
     Meter,
     Routing,
 }
 
 impl Screen {
-    pub const COUNT: usize = 19;
+    pub const COUNT: usize = 21;
     #[cfg(test)]
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 21] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -47,6 +49,8 @@ impl Screen {
         Self::MultichannelMonitor,
         Self::FxRack,
         Self::FxEditor,
+        Self::MasterStrip,
+        Self::MasterStripAdvanced,
         Self::Meter,
         Self::Routing,
     ];
@@ -70,8 +74,10 @@ impl Screen {
             Self::MultichannelMonitor => 14,
             Self::FxRack => 15,
             Self::FxEditor => 16,
-            Self::Meter => 17,
-            Self::Routing => 18,
+            Self::MasterStrip => 17,
+            Self::MasterStripAdvanced => 18,
+            Self::Meter => 19,
+            Self::Routing => 20,
         }
     }
 
@@ -95,6 +101,8 @@ impl Screen {
             Self::MultichannelMonitor => "18CH MONITOR",
             Self::FxRack => "FX RACK",
             Self::FxEditor => "FX EDIT",
+            Self::MasterStrip => "MASTER STRIP",
+            Self::MasterStripAdvanced => "STRIP DETAIL",
             Self::Meter => "MIX",
             Self::Routing => "ROUTING",
         }
@@ -139,6 +147,12 @@ pub enum Action {
     OpenMultichannelMonitor,
     OpenFxRack,
     OpenFxEditor,
+    OpenMasterStrip,
+    MasterStripDecrease,
+    MasterStripIncrease,
+    MasterStripBypass,
+    MasterStripCompare,
+    MasterStripResetLoudness,
     OpenMeter,
     OpenRouting,
     ResetMeter,
@@ -1081,7 +1095,7 @@ const FX_RACK: [MenuPage; 4] = [
             on("UP", Action::FxMoveUp),
             on("DOWN", Action::FxMoveDown),
             on("BYPASS", Action::FxBypass),
-            off(""),
+            on("STRIP", Action::OpenMasterStrip),
         ],
     ),
     page(
@@ -1106,7 +1120,15 @@ const FX_RACK: [MenuPage; 4] = [
 
 const FX_RACK_EMPTY: [MenuPage; 4] = [
     page("OPS", [on("ADD", Action::FxAdd), off(""), off(""), off("")]),
-    page("ORDER", [off(""), off(""), off(""), off("")]),
+    page(
+        "ORDER",
+        [
+            off(""),
+            off(""),
+            off(""),
+            on("STRIP", Action::OpenMasterStrip),
+        ],
+    ),
     FX_RACK[2],
     FX_RACK[3],
 ];
@@ -1144,6 +1166,68 @@ const FX_EDITOR: [MenuPage; 4] = [
     ),
 ];
 
+const MASTER_STRIP: [MenuPage; 4] = [
+    page(
+        "SECTION",
+        [
+            on("PREV", Action::Up),
+            on("NEXT", Action::Down),
+            on("DETAIL", Action::Activate),
+            on("BYPASS", Action::MasterStripBypass),
+        ],
+    ),
+    page(
+        "COMPARE",
+        [
+            on("A/B", Action::MasterStripCompare),
+            on("RESET I", Action::MasterStripResetLoudness),
+            off(""),
+            off(""),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+
+const MASTER_STRIP_ADVANCED: [MenuPage; 4] = [
+    page(
+        "PARAM",
+        [
+            on("PREV", Action::Up),
+            on("NEXT", Action::Down),
+            on("VALUE-", Action::MasterStripDecrease),
+            on("VALUE+", Action::MasterStripIncrease),
+        ],
+    ),
+    page(
+        "STATE",
+        [
+            on("BYPASS", Action::MasterStripBypass),
+            on("A/B", Action::MasterStripCompare),
+            on("RESET I", Action::MasterStripResetLoudness),
+            off(""),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+
 const METER: [MenuPage; 4] = [
     page(
         "OPS",
@@ -1167,7 +1251,7 @@ const METER: [MenuPage; 4] = [
         "NAV",
         [
             on("FX", Action::OpenEffectsOverlay),
-            off(""),
+            on("STRIP", Action::OpenMasterStrip),
             off(""),
             off(""),
         ],
@@ -1267,6 +1351,8 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::FxRack, MenuContext::FxType) => &FX_TYPE,
         (Screen::FxRack, _) => &FX_RACK,
         (Screen::FxEditor, _) => &FX_EDITOR,
+        (Screen::MasterStrip, _) => &MASTER_STRIP,
+        (Screen::MasterStripAdvanced, _) => &MASTER_STRIP_ADVANCED,
         (Screen::Meter, _) => &METER,
         (Screen::Routing, _) => &ROUTING,
     }

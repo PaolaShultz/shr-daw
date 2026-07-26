@@ -118,6 +118,15 @@ recording before changing FX. See [How SHR-DAW
 works](HOW_IT_WORKS.md#the-managed-audio-graph) for placement, effect choices,
 bypass, and routing.
 
+On the MASTER target choose **STRIP**, or use MTR **NAV** → **STRIP**, for the
+fixed Project-global MASTER STRIP after the rack and live master fader. Browse
+INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL; **DETAIL** opens only the
+selected section's parameters. Optional sections have smoothed bypass.
+**A/B** keeps the same latency and true-peak protection while comparing the
+optional processing; **RESET I** clears integrated loudness. Numerical edits
+are safe during playback but are refused during final recording. See
+[Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
+
 ## Synchronized audio stems
 
 The Audio Recorder writes every armed exact source as a separate mono 24-bit
@@ -178,10 +187,10 @@ configuration, session layout, recovery, and hardware-free stress validation.
 
 Open Performance from Home, or press `m` on Presets. With the graph disabled,
 MTR shows passive whole-core CPU and legacy meter information. With it enabled,
-MTR controls Synth/Loop/Input levels and mutes, master level, the linked
-limiter, `FINAL OUT`, and final stereo recording.
+MTR controls Synth/Loop/Input levels and mutes, master level, the fixed strip's
+linked true-peak boundary, `FINAL OUT`, and final stereo recording.
 
-`FINAL OUT` is the post-limiter buffer shared by recording and playback. The
+`FINAL OUT` is the post-strip buffer shared by recording and playback. The
 Loop Mix's separate `LOOP OUT` measures the complete four-slot sum. RESET clears
 presentation holds, not audio state. MTR does not report callback timing or
 xruns; see [Final performance bus](FINAL_PERFORMANCE_BUS.md) for the exact

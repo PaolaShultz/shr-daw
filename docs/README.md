@@ -57,7 +57,8 @@ configuration, or the architecture contracts.
   parameter schemas, real-time limits, routing publication, meters, bypass,
   tails, topology limits, and curation gates.
 - [Final stereo performance bus](FINAL_PERFORMANCE_BUS.md) — exact three-source
-  topology, limiter, monitoring safety, final WAV capture, and hardware acceptance.
+  topology, fixed mastering boundary, monitoring safety, final WAV capture,
+  and hardware acceptance.
 - [Synchronized multitrack recording](MULTITRACK_RECORDING.md) — exact JACK
   source mapping, fixed 18-channel RMS/peak overview, shared callback timeline,
   mono stems, manifests, recovery, and the non-audible stress helper.
@@ -78,6 +79,9 @@ configuration, or the architecture contracts.
   processor evidence and Raspberry Pi measurements.
 - [Phase 3/4 effects and buses](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md) — time and
   modulation effects, reverb, aux/master routing, and consolidated curation.
+- [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md) — exact parameters,
+  DSP provenance, true-peak/loudness contract, latency, and repeatable
+  hardware-independent timing evidence.
 - [Preset audit](PRESET_AUDIT.md) — cleared public synthv1 bank review.
 - [Drum-pattern audit](DRUM_PATTERN_AUDIT.md) — bundled rhythm structure,
   limitations, and listening shortlist.

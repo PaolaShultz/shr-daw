@@ -108,6 +108,13 @@ final-bus mixer separate.
 Control and record the opt-in three-source final bus, or inspect the passive
 meter view while the graph is disabled.
 
+### MASTER STRIP
+
+<img src="docs/images/shr-daw-master-strip.png" alt="Fixed stereo MASTER STRIP with six sections and mastering meters" width="100%">
+
+Shape and meter the final stereo mix through a fixed, Project-owned mastering
+path with protected true-peak output.
+
 The [screen and menu manual](docs/MENU_MANUAL.md) contains the complete visual
 tour without duplicating its controls here.
 

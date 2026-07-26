@@ -3,6 +3,7 @@
 use crate::audio_graph::{InsertRack, ProjectAuxRouting};
 use crate::config::{BankSelectMode, ExternalMidiConfig};
 use crate::device_profile::Registry as DeviceProfiles;
+use crate::master_strip::MasterStripSettings;
 use crate::preset::BackendKind;
 use anyhow::{anyhow, bail, Context, Result};
 use midir::{MidiOutput, MidiOutputConnection};
@@ -14,7 +15,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 8;
+pub const SONG_VERSION: u8 = 9;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
@@ -40,6 +41,7 @@ pub struct Song {
     pub gate_percent: u8,
     pub insert_rack: InsertRack,
     pub aux_routing: ProjectAuxRouting,
+    pub master_strip: MasterStripSettings,
     pub order: Vec<u16>,
     pub patterns: BTreeMap<u16, Pattern>,
 }
@@ -437,6 +439,7 @@ impl Song {
             gate_percent: config.gate_percent,
             insert_rack: InsertRack::default(),
             aux_routing: ProjectAuxRouting::default(),
+            master_strip: MasterStripSettings::default(),
             order: vec![0],
             patterns,
         }
@@ -459,6 +462,9 @@ impl Song {
         self.aux_routing
             .validate(&self.insert_rack)
             .map_err(|error| anyhow!(error.to_string()))?;
+        self.master_strip
+            .validate()
+            .map_err(|error| anyhow!(error))?;
         if self
             .order
             .iter()
@@ -660,6 +666,7 @@ pub fn save_routing_defaults(path: &Path, pages: &[Page]) -> Result<()> {
         gate_percent: 80,
         insert_rack: InsertRack::default(),
         aux_routing: ProjectAuxRouting::default(),
+        master_strip: MasterStripSettings::default(),
         order: vec![0],
         patterns: BTreeMap::from([(0, pattern)]),
     };
@@ -1106,7 +1113,7 @@ fn related_drum_voice(old_note: u8, old: DrumNoteClass, note: u8, new: DrumNoteC
 }
 
 fn drum_auto_release_cell(cell: &Cell) -> bool {
-    let mut release = cell.clone();
+    let mut release = *cell;
     release.note = Note::Empty;
     cell.note == Note::Off && release == Cell::default()
 }
@@ -1144,8 +1151,8 @@ pub fn drum_auto_lanes(
             })
         });
         let mut candidates = Vec::with_capacity(LANES_PER_PAGE + 4);
-        for lane in 0..LANES_PER_PAGE {
-            if active[lane].is_some_and(|(old_note, old_class)| {
+        for (lane, active_voice) in active.iter().enumerate() {
+            if active_voice.is_some_and(|(old_note, old_class)| {
                 related_drum_voice(old_note, old_class, note, class)
             }) {
                 candidates.push(lane);
@@ -1296,6 +1303,10 @@ pub fn encode(song: &Song) -> Result<String> {
         "aux_routing={}\n",
         escape(&serde_json::to_string(&song.aux_routing)?)
     ));
+    out.push_str(&format!(
+        "master_strip={}\n",
+        escape(&serde_json::to_string(&song.master_strip)?)
+    ));
     for (number, pattern) in &song.patterns {
         out.push_str(&format!(
             "pattern={number}|{}|{}|{}\n",
@@ -1427,6 +1438,7 @@ pub fn decode(text: &str) -> Result<Song> {
         std::array::from_fn(|_| None);
     let mut insert_rack = None;
     let mut aux_routing = None;
+    let mut master_strip = None;
     let mut order = None;
     let mut patterns: BTreeMap<u16, Pattern> = BTreeMap::new();
     let mut pattern_pages: BTreeMap<u16, BTreeMap<usize, Page>> = BTreeMap::new();
@@ -1494,6 +1506,11 @@ pub fn decode(text: &str) -> Result<Song> {
                 &mut aux_routing,
                 serde_json::from_str::<ProjectAuxRouting>(&unescape(value)?)?,
                 "aux_routing",
+            )?,
+            "master_strip" if version >= 9 => set_once(
+                &mut master_strip,
+                serde_json::from_str::<MasterStripSettings>(&unescape(value)?)?,
+                "master_strip",
             )?,
             "order" => {
                 let parsed = value
@@ -1610,7 +1627,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        6..=8,
+                        6..=9,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor],
                     ) => (
                         Page {
@@ -1647,7 +1664,7 @@ pub fn decode(text: &str) -> Result<Song> {
             "pattern_column" if version >= 1 => pattern_columns.push(value.to_owned()),
             "pattern_setup" => pattern_setup.push(value.to_owned()),
             "pattern_drum_class" if version >= 6 => pattern_drum_classes.push(value.to_owned()),
-            "pattern_loop" if version == 8 => pattern_loops.push(value.to_owned()),
+            "pattern_loop" if version >= 8 => pattern_loops.push(value.to_owned()),
             "cell" => cells.push(value.to_owned()),
             _ => bail!("unknown song field {key}; file was not changed"),
         }
@@ -1665,7 +1682,7 @@ pub fn decode(text: &str) -> Result<Song> {
     }
     attach_pattern_setup(&mut patterns, pattern_setup)?;
     attach_pattern_drum_classes(&mut patterns, pattern_drum_classes)?;
-    if version == 8 {
+    if version >= 8 {
         attach_pattern_loops(&mut patterns, pattern_loops)?;
     } else {
         for pattern in patterns.values_mut() {
@@ -1732,6 +1749,11 @@ pub fn decode(text: &str) -> Result<Song> {
             aux_routing.context("missing aux routing")?
         } else {
             ProjectAuxRouting::default()
+        },
+        master_strip: if version >= 9 {
+            master_strip.context("missing MASTER STRIP")?
+        } else {
+            MasterStripSettings::default()
         },
         order: order.context("missing order")?,
         patterns,
@@ -4187,7 +4209,9 @@ mod tests {
     }
     fn without_v5_profile_fields(text: &str) -> String {
         text.lines()
-            .filter(|line| !line.starts_with("pattern_drum_class="))
+            .filter(|line| {
+                !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
+            })
             .map(|line| {
                 if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -4202,9 +4226,11 @@ mod tests {
     }
     fn as_v5(text: &str) -> String {
         text.lines()
-            .filter(|line| !line.starts_with("pattern_drum_class="))
+            .filter(|line| {
+                !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
+            })
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 8") {
+                if line.starts_with("SHSYNTH-SONG 9") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -4388,6 +4414,12 @@ mod tests {
     fn serialization_round_trip_requires_current_schema() {
         let mut s = Song::new(&config());
         s.name = "a|b".into();
+        s.master_strip.input_bypass = false;
+        s.master_strip.input_trim_db = 2.5;
+        s.master_strip.glue_bypass = false;
+        s.master_strip.glue_threshold_db = -16.0;
+        s.master_strip.loud_db = 1.5;
+        s.master_strip.ceiling_dbtp = -0.8;
         let compressor = s
             .insert_rack
             .add(crate::audio_graph::EffectKind::Compressor)
@@ -4417,10 +4449,51 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 8\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 9\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
+    }
+
+    #[test]
+    fn format_eight_migrates_to_a_neutral_project_strip_without_rewriting() {
+        let current = encode(&Song::new(&config())).unwrap();
+        let legacy = current
+            .lines()
+            .filter(|line| !line.starts_with("master_strip="))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 8", 1);
+        let base = env::temp_dir().join(format!("shr-strip-v8-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let path = base.join("legacy.shsong");
+        fs::write(&path, &legacy).unwrap();
+
+        let loaded = load(&base, "legacy").unwrap();
+        assert_eq!(loaded.master_strip, MasterStripSettings::default());
+        assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 9\n"));
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn current_master_strip_record_is_strict_before_replacement() {
+        let encoded = encode(&Song::new(&config())).unwrap();
+        assert!(
+            decode(&encoded.replacen("\"input_trim_db\":0.0", "\"input_trim_db\":99.0", 1))
+                .is_err()
+        );
+        assert!(
+            decode(&encoded.replacen("\"input_trim_db\":0.0", "\"input_trim_db\":null", 1))
+                .is_err()
+        );
+        assert!(
+            decode(&encoded.replacen("\"version\":1", "\"version\":1,\"unknown\":false", 1))
+                .is_err()
+        );
+        assert!(decode(&encoded.replacen("\"version\":1", "\"version\":2", 1)).is_err());
+        assert!(decode(&encoded.replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 10", 1)).is_err());
     }
 
     #[test]
@@ -4586,7 +4659,11 @@ mod tests {
         let second = current.append_pattern(clone).unwrap();
         let legacy = encode(&current)
             .unwrap()
-            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 7", 1)
+            .lines()
+            .filter(|line| !line.starts_with("master_strip="))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 7", 1)
             .replacen(
                 "insert_rack=",
                 "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
@@ -4614,7 +4691,11 @@ mod tests {
         let second = source.append_pattern(source.patterns[&0].clone()).unwrap();
         let current = encode(&source).unwrap();
         let legacy = current
-            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 6", 1)
+            .lines()
+            .filter(|line| !line.starts_with("master_strip="))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -4759,7 +4840,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 8\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 9\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -5925,14 +6006,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 8\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 9\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -5941,14 +6022,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 8\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 9\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -5965,7 +6046,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 8\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 9\n"));
         assert!(encoded.contains("|default|-|manual|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -5981,7 +6062,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 8", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -6002,7 +6083,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 8",
+            "SHSYNTH-SONG 9",
             "SHSYNTH-SONG 4",
             1,
         );

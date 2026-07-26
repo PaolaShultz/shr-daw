@@ -38,15 +38,17 @@ FT2 entry layouts. The private `user/docs-pruning-20260725/` material remains
 unpublished reference only; it is not an active task or a public source of
 truth.
 
-Version `0.3.99` corrects FT2 Loop Mix ownership. Project format 8 stores
-exactly four optional Loop Mix records under each Pattern; format 7's four
-Project-global slots and format 6's single slot migrate in memory into every
-distinct Pattern without rewriting the source Project. Repeated Arrangement
-references share one Pattern record, while clone and paste-new copy the
-references/settings into an independent Pattern. Resize retains them; confirmed
-CLEAR detaches them; CLEAN and every other Pattern operation leave the shared
-private WAV library untouched. Effects, final-bus routing, recorder
-configuration, and unrelated state remain Project-owned.
+Version `0.3.99` corrects FT2 Loop Mix ownership. Project format 9 retains
+format 8's exactly four optional Loop Mix records under each Pattern and adds
+one strict Project-global MASTER STRIP record. Format 7's four Project-global
+loop slots and format 6's single slot migrate in memory into every distinct
+Pattern without rewriting the source Project; all formats through 8 acquire a
+neutral strip the same way. Repeated Arrangement references share one Pattern
+record, while clone and paste-new copy the references/settings into an
+independent Pattern. Resize retains them; confirmed CLEAR detaches them; CLEAN
+and every other Pattern operation leave the shared private WAV library
+untouched. Effects, final-bus routing, recorder configuration, and MASTER
+STRIP settings remain Project-owned.
 
 Ordinary Arrangement and Live Pattern boundaries now change MIDI and Loop Mix
 ownership together. Each step, including a repeated Pattern reference,
@@ -88,6 +90,31 @@ instrument/backend replacement cannot re-arm outgoing loops. No JACK server,
 synth, MIDI transmission, playback, recording, audible test, or physical
 hardware test was started. Temporary visual evidence remains ignored below
 `user/acceptance-pattern-loops-20260726/`.
+
+The fixed stereo MASTER STRIP now replaces the sample-peak-only final limiter.
+The single final path is MASTER rack, live master fader, INPUT, TONE, linked
+GLUE, ADAA COLOR, conservative M/S IMAGE, LOUD/8× true-peak limiter, final
+meter, then the identical WAV tap and JACK playback buffers. Optional stages
+default bypassed; the -1.0 dBTP safety boundary does not. Fixed latency is 133
+samples / 2.770833 ms at 48 kHz and 123 samples / 2.789116 ms at 44.1 kHz.
+The owning ranges, algorithms, provenance, tolerance, memory, and synthetic
+evidence are in `docs/MASTER_STRIP_MEASUREMENT.md`.
+
+The MASTER STRIP acceptance pass on 2026-07-26 used Rust 1.85. Locked format,
+check, debug/release builds, 18 focused tests, 788 complete-suite passes plus
+four intentionally ignored private renderers, and warning-denied all-target
+Clippy passed. All 141 deterministic screenshots passed exhaustive
+960×624/integer-scale validation; all 301 local Markdown references and ten
+cleared demo arrangements passed. The final release benchmark measured the
+maximally active processor below 7% mean, 8% p99, and 20% maximum of the 64-
+and 128-frame deadlines; its fixed state is 21,632 bytes with 1,056 limiter
+delay bytes. One neutral non-real-time 64-frame callback was descheduled for
+2.885 ms and is retained honestly in the owning evidence. Two final-mix
+stresses processed 96,000 frames each at 64 and 128 frames with zero drops or
+overflows and byte-identical playback/WAV PCM. No JACK server, synth, MIDI,
+audible playback, hardware recording, listening approval, or physical
+acceptance was performed. Synthetic WAV evidence is ignored below
+`user/master-strip-validation-20260726-final/`.
 
 Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical

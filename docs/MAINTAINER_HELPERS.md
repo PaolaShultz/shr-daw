@@ -26,6 +26,7 @@ assumptions.
 | `capture-minilab-midi.sh` | Passively capture and label MiniLab 3 MIDI evidence | Temporarily stops and restores `amidiminder`; writes one unique log below `/tmp` by default |
 | `shr recorder-stress` | Non-audibly exercise the production multistem buffer/writer without JACK | Creates one unique synthetic take below an explicit destination |
 | `shr final-mix-stress` | Non-audibly exercise the three-source final DSP and stereo writer without JACK | Creates one unique 24-bit stereo stress WAV below an explicit destination |
+| `shr master-strip-bench` | Compare neutral/active production strip callback cost and isolated 4×/8× interpolation without JACK | Read-only deterministic CPU work; creates no files |
 
 None of the setup, tuning, preset, or screenshot helpers starts JACK, a synth
 engine, MIDI playback, or an audible test. `local.sh` is the exception only in
@@ -469,7 +470,7 @@ The default command uses the installed Rust 1.85 toolchain when present and
 runs `shr screenshots`. Rust renders the real application `draw` function into
 40×13 ratatui test buffers seeded by the deterministic `ScreenshotScenario`
 and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The current manifest
-contains 125 overview/menu/context/overlay frames. The compact Levels fallback
+contains 141 overview/menu/context/overlay frames. The compact Levels fallback
 is rendered at 38×12 and padded with black to the manifest's 40×13 canvas so
 the same renderer can prove the non-native path without changing image
 dimensions. JSON supplies
@@ -511,7 +512,7 @@ without pretending the application has more than 40×13 cells.
 
 `--check` is also deliberately exhaustive. It opens every expected image and
 checks every 2×2 block instead of trusting file metadata or the name of a resize
-filter. On the Raspberry Pi, rendering or validating all 101 menu frames takes
+filter. On the Raspberry Pi, rendering or validating all 128 menu frames takes
 noticeable time. That time is an accepted documentation-integrity cost, not an
 optimization bug. Do not replace the scaler or weaken the check merely to make
 the command faster. First render one representative image and inspect it; then
@@ -700,7 +701,8 @@ supported rate of 44100 or 48000 Hz, and 16–4096 callback frames.
 The command does not load runtime configuration, open/start JACK, register a
 port, transmit MIDI, start a synth, or produce sound. It feeds three
 deterministic, distinguishable stereo sources through the production source and
-master smoothing, final linked limiter, final meter, callback-boundary capture,
+master smoothing, fixed strip and linked true-peak limiter, final meter,
+callback-boundary capture,
 bounded SPSC ring, non-real-time 24-bit stereo WAV writer, fsync, and
 no-replace publication. It paces callbacks in real time and reports callback
 mean/p95/p99/maximum, limiter maximum gain reduction, writer high-water, drops,
@@ -715,5 +717,30 @@ removal.
 
 This helper is intentionally separate from `recorder-stress`: raw multitrack
 evidence concerns many synchronized mono stems, while final-mix evidence must
-exercise the exact post-limiter stereo playback/tap equivalence. Neither helper
+exercise the exact post-strip stereo playback/tap equivalence. Neither helper
 is physical-interface, JACK scheduling, listening, or MR18 acceptance evidence.
+
+## MASTER STRIP callback benchmark
+
+### Invocation
+
+```sh
+shr master-strip-bench [CALLBACKS] [RATE]
+```
+
+Defaults are 20000 callbacks per profile and 48000 Hz; at least 1000 callbacks
+are required and the rate must satisfy the graph's 8000–384000 Hz contract.
+The optimized binary should be used for recorded evidence.
+
+The command does not load runtime configuration, open JACK, start a synth,
+transmit MIDI, pace to wall-clock audio, or write a file. It runs the same
+deterministic stereo buffer through the production processor at 64 and 128
+frames, first neutral and then with every optional section maximally active.
+It separately times the same 128-frame interpolation work at 4× and 8×.
+Results include mean, p95, p99, maximum, mean percentage of the callback
+deadline, fixed processor-state bytes, and limiter-delay bytes.
+
+This is a hardware-independent release-mode DSP comparison. It is not an xrun,
+JACK scheduling, full-duplex, temperature, listening, or physical-interface
+result. The owning evidence and algorithm choices are in
+[Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).

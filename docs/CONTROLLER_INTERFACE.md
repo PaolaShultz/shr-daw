@@ -41,7 +41,7 @@ or `q` can still exit from the splash.
 |---|---|
 | Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard, with Save/Discard/Cancel protection for a dirty Project. |
 | Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
-| MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect final peaks and active clip/reduction state, and start/stop the callback-boundary final stereo recording. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus disabled, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. Its FX launcher uses the same master-overlay framework as FT2, then opens the existing selected source/AUX/master rack. |
+| MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus disabled, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP. |
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | While Play or Rec transport is active, the main rotary selects the previous/next column across page boundaries. While transport is paused it moves rows, as it does in Edit; keyboard Up/Down always moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. |
@@ -61,6 +61,7 @@ or `q` can still exit from the splash.
 | Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
 | 18-channel Levels | Show all 18 recording inputs simultaneously as three groups of six fixed nine-LED dBFS meters. Encoder, Left/Right, `j`/`k`, or pointer selects without scrolling; encoder click/Enter/Space arms the selected channel. Visible TAKE, CHANNEL, and SYS pages provide setup, record, literal Stop, reset, previous/next, arm, refresh, Panic, Help, and Exit. At native 40×13 it omits controller rows but keeps shared row 13; compact geometry falls back rather than cropping. |
 | FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
+| MASTER STRIP | Compact fixed-order INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL front page with one selected-section value and bounded mastering meters; DETAIL opens only that section's advanced values. Optional sections have smoothed bypass; A/B retains fixed latency and true-peak protection; RESET I clears integrated loudness. Playback allows numerical audition without a topology rebuild, final recording rejects edits, and a disabled graph changes only Project state. Back preserves caller, page, FX/tracker selection, and cursor. |
 | Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate performance inputs, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
@@ -218,13 +219,13 @@ Blank physical positions and wholly empty pages are omitted.
 | Presets | Sys | Panic | Help | — | Exit |
 | MTR | Ops | Source− | Source+ | Level− | Level+ |
 | MTR | Mix | Mute | — | Final rec/stop | Reset holds |
-| MTR | Nav | FX overlay | — | — | — |
+| MTR | Nav | FX overlay | MASTER STRIP | — | — |
 | MTR | Sys | Panic | — | Help | Exit |
 | Playback | Play | — | Play take | Record MIDI | — |
 | Playback | Sound | Reset controls | Save | N00B on/off | — |
 | Playback | Sys | Panic | FX | Help | Exit |
 | FX rack | Ops | Add | Delete | Edit type | Parameters |
-| FX rack | Order | Up | Down | Bypass | — |
+| FX rack | Order | Up | Down | Bypass | MASTER STRIP |
 | FX rack | Route | Target | Send− | Send+ | Point |
 | FX rack | Sys | Panic | Return | Help | Exit |
 | FX rack empty | Ops | Add | — | — | — |
@@ -233,6 +234,12 @@ Blank physical positions and wholly empty pages are omitted.
 | FX type | Type | Type− | Type+ | OK | Cancel |
 | FX editor | State | Bypass | — | — | — |
 | FX editor | Sys | Panic | — | Help | Exit |
+| MASTER STRIP | Section | Previous | Next | Detail | Bypass |
+| MASTER STRIP | Compare | A/B | Reset LUFS-I | — | — |
+| MASTER STRIP | Sys | Panic | — | Help | Exit |
+| Strip detail | Param | Previous | Next | Value− | Value+ |
+| Strip detail | State | Bypass | A/B | Reset LUFS-I | — |
+| Strip detail | Sys | Panic | — | Help | Exit |
 | Ideas | Play | Inspect | Play | Record | Delete |
 | Ideas | File | Save | Load | First | Last |
 | Ideas | Sys | Panic | — | Help | Exit |

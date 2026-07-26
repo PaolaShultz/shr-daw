@@ -18,20 +18,24 @@ managed instrument -> SOURCE inserts -------------------------------\
 owned WAV loop ------------------------------------------------------+-> dry sum
 configured stereo JACK input --------------------------------------/
 
-dry sum -> MASTER inserts -> master level -> linked limiter
+dry sum -> MASTER inserts -> live master level
+        -> fixed MASTER STRIP (INPUT/TONE/GLUE/COLOR/IMAGE/LOUD)
         -> FINAL OUT meter -> final stereo WAV tap -> playback L/R
 ```
 
 Each aux bus has its own send level, pre/post source-insert tap, forced-wet
 serial rack, return level, and return meter. Each return is mixed exactly once.
-The complete dry-plus-wet sum then passes through the master rack and a
-dedicated final limiter and post-limiter meter immediately before the recorder
-tap and playback. The final WAV and JACK playback buffers contain the same
-limited samples. The exact final-bus contract is in
+The complete dry-plus-wet sum then passes through the master rack, live master
+level, fixed Project-owned strip, and post-limiter meter immediately before the
+recorder tap and playback. The final WAV and JACK playback buffers contain the
+same post-strip samples. The exact final-bus contract is in
 [Final stereo performance bus](FINAL_PERFORMANCE_BUS.md). The measured history
 is in the [Phase 1 dry](PHASE1_AUDIO_GRAPH_MEASUREMENT.md),
 [Phase 2 insert](PHASE2_AUDIO_GRAPH_MEASUREMENT.md), and
-[Phase 3/4 bus](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md) records.
+[Phase 3/4 bus](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md) records. New
+hardware-independent strip evidence and algorithm provenance are in
+[Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md); the dated Pi runs
+remain historical rather than being rewritten.
 
 Send and return gain are each bounded to -60..+12 dB. The compact UI changes
 sends by 3 dB and treats below -60 dB as `OFF`; a newly created aux starts with
@@ -81,14 +85,22 @@ alive until client deactivation returns.
 
 ## Project data and typed graph model
 
-Project format 8 stores the managed-source `InsertRack` and
-`ProjectAuxRouting` as strict JSON inside the versioned `.shsong` line format.
+Project format 9 stores the managed-source `InsertRack`, `ProjectAuxRouting`,
+and fixed `MasterStripSettings` as strict JSON inside the versioned `.shsong`
+line format.
 Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
 rack and adds empty aux/master routing; format 3 retains explicit routes.
 Unknown current fields, malformed rack
 data, and newer Project/effect versions are refused on load and on overwrite.
 Rack order is a separate list of stable effect IDs, so moving an effect does
 not recreate its identity.
+
+Formats 0–8 migrate one neutral strip in memory. The strip is Project-global
+and therefore does not change when Arrangement or Live Patterns changes
+Pattern. INPUT, TONE, GLUE, COLOR, and IMAGE default bypassed; the 8× true-peak
+limiter remains active. Its fixed processor follows the compiled master rack
+and live master fader rather than appearing in `master_chain`, so it cannot be
+reordered or instantiated twice.
 
 The active Pattern's four WAV slots are mixed inside the one owned Loop client
 before this graph. One prepared incoming four-renderer set is published through
@@ -308,8 +320,8 @@ feed two metered returns, which are mixed exactly once before the ordered master
 chain. Source and master bypass retain dry passthrough. Aux bypass tracks wet
 generators explicitly: an all-bypassed bus returns silence, a delay may drain a
 wet-only tail with muted input, and serial conditioning may pass an already-wet
-signal. A dedicated meter after the final master insert and immediately before
-playback supplies the `MASTER`/`FINAL OUT` reading. The compact rack/editor
+signal. The final mastering snapshot after the fixed strip and immediately
+before playback supplies the `MASTER`/`FINAL OUT` reading. The compact rack/editor
 uses four controller pages, with `OPS` first and `EXIT` at page 4/item 4, and
 shows input and output peak/RMS, clipping, non-finite counts, and compressor
 gain reduction. Raspberry Pi whole-chain evidence is documented in the
@@ -319,8 +331,9 @@ human-curation gate remains open in the latter.
 
 The source/master effect meters observe each processor's input and output;
 return meters observe the wet bus after return gain; `FINAL OUT` observes the
-complete owned graph after master processing. All publish bounded peak/RMS,
-clip, and non-finite state through atomics. They do not observe the separate
+complete owned graph after the fixed strip. Rack meters publish bounded
+peak/RMS, clip, and non-finite state; the strip additionally publishes dBTP,
+LUFS-M/S/I, correlation, and linked gain reduction through atomics. They do not observe the separate
 loop client, recorder capture, hardware, or unrelated JACK clients. The MTR
 keeps its non-decaying numeric L/R maxima entirely in UI presentation state;
 the audio callback continues to publish only the bounded lock-free snapshots.

@@ -135,13 +135,14 @@ first/last wrapping, and click/Enter inserts an effect at that position.
 only the selected owned processor. `EDIT` opens the Type context for the
 selected processor. `PARAM` opens its named parameter editor.
 
-### ORDER — reorder or bypass
+### ORDER — reorder, bypass, or open the fixed strip
 
 ![Populated FX Rack with the ORDER page](../images/menu/fx-rack-order.png)
 
 `UP` and `DOWN` move the selected effect within this rack. `BYPASS` fades it
 between active and safe bypass. Aux targets offer only supported wet
-time/modulation effects.
+time/modulation effects. On the MASTER target, `STRIP` opens the fixed
+Project-global mastering path after this reorderable rack.
 
 ### ROUTE — choose rack and aux send
 
@@ -164,6 +165,9 @@ return level. `HELP` opens the local reference. `EXIT` returns one level.
 
 OPS exposes only `ADD`; unavailable edit and delete actions stay hidden.
 
+The empty MASTER rack's ORDER page still exposes `STRIP`; other targets ask
+for MASTER rather than opening a misleading per-source mastering path.
+
 ![Empty FX rack with its ROUTE context](../images/menu/fx-rack-empty-route.png)
 
 ROUTE still selects the target and, for an aux, its send settings.
@@ -180,6 +184,39 @@ SYS preserves panic, return-level, help, and one-level exit actions.
 `CANCEL` restores the original processor, or removes a newly inserted
 provisional one. This context is distinct from `PARAM`, which edits named
 values without changing the processor type.
+
+## Fixed MASTER STRIP
+
+The fixed strip follows the MASTER rack and live master fader. It is not an
+effect slot and cannot be reordered. Its front page shows the owning Project
+and saved/dirty state, INPUT, TONE, GLUE, COLOR, IMAGE, LOUD/CEIL, the selected
+value, sample/true peak, LUFS, linked reduction, and correlation warning.
+Browsing preserves the calling MTR/FX context and unrelated FT2 cursor.
+
+![Fixed MASTER STRIP front page](../images/menu/master-strip-section.png)
+
+`PREV`/`NEXT` select one section, `DETAIL` opens its advanced values, and
+`BYPASS` fades INPUT, TONE, GLUE, COLOR, or IMAGE. LOUD/true-peak protection
+cannot be bypassed.
+
+![MASTER STRIP comparison controls](../images/menu/master-strip-compare.png)
+
+`A/B` compares the optional strip processing with the same fixed delay and
+limiter. `RESET I` clears only integrated loudness. Edited settings stay
+intact. Numerical and bypass updates are smoothed during playback; final
+recording rejects them.
+
+![MASTER STRIP GLUE detail](../images/menu/master-strip-detail-param.png)
+
+The detail page lists only the selected section's parameters. `VALUE-` and
+`VALUE+` change the selected value; the next page retains bypass, A/B, and
+integrated reset.
+
+![Compact MASTER STRIP fallback](../images/menu/master-strip-compact.png)
+
+Below native geometry the screen compacts without drawing over the shared
+status row. The exact DSP ranges, latency, true-peak tolerance, and provenance
+are in [Fixed stereo MASTER STRIP](../MASTER_STRIP_MEASUREMENT.md).
 
 ## FX parameter editor
 

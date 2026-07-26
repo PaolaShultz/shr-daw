@@ -5,6 +5,7 @@ use crate::audio_graph_client::{
 use crate::audio_graph_runtime::CallbackTimingSnapshot;
 use crate::config::{BackendConfig, RuntimeConfig};
 use crate::control::{self, CONTROLS};
+use crate::master_strip::MasterStripSettings;
 use crate::pads::{EncoderAction, PadAction, PadConfig};
 use crate::preset::{self, BackendKind, Preset, PresetId};
 use anyhow::{anyhow, bail, Context, Result};
@@ -684,6 +685,7 @@ impl Engine {
             config,
             rack,
             &ProjectAuxRouting::default(),
+            &MasterStripSettings::default(),
         )
     }
 
@@ -694,6 +696,7 @@ impl Engine {
         config: &RuntimeConfig,
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
+        master_strip: &MasterStripSettings,
     ) -> Result<Self> {
         let fluid_parts = (preset.backend == BackendKind::FluidSynth)
             .then(|| FluidSynthPart {
@@ -710,9 +713,13 @@ impl Engine {
             config,
             rack,
             aux_routing,
+            master_strip,
         )
     }
 
+    // This is the single startup transaction boundary: keeping every
+    // Project-owned audio component explicit makes rollback auditable.
+    #[allow(clippy::too_many_arguments)]
     pub fn start_with_routing_and_parts(
         preset: &Preset,
         fluid_parts: &[FluidSynthPart],
@@ -721,6 +728,7 @@ impl Engine {
         config: &RuntimeConfig,
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
+        master_strip: &MasterStripSettings,
     ) -> Result<Self> {
         fs::create_dir_all(state)?;
         let EnginePreflight {
@@ -784,6 +792,7 @@ impl Engine {
                     &runtime_config,
                     rack,
                     aux_routing,
+                    master_strip,
                 ) {
                     Ok(graph) => audio_graph = Some(graph),
                     Err(error) => {
@@ -894,12 +903,19 @@ impl Engine {
         config: &RuntimeConfig,
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
+        master_strip: &MasterStripSettings,
     ) -> Result<bool> {
         if self.audio_graph.is_some() || !config.audio_graph.enabled {
             return Ok(self.audio_graph.is_some());
         }
         let backend = backend_config(config, self.backend);
-        let graph = start_managed_audio_graph(&backend.client_name, config, rack, aux_routing)?;
+        let graph = start_managed_audio_graph(
+            &backend.client_name,
+            config,
+            rack,
+            aux_routing,
+            master_strip,
+        )?;
         self.audio_graph = Some(graph);
         self.audio_graph_fallback = None;
         Ok(true)
@@ -929,6 +945,25 @@ impl Engine {
 
     pub(crate) fn bus_controls(&self) -> Option<std::sync::Arc<crate::final_bus::BusControls>> {
         Some(self.audio_graph.as_ref()?.bus_controls())
+    }
+
+    pub(crate) fn apply_master_strip(&self, settings: &MasterStripSettings) -> Result<bool> {
+        let Some(graph) = self.audio_graph.as_ref() else {
+            return Ok(false);
+        };
+        graph
+            .master_strip_controls()
+            .apply(settings)
+            .map_err(anyhow::Error::msg)?;
+        Ok(true)
+    }
+
+    pub(crate) fn reset_master_strip_loudness(&self) -> bool {
+        let Some(graph) = self.audio_graph.as_ref() else {
+            return false;
+        };
+        graph.master_strip_controls().reset_loudness();
+        true
     }
 
     pub(crate) fn final_recording_status(
@@ -2404,6 +2439,7 @@ fn start_managed_audio_graph(
     config: &RuntimeConfig,
     rack: &InsertRack,
     aux_routing: &ProjectAuxRouting,
+    master_strip: &MasterStripSettings,
 ) -> Result<OwnedAudioGraph> {
     let available = jack_ports();
     let source_ports = resolve_managed_audio_outputs(client_name, available.clone())?;
@@ -2432,6 +2468,7 @@ fn start_managed_audio_graph(
         &config.capture,
         rack,
         aux_routing,
+        master_strip,
     )
 }
 

@@ -23,6 +23,7 @@ mod help;
 mod jack;
 mod live_performance;
 mod loop_player;
+mod master_strip;
 mod midi;
 mod midi_endpoint;
 mod multichannel_meter;
@@ -73,6 +74,9 @@ fn real_main() -> Result<()> {
     }
     if args.first().map(String::as_str) == Some("final-mix-stress") {
         return final_mix_stress_command(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("master-strip-bench") {
+        return master_strip_benchmark_command(&args[1..]);
     }
     let runtime = config::RuntimeConfig::load(&state.join("shsynth.conf"))?;
     let preset_dir = preset_dir(&runtime)?;
@@ -195,6 +199,7 @@ fn effects_checkpoint(
         &config,
         &rack,
         &aux_routing,
+        &master_strip::MasterStripSettings::default(),
     )?;
     engine.bind_midi_lifecycle(router.lifecycle());
     checkpoint_event("engine-and-graph-ready");
@@ -278,20 +283,25 @@ fn effects_checkpoint(
         effect_memory_bytes, graph_buffer_bytes, maximum_frames
     );
     println!(
-        "FINAL BUS METERS · limiter input peak {:.6}/{:.6} rms {:.6}/{:.6} clips {} non-finite {} · output peak {:.6}/{:.6} rms {:.6}/{:.6} clips {} non-finite {} · limiter reduction {:.3} dB",
-        final_meter.limiter_input.peak.left,
-        final_meter.limiter_input.peak.right,
-        final_meter.limiter_input.rms.left,
-        final_meter.limiter_input.rms.right,
-        final_meter.limiter_input.clips,
-        final_meter.limiter_input.non_finite,
+        "FINAL BUS METERS · strip input peak {:.6}/{:.6} rms {:.6}/{:.6} clips {} non-finite {} · output peak {:.6}/{:.6} rms {:.6}/{:.6} clips {} non-finite {} · true peak {:.3} dBTP · glue/limiter reduction {:.3}/{:.3} dB · LUFS M/S/I {:.1}/{:.1}/{:.1}",
+        final_meter.input.peak.left,
+        final_meter.input.peak.right,
+        final_meter.input.rms.left,
+        final_meter.input.rms.right,
+        final_meter.input.clips,
+        final_meter.input.non_finite,
         final_meter.output.peak.left,
         final_meter.output.peak.right,
         final_meter.output.rms.left,
         final_meter.output.rms.right,
         final_meter.output.clips,
         final_meter.output.non_finite,
+        final_meter.output_true_peak_dbtp,
+        final_meter.glue_gain_reduction_db,
         final_meter.limiter_gain_reduction_db,
+        final_meter.loudness_m_lufs,
+        final_meter.loudness_s_lufs,
+        final_meter.loudness_i_lufs,
     );
     restored.context("restore exact direct route after checkpoint")?;
     checkpoint_event("engine-drop-start");
@@ -687,6 +697,7 @@ fn usage() {
            effects-checkpoint PRESET [PROFILE] [SECONDS]\n\
            recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]\n\
            final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]\n\
+           master-strip-bench [CALLBACKS] [RATE]\n\
          \n\
          Help: help, -h, --help\n\
          Compatibility aliases: logs; pads detect; casio status|dry-run;\n\
@@ -822,6 +833,58 @@ fn final_mix_stress_command(args: &[String]) -> Result<()> {
     println!("WAV {}", report.wav.display());
     if !report.output_file_equal {
         bail!("final playback samples and stereo WAV PCM differ");
+    }
+    Ok(())
+}
+
+fn master_strip_benchmark_command(args: &[String]) -> Result<()> {
+    let callbacks = args
+        .first()
+        .map(|value| value.parse::<usize>())
+        .transpose()?
+        .unwrap_or(20_000);
+    let sample_rate = args
+        .get(1)
+        .map(|value| value.parse::<u32>())
+        .transpose()?
+        .unwrap_or(48_000);
+    if args.len() > 2 {
+        bail!("usage: shr master-strip-bench [CALLBACKS] [RATE]");
+    }
+    let report =
+        master_strip::benchmark(sample_rate, callbacks).map_err(|error| anyhow::anyhow!(error))?;
+    println!(
+        "MASTER STRIP SYNTHETIC BENCH · {} Hz · {} callbacks/profile · latency {} samples · state {} bytes · limiter delay {} bytes",
+        report.sample_rate,
+        report.callbacks,
+        report.total_latency_samples,
+        report.processor_state_bytes,
+        report.limiter_delay_bytes,
+    );
+    for row in report.rows {
+        for (profile, stats) in [("neutral", row.neutral), ("active", row.active)] {
+            println!(
+                "{:>3} frames · {:>7} · mean {:.3}us · p95 {:.3}us · p99 {:.3}us · max {:.3}us · mean deadline {:.3}%",
+                row.callback_frames,
+                profile,
+                stats.mean_microseconds,
+                stats.p95_microseconds,
+                stats.p99_microseconds,
+                stats.maximum_microseconds,
+                stats.mean_deadline_percent,
+            );
+        }
+    }
+    for row in report.oversampling {
+        println!(
+            "{}x interpolator · 128 frames · mean {:.3}us · p95 {:.3}us · p99 {:.3}us · max {:.3}us · mean deadline {:.3}%",
+            row.factor,
+            row.stats.mean_microseconds,
+            row.stats.p95_microseconds,
+            row.stats.p99_microseconds,
+            row.stats.maximum_microseconds,
+            row.stats.mean_deadline_percent,
+        );
     }
     Ok(())
 }

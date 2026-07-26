@@ -1242,9 +1242,11 @@ impl LoopPlayer {
         let Ok(slot) = checked_slot(slot) else {
             return;
         };
-        let mut empty = LoopSlot::default();
-        empty.position = Arc::clone(&self.slots[slot].position);
-        empty.meter = Arc::clone(&self.slots[slot].meter);
+        let empty = LoopSlot {
+            position: Arc::clone(&self.slots[slot].position),
+            meter: Arc::clone(&self.slots[slot].meter),
+            ..LoopSlot::default()
+        };
         self.slots[slot] = empty;
         let _ = self.rebuild_backend();
         self.preview = false;

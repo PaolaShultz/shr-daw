@@ -30,8 +30,8 @@ managed synth audio -> direct JACK playback (graph disabled)
 private WAV loop  --> direct JACK playback (graph disabled)
 
 managed synth SOURCE/AUX --+
-private WAV loop -----------+-> MASTER -> limiter -> FINAL OUT
-configured stereo input ----+                +-> final WAV + playback
+private WAV loop -----------+-> MASTER rack -> live fader -> MASTER STRIP
+configured stereo input ----+                        +-> FINAL OUT + final WAV + playback
 configured JACK sources -> fixed 18-channel meter snapshot
                         \-> shared callback timeline -> mono stems + manifest
 ```
@@ -39,7 +39,7 @@ configured JACK sources -> fixed 18-channel meter snapshot
 The raw-stem recorder remains separate. When enabled, the final bus owns the
 exact synth, loop, and one configured stereo-input pair and removes the direct
 synth/loop routes transactionally. `FINAL OUT`, final WAV, and playback then
-share the same post-limiter samples. They do not secretly include unrelated
+share the same post-strip samples. They do not secretly include unrelated
 JACK clients or downstream interface processing.
 
 ## Controller and performance input roles
@@ -359,7 +359,8 @@ into this route:
 managed instrument -> SOURCE inserts + AUX returns --+
 owned WAV loop ---------------------------------------+-> stereo sum
 configured capture L/R -------------------------------+
- -> MASTER rack -> master level -> linked limiter -> FINAL OUT
+ -> MASTER rack -> live master level
+ -> fixed INPUT/TONE/GLUE/COLOR/IMAGE/LOUD strip -> FINAL OUT
  -> final stereo WAV tap -> configured playback L/R
 ```
 
@@ -377,6 +378,10 @@ There are four useful placement ideas:
 - The **master rack** processes the complete source-plus-returns sum. It is the
   place for final corrective EQ, bus compression, overall utility changes, or
   deliberate whole-mix coloration.
+- The fixed **MASTER STRIP** follows the live master level. It provides saved
+  mastering gain/cleanup, broad tone, linked full-band glue, declared harmonic
+  colour, conservative image width, and protected true-peak output in one
+  non-reorderable order. It is Project-global rather than Pattern-owned.
 
 Send and return levels run from -60 to +12 dB. A new aux starts with a
 conservative -18 dB post-insert send. The compact controls use 3 dB steps;
@@ -439,9 +444,11 @@ non-finite state. Compressor editing also exposes its detector-derived gain
 reduction through a lock-free value; the LED display responds immediately to
 increasing reduction and uses a fixed 250 ms release for visual stability.
 Bypass publishes zero reduction. Each aux meters after its return gain. `FINAL
-OUT` follows the master level and dedicated stereo-linked sample-peak limiter.
-The recorder tap and playback receive the same final buffer after that meter
-boundary.
+OUT` follows the fixed strip and its stereo-linked 8× true-peak limiter. It
+distinguishes sample peak, dBTP, GLUE/limiter reduction, correlation, and
+LUFS-M/S/I. The recorder tap and playback receive the same final buffer after
+that meter boundary. Exact strip controls and latency are in
+[Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
 
 The FX rack and parameter editor remain available while the graph is disabled,
 so a Project can be designed silently without an audio callback to rebuild.
@@ -451,6 +458,11 @@ plan, coefficients, buffers, ports, and memory are prepared and validated away
 from the real-time callback. Stable instance IDs let compatible effects retain
 DSP state when moved. The callback uses fixed memory and atomics: no file
 access, subprocess, logging, allocation, or locks.
+
+MASTER STRIP values and section bypasses are different from rack structure:
+they are smoothed atomic updates and may be auditioned during playback. They
+are rejected during a final recording. Whole-strip comparison keeps the same
+delay and true-peak protection, and never overwrites the edited values.
 
 The graph remains opt-in and disabled by default. The managed engine and loop
 are connected directly first. The graph is activated muted, all three exact
@@ -566,14 +578,15 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 8 persists the complete tracker state, exactly four optional
+Project format 9 persists the complete tracker state, exactly four optional
 Loop Mix slots under each Pattern,
-effects routing, per-page entry mode/anchor, drum-role/choke overrides,
+effects routing, one Project-global fixed MASTER STRIP, per-page entry
+mode/anchor, drum-role/choke overrides,
 explicit software engine/instrument identities, and optional external profile
 metadata. Format 7's former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
-every Pattern. Neither migration copies audio or rewrites the file; only an
-explicit save writes format 8. Format 5
+every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
+audio or rewrites the file; only an explicit save writes format 9. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3
 remains loadable and keeps its
@@ -605,8 +618,8 @@ cleared demo manifest. See
 
 With the graph disabled, MTR retains its CPU and legacy managed-source display.
 With the graph enabled, it shows the three source readiness/level/mute states,
-master level, post-limiter final stereo meter and clip state, limiter gain
-reduction, and final-recording status. Direct mode reports final-bus metering
+master level, post-strip sample/true-peak and loudness state, linked gain
+reduction, correlation, and final-recording status. Direct mode reports final-bus metering
 unavailable instead of creating a hidden tap or displaying unrelated audio.
 
 Maintainer checkpoints separately collect callback count, mean, p95, p99,

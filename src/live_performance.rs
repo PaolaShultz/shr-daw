@@ -309,18 +309,18 @@ impl LivePatternPerformance {
         let mut shaped = pattern.clone();
         for (page_index, page) in shaped.pages.iter_mut().enumerate() {
             let shapes = self.shapes(pattern_number, page_index);
-            for lane in 0..LANES_PER_PAGE {
-                if shapes[lane].muted {
+            for (lane, shape) in shapes.iter().enumerate() {
+                if shape.muted {
                     page.lanes[lane].enabled = false;
                 }
             }
             for row in &mut shaped.rows {
-                for lane in 0..LANES_PER_PAGE {
+                for (lane, shape) in shapes.iter().copied().enumerate() {
                     let cell_index = page_index * LANES_PER_PAGE + lane;
                     let Some(cell) = row.get_mut(cell_index) else {
                         continue;
                     };
-                    apply_shape(cell, page.velocity, inherited_gate, shapes[lane]);
+                    apply_shape(cell, page.velocity, inherited_gate, shape);
                 }
             }
         }
