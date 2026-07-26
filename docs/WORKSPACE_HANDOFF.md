@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.95`.
+corrected starting point; the current checked-progress version is `0.3.96`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -30,14 +30,26 @@ failure/recovery drills. D01–D10 remain unanswered. P01–P08 retain their hon
 owner/physical gates; machine evidence obtained for P05, P06, and P08 is
 recorded without claiming user observation.
 
-The active documentation task is a full noise/ownership pass over all tracked
-Markdown: preserve every unique contract, command, decision, provenance fact,
-and evidence result while removing semantic duplication, stale narration, and
-repeated rationale. Necessary facts may be moved or added to their focused
-owner when current tracked docs or code already establish them. Continue from
-the private `user/docs-pruning-20260725/LEDGER.md` using its adjacent
-`NEXT_THREAD_PROMPT.md`; do not publish either working file. This task changes
-documentation only and has no build, code, image, audio, commit, or push scope.
+The full current-documentation reconciliation for `0.3.96` supersedes the
+earlier docs-only continuation. Current musician, menu, routing,
+configuration, architecture, audio, installation, controller, Project-format,
+roadmap, and helper text now follow the format-6 implementation and the three
+FT2 entry layouts. The private `user/docs-pruning-20260725/` material remains
+unpublished reference only; it is not an active task or a public source of
+truth.
+
+The complete `0.3.96` acceptance pass on 2026-07-26 used Rust 1.85. Locked
+check and debug build passed; all 737 tests ran with 733 passing and four
+ignored private renderers passing separately. All 107 screenshots, 27 audio
+tuner fixtures, deterministic demos, schemas, source checks, and public preset
+XML also passed. Live trials covered the plain `shr` launcher and `DEV` badge,
+computer-keyboard and connected-ALSA tracker entry, quantized chord recording,
+owned synth startup/panic/shutdown, external MIDI routing, JACK playback and
+capture, non-silent audio, and 60-second 18-channel recorder and final-mix
+stress. They restored the original process and route state. The MiniLab was
+enumerated and subscribed but was not physically actuated; exact entry-mode,
+ownership, looping, boundary, cleanup, FluidSynth multipart, shared-route, and
+same-lane behavior is covered by the complete automated suite.
 
 The complete deterministic documentation screenshot set is reconciled to the
 current UI; physical approval remains the next gate for UI/controller work.
@@ -197,7 +209,11 @@ sample redistribution.
   for demanding simultaneous playback/recording, not a dormant JACK core that
   ordinary builds reclaim when JACK stops. General builds use CPUs 0–2 until
   removal and reboot; final Rust linking is largely serial and remains the
-  longest build stage.
+  longest build stage. The unsupported `nohz_full=3` and `rcu_nocbs=3` tokens
+  were removed from the persistent boot command line on 2026-07-26 but remain
+  in the live command line until a safe reboot; `shr-audio-tune doctor`
+  correctly reports that reboot requirement. The supported isolation,
+  governor, IRQ-affinity, and JACK-affinity state is ready.
 - The per-user `fluidsynth.service` and system `amidiminder.service` are masked
   and stopped. `/usr/bin/fluidsynth` and the TimGM bank remain for SHR-owned
   on-demand use. Setup and tuning do not start or restart JACK.

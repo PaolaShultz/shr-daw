@@ -212,19 +212,35 @@ pass 'unsupported kernel omits stale nohz and RCU claims'
 stale="$(new_fixture stale minimal)"
 printf '%s\n' \
   'console=tty1 isolcpus=domain,managed_irq,3 nohz_full=3 rcu_nocbs=3 irqaffinity=0,1,2' \
-  >"$stale/proc/cmdline"
+  >"$stale/boot/firmware/cmdline.txt"
+cp "$stale/boot/firmware/cmdline.txt" "$stale/proc/cmdline"
 mkdir -p "$stale/var/lib/shr-audio-tune"
 printf '3\n' >"$stale/var/lib/shr-audio-tune/cpu"
 printf '0,1,2\n' >"$stale/var/lib/shr-audio-tune/housekeeping"
 printf '%s\n' "$stale/boot/firmware/cmdline.txt" \
   >"$stale/var/lib/shr-audio-tune/cmdline.path"
 if output="$(run_tuner "$stale" doctor 3 2>&1)"; then
+  fail 'doctor accepted persistent unsupported kernel tokens'
+fi
+assert_contains "$output" 'rerun install to remove the SHR-owned stale token' \
+  'persistent unsupported token requests convergence'
+
+reboot_pending="$(new_fixture reboot-pending-unsupported minimal)"
+printf '%s\n' \
+  'console=tty1 isolcpus=domain,managed_irq,3 nohz_full=3 rcu_nocbs=3 irqaffinity=0,1,2' \
+  >"$reboot_pending/proc/cmdline"
+mkdir -p "$reboot_pending/var/lib/shr-audio-tune"
+printf '3\n' >"$reboot_pending/var/lib/shr-audio-tune/cpu"
+printf '0,1,2\n' >"$reboot_pending/var/lib/shr-audio-tune/housekeeping"
+printf '%s\n' "$reboot_pending/boot/firmware/cmdline.txt" \
+  >"$reboot_pending/var/lib/shr-audio-tune/cmdline.path"
+if output="$(run_tuner "$reboot_pending" doctor 3 2>&1)"; then
   fail 'doctor accepted unsupported live kernel tokens'
 fi
-assert_contains "$output" 'nohz_full is present but unsupported' \
-  'stale unsupported token is identified'
-assert_contains "$output" 'rcu_nocbs is present but unsupported' \
-  'stale RCU token is identified'
+assert_contains "$output" 'unsupported nohz_full remains live after its persistent token was removed' \
+  'live-only unsupported nohz token requests reboot'
+assert_contains "$output" 'unsupported rcu_nocbs remains live after its persistent token was removed' \
+  'live-only unsupported RCU token requests reboot'
 pass 'doctor rejects configured text that the kernel cannot implement'
 
 conflict="$(new_fixture conflict)"

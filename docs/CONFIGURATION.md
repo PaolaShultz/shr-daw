@@ -346,10 +346,11 @@ activation.
 
 Failure to open a controller or performance input leaves the TUI and tracker
 computer keyboard active and reports each role independently. Other available
-MIDI inputs still open. An exact Project MIDI target
-falls back first to the configured external output, then to the already loaded
-internal instrument. The target text in the Project never changes, and
-transport resolves it again on the next play so reconnected hardware is used.
+MIDI inputs still open. An exact Project MIDI target stays offline or ambiguous
+when its stable identity cannot resolve; it never falls back to the configured
+external output or the Pattern's software synth. Portable `AUTO` pages alone
+resolve the current machine default. Transport resolves every target again on
+the next play so reconnected hardware is used without rewriting the Project.
 
 ## Controller menu layouts
 
@@ -697,13 +698,16 @@ FT2 **REC** uses the selected page's exact online target, including a
 Pattern-owned software instrument or configured/exact MIDI output. It refuses
 an offline target rather than substituting another destination. REC from stop
 loops only the selected Pattern. REC during Play follows the current
-Arrangement; each note-off is written to its allocated global page/lane in the
-Pattern active at release, without rewriting unrelated order entries.
+Arrangement; each note-off is written to the exact Pattern/page/lane owner
+captured by its note-on, even after cursor movement, Pattern wrap, or an
+Arrangement boundary.
 
-Pattern setup offers 4/4 row counts of 8, 16, 32, 64, and 128, or matching 3/4
-counts of 6, 12, 24, 48, and 96. New patterns are distinct pattern records and
-are appended to the Arrangement; clone duplicates the selected Pattern, while
-repeat adds another order reference to the same pattern.
+Pattern setup starts with 4/4 row counts of 8, 16, 32, 64, and 128, or matching
+3/4 counts of 6, 12, 24, 48, and 96. Its length overlay additionally offers
+every value from 1 through 32 plus 48, 64, 96, 128, 192, and 256 for either
+meter. New patterns are distinct pattern records and are appended to the
+Arrangement; clone duplicates the selected Pattern, while repeat adds another
+order reference to the same pattern.
 
 Fresh Patterns use the private routing template at
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/ft2-routing-defaults.shsong`. Without

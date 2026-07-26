@@ -427,9 +427,9 @@ route, engine, transport, and recorder are untouched.
 Pressing the highlighted `ROUTE` menu item closes the overlay and cancels its
 whole unconfirmed draft. Back/Esc from the main list does the same. Missing
 preferred hardware remains visible and saved as preferred; an exact external
-target may use only the configured hardware fallback and never the Pattern's
-software synth. `AUTO` keeps its portable machine-default behavior and owns its
-channel/bank/program values.
+target stays offline or ambiguous and never uses either the configured
+hardware default or the Pattern's software synth. `AUTO` alone keeps portable
+machine-default behavior and owns no explicit channel/bank/program values.
 
 ## Tracks and routing
 

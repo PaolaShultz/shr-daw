@@ -187,10 +187,12 @@ SHR-DAW uses “record” for three intentionally different jobs:
    event timing and instrument identity; synthv1 Ideas also keep a private
    preset snapshot and the mapped control values. `PLAY` plays that MIDI back
    through the restored instrument. An Idea is not audio.
-2. FT2 **REC** captures notes into the current Pattern grid. It quantizes them
-   to rows, writes only the visible page's four lanes, loops that Pattern, and
-   auditions through the page's external MIDI target. It refuses an Active
-   Instrument page so notes are not doubled through the managed synth.
+2. FT2 **REC** quantizes notes into the selected Pattern page using that
+   page's Manual, One-column, or Drum-auto allocator. Recording from stop loops
+   the selected Pattern; punching in during Play keeps the current Arrangement
+   schedule. Each note-on owns its exact Pattern/page/lane until the matching
+   release, including across cursor moves, loops, and Arrangement boundaries,
+   and auditions through the page's exact online software or hardware target.
 3. **Audio recording** captures every armed exact JACK source on one shared
    callback timeline. It writes separate mono 24-bit stems and a session
    manifest. It records arriving audio, not the MIDI events that produced it.
@@ -318,8 +320,9 @@ and one command: cut, delay, retrigger, tempo, or none. Program audition uses
 the selected page destination and column channel without inserting a note or
 duplicating generic live thru.
 
-Pattern Setup offers musically convenient fixed shapes: 4/4 Patterns of
-8/16/32/64/128 rows and corresponding 3/4 Patterns of 6/12/24/48/96 rows.
+Pattern Setup initially offers musically convenient meter-specific shapes:
+4/4 Patterns of 8/16/32/64/128 rows and corresponding 3/4 Patterns of
+6/12/24/48/96 rows.
 `CONFIRM` performs NEW or CLEAR with the newly selected shape. `KEEP` performs
 the same requested operation while retaining the current Pattern's shape:
 NEW creates a blank Pattern with that meter/length, and CLEAR removes content

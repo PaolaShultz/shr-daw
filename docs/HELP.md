@@ -198,9 +198,14 @@ Edit `ADD` opens a rotary overlay choosing any advance from 0 through 32
 rows; 0 keeps the cursor on the current row. The FT2 heading shows the active
 value. N-OFF writes a note-off.
 
-On a Drums page, EDIT reuses each voice's column from earlier rows. New bass
-drums prefer column 1, new snares prefer column 2, and other new drums begin in
-columns 3–4. Existing cells are not replaced to force that layout.
+TRACKS SYS ENTRY persists one entry layout per page. Manual starts at the
+selected column and spreads chords across later columns. One column redirects
+notes to its C1–C4 monophonic anchor without moving the cursor. Drum auto
+places each simultaneous group atomically across four safe lanes without
+overwriting cells. Active unrelated cymbal tails reserve their lanes; matching
+retrigger/choke groups may reuse them. Unknown drum notes are short
+percussion, and a full four-lane group is refused unchanged as
+`DRUM LANES FULL`.
 
 CELL edit is transactional. DONE `SAVE` commits the draft cell; `EXIT` cancels
 and restores the original value. `PANIC` remains available without introducing
@@ -231,8 +236,10 @@ page records through that one owned engine; a hardware page uses its exact MIDI
 output. REC refuses an offline, missing, or ambiguous target instead of silently
 substituting another instrument.
 
-Missing preferred targets keep their data and show FALLBACK or OFFLINE. A
-runtime substitute never replaces the saved route; reconnect and play again.
+Exact saved targets keep their data and show OFFLINE or AMBIG when they cannot
+resolve; they never substitute another output or the Pattern's software synth.
+Portable AUTO pages resolve the current machine default instead. Reconnect an
+exact target and play again without rewriting the Project.
 
 FILES NEW PRJ requires a second press, clears the current unsaved Project, and
 starts the next `project-001` style name. SAVE AS writes and switches to the

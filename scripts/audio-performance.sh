@@ -1241,7 +1241,11 @@ doctor() {
     fi
 
     if [[ " $live " == *" nohz_full=$cpu "* ]] && ! kernel_feature CONFIG_NO_HZ_FULL; then
-      doctor_line stale 'nohz_full is present but unsupported by this kernel; rerun install to remove the SHR-owned stale token'
+      if [[ " $boot_line " == *" nohz_full=$cpu "* ]]; then
+        doctor_line stale 'nohz_full is present but unsupported by this kernel; rerun install to remove the SHR-owned stale token'
+      else
+        doctor_line reboot-required 'unsupported nohz_full remains live after its persistent token was removed; reboot at a safe point'
+      fi
       ((issues += 1))
     elif kernel_feature CONFIG_NO_HZ_FULL; then
       if [[ " $live " == *" nohz_full=$cpu "* ]] &&
@@ -1256,7 +1260,11 @@ doctor() {
     fi
 
     if [[ " $live " == *" rcu_nocbs=$cpu "* ]] && ! kernel_feature CONFIG_RCU_NOCB_CPU; then
-      doctor_line stale 'rcu_nocbs is present but unsupported by this kernel; rerun install to remove the SHR-owned stale token'
+      if [[ " $boot_line " == *" rcu_nocbs=$cpu "* ]]; then
+        doctor_line stale 'rcu_nocbs is present but unsupported by this kernel; rerun install to remove the SHR-owned stale token'
+      else
+        doctor_line reboot-required 'unsupported rcu_nocbs remains live after its persistent token was removed; reboot at a safe point'
+      fi
       ((issues += 1))
     elif kernel_feature CONFIG_RCU_NOCB_CPU; then
       doctor_line ready 'kernel supports the configured RCU callback offload'

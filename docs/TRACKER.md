@@ -395,8 +395,10 @@ step.
 
 ## Pattern and Project files
 
-Patterns can use 8, 16, 32, 64, or 128 rows in 4/4. The matching 3/4 sizes are
-6, 12, 24, 48, or 96 rows.
+Pattern setup starts with the convenient 4/4 sizes 8, 16, 32, 64, and 128 or
+the matching 3/4 sizes 6, 12, 24, 48, and 96. Its **LNGTH** overlay also makes
+every row count from 1 through 32 plus 48, 64, 96, 128, 192, and 256 available
+for either meter.
 
 The Files screen saves, loads, previews, and deletes the whole Project. Its
 **PATTERN** child keeps create, clone, copy, paste, resize, clear, transpose,
