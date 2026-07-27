@@ -10,6 +10,10 @@ MANIFEST="$STATE_DIR/manifest"
 TRANSACTION_DIR="$STATE_DIR/transaction"
 PERMISSIONS_TRANSACTION_DIR="$STATE_DIR/permissions-transaction"
 JACK_DROPIN="$PREFIX/etc/systemd/system/jack.service.d/90-shr-audio-cpu.conf"
+JACK_SERVICE="$PREFIX/etc/systemd/system/jack.service"
+JACK_CONFIG="$PREFIX/etc/jackdrc"
+JACK_SERVICE_STATE="$STATE_DIR/jack-service"
+JACK_SERVICE_MANIFEST="$JACK_SERVICE_STATE/manifest"
 TUNE_SERVICE="$PREFIX/etc/systemd/system/shr-audio-performance.service"
 RUNTIME_HELPER="$PREFIX/usr/local/libexec/shr-audio-tune-runtime"
 RUN_DIR="$PREFIX/run/shr-audio-tune"
@@ -23,6 +27,9 @@ Usage:
   shr-audio-tune plan [CPU]
   sudo shr-audio-tune permissions-install USER
   sudo shr-audio-tune permissions-remove
+  shr-audio-tune jack-plan USER CARD RATE PERIOD_SIZE PERIODS
+  sudo shr-audio-tune jack-install USER CARD RATE PERIOD_SIZE PERIODS
+  sudo shr-audio-tune jack-remove
   sudo shr-audio-tune install [CPU]
   sudo shr-audio-tune recover
   sudo shr-audio-tune remove
@@ -38,6 +45,11 @@ Full-tickless and RCU callback offload are included only when the installed
 kernel supports them. install backs up the selected Raspberry Pi boot command
 line, records ownership, and never starts or restarts JACK. A reboot is
 required for boot isolation.
+
+jack-plan previews a stable-name, headless JACK boot service. jack-install
+creates and enables that service without starting JACK; the next boot starts
+it. jack-remove refuses to stop a live service and removes only unchanged files
+owned by this helper.
 
 remove reverses only unchanged settings owned by this helper. It retains the
 original boot-command-line backup and leaves later administrator edits alone.
@@ -607,6 +619,273 @@ plan_tuning() {
     'JACK will be pinned on its next start; the managed synth inherits the same CPU.' \
     'The performance governor begins on the next boot. JACK is not started or restarted.' \
     'The isolated CPU remains unavailable to ordinary work until removal and reboot.'
+}
+
+jack_service_manifest_value() {
+  local key=$1
+  [[ -r "$JACK_SERVICE_MANIFEST" ]] || return 0
+  awk -F= -v wanted="$key" \
+    '$1 == wanted { value=substr($0, length(wanted) + 2) } END { print value }' \
+    "$JACK_SERVICE_MANIFEST"
+}
+
+jack_user_exists() {
+  local user=$1
+  if [[ -n "$PREFIX" ]]; then
+    awk -F: -v wanted="$user" '$1 == wanted { found=1 } END { exit !found }' \
+      "$(root_path /etc/passwd)" 2>/dev/null
+  else
+    getent passwd "$user" >/dev/null
+  fi
+}
+
+jack_user_home() {
+  local user=$1
+  if [[ -n "$PREFIX" ]]; then
+    awk -F: -v wanted="$user" '$1 == wanted { print $6; exit }' \
+      "$(root_path /etc/passwd)"
+  else
+    getent passwd "$user" | awk -F: '{print $6; exit}'
+  fi
+}
+
+jack_card_present() {
+  local card=$1 cards
+  cards="$(root_path /proc/asound/cards)"
+  [[ -r "$cards" ]] || return 1
+  awk -v wanted="$card" '
+    /^[[:space:]]*[0-9]+[[:space:]]+\[[^]]+\]:/ {
+      line=$0
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+\[/, "", line)
+      split(line, parts, "]")
+      id=parts[1]
+      gsub(/[[:space:]]/, "", id)
+      if (id == wanted) found=1
+    }
+    END { exit !found }
+  ' "$cards"
+}
+
+validate_jack_service_values() {
+  local user=$1 card=$2 rate=$3 period_size=$4 periods=$5
+  [[ "$user" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]] || {
+    printf 'Invalid musician account: %s\n' "$user" >&2
+    return 2
+  }
+  jack_user_exists "$user" || {
+    printf 'Musician account does not exist: %s\n' "$user" >&2
+    return 1
+  }
+  [[ "$card" =~ ^[A-Za-z0-9_-]+$ ]] || {
+    printf 'ALSA card must be a stable name, not a number or device path: %s\n' "$card" >&2
+    return 2
+  }
+  [[ ! "$card" =~ ^[0-9]+$ ]] || {
+    printf 'Numeric ALSA card IDs are boot-order dependent; choose the stable card name.\n' >&2
+    return 2
+  }
+  jack_card_present "$card" || {
+    printf 'ALSA card name is not currently connected: %s\n' "$card" >&2
+    return 1
+  }
+  [[ "$rate" == 44100 || "$rate" == 48000 ]] || {
+    printf 'Supported JACK sample rates are 44100 and 48000 Hz.\n' >&2
+    return 2
+  }
+  if [[ ! "$period_size" =~ ^[0-9]+$ ]] ||
+     ! ((period_size >= 32 && period_size <= 4096 &&
+       (period_size & (period_size - 1)) == 0)); then
+    printf 'JACK period size must be a power of two from 32 through 4096 frames.\n' >&2
+    return 2
+  fi
+  if [[ ! "$periods" =~ ^[0-9]+$ ]] || ! ((periods >= 2 && periods <= 4)); then
+    printf 'JACK periods per buffer must be 2, 3, or 4.\n' >&2
+    return 2
+  fi
+}
+
+jack_service_command() {
+  local card=$1 rate=$2 period_size=$3 periods=$4
+  printf '/usr/bin/jackd -t 2000 -R -P 95 -d alsa -d hw:%s -r %s -p %s -n %s -X seq -s -S\n' \
+    "$card" "$rate" "$period_size" "$periods"
+}
+
+plan_jack_service() {
+  (($# == 5)) || {
+    printf 'jack-plan requires USER CARD RATE PERIOD_SIZE PERIODS.\n' >&2
+    return 2
+  }
+  local user=$1 card=$2 rate=$3 period_size=$4 periods=$5
+  validate_jack_service_values "$user" "$card" "$rate" "$period_size" "$periods"
+  printf 'Managed JACK boot service plan\n'
+  printf '  musician account: %s\n' "$user"
+  printf '  stable ALSA card:  %s (independent of USB/card-number order)\n' "$card"
+  printf '  timing:            %s Hz, %s frames, %s periods\n' \
+    "$rate" "$period_size" "$periods"
+  printf '  command:           %s\n' \
+    "$(jack_service_command "$card" "$rate" "$period_size" "$periods")"
+  printf '%s\n' \
+    '  lifecycle:         enabled at boot; not started by this command' \
+    '  headless mode:     session-bus reservation disabled for this sole owner' \
+    '  recovery:          sudo shr-audio-tune jack-remove (refuses a live service)'
+}
+
+install_jack_service() {
+  need_root
+  (($# == 5)) || {
+    printf 'jack-install requires USER CARD RATE PERIOD_SIZE PERIODS.\n' >&2
+    return 2
+  }
+  local user=$1 card=$2 rate=$3 period_size=$4 periods=$5
+  validate_jack_service_values "$user" "$card" "$rate" "$period_size" "$periods"
+
+  local owner count
+  owner="$(systemctl_value jack.service FragmentPath)"
+  count="$(jack_process_count)"
+  if [[ -n "$owner" && "$owner" != /etc/systemd/system/jack.service &&
+        "$owner" != "$JACK_SERVICE" ]]; then
+    printf 'An external JACK service already owns the lifecycle: %s\n' "$owner" >&2
+    return 1
+  fi
+
+  if [[ -f "$JACK_SERVICE_MANIFEST" ]]; then
+    local recorded
+    recorded="$(
+      printf '%s|%s|%s|%s|%s' \
+        "$(jack_service_manifest_value user)" \
+        "$(jack_service_manifest_value card)" \
+        "$(jack_service_manifest_value rate)" \
+        "$(jack_service_manifest_value period_size)" \
+        "$(jack_service_manifest_value periods)"
+    )"
+    if [[ "$recorded" != "$user|$card|$rate|$period_size|$periods" ]]; then
+      printf '%s\n' \
+        'A different SHR-managed JACK service is installed.' \
+        'Stop JACK, run sudo shr-audio-tune jack-remove, then install the new values.' >&2
+      return 1
+    fi
+    [[ -f "$JACK_SERVICE" && -f "$JACK_CONFIG" ]] || {
+      printf 'Managed JACK service state is incomplete; run jack-remove after inspection.\n' >&2
+      return 1
+    }
+    [[ "$(sha_file "$JACK_SERVICE")" == "$(jack_service_manifest_value service_sha)" &&
+       "$(sha_file "$JACK_CONFIG")" == "$(jack_service_manifest_value config_sha)" ]] || {
+      printf 'Managed JACK files contain later administrator edits; refusing replacement.\n' >&2
+      return 1
+    }
+    systemctl_safe enable jack.service
+    printf 'Managed JACK boot service is already installed with these values.\n'
+    return 0
+  fi
+  if [[ "$count" -gt 0 ]]; then
+    printf 'A JACK process is live; stop its known owner before installing another lifecycle.\n' >&2
+    return 1
+  fi
+
+  for path in "$JACK_SERVICE" "$JACK_CONFIG"; do
+    if [[ -e "$path" ]]; then
+      printf 'Existing administrator/distribution path is intentionally untouched: %s\n' "$path" >&2
+      return 1
+    fi
+  done
+
+  mkdir -p "$STATE_DIR"
+  local stage service_stage config_stage manifest_stage
+  stage="$(mktemp -d "$STATE_DIR/jack-service-stage.XXXXXX")"
+  service_stage="$stage/jack.service"
+  config_stage="$stage/jackdrc"
+  manifest_stage="$stage/manifest"
+  printf '%s\n' \
+    '# Managed by shr-audio-tune. Remove with: sudo shr-audio-tune jack-remove' \
+    '[Unit]' \
+    'Description=SHR-DAW JACK audio server' \
+    'After=sound.target' \
+    'StartLimitIntervalSec=0' \
+    '' \
+    '[Service]' \
+    'Type=simple' \
+    "User=$user" \
+    "Environment=HOME=$(jack_user_home "$user")" \
+    'Environment=JACK_NO_AUDIO_RESERVATION=1' \
+    'LimitRTPRIO=95' \
+    'LimitMEMLOCK=infinity' \
+    'ExecStart=/etc/jackdrc' \
+    'Restart=on-failure' \
+    'RestartSec=2' \
+    'TimeoutStopSec=5' \
+    '' \
+    '[Install]' \
+    'WantedBy=multi-user.target' >"$service_stage"
+  printf '%s\n' \
+    '#!/bin/sh' \
+    '# Managed by shr-audio-tune. Uses a stable ALSA card name.' \
+    "exec $(jack_service_command "$card" "$rate" "$period_size" "$periods")" \
+    >"$config_stage"
+  chmod 0644 "$service_stage"
+  chmod 0755 "$config_stage"
+  printf '%s\n' \
+    'version=1' \
+    "user=$user" \
+    "card=$card" \
+    "rate=$rate" \
+    "period_size=$period_size" \
+    "periods=$periods" \
+    "service_sha=$(sha_file "$service_stage")" \
+    "config_sha=$(sha_file "$config_stage")" >"$manifest_stage"
+
+  mkdir -p "${JACK_SERVICE%/*}" "$JACK_SERVICE_STATE"
+  if ! install -m 0644 "$service_stage" "$JACK_SERVICE" ||
+     ! install -m 0755 "$config_stage" "$JACK_CONFIG" ||
+     ! install -m 0644 "$manifest_stage" "$JACK_SERVICE_MANIFEST"; then
+    find "$JACK_SERVICE" "$JACK_CONFIG" "$JACK_SERVICE_MANIFEST" \
+      -maxdepth 0 -type f -delete 2>/dev/null || true
+    rmdir "$JACK_SERVICE_STATE" 2>/dev/null || true
+    clear_directory "$stage"
+    printf 'JACK service file installation failed and new files were rolled back.\n' >&2
+    return 1
+  fi
+  if ! systemctl_safe daemon-reload || ! systemctl_safe enable jack.service; then
+    find "$JACK_SERVICE" "$JACK_CONFIG" "$JACK_SERVICE_MANIFEST" \
+      -maxdepth 0 -type f -delete 2>/dev/null || true
+    rmdir "$JACK_SERVICE_STATE" 2>/dev/null || true
+    systemctl_safe daemon-reload >/dev/null 2>&1 || true
+    clear_directory "$stage"
+    printf 'JACK service installation failed and its new files were rolled back.\n' >&2
+    return 1
+  fi
+  clear_directory "$stage"
+  printf 'Installed and enabled the SHR-managed JACK boot service for hw:%s.\n' "$card"
+  printf 'JACK was not started. Reboot, or explicitly run sudo systemctl start jack.service when safe.\n'
+}
+
+remove_jack_service() {
+  need_root
+  [[ -f "$JACK_SERVICE_MANIFEST" ]] || {
+    printf 'No SHR-managed JACK boot service is installed.\n'
+    return 0
+  }
+  if [[ "$(systemctl_active jack.service)" == active || "$(jack_process_count)" -gt 0 ]]; then
+    printf '%s\n' \
+      'JACK is live; removal will not stop audio implicitly.' \
+      'At a safe point run: sudo systemctl stop jack.service' \
+      'Then rerun: sudo shr-audio-tune jack-remove' >&2
+    return 1
+  fi
+  [[ -f "$JACK_SERVICE" && -f "$JACK_CONFIG" ]] || {
+    printf 'Managed JACK service state is incomplete; inspect before manual recovery.\n' >&2
+    return 1
+  }
+  [[ "$(sha_file "$JACK_SERVICE")" == "$(jack_service_manifest_value service_sha)" &&
+     "$(sha_file "$JACK_CONFIG")" == "$(jack_service_manifest_value config_sha)" ]] || {
+    printf 'Later administrator edits detected; managed JACK files were left untouched.\n' >&2
+    return 1
+  }
+  systemctl_safe disable jack.service
+  find "$JACK_SERVICE" "$JACK_CONFIG" "$JACK_SERVICE_MANIFEST" \
+    -maxdepth 0 -type f -delete
+  rmdir "$JACK_SERVICE_STATE" 2>/dev/null || true
+  systemctl_safe daemon-reload
+  printf 'Removed the unchanged SHR-managed JACK boot service.\n'
 }
 
 rollback_transaction() {
@@ -1289,11 +1568,14 @@ doctor() {
   fi
 
   printf '\nAudio system actual/live state\n'
-  local jack_enabled jack_active jack_owner jack_count
+  local jack_enabled jack_active jack_owner jack_count managed_jack=false
   jack_enabled="$(systemctl_enabled jack.service)"
   jack_active="$(systemctl_active jack.service)"
   jack_owner="$(systemctl_value jack.service FragmentPath)"
   jack_count="$(jack_process_count)"
+  [[ -f "$JACK_SERVICE" ]] &&
+    rg -q '^# Managed by shr-audio-tune\.' "$JACK_SERVICE" &&
+    managed_jack=true
   if [[ "$jack_count" -gt 1 ]]; then
     doctor_line duplicate-service "$jack_count jackd processes are live; stop the unintended owner before audio work"
     ((issues += 1))
@@ -1302,8 +1584,13 @@ doctor() {
   elif [[ "$jack_active" == active ]]; then
     doctor_line partial 'jack.service reports active but no jackd process is visible'
     ((issues += 1))
+  elif [[ "$jack_active" == failed ]]; then
+    doctor_line live-differs \
+      'jack.service failed; inspect systemctl status jack.service and journalctl -u jack.service -b'
+    ((issues += 1))
   elif [[ "$jack_enabled" == enabled ]]; then
-    doctor_line live-differs 'JACK is enabled persistently but inactive now; inspect systemctl status jack.service'
+    doctor_line reboot-required \
+      'JACK is enabled persistently but inactive; reboot or start jack.service explicitly when safe'
     ((issues += 1))
   elif [[ -n "$jack_owner" ]]; then
     doctor_line optional 'JACK service exists but is disabled; start it only at an explicit safe point'
@@ -1315,6 +1602,43 @@ doctor() {
   elif [[ -n "$jack_owner" && "$jack_owner" != /etc/systemd/system/jack.service ]]; then
     doctor_line manual-owner "external JACK service owner detected at $jack_owner and intentionally untouched"
   fi
+  if $managed_jack; then
+    local jack_environment jack_user expected_jack_user jack_rtprio jack_memlock
+    if [[ -f "$JACK_SERVICE_MANIFEST" && ! -r "$JACK_SERVICE_MANIFEST" ]]; then
+      doctor_line partial \
+        "managed JACK ownership state is unreadable: $JACK_SERVICE_MANIFEST"
+      ((issues += 1))
+    fi
+    jack_environment="$(systemctl_value jack.service Environment)"
+    jack_user="$(systemctl_value jack.service User)"
+    jack_rtprio="$(systemctl_value jack.service LimitRTPRIO)"
+    jack_memlock="$(systemctl_value jack.service LimitMEMLOCK)"
+    expected_jack_user="$(jack_service_manifest_value user)"
+    if [[ " $jack_environment " == *' JACK_NO_AUDIO_RESERVATION=1 '* ]]; then
+      doctor_line ready 'managed headless JACK service disables session-bus audio reservation'
+    else
+      doctor_line partial \
+        'managed headless JACK service lacks JACK_NO_AUDIO_RESERVATION=1; reinstall it with shr-audio-tune jack-install'
+      ((issues += 1))
+    fi
+    if [[ -n "$expected_jack_user" && "$jack_user" != "$expected_jack_user" ]]; then
+      doctor_line live-differs \
+        "managed JACK service runs as '${jack_user:-unknown}', expected $expected_jack_user"
+      ((issues += 1))
+    elif [[ -n "$jack_user" ]]; then
+      doctor_line ready "managed JACK service runs as $jack_user"
+    fi
+    if [[ "$jack_rtprio" == 95 && "$jack_memlock" == infinity ]]; then
+      doctor_line ready 'managed JACK service has rtprio 95 and unlimited memlock'
+    else
+      doctor_line partial \
+        "managed JACK service limits are rtprio=${jack_rtprio:-unknown}, memlock=${jack_memlock:-unknown}; reinstall it"
+      ((issues += 1))
+    fi
+  elif [[ -f "$JACK_SERVICE_MANIFEST" ]]; then
+    doctor_line stale 'managed JACK ownership state exists but its marked service file is missing'
+    ((issues += 1))
+  fi
   local jack_config_file='' configured_jack_command='' live_jack_command='' jack_pid=''
   if [[ -n "$jack_owner" && -r "$(root_path /etc/jackdrc)" ]]; then
     jack_config_file="$(root_path /etc/jackdrc)"
@@ -1325,6 +1649,22 @@ doctor() {
     configured_jack_command="$(jack_config_command "$jack_config_file")"
     if [[ -n "$configured_jack_command" ]]; then
       doctor_line ready "configured JACK launch command is owned by $jack_config_file"
+      if [[ "$configured_jack_command" =~ (^|[[:space:]])hw:([0-9]+)($|[[:space:]]) ]]; then
+        doctor_line stale \
+          "configured JACK device hw:${BASH_REMATCH[2]} is boot-order dependent; rerun shr-setup and choose its ALSA name"
+        ((issues += 1))
+      elif [[ "$configured_jack_command" =~ (^|[[:space:]])hw:([A-Za-z0-9_-]+)($|[[:space:]]) ]]; then
+        local configured_card="${BASH_REMATCH[2]}"
+        if jack_card_present "$configured_card"; then
+          doctor_line ready "configured stable ALSA card name is connected: $configured_card"
+        else
+          doctor_line partial "configured ALSA card name is not connected: $configured_card"
+          ((issues += 1))
+        fi
+      else
+        doctor_line partial 'configured JACK command has no recognizable stable hw:CARD device'
+        ((issues += 1))
+      fi
     else
       doctor_line partial "JACK configuration at $jack_config_file has no launch command"
       ((issues += 1))
@@ -1418,6 +1758,9 @@ case "${1:-status}" in
   plan) plan_tuning "${2:-}" ;;
   permissions-install) permissions_install "${2:-}" ;;
   permissions-remove) permissions_remove ;;
+  jack-plan) shift; plan_jack_service "$@" ;;
+  jack-install) shift; install_jack_service "$@" ;;
+  jack-remove) remove_jack_service ;;
   install) install_tuning "${2:-}" ;;
   recover) recover_tuning ;;
   remove) remove_tuning ;;

@@ -74,7 +74,7 @@ SETUP_PHASES=(
   'real-time audio permissions'
   'exclusive MIDI services'
   'note-name preference'
-  'JACK next-start configuration'
+  'JACK stable-device and lifecycle configuration'
   'controller and performance MIDI'
   'playback and fallback routes'
   'optional private loops'
@@ -88,6 +88,8 @@ RUNTIME_BACKUP=''
 CONTROLLER_BACKUP=''
 JACKDRC_BACKUP=''
 JACKDRC_WRITTEN=false
+JACKDRC_REMOVED=false
+JACK_SERVICE_INSTALLED=false
 FLUID_SERVICE_MASKED=false
 AMIDIMINDER_SERVICE_MASKED=false
 PRIVATE_LOOPS_INSTALLED=false
@@ -128,6 +130,14 @@ print_setup_recovery() {
         "$JACKDRC_BACKUP" "$HOME/.jackdrc"
     else
       printf '  this run created %q; inspect it before removing it if unwanted.\n' "$HOME/.jackdrc"
+    fi
+  fi
+  if $JACK_SERVICE_INSTALLED; then
+    printf '  remove this run'\''s inactive managed JACK service:\n'
+    printf '    sudo shr-audio-tune jack-remove\n'
+    if $JACKDRC_REMOVED && [[ -n "$JACKDRC_BACKUP" ]]; then
+      printf '  restore the previous user JACK fallback: cp -p -- %q %q\n' \
+        "$JACKDRC_BACKUP" "$HOME/.jackdrc"
     fi
   fi
   if $FLUID_SERVICE_MASKED; then
@@ -675,7 +685,8 @@ elif ((jack_process_count > 0)); then
     "Detected $jack_process_count live jackd process(es) without a jack.service owner." \
     'SHR setup will not write another JACK launch command. Identify and retain or' \
     'stop the current owner yourself at an explicit safe point, then rerun setup.'
-elif ((${#cards[@]})) && ask_yes_no 'Select the ALSA card JACK should use on its next explicit start?' no; then
+elif ((${#cards[@]})) && ask_yes_no \
+  'Configure JACK now using a stable ALSA card name?' yes; then
   choose_value 'JACK audio interface' no "${cards[@]}"
   card="${CHOSEN%% (*}"
   [[ "$card" =~ ^[A-Za-z0-9_-]+$ ]] || {
@@ -688,22 +699,46 @@ elif ((${#cards[@]})) && ask_yes_no 'Select the ALSA card JACK should use on its
   sample_rate="${sample_rate:-48000}"
   period_size="${period_size:-256}"
   periods="${periods:-3}"
-  [[ "$sample_rate" =~ ^[0-9]+$ && "$period_size" =~ ^[0-9]+$ && "$periods" =~ ^[0-9]+$ ]] || {
-    printf 'JACK timing values must be positive integers.\n' >&2
+  [[ "$sample_rate" == 44100 || "$sample_rate" == 48000 ]] || {
+    printf 'JACK sample rate must be 44100 or 48000 Hz.\n' >&2
     exit 1
   }
-  ((sample_rate > 0 && period_size > 0 && periods > 0)) || {
-    printf 'JACK timing values must be greater than zero.\n' >&2
+  if [[ ! "$period_size" =~ ^[0-9]+$ ]] ||
+     ! ((period_size >= 32 && period_size <= 4096 &&
+       (period_size & (period_size - 1)) == 0)); then
+    printf 'JACK period size must be a power of two from 32 through 4096.\n' >&2
     exit 1
-  }
-  if [[ -f "$HOME/.jackdrc" ]]; then
-    cp -p "$HOME/.jackdrc" "$HOME/.jackdrc.bak-$STAMP"
-    JACKDRC_BACKUP="$HOME/.jackdrc.bak-$STAMP"
   fi
-  printf 'jackd -R -d alsa -d hw:%s -r %s -p %s -n %s\n' \
-    "$card" "$sample_rate" "$period_size" "$periods" >"$HOME/.jackdrc"
-  JACKDRC_WRITTEN=true
-  printf 'Wrote %s; start or restart JACK yourself only when it is safe.\n' "$HOME/.jackdrc"
+  if [[ ! "$periods" =~ ^[0-9]+$ ]] || ! ((periods >= 2 && periods <= 4)); then
+    printf 'JACK periods per buffer must be 2, 3, or 4.\n' >&2
+    exit 1
+  fi
+  if [[ -n "$TUNE_TOOL" ]]; then
+    "$TUNE_TOOL" jack-plan "${USER:?USER is not set}" \
+      "$card" "$sample_rate" "$period_size" "$periods"
+  fi
+  if [[ -n "$TUNE_TOOL" ]] && ask_yes_no \
+    'Install one managed JACK service that opens this interface at boot?' yes; then
+    sudo "$TUNE_TOOL" jack-install "${USER:?USER is not set}" \
+      "$card" "$sample_rate" "$period_size" "$periods"
+    JACK_SERVICE_INSTALLED=true
+    if [[ -f "$HOME/.jackdrc" ]]; then
+      cp -p "$HOME/.jackdrc" "$HOME/.jackdrc.bak-$STAMP"
+      JACKDRC_BACKUP="$HOME/.jackdrc.bak-$STAMP"
+      find "$HOME/.jackdrc" -maxdepth 0 -type f -delete
+      JACKDRC_REMOVED=true
+      printf 'Removed the competing user JACK fallback after backing it up.\n'
+    fi
+  else
+    if [[ -f "$HOME/.jackdrc" ]]; then
+      cp -p "$HOME/.jackdrc" "$HOME/.jackdrc.bak-$STAMP"
+      JACKDRC_BACKUP="$HOME/.jackdrc.bak-$STAMP"
+    fi
+    printf '/usr/bin/jackd -t 2000 -R -P 95 -d alsa -d hw:%s -r %s -p %s -n %s -X seq -s -S\n' \
+      "$card" "$sample_rate" "$period_size" "$periods" >"$HOME/.jackdrc"
+    JACKDRC_WRITTEN=true
+    printf 'Wrote %s; start or restart JACK yourself only when it is safe.\n' "$HOME/.jackdrc"
+  fi
 fi
 setup_phase_done
 
@@ -932,6 +967,9 @@ if $TUNING_INSTALLED; then
 fi
 if [[ -n "$jack_service_owner" ]]; then
   printf '  Existing JACK lifecycle retained; setup did not start or restart it.\n'
+elif $JACK_SERVICE_INSTALLED; then
+  printf '  Managed JACK service is enabled for boot and was not started by setup.\n'
+  printf '  To use it before reboot: sudo systemctl start jack.service\n'
 elif $JACKDRC_WRITTEN; then
   printf '  The new .jackdrc applies on the next explicit JACK start; setup did not start it.\n'
 else

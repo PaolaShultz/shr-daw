@@ -17,7 +17,7 @@ assumptions.
 |---|---|---|
 | `setup-local.sh` | Configure this checkout inside ignored private storage | Writes below `user/` by default; may run the interactive hardware wizard |
 | `local.sh` | Run the checkout without using normal home-directory state | Writes runtime data below `user/` by default |
-| `setup.sh` / installed `shr-setup` | Seed loops/demos and configure display/MIDI/JACK choices | Backs up and rewrites owned configuration; optionally masks two conflicting auto-services, downloads private loops, writes `~/.jackdrc`, and installs CPU tuning after confirmation |
+| `setup.sh` / installed `shr-setup` | Seed loops/demos and configure display/MIDI/JACK choices | Backs up and rewrites owned configuration; optionally masks two conflicting auto-services, downloads private loops, installs one marked JACK boot service or writes `~/.jackdrc`, and installs CPU tuning after confirmation |
 | `install.sh` | Install dependencies and SHR-DAW on Debian/Raspberry Pi OS | With grouped consent, may use `sudo apt-get --no-install-recommends`, mask one user service, install owned RT policy, run rustup, `sudo make install-files`, and open setup |
 | `audio-performance.sh` / installed `shr-audio-tune` | Diagnose audio policy and reversibly manage RT permissions or one audio CPU | Read-only plan/status/doctor plus owned limits/group, boot, systemd, governor, and JACK-affinity settings; CPU isolation requires reboot |
 | `generate-docs-site.py` | Regenerate or drift-check the public GitHub Pages documentation | `--write` atomically replaces only `docs/index.html`; `--check` is read-only |
@@ -211,9 +211,10 @@ both `shsynth.conf` and `controller.conf`. It then:
    `amidiminder.service`, also defaulting to no;
 3. asks whether note names use English `B` or German `H`/`B` spelling;
 4. retains an existing Patchbox/administrator JACK service owner or a live
-   ownerless `jackd` process; only when neither exists can it select an ALSA
-   interface and write a backed-up `~/.jackdrc` for the user's next explicit
-   JACK start;
+   ownerless `jackd` process; only when neither exists can it select a stable
+   ALSA card name and JACK timing. On stock systems it previews and, by default,
+   offers one marked SHR-managed boot service. Declining that service writes a
+   backed-up one-line `~/.jackdrc` fallback instead;
 5. selects the controller input, chooses combined or control-only behavior,
    then selects zero or more independent performance inputs; controller-only,
    keyboard-only, combined, and separate-device setups are all explicit;
@@ -246,12 +247,20 @@ both `shsynth.conf` and `controller.conf`. It then:
   half-written configuration.
 - Values containing newline or carriage-return characters are rejected, and
   capture labels also reject the field separator `|`.
-- The wizard may write `~/.jackdrc` only after an explicit opt-in and backup,
+- ALSA card numbers are rejected for the managed service because USB discovery
+  order can change. The service uses `hw:NAME`, runs as the musician account,
+  retries after a temporarily absent interface, and sets
+  `JACK_NO_AUDIO_RESERVATION=1` because a headless system unit has no desktop
+  session bus. It is enabled but never started by setup.
+- The wizard may write `~/.jackdrc` only after the managed service is declined,
   and only when no system JACK service already owns lifecycle. Patchbox's
   shared service and `/etc/jackdrc` remain Patchbox-owned.
   It never starts or restarts JACK because doing that during a live session can
   interrupt or produce audible output.
-- Every system-changing prompt defaults to no. The exclusive-routing prompt
+- Destructive or unrelated system-changing prompts default to no. On stock
+  systems where the user has explicitly chosen JACK hardware and timing, the
+  single managed boot-service prompt defaults to yes so a fresh keyboardless
+  installation works after reboot. The exclusive-routing prompt
   remains explicit because
   `amidiminder` is a system-wide service that another application might use.
   It stops and persistently masks only `fluidsynth.service` and
@@ -370,6 +379,9 @@ sudo shr-audio-tune recover
 sudo shr-audio-tune remove
 sudo shr-audio-tune permissions-install USER
 sudo shr-audio-tune permissions-remove
+shr-audio-tune jack-plan USER CARD RATE PERIOD_SIZE PERIODS
+sudo shr-audio-tune jack-install USER CARD RATE PERIOD_SIZE PERIODS
+sudo shr-audio-tune jack-remove
 ```
 
 Commands:
@@ -391,6 +403,12 @@ Commands:
 - `permissions-install USER` and `permissions-remove` manage only missing
   `audio`-group/limits state, guarded by pre/post hashes so later administrator
   edits remain untouched.
+- `jack-plan` validates the musician account, connected stable ALSA card name,
+  and bounded timing values without mutation.
+- `jack-install` refuses a live or external JACK owner, creates marked
+  `/etc/jackdrc` and `jack.service`, records their hashes, and enables but does
+  not start the service. `jack-remove` refuses to stop live audio and removes
+  only unchanged marked files.
 - `runtime-start` and `runtime-stop` are internal systemd-service entry points,
   not normal maintainer commands.
 
@@ -413,6 +431,8 @@ up the one detected Raspberry Pi boot command line, and manages only:
 - `rcu_nocbs=<CPU>` only with `CONFIG_RCU_NOCB_CPU=y`;
 - `irqaffinity=<housekeeping CPUs>`;
 - `/etc/systemd/system/jack.service.d/90-shr-audio-cpu.conf`;
+- optional `/etc/systemd/system/jack.service` and `/etc/jackdrc`, with separate
+  ownership state below `/var/lib/shr-audio-tune/jack-service/`;
 - `/etc/systemd/system/shr-audio-performance.service`;
 - `/usr/local/libexec/shr-audio-tune-runtime`.
 
@@ -435,9 +455,9 @@ unlimited memory lock on JACK's next start.
   it does not restore an entire possibly-stale command line over later
   administrator work or remove later edits.
 - The untouched original command line remains as a recovery artifact.
-- Installation and removal never start or restart JACK. Kernel isolation waits
-  for an explicit reboot, and the JACK drop-in waits for the user's next safe
-  service start.
+- Installation and removal never start or restart JACK. Managed service removal
+  refuses while JACK is live. Kernel isolation and an enabled JACK boot service
+  wait for reboot; the affinity drop-in also applies to an explicit safe start.
 - `audio.engine_cpu` belongs to `shsynth.conf`; removal tells the user to clear
   it rather than modifying an unknown runtime configuration path as root.
 

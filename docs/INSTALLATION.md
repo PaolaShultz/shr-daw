@@ -6,7 +6,9 @@ only missing SHR-specific CPU isolation. On a clean 64-bit Raspberry Pi OS Lite
 installation it installs the required packages, can add missing real-time
 permissions, creates a user JACK command only when no system service or live
 `jackd` process owns JACK, and offers the same reviewed CPU profile. Detection
-comes before mutation, and every system-changing setup choice defaults to no.
+comes before mutation. Destructive and unrelated system changes default to no;
+the single boot-service choice defaults to yes only after the user explicitly
+selects JACK hardware and timing.
 
 Current physical audio and MIDI evidence comes from Patchbox OS based on Debian
 12 (Bookworm). The clean Raspberry Pi OS Lite 64-bit path has isolated fixture
@@ -48,6 +50,8 @@ The installer:
 - previews its phases, refuses root invocation, and verifies `apt-get` and
   `sudo` before its first package change;
 - after one default-no grouped prompt, installs build, JACK, and ALSA tools;
+- resolves the Debian 12/13 JACK client-tools package split so `jack_lsp` and
+  its small runtime library set are present;
 - installs synthv1, Yoshimi, FluidSynth, and the small TimGM SoundFont without
   recommended desktop frontends or the much larger FluidR3 bank;
 - stops and masks the package-enabled per-user FluidSynth daemon while leaving
@@ -62,6 +66,14 @@ The installer:
   device/controller profiles, drum data, documentation, and
   all 97 menu-manual images below the selected prefix (normally `/usr/local`);
 - opens the routing wizard.
+
+On stock Raspberry Pi OS, the routing wizard asks for a stable ALSA card name
+such as `A96`, never a numeric card order. After showing the exact JACK command,
+it offers one SHR-managed boot service by default. The service is enabled but
+not started during setup, runs as the musician account, handles the headless
+session-bus boundary, and can be removed with
+`sudo shr-audio-tune jack-remove`. Existing Patchbox or administrator JACK
+services are detected and retained unchanged.
 
 Before changing packages or services, the installer prints the enabled phases
 and the exact per-user FluidSynth masking consequence. `--plan` performs the
@@ -219,6 +231,8 @@ Preview, diagnose, recover, or remove the managed settings with:
 shr-audio-tune plan 3
 shr-audio-tune status
 shr-audio-tune doctor 3
+shr-audio-tune jack-plan shome A96 48000 128 3
+sudo shr-audio-tune jack-remove
 sudo shr-audio-tune recover
 sudo shr-audio-tune remove
 ```

@@ -53,6 +53,7 @@ new_fixture() {
   mkdir -p \
     "$fixture/boot/firmware" \
     "$fixture/etc/security/limits.d" \
+    "$fixture/proc/asound" \
     "$fixture/proc/irq" \
     "$fixture/proc/self" \
     "$fixture/proc/sys/kernel" \
@@ -90,6 +91,10 @@ new_fixture() {
   printf '55000\n' >"$fixture/sys/class/thermal/thermal_zone0/temp"
   printf '0x0\n' >"$fixture/run/shr-audio-tune-fixture/throttled"
   printf '%s\n' \
+    ' 0 [A96            ]: USB-Audio - AudioBox USB 96' \
+    '                      PreSonus AudioBox USB 96 at usb-test, high speed' \
+    >"$fixture/proc/asound/cards"
+  printf '%s\n' \
     'root:x:0:0:root:/root:/bin/bash' \
     'patch:x:1000:1000:Patch:/home/patch:/bin/bash' >"$fixture/etc/passwd"
   printf '%s\n' \
@@ -124,10 +129,10 @@ set_jack_state() {
     mkdir -p "$fixture/proc/123"
     printf 'jackd\n' >"$fixture/proc/123/comm"
     printf 'Cpus_allowed_list:\t%s\n' "${affinity:-0-3}" >"$fixture/proc/123/status"
-    printf '%s\0' /usr/bin/jackd -R -d alsa -r 48000 -p 256 -n 3 \
+    printf '%s\0' /usr/bin/jackd -R -d alsa -d hw:A96 -r 48000 -p 256 -n 3 \
       >"$fixture/proc/123/cmdline"
     if [[ -n "$owner" ]]; then
-      printf 'exec /usr/bin/jackd -R -d alsa -r 48000 -p 256 -n 3\n' \
+      printf 'exec /usr/bin/jackd -R -d alsa -d hw:A96 -r 48000 -p 256 -n 3\n' \
         >"$fixture/etc/jackdrc"
     fi
   fi
@@ -464,7 +469,7 @@ set_jack_state "$jack_states" enabled inactive 0 /lib/systemd/system/jack.servic
 if output="$(run_tuner "$jack_states" doctor none 2>&1)"; then
   fail 'enabled but inactive JACK was accepted'
 fi
-assert_contains "$output" '[live-differs]' 'enabled/inactive JACK distinguished'
+assert_contains "$output" '[reboot-required]' 'enabled/inactive JACK distinguished'
 set_jack_state "$jack_states" enabled active 2 /lib/systemd/system/jack.service 0-3
 if output="$(run_tuner "$jack_states" doctor none 2>&1)"; then
   fail 'duplicate JACK processes were accepted'
@@ -482,6 +487,88 @@ set_jack_state "$jack_states" disabled inactive 0 /etc/systemd/system/admin-jack
 output="$(run_tuner "$jack_states" doctor none)"
 assert_contains "$output" '[manual-owner]' 'external administrator JACK owner retained'
 pass 'JACK enabled/disabled/active/inactive/duplicate/external states'
+
+managed_jack="$(new_fixture managed-jack)"
+output="$(run_tuner "$managed_jack" jack-plan patch A96 48000 128 3)"
+assert_contains "$output" 'stable ALSA card:  A96' 'managed JACK plan uses ALSA name'
+run_tuner "$managed_jack" jack-install patch A96 48000 128 3 >/dev/null
+[[ "$(stat -c '%a' "$managed_jack/var/lib/shr-audio-tune/jack-service/manifest")" == 644 ]] ||
+  fail 'managed JACK ownership manifest is not doctor-readable'
+assert_file_contains "$managed_jack/etc/jackdrc" 'hw:A96' \
+  'managed JACK command uses stable ALSA name'
+assert_file_not_contains "$managed_jack/etc/jackdrc" 'hw:1 ' \
+  'managed JACK command avoids numeric card order'
+assert_file_contains "$managed_jack/etc/systemd/system/jack.service" \
+  'Environment=JACK_NO_AUDIO_RESERVATION=1' 'headless reservation policy installed'
+assert_file_contains "$managed_jack/etc/systemd/system/jack.service" \
+  'LimitRTPRIO=95' 'managed JACK real-time service limit installed'
+assert_file_contains "$managed_jack/etc/systemd/system/jack.service" \
+  'LimitMEMLOCK=infinity' 'managed JACK memlock service limit installed'
+assert_file_contains "$managed_jack/etc/systemd/system/jack.service" \
+  '# Managed by shr-audio-tune.' 'service ownership is explicit'
+run_tuner "$managed_jack" jack-install patch A96 48000 128 3 >/dev/null
+if run_tuner "$managed_jack" jack-install patch 1 48000 128 3 \
+  >"$TEST_ROOT/numeric-jack.out" 2>&1; then
+  fail 'numeric ALSA card order was accepted'
+fi
+assert_file_contains "$TEST_ROOT/numeric-jack.out" 'boot-order dependent' \
+  'numeric ALSA card rejection is actionable'
+pass 'managed JACK install is stable-name, headless, marked, and idempotent'
+
+managed_state="$managed_jack/run/shr-audio-tune-fixture/systemctl"
+printf '%s\n' enabled >"$managed_state/jack.service.enabled"
+printf '%s\n' failed >"$managed_state/jack.service.active"
+printf '%s\n' /etc/systemd/system/jack.service \
+  >"$managed_state/jack.service.FragmentPath"
+printf '%s\n' patch >"$managed_state/jack.service.User"
+printf '%s\n' 95 >"$managed_state/jack.service.LimitRTPRIO"
+printf '%s\n' infinity >"$managed_state/jack.service.LimitMEMLOCK"
+: >"$managed_state/jack.service.Environment"
+if output="$(run_tuner "$managed_jack" doctor none 2>&1)"; then
+  fail 'failed managed JACK service without headless policy was accepted'
+fi
+assert_contains "$output" 'jack.service failed' 'failed service has journal recovery'
+assert_contains "$output" 'lacks JACK_NO_AUDIO_RESERVATION=1' \
+  'headless reservation failure is diagnosed'
+
+printf '%s\n' active >"$managed_state/jack.service.active"
+printf '%s\n' 'HOME=/home/patch JACK_NO_AUDIO_RESERVATION=1' \
+  >"$managed_state/jack.service.Environment"
+printf '123\n' >"$managed_state/jack.service.MainPID"
+mkdir -p "$managed_jack/proc/123"
+printf 'jackd\n' >"$managed_jack/proc/123/comm"
+printf 'Cpus_allowed_list:\t0-3\n' >"$managed_jack/proc/123/status"
+printf '%s\0' /usr/bin/jackd -t 2000 -R -P 95 -d alsa -d hw:A96 \
+  -r 48000 -p 128 -n 3 -X seq -s -S >"$managed_jack/proc/123/cmdline"
+output="$(run_tuner "$managed_jack" doctor none)"
+assert_contains "$output" 'managed headless JACK service disables session-bus audio reservation' \
+  'managed headless service is verified'
+assert_contains "$output" 'configured stable ALSA card name is connected: A96' \
+  'doctor verifies connected stable card'
+assert_contains "$output" 'Audio policy state: ready.' \
+  'healthy managed service passes doctor'
+run_tuner "$managed_jack" jack-install patch A96 48000 128 3 >/dev/null
+if run_tuner "$managed_jack" jack-remove >"$TEST_ROOT/live-jack-remove.out" 2>&1; then
+  fail 'managed JACK removal stopped or removed a live service'
+fi
+assert_file_contains "$TEST_ROOT/live-jack-remove.out" 'will not stop audio implicitly' \
+  'live managed JACK removal gives safe recovery'
+find "$managed_jack/proc/123" -depth -delete
+printf '%s\n' inactive >"$managed_state/jack.service.active"
+run_tuner "$managed_jack" jack-remove >/dev/null
+[[ ! -e "$managed_jack/etc/systemd/system/jack.service" &&
+   ! -e "$managed_jack/etc/jackdrc" ]] ||
+  fail 'managed JACK removal left owned files'
+run_tuner "$managed_jack" jack-install patch A96 48000 128 3 >/dev/null
+printf '# later administrator edit\n' >>"$managed_jack/etc/jackdrc"
+if run_tuner "$managed_jack" jack-remove >"$TEST_ROOT/edited-jack-remove.out" 2>&1; then
+  fail 'managed JACK removal discarded a later administrator edit'
+fi
+assert_file_contains "$TEST_ROOT/edited-jack-remove.out" 'administrator edits detected' \
+  'later JACK edit is retained'
+assert_file_contains "$managed_jack/etc/jackdrc" '# later administrator edit' \
+  'edited JACK file remains present'
+pass 'managed JACK doctor, live lifecycle, removal, and edit protection'
 
 if SHR_TUNE_ROOT='' "$TUNER" install 3 >"$TEST_ROOT/nonroot.out" 2>&1; then
   fail 'non-root host mutation was accepted'
@@ -539,9 +626,14 @@ rg -q --fixed-strings \
 rg -q --fixed-strings \
   "ask_yes_no 'Apply this optional CPU/IRQ/governor profile (sudo and reboot required)?' no" \
   "$ROOT/scripts/setup.sh" || fail 'CPU tuning prompt is not safe-default no'
+rg -q --fixed-strings \
+  "'Install one managed JACK service that opens this interface at boot?' yes" \
+  "$ROOT/scripts/setup.sh" || fail 'stock JACK boot service is not the setup default'
+rg -q --fixed-strings 'jack-install "${USER:?USER is not set}"' \
+  "$ROOT/scripts/setup.sh" || fail 'setup does not use the owned JACK installer'
 rg -q 'JACK was not restarted' "$TUNER" ||
   fail 'no-JACK-restart contract is missing'
-if rg -n 'systemctl(_safe)?[[:space:]]+(start|restart)[[:space:]]+jack' \
+if rg -n '^[[:space:]]*(sudo[[:space:]]+)?systemctl(_safe)?[[:space:]]+(start|restart)[[:space:]]+jack' \
   "$TUNER" "$ROOT/scripts/setup.sh" "$INSTALLER"; then
   fail 'automated path can start or restart JACK'
 fi
