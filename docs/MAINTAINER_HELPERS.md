@@ -488,6 +488,30 @@ inside a separately labelled technical archive. When the same image bytes are
 referenced more than once, the first occurrence owns the image and later
 references link back to it.
 
+### Social-card image QA
+
+The connection diagram is functional documentation. Never use an image
+generator to recreate its hardware or routing: a plausible-looking cable,
+self-loop, invented port, or label attached to the wrong device is a functional
+error. Begin with the approved diagram, keep the route geometry intact, and
+inspect every connection and label at full resolution before publication.
+
+Dense diagrams degrade quickly in link cards. The current social card removes
+the nonessential title strip from the approved 1200×675 PNG, retains the
+remaining 1200×625 pixels without resampling, and adds five neutral rows at the
+bottom to reach 1200×630. Keep the result as PNG. Do not shrink the entire
+diagram into a framed composition or convert it through JPEG; Facebook will
+scale and compress the asset again. In addition to full-size inspection, view
+it near a typical feed width of 500 pixels and confirm the routes remain
+distinguishable and the important labels remain readable.
+
+Validate a regenerated crop by comparing its unchanged 1200×625 region against
+the approved source and requiring zero differing pixels. A material social-card
+revision should use a new public filename, update `SOCIAL_IMAGE` and both image
+metadata URLs in the generator, regenerate `docs/index.html`, deploy, and then
+use Meta's Sharing Debugger to request a fresh scrape. Existing Facebook posts
+may retain their original attachment even after the page metadata changes.
+
 Regenerate `docs/index.html` when intentionally refreshing the public
 presentation. An ordinary change to a Markdown guide does not require a site
 build, and neither `make test` nor `make install-files` runs the drift check.

@@ -211,6 +211,20 @@ setup, give one concrete user action at a time and separate it from machine
 inspection. Research unfamiliar or current details from authoritative sources
 and preserve provenance when it affects configuration or redistribution.
 
+Treat public connection diagrams as technical specifications, not decorative
+illustrations. Do not generatively reconstruct their devices, ports, labels, or
+cables. Start from the approved diagram and verify every route and label after
+an edit; a visually polished image with an invented loop or impossible
+connection fails review. Do not paste a flat TUI screenshot into a photographed
+display unless its perspective and framing can be reproduced accurately.
+
+For the dense Facebook/Open Graph connection preview, preserve the approved
+diagram at native scale in a lossless 1200×630 PNG. Crop a nonessential strip
+instead of shrinking the diagram, and do not introduce an intermediate JPEG
+before platform recompression. Inspect the final asset both pixel-for-pixel and
+at feed size. Use a new public filename after a material preview change and
+refresh Meta's cached scrape before judging a new share.
+
 For requested visual review over SSH, place temporary output in one exact
 ignored subdirectory below `user/`, serve only that subdirectory over a
 temporary LAN HTTP server, give the development-PC URL, and stop the server
