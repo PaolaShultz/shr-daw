@@ -116,10 +116,28 @@ if $INSTALL_DEPS; then
   fi
   PACKAGE_CHANGE_STARTED=true
   sudo apt-get update
+  jack_tools_package=''
+  for candidate in jack-example-tools jack-tools; do
+    candidate_version="$(
+      apt-cache policy "$candidate" |
+        awk '$1 == "Candidate:" { print $2; exit }'
+    )"
+    if [[ -n "$candidate_version" && "$candidate_version" != '(none)' ]]; then
+      jack_tools_package="$candidate"
+      break
+    fi
+  done
+  [[ -n "$jack_tools_package" ]] || {
+    printf 'No supported JACK client-tools package is available.\n' >&2
+    exit 1
+  }
   sudo apt-get install -y --no-install-recommends \
     alsa-utils build-essential ca-certificates curl jackd2 libasound2-dev \
     fluidsynth pkg-config python3 ripgrep sox synthv1 timgm6mb-soundfont unzip \
     yoshimi yoshimi-data
+  # Debian 13 renamed jack-tools and split optional bridge libraries into
+  # recommendations. Keep recommendations scoped to this small tools package.
+  sudo apt-get install -y "$jack_tools_package"
   if command -v systemctl >/dev/null 2>&1; then
     printf '%s\n' \
       'Stopping and masking only the per-user fluidsynth.service to prevent an unowned layered synth.'

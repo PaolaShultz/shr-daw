@@ -302,10 +302,13 @@ before the first dependency mutation.
 
 With dependencies enabled, it requires a Debian-style `apt-get` system and uses
 `sudo` with `--no-install-recommends` to install the build toolchain, ALSA/JACK
-utilities and headers, SoX and unzip for optional loop installation, Python 3
-for demo validation/seeding, ripgrep for helper policy/config inspection, the
-three supported software instruments, and their explicitly named packaged
-data. Avoiding recommendations is deliberate:
+runtime and headers, SoX and unzip for optional loop installation, Python 3 for
+demo validation/seeding, ripgrep for helper policy/config inspection, the three
+supported software instruments, and their explicitly named packaged data. It
+then resolves Debian 13's `jack-example-tools` or the earlier `jack-tools` name
+and installs that one small tools package with its runtime recommendations so
+`jack_lsp` and the packaged JACK bridge clients are complete. Avoiding
+recommendations for the main package group is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
 smaller TimGM bank. It requires

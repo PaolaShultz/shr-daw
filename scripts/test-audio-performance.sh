@@ -490,9 +490,15 @@ assert_file_contains "$TEST_ROOT/nonroot.out" 'Run this operation with sudo' \
   'non-root repair command'
 rg -q 'if \(\(EUID == 0\)\)' "$INSTALLER" ||
   fail 'installer root guard is missing'
+rg -q --fixed-strings 'jack-example-tools' "$INSTALLER" ||
+  fail 'installer omits the Debian 13 JACK client-tools package'
+rg -q --fixed-strings 'jack-tools' "$INSTALLER" ||
+  fail 'installer omits the Debian 12 JACK client-tools package'
+rg -q --fixed-strings 'sudo apt-get install -y "$jack_tools_package"' "$INSTALLER" ||
+  fail 'installer does not install the resolved JACK client-tools package'
 rg -q 'if \(\(EUID == 0\)\); then' "$ROOT/scripts/setup.sh" ||
   fail 'setup root guard is missing'
-pass 'root and non-root invocation boundaries'
+pass 'root/non-root boundaries and release-appropriate JACK tools'
 
 fake_bin="$TEST_ROOT/fake-bin"
 mkdir -p "$fake_bin"
