@@ -20,6 +20,7 @@ assumptions.
 | `setup.sh` / installed `shr-setup` | Seed loops/demos and configure display/MIDI/JACK choices | Backs up and rewrites owned configuration; optionally masks two conflicting auto-services, downloads private loops, writes `~/.jackdrc`, and installs CPU tuning after confirmation |
 | `install.sh` | Install dependencies and SHR-DAW on Debian/Raspberry Pi OS | With grouped consent, may use `sudo apt-get --no-install-recommends`, mask one user service, install owned RT policy, run rustup, `sudo make install-files`, and open setup |
 | `audio-performance.sh` / installed `shr-audio-tune` | Diagnose audio policy and reversibly manage RT permissions or one audio CPU | Read-only plan/status/doctor plus owned limits/group, boot, systemd, governor, and JACK-affinity settings; CPU isolation requires reboot |
+| `generate-docs-site.py` | Regenerate or drift-check the public GitHub Pages documentation | `--write` atomically replaces only `docs/index.html`; `--check` is read-only |
 | `render-readme-screenshots.py` | Regenerate or validate real TUI documentation images | Writes tracked PNGs below `docs/images/` only |
 | `generate_cleared_presets.sh` | Reproduce the authored public synthv1 bank | Creates named preset files only when they do not already exist |
 | `generate_demo_songs.py` | Reproduce or validate cleared public-domain demos | `--write` replaces only tracked demo outputs; normal mode is read-only and rejects changes/extras |
@@ -302,8 +303,9 @@ before the first dependency mutation.
 With dependencies enabled, it requires a Debian-style `apt-get` system and uses
 `sudo` with `--no-install-recommends` to install the build toolchain, ALSA/JACK
 utilities and headers, SoX and unzip for optional loop installation, Python 3
-for demo validation/seeding, ripgrep for helper policy/config inspection, the
-three supported software instruments, and their explicitly named packaged
+for demo validation/seeding, the pinned Markdown renderer and task-list plugin
+for documentation drift checks, ripgrep for helper policy/config inspection,
+the three supported software instruments, and their explicitly named packaged
 data. Avoiding recommendations is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
@@ -436,6 +438,75 @@ unlimited memory lock on JACK's next start.
   service start.
 - `audio.engine_cpu` belongs to `shsynth.conf`; removal tells the user to clear
   it rather than modifying an unknown runtime configuration path as root.
+
+## Public documentation site: `generate-docs-site.py`
+
+### Invocation and dependencies
+
+```sh
+make docs-site
+make check-docs-site
+
+python3 scripts/generate-docs-site.py --write
+python3 scripts/generate-docs-site.py --check
+```
+
+Exactly one argument is required. `--write` atomically replaces
+`docs/index.html`. `--check` regenerates the complete page into a temporary
+directory, compares its bytes with the tracked file, and fails on drift without
+changing the checkout.
+
+The renderer requires Python 3.11, Debian's pinned
+`python3-markdown-it` 2.1.0-5 and `python3-mdit-py-plugins` 0.3.3-1 packages.
+The normal installer includes them; maintainers using `--no-deps` must provide
+them before the locked test/drift-check phase.
+The helper verifies the corresponding upstream versions, enables CommonMark
+tables and strikethrough plus GFM task lists, and fails rather than producing
+different output with an unreviewed renderer version. Generation needs no
+network access, JavaScript runtime, Rust build, audio dependency, or package
+manager invocation. HTML Tidy, Chromium, ChromeDriver, and Selenium are
+validation tools, not generator dependencies.
+
+### Sources, output, and grouping
+
+The complete input is `README.md`, every `*.md` file recursively below
+`docs/`, `THIRD_PARTY.md`, `LICENSE`, the package version in `Cargo.toml`, and
+every local image those Markdown sources reference below `docs/images/`.
+`docs/README.md` remains the category authority: its six named groups control
+the generated navigation and document order. The repository landing page,
+nested menu chapters, unlisted public supporting records, and licence receive
+explicit overview/current/archive/legal placement around those owned groups.
+
+The single tracked output is `docs/index.html`; `docs/.nojekyll` is a static
+GitHub Pages control file and is not generated. CSS and JavaScript are inline.
+Referenced images remain relative files below `docs/images/`. The social-card
+metadata uses the absolute production URL for the existing 1200×675 physical
+connections image so link-preview crawlers can retrieve it.
+
+Regenerate `docs/index.html` whenever `README.md`, any `docs/**/*.md`, a
+materially relevant `docs/images/` file, `Cargo.toml` package version,
+`THIRD_PARTY.md`, or `LICENSE` changes. `make test` and `make install-files`
+both depend on `check-docs-site`, so their existing validation paths reject a
+stale generated page before compiling or installing.
+
+### Determinism and safety boundary
+
+The generator adds no timestamp, temporary path, machine name, branch tip,
+commit hash, remote script, runtime fetch, analytics, cookie, or embedded image
+payload; dated facts already present in public source documents remain intact.
+Referenced-image dimensions and SHA-256 values are derived from the public
+files, so a material image change participates in drift detection. Markdown
+raw HTML is disabled; source text is escaped, while the task-list plugin emits
+only its fixed disabled-checkbox markup.
+
+Generation fails for a missing source, broken local file or heading fragment,
+duplicate generated anchor, unsupported image format or URL scheme, remote
+image, query-bearing or repository-external local path, link into `user/`,
+credential-like content, or unrecognised renderer version. Included Markdown
+documents link to their same-page anchors; public repository files outside the
+page link to their GitHub source. No file below `user/` is read, copied,
+linked, or written. The helper does not build or launch SHR-DAW, JACK, a synth,
+MIDI, playback, recording, or hardware.
 
 ## TUI screenshot renderer: `render-readme-screenshots.py`
 
@@ -597,6 +668,8 @@ to it:
 make build
 make test
 make check-demos
+make docs-site
+make check-docs-site
 sudo make install
 sudo make install-files
 sudo make uninstall
@@ -608,8 +681,9 @@ Variables:
 - `PREFIX` defaults to `/usr/local`;
 - `DESTDIR` prefixes the install tree for packaging or a non-root fixture.
 
-`install-files` first runs `check-demos`, then installs only presets and demos
-named by their cleared manifests, the
+`test` first checks documentation-site drift and then runs the locked Rust
+tests. `install-files` first runs `check-demos` and `check-docs-site`, then
+installs only presets and demos named by their cleared manifests, the
 configuration and device/profile data, drum patterns, documentation, nested
 menu chapters, and nested menu images. The public `shr` binary receives the
 compatibility aliases `shs` and `synth-player`; no separate process binary is
@@ -635,6 +709,10 @@ Match validation to the helper's effects:
 - Shell helper: run `shellcheck` on each changed shell file.
 - Python renderer: run `python3 -m py_compile`, inspect one image, render the
   full batch, and run `--check`.
+- Documentation-site generator: run `python3 -m py_compile`, regenerate twice,
+  run `make check-docs-site`, validate HTML syntax and local references, and
+  inspect JavaScript-enabled and disabled layouts at representative phone,
+  tablet, and desktop widths.
 - This guide: check its local references and run `git diff --check`.
 - Preset generator or output: validate every affected `.synthv1` with
   `xmllint`, confirm parameter names, manifest membership, and provenance.

@@ -1,9 +1,12 @@
 
-<img src="docs/images/shr-daw-header.jpg" alt="SHR-DAW" width="100%">
+![SHR-DAW](docs/images/shr-daw-header.jpg)
 
 SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal,
 optional MIDI gear, software instruments, FT2-style sequencing, WAV loops,
 effects, and JACK recording.
+
+Read the complete public documentation at
+[paolashultz.github.io/shr-daw](https://paolashultz.github.io/shr-daw/).
 
 > [!WARNING]
 > SHR-DAW is experimental. Back up Projects and user data, and begin audio
@@ -55,33 +58,33 @@ launch this checkout's visibly marked `DEV` binary.
 
 ### Software instruments
 
-<img src="docs/images/shr-daw-presets.png" alt="Preset browser showing synthv1 sounds" width="100%">
+![Preset browser showing synthv1 sounds](docs/images/shr-daw-presets.png)
 
 Browse the separate synthv1, Yoshimi, and FluidSynth catalogs.
 
 ### Playback
 
-<img src="docs/images/shr-daw-playback.png" alt="Playback screen with held notes, velocities, and mapped controls" width="100%">
+![Playback screen with held notes, velocities, and mapped controls](docs/images/shr-daw-playback.png)
 
 Play the loaded sound, inspect notes and chords, shape mapped controls, and
 capture MIDI Ideas.
 
 ### FT2 Pattern editor
 
-<img src="docs/images/shr-daw-ft2-pattern.png" alt="FT2 Pattern editor with four lanes of note data" width="100%">
+![FT2 Pattern editor with four lanes of note data](docs/images/shr-daw-ft2-pattern.png)
 
 Edit routed melodic or percussion pages and arrange reusable Patterns.
 
 ### Live Patterns
 
-<img src="docs/images/shr-daw-live-patterns.png" alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" width="100%">
+![Live Patterns screen with selected, playing, queued, and lane-shaping states](docs/images/shr-daw-live-patterns.png)
 
 Browse without launching, queue or retrigger at Pattern/bar boundaries, shape
 four MIDI lanes live, and optionally capture successful launches.
 
 ### Loop Mix
 
-<img src="docs/images/shr-daw-ft2-loop.png" alt="Four-slot Loop Mix with playing, queued, muted, and fault states" width="100%">
+![Four-slot Loop Mix with playing, queued, muted, and fault states](docs/images/shr-daw-ft2-loop.png)
 
 Each FT2 Pattern owns four private native-rate WAV references. Arrangement and
 Live Pattern changes switch MIDI and loops together; launch/stop, smoothed
@@ -89,28 +92,28 @@ level, and bipolar filtering remain available per slot.
 
 ### Audio recorder
 
-<img src="docs/images/shr-daw-audio-recorder.png" alt="Synchronized multitrack recorder with armed and missing inputs" width="100%">
+![Synchronized multitrack recorder with armed and missing inputs](docs/images/shr-daw-audio-recorder.png)
 
 Map exact JACK inputs and record one callback-aligned take as separate mono
 stems.
 
 ### 18-channel input levels
 
-<img src="docs/images/shr-daw-input-monitor.png" alt="All 18 recording inputs shown as three groups of six vertical meters" width="100%">
+![All 18 recording inputs shown as three groups of six vertical meters](docs/images/shr-daw-input-monitor.png)
 
 Compare all 18 recording levels at once while keeping setup, routing, and the
 final-bus mixer separate.
 
 ### Performance bus
 
-<img src="docs/images/shr-daw-performance-meter.png" alt="Final performance bus with source, limiter, meter, and recording status" width="100%">
+![Final performance bus with source, limiter, meter, and recording status](docs/images/shr-daw-performance-meter.png)
 
 Control and record the opt-in three-source final bus, or inspect the passive
 meter view while the graph is disabled.
 
 ### MASTER STRIP
 
-<img src="docs/images/shr-daw-master-strip.png" alt="Fixed stereo MASTER STRIP with six sections and mastering meters" width="100%">
+![Fixed stereo MASTER STRIP with six sections and mastering meters](docs/images/shr-daw-master-strip.png)
 
 Shape and meter the final stereo mix through a fixed, Project-owned mastering
 path with protected true-peak output.

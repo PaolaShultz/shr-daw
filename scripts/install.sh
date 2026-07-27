@@ -118,8 +118,8 @@ if $INSTALL_DEPS; then
   sudo apt-get update
   sudo apt-get install -y --no-install-recommends \
     alsa-utils build-essential ca-certificates curl jackd2 libasound2-dev \
-    fluidsynth pkg-config python3 ripgrep sox synthv1 timgm6mb-soundfont unzip \
-    yoshimi yoshimi-data
+    fluidsynth pkg-config python3 python3-markdown-it python3-mdit-py-plugins \
+    ripgrep sox synthv1 timgm6mb-soundfont unzip yoshimi yoshimi-data
   if command -v systemctl >/dev/null 2>&1; then
     printf '%s\n' \
       'Stopping and masking only the per-user fluidsynth.service to prevent an unowned layered synth.'

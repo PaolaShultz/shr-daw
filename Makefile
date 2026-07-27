@@ -2,20 +2,26 @@ PREFIX ?= /usr/local
 DESTDIR ?=
 CARGO ?= cargo
 
-.PHONY: build test install install-files uninstall check-demos
+.PHONY: build test install install-files uninstall check-demos docs-site check-docs-site
 
 build:
 	$(CARGO) build --release --locked
 
-test:
+test: check-docs-site
 	$(CARGO) test --locked
 
 check-demos:
 	python3 scripts/generate_demo_songs.py
 
+docs-site:
+	python3 scripts/generate-docs-site.py --write
+
+check-docs-site:
+	python3 scripts/generate-docs-site.py --check
+
 install: build install-files
 
-install-files: check-demos
+install-files: check-demos check-docs-site
 	install -Dm755 target/release/shr $(DESTDIR)$(PREFIX)/bin/shr
 	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth
 	ln -sfn shr $(DESTDIR)$(PREFIX)/bin/synth-player
