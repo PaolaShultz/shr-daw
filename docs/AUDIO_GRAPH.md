@@ -275,7 +275,7 @@ Direct sources: [Blumlein patent](https://patents.google.com/patent/GB394325A/en
 [Web Audio API](https://www.w3.org/TR/webaudio-1.1/),
 [Audio EQ Cookbook](https://www.w3.org/TR/2021/NOTE-audio-eq-cookbook-20210608/),
 [Butterworth paper](https://worldradiohistory.com/UK/Experimental-Wireless/30s/Wireless-Engineer-1930-10.pdf),
-[compressor tutorial](https://www.eecs.qmul.ac.uk/~josh/documents/2012/GiannoulisMassbergReiss-dynamicrangecompression-JAES2012.pdf),
+[compressor tutorial](https://aes2.org/publications/elibrary-page/?id=16354),
 [Smith nonlinear elements](https://www.dsprelated.com/freebooks/pasp/Nonlinear_Elements.html),
 [Bilbao et al. ADAA](https://www.research.ed.ac.uk/files/34115216/bilbao_pdf.pdf),
 [Esqueda et al. ADAA Eq. 45/50](https://www.mdpi.com/2076-3417/7/12/1328),
@@ -289,14 +289,14 @@ Direct sources: [Blumlein patent](https://patents.google.com/patent/GB394325A/en
 [Dattorro reverb](https://nagasm.org/ASL/Sketch14/fig5/EffectDesignPart1.pdf),
 [Simper SVF](https://www.cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf),
 [Terrell/Reiss/Sandler gate](https://asp-eurasipjournals.springeropen.com/counter/pdf/10.1155/2010/465417.pdf),
-and [Wannamaker et al. dither](https://www.robertwannamaker.com/writings/ieee.pdf).
+and [Wannamaker et al. dither](https://doi.org/10.1109/78.823976).
 
 Objective reverb tests use the normalized echo-density definition from J. S.
 Abel and P. Huang, “A Simple, Robust Measure of Reverberation Echo Density,”
 AES Convention 121, paper 6985, 2006: the proportion outside one local standard
 deviation is normalized by the Gaussian expectation. That metric establishes
 density growth, not musical preference. See the
-[AES publication record](https://secure.aes.org/forum/pubs/conventions/?elib=13819).
+[AES publication record](https://aes2.org/publications/elibrary-page/?id=13819).
 
 Deterministic tests cover silence/step/impulse behavior, supported sample-rate
 limits, reset and non-finite recovery, stereo independence, long-running

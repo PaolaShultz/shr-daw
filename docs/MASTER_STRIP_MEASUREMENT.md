@@ -196,7 +196,7 @@ Algorithm choices were checked against:
 - [EBU Tech 3341](https://tech.ebu.ch/docs/tech/tech3341.pdf) and
   [EBU Tech 3343](https://tech.ebu.ch/docs/tech/tech3343.pdf)
 - Giannoulis, Massberg and Reiss,
-  [“Digital Dynamic Range Compressor Design—A Tutorial and Analysis”](https://www.eecs.qmul.ac.uk/~josh/documents/2012/GiannoulisMassbergReiss-dynamicrangecompression-JAES2012.pdf)
+  [“Digital Dynamic Range Compressor Design—A Tutorial and Analysis”](https://aes2.org/publications/elibrary-page/?id=16354)
 - Bilbao, Esqueda, Parker and Välimäki,
   [“Antiderivative Antialiasing for Memoryless Nonlinearities”](https://www.research.ed.ac.uk/files/34115216/bilbao_pdf.pdf)
 - the dated [Phase 1](PHASE1_AUDIO_GRAPH_MEASUREMENT.md),
