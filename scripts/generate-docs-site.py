@@ -104,6 +104,7 @@ class Document:
     document_id: str = ""
     group: str = ""
     classification: str = ""
+    summary: str = ""
     order: tuple[int, int] = (999, 999)
     headings: list[Heading] = field(default_factory=list)
     fragment_map: dict[str, str] = field(default_factory=dict)
@@ -395,6 +396,10 @@ def rewrite_url(
         if parsed.fragment:
             fail(f"LICENSE link cannot contain a fragment in {doc.path}: {raw}")
         return "#doc-license", False, None
+    if target == Path("docs/README.md"):
+        if parsed.fragment:
+            return source_url(target, parsed.fragment), True, None
+        return "#documentation", False, None
     if target in documents:
         destination = documents[target]
         if parsed.fragment:
@@ -437,7 +442,7 @@ def style_admonitions(tokens: list[Token]) -> None:
 
 def rewrite_tokens(
     documents: dict[Path, Document],
-    md: MarkdownIt,
+    _md: MarkdownIt,
 ) -> set[Path]:
     referenced_images: set[Path] = set()
     for doc in documents.values():
@@ -476,7 +481,6 @@ def rewrite_tokens(
                     if image_path.suffix.casefold() == ".png":
                         append_class(child, "tui-shot")
                     referenced_images.add(image_path)
-        doc.rendered += md.renderer.render(doc.tokens, md.options, {})
     return referenced_images
 
 
@@ -491,7 +495,7 @@ def documentation_groups(
     # Parse a fresh tree because the display tokens already have rewritten links.
     tokens = md.parse(index.source)
     current_group = ""
-    mapped: dict[Path, tuple[str, int]] = {}
+    mapped: dict[Path, tuple[str, int, str]] = {}
     group_positions = {name: 0 for name in GROUP_ORDER}
     found_groups: set[str] = set()
     for token_index, token in enumerate(tokens):
@@ -505,6 +509,11 @@ def documentation_groups(
             continue
         if token.type != "inline" or not current_group:
             continue
+        item_text = inline_text(token)
+        summary = ""
+        if "—" in item_text:
+            summary = item_text.split("—", 1)[1].strip()
+            summary = summary[:1].upper() + summary[1:]
         for child in token.children or []:
             if child.type != "link_open":
                 continue
@@ -518,7 +527,7 @@ def documentation_groups(
             if target in mapped and mapped[target][0] != current_group:
                 fail(f"documentation index assigns {target} to multiple groups")
             position = group_positions[current_group]
-            mapped[target] = (current_group, position)
+            mapped[target] = (current_group, position, summary)
             group_positions[current_group] = position + 1
     required = {
         "Start and use",
@@ -537,12 +546,15 @@ def documentation_groups(
 
     documents[Path("README.md")].group = "Overview"
     documents[Path("README.md")].order = (0, 0)
+    documents[Path("README.md")].summary = find_intro(documents[Path("README.md")])
     index.group = "Start and use"
     index.order = (0, 0)
-    for path, (group, position) in mapped.items():
+    index.summary = "A map of the musician, setup, architecture, evidence, and planning guides."
+    for path, (group, position, summary) in mapped.items():
         doc = documents[path]
         doc.group = group
         doc.order = (1, position)
+        doc.summary = summary
 
     manual = documents.get(Path("docs/MENU_MANUAL.md"))
     manual_position = manual.order[1] if manual and manual.group else 999
@@ -559,6 +571,8 @@ def documentation_groups(
         else:
             doc.group = "Technical archive"
             doc.order = (1, position)
+        if not doc.summary:
+            doc.summary = first_paragraph(doc)
 
     licence_source = safe_source(ROOT / "LICENSE")
     licence_doc = Document(
@@ -569,11 +583,9 @@ def documentation_groups(
         document_id="doc-license",
         group="Licence",
         classification=GROUP_META["Licence"][0],
+        summary="The full MIT licence text for SHR-DAW.",
         order=(1, 0),
         rendered=(
-            '<h3 id="doc-license" tabindex="-1">MIT licence'
-            '<a class="heading-anchor" href="#doc-license" '
-            'aria-label="Link to MIT licence">#</a></h3>\n'
             f"<pre class=\"licence-text\"><code>{html.escape(licence_source)}</code></pre>\n"
         ),
     )
@@ -588,7 +600,7 @@ def documentation_groups(
     return groups
 
 
-def find_intro(doc: Document) -> str:
+def first_paragraph(doc: Document) -> str:
     for index, token in enumerate(doc.tokens):
         if token.type != "inline" or index == 0:
             continue
@@ -599,7 +611,11 @@ def find_intro(doc: Document) -> str:
         text = inline_text(token)
         if text and not text.startswith("[!"):
             return text
-    fail("README.md has no introductory paragraph")
+    fail(f"{doc.path} has no introductory paragraph")
+
+
+def find_intro(doc: Document) -> str:
+    return first_paragraph(doc)
 
 
 def find_features(doc: Document) -> list[str]:
@@ -654,6 +670,50 @@ def find_gallery(doc: Document) -> list[tuple[str, Token]]:
     return gallery
 
 
+def find_install_excerpt(doc: Document) -> tuple[str, str]:
+    in_install = False
+    commands = ""
+    note = ""
+    for index, token in enumerate(doc.tokens):
+        if token.type == "heading_open":
+            heading = inline_text(doc.tokens[index + 1])
+            if heading == "Install and run":
+                in_install = True
+                continue
+            if in_install:
+                break
+        if not in_install:
+            continue
+        if token.type == "fence" and not commands:
+            commands = token.content.rstrip()
+        elif (
+            token.type == "inline"
+            and commands
+            and index > 0
+            and doc.tokens[index - 1].type == "paragraph_open"
+        ):
+            note = inline_text(token)
+            break
+    if not commands or not note:
+        fail("README.md install section is incomplete")
+    return commands, note
+
+
+def find_warning(doc: Document) -> str:
+    in_quote = False
+    for token in doc.tokens:
+        if token.type == "blockquote_open":
+            in_quote = True
+            continue
+        if token.type == "blockquote_close":
+            in_quote = False
+            continue
+        if in_quote and token.type == "inline":
+            warning = inline_text(token)
+            return warning.removeprefix("Warning ").strip()
+    fail("README.md warning is missing")
+
+
 def image_html(token: Token, *, eager: bool = False) -> str:
     attrs = dict(token.attrs or {})
     attrs["alt"] = token.content
@@ -669,20 +729,41 @@ def image_html(token: Token, *, eager: bool = False) -> str:
 
 
 def nav_html(groups: dict[str, list[Document]]) -> str:
-    sections: list[str] = []
-    for group in GROUP_ORDER:
+    sections = [
+        '<ul class="page-links">'
+        '<li><a href="#features-title">What it does</a></li>'
+        '<li><a href="#screenshots">Screens</a></li>'
+        '<li><a href="#start-here">Where to begin</a></li>'
+        '<li><a href="#install">Install</a></li>'
+        '<li><a href="#documentation">Detailed guides</a></li>'
+        "</ul>"
+    ]
+    for group in (
+        "Start and use",
+        "Install and configure",
+        "Architecture and safety",
+        "Licence",
+    ):
         docs = groups[group]
         if not docs:
             continue
         links = "".join(
             f'<li><a href="#{doc.document_id}">{html.escape(doc.title)}</a></li>'
             for doc in docs
+            if doc.path != Path("docs/README.md")
         )
-        open_attr = " open" if group in {"Start and use", "Overview"} else ""
+        if not links:
+            continue
+        open_attr = " open" if group == "Start and use" else ""
         sections.append(
             f"<details{open_attr}><summary>{html.escape(group)}</summary>"
             f"<ul>{links}</ul></details>"
         )
+    sections.append(
+        '<ul class="page-links archive-link">'
+        '<li><a href="#technical-records">Technical records and future plans</a></li>'
+        "</ul>"
+    )
     return "\n".join(sections)
 
 
@@ -690,35 +771,140 @@ def source_link(path: Path) -> str:
     return source_url(path)
 
 
-def content_html(groups: dict[str, list[Document]]) -> str:
-    output: list[str] = []
-    for group in GROUP_ORDER:
+def render_document(
+    doc: Document,
+    md: MarkdownIt,
+    image_anchors: dict[str, str],
+) -> str:
+    if not doc.tokens:
+        return doc.rendered
+    display_tokens: list[Token] = []
+    index = 0
+    while index < len(doc.tokens):
+        token = doc.tokens[index]
+        if token.type == "heading_open" and token.attrGet("id") == doc.document_id:
+            index += 3
+            continue
+        display_tokens.append(token)
+        index += 1
+    for token in display_tokens:
+        for child in token.children or []:
+            if child.type != "image":
+                continue
+            digest = child.attrGet("data-source-sha256")
+            if not digest:
+                fail(f"rendered image has no source digest in {doc.path}")
+            anchor = image_anchors.get(digest)
+            if anchor:
+                label = child.content or "Screenshot"
+                child.type = "html_inline"
+                child.tag = ""
+                child.attrs = {}
+                child.content = (
+                    f'<a class="repeated-image-link" href="#{anchor}">'
+                    f"{html.escape(label)} (shown earlier)</a>"
+                )
+                child.children = None
+                continue
+            anchor = f"shot-{digest[:12]}"
+            image_anchors[digest] = anchor
+            child.attrSet("id", anchor)
+    return md.renderer.render(display_tokens, md.options, {})
+
+
+def document_details(
+    doc: Document,
+    md: MarkdownIt,
+    image_anchors: dict[str, str],
+) -> str:
+    rel = doc.path.as_posix()
+    source = (
+        f'<a class="external source-link" href="{source_link(doc.path)}" '
+        'target="_blank" rel="noopener noreferrer external">'
+        f"View {html.escape(rel)} source</a>"
+    )
+    body = render_document(doc, md, image_anchors)
+    summary = doc.summary or first_paragraph(doc)
+    return (
+        f'<details class="document" id="{doc.document_id}" '
+        f'data-source="{html.escape(rel, quote=True)}" '
+        f'data-kind="{html.escape(doc.classification, quote=True)}">'
+        '<summary><span class="document-title" role="heading" aria-level="4">'
+        f"{html.escape(doc.title)}</span>"
+        f'<span class="document-summary">{html.escape(summary)}</span></summary>'
+        '<div class="document-body">'
+        f'<div class="document-meta"><span>{html.escape(doc.classification)}</span>'
+        f"{source}</div>{body}"
+        '<p class="back-top"><a href="#documentation">Back to detailed guides</a></p>'
+        "</div></details>"
+    )
+
+
+def content_html(
+    groups: dict[str, list[Document]],
+    md: MarkdownIt,
+    image_anchors: dict[str, str],
+) -> str:
+    output = [
+        '<section class="documentation-library" id="documentation" '
+        'aria-labelledby="documentation-title">'
+        '<header class="library-header"><p class="eyebrow">Detailed guides</p>'
+        '<h2 id="documentation-title">The manual, when you need it</h2>'
+        "<p>Choose a subject and open only that guide. Measurements, maintainer "
+        "records, and future plans stay in a separate archive below.</p></header>"
+    ]
+    current_groups = (
+        "Start and use",
+        "Install and configure",
+        "Architecture and safety",
+        "Licence",
+    )
+    archive_groups = (
+        "Measurements and audits",
+        "Development record",
+        "Planned work",
+        "Technical archive",
+    )
+    for group in current_groups:
         docs = groups[group]
         if not docs:
             continue
         classification, description = GROUP_META[group]
         group_id = "group-" + github_slug(group)
         output.append(
-            f'<section class="doc-group" aria-labelledby="{group_id}">'
+            f'<section class="library-group" aria-labelledby="{group_id}">'
             f'<header class="group-header"><p class="eyebrow">{html.escape(classification)}</p>'
-            f'<h2 id="{group_id}">{html.escape(group)}</h2>'
+            f'<h3 id="{group_id}">{html.escape(group)}</h3>'
             f"<p>{html.escape(description)}</p></header>"
         )
         for doc in docs:
-            rel = doc.path.as_posix()
-            source = (
-                f'<a class="external source-link" href="{source_link(doc.path)}" '
-                'target="_blank" rel="noopener noreferrer external">'
-                f"View {html.escape(rel)} source</a>"
-            )
-            output.append(
-                f'<article class="document" data-source="{html.escape(rel, quote=True)}" '
-                f'data-kind="{html.escape(classification, quote=True)}">'
-                f'<div class="document-meta"><span>{html.escape(classification)}</span>'
-                f"{source}</div>{doc.rendered}"
-                '<p class="back-top"><a href="#top">Back to top</a></p></article>'
-            )
+            if doc.path == Path("docs/README.md"):
+                continue
+            output.append(document_details(doc, md, image_anchors))
         output.append("</section>")
+    output.append(
+        '<details class="archive-collection" id="technical-records"><summary>'
+        '<span class="document-title">Technical records and future plans</span>'
+        '<span class="document-summary">Dated measurements, maintainer handoffs, '
+        "development records, and proposals.</span></summary>"
+        '<div class="archive-body">'
+    )
+    for group in archive_groups:
+        docs = groups[group]
+        if not docs:
+            continue
+        classification, description = GROUP_META[group]
+        group_id = "group-" + github_slug(group)
+        output.append(
+            f'<section class="library-group" aria-labelledby="{group_id}">'
+            f'<header class="group-header"><p class="eyebrow">{html.escape(classification)}</p>'
+            f'<h3 id="{group_id}">{html.escape(group)}</h3>'
+            f"<p>{html.escape(description)}</p></header>"
+        )
+        for doc in docs:
+            output.append(document_details(doc, md, image_anchors))
+        output.append("</section>")
+    output.append("</div></details></section>")
     return "\n".join(output)
 
 
@@ -810,6 +996,7 @@ a.external::after { content: " ↗"; color: var(--yellow); font-size: .8em; }
 .site-nav details { border-top: 1px solid var(--line); padding: .55rem 0; }
 .site-nav summary { cursor: pointer; color: var(--text); font-weight: 750; font-size: .88rem; }
 .site-nav ul { margin: .55rem 0 0; padding: 0 0 0 .8rem; list-style: none; }
+.site-nav .page-links { padding: 0 0 .7rem; border-bottom: 1px solid var(--line); }
 .site-nav li { margin: .28rem 0; line-height: 1.3; }
 .site-nav li a { color: var(--muted); font-size: .82rem; text-decoration: none; }
 .site-nav li a:hover, .site-nav li a[aria-current="location"] { color: var(--green-bright); }
@@ -861,25 +1048,52 @@ main { min-width: 0; padding-bottom: 5rem; }
   border-radius: .3rem; background: #000;
 }
 .screenshot-grid figcaption { padding-top: .4rem; color: var(--muted); font-size: .85rem; }
-.doc-group { padding: 3rem 0 0; }
-.group-header { max-width: 48rem; margin-bottom: 1.5rem; }
-.group-header h2 { margin: 0; font-size: clamp(1.8rem, 5vw, 3rem); line-height: 1.05; }
+.install-block pre { max-width: 42rem; }
+.safety-note {
+  padding: .8rem 1rem; border-left: .25rem solid var(--red);
+  background: var(--panel); color: #e9dada;
+}
+.documentation-library { padding: 3.5rem 0 0; }
+.library-header { max-width: 50rem; margin-bottom: 2.5rem; }
+.library-header h2 { margin: 0; font-size: clamp(1.8rem, 5vw, 3rem); line-height: 1.05; }
+.library-header > p:last-child { color: var(--muted); }
+.library-group { margin: 0 0 3rem; }
+.group-header { max-width: 48rem; margin-bottom: 1rem; }
+.group-header h3 { margin: 0; font-size: clamp(1.4rem, 4vw, 2rem); line-height: 1.1; }
 .group-header > p:last-child { color: var(--muted); }
 .document {
-  min-width: 0; margin: 0 0 2rem; padding: clamp(1rem, 3vw, 2rem);
+  min-width: 0; margin: 0 0 .7rem;
   border: 1px solid var(--line); border-radius: .45rem; background: var(--panel);
   overflow-wrap: anywhere;
 }
+.document > summary, .archive-collection > summary {
+  display: grid; grid-template-columns: minmax(10rem, .8fr) minmax(14rem, 1.2fr);
+  gap: .4rem 1.25rem; align-items: baseline; padding: .9rem 1rem;
+  cursor: pointer; list-style-position: outside;
+}
+.document > summary:hover, .archive-collection > summary:hover { background: var(--panel-2); }
+.document[open] > summary, .archive-collection[open] > summary { border-bottom: 1px solid var(--line); }
+.document-title { color: var(--green-bright); font-weight: 780; }
+.document-summary { color: var(--muted); font-size: .9rem; }
+.document-body { padding: clamp(1rem, 3vw, 2rem); }
 .document-meta {
   display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem;
   margin-bottom: .8rem; color: var(--muted); font-size: .78rem; text-transform: uppercase;
   letter-spacing: .08em;
 }
 .document-meta .source-link { text-transform: none; letter-spacing: normal; }
-.document h3 { margin: .2rem 0 1rem; font-size: clamp(1.45rem, 4vw, 2.25rem); line-height: 1.15; }
 .document h4 { margin: 2.2rem 0 .65rem; font-size: clamp(1.2rem, 3vw, 1.6rem); line-height: 1.25; }
 .document h5 { margin: 1.8rem 0 .55rem; font-size: 1.13rem; }
 .document h6 { margin: 1.6rem 0 .5rem; font-size: 1rem; color: var(--yellow); }
+.archive-collection {
+  margin-top: 2rem; border: 1px solid var(--line); border-radius: .45rem;
+  background: #0d110f;
+}
+.archive-collection > summary { grid-template-columns: 1fr; padding: 1.1rem; }
+.archive-body { padding: 1.2rem; }
+.repeated-image-link {
+  display: inline-block; margin: .3rem 0; color: var(--muted); font-size: .88rem;
+}
 .heading-anchor {
   margin-left: .4rem; color: var(--muted); font-size: .65em; opacity: 0;
   text-decoration: none;
@@ -942,7 +1156,8 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
   .site-shell { width: min(100% - .8rem, 52rem); }
   .hero { padding-top: 1.5rem; }
   .feature-grid, .start-grid, .screenshot-grid { grid-template-columns: 1fr; }
-  .document { padding: 1rem .75rem; }
+  .document > summary, .archive-collection > summary { grid-template-columns: 1fr; }
+  .document-body, .archive-body { padding: 1rem .75rem; }
   .document-meta { display: block; }
   .document-meta > * { display: block; margin-bottom: .3rem; }
   ol, ul { padding-left: 1.35rem; }
@@ -957,13 +1172,16 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
   .site-shell { display: block; width: auto; margin: 0; }
   .hero { padding-top: 0; }
   .hero-image { max-height: 4in; object-fit: contain; }
-  .document { border: 0; padding: 0; break-inside: auto; }
-  .document h3, .document h4 { break-after: avoid; }
+  details:not([open]) > :not(summary) { display: block !important; }
+  .document, .archive-collection { border: 0; padding: 0; break-inside: auto; }
+  .document > summary, .archive-collection > summary { border-bottom: 1px solid #aaa; padding-inline: 0; }
+  .document-body, .archive-body { padding-inline: 0; }
+  .document h4 { break-after: avoid; }
   pre, table, blockquote, figure { break-inside: avoid; }
   a { color: #111; text-decoration: underline; }
   a.external::after { content: " (" attr(href) ")"; font-size: .75em; overflow-wrap: anywhere; }
-  .doc-group { break-before: page; }
-  .doc-group:first-of-type { break-before: auto; }
+  .library-group { break-before: page; }
+  .library-group:first-of-type { break-before: auto; }
 }
 """
 
@@ -1000,19 +1218,19 @@ JS = r"""
   let entries;
   const buildSearchIndex = () => {
     if (entries) return entries;
-    const articles = [...document.querySelectorAll("main article")];
+    const articles = [...document.querySelectorAll("main details.document")];
     const articleEntries = articles.map((article) => {
-      const heading = article.querySelector("h3[id]");
+      const heading = article.querySelector(".document-title");
       return {
-        title: heading.textContent.replace(/#$/, "").trim(),
-        href: `#${heading.id}`,
+        title: heading.textContent.trim(),
+        href: `#${article.id}`,
         source: article.dataset.source,
         kind: article.dataset.kind,
         text: normalize(article.textContent)
       };
     });
-    const headingEntries = [...document.querySelectorAll("main article h4, main article h5, main article h6")].map((heading) => {
-      const article = heading.closest("article");
+    const headingEntries = [...document.querySelectorAll("main details.document h4, main details.document h5, main details.document h6")].map((heading) => {
+      const article = heading.closest("details.document");
       const title = heading.textContent.replace(/#$/, "").trim();
       return {
         title,
@@ -1053,6 +1271,19 @@ JS = r"""
   };
   search.addEventListener("input", renderSearch);
 
+  const revealTarget = () => {
+    if (!location.hash) return;
+    const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!target) return;
+    let details = target.matches("details") ? target : target.closest("details");
+    while (details) {
+      details.open = true;
+      details = details.parentElement.closest("details");
+    }
+  };
+  addEventListener("hashchange", revealTarget);
+  revealTarget();
+
   document.addEventListener("keydown", (event) => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
     if (event.key === "/" && !typing) {
@@ -1077,7 +1308,9 @@ JS = r"""
         if (link) link.setAttribute("aria-current", "location");
       }
     }, { rootMargin: "-15% 0px -75% 0px" });
-    for (const heading of document.querySelectorAll("article > h3[id]")) observer.observe(heading);
+    for (const documentDetails of document.querySelectorAll("details.document[id]")) {
+      observer.observe(documentDetails);
+    }
   }
 })();
 """
@@ -1087,11 +1320,14 @@ def build_page(
     documents: dict[Path, Document],
     groups: dict[str, list[Document]],
     version: str,
+    md: MarkdownIt,
 ) -> str:
     readme = documents[Path("README.md")]
     intro = find_intro(readme)
     features = find_features(readme)
     gallery = find_gallery(readme)
+    install_commands, install_note = find_install_excerpt(readme)
+    warning = find_warning(readme)
     first_image = next(
         (
             child
@@ -1105,13 +1341,33 @@ def build_page(
     if first_image is None:
         fail("README.md has no header image")
 
+    image_anchors: dict[str, str] = {}
+    hero_digest = first_image.attrGet("data-source-sha256")
+    if not hero_digest:
+        fail("README.md header image has no source digest")
+    first_image.attrSet("id", "hero-image")
+    image_anchors[hero_digest] = "hero-image"
+    selected_gallery: list[tuple[str, Token]] = []
+    for title, image in gallery:
+        digest = image.attrGet("data-source-sha256")
+        if not digest:
+            fail("README.md screenshot has no source digest")
+        if digest in image_anchors:
+            continue
+        anchor = f"shot-{digest[:12]}"
+        image.attrSet("id", anchor)
+        image_anchors[digest] = anchor
+        selected_gallery.append((title, image))
+        if len(selected_gallery) == 6:
+            break
+
     feature_cards = "".join(
         f'<div class="feature-card">{html.escape(feature)}</div>'
         for feature in features
     )
     screenshot_cards = "".join(
         f"<figure>{image_html(image)}<figcaption>{html.escape(title)}</figcaption></figure>"
-        for title, image in gallery[:6]
+        for title, image in selected_gallery
     )
     start_docs = [
         documents[Path("docs/FIRST_RUN.md")],
@@ -1122,7 +1378,7 @@ def build_page(
     start_cards = "".join(
         f'<a class="start-card" href="#{doc.document_id}">'
         f"<strong>{html.escape(doc.title)}</strong>"
-        f"<span>{html.escape(doc.classification)}</span></a>"
+        f"<span>{html.escape(doc.summary)}</span></a>"
         for doc in start_docs
     )
     social_path = ROOT / SOCIAL_IMAGE
@@ -1142,12 +1398,12 @@ def build_page(
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
         '<meta name="color-scheme" content="dark">\n',
         '<meta name="theme-color" content="#090c0b">\n',
-        "<title>SHR-DAW documentation</title>\n",
+        "<title>SHR-DAW | Raspberry Pi mini DAW</title>\n",
         f'<meta name="description" content="{html.escape(intro, quote=True)}">\n',
         f'<link rel="canonical" href="{SITE_URL}">\n',
         '<meta property="og:type" content="website">\n',
         '<meta property="og:site_name" content="SHR-DAW">\n',
-        '<meta property="og:title" content="SHR-DAW — Raspberry Pi mini DAW">\n',
+        '<meta property="og:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
         f'<meta property="og:description" content="{html.escape(intro, quote=True)}">\n',
         f'<meta property="og:url" content="{SITE_URL}">\n',
         f'<meta property="og:image" content="{SITE_URL}images/shr-daw-physical-connections.jpg">\n',
@@ -1156,7 +1412,7 @@ def build_page(
         f'<meta property="og:image:height" content="{social_height}">\n',
         '<meta property="og:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">\n',
         '<meta name="twitter:card" content="summary_large_image">\n',
-        '<meta name="twitter:title" content="SHR-DAW — Raspberry Pi mini DAW">\n',
+        '<meta name="twitter:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
         f'<meta name="twitter:description" content="{html.escape(intro, quote=True)}">\n',
         f'<meta name="twitter:image" content="{SITE_URL}images/shr-daw-physical-connections.jpg">\n',
         "<style>\n",
@@ -1169,7 +1425,8 @@ def build_page(
         '<a class="brand" href="#top"><span class="leds" aria-hidden="true">'
         '<span class="led"></span><span class="led yellow"></span>'
         '<span class="led red"></span></span><span>SHR-DAW</span></a>',
-        '<div class="header-links"><a href="#start-here">Start here</a>'
+        '<div class="header-links"><a href="#features-title">About</a>'
+        '<a href="#screenshots">Screens</a><a href="#install">Install</a>'
         f'<a class="external" href="{REPOSITORY_URL}" target="_blank" '
         'rel="noopener noreferrer external">Source</a>'
         '<button class="nav-toggle" type="button" aria-expanded="false" '
@@ -1204,18 +1461,29 @@ def build_page(
         else image_html(first_image, eager=True).replace("<img ", '<img class="hero-image" ', 1),
         "</section>\n",
         '<section class="overview-block" aria-labelledby="features-title">'
-        '<p class="eyebrow">From the current README</p>'
-        '<h2 id="features-title">Compact workstation, focused controls</h2>'
+        '<p class="eyebrow">What it does</p>'
+        '<h2 id="features-title">Make music on a small, focused screen</h2>'
         f'<div class="feature-grid">{feature_cards}</div></section>\n',
-        '<section class="overview-block" id="start-here" aria-labelledby="start-title">'
-        '<p class="eyebrow">Musicians first</p><h2 id="start-title">Start here</h2>'
-        f'<div class="start-grid">{start_cards}</div></section>\n',
         '<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title">'
-        '<p class="eyebrow">Real 40×13 interface</p>'
-        '<h2 id="screenshots-title">Screens from the application</h2>'
+        '<p class="eyebrow">The 40×13 interface</p>'
+        '<h2 id="screenshots-title">A closer look</h2>'
         f'<div class="screenshot-grid">{screenshot_cards}</div></section>\n',
-        content_html(groups),
-        '<footer class="page-footer"><p>Generated from the public SHR-DAW repository sources. '
+        '<section class="overview-block" id="start-here" aria-labelledby="start-title">'
+        '<p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2>'
+        '<p>These guides cover the first launch, everyday music making, installation, '
+        "and detailed routing.</p>"
+        f'<div class="start-grid">{start_cards}</div></section>\n',
+        '<section class="overview-block install-block" id="install" '
+        'aria-labelledby="install-title"><p class="eyebrow">Install and run</p>'
+        '<h2 id="install-title">Try SHR-DAW</h2>'
+        f"<pre><code>{html.escape(install_commands)}</code></pre>"
+        f"<p>{html.escape(install_note)}</p>"
+        f'<p class="safety-note"><strong>Before using audio:</strong> '
+        f"{html.escape(warning)}</p>"
+        f'<p><a href="#{documents[Path("docs/INSTALLATION.md")].document_id}">'
+        "Open the complete installation guide</a></p></section>\n",
+        content_html(groups, md, image_anchors),
+        '<footer class="page-footer"><p>The page is generated from public SHR-DAW sources. '
         f'<a href="#doc-license">MIT licence</a> · '
         '<a href="#doc-third-party">Third-party provenance</a> · '
         f'<a class="external" href="{REPOSITORY_URL}" target="_blank" '
@@ -1240,9 +1508,24 @@ def cargo_version() -> str:
     return version
 
 
-def validate_generated(page: str, anchors: set[str], referenced_images: set[Path]) -> None:
+def public_path_names(page: str) -> str:
+    replacements = (
+        ("/home/patch/p/shsynth", "[checkout]"),
+        ("/home/patch/p", "[workspace]"),
+        ("/home/patch", "$HOME"),
+        ("shsynth/user/", "$SHSYNTH_USER_DIR/"),
+        ("user/", "$SHSYNTH_USER_DIR/"),
+    )
+    for private, public in replacements:
+        page = page.replace(private, public)
+    return page
+
+
+def validate_generated(page: str, _anchors: set[str], referenced_images: set[Path]) -> None:
     if "<meta name=\"viewport\"" not in page:
         fail("generated page lacks viewport metadata")
+    if "user/" in page or "/home/" in page:
+        fail("generated page contains a machine-local or private path")
     if any(
         "user/" in target
         for target in re.findall(r'(?:href|src)="([^"]*)"', page)
@@ -1260,10 +1543,16 @@ def validate_generated(page: str, anchors: set[str], referenced_images: set[Path
     if duplicates:
         fail("duplicate generated anchor: " + ", ".join(duplicates))
     href_fragments = re.findall(r'href="#([^"]+)"', page)
-    known = set(ids) | anchors
+    known = set(ids)
     broken = sorted({unquote(item) for item in href_fragments if unquote(item) not in known})
     if broken:
         fail("broken generated fragment links: " + ", ".join(broken))
+    image_digests = re.findall(
+        r'<img\b[^>]*\bdata-source-sha256="([0-9a-f]{64})"[^>]*>',
+        page,
+    )
+    if len(image_digests) != len(set(image_digests)):
+        fail("generated page renders the same image content more than once")
     image_sources = re.findall(r'<img\b[^>]*\bsrc="([^"]+)"', page)
     for source in image_sources:
         parsed = urlsplit(html.unescape(source))
@@ -1284,7 +1573,7 @@ def generate() -> str:
     anchors = assign_headings(documents)
     referenced_images = rewrite_tokens(documents, md)
     groups = documentation_groups(documents, md)
-    page = build_page(documents, groups, cargo_version())
+    page = public_path_names(build_page(documents, groups, cargo_version(), md))
     validate_generated(page, anchors, referenced_images)
     return page
 

@@ -7,7 +7,7 @@ CARGO ?= cargo
 build:
 	$(CARGO) build --release --locked
 
-test: check-docs-site
+test:
 	$(CARGO) test --locked
 
 check-demos:
@@ -21,7 +21,7 @@ check-docs-site:
 
 install: build install-files
 
-install-files: check-demos check-docs-site
+install-files: check-demos
 	install -Dm755 target/release/shr $(DESTDIR)$(PREFIX)/bin/shr
 	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth
 	ln -sfn shr $(DESTDIR)$(PREFIX)/bin/synth-player

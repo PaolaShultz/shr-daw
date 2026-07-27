@@ -303,9 +303,8 @@ before the first dependency mutation.
 With dependencies enabled, it requires a Debian-style `apt-get` system and uses
 `sudo` with `--no-install-recommends` to install the build toolchain, ALSA/JACK
 utilities and headers, SoX and unzip for optional loop installation, Python 3
-for demo validation/seeding, the pinned Markdown renderer and task-list plugin
-for documentation drift checks, ripgrep for helper policy/config inspection,
-the three supported software instruments, and their explicitly named packaged
+for demo validation/seeding, ripgrep for helper policy/config inspection, the
+three supported software instruments, and their explicitly named packaged
 data. Avoiding recommendations is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
@@ -458,8 +457,6 @@ changing the checkout.
 
 The renderer requires Python 3.11, Debian's pinned
 `python3-markdown-it` 2.1.0-5 and `python3-mdit-py-plugins` 0.3.3-1 packages.
-The normal installer includes them; maintainers using `--no-deps` must provide
-them before the locked test/drift-check phase.
 The helper verifies the corresponding upstream versions, enables CommonMark
 tables and strikethrough plus GFM task lists, and fails rather than producing
 different output with an unreviewed renderer version. Generation needs no
@@ -483,11 +480,18 @@ Referenced images remain relative files below `docs/images/`. The social-card
 metadata uses the absolute production URL for the existing 1200×675 physical
 connections image so link-preview crawlers can retrieve it.
 
-Regenerate `docs/index.html` whenever `README.md`, any `docs/**/*.md`, a
-materially relevant `docs/images/` file, `Cargo.toml` package version,
-`THIRD_PARTY.md`, or `LICENSE` changes. `make test` and `make install-files`
-both depend on `check-docs-site`, so their existing validation paths reject a
-stale generated page before compiling or installing.
+The visible page is a product presentation, not an expanded repository dump.
+It uses one introduction and one screenshot tour. Detailed guides are closed
+by default, and measurements, maintainer records, handoffs, and proposals sit
+inside a separately labelled technical archive. When the same image bytes are
+referenced more than once, the first occurrence owns the image and later
+references link back to it.
+
+Regenerate `docs/index.html` when intentionally refreshing the public
+presentation. An ordinary change to a Markdown guide does not require a site
+build, and neither `make test` nor `make install-files` runs the drift check.
+`make check-docs-site` remains available for a maintainer who is preparing a
+site update.
 
 ### Determinism and safety boundary
 
@@ -498,6 +502,10 @@ Referenced-image dimensions and SHA-256 values are derived from the public
 files, so a material image change participates in drift detection. Markdown
 raw HTML is disabled; source text is escaped, while the task-list plugin emits
 only its fixed disabled-checkbox markup.
+Machine-specific `/home/patch` names are shown as neutral checkout, workspace,
+or `$HOME` labels, and the ignored `user/` root is shown as
+`$SHSYNTH_USER_DIR/`. This keeps the public copy useful without publishing a
+machine-local or private path.
 
 Generation fails for a missing source, broken local file or heading fragment,
 duplicate generated anchor, unsupported image format or URL scheme, remote
@@ -681,9 +689,8 @@ Variables:
 - `PREFIX` defaults to `/usr/local`;
 - `DESTDIR` prefixes the install tree for packaging or a non-root fixture.
 
-`test` first checks documentation-site drift and then runs the locked Rust
-tests. `install-files` first runs `check-demos` and `check-docs-site`, then
-installs only presets and demos named by their cleared manifests, the
+`install-files` first runs `check-demos`, then installs only presets and demos
+named by their cleared manifests, the
 configuration and device/profile data, drum patterns, documentation, nested
 menu chapters, and nested menu images. The public `shr` binary receives the
 compatibility aliases `shs` and `synth-player`; no separate process binary is
