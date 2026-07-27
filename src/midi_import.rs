@@ -1507,7 +1507,47 @@ mod tests {
 
     #[test]
     fn bundled_house_fixture_has_expected_musical_contract() {
-        let imported = import_path(Path::new("demos/house-of-the-rising-sun.mid")).unwrap();
+        let parsed =
+            parse(&read_regular_file(Path::new("demos/house-of-the-rising-sun.mid")).unwrap())
+                .unwrap();
+        assert_eq!(
+            parsed
+                .tracks
+                .iter()
+                .map(|track| track.name.as_deref())
+                .collect::<Vec<_>>(),
+            vec![
+                Some("Conductor"),
+                Some("Drums"),
+                Some("Bass"),
+                Some("Pad"),
+                Some("Lead"),
+                Some("Counter")
+            ]
+        );
+        let mut paired_stripped = parsed.stripped.clone();
+        let mut unmatched = 0;
+        let mut hanging = 0;
+        let mut sustained = 0;
+        let parts = pair_parts(
+            &parsed,
+            &mut paired_stripped,
+            &mut unmatched,
+            &mut hanging,
+            &mut sustained,
+        )
+        .unwrap();
+        let mut expected_notes = parts
+            .iter()
+            .flat_map(|part| {
+                part.notes
+                    .iter()
+                    .map(|note| (part.channel, note.note, note.velocity, note.start, note.end))
+            })
+            .collect::<Vec<_>>();
+        expected_notes.sort_unstable();
+
+        let imported = convert(&parsed, "house-of-the-rising-sun").unwrap();
         let report = &imported.report;
         assert_eq!(report.source_format, SmfFormat::Format1);
         assert_eq!(report.source_tracks, 6);
@@ -1529,6 +1569,14 @@ mod tests {
         assert_eq!(report.pages, 5);
         assert_eq!(report.stripped.unsupported_cc, 0);
         assert_eq!(report.stripped.sysex, 0);
+        assert_eq!(report.stripped.aftertouch, 0);
+        assert_eq!(report.stripped.pitch_bend, 0);
+        assert_eq!(report.stripped.realtime, 0);
+        assert_eq!(report.stripped.system_common, 0);
+        assert_eq!(report.stripped.later_bank_program, 0);
+        assert_eq!(report.sustained_notes, 0);
+        assert_eq!(report.unmatched_note_offs, 0);
+        assert_eq!(report.hanging_notes, 0);
         let first = imported.song.patterns.get(&0).unwrap();
         let channels = first
             .pages
@@ -1543,5 +1591,48 @@ mod tests {
         assert_eq!(channels, vec![9, 3, 2, 0, 1]);
         assert_eq!(programs, vec![0, 32, 88, 40, 10]);
         assert!(first.pages[0].percussion);
+
+        let scheduled = crate::sequencer::schedule(
+            &imported.song,
+            &crate::config::RuntimeConfig::default().external_midi,
+            0,
+            0,
+        )
+        .unwrap();
+        let mut active: BTreeMap<usize, (u8, u8, u8, u64)> = BTreeMap::new();
+        let mut actual_notes = Vec::new();
+        for message in scheduled {
+            if message.bytes.len() != 3 {
+                continue;
+            }
+            let status = message.bytes[0];
+            let channel = status & 0x0f;
+            let note = message.bytes[1];
+            let tick = (message.at.as_secs_f64() * 84.0 / 60.0 * 480.0).round() as u64;
+            let Some(lane) = message.lane else {
+                continue;
+            };
+            match status & 0xf0 {
+                0x90 if message.bytes[2] > 0 => {
+                    active.insert(lane, (channel, note, message.bytes[2], tick));
+                }
+                0x80 | 0x90 => {
+                    // The scheduler may emit a harmless repeated lane-cleanup
+                    // OFF after an earlier gate release. Only the first OFF
+                    // owns the corresponding imported attack.
+                    if let Some(started) = active.remove(&lane) {
+                        assert_eq!((channel, note), (started.0, started.1));
+                        actual_notes.push((channel, note, started.2, started.3, tick));
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(active.is_empty());
+        actual_notes.sort_unstable();
+        assert_eq!(
+            actual_notes, expected_notes,
+            "every imported channel, pitch, velocity, start, and duration must survive"
+        );
     }
 }
