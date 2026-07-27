@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.99`.
+corrected starting point; the current checked-progress version is `0.3.100`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -91,7 +91,8 @@ synth, MIDI transmission, playback, recording, audible test, or physical
 hardware test was started. Temporary visual evidence remains ignored below
 `user/acceptance-pattern-loops-20260726/`.
 
-The fixed stereo MASTER STRIP now replaces the sample-peak-only final limiter.
+Version `0.3.100` adds the fixed stereo MASTER STRIP and replaces the
+sample-peak-only final limiter.
 The single final path is MASTER rack, live master fader, INPUT, TONE, linked
 GLUE, ADAA COLOR, conservative M/S IMAGE, LOUD/8× true-peak limiter, final
 meter, then the identical WAV tap and JACK playback buffers. Optional stages
