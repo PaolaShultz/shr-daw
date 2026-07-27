@@ -578,7 +578,8 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 9 persists the complete tracker state, exactly four optional
+Project format 10 persists the complete tracker state, integer-hundredths
+Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
 effects routing, one Project-global fixed MASTER STRIP, per-page entry
 mode/anchor, drum-role/choke overrides,
@@ -586,7 +587,7 @@ explicit software engine/instrument identities, and optional external profile
 metadata. Format 7's former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
-audio or rewrites the file; only an explicit save writes format 9. Format 5
+audio or rewrites the file; only an explicit save writes format 10. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3
 remains loadable and keeps its

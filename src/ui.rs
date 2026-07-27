@@ -34,6 +34,7 @@ use crate::scale::{Scale, ScaleKind};
 use crate::sequencer::{
     self, Cell, Command, GestureCapture, Note, PageTarget, SoftwareRoute, Song, LANES_PER_PAGE,
 };
+use crate::tempo::Bpm;
 use anyhow::{bail, Context, Result};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEvent, MouseEventKind},
@@ -425,7 +426,7 @@ struct PageClipboard {
 
 struct PreparedPatternLoops {
     pattern: u16,
-    tempo: u16,
+    tempo: Bpm,
     meter: u8,
     slots: [Option<(crate::loop_player::DecodedLoop, sequencer::LoopSettings)>; 4],
     faults: [Option<(String, String)>; 4],
@@ -568,6 +569,7 @@ enum TrackerFilesMode {
     Projects,
     Patterns,
     Drums,
+    Midi,
 }
 
 #[derive(Clone, Copy)]
@@ -579,6 +581,7 @@ struct HomeEntry {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PendingProjectAction {
     Load(String),
+    ImportMidi,
     Quit,
 }
 
@@ -705,6 +708,9 @@ struct App {
     audio_track_name_input: Option<String>,
     song_list: Vec<String>,
     song_selected: usize,
+    midi_imports: Vec<PathBuf>,
+    midi_import_selected: usize,
+    midi_import_candidate: Option<(PathBuf, crate::midi_import::ImportedProject)>,
     tracker_order: usize,
     tracker_row: usize,
     tracker_page: usize,
@@ -1479,6 +1485,7 @@ impl App {
             })
             .collect();
         let loop_imports = crate::loop_player::list_wavs(&config.loop_player.import_directory);
+        let midi_imports = crate::midi_import::discover(&config.external_midi.import_directory);
         let project_clean_baseline = song.clone();
         Self {
             catalogs: catalogs.to_vec(),
@@ -1549,6 +1556,9 @@ impl App {
             audio_track_name_input: None,
             song_list: sequencer::list(&sequencer::songs_dir()),
             song_selected: 0,
+            midi_imports,
+            midi_import_selected: 0,
+            midi_import_candidate: None,
             tracker_order: 0,
             tracker_row: 0,
             tracker_page: 0,
@@ -1755,6 +1765,20 @@ impl App {
                     self.drum_pattern_selected = filtered[position];
                 })
             }
+            Screen::TrackerFiles if self.tracker_files_mode == TrackerFilesMode::Midi => {
+                first_letter_index(
+                    self.midi_imports.iter().map(|path| {
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or_default()
+                    }),
+                    letter,
+                )
+                .map(|index| {
+                    self.midi_import_selected = index;
+                    self.midi_import_candidate = None;
+                })
+            }
             Screen::TrackerLoop => first_letter_index(
                 self.loop_imports.iter().map(|path| {
                     path.file_name()
@@ -1815,6 +1839,7 @@ impl App {
     fn complete_project_action(&mut self, action: PendingProjectAction) {
         match action {
             PendingProjectAction::Load(name) => self.load_song_named(&name),
+            PendingProjectAction::ImportMidi => self.commit_midi_import(),
             PendingProjectAction::Quit => self.quit_requested = true,
         }
     }
@@ -2326,6 +2351,7 @@ impl App {
                 TrackerFilesMode::Projects => MenuContext::Normal,
                 TrackerFilesMode::Patterns => MenuContext::PatternTools,
                 TrackerFilesMode::Drums => MenuContext::DrumPatterns,
+                TrackerFilesMode::Midi => MenuContext::Normal,
             }
         } else if self.screen == Screen::TrackerPages {
             match self.page_manager_mode {
@@ -3817,7 +3843,7 @@ impl App {
         let track = self.tracker_track;
         self.current_page_mut().map(|page| page.column_mut(track))
     }
-    fn current_tempo(&self) -> u16 {
+    fn current_tempo(&self) -> Bpm {
         self.current_pattern()
             .map_or(self.config.external_midi.default_tempo, |pattern| {
                 pattern.tempo
@@ -4199,11 +4225,9 @@ impl App {
                     } else {
                         value.saturating_sub(1).max(1)
                     }),
-                    Command::Tempo(value) => Command::Tempo(if increase {
-                        value.saturating_add(1).min(300)
-                    } else {
-                        value.saturating_sub(1).max(20)
-                    }),
+                    Command::Tempo(value) => {
+                        Command::Tempo(value.adjust_whole(if increase { 1 } else { -1 }))
+                    }
                 };
             }
         }
@@ -5459,12 +5483,11 @@ impl App {
             *owner_page != page || lane.is_some_and(|lane| *owner_lane != lane)
         });
     }
-    fn set_tracker_tempo(&mut self, bpm: u16) {
+    fn set_tracker_tempo(&mut self, bpm: Bpm) {
         let tempo = self.apply_tracker_tempo(bpm);
         self.status = format!("pattern tempo {tempo} BPM");
     }
-    fn apply_tracker_tempo(&mut self, bpm: u16) -> u16 {
-        let tempo = bpm.clamp(20, 300);
+    fn apply_tracker_tempo(&mut self, tempo: Bpm) -> Bpm {
         if let Some(pattern) = self.current_pattern_mut() {
             pattern.tempo = tempo;
         }
@@ -5473,8 +5496,14 @@ impl App {
         }
         tempo
     }
-    fn loop_pattern_tempo(settings: &sequencer::LoopSettings) -> u16 {
-        settings.interpreted_bpm().round().clamp(20.0, 300.0) as u16
+    fn loop_pattern_tempo(settings: &sequencer::LoopSettings) -> Bpm {
+        let hundredths = match settings.interpretation {
+            sequencer::BpmInterpretation::Half => (settings.source_bpm_x100 + 1) / 2,
+            sequencer::BpmInterpretation::Normal => settings.source_bpm_x100,
+            sequencer::BpmInterpretation::Double => settings.source_bpm_x100.saturating_mul(2),
+        }
+        .clamp(2_000, 30_000);
+        Bpm::from_hundredths(hundredths as u16).unwrap_or(Bpm::DEFAULT)
     }
     fn tracker_keyboard_note(&self, semitone: u8) -> u8 {
         let percussion = self.current_page().is_some_and(|page| page.percussion);
@@ -6256,7 +6285,7 @@ impl App {
         let result = self.loop_player.replace_pattern_slots(
             prepared.slots,
             prepared.faults,
-            f64::from(prepared.tempo),
+            prepared.tempo.as_f64(),
             prepared.meter,
         );
         let (failed, ready) = match result {
@@ -6328,7 +6357,7 @@ impl App {
             )
             .and_then(|decoded| {
                 self.loop_player
-                    .load_slot(slot, decoded, settings, f64::from(tempo), meter)
+                    .load_slot(slot, decoded, settings, tempo.as_f64(), meter)
             });
             if result.is_err() {
                 failed.push(slot);
@@ -6345,10 +6374,11 @@ impl App {
         crate::loop_player::loops_dir()
     }
 
-    fn load_loop_runtime(
+    fn load_loop_runtime_at(
         &mut self,
         decoded: crate::loop_player::DecodedLoop,
         settings: &sequencer::LoopSettings,
+        tempo: Bpm,
     ) -> Result<()> {
         #[cfg(test)]
         if let Some(result) = self.loop_runtime_load_override.as_ref() {
@@ -6367,25 +6397,45 @@ impl App {
             self.loop_slot_selected,
             decoded,
             settings,
-            f64::from(self.current_tempo()),
+            tempo.as_f64(),
             self.current_meter(),
         )
     }
 
-    fn load_loop_settings(&mut self, settings: Option<sequencer::LoopSettings>) -> bool {
-        if !self.loop_editor_can_touch_runtime() {
-            let Some(settings) = settings else {
-                return true;
-            };
-            return crate::loop_player::DecodedLoop::open(
-                &self.loop_library_directory().join(settings.file),
-            )
-            .is_ok();
+    /// Prepare against the prospective detected tempo, then publish the loop
+    /// settings and Pattern tempo together. A failed preparation leaves the
+    /// Project untouched; LoopPlayer::load_slot restores its prior runtime
+    /// publication if backend rebuild fails.
+    fn commit_loop_candidate(
+        &mut self,
+        decoded: crate::loop_player::DecodedLoop,
+        settings: sequencer::LoopSettings,
+    ) -> Result<Bpm> {
+        if self.current_pattern().is_none() {
+            bail!("current Pattern is unavailable");
         }
-        self.suspend_final_bus();
-        let loaded = self.load_loop_settings_for_slot(self.loop_slot_selected, settings);
-        self.retry_final_bus();
-        loaded
+        let prospective_tempo = Self::loop_pattern_tempo(&settings);
+        let update_runtime = self.loop_editor_can_touch_runtime();
+        if update_runtime {
+            self.load_loop_runtime_at(decoded, &settings, prospective_tempo)?;
+        } else {
+            crate::loop_player::validate_prepared_loop(
+                decoded,
+                &settings,
+                prospective_tempo,
+                self.current_meter(),
+            )?;
+        }
+        let slot = self.loop_slot_selected;
+        let pattern = self
+            .current_pattern_mut()
+            .context("current Pattern is unavailable")?;
+        pattern.audio_loops[slot] = Some(settings);
+        pattern.tempo = prospective_tempo;
+        if update_runtime {
+            self.sequencer.tempo(prospective_tempo);
+        }
+        Ok(prospective_tempo)
     }
 
     fn load_loop_settings_for_slot(
@@ -6405,7 +6455,7 @@ impl App {
         &mut self,
         slot: usize,
         settings: Option<sequencer::LoopSettings>,
-        tempo: u16,
+        tempo: Bpm,
         meter: u8,
     ) -> bool {
         self.loop_player.unload_slot(slot);
@@ -6428,7 +6478,7 @@ impl App {
                 return Ok(());
             }
             self.loop_player
-                .load_slot(slot, decoded, &settings, f64::from(tempo), meter)
+                .load_slot(slot, decoded, &settings, tempo.as_f64(), meter)
         });
         match loaded {
             Ok(()) => {
@@ -6461,7 +6511,7 @@ impl App {
         let failed_slots = match self.loop_player.replace_pattern_slots(
             prepared.slots,
             prepared.faults,
-            f64::from(prepared.tempo),
+            prepared.tempo.as_f64(),
             prepared.meter,
         ) {
             Ok(failed) => failed,
@@ -6713,7 +6763,8 @@ impl App {
 
     fn tap_tracker_tempo(&mut self) {
         if let Some(bpm) = self.tap.tap(Instant::now()) {
-            self.set_tracker_tempo(bpm.round().clamp(20.0, 300.0) as u16);
+            let hundredths = (f64::from(bpm).clamp(20.0, 300.0) * 100.0).round() as u16;
+            self.set_tracker_tempo(Bpm::from_hundredths_clamped(hundredths));
         } else {
             self.status = "tap again to set the Pattern tempo".into();
         }
@@ -6895,35 +6946,23 @@ impl App {
             level_x1000: 1000,
             filter_x1000: 0,
         };
-        if self.load_loop_settings(Some(settings)) {
-            let settings = sequencer::LoopSettings {
-                file: entry.file.clone(),
-                source_bpm_x100: (alignment.source_bpm * 100.0).round() as u32,
-                interpretation: sequencer::BpmInterpretation::Normal,
-                start_beat: 0,
-                length_beats: alignment.length_beats,
-                offset_beats: 0,
-                level_x1000: 1000,
-                filter_x1000: 0,
-            };
-            let slot = self.loop_slot_selected;
-            if let Some(pattern) = self.current_pattern_mut() {
-                pattern.audio_loops[slot] = Some(settings.clone());
+        let update_runtime = self.loop_editor_can_touch_runtime();
+        if update_runtime {
+            self.suspend_final_bus();
+        }
+        let committed = self.commit_loop_candidate(decoded, settings);
+        if update_runtime {
+            self.retry_final_bus();
+        }
+        match committed {
+            Ok(tempo) => {
+                self.status = format!("Attached · Pattern {tempo} BPM");
+                true
             }
-            let tempo = self.apply_tracker_tempo(Self::loop_pattern_tempo(&settings));
-            self.status = format!("Attached · Pattern {tempo} BPM");
-            true
-        } else {
-            if self
-                .current_loop_settings(self.loop_slot_selected)
-                .is_some()
-            {
-                self.load_current_loop();
-            } else {
-                self.unload_loop_player();
+            Err(_error) => {
+                self.status = "LOAD FAILED · Pattern loop restored".into();
+                false
             }
-            self.status = "LOAD FAILED · Pattern loop restored".into();
-            false
         }
     }
 
@@ -6977,18 +7016,8 @@ impl App {
                         }
                     }
                 }
-                let loaded = if update_runtime {
-                    self.load_loop_runtime(decoded, &settings)
-                } else {
-                    Ok(())
-                };
-                match loaded {
-                    Ok(()) => {
-                        let slot = self.loop_slot_selected;
-                        if let Some(pattern) = self.current_pattern_mut() {
-                            pattern.audio_loops[slot] = Some(settings.clone());
-                        }
-                        let tempo = self.apply_tracker_tempo(Self::loop_pattern_tempo(&settings));
+                match self.commit_loop_candidate(decoded, settings) {
+                    Ok(tempo) => {
                         self.status =
                             format!("Imported · {0} bar(s) · {tempo} BPM", alignment.bars);
                         if update_runtime {
@@ -7034,20 +7063,27 @@ impl App {
                     self.current_tempo(),
                     self.current_meter(),
                 );
-                if let Some(settings) = self.current_loop_settings_mut(self.loop_slot_selected) {
-                    settings.source_bpm_x100 = (alignment.source_bpm * 100.0).round() as u32;
-                    settings.interpretation = sequencer::BpmInterpretation::Normal;
-                    settings.start_beat = 0;
-                    settings.length_beats = alignment.length_beats;
-                    settings.offset_beats = 0;
+                let mut candidate = settings;
+                candidate.source_bpm_x100 = (alignment.source_bpm * 100.0).round() as u32;
+                candidate.interpretation = sequencer::BpmInterpretation::Normal;
+                candidate.start_beat = 0;
+                candidate.length_beats = alignment.length_beats;
+                candidate.offset_beats = 0;
+                let update_runtime = self.loop_editor_can_touch_runtime();
+                if update_runtime {
+                    self.suspend_final_bus();
                 }
-                let tempo = self
-                    .current_loop_settings(self.loop_slot_selected)
-                    .map(Self::loop_pattern_tempo)
-                    .map(|tempo| self.apply_tracker_tempo(tempo))
-                    .unwrap_or_else(|| self.current_tempo());
-                if self.load_current_loop() {
-                    self.status = format!("Aligned · {} bar(s) · {tempo} BPM", alignment.bars);
+                let committed = self.commit_loop_candidate(decoded, candidate);
+                if update_runtime {
+                    self.retry_final_bus();
+                }
+                match committed {
+                    Ok(tempo) => {
+                        self.status = format!("Aligned · {} bar(s) · {tempo} BPM", alignment.bars);
+                    }
+                    Err(_error) => {
+                        self.status = "ALIGN FAILED · Pattern loop restored".into();
+                    }
                 }
             }
             Err(_error) => self.status = "ALIGN FAILED · retry AUTO".into(),
@@ -7423,11 +7459,134 @@ impl App {
         }
     }
     fn load_song(&mut self) {
+        if self.tracker_files_mode == TrackerFilesMode::Midi {
+            self.midi_import_action();
+            return;
+        }
         let Some(name) = self.song_list.get(self.song_selected).cloned() else {
             self.status = "no saved songs".into();
             return;
         };
         self.begin_project_action(PendingProjectAction::Load(name));
+    }
+
+    fn open_midi_import(&mut self) {
+        if fs::create_dir_all(&self.config.external_midi.import_directory).is_err() {
+            self.status = "MIDI INBOX FAILED · check configured path".into();
+            return;
+        }
+        self.midi_imports =
+            crate::midi_import::discover(&self.config.external_midi.import_directory);
+        self.midi_import_selected = self
+            .midi_import_selected
+            .min(self.midi_imports.len().saturating_sub(1));
+        self.midi_import_candidate = None;
+        self.tracker_files_mode = TrackerFilesMode::Midi;
+        self.reset_context_page();
+        self.status = if self.midi_imports.is_empty() {
+            "NO MIDI · add .mid/.midi to private inbox".into()
+        } else {
+            "Select MIDI · LOAD/press analyses safely".into()
+        };
+    }
+
+    fn midi_import_action(&mut self) {
+        if self.tracker_files_mode != TrackerFilesMode::Midi {
+            self.open_midi_import();
+            return;
+        }
+        let Some(path) = self.midi_imports.get(self.midi_import_selected).cloned() else {
+            self.status = "NO MIDI · add .mid/.midi to private inbox".into();
+            return;
+        };
+        if self
+            .midi_import_candidate
+            .as_ref()
+            .is_some_and(|(candidate, _)| candidate == &path)
+        {
+            self.begin_project_action(PendingProjectAction::ImportMidi);
+            return;
+        }
+        match crate::midi_import::import_path(&path) {
+            Ok(imported) => {
+                let report = &imported.report;
+                self.status = format!(
+                    "ANALYSED · {} parts · {} pages · {} PAT · press LOAD",
+                    report.parts, report.pages, report.patterns
+                );
+                self.midi_import_candidate = Some((path, imported));
+            }
+            Err(error) => {
+                self.midi_import_candidate = None;
+                self.status = format!(
+                    "MIDI FAILED · {}",
+                    crate::ui_text::fit_middle(&error.to_string(), 25)
+                );
+            }
+        }
+    }
+
+    fn commit_midi_import(&mut self) {
+        let Some((path, imported)) = self.midi_import_candidate.take() else {
+            self.status = "MIDI ANALYSIS EXPIRED · retry LOAD".into();
+            return;
+        };
+        if let Err(status) = self.publish_project_audio_runtime(
+            &imported.song.insert_rack,
+            &imported.song.aux_routing,
+            &imported.song.master_strip,
+        ) {
+            self.midi_import_candidate = Some((path, imported));
+            self.status = status;
+            return;
+        }
+        // Replacement begins only after parsing, conversion, validation, and
+        // runtime graph preparation have succeeded.
+        self.cancel_note_editor();
+        self.cancel_tracker_gesture();
+        self.stop_tracker_recording();
+        self.sequencer.stop();
+        self.song_previewing = false;
+        self.loop_player.stop();
+        for slot in 0..crate::loop_player::LOOP_SLOTS {
+            self.loop_player.unload_slot(slot);
+        }
+        let report = imported.report;
+        self.song = imported.song;
+        if self.song == self.project_clean_baseline {
+            self.project_clean_baseline.name.push_str(" · saved");
+        }
+        self.song_file_stem = None;
+        self.live_patterns.reset_for_project(&self.song);
+        self.live_shape_focus = None;
+        self.live_activation_seen = 0;
+        self.live_prepare_seen = None;
+        self.loop_activation_seen = 0;
+        self.loop_runtime_pattern = None;
+        self.prepared_pattern_loops = None;
+        self.loop_slot_selected = 0;
+        self.reset_multichannel_monitor_context();
+        self.tracker_order = 0;
+        self.tracker_row = 0;
+        self.tracker_page = 0;
+        self.tracker_track = 0;
+        self.tracker_mode = TrackerMode::Play;
+        self.tracker_recording = None;
+        self.page_manager_original = None;
+        self.page_field_original = None;
+        self.page_manager_mode = PageManagerMode::Pages;
+        self.arrange_selected = 0;
+        self.confirm_song_save = None;
+        self.confirm_song_delete = None;
+        self.confirm_pattern_clear = false;
+        self.confirm_pattern_paste_over = None;
+        self.refresh_page_targets();
+        self.sync_tracker_route();
+        self.set_screen(Screen::Tracker);
+        self.status = format!(
+            "IMPORTED · {} parts · {} pages · UNSAVED",
+            report.parts, report.pages
+        );
     }
 
     fn load_song_named(&mut self, name: &str) {
@@ -11460,6 +11619,11 @@ fn perform(
                     TrackerFilesMode::Drums => {
                         a.move_drum_selection(-1);
                     }
+                    TrackerFilesMode::Midi => {
+                        a.midi_import_selected =
+                            wrapped_index(a.midi_import_selected, a.midi_imports.len(), -1);
+                        a.midi_import_candidate = None;
+                    }
                     TrackerFilesMode::Patterns => {}
                 }
             } else if a.screen == Screen::TrackerArrange {
@@ -11514,6 +11678,11 @@ fn perform(
                     }
                     TrackerFilesMode::Drums => {
                         a.move_drum_selection(1);
+                    }
+                    TrackerFilesMode::Midi => {
+                        a.midi_import_selected =
+                            wrapped_index(a.midi_import_selected, a.midi_imports.len(), 1);
+                        a.midi_import_candidate = None;
                     }
                     TrackerFilesMode::Patterns => {}
                 }
@@ -11577,6 +11746,11 @@ fn perform(
                 if let Some(index) = a.filtered_drum_indices().first() {
                     a.drum_pattern_selected = *index;
                 }
+            } else if a.screen == Screen::TrackerFiles
+                && a.tracker_files_mode == TrackerFilesMode::Midi
+            {
+                a.midi_import_selected = 0;
+                a.midi_import_candidate = None;
             } else {
                 a.selected = 0;
             }
@@ -11592,6 +11766,11 @@ fn perform(
                 if let Some(index) = a.filtered_drum_indices().last() {
                     a.drum_pattern_selected = *index;
                 }
+            } else if a.screen == Screen::TrackerFiles
+                && a.tracker_files_mode == TrackerFilesMode::Midi
+            {
+                a.midi_import_selected = a.midi_imports.len().saturating_sub(1);
+                a.midi_import_candidate = None;
             } else {
                 a.selected = a.presets.len().saturating_sub(1);
             }
@@ -11629,6 +11808,7 @@ fn perform(
                 TrackerFilesMode::Projects => a.load_song(),
                 TrackerFilesMode::Patterns => {}
                 TrackerFilesMode::Drums => a.load_drum_pattern(),
+                TrackerFilesMode::Midi => a.midi_import_action(),
             },
             Screen::TrackerArrange => a.arrangement_jump_to_pattern(),
             Screen::TrackerPages => a.confirm_page_manager(),
@@ -11845,6 +12025,13 @@ fn perform(
                         a.status.clear();
                         return false;
                     }
+                    TrackerFilesMode::Midi => {
+                        a.tracker_files_mode = TrackerFilesMode::Projects;
+                        a.midi_import_candidate = None;
+                        a.reset_context_page();
+                        a.status.clear();
+                        return false;
+                    }
                     TrackerFilesMode::Projects => {}
                 }
             }
@@ -11981,6 +12168,7 @@ fn perform(
         Action::LiveShapeTranspose => a.select_live_shape(LiveShapeFocus::Transpose),
         Action::NextTrackerPage => a.move_tracker_page(1),
         Action::PreviewSong => a.preview_song(),
+        Action::MidiImport => a.midi_import_action(),
         Action::DeleteSong => a.delete_song(),
         Action::RenameProject => a.begin_project_rename(),
         Action::OpenPatternTools => a.open_pattern_tools(),
@@ -12581,11 +12769,11 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 return false;
             }
             KeyCode::Char('<') => {
-                a.set_tracker_tempo(a.current_tempo().saturating_sub(1));
+                a.set_tracker_tempo(a.current_tempo().adjust_whole(-1));
                 return false;
             }
             KeyCode::Char('>') => {
-                a.set_tracker_tempo(a.current_tempo().saturating_add(1));
+                a.set_tracker_tempo(a.current_tempo().adjust_whole(1));
                 return false;
             }
             KeyCode::Char('l') => {
@@ -12946,22 +13134,27 @@ fn mouse(
             } else if a.screen == Screen::TrackerFiles && contains(a.hits.list, m.column, m.row) {
                 a.prepare_confirmation_action(Action::Noop);
                 let filtered = a.filtered_drum_indices();
-                let (selected, len) = if a.tracker_files_mode == TrackerFilesMode::Drums {
-                    (
+                let (selected, len) = match a.tracker_files_mode {
+                    TrackerFilesMode::Drums => (
                         filtered
                             .iter()
                             .position(|index| *index == a.drum_pattern_selected)
                             .unwrap_or(0),
                         filtered.len(),
-                    )
-                } else {
-                    (a.song_selected, a.song_list.len())
+                    ),
+                    TrackerFilesMode::Midi => (a.midi_import_selected, a.midi_imports.len()),
+                    TrackerFilesMode::Projects | TrackerFilesMode::Patterns => {
+                        (a.song_selected, a.song_list.len())
+                    }
                 };
                 let offset = selected.saturating_sub(a.hits.list.height.saturating_sub(1) as usize);
                 let i = visible_index(a.hits.list, offset, m.column, m.row).unwrap();
                 if i < len {
                     if a.tracker_files_mode == TrackerFilesMode::Drums {
                         a.drum_pattern_selected = filtered[i];
+                    } else if a.tracker_files_mode == TrackerFilesMode::Midi {
+                        a.midi_import_selected = i;
+                        a.midi_import_candidate = None;
                     } else {
                         a.song_selected = i;
                     }
@@ -13131,6 +13324,9 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
             format!("LOAD {}", crate::ui_text::fit_middle(name, 29)),
             "D/LOAD · discard and load",
         ),
+        PendingProjectAction::ImportMidi => {
+            ("IMPORT ANALYSED MIDI".into(), "D/LOAD · discard and import")
+        }
         PendingProjectAction::Quit => ("QUIT SHR-DAW".into(), "D/LOAD · discard and quit"),
     };
     f.render_widget(Clear, area);
@@ -17072,6 +17268,65 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         );
         return;
     }
+    if a.tracker_files_mode == TrackerFilesMode::Midi {
+        if let Some((path, imported)) = a.midi_import_candidate.as_ref() {
+            if a.midi_imports
+                .get(a.midi_import_selected)
+                .is_some_and(|selected| selected == path)
+            {
+                let report = &imported.report;
+                let tempo = report
+                    .tempos
+                    .first()
+                    .map_or_else(|| "120".into(), |event| event.tempo.to_string());
+                let tempo = if report.tempos.len() > 1 {
+                    format!("{tempo} +{} changes", report.tempos.len() - 1)
+                } else {
+                    tempo
+                };
+                let meter = report.meter_mapping.as_deref().map_or_else(
+                    || format!("{}/{}", report.source_meter.0, report.source_meter.1),
+                    |_| {
+                        format!(
+                            "{}/{} → {}/4",
+                            report.source_meter.0, report.source_meter.1, report.project_meter
+                        )
+                    },
+                );
+                let warning = report
+                    .warnings()
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "No musical events stripped".into());
+                let lines = vec![
+                    Spans::from(format!("{} parts · {} pages", report.parts, report.pages)),
+                    Spans::from(format!(
+                        "{} Pattern(s) · {} rows · {} step/beat",
+                        report.patterns, report.rows, report.steps_per_beat
+                    )),
+                    Spans::from(format!("{tempo} BPM · {meter}")),
+                    Spans::from(format!(
+                        "exact {} · quant {} · max {}t",
+                        report.exact_events,
+                        report.quantized_events,
+                        report.maximum_displacement_ticks
+                    )),
+                    Spans::from(format!("stripped {}", report.stripped.compact())),
+                    Spans::from(crate::ui_text::fit_line(&warning, 36)),
+                    Spans::from("LOAD/MIDI again · confirm import"),
+                ];
+                f.render_widget(
+                    Paragraph::new(lines).alignment(Alignment::Center).block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(" MIDI ANALYSIS "),
+                    ),
+                    rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
+                );
+                return;
+            }
+        }
+    }
     let list = rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4));
     let inner = rect(
         list.x + 1,
@@ -17112,6 +17367,20 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 a.drum_target_rows,
                 filtered.len()
             ),
+        )
+    } else if a.tracker_files_mode == TrackerFilesMode::Midi {
+        (
+            a.midi_import_selected,
+            a.midi_imports
+                .iter()
+                .map(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("MIDI")
+                        .to_owned()
+                })
+                .collect(),
+            format!(" private MIDI inbox · {} ", a.midi_imports.len()),
         )
     } else {
         (
@@ -18108,7 +18377,7 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
                 ..settings
             });
             if let Some(pattern) = app.current_pattern_mut() {
-                pattern.tempo = 96;
+                pattern.tempo = Bpm::from_whole(96).unwrap();
             }
             app.loop_edit_bars = true;
             app.loop_player
@@ -18650,7 +18919,7 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
             configure_screenshot_scenario(app, ScreenshotScenario::TrackerLoop);
             app.select_tracker_order(1);
             let pattern = app.current_pattern_mut().expect("Pattern B");
-            pattern.tempo = 96;
+            pattern.tempo = Bpm::from_whole(96).unwrap();
             pattern.audio_loops = std::array::from_fn(|_| None);
             pattern.audio_loops[0] = Some(sequencer::LoopSettings::new(
                 "pattern-b-drums.wav".into(),
@@ -18748,7 +19017,7 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
             if let Some(pattern) = app.song.patterns.get_mut(&1) {
                 pattern.audio_loops[0] = Some(sequencer::LoopSettings::new(
                     "incoming-drums.wav".into(),
-                    u32::from(pattern.tempo) * 100,
+                    u32::from(pattern.tempo.hundredths()),
                     sequencer::BpmInterpretation::Normal,
                     0,
                     4,
@@ -18756,7 +19025,7 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
                 ));
                 pattern.audio_loops[1] = Some(sequencer::LoopSettings::new(
                     "incoming-bass.wav".into(),
-                    u32::from(pattern.tempo) * 100,
+                    u32::from(pattern.tempo.hundredths()),
                     sequencer::BpmInterpretation::Normal,
                     0,
                     8,
@@ -18907,7 +19176,7 @@ fn fill_demo_song(app: &mut App) {
     song.name = "dusk-project".into();
     song.order = vec![0, 1, 0, 2];
     if let Some(pattern) = song.patterns.get_mut(&0) {
-        pattern.tempo = 120;
+        pattern.tempo = Bpm::from_whole(120).unwrap();
         pattern.meter = 4;
         pattern.pages[0].target = PageTarget::ConfiguredExternal;
         pattern.rows[0][0] = demo_cell(60, 0x60, Command::Delay(0));
@@ -18918,7 +19187,7 @@ fn fill_demo_song(app: &mut App) {
             note: Note::Off,
             ..Cell::default()
         };
-        pattern.rows[4][0] = demo_cell(62, 0x62, Command::Tempo(120));
+        pattern.rows[4][0] = demo_cell(62, 0x62, Command::Tempo(Bpm::from_whole(120).unwrap()));
         pattern.rows[4][1] = demo_cell(65, 0x50, Command::None);
         pattern.rows[4][2] = demo_cell(69, 0x55, Command::None);
         pattern.rows[7][0] = demo_cell(55, 0x6a, Command::None);
@@ -18935,10 +19204,10 @@ fn fill_demo_song(app: &mut App) {
     }
     if let Some(setup) = song.patterns.get(&0).cloned() {
         let mut second = sequencer::Pattern::empty_like_setup(32, &setup);
-        second.tempo = 92;
+        second.tempo = Bpm::from_whole(92).unwrap();
         song.patterns.insert(1, second);
         let mut third = sequencer::Pattern::empty_like_setup(24, &setup);
-        third.tempo = 135;
+        third.tempo = Bpm::from_whole(135).unwrap();
         third.meter = 3;
         third.pages.truncate(1);
         for row in &mut third.rows {
@@ -19147,6 +19416,72 @@ mod tests {
         let mut t = Terminal::new(b).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
         assert_eq!(t.backend().buffer().area, Rect::new(0, 0, w, h));
+    }
+
+    #[test]
+    fn midi_import_analysis_guard_commit_and_failure_preserve_project_contract() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerFiles;
+        a.tracker_files_mode = TrackerFilesMode::Midi;
+        a.midi_imports = vec![PathBuf::from("demos/house-of-the-rising-sun.mid")];
+        a.song.name = "dirty-before-import".into();
+        let original = a.song.clone();
+        let original_cursor = (
+            a.tracker_order,
+            a.tracker_row,
+            a.tracker_page,
+            a.tracker_track,
+        );
+
+        a.midi_import_action();
+        assert_eq!(a.song, original, "analysis must not replace the Project");
+        assert!(a.midi_import_candidate.is_some());
+        let native = buffer_text(&render_app(&mut a, 40, 13));
+        assert!(native.contains("MIDI ANALYSIS"));
+        let compact = buffer_text(&render_app(&mut a, 38, 12));
+        assert!(compact.contains("MIDI ANALYSIS"));
+
+        a.midi_import_action();
+        assert_eq!(
+            a.pending_project_action,
+            Some(PendingProjectAction::ImportMidi)
+        );
+        a.cancel_project_action();
+        assert_eq!(a.song, original);
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track
+            ),
+            original_cursor
+        );
+
+        a.midi_import_action();
+        a.discard_for_project_action();
+        assert_eq!(a.song.name, "house-of-the-rising-sun");
+        assert_eq!(a.song_file_stem, None);
+        assert!(a.project_is_dirty());
+        assert_eq!(a.song.patterns[&0].tempo.to_string(), "84");
+
+        let base = std::env::temp_dir().join(format!("shr-midi-ui-failure-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let bad = base.join("broken.mid");
+        fs::write(&bad, b"MThd").unwrap();
+        let mut failed = app(&p);
+        failed.screen = Screen::TrackerFiles;
+        failed.tracker_files_mode = TrackerFilesMode::Midi;
+        failed.midi_imports = vec![bad.clone()];
+        let before = failed.song.clone();
+        failed.midi_import_action();
+        assert_eq!(failed.song, before);
+        assert_eq!(failed.midi_import_selected, 0);
+        assert!(failed.midi_import_candidate.is_none());
+        assert!(failed.status.contains("MIDI FAILED"));
+        let _ = fs::remove_file(bad);
+        let _ = fs::remove_dir(base);
     }
     fn render_app(app: &mut App, width: u16, height: u16) -> Buffer {
         let backend = TestBackend::new(width, height);
@@ -19512,6 +19847,58 @@ mod tests {
         );
         assert!(a.current_loop_settings(0).is_none());
         assert_eq!(fs::read_dir(&library).unwrap().count(), 0);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn failed_decimal_loop_import_keeps_old_pattern_attachment_tempo_and_private_files() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-loop-decimal-rollback-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let inbox = base.join("inbox");
+        let library = base.join("library");
+        fs::create_dir_all(&inbox).unwrap();
+        fs::create_dir_all(&library).unwrap();
+        let source = inbox.join("candidate.wav");
+        let old_file = library.join("old.wav");
+        write_test_loop(&source);
+        write_test_loop(&old_file);
+
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerLoop;
+        a.loop_imports = vec![source];
+        a.loop_library_directory_override = Some(library.clone());
+        let old_settings = sequencer::LoopSettings::new(
+            "old.wav".into(),
+            10_050,
+            sequencer::BpmInterpretation::Normal,
+            0,
+            4,
+            0,
+        );
+        let pattern = a.current_pattern_mut().unwrap();
+        pattern.tempo = "100.50".parse().unwrap();
+        pattern.audio_loops[0] = Some(old_settings);
+        let original = a.song.clone();
+        a.loop_runtime_load_override = Some(Err("prepare injection".into()));
+
+        assert!(!a.import_selected_loop());
+        assert_eq!(a.song, original);
+        assert!(old_file.exists());
+        assert_eq!(
+            fs::read_dir(&library)
+                .unwrap()
+                .filter_map(std::result::Result::ok)
+                .count(),
+            1,
+            "failed candidate copy must be removed without touching the old WAV"
+        );
         fs::remove_dir_all(&base).unwrap();
     }
 
@@ -23533,7 +23920,7 @@ mod tests {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
-        a.song.patterns.get_mut(&0).unwrap().tempo = 137;
+        a.song.patterns.get_mut(&0).unwrap().tempo = Bpm::from_whole(137).unwrap();
         let now = Instant::now();
         a.tap.tap(now);
         a.tap.tap(now + Duration::from_millis(500));
@@ -25092,7 +25479,7 @@ mod tests {
             Command::Cut(1),
             Command::Delay(2),
             Command::Retrigger(3),
-            Command::Tempo(140),
+            Command::Tempo(Bpm::from_whole(140).unwrap()),
         ]
         .into_iter()
         .enumerate()

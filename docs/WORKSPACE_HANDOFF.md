@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.100`.
+corrected starting point; the current checked-progress version is `0.3.101`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -116,6 +116,33 @@ overflows and byte-identical playback/WAV PCM. No JACK server, synth, MIDI,
 audible playback, hardware recording, listening approval, or physical
 acceptance was performed. Synthetic WAV evidence is ignored below
 `user/master-strip-validation-20260726-final/`.
+
+Version `0.3.101` adds deterministic hundredths-of-a-BPM Project tempo and
+bounded Standard MIDI File import. Project format 10 stores Pattern and tempo
+command values as integer hundredths; formats 0–9 migrate their whole-BPM
+values only in memory until an explicit save. Loop preparation now validates
+against the prospective detected Pattern tempo and commits its private file,
+attachment, runtime, and tempo only after preparation succeeds.
+
+FILES MIDI reads only regular, no-follow `.mid`/`.midi` files from the private
+configured inbox. The dedicated tick-domain parser accepts SMF format 0/1 PPQN
+with running status, conductor metadata, fixed 3/4 and 4/4, and 6/8 mapped to
+the compound 3/4 tracker grid. Conversion retains track/channel parts, initial
+bank/program, pitch, velocity, sustain-baked duration, decimal tempo maps,
+four-lane allocation, overflow pages, and bar-boundary Pattern splits in a new
+unsaved Project. Unsupported musical/system data is stripped and counted;
+format 2, SMPTE, changing meter, malformed data, symlinks, and bounded-limit
+violations are refused before Project replacement.
+
+The repository-only `0.3.101` pass on 2026-07-27 used Rust 1.85. Locked check
+and formatting passed. Focused parser/converter, decimal tempo, Project-format
+0–10 migration/round-trip, native loop preparation/rollback, FILES import,
+storage, and all navigation tests passed; the bundled House fixture imports as
+84 BPM, compound 3/4, 160 rows, 254 starts, five pages, and zero quantized
+starts. All 46 public Markdown sources and 134 local image references validated,
+and `git diff --check` passed. No complete suite, Clippy, release build,
+screenshot regeneration, JACK server, synth, MIDI transmission, playback,
+recording, audible test, or physical hardware test was run.
 
 Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical

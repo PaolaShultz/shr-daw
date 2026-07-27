@@ -26,6 +26,7 @@ mod loop_player;
 mod master_strip;
 mod midi;
 mod midi_endpoint;
+mod midi_import;
 mod multichannel_meter;
 mod navigation;
 mod note_lifecycle;
@@ -37,6 +38,7 @@ mod recording;
 mod scale;
 mod sequencer;
 mod startup_splash;
+mod tempo;
 mod ui;
 mod ui_text;
 

@@ -1,4 +1,5 @@
 use crate::chord::NoteNaming;
+use crate::tempo::Bpm;
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
@@ -54,7 +55,9 @@ pub struct ExternalMidiConfig {
     pub bank_select: BankSelectMode,
     pub program_changes: bool,
     pub send_transport: bool,
-    pub default_tempo: u16,
+    pub default_tempo: Bpm,
+    /// Private inbox used only for Standard MIDI File import.
+    pub import_directory: PathBuf,
     pub default_pattern_rows: usize,
     pub steps_per_beat: u8,
     pub live_thru: bool,
@@ -353,7 +356,8 @@ impl Default for RuntimeConfig {
                 bank_select: BankSelectMode::Off,
                 program_changes: false,
                 send_transport: false,
-                default_tempo: 120,
+                default_tempo: Bpm::DEFAULT,
+                import_directory: default_midi_import_directory(),
                 default_pattern_rows: 64,
                 steps_per_beat: 4,
                 live_thru: false,
@@ -652,7 +656,14 @@ impl RuntimeConfig {
                     self.external_midi.send_transport = boolean(key, value)?
                 }
                 "external_midi.default_tempo" => {
-                    self.external_midi.default_tempo = bounded_usize(key, value, 20, 300)? as u16
+                    self.external_midi.default_tempo = value
+                        .parse::<Bpm>()
+                        .with_context(|| format!("{key} must be 20.00..=300.00 BPM"))?
+                }
+                "external_midi.import_directory" => {
+                    if !value.is_empty() {
+                        self.external_midi.import_directory = expand_home(value);
+                    }
                 }
                 "external_midi.pattern_rows" => {
                     self.external_midi.default_pattern_rows = bounded_usize(key, value, 1, 256)?
@@ -968,10 +979,11 @@ impl RuntimeConfig {
             text.push_str("external_midi.percussion_note=\n");
         }
         text.push_str(&format!(
-            "external_midi.bank_select={}\nexternal_midi.program_changes={}\nexternal_midi.send_transport={}\nexternal_midi.default_tempo={}\nexternal_midi.pattern_rows={}\nexternal_midi.steps_per_beat={}\nexternal_midi.live_thru={}\nexternal_midi.profile={}\nexternal_midi.gate_percent={}\nexternal_midi.gesture_settle_ms={}\ncontroller_clock.enabled={}\ncontroller_clock.client={}\ncontroller_clock.output={}\ncapture.client={}\ncapture.directory={}\ncapture.ring_frames={}\ncapture.maximum_callback_frames={}\n",
+            "external_midi.bank_select={}\nexternal_midi.program_changes={}\nexternal_midi.send_transport={}\nexternal_midi.default_tempo={}\nexternal_midi.import_directory={}\nexternal_midi.pattern_rows={}\nexternal_midi.steps_per_beat={}\nexternal_midi.live_thru={}\nexternal_midi.profile={}\nexternal_midi.gate_percent={}\nexternal_midi.gesture_settle_ms={}\ncontroller_clock.enabled={}\ncontroller_clock.client={}\ncontroller_clock.output={}\ncapture.client={}\ncapture.directory={}\ncapture.ring_frames={}\ncapture.maximum_callback_frames={}\n",
             match self.external_midi.bank_select { BankSelectMode::Off => "off", BankSelectMode::Cc0 => "cc0", BankSelectMode::Cc0Cc32 => "cc0+cc32" },
             self.external_midi.program_changes, self.external_midi.send_transport,
-            self.external_midi.default_tempo, self.external_midi.default_pattern_rows,
+            self.external_midi.default_tempo, self.external_midi.import_directory.display(),
+            self.external_midi.default_pattern_rows,
             self.external_midi.steps_per_beat, self.external_midi.live_thru,
             self.external_midi.profile, self.external_midi.gate_percent, self.external_midi.gesture_settle.as_millis(),
             self.controller_clock.enabled, self.controller_clock.client_name,
@@ -1084,6 +1096,18 @@ fn expand_home(value: &str) -> PathBuf {
     PathBuf::from(value)
 }
 
+fn default_midi_import_directory() -> PathBuf {
+    if let Some(path) = env::var_os("SHSYNTH_MIDI_INBOX") {
+        return PathBuf::from(path);
+    }
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env::var_os("HOME").unwrap_or_else(|| ".".into())).join(".local/share")
+        })
+        .join("shsynth/midi-inbox")
+}
+
 fn atomic_write(path: &Path, text: &str) -> Result<()> {
     crate::fsutil::atomic_write(path, text.as_bytes())
 }
@@ -1107,6 +1131,35 @@ mod tests {
         );
         fs::write(&path, "display.note_names=solfege\n").unwrap();
         assert!(RuntimeConfig::load(&path).is_err());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn decimal_default_tempo_and_private_midi_inbox_round_trip() {
+        let path =
+            std::env::temp_dir().join(format!("shsynth-decimal-tempo-{}.conf", std::process::id()));
+        fs::write(
+            &path,
+            "external_midi.default_tempo=100.50\nexternal_midi.import_directory=~/Music/private-midi\n",
+        )
+        .unwrap();
+        let config = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(config.external_midi.default_tempo.to_string(), "100.50");
+        assert!(config
+            .external_midi
+            .import_directory
+            .ends_with("Music/private-midi"));
+        config.save(&path).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("external_midi.default_tempo=100.50\n"));
+        assert_eq!(
+            RuntimeConfig::load(&path)
+                .unwrap()
+                .external_midi
+                .default_tempo
+                .to_string(),
+            "100.50"
+        );
         let _ = fs::remove_file(path);
     }
 

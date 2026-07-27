@@ -19,7 +19,7 @@ source plus aux sum
 
 The MASTER rack remains the reorderable creative/corrective rack. The MASTER
 STRIP is one fixed stereo processor, not another rack. Its settings do not
-follow Pattern changes. Project format 9 stores one strict strip record;
+follow Pattern changes. Project formats 9 and 10 store one strict strip record;
 formats 0–8 acquire the neutral record in memory without rewriting the source
 Project. Unknown fields, missing fields, invalid/non-finite values, an unknown
 strip version, and newer Project formats are rejected before replacement.

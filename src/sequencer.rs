@@ -5,6 +5,7 @@ use crate::config::{BankSelectMode, ExternalMidiConfig};
 use crate::device_profile::Registry as DeviceProfiles;
 use crate::master_strip::MasterStripSettings;
 use crate::preset::BackendKind;
+use crate::tempo::Bpm;
 use anyhow::{anyhow, bail, Context, Result};
 use midir::{MidiOutput, MidiOutputConnection};
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,7 +16,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 9;
+pub const SONG_VERSION: u8 = 10;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
@@ -274,7 +275,7 @@ pub struct Lane {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Pattern {
-    pub tempo: u16,
+    pub tempo: Bpm,
     pub meter: u8,
     pub audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT],
     pub pages: Vec<Page>,
@@ -307,7 +308,7 @@ pub enum Command {
     Cut(u8),
     Delay(u8),
     Retrigger(u8),
-    Tempo(u16),
+    Tempo(Bpm),
 }
 
 impl Command {
@@ -340,10 +341,9 @@ impl Cell {
             Command::None => {}
             Command::Cut(tick) | Command::Delay(tick) if tick <= 15 => {}
             Command::Retrigger(count) if (1..=8).contains(&count) => {}
-            Command::Tempo(bpm) if (20..=300).contains(&bpm) => {}
+            Command::Tempo(_) => {}
             Command::Cut(_) | Command::Delay(_) => bail!("command tick must be 0..=15"),
             Command::Retrigger(_) => bail!("retrigger count must be 1..=8"),
-            Command::Tempo(_) => bail!("tempo command must be 20..=300 BPM"),
         }
         Ok(())
     }
@@ -659,7 +659,7 @@ pub fn routing_defaults_path() -> PathBuf {
 }
 
 pub fn save_routing_defaults(path: &Path, pages: &[Page]) -> Result<()> {
-    let pattern = Pattern::new(1, 120, 4, pages.to_vec());
+    let pattern = Pattern::new(1, Bpm::DEFAULT, 4, pages.to_vec());
     let song = Song {
         name: "FT2 routing defaults".into(),
         steps_per_beat: 4,
@@ -822,9 +822,9 @@ impl Song {
 }
 
 impl Pattern {
-    pub fn new(rows: usize, tempo: u16, meter: u8, pages: Vec<Page>) -> Self {
+    pub fn new(rows: usize, tempo: Bpm, meter: u8, pages: Vec<Page>) -> Self {
         let mut pattern = Self {
-            tempo: tempo.clamp(20, 300),
+            tempo,
             meter,
             audio_loops: std::array::from_fn(|_| None),
             pages,
@@ -868,7 +868,7 @@ impl Pattern {
         let pages = (0..tracks.div_ceil(LANES_PER_PAGE))
             .map(|index| Page::new(&format!("PAGE {}", index + 1), 0, false, 0))
             .collect::<Vec<_>>();
-        Self::new(rows, 120, 4, pages)
+        Self::new(rows, Bpm::DEFAULT, 4, pages)
     }
 
     pub fn total_lanes(&self) -> usize {
@@ -911,7 +911,7 @@ impl Pattern {
     }
 
     fn validate(&self) -> Result<()> {
-        if !(20..=300).contains(&self.tempo) || !matches!(self.meter, 3 | 4) {
+        if !matches!(self.meter, 3 | 4) {
             bail!("pattern tempo/meter out of range");
         }
         if self.pages.is_empty() || self.pages.len() > 64 {
@@ -1311,7 +1311,7 @@ pub fn encode(song: &Song) -> Result<String> {
         out.push_str(&format!(
             "pattern={number}|{}|{}|{}\n",
             pattern.rows.len(),
-            pattern.tempo,
+            pattern.tempo.hundredths(),
             pattern.meter
         ));
         for (slot, audio_loop) in pattern.audio_loops.iter().enumerate() {
@@ -1538,7 +1538,14 @@ pub fn decode(text: &str) -> Result<Song> {
                             .insert(
                                 number,
                                 Pattern {
-                                    tempo: tempo.parse()?,
+                                    tempo: if version >= 10 {
+                                        Bpm::from_hundredths(tempo.parse()?).context(
+                                            "pattern tempo must be 2000..=30000 hundredths",
+                                        )?
+                                    } else {
+                                        Bpm::from_whole(tempo.parse()?)
+                                            .context("legacy pattern tempo must be 20..=300 BPM")?
+                                    },
                                     meter: meter.parse()?,
                                     audio_loops: std::array::from_fn(|_| None),
                                     pages: Vec::new(),
@@ -1627,7 +1634,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        6..=9,
+                        6..=10,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor],
                     ) => (
                         Page {
@@ -1733,7 +1740,7 @@ pub fn decode(text: &str) -> Result<Song> {
             velocity: optional_midi(f[4])?,
             program: optional_midi(f[5])?,
             gate: optional_gate(f[6])?,
-            command: parse_command(f[7])?,
+            command: parse_command(f[7], version)?,
         };
     }
     let song = Song {
@@ -2075,7 +2082,7 @@ pub fn schedule(
         };
         for (row_index, row) in pattern.rows.iter().enumerate().skip(first_row) {
             let row_duration =
-                Duration::from_secs_f64(60.0 / f64::from(tempo) / f64::from(song.steps_per_beat));
+                Duration::from_secs_f64(60.0 / tempo.as_f64() / f64::from(song.steps_per_beat));
             // A row is part of the transport even when it contains no MIDI.
             // Keep this marker ahead of messages at the same instant so the
             // play cursor moves before that row's notes are sent.
@@ -2113,7 +2120,7 @@ pub fn schedule(
                     continue;
                 }
                 if let Command::Tempo(new_tempo) = cell.command {
-                    tempo = new_tempo.clamp(20, 300);
+                    tempo = new_tempo;
                 }
                 let delay = match cell.command {
                     Command::Delay(tick) => row_duration.mul_f64(f64::from(tick.min(15)) / 16.0),
@@ -2166,15 +2173,7 @@ pub fn schedule(
                         // shorter explicit gates retain their existing timing.
                         let explicit_release = cell.gate == Some(100)
                             && pulses == 1
-                            && pattern
-                                .rows
-                                .iter()
-                                .skip(row_index + 1)
-                                .find_map(|later| match later[lane_index].note {
-                                    Note::Off | Note::On(_) => Some(true),
-                                    Note::Empty => None,
-                                })
-                                .unwrap_or(false);
+                            && has_later_lane_event(song, order_index, row_index, lane_index);
                         for pulse in 0..pulses {
                             let pulse_at = event_at
                                 + row_duration.mul_f64(f64::from(pulse) / f64::from(pulses));
@@ -2206,9 +2205,14 @@ pub fn schedule(
                     }
                     Note::Off => {
                         if let Some((target, channel, note)) = active.remove(&lane_index) {
+                            let release_at = if cell.gate == Some(100) {
+                                at + row_duration
+                            } else {
+                                event_at
+                            };
                             push_lane(
                                 &mut result,
-                                event_at,
+                                release_at,
                                 order_index,
                                 row_index,
                                 vec![0x80 | channel, note, 0],
@@ -2253,6 +2257,36 @@ pub fn schedule(
     }
     result.sort_by_key(|message| message.at);
     Ok(result)
+}
+
+fn has_later_lane_event(
+    song: &Song,
+    order_index: usize,
+    row_index: usize,
+    lane_index: usize,
+) -> bool {
+    song.order
+        .iter()
+        .enumerate()
+        .skip(order_index)
+        .find_map(|(candidate_order, pattern_number)| {
+            let pattern = song.patterns.get(pattern_number)?;
+            let first_row = if candidate_order == order_index {
+                row_index.saturating_add(1)
+            } else {
+                0
+            };
+            pattern
+                .rows
+                .iter()
+                .skip(first_row)
+                .filter_map(|row| row.get(lane_index))
+                .find_map(|cell| match cell.note {
+                    Note::Off | Note::On(_) => Some(true),
+                    Note::Empty => None,
+                })
+        })
+        .unwrap_or(false)
 }
 
 fn playback_schedules(
@@ -2484,7 +2518,7 @@ enum Transport {
     Mute(usize, bool),
     Thru(PageTarget, Vec<u8>),
     CancelThru(PageTarget, u8),
-    Tempo(u16),
+    Tempo(Bpm),
     PrepareLiveSwitch(mpsc::Sender<()>),
     LiveQueue(Song, crate::live_performance::QueuedPattern, bool),
     LivePrepared(bool, Option<String>),
@@ -2581,8 +2615,8 @@ impl Sequencer {
                 .send(Transport::Mute(page * LANES_PER_PAGE + lane, muted));
         }
     }
-    pub fn tempo(&self, bpm: u16) {
-        let _ = self.tx.send(Transport::Tempo(bpm.clamp(20, 300)));
+    pub fn tempo(&self, bpm: Bpm) {
+        let _ = self.tx.send(Transport::Tempo(bpm));
     }
     /// Stop scheduled owners and wait until their exact note-offs have been
     /// sent before the UI replaces the one managed software engine.
@@ -2875,7 +2909,7 @@ fn run_transport(
                     );
                 }
                 transport_tempo = bpm;
-                clock.tempo(f64::from(bpm));
+                clock.tempo(bpm);
             }
             Ok(Transport::PrepareLiveSwitch(reply)) => {
                 clock.stop();
@@ -3092,7 +3126,7 @@ fn run_transport(
                             started = Instant::now();
                             transport_tempo = runtime.current_song.patterns[&runtime.current].tempo;
                             clock.restart_cycle(0.0);
-                            clock.tempo(f64::from(transport_tempo));
+                            clock.tempo(transport_tempo);
                             publish_live_activation(&status, queued.requested);
                             update_target_status(&status, &outputs, &transport_targets);
                         }
@@ -3113,7 +3147,7 @@ fn run_transport(
                             transport_tempo = pattern.tempo;
                             clock
                                 .restart_cycle(message.row as f64 / f64::from(song.steps_per_beat));
-                            clock.tempo(f64::from(transport_tempo));
+                            clock.tempo(transport_tempo);
                             sounding_loop_order = Some(message.order);
                             if let Ok(mut state) = status.lock() {
                                 state.loop_pattern = Some(pattern_number);
@@ -3131,7 +3165,12 @@ fn run_transport(
                 {
                     let seconds = (next.at - message.at).as_secs_f64();
                     if seconds > 0.0 {
-                        clock.tempo(60.0 / seconds / f64::from(config.steps_per_beat));
+                        if let Ok(tapped) =
+                            format!("{:.2}", 60.0 / seconds / f64::from(config.steps_per_beat))
+                                .parse::<Bpm>()
+                        {
+                            clock.tempo(tapped);
+                        }
                     }
                 }
             }
@@ -3262,7 +3301,7 @@ fn run_transport(
                         started = Instant::now();
                         transport_tempo = runtime.current_song.patterns[&requested.pattern].tempo;
                         clock.restart_cycle(0.0);
-                        clock.tempo(f64::from(transport_tempo));
+                        clock.tempo(transport_tempo);
                         if queued_activation {
                             publish_live_activation(&status, requested);
                         }
@@ -3718,10 +3757,10 @@ fn rescale_schedule(
     messages: &mut [ScheduledMessage],
     index: usize,
     elapsed: Duration,
-    old_tempo: u16,
-    new_tempo: u16,
+    old_tempo: Bpm,
+    new_tempo: Bpm,
 ) {
-    let scale = f64::from(old_tempo) / f64::from(new_tempo);
+    let scale = old_tempo.as_f64() / new_tempo.as_f64();
     for message in messages.iter_mut().skip(index) {
         let remaining = message.at.saturating_sub(elapsed);
         message.at = elapsed + remaining.mul_f64(scale);
@@ -4159,10 +4198,10 @@ fn command_text(c: Command) -> String {
         Command::Cut(v) => format!("C{v}"),
         Command::Delay(v) => format!("D{v}"),
         Command::Retrigger(v) => format!("R{v}"),
-        Command::Tempo(v) => format!("T{v}"),
+        Command::Tempo(v) => format!("T{}", v.hundredths()),
     }
 }
-fn parse_command(v: &str) -> Result<Command> {
+fn parse_command(v: &str, version: u8) -> Result<Command> {
     if v == "-" {
         return Ok(Command::None);
     }
@@ -4174,7 +4213,14 @@ fn parse_command(v: &str) -> Result<Command> {
         "C" => Ok(Command::Cut(parameter.parse()?)),
         "D" => Ok(Command::Delay(parameter.parse()?)),
         "R" => Ok(Command::Retrigger(parameter.parse()?)),
-        "T" => Ok(Command::Tempo(parameter.parse()?)),
+        "T" if version >= 10 => Ok(Command::Tempo(
+            Bpm::from_hundredths(parameter.parse()?)
+                .context("tempo command must be 2000..=30000 hundredths")?,
+        )),
+        "T" => Ok(Command::Tempo(
+            Bpm::from_whole(parameter.parse()?)
+                .context("legacy tempo command must be 20..=300 BPM")?,
+        )),
         _ => bail!("unknown command"),
     }
 }
@@ -4207,8 +4253,35 @@ mod tests {
     fn pages_mut(song: &mut Song) -> &mut [Page] {
         &mut song.patterns.get_mut(&0).unwrap().pages
     }
-    fn without_v5_profile_fields(text: &str) -> String {
+    fn downgrade_tempo_fields(text: &str) -> String {
         text.lines()
+            .map(|line| {
+                if let Some(value) = line.strip_prefix("pattern=") {
+                    let mut fields = value.split('|').map(str::to_owned).collect::<Vec<_>>();
+                    let hundredths = fields[2].parse::<u16>().unwrap();
+                    assert_eq!(hundredths % 100, 0);
+                    fields[2] = (hundredths / 100).to_string();
+                    format!("pattern={}", fields.join("|"))
+                } else if let Some(value) = line.strip_prefix("cell=") {
+                    let mut fields = value.split('|').map(str::to_owned).collect::<Vec<_>>();
+                    if let Some(command) = fields.last_mut() {
+                        if let Some(value) = command.strip_prefix('T') {
+                            let hundredths = value.parse::<u16>().unwrap();
+                            assert_eq!(hundredths % 100, 0);
+                            *command = format!("T{}", hundredths / 100);
+                        }
+                    }
+                    format!("cell={}", fields.join("|"))
+                } else {
+                    line.to_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    fn without_v5_profile_fields(text: &str) -> String {
+        downgrade_tempo_fields(text)
+            .lines()
             .filter(|line| {
                 !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
             })
@@ -4225,12 +4298,13 @@ mod tests {
             .join("\n")
     }
     fn as_v5(text: &str) -> String {
-        text.lines()
+        downgrade_tempo_fields(text)
+            .lines()
             .filter(|line| {
                 !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
             })
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 9") {
+                if line.starts_with("SHSYNTH-SONG 10") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -4449,21 +4523,52 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 9\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 10\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
     }
 
     #[test]
+    fn format_ten_round_trips_decimal_pattern_and_command_tempos() {
+        let mut song = Song::new(&config());
+        let decimal = "100.50".parse::<Bpm>().unwrap();
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.tempo = decimal;
+        pattern.rows[3][0].command = Command::Tempo("99.75".parse().unwrap());
+        let encoded = encode(&song).unwrap();
+        assert!(encoded.starts_with("SHSYNTH-SONG 10\n"));
+        assert!(encoded.contains("pattern=0|64|10050|4\n"));
+        assert!(encoded.contains("|T9975\n"));
+        assert_eq!(decode(&encoded).unwrap(), song);
+    }
+
+    #[test]
+    fn format_nine_whole_tempos_migrate_in_memory_without_rewriting() {
+        let current = encode(&Song::new(&config())).unwrap();
+        let legacy =
+            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 9", 1);
+        let base = env::temp_dir().join(format!("shr-tempo-v9-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let path = base.join("legacy.shsong");
+        fs::write(&path, &legacy).unwrap();
+        let loaded = load(&base, "legacy").unwrap();
+        assert_eq!(loaded.patterns[&0].tempo, Bpm::DEFAULT);
+        assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 10\n"));
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
     fn format_eight_migrates_to_a_neutral_project_strip_without_rewriting() {
         let current = encode(&Song::new(&config())).unwrap();
-        let legacy = current
+        let legacy = downgrade_tempo_fields(&current)
             .lines()
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 8", 1);
+            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 8", 1);
         let base = env::temp_dir().join(format!("shr-strip-v8-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -4473,7 +4578,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.master_strip, MasterStripSettings::default());
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 9\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 10\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -4493,7 +4598,7 @@ mod tests {
                 .is_err()
         );
         assert!(decode(&encoded.replacen("\"version\":1", "\"version\":2", 1)).is_err());
-        assert!(decode(&encoded.replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 10", 1)).is_err());
+        assert!(decode(&encoded.replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 11", 1)).is_err());
     }
 
     #[test]
@@ -4536,7 +4641,7 @@ mod tests {
 
     #[test]
     fn drum_auto_compacts_core_hits_and_splits_simultaneous_strikes() {
-        let mut pattern = Pattern::new(8, 120, 4, vec![Page::new("DRUMS", 9, true, 0)]);
+        let mut pattern = Pattern::new(8, Bpm::DEFAULT, 4, vec![Page::new("DRUMS", 9, true, 0)]);
         assert_eq!(enter_drums(&mut pattern, 0, &[36]), Some(vec![0]));
         assert_eq!(enter_drums(&mut pattern, 1, &[38]), Some(vec![0]));
         let lanes = enter_drums(&mut pattern, 2, &[36, 38, 42, 45]).unwrap();
@@ -4553,7 +4658,7 @@ mod tests {
 
     #[test]
     fn drum_auto_preserves_existing_row_events_and_is_atomic_when_full() {
-        let mut pattern = Pattern::new(4, 120, 4, vec![Page::new("DRUMS", 9, true, 0)]);
+        let mut pattern = Pattern::new(4, Bpm::DEFAULT, 4, vec![Page::new("DRUMS", 9, true, 0)]);
         pattern.rows[1][0].note = Note::On(36);
         pattern.rows[1][1].note = Note::On(38);
         let lanes = enter_drums(&mut pattern, 1, &[45]).unwrap();
@@ -4572,14 +4677,14 @@ mod tests {
 
     #[test]
     fn drum_auto_avoids_unrelated_cymbal_tails_and_honours_choke_groups() {
-        let mut pattern = Pattern::new(8, 120, 4, vec![Page::new("DRUMS", 9, true, 0)]);
+        let mut pattern = Pattern::new(8, Bpm::DEFAULT, 4, vec![Page::new("DRUMS", 9, true, 0)]);
         let cymbal_lane = enter_drums(&mut pattern, 0, &[49]).unwrap()[0];
         let kick_lane = enter_drums(&mut pattern, 1, &[36]).unwrap()[0];
         assert_ne!(kick_lane, cymbal_lane);
         let second_cymbal = enter_drums(&mut pattern, 2, &[51]).unwrap()[0];
         assert_ne!(second_cymbal, cymbal_lane);
 
-        let mut hats = Pattern::new(4, 120, 4, vec![Page::new("HATS", 4, true, 0)]);
+        let mut hats = Pattern::new(4, Bpm::DEFAULT, 4, vec![Page::new("HATS", 4, true, 0)]);
         let open_lane = enter_drums(&mut hats, 0, &[46]).unwrap()[0];
         let closed_lane = enter_drums(&mut hats, 1, &[42]).unwrap()[0];
         assert_eq!(closed_lane, open_lane);
@@ -4587,7 +4692,7 @@ mod tests {
 
     #[test]
     fn drum_auto_is_deterministic_and_unknown_notes_are_short_other_percussion() {
-        let mut first = Pattern::new(8, 120, 4, vec![Page::new("KIT", 2, true, 0)]);
+        let mut first = Pattern::new(8, Bpm::DEFAULT, 4, vec![Page::new("KIT", 2, true, 0)]);
         first.rows[0][0].note = Note::On(36);
         first.rows[0][2].note = Note::On(49);
         let second = first.clone();
@@ -4646,7 +4751,10 @@ mod tests {
 
         let old_shared_pages = encode(&with_loop)
             .unwrap()
-            .replace("pattern=0|64|120|3\n", "tempo=120\nmeter=3\npattern=0|64\n")
+            .replace(
+                "pattern=0|64|12000|3\n",
+                "tempo=120\nmeter=3\npattern=0|64\n",
+            )
             .replace("pattern_page=0|", "page=")
             .replace("pattern_lane=0|", "lane=");
         assert!(decode(&old_shared_pages).is_err());
@@ -4657,13 +4765,12 @@ mod tests {
         let mut current = Song::new(&config());
         let clone = current.patterns[&0].clone();
         let second = current.append_pattern(clone).unwrap();
-        let legacy = encode(&current)
-            .unwrap()
+        let legacy = downgrade_tempo_fields(&encode(&current).unwrap())
             .lines()
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 7", 1)
+            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 7", 1)
             .replacen(
                 "insert_rack=",
                 "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
@@ -4690,12 +4797,12 @@ mod tests {
         let mut source = Song::new(&config());
         let second = source.append_pattern(source.patterns[&0].clone()).unwrap();
         let current = encode(&source).unwrap();
-        let legacy = current
+        let legacy = downgrade_tempo_fields(&current)
             .lines()
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 6", 1)
+            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -4840,7 +4947,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 9\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 10\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -4908,7 +5015,8 @@ mod tests {
             command: Command::Retrigger(4),
             ..Cell::default()
         };
-        song.patterns.get_mut(&0).unwrap().rows[3][0].command = Command::Tempo(60);
+        song.patterns.get_mut(&0).unwrap().rows[3][0].command =
+            Command::Tempo(Bpm::from_whole(60).unwrap());
         song.patterns.get_mut(&1).unwrap().rows[0][0].note = Note::On(63);
         let messages = schedule(&song, &c, 0, 0).unwrap();
         assert!(messages
@@ -4963,7 +5071,7 @@ mod tests {
         assert_eq!(Command::Cut(0).marker(), 'C');
         assert_eq!(Command::Delay(0).marker(), 'D');
         assert_eq!(Command::Retrigger(2).marker(), 'R');
-        assert_eq!(Command::Tempo(120).marker(), 'T');
+        assert_eq!(Command::Tempo(Bpm::from_whole(120).unwrap()).marker(), 'T');
     }
     #[test]
     fn atomic_save_refuses_overwrite() {
@@ -5059,7 +5167,7 @@ mod tests {
         s.order.push(1);
         s.patterns.get_mut(&0).unwrap().rows[1][0] = Cell {
             note: Note::On(61),
-            command: Command::Tempo(60),
+            command: Command::Tempo(Bpm::from_whole(60).unwrap()),
             ..Cell::default()
         };
         s.patterns.get_mut(&1).unwrap().rows[0][0].note = Note::On(62);
@@ -5071,6 +5179,32 @@ mod tests {
         assert_eq!(notes[0].at, Duration::from_millis(125));
         assert_eq!(notes[1].order, 1);
     }
+
+    #[test]
+    fn decimal_pattern_and_command_tempos_schedule_without_whole_bpm_rounding() {
+        let c = config();
+        let mut song = Song::new(&c);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.resize_rows(2).unwrap();
+        pattern.tempo = "100.50".parse().unwrap();
+        pattern.rows[0][0] = Cell {
+            note: Note::On(60),
+            gate: Some(100),
+            ..Cell::default()
+        };
+        pattern.rows[1][0].command = Command::Tempo("120.25".parse().unwrap());
+        let scheduled = schedule(&song, &c, 0, 0).unwrap();
+        let first_release = scheduled
+            .iter()
+            .find(|message| message.bytes == [0x80, 60, 0])
+            .unwrap();
+        let expected = Duration::from_secs_f64(60.0 / 100.50 / 4.0);
+        assert_eq!(first_release.at, expected);
+        assert_ne!(
+            first_release.at,
+            Duration::from_secs_f64(60.0 / 101.0 / 4.0)
+        );
+    }
     #[test]
     fn pattern_master_tempo_resets_at_arrangement_step() {
         let c = config();
@@ -5078,10 +5212,11 @@ mod tests {
         let setup = song.patterns[&0].clone();
         song.patterns
             .insert(0, Pattern::empty_like_setup(2, &setup));
-        song.patterns.get_mut(&0).unwrap().tempo = 120;
-        song.patterns.get_mut(&0).unwrap().rows[0][0].command = Command::Tempo(60);
+        song.patterns.get_mut(&0).unwrap().tempo = Bpm::from_whole(120).unwrap();
+        song.patterns.get_mut(&0).unwrap().rows[0][0].command =
+            Command::Tempo(Bpm::from_whole(60).unwrap());
         let mut second = Pattern::empty_like_setup(2, &song.patterns[&0]);
-        second.tempo = 240;
+        second.tempo = Bpm::from_whole(240).unwrap();
         second.rows[1][0].note = Note::On(62);
         song.patterns.insert(1, second);
         song.order = vec![0, 1];
@@ -5156,7 +5291,13 @@ mod tests {
         song.patterns
             .insert(0, Pattern::empty(4, song.total_lanes()));
         let mut messages = schedule(&song, &c, 0, 0).unwrap();
-        rescale_schedule(&mut messages, 1, Duration::from_millis(100), 120, 60);
+        rescale_schedule(
+            &mut messages,
+            1,
+            Duration::from_millis(100),
+            Bpm::from_whole(120).unwrap(),
+            Bpm::from_whole(60).unwrap(),
+        );
         let times = messages
             .iter()
             .skip(1)
@@ -5513,7 +5654,7 @@ mod tests {
 
         let mut replacement_song = Song::new(&config);
         let replacement_snapshot = replacement_song.clone();
-        let invalid = Pattern::new(0, 120, 4, default_pages(&config));
+        let invalid = Pattern::new(0, Bpm::DEFAULT, 4, default_pages(&config));
         assert!(replacement_song.replace_pattern(0, invalid).is_err());
         assert_eq!(replacement_song, replacement_snapshot);
     }
@@ -5970,8 +6111,8 @@ mod tests {
         assert!(decode(&encoded.replace("|MELODY|1|", "|MELODY|yes|")).is_err());
 
         let duplicate_pattern = encoded.replace(
-            "pattern=0|64|120|4\n",
-            "pattern=0|64|120|4\npattern=0|64|120|4\n",
+            "pattern=0|64|12000|4\n",
+            "pattern=0|64|12000|4\npattern=0|64|12000|4\n",
         );
         assert!(decode(&duplicate_pattern).is_err());
     }
@@ -6006,14 +6147,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 9\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 10\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6022,14 +6163,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 9\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 10\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6046,7 +6187,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 9\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 10\n"));
         assert!(encoded.contains("|default|-|manual|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -6062,7 +6203,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 9", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -6083,7 +6224,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 9",
+            "SHSYNTH-SONG 10",
             "SHSYNTH-SONG 4",
             1,
         );

@@ -283,15 +283,23 @@ editable. Save and Save As publish atomically and never silently replace a
 collision. Preview uses the selected saved Project without treating it as the
 current edit.
 
-### OPS — load, save, preview, delete
+### OPS — save, load, delete, MIDI import
 
 ![Populated Project Files screen with the OPS page](../images/menu/files-ops.png)
 
 `LOAD` opens the selected Project. `SAVE` writes the current Project and asks
-before replacement. `PREVIEW` starts or stops the selected Project preview.
-`DELETE` requires repeat confirmation. A dirty LOAD first offers
+before replacement. `DELETE` requires repeat confirmation. `MIDI` uses the
+empty fourth position to open the private Standard MIDI File inbox. Selecting
+or pressing LOAD first analyses the file and shows parts/pages, Pattern rows,
+tempo/meter, timing accuracy, stripped-event counts, and warnings; a second
+action confirms the new unsaved Project. A dirty LOAD or MIDI import first offers
 Save/Discard/Cancel; Cancel or failed/pending Save keeps the Project and exact
 tracker position.
+
+The MIDI browser follows no symlinks and accepts bounded regular `.mid` and
+`.midi` format 0/1 PPQN files only. It never previews, transmits, or overwrites
+the source file or an existing Project. Saved-Project `PREVIEW` remains on the
+separate PREVIEW command page.
 
 ### PROJECT — lifecycle and Pattern child
 

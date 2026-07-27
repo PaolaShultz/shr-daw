@@ -50,7 +50,7 @@ is a self-contained tracker pattern. The FT2 Arrangement is the ordered chain
 of Arrangement Steps; each step references a pattern ID. Repeating a step reuses
 the same pattern until you explicitly clone or paste a new pattern.
 
-Each FT2 Pattern owns its own rows, meter, master tempo, pages, page targets,
+Each FT2 Pattern owns its own rows, meter, hundredths-BPM master tempo, pages, page targets,
 per-column MIDI channels/banks/programs, velocity defaults, mutes, percussion
 settings, note-entry mode/anchor, drum classification overrides, lane settings,
 and cell data. A new Project starts with one pattern
@@ -232,8 +232,8 @@ A cell contains:
 - inherited velocity or MIDI velocity 0–127;
 - inherited program or a MIDI program override stored as 0–127 and shown as
   instrument/program 1–128;
-- one optional command: cut or delay tick 0–15, retrigger count 1–8, or tempo
-  20–300 BPM.
+- one optional command: cut or delay tick 0–15, retrigger count 1–8, or decimal
+  tempo 20.00–300.00 BPM.
 
 The grid shows `C` for cut, `D` for delay, `R` for retrigger, and `T` for tempo.
 One cell cannot contain more than one command. Velocity, program, gate, and
@@ -419,13 +419,38 @@ only after a successful Project write, DISCARD performs the requested action,
 and CANCEL or any failed/pending save keeps the Project and exact
 order/page/lane/row position.
 
+**MIDI** uses the private configured MIDI inbox and follows an analyse-then-
+confirm workflow. Analysis changes nothing and reports parts/pages,
+Patterns/rows, tempo and meter, exact and quantized timing, maximum
+displacement, stripped events, and important mappings. Confirmation creates a
+new unsaved FT2 Project; a dirty current Project uses the same
+Save/Discard/Cancel guard. Parsing, conversion, allocation, preparation, or
+cancellation keeps the current Project, cursor, routing, Loop Mix, effects,
+and clean baseline unchanged.
+
+The importer accepts bounded regular SMF format 0/1 files with PPQN timing,
+running status, conductor tracks, track names, tempo maps, fixed 3/4 or 4/4,
+and fixed 6/8 mapped visibly to the compound 3/4 grid. It groups each MIDI
+track/channel part, preserves channel, velocity, initial CC0/CC32/program, and
+bakes sustain into note lengths. Four monophonic lanes are allocated
+deterministically per page, with overflow pages and bar-boundary Pattern
+splits as needed. SMPTE, format 2, changing/unsupported meters, malformed
+files, and bounded-limit violations are refused.
+
+Lyrics, copyright, markers, cues, key metadata after reporting, SysEx,
+aftertouch, machine-control/timecode/realtime messages, sequencer metadata,
+unsupported CC automation, pitch bend, and later unrepresentable bank/program
+changes are stripped and counted. Imported system or SysEx data is never
+transmitted. Timing stays in musical ticks; non-representable positions are
+quantized and reported rather than flattened to elapsed microseconds.
+
 The FX rack, editor, and fixed MASTER STRIP always show the owning Project plus
 `NEW`, `SAVED`, or `DIRTY`; source, AUX, master racks, and strip are all
 Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 9
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 10
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor and drum-role overrides, cells, source
 insert rack, two aux routes, and master rack. Portable
@@ -438,8 +463,10 @@ distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 9. Formats 0–8 gain a
-neutral fixed strip only in memory.
+not rewrite an old file; explicit save writes format 10. Formats 0–9 migrate
+their whole-BPM Pattern and tempo-command values to integer hundredths in
+memory. Format 10 persists those fields as integer hundredths, so `10050`
+means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.

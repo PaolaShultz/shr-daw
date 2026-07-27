@@ -147,7 +147,9 @@ fn validate_demo_dir(root: &Path) -> Result<()> {
             .values()
             .next()
             .context("missing demo pattern")?;
-        if pattern.tempo != demo.bpm || pattern.pages.len() != demo.tracks.len() {
+        if pattern.tempo != crate::tempo::Bpm::from_whole(demo.bpm).unwrap_or_default()
+            || pattern.pages.len() != demo.tracks.len()
+        {
             bail!("native demo tempo or page count differs from its manifest");
         }
         for (page, declared) in pattern.pages.iter().zip(&demo.tracks) {

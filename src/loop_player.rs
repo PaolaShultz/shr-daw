@@ -6,6 +6,7 @@ use crate::config::{ControllerClockConfig, LoopPlayerConfig};
 use crate::dsp::{AtomicMeter, MeterAccumulator, MeterSnapshot, StereoFrame, MAX_METER_WINDOW};
 use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
 use crate::sequencer::LoopSettings;
+use crate::tempo::Bpm;
 use alsa::seq::{Addr, EvQueueControl, Event, EventType, PortCap, PortType, Seq};
 use alsa::Direction;
 use anyhow::{bail, Context, Result};
@@ -58,19 +59,19 @@ impl Default for TransportClock {
                 client_name: String::new(),
                 output_match: String::new(),
             },
-            120,
+            Bpm::DEFAULT,
         )
     }
 }
 
 impl TransportClock {
-    pub fn new(config: &ControllerClockConfig, initial_bpm: u16) -> Self {
+    pub fn new(config: &ControllerClockConfig, initial_bpm: Bpm) -> Self {
         let (controller_tx, controller_thread) = if config.enabled {
             let (tx, rx) = mpsc::channel();
             let output = AlsaControllerClockOutput::new(config.clone());
             let handle = thread::Builder::new()
                 .name("shsynth-controller-clock".into())
-                .spawn(move || run_controller_clock(rx, Box::new(output), f64::from(initial_bpm)))
+                .spawn(move || run_controller_clock(rx, Box::new(output), initial_bpm.as_f64()))
                 .ok();
             match handle {
                 Some(handle) => (Some(tx), Some(handle)),
@@ -84,23 +85,23 @@ impl TransportClock {
             generation: AtomicU64::new(0),
             loop_generation: AtomicU64::new(u64::MAX),
             origin_beat: AtomicU64::new(0),
-            bpm_x100: AtomicU64::new(u64::from(initial_bpm) * 100),
+            bpm_x100: AtomicU64::new(u64::from(initial_bpm.hundredths())),
             controller_tx,
             controller_thread: Mutex::new(controller_thread),
         }
     }
 
-    pub fn play(&self, origin_beat: f64, bpm: u16) {
+    pub fn play(&self, origin_beat: f64, bpm: Bpm) {
         self.origin_beat.store(
             (origin_beat.max(0.0) * BEAT_UNITS) as u64,
             Ordering::Release,
         );
         self.generation.fetch_add(1, Ordering::AcqRel);
         self.bpm_x100
-            .store(u64::from(bpm.clamp(20, 300)) * 100, Ordering::Release);
+            .store(u64::from(bpm.hundredths()), Ordering::Release);
         self.playing.store(true, Ordering::Release);
         if let Some(tx) = &self.controller_tx {
-            let _ = tx.send(ControllerClockCommand::Start(f64::from(bpm)));
+            let _ = tx.send(ControllerClockCommand::Start(bpm.as_f64()));
         }
     }
 
@@ -121,13 +122,11 @@ impl TransportClock {
             .store(self.generation.load(Ordering::Acquire), Ordering::Release);
     }
 
-    pub fn tempo(&self, bpm: f64) {
-        self.bpm_x100.store(
-            (bpm.clamp(20.0, 300.0) * 100.0).round() as u64,
-            Ordering::Release,
-        );
+    pub fn tempo(&self, bpm: Bpm) {
+        self.bpm_x100
+            .store(u64::from(bpm.hundredths()), Ordering::Release);
         if let Some(tx) = &self.controller_tx {
-            let _ = tx.send(ControllerClockCommand::Tempo(bpm.clamp(20.0, 300.0)));
+            let _ = tx.send(ControllerClockCommand::Tempo(bpm.as_f64()));
         }
     }
 
@@ -642,11 +641,11 @@ pub struct LoopAlignment {
     pub transient_detected: bool,
 }
 
-pub fn analyze_alignment(decoded: &DecodedLoop, pattern_bpm: u16, meter: u8) -> LoopAlignment {
+pub fn analyze_alignment(decoded: &DecodedLoop, pattern_bpm: Bpm, meter: u8) -> LoopAlignment {
     let duration = decoded.duration().as_secs_f64().max(0.001);
     let meter = u32::from(meter.clamp(1, 16));
     let estimated = estimate_bpm(decoded);
-    let measured_bpm = estimated.unwrap_or(f64::from(pattern_bpm));
+    let measured_bpm = estimated.unwrap_or_else(|| pattern_bpm.as_f64());
     let measured_beats = (duration * measured_bpm / 60.0).round().max(1.0) as u32;
     let bars = ((measured_beats as f64 / f64::from(meter)).round() as u32).max(1);
     let length_beats = bars.saturating_mul(meter).max(1);
@@ -932,6 +931,24 @@ fn prepare_loop_slot(
     })
 }
 
+/// Fully validate and prepare a loop candidate without publishing runtime
+/// state. This is used when editing a Pattern that does not currently own the
+/// sounding loop.
+pub fn validate_prepared_loop(
+    decoded: DecodedLoop,
+    settings: &LoopSettings,
+    pattern_bpm: Bpm,
+    meter: u8,
+) -> Result<()> {
+    drop(prepare_loop_slot(
+        decoded,
+        settings,
+        pattern_bpm.as_f64(),
+        meter,
+    )?);
+    Ok(())
+}
+
 pub struct LoopPlayer {
     config: LoopPlayerConfig,
     clock: Arc<TransportClock>,
@@ -1209,7 +1226,7 @@ impl LoopPlayer {
         self.slots[slot].control.queue(queued);
         self.preview = true;
         if running {
-            self.clock.play(0.0, 120);
+            self.clock.play(0.0, Bpm::DEFAULT);
             self.arm_pattern();
         }
     }
@@ -2116,8 +2133,8 @@ mod tests {
         let clock = TransportClock::default();
         assert!(clock.controller_tx.is_none());
         assert!(clock.controller_thread.lock().unwrap().is_none());
-        clock.play(0.0, 120);
-        clock.tempo(90.0);
+        clock.play(0.0, Bpm::from_whole(120).unwrap());
+        clock.tempo("90.0".parse().unwrap());
         clock.stop();
     }
 
@@ -2168,7 +2185,7 @@ mod tests {
     }
 
     fn play_test_renderer(renderer: &LoopRenderer) {
-        renderer.clock.play(0.0, 120);
+        renderer.clock.play(0.0, Bpm::from_whole(120).unwrap());
         renderer.control.pattern_generation.store(
             renderer.clock.generation.load(Ordering::Acquire),
             Ordering::Release,
@@ -2238,7 +2255,7 @@ mod tests {
             sample_rate,
             channels: 1,
         };
-        let alignment = analyze_alignment(&decoded, 90, 4);
+        let alignment = analyze_alignment(&decoded, Bpm::from_whole(90).unwrap(), 4);
         assert!(alignment.transient_detected);
         assert_eq!(alignment.length_beats, 4);
         assert_eq!(alignment.bars, 1);
@@ -2252,7 +2269,7 @@ mod tests {
             sample_rate: 48_000,
             channels: 2,
         };
-        let alignment = analyze_alignment(&decoded, 100, 3);
+        let alignment = analyze_alignment(&decoded, Bpm::from_whole(100).unwrap(), 3);
         assert!(!alignment.transient_detected);
         assert_eq!(alignment.length_beats, 6);
         assert_eq!(alignment.bars, 2);
@@ -2398,15 +2415,40 @@ mod tests {
     }
 
     #[test]
+    fn decimal_native_tempo_preparation_keeps_native_frames_and_pitch() {
+        let tempo = "100.50".parse::<Bpm>().unwrap();
+        let frames = beat_to_frame(4.0, tempo.as_f64(), 48_000);
+        let decoded = DecodedLoop {
+            samples: vec![[0.25, -0.25]; frames],
+            sample_rate: 48_000,
+            channels: 2,
+        };
+        let settings = LoopSettings::new(
+            "decimal.wav".into(),
+            10_050,
+            crate::sequencer::BpmInterpretation::Normal,
+            0,
+            4,
+            0,
+        );
+        let prepared = prepare_loop_slot(decoded, &settings, tempo.as_f64(), 4).unwrap();
+        let audio = prepared.prepared.unwrap();
+        assert_eq!(audio.interpreted_bpm, 100.50);
+        assert_eq!(audio.region_start, 0);
+        assert_eq!(audio.region_len, frames);
+        assert_eq!(audio.samples.len(), frames);
+    }
+
+    #[test]
     fn transport_clock_tracks_play_restart_tempo_and_stop() {
         let clock = TransportClock::default();
-        clock.play(3.5, 120);
+        clock.play(3.5, Bpm::from_whole(120).unwrap());
         assert!(clock.playing.load(Ordering::Acquire));
         assert_eq!(clock.origin_beat.load(Ordering::Acquire), 3_500_000);
         let first_generation = clock.generation.load(Ordering::Acquire);
 
-        clock.tempo(150.25);
-        clock.play(1.0, 90);
+        clock.tempo("150.25".parse().unwrap());
+        clock.play(1.0, Bpm::from_whole(90).unwrap());
         assert!(clock.generation.load(Ordering::Acquire) > first_generation);
         assert_eq!(clock.origin_beat.load(Ordering::Acquire), 1_000_000);
 
@@ -2725,7 +2767,7 @@ mod tests {
         let (mut healthy, _) = test_renderer(vec![[0.2, 0.1]; 16]);
         play_test_renderer(&incompatible);
         play_test_renderer(&healthy);
-        incompatible.clock.tempo(121.0);
+        incompatible.clock.tempo("121.0".parse().unwrap());
         let mut left = [0.0; 4];
         let mut right = [0.0; 4];
         render_output(&mut incompatible, &mut left, &mut right);

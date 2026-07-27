@@ -37,7 +37,7 @@ accepts:
 | FluidSynth | `fluidsynth.command`, `.client`, `.midi_output`, `.gain`, repeated `.soundfont` |
 | Managed MIDI/audio | `midi.autoconnect`; legacy ordered controller fallbacks in repeated `midi.input`; `midi.controller_musical_input`; simultaneous repeated `midi.performance_input`; `audio.autoconnect`, exactly two preferred `audio.output` entries, ordered `audio.internal_output=NAME|LEFT|RIGHT` fallbacks, final optional `audio.headphone_output=NAME|LEFT|RIGHT`; optional `audio.engine_cpu` |
 | Owned final bus | `audio.graph.enabled`, `.client`, `.maximum_callback_frames` (1–4096), `.input`, monitoring confirmations |
-| External tracker MIDI | `external_midi.enabled`, `.client`, `.output`, `.max_tracks`, repeated `.channel`, `.melody_channel`, optional `.percussion_channel` and `.percussion_program`, `.percussion_input_base`, repeated `.percussion_note`, `.bank_select` (`off`, `cc0`, or `cc0+cc32`), `.program_changes`, `.send_transport`, `.default_tempo` (20–300), `.pattern_rows` (1–256), `.steps_per_beat` (1–16), `.live_thru`, `.profile`, `.gate_percent` (1–100), `.gesture_settle_ms` |
+| External tracker MIDI | `external_midi.enabled`, `.client`, `.output`, `.max_tracks`, repeated `.channel`, `.melody_channel`, optional `.percussion_channel` and `.percussion_program`, `.percussion_input_base`, repeated `.percussion_note`, `.bank_select` (`off`, `cc0`, or `cc0+cc32`), `.program_changes`, `.send_transport`, `.default_tempo` (decimal 20.00–300.00), private `.import_directory`, `.pattern_rows` (1–256), `.steps_per_beat` (1–16), `.live_thru`, `.profile`, `.gate_percent` (1–100), `.gesture_settle_ms` |
 | Controller clock | `controller_clock.enabled`, `.client`, `.output`; disabled by default, with one exact stable ALSA MIDI output name required when enabled |
 | Synchronized capture | `capture.directory`, `.client`, repeated `capture.track=ID|LABEL|GROUP|ROLE|ARMED|EXACT_SOURCE`, legacy stereo `capture.input=NAME|LEFT|RIGHT`, `.ring_frames` (1024–4194304), `.maximum_callback_frames` (16–65536) |
 | WAV loop | `loop.client`, `loop.import_directory`, exactly two repeated `loop.output` entries when playback is used |
@@ -307,7 +307,7 @@ them.
 The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback
 because no topology is rebuilt. Final recording rejects those edits. When the
-owned graph is disabled, the same edits update only Project format 9 state.
+owned graph is disabled, the same edits update only Project format 10 state.
 The true-peak limiter remains active whenever the final bus is active and has
 no bypass. Exact ranges and latency are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
@@ -570,7 +570,7 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 9
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 10
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor and drum classification,
@@ -588,7 +588,7 @@ page-wide channel/bank/program data is copied to all four columns. Unknown
 newer versions, unknown fields, and invalid effect data are refused rather than
 partly loaded or written back.
 
-Formats 8 and 9 write each populated WAV slot under its owner as
+Formats 8–10 write each populated WAV slot under its owner as
 `pattern_loop=PATTERN|SLOT|FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET|LEVEL|FILTER`.
 Slots are 1–4, level is 0–1500, and filter is -1000..1000. Duplicate, missing,
 unknown, malformed, unsafe, or over-limit ownership is refused before the
@@ -599,7 +599,10 @@ records migrate in memory into every distinct Pattern. Format 6's one
 of every Pattern with unity level (`1000`) and neutral filter (`0`). Only
 filenames/settings are copied; private WAVs are not. Loading, previewing, or
 inspecting an old Project does not rewrite it. Formats 0–8 also gain a neutral
-fixed strip only in memory. Explicit save writes format 9. Unknown newer
+fixed strip only in memory. Formats 0–9 store whole-number tempo fields and
+migrate them to integer hundredths in memory. Format 10 stores Pattern and
+tempo-command values as deterministic integer hundredths; `10050` means
+100.50 BPM. Explicit save writes format 10. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 
@@ -621,6 +624,14 @@ for a second press only when it would replace an existing Project. Arrangement
 repeat/remove operations live on the separate **ARRANGE** screen. **NAME**
 accepts a printable display name while deriving a safe filename; an existing
 Project is published under the new name without replacing a collision.
+
+`external_midi.import_directory` is the private `.mid`/`.midi` inbox. An empty
+value uses `${XDG_DATA_HOME:-~/.local/share}/shsynth/midi-inbox`; the local
+launcher therefore keeps imports below its ignored `user/` boundary. **FILES**
+→ **MIDI** lists regular files only, analyses the selected file without
+starting transport, and requires a second action after showing its musical and
+loss report. Imported files are read in place and are never copied into the
+public repository or used to overwrite a `.shsong`.
 
 Reusable drum patterns are independent `.shdrum` files. Bundled patterns are
 installed below `share/shsynth/drum-patterns/`; controller-created user saves
@@ -696,6 +707,10 @@ loops, and restart JACK yourself when safe. Each decoded WAV is capped at
 6,000,000 frames, about 46 MiB of stereo memory and 125 seconds at 48 kHz.
 Different whole-bar lengths remain phase-aligned at that Pattern's tempo and
 meter. Pattern changes restart local phase and stop empty outgoing slots.
+Import, attach, and auto-align prepare against the prospective detected
+hundredths-BPM tempo first. Only successful preparation publishes both the
+slot settings and Pattern tempo; failure restores the previous runtime and
+leaves the old Pattern, attachment, and private files unchanged.
 
 See [Live performance](LIVE_PERFORMANCE.md) for launch/stop scheduling,
 filter/level bounds, controller and keyboard access, and unsupported DJ
@@ -712,7 +727,8 @@ preview note.
 
 Gate is inherited or 1–100% of a row. Velocity and program are inherited or
 MIDI 0–127. The single command field supports cut `C` and delay `D` ticks
-0–15, retrigger `R` counts 1–8, and tempo `T` values 20–300 BPM. The letter is
+0–15, retrigger `R` counts 1–8, and decimal tempo `T` values
+20.00–300.00 BPM. The letter is
 shown in the first spacer after velocity; blank means no command. Multiple
 commands in one cell are not supported. Per-cell program overrides use the
 selected column bank and exact page destination/column channel, occur before

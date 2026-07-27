@@ -272,7 +272,7 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
 | FT2 cell edit | Cell | Note | Gate | Velocity | Effect |
 | FT2 cell edit | Done | Panic | Save | Effect parameter | Exit/cancel |
-| Files | Ops | Save | Load | Delete | — |
+| Files | Ops | Save | Load | Delete | MIDI import |
 | Files | Project | New Project | Save As | Name/rename | Pattern tools |
 | Files | Preview | — | Preview/stop | — | — |
 | Files | Sys | Panic | — | Help | Exit |
