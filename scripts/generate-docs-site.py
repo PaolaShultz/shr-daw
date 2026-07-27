@@ -35,7 +35,7 @@ DOCS_DIR = ROOT / "docs"
 OUTPUT = DOCS_DIR / "index.html"
 REPOSITORY_URL = "https://github.com/PaolaShultz/shr-daw"
 SITE_URL = "https://paolashultz.github.io/shr-daw/"
-SOCIAL_IMAGE = "docs/images/shr-daw-social-card.jpg"
+SOCIAL_IMAGE = "docs/images/shr-daw-social-card.png"
 EXPECTED_MARKDOWN_IT = "2.1.0"
 EXPECTED_MDIT_PLUGINS = "0.3.3"
 
@@ -1406,15 +1406,15 @@ def build_page(
         '<meta property="og:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
         f'<meta property="og:description" content="{html.escape(intro, quote=True)}">\n',
         f'<meta property="og:url" content="{SITE_URL}">\n',
-        f'<meta property="og:image" content="{SITE_URL}images/shr-daw-social-card.jpg">\n',
-        '<meta property="og:image:type" content="image/jpeg">\n',
+        f'<meta property="og:image" content="{SITE_URL}images/shr-daw-social-card.png">\n',
+        '<meta property="og:image:type" content="image/png">\n',
         f'<meta property="og:image:width" content="{social_width}">\n',
         f'<meta property="og:image:height" content="{social_height}">\n',
         '<meta property="og:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">\n',
         '<meta name="twitter:card" content="summary_large_image">\n',
         '<meta name="twitter:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
         f'<meta name="twitter:description" content="{html.escape(intro, quote=True)}">\n',
-        f'<meta name="twitter:image" content="{SITE_URL}images/shr-daw-social-card.jpg">\n',
+        f'<meta name="twitter:image" content="{SITE_URL}images/shr-daw-social-card.png">\n',
         "<style>\n",
         CSS.strip(),
         "\n</style>\n",

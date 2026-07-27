@@ -477,8 +477,9 @@ explicit overview/current/archive/legal placement around those owned groups.
 The single tracked output is `docs/index.html`; `docs/.nojekyll` is a static
 GitHub Pages control file and is not generated. CSS and JavaScript are inline.
 Referenced images remain relative files below `docs/images/`. The social-card
-metadata uses the absolute production URL for the dedicated 1200×630 connection
-diagram so link-preview crawlers can retrieve the crop-safe composition.
+metadata uses the absolute production URL for the dedicated lossless 1200×630
+PNG connection diagram. It preserves the diagram at native scale and omits its
+title strip so link-preview crawlers do not receive a reduced or lossy copy.
 
 The visible page is a product presentation, not an expanded repository dump.
 It uses one introduction and one screenshot tour. Detailed guides are closed
