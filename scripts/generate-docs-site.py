@@ -35,7 +35,7 @@ DOCS_DIR = ROOT / "docs"
 OUTPUT = DOCS_DIR / "index.html"
 REPOSITORY_URL = "https://github.com/PaolaShultz/shr-daw"
 SITE_URL = "https://paolashultz.github.io/shr-daw/"
-SOCIAL_IMAGE = "docs/images/shr-daw-physical-connections.jpg"
+SOCIAL_IMAGE = "docs/images/shr-daw-social-card.jpg"
 EXPECTED_MARKDOWN_IT = "2.1.0"
 EXPECTED_MDIT_PLUGINS = "0.3.3"
 
@@ -1385,9 +1385,9 @@ def build_page(
     if not social_path.is_file():
         fail(f"missing social preview image: {SOCIAL_IMAGE}")
     social_width, social_height = image_size(social_path)
-    if (social_width, social_height) != (1200, 675):
+    if (social_width, social_height) != (1200, 630):
         fail(
-            "social preview image must remain 1200x675, found "
+            "social preview image must remain 1200x630, found "
             f"{social_width}x{social_height}"
         )
 
@@ -1406,7 +1406,7 @@ def build_page(
         '<meta property="og:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
         f'<meta property="og:description" content="{html.escape(intro, quote=True)}">\n',
         f'<meta property="og:url" content="{SITE_URL}">\n',
-        f'<meta property="og:image" content="{SITE_URL}images/shr-daw-physical-connections.jpg">\n',
+        f'<meta property="og:image" content="{SITE_URL}images/shr-daw-social-card.jpg">\n',
         '<meta property="og:image:type" content="image/jpeg">\n',
         f'<meta property="og:image:width" content="{social_width}">\n',
         f'<meta property="og:image:height" content="{social_height}">\n',
@@ -1414,7 +1414,7 @@ def build_page(
         '<meta name="twitter:card" content="summary_large_image">\n',
         '<meta name="twitter:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
         f'<meta name="twitter:description" content="{html.escape(intro, quote=True)}">\n',
-        f'<meta name="twitter:image" content="{SITE_URL}images/shr-daw-physical-connections.jpg">\n',
+        f'<meta name="twitter:image" content="{SITE_URL}images/shr-daw-social-card.jpg">\n',
         "<style>\n",
         CSS.strip(),
         "\n</style>\n",
