@@ -1,16 +1,23 @@
 # Raspberry Pi 5 headroom and footprint plan
 
 > The clean Raspberry Pi OS Lite installation and setup acceptance is a release
-> 0.4 gate. The later headroom, dependency, PRESTO, and optimization experiments
-> remain unscheduled future work. Nothing here describes measured Raspberry Pi
-> 5 performance while the ordered hardware is absent.
+> 0.4 gate. The Raspberry Pi 5 baseline was measured on 2026-07-28 at version
+> 0.4.2; see the dated
+> [Pi 4/Pi 5 comparison](PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md).
+> Dependency, PRESTO, and optimization experiments remain future work.
 
 ## Purpose
 
-Release 0.4 uses the new Pi first to prove a reproducible clean installation,
+Release 0.4 used the new Pi first to prove a reproducible clean installation,
 setup, and return from failures on normal Raspberry Pi OS Lite. That platform
-gate does not require or assume an optimization. Only after it passes does the
-future Headroom pass compare and tune performance.
+gate did not require or assume an optimization. The baseline comparison now
+precedes the future Headroom optimization work.
+
+The platform is now installed and the measurement-before-optimization baseline
+is complete. The measured Pi 5 was already using the helper-managed CPU-3 audio
+profile, so the dated evidence does not invent an untuned result. Connected
+callback comparison remains open because the safe-output and sole-owner gate
+was not met.
 
 SHR-DAW grew experimentally by adding useful musical capabilities. The future
 **Headroom pass** deliberately reverses direction for a while: stop adding,
@@ -37,9 +44,9 @@ need to remain in CPU cache while the audio callback runs. The useful target is
 the hot working set: the instructions and data repeatedly touched together by
 the active callback.
 
-## Planned development hardware
+## Development hardware
 
-The ordered package is a Raspberry Pi 5 with 2 GB RAM, active cooler, 27 W
+The installed package is a Raspberry Pi 5 with 2 GB RAM, active cooler, 27 W
 power supply, a bottom-mounted PCIe-to-NVMe base, and a 128 GB NVMe drive.
 The complete package cost about EUR 120; the small NVMe cost EUR 15. Neither
 price is a product requirement or an evergreen buying guide.
@@ -222,13 +229,15 @@ evidence exist. Until then:
 
 - this plan and short links to it remain under **Planned work**;
 - old Raspberry Pi 4 measurement pages remain unchanged dated evidence;
-- installation docs do not claim Pi 5 or 2 GB acceptance;
+- installation docs may link dated Pi 5 evidence but do not turn the measured
+  2 GB system into a universal minimum or recommendation;
 - `AUDIO_GRAPH.md`, Help, the visual manual, and musician guides do not describe
   PRESTO as available; and
 - the root README does not advertise the planned work as a feature.
 
-Publish later Pi 4/Pi 5 results in a separate dated measurement document, not
-by converting hypotheses in this plan into unlabelled facts. Any Rust, Cargo,
+The first Pi 4/Pi 5 result is published in the separate dated
+[comparison](PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md), without converting
+the remaining hypotheses in this plan into unlabelled facts. Any Rust, Cargo,
 runtime, helper, installer, or behavior change still requires the full locked
 Rust validation and relevant real-time acceptance. Documentation-only planning
 changes use the repository's targeted documentation checks.

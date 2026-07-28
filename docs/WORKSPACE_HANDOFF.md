@@ -402,14 +402,17 @@ sample redistribution.
 
 ## Current machine and hardware state
 
-- The active development system is a Raspberry Pi 4 with 4 GB RAM and microSD.
-  A Pi 5 with 2 GB RAM, active cooler, 27 W supply, bottom NVMe base, and
-  128 GB NVMe was ordered but is not installed or measured. The planned
-  480×320 display occupies the top GPIO position rather than HDMI, so the design
-  cannot use a top-mounted M.2 HAT; its housing will be self-designed and
-  printed around the measured stack. Keep Pi 4 evidence labelled accurately;
-  migration and Pi 5 claims remain deferred to `docs/PI5_HEADROOM_PLAN.md`
-  after a clean checkpoint.
+- The active development system is now a Raspberry Pi 5 Model B Rev 1.1 with
+  2 GB RAM, active cooling, and a 128 GB-class bottom-mounted NVMe root. The
+  exact version-0.4.2 build, DSP, synthetic writer, memory, NVMe, PMU, thermal,
+  and comparison evidence is in
+  `docs/PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md`. The Pi 5 stayed at
+  2.4 GHz with no firmware throttle flag, undervoltage warning, or OOM, but its
+  fresh builds used zram under the 2 GB memory limit. Connected 128/64-frame
+  callback comparison remains open because the sole-owner and safe-output gate
+  was not met. The planned 480×320 display occupies the top GPIO position
+  rather than HDMI, so the design cannot use a top-mounted M.2 HAT; its housing
+  will be self-designed and printed around the measured stack.
 - Local configuration selects the MiniLab 3 controller, JACK
   `system:playback_1`/`system:playback_2`, AudioBox USB 96 stereo capture on
   `system:capture_1`/`system:capture_2`, and the AudioBox MIDI port as external
@@ -430,11 +433,11 @@ sample redistribution.
   for demanding simultaneous playback/recording, not a dormant JACK core that
   ordinary builds reclaim when JACK stops. General builds use CPUs 0–2 until
   removal and reboot; final Rust linking is largely serial and remains the
-  longest build stage. The unsupported `nohz_full=3` and `rcu_nocbs=3` tokens
-  were removed from the persistent boot command line on 2026-07-26 but remain
-  in the live command line until a safe reboot; `shr-audio-tune doctor`
-  correctly reports that reboot requirement. The supported isolation,
-  governor, IRQ-affinity, and JACK-affinity state is ready.
+  longest build stage. The Pi 5 kernel exposes neither full-tickless nor RCU
+  callback-offload support, so the helper correctly omits those tokens. The
+  supported isolation, governor, IRQ-affinity, and JACK-affinity state is live.
+  `shr-audio-tune doctor` currently reports one issue: host tuning owns CPU 3
+  while `audio.engine_cpu` is unset in runtime configuration.
 - The per-user `fluidsynth.service` and system `amidiminder.service` are masked
   and stopped. `/usr/bin/fluidsynth` and the TimGM bank remain for SHR-owned
   on-demand use. Setup and tuning do not start or restart JACK.

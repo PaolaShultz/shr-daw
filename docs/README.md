@@ -82,6 +82,9 @@ configuration, or the architecture contracts.
 - [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md) — exact parameters,
   DSP provenance, true-peak/loudness contract, latency, and repeatable
   hardware-independent timing evidence.
+- [Raspberry Pi 4 and Pi 5 performance comparison](PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md)
+  — dated build, DSP, memory, NVMe, PMU, thermal, and comparison evidence at
+  version 0.4.2.
 - [Preset audit](PRESET_AUDIT.md) — cleared public synthv1 bank review.
 - [Drum-pattern audit](DRUM_PATTERN_AUDIT.md) — bundled rhythm structure,
   limitations, and listening shortlist.
@@ -111,8 +114,8 @@ setup guide.
 - [Future improvements](FUTURE_IMPROVEMENTS.md) — deferred routing and product
   ideas, including the deliberately unreasonable challenges.
 - [Raspberry Pi 5 headroom and footprint plan](PI5_HEADROOM_PLAN.md) —
-  release 0.4 Raspberry Pi OS Lite acceptance followed by the later
-  dependency/footprint, real-time-core, and PRESTO experiments.
+  completed platform baseline followed by the later dependency/footprint,
+  real-time-core, and PRESTO experiments.
 - [Post-competition mixer and aux plan](POST_COMPETITION_MIXER_AUX_PLAN.md) —
   multi-strip mixer and shared-aux migration.
 - [Post-competition rhythm plan](POST_COMPETITION_RHYTHM_PLAN.md) — arbitrary

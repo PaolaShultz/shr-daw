@@ -9186,6 +9186,713 @@ emulate SSL or another commercial circuit. This scope explicitly excludes
 multiband compression, a separate exciter, psychoacoustic/virtual bass,
 subharmonic generation, and branded transformer modes.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
+<details class="document" id="doc-pi4_pi5_performance_comparison_2026-07-28" data-source="docs/PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md" data-kind="Dated evidence"><summary><span class="document-title" role="heading" aria-level="4">Raspberry Pi 4 and Raspberry Pi 5 performance comparison</span><span class="document-summary">Dated build, DSP, memory, NVMe, PMU, thermal, and comparison evidence at version 0.4.2.</span></summary><div class="document-body"><div class="document-meta"><span>Dated evidence</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md" target="_blank" rel="noopener noreferrer external">View docs/PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md source</a></div><p>This 2026-07-28 measurement used SHR-DAW <code>0.4.2</code> at exact commit
+<code>628e88cca39e6bf01201fd3eea2a2f6a2ba3a239</code>. It measured the Raspberry Pi 5
+before any optimization work. No Rust source, profile, DSP algorithm, package
+version, audio configuration, or tuning setting was changed.</p>
+<p>The unchanged hardware-independent MASTER STRIP workload is the only
+compatible timing comparison. The Raspberry Pi 5 completed its representative
+mean callback work about 1.82 to 1.84 times as fast as the Raspberry Pi 4, a
+45.2 to 45.9% time reduction. The 4× and 8× interpolation means improved by
+1.67× and 1.71×. Historical build results took longer on the Pi 4, but their
+older source revision and different cache state prevent a hardware speedup
+claim.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--evidence-and-comparison-classes" tabindex="-1">Evidence and comparison classes<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--evidence-and-comparison-classes" aria-label="Link to Evidence and comparison classes">#</a></h4>
+<p>The Raspberry Pi 5 results below are directly observed. Raw transcripts,
+one-second thermal/clock/memory samples, temporary Cargo targets, PMU output,
+and synthetic WAV/take output remain in one ignored private measurement
+directory. No private configuration, hostname, network address, storage
+identifier, preset name, or route is reproduced here.</p>
+<p>Pi 4 evidence is classified as follows:</p>
+<table>
+<thead>
+<tr>
+<th>Evidence</th>
+<th>Class</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MASTER STRIP benchmark and two-second final-mix stresses</td>
+<td>Compatible historical baseline</td>
+<td>The public result was recorded on the Pi 4 at the MASTER STRIP introduction. Git inspection shows no change to <code>src/master_strip.rs</code>, <code>src/audio_recorder.rs</code>, or the benchmark/stress command between that implementation and <code>628e88c</code>; only unrelated commands and package metadata changed.</td>
+</tr>
+<tr>
+<td>Phase 1 dry graph</td>
+<td>Contextual only</td>
+<td>Older commit <code>573c6ad</code>, one-source graph before later buses and the fixed final strip.</td>
+</tr>
+<tr>
+<td>Phase 2 insert profiles</td>
+<td>Contextual only</td>
+<td>Older graph revision without the later final strip.</td>
+</tr>
+<tr>
+<td>Phase 3/4 <code>dry</code> and <code>phase4-full</code> profiles</td>
+<td>Contextual only</td>
+<td>The current callback includes the later fixed neutral strip, so the workload is materially different even when the profile name matches.</td>
+</tr>
+<tr>
+<td>Private 2026-07-22 Pi 4 build transcripts</td>
+<td>Contextual only</td>
+<td>Version <code>0.3.93</code>; normal warm target with only the application crate rebuilding, not a fresh target at <code>628e88c</code>.</td>
+</tr>
+<tr>
+<td>Pi 4 storage description</td>
+<td>Contextual only</td>
+<td>The historical system used microSD, but no matched throughput command was retained.</td>
+</tr>
+</tbody>
+</table>
+<p>No exact matched Pi 4 baseline exists for commit <code>628e88c</code>. The compatible
+MASTER STRIP classification is narrower: the measured processor and command
+are unchanged, even though unrelated application code and the package version
+advanced.</p>
+<p>For lower-is-better timings, <code>speedup = Pi 4 / Pi 5</code> and time reduction is
+<code>(Pi 4 - Pi 5) / Pi 4 × 100%</code>. Maximum latency is kept separate from
+representative speedup.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--hardware-and-software" tabindex="-1">Hardware and software<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--hardware-and-software" aria-label="Link to Hardware and software">#</a></h4>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Historical Raspberry Pi 4</th>
+<th>Observed Raspberry Pi 5</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Board</td>
+<td>Raspberry Pi 4 Model B Rev 1.4</td>
+<td>Raspberry Pi 5 Model B Rev 1.1, revision <code>b04171</code></td>
+</tr>
+<tr>
+<td>CPU</td>
+<td>Four Cortex-A72 cores</td>
+<td>Four Cortex-A76 r4p1 cores; CPUs 0 to 3 online</td>
+</tr>
+<tr>
+<td>Cache</td>
+<td>Not retained in the measurement pages</td>
+<td>Per core: 64 KiB L1 data, 64 KiB L1 instruction, 512 KiB L2; shared 2 MiB L3; 64-byte lines</td>
+</tr>
+<tr>
+<td>RAM</td>
+<td>4 GB model, about 3.7 GiB usable</td>
+<td>2 GB model; 2,058,432 KiB / 1.963 GiB usable</td>
+</tr>
+<tr>
+<td>OS/kernel</td>
+<td>Raspberry Pi OS generation represented by Linux <code>6.12.93+rpt-rpi-v8</code>, aarch64</td>
+<td>Debian 13.6, Linux <code>6.18.34+rpt-rpi-2712</code>, aarch64, PREEMPT</td>
+</tr>
+<tr>
+<td>Firmware</td>
+<td>Not retained</td>
+<td>Firmware and bootloader dated 2026-05-26</td>
+</tr>
+<tr>
+<td>Root storage</td>
+<td>microSD; model and mount options not retained</td>
+<td>128 GB-class Kingston DRAM-less NVMe, 119.2 GiB device, ext4 <code>rw,noatime</code>, PCIe 3.0 8 GT/s ×1</td>
+</tr>
+<tr>
+<td>Rust/Cargo</td>
+<td>Rust 1.85</td>
+<td><code>rustc 1.85.0</code>, <code>cargo 1.85.0</code>, LLVM 19.1.7</td>
+</tr>
+<tr>
+<td>Source</td>
+<td>Revisions named in the historical pages</td>
+<td>Exact <code>628e88c</code>, package <code>0.4.2</code></td>
+</tr>
+<tr>
+<td>CPU policy</td>
+<td>Performance governor; CPU 3 isolated</td>
+<td>Performance governor at 2.4 GHz; CPU 3 scheduler-domain isolated; default IRQ affinity CPUs 0 to 2</td>
+</tr>
+<tr>
+<td>JACK</td>
+<td>1.9.21; 48 kHz; 3 periods; 128 and 64 frames; RT 95; JACK and managed synth on CPU 3</td>
+<td>1.9.22; 48 kHz; 128 frames; 3 periods; RT 95; server confined to CPU 3</td>
+</tr>
+<tr>
+<td>Cooling/power</td>
+<td>Cooling and supply model not retained</td>
+<td>Active PWM fan observed; reported 27 W supply was not electrically instrumented</td>
+</tr>
+</tbody>
+</table>
+<p>The Pi 5 was already tuned when this task began. <code>shr-audio-tune</code> owns the
+CPU-3 isolation, performance-governor service, IRQ policy, and JACK affinity.
+It therefore has only a current/tuned result, not an untuned result.
+<code>doctor</code> found one configuration issue: host tuning owns CPU 3 while
+<code>audio.engine_cpu</code> is unset in runtime configuration. The live JACK server is
+still pinned correctly, but that mismatch should be resolved before a future
+managed-engine acceptance pass. No tuning installation, removal, hand edit, or
+reboot was performed.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--matched-commands" tabindex="-1">Matched commands<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--matched-commands" aria-label="Link to Matched commands">#</a></h4>
+<p>&quot;Cold&quot; below means a new empty <code>CARGO_TARGET_DIR</code>; downloaded crate sources and
+the operating-system page cache were not discarded.</p>
+<table>
+<thead>
+<tr>
+<th>Command/workload</th>
+<th>Pi 5 execution</th>
+<th>Pi 4 comparison</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cargo fmt --all -- --check</code></td>
+<td>Timed once</td>
+<td>No retained matched timing</td>
+</tr>
+<tr>
+<td><code>cargo test --locked</code></td>
+<td>Fresh target, then immediate warm repeat</td>
+<td>Older warm 0.3.93 run; contextual</td>
+</tr>
+<tr>
+<td><code>cargo clippy --locked --all-targets -- -D warnings</code></td>
+<td>Fresh target, then warm repeat</td>
+<td>Earlier revisions passed; current source fails four lints</td>
+</tr>
+<tr>
+<td><code>cargo build --release --locked</code></td>
+<td>Fresh target, then immediate warm repeat</td>
+<td>Older application-only 0.3.93 rebuilds; contextual</td>
+</tr>
+<tr>
+<td><code>shr master-strip-bench 20000 48000</code></td>
+<td>Three uninstrumented timing runs</td>
+<td>Compatible historical result with unchanged workload</td>
+</tr>
+<tr>
+<td><code>shr final-mix-stress … 2 48000 64/128</code></td>
+<td>Both callback sizes</td>
+<td>Compatible two-second Pi 4 pass/fault result</td>
+</tr>
+<tr>
+<td><code>shr recorder-stress … 2 18 48000 128</code></td>
+<td>One matched two-second run</td>
+<td>Compatible historical 18-channel synthetic result</td>
+</tr>
+<tr>
+<td>60-second final-mix and 18-channel recorder stress at 48 kHz/128</td>
+<td>Additional sustained window</td>
+<td>Compatible older 60-second acceptance, but different application revision</td>
+</tr>
+<tr>
+<td>1 GiB direct write/read</td>
+<td>Pi 5 only</td>
+<td>No Pi 4 matched command; contextual</td>
+</tr>
+<tr>
+<td>PMU MASTER STRIP runs</td>
+<td>Pi 5 only</td>
+<td>No Pi 4 PMU result</td>
+</tr>
+<tr>
+<td>Connected <code>dry</code> / <code>phase4-full</code>, 128/64</td>
+<td>Not run; safety/ownership gate failed</td>
+<td>Historical results remain contextual</td>
+</tr>
+</tbody>
+</table>
+<p>All compilation and stress commands used <code>/usr/bin/time -v</code>. Long runs also
+captured temperature, clock, throttle flags, available memory, and swap once
+per second, plus before/after process and kernel-warning snapshots.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--build-memory-and-footprint" tabindex="-1">Build, memory, and footprint<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--build-memory-and-footprint" aria-label="Link to Build, memory, and footprint">#</a></h4>
+<table>
+<thead>
+<tr>
+<th>Pi 5 command</th>
+<th style="text-align:right">Wall</th>
+<th style="text-align:right">CPU</th>
+<th style="text-align:right">Peak RSS</th>
+<th style="text-align:right">I/O in/out</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Format check</td>
+<td style="text-align:right">1.71 s</td>
+<td style="text-align:right">99%</td>
+<td style="text-align:right">117,616 KiB</td>
+<td style="text-align:right">0 / 0</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Tests, fresh target</td>
+<td style="text-align:right">110.65 s</td>
+<td style="text-align:right">196%</td>
+<td style="text-align:right">1,501,136 KiB</td>
+<td style="text-align:right">1,665,512 / 1,336,064</td>
+<td>840 passed, 4 ignored</td>
+</tr>
+<tr>
+<td>Tests, warm</td>
+<td style="text-align:right">17.97 s</td>
+<td style="text-align:right">258%</td>
+<td style="text-align:right">110,192 KiB</td>
+<td style="text-align:right">64,560 / 192</td>
+<td>840 passed, 4 ignored</td>
+</tr>
+<tr>
+<td>Clippy, fresh target</td>
+<td style="text-align:right">50.42 s</td>
+<td style="text-align:right">202%</td>
+<td style="text-align:right">830,064 KiB</td>
+<td style="text-align:right">300,712 / 384,608</td>
+<td>Failed four lints</td>
+</tr>
+<tr>
+<td>Clippy, warm</td>
+<td style="text-align:right">32.85 s</td>
+<td style="text-align:right">171%</td>
+<td style="text-align:right">826,272 KiB</td>
+<td style="text-align:right">55,560 / 184,288</td>
+<td>Same four lints</td>
+</tr>
+<tr>
+<td>Release, fresh target</td>
+<td style="text-align:right">223.14 s</td>
+<td style="text-align:right">120%</td>
+<td style="text-align:right">1,407,344 KiB</td>
+<td style="text-align:right">923,144 / 220,704</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Release, warm no-op</td>
+<td style="text-align:right">0.18 s</td>
+<td style="text-align:right">41%</td>
+<td style="text-align:right">36,624 KiB</td>
+<td style="text-align:right">64,600 / 64</td>
+<td>Pass</td>
+</tr>
+</tbody>
+</table>
+<p>I/O figures are <code>/usr/bin/time -v</code> filesystem blocks, not bytes.</p>
+<p>The current source fails warning-denied Rust 1.85 Clippy for one <code>map_entry</code>,
+two <code>obfuscated_if_else</code>, and one <code>unnecessary_lazy_evaluations</code> finding.
+Those are pre-existing source findings. They were not repaired because this
+pass must measure exact commit <code>628e88c</code> without changing code.</p>
+<p>The available Pi 4 transcript ran 652 tests from a warm target in 20.32 s.
+The Pi 5 ran 844 tests in 17.97 s. Three Pi 4 <code>0.3.93</code> release rebuilds that
+compiled only SHR itself took 453.40 to 464.28 s; the Pi 5 fresh-target <code>0.4.2</code>
+release built SHR and all dependencies in 223.14 s. These raw observations show
+better practical turnaround on the Pi 5, but changed source, test count, and
+cache coverage prevent an honest build speedup calculation.</p>
+<p>The Pi 5 has about 1.737 GiB less usable RAM than the historical 3.7 GiB Pi 4
+figure, about 46.9% less. By sold capacity class it is 2 GB versus 4 GB,
+exactly 2 GB or 50% less. This is a difference, not a speedup.</p>
+<p>The historical Pi 4 application-only release rebuilds had median peak RSS
+1,686,932 KiB. The Pi 5 full fresh-target release peaked at 1,407,344 KiB,
+279,588 KiB or 16.6% lower, but the differing source and cache workload make
+that memory comparison contextual.</p>
+<p>The 2 GB Pi 5 did complete every build without OOM. It was not memory-idle:
+the OS had a 2 GiB zstd zram swap device with about 96 to 100 MiB already in use.
+During the fresh test, sampled available memory fell to 179,584 KiB and
+<code>SwapFree</code> transiently fell by about 894 MiB. During the fresh release build,
+available memory fell to 111,744 KiB and <code>SwapFree</code> transiently fell by about
+675 MiB. Most of that transient allocation disappeared when compiler processes
+exited; post-run swap use remained about 57 MiB higher after tests and 67 MiB
+higher after release than at their respective starts. <code>/usr/bin/time</code> reported
+zero process swaps, but the system sampler proves zram activity, so these
+results must not be described as swap-free. No OOM or memory-pressure kernel
+warning was recorded; memory PSI was unavailable on this kernel.</p>
+<p>The stripped release ELF was 4,262,352 bytes. Its principal sections were:</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th style="text-align:right">Bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.text</code></td>
+<td style="text-align:right">3,271,080</td>
+</tr>
+<tr>
+<td><code>.rodata</code></td>
+<td style="text-align:right">259,672</td>
+</tr>
+<tr>
+<td><code>.eh_frame</code></td>
+<td style="text-align:right">229,152</td>
+</tr>
+<tr>
+<td><code>.gcc_except_table</code></td>
+<td style="text-align:right">120,804</td>
+</tr>
+<tr>
+<td><code>.data.rel.ro</code></td>
+<td style="text-align:right">130,824</td>
+</tr>
+<tr>
+<td>All reported ELF sections</td>
+<td style="text-align:right">4,254,473</td>
+</tr>
+</tbody>
+</table>
+<p>The complete fresh release Cargo target occupied 78,662,498 apparent bytes,
+about 75.0 MiB.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--storage" tabindex="-1">Storage<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--storage" aria-label="Link to Storage">#</a></h4>
+<p>The Pi 5 booted from its NVMe root, not microSD. A 1 GiB direct-I/O file on the
+same ext4 filesystem measured 801 MB/s write with final data sync and 903 MB/s
+read. The NVMe SMART log showed 43 °C, zero media errors, zero warning or
+critical-temperature time, and zero percentage used. These are short local
+throughput and health checks, not an endurance test.</p>
+<p>The historical Pi 4 pages establish only that their root was microSD. Because
+no matching Pi 4 command, media model, filesystem, or mount options were
+retained, no storage speedup is calculated.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--master-strip-dsp" tabindex="-1">MASTER STRIP DSP<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--master-strip-dsp" aria-label="Link to MASTER STRIP DSP">#</a></h4>
+<p>Each Pi 5 value below lists all three runs. The historical Pi 4 value is the
+compatible unchanged workload.</p>
+<h5 id="doc-pi4_pi5_performance_comparison_2026-07-28--mean-timing" tabindex="-1">Mean timing<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--mean-timing" aria-label="Link to Mean timing">#</a></h5>
+<table>
+<thead>
+<tr>
+<th>Frames/profile</th>
+<th style="text-align:right">Pi 4 mean</th>
+<th style="text-align:right">Pi 5 means, runs 1/2/3</th>
+<th style="text-align:right">Pi 5 median (range)</th>
+<th style="text-align:right">Speedup</th>
+<th style="text-align:right">Time reduction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>64 neutral</td>
+<td style="text-align:right">92.204 µs</td>
+<td style="text-align:right">53.829 / 49.817 / 50.552 µs</td>
+<td style="text-align:right">50.552 µs (49.817 to 53.829)</td>
+<td style="text-align:right">1.824×</td>
+<td style="text-align:right">45.2%</td>
+</tr>
+<tr>
+<td>64 active</td>
+<td style="text-align:right">92.154 µs</td>
+<td style="text-align:right">54.060 / 49.885 / 49.853 µs</td>
+<td style="text-align:right">49.885 µs (49.853 to 54.060)</td>
+<td style="text-align:right">1.847×</td>
+<td style="text-align:right">45.9%</td>
+</tr>
+<tr>
+<td>128 neutral</td>
+<td style="text-align:right">181.988 µs</td>
+<td style="text-align:right">102.623 / 99.489 / 99.418 µs</td>
+<td style="text-align:right">99.489 µs (99.418 to 102.623)</td>
+<td style="text-align:right">1.829×</td>
+<td style="text-align:right">45.3%</td>
+</tr>
+<tr>
+<td>128 active</td>
+<td style="text-align:right">183.467 µs</td>
+<td style="text-align:right">100.188 / 99.687 / 99.637 µs</td>
+<td style="text-align:right">99.687 µs (99.637 to 100.188)</td>
+<td style="text-align:right">1.840×</td>
+<td style="text-align:right">45.7%</td>
+</tr>
+</tbody>
+</table>
+<p>Median mean deadline use was 3.791%, 3.741%, 3.731%, and 3.738% in the same
+row order, down from 6.915%, 6.912%, 6.825%, and 6.880% on the Pi 4.</p>
+<h5 id="doc-pi4_pi5_performance_comparison_2026-07-28--percentiles" tabindex="-1">Percentiles<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--percentiles" aria-label="Link to Percentiles">#</a></h5>
+<table>
+<thead>
+<tr>
+<th>Frames/profile</th>
+<th style="text-align:right">Pi 4 p95</th>
+<th style="text-align:right">Pi 5 p95 median (range)</th>
+<th style="text-align:right">p95 speedup / reduction</th>
+<th style="text-align:right">Pi 4 p99</th>
+<th style="text-align:right">Pi 5 p99 median (range)</th>
+<th style="text-align:right">p99 speedup / reduction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>64 neutral</td>
+<td style="text-align:right">91.963 µs</td>
+<td style="text-align:right">50.185 µs (49.926 to 76.888)</td>
+<td style="text-align:right">1.832× / 45.4%</td>
+<td style="text-align:right">111.444 µs</td>
+<td style="text-align:right">77.185 µs (51.833 to 94.222)</td>
+<td style="text-align:right">1.444× / 30.7%</td>
+</tr>
+<tr>
+<td>64 active</td>
+<td style="text-align:right">92.000 µs</td>
+<td style="text-align:right">49.999 µs (49.962 to 76.777)</td>
+<td style="text-align:right">1.840× / 45.7%</td>
+<td style="text-align:right">101.092 µs</td>
+<td style="text-align:right">51.889 µs (51.870 to 79.221)</td>
+<td style="text-align:right">1.948× / 48.7%</td>
+</tr>
+<tr>
+<td>128 neutral</td>
+<td style="text-align:right">182.925 µs</td>
+<td style="text-align:right">99.795 µs (99.666 to 126.073)</td>
+<td style="text-align:right">1.833× / 45.4%</td>
+<td style="text-align:right">192.036 µs</td>
+<td style="text-align:right">102.165 µs (101.963 to 140.870)</td>
+<td style="text-align:right">1.880× / 46.8%</td>
+</tr>
+<tr>
+<td>128 active</td>
+<td style="text-align:right">184.480 µs</td>
+<td style="text-align:right">100.073 µs (100.073 to 100.222)</td>
+<td style="text-align:right">1.843× / 45.8%</td>
+<td style="text-align:right">193.758 µs</td>
+<td style="text-align:right">102.388 µs (102.258 to 103.573)</td>
+<td style="text-align:right">1.892× / 47.2%</td>
+</tr>
+</tbody>
+</table>
+<p>The first Pi 5 run was consistently noisier at 64 frames. The range is retained
+rather than selecting only the two tighter runs.</p>
+<h5 id="doc-pi4_pi5_performance_comparison_2026-07-28--maximum-timing-and-uncertainty" tabindex="-1">Maximum timing and uncertainty<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--maximum-timing-and-uncertainty" aria-label="Link to Maximum timing and uncertainty">#</a></h5>
+<table>
+<thead>
+<tr>
+<th>Frames/profile</th>
+<th style="text-align:right">Pi 4 maximum</th>
+<th style="text-align:right">Pi 5 maxima, runs 1/2/3</th>
+<th style="text-align:right">Pi 5 median</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>64 neutral</td>
+<td style="text-align:right">2,885.372 µs</td>
+<td style="text-align:right">122.277 / 80.018 / 105.518 µs</td>
+<td style="text-align:right">105.518 µs</td>
+<td>Pi 4 had one known non-real-time descheduling outlier.</td>
+</tr>
+<tr>
+<td>64 active</td>
+<td style="text-align:right">200.277 µs</td>
+<td style="text-align:right">121.518 / 73.092 / 84.925 µs</td>
+<td style="text-align:right">84.925 µs</td>
+<td>All Pi 5 maxima below 9.2% of deadline.</td>
+</tr>
+<tr>
+<td>128 neutral</td>
+<td style="text-align:right">275.406 µs</td>
+<td style="text-align:right">373.775 / 123.147 / 119.388 µs</td>
+<td style="text-align:right">123.147 µs</td>
+<td>First Pi 5 run was noisier; worst was 14.0% of deadline.</td>
+</tr>
+<tr>
+<td>128 active</td>
+<td style="text-align:right">520.923 µs</td>
+<td style="text-align:right">7,446.423 / 128.110 / 116.869 µs</td>
+<td style="text-align:right">128.110 µs</td>
+<td>One Pi 5 process-descheduling event reached 279.2% of the nominal deadline while p99 stayed 103.573 µs.</td>
+</tr>
+</tbody>
+</table>
+<p>The command is an ordinary non-real-time process. Its isolated 7.446 ms maximum
+is not a JACK xrun, and it is not averaged into a &quot;maximum speedup.&quot; It does
+show why scheduler outliers and representative DSP throughput are separate
+questions.</p>
+<h5 id="doc-pi4_pi5_performance_comparison_2026-07-28--interpolation-and-state" tabindex="-1">Interpolation and state<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--interpolation-and-state" aria-label="Link to Interpolation and state">#</a></h5>
+<table>
+<thead>
+<tr>
+<th>Workload</th>
+<th style="text-align:right">Pi 4 mean</th>
+<th style="text-align:right">Pi 5 mean runs</th>
+<th style="text-align:right">Median speedup / reduction</th>
+<th style="text-align:right">Pi 4 p99</th>
+<th style="text-align:right">Pi 5 p99 runs</th>
+<th style="text-align:right">Median p99 speedup / reduction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>4×, 128 frames</td>
+<td style="text-align:right">32.096 µs</td>
+<td style="text-align:right">19.209 / 19.276 / 19.271 µs</td>
+<td style="text-align:right">1.666× / 40.0%</td>
+<td style="text-align:right">32.056 µs</td>
+<td style="text-align:right">19.260 / 19.352 / 19.297 µs</td>
+<td style="text-align:right">1.661× / 39.8%</td>
+</tr>
+<tr>
+<td>8×, 128 frames</td>
+<td style="text-align:right">50.291 µs</td>
+<td style="text-align:right">29.404 / 29.369 / 29.365 µs</td>
+<td style="text-align:right">1.712× / 41.6%</td>
+<td style="text-align:right">54.333 µs</td>
+<td style="text-align:right">29.555 / 29.519 / 29.500 µs</td>
+<td style="text-align:right">1.841× / 45.7%</td>
+</tr>
+</tbody>
+</table>
+<p>Pi 5 maximum ranges were 23.741 to 42.555 µs for 4× and 42.278 to 58.518 µs
+for 8×. Processor state remained 21,632 bytes, including 1,056 bytes of
+limiter delay storage. This is expected: the code and workload are unchanged.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--pmu-counters" tabindex="-1">PMU counters<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--pmu-counters" aria-label="Link to PMU counters">#</a></h4>
+<p>The matching <code>linux-perf</code> package was installed only after the kernel exposed
+the Cortex-A76 PMU and confirmed <code>CONFIG_PERF_EVENTS</code>, <code>CONFIG_HW_PERF_EVENTS</code>,
+<code>CONFIG_ARM_PMU</code>, and <code>CONFIG_ARM_PMUV3</code>. Separate two-event runs scheduled
+each counter for 100% of the measurement instead of relying on multiplexed
+estimates:</p>
+<table>
+<thead>
+<tr>
+<th>Counter</th>
+<th style="text-align:right">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cycles</td>
+<td style="text-align:right">17,529,346,748</td>
+</tr>
+<tr>
+<td>Instructions</td>
+<td style="text-align:right">33,007,189,777</td>
+</tr>
+<tr>
+<td>Instructions per cycle</td>
+<td style="text-align:right">1.88</td>
+</tr>
+<tr>
+<td>L1 data-cache loads / misses</td>
+<td style="text-align:right">9,353,593,453 / 70,257</td>
+</tr>
+<tr>
+<td>L1 instruction-cache loads / misses</td>
+<td style="text-align:right">8,387,138,591 / 70,489</td>
+</tr>
+<tr>
+<td>Last-level-cache loads / misses</td>
+<td style="text-align:right">102,827 / 62,371</td>
+</tr>
+</tbody>
+</table>
+<p>These counters characterize the Pi 5 workload only. There is no Pi 4 PMU run,
+so they do not establish cache speedup. The last-level miss percentage is high
+for a very small architecture-event subset and should not be generalized to
+all memory traffic.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--synthetic-recording-and-final-mix" tabindex="-1">Synthetic recording and final mix<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--synthetic-recording-and-final-mix" aria-label="Link to Synthetic recording and final mix">#</a></h4>
+<table>
+<thead>
+<tr>
+<th>Pi 5 run</th>
+<th style="text-align:right">Frames</th>
+<th>Callback result</th>
+<th>Writer result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Final mix, 2 s, 64 frames</td>
+<td style="text-align:right">96,000</td>
+<td>Mean 51.381 µs; p95 53.351; p99 65.759; max 112.666</td>
+<td>High-water 128 frames; zero drops/overflows; playback/WAV equal</td>
+</tr>
+<tr>
+<td>Final mix, 2 s, 128 frames</td>
+<td style="text-align:right">96,000</td>
+<td>Mean 104.051 µs; p95 126.499; p99 129.444; max 172.887</td>
+<td>High-water 128 frames; zero drops/overflows; playback/WAV equal</td>
+</tr>
+<tr>
+<td>18-channel recorder, 2 s, 128 frames</td>
+<td style="text-align:right">96,000 per stem</td>
+<td>Real-time pacing completed in 2.155 s</td>
+<td>High-water 640 frames; zero drops/overflows; channel identity verified</td>
+</tr>
+<tr>
+<td>Final mix, 60 s, 128 frames</td>
+<td style="text-align:right">2,880,000</td>
+<td>Mean 105.187 µs; p95 127.906; p99 137.554; max 465.107</td>
+<td>High-water 768 frames; zero drops/overflows; playback/WAV equal</td>
+</tr>
+<tr>
+<td>18-channel recorder, 60 s, 128 frames</td>
+<td style="text-align:right">2,880,000 per stem</td>
+<td>Real-time pacing completed in 60.206 s</td>
+<td>High-water 1,408 frames; zero drops/overflows; channel identity verified</td>
+</tr>
+</tbody>
+</table>
+<p>The compatible Pi 4 evidence recorded the same pass/fault outcome for the
+two-second final-mix runs and the 18-channel two-second recorder, but did not
+retain callback timing for a speedup calculation. The 60-second Pi 4 acceptance
+also passed, though it used an older application revision.</p>
+<p>These are synthetic writer and DSP results. They are not physical-input,
+interface, listening, JACK scheduling, or xrun evidence.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--thermal-clock-and-power-state" tabindex="-1">Thermal, clock, and power state<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--thermal-clock-and-power-state" aria-label="Link to Thermal, clock, and power state">#</a></h4>
+<p>The Pi 5 stayed at 2.4 GHz in every one-second build sample under the
+performance governor. The complete measured SoC range was 54.0 to 63.35 °C;
+the fresh release build reached 61.7 °C, and both 60-second recorder stresses
+stayed at or below 57.3 °C. The active cooler was visible as a four-state PWM
+fan and was already running at state 1 during the identity capture.</p>
+<p><code>vcgencmd get_throttled</code> remained <code>0x0</code> before, during, and after the long
+workloads. Kernel logs contained no undervoltage, throttling, thermal-limit, or
+OOM warning. The CPU clock did not vary in the samples. The NVMe remained at
+43 °C with no recorded warning-temperature time.</p>
+<p>This proves no firmware-recorded throttle or undervoltage event occurred during
+the pass. It does not measure wall power, transient supply voltage at the
+connector, acoustic noise, or cooling performance in an enclosure.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--connected-jack-gate-and-restoration" tabindex="-1">Connected JACK gate and restoration<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--connected-jack-gate-and-restoration" aria-label="Link to Connected JACK gate and restoration">#</a></h4>
+<p>Connected measurement was not run. At the start, an interactive SHR process
+was attached to the physical TTY. It later exited, but a new interactive SHR
+session then started an owned synth and direct playback route. Physical output
+safety was also not confirmed. Starting another checkpoint would have layered
+owners or required stopping a session that this measurement task did not own.</p>
+<p>No checkpoint note or MIDI message was sent. No JACK service, sample rate,
+period size, process, ALSA subscription, or audio connection was changed by
+this task. There was therefore no connected teardown and no teardown-only xrun
+to classify. The interactive session later exited without intervention from
+this task. The final capture had one active JACK server at the original
+48 kHz, 128 frames, three periods, RT 95, and CPU 3 placement; no SHR or synth
+process; no JACK audio connection; and no task-owned client or note. The task
+did not try to relaunch the earlier TTY session.</p>
+<p>A matched rerun needs a deliberately idle session, confirmed-safe output, one
+cleared preset class, exact <code>dry</code> and <code>phase4-full</code> durations, and both 128- and
+64-frame JACK states restored through the managed helper. It must capture
+callback count, mean, p95, p99, maximum, misses, oversized callbacks, sustained
+versus teardown xruns, owner/synth CPU and RSS, migrations, graph storage,
+temperature, clocks, throttling, and byte-identical route snapshots. Because
+the current fixed strip did not exist in the historical Phase 3/4 runs, an
+exact hardware speedup still requires rerunning the Pi 4 at <code>628e88c</code>.</p>
+<h4 id="doc-pi4_pi5_performance_comparison_2026-07-28--conclusions" tabindex="-1">Conclusions<a class="heading-anchor" href="#doc-pi4_pi5_performance_comparison_2026-07-28--conclusions" aria-label="Link to Conclusions">#</a></h4>
+<p>The compatible MASTER STRIP result is clear:</p>
+<ul>
+<li>representative complete-strip mean time fell by 45.2 to 45.9%, a
+1.82 to 1.84× speedup;</li>
+<li>most p95 and p99 rows improved by about 45 to 49%, with the noisier 64-frame
+neutral p99 improving by 30.7%;</li>
+<li>4× and 8× interpolation means fell by 40.0% and 41.6%; and</li>
+<li>the same fixed processor state and limiter storage produced those gains.</li>
+</ul>
+<p>The Pi 5 also completed a fresh full release in less wall time than the older
+Pi 4 took to relink only SHR, and its NVMe delivered strong short direct-I/O
+throughput. Those observations are operationally useful but are not exact
+hardware speedups without a matched Pi 4 rerun.</p>
+<p>The 2 GB configuration passed compilation, tests, DSP, and 60-second synthetic
+writer stresses without OOM, thermal throttling, undervoltage, drops, or
+overflows. It did use zram heavily during fresh compilation, leaving much less
+memory margin than the 4 GB Pi 4. This evidence supports the 2 GB Pi 5 for the
+measured CLI/TUI and synthetic workloads; it does not yet establish 2 GB as a
+universal recommendation for concurrent compilation, Codex, JACK, synth,
+recording, and other services.</p>
+<p>Still unproven are an exact build speedup, exact current audio-callback speedup,
+microSD-to-NVMe speedup, untuned-versus-tuned Pi 5 behavior, connected 64-frame
+stability, physical-interface xruns, MR18 or recording hardware, listening
+quality, wall power, and long enclosure/ambient thermal behavior.</p>
+<p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-preset_audit" data-source="docs/PRESET_AUDIT.md" data-kind="Dated evidence"><summary><span class="document-title" role="heading" aria-level="4">Cleared synthv1 preset audit</span><span class="document-summary">Cleared public synthv1 bank review.</span></summary><div class="document-body"><div class="document-meta"><span>Dated evidence</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/PRESET_AUDIT.md" target="_blank" rel="noopener noreferrer external">View docs/PRESET_AUDIT.md source</a></div><p>This audit covers only the 21 public, MIT-cleared files named in
 <code>presets/synthv1/cleared-presets.txt</code>. The 424 private presets and the uncleared
 392-file archive were not used as sound or submission content.</p>
@@ -13106,14 +13813,17 @@ drum download is also private: its terms permit musical use but prohibit raw
 sample redistribution.</p>
 <h4 id="doc-workspace_handoff--current-machine-and-hardware-state" tabindex="-1">Current machine and hardware state<a class="heading-anchor" href="#doc-workspace_handoff--current-machine-and-hardware-state" aria-label="Link to Current machine and hardware state">#</a></h4>
 <ul>
-<li>The active development system is a Raspberry Pi 4 with 4 GB RAM and microSD.
-A Pi 5 with 2 GB RAM, active cooler, 27 W supply, bottom NVMe base, and
-128 GB NVMe was ordered but is not installed or measured. The planned
-480×320 display occupies the top GPIO position rather than HDMI, so the design
-cannot use a top-mounted M.2 HAT; its housing will be self-designed and
-printed around the measured stack. Keep Pi 4 evidence labelled accurately;
-migration and Pi 5 claims remain deferred to <code>docs/PI5_HEADROOM_PLAN.md</code>
-after a clean checkpoint.</li>
+<li>The active development system is now a Raspberry Pi 5 Model B Rev 1.1 with
+2 GB RAM, active cooling, and a 128 GB-class bottom-mounted NVMe root. The
+exact version-0.4.2 build, DSP, synthetic writer, memory, NVMe, PMU, thermal,
+and comparison evidence is in
+<code>docs/PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md</code>. The Pi 5 stayed at
+2.4 GHz with no firmware throttle flag, undervoltage warning, or OOM, but its
+fresh builds used zram under the 2 GB memory limit. Connected 128/64-frame
+callback comparison remains open because the sole-owner and safe-output gate
+was not met. The planned 480×320 display occupies the top GPIO position
+rather than HDMI, so the design cannot use a top-mounted M.2 HAT; its housing
+will be self-designed and printed around the measured stack.</li>
 <li>Local configuration selects the MiniLab 3 controller, JACK
 <code>system:playback_1</code>/<code>system:playback_2</code>, AudioBox USB 96 stereo capture on
 <code>system:capture_1</code>/<code>system:capture_2</code>, and the AudioBox MIDI port as external
@@ -13134,11 +13844,11 @@ records in <code>/var/lib/shr-audio-tune/</code>. This is deliberate real-time i
 for demanding simultaneous playback/recording, not a dormant JACK core that
 ordinary builds reclaim when JACK stops. General builds use CPUs 0–2 until
 removal and reboot; final Rust linking is largely serial and remains the
-longest build stage. The unsupported <code>nohz_full=3</code> and <code>rcu_nocbs=3</code> tokens
-were removed from the persistent boot command line on 2026-07-26 but remain
-in the live command line until a safe reboot; <code>shr-audio-tune doctor</code>
-correctly reports that reboot requirement. The supported isolation,
-governor, IRQ-affinity, and JACK-affinity state is ready.</li>
+longest build stage. The Pi 5 kernel exposes neither full-tickless nor RCU
+callback-offload support, so the helper correctly omits those tokens. The
+supported isolation, governor, IRQ-affinity, and JACK-affinity state is live.
+<code>shr-audio-tune doctor</code> currently reports one issue: host tuning owns CPU 3
+while <code>audio.engine_cpu</code> is unset in runtime configuration.</li>
 <li>The per-user <code>fluidsynth.service</code> and system <code>amidiminder.service</code> are masked
 and stopped. <code>/usr/bin/fluidsynth</code> and the TimGM bank remain for SHR-owned
 on-demand use. Setup and tuning do not start or restart JACK.</li>
@@ -13616,17 +14326,23 @@ and <code>D-50 OUT</code> to stable USB/ALSA card and port identity, preserve th
 across reconnects, while preserving the current refusal to guess. It should
 remain configuration data rather than adding hardware names to Rust constants.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-pi5_headroom_plan" data-source="docs/PI5_HEADROOM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Raspberry Pi 5 headroom and footprint plan</span><span class="document-summary">Release 0.4 Raspberry Pi OS Lite acceptance followed by the later dependency/footprint, real-time-core, and PRESTO experiments.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/PI5_HEADROOM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/PI5_HEADROOM_PLAN.md source</a></div><blockquote>
+<details class="document" id="doc-pi5_headroom_plan" data-source="docs/PI5_HEADROOM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Raspberry Pi 5 headroom and footprint plan</span><span class="document-summary">Completed platform baseline followed by the later dependency/footprint, real-time-core, and PRESTO experiments.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/PI5_HEADROOM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/PI5_HEADROOM_PLAN.md source</a></div><blockquote>
 <p>The clean Raspberry Pi OS Lite installation and setup acceptance is a release
-0.4 gate. The later headroom, dependency, PRESTO, and optimization experiments
-remain unscheduled future work. Nothing here describes measured Raspberry Pi
-5 performance while the ordered hardware is absent.</p>
+0.4 gate. The Raspberry Pi 5 baseline was measured on 2026-07-28 at version
+0.4.2; see the dated
+<a href="#doc-pi4_pi5_performance_comparison_2026-07-28">Pi 4/Pi 5 comparison</a>.
+Dependency, PRESTO, and optimization experiments remain future work.</p>
 </blockquote>
 <h4 id="doc-pi5_headroom_plan--purpose" tabindex="-1">Purpose<a class="heading-anchor" href="#doc-pi5_headroom_plan--purpose" aria-label="Link to Purpose">#</a></h4>
-<p>Release 0.4 uses the new Pi first to prove a reproducible clean installation,
+<p>Release 0.4 used the new Pi first to prove a reproducible clean installation,
 setup, and return from failures on normal Raspberry Pi OS Lite. That platform
-gate does not require or assume an optimization. Only after it passes does the
-future Headroom pass compare and tune performance.</p>
+gate did not require or assume an optimization. The baseline comparison now
+precedes the future Headroom optimization work.</p>
+<p>The platform is now installed and the measurement-before-optimization baseline
+is complete. The measured Pi 5 was already using the helper-managed CPU-3 audio
+profile, so the dated evidence does not invent an untuned result. Connected
+callback comparison remains open because the safe-output and sole-owner gate
+was not met.</p>
 <p>SHR-DAW grew experimentally by adding useful musical capabilities. The future
 <strong>Headroom pass</strong> deliberately reverses direction for a while: stop adding,
 measure what exists, remove unnecessary weight, improve real-time locality, and
@@ -13650,8 +14366,8 @@ cache size. Cold setup, XML, JSON, screenshot, and file-management paths do not
 need to remain in CPU cache while the audio callback runs. The useful target is
 the hot working set: the instructions and data repeatedly touched together by
 the active callback.</p>
-<h4 id="doc-pi5_headroom_plan--planned-development-hardware" tabindex="-1">Planned development hardware<a class="heading-anchor" href="#doc-pi5_headroom_plan--planned-development-hardware" aria-label="Link to Planned development hardware">#</a></h4>
-<p>The ordered package is a Raspberry Pi 5 with 2 GB RAM, active cooler, 27 W
+<h4 id="doc-pi5_headroom_plan--development-hardware" tabindex="-1">Development hardware<a class="heading-anchor" href="#doc-pi5_headroom_plan--development-hardware" aria-label="Link to Development hardware">#</a></h4>
+<p>The installed package is a Raspberry Pi 5 with 2 GB RAM, active cooler, 27 W
 power supply, a bottom-mounted PCIe-to-NVMe base, and a 128 GB NVMe drive.
 The complete package cost about EUR 120; the small NVMe cost EUR 15. Neither
 price is a product requirement or an evergreen buying guide.</p>
@@ -13809,13 +14525,15 @@ evidence exist. Until then:</p>
 <ul>
 <li>this plan and short links to it remain under <strong>Planned work</strong>;</li>
 <li>old Raspberry Pi 4 measurement pages remain unchanged dated evidence;</li>
-<li>installation docs do not claim Pi 5 or 2 GB acceptance;</li>
+<li>installation docs may link dated Pi 5 evidence but do not turn the measured
+2 GB system into a universal minimum or recommendation;</li>
 <li><code>AUDIO_GRAPH.md</code>, Help, the visual manual, and musician guides do not describe
 PRESTO as available; and</li>
 <li>the root README does not advertise the planned work as a feature.</li>
 </ul>
-<p>Publish later Pi 4/Pi 5 results in a separate dated measurement document, not
-by converting hypotheses in this plan into unlabelled facts. Any Rust, Cargo,
+<p>The first Pi 4/Pi 5 result is published in the separate dated
+<a href="#doc-pi4_pi5_performance_comparison_2026-07-28">comparison</a>, without converting
+the remaining hypotheses in this plan into unlabelled facts. Any Rust, Cargo,
 runtime, helper, installer, or behavior change still requires the full locked
 Rust validation and relevant real-time acceptance. Documentation-only planning
 changes use the repository's targeted documentation checks.</p>
