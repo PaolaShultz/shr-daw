@@ -108,40 +108,35 @@ advance from 0 through 32 rows after entry, blank, erase, or note-off; 0 stays
 on the current row. `DRUM LANES FULL` rejects an unplaceable hit/group without
 changing the Pattern.
 
-### MODE — leave Edit for Play or Record
-
-![Populated FT2 Edit mode with the MODE page](../images/menu/ft2-step-edit-mode.png)
-
-`PLAY` stops Edit and starts normal transport. `RECORD` stops Edit and starts
-real-time capture from the first row. `EDIT` is the active mode; pressing it
-again leaves Edit. Play, Record, and Edit are mutually exclusive.
-
 ### EDIT — enter or remove cells
 
-![Populated FT2 Edit mode with the EDIT page](../images/menu/ft2-step-edit-edit.png)
-
-`BLANK` advances without writing a note. `ERASE` clears the selected cell.
-`N-OFF` writes a note-off. `ADD` selects an advance from 0 through 32 rows.
+`CELL` opens contextual cell editing. `BLANK` advances without writing a note.
+`ERASE` clears the selected cell. `N-OFF` writes a note-off. Edit contains no
+duplicated Play, Record, or Edit mode buttons.
 
 ### SET — rotary selectors
 
-![Populated FT2 Edit mode with the SET page](../images/menu/ft2-step-edit-set.png)
-
-`COL-` and `COL+` move the edit cursor between the page's four note columns.
-`LENGTH` opens note durations from 1/1 through 1/128. `PAGE` opens the same
-page/column overlay used in Play. Turning browses, clicking selects, and Back
-cancels without leaving Edit.
+`LENGTH` opens every note duration from 1/1 through 1/128. `ADD` opens every
+advance from 0 through 32 rows. Each selector opens on its current value;
+turning changes the draft, clicking commits, and Back cancels without changing
+the stored value. LENGTH and ADD remain independent. `COL-` and `COL+` move the
+edit cursor between the page's four note columns.
 
 ![Edit ADD overlay](../images/menu/overlay-edit-add.png)
 
 ![Edit note-length overlay](../images/menu/overlay-note-length.png)
 
+### SELECT — page and route
+
+`PAGE` opens the normal page/column selector. `ROUTE` opens the selected
+column's route editor. Both preserve Edit mode and use rotary turn, click, and
+Back in the same way as their normal-FT2 counterparts.
+
 ### SYS — safety, help, and leave edit
 
-![Populated FT2 Edit mode with the SYS page](../images/menu/ft2-step-edit-sys.png)
-
 `PANIC` performs the owned stop. `N00B` toggles the same independent filter.
-`HELP` opens contextual help. `EXIT` leaves Edit and returns to Play mode.
+`HELP` opens contextual help. `EXIT` leaves Edit exactly one level and returns
+to normal FT2 while preserving Pattern, page, column, and cursor row.
 
 ## FT2 Cell Edit
 
@@ -292,9 +287,10 @@ before replacement. `DELETE` requires repeat confirmation. `MIDI` uses the
 empty fourth position to open the private Standard MIDI File inbox. Selecting
 or pressing LOAD first analyses the file and shows parts/pages, Pattern rows,
 tempo/meter, timing accuracy, stripped-event counts, and warnings; a second
-action confirms the new unsaved Project. A dirty LOAD or MIDI import first offers
-Save/Discard/Cancel; Cancel or failed/pending Save keeps the Project and exact
-tracker position.
+action confirms the new unsaved Project. A dirty LOAD or MIDI import first
+opens the four-row rotary guard: `SAVE (AUTO)`, `SAVE (NAME)`, `DON'T SAVE`,
+and `BACK`. Back or a failed/pending save keeps the Project and exact tracker
+position.
 
 The MIDI browser follows no symlinks and accepts bounded regular `.mid` and
 `.midi` format 0/1 PPQN files only. It never previews, transmits, or overwrites
@@ -306,8 +302,8 @@ separate PREVIEW command page.
 ![Populated Project Files screen with the PROJECT page](../images/menu/files-project.png)
 
 `NEW` creates a confirmed blank Project. `SAVE AS` writes a numbered
-non-overwriting copy. `NAME KB` edits the Project display name with
-computer-keyboard text entry. `PATTERN` opens
+non-overwriting copy. `NAME` opens the current Project display name; rotary
+click accepts it and computer-keyboard editing is optional. `PATTERN` opens
 Pattern tools.
 
 ### SYS — safety, help, and return
@@ -316,6 +312,14 @@ Pattern tools.
 
 `PANIC` and `HELP` remain available. `EXIT` cancels pending file actions and
 returns to the tracker.
+
+Dirty FT2 Exit, New Project, LOAD, confirmed MIDI replacement, and application
+quit all use the same guard. It opens on `SAVE (AUTO)`. An unsaved automatic
+save chooses the next free Project name; `SAVE (NAME)` supplies the same kind
+of collision-free suggestion before optional editing. Continuation happens
+only after a completed save. `DON'T SAVE` explicitly restores the clean
+Project baseline before leaving FT2, including its routing, effects, and Loop
+Mix ownership. `BACK` and Esc return to the exact caller and context.
 
 When saving a changed blank Pattern, SHR can offer its routing as the private
 default for future Patterns.

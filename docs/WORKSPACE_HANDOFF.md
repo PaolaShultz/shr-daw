@@ -1,7 +1,7 @@
 # Workspace handoff
 
 This file contains only current machine state and decisions that must survive a
-new thread in `/home/patch/p/shsynth`. Durable repository policy is in
+new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.3.101`.
+corrected starting point; the current checked-progress version is `0.4.1`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -143,6 +143,22 @@ starts. All 46 public Markdown sources and 134 local image references validated,
 and `git diff --check` passed. No complete suite, Clippy, release build,
 screenshot regeneration, JACK server, synth, MIDI transmission, playback,
 recording, audible test, or physical hardware test was run.
+
+Version `0.4.1` follows the accepted Raspberry Pi 5 installation milestone and
+repairs three controller-first FT2-style MIDI workflows. Fresh Drums now own an
+explicit discovered FluidSynth GM-drum route on channel 10 across audition,
+record/edit input, and transport; route failures remain explicit and silent.
+Dirty Project replacement uses the rotary `SAVE (AUTO)` / `SAVE (NAME)` /
+`DON'T SAVE` / `BACK` guard, and Edit owns only contextual commands with
+independent 1/1–1/128 LENGTH and 0–32 ADD selectors. The shared status row once
+again retains the configured CPU temperature beside its transport glyph.
+
+The complete `0.4.1` combined pass on 2026-07-28 used Rust 1.85. Formatting,
+the locked debug build, and all 832 tests passed with 828 passing, zero failing,
+and four intentionally ignored private DSP audition renderers. The generated
+documentation site reproduced byte-for-byte with its pinned renderer and
+`git diff --check` passed. No JACK server, synth, MIDI transmission, playback,
+recording, audible test, or physical hardware test was started.
 
 Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical

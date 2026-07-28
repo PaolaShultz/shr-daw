@@ -7,12 +7,14 @@ product, installation, FT2, and hardware documents linked below.
 ## Version numbering
 
 The package uses `major.minor.patch` numbering. Version `0.3.92` corrected the
-unintended `0.392.0`; the current checked-progress version is `0.3.101`.
+unintended `0.392.0`; the current checked-progress version is `0.4.1`.
 
 - Meaningful checked progress before the next milestone increments the patch:
   `0.3.99`, `0.3.100`, `0.3.101`, and so on.
 - The completed 0.4 milestone becomes package version `0.4.0`. Later fixes or
-  checked progress toward 0.5 use `0.4.1`, `0.4.2`, and so on.
+  checked progress toward 0.5 use `0.4.1`, `0.4.2`, and so on. The Raspberry
+  Pi 5 installation milestone is accepted; the current repair release is
+  `0.4.1`.
 - The completed 0.5 milestone becomes `0.5.0`; later checked progress toward
   0.6 uses `0.5.1`, `0.5.2`, and so on.
 - The completed 0.6 milestone becomes `0.6.0`.
@@ -37,6 +39,9 @@ result, state boundary, and acceptance path before implementing it.
 Outcome: every existing menu entry is in the intended place and every current
 workflow works as intended on the supported compact UI and a clean normal
 Raspberry Pi OS Lite installation.
+
+Status: accepted after the Raspberry Pi 5 installation, doctor, managed-JACK,
+silent engine, and repository validation pass. Subsequent fixes use `0.4.x`.
 
 The release gate requires:
 

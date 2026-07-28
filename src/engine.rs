@@ -54,6 +54,8 @@ pub struct Engine {
     audio_graph_fallback: Option<String>,
     audio_route_notice: Option<String>,
     midi_lifecycle: Option<MidiLifecycle>,
+    #[cfg(test)]
+    test_process: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -99,6 +101,10 @@ impl MidiLifecycle {
 
 pub struct TrackerRouteConfig<'a> {
     pub enabled: bool,
+    /// The FT2 workspace owns musical notes even when its exact destination is
+    /// offline. This prevents an unavailable explicit route from falling
+    /// through to Player or external MIDI.
+    pub consume_notes: bool,
     pub target: crate::sequencer::PageTarget,
     pub columns: [(u8, (u8, u8, u8)); crate::sequencer::LANES_PER_PAGE],
     pub start_column: usize,
@@ -111,6 +117,7 @@ pub struct TrackerRouteConfig<'a> {
 #[derive(Clone)]
 pub struct TrackerRoute {
     enabled: bool,
+    consume_notes: bool,
     target: crate::sequencer::PageTarget,
     columns: [TrackerColumnRoute; crate::sequencer::LANES_PER_PAGE],
     start_column: usize,
@@ -222,6 +229,7 @@ impl Default for TrackerRoute {
     fn default() -> Self {
         Self {
             enabled: false,
+            consume_notes: false,
             target: crate::sequencer::PageTarget::ConfiguredExternal,
             columns: [TrackerColumnRoute::default(); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -248,6 +256,7 @@ impl TrackerRoute {
 
     fn apply(&mut self, config: TrackerRouteConfig<'_>) {
         self.enabled = config.enabled;
+        self.consume_notes = config.consume_notes;
         let software_synth = matches!(
             &config.target,
             crate::sequencer::PageTarget::ActiveInstrument
@@ -316,7 +325,7 @@ impl TrackerRoute {
 
 #[cfg(test)]
 fn tracker_route_consumes_note(route: Option<&TrackerRoute>, message: &[u8]) -> bool {
-    route.is_some_and(|route| route.enabled && valid_note_message(message))
+    route.is_some_and(|route| route.consume_notes && valid_note_message(message))
 }
 
 fn playback_filter_allows(scale: Option<crate::scale::Scale>, message: &[u8]) -> bool {
@@ -637,6 +646,15 @@ impl Drop for MidiRouter {
 impl Engine {
     #[cfg(test)]
     pub(crate) fn start_test_process(backend: BackendKind, output: SharedOutput) -> Result<Self> {
+        Self::start_test_process_with_parts(backend, output, &[])
+    }
+
+    #[cfg(test)]
+    pub(crate) fn start_test_process_with_parts(
+        backend: BackendKind,
+        output: SharedOutput,
+        parts: &[FluidSynthPart],
+    ) -> Result<Self> {
         let child = Command::new("sleep")
             .arg("300")
             .stdin(Stdio::null())
@@ -644,7 +662,18 @@ impl Engine {
             .stderr(Stdio::null())
             .spawn()
             .context("start silent test engine process")?;
-        Ok(Self {
+        let mut fluid_soundfonts = Vec::new();
+        for part in parts {
+            if let PresetId::FluidSynth { soundfont, .. } = &part.preset.id {
+                if fluid_soundfonts
+                    .iter()
+                    .all(|(candidate, _)| candidate != soundfont)
+                {
+                    fluid_soundfonts.push((soundfont.clone(), 0));
+                }
+            }
+        }
+        let mut engine = Self {
             backend,
             managed_client_name: None,
             child,
@@ -652,14 +681,24 @@ impl Engine {
             state: std::env::temp_dir().join(format!("shr-test-engine-{}", std::process::id())),
             output,
             control_routes: Vec::new(),
-            fluid_soundfonts: Vec::new(),
+            fluid_soundfonts,
             fluid_selections: BTreeMap::new(),
             audio_graph: None,
             final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
             audio_graph_fallback: None,
             audio_route_notice: None,
             midi_lifecycle: None,
-        })
+            test_process: true,
+        };
+        if backend == BackendKind::FluidSynth && !parts.is_empty() {
+            engine.configure_fluidsynth_parts(parts)?;
+        }
+        Ok(engine)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_fluidsynth_selection(&self, channel: u8) -> Option<(u16, u8)> {
+        self.fluid_selections.get(&channel).copied()
     }
 
     pub fn start(
@@ -852,6 +891,8 @@ impl Engine {
             audio_graph_fallback,
             audio_route_notice,
             midi_lifecycle: None,
+            #[cfg(test)]
+            test_process: false,
         };
         if preset.backend == BackendKind::FluidSynth {
             engine.configure_fluidsynth_parts(fluid_parts)?;
@@ -1146,6 +1187,11 @@ impl Engine {
         let selections = validate_fluidsynth_parts(parts, &self.fluid_soundfonts)?;
         for (channel, selection) in selections {
             if self.fluid_selections.get(&channel) == Some(&selection) {
+                continue;
+            }
+            #[cfg(test)]
+            if self.test_process {
+                self.fluid_selections.insert(channel, selection);
                 continue;
             }
             self.select_fluidsynth_channel(channel, selection)?;
@@ -1760,7 +1806,10 @@ fn route_live_message(
         deliveries.extend(release_source_channel(state, source, channel));
         return deliveries;
     }
-    if valid_note_message(message) && route.is_some_and(|route| route.enabled) {
+    if valid_note_message(message) && route.is_some_and(|route| route.consume_notes) {
+        if route.is_some_and(|route| !route.enabled) {
+            return deliveries;
+        }
         let source_note = message[1];
         let note_off = status & 0xf0 == 0x80 || message[2] == 0;
         if note_off {
@@ -1888,6 +1937,26 @@ fn route_live_message(
     deliveries.push(MidiDelivery::Raw(message.to_vec()));
     deliveries.push(MidiDelivery::Direct(message.to_vec()));
     deliveries
+}
+
+#[cfg(test)]
+pub(crate) fn test_tracker_note_deliveries(
+    route: &TrackerRoute,
+    message: &[u8],
+) -> Vec<(crate::sequencer::PageTarget, Vec<u8>)> {
+    route_live_message(
+        &mut LiveMidiState::default(),
+        &"test performance input".into(),
+        message,
+        Some(route),
+        None,
+    )
+    .into_iter()
+    .filter_map(|delivery| match delivery {
+        MidiDelivery::Tracker(target, bytes) => Some((target, bytes)),
+        MidiDelivery::Raw(_) | MidiDelivery::Direct(_) => None,
+    })
+    .collect()
 }
 
 fn deliver_midi(
@@ -2817,6 +2886,7 @@ mod tests {
         let mut route = TrackerRoute::default();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::ConfiguredExternal,
             columns: [(2, (9, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -2845,6 +2915,7 @@ mod tests {
         assert!(invalid_note_message(&[0x90, 60, 100, 0]));
         route.configure(TrackerRouteConfig {
             enabled: false,
+            consume_notes: false,
             target: crate::sequencer::PageTarget::ConfiguredExternal,
             columns: [(2, (9, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -2862,6 +2933,7 @@ mod tests {
         let mut route = TrackerRoute::default();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::ConfiguredExternal,
             columns: [(9, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -2885,6 +2957,7 @@ mod tests {
         let mut route = TrackerRoute::default();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::ConfiguredExternal,
             columns: [(0, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -2910,6 +2983,7 @@ mod tests {
         let mut route = TrackerRoute::default();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::Synthv1("Pattern Sound".into()),
             columns: [(0, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -2930,6 +3004,7 @@ mod tests {
         let old = route.destinations();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::ConfiguredExternal,
             columns: [(5, (8, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -3205,6 +3280,7 @@ mod tests {
         let mut route = TrackerRoute::default();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::Midi("selected keyboard target".into()),
             columns: [(6, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -3231,6 +3307,67 @@ mod tests {
                 )
             ]
         );
+    }
+
+    #[test]
+    fn gm_drum_software_route_consumes_live_input_on_channel_ten_only() {
+        let external = RuntimeConfig::default().external_midi;
+        let target = crate::sequencer::PageTarget::Software(crate::sequencer::SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf0:test.sf2:128:0".into(),
+        });
+        let mut route = TrackerRoute::default();
+        route.configure(TrackerRouteConfig {
+            enabled: true,
+            consume_notes: true,
+            target: target.clone(),
+            columns: [(9, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
+            start_column: 0,
+            percussion: true,
+            audition_note: None,
+            scale: None,
+            external: &external,
+        });
+        let mut state = LiveMidiState::default();
+        let deliveries = route_live_message(
+            &mut state,
+            &"performance keyboard".into(),
+            &[0x90, 36, 100],
+            Some(&route),
+            None,
+        );
+        assert_eq!(
+            deliveries,
+            [
+                MidiDelivery::Raw(vec![0x99, 36, 100]),
+                MidiDelivery::Tracker(target.clone(), vec![0x99, 36, 100])
+            ]
+        );
+        assert!(!deliveries.iter().any(|delivery| match delivery {
+            MidiDelivery::Direct(_) => true,
+            MidiDelivery::Tracker(_, bytes) => bytes[0] == 0x90,
+            MidiDelivery::Raw(_) => false,
+        }));
+
+        route.configure(TrackerRouteConfig {
+            enabled: false,
+            consume_notes: true,
+            target,
+            columns: [(9, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
+            start_column: 0,
+            percussion: true,
+            audition_note: None,
+            scale: None,
+            external: &external,
+        });
+        assert!(route_live_message(
+            &mut LiveMidiState::default(),
+            &"performance keyboard".into(),
+            &[0x90, 36, 100],
+            Some(&route),
+            None,
+        )
+        .is_empty());
     }
 
     #[test]
@@ -3295,6 +3432,7 @@ mod tests {
         let mut route = TrackerRoute::default();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::Midi("first output".into()),
             columns: [(2, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -3308,6 +3446,7 @@ mod tests {
         route_live_message(&mut state, &source, &[0x90, 60, 100], Some(&route), None);
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::Midi("second output".into()),
             columns: [(5, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -3336,6 +3475,7 @@ mod tests {
         let mut route = TrackerRoute::default();
         route.configure(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::Midi("bass output".into()),
             columns: [(2, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -3350,6 +3490,7 @@ mod tests {
 
         route.configure_navigation(TrackerRouteConfig {
             enabled: true,
+            consume_notes: true,
             target: crate::sequencer::PageTarget::Midi("lead output".into()),
             columns: [(5, (0, 0, 0)); crate::sequencer::LANES_PER_PAGE],
             start_column: 0,
@@ -3622,6 +3763,31 @@ mod tests {
             .unwrap(),
             BTreeMap::from([(0, (0, 9)), (1, (128, 9))])
         );
+    }
+
+    #[test]
+    fn fluidsynth_melodic_and_gm_drum_parts_keep_independent_channel_selections() {
+        let output = Arc::new(Mutex::new(None));
+        let melodic = fluid_preset("configured.sf2", 0, 32);
+        let drums = fluid_preset("configured.sf2", 128, 0);
+        let mut engine = Engine::start_test_process_with_parts(
+            BackendKind::FluidSynth,
+            output,
+            &[
+                FluidSynthPart {
+                    preset: melodic,
+                    channel: 0,
+                },
+                FluidSynthPart {
+                    preset: drums,
+                    channel: 9,
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(engine.test_fluidsynth_selection(0), Some((0, 32)));
+        assert_eq!(engine.test_fluidsynth_selection(9), Some((128, 0)));
+        assert!(engine.alive());
     }
 
     #[test]

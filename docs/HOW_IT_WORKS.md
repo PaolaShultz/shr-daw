@@ -164,6 +164,13 @@ configured SoundFont. The persisted route includes the configured SoundFont
 identity as well as bank/program, so equal bank/program numbers in different
 files remain different sounds. Identical route/channel pairs are deduplicated;
 selecting one channel does not broadcast a program change to the other 15.
+The fresh FT2 Drums page resolves the General MIDI drum preset from that
+discovered metadata, stores its explicit FluidSynth identity, and gives all
+four columns zero-based channel 9. Live input and transport prepare that exact
+bank/program on channel 10 before sending `0x99` note-ons. A missing or failed
+selection stays explicit, offline, and silent instead of falling through to a
+previous part, Player sound, channel 1, or external MIDI. Saved Project routes
+and channels are never replaced by this fresh-Project default.
 All FluidSynth parts still cross the same stereo JACK boundary. They share the
 managed synth strip, source effects, meters, final-bus routing, and recording
 path; there are no per-instrument EQ/compressor/aux strips, stems, or JACK
@@ -266,6 +273,9 @@ points. A disconnected exact target is displayed as `OFFLINE` and never
 substitutes another port; its name and notes stay in the Project. Destinations
 are re-resolved on each play, so a returned interface is selected without
 editing the Project. Ambiguous stable identities are reported and not guessed.
+For software pages, “online” additionally means the managed engine has the
+exact saved route selected on that page's runtime channel; resolving a label
+alone is not readiness.
 
 External MIDI device profiles optionally add bank labels and program names to
 the column and cell program browsers. They remain JSON data, can be privately
@@ -284,7 +294,9 @@ The FT2 screen has three explicit modes:
 - **Edit** writes notes or chords from MIDI/computer-keyboard input. Blank,
   erase, and note-off are explicit operations, and the persistent 0–32-row
   advance determines the next cursor position. Its independent 1/1–1/128
-  length selector writes the existing gate/note-off representation.
+  length selector writes the existing gate/note-off representation. Edit has
+  only contextual EDIT, SET, SELECT, and SYS command pages; SYS Exit returns
+  one level to normal FT2 without changing Pattern, page, column, or row.
 
 Every Pattern page separately persists a note-entry layout. Manual starts at
 the musician's selected column. One column redirects every future note and

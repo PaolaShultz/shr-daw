@@ -183,6 +183,7 @@ pub enum Action {
     LoadIdea,
     IdeaPlayToggle,
     TrackerEdit,
+    ExitTrackerEdit,
     TrackerSkip,
     TrackerErase,
     TrackerNoteOff,
@@ -732,30 +733,30 @@ const TRACKER_RECORD: [MenuPage; 4] = [
 ];
 const TRACKER_EDIT: [MenuPage; 4] = [
     page(
-        "MODE",
-        [
-            off(""),
-            on("PLAY", Action::TrackerPlayToggle),
-            on("RECORD", Action::TrackerRecordToggle),
-            on("EDIT", Action::TrackerEdit),
-        ],
-    ),
-    page(
         "EDIT",
         [
+            on("CELL", Action::OpenNoteEditor),
             on("BLANK", Action::TrackerSkip),
             on("ERASE", Action::TrackerErase),
             on("N-OFF", Action::TrackerNoteOff),
-            on("ADD", Action::OpenTrackerAdvanceOverlay),
         ],
     ),
     page(
         "SET",
         [
+            on("LENGTH", Action::OpenNoteLengthOverlay),
+            on("ADD", Action::OpenTrackerAdvanceOverlay),
             on("COL-", Action::PreviousTrack),
             on("COL+", Action::NextTrack),
-            on("LENGTH", Action::OpenNoteLengthOverlay),
+        ],
+    ),
+    page(
+        "SELECT",
+        [
             on("PAGE", Action::OpenPageOverlay),
+            on("ROUTE", Action::OpenRouteOverlay),
+            off(""),
+            off(""),
         ],
     ),
     page(
@@ -764,7 +765,7 @@ const TRACKER_EDIT: [MenuPage; 4] = [
             on("PANIC", Action::StopAll),
             on("N00B", Action::TrackerNoobToggle),
             on("HELP", Action::OpenHelp),
-            on("EXIT", Action::TrackerEdit),
+            on("EXIT", Action::ExitTrackerEdit),
         ],
     ),
 ];
@@ -821,7 +822,7 @@ const FILES: [MenuPage; 4] = [
         [
             on("NEW PRJ", Action::NewProject),
             on("SAVE AS", Action::SaveSongAs),
-            on("NAME KB", Action::RenameProject),
+            on("NAME", Action::RenameProject),
             on("PATTERN", Action::OpenPatternTools),
         ],
     ),
@@ -1026,7 +1027,7 @@ const AUDIO: [MenuPage; 4] = [
             on("PREV", Action::AudioPreviousTrack),
             on("NEXT", Action::AudioNextTrack),
             on("SOURCE", Action::AudioAssignSource),
-            on("NAME KB", Action::AudioNameTrack),
+            on("NAME", Action::AudioNameTrack),
         ],
     ),
     page(
@@ -1416,6 +1417,17 @@ mod tests {
             .iter()
             .flat_map(|page| page.slots)
             .any(|slot| slot.dispatch() == Some(Action::OpenNoteLengthOverlay)));
+        for duplicate in [
+            Action::TrackerPlayToggle,
+            Action::TrackerRecordToggle,
+            Action::TrackerEdit,
+        ] {
+            assert!(!edit
+                .iter()
+                .flat_map(|page| page.slots)
+                .any(|slot| slot.dispatch() == Some(duplicate)));
+        }
+        assert_eq!(edit[3].slots[3].dispatch(), Some(Action::ExitTrackerEdit));
     }
 
     #[test]
@@ -1541,7 +1553,7 @@ mod tests {
             slot(Screen::Tracker, MenuContext::TrackerEdit, 0, 1)
                 .unwrap()
                 .action,
-            Action::TrackerPlayToggle
+            Action::TrackerSkip
         );
         assert_eq!(
             slot(Screen::TrackerPages, MenuContext::PageTarget, 0, 0)
@@ -1885,6 +1897,7 @@ mod tests {
             Action::LoadIdea,
             Action::IdeaPlayToggle,
             Action::TrackerEdit,
+            Action::ExitTrackerEdit,
             Action::TrackerSkip,
             Action::TrackerErase,
             Action::TrackerNoteOff,

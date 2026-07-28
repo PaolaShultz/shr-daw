@@ -28,9 +28,9 @@ its mode colour and every completed startup phase is green, so an inactive
 build mode does not leave a false red warning. These are loader phases, not
 claims that JACK or all synth engines are running.
 
-A terminal computer keyboard is a fully qualified input device, equal to an
-available configured controller or performance MIDI input; it is not described
-as a fallback. Only when none of those inputs is available does the splash
+A terminal computer keyboard remains an optional fallback for controller
+navigation and text editing; the main rotary and command buttons complete the
+core workflows without it. Only when none of those inputs is available does the splash
 remain open, show `CONNECT KEYBOARD OR MIDI INPUT` and the expected input in
 the normally empty recovery rows, and rescan the configured MIDI inputs. `Esc`
 or `q` can still exit from the splash.
@@ -39,14 +39,14 @@ or `q` can still exit from the splash.
 
 | Screen or mode | Existing user-facing operations and input paths |
 |---|---|
-| Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard, with Save/Discard/Cancel protection for a dirty Project. |
+| Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard, with the same rotary `SAVE (AUTO)` / `SAVE (NAME)` / `DON'T SAVE` / `BACK` protection used by dirty FT2 replacement paths. |
 | Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus disabled, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP. |
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. The 12 configured synthv1 CC controls continuously adjust parameters with pickup. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | While Play or Rec transport is active, the main rotary selects the previous/next column across page boundaries. While transport is paused it moves rows, as it does in Edit; keyboard Up/Down always moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. |
 | FT2 record | Record quantized note-ons and release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. Stopped REC loops the selected Pattern; REC during Play punches into the Arrangement. Exact page/lane owners survive cursor moves and boundaries. Rotary turns are ignored while recorded notes are held; Edit note length does not affect REC. |
-| FT2 edit | Manual writes from the selected column, One column writes to its persisted C1–C4 monophonic anchor, and Drum auto safely allocates simultaneous hits without moving the cursor. Note length, blank/skip, erase, note off, 0–32-row ADD, and PAGE remain available. N00B may filter melodic input. Command notes stay controls. |
+| FT2 edit | A contextual four-page command set only: EDIT has cell edit, blank/skip, erase, and note off; SET has independent 1/1–1/128 LENGTH and 0–32 ADD selectors plus column movement; SELECT has page and route selection; SYS has panic, N00B, help, and a one-level Exit back to normal FT2. It contains no Play/Record/Edit mode duplicates. Manual writes from the selected column, One column uses its C1–C4 anchor, and Drum auto allocates simultaneous hits without moving the cursor. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
 | Live Patterns | Browse four existing Patterns at a time without launch; distinguish selection/current/queue; replace or cancel Pattern/bar-boundary queues; deliberate immediate launch and current retrigger; capture only successful activations with Append/Replace confirmation; transient four-lane mute, velocity, gate, and transpose; literal Stop, Panic, keyboard equivalents, and preserved FT2 cursor. |
 | Loop Mix | Pattern-owned fourth musician-facing FT2 page; select one of four private WAV slots without launch; queue independent launch/stop at the next Pattern-local bar; replace/cancel commands; show play/stop/queue/mute/missing/fault states; smoothed level and bipolar filter; import/attach/remove only the FT2 cursor Pattern's selected slot; isolate faults; shared library overlay and align child. |
@@ -58,7 +58,7 @@ or `q` can still exit from the splash.
 | Pattern setup | Choose 3/4 or 4/4 and pattern length; CONFIRM performs NEW/CLEAR with that shape, KEEP performs the same operation with the current Pattern's shape, and Exit cancels. |
 | Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, program, and the per-page Manual/One-column/Drum-auto entry layout; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
-| Audio recorder | Select and name a track (`NAME KB` requires computer-keyboard text); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
+| Audio recorder | Select and name a track (`NAME` accepts the current value by rotary click and allows optional keyboard editing); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
 | 18-channel Levels | Show all 18 recording inputs simultaneously as three groups of six fixed nine-LED dBFS meters. Encoder, Left/Right, `j`/`k`, or pointer selects without scrolling; encoder click/Enter/Space arms the selected channel. Visible TAKE, CHANNEL, and SYS pages provide setup, record, literal Stop, reset, previous/next, arm, refresh, Panic, Help, and Exit. At native 40×13 it omits controller rows but keeps shared row 13; compact geometry falls back rather than cropping. |
 | FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
 | MASTER STRIP | Compact fixed-order INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL front page with one selected-section value and bounded mastering meters; DETAIL opens only that section's advanced values. Optional sections have smoothed bypass; A/B retains fixed latency and true-peak protection; RESET I clears integrated loudness. Playback allows numerical audition without a topology rebuild, final recording rejects edits, and a disabled graph changes only Project state. Back preserves caller, page, FX/tracker selection, and cursor. |
@@ -82,17 +82,20 @@ controller rows: it still reserves that shared row while using rows 1–12 for
 meters, labels, and visible right-side commands. Its first status cell is the
 transport state: steady green `>` for play, steady white `■` for stop, steady
 white `‖` for pause, or red `●` for record. Record alone pulses between normal
-and bright red; the circle never disappears. One space and the current useful
-status or fault may follow, leaving exactly 38 cells. Text is fitted by terminal
-cell width after reserving ownership, consequence, and recovery. Routine
-success lasts at most 1.5 seconds; a retained-work, rollback, pickup, or All
-Notes Off consequence lasts at most three seconds. Confirmations and faults
-remain until resolved, while active recording always names its owner and merges
-any recording fault. An idle transport cell with no message is the normal
-healthy state. Screen bodies do not add generic gray status lines, and the two
-controller rows sit immediately above the shared status row. Working-screen
-frame cleanup stops above that row; only the shared renderer clears and
-replaces it. The fullscreen EQ deliberately owns all thirteen rows: its final
+and bright red; the circle never disappears. One space leaves exactly 38 cells
+for current useful status. A configured CPU temperature remains right-aligned
+as `CPU 52°C` whenever useful state or a fault fits beside it. Longer actionable
+text temporarily owns all 38 cells so its consequence and recovery are not
+lost; the temperature returns when that message clears. Text is fitted after
+reserving ownership, consequence, and recovery. Routine success lasts at most
+1.5 seconds; a retained-work, rollback, pickup, or All Notes Off consequence
+lasts at most three seconds. Confirmations and faults remain until resolved,
+while active recording always names its owner and merges any recording fault.
+With no configured temperature and no message, an idle transport cell alone is
+the normal healthy state. Screen bodies do not add generic gray status lines,
+and the two controller rows sit immediately above the shared status row.
+Working-screen frame cleanup stops above that row; only the shared renderer
+clears and replaces it. The fullscreen EQ deliberately owns all thirteen rows: its final
 row is the 50 Hz–20 kHz logarithmic axis, temporarily replaced only by a useful
 pickup, range, or fault message. It has no visible controller rows. A compact
 terminal falls back to the ordinary FX editor and shared status layout.
@@ -264,9 +267,9 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 loop align | Sys | Panic | Help | — | Exit |
 | FT2 record | Mode | — | Play | Record/stop | Edit |
 | FT2 record | Sys | Panic | N00B | Help | Exit |
-| FT2 edit | Mode | — | Play | Record | Edit/exit |
-| FT2 edit | Edit | Blank/skip | Erase | N-off | ADD 0–32 overlay |
-| FT2 edit | Set | Column− | Column+ | Note-length overlay | Page overlay |
+| FT2 edit | Edit | Cell edit | Blank/skip | Erase | N-off |
+| FT2 edit | Set | Note-length overlay | ADD 0–32 overlay | Column− | Column+ |
+| FT2 edit | Select | Page overlay | Route overlay | — | — |
 | FT2 edit | Sys | Panic | N00B | Help | Exit edit |
 | FT2 cell edit | Route | Destination | Channel | Instrument | — |
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |

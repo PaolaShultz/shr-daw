@@ -59,8 +59,8 @@ whose FT2 workspace exposes four musician-facing pages:
 1. `Software Synth`, a four-track page using the first available synthv1 preset;
 2. `MIDI`, a four-track page using the configured external output, MIDI channel
    1, and program 1;
-3. `Drums`, a four-track page using the configured external output, MIDI
-   channel 10, program 1, and the existing percussion-note mapping;
+3. `Drums`, a four-track page using the discovered FluidSynth General MIDI
+   drum kit, MIDI channel 10, and the existing percussion-note mapping;
 4. `Loop Mix`, that Pattern's four-slot decoded-WAV source.
 
 Loop Mix is a page in the musician-facing FT2 workflow, not four empty
@@ -107,6 +107,14 @@ channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
 on 10 play together through the existing stereo synth output. Channel 10 is
 the normal percussion-page default, not a reservation; an explicit Project may
 route it differently.
+
+Fresh Drums pages store that exact FluidSynth route and channel 10 in all four
+columns. Before live audition, Record/Edit input, or transport notes can reach
+it, the managed engine must select the discovered SoundFont bank/program on
+channel 10. If that preset is missing or selection fails, the route remains
+explicit and visibly offline/silent; SHR does not substitute Player, an older
+FluidSynth part, channel 1, or external MIDI. Loaded Projects keep their saved
+routes and channels, and loading a reusable drum pattern copies cells only.
 
 Two different FluidSynth presets cannot share one channel in the current
 playback loop. SHR selects stable channel parts before scheduling, and note
@@ -410,21 +418,25 @@ or rewrites an Arrangement step.
 chooses the next free `project-001` style name. **SAVE AS** immediately writes
 the next free `<current-name>-copy-001` style copy and switches to it. These
 automatic names keep both actions usable from a four-button controller.
-**NAME KB** requires computer-keyboard text, accepts a useful display name,
-and derives a safe filename; collisions
-are refused and a saved rename keeps the loaded Project state.
+**NAME** starts with the current display name. Main-rotary click accepts it,
+while computer-keyboard editing is optional; collisions are refused and a
+saved rename keeps the loaded Project state.
 
-LOAD and computer-keyboard quit share one dirty-Project guard. SAVE continues
-only after a successful Project write, DISCARD performs the requested action,
-and CANCEL or any failed/pending save keeps the Project and exact
-order/page/lane/row position.
+FT2 workspace Exit, New Project, LOAD, MIDI replacement, and
+computer-keyboard quit share one dirty-Project guard. The rotary list opens on
+`SAVE (AUTO)`, followed by `SAVE (NAME)`, `DON'T SAVE`, and `BACK`.
+`SAVE (AUTO)` reuses a saved identity or chooses the next free automatic name.
+`SAVE (NAME)` starts with a collision-free automatic suggestion that rotary
+click accepts without typing. `DON'T SAVE` explicitly restores the clean
+Project baseline before FT2 Exit. `BACK`, Esc, and any failed or pending save
+keep the Project and exact mode/order/Pattern/page/lane/row context.
 
 **MIDI** uses the private configured MIDI inbox and follows an analyse-then-
 confirm workflow. Analysis changes nothing and reports parts/pages,
 Patterns/rows, tempo and meter, exact and quantized timing, maximum
 displacement, stripped events, and important mappings. Confirmation creates a
-new unsaved FT2 Project; a dirty current Project uses the same
-Save/Discard/Cancel guard. Parsing, conversion, allocation, preparation, or
+new unsaved FT2 Project; a dirty current Project uses the same four-choice
+rotary guard. Parsing, conversion, allocation, preparation, or
 cancellation keeps the current Project, cursor, routing, Loop Mix, effects,
 and clean baseline unchanged.
 

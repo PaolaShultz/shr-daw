@@ -143,6 +143,20 @@ impl Preset {
             .unwrap_or("soundfont");
         Some(format!("{soundfont}:{bank}:{program}"))
     }
+
+    /// General MIDI percussion uses bank 128, with program 0 selecting the
+    /// standard kit. SoundFont discovery supplies the actual configured file,
+    /// index, bank, and program; callers never need a machine-local filename.
+    pub fn is_general_midi_drum_kit(&self) -> bool {
+        matches!(
+            &self.id,
+            PresetId::FluidSynth {
+                bank: 128,
+                program: 0,
+                ..
+            }
+        )
+    }
 }
 
 #[derive(Clone, Debug)]

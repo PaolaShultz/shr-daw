@@ -6,7 +6,7 @@
 [18-channel input levels](#18-channel-input-levels)
 [Performance meters](#performance-meters)
 [MIDI ideas](#midi-ideas)
-[FT2 tracker](#ft2-tracker)
+[FT2-style tracker](#ft2-style-tracker)
 [Pages and hardware MIDI](#pages-and-hardware-midi)
 [Live performance](#live-performance)
 [Loops and audio](#loops-and-audio)
@@ -197,11 +197,12 @@ the sound loads, and pickup is armed against those restored values.
 Ideas are MIDI, not audio. Use the audio recorder when you need a WAV of the
 actual JACK input.
 
-## FT2 tracker
+## FT2-style tracker
 
-FT2 is a Pattern sequencer. PLAY starts at the current Pattern/Arrangement
-location, REWIND returns to the beginning, and STOP stops only the tracker
-transport.
+SHR-DAW uses FT2-style Pattern screens for MIDI sequencing; it is not a
+sample-based FastTracker II implementation. PLAY starts at the current
+Pattern/Arrangement location, REWIND returns to the beginning, and STOP stops
+only the tracker transport.
 In Play and REC, turn the physical main encoder to select columns across page
 boundaries; keyboard Up/Down still moves rows. Edit keeps encoder row movement.
 The shaded selected column does not move the row, playhead, Arrangement Step,

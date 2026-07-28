@@ -602,11 +602,12 @@ fn default_pages(_config: &ExternalMidiConfig) -> Vec<Page> {
 /// The musician-facing factory routing for a genuinely new Pattern. MIDI
 /// bytes remain zero-based internally even though the UI shows channels 1--16
 /// and programs 1--128.
-pub fn factory_routing_pages(first_synthv1: &str) -> Vec<Page> {
+pub fn factory_routing_pages(first_synthv1: &str, gm_drums_route: SoftwareRoute) -> Vec<Page> {
     let mut synth = Page::new("Software Synth", 0, false, 0);
     synth.target = PageTarget::Software(SoftwareRoute::synthv1(first_synthv1));
     let midi = Page::new("MIDI", 0, false, 0);
-    let drums = Page::new("Drums", 9, true, 0);
+    let mut drums = Page::new("Drums", 9, true, 0);
+    drums.target = PageTarget::Software(gm_drums_route);
     vec![synth, midi, drums]
 }
 
@@ -4241,6 +4242,12 @@ pub fn note_name(note: Note) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn gm_drums_route() -> SoftwareRoute {
+        SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "sf0:test.sf2:128:0".into(),
+        }
+    }
     fn config() -> ExternalMidiConfig {
         let mut c = crate::config::RuntimeConfig::default().external_midi;
         c.program_changes = true;
@@ -4396,7 +4403,8 @@ mod tests {
 
     #[test]
     fn factory_pattern_has_synth_midi_and_drum_routes_with_zero_based_storage() {
-        let pages = factory_routing_pages("First Sound");
+        let drums_route = gm_drums_route();
+        let pages = factory_routing_pages("First Sound", drums_route.clone());
         assert_eq!(pages.len(), 3);
         assert_eq!(pages[0].name, "Software Synth");
         assert_eq!(
@@ -4410,7 +4418,8 @@ mod tests {
         assert_eq!(pages[1].column(0).program, 0);
         assert_eq!(pages[2].name, "Drums");
         assert!(pages[2].percussion);
-        assert_eq!(pages[2].column(0).channel, 9);
+        assert_eq!(pages[2].target, PageTarget::Software(drums_route));
+        assert!(pages[2].columns.iter().all(|column| column.channel == 9));
         assert_eq!(musician_channel(pages[1].column(0).channel), 1);
         assert_eq!(musician_channel(pages[2].column(0).channel), 10);
         assert_eq!(musician_program(pages[1].column(0).program), 1);
@@ -4421,11 +4430,13 @@ mod tests {
         let base = env::temp_dir().join(format!("shr-routing-defaults-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         let path = base.join("defaults.shsong");
-        let mut pages = factory_routing_pages("First Sound");
+        let mut pages = factory_routing_pages("First Sound", gm_drums_route());
         pages[1].column_mut(0).channel = 6;
         pages[1].column_mut(0).program = 41;
         save_routing_defaults(&path, &pages).unwrap();
-        let loaded = load_routing_defaults(&path, &factory_routing_pages("Fallback")).unwrap();
+        let loaded =
+            load_routing_defaults(&path, &factory_routing_pages("Fallback", gm_drums_route()))
+                .unwrap();
         assert_eq!(loaded, pages);
         let pattern = Pattern::from_routing(&config(), 32, 4, &loaded);
         assert_eq!(pattern.pages[1].column(0).channel, 6);
@@ -4436,7 +4447,7 @@ mod tests {
     #[test]
     fn fresh_default_project_predicate_rejects_empty_but_explicit_changes() {
         let cfg = config();
-        let defaults = factory_routing_pages("First Sound");
+        let defaults = factory_routing_pages("First Sound", gm_drums_route());
         let mut song = Song::new_with_pages(&cfg, defaults.clone());
         song.name = "project 7".into();
         assert!(matches_new_empty_default_project(&song, &cfg, &defaults));

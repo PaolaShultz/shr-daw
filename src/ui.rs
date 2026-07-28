@@ -522,6 +522,13 @@ impl SoftwarePlaybackPlan {
     fn contains_route(&self, route: &SoftwareRoute) -> bool {
         self.parts.iter().any(|part| &part.route == route)
     }
+
+    fn contains_part(&self, route: &SoftwareRoute, channel: u8) -> bool {
+        self.parts.contains(&SoftwarePart {
+            route: route.clone(),
+            channel,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -580,9 +587,33 @@ struct HomeEntry {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PendingProjectAction {
+    ExitTracker,
+    NewProject,
     Load(String),
     ImportMidi,
     Quit,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum ProjectGuardChoice {
+    #[default]
+    SaveAuto,
+    SaveName,
+    DontSave,
+    Back,
+}
+
+impl ProjectGuardChoice {
+    const ALL: [Self; 4] = [Self::SaveAuto, Self::SaveName, Self::DontSave, Self::Back];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::SaveAuto => "SAVE (AUTO)",
+            Self::SaveName => "SAVE (NAME)",
+            Self::DontSave => "DON'T SAVE",
+            Self::Back => "BACK",
+        }
+    }
 }
 
 const HOME_ENTRIES: [HomeEntry; 9] = [
@@ -591,7 +622,7 @@ const HOME_ENTRIES: [HomeEntry; 9] = [
         action: Action::OpenPresets,
     },
     HomeEntry {
-        label: "FT2 TRACKER",
+        label: "FT2-STYLE TRACKER",
         action: Action::OpenTracker,
     },
     HomeEntry {
@@ -702,9 +733,13 @@ struct App {
     song: Song,
     project_clean_baseline: Song,
     pending_project_action: Option<PendingProjectAction>,
+    project_guard_selected: ProjectGuardChoice,
+    project_guard_naming: bool,
     quit_requested: bool,
     song_file_stem: Option<String>,
     project_name_input: Option<String>,
+    #[cfg(test)]
+    songs_directory_override: Option<PathBuf>,
     audio_track_name_input: Option<String>,
     song_list: Vec<String>,
     song_selected: usize,
@@ -1122,6 +1157,47 @@ fn take_engine_when_owned<T>(
     }
 }
 
+fn configured_gm_drum_route(catalogs: &[Catalog]) -> SoftwareRoute {
+    catalogs
+        .iter()
+        .find(|catalog| catalog.backend == BackendKind::FluidSynth)
+        .and_then(|catalog| {
+            catalog
+                .presets
+                .iter()
+                .find(|preset| preset.is_general_midi_drum_kit())
+        })
+        .map(|preset| SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: preset.route_id(),
+        })
+        .unwrap_or_else(|| SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "GM Drums".into(),
+        })
+}
+
+fn enforce_fresh_gm_drum_page(pages: &mut Vec<sequencer::Page>, route: &SoftwareRoute) {
+    let drum_index = pages
+        .iter()
+        .position(|page| page.name.eq_ignore_ascii_case("drums"))
+        .or_else(|| pages.iter().position(|page| page.percussion));
+    if let Some(index) = drum_index {
+        let page = &mut pages[index];
+        page.name = "Drums".into();
+        page.percussion = true;
+        page.entry_mode = sequencer::NoteEntryMode::DrumAuto;
+        page.target = PageTarget::Software(route.clone());
+        for column in &mut page.columns {
+            column.channel = 9;
+        }
+    } else {
+        let mut page = sequencer::Page::new("Drums", 9, true, 0);
+        page.target = PageTarget::Software(route.clone());
+        pages.push(page);
+    }
+}
+
 fn scheduled_software_plan(
     messages: &[sequencer::ScheduledMessage],
 ) -> Result<Option<SoftwarePlaybackPlan>> {
@@ -1428,10 +1504,13 @@ impl App {
             .and_then(|catalog| catalog.presets.first())
             .map(|preset| preset.name.as_str())
             .unwrap_or("Unavailable synthv1 preset");
-        let factory_routing = sequencer::factory_routing_pages(first_synthv1);
+        let gm_drums_route = configured_gm_drum_route(catalogs);
+        let factory_routing =
+            sequencer::factory_routing_pages(first_synthv1, gm_drums_route.clone());
         let mut routing_defaults =
             sequencer::load_routing_defaults(&routing_defaults_path, &factory_routing)
                 .unwrap_or(factory_routing);
+        enforce_fresh_gm_drum_page(&mut routing_defaults, &gm_drums_route);
         let mut defaults_song = Song::new_with_pages(&config.external_midi, routing_defaults);
         sequencer::upgrade_legacy_synth_routes(&mut defaults_song, first_synthv1);
         routing_defaults = defaults_song.patterns.remove(&0).unwrap().pages;
@@ -1550,9 +1629,13 @@ impl App {
             song,
             project_clean_baseline,
             pending_project_action: None,
+            project_guard_selected: ProjectGuardChoice::SaveAuto,
+            project_guard_naming: false,
             quit_requested: false,
             song_file_stem: None,
             project_name_input: None,
+            #[cfg(test)]
+            songs_directory_override: None,
             audio_track_name_input: None,
             song_list: sequencer::list(&sequencer::songs_dir()),
             song_selected: 0,
@@ -1830,7 +1913,10 @@ impl App {
     fn begin_project_action(&mut self, action: PendingProjectAction) {
         if self.project_is_dirty() {
             self.pending_project_action = Some(action);
-            self.status = "UNSAVED PROJECT · choose SAVE/DISCARD".into();
+            self.project_guard_selected = ProjectGuardChoice::SaveAuto;
+            self.project_guard_naming = false;
+            self.project_name_input = None;
+            self.status = "UNSAVED PROJECT · turn and press".into();
         } else {
             self.complete_project_action(action);
         }
@@ -1838,6 +1924,15 @@ impl App {
 
     fn complete_project_action(&mut self, action: PendingProjectAction) {
         match action {
+            PendingProjectAction::ExitTracker => {
+                self.set_tracker_edit(false);
+                self.set_screen(Screen::Home);
+                self.status.clear();
+            }
+            PendingProjectAction::NewProject => {
+                self.confirm_new_project = true;
+                self.new_project();
+            }
             PendingProjectAction::Load(name) => self.load_song_named(&name),
             PendingProjectAction::ImportMidi => self.commit_midi_import(),
             PendingProjectAction::Quit => self.quit_requested = true,
@@ -1846,6 +1941,9 @@ impl App {
 
     fn cancel_project_action(&mut self) {
         if self.pending_project_action.take().is_some() {
+            self.project_guard_selected = ProjectGuardChoice::SaveAuto;
+            self.project_guard_naming = false;
+            self.project_name_input = None;
             self.confirm_song_save = None;
             self.pending_routing_defaults = None;
             self.confirm_routing_defaults = false;
@@ -1854,7 +1952,16 @@ impl App {
     }
 
     fn discard_for_project_action(&mut self) {
-        if let Some(action) = self.pending_project_action.take() {
+        let Some(action) = self.pending_project_action.clone() else {
+            return;
+        };
+        if action == PendingProjectAction::ExitTracker && !self.restore_clean_project_for_exit() {
+            return;
+        }
+        if self.pending_project_action.take().is_some() {
+            self.project_guard_selected = ProjectGuardChoice::SaveAuto;
+            self.project_guard_naming = false;
+            self.project_name_input = None;
             self.confirm_song_save = None;
             self.pending_routing_defaults = None;
             self.confirm_routing_defaults = false;
@@ -1864,8 +1971,153 @@ impl App {
 
     fn continue_project_action_after_save(&mut self) {
         if let Some(action) = self.pending_project_action.take() {
+            self.project_guard_selected = ProjectGuardChoice::SaveAuto;
+            self.project_guard_naming = false;
+            self.project_name_input = None;
             self.complete_project_action(action);
         }
+    }
+
+    fn move_project_guard(&mut self, direction: i8) {
+        let current = ProjectGuardChoice::ALL
+            .iter()
+            .position(|choice| *choice == self.project_guard_selected)
+            .unwrap_or(0);
+        self.project_guard_selected = ProjectGuardChoice::ALL
+            [wrapped_index(current, ProjectGuardChoice::ALL.len(), direction)];
+    }
+
+    fn activate_project_guard(&mut self) {
+        match self.project_guard_selected {
+            ProjectGuardChoice::SaveAuto => self.save_project_for_guard_auto(),
+            ProjectGuardChoice::SaveName => self.begin_project_guard_name(),
+            ProjectGuardChoice::DontSave => self.discard_for_project_action(),
+            ProjectGuardChoice::Back => self.cancel_project_action(),
+        }
+    }
+
+    fn project_directory(&self) -> PathBuf {
+        #[cfg(test)]
+        if let Some(path) = self.songs_directory_override.as_ref() {
+            return path.clone();
+        }
+        sequencer::songs_dir()
+    }
+
+    fn next_automatic_project_name(&mut self) -> Option<String> {
+        self.song_list = sequencer::list(&self.project_directory());
+        next_numbered_song_name(&self.song_list, "project")
+    }
+
+    fn save_project_for_guard_auto(&mut self) {
+        let name = if self.song_file_stem.is_some() {
+            self.song.name.clone()
+        } else {
+            let Some(name) = self.next_automatic_project_name() else {
+                self.status = "PROJECT SAVE FAILED · automatic names exhausted".into();
+                return;
+            };
+            name
+        };
+        self.save_project_for_guard_as(&name, self.song_file_stem.is_some());
+    }
+
+    fn begin_project_guard_name(&mut self) {
+        let Some(name) = self.next_automatic_project_name() else {
+            self.status = "PROJECT NAME FAILED · automatic names exhausted".into();
+            return;
+        };
+        self.project_guard_naming = true;
+        self.project_name_input = Some(name);
+        self.status = "PROJECT NAME · click accepts · keyboard optional".into();
+    }
+
+    fn cancel_project_guard_name(&mut self) {
+        self.project_guard_naming = false;
+        self.project_name_input = None;
+        self.status = "UNSAVED PROJECT · choice kept".into();
+    }
+
+    fn commit_project_guard_name(&mut self) {
+        let Some(name) = self.project_name_input.clone() else {
+            return;
+        };
+        let name = name.trim();
+        if name.is_empty() {
+            self.status = "INVALID NAME · edit or Back".into();
+            return;
+        }
+        self.save_project_for_guard_as(name, false);
+    }
+
+    fn save_project_for_guard_as(&mut self, name: &str, overwrite: bool) {
+        let mut candidate = self.song.clone();
+        candidate.name = name.to_owned();
+        if candidate.validate().is_err() {
+            self.status = "INVALID NAME · edit or Back".into();
+            return;
+        }
+        let base = self.project_directory();
+        match sequencer::save(&base, &candidate, overwrite) {
+            Ok(path) => {
+                self.song = candidate;
+                self.song_file_stem = path
+                    .file_stem()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_owned);
+                self.confirm_song_save = None;
+                self.song_list = sequencer::list(&base);
+                self.song_selected = self
+                    .song_file_stem
+                    .as_ref()
+                    .and_then(|stem| self.song_list.iter().position(|name| name == stem))
+                    .unwrap_or(0);
+                self.mark_project_clean();
+                self.status = "Project saved".into();
+                self.continue_project_action_after_save();
+            }
+            Err(error) if error.to_string().contains("confirm") => {
+                self.status = "NAME EXISTS · edit name or Back".into();
+            }
+            Err(_error) => {
+                self.status = "PROJECT SAVE FAILED · Project and guard kept".into();
+            }
+        }
+    }
+
+    fn restore_clean_project_for_exit(&mut self) -> bool {
+        let baseline = self.project_clean_baseline.clone();
+        self.cancel_note_editor();
+        self.cancel_tracker_gesture();
+        self.stop_tracker_recording();
+        self.sequencer.stop();
+        self.song_previewing = false;
+        self.loop_player.stop();
+        if let Err(status) = self.publish_project_audio_runtime(
+            &baseline.insert_rack,
+            &baseline.aux_routing,
+            &baseline.master_strip,
+        ) {
+            self.status = format!("{status} · guard kept");
+            return false;
+        }
+        for slot in 0..crate::loop_player::LOOP_SLOTS {
+            self.loop_player.unload_slot(slot);
+        }
+        self.song = baseline;
+        self.live_patterns.reset_for_project(&self.song);
+        self.live_shape_focus = None;
+        self.live_activation_seen = 0;
+        self.live_prepare_seen = None;
+        self.loop_activation_seen = 0;
+        self.loop_runtime_pattern = None;
+        self.prepared_pattern_loops = None;
+        self.loop_slot_selected = 0;
+        self.reset_multichannel_monitor_context();
+        self.clamp_tracker_cursor();
+        self.refresh_page_targets();
+        self.sync_tracker_route();
+        true
     }
 
     fn request_quit(&mut self) -> bool {
@@ -3098,6 +3350,7 @@ impl App {
             let external = self.tracker_external_config();
             route.configure(crate::engine::TrackerRouteConfig {
                 enabled: false,
+                consume_notes: false,
                 target: PageTarget::ConfiguredExternal,
                 columns: [(0, (0, 0, 0)); LANES_PER_PAGE],
                 start_column: 0,
@@ -3140,6 +3393,22 @@ impl App {
             .cloned();
         let preset = legacy.next()?;
         legacy.next().is_none().then_some(preset)
+    }
+
+    fn page_target_label(&self, target: &PageTarget) -> String {
+        match target {
+            PageTarget::Software(route) => self.preset_for_route(route).map_or_else(
+                || route.instrument.clone(),
+                |preset| {
+                    if preset.is_general_midi_drum_kit() {
+                        "GM Drums".into()
+                    } else {
+                        preset.display_name()
+                    }
+                },
+            ),
+            _ => target.label().into(),
+        }
     }
 
     fn resolve_software_plan(&self, plan: &SoftwarePlaybackPlan) -> Result<ResolvedSoftwarePlan> {
@@ -3250,10 +3519,18 @@ impl App {
     }
 
     fn ensure_tracker_engine_plan(&mut self, plan: &SoftwarePlaybackPlan) -> bool {
+        let gm_drums = self.current_page().is_some_and(|page| page.percussion)
+            && plan
+                .primary_route()
+                .is_some_and(|route| route.engine == BackendKind::FluidSynth);
         let resolved = match self.resolve_software_plan(plan) {
             Ok(resolved) => resolved,
             Err(_error) => {
-                self.status = "INSTRUMENT MISSING · old sound kept".into();
+                self.status = if gm_drums {
+                    "GM DRUMS MISSING · configure SoundFont · route silent".into()
+                } else {
+                    "INSTRUMENT MISSING · route silent".into()
+                };
                 return false;
             }
         };
@@ -3289,7 +3566,11 @@ impl App {
             }
             if let Some(engine) = self.engine.as_mut() {
                 if let Err(_error) = engine.configure_fluidsynth_parts(&resolved.fluid_parts) {
-                    self.status = "FT2 PRESET FAILED · old channels kept".into();
+                    self.status = if gm_drums {
+                        "GM DRUMS FAILED · route silent · retry".into()
+                    } else {
+                        "FT2 PRESET FAILED · route silent · retry".into()
+                    };
                     return false;
                 }
             }
@@ -3322,7 +3603,11 @@ impl App {
             .preset_for_route(plan.primary_route().unwrap())
             .is_none()
         {
-            self.status = "INSTRUMENT MISSING · old sound kept".into();
+            self.status = if gm_drums {
+                "GM DRUMS MISSING · configure SoundFont · route silent".into()
+            } else {
+                "INSTRUMENT MISSING · route silent".into()
+            };
             return false;
         }
         self.release_tracker_audition();
@@ -3336,7 +3621,11 @@ impl App {
         ) {
             Ok(_) => true,
             Err(_error) => {
-                self.status = "FT2 START FAILED · retry PLAY".into();
+                self.status = if gm_drums {
+                    "GM DRUMS START FAILED · route silent · retry".into()
+                } else {
+                    "FT2 START FAILED · retry PLAY".into()
+                };
                 false
             }
         }
@@ -3373,7 +3662,11 @@ impl App {
         #[cfg(test)]
         if let Some(result) = self.tracker_engine_start_override.as_ref() {
             result.clone().map_err(anyhow::Error::msg)?;
-            return Engine::start_test_process(preset.backend, Arc::clone(&self.midi_output));
+            return Engine::start_test_process_with_parts(
+                preset.backend,
+                Arc::clone(&self.midi_output),
+                fluid_parts,
+            );
         }
         if fluid_parts.is_empty() {
             Engine::start_with_routing(
@@ -4235,9 +4528,9 @@ impl App {
             self.sync_tracker_route();
         }
         let detail = match field {
-            NoteEditorField::Destination => {
-                self.current_page().map(|page| page.target.label().into())
-            }
+            NoteEditorField::Destination => self
+                .current_page()
+                .map(|page| self.page_target_label(&page.target)),
             NoteEditorField::Channel => self.current_page().map(|page| {
                 format!(
                     "MIDI channel {}",
@@ -4735,22 +5028,38 @@ impl App {
         };
     }
     fn sync_tracker_route(&mut self) -> bool {
-        let engine_ready = self
-            .tracker_software_route()
-            .is_none_or(|route| self.ensure_tracker_engine_for(&route));
-        self.configure_tracker_route(false);
+        let plan = self.current_page_software_plan();
+        let engine_ready = plan
+            .as_ref()
+            .is_none_or(|plan| self.ensure_tracker_engine_plan(plan));
+        self.configure_tracker_route_ready(false, engine_ready);
         engine_ready
     }
 
     fn sync_tracker_route_for_navigation(&mut self) -> bool {
-        let engine_ready = self
-            .tracker_software_route()
-            .is_none_or(|route| self.ensure_tracker_engine_for(&route));
-        self.configure_tracker_route(true);
+        let plan = self.current_page_software_plan();
+        let engine_ready = plan
+            .as_ref()
+            .is_none_or(|plan| self.ensure_tracker_engine_plan(plan));
+        self.configure_tracker_route_ready(true, engine_ready);
         engine_ready
     }
 
     fn configure_tracker_route(&mut self, preserve_notes: bool) {
+        let software_ready = self.tracker_software_route().is_none_or(|route| {
+            let channel = self.current_page().map_or(0, |page| {
+                page.runtime_channel(self.tracker_track, &self.config.external_midi)
+            });
+            self.engine.is_some()
+                && self
+                    .tracker_engine_plan
+                    .as_ref()
+                    .is_some_and(|plan| plan.contains_part(&route, channel))
+        });
+        self.configure_tracker_route_ready(preserve_notes, software_ready);
+    }
+
+    fn configure_tracker_route_ready(&mut self, preserve_notes: bool, software_ready: bool) {
         let Some(page) = self.current_page() else {
             return;
         };
@@ -4784,7 +5093,8 @@ impl App {
                 }
             }
             let config = crate::engine::TrackerRouteConfig {
-                enabled: self.tracker_workspace_active(),
+                enabled: self.tracker_workspace_active() && software_ready,
+                consume_notes: self.tracker_workspace_active(),
                 target: page.target.clone(),
                 columns,
                 start_column: self.tracker_track,
@@ -5074,18 +5384,33 @@ impl App {
             }
             PageTarget::ActiveInstrument => false,
             PageTarget::Synthv1(name) => {
+                let route = SoftwareRoute::synthv1(name);
+                let current_channel = self.current_page().and_then(|page| {
+                    (&page.target == target).then(|| {
+                        page.runtime_channel(self.tracker_track, &self.config.external_midi)
+                    })
+                });
                 self.engine.is_some()
-                    && self
-                        .tracker_engine_plan
-                        .as_ref()
-                        .is_some_and(|plan| plan.contains_route(&SoftwareRoute::synthv1(name)))
+                    && self.tracker_engine_plan.as_ref().is_some_and(|plan| {
+                        current_channel.map_or_else(
+                            || plan.contains_route(&route),
+                            |channel| plan.contains_part(&route, channel),
+                        )
+                    })
             }
             PageTarget::Software(route) => {
+                let current_channel = self.current_page().and_then(|page| {
+                    (&page.target == target).then(|| {
+                        page.runtime_channel(self.tracker_track, &self.config.external_midi)
+                    })
+                });
                 self.engine.is_some()
-                    && self
-                        .tracker_engine_plan
-                        .as_ref()
-                        .is_some_and(|plan| plan.contains_route(route))
+                    && self.tracker_engine_plan.as_ref().is_some_and(|plan| {
+                        current_channel.map_or_else(
+                            || plan.contains_route(route),
+                            |channel| plan.contains_part(route, channel),
+                        )
+                    })
             }
             PageTarget::ConfiguredExternal => {
                 self.config.external_midi.enabled
@@ -5108,10 +5433,13 @@ impl App {
             PageTarget::Synthv1(name) => self
                 .preset_for_route(&SoftwareRoute::synthv1(name))
                 .is_none()
-                .then_some("MISSING"),
-            PageTarget::Software(route) => {
-                self.preset_for_route(route).is_none().then_some("MISSING")
-            }
+                .then_some("MISSING")
+                .or_else(|| (!self.target_online(target)).then_some("OFFLINE")),
+            PageTarget::Software(route) => self
+                .preset_for_route(route)
+                .is_none()
+                .then_some("MISSING")
+                .or_else(|| (!self.target_online(target)).then_some("OFFLINE")),
             PageTarget::ConfiguredExternal => {
                 if !self.config.external_midi.enabled {
                     Some("OFFLINE")
@@ -5601,6 +5929,7 @@ impl App {
                 return;
             }
         }
+        self.configure_tracker_route(false);
         self.sequencer.play(&self.song, order, row);
         if loops_ready {
             for slot in 0..crate::loop_player::LOOP_SLOTS {
@@ -7342,9 +7671,17 @@ impl App {
         }
     }
 
+    fn request_new_project(&mut self) {
+        if self.project_is_dirty() {
+            self.begin_project_action(PendingProjectAction::NewProject);
+        } else {
+            self.new_project();
+        }
+    }
+
     fn begin_project_rename(&mut self) {
         self.project_name_input = Some(self.song.name.clone());
-        self.status = "PROJECT NAME · type; Enter / Esc".into();
+        self.status = "PROJECT NAME · click confirms · keyboard optional".into();
     }
 
     fn commit_project_rename(&mut self) {
@@ -11301,6 +11638,20 @@ fn dispatch_encoder_input(
     tx: &std::sync::mpsc::Sender<MidiEvent>,
     physical: bool,
 ) {
+    if app.project_guard_naming {
+        if action == crate::pads::EncoderAction::Select {
+            app.commit_project_guard_name();
+        }
+        return;
+    }
+    if app.pending_project_action.is_some() {
+        match action {
+            crate::pads::EncoderAction::Up => app.move_project_guard(-1),
+            crate::pads::EncoderAction::Down => app.move_project_guard(1),
+            crate::pads::EncoderAction::Select => app.activate_project_guard(),
+        }
+        return;
+    }
     if app.overlay.is_some() {
         match action {
             crate::pads::EncoderAction::Up => app.move_overlay(-1),
@@ -11329,6 +11680,7 @@ fn dispatch_encoder_input(
         return;
     }
     let value_editor_owns_encoder = app.note_editor.is_some()
+        || app.project_name_input.is_some()
         || (app.screen == Screen::TrackerPages && app.page_manager_mode != PageManagerMode::Pages)
         || app.screen == Screen::FxEditor
         || app.screen == Screen::Routing
@@ -11419,10 +11771,19 @@ fn perform(
         }
         return a.quit_requested;
     }
+    if a.project_guard_naming {
+        match action {
+            Action::Activate => a.commit_project_guard_name(),
+            Action::Back => a.cancel_project_guard_name(),
+            _ => {}
+        }
+        return a.quit_requested;
+    }
     if a.pending_project_action.is_some() {
         match action {
-            Action::SaveSong => a.save_song(),
-            Action::LoadSong => a.discard_for_project_action(),
+            Action::Up => a.move_project_guard(-1),
+            Action::Down => a.move_project_guard(1),
+            Action::Activate => a.activate_project_guard(),
             Action::Back => a.cancel_project_action(),
             _ => {}
         }
@@ -11994,6 +12355,11 @@ fn perform(
         Action::BusMute => a.toggle_bus_mute(),
         Action::FinalRecordToggle => a.toggle_final_recording(),
         Action::Back => {
+            if a.screen == Screen::Tracker && a.tracker_mode == TrackerMode::Edit {
+                a.set_tracker_edit(false);
+                a.status = "EDIT off".into();
+                return false;
+            }
             if a.screen == Screen::Routing && a.cancel_routing_edit() {
                 return false;
             }
@@ -12045,6 +12411,10 @@ fn perform(
             }
             if a.screen == Screen::TrackerFiles && a.song_previewing {
                 a.stop_song_preview();
+            }
+            if a.screen == Screen::Tracker {
+                a.begin_project_action(PendingProjectAction::ExitTracker);
+                return false;
             }
             a.confirm_delete = None;
             a.confirm_load = None;
@@ -12212,6 +12582,10 @@ fn perform(
             a.set_tracker_edit(enabled);
             a.status = format!("EDIT {}", if enabled { "on" } else { "off" });
         }
+        Action::ExitTrackerEdit => {
+            a.set_tracker_edit(false);
+            a.status = "EDIT off".into();
+        }
         Action::TrackerSkip => a.tracker_skip(),
         Action::TrackerErase => a.tracker_erase(),
         Action::TrackerNoteOff => a.tracker_note_off(),
@@ -12261,7 +12635,7 @@ fn perform(
         Action::SaveSong => a.save_song(),
         Action::SaveSongAs => a.save_song_as(),
         Action::LoadSong => a.load_song(),
-        Action::NewProject => a.new_project(),
+        Action::NewProject => a.request_new_project(),
         Action::SelectThreeFour => {
             a.select_pattern_meter(3);
         }
@@ -12297,15 +12671,34 @@ fn perform(
     false
 }
 fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<MidiEvent>) -> bool {
+    if a.project_guard_naming {
+        match code {
+            KeyCode::Enter => a.commit_project_guard_name(),
+            KeyCode::Esc => a.cancel_project_guard_name(),
+            KeyCode::Backspace => {
+                if let Some(input) = a.project_name_input.as_mut() {
+                    input.pop();
+                }
+            }
+            KeyCode::Char(character)
+                if !character.is_control()
+                    && a.project_name_input
+                        .as_ref()
+                        .is_some_and(|input| input.chars().count() < 64) =>
+            {
+                if let Some(input) = a.project_name_input.as_mut() {
+                    input.push(character);
+                }
+            }
+            _ => {}
+        }
+        return a.quit_requested;
+    }
     if a.pending_project_action.is_some() {
         match code {
-            KeyCode::Char('v') | KeyCode::Char('V') => a.save_song(),
-            KeyCode::Char('d') | KeyCode::Char('D') => a.discard_for_project_action(),
-            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B')
-                if a.confirm_routing_defaults =>
-            {
-                a.finish_routing_defaults_prompt(false)
-            }
+            KeyCode::Up => a.move_project_guard(-1),
+            KeyCode::Down => a.move_project_guard(1),
+            KeyCode::Enter => a.activate_project_guard(),
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.cancel_project_action(),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
             _ => {}
@@ -13215,6 +13608,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::Home => {
             draw_home(f, a);
             draw_project_guard(f, a);
+            draw_project_name_input(f, a);
             return;
         }
         Screen::Presets => draw_list(f, a),
@@ -13270,30 +13664,14 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             area,
         );
     }
-    if let Some(input) = a.project_name_input.as_deref() {
-        let z = f.size();
-        let area = rect(z.x + 2, z.y + 4, z.width.saturating_sub(4), 5);
-        f.render_widget(Clear, area);
-        f.render_widget(
-            Paragraph::new(format!(
-                "PROJECT NAME · KEYBOARD REQUIRED\n{}\nEnter confirm · Esc cancel",
-                crate::ui_text::fit_line(
-                    &format!("{input}_"),
-                    usize::from(area.width.saturating_sub(2))
-                )
-            ))
-            .style(Style::default().fg(Color::Yellow))
-            .block(Block::default().borders(Borders::ALL)),
-            area,
-        );
-    }
+    draw_project_name_input(f, a);
     if let Some(input) = a.audio_track_name_input.as_deref() {
         let z = f.size();
         let area = rect(z.x + 2, z.y + 4, z.width.saturating_sub(4), 5);
         f.render_widget(Clear, area);
         f.render_widget(
             Paragraph::new(format!(
-                "TRACK NAME · KEYBOARD REQUIRED\n{}\nEnter confirm · Esc cancel",
+                "TRACK NAME · CLICK CONFIRMS\n{}\nKeyboard optional · Esc returns",
                 crate::ui_text::fit_line(
                     &format!("{input}_"),
                     usize::from(area.width.saturating_sub(2))
@@ -13308,7 +13686,36 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     draw_master_status(f, a);
 }
 
+fn draw_project_name_input<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let Some(input) = a.project_name_input.as_deref() else {
+        return;
+    };
+    let z = f.size();
+    let area = rect(z.x + 2, z.y + 4, z.width.saturating_sub(4), 5);
+    f.render_widget(Clear, area);
+    let prompt = if a.project_guard_naming {
+        "PROJECT NAME · CLICK ACCEPTS"
+    } else {
+        "PROJECT NAME · CLICK CONFIRMS"
+    };
+    f.render_widget(
+        Paragraph::new(format!(
+            "{prompt}\n{}\nKeyboard optional · Esc returns",
+            crate::ui_text::fit_line(
+                &format!("{input}_"),
+                usize::from(area.width.saturating_sub(2))
+            )
+        ))
+        .style(Style::default().fg(Color::Yellow))
+        .block(Block::default().borders(Borders::ALL)),
+        area,
+    );
+}
+
 fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
+    if a.project_guard_naming {
+        return;
+    }
     let Some(action) = a.pending_project_action.as_ref() else {
         return;
     };
@@ -13319,24 +13726,44 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
         z.width.saturating_sub(4),
         z.height.saturating_sub(6).min(7),
     );
-    let (action, discard) = match action {
-        PendingProjectAction::Load(name) => (
-            format!("LOAD {}", crate::ui_text::fit_middle(name, 29)),
-            "D/LOAD · discard and load",
-        ),
-        PendingProjectAction::ImportMidi => {
-            ("IMPORT ANALYSED MIDI".into(), "D/LOAD · discard and import")
+    let action = match action {
+        PendingProjectAction::ExitTracker => "EXIT FT2".into(),
+        PendingProjectAction::NewProject => "NEW PROJECT".into(),
+        PendingProjectAction::Load(name) => {
+            format!("LOAD {}", crate::ui_text::fit_middle(name, 25))
         }
-        PendingProjectAction::Quit => ("QUIT SHR-DAW".into(), "D/LOAD · discard and quit"),
+        PendingProjectAction::ImportMidi => "IMPORT ANALYSED MIDI".into(),
+        PendingProjectAction::Quit => "QUIT SHR-DAW".into(),
     };
+    let width = usize::from(area.width.saturating_sub(2));
+    let rows = ProjectGuardChoice::ALL
+        .into_iter()
+        .map(|choice| {
+            let selected = choice == a.project_guard_selected;
+            Spans::from(Span::styled(
+                centered_text(choice.label(), width),
+                if selected {
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White).bg(Color::Black)
+                },
+            ))
+        })
+        .collect::<Vec<_>>();
     f.render_widget(Clear, area);
     f.render_widget(
-        Paragraph::new(format!(
-            "UNSAVED PROJECT\n{action}\nV/SAVE · keep work\n{discard}\nEsc/EXIT · cancel, keep position"
-        ))
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Yellow).bg(Color::Black))
-        .block(Block::default().borders(Borders::ALL)),
+        Paragraph::new(rows)
+            .alignment(Alignment::Center)
+            .style(Style::default().bg(Color::Black))
+            .block(
+                Block::default()
+                    .title(format!(" UNSAVED · {action} "))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            ),
         area,
     );
 }
@@ -15938,6 +16365,38 @@ fn operation_status_active(a: &App) -> bool {
     a.loop_previewing || a.song_previewing || a.playback.is_some()
 }
 
+fn fit_shared_status_text(
+    message: &str,
+    temperature: Option<&str>,
+    cells: usize,
+) -> (String, String, String) {
+    let Some(temperature) = temperature else {
+        return (
+            crate::ui_text::fit_status(message, cells),
+            String::new(),
+            String::new(),
+        );
+    };
+    let temperature = crate::ui_text::fit_line(temperature, cells);
+    let temperature_width = crate::ui_text::width(&temperature);
+    if temperature_width >= cells {
+        return (String::new(), String::new(), temperature);
+    }
+    let message_cells = cells.saturating_sub(temperature_width + 1);
+    if crate::ui_text::width(message) > message_cells {
+        return (
+            crate::ui_text::fit_status(message, cells),
+            String::new(),
+            String::new(),
+        );
+    }
+    let message = crate::ui_text::fit_status(message, message_cells);
+    let gap = cells
+        .saturating_sub(crate::ui_text::width(&message) + temperature_width)
+        .max(1);
+    (message, " ".repeat(gap), temperature)
+}
+
 fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
     let z = f.size();
     if z.height == 0 || z.width == 0 {
@@ -15985,6 +16444,14 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
     } else {
         Color::Gray
     };
+    let temperature = a.config.cpu_temperature_path.as_ref().map(|_| {
+        a.cpu_temperature
+            .map(|value| format!("CPU {value:.0}°C"))
+            .unwrap_or_else(|| "CPU --°C".into())
+    });
+    let text_cells = usize::from(z.width.saturating_sub(2).min(STATUS_TEXT_CELLS));
+    let (message, gap, temperature) =
+        fit_shared_status_text(message, temperature.as_deref(), text_cells);
     f.render_widget(
         Paragraph::new(Spans::from(vec![
             Span::styled(
@@ -15994,13 +16461,9 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
-            Span::styled(
-                crate::ui_text::fit_status(
-                    message,
-                    usize::from(z.width.saturating_sub(2).min(STATUS_TEXT_CELLS)),
-                ),
-                Style::default().fg(message_color),
-            ),
+            Span::styled(message, Style::default().fg(message_color)),
+            Span::raw(gap),
+            Span::styled(temperature, Style::default().fg(Color::Gray)),
         ]))
         .style(Style::default().bg(Color::Black)),
         row,
@@ -16714,7 +17177,7 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             page.entry_mode.compact_label(page.entry_anchor),
             a.tracker_track + 1,
             sequencer::musician_channel(column.channel),
-            truncate(page.target.label(), 10),
+            truncate(&a.page_target_label(&page.target), 10),
             state,
         );
         route_issue.map_or_else(
@@ -16757,7 +17220,7 @@ fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
     let values = [
         (
             NoteEditorField::Destination,
-            page.target.label().to_owned(),
+            a.page_target_label(&page.target),
             "audition + page",
         ),
         (
@@ -16986,7 +17449,7 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                         page.entry_mode.compact_label(page.entry_anchor),
                         a.tracker_track + 1,
                         channel,
-                        truncate(page.target.label(), 7),
+                        truncate(&a.page_target_label(&page.target), 7),
                     );
                     let suffix = issue.map_or_else(String::new, |issue| format!(" · {issue}"));
                     let text = format!(
@@ -19306,6 +19769,7 @@ fn ansi_indexed_color(index: u8) -> [u8; 3] {
 mod tests {
     use super::*;
     use crate::config::BankSelectMode;
+    use crate::preset::PresetId;
     use ratatui::backend::TestBackend;
     use ratatui::buffer::{Buffer, Cell as BufferCell};
     fn presets() -> Vec<Preset> {
@@ -19313,15 +19777,35 @@ mod tests {
             .map(|i| Preset::synthv1(format!("Preset {i:02}"), format!("x{i}").into()))
             .collect()
     }
+    fn gm_drums_preset() -> Preset {
+        Preset {
+            backend: BackendKind::FluidSynth,
+            name: "Standard GM Drums".into(),
+            category: Some("Test SoundFont 128:000".into()),
+            id: PresetId::FluidSynth {
+                soundfont: PathBuf::from("test-gm.sf2"),
+                soundfont_index: 0,
+                bank: 128,
+                program: 0,
+            },
+        }
+    }
     fn app(presets: &[Preset]) -> App {
         app_with_routing_defaults(presets, PathBuf::from("/none"))
     }
     fn app_with_routing_defaults(presets: &[Preset], defaults: PathBuf) -> App {
-        let catalogs = [Catalog {
-            backend: BackendKind::Synthv1,
-            presets: presets.to_vec(),
-            unavailable: None,
-        }];
+        let catalogs = [
+            Catalog {
+                backend: BackendKind::Synthv1,
+                presets: presets.to_vec(),
+                unavailable: None,
+            },
+            Catalog {
+                backend: BackendKind::FluidSynth,
+                presets: vec![gm_drums_preset()],
+                unavailable: None,
+            },
+        ];
         let config = RuntimeConfig::default();
         let available_midi_outputs = (!config.external_midi.output_match.is_empty())
             .then(|| config.external_midi.output_match.clone())
@@ -19406,6 +19890,62 @@ mod tests {
         app.config.external_midi.enabled = true;
         app.config.external_midi.output_match = "Test MIDI output".into();
         app.available_page_outputs = vec!["Test MIDI output".into()];
+    }
+    fn controller_select_page(
+        app: &mut App,
+        layout: ControllerLayout,
+        page: usize,
+        tx: &mpsc::Sender<MidiEvent>,
+    ) {
+        app.controller_layout = layout;
+        match layout {
+            ControllerLayout::Eight => dispatch_pad(
+                [
+                    crate::pads::PadAction::Page1,
+                    crate::pads::PadAction::Page2,
+                    crate::pads::PadAction::Page3,
+                    crate::pads::PadAction::Page4,
+                ][page],
+                true,
+                app,
+                Path::new("/none"),
+                tx,
+            ),
+            ControllerLayout::Five => {
+                while app.menu_page() != page {
+                    dispatch_pad(
+                        crate::pads::PadAction::CyclePage,
+                        true,
+                        app,
+                        Path::new("/none"),
+                        tx,
+                    );
+                }
+            }
+            ControllerLayout::Four => {
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Select,
+                    app,
+                    Path::new("/none"),
+                    tx,
+                );
+                while app.menu_page() != page {
+                    dispatch_encoder(
+                        crate::pads::EncoderAction::Down,
+                        app,
+                        Path::new("/none"),
+                        tx,
+                    );
+                }
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Select,
+                    app,
+                    Path::new("/none"),
+                    tx,
+                );
+            }
+        }
+        assert_eq!(app.menu_page(), page);
     }
     fn render(w: u16, h: u16, screen: Screen) {
         let p = presets();
@@ -20116,8 +20656,8 @@ mod tests {
         a.screen = Screen::Tracker;
         a.set_tracker_edit(true);
 
-        dispatch_pad(PadAction::Page3, true, &mut a, Path::new("/none"), &tx);
-        dispatch_pad(PadAction::Item3, true, &mut a, Path::new("/none"), &tx);
+        dispatch_pad(PadAction::Page2, true, &mut a, Path::new("/none"), &tx);
+        dispatch_pad(PadAction::Item1, true, &mut a, Path::new("/none"), &tx);
         assert_eq!(
             a.overlay.as_ref().map(|overlay| overlay.kind),
             Some(OverlayKind::TrackerNoteLength)
@@ -20126,7 +20666,7 @@ mod tests {
         a.close_overlay(true);
 
         dispatch_pad(PadAction::Page2, true, &mut a, Path::new("/none"), &tx);
-        dispatch_pad(PadAction::Item4, true, &mut a, Path::new("/none"), &tx);
+        dispatch_pad(PadAction::Item2, true, &mut a, Path::new("/none"), &tx);
         assert_eq!(
             a.overlay.as_ref().map(|overlay| overlay.kind),
             Some(OverlayKind::TrackerAdvance)
@@ -20300,6 +20840,7 @@ mod tests {
 
         a.overlay.as_mut().unwrap().selection = 1;
         a.activate_overlay();
+        a.move_overlay(1);
         a.move_overlay(1);
         a.activate_overlay();
         let route = &a.overlay.as_ref().unwrap().route().unwrap().page.target;
@@ -20785,7 +21326,7 @@ mod tests {
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
         assert!(text.contains("SOFTWARE SYNTHS"));
-        assert!(text.contains("FT2 TRACKER"));
+        assert!(text.contains("FT2-STYLE TRACKER"));
         assert!(text.contains("RECORDER"));
         assert!(text.contains("ROUTING"));
         assert!(text.contains("MIDI LEARN"));
@@ -21207,6 +21748,272 @@ mod tests {
     }
 
     #[test]
+    fn dirty_ft2_exit_guard_is_rotary_first_and_auto_save_exits_after_success() {
+        let p = presets();
+        let mut a = app(&p);
+        let base =
+            std::env::temp_dir().join(format!("shr-project-guard-auto-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        a.songs_directory_override = Some(base.clone());
+        a.screen = Screen::Tracker;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+        let (tx, _rx) = mpsc::channel();
+
+        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        assert_eq!(
+            a.pending_project_action,
+            Some(PendingProjectAction::ExitTracker)
+        );
+        assert_eq!(a.project_guard_selected, ProjectGuardChoice::SaveAuto);
+        assert_eq!(a.screen, Screen::Tracker);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+
+        assert_eq!(a.screen, Screen::Home);
+        assert!(a.pending_project_action.is_none());
+        assert_eq!(a.song_file_stem.as_deref(), Some("project-001"));
+        assert!(base.join("project-001.shsong").is_file());
+        assert!(!a.project_is_dirty());
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn guard_save_name_accepts_automatic_suggestion_with_rotary_click() {
+        let p = presets();
+        let mut a = app(&p);
+        let base =
+            std::env::temp_dir().join(format!("shr-project-guard-name-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        a.songs_directory_override = Some(base.clone());
+        a.screen = Screen::Tracker;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(64);
+        let (tx, _rx) = mpsc::channel();
+        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.project_guard_selected, ProjectGuardChoice::SaveName);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.project_name_input.as_deref(), Some("project-001"));
+        assert!(a.project_guard_naming);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.screen, Screen::Home);
+        assert!(base.join("project-001.shsong").is_file());
+        assert!(a.project_name_input.is_none());
+        assert!(!a.project_guard_naming);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn project_guard_save_failure_keeps_exact_project_and_context() {
+        let p = presets();
+        let mut a = app(&p);
+        let base =
+            std::env::temp_dir().join(format!("shr-project-guard-failure-{}", std::process::id()));
+        let _ = fs::remove_file(&base);
+        fs::write(&base, "not a directory").unwrap();
+        a.songs_directory_override = Some(base.clone());
+        a.screen = Screen::Tracker;
+        a.tracker_order = 0;
+        a.tracker_row = 11;
+        a.tracker_page = 2;
+        a.tracker_track = 3;
+        a.tracker_mode = TrackerMode::Play;
+        a.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(67);
+        let before = a.song.clone();
+        let context = (
+            a.screen,
+            a.tracker_order,
+            a.tracker_row,
+            a.tracker_page,
+            a.tracker_track,
+            a.tracker_mode,
+            a.menu_page(),
+        );
+        let (tx, _rx) = mpsc::channel();
+        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.song, before);
+        assert_eq!(
+            (
+                a.screen,
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track,
+                a.tracker_mode,
+                a.menu_page(),
+            ),
+            context
+        );
+        assert_eq!(
+            a.pending_project_action,
+            Some(PendingProjectAction::ExitTracker)
+        );
+        assert!(a.status.contains("guard kept"));
+        let _ = fs::remove_file(base);
+    }
+
+    #[test]
+    fn guard_dont_save_restores_clean_baseline_before_ft2_exit() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        let baseline = a.project_clean_baseline.clone();
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(72);
+        a.song.master_strip.input_trim_db = 3.0;
+        a.song.patterns.get_mut(&0).unwrap().audio_loops[0] = Some(sequencer::LoopSettings::new(
+            "dirty.wav".into(),
+            12_000,
+            sequencer::BpmInterpretation::Normal,
+            0,
+            4,
+            0,
+        ));
+        let (tx, _rx) = mpsc::channel();
+        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        for _ in 0..2 {
+            dispatch_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+        }
+        assert_eq!(a.project_guard_selected, ProjectGuardChoice::DontSave);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.screen, Screen::Home);
+        assert_eq!(a.song, baseline);
+        assert!(!a.loop_player.status().playing);
+        assert!(!a.project_is_dirty());
+    }
+
+    #[test]
+    fn project_guard_back_restores_every_caller_context_field() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_row = 9;
+        a.tracker_page = 2;
+        a.tracker_track = 3;
+        a.tracker_mode = TrackerMode::Play;
+        a.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        a.page_select_mode = true;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(69);
+        let before = a.song.clone();
+        let context = (
+            a.screen,
+            a.tracker_order,
+            a.tracker_row,
+            a.tracker_page,
+            a.tracker_track,
+            a.tracker_mode,
+            a.menu_page(),
+            a.page_select_mode,
+        );
+        let (tx, _rx) = mpsc::channel();
+        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        for _ in 0..3 {
+            dispatch_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+        }
+        assert_eq!(a.project_guard_selected, ProjectGuardChoice::Back);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.song, before);
+        assert_eq!(
+            (
+                a.screen,
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track,
+                a.tracker_mode,
+                a.menu_page(),
+                a.page_select_mode,
+            ),
+            context
+        );
+        assert!(a.pending_project_action.is_none());
+    }
+
+    #[test]
+    fn project_guard_back_from_quit_preserves_edit_mode_and_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_row = 7;
+        a.tracker_page = 1;
+        a.tracker_track = 2;
+        a.set_tracker_edit(true);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(69);
+        let before = a.song.clone();
+
+        assert!(!a.request_quit());
+        assert_eq!(a.pending_project_action, Some(PendingProjectAction::Quit));
+        a.cancel_project_action();
+
+        assert_eq!(a.song, before);
+        assert_eq!(a.screen, Screen::Tracker);
+        assert_eq!(a.tracker_mode, TrackerMode::Edit);
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), (7, 1, 2));
+        assert!(!a.quit_requested);
+    }
+
+    #[test]
+    fn native_project_guard_preserves_shared_status_row() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+        a.begin_project_action(PendingProjectAction::ExitTracker);
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("SAVE (AUTO)"));
+        assert!(text.contains("SAVE (NAME)"));
+        assert!(text.contains("DON'T SAVE"));
+        assert!(text.contains("BACK"));
+        assert!((2..38).any(|column| buffer.get(column, 3).bg == Color::Yellow));
+        assert_eq!(buffer.get(0, 12).symbol, "‖");
+    }
+
+    #[test]
     fn clean_project_quit_does_not_add_a_confirmation() {
         let p = presets();
         let mut a = app(&p);
@@ -21491,7 +22298,7 @@ mod tests {
     }
 
     #[test]
-    fn native_unsaved_guard_keeps_every_consequence_and_escape_visible() {
+    fn native_unsaved_guard_keeps_all_four_rotary_choices_visible() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::TrackerFiles;
@@ -21502,10 +22309,11 @@ mod tests {
         let text = buffer_text(&buffer);
 
         for expected in [
-            "UNSAVED PROJECT",
-            "V/SAVE · keep work",
-            "D/LOAD · discard and load",
-            "Esc/EXIT · cancel, keep position",
+            "UNSAVED · LOAD",
+            "SAVE (AUTO)",
+            "SAVE (NAME)",
+            "DON'T SAVE",
+            "BACK",
         ] {
             assert!(text.contains(expected), "missing {expected:?}: {text}");
         }
@@ -21581,7 +22389,10 @@ mod tests {
             since: Instant::now() - Duration::from_secs(2),
         });
         let expired = render_app(&mut a, 40, 13);
-        assert_eq!(row_text(&expired, 12).trim_end(), "■");
+        let expired_status = row_text(&expired, 12);
+        assert!(expired_status.starts_with("■ "));
+        assert!(expired_status.ends_with("CPU --°C"));
+        assert!(!expired_status.contains("Preset saved"));
 
         a.status = "LOAD FAILED · old sound kept · retry".into();
         a.status_clock = RefCell::new(StatusClock {
@@ -21605,10 +22416,32 @@ mod tests {
 
         a.status = "MIDI OFFLINE".into();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
-        assert_eq!(
-            row_text(terminal.backend().buffer(), 12).trim_end(),
-            "■ MIDI OFFLINE"
-        );
+        let status = row_text(terminal.backend().buffer(), 12);
+        assert!(status.starts_with("■ MIDI OFFLINE"));
+        assert!(status.ends_with("CPU --°C"));
+    }
+
+    #[test]
+    fn shared_status_keeps_configured_cpu_temperature_inside_forty_cells() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Presets;
+        a.status.clear();
+        a.config.cpu_temperature_path = Some(PathBuf::from("/thermal"));
+        a.cpu_temperature = Some(52.4);
+
+        let buffer = render_app(&mut a, 40, 13);
+        let status = row_text(&buffer, 12);
+
+        assert_eq!(crate::ui_text::width(&status), 40);
+        assert!(status.starts_with("■ "));
+        assert!(status.ends_with("CPU 52°C"));
+
+        a.status = "MIDI OFFLINE".into();
+        let with_message = row_text(&render_app(&mut a, 40, 13), 12);
+        assert_eq!(crate::ui_text::width(&with_message), 40);
+        assert!(with_message.starts_with("■ MIDI OFFLINE"));
+        assert!(with_message.ends_with("CPU 52°C"));
     }
 
     #[test]
@@ -23608,13 +24441,13 @@ mod tests {
 
         a.help_selected = help::lines(38)
             .iter()
-            .position(|line| line.target.as_deref() == Some("ft2-tracker"))
+            .position(|line| line.target.as_deref() == Some("ft2-style-tracker"))
             .unwrap();
         perform(Action::Activate, &mut a, Path::new("/none"), None);
         let lines = help::lines(38);
         assert_eq!(
             lines[a.help_selected].anchor.as_deref(),
-            Some("ft2-tracker")
+            Some("ft2-style-tracker")
         );
 
         perform(Action::Back, &mut a, Path::new("/none"), None);
@@ -23673,7 +24506,7 @@ mod tests {
         let lines = help::lines(HELP_TEXT_WIDTH);
         a.help_selected = lines
             .iter()
-            .position(|line| line.target.as_deref() == Some("ft2-tracker"))
+            .position(|line| line.target.as_deref() == Some("ft2-style-tracker"))
             .unwrap();
         a.activate_help();
         let expected = help::lines(HELP_TEXT_WIDTH)[a.help_selected].text.clone();
@@ -24198,7 +25031,7 @@ mod tests {
         assert!(text.contains("Sus"));
         assert!(text.contains("Rel"));
         assert!(!text.contains("BPM"));
-        assert!(!text.contains("CPU 52°C"));
+        assert!(text.contains("CPU 52°C"));
         let title = (0..40)
             .map(|x| b.get(x, 0).symbol.as_str())
             .collect::<String>();
@@ -24793,9 +25626,27 @@ mod tests {
             });
 
         perform(Action::NewProject, &mut a, Path::new("/none"), None);
-        assert!(a.confirm_new_project);
+        assert_eq!(
+            a.pending_project_action,
+            Some(PendingProjectAction::NewProject)
+        );
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::On(60));
-        perform(Action::NewProject, &mut a, Path::new("/none"), None);
+        let (tx, _rx) = mpsc::channel();
+        for _ in 0..2 {
+            dispatch_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+        }
+        assert_eq!(a.project_guard_selected, ProjectGuardChoice::DontSave);
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
 
         assert_eq!(a.song.name, "project-002");
         assert_eq!(a.song.patterns[&0].rows[0][0].note, Note::Empty);
@@ -26675,11 +27526,13 @@ mod tests {
         assert_eq!(a.tracker_row, 1);
         let row = a.tracker_row;
         a.tracker_cell_mut().unwrap().note = Note::On(70);
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Page1, true))
+            .unwrap();
+        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item3, true))
+            .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Page2, true))
             .unwrap();
         tx.send(MidiEvent::Pad(crate::pads::PadAction::Item2, true))
-            .unwrap();
-        tx.send(MidiEvent::Pad(crate::pads::PadAction::Item4, true))
             .unwrap();
         for _ in 0..7 {
             tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Down))
@@ -26694,7 +27547,7 @@ mod tests {
         let note_row = a.tracker_row;
         a.tracker_single_note(60, 96);
         assert_eq!(a.tracker_row, (note_row + 8) % a.tracker_rows());
-        a.select_menu_page(1);
+        a.select_menu_page(0);
         let b = TestBackend::new(40, 20);
         let mut terminal = Terminal::new(b).unwrap();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
@@ -26784,6 +27637,170 @@ mod tests {
         a.tracker_stop();
         assert_eq!(a.screen, Screen::Tracker);
         assert_eq!(a.tracker_mode, TrackerMode::Edit);
+    }
+
+    #[test]
+    fn edit_sys_exit_is_one_controller_level_on_every_layout() {
+        let p = presets();
+        for layout in [
+            ControllerLayout::Eight,
+            ControllerLayout::Five,
+            ControllerLayout::Four,
+        ] {
+            let mut a = app(&p);
+            let (tx, _rx) = mpsc::channel();
+            a.screen = Screen::Tracker;
+            a.tracker_order = 0;
+            a.tracker_row = 13;
+            a.tracker_page = 2;
+            a.tracker_track = 3;
+            a.set_tracker_edit(true);
+            controller_select_page(&mut a, layout, 3, &tx);
+            dispatch_pad(
+                crate::pads::PadAction::Item4,
+                true,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!(a.screen, Screen::Tracker);
+            assert_eq!(a.tracker_mode, TrackerMode::Play);
+            assert_eq!(
+                (
+                    a.tracker_order,
+                    a.tracker_row,
+                    a.tracker_page,
+                    a.tracker_track
+                ),
+                (0, 13, 2, 3)
+            );
+        }
+    }
+
+    #[test]
+    fn length_and_add_use_pad_and_rotary_dispatch_on_all_controller_layouts() {
+        let p = presets();
+        for (layout, length, add) in [
+            (ControllerLayout::Eight, NoteLength::Whole, 0),
+            (ControllerLayout::Five, NoteLength::Eighth, 8),
+            (ControllerLayout::Four, NoteLength::HundredTwentyEighth, 32),
+        ] {
+            let mut a = app(&p);
+            let (tx, _rx) = mpsc::channel();
+            a.screen = Screen::Tracker;
+            a.set_tracker_edit(true);
+            a.note_length = NoteLength::Sixteenth;
+            a.tracker_advance = 1;
+            controller_select_page(&mut a, layout, 1, &tx);
+
+            dispatch_pad(
+                crate::pads::PadAction::Item1,
+                true,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!(
+                a.overlay.as_ref().map(|overlay| overlay.kind),
+                Some(OverlayKind::TrackerNoteLength)
+            );
+            let length_index = NoteLength::ALL
+                .iter()
+                .position(|candidate| *candidate == length)
+                .unwrap();
+            while a.overlay.as_ref().unwrap().selection != length_index {
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Down,
+                    &mut a,
+                    Path::new("/none"),
+                    &tx,
+                );
+            }
+            dispatch_encoder(
+                crate::pads::EncoderAction::Select,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!(a.note_length, length);
+            assert_eq!(a.tracker_advance, 1);
+
+            dispatch_pad(
+                crate::pads::PadAction::Item2,
+                true,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!(
+                a.overlay.as_ref().map(|overlay| overlay.kind),
+                Some(OverlayKind::TrackerAdvance)
+            );
+            while a.overlay.as_ref().unwrap().selection != add {
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Down,
+                    &mut a,
+                    Path::new("/none"),
+                    &tx,
+                );
+            }
+            dispatch_encoder(
+                crate::pads::EncoderAction::Select,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!(a.tracker_advance, add);
+            assert_eq!(a.note_length, length);
+        }
+    }
+
+    #[test]
+    fn edit_overlay_back_cancels_drafts_and_native_status_row_stays_shared() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.note_length = NoteLength::Quarter;
+        a.tracker_advance = 8;
+        controller_select_page(&mut a, ControllerLayout::Four, 1, &tx);
+        dispatch_pad(
+            crate::pads::PadAction::Item1,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        assert_eq!(a.note_length, NoteLength::Quarter);
+        assert_eq!(a.tracker_advance, 8);
+
+        dispatch_pad(
+            crate::pads::PadAction::Item2,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        assert_eq!(a.note_length, NoteLength::Quarter);
+        assert_eq!(a.tracker_advance, 8);
+
+        let buffer = render_app(&mut a, 40, 13);
+        assert_eq!(buffer.get(0, 12).symbol, "■");
     }
 
     #[test]
@@ -27024,6 +28041,223 @@ mod tests {
         );
         assert!(a.status.contains("first synthv1 instrument assigned"));
         assert!(a.tracker_route.lock().unwrap().preview_state().0);
+    }
+
+    #[test]
+    fn fresh_ft2_drums_use_explicit_discovered_gm_route_and_channel_ten() {
+        let p = presets();
+        let a = app(&p);
+        let page = &a.song.patterns[&0].pages[2];
+        let expected = SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: gm_drums_preset().route_id(),
+        };
+        assert_eq!(page.name, "Drums");
+        assert_eq!(page.target, PageTarget::Software(expected));
+        assert!(page.percussion);
+        assert_eq!(page.entry_mode, sequencer::NoteEntryMode::DrumAuto);
+        assert!(page.columns.iter().all(|column| column.channel == 9));
+        assert_eq!(a.page_target_label(&page.target), "GM Drums");
+    }
+
+    #[test]
+    fn fresh_drum_live_and_transport_prepare_the_same_gm_selection() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_page = 2;
+        a.tracker_track = 0;
+        assert!(a.sync_tracker_route());
+        let route = SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: gm_drums_preset().route_id(),
+        };
+        assert_eq!(
+            a.tracker_route.lock().unwrap().destinations(),
+            vec![(PageTarget::Software(route.clone()), 9)]
+        );
+        assert!(a.tracker_route.lock().unwrap().preview_state().0);
+        assert_eq!(
+            a.engine.as_ref().unwrap().test_fluidsynth_selection(9),
+            Some((128, 0))
+        );
+        assert!(a
+            .tracker_engine_plan
+            .as_ref()
+            .unwrap()
+            .contains_part(&route, 9));
+        let live_deliveries = {
+            let live_route = a.tracker_route.lock().unwrap();
+            engine::test_tracker_note_deliveries(&live_route, &[0x90, 36, 100])
+        };
+        assert_eq!(
+            live_deliveries,
+            vec![(PageTarget::Software(route.clone()), vec![0x99, 36, 100])]
+        );
+
+        let lane = 2 * LANES_PER_PAGE;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][lane].note = Note::On(36);
+        let messages = sequencer::schedule(&a.song, &a.config.external_midi, 0, 0).unwrap();
+        let note = messages
+            .iter()
+            .find(|message| message.bytes == [0x99, 36, 96])
+            .unwrap();
+        assert_eq!(note.target, Some(PageTarget::Software(route.clone())));
+        let plan = scheduled_software_plan(&messages).unwrap().unwrap();
+        assert!(plan.contains_part(&route, 9));
+        let resolved = a.resolve_software_plan(&plan).unwrap();
+        assert_eq!(resolved.fluid_parts.len(), 1);
+        assert_eq!(resolved.fluid_parts[0].channel, 9);
+        assert_eq!(resolved.fluid_parts[0].preset.id, gm_drums_preset().id);
+    }
+
+    #[test]
+    fn missing_gm_drums_disable_live_and_transport_without_external_fallback() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_page = 2;
+        let missing = SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: "missing-gm-drums".into(),
+        };
+        a.current_page_mut().unwrap().target = PageTarget::Software(missing.clone());
+        a.engine = None;
+        a.engine_owner = None;
+        a.tracker_engine_plan = None;
+        assert!(!a.sync_tracker_route());
+        assert!(!a.tracker_route.lock().unwrap().preview_state().0);
+        assert_eq!(
+            a.tracker_route.lock().unwrap().destinations(),
+            vec![(PageTarget::Software(missing.clone()), 9)]
+        );
+        assert_eq!(
+            a.status,
+            "GM DRUMS MISSING · configure SoundFont · route silent"
+        );
+        assert!(a.midi_output.lock().unwrap().is_none());
+
+        let lane = 2 * LANES_PER_PAGE;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][lane].note = Note::On(36);
+        a.toggle_tracker_playback();
+        assert!(!a.sequencer.status().playing);
+        assert!(a.status.contains("GM DRUMS MISSING"));
+        assert_eq!(
+            a.song.patterns[&0].pages[2].target,
+            PageTarget::Software(missing)
+        );
+    }
+
+    #[test]
+    fn failed_gm_drum_engine_configuration_keeps_exact_route_silent() {
+        let p = presets();
+        let mut a = app(&p);
+        a.tracker_engine_start_override = Some(Err("synthetic configuration failure".into()));
+        a.screen = Screen::Tracker;
+        a.tracker_page = 2;
+        let route = a.current_page().unwrap().target.clone();
+
+        assert!(!a.sync_tracker_route());
+        assert!(a.engine.is_none());
+        assert!(!a.tracker_route.lock().unwrap().preview_state().0);
+        assert_eq!(
+            a.tracker_route.lock().unwrap().destinations(),
+            vec![(route.clone(), 9)]
+        );
+        assert_eq!(a.status, "GM DRUMS START FAILED · route silent · retry");
+        assert!(matches!(route, PageTarget::Software(_)));
+        assert!(a.midi_output.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn route_editor_channel_ten_commit_prepares_drums_before_reenabling_live_input() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.screen = Screen::Tracker;
+        a.tracker_page = 2;
+        a.tracker_track = 0;
+        for column in &mut a.current_page_mut().unwrap().columns {
+            column.channel = 8;
+        }
+        assert!(a.sync_tracker_route());
+        assert_eq!(
+            a.engine.as_ref().unwrap().test_fluidsynth_selection(8),
+            Some((128, 0))
+        );
+        assert_eq!(
+            a.engine.as_ref().unwrap().test_fluidsynth_selection(9),
+            None
+        );
+
+        a.set_tracker_edit(true);
+        controller_select_page(&mut a, ControllerLayout::Eight, 2, &tx);
+        dispatch_pad(
+            crate::pads::PadAction::Item2,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::TrackerRoute)
+        );
+        for _ in 0..5 {
+            dispatch_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+        }
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        for _ in 0..16 {
+            dispatch_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+        }
+        dispatch_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+
+        assert!(a.overlay.is_none());
+        assert_eq!(a.current_page().unwrap().column(0).channel, 9);
+        assert_eq!(
+            a.engine.as_ref().unwrap().test_fluidsynth_selection(9),
+            Some((128, 0))
+        );
+        assert!(a.tracker_route.lock().unwrap().preview_state().0);
+        assert!(a
+            .tracker_route
+            .lock()
+            .unwrap()
+            .destinations()
+            .iter()
+            .any(|(_, channel)| *channel == 9));
     }
 
     #[test]
@@ -27348,14 +28582,24 @@ mod tests {
 
         a.tracker_page = 2;
         a.sync_tracker_route();
-        assert_eq!(a.engine_owner, software_owner);
-        assert_eq!(a.current_pages()[2].target, PageTarget::ConfiguredExternal);
+        let drum_route = SoftwareRoute {
+            engine: BackendKind::FluidSynth,
+            instrument: gm_drums_preset().route_id(),
+        };
+        assert_eq!(
+            a.engine_owner,
+            Some(EngineOwner::Tracker(drum_route.clone()))
+        );
+        assert_eq!(
+            a.current_pages()[2].target,
+            PageTarget::Software(drum_route.clone())
+        );
         assert!(a.current_pages()[2].percussion);
         assert_eq!(
             a.tracker_route.lock().unwrap().destinations(),
-            vec![(PageTarget::ConfiguredExternal, 9)]
+            vec![(PageTarget::Software(drum_route), 9)]
         );
-        assert_eq!(a.tracker_program_messages(0), vec![vec![0xc9, 0]]);
+        assert!(a.tracker_program_messages(0).is_empty());
     }
 
     #[test]
@@ -27444,7 +28688,13 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&base);
         let path = base.join("defaults.shsong");
-        let mut defaults = sequencer::factory_routing_pages("Preset 00");
+        let mut defaults = sequencer::factory_routing_pages(
+            "Preset 00",
+            SoftwareRoute {
+                engine: BackendKind::FluidSynth,
+                instrument: gm_drums_preset().route_id(),
+            },
+        );
         defaults[1].column_mut(0).channel = 6;
         defaults[1].column_mut(0).program = 41;
         sequencer::save_routing_defaults(&path, &defaults).unwrap();
