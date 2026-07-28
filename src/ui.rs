@@ -16736,7 +16736,7 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         f.render_widget(
             Paragraph::new(Spans::from(vec![
                 Span::styled("SCALE ", Style::default().fg(Color::DarkGray)),
-                Span::styled("◉ ", Style::default().fg(Color::Yellow)),
+                Span::styled("● ", Style::default().fg(Color::Yellow)),
                 Span::styled(
                     format!(
                         "{} {}",
@@ -18574,6 +18574,7 @@ impl ScreenshotScenario {
 enum ScreenshotSpecialScenario {
     Home,
     MidiLearn,
+    ProjectGuard,
     FxEditorEq,
     TrackerPageOverlay,
     TrackerPatternOverlay,
@@ -18604,9 +18605,10 @@ enum ScreenshotSpecialScenario {
 }
 
 impl ScreenshotSpecialScenario {
-    const ALL: [Self; 29] = [
+    const ALL: [Self; 30] = [
         Self::Home,
         Self::MidiLearn,
+        Self::ProjectGuard,
         Self::FxEditorEq,
         Self::TrackerPageOverlay,
         Self::TrackerPatternOverlay,
@@ -18640,6 +18642,7 @@ impl ScreenshotSpecialScenario {
         match self {
             Self::Home => "home",
             Self::MidiLearn => "midi-learn",
+            Self::ProjectGuard => "project-guard",
             Self::FxEditorEq => "fx-editor-eq",
             Self::TrackerPageOverlay => "overlay-ft2-page",
             Self::TrackerPatternOverlay => "overlay-ft2-pattern",
@@ -19250,6 +19253,12 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
             session.tick(now);
             app.controller_learn = Some(session);
             app.status = "MIDI Learn active · instrument routing isolated".into();
+        }
+        ScreenshotSpecialScenario::ProjectGuard => {
+            configure_screenshot_scenario(app, ScreenshotScenario::TrackerFiles);
+            app.pending_project_action = Some(PendingProjectAction::Load("sunday-sketch".into()));
+            app.project_guard_selected = ProjectGuardChoice::SaveAuto;
+            app.status = "UNSAVED PROJECT · turn and press".into();
         }
         ScreenshotSpecialScenario::FxEditorEq => {
             app.fx_target = MAX_AUX_BUSES + 1;
@@ -22280,6 +22289,47 @@ mod tests {
             let frame = render_screenshot_frame(&mut app, format!("{scenario:?}"))
                 .expect("40x13 special scenario must render");
             assert_eq!(frame.cells.len(), 40 * 13);
+        }
+    }
+
+    #[test]
+    fn screenshot_manifest_preserves_native_row_thirteen_contracts() {
+        let config = RuntimeConfig::default();
+        let transport = ['>', '■', '‖', '●'];
+        for scenario in ScreenshotScenario::ALL {
+            let mut app = screenshot_app(config.clone());
+            configure_screenshot_scenario(&mut app, scenario);
+            let frame = render_screenshot_frame(&mut app, format!("{scenario:?}")).unwrap();
+            assert!(
+                transport.contains(
+                    &frame.cells[usize::from(SCREENSHOT_COLS * 12)]
+                        .symbol
+                        .chars()
+                        .next()
+                        .unwrap()
+                ),
+                "{scenario:?} must keep shared transport on native row 13"
+            );
+        }
+        for scenario in ScreenshotSpecialScenario::ALL {
+            let mut app = screenshot_app(config.clone());
+            configure_special_screenshot_scenario(&mut app, scenario);
+            let frame = render_screenshot_frame(&mut app, format!("{scenario:?}")).unwrap();
+            let last_row = frame.cells[usize::from(SCREENSHOT_COLS * 12)..]
+                .iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect::<String>();
+            match scenario {
+                ScreenshotSpecialScenario::Home => assert!(last_row.trim().is_empty()),
+                ScreenshotSpecialScenario::FxEditorEq => {
+                    assert_eq!(last_row, "     50 200   1k   5k 20k│LOG Hz        ");
+                    assert!(!transport.contains(&last_row.chars().next().unwrap()));
+                }
+                _ => assert!(
+                    transport.contains(&last_row.chars().next().unwrap()),
+                    "{scenario:?} must keep shared transport on native row 13"
+                ),
+            }
         }
     }
 

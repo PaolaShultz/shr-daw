@@ -60,12 +60,13 @@ The deterministic TUI screenshots are generated from SHR-DAW's own seeded
 screen data by `scripts/render-readme-screenshots.py`. That maintainer helper
 uses Pillow as a PNG container/writer and reads the host's
 `Uni2-TerminusBold24x12.psf.gz` Linux console font; it does not bundle Pillow
-or the PSF font into the installed product-data directory. Anyone
-redistributing the generated documentation or a fallback copy of that font
-should retain and review the copyright/licence information supplied by the
-corresponding Pillow and console-font packages. The images are presentation
-fixtures, not evidence that JACK, MIDI hardware, playback, or recording was
-active.
+or the PSF font into the installed product-data directory. The helper accepts
+the repository-local fallback only when its decompressed bytes match the
+approved host font's pinned SHA-256. Anyone redistributing the generated
+documentation or a fallback copy of that font should retain and review the
+copyright/licence information supplied by the corresponding Pillow and
+console-font packages. The images are presentation fixtures, not evidence that
+JACK, MIDI hardware, playback, or recording was active.
 
 ## Preset bank boundary
 

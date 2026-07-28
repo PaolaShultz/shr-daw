@@ -1040,11 +1040,13 @@ main { min-width: 0; padding-bottom: 5rem; }
 .start-card strong { display: block; color: var(--green-bright); }
 .start-card span { color: var(--muted); font-size: .9rem; }
 .screenshot-grid {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;
+  display: grid; grid-template-columns: minmax(0, 480px); gap: 1rem;
 }
-.screenshot-grid figure { margin: 0; min-width: 0; }
+.screenshot-grid figure { margin: 0; min-width: 0; overflow-x: auto; }
 .screenshot-grid img {
-  display: block; width: 100%; height: auto; border: 1px solid var(--line);
+  display: block; box-sizing: content-box;
+  width: 480px; max-width: none; height: 312px;
+  border: 1px solid var(--line);
   border-radius: .3rem; background: #000;
 }
 .screenshot-grid figcaption { padding-top: .4rem; color: var(--muted); font-size: .85rem; }
@@ -1123,8 +1125,12 @@ table {
 }
 th, td { padding: .5rem .65rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
 th { background: #1b241f; color: var(--green-bright); }
+.document-body { min-width: 0; overflow-x: auto; }
 .document img { display: block; max-width: 100%; height: auto; margin: 1rem auto; }
-.tui-shot { image-rendering: crisp-edges; image-rendering: pixelated; background: #000; }
+.document img.tui-shot {
+  box-sizing: content-box; width: 480px; max-width: none; height: 312px;
+  image-rendering: crisp-edges; image-rendering: pixelated; background: #000;
+}
 .contains-task-list { padding-left: .4rem; list-style: none; }
 .task-list-item-checkbox { margin-right: .45rem; accent-color: var(--green); }
 .licence-text { white-space: pre-wrap; }
@@ -1155,7 +1161,7 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
   body { font-size: .96rem; }
   .site-shell { width: min(100% - .8rem, 52rem); }
   .hero { padding-top: 1.5rem; }
-  .feature-grid, .start-grid, .screenshot-grid { grid-template-columns: 1fr; }
+  .feature-grid, .start-grid { grid-template-columns: 1fr; }
   .document > summary, .archive-collection > summary { grid-template-columns: 1fr; }
   .document-body, .archive-body { padding: 1rem .75rem; }
   .document-meta { display: block; }

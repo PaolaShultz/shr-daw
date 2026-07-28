@@ -154,11 +154,13 @@ main { min-width: 0; padding-bottom: 5rem; }
 .start-card strong { display: block; color: var(--green-bright); }
 .start-card span { color: var(--muted); font-size: .9rem; }
 .screenshot-grid {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;
+  display: grid; grid-template-columns: minmax(0, 480px); gap: 1rem;
 }
-.screenshot-grid figure { margin: 0; min-width: 0; }
+.screenshot-grid figure { margin: 0; min-width: 0; overflow-x: auto; }
 .screenshot-grid img {
-  display: block; width: 100%; height: auto; border: 1px solid var(--line);
+  display: block; box-sizing: content-box;
+  width: 480px; max-width: none; height: 312px;
+  border: 1px solid var(--line);
   border-radius: .3rem; background: #000;
 }
 .screenshot-grid figcaption { padding-top: .4rem; color: var(--muted); font-size: .85rem; }
@@ -237,8 +239,12 @@ table {
 }
 th, td { padding: .5rem .65rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
 th { background: #1b241f; color: var(--green-bright); }
+.document-body { min-width: 0; overflow-x: auto; }
 .document img { display: block; max-width: 100%; height: auto; margin: 1rem auto; }
-.tui-shot { image-rendering: crisp-edges; image-rendering: pixelated; background: #000; }
+.document img.tui-shot {
+  box-sizing: content-box; width: 480px; max-width: none; height: 312px;
+  image-rendering: crisp-edges; image-rendering: pixelated; background: #000;
+}
 .contains-task-list { padding-left: .4rem; list-style: none; }
 .task-list-item-checkbox { margin-right: .45rem; accent-color: var(--green); }
 .licence-text { white-space: pre-wrap; }
@@ -269,7 +275,7 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
   body { font-size: .96rem; }
   .site-shell { width: min(100% - .8rem, 52rem); }
   .hero { padding-top: 1.5rem; }
-  .feature-grid, .start-grid, .screenshot-grid { grid-template-columns: 1fr; }
+  .feature-grid, .start-grid { grid-template-columns: 1fr; }
   .document > summary, .archive-collection > summary { grid-template-columns: 1fr; }
   .document-body, .archive-body { padding: 1rem .75rem; }
   .document-meta { display: block; }
@@ -313,7 +319,7 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <main id="main-content">
 <section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi music workstation</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal, optional MIDI gear, software instruments, FT2-style sequencing, WAV loops, effects, and JACK recording.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.1</span><span>40×13 interface · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
 <section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make music on a small, focused screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, or FluidSynth through one safely managed engine.</div><div class="feature-card">Build routed multi-page Patterns, Arrangements, drum parts, and private WAV loop performances in the FT2 workspace, including quantized Live Patterns and a four-slot Loop Mix.</div><div class="feature-card">Save free-timed MIDI Ideas, synchronized raw JACK stems, or the protected final stereo performance mix.</div><div class="feature-card">Use the computer keyboard, mouse, or a configured four-, five-, or eight-button controller.</div></div></section>
-<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="5bb22f44ab2253ba970e422afd3a06cbfcf63caa92fc7ecc3bbee3613b1f0b93" decoding="async" height="624" id="shot-5bb22f44ab22" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="889a405e74bbeb38078e626f9d6ad5313d15938a14f55da06a15fdabe7c8cb5d" decoding="async" height="624" id="shot-889a405e74bb" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="341f175d0336a0811a89cfa68b72d6634d143dac8f135e450e1a56f82de23d6c" decoding="async" height="624" id="shot-341f175d0336" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="3cad87acc8aaff85a351c46d8bfecac38848f4cf92f5c0172aa9ff585c35a262" decoding="async" height="624" id="shot-3cad87acc8aa" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="7a12a37b68fc796901ddac77eb6d7ae2ddeb919b352b983fffba920ac60f7b2f" decoding="async" height="624" id="shot-7a12a37b68fc" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
+<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="5bb22f44ab2253ba970e422afd3a06cbfcf63caa92fc7ecc3bbee3613b1f0b93" decoding="async" height="624" id="shot-5bb22f44ab22" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="889a405e74bbeb38078e626f9d6ad5313d15938a14f55da06a15fdabe7c8cb5d" decoding="async" height="624" id="shot-889a405e74bb" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="dccca5c68ac49005acf541ccbe9f54b46044d42098cea5e3d49a649c7d89b484" decoding="async" height="624" id="shot-dccca5c68ac4" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="7a12a37b68fc796901ddac77eb6d7ae2ddeb919b352b983fffba920ac60f7b2f" decoding="async" height="624" id="shot-7a12a37b68fc" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
 <section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Instruments, screens, MIDI Ideas, source/aux/master effects, 18-channel input levels, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
 <section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>./scripts/install.sh
 shr-setup
@@ -3106,7 +3112,7 @@ while the images were made.</p>
 <p>Home is the navigation root. Its nine labels are centered inside equal 36-cell
 bars spanning zero-based columns 2–37 on the 40-column display. The block is
 centered vertically and scrolls safely on compact supported terminals.</p>
-<p><img src="images/menu/home.png" alt="Home screen with FT2 selected" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="73d223270fef63dde6f1f1fcfe76baa76f5274032b3c3d6278c9f083e8b98932" class="tui-shot" id="shot-73d223270fef" /></p>
+<p><img src="images/menu/home.png" alt="Home screen with FT2 selected" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="a0d10cc4ed475f72559fe1450a0a3c1c2da10410324a75071fe293d1aa73e331" class="tui-shot" id="shot-a0d10cc4ed47" /></p>
 <p>The master rotary browses the current screen content and its press opens or
 confirms the selection. On the configured MiniLab, pads do not navigate this
 plain list: the first four select controller-menu pages and the other four
@@ -3185,9 +3191,9 @@ without restarting the sound. <code>HELP</code> opens help and returns here afte
 <h5 id="doc-menu-everyday_screens--n00b-on-playback-pages" tabindex="-1">N00B-on Playback pages<a class="heading-anchor" href="#doc-menu-everyday_screens--n00b-on-playback-pages" aria-label="Link to N00B-on Playback pages">#</a></h5>
 <p>N00B changes only the scale filter and its compact rotary; the three Playback
 controller pages keep the same actions and ordering.</p>
-<p><img src="images/menu/playback-noob-play.png" alt="Playback PLAY page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="36da3444cd84d1dd353305e7af69f4671961dd7b15c91952ae04819126d928dd" class="tui-shot" id="shot-36da3444cd84" /></p>
-<p><img src="images/menu/playback-noob-sound.png" alt="Playback SOUND page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="aff574620ccdec6361fda39ffadaccabf73db2a9e092b3a95e569c5910a8489b" class="tui-shot" id="shot-aff574620ccd" /></p>
-<p><img src="images/menu/playback-noob-sys.png" alt="Playback SYS page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="d05570815d1cca762ed52a8af7751bc3abb9a7fe706a87ff44a74691b1a9c28f" class="tui-shot" id="shot-d05570815d1c" /></p>
+<p><img src="images/menu/playback-noob-play.png" alt="Playback PLAY page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="8f7bcd70c8ace8260cb353b4966efef392939366972f7ae9aeeef35cde379a9e" class="tui-shot" id="shot-8f7bcd70c8ac" /></p>
+<p><img src="images/menu/playback-noob-sound.png" alt="Playback SOUND page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="1ee579c819a57f57ffc3b6fbee2ece5134047d98d3594746f96c2916620b6b40" class="tui-shot" id="shot-1ee579c819a5" /></p>
+<p><img src="images/menu/playback-noob-sys.png" alt="Playback SYS page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="12470673f334c62884e1125f5d32ca0708fbf8e3299feb874d9d872f463da55d" class="tui-shot" id="shot-12470673f334" /></p>
 <h4 id="doc-menu-everyday_screens--ideas" tabindex="-1">Ideas<a class="heading-anchor" href="#doc-menu-everyday_screens--ideas" aria-label="Link to Ideas">#</a></h4>
 <p>Ideas are timestamped or numbered free-time MIDI takes. A synthv1 Idea carries
 a private preset snapshot; external-engine Ideas retain their sound identity
@@ -3225,12 +3231,12 @@ cursor, editor draft, and active transport. EXIT restores that exact context.
 If the LAN port cannot be acquired, only the local reader opens and reports the
 failure; no URL is advertised.</p>
 <h5 id="doc-menu-everyday_screens--ops-read-and-follow-links" tabindex="-1">OPS — read and follow links<a class="heading-anchor" href="#doc-menu-everyday_screens--ops-read-and-follow-links" aria-label="Link to OPS — read and follow links">#</a></h5>
-<p><img src="images/menu/help-ops.png" alt="Populated Help screen with the OPS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="b76d5e80063ad96fd8d518d7372b6c5f21ac7dbc27e5b7b3ebd666a02ad16465" class="tui-shot" id="shot-b76d5e80063a" /></p>
+<p><img src="images/menu/help-ops.png" alt="Populated Help screen with the OPS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="ebac4b13f74b31e187b9bbf1ad6e35bec974b42b7ea135cbadc48fcad4b442fc" class="tui-shot" id="shot-ebac4b13f74b" /></p>
 <p><code>OPEN</code> follows the highlighted internal link and is the required link action on
 a four-button layout. <code>TOP</code> returns to the beginning. Keyboard
 PageUp/PageDown retain page scrolling; physical pads do not.</p>
 <h5 id="doc-menu-everyday_screens--sys-safety-and-return" tabindex="-1">SYS — safety and return<a class="heading-anchor" href="#doc-menu-everyday_screens--sys-safety-and-return" aria-label="Link to SYS — safety and return">#</a></h5>
-<p><img src="images/menu/help-sys.png" alt="Populated Help screen with the SYS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="53746c2fc08597df311a89a6aacc9c1234232803a2d23d5ed3471c702bd5aa23" class="tui-shot" id="shot-53746c2fc085" /></p>
+<p><img src="images/menu/help-sys.png" alt="Populated Help screen with the SYS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="61da8cab11d315536c9398259c4c2d0fd345701d11d47a78f4db21cee525c4f2" class="tui-shot" id="shot-61da8cab11d3" /></p>
 <p><code>PANIC</code> remains available while reading. <code>EXIT</code> returns to the exact screen
 that opened Help.</p>
 <h4 id="doc-menu-everyday_screens--audio-recorder" tabindex="-1">Audio recorder<a class="heading-anchor" href="#doc-menu-everyday_screens--audio-recorder" aria-label="Link to Audio recorder">#</a></h4>
@@ -3246,7 +3252,7 @@ separate below the two controller rows. It never starts or restarts JACK.</p>
 selected track. <code>MONITOR</code> opens the separate 18-channel Levels overview. An
 armed missing source prevents a take from starting.</p>
 <h5 id="doc-menu-everyday_screens--track-choose-the-inputs" tabindex="-1">TRACK — choose the inputs<a class="heading-anchor" href="#doc-menu-everyday_screens--track-choose-the-inputs" aria-label="Link to TRACK — choose the inputs">#</a></h5>
-<p><img src="images/menu/audio-recorder-track.png" alt="Populated Audio recorder screen with the TRACK controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="691680fa7b779facf70d63b8f2552224f7ac04fe7129606fc80d2b75b405549e" class="tui-shot" id="shot-691680fa7b77" /></p>
+<p><img src="images/menu/audio-recorder-track.png" alt="Populated Audio recorder screen with the TRACK controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="a1585c1efdb808f4928462535ccc9f71da9d34d0405f9049b54792b397191d33" class="tui-shot" id="shot-a1585c1efdb8" /></p>
 <p><code>PREV</code> and <code>NEXT</code> select a track. <code>SOURCE</code> cycles deliberately through the
 currently discovered sources (and blank); <code>NAME KB</code> opens computer-keyboard
 text entry for the musician-facing
@@ -3378,7 +3384,7 @@ audio:</p>
 <p><img src="images/menu/loop-pattern-empty.png" alt="An empty Pattern Loop Mix" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="9bb694a756bf9b50425d8d897ebaa85f1904bcd7052c9a3ae200c890d3d8da93" class="tui-shot" id="shot-9bb694a756bf" /></p>
 <p><img src="images/menu/loop-slot-states.png" alt="Stopped, incompatible, queued-stop, and missing slot states" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="bf22008d39af58223c8a434a11452df6502f17de483713db9f8a4873cf451b77" class="tui-shot" id="shot-bf22008d39af" /></p>
 <p><img src="images/menu/pattern-clear-attached-loops.png" alt="Pattern CLEAR confirmation explicitly detaching attached loops" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="a834d25e0be4ac0dd749e78413cb0981a5d114ffde2bc37e10eca88587052ad5" class="tui-shot" id="shot-a834d25e0be4" /></p>
-<p><img src="images/menu/live-pattern-loop-switch.png" alt="Live Pattern rows showing current and queued loop ownership" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="38ae65a35574bfa15ac74dd32ec729658205b0b335238e5ef269df1697d0e6cb" class="tui-shot" id="shot-38ae65a35574" /></p>
+<p><img src="images/menu/live-pattern-loop-switch.png" alt="Live Pattern rows showing current and queued loop ownership" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="a407065713cf222cc646b8fb58807e5cc64d5d81f95b181ce52ffd68879df18d" class="tui-shot" id="shot-a407065713cf" /></p>
 <p>The root Loop Mix tour is the native 40×13 view; smaller terminals fall back
 without taking the shared status row:</p>
 <p><img src="images/menu/loop-compact.png" alt="Compact Loop Mix fallback" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="3d94b75b676307222b0859b729f84fa7b491cc0d31c22d19527719d2a61ff41d" class="tui-shot" id="shot-3d94b75b6763" /></p>
@@ -3557,12 +3563,12 @@ page boundaries. Keyboard Up/Down still moves rows, and Left/right move the
 order or lane. The shaded column is the live selection; the stronger yellow
 cell cursor and highlighted row remain the next edit/play location.</p>
 <h5 id="doc-menu-tracker_and_projects--play-transport-and-entry" tabindex="-1">PLAY — transport and entry<a class="heading-anchor" href="#doc-menu-tracker_and_projects--play-transport-and-entry" aria-label="Link to PLAY — transport and entry">#</a></h5>
-<p><img src="images/menu/ft2-play-play.png" alt="Populated FT2 Pattern in Play mode with the PLAY page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="3b9c03aa14c4dd399e6bd972dde76404e83ec5c5eec597f3d6d4f61cb99cd4d8" class="tui-shot" id="shot-3b9c03aa14c4" /></p>
+<p><img src="images/menu/ft2-play-play.png" alt="Populated FT2 Pattern in Play mode with the PLAY page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="4ff22d7ea0cbf969a2cc062a6d0f3ec027a0a4abc7ed614f46828f2db81e3b77" class="tui-shot" id="shot-4ff22d7ea0cb" /></p>
 <p><code>CELL</code> opens the transactional editor. <code>PLAY</code> toggles tracker transport.
 <code>RECORD</code> stops another active mode and starts the current Pattern record loop.
 <code>EDIT</code> stops Play or REC before enabling note entry.</p>
 <h5 id="doc-menu-tracker_and_projects--select-master-overlays" tabindex="-1">SELECT — master overlays<a class="heading-anchor" href="#doc-menu-tracker_and_projects--select-master-overlays" aria-label="Link to SELECT — master overlays">#</a></h5>
-<p><img src="images/menu/ft2-play-select.png" alt="Populated FT2 Pattern with the SELECT controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="a4d19121e80604045aac17ad216e6db2d3c27c365b64a7b2a69a032de2dcd65a" class="tui-shot" id="shot-a4d19121e806" /></p>
+<p><img src="images/menu/ft2-play-select.png" alt="Populated FT2 Pattern with the SELECT controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="e14454a0ffeb007700efab43487916c4726b61520aed81f4c79857aa762b4fa5" class="tui-shot" id="shot-e14454a0ffeb" /></p>
 <p><code>PAGE</code>, <code>PATTERN</code>, <code>SONG</code>, and <code>ROUTE</code> open the reusable centered overlay while
 the Pattern remains visible around it. Turn the master rotary or use Up/Down;
 click/Enter selects. Only the highlighted launcher remains on the overlay's
@@ -3571,16 +3577,16 @@ shared status row. Press that same menu item, or keyboard Back/
 Esc, to close. There is no extra controller Back item.</p>
 <p>On 40×13 the outer border is 38×11 at <code>(1,1)</code> and its usable inner content is
 36×9 at <code>(2,2)</code>.</p>
-<p><img src="images/menu/overlay-ft2-page.png" alt="PAGE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="712781fc173446a729d7dc43f1bf931adaefc9a610f3eacf5e7bea4337b47fe2" class="tui-shot" id="shot-712781fc1734" /></p>
+<p><img src="images/menu/overlay-ft2-page.png" alt="PAGE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="ef7798f89d04e1b7a897e6ebe9b19de6861956c98f30a834533648cc9172b58c" class="tui-shot" id="shot-ef7798f89d04" /></p>
 <p>PAGE selects a page/column location and can open the detailed Tracks manager.</p>
-<p><img src="images/menu/overlay-ft2-pattern.png" alt="PATTERN overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="932393ac294662568deebe8b1d6eeac0a275f8aadcf3c45b950f2c8f0efe6432" class="tui-shot" id="shot-932393ac2946" /></p>
+<p><img src="images/menu/overlay-ft2-pattern.png" alt="PATTERN overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="45134562cfecaa4ee5b403ce37bf91af64cf47245fc36c09bf1d5e3e94871114" class="tui-shot" id="shot-45134562cfec" /></p>
 <p>PATTERN selects an existing Pattern and links to Pattern tools or Project Files.</p>
-<p><img src="images/menu/overlay-ft2-song.png" alt="SONG overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="72371f366fd15a5a6f9949c7b12d70fd7f7e958bfb1fbba4de5290c558dd76bf" class="tui-shot" id="shot-72371f366fd1" /></p>
+<p><img src="images/menu/overlay-ft2-song.png" alt="SONG overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="33c4e8dbcdc02718a124fba36912ad599c73a84cc45e6919e098668e4fceda07" class="tui-shot" id="shot-33c4e8dbcdc0" /></p>
 <p>SONG selects an Arrangement step and links to Arrangement or page tools.</p>
-<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="6805d15ccd8323d20c841d41065307a3c2ade346b6e0a6e21bf835ee3872ed1a" class="tui-shot" id="shot-6805d15ccd83" /></p>
+<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="2e443bd7c9b9397854258bb6356e26b2dc5ff9f866f6668b39eb8122d27e4665" class="tui-shot" id="shot-2e443bd7c9b9" /></p>
 <p>ROUTE edits a detached page-routing draft that changes the Project only on Apply.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" tabindex="-1">SYS — safety, filter, help, and exit<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" aria-label="Link to SYS — safety, filter, help, and exit">#</a></h5>
-<p><img src="images/menu/ft2-play-sys.png" alt="Populated FT2 Pattern in Play mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="99597106ff34cfa130fa6bb0572d972439af1361270b25da32c02a40e07d5123" class="tui-shot" id="shot-99597106ff34" /></p>
+<p><img src="images/menu/ft2-play-sys.png" alt="Populated FT2 Pattern in Play mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0b077d999bd6987102baf869a7a74dee102380598ded91c47b3edaf187135f5f" class="tui-shot" id="shot-0b077d999bd6" /></p>
 <p><code>PANIC</code> stops all owned notes and transports. <code>N00B</code> immediately toggles the
 Player-selected scale filter without leaving Play. <code>HELP</code> opens contextual
 help. <code>EXIT</code> returns Home.</p>
@@ -3613,22 +3619,26 @@ advance from 0 through 32 rows after entry, blank, erase, or note-off; 0 stays
 on the current row. <code>DRUM LANES FULL</code> rejects an unplaceable hit/group without
 changing the Pattern.</p>
 <h5 id="doc-menu-tracker_and_projects--edit-enter-or-remove-cells" tabindex="-1">EDIT — enter or remove cells<a class="heading-anchor" href="#doc-menu-tracker_and_projects--edit-enter-or-remove-cells" aria-label="Link to EDIT — enter or remove cells">#</a></h5>
+<p><a class="repeated-image-link" href="#shot-dccca5c68ac4">Populated FT2 Pattern in Edit mode with the EDIT page (shown earlier)</a></p>
 <p><code>CELL</code> opens contextual cell editing. <code>BLANK</code> advances without writing a note.
 <code>ERASE</code> clears the selected cell. <code>N-OFF</code> writes a note-off. Edit contains no
 duplicated Play, Record, or Edit mode buttons.</p>
 <h5 id="doc-menu-tracker_and_projects--set-rotary-selectors" tabindex="-1">SET — rotary selectors<a class="heading-anchor" href="#doc-menu-tracker_and_projects--set-rotary-selectors" aria-label="Link to SET — rotary selectors">#</a></h5>
+<p><img src="images/menu/ft2-step-edit-set.png" alt="Populated FT2 Pattern in Edit mode with the SET page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="747f080848cdf5bb0a44bbe0520cbe601e9bf2a4977c3fd0d09f2ae7a8e975fe" class="tui-shot" id="shot-747f080848cd" /></p>
 <p><code>LENGTH</code> opens every note duration from 1/1 through 1/128. <code>ADD</code> opens every
 advance from 0 through 32 rows. Each selector opens on its current value;
 turning changes the draft, clicking commits, and Back cancels without changing
 the stored value. LENGTH and ADD remain independent. <code>COL-</code> and <code>COL+</code> move the
 edit cursor between the page's four note columns.</p>
-<p><img src="images/menu/overlay-edit-add.png" alt="Edit ADD overlay" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="3b584319d9491590be5f58e887ad104f0f3047aa68eeaf715ba81078675a0686" class="tui-shot" id="shot-3b584319d949" /></p>
-<p><img src="images/menu/overlay-note-length.png" alt="Edit note-length overlay" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="1fd1f728bc1daaa914597e145a1d9cffa6f258ee3dd0c1b4507670b7928820be" class="tui-shot" id="shot-1fd1f728bc1d" /></p>
+<p><img src="images/menu/overlay-edit-add.png" alt="Edit ADD overlay" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="31f5c590d0ccf53cf45c5d3faeab10aa6d8e9f3c261f3efbe2936198a45cf528" class="tui-shot" id="shot-31f5c590d0cc" /></p>
+<p><img src="images/menu/overlay-note-length.png" alt="Edit note-length overlay" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="8a01671dec354b7c2fcca4105cc5183c96436dae93e5d5716a6ba2116b2ca87b" class="tui-shot" id="shot-8a01671dec35" /></p>
 <h5 id="doc-menu-tracker_and_projects--select-page-and-route" tabindex="-1">SELECT — page and route<a class="heading-anchor" href="#doc-menu-tracker_and_projects--select-page-and-route" aria-label="Link to SELECT — page and route">#</a></h5>
+<p><img src="images/menu/ft2-step-edit-select.png" alt="Populated FT2 Pattern in Edit mode with the SELECT page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="bd53ae0b67d6ccb71d11d0a868cd6fbe4c5ad44036498b9cb2e47c5a43367a9e" class="tui-shot" id="shot-bd53ae0b67d6" /></p>
 <p><code>PAGE</code> opens the normal page/column selector. <code>ROUTE</code> opens the selected
 column's route editor. Both preserve Edit mode and use rotary turn, click, and
 Back in the same way as their normal-FT2 counterparts.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-help-and-leave-edit" tabindex="-1">SYS — safety, help, and leave edit<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-help-and-leave-edit" aria-label="Link to SYS — safety, help, and leave edit">#</a></h5>
+<p><img src="images/menu/ft2-step-edit-sys.png" alt="Populated FT2 Pattern in Edit mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="1721dcc6dfcf1a7b0605230441e1d602dfe1d5a3b8c17b8a5d811f99cf47d559" class="tui-shot" id="shot-1721dcc6dfcf" /></p>
 <p><code>PANIC</code> performs the owned stop. <code>N00B</code> toggles the same independent filter.
 <code>HELP</code> opens contextual help. <code>EXIT</code> leaves Edit exactly one level and returns
 to normal FT2 while preserving Pattern, page, column, and cursor row.</p>
@@ -3686,21 +3696,21 @@ Arrangement. Browsing changes the white selection only. Green <code>PLAY</code> 
 show transient lane shaping. Each row's loop count belongs to that Pattern;
 launch and retrigger switch/restart its MIDI and Loop Mix together.</p>
 <h5 id="doc-menu-tracker_and_projects--launch-select-queue-cancel-retrigger" tabindex="-1">LAUNCH — select, queue, cancel, retrigger<a class="heading-anchor" href="#doc-menu-tracker_and_projects--launch-select-queue-cancel-retrigger" aria-label="Link to LAUNCH — select, queue, cancel, retrigger">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-3cad87acc8aa">Populated Live Patterns with the LAUNCH page (shown earlier)</a></p>
+<p><a class="repeated-image-link" href="#shot-0e176304a09f">Populated Live Patterns with the LAUNCH page (shown earlier)</a></p>
 <p><code>LAUNCH</code> queues the selected Pattern. <code>CANCEL</code> removes the queue. <code>RETRIG</code>
 queues the current Pattern deliberately. <code>NOW</code> is the distinct immediate
 action.</p>
 <h5 id="doc-menu-tracker_and_projects--timing-boundary-and-capture" tabindex="-1">TIMING — boundary and capture<a class="heading-anchor" href="#doc-menu-tracker_and_projects--timing-boundary-and-capture" aria-label="Link to TIMING — boundary and capture">#</a></h5>
-<p><img src="images/menu/live-patterns-timing.png" alt="Populated Live Patterns with the TIMING page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="f21fb28b5f212583c48fc4c0e4c2984675bf29901d1d3df687a472c192799662" class="tui-shot" id="shot-f21fb28b5f21" /></p>
+<p><img src="images/menu/live-patterns-timing.png" alt="Populated Live Patterns with the TIMING page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="2cd57d527d477792db47de11c78d24b8900bea6c533567d9c0ab81ddd503a312" class="tui-shot" id="shot-2cd57d527d47" /></p>
 <p><code>STOP</code> is literal transport stop. <code>PAT Q</code> and <code>BAR Q</code> choose the next Pattern
 or complete-bar boundary. <code>CAPTURE</code> arms/stages/cancels temporary launch
 capture without silently changing Arrangement.</p>
 <h5 id="doc-menu-tracker_and_projects--shape-transient-four-lane-performance" tabindex="-1">SHAPE — transient four-lane performance<a class="heading-anchor" href="#doc-menu-tracker_and_projects--shape-transient-four-lane-performance" aria-label="Link to SHAPE — transient four-lane performance">#</a></h5>
-<p><img src="images/menu/live-patterns-shape.png" alt="Populated Live Patterns with the SHAPE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="006df638d83dc41f7e140f522ccf628d5b8e6732c4463e0131da6c3dc8718bc1" class="tui-shot" id="shot-006df638d83d" /></p>
+<p><img src="images/menu/live-patterns-shape.png" alt="Populated Live Patterns with the SHAPE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="d8647b6886019be15612e628b7952551a917d8433e627942838f8a04889f75e1" class="tui-shot" id="shot-d8647b688601" /></p>
 <p><code>MUTE</code>, <code>VEL</code>, <code>GATE</code>, and <code>TRANS</code> affect the selected page/lane runtime copy.
 Values survive navigation in this Project and reset on Project load/new.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-and-capture-confirmation" tabindex="-1">SYS — safety and capture confirmation<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-and-capture-confirmation" aria-label="Link to SYS — safety and capture confirmation">#</a></h5>
-<p><img src="images/menu/live-patterns-sys.png" alt="Populated Live Patterns with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="374e67a315d2b9635344cac46b7743cc954138472d112dcb0b22626605b44df4" class="tui-shot" id="shot-374e67a315d2" /></p>
+<p><img src="images/menu/live-patterns-sys.png" alt="Populated Live Patterns with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="2d5065cc159ed149bb1713dfa28cd03b5a53ce1fea07ca10ef11ae5d68f3a820" class="tui-shot" id="shot-2d5065cc159e" /></p>
 <p><code>PANIC</code> remains global. <code>APPEND</code> or <code>REPLACE</code> explicitly confirms a staged
 capture; repeated launches remain repeated Pattern references. <code>EXIT</code> returns
 without moving the editor cursor.</p>
@@ -3725,7 +3735,7 @@ editable. Save and Save As publish atomically and never silently replace a
 collision. Preview uses the selected saved Project without treating it as the
 current edit.</p>
 <h5 id="doc-menu-tracker_and_projects--ops-save-load-delete-midi-import" tabindex="-1">OPS — save, load, delete, MIDI import<a class="heading-anchor" href="#doc-menu-tracker_and_projects--ops-save-load-delete-midi-import" aria-label="Link to OPS — save, load, delete, MIDI import">#</a></h5>
-<p><img src="images/menu/files-ops.png" alt="Populated Project Files screen with the OPS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0ed9c9cec55107386d724fe458282a6632aa00465a28a0dfdbb53a2cea3787bc" class="tui-shot" id="shot-0ed9c9cec551" /></p>
+<p><img src="images/menu/files-ops.png" alt="Populated Project Files screen with the OPS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="2e3160c91e7af5fc867514c9588ca56a63922cc3a77769f81dd08dc4b96bed56" class="tui-shot" id="shot-2e3160c91e7a" /></p>
 <p><code>LOAD</code> opens the selected Project. <code>SAVE</code> writes the current Project and asks
 before replacement. <code>DELETE</code> requires repeat confirmation. <code>MIDI</code> uses the
 empty fourth position to open the private Standard MIDI File inbox. Selecting
@@ -3735,12 +3745,13 @@ action confirms the new unsaved Project. A dirty LOAD or MIDI import first
 opens the four-row rotary guard: <code>SAVE (AUTO)</code>, <code>SAVE (NAME)</code>, <code>DON'T SAVE</code>,
 and <code>BACK</code>. Back or a failed/pending save keeps the Project and exact tracker
 position.</p>
+<p><img src="images/menu/project-guard.png" alt="Dirty Project replacement guard" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="67c4166a28525a6ce279a129b3cbaa848877f3505a771b65782f0fb326e92fb3" class="tui-shot" id="shot-67c4166a2852" /></p>
 <p>The MIDI browser follows no symlinks and accepts bounded regular <code>.mid</code> and
 <code>.midi</code> format 0/1 PPQN files only. It never previews, transmits, or overwrites
 the source file or an existing Project. Saved-Project <code>PREVIEW</code> remains on the
 separate PREVIEW command page.</p>
 <h5 id="doc-menu-tracker_and_projects--project-lifecycle-and-pattern-child" tabindex="-1">PROJECT — lifecycle and Pattern child<a class="heading-anchor" href="#doc-menu-tracker_and_projects--project-lifecycle-and-pattern-child" aria-label="Link to PROJECT — lifecycle and Pattern child">#</a></h5>
-<p><img src="images/menu/files-project.png" alt="Populated Project Files screen with the PROJECT page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="9c9a863f0cf04ab2426659b53f90f340daad823e9f0ab884ac5c66ff394ca334" class="tui-shot" id="shot-9c9a863f0cf0" /></p>
+<p><img src="images/menu/files-project.png" alt="Populated Project Files screen with the PROJECT page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0652491132dc15fcab9b5308e2a089db16b55d98593d692f55da5d7533430ed7" class="tui-shot" id="shot-0652491132dc" /></p>
 <p><code>NEW</code> creates a confirmed blank Project. <code>SAVE AS</code> writes a numbered
 non-overwriting copy. <code>NAME</code> opens the current Project display name; rotary
 click accepts it and computer-keyboard editing is optional. <code>PATTERN</code> opens
@@ -3845,7 +3856,7 @@ the reference. <code>REMOVE</code> removes only this step, not the underlying Pa
 <p><img src="images/menu/arrange-sys.png" alt="Populated Arrangement screen with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7faa26f6c68053887808db4a532b9dc81c1714d54f68b281a9882688bbd7657b" class="tui-shot" id="shot-7faa26f6c680" /></p>
 <p><code>PANIC</code> and <code>HELP</code> remain available. <code>EXIT</code> returns to the tracker.</p>
 <h4 id="doc-menu-tracker_and_projects--route-master-overlay" tabindex="-1">ROUTE master overlay<a class="heading-anchor" href="#doc-menu-tracker_and_projects--route-master-overlay" aria-label="Link to ROUTE master overlay">#</a></h4>
-<p><a class="repeated-image-link" href="#shot-6805d15ccd83">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
+<p><a class="repeated-image-link" href="#shot-2e443bd7c9b9">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
 <p>ROUTE is the quick transactional editor for the active Pattern page. The top
 row shows the page/master destination and its current resolved state. The next
 16 rows show channel, bank MSB, bank LSB, and program/instrument for each of the
@@ -7787,12 +7798,13 @@ included.</p>
 screen data by <code>scripts/render-readme-screenshots.py</code>. That maintainer helper
 uses Pillow as a PNG container/writer and reads the host's
 <code>Uni2-TerminusBold24x12.psf.gz</code> Linux console font; it does not bundle Pillow
-or the PSF font into the installed product-data directory. Anyone
-redistributing the generated documentation or a fallback copy of that font
-should retain and review the copyright/licence information supplied by the
-corresponding Pillow and console-font packages. The images are presentation
-fixtures, not evidence that JACK, MIDI hardware, playback, or recording was
-active.</p>
+or the PSF font into the installed product-data directory. The helper accepts
+the repository-local fallback only when its decompressed bytes match the
+approved host font's pinned SHA-256. Anyone redistributing the generated
+documentation or a fallback copy of that font should retain and review the
+copyright/licence information supplied by the corresponding Pillow and
+console-font packages. The images are presentation fixtures, not evidence that
+JACK, MIDI hardware, playback, or recording was active.</p>
 <h4 id="doc-third-party--preset-bank-boundary" tabindex="-1">Preset bank boundary<a class="heading-anchor" href="#doc-third-party--preset-bank-boundary" aria-label="Link to Preset bank boundary">#</a></h4>
 <p>The tracked <code>presets/synthv1/</code> directory and public installation contain only
 the 21 MIT-cleared presets identified by
@@ -10615,15 +10627,23 @@ python3 scripts/render-readme-screenshots.py
 python3 scripts/render-readme-screenshots.py \
   --only menu/ft2-step-edit-set.png
 
-# Validate presence, dimensions, and integer scaling without rewriting images.
+# Validate the pinned font and independent glyph/row fixtures without Rust.
+python3 scripts/render-readme-screenshots.py --self-test
+
+# Exhaustively validate the complete manifest without rewriting images.
 python3 scripts/render-readme-screenshots.py --check
 </code></pre>
 <p>Options:</p>
 <ul>
 <li>no option renders every frame returned by the Rust manifest;</li>
 <li><code>--only NAME</code> renders only an exact output name from that manifest;</li>
-<li><code>--check</code> requires every manifest image, verifies 960×624 dimensions, and
-checks every 2×2 output block for identical pixels.</li>
+<li><code>--self-test</code> checks the approved decompressed font hash, known independent
+glyph rasters, Unicode coverage, byte stride, bit order, all 24 source rows,
+and cell-boundary placement without producing a manifest;</li>
+<li><code>--check</code> rejects missing, stale, extra, duplicate, unsafe, or
+non-fixed-palette outputs and reconstructs every expected source pixel from
+the manifest plus approved PSF before checking 960×624 dimensions and exact
+2×2 replication.</li>
 </ul>
 <p>Environment:</p>
 <ul>
@@ -10634,14 +10654,15 @@ it is parsed with shell-style quoting but run directly, not through a shell.</li
 <p>The default command uses the installed Rust 1.85 toolchain when present and
 runs <code>shr screenshots</code>. Rust renders the real application <code>draw</code> function into
 40×13 ratatui test buffers seeded by the deterministic <code>ScreenshotScenario</code>
-and <code>ScreenshotSpecialScenario</code> fixtures in <code>src/ui.rs</code>. The current manifest
-contains 141 overview/menu/context/overlay frames. The compact Levels fallback
-is rendered at 38×12 and padded with black to the manifest's 40×13 canvas so
-the same renderer can prove the non-native path without changing image
-dimensions. JSON supplies
-each cell's symbol, foreground,
-background, and bold state. No JACK server, engine, MIDI port, or private user
-file is involved.</p>
+and <code>ScreenshotSpecialScenario</code> fixtures in <code>src/ui.rs</code>. The renderer derives
+the complete overview/menu/context/overlay count from that manifest rather
+than embedding an expected count. The compact Levels, Loop Mix, and MASTER
+STRIP fallbacks are rendered at 38×12 and padded with black to the manifest's
+40×13 canvas so the same renderer can prove the non-native path without
+changing image dimensions. JSON supplies each cell's symbol, foreground,
+background, and bold state. A complete render removes only stale TUI PNGs in
+the two owned output namespaces after writing the current manifest. No JACK
+server, engine, MIDI port, or private user file is involved.</p>
 <h5 id="doc-maintainer_helpers--image-parameters" tabindex="-1">Image parameters<a class="heading-anchor" href="#doc-maintainer_helpers--image-parameters" aria-label="Link to Image parameters">#</a></h5>
 <ul>
 <li>terminal geometry: 40 columns × 13 rows;</li>
@@ -10650,7 +10671,8 @@ file is involved.</p>
 <li>final scale: exactly 2;</li>
 <li>final PNG: 960×624 pixels;</li>
 <li>primary font: <code>/usr/share/consolefonts/Uni2-TerminusBold24x12.psf.gz</code>;</li>
-<li>fallback font: <code>target/Uni2-TerminusBold24x12.psf</code>;</li>
+<li>accepted fallback: a byte-identical decompressed copy at
+<code>target/Uni2-TerminusBold24x12.psf</code>;</li>
 <li>output roots: <code>docs/images/shr-daw-*.png</code> and <code>docs/images/menu/*.png</code>.</li>
 </ul>
 <p>This is the exact PSF2 font loaded on tty1 by <code>/etc/default/console-setup</code>
@@ -10660,10 +10682,15 @@ substitution, smoothing, or host font metrics. The 40×13 application content
 occupies 480×312 of the 480×320 framebuffer; the remaining eight framebuffer
 pixels are outside ratatui's terminal-cell surface and are not invented in the
 documentation image. Ratatui's ANSI colors and bold modifier are converted
-through a fixed palette. Unsupported Unicode falls back to the font's
-question-mark glyph, matching console behavior. The font contains the required
-double-vertical pause shape at U+2551 but has no U+2016 table entry, so the
-renderer maps the TUI's exact one-cell <code>‖</code> symbol to that existing glyph.</p>
+through a fixed palette. The renderer refuses unsupported manifest symbols
+instead of silently substituting another glyph. This approved font contains a
+dedicated U+2016 double-vertical <code>‖</code>; the renderer uses that bitmap directly
+and independently proves it is not the U+2551 box-border glyph.</p>
+<p>The generated documentation site displays TUI PNG content at exactly
+480×312 CSS pixels (one CSS pixel per native terminal pixel) and uses a local
+horizontal scroller on narrower viewports. It does not fractionally shrink a
+960×624 source into a two-column card, which can drop or blend glyph rows even
+when the stored PNG itself is exact.</p>
 <h5 id="doc-maintainer_helpers--why-the-renderer-is-intentionally-slow" tabindex="-1">Why the renderer is intentionally slow<a class="heading-anchor" href="#doc-maintainer_helpers--why-the-renderer-is-intentionally-slow" aria-label="Link to Why the renderer is intentionally slow">#</a></h5>
 <p>The final enlargement uses explicit nested loops that copy each native pixel
 into an exact 2×2 square. A library resize could be faster, but the explicit
@@ -10671,13 +10698,14 @@ operation makes the contract obvious in code and cannot silently acquire
 interpolation, antialiasing, color blending, or a version-dependent sampling
 rule. This preserves the pixel font and makes mobile/browser display crisp
 without pretending the application has more than 40×13 cells.</p>
-<p><code>--check</code> is also deliberately exhaustive. It opens every expected image and
-checks every 2×2 block instead of trusting file metadata or the name of a resize
-filter. On the Raspberry Pi, rendering or validating all 128 menu frames takes
-noticeable time. That time is an accepted documentation-integrity cost, not an
-optimization bug. Do not replace the scaler or weaken the check merely to make
-the command faster. First render one representative image and inspect it; then
-run the complete batch.</p>
+<p><code>--check</code> is also deliberately exhaustive. It opens every expected image,
+checks every 2×2 block, and compares every pixel with a fresh native raster
+decoded from the approved font instead of trusting file metadata or the name
+of a resize filter. On the Raspberry Pi, rendering or validating the complete
+manifest takes noticeable time. That time is an accepted
+documentation-integrity cost, not an optimization bug. Do not replace the
+scaler or weaken the check merely to make the command faster. First render one
+representative image and inspect it; then run the complete batch.</p>
 <p>Pillow is used as a bitmap container and PNG writer, not for font rendering.
 Using a TTF, browser screenshot, GUI terminal, or Pillow text API would make
 glyph metrics dependent on a desktop font and could introduce smoothing.</p>

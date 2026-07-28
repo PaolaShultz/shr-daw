@@ -110,11 +110,15 @@ changing the Pattern.
 
 ### EDIT — enter or remove cells
 
+![Populated FT2 Pattern in Edit mode with the EDIT page](../images/menu/ft2-step-edit-edit.png)
+
 `CELL` opens contextual cell editing. `BLANK` advances without writing a note.
 `ERASE` clears the selected cell. `N-OFF` writes a note-off. Edit contains no
 duplicated Play, Record, or Edit mode buttons.
 
 ### SET — rotary selectors
+
+![Populated FT2 Pattern in Edit mode with the SET page](../images/menu/ft2-step-edit-set.png)
 
 `LENGTH` opens every note duration from 1/1 through 1/128. `ADD` opens every
 advance from 0 through 32 rows. Each selector opens on its current value;
@@ -128,11 +132,15 @@ edit cursor between the page's four note columns.
 
 ### SELECT — page and route
 
+![Populated FT2 Pattern in Edit mode with the SELECT page](../images/menu/ft2-step-edit-select.png)
+
 `PAGE` opens the normal page/column selector. `ROUTE` opens the selected
 column's route editor. Both preserve Edit mode and use rotary turn, click, and
 Back in the same way as their normal-FT2 counterparts.
 
 ### SYS — safety, help, and leave edit
+
+![Populated FT2 Pattern in Edit mode with the SYS page](../images/menu/ft2-step-edit-sys.png)
 
 `PANIC` performs the owned stop. `N00B` toggles the same independent filter.
 `HELP` opens contextual help. `EXIT` leaves Edit exactly one level and returns
@@ -291,6 +299,8 @@ action confirms the new unsaved Project. A dirty LOAD or MIDI import first
 opens the four-row rotary guard: `SAVE (AUTO)`, `SAVE (NAME)`, `DON'T SAVE`,
 and `BACK`. Back or a failed/pending save keeps the Project and exact tracker
 position.
+
+![Dirty Project replacement guard](../images/menu/project-guard.png)
 
 The MIDI browser follows no symlinks and accepts bounded regular `.mid` and
 `.midi` format 0/1 PPQN files only. It never previews, transmits, or overwrites

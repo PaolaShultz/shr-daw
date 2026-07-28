@@ -576,7 +576,10 @@ python3 scripts/render-readme-screenshots.py
 python3 scripts/render-readme-screenshots.py \
   --only menu/ft2-step-edit-set.png
 
-# Validate presence, dimensions, and integer scaling without rewriting images.
+# Validate the pinned font and independent glyph/row fixtures without Rust.
+python3 scripts/render-readme-screenshots.py --self-test
+
+# Exhaustively validate the complete manifest without rewriting images.
 python3 scripts/render-readme-screenshots.py --check
 ```
 
@@ -584,8 +587,13 @@ Options:
 
 - no option renders every frame returned by the Rust manifest;
 - `--only NAME` renders only an exact output name from that manifest;
-- `--check` requires every manifest image, verifies 960×624 dimensions, and
-  checks every 2×2 output block for identical pixels.
+- `--self-test` checks the approved decompressed font hash, known independent
+  glyph rasters, Unicode coverage, byte stride, bit order, all 24 source rows,
+  and cell-boundary placement without producing a manifest;
+- `--check` rejects missing, stale, extra, duplicate, unsafe, or
+  non-fixed-palette outputs and reconstructs every expected source pixel from
+  the manifest plus approved PSF before checking 960×624 dimensions and exact
+  2×2 replication.
 
 Environment:
 
@@ -596,14 +604,15 @@ Environment:
 The default command uses the installed Rust 1.85 toolchain when present and
 runs `shr screenshots`. Rust renders the real application `draw` function into
 40×13 ratatui test buffers seeded by the deterministic `ScreenshotScenario`
-and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The current manifest
-contains 141 overview/menu/context/overlay frames. The compact Levels fallback
-is rendered at 38×12 and padded with black to the manifest's 40×13 canvas so
-the same renderer can prove the non-native path without changing image
-dimensions. JSON supplies
-each cell's symbol, foreground,
-background, and bold state. No JACK server, engine, MIDI port, or private user
-file is involved.
+and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The renderer derives
+the complete overview/menu/context/overlay count from that manifest rather
+than embedding an expected count. The compact Levels, Loop Mix, and MASTER
+STRIP fallbacks are rendered at 38×12 and padded with black to the manifest's
+40×13 canvas so the same renderer can prove the non-native path without
+changing image dimensions. JSON supplies each cell's symbol, foreground,
+background, and bold state. A complete render removes only stale TUI PNGs in
+the two owned output namespaces after writing the current manifest. No JACK
+server, engine, MIDI port, or private user file is involved.
 
 ### Image parameters
 
@@ -613,7 +622,8 @@ file is involved.
 - final scale: exactly 2;
 - final PNG: 960×624 pixels;
 - primary font: `/usr/share/consolefonts/Uni2-TerminusBold24x12.psf.gz`;
-- fallback font: `target/Uni2-TerminusBold24x12.psf`;
+- accepted fallback: a byte-identical decompressed copy at
+  `target/Uni2-TerminusBold24x12.psf`;
 - output roots: `docs/images/shr-daw-*.png` and `docs/images/menu/*.png`.
 
 This is the exact PSF2 font loaded on tty1 by `/etc/default/console-setup`
@@ -623,10 +633,16 @@ substitution, smoothing, or host font metrics. The 40×13 application content
 occupies 480×312 of the 480×320 framebuffer; the remaining eight framebuffer
 pixels are outside ratatui's terminal-cell surface and are not invented in the
 documentation image. Ratatui's ANSI colors and bold modifier are converted
-through a fixed palette. Unsupported Unicode falls back to the font's
-question-mark glyph, matching console behavior. The font contains the required
-double-vertical pause shape at U+2551 but has no U+2016 table entry, so the
-renderer maps the TUI's exact one-cell `‖` symbol to that existing glyph.
+through a fixed palette. The renderer refuses unsupported manifest symbols
+instead of silently substituting another glyph. This approved font contains a
+dedicated U+2016 double-vertical `‖`; the renderer uses that bitmap directly
+and independently proves it is not the U+2551 box-border glyph.
+
+The generated documentation site displays TUI PNG content at exactly
+480×312 CSS pixels (one CSS pixel per native terminal pixel) and uses a local
+horizontal scroller on narrower viewports. It does not fractionally shrink a
+960×624 source into a two-column card, which can drop or blend glyph rows even
+when the stored PNG itself is exact.
 
 ### Why the renderer is intentionally slow
 
@@ -637,13 +653,14 @@ interpolation, antialiasing, color blending, or a version-dependent sampling
 rule. This preserves the pixel font and makes mobile/browser display crisp
 without pretending the application has more than 40×13 cells.
 
-`--check` is also deliberately exhaustive. It opens every expected image and
-checks every 2×2 block instead of trusting file metadata or the name of a resize
-filter. On the Raspberry Pi, rendering or validating all 128 menu frames takes
-noticeable time. That time is an accepted documentation-integrity cost, not an
-optimization bug. Do not replace the scaler or weaken the check merely to make
-the command faster. First render one representative image and inspect it; then
-run the complete batch.
+`--check` is also deliberately exhaustive. It opens every expected image,
+checks every 2×2 block, and compares every pixel with a fresh native raster
+decoded from the approved font instead of trusting file metadata or the name
+of a resize filter. On the Raspberry Pi, rendering or validating the complete
+manifest takes noticeable time. That time is an accepted
+documentation-integrity cost, not an optimization bug. Do not replace the
+scaler or weaken the check merely to make the command faster. First render one
+representative image and inspect it; then run the complete batch.
 
 Pillow is used as a bitmap container and PNG writer, not for font rendering.
 Using a TTF, browser screenshot, GUI terminal, or Pillow text API would make
