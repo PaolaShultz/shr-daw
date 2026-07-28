@@ -14,8 +14,8 @@ configuration, or the architecture contracts.
 ## Start and use
 
 - [First run](FIRST_RUN.md) — configure hardware and open SHR-DAW.
-- [Using SHR-DAW](USING_SHR_DAW.md) — instruments, screens, MIDI Ideas,
-  source/aux/master effects, 18-channel input levels, recording, and commands.
+- [Using SHR-DAW](USING_SHR_DAW.md) — musical purpose, instruments, screens,
+  MIDI Ideas, effects, input levels, recording, and commands.
 - [Complete screen and menu manual](MENU_MANUAL.md) — deterministic images
   covering every populated 40×13 screen, contextual editor, visible Levels
   command page, and controller menu page, with explanations.

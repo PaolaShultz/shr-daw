@@ -4,6 +4,15 @@ SHR-DAW is designed to feel like a small hardware music appliance. After setup,
 the main performance and sequencing workflow can be used without a mouse or
 computer keyboard.
 
+## What it is for
+
+SHR-DAW began with a personal need: play synths and capture ideas quickly while
+on the move or jamming with friends. It helps you try sounds and develop
+musical ideas without turning the session into a production job.
+
+A finished track is not the goal. Keep the idea while it is fresh. When you
+want to share what happened, record a rough demo and send it to friends.
+
 ## Instruments
 
 The Presets screen browses three kinds of software instruments:

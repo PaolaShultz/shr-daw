@@ -1007,9 +1007,7 @@ fn normalized_tempos(smf: &Smf) -> Result<Vec<TempoEvent>> {
     for event in &smf.tempos {
         by_tick.insert(event.tick, event.tempo);
     }
-    if !by_tick.contains_key(&0) {
-        by_tick.insert(0, Bpm::DEFAULT);
-    }
+    by_tick.entry(0).or_insert(Bpm::DEFAULT);
     Ok(by_tick
         .into_iter()
         .map(|(tick, tempo)| TempoEvent { tick, tempo })

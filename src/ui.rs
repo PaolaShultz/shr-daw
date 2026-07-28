@@ -16651,17 +16651,19 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
             "DRUM AUTO · four safe lanes".into(),
             format!(
                 "NOTE OFF ON{}",
-                a.current_page()
-                    .is_some_and(|page| page.note_off_enabled)
-                    .then_some(" · current")
-                    .unwrap_or("")
+                if a.current_page().is_some_and(|page| page.note_off_enabled) {
+                    " · current"
+                } else {
+                    ""
+                }
             ),
             format!(
                 "NOTE OFF OFF{}",
-                a.current_page()
-                    .is_some_and(|page| !page.note_off_enabled)
-                    .then_some(" · current")
-                    .unwrap_or("")
+                if a.current_page().is_some_and(|page| !page.note_off_enabled) {
+                    " · current"
+                } else {
+                    ""
+                }
             ),
         ],
         OverlayKind::LoopLibrary => a
@@ -16805,7 +16807,7 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     for item in 0..4 {
         let remap_action = (a.mixed_engine_remap.is_some()
             && overlay.kind == OverlayKind::TrackerRoute)
-            .then(|| match item {
+            .then_some(match item {
                 0 => Some(("STOP", Action::StopAll)),
                 1 => Some(("PREVIEW", Action::PreviewRouteDraft)),
                 _ => None,

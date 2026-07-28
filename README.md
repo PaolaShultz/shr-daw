@@ -5,6 +5,11 @@ SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal,
 optional MIDI gear, software instruments, FT2-style sequencing, WAV loops,
 effects, and JACK recording.
 
+It grew from a personal need to play synths and capture ideas quickly while on
+the move or jamming with friends. Its purpose is exploration. A finished
+production was never the goal, although it can record a rough demo to send to
+friends.
+
 Read the complete public documentation at
 [paolashultz.github.io/shr-daw](https://paolashultz.github.io/shr-daw/).
 
