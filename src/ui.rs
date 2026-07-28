@@ -3220,17 +3220,25 @@ impl App {
         }
         let previous_tracker = self.screen_keeps_tracker_workspace_active(previous);
         let next_tracker = self.screen_keeps_tracker_workspace_active(screen);
+        let leaving_tracker_workspace = previous_tracker && !next_tracker;
         let leaving_loop_player = previous == Screen::TrackerLoop
             && !matches!(screen, Screen::TrackerLoop | Screen::Help);
-        let leaving_ft2_loop_context = previous_tracker
-            && !next_tracker
-            && (self.loop_previewing || self.loop_player.status().playing);
-        if leaving_loop_player || leaving_ft2_loop_context {
+        if leaving_loop_player && !leaving_tracker_workspace {
             if self.loop_previewing {
                 self.stop_loop_preview(false);
             } else {
                 self.tracker_stop();
             }
+        }
+        if leaving_tracker_workspace {
+            if self.loop_previewing {
+                self.stop_loop_preview(false);
+            }
+            // FT2 owns its transport as well as its live route and managed
+            // engine. Stop synchronously before teardown so Home and the
+            // shared status row cannot observe a sounding-stopped engine with
+            // a stale sequencer `playing` flag.
+            self.tracker_stop();
         }
         if self.screen != screen {
             if self.screen == Screen::TrackerFiles && self.song_previewing {
@@ -25373,6 +25381,45 @@ mod tests {
     }
 
     #[test]
+    fn leaving_ft2_stops_transport_and_home_never_restores_stale_playing_state() {
+        let p = presets();
+        let mut a = app(&p);
+        connect_test_midi_hardware(&mut a);
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(90),
+            gate: Some(100),
+            ..Cell::default()
+        };
+        a.song.patterns.get_mut(&0).unwrap().rows[2][0].note = Note::Off;
+
+        for _ in 0..2 {
+            a.set_screen(Screen::Tracker);
+            a.sync_tracker_route();
+            a.toggle_tracker_playback();
+            assert!(a.sequencer.status().playing);
+            assert_eq!(a.transport_indicator(), TransportIndicator::Play);
+            assert_eq!(a.home_activity(), Some("> PLAY · FT2 · arrangement"));
+
+            a.set_screen(Screen::Home);
+            assert!(!a.sequencer.status().playing);
+            assert_eq!(a.transport_indicator(), TransportIndicator::Stop);
+            assert_eq!(a.home_activity(), None);
+            assert!(!a.loop_player.status().playing);
+            assert!(a.tracker_recording.is_none());
+        }
+
+        a.set_screen(Screen::Tracker);
+        a.sync_tracker_route();
+        assert!(!a.sequencer.status().playing);
+        a.set_screen(Screen::Home);
+        assert!(!a.sequencer.status().playing);
+        assert_eq!(a.transport_indicator(), TransportIndicator::Stop);
+        assert_eq!(a.home_activity(), None);
+    }
+
+    #[test]
     fn tracker_keyboard_uses_drum_range_on_percussion_track() {
         let p = presets();
         let mut a = app(&p);
@@ -27352,6 +27399,67 @@ mod tests {
             .unwrap()
             .active_lanes
             .is_empty());
+        a.stop_tracker_recording();
+    }
+
+    #[test]
+    fn tracker_record_preserves_velocity_and_release_rows_in_the_playback_schedule() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.toggle_tracker_recording();
+
+        a.record_tracker_midi_at(1, &[0x90, 16, 56]);
+        a.record_tracker_midi_at(2, &[0x80, 16, 0]);
+        a.record_tracker_midi_at(3, &[0x90, 21, 92]);
+        a.record_tracker_midi_at(4, &[0x80, 21, 0]);
+
+        let pattern = &a.song.patterns[&0];
+        assert_eq!(
+            (
+                pattern.rows[1][0].note,
+                pattern.rows[1][0].velocity,
+                pattern.rows[1][0].gate,
+                pattern.rows[2][0].note,
+                pattern.rows[3][0].note,
+                pattern.rows[3][0].velocity,
+                pattern.rows[3][0].gate,
+                pattern.rows[4][0].note,
+            ),
+            (
+                Note::On(16),
+                Some(56),
+                Some(100),
+                Note::Off,
+                Note::On(21),
+                Some(92),
+                Some(100),
+                Note::Off,
+            )
+        );
+
+        let scheduled = sequencer::schedule(&a.song, &a.config.external_midi, 0, 0).unwrap();
+        let notes = scheduled
+            .iter()
+            .filter(|message| {
+                matches!(
+                    message.bytes.as_slice(),
+                    [status, _, _] if matches!(status & 0xf0, 0x80 | 0x90)
+                )
+            })
+            .map(|message| (message.at, message.row, message.lane, message.bytes.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            notes,
+            [
+                (Duration::from_millis(125), 1, Some(0), vec![0x90, 16, 56]),
+                (Duration::from_millis(250), 2, Some(0), vec![0x80, 16, 0]),
+                (Duration::from_millis(375), 3, Some(0), vec![0x90, 21, 92]),
+                (Duration::from_millis(500), 4, Some(0), vec![0x80, 21, 0]),
+            ]
+        );
         a.stop_tracker_recording();
     }
 
