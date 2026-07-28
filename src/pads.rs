@@ -197,6 +197,9 @@ pub struct PadConfig {
     pub encoder_press_note: Option<u8>,
     /// Optional zero-based channel qualifier for either encoder press form.
     pub encoder_press_channel: Option<u8>,
+    /// Held controller modifier used to give the encoder its secondary
+    /// navigation gesture.
+    pub encoder_modifier: Option<ControllerButton>,
     /// Optional held modifier plus secondary gesture for page-cycle. The
     /// trigger may reuse a normally mapped control because it is active only
     /// while the modifier is held.
@@ -222,6 +225,7 @@ impl Default for PadConfig {
             encoder_press_cc: None,
             encoder_press_note: None,
             encoder_press_channel: None,
+            encoder_modifier: None,
             page_cycle_modifier: None,
             page_cycle_trigger: None,
             lock_cc: None,
@@ -307,6 +311,10 @@ impl PadConfig {
             }
             if key.trim() == "encoder.press_channel" {
                 self.encoder_press_channel = optional_midi_channel(value, "encoder press channel")?;
+                continue;
+            }
+            if key.trim() == "encoder.modifier" {
+                self.encoder_modifier = optional_controller_button(value, "encoder modifier")?;
                 continue;
             }
             if key.trim() == "page_cycle.modifier" {
@@ -469,6 +477,34 @@ impl PadConfig {
         {
             bail!("encoder press channel requires an encoder press CC or note and channel 1..16");
         }
+        if let Some(modifier) = self.encoder_modifier {
+            match modifier {
+                ControllerButton::Cc { channel, cc } => {
+                    ensure_midi_number(cc, "encoder modifier")?;
+                    if channel > 15
+                        || self.controls.contains_key(&cc)
+                        || self.cc_buttons.contains_key(&cc)
+                        || [
+                            self.encoder_relative_cc,
+                            self.encoder_press_cc,
+                            self.lock_cc,
+                        ]
+                        .contains(&Some(cc))
+                    {
+                        bail!("encoder modifier must be a dedicated CC on channel 1..16");
+                    }
+                }
+                ControllerButton::Note { channel, note } => {
+                    ensure_midi_number(note, "encoder modifier")?;
+                    if channel > 15
+                        || self.pads.contains_key(&note)
+                        || self.encoder_press_note == Some(note)
+                    {
+                        bail!("encoder modifier must be a dedicated note on channel 1..16");
+                    }
+                }
+            }
+        }
         if self.page_cycle_modifier.is_some() != self.page_cycle_trigger.is_some() {
             bail!("page-cycle modifier and trigger must be configured together");
         }
@@ -532,7 +568,7 @@ impl PadConfig {
         }
         let mut entries: Vec<_> = self.pads.iter().collect();
         entries.sort_by_key(|(note, _)| **note);
-        let mut text = String::from("# SHR-DAW controller profile v5\n");
+        let mut text = String::from("# SHR-DAW controller profile v6\n");
         if let Some(input) = &self.input_match {
             text.push_str(&format!("input={input}\n"));
         }
@@ -541,7 +577,7 @@ impl PadConfig {
             self.profile.as_deref().unwrap_or_default()
         ));
         text.push_str(&format!(
-            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
+            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nencoder.modifier={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
             match self.layout {
                 ControllerLayout::Eight => 8,
                 ControllerLayout::Five => 5,
@@ -559,6 +595,9 @@ impl PadConfig {
                 .unwrap_or_default(),
             self.encoder_press_channel
                 .map(|channel| (channel + 1).to_string())
+                .unwrap_or_default(),
+            self.encoder_modifier
+                .map(ControllerButton::setting)
                 .unwrap_or_default(),
             self.page_cycle_modifier
                 .map(ControllerButton::setting)
@@ -702,6 +741,12 @@ impl PadConfig {
         }
         let pressed = message[0] & 0xf0 == 0x90 && message[2] > 0;
         (true, pressed.then_some(EncoderAction::Select))
+    }
+
+    pub fn encoder_modifier_action(&self, message: &[u8]) -> (bool, bool) {
+        self.encoder_modifier
+            .filter(|modifier| modifier.matches(message))
+            .map_or((false, false), |modifier| (true, modifier.pressed(message)))
     }
 
     pub fn page_cycle_chord_action(
@@ -945,6 +990,35 @@ mod tests {
             (true, Some(EncoderAction::Down))
         );
         assert_eq!(c.encoder_action(&[0xb0, 114, 0]), (true, None));
+    }
+
+    #[test]
+    fn held_encoder_modifier_is_channel_qualified_and_round_trips() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-controller-modifier-{}.conf",
+            std::process::id()
+        ));
+        let config = PadConfig {
+            encoder_relative_cc: Some(114),
+            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 27 }),
+            ..PadConfig::default()
+        };
+        config.save(&path).unwrap();
+        let loaded = PadConfig::load(&path).unwrap();
+        assert_eq!(loaded.encoder_modifier, config.encoder_modifier);
+        assert_eq!(
+            loaded.encoder_modifier_action(&[0xb0, 27, 127]),
+            (true, true)
+        );
+        assert_eq!(
+            loaded.encoder_modifier_action(&[0xb0, 27, 0]),
+            (true, false)
+        );
+        assert_eq!(
+            loaded.encoder_modifier_action(&[0xb1, 27, 127]),
+            (false, false)
+        );
+        let _ = fs::remove_file(path);
     }
 
     #[test]

@@ -1384,11 +1384,17 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
                 .map(|cc| format!("CC {cc}"))
                 .or_else(|| config.encoder_press_note.map(|note| format!("note {note}")))
                 .unwrap_or_else(|| "off".into());
+            let encoder_modifier = config
+                .encoder_modifier
+                .map(|button| button.to_string())
+                .unwrap_or_else(|| "off".into());
             let lock = config
                 .lock_cc
                 .map(|cc| format!("CC {cc}"))
                 .unwrap_or_else(|| "off".into());
-            println!("encoder: turn {encoder_turn}, press {encoder_press}; pad lock {lock}");
+            println!(
+                "encoder: turn {encoder_turn}, press {encoder_press}, Shift {encoder_modifier}; pad lock {lock}"
+            );
             if let (Some(modifier), Some(trigger)) =
                 (config.page_cycle_modifier, config.page_cycle_trigger)
             {

@@ -203,15 +203,15 @@ SHR-DAW uses FT2-style Pattern screens for MIDI sequencing; it is not a
 sample-based FastTracker II implementation. PLAY starts at the current
 Pattern/Arrangement location, REWIND returns to the beginning, and STOP stops
 only the tracker transport.
-In Play and REC, turn the physical main encoder to select columns across page
-boundaries; keyboard Up/Down still moves rows. Edit keeps encoder row movement.
-The shaded selected column does not move the row, playhead, Arrangement Step,
-or transport. During REC, turns made while recorded notes are held are ignored
-until all of those notes receive Note Off.
+Turn the physical main encoder to move rows. Hold the configured encoder Shift
+while turning to select columns across page boundaries. The shaded selected
+column does not move the row, playhead, Arrangement Step, or transport. During
+REC, Shift-turns made while recorded notes are held are ignored until all of
+those notes receive Note Off.
 
-FT2 `SELECT` contains `PAGE`, `PATTERN`, `SONG`, and `ROUTE`. PAGE selects one of
-the current Pattern's four-column locations and can open the full Tracks
-manager. PATTERN selects an existing Pattern or opens Pattern/Project tools.
+FT2 `SELECT` contains `PAGE`, `PATTERN`, `SONG`, and `ROUTE`. PAGE lists only
+the current Pattern's pages, preserves the selected column, and can open the
+full Tracks manager. PATTERN selects an existing Pattern or opens Pattern/Project tools.
 SONG selects an Arrangement step and can open detailed Arrangement or Loop/
 page tools. ROUTE shows the active page destination and all four columns'
 channel, bank, program, profile name, and availability. ROUTE changes remain a

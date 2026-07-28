@@ -307,6 +307,11 @@ core hits reuse a compact primary lane, simultaneous/quantized groups claim
 distinct empty cells, and fills spill without overwriting the target row.
 Automatic writes never move the visible lane cursor.
 
+Each page also persists whether future Edit/Record entry writes automatic OFF
+cells. Melodic pages default on and one-shot percussion pages default off.
+Turning it off leaves explicit OFF/CUT cells and all transport cleanup intact;
+same-lane retrigger still interrupts the previous lane note.
+
 Drum auto classifies notes as core, long-tail, or other percussion, with an
 optional choke group. General MIDI cymbals and hi-hats provide defaults;
 unknown notes are ordinary short percussion, and a page may persist non-GM
@@ -590,16 +595,17 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 10 persists the complete tracker state, integer-hundredths
+Project format 11 persists the complete tracker state, integer-hundredths
 Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
 effects routing, one Project-global fixed MASTER STRIP, per-page entry
-mode/anchor, drum-role/choke overrides,
+mode/anchor, automatic Note Off choice, drum-role/choke overrides,
 explicit software engine/instrument identities, and optional external profile
 metadata. Format 7's former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
-audio or rewrites the file; only an explicit save writes format 10. Format 5
+audio or rewrites the file; only an explicit save writes format 11. Format 10
+infers the Note Off choice from the percussion flag. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3
 remains loadable and keeps its

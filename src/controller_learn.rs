@@ -65,12 +65,13 @@ pub enum LearnRole {
     EncoderClockwise,
     EncoderCounterClockwise,
     EncoderClick,
+    EncoderModifier,
     Pad(usize),
     Confirm,
 }
 
 const FIRST_OPTIONAL_STEP: usize = 3;
-const CONTROL_STEP_START: usize = FIRST_OPTIONAL_STEP;
+const CONTROL_STEP_START: usize = FIRST_OPTIONAL_STEP + 1;
 const BUTTON_STEP_START: usize = CONTROL_STEP_START + CONTROLS.len();
 const CONFIRM_STEP: usize = BUTTON_STEP_START + COMMAND_ACTIONS.len();
 const TOTAL_STEPS: usize = CONFIRM_STEP + 1;
@@ -95,6 +96,7 @@ impl LearnRole {
             Self::EncoderClockwise => "MASTER ENCODER · TURN RIGHT".into(),
             Self::EncoderCounterClockwise => "MASTER ENCODER · TURN LEFT".into(),
             Self::EncoderClick => "MASTER ENCODER · CLICK".into(),
+            Self::EncoderModifier => "ENCODER SHIFT · HOLD BUTTON".into(),
             Self::Pad(4) => "PAGE SWITCH · BUTTON OR MODIFIER + CONTROL".into(),
             Self::Pad(index) => format!("COMMAND BUTTON · {}", COMMAND_ACTIONS[index]),
             Self::Confirm => "REVIEW AND SAVE".into(),
@@ -102,7 +104,10 @@ impl LearnRole {
     }
 
     pub const fn skippable(self) -> bool {
-        matches!(self, Self::AbsoluteControl(_) | Self::Pad(_))
+        matches!(
+            self,
+            Self::EncoderModifier | Self::AbsoluteControl(_) | Self::Pad(_)
+        )
     }
 }
 
@@ -224,6 +229,7 @@ impl LearnSession {
             0 => LearnRole::EncoderCounterClockwise,
             1 => LearnRole::EncoderClockwise,
             2 => LearnRole::EncoderClick,
+            3 => LearnRole::EncoderModifier,
             CONTROL_STEP_START..BUTTON_STEP_START => {
                 LearnRole::AbsoluteControl(self.step - CONTROL_STEP_START)
             }
@@ -494,12 +500,16 @@ impl LearnSession {
             LearnRole::EncoderCounterClockwise => self.learn_encoder_counterclockwise(message),
             LearnRole::EncoderClockwise => self.learn_encoder_clockwise(message),
             LearnRole::EncoderClick => self.learn_click(message),
+            LearnRole::EncoderModifier => self.learn_encoder_modifier(message),
             LearnRole::Pad(index) => self.learn_pad(index, message),
             LearnRole::Confirm => return LearnAction::None,
         };
         match accepted {
             Ok(description) => {
-                if matches!(role, LearnRole::EncoderClick | LearnRole::Pad(_)) {
+                if matches!(
+                    role,
+                    LearnRole::EncoderClick | LearnRole::EncoderModifier | LearnRole::Pad(_)
+                ) {
                     let Some(input) = LearnInput::from_message(message) else {
                         return LearnAction::None;
                     };
@@ -640,6 +650,26 @@ impl LearnSession {
         }
     }
 
+    fn learn_encoder_modifier(&mut self, message: &[u8]) -> Result<String, String> {
+        let input = LearnInput::from_message(message)
+            .ok_or_else(|| "Expected an unused CC or note press".to_owned())?;
+        match input {
+            LearnInput::Cc { cc, .. } if used_ccs(&self.draft).contains(&cc) => {
+                Err(format!("Conflict · CC {cc} is already assigned · retry"))
+            }
+            LearnInput::Note { note, .. } if used_notes(&self.draft).contains(&note) => Err(
+                format!("Conflict · note {note} is already assigned · retry"),
+            ),
+            _ => {
+                self.draft.encoder_modifier = Some(input.controller_button());
+                Ok(format!(
+                    "{} = encoder Shift",
+                    learn_input_description(input)
+                ))
+            }
+        }
+    }
+
     fn learn_pad(&mut self, index: usize, message: &[u8]) -> Result<String, String> {
         let input = LearnInput::from_message(message)
             .ok_or_else(|| "Conflict or release · press an unused pad/button".to_owned())?;
@@ -685,6 +715,7 @@ impl LearnSession {
 
     fn role_is_mapped(&self) -> bool {
         match self.role() {
+            LearnRole::EncoderModifier => self.draft.encoder_modifier.is_some(),
             LearnRole::AbsoluteControl(index) => self
                 .draft
                 .controls
@@ -715,6 +746,7 @@ impl LearnSession {
                 self.draft.encoder_press_note = None;
                 self.draft.encoder_press_channel = None;
             }
+            LearnRole::EncoderModifier => self.draft.encoder_modifier = None,
             LearnRole::AbsoluteControl(index) => {
                 let target = CONTROLS[index].cc;
                 self.draft.controls.retain(|_, mapped| *mapped != target);
@@ -799,7 +831,7 @@ fn message_is_relevant(role: LearnRole, message: &[u8]) -> bool {
         LearnRole::AbsoluteControl(_) => message[0] & 0xf0 == 0xb0,
         LearnRole::EncoderClockwise => message[0] & 0xf0 == 0xb0,
         LearnRole::EncoderCounterClockwise => message[0] & 0xf0 == 0xb0 && message[2] != 64,
-        LearnRole::EncoderClick | LearnRole::Pad(_) => {
+        LearnRole::EncoderClick | LearnRole::EncoderModifier | LearnRole::Pad(_) => {
             message[2] > 0 && matches!(message[0] & 0xf0, 0x90 | 0xb0)
         }
         LearnRole::Confirm => false,
@@ -871,6 +903,21 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
             Button::Cc { cc, .. } => config.encoder_press_cc = Some(cc),
             Button::Note { note, .. } => config.encoder_press_note = Some(note),
         }
+    }
+
+    if config.encoder_modifier.is_none()
+        && ask_yes_no("Learn an optional Shift button for the main encoder? [y/N]: ")?
+    {
+        let input = capture_button(
+            &receiver,
+            "Hold the encoder Shift button",
+            &used_ccs(config),
+            &used_notes(config),
+        )?;
+        config.encoder_modifier = Some(match input {
+            Button::Cc { cc, channel } => ControllerButton::Cc { channel, cc },
+            Button::Note { note, channel } => ControllerButton::Note { channel, note },
+        });
     }
 
     let layout = ask_number("Command buttons available (0, 4, 5, or 8) [0]: ", 0, 8)?;
@@ -1096,13 +1143,17 @@ fn used_ccs(config: &PadConfig) -> HashSet<u8> {
             .flatten(),
         )
         .chain(
-            [config.page_cycle_modifier, config.page_cycle_trigger]
-                .into_iter()
-                .flatten()
-                .filter_map(|button| match button {
-                    ControllerButton::Cc { cc, .. } => Some(cc),
-                    ControllerButton::Note { .. } => None,
-                }),
+            [
+                config.encoder_modifier,
+                config.page_cycle_modifier,
+                config.page_cycle_trigger,
+            ]
+            .into_iter()
+            .flatten()
+            .filter_map(|button| match button {
+                ControllerButton::Cc { cc, .. } => Some(cc),
+                ControllerButton::Note { .. } => None,
+            }),
         )
         .collect()
 }
@@ -1114,13 +1165,17 @@ fn used_notes(config: &PadConfig) -> HashSet<u8> {
         .copied()
         .chain(config.encoder_press_note)
         .chain(
-            [config.page_cycle_modifier, config.page_cycle_trigger]
-                .into_iter()
-                .flatten()
-                .filter_map(|button| match button {
-                    ControllerButton::Note { note, .. } => Some(note),
-                    ControllerButton::Cc { .. } => None,
-                }),
+            [
+                config.encoder_modifier,
+                config.page_cycle_modifier,
+                config.page_cycle_trigger,
+            ]
+            .into_iter()
+            .flatten()
+            .filter_map(|button| match button {
+                ControllerButton::Note { note, .. } => Some(note),
+                ControllerButton::Cc { .. } => None,
+            }),
         )
         .collect()
 }
@@ -1237,6 +1292,8 @@ mod tests {
             self.send(&[0xb0, click, 127]);
             assert!(self.learn.feedback().contains("OK"));
             self.send(&[0xb0, click, 0]);
+            assert_eq!(self.learn.role(), LearnRole::EncoderModifier);
+            assert!(self.learn.skip());
             assert_eq!(self.learn.role(), LearnRole::AbsoluteControl(0));
         }
 
@@ -1288,8 +1345,32 @@ mod tests {
         h.send(&[0xb0, 118, 127]);
         assert_eq!(h.learn.role(), LearnRole::EncoderClick);
         h.send(&[0xb0, 118, 0]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+        assert!(h.learn.skip());
         assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
         assert_eq!(h.learn.draft().encoder_press_cc, Some(118));
+    }
+
+    #[test]
+    fn optional_encoder_shift_learns_a_held_button_before_controls() {
+        let mut h = Harness::new();
+        h.send(&[0xb0, 28, 63]);
+        h.settle();
+        h.send(&[0xb0, 28, 65]);
+        h.settle();
+        h.send(&[0xb0, 118, 127]);
+        h.send(&[0xb0, 118, 0]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+
+        h.send(&[0xb0, 27, 127]);
+        assert!(h.learn.feedback().contains("encoder Shift"));
+        h.send(&[0xb0, 27, 0]);
+
+        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
+        assert_eq!(
+            h.learn.draft().encoder_modifier,
+            Some(ControllerButton::Cc { channel: 0, cc: 27 })
+        );
     }
 
     #[test]

@@ -307,7 +307,7 @@ them.
 The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback
 because no topology is rebuilt. Final recording rejects those edits. When the
-owned graph is disabled, the same edits update only Project format 10 state.
+owned graph is disabled, the same edits update only Project format 11 state.
 The true-peak limiter remains active whenever the final bus is active and has
 no bypass. Exact ranges and latency are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
@@ -435,6 +435,19 @@ page_cycle.trigger=cc.1.93
 ```
 
 Use `note.CHANNEL.NUMBER` for a note-based modifier or trigger.
+
+The main encoder may have a separate held modifier. On the FT2 grid, an
+ordinary turn moves rows and a modified turn moves columns across page
+boundaries:
+
+```text
+encoder.modifier=cc.1.27
+```
+
+Use `note.1.27` instead when the button sends a note. The reviewed MiniLab 3
+DAW profile maps its Shift CC automatically. MIDI Learn offers **ENCODER
+SHIFT** as an optional step, so custom or previously learned profiles do not
+depend on a device constant.
 
 Four-button layout:
 
@@ -570,10 +583,11 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 10
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 11
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
-channel/bank/program setups, per-page entry mode/anchor and drum classification,
+channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
+choice, and drum classification,
 every cell field, exactly four optional Loop Mix slots, explicit software
 engine/instrument identity, and optional external profile metadata. The Project
 continues to own the source insert rack, aux routing, master rack, fixed MASTER
@@ -588,7 +602,7 @@ page-wide channel/bank/program data is copied to all four columns. Unknown
 newer versions, unknown fields, and invalid effect data are refused rather than
 partly loaded or written back.
 
-Formats 8–10 write each populated WAV slot under its owner as
+Formats 8–11 write each populated WAV slot under its owner as
 `pattern_loop=PATTERN|SLOT|FILE|SOURCE_BPM_X100|MODE|START|LENGTH|OFFSET|LEVEL|FILTER`.
 Slots are 1–4, level is 0–1500, and filter is -1000..1000. Duplicate, missing,
 unknown, malformed, unsafe, or over-limit ownership is refused before the
@@ -602,7 +616,9 @@ inspecting an old Project does not rewrite it. Formats 0–8 also gain a neutral
 fixed strip only in memory. Formats 0–9 store whole-number tempo fields and
 migrate them to integer hundredths in memory. Format 10 stores Pattern and
 tempo-command values as deterministic integer hundredths; `10050` means
-100.50 BPM. Explicit save writes format 10. Unknown newer
+100.50 BPM. Format 10 infers automatic Note Off ON for melodic pages and OFF
+for percussion pages; format 11 persists the per-page choice. Explicit save
+writes format 11. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 

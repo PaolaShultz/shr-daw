@@ -548,6 +548,19 @@ struct EngineSession {
     original_values: HashMap<u8, f32>,
 }
 
+#[derive(Clone)]
+struct MixedEngineRemap {
+    original_song: Song,
+    pages: Vec<(u16, usize)>,
+    next_page: usize,
+    selected_yes: bool,
+    awaiting_confirmation: bool,
+    return_order: usize,
+    return_row: usize,
+    return_page: usize,
+    return_track: usize,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TrackerEntryInstrument {
     ExistingProject,
@@ -732,6 +745,7 @@ struct App {
     pad_locked: bool,
     song: Song,
     project_clean_baseline: Song,
+    mixed_engine_remap: Option<MixedEngineRemap>,
     pending_project_action: Option<PendingProjectAction>,
     project_guard_selected: ProjectGuardChoice,
     project_guard_naming: bool,
@@ -1186,6 +1200,7 @@ fn enforce_fresh_gm_drum_page(pages: &mut Vec<sequencer::Page>, route: &Software
         let page = &mut pages[index];
         page.name = "Drums".into();
         page.percussion = true;
+        page.note_off_enabled = false;
         page.entry_mode = sequencer::NoteEntryMode::DrumAuto;
         page.target = PageTarget::Software(route.clone());
         for column in &mut page.columns {
@@ -1628,6 +1643,7 @@ impl App {
             pad_locked: false,
             song,
             project_clean_baseline,
+            mixed_engine_remap: None,
             pending_project_action: None,
             project_guard_selected: ProjectGuardChoice::SaveAuto,
             project_guard_naming: false,
@@ -1882,6 +1898,7 @@ impl App {
         self.audio_track_name_input.is_some()
             || self.project_name_input.is_some()
             || self.pending_project_action.is_some()
+            || self.mixed_engine_prompt_active()
             || self.controller_learn.is_some()
             || self.note_editor.is_some()
             || self.tracker_recording.is_some()
@@ -1904,6 +1921,12 @@ impl App {
 
     fn project_is_dirty(&self) -> bool {
         self.song != self.project_clean_baseline
+    }
+
+    fn mixed_engine_prompt_active(&self) -> bool {
+        self.mixed_engine_remap
+            .as_ref()
+            .is_some_and(|remap| remap.awaiting_confirmation)
     }
 
     fn mark_project_clean(&mut self) {
@@ -2630,18 +2653,21 @@ impl App {
     }
 
     fn overlay_row_count_for(&self, overlay: &OverlayState) -> usize {
+        if overlay.kind == OverlayKind::TrackerRoute && self.mixed_engine_remap.is_some() {
+            let percussion = overlay.route().is_some_and(|draft| draft.page.percussion);
+            return self.fluidsynth_routes_for_page(percussion).len();
+        }
         match overlay.kind {
-            // MIDI pages contribute four selectable columns. The Pattern-owned
-            // loop page is the final musician-facing FT2 page and contributes
-            // one row of its own, followed by the page manager launcher.
-            OverlayKind::TrackerPage => self.current_pages().len() * LANES_PER_PAGE + 2,
+            // PAGE selects pages only. Column movement remains a separate
+            // direct navigation gesture and must never inflate this list.
+            OverlayKind::TrackerPage => self.current_pages().len() + 2,
             OverlayKind::TrackerPattern => self.overlay_pattern_locations().len() + 2,
             OverlayKind::TrackerSong => self.song.order.len() + 3,
             OverlayKind::TrackerRoute => RouteField::ROWS,
             OverlayKind::TrackerPatternLength => pattern_length_choices().len(),
             OverlayKind::TrackerNoteLength => NoteLength::ALL.len(),
             OverlayKind::TrackerAdvance => 33,
-            OverlayKind::TrackerEntryLayout => 6,
+            OverlayKind::TrackerEntryLayout => 8,
             OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
             OverlayKind::MixEffects => MAX_AUX_BUSES + 2,
         }
@@ -2695,7 +2721,7 @@ impl App {
             return;
         };
         let selection = match kind {
-            OverlayKind::TrackerPage => self.tracker_page * LANES_PER_PAGE + self.tracker_track,
+            OverlayKind::TrackerPage => self.tracker_page,
             OverlayKind::TrackerPattern => self
                 .overlay_pattern_locations()
                 .iter()
@@ -2790,6 +2816,15 @@ impl App {
     }
 
     fn overlay_back(&mut self) {
+        if self.mixed_engine_remap.is_some()
+            && self
+                .overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute)
+        {
+            self.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
+            return;
+        }
         if self
             .overlay
             .as_mut()
@@ -2809,6 +2844,33 @@ impl App {
                 .is_some_and(|overlay| overlay.kind == OverlayKind::LoopLibrary)
         {
             self.stop_loop_preview(false);
+        }
+        if self.mixed_engine_remap.is_some()
+            && self
+                .overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute)
+        {
+            let percussion = self
+                .overlay
+                .as_ref()
+                .and_then(OverlayState::route)
+                .is_some_and(|draft| draft.page.percussion);
+            let routes = self.fluidsynth_routes_for_page(percussion);
+            if routes.is_empty() {
+                self.cancel_mixed_engine_remap("NO FLUIDSYNTH INSTRUMENT · Project restored");
+                return;
+            }
+            let current = self.overlay.as_ref().map_or(0, |overlay| overlay.selection);
+            let selection = wrapped_index(current, routes.len(), direction);
+            if let Some(overlay) = self.overlay.as_mut() {
+                overlay.selection = selection;
+                if let Some(draft) = overlay.route_mut() {
+                    draft.page.target = PageTarget::Software(routes[selection].1.clone());
+                }
+            }
+            self.status = "Choose sound · PREVIEW auditions · press applies".into();
+            return;
         }
         let active = self
             .overlay
@@ -3046,10 +3108,23 @@ impl App {
         self.close_overlay(false);
         self.clamp_tracker_cursor();
         self.sync_tracker_route();
+        if self.mixed_engine_remap.is_some() {
+            self.advance_mixed_engine_remap();
+            return;
+        }
         self.status.clear();
     }
 
     fn activate_overlay(&mut self) {
+        if self.mixed_engine_remap.is_some()
+            && self
+                .overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute)
+        {
+            self.confirm_route_overlay();
+            return;
+        }
         if self
             .overlay
             .as_ref()
@@ -3057,6 +3132,10 @@ impl App {
         {
             if let Some(overlay) = self.overlay.as_mut() {
                 overlay.confirm_route_field();
+            }
+            if self.mixed_engine_remap.is_some() {
+                self.confirm_route_overlay();
+                return;
             }
             self.status = "Draft kept · APPLY saves Project route".into();
             return;
@@ -3070,12 +3149,11 @@ impl App {
         };
         match kind {
             OverlayKind::TrackerPage => {
-                let page_rows = self.current_pages().len() * LANES_PER_PAGE;
+                let page_rows = self.current_pages().len();
                 match selection.cmp(&page_rows) {
                     std::cmp::Ordering::Less => {
                         self.release_tracker_audition();
-                        self.tracker_page = selection / LANES_PER_PAGE;
-                        self.tracker_track = selection % LANES_PER_PAGE;
+                        self.tracker_page = selection;
                         self.close_overlay(false);
                         if !self.leave_noob_on_percussion() {
                             self.sync_tracker_route();
@@ -3160,15 +3238,24 @@ impl App {
             }
             OverlayKind::TrackerEntryLayout => {
                 if let Some(page) = self.current_page_mut() {
-                    match selection.min(5) {
+                    match selection.min(7) {
                         0 => page.entry_mode = sequencer::NoteEntryMode::Manual,
                         1..=4 => {
                             page.entry_mode = sequencer::NoteEntryMode::OneColumn;
                             page.entry_anchor = (selection - 1) as u8;
                         }
-                        _ => page.entry_mode = sequencer::NoteEntryMode::DrumAuto,
+                        5 => page.entry_mode = sequencer::NoteEntryMode::DrumAuto,
+                        6 => page.note_off_enabled = true,
+                        _ => page.note_off_enabled = false,
                     }
-                    let label = page.entry_mode.compact_label(page.entry_anchor).to_owned();
+                    let label = if selection >= 6 {
+                        format!(
+                            "NOTE OFF {}",
+                            if page.note_off_enabled { "ON" } else { "OFF" }
+                        )
+                    } else {
+                        page.entry_mode.compact_label(page.entry_anchor).to_owned()
+                    };
                     self.close_overlay(false);
                     self.status = format!("PAGE ENTRY · {label}");
                 }
@@ -4995,7 +5082,7 @@ impl App {
                 entered += 1;
             }
             let end = row_index.saturating_add(span);
-            if gate == 100 && end < pattern.rows.len() {
+            if page.note_off_enabled && gate == 100 && end < pattern.rows.len() {
                 if let Some(cell) = pattern.rows.get_mut(end).and_then(|row| row.get_mut(lane)) {
                     if !matches!(cell.note, Note::On(_)) {
                         cell.note = Note::Off;
@@ -5873,6 +5960,264 @@ impl App {
             .set_audio_unavailable(AudioAvailability::Stopped);
         self.status = "tracker stopped".into();
     }
+
+    fn begin_mixed_engine_remap(
+        &mut self,
+        messages: &[sequencer::ScheduledMessage],
+        order: usize,
+        row: usize,
+    ) {
+        let has_fluidsynth = self
+            .catalogs
+            .iter()
+            .find(|catalog| catalog.backend == BackendKind::FluidSynth)
+            .is_some_and(|catalog| !catalog.presets.is_empty());
+        if !has_fluidsynth {
+            self.status = "MIXED SYNTHS · no FluidSynth instruments available".into();
+            return;
+        }
+        let pages = messages
+            .iter()
+            .filter_map(|message| {
+                match message.target.as_ref()? {
+                    PageTarget::Software(route) if route.engine != BackendKind::FluidSynth => {}
+                    PageTarget::Synthv1(_) => {
+                        // Legacy Project routes are synthv1 and need the same
+                        // explicit recovery path.
+                    }
+                    _ => return None,
+                }
+                Some((
+                    *self.song.order.get(message.order)?,
+                    message.lane? / LANES_PER_PAGE,
+                ))
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        if pages.is_empty() {
+            self.status = "MIXED SOFTWARE ENGINES · fix PAGE ROUTING".into();
+            return;
+        }
+        self.mixed_engine_remap = Some(MixedEngineRemap {
+            original_song: self.song.clone(),
+            pages,
+            next_page: 0,
+            selected_yes: false,
+            awaiting_confirmation: true,
+            return_order: order,
+            return_row: row,
+            return_page: self.tracker_page,
+            return_track: self.tracker_track,
+        });
+        self.status = "PLAY NEEDS ONE SYNTH · remap incompatible pages to FluidSynth?".into();
+    }
+
+    fn move_mixed_engine_remap_choice(&mut self) {
+        if let Some(remap) = self
+            .mixed_engine_remap
+            .as_mut()
+            .filter(|remap| remap.awaiting_confirmation)
+        {
+            remap.selected_yes = !remap.selected_yes;
+        }
+    }
+
+    fn activate_mixed_engine_remap_choice(&mut self) {
+        let Some((selected_yes, awaiting)) = self
+            .mixed_engine_remap
+            .as_ref()
+            .map(|remap| (remap.selected_yes, remap.awaiting_confirmation))
+        else {
+            return;
+        };
+        if !awaiting {
+            return;
+        }
+        if !selected_yes {
+            self.mixed_engine_remap = None;
+            self.status = "PLAY CANCELLED · Project routing unchanged".into();
+            return;
+        }
+        if let Some(remap) = self.mixed_engine_remap.as_mut() {
+            remap.awaiting_confirmation = false;
+        }
+        self.open_next_mixed_engine_remap_page();
+    }
+
+    fn fluidsynth_route_for_page(&self, percussion: bool) -> Option<SoftwareRoute> {
+        self.fluidsynth_routes_for_page(percussion)
+            .into_iter()
+            .next()
+            .map(|(_, route)| route)
+    }
+
+    fn fluidsynth_routes_for_page(&self, percussion: bool) -> Vec<(String, SoftwareRoute)> {
+        let Some(catalog) = self
+            .catalogs
+            .iter()
+            .find(|catalog| catalog.backend == BackendKind::FluidSynth)
+        else {
+            return Vec::new();
+        };
+        catalog
+            .presets
+            .iter()
+            .filter(|preset| preset.is_general_midi_drum_kit() == percussion)
+            .map(|preset| {
+                (
+                    preset.display_name(),
+                    SoftwareRoute {
+                        engine: BackendKind::FluidSynth,
+                        instrument: preset.route_id(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn open_next_mixed_engine_remap_page(&mut self) {
+        let Some((pattern_number, page_index)) = self
+            .mixed_engine_remap
+            .as_ref()
+            .and_then(|remap| remap.pages.get(remap.next_page).copied())
+        else {
+            self.finish_mixed_engine_remap();
+            return;
+        };
+        let Some(percussion) = self
+            .song
+            .patterns
+            .get(&pattern_number)
+            .and_then(|pattern| pattern.pages.get(page_index))
+            .map(|page| page.percussion)
+        else {
+            self.cancel_mixed_engine_remap("REMAP FAILED · Project restored");
+            return;
+        };
+        let Some(route) = self.fluidsynth_route_for_page(percussion) else {
+            self.cancel_mixed_engine_remap("NO FLUIDSYNTH INSTRUMENT · Project restored");
+            return;
+        };
+        if let Some(order) = self
+            .song
+            .order
+            .iter()
+            .position(|candidate| *candidate == pattern_number)
+        {
+            self.tracker_order = order;
+        }
+        self.tracker_page = page_index;
+        self.open_overlay(Action::OpenRouteOverlay);
+        if self.overlay.is_none() {
+            self.cancel_mixed_engine_remap("REMAP UI FAILED · Project restored");
+            return;
+        }
+        let routes = self.fluidsynth_routes_for_page(percussion);
+        let Some(selection) = routes.iter().position(|(_, candidate)| candidate == &route) else {
+            self.cancel_mixed_engine_remap("REMAP UI FAILED · Project restored");
+            return;
+        };
+        if self
+            .overlay
+            .as_ref()
+            .and_then(OverlayState::route)
+            .is_none()
+        {
+            self.cancel_mixed_engine_remap("REMAP UI FAILED · Project restored");
+            return;
+        }
+        let Some(overlay) = self.overlay.as_mut() else {
+            return;
+        };
+        overlay.title = "FLUIDSYNTH REMAP";
+        overlay
+            .route_mut()
+            .expect("route overlay was checked")
+            .page
+            .target = PageTarget::Software(route);
+        overlay.selection = selection;
+        overlay.active_field = None;
+        self.status = format!(
+            "REMAP PAGE {} · choose sound · PREVIEW · press to apply",
+            page_index + 1
+        );
+    }
+
+    fn preview_route_draft(&mut self) {
+        let Some(page) = self
+            .overlay
+            .as_ref()
+            .and_then(OverlayState::route)
+            .map(|draft| draft.page.clone())
+        else {
+            return;
+        };
+        let PageTarget::Software(route) = page.target.clone() else {
+            self.status = "PREVIEW NEEDS INTERNAL SOFTWARE".into();
+            return;
+        };
+        let channel = page.runtime_channel(self.tracker_track, &self.config.external_midi);
+        let plan = self.software_plan_for_route(route, [channel]);
+        if !self.ensure_tracker_engine_plan(&plan) {
+            return;
+        }
+        let note = if page.percussion { 36 } else { 60 };
+        let target = page.target.clone();
+        self.release_tracker_audition();
+        for message in self.tracker_program_messages(page.column(self.tracker_track).program) {
+            self.tracker_live_input.send(&target, &message);
+        }
+        self.tracker_live_input
+            .send(&target, &[0x90 | channel, note, 96]);
+        let input = self.tracker_live_input.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(180));
+            input.send(&target, &[0x80 | channel, note, 0]);
+        });
+        self.status = "PREVIEW · explicit audition only · turn for another sound".into();
+    }
+
+    fn advance_mixed_engine_remap(&mut self) {
+        if let Some(remap) = self.mixed_engine_remap.as_mut() {
+            remap.next_page += 1;
+        }
+        self.open_next_mixed_engine_remap_page();
+    }
+
+    fn finish_mixed_engine_remap(&mut self) {
+        let Some(remap) = self.mixed_engine_remap.take() else {
+            return;
+        };
+        self.tracker_order = remap.return_order;
+        self.tracker_row = remap.return_row;
+        self.tracker_page = remap
+            .return_page
+            .min(self.current_pages().len().saturating_sub(1));
+        self.tracker_track = remap.return_track.min(LANES_PER_PAGE - 1);
+        self.status = "REMAP APPLIED · retrying PLAY".into();
+        self.toggle_tracker_playback();
+    }
+
+    fn cancel_mixed_engine_remap(&mut self, status: &str) {
+        let Some(remap) = self.mixed_engine_remap.take() else {
+            return;
+        };
+        self.release_tracker_audition();
+        if self.overlay.is_some() {
+            self.close_overlay(false);
+        }
+        self.song = remap.original_song;
+        self.tracker_order = remap.return_order;
+        self.tracker_row = remap.return_row;
+        self.tracker_page = remap
+            .return_page
+            .min(self.current_pages().len().saturating_sub(1));
+        self.tracker_track = remap.return_track.min(LANES_PER_PAGE - 1);
+        self.sync_tracker_route();
+        self.status = status.into();
+    }
+
     fn toggle_tracker_playback(&mut self) {
         if self.tracker_recording.is_some() {
             self.stop_tracker_recording();
@@ -5930,7 +6275,8 @@ impl App {
                 self.status = if error.to_string().contains("FluidSynth channel") {
                     "FLUID CHANNEL CONFLICT · one preset per channel".into()
                 } else if error.to_string().contains("mixes software backends") {
-                    "MIXED SOFTWARE ENGINES · choose one backend".into()
+                    self.begin_mixed_engine_remap(&messages, order, row);
+                    return;
                 } else {
                     "FT2 PLAY FAILED · fix routing, retry".into()
                 };
@@ -6189,6 +6535,16 @@ impl App {
                 released
             });
             if let Some((pattern_number, true, active)) = released {
+                let note_off_enabled = self
+                    .song
+                    .patterns
+                    .get(&pattern_number)
+                    .and_then(|pattern| pattern.pages.get(active.page))
+                    .is_none_or(|page| page.note_off_enabled);
+                if !note_off_enabled {
+                    self.refresh_tracker_record_loop();
+                    return;
+                }
                 if let Some(pattern) = self.song.patterns.get_mut(&pattern_number) {
                     let rows = pattern.rows.len();
                     if rows > 0 {
@@ -11576,6 +11932,9 @@ fn drain(
             MidiEvent::Encoder(action) => {
                 dispatch_encoder(action, app, state, tx);
             }
+            MidiEvent::EncoderModified(action) => {
+                dispatch_modified_encoder(action, app, state, tx);
+            }
             MidiEvent::PadLock(locked) => {
                 app.pad_locked = locked;
                 app.status = if locked {
@@ -11610,6 +11969,26 @@ fn dispatch_pad(
     if !pressed {
         return;
     }
+    if app.mixed_engine_prompt_active() {
+        if let MenuInput::ActivateItem(item) = pad.menu_input() {
+            match item {
+                0 => {
+                    if let Some(remap) = app.mixed_engine_remap.as_mut() {
+                        remap.selected_yes = false;
+                    }
+                    app.activate_mixed_engine_remap_choice();
+                }
+                1 => {
+                    if let Some(remap) = app.mixed_engine_remap.as_mut() {
+                        remap.selected_yes = true;
+                    }
+                    app.activate_mixed_engine_remap_choice();
+                }
+                _ => {}
+            }
+        }
+        return;
+    }
     if let Some(overlay) = app.overlay.as_ref() {
         if let MenuInput::ActivateItem(item) = pad.menu_input() {
             if let Some((_, action)) = overlay.controller_action(item) {
@@ -11639,13 +12018,48 @@ fn dispatch_encoder(
     dispatch_encoder_input(action, app, state, tx, true);
 }
 
+fn dispatch_modified_encoder(
+    action: crate::pads::EncoderAction,
+    app: &mut App,
+    state: &Path,
+    tx: &std::sync::mpsc::Sender<MidiEvent>,
+) {
+    let tracker_grid_owns_shift = app.screen == Screen::Tracker
+        && app.overlay.is_none()
+        && app.pending_project_action.is_none()
+        && app.note_editor.is_none()
+        && app.project_name_input.is_none()
+        && !app.mixed_engine_prompt_active()
+        && !(app.controller_layout == ControllerLayout::Four && app.page_select_mode);
+    if tracker_grid_owns_shift {
+        match action {
+            crate::pads::EncoderAction::Up => app.move_tracker_rotary_column(-1),
+            crate::pads::EncoderAction::Down => app.move_tracker_rotary_column(1),
+            crate::pads::EncoderAction::Select => {
+                dispatch_encoder_input(action, app, state, tx, true);
+            }
+        }
+    } else {
+        dispatch_encoder_input(action, app, state, tx, true);
+    }
+}
+
 fn dispatch_encoder_input(
     action: crate::pads::EncoderAction,
     app: &mut App,
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
-    physical: bool,
+    _physical: bool,
 ) {
+    if app.mixed_engine_prompt_active() {
+        match action {
+            crate::pads::EncoderAction::Up | crate::pads::EncoderAction::Down => {
+                app.move_mixed_engine_remap_choice()
+            }
+            crate::pads::EncoderAction::Select => app.activate_mixed_engine_remap_choice(),
+        }
+        return;
+    }
     if app.project_guard_naming {
         if action == crate::pads::EncoderAction::Select {
             app.commit_project_guard_name();
@@ -11693,21 +12107,6 @@ fn dispatch_encoder_input(
         || app.screen == Screen::FxEditor
         || app.screen == Screen::Routing
         || app.confirm_routing_defaults;
-    let tracker_transport_turn = physical
-        && app.screen == Screen::Tracker
-        && !value_editor_owns_encoder
-        && !(app.controller_layout == ControllerLayout::Four && app.page_select_mode)
-        && (app.sequencer.status().playing || app.tracker_recording.is_some());
-    if tracker_transport_turn {
-        match action {
-            crate::pads::EncoderAction::Up => app.move_tracker_rotary_column(-1),
-            crate::pads::EncoderAction::Down => app.move_tracker_rotary_column(1),
-            crate::pads::EncoderAction::Select => {}
-        }
-        if action != crate::pads::EncoderAction::Select {
-            return;
-        }
-    }
     if app.controller_layout == ControllerLayout::Four && !value_editor_owns_encoder {
         match action {
             crate::pads::EncoderAction::Select => {
@@ -11769,6 +12168,20 @@ fn perform(
         a.stop_all(state);
         return false;
     }
+    if a.mixed_engine_prompt_active() {
+        match action {
+            Action::Up | Action::Down => a.move_mixed_engine_remap_choice(),
+            Action::Activate => a.activate_mixed_engine_remap_choice(),
+            Action::Back => {
+                if let Some(remap) = a.mixed_engine_remap.as_mut() {
+                    remap.selected_yes = false;
+                }
+                a.activate_mixed_engine_remap_choice();
+            }
+            _ => {}
+        }
+        return false;
+    }
     if a.confirm_routing_defaults {
         match action {
             Action::ConfirmRoutingDefaults | Action::Activate | Action::SaveSong => {
@@ -11800,14 +12213,21 @@ fn perform(
     a.prepare_confirmation_action(action);
     if let Some(overlay) = a.overlay.as_ref() {
         let launcher_action = overlay.launcher.action;
+        let overlay_kind = overlay.kind;
         if action == Action::LoopPreview {
             a.toggle_loop_preview();
         } else if action == Action::LoopPreviewStop {
             a.stop_loop_preview(true);
+        } else if action == Action::PreviewRouteDraft {
+            a.preview_route_draft();
         } else if action == Action::TapTempo {
             a.tap_tracker_tempo();
         } else if action == launcher_action {
-            a.close_overlay(true);
+            if a.mixed_engine_remap.is_some() && overlay_kind == OverlayKind::TrackerRoute {
+                a.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
+            } else {
+                a.close_overlay(true);
+            }
         } else {
             match action {
                 Action::Up => a.move_overlay(-1),
@@ -12288,6 +12708,7 @@ fn perform(
         | Action::OpenTrackerAdvanceOverlay
         | Action::OpenEntryLayoutOverlay
         | Action::OpenEffectsOverlay => a.open_overlay(action),
+        Action::PreviewRouteDraft => a.preview_route_draft(),
         Action::OpenAudioRecorder => {
             a.set_tracker_edit(false);
             a.set_screen(Screen::AudioRecorder);
@@ -12679,6 +13100,23 @@ fn perform(
     false
 }
 fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<MidiEvent>) -> bool {
+    if a.mixed_engine_prompt_active() {
+        match code {
+            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
+                a.move_mixed_engine_remap_choice()
+            }
+            KeyCode::Enter => a.activate_mixed_engine_remap_choice(),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => {
+                if let Some(remap) = a.mixed_engine_remap.as_mut() {
+                    remap.selected_yes = false;
+                }
+                a.activate_mixed_engine_remap_choice();
+            }
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+            _ => {}
+        }
+        return false;
+    }
     if a.project_guard_naming {
         match code {
             KeyCode::Enter => a.commit_project_guard_name(),
@@ -12802,6 +13240,13 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Up | KeyCode::Char('k') => a.move_overlay(-1),
             KeyCode::Down | KeyCode::Char('j') => a.move_overlay(1),
             KeyCode::Enter => a.activate_overlay(),
+            KeyCode::Char('p') | KeyCode::Char('P')
+                if a.overlay
+                    .as_ref()
+                    .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute) =>
+            {
+                a.preview_route_draft()
+            }
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.overlay_back(),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
             _ => {}
@@ -13690,6 +14135,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             area,
         );
     }
+    draw_mixed_engine_prompt(f, a);
     draw_project_guard(f, a);
     draw_master_status(f, a);
 }
@@ -13769,6 +14215,86 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
             .block(
                 Block::default()
                     .title(format!(" UNSAVED · {action} "))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            ),
+        area,
+    );
+}
+
+fn draw_mixed_engine_prompt<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let Some(remap) = a
+        .mixed_engine_remap
+        .as_ref()
+        .filter(|remap| remap.awaiting_confirmation)
+    else {
+        return;
+    };
+    let z = f.size();
+    let area = rect(
+        z.x + 2,
+        z.y + 1,
+        z.width.saturating_sub(4),
+        z.height.saturating_sub(5).min(8),
+    );
+    let width = usize::from(area.width.saturating_sub(2));
+    let incompatible = remap
+        .pages
+        .iter()
+        .filter_map(|(pattern, page)| {
+            let target = &remap
+                .original_song
+                .patterns
+                .get(pattern)?
+                .pages
+                .get(*page)?
+                .target;
+            match target {
+                PageTarget::Software(route) => Some(route.engine.label()),
+                PageTarget::Synthv1(_) => Some(BackendKind::Synthv1.label()),
+                _ => None,
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let mut rows = vec![
+        Spans::from(centered_text("CAN'T COMBINE SYNTH ENGINES", width)),
+        Spans::from(centered_text(
+            &format!(
+                "{} {} page(s) → FluidSynth",
+                remap.pages.len(),
+                incompatible
+            ),
+            width,
+        )),
+        Spans::from(centered_text("Project stays unchanged until Apply", width)),
+    ];
+    for (yes, label) in [
+        (false, "NO · KEEP ROUTES"),
+        (true, "YES · CHOOSE FLUIDSYNTH SOUNDS"),
+    ] {
+        let selected = remap.selected_yes == yes;
+        rows.push(Spans::from(Span::styled(
+            centered_text(label, width),
+            if selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White).bg(Color::Black)
+            },
+        )));
+    }
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(rows)
+            .style(Style::default().bg(Color::Black))
+            .block(
+                Block::default()
+                    .title(" PLAY ROUTING ")
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::Yellow)),
             ),
@@ -15924,22 +16450,12 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
         OverlayKind::TrackerPage => {
             let mut rows = Vec::new();
             for (page_index, page) in a.current_pages().iter().enumerate() {
-                for column_index in 0..LANES_PER_PAGE {
-                    let column = page.column(column_index);
-                    let channel = if page.target == PageTarget::Default {
-                        "AU".into()
-                    } else {
-                        format!("{:02}", sequencer::musician_channel(column.channel))
-                    };
-                    rows.push(format!(
-                        "P{:02} C{} {:<9} ch{} p{:03}",
-                        page_index + 1,
-                        column_index + 1,
-                        truncate(&page.name, 9),
-                        channel,
-                        sequencer::musician_program(column.program)
-                    ));
-                }
+                rows.push(format!(
+                    "P{:02} {:<14} · {}",
+                    page_index + 1,
+                    truncate(&page.name, 14),
+                    a.page_target_label(&page.target)
+                ));
             }
             let filled = a.current_loop_count();
             rows.push(format!(
@@ -15998,6 +16514,14 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
             rows
         }
         OverlayKind::TrackerRoute => {
+            if a.mixed_engine_remap.is_some() {
+                let percussion = overlay.route().is_some_and(|draft| draft.page.percussion);
+                return a
+                    .fluidsynth_routes_for_page(percussion)
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect();
+            }
             let Some(route) = overlay.route() else {
                 return vec!["routing draft unavailable".into()];
             };
@@ -16125,6 +16649,20 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
             "ONE COLUMN · anchor C3".into(),
             "ONE COLUMN · anchor C4".into(),
             "DRUM AUTO · four safe lanes".into(),
+            format!(
+                "NOTE OFF ON{}",
+                a.current_page()
+                    .is_some_and(|page| page.note_off_enabled)
+                    .then_some(" · current")
+                    .unwrap_or("")
+            ),
+            format!(
+                "NOTE OFF OFF{}",
+                a.current_page()
+                    .is_some_and(|page| !page.note_off_enabled)
+                    .then_some(" · current")
+                    .unwrap_or("")
+            ),
         ],
         OverlayKind::LoopLibrary => a
             .loop_imports
@@ -16265,7 +16803,15 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let menu_x = geometry.inner.x;
     let width = menu_width / 4;
     for item in 0..4 {
-        let Some((label, action)) = overlay.controller_action(item) else {
+        let remap_action = (a.mixed_engine_remap.is_some()
+            && overlay.kind == OverlayKind::TrackerRoute)
+            .then(|| match item {
+                0 => Some(("STOP", Action::StopAll)),
+                1 => Some(("PREVIEW", Action::PreviewRouteDraft)),
+                _ => None,
+            })
+            .flatten();
+        let Some((label, action)) = remap_action.or_else(|| overlay.controller_action(item)) else {
             continue;
         };
         let button = rect(menu_x + item as u16 * width, row.y, width, 1);
@@ -16355,7 +16901,8 @@ fn status_is_silent(message: &str) -> bool {
 }
 
 fn confirmation_status_active(a: &App) -> bool {
-    a.pending_project_action.is_some()
+    a.mixed_engine_prompt_active()
+        || a.pending_project_action.is_some()
         || a.confirm_delete.is_some()
         || a.confirm_load.is_some()
         || a.confirm_song_save.is_some()
@@ -19807,6 +20354,19 @@ mod tests {
             },
         }
     }
+    fn gm_bass_preset() -> Preset {
+        Preset {
+            backend: BackendKind::FluidSynth,
+            name: "Finger Bass".into(),
+            category: Some("Test SoundFont 000:033".into()),
+            id: PresetId::FluidSynth {
+                soundfont: PathBuf::from("test-gm.sf2"),
+                soundfont_index: 0,
+                bank: 0,
+                program: 33,
+            },
+        }
+    }
     fn app(presets: &[Preset]) -> App {
         app_with_routing_defaults(presets, PathBuf::from("/none"))
     }
@@ -19819,7 +20379,7 @@ mod tests {
             },
             Catalog {
                 backend: BackendKind::FluidSynth,
-                presets: vec![gm_drums_preset()],
+                presets: vec![gm_bass_preset(), gm_drums_preset()],
                 unavailable: None,
             },
         ];
@@ -19901,6 +20461,11 @@ mod tests {
         learn_settle(a, &mut now);
         learn_send(a, &mut now, &[0xb0, click, 127]);
         learn_send(a, &mut now, &[0xb0, click, 0]);
+        assert_eq!(
+            a.controller_learn.as_ref().unwrap().role(),
+            crate::controller_learn::LearnRole::EncoderModifier
+        );
+        a.controller_learn.as_mut().unwrap().skip();
         now
     }
     fn connect_test_midi_hardware(app: &mut App) {
@@ -20531,7 +21096,7 @@ mod tests {
         assert_eq!(keyboard.tracker_row, 7, "covered caller must not move");
         key(KeyCode::Enter, &mut keyboard, Path::new("/none"), &tx);
         assert!(keyboard.overlay.is_none());
-        assert_eq!(keyboard.tracker_track, 1);
+        assert_eq!((keyboard.tracker_page, keyboard.tracker_track), (1, 0));
     }
 
     #[test]
@@ -20710,10 +21275,11 @@ mod tests {
         a.open_overlay(Action::OpenPageOverlay);
         let overlay = a.overlay.as_ref().unwrap();
         let rows = overlay_rows(&a, overlay);
-        assert_eq!(rows.len(), 3 * LANES_PER_PAGE + 2);
-        assert_eq!(rows[3 * LANES_PER_PAGE], "P04 LOOP MIX · 0/4 WAV slots");
+        assert_eq!(rows.len(), 3 + 2);
+        assert_eq!(rows[3], "P04 LOOP MIX · 0/4 WAV slots");
+        assert!(rows.iter().all(|row| !row.contains(" C1")));
 
-        a.overlay.as_mut().unwrap().selection = 3 * LANES_PER_PAGE;
+        a.overlay.as_mut().unwrap().selection = 3;
         a.activate_overlay();
         assert!(a.overlay.is_none());
         assert_eq!(a.screen, Screen::TrackerLoop);
@@ -20729,9 +21295,9 @@ mod tests {
         fill_demo_song(&mut a);
 
         a.open_overlay(Action::OpenPageOverlay);
-        a.overlay.as_mut().unwrap().selection = LANES_PER_PAGE + 1;
+        a.overlay.as_mut().unwrap().selection = 1;
         a.activate_overlay();
-        assert_eq!((a.tracker_page, a.tracker_track), (1, 1));
+        assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
         assert_eq!(a.song.order, vec![0, 1, 0, 2]);
 
         a.open_overlay(Action::OpenPatternOverlay);
@@ -21718,7 +22284,7 @@ mod tests {
         assert_eq!(a.tracker_row, 7);
 
         a.open_overlay(Action::OpenPageOverlay);
-        a.overlay.as_mut().unwrap().selection = 3;
+        a.overlay.as_mut().unwrap().selection = 0;
         a.activate_overlay();
         assert_eq!(a.tracker_page, 0);
         assert_eq!(a.tracker_track, 3);
@@ -24329,7 +24895,7 @@ mod tests {
     }
 
     #[test]
-    fn ft2_rotary_selects_columns_only_during_transport_but_keyboard_and_edit_keep_rows() {
+    fn ft2_rotary_always_moves_rows_and_shift_rotary_moves_columns() {
         let p = presets();
         let (tx, _rx) = mpsc::channel();
         let mut a = app(&p);
@@ -24359,13 +24925,18 @@ mod tests {
             Path::new("/none"),
             &tx,
         );
-        assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
-        assert_eq!((a.tracker_order, a.tracker_row), (2, 10));
+        assert_eq!((a.tracker_page, a.tracker_track), (0, LANES_PER_PAGE - 1));
+        assert_eq!((a.tracker_order, a.tracker_row), (2, 11));
         assert_eq!(a.sequencer.status().playing, transport.playing);
         assert_eq!(a.sequencer.status().order, transport.order);
         assert_eq!(a.sequencer.status().row, transport.row);
 
-        key(KeyCode::Down, &mut a, Path::new("/none"), &tx);
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
         assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
         assert_eq!(a.tracker_row, 11);
 
@@ -24379,10 +24950,18 @@ mod tests {
         );
         assert_eq!((a.tracker_page, a.tracker_track), (1, 0));
         assert_eq!(a.tracker_row, 12);
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Up,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!((a.tracker_page, a.tracker_track), (0, LANES_PER_PAGE - 1));
+        assert_eq!(a.tracker_row, 12);
     }
 
     #[test]
-    fn ft2_record_rotary_ignores_turns_until_every_recorded_note_is_off() {
+    fn ft2_record_shift_rotary_ignores_turns_until_every_recorded_note_is_off() {
         let p = presets();
         let (tx, _rx) = mpsc::channel();
         let mut a = app(&p);
@@ -24416,7 +24995,7 @@ mod tests {
         });
 
         for _ in 0..2 {
-            dispatch_encoder(
+            dispatch_modified_encoder(
                 crate::pads::EncoderAction::Down,
                 &mut a,
                 Path::new("/none"),
@@ -24427,7 +25006,7 @@ mod tests {
         assert_eq!(a.tracker_row, 7);
 
         a.record_tracker_midi(&[0x80, 60, 0]);
-        dispatch_encoder(
+        dispatch_modified_encoder(
             crate::pads::EncoderAction::Down,
             &mut a,
             Path::new("/none"),
@@ -26489,6 +27068,41 @@ mod tests {
     }
 
     #[test]
+    fn page_entry_overlay_toggles_future_automatic_note_off_cells() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerPages;
+
+        a.open_overlay(Action::OpenEntryLayoutOverlay);
+        a.overlay.as_mut().unwrap().selection = 7;
+        a.activate_overlay();
+        assert!(!a.current_page().unwrap().note_off_enabled);
+        assert_eq!(a.status, "PAGE ENTRY · NOTE OFF OFF");
+
+        a.open_overlay(Action::OpenEntryLayoutOverlay);
+        a.overlay.as_mut().unwrap().selection = 6;
+        a.activate_overlay();
+        assert!(a.current_page().unwrap().note_off_enabled);
+        assert_eq!(a.status, "PAGE ENTRY · NOTE OFF ON");
+    }
+
+    #[test]
+    fn percussion_step_entry_does_not_write_automatic_note_off_cells() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_mode = TrackerMode::Edit;
+        a.tracker_page = a.percussion_page_index().unwrap();
+        a.note_length = NoteLength::Sixteenth;
+
+        a.write_edit_notes(&[(36, 100)]);
+
+        let lane = a.tracker_page * LANES_PER_PAGE;
+        assert_eq!(a.song.patterns[&0].rows[0][lane].note, Note::On(36));
+        assert_eq!(a.song.patterns[&0].rows[1][lane].note, Note::Empty);
+    }
+
+    #[test]
     fn manual_and_one_column_step_entry_keep_literal_monophonic_lanes() {
         let p = presets();
         let mut a = app(&p);
@@ -27593,9 +28207,16 @@ mod tests {
             a.record_tracker_midi_at(4 + offset, &[0x82, note, 0]);
             assert_eq!(
                 a.song.patterns[&0].rows[4 + offset][page_start + allocated[&note]].note,
-                Note::Off
+                Note::Empty
             );
         }
+        assert!(a
+            .tracker_recording
+            .as_ref()
+            .unwrap()
+            .active_lanes
+            .is_empty());
+        assert!(a.tracker_recording.as_ref().unwrap().lane_owners.is_empty());
         a.stop_tracker_recording();
     }
 
@@ -28213,6 +28834,7 @@ mod tests {
         assert_eq!(page.name, "Drums");
         assert_eq!(page.target, PageTarget::Software(expected));
         assert!(page.percussion);
+        assert!(!page.note_off_enabled);
         assert_eq!(page.entry_mode, sequencer::NoteEntryMode::DrumAuto);
         assert!(page.columns.iter().all(|column| column.channel == 9));
         assert_eq!(a.page_target_label(&page.target), "GM Drums");
@@ -28615,6 +29237,102 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("mixes software backends"));
+    }
+
+    #[test]
+    fn mixed_engine_play_prompt_no_preserves_the_exact_project() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_row = 7;
+        a.tracker_page = 1;
+        a.tracker_track = 3;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(40);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][2 * LANES_PER_PAGE].note = Note::On(36);
+        let original = a.song.clone();
+
+        a.toggle_tracker_playback();
+
+        assert!(a.mixed_engine_prompt_active());
+        assert!(!a.sequencer.status().playing);
+        assert_eq!(a.song, original);
+        assert!(a.status.contains("remap incompatible pages"));
+
+        a.activate_mixed_engine_remap_choice();
+
+        assert!(a.mixed_engine_remap.is_none());
+        assert_eq!(a.song, original);
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), (7, 1, 3));
+        assert_eq!(a.status, "PLAY CANCELLED · Project routing unchanged");
+    }
+
+    #[test]
+    fn mixed_engine_yes_lists_only_matching_fluidsynth_sounds_then_retries_play() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(40);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][2 * LANES_PER_PAGE].note = Note::On(36);
+        let original = a.song.clone();
+
+        a.toggle_tracker_playback();
+        a.mixed_engine_remap.as_mut().unwrap().selected_yes = true;
+        a.activate_mixed_engine_remap_choice();
+
+        let overlay = a.overlay.as_ref().unwrap();
+        assert_eq!(overlay.kind, OverlayKind::TrackerRoute);
+        assert_eq!(overlay_rows(&a, overlay), vec!["Finger Bass".to_owned()]);
+        assert_eq!(a.song, original, "opening the list must not remap yet");
+        assert!(!a.sequencer.status().playing);
+        let buffer = render_app(&mut a, 40, 20);
+        let launcher = row_text(&buffer, 18);
+        assert!(launcher.contains("[STOP]"));
+        assert!(launcher.contains("[PREVIEW]"));
+
+        a.activate_overlay();
+
+        assert!(a.overlay.is_none());
+        assert!(a.mixed_engine_remap.is_none());
+        assert!(a.sequencer.status().playing);
+        assert_eq!(
+            a.song.patterns[&0].pages[0].target,
+            PageTarget::Software(SoftwareRoute {
+                engine: BackendKind::FluidSynth,
+                instrument: gm_bass_preset().route_id(),
+            })
+        );
+        assert_eq!(
+            a.song.patterns[&0].pages[2].target,
+            original.patterns[&0].pages[2].target
+        );
+    }
+
+    #[test]
+    fn cancelling_later_mixed_engine_choice_rolls_back_every_applied_page() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.song.patterns.get_mut(&0).unwrap().pages[1].target =
+            PageTarget::Software(SoftwareRoute::synthv1("Preset 01"));
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(40);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][LANES_PER_PAGE].note = Note::On(60);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][2 * LANES_PER_PAGE].note = Note::On(36);
+        let original = a.song.clone();
+
+        a.toggle_tracker_playback();
+        a.mixed_engine_remap.as_mut().unwrap().selected_yes = true;
+        a.activate_mixed_engine_remap_choice();
+        a.activate_overlay();
+        assert_ne!(a.song, original, "first page has been explicitly applied");
+        assert!(a.overlay.is_some(), "second incompatible page is pending");
+
+        a.overlay_back();
+
+        assert!(a.overlay.is_none());
+        assert!(a.mixed_engine_remap.is_none());
+        assert_eq!(a.song, original);
+        assert!(!a.sequencer.status().playing);
+        assert_eq!(a.status, "REMAP CANCELLED · Project routing restored");
     }
 
     #[test]

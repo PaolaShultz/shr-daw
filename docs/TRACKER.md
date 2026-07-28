@@ -34,14 +34,14 @@ Each press toggles the Player-selected scale directly without opening another
 screen or changing existing cells. Command pads and their releases remain
 consumed.
 
-On the main tracker grid, the physical main rotary selects the previous or next
-column while Play or REC transport is active, continuing through page
-boundaries from Software Synth to MIDI, Drums, and later pages. The selected
-column has a subtle dark full-column shade; the yellow cell cursor and
-row/warning emphasis remain stronger. While transport is paused the rotary
-moves rows, as it does in EDIT, and keyboard arrows retain row navigation in
-every mode. Active-transport rotary selection does not move the row, playhead,
-Arrangement Step, or transport.
+On the main tracker grid, the physical main rotary always moves rows. Holding
+the configured encoder Shift button while turning selects the previous or next
+column, continuing through page boundaries from Software Synth to MIDI, Drums,
+and later pages. The selected column has a subtle dark full-column shade; the
+yellow cell cursor and row/warning emphasis remain stronger. Keyboard arrows
+retain row navigation in every mode. Shift-rotary column selection does not
+move the row, playhead, Arrangement Step, or transport, and is ignored while a
+recorded note is still held.
 
 ## Projects, patterns, and arrangement
 
@@ -125,9 +125,17 @@ route/channel sharing is safe and is never that conflict. FluidSynth plus
 synthv1 or Yoshimi is also refused because that would require a second managed
 backend; external MIDI pages and the WAV loop remain independent.
 
+Pressing Play on such a mixed Project opens an explicit recovery choice instead
+of leaving only a status-line refusal. **NO** keeps every route and cell
+unchanged. **YES** opens a list of matching FluidSynth sounds for each
+incompatible page. Moving through the list is silent; **PREVIEW** performs one
+short deliberate audition, and selecting a sound applies that page before Play
+is retried. Back during the sequence restores the complete pre-remap Project.
+This conversion is never performed merely because Play was pressed.
+
 Computer-keyboard notes and ordinary incoming musical MIDI audition the
 selected page's target, channel, program, and drum mapping throughout the FT2
-workspace. Main-rotary column navigation preserves already sounding notes on
+workspace. Shift-rotary column navigation preserves already sounding notes on
 their original routes while later notes start from the newly selected column.
 Explicit page/track route, preset, channel, program, or destination changes
 still end notes on the old route. The FX rack/editor is an FT2 child: live input
@@ -140,8 +148,8 @@ melody/percussion channels and available default destination are used. `AUTO`
 does not mean channel 1, channel zero, muted, or disabled. Choose an explicit
 target only when a song intentionally belongs to particular hardware.
 
-Use FT2 **SELECT** → **PAGE** to browse every page/column without leaving the
-Pattern. Its final row opens the full **TRACKS** screen. There you can add or
+Use FT2 **SELECT** → **PAGE** to browse every page without leaving the Pattern
+or changing its selected column. Its final row opens the full **TRACKS** screen. There you can add or
 select a page, choose a column, set its target, channel, bank, and program, and
 open **SYS** → **ENTRY** to choose that page's note-entry layout.
 **DONE** validates shared-channel compatibility and keeps the changes. Internal
@@ -184,6 +192,13 @@ existing Pattern data or changes column routing. The compact layout label and
 One-column anchor appear in the FT2 footer and Tracks screen. Legacy ordinary
 pages load as Manual; legacy pages with the persisted percussion flag retain
 their prior automatic drum layout.
+
+The same Tracks **ENTRY** list stores **NOTE OFF ON/OFF** per page. It controls
+whether future Edit and Record input writes automatic release cells. Melodic
+pages default to ON; one-shot percussion pages default to OFF, so a drum hit
+rings until a same-lane retrigger, an explicit OFF/CUT, or transport cleanup.
+The setting never removes an existing explicit OFF cell and never disables
+Stop, Panic, mute, route-change, or shutdown cleanup.
 
 **ADD** opens an overlay for every persistent advance from 0 through 32 rows
 for note/chord entry, blank, erase, and note-off; 0 keeps the current row. The
@@ -260,17 +275,18 @@ the previous value and selection.
 From stopped transport, **REC** starts the selected Pattern from row 1 and
 loops it. Pressing **REC** during Play punches into the current Arrangement
 position without replacing that schedule; punch-out returns to Play. Between
-notes, the main rotary may
-select another column or page without leaving REC, and later notes use that
-selected page. While one or more recorded notes are held, rotary turns are
-ignored rather than queued; movement resumes only after every matching Note Off.
+notes, Shift plus the main rotary may select another column or page without
+leaving REC, and later notes use that selected page. While one or more recorded
+notes are held, Shift-rotary turns are ignored rather than queued; movement
+resumes only after every matching Note Off.
 Played notes use the active page's Manual, One-column, or Drum-auto allocator
 and are quantized to Pattern rows. Events quantized to one row occupy distinct
 Drum-auto lanes. REC ignores the Edit note-length setting: each note-on records
-its exact Pattern/page/lane owner, and its matching release writes the
-quantized note-off in that lane even after cursor movement, a Pattern loop, or
-an Arrangement boundary. Repeated identical input notes keep independent
-owners and cannot release one another early. Newly captured notes and releases
+its exact Pattern/page/lane owner. With automatic Note Off enabled, its matching
+release writes the quantized note-off in that lane even after cursor movement,
+a Pattern loop, or an Arrangement boundary. With it disabled, release still
+clears the live ownership without writing an OFF cell. Repeated identical input
+notes keep independent owners and cannot release one another early. Newly captured notes and releases
 are published to the next stopped-record loop without restarting its current
 cycle. Each assigned lane
 auditions through that column's channel and the selected page's exact
@@ -462,9 +478,10 @@ Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 10
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 11
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
-messages, per-page entry mode/anchor and drum-role overrides, cells, source
+messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
+overrides, cells, source
 insert rack, two aux routes, and master rack. Portable
 pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
@@ -475,10 +492,12 @@ distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 10. Formats 0–9 migrate
+not rewrite an old file; explicit save writes format 11. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.
+Format 10 pages infer automatic Note Off as ON for melodic pages and OFF for
+percussion pages; format 11 persists the explicit per-page choice.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.

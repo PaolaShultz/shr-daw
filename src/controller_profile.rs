@@ -1,6 +1,6 @@
 //! Discoverable, data-driven input-controller profiles.
 
-use crate::pads::{ControllerLayout, PadAction, PadConfig};
+use crate::pads::{ControllerButton, ControllerLayout, PadAction, PadConfig};
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -32,6 +32,11 @@ pub struct ControllerProfile {
     /// Optional 1-based channel qualifier for the encoder press message.
     #[serde(default)]
     pub encoder_press_channel: Option<u8>,
+    #[serde(default)]
+    pub encoder_modifier_cc: Option<u8>,
+    /// Optional 1-based channel qualifier for the held encoder modifier.
+    #[serde(default)]
+    pub encoder_modifier_channel: Option<u8>,
     #[serde(default)]
     pub lock_cc: Option<u8>,
     #[serde(default)]
@@ -108,6 +113,10 @@ impl ControllerProfile {
                 self.encoder_press_note,
                 "controller profile encoder press note",
             ),
+            (
+                self.encoder_modifier_cc,
+                "controller profile encoder modifier CC",
+            ),
             (self.lock_cc, "controller profile lock CC"),
         ] {
             if let Some(number) = number {
@@ -119,6 +128,7 @@ impl ControllerProfile {
             [
                 self.encoder_relative_cc,
                 self.encoder_press_cc,
+                self.encoder_modifier_cc,
                 self.lock_cc,
             ]
             .into_iter()
@@ -143,6 +153,16 @@ impl ControllerProfile {
         {
             bail!(
                 "controller profile {} has an invalid encoder press channel",
+                self.id
+            );
+        }
+        if self
+            .encoder_modifier_channel
+            .is_some_and(|channel| !(1..=16).contains(&channel))
+            || (self.encoder_modifier_channel.is_some() && self.encoder_modifier_cc.is_none())
+        {
+            bail!(
+                "controller profile {} has an invalid encoder modifier channel",
                 self.id
             );
         }
@@ -182,6 +202,10 @@ impl ControllerProfile {
         config.encoder_press_cc = self.encoder_press_cc;
         config.encoder_press_note = self.encoder_press_note;
         config.encoder_press_channel = self.encoder_press_channel.map(|channel| channel - 1);
+        config.encoder_modifier = self.encoder_modifier_cc.map(|cc| ControllerButton::Cc {
+            channel: self.encoder_modifier_channel.unwrap_or(1) - 1,
+            cc,
+        });
         config.page_cycle_modifier = None;
         config.page_cycle_trigger = None;
         config.lock_cc = self.lock_cc;
@@ -393,6 +417,10 @@ mod tests {
         assert_eq!(config.encoder_relative_cc, Some(114));
         assert_eq!(config.encoder_press_cc, Some(115));
         assert_eq!(config.encoder_press_channel, Some(0));
+        assert_eq!(
+            config.encoder_modifier,
+            Some(ControllerButton::Cc { channel: 0, cc: 27 })
+        );
         assert_eq!(config.lock_cc, None);
         for (offset, action) in [
             PadAction::Page1,
@@ -424,6 +452,8 @@ mod tests {
             encoder_press_cc: None,
             encoder_press_note: None,
             encoder_press_channel: None,
+            encoder_modifier_cc: None,
+            encoder_modifier_channel: None,
             lock_cc: None,
             note_buttons: HashMap::new(),
             note_button_channels: HashMap::new(),

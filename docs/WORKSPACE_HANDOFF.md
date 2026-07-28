@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.4.1`.
+corrected starting point; the current checked-progress version is `0.4.2`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -124,6 +124,10 @@ values only in memory until an explicit save. Loop preparation now validates
 against the prospective detected Pattern tempo and commits its private file,
 attachment, runtime, and tempo only after preparation succeeds.
 
+Current Project format 11 adds the per-page automatic Note Off choice. Format
+10 loads it as ON for melodic pages and OFF for percussion pages without
+rewriting the private Project; only an explicit save writes format 11.
+
 FILES MIDI reads only regular, no-follow `.mid`/`.midi` files from the private
 configured inbox. The dedicated tick-domain parser accepts SMF format 0/1 PPQN
 with running status, conductor metadata, fixed 3/4 and 4/4, and 6/8 mapped to
@@ -159,6 +163,21 @@ and four intentionally ignored private DSP audition renderers. The generated
 documentation site reproduced byte-for-byte with its pinned renderer and
 `git diff --check` passed. No JACK server, synth, MIDI transmission, playback,
 recording, audible test, or physical hardware test was started.
+
+Version `0.4.2` repairs FT2 transport exit and mixed-instrument feedback, adds
+per-page automatic Note Off control, defaults new percussion entry to sustained
+drum hits, makes PAGE navigation page-only, and adds optional Shift+rotary
+column navigation. One FluidSynth instance can still schedule independent
+melodic parts and channel-10 drums; a Project that mixes FluidSynth with a
+managed synthv1 or Yoshimi backend now offers an explicit, reversible
+FluidSynth remap with manual sound preview instead of refusing Play silently.
+
+The complete `0.4.2` combined pass on 2026-07-28 used Rust 1.85. Formatting,
+locked check, focused FT2 regressions, and the complete suite passed with 840
+passing, zero failing, and four intentionally ignored private DSP audition
+renderers. `git diff --check` passed. Source and private Project inspection were
+sufficient, so no JACK server, synth, MIDI transmission, playback, recording,
+audible test, or physical hardware test was started.
 
 Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical

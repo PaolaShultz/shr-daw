@@ -16,7 +16,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 10;
+pub const SONG_VERSION: u8 = 11;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
@@ -129,6 +129,10 @@ pub struct Page {
     pub columns: [ColumnSetup; LANES_PER_PAGE],
     pub velocity: u8,
     pub percussion: bool,
+    /// Whether Edit/Record entry automatically writes release cells. This is
+    /// off for one-shot percussion by default, while explicit OFF/CUT cells
+    /// and transport cleanup always remain effective.
+    pub note_off_enabled: bool,
     /// Controls only where future edit/record note events are stored. Playback
     /// always follows the four ordinary tracker lanes.
     pub entry_mode: NoteEntryMode,
@@ -705,6 +709,7 @@ impl Page {
             }; LANES_PER_PAGE],
             velocity: 96,
             percussion,
+            note_off_enabled: !percussion,
             entry_mode: legacy_entry_mode(percussion),
             entry_anchor: 0,
             drum_class_overrides: BTreeMap::new(),
@@ -1339,7 +1344,7 @@ pub fn encode(song: &Song) -> Result<String> {
         }
         for (page_index, page) in pattern.pages.iter().enumerate() {
             out.push_str(&format!(
-                "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+                "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
                 escape(&page.name),
                 u8::from(page.enabled),
                 page.velocity,
@@ -1350,7 +1355,8 @@ pub fn encode(song: &Song) -> Result<String> {
                     .map(escape)
                     .unwrap_or_else(|| "-".into()),
                 entry_mode_text(page.entry_mode),
-                page.entry_anchor + 1
+                page.entry_anchor + 1,
+                u8::from(page.note_off_enabled)
             ));
             for (note, class) in &page.drum_class_overrides {
                 out.push_str(&format!(
@@ -1581,6 +1587,7 @@ pub fn decode(text: &str) -> Result<Song> {
                                 }; LANES_PER_PAGE],
                                 velocity: midi_value(velocity)?,
                                 percussion,
+                                note_off_enabled: !percussion,
                                 entry_mode: legacy_entry_mode(percussion),
                                 entry_anchor: 0,
                                 drum_class_overrides: BTreeMap::new(),
@@ -1601,6 +1608,7 @@ pub fn decode(text: &str) -> Result<Song> {
                                 columns: [ColumnSetup::default(); LANES_PER_PAGE],
                                 velocity: midi_value(velocity)?,
                                 percussion,
+                                note_off_enabled: !percussion,
                                 entry_mode: legacy_entry_mode(percussion),
                                 entry_anchor: 0,
                                 drum_class_overrides: BTreeMap::new(),
@@ -1621,6 +1629,7 @@ pub fn decode(text: &str) -> Result<Song> {
                                 columns: [ColumnSetup::default(); LANES_PER_PAGE],
                                 velocity: midi_value(velocity)?,
                                 percussion,
+                                note_off_enabled: !percussion,
                                 entry_mode: legacy_entry_mode(percussion),
                                 entry_anchor: 0,
                                 drum_class_overrides: BTreeMap::new(),
@@ -1637,6 +1646,32 @@ pub fn decode(text: &str) -> Result<Song> {
                     (
                         6..=10,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor],
+                    ) => {
+                        let percussion = binary_flag(percussion, "pattern page percussion")?;
+                        (
+                            Page {
+                                name: unescape(name)?,
+                                enabled: binary_flag(enabled, "pattern page enabled")?,
+                                columns: [ColumnSetup::default(); LANES_PER_PAGE],
+                                velocity: midi_value(velocity)?,
+                                percussion,
+                                note_off_enabled: !percussion,
+                                entry_mode: parse_entry_mode(entry_mode)?,
+                                entry_anchor: one_based_entry_anchor(entry_anchor)?,
+                                drum_class_overrides: BTreeMap::new(),
+                                target: parse_target(target, version)?,
+                                device_profile: (*profile != "-")
+                                    .then(|| unescape(profile))
+                                    .transpose()?,
+                                setup: Vec::new(),
+                                lanes: Vec::new(),
+                            },
+                            false,
+                        )
+                    }
+                    (
+                        11,
+                        [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor, note_off_enabled],
                     ) => (
                         Page {
                             name: unescape(name)?,
@@ -1644,6 +1679,10 @@ pub fn decode(text: &str) -> Result<Song> {
                             columns: [ColumnSetup::default(); LANES_PER_PAGE],
                             velocity: midi_value(velocity)?,
                             percussion: binary_flag(percussion, "pattern page percussion")?,
+                            note_off_enabled: binary_flag(
+                                note_off_enabled,
+                                "pattern page automatic note off",
+                            )?,
                             entry_mode: parse_entry_mode(entry_mode)?,
                             entry_anchor: one_based_entry_anchor(entry_anchor)?,
                             drum_class_overrides: BTreeMap::new(),
@@ -2174,7 +2213,8 @@ pub fn schedule(
                         // shorter explicit gates retain their existing timing.
                         let explicit_release = cell.gate == Some(100)
                             && pulses == 1
-                            && has_later_lane_event(song, order_index, row_index, lane_index);
+                            && (!page.note_off_enabled
+                                || has_later_lane_event(song, order_index, row_index, lane_index));
                         for pulse in 0..pulses {
                             let pulse_at = event_at
                                 + row_duration.mul_f64(f64::from(pulse) / f64::from(pulses));
@@ -3953,6 +3993,7 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
         }; LANES_PER_PAGE],
         velocity: 64,
         percussion: false,
+        note_off_enabled: true,
         entry_mode: NoteEntryMode::Manual,
         entry_anchor: 0,
         drum_class_overrides: BTreeMap::new(),
@@ -4279,6 +4320,8 @@ mod tests {
                         }
                     }
                     format!("cell={}", fields.join("|"))
+                } else if line.starts_with("pattern_page=") {
+                    line.rsplit_once('|').unwrap().0.to_owned()
                 } else {
                     line.to_owned()
                 }
@@ -4311,7 +4354,7 @@ mod tests {
                 !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
             })
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 10") {
+                if line.starts_with("SHSYNTH-SONG 11") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -4477,7 +4520,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::ActiveInstrument;
         let before = encode(&song).unwrap();
-        assert!(before.contains("|instrument|-|manual|1\n"));
+        assert!(before.contains("|instrument|-|manual|1|1\n"));
         let base = env::temp_dir().join(format!("shr-legacy-routing-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         save(&base, &song, false).unwrap();
@@ -4492,7 +4535,7 @@ mod tests {
         assert_eq!(fs::read_to_string(path).unwrap(), before);
         assert!(encode(&loaded)
             .unwrap()
-            .contains("|software:synthv1:First Sound|-|manual|1\n"));
+            .contains("|software:synthv1:First Sound|-|manual|1|1\n"));
         let _ = fs::remove_dir_all(base);
     }
     #[test]
@@ -4534,31 +4577,55 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 10\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 11\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
     }
 
     #[test]
-    fn format_ten_round_trips_decimal_pattern_and_command_tempos() {
+    fn format_eleven_round_trips_decimal_tempos_and_page_note_off_choice() {
         let mut song = Song::new(&config());
         let decimal = "100.50".parse::<Bpm>().unwrap();
         let pattern = song.patterns.get_mut(&0).unwrap();
         pattern.tempo = decimal;
+        pattern.pages[0].note_off_enabled = false;
         pattern.rows[3][0].command = Command::Tempo("99.75".parse().unwrap());
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 10\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 11\n"));
         assert!(encoded.contains("pattern=0|64|10050|4\n"));
+        assert!(encoded.contains("|manual|1|0\n"));
         assert!(encoded.contains("|T9975\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
+    }
+
+    #[test]
+    fn format_ten_migrates_note_off_defaults_without_rewriting() {
+        let current = encode(&Song::new(&config())).unwrap();
+        let legacy = current
+            .lines()
+            .map(|line| {
+                if line == "SHSYNTH-SONG 11" {
+                    "SHSYNTH-SONG 10".to_owned()
+                } else if line.starts_with("pattern_page=") {
+                    line.rsplit_once('|').unwrap().0.to_owned()
+                } else {
+                    line.to_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let loaded = decode(&legacy).unwrap();
+        let pages = &loaded.patterns[&0].pages;
+        assert!(pages[0].note_off_enabled);
+        assert!(!pages[1].note_off_enabled);
     }
 
     #[test]
     fn format_nine_whole_tempos_migrate_in_memory_without_rewriting() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy =
-            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 9", 1);
+            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 9", 1);
         let base = env::temp_dir().join(format!("shr-tempo-v9-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -4567,7 +4634,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.patterns[&0].tempo, Bpm::DEFAULT);
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 10\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 11\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -4579,7 +4646,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 8", 1);
+            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 8", 1);
         let base = env::temp_dir().join(format!("shr-strip-v8-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -4589,7 +4656,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.master_strip, MasterStripSettings::default());
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 10\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 11\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -4609,7 +4676,7 @@ mod tests {
                 .is_err()
         );
         assert!(decode(&encoded.replacen("\"version\":1", "\"version\":2", 1)).is_err());
-        assert!(decode(&encoded.replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 11", 1)).is_err());
+        assert!(decode(&encoded.replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 12", 1)).is_err());
     }
 
     #[test]
@@ -4781,7 +4848,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 7", 1)
+            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 7", 1)
             .replacen(
                 "insert_rack=",
                 "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
@@ -4813,7 +4880,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 6", 1)
+            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -4958,7 +5025,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 10\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 11\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -4981,6 +5048,41 @@ mod tests {
         assert_eq!(note_on.at, Duration::from_micros(62_500));
         assert_eq!(note_off.at, Duration::from_micros(112_500));
         assert!(note_off.at <= Duration::from_millis(125));
+    }
+
+    #[test]
+    fn disabled_automatic_note_off_holds_until_retrigger_or_pattern_cleanup() {
+        let c = config();
+        let mut song = Song::new(&c);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.pages[0].note_off_enabled = false;
+        pattern.rows[0][0] = Cell {
+            note: Note::On(60),
+            gate: Some(100),
+            ..Cell::default()
+        };
+        pattern.rows[2][0] = Cell {
+            note: Note::On(62),
+            gate: Some(100),
+            ..Cell::default()
+        };
+
+        let messages = schedule(&song, &c, 0, 0).unwrap();
+        let first_release = messages
+            .iter()
+            .find(|message| message.bytes == [0x80, 60, 0])
+            .unwrap();
+        let retrigger = messages
+            .iter()
+            .find(|message| message.bytes == [0x90, 62, 96])
+            .unwrap();
+        assert_eq!(first_release.at, retrigger.at);
+        assert!(!messages
+            .iter()
+            .any(|message| { message.bytes == [0x80, 60, 0] && message.at < retrigger.at }));
+        assert!(messages
+            .iter()
+            .any(|message| { message.bytes == [0x80, 62, 0] && message.at > retrigger.at }));
     }
 
     #[test]
@@ -6158,14 +6260,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 10\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 11\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6174,14 +6276,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 10\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 11\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6198,8 +6300,8 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 10\n"));
-        assert!(encoded.contains("|default|-|manual|1\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encoded.contains("|default|-|manual|1|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
         assert_eq!(decoded, song);
@@ -6214,7 +6316,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 10", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -6235,7 +6337,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 10",
+            "SHSYNTH-SONG 11",
             "SHSYNTH-SONG 4",
             1,
         );

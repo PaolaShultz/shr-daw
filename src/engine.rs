@@ -32,6 +32,7 @@ pub enum MidiEvent {
     Raw { received: Instant, bytes: Vec<u8> },
     Pad(PadAction, bool),
     Encoder(EncoderAction),
+    EncoderModified(EncoderAction),
     PadLock(bool),
     Learn { received: Instant, bytes: Vec<u8> },
     Error(String),
@@ -2024,6 +2025,7 @@ fn connect_midi_input(
     let roles = planned.roles;
     let mut pad_locked = false;
     let mut lock_pressed = false;
+    let mut encoder_modifier_down = false;
     let mut page_cycle_chord = crate::pads::PageCycleChordState::default();
     let mut locked_pad_notes = std::collections::HashMap::new();
     let connection = input
@@ -2055,12 +2057,19 @@ fn connect_midi_input(
                         .lock()
                         .map(|kind| *kind)
                         .unwrap_or(BackendKind::Synthv1);
+                    let (modifier_message, modifier_down) = pads.encoder_modifier_action(message);
+                    if modifier_message {
+                        encoder_modifier_down = modifier_down;
+                    }
                     let (chord_message, chord_action) =
                         pads.page_cycle_chord_action(message, &mut page_cycle_chord);
                     if chord_message {
                         if let Some((action, pressed)) = chord_action {
                             let _ = tx.send(MidiEvent::Pad(action, pressed));
                         }
+                        return;
+                    }
+                    if modifier_message {
                         return;
                     }
                     let (lock_message, lock_down) = pads.lock_action(message);
@@ -2104,7 +2113,12 @@ fn connect_midi_input(
                         }
                     }
                     if let Some(action) = routed.encoder {
-                        let _ = tx.send(MidiEvent::Encoder(action));
+                        let event = if encoder_modifier_down {
+                            MidiEvent::EncoderModified(action)
+                        } else {
+                            MidiEvent::Encoder(action)
+                        };
+                        let _ = tx.send(event);
                     }
                     if !accepted {
                         return;

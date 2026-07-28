@@ -15,7 +15,8 @@ The wizard selects an ALSA MIDI input, loads a matching known profile, or
 offers non-audible MIDI learn for the missing controls. Learning never forwards
 messages to a synth. It can identify absolute knob/fader CCs, either direction
 convention for a relative encoder, a CC or note encoder press, and command
-buttons that send either notes or CCs. Each step keeps the first qualifying
+buttons that send either notes or CCs. An optional **ENCODER SHIFT** step learns
+the held button used for secondary encoder navigation. Each step keeps the first qualifying
 gesture. The in-app learner visibly keeps `OK` on that role until the physical
 gesture is finished: a button advances on its matching CC-off, Note Off, or
 velocity-zero Note On, while a knob/fader or relative encoder advances
@@ -26,8 +27,9 @@ and wait for the ready indication; its release and already queued traffic are
 quarantined.
 
 First turn the master encoder left and let it settle, turn it right and let it
-settle, then click and release it. The learned encoder then browses the optional
-control and command-button roles. One rotary gesture moves by exactly one role,
+settle, then click and release it. Learn or skip the optional encoder Shift;
+the learned encoder then browses the optional control and command-button roles.
+One rotary gesture moves by exactly one role,
 regardless of how many packets it emits. Each learned absolute control advances
 to the next control automatically after settling, and each learned command
 button advances after release. The next clean encoder click saves the mappings
@@ -85,7 +87,9 @@ When no private `controller.conf` exists, startup uses the explicitly
 configured controller input to select one unique reviewed profile before the
 MIDI router opens. The bundled MiniLab 3 default mirrors the verified learned
 mapping: encoder turn CC 114 and press CC 115 on channel 1, plus the eight
-Arturia/DAW factory pads on channel 10. Unknown or ambiguous controllers remain
+Arturia/DAW factory pads on channel 10. DAW Shift CC 27 on channel 1 is the
+held encoder modifier, so ordinary FT2 turns move rows and Shift-turns move
+columns. Unknown or ambiguous controllers remain
 unmapped rather than inheriting this device-specific default.
 
 ## Upstream mapping sources
@@ -123,8 +127,9 @@ Optional `note_button_channels` and `cc_button_channels` objects map the same
 note/CC keys to 1-based MIDI channels. Missing qualifiers preserve legacy
 all-channel profiles. MIDI learn records the channel observed for every learned
 note or CC command, and save/load retains it.
-Encoder, press, and optional lock messages are separate so they cannot collide
-with continuous controls. All physical note and CC numbers must be valid MIDI
+Encoder turn, press, held modifier, and optional lock messages are separate so
+they cannot collide with continuous controls. The held modifier is stored as
+`encoder.modifier=cc.CHANNEL.NUMBER` or `note.CHANNEL.NUMBER`. All physical note and CC numbers must be valid MIDI
 data bytes (0–127), and an encoder press cannot reuse a command-button note.
 Learned page-cycle chords are stored as `page_cycle.modifier` and
 `page_cycle.trigger` values such as `cc.1.27`; the modifier and trigger must be
@@ -142,8 +147,8 @@ those positions to contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
 actions. Legacy `item-1` through `item-4` profile values remain compatible.
 Direct capture on this unit found User 1 pads on channel 1, the same
 channel as its keyboard, so User 1 pads are not safe command buttons: their
-messages are indistinguishable from keyboard notes. DAW Shift emits CC27, but
-the profile deliberately does not bind it as persistent pad lock; normal
+messages are indistinguishable from keyboard notes. DAW Shift emits CC27 and
+is bound only as the held encoder modifier, not as persistent pad lock; normal
 arpeggiator, program, and bank gestures therefore cannot toggle SHR lock state.
 Selecting the controller's DAW program does not itself require a proprietary
 DAW script for these ordinary MIDI note commands. Arturia mode has the same
