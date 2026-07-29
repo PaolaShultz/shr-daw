@@ -51,6 +51,10 @@ impl Diffuser {
     fn reset(&mut self) {
         self.line.reset();
     }
+
+    fn memory_bytes(&self) -> usize {
+        self.line.memory_bytes()
+    }
 }
 
 pub(super) struct Reverb {
@@ -73,6 +77,10 @@ pub(super) struct Reverb {
     width: SmoothedValue,
     wet: SmoothedValue,
     dry: SmoothedValue,
+    input_gain: SmoothedValue,
+    tail_remaining: u64,
+    maximum_tail_samples: u64,
+    clear_after: u32,
 }
 
 impl Reverb {
@@ -124,8 +132,13 @@ impl Reverb {
             width: smooth(value("width_percent")? * 0.01),
             wet: smooth(value("wet_percent")? * 0.01),
             dry: smooth(value("dry_percent")? * 0.01),
+            input_gain: smooth(1.0),
+            tail_remaining: 0,
+            maximum_tail_samples: 1,
+            clear_after: 0,
         };
         reverb.update_lengths_and_feedback();
+        reverb.update_maximum_tail();
         Ok(reverb)
     }
 
@@ -136,6 +149,17 @@ impl Reverb {
 
     #[inline]
     fn process_internal(&mut self, frame: StereoFrame, diffuse_input: bool) -> StereoFrame {
+        let original = frame.finite_or_silence();
+        let input_gain = self.input_gain.next_value();
+        let frame = StereoFrame::new(original.left * input_gain, original.right * input_gain);
+        if frame.left.abs().max(frame.right.abs()) >= 1.0e-12 {
+            self.tail_remaining = self.maximum_tail_samples;
+        } else if self.tail_remaining > 0 {
+            self.tail_remaining -= 1;
+        }
+        if self.tail_remaining == 0 {
+            self.reset_recursive_state();
+        }
         let predelay = self.predelay_samples.next_value();
         let (predelayed_left, predelayed_right) = if predelay < 1.0 {
             (frame.left, frame.right)
@@ -194,11 +218,19 @@ impl Reverb {
         let side = (wet_left - wet_right) * 0.5 * self.width.next_value();
         let wet = self.wet.next_value();
         let dry = self.dry.next_value();
-        StereoFrame::new(
-            frame.left * dry + (mid + side) * wet,
-            frame.right * dry + (mid - side) * wet,
+        let output = StereoFrame::new(
+            original.left * dry + (mid + side) * wet,
+            original.right * dry + (mid - side) * wet,
         )
-        .finite_or_silence()
+        .finite_or_silence();
+        if self.clear_after > 0 {
+            self.clear_after -= 1;
+            if self.clear_after == 0 {
+                self.reset_recursive_state();
+                self.tail_remaining = 0;
+            }
+        }
+        output
     }
 
     pub(super) fn set_parameter(&mut self, name: &str, value: f32) -> Result<(), EffectError> {
@@ -213,6 +245,7 @@ impl Reverb {
             "decay_seconds" => {
                 self.decay_seconds = value;
                 self.update_lengths_and_feedback();
+                self.update_maximum_tail();
             }
             "size_percent" => {
                 self.size_percent = value;
@@ -244,6 +277,13 @@ impl Reverb {
         Ok(())
     }
 
+    pub(super) fn set_bypass(&mut self, bypass: bool, fade_samples: u32) {
+        let _ = self
+            .input_gain
+            .set_target(if bypass { 0.0 } else { 1.0 }, fade_samples);
+        self.clear_after = if bypass { fade_samples } else { 0 };
+    }
+
     fn update_lengths_and_feedback(&mut self) {
         let size = 0.7 + self.size_percent * 0.006;
         for index in 0..4 {
@@ -257,7 +297,20 @@ impl Reverb {
         }
     }
 
+    fn update_maximum_tail(&mut self) {
+        // RT60 is the time to -60 dB. An extra half RT60 plus the maximum
+        // pre-delay/diffusion allowance gives a deterministic -90 dB bound.
+        let seconds = self.decay_seconds * 1.5 + 0.4;
+        self.maximum_tail_samples = (seconds * self.sample_rate).ceil().max(1.0) as u64;
+    }
+
     pub(super) fn reset(&mut self) {
+        self.reset_recursive_state();
+        self.tail_remaining = 0;
+        self.clear_after = 0;
+    }
+
+    fn reset_recursive_state(&mut self) {
         self.predelay_left.reset();
         self.predelay_right.reset();
         self.input_low_cut_left.reset();
@@ -274,6 +327,22 @@ impl Reverb {
         for filter in &mut self.damping {
             filter.reset();
         }
+    }
+
+    pub(super) fn memory_bytes(&self) -> usize {
+        self.predelay_left.memory_bytes()
+            + self.predelay_right.memory_bytes()
+            + self
+                .input_diffusion_left
+                .iter()
+                .chain(self.input_diffusion_right.iter())
+                .map(Diffuser::memory_bytes)
+                .sum::<usize>()
+            + self
+                .lines
+                .iter()
+                .map(FractionalDelayLine::memory_bytes)
+                .sum::<usize>()
     }
 }
 
@@ -509,6 +578,24 @@ mod tests {
             .position(|frame| frame.left.abs() + frame.right.abs() > 1.0e-5)
             .unwrap();
         assert!((2_070..=2_090).contains(&first), "first arrival {first}");
+    }
+
+    #[test]
+    fn zero_predelay_is_valid_and_twenty_ms_adds_960_samples_with_one_sample_tolerance() {
+        let first_arrival = |predelay_ms| {
+            let response = render_response(0, 60.0, predelay_ms, true);
+            response
+                .iter()
+                .position(|frame| frame.left.abs() + frame.right.abs() > 1.0e-5)
+                .unwrap()
+        };
+        let zero = first_arrival(0.0);
+        let twenty = first_arrival(20.0);
+        assert!(zero > 0, "zero pre-delay retains diffuser/room propagation");
+        assert!(
+            twenty.abs_diff(zero + 960) <= 1,
+            "zero {zero}, 20 ms {twenty}"
+        );
     }
 
     #[test]
@@ -761,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn bypass_hides_but_drains_tail_and_long_decay_avoids_denormals() {
+    fn bypass_clears_hidden_tail_and_long_decay_has_a_finite_denormal_free_deadline() {
         let mut slot = EffectSlot::compile(
             &effect([
                 ("type", 1.0),
@@ -783,9 +870,7 @@ mod tests {
         slot.set_bypass(false).unwrap();
         let mut resumed = vec![StereoFrame::SILENCE; 2_048];
         slot.process(&mut resumed);
-        assert!(resumed
-            .iter()
-            .any(|frame| frame.left.abs() + frame.right.abs() > 1.0e-6));
+        assert!(resumed.iter().all(|frame| *frame == StereoFrame::SILENCE));
 
         let mut long = Reverb::compile(
             &effect([
@@ -800,7 +885,8 @@ mod tests {
         .unwrap();
         let mut peak = 0.0_f32;
         let mut subnormal = 0_u64;
-        for index in 0..48_000 * 12 {
+        let mut last = StereoFrame::new(1.0, 1.0);
+        for index in 0..48_000 * 13 {
             let output = long.process(if index == 0 {
                 StereoFrame::new(1.0, -0.25)
             } else {
@@ -810,9 +896,12 @@ mod tests {
             peak = peak.max(output.left.abs()).max(output.right.abs());
             subnormal +=
                 u64::from(output.left.is_subnormal()) + u64::from(output.right.is_subnormal());
+            last = output;
         }
-        assert!(peak < EMERGENCY_LEVEL && subnormal == 0);
-        eprintln!("reverb bypass resumed a draining tail; 12 s stability peak {peak:.6}, subnormal outputs {subnormal}");
+        assert!(peak < EMERGENCY_LEVEL && subnormal == 0 && last == StereoFrame::SILENCE);
+        eprintln!(
+            "reverb 12.4 s design deadline; 13 s peak {peak:.6}, subnormal outputs {subnormal}"
+        );
     }
 
     #[test]

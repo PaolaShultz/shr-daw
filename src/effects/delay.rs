@@ -6,7 +6,7 @@ use crate::effect_schema;
 const MAXIMUM_DELAY_SECONDS: f32 = 2.0;
 const TIME_CHANGE_MILLISECONDS: f32 = 20.0;
 const EMERGENCY_LEVEL: f32 = 64.0;
-const DIVISION_BEATS: [f32; 8] = [0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
+const DIVISION_BEATS: [f32; 8] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Mode {
@@ -254,6 +254,10 @@ impl Delay {
         self.tone_left.reset();
         self.tone_right.reset();
     }
+
+    pub(super) fn memory_bytes(&self) -> usize {
+        self.left.memory_bytes() + self.right.memory_bytes()
+    }
 }
 
 fn delay_samples(
@@ -314,7 +318,7 @@ mod tests {
             ]),
         ] {
             let expected = if configured.parameters.contains_key("tempo_sync") {
-                1_500
+                6_000
             } else {
                 480
             };

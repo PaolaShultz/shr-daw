@@ -82,6 +82,9 @@ const INSERT_EFFECTS: [EffectKind; 13] = [
 
 const BUILD_BADGE: &str = if cfg!(debug_assertions) { "DEV" } else { "REL" };
 const FIRST_AUX_EFFECT_INDEX: usize = 3;
+const DRUM_FX_TARGET: usize = MAX_AUX_BUSES + 1;
+const MASTER_FX_TARGET: usize = MAX_AUX_BUSES + 2;
+const FX_TARGET_COUNT: usize = MAX_AUX_BUSES + 3;
 const COMPRESSOR_GAIN_REDUCTION_LEDS_DB: [f32; 11] =
     [0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 18.0, 24.0];
 // U+25CF is one cell wide in the target TTY font and is the master LED glyph.
@@ -150,6 +153,7 @@ fn fx_target_label(target: usize) -> &'static str {
         0 => "SOURCE",
         1 => "AUX 1",
         2 => "AUX 2",
+        DRUM_FX_TARGET => "DRUMS",
         _ => "MASTER",
     }
 }
@@ -239,6 +243,7 @@ fn send_point_label(point: SendPoint) -> &'static str {
 fn project_fx_rack<'a>(
     source: &'a InsertRack,
     aux: &'a ProjectAuxRouting,
+    drums: &'a InsertRack,
     target: usize,
 ) -> Option<&'a InsertRack> {
     if target == 0 {
@@ -248,6 +253,8 @@ fn project_fx_rack<'a>(
             .iter()
             .find(|bus| usize::from(bus.id) == target)
             .map(|bus| &bus.rack)
+    } else if target == DRUM_FX_TARGET {
+        Some(drums)
     } else {
         Some(&aux.master_rack)
     }
@@ -256,6 +263,7 @@ fn project_fx_rack<'a>(
 fn project_fx_rack_mut<'a>(
     source: &'a mut InsertRack,
     aux: &'a mut ProjectAuxRouting,
+    drums: &'a mut InsertRack,
     target: usize,
 ) -> Option<&'a mut InsertRack> {
     if target == 0 {
@@ -265,6 +273,8 @@ fn project_fx_rack_mut<'a>(
             .iter_mut()
             .find(|bus| usize::from(bus.id) == target)
             .map(|bus| &mut bus.rack)
+    } else if target == DRUM_FX_TARGET {
+        Some(drums)
     } else {
         Some(&mut aux.master_rack)
     }
@@ -283,6 +293,10 @@ fn project_owner_line(a: &App, width: usize) -> String {
 
 fn is_aux_target(target: usize) -> bool {
     (1..=MAX_AUX_BUSES).contains(&target)
+}
+
+fn is_drum_fx_target(target: usize) -> bool {
+    target == DRUM_FX_TARGET
 }
 
 #[derive(Clone, Debug, Default)]
@@ -851,7 +865,7 @@ struct App {
     fx_add_kind: usize,
     fx_target: usize,
     fx_value_editing: bool,
-    fx_edit_original: Option<(InsertRack, ProjectAuxRouting)>,
+    fx_edit_original: Option<(InsertRack, ProjectAuxRouting, InsertRack)>,
     fx_type_edit: Option<FxTypeEdit>,
     fx_numeric_input: Option<String>,
     fx_pickup: FxPickup,
@@ -902,6 +916,7 @@ struct TrackerIo {
 struct FxTypeEdit {
     original_rack: InsertRack,
     original_aux: ProjectAuxRouting,
+    original_drums: InsertRack,
     effect_id: EffectId,
     provisional: bool,
 }
@@ -2134,6 +2149,7 @@ impl App {
         if let Err(status) = self.publish_project_audio_runtime(
             &baseline.insert_rack,
             &baseline.aux_routing,
+            &baseline.drum_rack,
             &baseline.master_strip,
         ) {
             self.status = format!("{status} · guard kept");
@@ -2684,7 +2700,7 @@ impl App {
             OverlayKind::TrackerAdvance => 33,
             OverlayKind::TrackerEntryLayout => 8,
             OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
-            OverlayKind::MixEffects => MAX_AUX_BUSES + 2,
+            OverlayKind::MixEffects => FX_TARGET_COUNT,
         }
     }
 
@@ -2771,7 +2787,7 @@ impl App {
                 .position(|entry| entry.current)
                 .map(|index| self.loop_imports.len() + index)
                 .unwrap_or(0),
-            OverlayKind::MixEffects => self.fx_target.min(MAX_AUX_BUSES + 1),
+            OverlayKind::MixEffects => self.fx_target.min(MASTER_FX_TARGET),
         };
         let draft = if kind == OverlayKind::TrackerRoute {
             self.refresh_overlay_target_candidates();
@@ -3296,7 +3312,7 @@ impl App {
                 }
             }
             OverlayKind::MixEffects => {
-                self.fx_target = selection.min(MAX_AUX_BUSES + 1);
+                self.fx_target = selection.min(MASTER_FX_TARGET);
                 self.close_overlay(false);
                 if self.selected_effect_id().is_none() {
                     self.fx_selection = FxRackSelection::Insert;
@@ -5991,6 +6007,9 @@ impl App {
         if let Some(pattern) = self.current_pattern_mut() {
             pattern.tempo = tempo;
         }
+        if let Some(drums) = self.drum_host.as_ref() {
+            drums.set_tempo(tempo);
+        }
         if self.loop_editor_can_touch_runtime() {
             self.sequencer.tempo(tempo);
         }
@@ -6067,10 +6086,18 @@ impl App {
     }
 
     fn ensure_internal_drum_kit(&mut self, kit_id: &str) -> std::result::Result<(), String> {
+        let tempo = self.current_tempo();
         if self.drum_host.as_ref().is_some_and(|host| {
-            host.matches_configuration(kit_id, self.song.project_key, &self.song.drum_tuning)
-                && !host.lost()
+            host.matches_configuration(
+                kit_id,
+                self.song.project_key,
+                &self.song.drum_tuning,
+                &self.song.drum_rack,
+            ) && !host.lost()
         }) {
+            if let Some(host) = self.drum_host.as_ref() {
+                host.set_tempo(tempo);
+            }
             return Ok(());
         }
         let kit = self
@@ -6096,6 +6123,8 @@ impl App {
             &kit,
             self.song.project_key,
             &self.song.drum_tuning,
+            &self.song.drum_rack,
+            tempo,
             &resolved.outputs,
             Arc::clone(&self.drum_output),
         )
@@ -8141,6 +8170,7 @@ impl App {
         if let Err(status) = self.publish_project_audio_runtime(
             &song.insert_rack,
             &song.aux_routing,
+            &song.drum_rack,
             &song.master_strip,
         ) {
             self.confirm_new_project = false;
@@ -8384,6 +8414,7 @@ impl App {
         if let Err(status) = self.publish_project_audio_runtime(
             &imported.song.insert_rack,
             &imported.song.aux_routing,
+            &imported.song.drum_rack,
             &imported.song.master_strip,
         ) {
             self.midi_import_candidate = Some((path, imported));
@@ -8449,6 +8480,7 @@ impl App {
                 if let Err(status) = self.publish_project_audio_runtime(
                     &song.insert_rack,
                     &song.aux_routing,
+                    &song.drum_rack,
                     &song.master_strip,
                 ) {
                     self.status = status;
@@ -10173,6 +10205,7 @@ impl App {
         project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
+            &self.song.drum_rack,
             self.fx_target,
         )?
         .order
@@ -10184,6 +10217,7 @@ impl App {
         let Some(rack) = project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
+            &self.song.drum_rack,
             self.fx_target,
         ) else {
             return 0;
@@ -10202,18 +10236,23 @@ impl App {
         let Some(rack) = project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
+            &self.song.drum_rack,
             self.fx_target,
         ) else {
             self.fx_selection = FxRackSelection::Insert;
             return;
         };
-        let index = wrapped_index(self.fx_selection_index(), rack.order.len() + 1, direction);
-        self.fx_selection = rack
-            .order
-            .get(index)
-            .copied()
-            .map(FxRackSelection::Effect)
-            .unwrap_or(FxRackSelection::Insert);
+        let length = rack.order.len() + usize::from(!is_drum_fx_target(self.fx_target));
+        let index = wrapped_index(self.fx_selection_index(), length, direction);
+        self.fx_selection = if is_drum_fx_target(self.fx_target) {
+            FxRackSelection::Effect(rack.order[index.min(rack.order.len() - 1)])
+        } else {
+            rack.order
+                .get(index)
+                .copied()
+                .map(FxRackSelection::Effect)
+                .unwrap_or(FxRackSelection::Insert)
+        };
         self.status.clear();
     }
 
@@ -10222,6 +10261,7 @@ impl App {
         project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
+            &self.song.drum_rack,
             self.fx_target,
         )?
         .effect(id)
@@ -10319,7 +10359,8 @@ impl App {
         };
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        let mut drums = self.song.drum_rack.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("selected effect has a valid rack");
         let Some(spec) = crate::effect_schema::controlled_parameter(effect.kind, control_index)
@@ -10371,6 +10412,7 @@ impl App {
         self.commit_fx_routing(
             rack,
             aux,
+            drums,
             format!(
                 "{} · {} · {mapped:.2} {}",
                 fx_hardware_label(control_index),
@@ -10384,17 +10426,20 @@ impl App {
         &mut self,
         rack: InsertRack,
         aux_routing: ProjectAuxRouting,
+        drum_rack: InsertRack,
         success: String,
     ) -> bool {
-        if let Err(status) = self.publish_fx_routing_runtime(&rack, &aux_routing) {
+        if let Err(status) = self.publish_fx_routing_runtime(&rack, &aux_routing, &drum_rack) {
             self.status = status;
             return false;
         }
         self.song.insert_rack = rack;
         self.song.aux_routing = aux_routing;
+        self.song.drum_rack = drum_rack;
         let selected_exists = project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
+            &self.song.drum_rack,
             self.fx_target,
         )
         .is_some_and(|rack| match self.fx_selection {
@@ -10412,12 +10457,29 @@ impl App {
         &mut self,
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
+        drum_rack: &InsertRack,
     ) -> std::result::Result<(), String> {
         if let Some(reason) = self.audio_graph_edit_blocker() {
             return Err(reason.into());
         }
         if let Err(_error) = aux_routing.validate(rack) {
             return Err("FX INVALID · Project unchanged".into());
+        }
+        if let Err(_error) = crate::audio_graph::validate_drum_rack(drum_rack) {
+            return Err("DRUM FX INVALID · Project unchanged".into());
+        }
+        if is_drum_fx_target(self.fx_target) {
+            if self.playback.is_some()
+                || self.sequencer.status().playing
+                || self.loop_player.status().playing
+                || self.song_previewing
+            {
+                return Err("STOP TRANSPORT · DRUM FX locked".into());
+            }
+            if let Some(host) = self.drum_host.take() {
+                host.all_notes_off();
+                drop(host);
+            }
         }
         if let Some(engine) = self.engine.as_mut() {
             match engine.publish_fx_routing(rack, aux_routing) {
@@ -10434,12 +10496,19 @@ impl App {
         &mut self,
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
+        drum_rack: &InsertRack,
         strip: &crate::master_strip::MasterStripSettings,
     ) -> std::result::Result<(), String> {
         let old_rack = self.song.insert_rack.clone();
         let old_aux = self.song.aux_routing.clone();
         let old_strip = self.song.master_strip.clone();
-        self.publish_fx_routing_runtime(rack, aux_routing)?;
+        self.publish_fx_routing_runtime(rack, aux_routing, drum_rack)?;
+        // Project replacement is a hard ownership boundary: no drum ambience
+        // or delay history may leak from the previous Project.
+        if let Some(host) = self.drum_host.take() {
+            host.all_notes_off();
+            drop(host);
+        }
         let Some(engine) = self.engine.as_mut() else {
             return Ok(());
         };
@@ -10458,8 +10527,13 @@ impl App {
     }
 
     fn add_effect(&mut self) {
+        if is_drum_fx_target(self.fx_target) {
+            self.status = "DRUM FX fixed · bypass REVERB or DELAY for mode".into();
+            return;
+        }
         let original_rack = self.song.insert_rack.clone();
         let original_aux = self.song.aux_routing.clone();
+        let original_drums = self.song.drum_rack.clone();
         let kind = self
             .selectable_effect_kinds(None)
             .first()
@@ -10467,6 +10541,7 @@ impl App {
             .unwrap_or(INSERT_EFFECTS[0]);
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
+        let mut drums = self.song.drum_rack.clone();
         let result = if self.fx_target == 0 {
             aux.next_effect_id(&rack)
                 .and_then(|id| rack.add_with_id(kind, id).map(|()| id))
@@ -10501,12 +10576,14 @@ impl App {
         };
         match result {
             Ok(id) => {
-                let length = project_fx_rack(&rack, &aux, self.fx_target)
+                let length = project_fx_rack(&rack, &aux, &drums, self.fx_target)
                     .map(|rack| rack.order.len())
                     .unwrap_or(0);
                 let index = self.fx_selection_index().min(length.saturating_sub(1));
                 if length > 1 {
-                    if let Some(target) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target) {
+                    if let Some(target) =
+                        project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
+                    {
                         if let Err(_error) = target.move_to(id, index) {
                             self.status = "FX INSERT FAILED · old rack kept".into();
                             return;
@@ -10516,6 +10593,7 @@ impl App {
                 if self.commit_fx_routing(
                     rack,
                     aux,
+                    drums,
                     format!("{} inserted · turn to choose type", effect_kind_label(kind)),
                 ) {
                     self.fx_selection = FxRackSelection::Effect(id);
@@ -10523,6 +10601,7 @@ impl App {
                     self.fx_type_edit = Some(FxTypeEdit {
                         original_rack,
                         original_aux,
+                        original_drums,
                         effect_id: id,
                         provisional: true,
                     });
@@ -10533,17 +10612,22 @@ impl App {
     }
 
     fn remove_effect(&mut self) {
+        if is_drum_fx_target(self.fx_target) {
+            self.status = "DRUM FX fixed · use BYPASS to select mode".into();
+            return;
+        }
         let Some(id) = self.selected_effect_id() else {
             self.status = "FX rack is empty".into();
             return;
         };
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        let result = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        let mut drums = self.song.drum_rack.clone();
+        let result = project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
             .expect("selected effect has a rack")
             .remove(id);
         if is_aux_target(self.fx_target)
-            && project_fx_rack(&rack, &aux, self.fx_target)
+            && project_fx_rack(&rack, &aux, &drums, self.fx_target)
                 .is_some_and(|rack| rack.effects.is_empty())
         {
             aux.clear_send(self.fx_target as u8);
@@ -10554,6 +10638,7 @@ impl App {
                 self.commit_fx_routing(
                     rack,
                     aux,
+                    drums,
                     format!("removed {} #{id}", effect_kind_label(effect.kind)),
                 );
             }
@@ -10562,6 +10647,10 @@ impl App {
     }
 
     fn move_effect(&mut self, direction: i8) {
+        if is_drum_fx_target(self.fx_target) {
+            self.status = "DRUM FX order fixed · REVERB then DELAY".into();
+            return;
+        }
         let Some(id) = self.selected_effect_id() else {
             self.status = "FX rack is empty".into();
             return;
@@ -10573,6 +10662,7 @@ impl App {
             let length = project_fx_rack(
                 &self.song.insert_rack,
                 &self.song.aux_routing,
+                &self.song.drum_rack,
                 self.fx_target,
             )
             .map(|rack| rack.order.len())
@@ -10584,14 +10674,15 @@ impl App {
         }
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        if let Err(_error) = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        let mut drums = self.song.drum_rack.clone();
+        if let Err(_error) = project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
             .expect("selected effect has a rack")
             .move_to(id, destination)
         {
             self.status = "FX MOVE FAILED · old order kept".into();
             return;
         }
-        self.commit_fx_routing(rack, aux, format!("moved FX #{id}"));
+        self.commit_fx_routing(rack, aux, drums, format!("moved FX #{id}"));
     }
 
     fn toggle_effect_bypass(&mut self) {
@@ -10601,7 +10692,8 @@ impl App {
         };
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        let mut drums = self.song.drum_rack.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("rack order was validated");
         effect.bypass = !effect.bypass;
@@ -10609,11 +10701,23 @@ impl App {
         self.commit_fx_routing(
             rack,
             aux,
-            format!("FX #{id} {}", if bypass { "bypassed" } else { "active" }),
+            drums.clone(),
+            if is_drum_fx_target(self.fx_target) {
+                format!(
+                    "DRUM FX · {}",
+                    crate::audio_graph::drum_effect_mode_label(&drums)
+                )
+            } else {
+                format!("FX #{id} {}", if bypass { "bypassed" } else { "active" })
+            },
         );
     }
 
     fn cycle_effect_kind(&mut self, direction: i8) {
+        if is_drum_fx_target(self.fx_target) {
+            self.status = "DRUM FX types fixed · edit parameters or BYPASS".into();
+            return;
+        }
         if let Some(edit) = self.fx_type_edit.clone() {
             let Some(effect) = self.selected_effect() else {
                 return;
@@ -10674,6 +10778,7 @@ impl App {
         let used = project_fx_rack(
             &self.song.insert_rack,
             &self.song.aux_routing,
+            &self.song.drum_rack,
             self.fx_target,
         )
         .into_iter()
@@ -10694,6 +10799,10 @@ impl App {
     }
 
     fn begin_effect_type_edit(&mut self) {
+        if is_drum_fx_target(self.fx_target) {
+            self.status = "DRUM FX types fixed · press BYPASS for mode".into();
+            return;
+        }
         let Some(id) = self.selected_effect_id() else {
             self.add_effect();
             return;
@@ -10701,6 +10810,7 @@ impl App {
         self.fx_type_edit = Some(FxTypeEdit {
             original_rack: self.song.insert_rack.clone(),
             original_aux: self.song.aux_routing.clone(),
+            original_drums: self.song.drum_rack.clone(),
             effect_id: id,
             provisional: false,
         });
@@ -10713,7 +10823,8 @@ impl App {
         };
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        let mut drums = self.song.drum_rack.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("selected effect has a valid rack");
         effect.kind = kind;
@@ -10732,6 +10843,7 @@ impl App {
         if self.commit_fx_routing(
             rack,
             aux,
+            drums,
             format!("TYPE ACTIVE · {}", effect_kind_label(kind)),
         ) {
             self.fx_parameter = 0;
@@ -10754,14 +10866,29 @@ impl App {
         } else {
             "Cancelled · old FX kept"
         };
-        if self.commit_fx_routing(edit.original_rack, edit.original_aux, message.into()) {
+        if self.commit_fx_routing(
+            edit.original_rack,
+            edit.original_aux,
+            edit.original_drums,
+            message.into(),
+        ) {
             self.fx_type_edit = None;
         }
     }
 
     fn cycle_fx_target(&mut self) {
-        self.fx_target = (self.fx_target + 1) % (MAX_AUX_BUSES + 2);
-        self.fx_selection = FxRackSelection::Insert;
+        self.fx_target = (self.fx_target + 1) % FX_TARGET_COUNT;
+        self.fx_selection = if is_drum_fx_target(self.fx_target) {
+            self.song
+                .drum_rack
+                .order
+                .first()
+                .copied()
+                .map(FxRackSelection::Effect)
+                .unwrap_or(FxRackSelection::Insert)
+        } else {
+            FxRackSelection::Insert
+        };
         self.fx_parameter = 0;
         if is_aux_target(self.fx_target)
             && !matches!(
@@ -10803,6 +10930,7 @@ impl App {
             self.commit_fx_routing(
                 self.song.insert_rack.clone(),
                 aux,
+                self.song.drum_rack.clone(),
                 format!("AUX {aux_id} send · OFF"),
             );
             return;
@@ -10815,6 +10943,7 @@ impl App {
         self.commit_fx_routing(
             self.song.insert_rack.clone(),
             aux,
+            self.song.drum_rack.clone(),
             format!("AUX {aux_id} send · {value:.0} dB"),
         );
     }
@@ -10841,6 +10970,7 @@ impl App {
         self.commit_fx_routing(
             self.song.insert_rack.clone(),
             aux,
+            self.song.drum_rack.clone(),
             format!("AUX {aux_id} send · {}", send_point_label(point)),
         );
     }
@@ -10865,6 +10995,7 @@ impl App {
         self.commit_fx_routing(
             self.song.insert_rack.clone(),
             aux,
+            self.song.drum_rack.clone(),
             format!("AUX {aux_id} return · {value:.0} dB"),
         );
     }
@@ -10880,7 +11011,8 @@ impl App {
         };
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        let mut drums = self.song.drum_rack.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("rack order was validated");
         if is_aux_target(self.fx_target)
@@ -10927,6 +11059,7 @@ impl App {
         self.commit_fx_routing(
             rack,
             aux,
+            drums,
             format!("{} · {value:.2} {}", spec.name, spec.unit),
         );
     }
@@ -10971,8 +11104,11 @@ impl App {
                 _ => {}
             }
         }
-        self.fx_edit_original =
-            Some((self.song.insert_rack.clone(), self.song.aux_routing.clone()));
+        self.fx_edit_original = Some((
+            self.song.insert_rack.clone(),
+            self.song.aux_routing.clone(),
+            self.song.drum_rack.clone(),
+        ));
         self.fx_value_editing = true;
         self.fx_numeric_input = None;
         self.status.clear();
@@ -10986,11 +11122,11 @@ impl App {
     }
 
     fn cancel_fx_value_edit(&mut self) {
-        let Some((rack, aux)) = self.fx_edit_original.clone() else {
+        let Some((rack, aux, drums)) = self.fx_edit_original.clone() else {
             self.fx_value_editing = false;
             return;
         };
-        if self.commit_fx_routing(rack, aux, "Cancelled · old FX value kept".into()) {
+        if self.commit_fx_routing(rack, aux, drums, "Cancelled · old FX value kept".into()) {
             self.fx_value_editing = false;
             self.fx_edit_original = None;
             self.fx_numeric_input = None;
@@ -11022,7 +11158,8 @@ impl App {
         };
         let mut rack = self.song.insert_rack.clone();
         let mut aux = self.song.aux_routing.clone();
-        let effect = project_fx_rack_mut(&mut rack, &mut aux, self.fx_target)
+        let mut drums = self.song.drum_rack.clone();
+        let effect = project_fx_rack_mut(&mut rack, &mut aux, &mut drums, self.fx_target)
             .and_then(|rack| rack.effect_mut(id))
             .expect("selected effect has a valid rack");
         let Some(spec) = (if effect.kind == EffectKind::Eq {
@@ -11063,6 +11200,7 @@ impl App {
         if self.commit_fx_routing(
             rack,
             aux,
+            drums,
             format!(
                 "{} · {displayed}",
                 crate::effect_schema::abbreviation(spec.name)
@@ -12896,7 +13034,7 @@ fn perform(
             }
         }
         Action::OpenMasterStrip => {
-            if a.screen == Screen::FxRack && a.fx_target != MAX_AUX_BUSES + 1 {
+            if a.screen == Screen::FxRack && a.fx_target != MASTER_FX_TARGET {
                 a.status = "TARGET MASTER · then open STRIP".into();
                 return false;
             }
@@ -14790,7 +14928,12 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
     a.hits.list = body;
-    let rack = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target);
+    let rack = project_fx_rack(
+        &a.song.insert_rack,
+        &a.song.aux_routing,
+        &a.song.drum_rack,
+        a.fx_target,
+    );
     let rack_length = rack.map(|rack| rack.order.len()).unwrap_or(0);
     let inner_width = usize::from(body.width.saturating_sub(2));
     let inner_height = usize::from(body.height.saturating_sub(2));
@@ -14834,7 +14977,7 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             ),
             inner_width,
         )));
-    } else if a.fx_target > MAX_AUX_BUSES {
+    } else if a.fx_target == MASTER_FX_TARGET {
         if let Some(meter) = a.engine.as_ref().and_then(Engine::master_meter) {
             let peak = meter.output.peak.left.max(meter.output.peak.right);
             let rms = meter.output.rms.left.max(meter.output.rms.right);
@@ -14892,17 +15035,27 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     if insert_selected {
         selected_entry = entries.len();
     }
-    entries.push(Spans::from(Span::styled(
-        crate::ui_text::fit_line(
-            &format!("{}+ INSERT EFFECT", if insert_selected { ">" } else { " " }),
+    if is_drum_fx_target(a.fx_target) {
+        lines.push(Spans::from(crate::ui_text::fit_line(
+            &format!(
+                "MODE {}",
+                crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack)
+            ),
             inner_width,
-        ),
-        if insert_selected {
-            Style::default().fg(Color::Black).bg(Color::Yellow)
-        } else {
-            Style::default().fg(Color::White)
-        },
-    )));
+        )));
+    } else {
+        entries.push(Spans::from(Span::styled(
+            crate::ui_text::fit_line(
+                &format!("{}+ INSERT EFFECT", if insert_selected { ">" } else { " " }),
+                inner_width,
+            ),
+            if insert_selected {
+                Style::default().fg(Color::Black).bg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::White)
+            },
+        )));
+    }
     let visible_entries = inner_height.saturating_sub(lines.len());
     let offset = selected_entry
         .saturating_add(1)
@@ -15745,9 +15898,14 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         );
         return;
     };
-    let effect = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
-        .and_then(|rack| rack.effect(id))
-        .expect("validated rack order");
+    let effect = project_fx_rack(
+        &a.song.insert_rack,
+        &a.song.aux_routing,
+        &a.song.drum_rack,
+        a.fx_target,
+    )
+    .and_then(|rack| rack.effect(id))
+    .expect("validated rack order");
     let controls = crate::effect_schema::controls(effect.kind);
     a.fx_parameter = a.fx_parameter.min(controls.len().saturating_sub(1));
     let inner_width = usize::from(body.width.saturating_sub(2));
@@ -15839,7 +15997,9 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         lines.push(Spans::from(headings));
         lines.push(Spans::from(values));
     }
-    let meter = a.engine.as_ref().and_then(|engine| engine.effect_meter(id));
+    let meter = (!is_drum_fx_target(a.fx_target))
+        .then(|| a.engine.as_ref().and_then(|engine| engine.effect_meter(id)))
+        .flatten();
     let meter_line = if effect.kind == EffectKind::Compressor {
         let gain_reduction_db = if effect.bypass {
             0.0
@@ -16067,9 +16227,14 @@ fn draw_eq_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let Some(id) = a.selected_effect_id() else {
         return;
     };
-    let effect = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, a.fx_target)
-        .and_then(|rack| rack.effect(id))
-        .expect("validated EQ rack order");
+    let effect = project_fx_rack(
+        &a.song.insert_rack,
+        &a.song.aux_routing,
+        &a.song.drum_rack,
+        a.fx_target,
+    )
+    .and_then(|rack| rack.effect(id))
+    .expect("validated EQ rack order");
     let header_state = if effect.bypass { "BYP" } else { "ON" };
     let title = format!(" EQ · {} #{id} · ", fx_target_label(a.fx_target));
     let dirty = if a.project_is_dirty() { "DIRTY" } else { "" };
@@ -16846,10 +17011,15 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 crate::ui_text::label_value(&entry.file, &state, 35)
             }))
             .collect(),
-        OverlayKind::MixEffects => (0..=MAX_AUX_BUSES + 1)
+        OverlayKind::MixEffects => (0..FX_TARGET_COUNT)
             .map(|target| {
-                let effects = project_fx_rack(&a.song.insert_rack, &a.song.aux_routing, target)
-                    .map_or(0, |rack| rack.order.len());
+                let effects = project_fx_rack(
+                    &a.song.insert_rack,
+                    &a.song.aux_routing,
+                    &a.song.drum_rack,
+                    target,
+                )
+                .map_or(0, |rack| rack.order.len());
                 format!("{} · {effects} effect(s)", fx_target_label(target))
             })
             .collect(),
@@ -19978,7 +20148,7 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
             app.status = "UNSAVED PROJECT · turn and press".into();
         }
         ScreenshotSpecialScenario::FxEditorEq => {
-            app.fx_target = MAX_AUX_BUSES + 1;
+            app.fx_target = MASTER_FX_TARGET;
             app.song
                 .aux_routing
                 .master_rack
@@ -23401,7 +23571,7 @@ mod tests {
             let mut a = app(&p);
             a.screen = caller;
             if caller == Screen::FxRack {
-                a.fx_target = MAX_AUX_BUSES + 1;
+                a.fx_target = MASTER_FX_TARGET;
             }
             a.tracker_row = 17;
             a.tracker_track = 3;
@@ -24275,7 +24445,7 @@ mod tests {
     fn fullscreen_eq_owns_all_thirteen_rows_and_renders_the_approved_scale() {
         let p = presets();
         let mut a = app(&p);
-        a.fx_target = MAX_AUX_BUSES + 1;
+        a.fx_target = MASTER_FX_TARGET;
         a.song
             .aux_routing
             .master_rack
@@ -24526,6 +24696,48 @@ mod tests {
         let effect = a.song.insert_rack.effect(compressor).unwrap();
         assert!(effect.parameters["threshold_db"].is_finite());
         a.song.insert_rack.validate().unwrap();
+    }
+
+    #[test]
+    fn drum_fx_target_exposes_four_modes_without_structural_edits() {
+        let p = presets();
+        let mut a = app(&p);
+        a.set_screen(Screen::FxRack);
+        a.fx_target = DRUM_FX_TARGET;
+        let reverb = a.song.drum_rack.order[0];
+        let delay = a.song.drum_rack.order[1];
+        a.fx_selection = FxRackSelection::Effect(reverb);
+        assert_eq!(
+            crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
+            "REVERB"
+        );
+
+        a.toggle_effect_bypass();
+        assert_eq!(
+            crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
+            "OFF"
+        );
+        a.fx_selection = FxRackSelection::Effect(delay);
+        a.toggle_effect_bypass();
+        assert_eq!(
+            crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
+            "DELAY"
+        );
+        a.fx_selection = FxRackSelection::Effect(reverb);
+        a.toggle_effect_bypass();
+        assert_eq!(
+            crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
+            "REVERB + DELAY"
+        );
+
+        let before = a.song.drum_rack.clone();
+        a.add_effect();
+        a.remove_effect();
+        a.begin_effect_type_edit();
+        assert_eq!(a.song.drum_rack, before);
+        let frame = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&frame).contains("MODE REVERB + DELAY"));
+        assert_eq!(row_text(&frame, 12).chars().count(), 40);
     }
 
     #[test]
@@ -24948,6 +25160,12 @@ mod tests {
             a.song.aux_routing.sends[1].level_db
         );
         let second_aux_effect = a.selected_effect_id().unwrap();
+        a.cycle_fx_target();
+        assert_eq!(a.fx_target, DRUM_FX_TARGET);
+        assert_eq!(
+            crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
+            "REVERB"
+        );
         a.cycle_fx_target();
         a.fx_add_kind = 0;
         a.add_effect();

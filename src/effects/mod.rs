@@ -200,9 +200,21 @@ impl Processor {
         }
     }
 
+    fn memory_bytes(&self) -> usize {
+        match self {
+            Self::Delay(effect) => effect.memory_bytes(),
+            Self::Reverb(effect) => effect.memory_bytes(),
+            _ => 0,
+        }
+    }
+
     fn set_bypass(&mut self, bypass: bool, fade_samples: u32, wet_only_tail: bool) -> bool {
         match self {
             Self::Delay(effect) => effect.set_bypass(bypass, fade_samples, wet_only_tail),
+            Self::Reverb(effect) => {
+                effect.set_bypass(bypass, fade_samples);
+                false
+            }
             Self::Compressor(effect) => {
                 effect.set_bypass(bypass);
                 false
@@ -290,6 +302,10 @@ impl EffectSlot {
 
     pub const fn kind(&self) -> EffectKind {
         self.kind
+    }
+
+    pub fn memory_bytes(&self) -> usize {
+        self.processor.memory_bytes()
     }
 
     /// Apply a compatible persisted instance while retaining recursive DSP

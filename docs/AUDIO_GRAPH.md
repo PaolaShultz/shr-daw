@@ -16,7 +16,7 @@ managed instrument -> SOURCE inserts -------------------------------\
        +----------------------> PRE send gain  -> wet AUX 1/2 -> return -+
 owned WAV loop ------------------------------------------------------+-> dry sum
 configured stereo JACK input --------------------------------------/
-in-process SHR Drums stereo bus ------------------------------------/
+in-process SHR Drums -> Project DRUMS Reverb -> Delay --------------/
 
 dry sum -> MASTER inserts -> live master level
         -> fixed MASTER STRIP (INPUT/TONE/GLUE/COLOR/IMAGE/LOUD)
@@ -46,7 +46,7 @@ a -18 dB post-insert send. Return changes also use 3 dB steps and wrap from
 
 One SHR-owned JACK client contains the current stereo graph. Effects are
 internal processors, not separate JACK clients or processes. That client has
-three stereo input boundaries and one stereo output boundary to the
+four stereo input boundaries and one stereo output boundary to the
 runtime-resolved pair. The saved preferred `audio.output` pair,
 ordered internal pairs, and final headphone pair remain machine configuration.
 Exact JACK and hardware
@@ -54,7 +54,9 @@ names come from configuration, never Rust constants.
 
 The graph client instantiates `ManagedEngine`, `InternalDrums`, `LoopPlayer`,
 and `LiveInput`. SHR Drums is a library hosted in-process by SHR-DAW, not a
-second managed synth process. The loop remains its own rendering client; when the final bus is
+second managed synth process. Its fixed Project drum rack runs in that host
+before either the graph boundary or direct playback, so drum effects remain
+correct when the owned graph is disabled. The loop remains its own rendering client; when the final bus is
 active its output is moved off direct playback and into the owned sum. The raw
 synchronized multitrack recorder remains a separate capture client. External
 instruments return only through the configured stereo mix. There is no hardware
@@ -85,9 +87,11 @@ alive until client deactivation returns.
 
 ## Project data and typed graph model
 
-Project formats 10–12 store the managed-source `InsertRack`, `ProjectAuxRouting`,
-and fixed `MasterStripSettings` as strict JSON inside the versioned `.shsong`
-line format.
+Project formats 10–13 store the managed-source `InsertRack`,
+`ProjectAuxRouting`, and fixed `MasterStripSettings` as strict JSON inside the
+versioned `.shsong` line format. Format 13 adds the fixed internal-drum rack.
+Format 12 and older Projects keep their exact page routing and migrate a
+restrained family-specific Reverb-plus-bypassed-Delay rack in memory.
 Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
 rack and adds empty aux/master routing; format 3 retains explicit routes.
 Unknown current fields, malformed rack
@@ -344,6 +348,32 @@ CPU bars are whole-core `/proc/stat` load and deliberately cannot diagnose
 per-process DSP cost, callback deadlines, scheduling jitter, or xruns; those
 belong to the explicit checkpoint counters and JACK evidence.
 
+### Internal drum ambience and delay
+
+The `DRUMS` target is deliberately a fixed two-slot rack: Reverb, then Delay.
+The musician changes parameters or bypass, but cannot add, remove, retype, or
+reorder these slots. Their bypass states name four unambiguous modes: `OFF`,
+`REVERB`, `REVERB + DELAY`, and `DELAY`. Delay-only never enters the reverb;
+combined mode places the rhythmic echo after the diffuse ambience with
+restrained wet defaults.
+
+Reverb is a four-line Hadamard feedback-delay network with two input all-pass
+diffusers per channel, independent 0–200 ms pre-delay, RT60 decay, acoustic
+line-size scaling, high-frequency damping, input low cut, and stereo width.
+Pre-delay does not alter feedback or decay. Every accepted feedback gain is
+below one. A tail is cleared after 1.5 times its selected RT60 plus 0.4 seconds
+of propagation allowance, giving a 12.4-second design maximum at the 8-second
+RT60 limit. Bypass fades the input and dry/processed mix over 5 ms, then clears
+hidden state.
+
+Delay has a two-second-per-channel storage limit, feedback limited to 92%,
+feedback-path low-pass filtering, smoothed free/synchronised time changes, and
+stereo, ping-pong, or mono-to-stereo routing. The drum host supplies the active
+Pattern tempo without allocation or locking in the callback. Ordinary tracker
+Stop drains voices and ambience naturally. Panic, All Notes Off, Project or
+drum-effect replacement, route-host replacement, and shutdown clear recursive
+state deterministically.
+
 ### Effect parameter schemas
 
 These stable names and physical ranges are the persistence and control
@@ -366,8 +396,9 @@ listed in their current order.
 | Gate | `threshold_db` -80..0 (-48); `hysteresis_db` 0..24 (6); `range_db` -80..0 (-60); `attack_ms` 0.1..100 (2); `hold_ms` 0..500 (40); `release_ms` 5..2000 (150) |
 | Crusher | `bit_depth` 4..16 (12); `hold_factor` 1..32 (1); `dither`; `mix_percent` 0..100 (100) |
 
-Delay sync divisions 0..7 are 1/16, 1/8, 1/4, 1/2, 1, 2, 4, and 8
-beats. The source and master racks allow all 13 types. The normal aux editor
+Delay sync divisions 0..7 are the note values 1/16, 1/8, 1/4, 1/2, 1, 2, 4,
+and 8 (0.25 through 32 quarter-note beats). The source and master racks allow
+all 13 types. The normal aux editor
 offers Delay, Reverb, Chorus, Flanger, and Phaser and forces their wet/dry
 values; conditioning effects can exist in a loaded aux chain only when the
 chain also contains one of those wet generators.

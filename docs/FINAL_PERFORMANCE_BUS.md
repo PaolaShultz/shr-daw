@@ -19,16 +19,17 @@ SHR Drums in-process stereo bus ------------------------------------/
     -> configured JACK playback L/R
 ```
 
-The logical Drums, Loop, and external-input bus strips do not gain individual insert
-racks, aux sends, pan, solo, automation, or waveform editing. Their bus
-controls remain a smoothed level and mute. Loop Mix applies its four
+The logical Loop and external-input bus strips do not gain individual insert
+racks, aux sends, pan, solo, automation, or waveform editing. Drums has only
+its fixed Reverb-then-Delay rack before this bus; it does not become a general
+mixer strip. Their bus controls remain a smoothed level and mute. Loop Mix applies its four
 slot-local level/filter/mute controls before this one logical source. The
 managed source keeps its existing Project-owned
 insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
 basic four-source summing headroom. These live performance controls are not
-Project data; current Project format 12 stores effect racks/routing and the
+Project data; current Project format 13 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
 Pattern, but not these final-bus levels or mutes. JACK assignments remain
 machine configuration.

@@ -311,7 +311,7 @@ them.
 The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback
 because no topology is rebuilt. Final recording rejects those edits. When the
-owned graph is disabled, the same edits update only Project format 12 state.
+owned graph is disabled, the same edits update only Project format 13 state.
 The true-peak limiter remains active whenever the final bus is active and has
 no bypass. Exact ranges and latency are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
@@ -587,7 +587,7 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 12
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 13
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
@@ -596,8 +596,9 @@ every cell field, exactly four optional Loop Mix slots, explicit software
 engine/instrument identity, and optional external profile metadata. The Project
 continues to own the source insert rack, aux routing, master rack, fixed MASTER
 STRIP, final-bus routing, recording configuration, and unrelated Project
-state, plus the Project-wide tonic/mode, selected drum kit, and OFF, FOLLOW KEY,
-or MANUAL per-piece drum tuning. A
+state, plus the Project-wide tonic/mode, selected drum kit, fixed
+Reverb-then-Delay drum rack, and OFF, FOLLOW KEY, or MANUAL per-piece drum
+tuning. A
 format-4-or-newer `default` target plus four `default`
 column markers is the canonical portable/unassigned state; it is not channel
 zero, mute, or disabled. Versions 0 and 1 migrate with empty effects routing;
@@ -624,7 +625,8 @@ tempo-command values as deterministic integer hundredths; `10050` means
 100.50 BPM. Format 10 infers automatic Note Off ON for melodic pages and OFF
 for percussion pages; format 11 persists the per-page choice. Format 12 adds
 the Project key, selected drum kit, tuning state, and internal-drum page target.
-Explicit save writes format 12. Unknown newer
+Format 13 adds the drum rack. Format 12 and older routing remains unchanged and
+receives restrained family defaults in memory. Explicit save writes format 13. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 

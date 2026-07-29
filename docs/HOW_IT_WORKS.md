@@ -433,7 +433,8 @@ Source and master racks can use all 13 effect types:
   tempo divisions, feedback, stereo ratio, tone, wet/dry mix, and optional
   tail-on-bypass.
 - **Reverb** offers room, plate, and hall voicings with predelay, decay, size,
-  damping, input low cut, width, and wet/dry balance.
+  damping, input low cut, width, and wet/dry balance. Pre-delay is independent
+  of decay; the diffuse FDN has no single room/echo repeat.
 - **Chorus** uses a short modulated delay to add width and gentle pitch motion;
   rate, depth, stereo phase, feedback, mix, and dry level shape the result.
 - **Flanger** uses a much shorter modulated delay and signed feedback for
@@ -455,6 +456,12 @@ would double the source. If every wet generator on an aux is bypassed, its
 return fades to silence. A delay with tail-on-bypass may stop accepting new
 input while its already-created wet echoes drain; serial conditioning can
 continue to pass an already-wet signal or feed another active wet generator.
+
+Internal drums own one fixed Reverb-then-Delay Project rack before their direct
+or graph output boundary. Bypassing the two slots exposes `OFF`, `REVERB`,
+`REVERB + DELAY`, and `DELAY` without changing routing. Tracker Stop drains
+this rack naturally; Panic, Project replacement, route-host replacement, and
+shutdown clear it.
 
 Every processor publishes bounded input/output peak and RMS plus clip and
 non-finite state. Compressor editing also exposes its detector-derived gain
@@ -595,17 +602,19 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 12 persists the complete tracker state, integer-hundredths
+Project format 13 persists the complete tracker state, integer-hundredths
 Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
-effects routing, one Project-global fixed MASTER STRIP, per-page entry
+effects routing including the internal-drum rack, one Project-global fixed
+MASTER STRIP, per-page entry
 mode/anchor, automatic Note Off choice, drum-role/choke overrides,
 explicit software engine/instrument identities, and optional external profile
 metadata, Project tonic/mode, selected drum kit, and drum tuning. Format 7's
 former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
-audio or rewrites the file; only an explicit save writes format 12. Format 10
+audio or rewrites the file; only an explicit save writes format 13. Format 12
+keeps its routing and gains safe family drum-effect defaults in memory. Format 10
 infers the Note Off choice from the percussion flag. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3

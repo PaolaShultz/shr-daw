@@ -16,6 +16,7 @@ pub const MAX_EFFECTS: usize = 16;
 pub const MAX_NODES: usize = 32;
 pub const MAX_EDGES: usize = 64;
 pub const MAX_REVERBS: usize = 2;
+pub const DRUM_EFFECT_COUNT: usize = 2;
 pub const MAX_CALLBACK_FRAMES: u32 = 4_096;
 pub const MAX_EFFECT_MEMORY_BYTES: usize = 16 * 1024 * 1024;
 
@@ -251,6 +252,148 @@ impl InsertRack {
 
     pub fn effect_mut(&mut self, id: EffectId) -> Option<&mut EffectInstance> {
         self.effects.iter_mut().find(|effect| effect.id == id)
+    }
+}
+
+/// The internal drum bus always keeps one Reverb followed by one Delay.
+/// Bypass states express OFF, REVERB, REVERB + DELAY, and DELAY without
+/// discarding either effect's Project-owned parameters.
+pub fn default_drum_rack(kit_id: &str, first_id: EffectId) -> Result<InsertRack, GraphError> {
+    let delay_id = first_id
+        .checked_add(1)
+        .filter(|id| *id != 0)
+        .ok_or_else(|| GraphError::new("drum effect ID space exhausted"))?;
+    let mut rack = InsertRack::default();
+    rack.add_with_id(EffectKind::Reverb, first_id)?;
+    rack.add_with_id(EffectKind::Delay, delay_id)?;
+    let family = if kit_id.starts_with("big-rock") {
+        0
+    } else if kit_id.starts_with("experimental-noise") || kit_id.starts_with("industrial-metal") {
+        1
+    } else {
+        2
+    };
+    let reverb = rack
+        .effect_mut(first_id)
+        .expect("new drum reverb is present");
+    let reverb_values = match family {
+        // Natural short/medium acoustic room with attack left in front.
+        0 => [
+            ("type", 0.0),
+            ("predelay_ms", 14.0),
+            ("decay_seconds", 1.1),
+            ("size_percent", 42.0),
+            ("damping_percent", 58.0),
+            ("input_low_cut_hz", 120.0),
+            ("width_percent", 85.0),
+            ("wet_percent", 30.0),
+            ("dry_percent", 94.0),
+        ],
+        // Dark, diffuse hall. Delay remains separately configured and bypassed.
+        1 => [
+            ("type", 2.0),
+            ("predelay_ms", 28.0),
+            ("decay_seconds", 3.2),
+            ("size_percent", 85.0),
+            ("damping_percent", 78.0),
+            ("input_low_cut_hz", 180.0),
+            ("width_percent", 100.0),
+            ("wet_percent", 24.0),
+            ("dry_percent", 92.0),
+        ],
+        // Tight electronic room with only a small amount of ambience.
+        _ => [
+            ("type", 0.0),
+            ("predelay_ms", 4.0),
+            ("decay_seconds", 0.45),
+            ("size_percent", 20.0),
+            ("damping_percent", 65.0),
+            ("input_low_cut_hz", 160.0),
+            ("width_percent", 65.0),
+            ("wet_percent", 10.0),
+            ("dry_percent", 97.0),
+        ],
+    };
+    for (name, value) in reverb_values {
+        reverb.parameters.insert(name.into(), value);
+    }
+    let delay = rack
+        .effect_mut(delay_id)
+        .expect("new drum delay is present");
+    delay.bypass = true;
+    let delay_values = match family {
+        0 => [
+            ("mode", 0.0),
+            ("tempo_sync", 0.0),
+            ("division", 1.0),
+            ("time_ms", 375.0),
+            ("feedback_percent", 32.0),
+            ("stereo_ratio", 1.125),
+            ("tone_hz", 7_000.0),
+            ("wet_percent", 28.0),
+        ],
+        1 => [
+            ("mode", 1.0),
+            ("tempo_sync", 0.0),
+            ("division", 2.0),
+            ("time_ms", 500.0),
+            ("feedback_percent", 48.0),
+            ("stereo_ratio", 1.0),
+            ("tone_hz", 2_500.0),
+            ("wet_percent", 24.0),
+        ],
+        _ => [
+            ("mode", 1.0),
+            ("tempo_sync", 1.0),
+            ("division", 0.0),
+            ("time_ms", 250.0),
+            ("feedback_percent", 28.0),
+            ("stereo_ratio", 1.0),
+            ("tone_hz", 6_000.0),
+            ("wet_percent", 15.0),
+        ],
+    };
+    for (name, value) in delay_values {
+        delay.parameters.insert(name.into(), value);
+    }
+    validate_drum_rack(&rack)?;
+    Ok(rack)
+}
+
+pub fn validate_drum_rack(rack: &InsertRack) -> Result<(), GraphError> {
+    rack.validate()?;
+    if rack.effects.len() != DRUM_EFFECT_COUNT
+        || rack.order.len() != DRUM_EFFECT_COUNT
+        || rack
+            .effect(rack.order[0])
+            .is_none_or(|effect| effect.kind != EffectKind::Reverb)
+        || rack
+            .effect(rack.order[1])
+            .is_none_or(|effect| effect.kind != EffectKind::Delay)
+    {
+        return Err(GraphError::new(
+            "drum effects must be one Reverb followed by one Delay",
+        ));
+    }
+    Ok(())
+}
+
+pub fn drum_effect_mode_label(rack: &InsertRack) -> &'static str {
+    let reverb = rack
+        .order
+        .first()
+        .and_then(|id| rack.effect(*id))
+        .is_some_and(|effect| effect.kind == EffectKind::Reverb && !effect.bypass);
+    let delay = rack
+        .order
+        .get(1)
+        .and_then(|id| rack.effect(*id))
+        .is_some_and(|effect| effect.kind == EffectKind::Delay && !effect.bypass);
+    match (reverb, delay) {
+        (false, false) => "OFF",
+        (true, false) => "REVERB",
+        (true, true) => "REVERB + DELAY",
+        (false, true) => "DELAY",
     }
 }
 
@@ -1165,6 +1308,39 @@ mod tests {
             rack.add(EffectKind::Utility).unwrap();
         }
         assert!(rack.add(EffectKind::Utility).is_err());
+    }
+
+    #[test]
+    fn fixed_drum_racks_have_restrained_family_defaults_and_four_explicit_modes() {
+        for (kit, expected_type, maximum_wet) in [
+            ("big-rock-muldjord", 0.0, 30.0),
+            ("experimental-noise-muldjord", 2.0, 24.0),
+            ("electronic-house", 0.0, 10.0),
+        ] {
+            let mut rack = default_drum_rack(kit, 40).unwrap();
+            validate_drum_rack(&rack).unwrap();
+            assert_eq!(rack.order, [40, 41]);
+            assert_eq!(rack.effect(40).unwrap().parameters["type"], expected_type);
+            assert!(rack.effect(40).unwrap().parameters["wet_percent"] <= maximum_wet);
+            assert_eq!(drum_effect_mode_label(&rack), "REVERB");
+
+            rack.effect_mut(40).unwrap().bypass = true;
+            assert_eq!(drum_effect_mode_label(&rack), "OFF");
+            rack.effect_mut(41).unwrap().bypass = false;
+            assert_eq!(drum_effect_mode_label(&rack), "DELAY");
+            rack.effect_mut(40).unwrap().bypass = false;
+            assert_eq!(drum_effect_mode_label(&rack), "REVERB + DELAY");
+        }
+    }
+
+    #[test]
+    fn drum_rack_rejects_reordered_or_retyped_processors() {
+        let mut rack = default_drum_rack("electronic-house", 50).unwrap();
+        rack.order.swap(0, 1);
+        assert!(validate_drum_rack(&rack).is_err());
+        rack.order.swap(0, 1);
+        rack.effect_mut(51).unwrap().kind = EffectKind::Chorus;
+        assert!(validate_drum_rack(&rack).is_err());
     }
 
     #[test]

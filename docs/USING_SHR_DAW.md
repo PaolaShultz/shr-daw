@@ -117,13 +117,16 @@ active engine.
 ## Effects and routing
 
 Open Effects from Home, Playback **SYS** → **FX**, or FT2's page tools; Back
-returns to the caller. `TARGET` selects SOURCE, AUX 1, AUX 2, or MASTER.
+returns to the caller. `TARGET` selects SOURCE, AUX 1, AUX 2, DRUMS, or MASTER.
 
 Source effects process the managed instrument in series. Aux sends make
 parallel wet-only copies, and the master rack processes the complete final-bus
-sum. Project edits remain available with the graph disabled, but direct audio
-does not process or meter them. With the graph active, stop transport and all
-recording before changing FX. See [How SHR-DAW
+sum. DRUMS is a fixed Reverb-then-Delay rack whose bypass states are shown as
+`OFF`, `REVERB`, `REVERB + DELAY`, or `DELAY`; it processes internal drums even
+on direct routing. Other Project rack edits remain available with the graph
+disabled, but direct audio does not process or meter them. Stop transport
+before changing the drum rack, and with the graph active stop transport and all
+recording before changing graph FX. See [How SHR-DAW
 works](HOW_IT_WORKS.md#the-managed-audio-graph) for placement, effect choices,
 bypass, and routing.
 

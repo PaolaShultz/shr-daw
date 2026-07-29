@@ -788,6 +788,8 @@ pub fn convert(smf: &Smf, project_name: &str) -> Result<ImportedProject> {
         project_key: Default::default(),
         drum_kit: "electronic-house".into(),
         drum_tuning: Default::default(),
+        drum_rack: crate::audio_graph::default_drum_rack("electronic-house", 1)
+            .expect("factory drum effects are valid"),
         steps_per_beat,
         gate_percent: 80,
         insert_rack: Default::default(),

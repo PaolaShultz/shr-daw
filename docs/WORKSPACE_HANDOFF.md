@@ -179,6 +179,32 @@ renderers. `git diff --check` passed. Source and private Project inspection were
 sufficient, so no JACK server, synth, MIDI transmission, playback, recording,
 audible test, or physical hardware test was started.
 
+The current effects-stack repair removes SHR Drums' mislabeled 333 ms
+cross-feedback “room” line and keeps ambience in a Project-owned fixed
+Reverb-then-Delay rack hosted in-process by SHR-DAW. Project format 13 persists
+that rack; format 12 and older preserve their page routing and migrate
+restrained family defaults in memory. DRUMS exposes `OFF`, `REVERB`, `REVERB +
+DELAY`, and `DELAY`; ordinary tracker Stop drains naturally, while Panic,
+Project/effect-host replacement, and shutdown clear state. Reverb is the
+existing bounded diffused four-line FDN with independent pre-delay and a
+finite 1.5× RT60 plus 0.4-second deadline. Delay sync labels now use the
+correct quarter-note beat values.
+
+The 2026-07-29 Rust 1.85 pass ran locked checks in both repositories and only
+focused engine/factory, reverb, delay, drum-host, graph, migration, routing,
+one-shot, coexistence, and FX UI tests. All finished passing after correcting
+two test fixtures exposed by the new tempo mode and DRUMS target. Fresh private
+review kits are ignored below
+`../shr-drums/user/effects-stack-kits-20260729/`; 12 deterministic 48 kHz
+stereo 24-bit comparison WAVs and `measurements.txt` are ignored below
+`user/effects-stack-review-20260729/`. The owner then approved an audible
+Big-Rock-only dry, reverb, delay, and combined comparison after the Rock room
+was made more evident; those final six-second renders and measurements are
+ignored below `user/big-rock-effect-audition-20260729-v2/`. JACK was already
+running and the temporary review client connected only its own stereo outputs,
+then disconnected cleanly. No JACK server, synth, MIDI transmission,
+recording, release build, or physical route change was started.
+
 Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical
 meters as three groups of six and columns 21–40 show the active TAKE, CHANNEL,

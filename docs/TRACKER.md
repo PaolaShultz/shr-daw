@@ -486,12 +486,12 @@ Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 12
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 13
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
 overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
-source
-insert rack, two aux routes, and master rack. Portable
+the fixed internal-drum Reverb-then-Delay rack, source insert rack, two aux
+routes, and master rack. Portable
 pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
 external-device profiles are stored separately from raw output/channel/bank/
@@ -501,14 +501,15 @@ distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 12. Formats 0–9 migrate
+not rewrite an old file; explicit save writes format 13. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.
 Format 10 pages infer automatic Note Off as ON for melodic pages and OFF for
 percussion pages; format 11 persists the explicit per-page choice. Formats
 0–11 migrate with C major, the starter-kit identity, tuning OFF, and their
-original page routes unchanged.
+original page routes unchanged. Format 12 preserves those values and routing
+while adding restrained family-specific drum-effect defaults in memory.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.
