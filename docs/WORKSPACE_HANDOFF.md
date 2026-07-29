@@ -586,6 +586,16 @@ actively searching, and zero RAM while idle, suitable for the planned 2 GB Pi
 Rust stable 1.97.1, `gh`, `xmllint` (`libxml2-utils`), `shellcheck`, `zk`, and
 `fzf` are installed. Rust 1.85 remains locally available only for an explicit
 historical comparison; it is not the development or validation default.
+The system JavaScript tools use Node.js 24.18.0 LTS from the root-owned
+NodeSource `node_24.x` repository, npm 12.0.1, and the root-owned Codex CLI
+0.146.0. Codex startup update checks are disabled in the private user
+configuration because an unprivileged updater cannot replace that system
+installation; update it deliberately with
+`sudo npm install -g npm@latest @openai/codex@latest`. The restored broken
+`~/.local/bin/codex` link to the former `/home/patch` checkout is retained only
+below ignored `user/system-update-20260729/`; `/home/patch` and the `patch`
+account do not exist on this installation. Pillow is not installed and the
+retired screenshot path is not part of current validation.
 Use the scoped validation policy in `AGENTS.md`; historical full
 suites, release builds, benchmarks, and screenshot batches are evidence in
 their dated documents, not instructions to repeat them. No current physical or
