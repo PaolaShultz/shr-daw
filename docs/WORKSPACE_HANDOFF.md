@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.4.2`.
+corrected starting point; the current checked-progress version is `0.4.3`.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
@@ -179,7 +179,7 @@ renderers. `git diff --check` passed. Source and private Project inspection were
 sufficient, so no JACK server, synth, MIDI transmission, playback, recording,
 audible test, or physical hardware test was started.
 
-The current effects-stack repair removes SHR Drums' mislabeled 333 ms
+Version `0.4.3` removes SHR Drums' mislabeled 333 ms
 cross-feedback “room” line and keeps ambience in a Project-owned fixed
 Reverb-then-Delay rack hosted in-process by SHR-DAW. Project format 13 persists
 that rack; format 12 and older preserve their page routing and migrate
