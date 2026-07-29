@@ -26,8 +26,8 @@ a bottom NVMe base so its GPIO display can occupy the top of the Pi; it does not
 use a top-mounted M.2 HAT. Return here only after `findmnt` proves that the
 running root filesystem is on the NVMe.
 
-The supported family is Debian-based Linux. The current stable Rust toolchain
-selected by `rust-toolchain.toml`, a C build toolchain, `pkg-config`, Python 3,
+The supported family is Debian-based Linux. The exact Rust toolchain selected
+by `rust-toolchain.toml`, a C build toolchain, `pkg-config`, Python 3,
 ripgrep, ALSA development/runtime tools, and JACK2 are required to build and
 diagnose the complete installation. A stale distribution Rust package does not
 set the project's compiler direction; the installer uses the official per-user
@@ -62,8 +62,9 @@ The installer:
 - detects the current login's `rtprio` and `memlock`; if they are inadequate,
   a separate default-no prompt can add the user to `audio` and create a
   helper-owned limits file only when no distribution policy already suffices;
-- installs or updates the official current stable Rust toolchain selected by
-  the repository, runs the locked tests, and builds the locked release version;
+- installs the exact official Rust toolchain selected by the repository, runs
+  the locked tests, and builds the locked release version; newer stable
+  releases are adopted deliberately by changing the repository pin;
 - installs commands, templates, the 21 allowlisted presets, four allowlisted
   CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
   device/controller profiles, drum data, documentation, and

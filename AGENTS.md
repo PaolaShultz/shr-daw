@@ -127,21 +127,22 @@ Their launcher stays inside the overlay border; the bottom reveal remains the
 shared status row. Overlays own transient selection only and do not move,
 replace, or clear that row.
 
-Use the repository-selected current stable Rust toolchain from
-`rust-toolchain.toml`. The distribution's Rust or Cargo version must not
-constrain project direction: if the selected toolchain or its required
-components are missing or stale, install or update them with `rustup` and
-continue. `Cargo.toml`'s `rust-version` is a minimum accepted version, not an
-instruction to build with that version. Never change code, dependencies, or
-project policy merely to accommodate an obsolete system toolchain. Use an
-older compiler only for an explicitly requested compatibility or historical
-reproduction check, isolated from the normal development toolchain.
+Use the exact repository-selected Rust toolchain from `rust-toolchain.toml`.
+Newer stable releases are adopted deliberately by updating that pin, never
+silently through a moving channel. The distribution's Rust or Cargo version
+must not constrain project direction: if the selected toolchain or its required
+components are missing, install them with `rustup` and continue.
+`Cargo.toml`'s `rust-version` is a minimum accepted version, not an instruction
+to build with that version. Never change code, dependencies, or project policy
+merely to accommodate an obsolete system toolchain. Use an older compiler only
+for an explicitly requested compatibility or historical reproduction check,
+isolated from the normal development toolchain.
 
-At the start of a combined validation, release, or performance pass, update
-the selected stable channel and record the exact compiler used:
+At the start of a combined validation, release, or performance pass, install
+the exact repository pin if needed and record the exact compiler used:
 
 ```sh
-rustup update stable
+rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
 rustc -vV
 cargo check --locked
 ```

@@ -3,6 +3,7 @@ mod audio_graph_client;
 pub mod audio_graph_runtime;
 mod audio_recorder;
 mod chord;
+mod compiler_bench;
 mod config;
 mod control;
 mod controller_learn;
@@ -80,6 +81,9 @@ fn real_main() -> Result<()> {
     }
     if args.first().map(String::as_str) == Some("master-strip-bench") {
         return master_strip_benchmark_command(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("compiler-ab-bench") {
+        return compiler_ab_benchmark_command(&args[1..]);
     }
     let runtime = config::RuntimeConfig::load(&state.join("shsynth.conf"))?;
     let preset_dir = preset_dir(&runtime)?;
@@ -701,6 +705,7 @@ fn usage() {
            recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]\n\
            final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]\n\
            master-strip-bench [CALLBACKS] [RATE]\n\
+           compiler-ab-bench KIT_DIR [CALLBACKS]\n\
          \n\
          Help: help, -h, --help\n\
          Compatibility aliases: logs; pads detect; casio status|dry-run;\n\
@@ -813,7 +818,7 @@ fn final_mix_stress_command(args: &[String]) -> Result<()> {
         callback_frames,
     )?;
     println!(
-        "SYNTHETIC FINAL MIX PASS · 3 stereo sources · {} Hz · {} frames/callback",
+        "SYNTHETIC FINAL MIX PASS · 4 stereo sources · {} Hz · {} frames/callback",
         report.sample_rate, report.callback_frames
     );
     println!(
@@ -887,6 +892,42 @@ fn master_strip_benchmark_command(args: &[String]) -> Result<()> {
             row.stats.p99_microseconds,
             row.stats.maximum_microseconds,
             row.stats.mean_deadline_percent,
+        );
+    }
+    Ok(())
+}
+
+fn compiler_ab_benchmark_command(args: &[String]) -> Result<()> {
+    let kit_directory = PathBuf::from(
+        args.first()
+            .context("usage: shr compiler-ab-bench KIT_DIR [CALLBACKS]")?,
+    );
+    let callbacks = args
+        .get(1)
+        .map(|value| value.parse::<usize>())
+        .transpose()?
+        .unwrap_or(2_000);
+    if args.len() > 2 {
+        bail!("usage: shr compiler-ab-bench KIT_DIR [CALLBACKS]");
+    }
+    for row in compiler_bench::run(&kit_directory, callbacks)? {
+        println!(
+            "AB BENCH · {} · {} frames · {} callbacks · mean {:.3}us · median {:.3}us · p95 {:.3}us · p99 {:.3}us · p99.9 {:.3}us · max {:.3}us · deadline {:.3}% · misses {} · finite {} · peak {:.9} · rms {:.9} · hash {:016x}",
+            row.workload,
+            row.callback_frames,
+            row.callbacks,
+            row.mean_microseconds,
+            row.median_microseconds,
+            row.p95_microseconds,
+            row.p99_microseconds,
+            row.p999_microseconds,
+            row.maximum_microseconds,
+            row.mean_deadline_percent,
+            row.deadline_misses,
+            row.finite,
+            row.output_peak,
+            row.output_rms,
+            row.output_hash,
         );
     }
     Ok(())

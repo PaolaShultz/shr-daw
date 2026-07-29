@@ -2,6 +2,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TOOLCHAIN="$(
+  sed -nE \
+    's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)"[[:space:]]*$/\1/p' \
+    "$ROOT/rust-toolchain.toml"
+)"
+[[ "$TOOLCHAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  printf 'rust-toolchain.toml must contain one exact numeric channel pin.\n' >&2
+  exit 1
+}
 INSTALL_DEPS=true
 INIT_CONFIG=true
 ASSUME_YES=false
@@ -83,7 +92,7 @@ else
   printf '%s\n' '  1–2. dependency installation and FluidSynth service masking are skipped.'
 fi
 printf '%s\n' \
-  '  3. Current stable Rust is installed or updated for the current user.' \
+  "  3. Exact repository Rust ${TOOLCHAIN} is installed for the current user." \
   '  4. locked tests and a locked release build run in this checkout.' \
   '  5. sudo installs public application files below /usr/local.'
 if $INIT_CONFIG; then
@@ -179,13 +188,13 @@ if $PLAN_ONLY; then
 fi
 
 if ! command -v rustup >/dev/null; then
-  printf 'Installing the official minimal current stable Rust toolchain for the current user.\n'
+  printf 'Installing rustup with repository toolchain %s for the current user.\n' "$TOOLCHAIN"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
-    sh -s -- -y --profile minimal --default-toolchain stable
+    sh -s -- -y --profile minimal --default-toolchain "$TOOLCHAIN"
   export PATH="$HOME/.cargo/bin:$PATH"
 fi
-rustup toolchain install stable --profile minimal --component rustfmt,clippy
-CARGO=(rustup run stable cargo)
+rustup toolchain install "$TOOLCHAIN" --profile minimal --component rustfmt,clippy
+CARGO=(rustup run "$TOOLCHAIN" cargo)
 
 cd "$ROOT"
 "${CARGO[@]}" test --locked

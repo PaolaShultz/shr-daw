@@ -1924,7 +1924,7 @@ pub struct FinalMixStressReport {
     pub output_file_equal: bool,
 }
 
-/// JACK-free, non-audible soak of the production three-source faders, final
+/// JACK-free, non-audible soak of the production four-source faders, final
 /// fixed strip/meter, callback recorder handoff, stereo writer, and publication.
 pub fn run_final_mix_stress(
     destination: &Path,
@@ -1973,7 +1973,7 @@ pub fn run_final_mix_stress(
     )?;
     let capture = recorder.capture_handle();
     recorder.start(Some("stress"))?;
-    let mut sources: [Vec<StereoFrame>; 3] =
+    let mut sources: [Vec<StereoFrame>; crate::final_bus::SOURCE_COUNT] =
         std::array::from_fn(|_| vec![StereoFrame::SILENCE; callback_frames]);
     let mut output = vec![StereoFrame::SILENCE; callback_frames];
     let callbacks =
@@ -1995,10 +1995,12 @@ pub fn run_final_mix_stress(
             bus.process_source(source, &mut sources[index][..count]);
         }
         for (frame, output_frame) in output.iter_mut().take(count).enumerate() {
-            *output_frame = StereoFrame::new(
-                sources[0][frame].left + sources[1][frame].left + sources[2][frame].left,
-                sources[0][frame].right + sources[1][frame].right + sources[2][frame].right,
-            );
+            *output_frame = sources.iter().fold(StereoFrame::SILENCE, |sum, source| {
+                StereoFrame::new(
+                    sum.left + source[frame].left,
+                    sum.right + source[frame].right,
+                )
+            });
         }
         bus.process_final(&mut output[..count]);
         capture.capture(&output[..count]);
@@ -2083,7 +2085,8 @@ fn final_stress_source(source: usize, frame: u64) -> StereoFrame {
     let (left_prime, right_prime, scale) = match source {
         0 => (257, 263, 0.20),
         1 => (509, 521, 0.16),
-        _ => (997, 991, 0.12),
+        2 => (997, 991, 0.12),
+        _ => (1499, 1487, 0.10),
     };
     StereoFrame::new(
         ((frame % left_prime) as f32 / (left_prime - 1) as f32 - 0.5) * scale,
@@ -3114,7 +3117,7 @@ mod tests {
     }
 
     #[test]
-    fn jack_free_final_mix_stress_uses_three_sources_and_verifies_full_pcm() {
+    fn jack_free_final_mix_stress_uses_four_sources_and_verifies_full_pcm() {
         let base =
             std::env::temp_dir().join(format!("shr-final-stress-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);

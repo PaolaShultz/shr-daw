@@ -545,7 +545,7 @@ fn validate_stereo_boundary(ports: &[String; 2], description: &str) -> Result<()
     Ok(())
 }
 
-fn managed_graph_definition(
+pub(crate) fn managed_graph_definition(
     sample_rate: u32,
     maximum_callback_frames: u32,
     destinations: &[String; 2],

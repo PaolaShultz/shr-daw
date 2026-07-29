@@ -113,7 +113,7 @@ final-bus mixer separate.
 
 ![Final performance bus with source, limiter, meter, and recording status](docs/images/shr-daw-performance-meter.png)
 
-Control and record the opt-in three-source final bus, or inspect the passive
+Control and record the opt-in four-source final bus, or inspect the passive
 meter view while the graph is disabled.
 
 ### MASTER STRIP

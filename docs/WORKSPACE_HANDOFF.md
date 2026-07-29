@@ -206,6 +206,27 @@ running and the temporary review client connected only its own stereo outputs,
 then disconnected cleanly. No JACK server, synth, MIDI transmission,
 recording, release build, or physical route change was started.
 
+The native Raspberry Pi 5 compiler A/B is complete and owned by
+`docs/RUST_COMPILER_AB_2026-07-29.md`. Identical release source and lockfile
+built successfully with Rust 1.85.0/LLVM 19 and Rust 1.97.1/LLVM 22. The newer
+compiler produced a 7.2% smaller binary and the ordered clean build finished
+40.7% sooner with 6.5% lower peak RSS, though cache order prevents attributing
+the full build-time change to the compiler. Runtime was mixed: standalone SHR
+Drums remained effectively unchanged, while the fixed final strip regressed
+about 87% in representative mean time and complete graph/final-bus workloads
+regressed 17–100% depending on boundary. All paired output was bit-identical.
+The repository now pins exact Rust `1.97.1`; newer stable releases require a
+deliberate pin update. Ignored raw build, runtime, output, and system evidence
+remains below `user/compiler-ab-20260729/`. No JACK lifecycle, connection,
+physical route, MIDI, synth, audible playback, or hardware setting changed.
+
+The same pass repaired the non-audible `final-mix-stress` fixture after it
+exposed a stale three-source allocation against the current four-source bus.
+The helper now derives the production source count, supplies a distinct drum
+source, and sums every source before the fixed strip and WAV equality check.
+Its focused Rust 1.97.1 test passed with full PCM equality and zero
+drops/overflows.
+
 The normal private kit directory now contains exactly the approved Big Rock
 (Muldjord), Experimental Noise (Muldjord), and Electronic House packages.
 Previous local kit entries are recoverable below
@@ -583,9 +604,10 @@ actively searching, and zero RAM while idle, suitable for the planned 2 GB Pi
 
 ## Installed tools and current validation boundary
 
-Rust stable 1.97.1, `gh`, `xmllint` (`libxml2-utils`), `shellcheck`, `zk`, and
-`fzf` are installed. Rust 1.85 remains locally available only for an explicit
-historical comparison; it is not the development or validation default.
+Exact Rust 1.97.1 is the repository pin and is installed with `gh`, `xmllint`
+(`libxml2-utils`), `shellcheck`, `zk`, and `fzf`. Rust 1.85 remains locally
+available only for an explicit historical comparison; it is not the
+development or validation default.
 The system JavaScript tools use Node.js 24.18.0 LTS from the root-owned
 NodeSource `node_24.x` repository, npm 12.0.1, and the root-owned Codex CLI
 0.146.0. Codex startup update checks are disabled in the private user

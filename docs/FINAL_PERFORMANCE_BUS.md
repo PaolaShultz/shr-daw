@@ -143,7 +143,7 @@ Maintainers can exercise the production hardware-independent path with:
 shr final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]
 ```
 
-It uses three distinguishable stereo sources, the production faders/strip,
+It uses four distinguishable stereo sources, the production faders/strip,
 bounded callback handoff, stereo writer, and full PCM equality check without
 opening JACK, starting a synth, transmitting MIDI, or producing sound. See
 [maintainer helpers](MAINTAINER_HELPERS.md#synthetic-final-mix-stress).

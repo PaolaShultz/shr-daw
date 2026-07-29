@@ -26,8 +26,9 @@ assumptions.
 | `generate_demo_songs.py` | Reproduce or validate cleared public-domain demos | `--write` replaces only tracked demo outputs; normal mode is read-only and rejects changes/extras |
 | `capture-minilab-midi.sh` | Passively capture and label MiniLab 3 MIDI evidence | Temporarily stops and restores `amidiminder`; writes one unique log below `/tmp` by default |
 | `shr recorder-stress` | Non-audibly exercise the production multistem buffer/writer without JACK | Creates one unique synthetic take below an explicit destination |
-| `shr final-mix-stress` | Non-audibly exercise the three-source final DSP and stereo writer without JACK | Creates one unique 24-bit stereo stress WAV below an explicit destination |
+| `shr final-mix-stress` | Non-audibly exercise the four-source final DSP and stereo writer without JACK | Creates one unique 24-bit stereo stress WAV below an explicit destination |
 | `shr master-strip-bench` | Compare neutral/active production strip callback cost and isolated 4×/8× interpolation without JACK | Read-only deterministic CPU work; creates no files |
+| `shr compiler-ab-bench` | Compare compiler-built production graph, drum, effects, and final-bus callback work without JACK | Reads one explicit private kit directory; creates no files |
 
 None of the setup, tuning, preset, or screenshot helpers starts JACK, a synth
 engine, MIDI playback, or an audible test. `local.sh` is the exception only in
@@ -320,10 +321,12 @@ and installs that one small tools package with its runtime recommendations so
 recommendations for the main package group is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
-smaller TimGM bank. It installs or updates the official minimal current stable
-Rust toolchain for the current user, adds the repository-required rustfmt and
-Clippy components, and runs Cargo through `rustup run stable cargo`. It never
-selects an older compiler merely because the distribution package is stale.
+smaller TimGM bank. It extracts the exact numeric channel from
+`rust-toolchain.toml`, installs that official minimal Rust toolchain for the
+current user with the repository-required rustfmt and Clippy components, and
+runs Cargo through `rustup run CHANNEL cargo`. A newer stable release is
+adopted by changing the reviewed repository pin; an older distribution
+compiler never redirects development.
 
 It then runs locked tests, creates a locked release build, installs the files
 with `sudo make install-files`, and normally opens `shr-setup`.
@@ -602,7 +605,7 @@ Environment:
 - `SHR_SCREENSHOT_COMMAND` replaces the complete manifest-producing command;
   it is parsed with shell-style quoting but run directly, not through a shell.
 
-The default command uses Cargo with the repository-selected current stable
+The default command uses Cargo with the exact repository-selected
 toolchain and runs `shr screenshots`. Rust renders the real application `draw`
 function into 40×13 ratatui test buffers seeded by the deterministic
 `ScreenshotScenario` and `ScreenshotSpecialScenario` fixtures. The renderer
@@ -850,7 +853,7 @@ seconds, 48000 Hz, and 128 frames/callback. Bounds are 1–86400 seconds, a
 supported rate of 44100 or 48000 Hz, and 16–4096 callback frames.
 
 The command does not load runtime configuration, open/start JACK, register a
-port, transmit MIDI, start a synth, or produce sound. It feeds three
+port, transmit MIDI, start a synth, or produce sound. It feeds four
 deterministic, distinguishable stereo sources through the production source and
 master smoothing, fixed strip and linked true-peak limiter, final meter,
 callback-boundary capture,
@@ -895,3 +898,31 @@ This is a hardware-independent release-mode DSP comparison. It is not an xrun,
 JACK scheduling, full-duplex, temperature, listening, or physical-interface
 result. The owning evidence and algorithm choices are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
+
+## Compiler A/B callback benchmark
+
+### Invocation
+
+```sh
+shr compiler-ab-bench KIT_DIR [CALLBACKS]
+```
+
+`KIT_DIR` is an explicit directory containing the installed private SHR Drums
+kits. The benchmark requires the `electronic-house` kit. The default is 2,000
+measured callbacks per workload and the minimum is 1,000. Each workload first
+warms 500 callbacks.
+
+At 48 kHz and both 64 and 128 frames, the command measures the current
+four-source dry graph, the maximally enabled `phase4-full` graph, SHR Drums dry,
+Reverb, Delay, combined Reverb-then-Delay, and combined drums plus a
+deterministic melodic source through the fixed final bus. It reports mean,
+median, p95, p99, p99.9, maximum, deadline use/misses, finite output, peak, RMS,
+and a hash of every output sample.
+
+The command loads the named kit before timing, then performs only deterministic
+in-process callback work. It does not load runtime configuration, open JACK,
+start a synth, transmit MIDI, pace playback, write audio, or produce sound. It
+exists only to run identical production boundaries from separately built
+compiler artifacts; it is not a physical-interface, scheduler, listening, or
+JACK-xrun test. The owning result is
+[Rust compiler A/B on Raspberry Pi 5](RUST_COMPILER_AB_2026-07-29.md).

@@ -64,12 +64,12 @@ struct CallbackData {
     lost: AtomicBool,
 }
 
-struct DrumEffectStack {
+pub(crate) struct DrumEffectStack {
     slots: Vec<EffectSlot>,
 }
 
 impl DrumEffectStack {
-    fn compile(
+    pub(crate) fn compile(
         rack: &crate::audio_graph::InsertRack,
         sample_rate: u32,
         meter_window: usize,
@@ -105,7 +105,7 @@ impl DrumEffectStack {
         }
     }
 
-    fn process(&mut self, frames: &mut [EffectFrame]) {
+    pub(crate) fn process(&mut self, frames: &mut [EffectFrame]) {
         for slot in &mut self.slots {
             slot.process(frames);
         }

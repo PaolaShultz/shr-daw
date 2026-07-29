@@ -85,6 +85,9 @@ configuration, or the architecture contracts.
 - [Raspberry Pi 4 and Pi 5 performance comparison](PI4_PI5_PERFORMANCE_COMPARISON_2026-07-28.md)
   — dated build, DSP, memory, NVMe, PMU, thermal, and comparison evidence at
   version 0.4.2.
+- [Rust compiler A/B on Raspberry Pi 5](RUST_COMPILER_AB_2026-07-29.md) —
+  controlled Rust 1.85.0 versus 1.97.1 build and callback results, plus the
+  exact adopted toolchain pin.
 - [Preset audit](PRESET_AUDIT.md) — cleared public synthv1 bank review.
 - [Drum-pattern audit](DRUM_PATTERN_AUDIT.md) — bundled rhythm structure,
   limitations, and listening shortlist.

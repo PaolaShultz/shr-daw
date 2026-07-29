@@ -3992,8 +3992,8 @@ boot-order recovery, and base-specific PCIe settings. The SHR-DAW assembly uses
 a bottom NVMe base so its GPIO display can occupy the top of the Pi; it does not
 use a top-mounted M.2 HAT. Return here only after <code>findmnt</code> proves that the
 running root filesystem is on the NVMe.</p>
-<p>The supported family is Debian-based Linux. The current stable Rust toolchain
-selected by <code>rust-toolchain.toml</code>, a C build toolchain, <code>pkg-config</code>, Python 3,
+<p>The supported family is Debian-based Linux. The exact Rust toolchain selected
+by <code>rust-toolchain.toml</code>, a C build toolchain, <code>pkg-config</code>, Python 3,
 ripgrep, ALSA development/runtime tools, and JACK2 are required to build and
 diagnose the complete installation. A stale distribution Rust package does not
 set the project's compiler direction; the installer uses the official per-user
@@ -4023,8 +4023,9 @@ the FluidSynth executable available to SHR;</li>
 <li>detects the current login's <code>rtprio</code> and <code>memlock</code>; if they are inadequate,
 a separate default-no prompt can add the user to <code>audio</code> and create a
 helper-owned limits file only when no distribution policy already suffices;</li>
-<li>installs or updates the official current stable Rust toolchain selected by
-the repository, runs the locked tests, and builds the locked release version;</li>
+<li>installs the exact official Rust toolchain selected by the repository, runs
+the locked tests, and builds the locked release version; newer stable
+releases are adopted deliberately by changing the repository pin;</li>
 <li>installs commands, templates, the 21 allowlisted presets, four allowlisted
 CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
 device/controller profiles, drum data, documentation, and
@@ -6906,7 +6907,7 @@ and the current AudioBox-era configuration are not an MR18 pass.</p>
 <p>Maintainers can exercise the production hardware-independent path with:</p>
 <pre><code class="language-sh">shr final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]
 </code></pre>
-<p>It uses three distinguishable stereo sources, the production faders/strip,
+<p>It uses four distinguishable stereo sources, the production faders/strip,
 bounded callback handoff, stereo writer, and full PCM equality check without
 opening JACK, starting a synth, transmitting MIDI, or producing sound. See
 <a href="#doc-maintainer_helpers--synthetic-final-mix-stress">maintainer helpers</a>.</p>
@@ -9964,6 +9965,473 @@ microSD-to-NVMe speedup, untuned-versus-tuned Pi 5 behavior, connected 64-frame
 stability, physical-interface xruns, MR18 or recording hardware, listening
 quality, wall power, and long enclosure/ambient thermal behavior.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
+<details class="document" id="doc-rust_compiler_ab_2026-07-29" data-source="docs/RUST_COMPILER_AB_2026-07-29.md" data-kind="Dated evidence"><summary><span class="document-title" role="heading" aria-level="4">Rust compiler A/B on Raspberry Pi 5</span><span class="document-summary">Controlled Rust 1.85.0 versus 1.97.1 build and callback results, plus the exact adopted toolchain pin.</span></summary><div class="document-body"><div class="document-meta"><span>Dated evidence</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/RUST_COMPILER_AB_2026-07-29.md" target="_blank" rel="noopener noreferrer external">View docs/RUST_COMPILER_AB_2026-07-29.md source</a></div><p>This is a short native compiler comparison, not a release soak or physical
+audio acceptance. It answers whether Rust 1.97.1/LLVM 22 improves the same
+current SHR-DAW workload relative to Rust 1.85.0/LLVM 19, then records the exact
+repository toolchain adopted after the comparison.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--conclusion" tabindex="-1">Conclusion<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--conclusion" aria-label="Link to Conclusion">#</a></h4>
+<p>The result is <strong>mixed by workload, with a clear regression in the final audio
+path</strong>:</p>
+<ul>
+<li>the ordered clean Rust 1.97.1 build finished 40.7% sooner, used 6.5% less peak
+RSS, and produced a 7.2% smaller executable;</li>
+<li>standalone SHR Drums dry/Reverb/Delay/combined callback medians and p99 were
+effectively unchanged, generally within about 2%;</li>
+<li>work containing the fixed MASTER STRIP regressed materially: isolated strip
+mean time rose about 87%, the complete dry graph rose about 86–100% by median,
+the maximally enabled graph rose about 30–41%, and drum-plus-melody final-bus
+work rose about 17–19%; and</li>
+<li>every paired workload produced bit-identical output across the two
+compilers. The maximum absolute and RMS sample differences are therefore
+exactly zero.</li>
+</ul>
+<p>Rust 1.97.1 is adopted as the exact repository pin as requested. That adoption
+does not turn the runtime regression into a speed improvement; future compiler
+changes should rerun this short comparison deliberately.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--compared-source-and-compilers" tabindex="-1">Compared source and compilers<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--compared-source-and-compilers" aria-label="Link to Compared source and compilers">#</a></h4>
+<p>Both release artifacts used:</p>
+<ul>
+<li>SHR-DAW base commit
+<code>0ea7cc787a1f624b9eb415b2a5a5d3fde5a1dc5c</code>;</li>
+<li><code>Cargo.lock</code> SHA-256
+<code>6417550918d91f415ce9e7b62a8d402abc2c2ef10f42cf1699de4fb470323418</code>;</li>
+<li>SHR Drums commit
+<code>856cc86d64baaa3511ecbd630da4a2d504e0eb8a</code>;</li>
+<li>the same small uncommitted <code>compiler-ab-bench</code> harness, which calls the
+existing production processors without changing their settings;</li>
+<li>the existing release profile: stripped output, full LTO, and one codegen
+unit; and</li>
+<li>separate empty targets below
+<code>$SHSYNTH_USER_DIR/compiler-ab-20260729/target-rust-1.85.0/</code> and
+<code>target-rust-1.97.1/</code>.</li>
+</ul>
+<p>The final-mix fixture repair, exact toolchain pin, and documentation edits were
+made only after the compared artifacts existed. They are not part of one side
+of the A/B.</p>
+<table>
+<thead>
+<tr>
+<th>Compiler</th>
+<th>Exact identity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rust 1.85.0</td>
+<td><code>rustc 1.85.0 (4d91de4e4 2025-02-17)</code>; Cargo <code>1.85.0 (d73d2caf9 2024-12-31)</code>; LLVM <code>19.1.7</code>; AArch64 GNU host</td>
+</tr>
+<tr>
+<td>Rust 1.97.1</td>
+<td><code>rustc 1.97.1 (8bab26f4f 2026-07-14)</code>; Cargo <code>1.97.1 (c980f4866 2026-06-30)</code>; LLVM <code>22.1.6</code>; AArch64 GNU host</td>
+</tr>
+</tbody>
+</table>
+<p>Rust 1.85.0 used Cargo's <code>--ignore-rust-version</code> only for this historical
+experiment. The tracked minimum remains Rust 1.97.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--machine-and-method" tabindex="-1">Machine and method<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--machine-and-method" aria-label="Link to Machine and method">#</a></h4>
+<p>The machine was a Raspberry Pi 5 Model B Rev 1.1 with 2 GB RAM, NVMe root,
+Debian 13.6, and a PREEMPT <code>6.18.34+rpt-rpi-2712</code> AArch64 kernel. All four CPUs
+used the performance governor at 2.4 GHz. CPU 3 remained isolated for the
+already-running JACK server; runtime commands were pinned to CPU 0, so the
+measured process could not migrate. JACK remained untouched at 48 kHz, 128
+frames, three periods, RT priority 95, and CPU 3. No port or physical route was
+opened or changed.</p>
+<p>Before work, no Cargo, rustc, benchmark, render, synth, or competing worker was
+active. The runtime sequence used five complete runs per compiler in
+interleaved order rather than completing one compiler first. Each row warmed
+500 callbacks and measured 2,000 at both 64 and 128 frames. The separate strip
+command used five interleaved runs of 5,000 callbacks per profile. Recorded
+runtime snapshots stayed at 2.4 GHz, 55.4–59.8 °C, and firmware throttle state
+<code>0x0</code>.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--clean-builds" tabindex="-1">Clean builds<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--clean-builds" aria-label="Link to Clean builds">#</a></h4>
+<p>Each build used <code>/usr/bin/time -v</code>, <code>--release</code>, <code>--locked</code>, the same
+environment/features, and its own empty <code>CARGO_TARGET_DIR</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th style="text-align:right">Rust 1.85.0</th>
+<th style="text-align:right">Rust 1.97.1</th>
+<th style="text-align:right">1.97.1 change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wall time</td>
+<td style="text-align:right">254.71 s</td>
+<td style="text-align:right">151.03 s</td>
+<td style="text-align:right">−40.7%</td>
+</tr>
+<tr>
+<td>User time</td>
+<td style="text-align:right">297.03 s</td>
+<td style="text-align:right">182.50 s</td>
+<td style="text-align:right">−38.6%</td>
+</tr>
+<tr>
+<td>System time</td>
+<td style="text-align:right">13.02 s</td>
+<td style="text-align:right">4.74 s</td>
+<td style="text-align:right">−63.6%</td>
+</tr>
+<tr>
+<td>Peak RSS</td>
+<td style="text-align:right">1,445,264 KiB</td>
+<td style="text-align:right">1,351,152 KiB</td>
+<td style="text-align:right">−6.5%</td>
+</tr>
+<tr>
+<td>Major faults</td>
+<td style="text-align:right">42,063</td>
+<td style="text-align:right">1,957</td>
+<td style="text-align:right">descriptive only</td>
+</tr>
+<tr>
+<td>Minor faults</td>
+<td style="text-align:right">516,151</td>
+<td style="text-align:right">566,774</td>
+<td style="text-align:right">+9.8%</td>
+</tr>
+<tr>
+<td>Filesystem input blocks</td>
+<td style="text-align:right">1,974,696</td>
+<td style="text-align:right">458,872</td>
+<td style="text-align:right">descriptive only</td>
+</tr>
+<tr>
+<td>Filesystem output blocks</td>
+<td style="text-align:right">251,456</td>
+<td style="text-align:right">327,232</td>
+<td style="text-align:right">+30.1%</td>
+</tr>
+<tr>
+<td>Reported process swaps</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">unchanged</td>
+</tr>
+<tr>
+<td>Stripped executable</td>
+<td style="text-align:right">4,524,496 bytes</td>
+<td style="text-align:right">4,199,264 bytes</td>
+<td style="text-align:right">−7.2%</td>
+</tr>
+</tbody>
+</table>
+<p>The old executable SHA-256 is
+<code>82b5ee0b6dd8a74f1f5e256fe7d662eda321f0faf3886ff4e774c1b42d526191</code>;
+the new executable SHA-256 is
+<code>909c0e8ab5fe8c0486c3d53220b61b6bfece1c7e5d5c0256b2ac6e5b73024ef6</code>.</p>
+<p>The 1.97.1 build ran second. Its much lower major-fault/input count shows that
+filesystem cache order helped it, so the clean-build difference is useful
+turnaround evidence but is not isolated enough to call the entire 40.7% a
+compiler speedup.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--controlled-callback-comparison" tabindex="-1">Controlled callback comparison<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--controlled-callback-comparison" aria-label="Link to Controlled callback comparison">#</a></h4>
+<p>Values below are the median across five runs of each run's median and p99.
+Change is Rust 1.97.1 relative to 1.85.0; positive timing is slower. <code>Worst</code>
+keeps the largest observed maximum across the five runs.</p>
+<table>
+<thead>
+<tr>
+<th>Workload</th>
+<th style="text-align:right">Frames</th>
+<th style="text-align:right">Median old → new</th>
+<th style="text-align:right">Change</th>
+<th style="text-align:right">p99 old → new</th>
+<th style="text-align:right">Change</th>
+<th style="text-align:right">Worst max old / new</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dry four-source graph + final strip</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">51.018 → 94.999 µs</td>
+<td style="text-align:right">+86.2%</td>
+<td style="text-align:right">81.407 → 126.203 µs</td>
+<td style="text-align:right">+55.0%</td>
+<td style="text-align:right">132.962 / 176.481 µs</td>
+<td>regression</td>
+</tr>
+<tr>
+<td>Dry four-source graph + final strip</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">101.870 → 203.239 µs</td>
+<td style="text-align:right">+99.5%</td>
+<td style="text-align:right">134.351 → 248.887 µs</td>
+<td style="text-align:right">+85.3%</td>
+<td style="text-align:right">185.258 / 307.238 µs</td>
+<td>regression</td>
+</tr>
+<tr>
+<td><code>phase4-full</code> graph + final strip</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">139.073 → 195.535 µs</td>
+<td style="text-align:right">+40.6%</td>
+<td style="text-align:right">196.166 → 242.369 µs</td>
+<td style="text-align:right">+23.6%</td>
+<td style="text-align:right">250.887 / 274.368 µs</td>
+<td>regression</td>
+</tr>
+<tr>
+<td><code>phase4-full</code> graph + final strip</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">302.108 → 392.516 µs</td>
+<td style="text-align:right">+29.9%</td>
+<td style="text-align:right">342.794 → 436.497 µs</td>
+<td style="text-align:right">+27.3%</td>
+<td style="text-align:right">872.808 / 510.793 µs</td>
+<td>regression</td>
+</tr>
+<tr>
+<td>SHR Drums dry</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">367.275 → 359.552 µs</td>
+<td style="text-align:right">−2.1%</td>
+<td style="text-align:right">424.108 → 419.182 µs</td>
+<td style="text-align:right">−1.2%</td>
+<td style="text-align:right">1,320.805 / 989.882 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>SHR Drums dry</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">728.643 → 722.828 µs</td>
+<td style="text-align:right">−0.8%</td>
+<td style="text-align:right">786.790 → 778.383 µs</td>
+<td style="text-align:right">−1.1%</td>
+<td style="text-align:right">861.234 / 842.252 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>SHR Drums Reverb</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">197.813 → 197.720 µs</td>
+<td style="text-align:right">0.0%</td>
+<td style="text-align:right">244.591 → 242.980 µs</td>
+<td style="text-align:right">−0.7%</td>
+<td style="text-align:right">304.071 / 300.146 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>SHR Drums Reverb</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">399.071 → 396.960 µs</td>
+<td style="text-align:right">−0.5%</td>
+<td style="text-align:right">443.811 → 440.792 µs</td>
+<td style="text-align:right">−0.7%</td>
+<td style="text-align:right">506.329 / 493.366 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>SHR Drums Delay</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">363.664 → 360.052 µs</td>
+<td style="text-align:right">−1.0%</td>
+<td style="text-align:right">414.015 → 411.293 µs</td>
+<td style="text-align:right">−0.7%</td>
+<td style="text-align:right">496.477 / 483.125 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>SHR Drums Delay</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">728.791 → 722.328 µs</td>
+<td style="text-align:right">−0.9%</td>
+<td style="text-align:right">784.401 → 774.643 µs</td>
+<td style="text-align:right">−1.2%</td>
+<td style="text-align:right">1,505.803 / 1,061.991 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>SHR Drums Reverb + Delay</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">198.702 → 197.813 µs</td>
+<td style="text-align:right">−0.4%</td>
+<td style="text-align:right">243.183 → 243.554 µs</td>
+<td style="text-align:right">+0.2%</td>
+<td style="text-align:right">1,058.288 / 294.294 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>SHR Drums Reverb + Delay</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">399.442 → 397.442 µs</td>
+<td style="text-align:right">−0.5%</td>
+<td style="text-align:right">441.682 → 441.367 µs</td>
+<td style="text-align:right">−0.1%</td>
+<td style="text-align:right">6,405.413 / 504.866 µs</td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td>Drums + melody + final bus</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">258.183 → 302.035 µs</td>
+<td style="text-align:right">+17.0%</td>
+<td style="text-align:right">302.775 → 342.979 µs</td>
+<td style="text-align:right">+13.3%</td>
+<td style="text-align:right">365.238 / 393.793 µs</td>
+<td>regression</td>
+</tr>
+<tr>
+<td>Drums + melody + final bus</td>
+<td style="text-align:right">128</td>
+<td style="text-align:right">511.700 → 610.958 µs</td>
+<td style="text-align:right">+19.4%</td>
+<td style="text-align:right">553.552 → 640.680 µs</td>
+<td style="text-align:right">+15.7%</td>
+<td style="text-align:right">629.440 / 737.143 µs</td>
+<td>regression</td>
+</tr>
+</tbody>
+</table>
+<p>All 140 rows (14 boundaries × five runs × two compilers) were finite. There
+were no 1.97.1 deadline misses. Rust 1.85.0 had one 6.405 ms maximum in the
+128-frame combined drum-effects row while its run median and p99 remained
+399.442 and 441.682 µs; this is retained as a scheduler/descheduling outlier,
+not a steady DSP cost or a new-compiler win.</p>
+<p>Whole-command median RSS was 5,792 KiB for 1.85.0 and 6,160 KiB for 1.97.1.
+Median involuntary context switches were 1,382 and 1,458 respectively.</p>
+<h5 id="doc-rust_compiler_ab_2026-07-29--isolated-master-strip" tabindex="-1">Isolated MASTER STRIP<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--isolated-master-strip" aria-label="Link to Isolated MASTER STRIP">#</a></h5>
+<table>
+<thead>
+<tr>
+<th>Frames/profile</th>
+<th style="text-align:right">Mean old → new</th>
+<th style="text-align:right">Change</th>
+<th style="text-align:right">p99 old → new</th>
+<th style="text-align:right">Change</th>
+<th style="text-align:right">Worst max old / new</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>64 neutral</td>
+<td style="text-align:right">53.784 → 100.586 µs</td>
+<td style="text-align:right">+87.0%</td>
+<td style="text-align:right">93.203 → 125.388 µs</td>
+<td style="text-align:right">+34.5%</td>
+<td style="text-align:right">133.055 / 207.369 µs</td>
+</tr>
+<tr>
+<td>64 active</td>
+<td style="text-align:right">53.912 → 100.685 µs</td>
+<td style="text-align:right">+86.8%</td>
+<td style="text-align:right">93.055 → 137.351 µs</td>
+<td style="text-align:right">+47.6%</td>
+<td style="text-align:right">128.110 / 193.147 µs</td>
+</tr>
+<tr>
+<td>128 neutral</td>
+<td style="text-align:right">107.599 → 201.257 µs</td>
+<td style="text-align:right">+87.0%</td>
+<td style="text-align:right">144.351 → 245.368 µs</td>
+<td style="text-align:right">+70.0%</td>
+<td style="text-align:right">193.683 / 299.498 µs</td>
+</tr>
+<tr>
+<td>128 active</td>
+<td style="text-align:right">107.801 → 201.411 µs</td>
+<td style="text-align:right">+86.8%</td>
+<td style="text-align:right">130.462 → 244.387 µs</td>
+<td style="text-align:right">+87.3%</td>
+<td style="text-align:right">193.721 / 311.887 µs</td>
+</tr>
+<tr>
+<td>4× interpolation, 128</td>
+<td style="text-align:right">20.781 → 38.905 µs</td>
+<td style="text-align:right">+87.2%</td>
+<td style="text-align:right">47.962 → 66.463 µs</td>
+<td style="text-align:right">+38.6%</td>
+<td style="text-align:right">81.351 / 96.925 µs</td>
+</tr>
+<tr>
+<td>8× interpolation, 128</td>
+<td style="text-align:right">31.749 → 77.881 µs</td>
+<td style="text-align:right">+145.3%</td>
+<td style="text-align:right">58.315 → 116.295 µs</td>
+<td style="text-align:right">+99.4%</td>
+<td style="text-align:right">86.443 / 170.480 µs</td>
+</tr>
+</tbody>
+</table>
+<p>The agreement between the isolated strip and graph/final-bus rows localizes
+the important regression to work containing the fixed final processor. This
+pass does not attempt a compiler-backend diagnosis.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--output-equivalence" tabindex="-1">Output equivalence<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--output-equivalence" aria-label="Link to Output equivalence">#</a></h4>
+<p>Every compiler/workload/buffer combination repeated one stable 64-bit hash
+across all five runs, and the old/new hashes matched. Peaks and RMS values also
+matched to all printed digits. That is stronger than a tolerance comparison:
+the f32 output samples were bit-identical, so maximum absolute difference and
+RMS difference are both <code>0.0</code>.</p>
+<p>The existing final-mix stress command initially panicked before processing
+because its synthetic fixture still allocated three source buffers after the
+production bus gained SHR Drums as a fourth source. The post-measurement repair
+uses the production <code>SOURCE_COUNT</code>, adds a distinguishable fourth source, and
+sums every source. Its focused Rust 1.97.1 test passed with full PCM equality,
+zero drops, and zero overflows. This was a stale fixture boundary, not an A/B
+output difference.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--separate-historical-comparison" tabindex="-1">Separate historical comparison<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--separate-historical-comparison" aria-label="Link to Separate historical comparison">#</a></h4>
+<p>This table is <strong>source-plus-toolchain evolution</strong>, not a controlled compiler
+effect. The dated rows came from earlier repository states and, for the graph,
+a Raspberry Pi 4 and connected JACK workload.</p>
+<table>
+<thead>
+<tr>
+<th>Workload</th>
+<th style="text-align:right">Historical Rust 1.85 result</th>
+<th style="text-align:right">Current Rust 1.97.1 result</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pi 5 MASTER STRIP 64 neutral mean</td>
+<td style="text-align:right">50.552 µs median on 2026-07-28</td>
+<td style="text-align:right">100.586 µs</td>
+<td>Current result is about 99% slower; source and measurement revision also advanced</td>
+</tr>
+<tr>
+<td>Pi 5 MASTER STRIP 128 active mean</td>
+<td style="text-align:right">99.687 µs median on 2026-07-28</td>
+<td style="text-align:right">201.411 µs</td>
+<td>Current result is about 102% slower; not compiler-only</td>
+</tr>
+<tr>
+<td>Pi 4 connected <code>phase4-full</code>, 64 mean</td>
+<td style="text-align:right">158.527 µs on 2026-07-19</td>
+<td style="text-align:right">197.554 µs offline median mean</td>
+<td>Current workload is about 25% slower despite newer Pi; it now includes four sources and the fixed final strip</td>
+</tr>
+<tr>
+<td>Pi 4 connected <code>phase4-full</code>, 128 mean</td>
+<td style="text-align:right">313.572 µs on 2026-07-19</td>
+<td style="text-align:right">396.077 µs offline median mean</td>
+<td>Current workload is about 26% slower; source, machine, and harness differ</td>
+</tr>
+</tbody>
+</table>
+<p>The controlled tables above, not this historical table, establish the compiler
+effect.</p>
+<h4 id="doc-rust_compiler_ab_2026-07-29--raw-evidence-and-limits" tabindex="-1">Raw evidence and limits<a class="heading-anchor" href="#doc-rust_compiler_ab_2026-07-29--raw-evidence-and-limits" aria-label="Link to Raw evidence and limits">#</a></h4>
+<p>Ignored raw evidence is below
+<code>$SHSYNTH_USER_DIR/compiler-ab-20260729/</code>:</p>
+<ul>
+<li><code>build/</code>: both Cargo transcripts and <code>/usr/bin/time -v</code> records;</li>
+<li><code>runtime/</code>: every raw compiler/strip run, time record, and TSV summary;</li>
+<li><code>system/</code>: per-run frequency, temperature, throttle, memory, and swap
+snapshots;</li>
+<li><code>target-rust-1.85.0/</code> and <code>target-rust-1.97.1/</code>: both isolated artifacts; and</li>
+<li><code>validation-final-mix-test.log</code>: the focused post-repair PCM-equality test.</li>
+</ul>
+<p>These are ordinary pinned-CPU, non-real-time processes. They establish
+production DSP cost and deterministic output, not JACK xrun behavior,
+real-time scheduling, connected 64-frame stability, physical playback,
+listening quality, or interface behavior. The configured JACK period was 128;
+64 frames was measured offline only. JACK was never started, stopped,
+reconfigured, or connected by this pass.</p>
+<p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-preset_audit" data-source="docs/PRESET_AUDIT.md" data-kind="Dated evidence"><summary><span class="document-title" role="heading" aria-level="4">Cleared synthv1 preset audit</span><span class="document-summary">Cleared public synthv1 bank review.</span></summary><div class="document-body"><div class="document-meta"><span>Dated evidence</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/PRESET_AUDIT.md" target="_blank" rel="noopener noreferrer external">View docs/PRESET_AUDIT.md source</a></div><p>This audit covers only the 21 public, MIT-cleared files named in
 <code>presets/synthv1/cleared-presets.txt</code>. The 424 private presets and the uncleared
 392-file archive were not used as sound or submission content.</p>
@@ -10964,13 +11432,18 @@ assumptions.</p>
 </tr>
 <tr>
 <td><code>shr final-mix-stress</code></td>
-<td>Non-audibly exercise the three-source final DSP and stereo writer without JACK</td>
+<td>Non-audibly exercise the four-source final DSP and stereo writer without JACK</td>
 <td>Creates one unique 24-bit stereo stress WAV below an explicit destination</td>
 </tr>
 <tr>
 <td><code>shr master-strip-bench</code></td>
 <td>Compare neutral/active production strip callback cost and isolated 4×/8× interpolation without JACK</td>
 <td>Read-only deterministic CPU work; creates no files</td>
+</tr>
+<tr>
+<td><code>shr compiler-ab-bench</code></td>
+<td>Compare compiler-built production graph, drum, effects, and final-bus callback work without JACK</td>
+<td>Reads one explicit private kit directory; creates no files</td>
 </tr>
 </tbody>
 </table>
@@ -11226,10 +11699,12 @@ and installs that one small tools package with its runtime recommendations so
 recommendations for the main package group is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
-smaller TimGM bank. It installs or updates the official minimal current stable
-Rust toolchain for the current user, adds the repository-required rustfmt and
-Clippy components, and runs Cargo through <code>rustup run stable cargo</code>. It never
-selects an older compiler merely because the distribution package is stale.</p>
+smaller TimGM bank. It extracts the exact numeric channel from
+<code>rust-toolchain.toml</code>, installs that official minimal Rust toolchain for the
+current user with the repository-required rustfmt and Clippy components, and
+runs Cargo through <code>rustup run CHANNEL cargo</code>. A newer stable release is
+adopted by changing the reviewed repository pin; an older distribution
+compiler never redirects development.</p>
 <p>It then runs locked tests, creates a locked release build, installs the files
 with <code>sudo make install-files</code>, and normally opens <code>shr-setup</code>.</p>
 <p>Before its first package or service mutation, the installer prints the enabled
@@ -11471,7 +11946,7 @@ the manifest plus approved PSF before checking 960×624 dimensions and exact
 <li><code>SHR_SCREENSHOT_COMMAND</code> replaces the complete manifest-producing command;
 it is parsed with shell-style quoting but run directly, not through a shell.</li>
 </ul>
-<p>The default command uses Cargo with the repository-selected current stable
+<p>The default command uses Cargo with the exact repository-selected
 toolchain and runs <code>shr screenshots</code>. Rust renders the real application <code>draw</code>
 function into 40×13 ratatui test buffers seeded by the deterministic
 <code>ScreenshotScenario</code> and <code>ScreenshotSpecialScenario</code> fixtures. The renderer
@@ -11670,7 +12145,7 @@ physical interface passed.</p>
 seconds, 48000 Hz, and 128 frames/callback. Bounds are 1–86400 seconds, a
 supported rate of 44100 or 48000 Hz, and 16–4096 callback frames.</p>
 <p>The command does not load runtime configuration, open/start JACK, register a
-port, transmit MIDI, start a synth, or produce sound. It feeds three
+port, transmit MIDI, start a synth, or produce sound. It feeds four
 deterministic, distinguishable stereo sources through the production source and
 master smoothing, fixed strip and linked true-peak limiter, final meter,
 callback-boundary capture,
@@ -11706,6 +12181,27 @@ deadline, fixed processor-state bytes, and limiter-delay bytes.</p>
 JACK scheduling, full-duplex, temperature, listening, or physical-interface
 result. The owning evidence and algorithm choices are in
 <a href="#doc-master_strip_measurement">Fixed stereo MASTER STRIP</a>.</p>
+<h4 id="doc-maintainer_helpers--compiler-ab-callback-benchmark" tabindex="-1">Compiler A/B callback benchmark<a class="heading-anchor" href="#doc-maintainer_helpers--compiler-ab-callback-benchmark" aria-label="Link to Compiler A/B callback benchmark">#</a></h4>
+<h5 id="doc-maintainer_helpers--invocation-11" tabindex="-1">Invocation<a class="heading-anchor" href="#doc-maintainer_helpers--invocation-11" aria-label="Link to Invocation">#</a></h5>
+<pre><code class="language-sh">shr compiler-ab-bench KIT_DIR [CALLBACKS]
+</code></pre>
+<p><code>KIT_DIR</code> is an explicit directory containing the installed private SHR Drums
+kits. The benchmark requires the <code>electronic-house</code> kit. The default is 2,000
+measured callbacks per workload and the minimum is 1,000. Each workload first
+warms 500 callbacks.</p>
+<p>At 48 kHz and both 64 and 128 frames, the command measures the current
+four-source dry graph, the maximally enabled <code>phase4-full</code> graph, SHR Drums dry,
+Reverb, Delay, combined Reverb-then-Delay, and combined drums plus a
+deterministic melodic source through the fixed final bus. It reports mean,
+median, p95, p99, p99.9, maximum, deadline use/misses, finite output, peak, RMS,
+and a hash of every output sample.</p>
+<p>The command loads the named kit before timing, then performs only deterministic
+in-process callback work. It does not load runtime configuration, open JACK,
+start a synth, transmit MIDI, pace playback, write audio, or produce sound. It
+exists only to run identical production boundaries from separately built
+compiler artifacts; it is not a physical-interface, scheduler, listening, or
+JACK-xrun test. The owning result is
+<a href="#doc-rust_compiler_ab_2026-07-29">Rust compiler A/B on Raspberry Pi 5</a>.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-build_week" data-source="docs/BUILD_WEEK.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Development story and OpenAI Build Week record</span><span class="document-summary">Chronology, model provenance, division of work, target-native workflow, and evaluation.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/BUILD_WEEK.md" target="_blank" rel="noopener noreferrer external">View docs/BUILD_WEEK.md source</a></div><blockquote>
 <p>Historical record: dates, counts, submission language, and measured state in
@@ -13708,6 +14204,25 @@ ignored below <code>$SHSYNTH_USER_DIR/big-rock-effect-audition-20260729-v2/</cod
 running and the temporary review client connected only its own stereo outputs,
 then disconnected cleanly. No JACK server, synth, MIDI transmission,
 recording, release build, or physical route change was started.</p>
+<p>The native Raspberry Pi 5 compiler A/B is complete and owned by
+<code>docs/RUST_COMPILER_AB_2026-07-29.md</code>. Identical release source and lockfile
+built successfully with Rust 1.85.0/LLVM 19 and Rust 1.97.1/LLVM 22. The newer
+compiler produced a 7.2% smaller binary and the ordered clean build finished
+40.7% sooner with 6.5% lower peak RSS, though cache order prevents attributing
+the full build-time change to the compiler. Runtime was mixed: standalone SHR
+Drums remained effectively unchanged, while the fixed final strip regressed
+about 87% in representative mean time and complete graph/final-bus workloads
+regressed 17–100% depending on boundary. All paired output was bit-identical.
+The repository now pins exact Rust <code>1.97.1</code>; newer stable releases require a
+deliberate pin update. Ignored raw build, runtime, output, and system evidence
+remains below <code>$SHSYNTH_USER_DIR/compiler-ab-20260729/</code>. No JACK lifecycle, connection,
+physical route, MIDI, synth, audible playback, or hardware setting changed.</p>
+<p>The same pass repaired the non-audible <code>final-mix-stress</code> fixture after it
+exposed a stale three-source allocation against the current four-source bus.
+The helper now derives the production source count, supplies a distinct drum
+source, and sums every source before the fixed strip and WAV equality check.
+Its focused Rust 1.97.1 test passed with full PCM equality and zero
+drops/overflows.</p>
 <p>The normal private kit directory now contains exactly the approved Big Rock
 (Muldjord), Experimental Noise (Muldjord), and Electronic House packages.
 Previous local kit entries are recoverable below
@@ -14050,9 +14565,10 @@ components are ARM64 <code>zk</code> 0.15.5 at <code>~/.local/opt/zk-0.15.5/</co
 actively searching, and zero RAM while idle, suitable for the planned 2 GB Pi
 5.</p>
 <h4 id="doc-workspace_handoff--installed-tools-and-current-validation-boundary" tabindex="-1">Installed tools and current validation boundary<a class="heading-anchor" href="#doc-workspace_handoff--installed-tools-and-current-validation-boundary" aria-label="Link to Installed tools and current validation boundary">#</a></h4>
-<p>Rust stable 1.97.1, <code>gh</code>, <code>xmllint</code> (<code>libxml2-utils</code>), <code>shellcheck</code>, <code>zk</code>, and
-<code>fzf</code> are installed. Rust 1.85 remains locally available only for an explicit
-historical comparison; it is not the development or validation default.
+<p>Exact Rust 1.97.1 is the repository pin and is installed with <code>gh</code>, <code>xmllint</code>
+(<code>libxml2-utils</code>), <code>shellcheck</code>, <code>zk</code>, and <code>fzf</code>. Rust 1.85 remains locally
+available only for an explicit historical comparison; it is not the
+development or validation default.
 The system JavaScript tools use Node.js 24.18.0 LTS from the root-owned
 NodeSource <code>node_24.x</code> repository, npm 12.0.1, and the root-owned Codex CLI
 0.146.0. Codex startup update checks are disabled in the private user
