@@ -902,11 +902,11 @@ CLIP. Any downward movement of the mapped synthv1 Volume control clears both
 equal values, and other controls leave them alone. Stopped, unavailable, and
 new meter sessions cannot carry an old <code>MAX</code> forward.</p>
 <p>FINAL OUT is available only for the active owned graph. It measures after all
-three required sources, master inserts, live master level, fixed strip, and
+four performance sources, master inserts, live master level, fixed strip, and
 linked 8× true-peak limiter. The same final buffer feeds the stereo recorder and playback. Direct
 playback reports this final-bus meter unavailable and stays direct.</p>
 <p>The FT2 WAV Loop screen's <code>LOOP OUT</code> still measures only the rendered loop. When
-the final bus is active, that loop is one of the three sources in <code>FINAL OUT</code>.</p>
+the final bus is active, that loop is one of the four sources in <code>FINAL OUT</code>.</p>
 <p>On MTR, SOURCE-/SOURCE+ choose a source, LEVEL-/LEVEL+ change it in 1 dB steps,
 MUTE toggles it, and REC starts/stops the final stereo WAV at callback
 boundaries. RESET clears presentation holds and, when the bus is unavailable,
@@ -1075,7 +1075,9 @@ tracker header does not repeat <code>PLY</code> or <code>REC</code> state beside
 <p>The normal FT2 screen has <strong>PLAY</strong>, real-time <strong>REC</strong>, and detailed
 <strong>EDIT</strong> modes. <strong>N00B is a separate on/off filter</strong> that can remain enabled in
 all three. It keeps the selected melodic page as the instrument and filters
-input through a chosen chromatic root plus major or natural-minor scale. An
+input through the Project-wide song key: a chromatic tonic plus major or
+natural-minor scale. The key remains saved and available to SHR Drums when
+N00B is off. An
 in-scale key keeps its original pitch; an out-of-scale key is consumed and
 stays silent. N00B never quantizes a rejected key to a different note.
 Each entry to the main FT2 screen opens controller-menu page 1, <strong>PLAY</strong>, where
@@ -1113,8 +1115,9 @@ whose FT2 workspace exposes four musician-facing pages:</p>
 <li><code>Software Synth</code>, a four-track page using the first available synthv1 preset;</li>
 <li><code>MIDI</code>, a four-track page using the configured external output, MIDI channel
 1, and program 1;</li>
-<li><code>Drums</code>, a four-track page using the discovered FluidSynth General MIDI
-drum kit, MIDI channel 10, and the existing percussion-note mapping;</li>
+<li><code>Drums</code>, a four-track page using the installed SHR Drums starter kit when
+available, otherwise the discovered FluidSynth General MIDI compatibility
+kit, with the existing GM percussion-note mapping;</li>
 <li><code>Loop Mix</code>, that Pattern's four-slot decoded-WAV source.</li>
 </ol>
 <p>Loop Mix is a page in the musician-facing FT2 workflow, not four empty
@@ -1156,13 +1159,14 @@ channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
 on 10 play together through the existing stereo synth output. Channel 10 is
 the normal percussion-page default, not a reservation; an explicit Project may
 route it differently.</p>
-<p>Fresh Drums pages store that exact FluidSynth route and channel 10 in all four
-columns. Before live audition, Record/Edit input, or transport notes can reach
-it, the managed engine must select the discovered SoundFont bank/program on
-channel 10. If that preset is missing or selection fails, the route remains
-explicit and visibly offline/silent; SHR does not substitute Player, an older
-FluidSynth part, channel 1, or external MIDI. Loaded Projects keep their saved
-routes and channels, and loading a reusable drum pattern copies cells only.</p>
+<p>Drums pages can explicitly store an SHR Drums kit, a configured/exact external
+MIDI output, or a FluidSynth General MIDI compatibility route. An unavailable
+saved target remains visibly offline and silent; it never falls back to another
+route. SHR Drums is an in-process stereo source and does not consume the one
+managed melodic-synth slot, so it can play beside synthv1, Yoshimi, or
+FluidSynth. Switching targets sends All Notes Off and immediate drum chokes.
+Loaded Projects keep their saved routes and channels, and loading a reusable
+drum pattern copies cells only.</p>
 <p>Two different FluidSynth presets cannot share one channel in the current
 playback loop. SHR selects stable channel parts before scheduling, and note
 tails plus Pattern/Arrangement loop boundaries are not treated as safe dynamic
@@ -1234,10 +1238,12 @@ pages load as Manual; legacy pages with the persisted percussion flag retain
 their prior automatic drum layout.</p>
 <p>The same Tracks <strong>ENTRY</strong> list stores <strong>NOTE OFF ON/OFF</strong> per page. It controls
 whether future Edit and Record input writes automatic release cells. Melodic
-pages default to ON; one-shot percussion pages default to OFF, so a drum hit
-rings until a same-lane retrigger, an explicit OFF/CUT, or transport cleanup.
-The setting never removes an existing explicit OFF cell and never disables
-Stop, Panic, mute, route-change, or shutdown cleanup.</p>
+pages default to ON; one-shot percussion pages default to OFF. Percussion
+playback never generates a release from the Project gate, a retrigger, a later
+same-lane hit, or the Arrangement boundary. A drum voice rings until an
+explicit OFF/CUT, a kit choke, or Stop, Panic, mute, route-change, or shutdown
+cleanup catches it. The setting never removes an existing explicit OFF cell
+and does not disable those deliberate releases.</p>
 <p><strong>ADD</strong> opens an overlay for every persistent advance from 0 through 32 rows
 for note/chord entry, blank, erase, and note-off; 0 keeps the current row. The
 FT2 title shows <code>EDIT +n</code>.
@@ -1272,8 +1278,10 @@ Pattern rather than at the original play cursor.</p>
 <p>Tempo commands inside cells still work inside the current pattern. When
 playback enters the next arrangement step, tempo starts again from that
 referenced pattern's master tempo. The arrangement boundary itself does not
-send note-off for active lanes; a lane is released by its own gate/cut/note-off,
-by a later note in the same lane, or by stop/panic/mute cleanup.</p>
+send note-off for active lanes. Melodic lanes are released by their own
+gate/cut/note-off, by a later same-lane note, or by stop/panic/mute cleanup.
+Percussion lanes release only from an explicit OFF/CUT, a kit choke, or
+deliberate cleanup.</p>
 <h4 id="doc-tracker--cell-editing" tabindex="-1">Cell editing<a class="heading-anchor" href="#doc-tracker--cell-editing" aria-label="Link to Cell editing">#</a></h4>
 <p><strong>CELL EDIT</strong> changes one cell as a draft. <strong>CONFIRM</strong> saves the draft. <strong>EXIT</strong>
 or cancel restores the original cell.</p>
@@ -1472,10 +1480,11 @@ quantized and reported rather than flattened to elapsed microseconds.</p>
 Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.</p>
 <p>Projects are readable <code>.shsong</code> text files stored below
-<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/</code>. Current Project format 11
+<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/</code>. Current Project format 12
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
-overrides, cells, source
+overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
+source
 insert rack, two aux routes, and master rack. Portable
 pages use explicit <code>default</code> markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
@@ -1486,12 +1495,14 @@ distinct Pattern. Format 6's single <code>loop=</code> record similarly migrates
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 11. Formats 0–9 migrate
+not rewrite an old file; explicit save writes format 12. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so <code>10050</code>
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.
 Format 10 pages infer automatic Note Off as ON for melodic pages and OFF for
-percussion pages; format 11 persists the explicit per-page choice.
+percussion pages; format 11 persists the explicit per-page choice. Formats
+0–11 migrate with C major, the starter-kit identity, tuning OFF, and their
+original page routes unchanged.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.
@@ -1528,11 +1539,12 @@ the Pattern/Arrangement structure: repeating a Pattern does not duplicate an
 effect, and changing Arrangement steps does not change rack order. The two aux
 sends take their pre/post source-insert taps from the one managed software
 instrument, not from individual MIDI lanes.</p>
-<p>With the opt-in graph active, the managed source and wet returns, private WAV
-loop, and exact configured stereo external-input return meet once before the
-master rack and final meter. The loop and external input do not acquire source
-inserts or aux sends; the raw multitrack recorder remains a separate capture
-path. See
+<p>With the opt-in graph active, the managed source and wet returns, SHR Drums,
+private WAV loop, and exact configured stereo external-input return meet once
+before the master rack and final meter. SHR Drums has its own final-bus level
+and mute but no multi-mic live mixer. The loop, drums, and external input do
+not acquire the melodic source inserts or aux sends; the raw multitrack
+recorder remains a separate capture path. See
 <a href="#doc-how_it_works--the-managed-audio-graph">How SHR-DAW works</a> for the musical
 workflow and <a href="#doc-audio_graph">Audio graph and DSP contract</a> for exact effect
 schemas and limits.</p>
@@ -4978,9 +4990,10 @@ live kernel/service state; a matching line in a file alone is not proof that a
 setting is active. See
 <a href="#doc-audio_system_optimization">Raspberry Pi audio-system optimization</a>.</p>
 <h4 id="doc-configuration--owned-audio-graph" tabindex="-1">Owned audio graph<a class="heading-anchor" href="#doc-configuration--owned-audio-graph" aria-label="Link to Owned audio graph">#</a></h4>
-<p>The opt-in SHR-owned JACK client sums exactly the managed software instrument,
-the owned WAV loop, and one configured stereo capture pair. The instrument
-retains its Project-persisted source insert rack and two aux buses; all three
+<p>The opt-in SHR-owned JACK client sums the managed software instrument, the
+in-process SHR Drums stereo bus, the owned WAV loop, and one configured stereo
+capture pair. The melodic instrument
+retains its Project-persisted source insert rack and two aux buses; all four
 sources then pass through the master rack, live master level, fixed Project
 MASTER STRIP, final meter, final stereo recorder tap, and playback. It remains
 disabled by default:</p>
@@ -4992,6 +5005,9 @@ audio.graph.client=shr-graph
 audio.graph.maximum_callback_frames=4096
 audio.graph.input=External mix|system:capture_1|system:capture_2
 audio.graph.input_direct_monitoring=false
+drums.client=shr-drums
+drums.kit_directory=
+drums.maximum_callback_frames=4096
 audio.graph.confirm_doubled_monitoring=false
 </code></pre>
 <p>Exactly two <code>audio.output</code> entries are the preferred direct route and the
@@ -5039,7 +5055,7 @@ them.</p>
 <p>The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback
 because no topology is rebuilt. Final recording rejects those edits. When the
-owned graph is disabled, the same edits update only Project format 11 state.
+owned graph is disabled, the same edits update only Project format 12 state.
 The true-peak limiter remains active whenever the final bus is active and has
 no bypass. Exact ranges and latency are in
 <a href="#doc-master_strip_measurement">Fixed stereo MASTER STRIP</a>.</p>
@@ -5224,10 +5240,10 @@ cancels that field first. <strong>APPLY ROUTING</strong> validates and copies th
 page draft through the same Project and route-synchronization owner used by
 Tracks. Closing with the highlighted ROUTE launcher or Back cancels a dirty
 draft and never saves silently.</p>
-<p>An internal route stores the engine identity together with that engine's stable
-instrument identity. Changing the standalone/current engine or catalog order
-cannot retarget it. The editor deliberately asks for the engine first and then
-lists instruments belonging to that engine.</p>
+<p>An internal melodic route stores the engine identity together with that
+engine's stable instrument identity. An SHR Drums route instead stores the
+stable kit ID and remains independent of the melodic engine choice. Changing
+the standalone/current engine or catalog order cannot retarget either route.</p>
 <p>An exact hardware port name is saved as the route. If it is missing, the page
 shows <code>OFFLINE</code>; if the stable identity matches more than once it shows
 <code>AMBIG</code>. Neither state changes, deletes, or falls back from the saved route.
@@ -5262,7 +5278,7 @@ The FT2 route stores an optional profile id separately from its output, channel,
 bank, and program values.</p>
 <h4 id="doc-configuration--project-files" tabindex="-1">Project files<a class="heading-anchor" href="#doc-configuration--project-files" aria-label="Link to Project files">#</a></h4>
 <p>Projects are stored as <code>.shsong</code> text files below
-<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/</code>. Current Project format 11
+<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/</code>. Current Project format 12
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
@@ -5271,7 +5287,8 @@ every cell field, exactly four optional Loop Mix slots, explicit software
 engine/instrument identity, and optional external profile metadata. The Project
 continues to own the source insert rack, aux routing, master rack, fixed MASTER
 STRIP, final-bus routing, recording configuration, and unrelated Project
-state. A
+state, plus the Project-wide tonic/mode, selected drum kit, and OFF, FOLLOW KEY,
+or MANUAL per-piece drum tuning. A
 format-4-or-newer <code>default</code> target plus four <code>default</code>
 column markers is the canonical portable/unassigned state; it is not channel
 zero, mute, or disabled. Versions 0 and 1 migrate with empty effects routing;
@@ -5295,8 +5312,9 @@ fixed strip only in memory. Formats 0–9 store whole-number tempo fields and
 migrate them to integer hundredths in memory. Format 10 stores Pattern and
 tempo-command values as deterministic integer hundredths; <code>10050</code> means
 100.50 BPM. Format 10 infers automatic Note Off ON for melodic pages and OFF
-for percussion pages; format 11 persists the per-page choice. Explicit save
-writes format 11. Unknown newer
+for percussion pages; format 11 persists the per-page choice. Format 12 adds
+the Project key, selected drum kit, tuning state, and internal-drum page target.
+Explicit save writes format 12. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.</p>
 <p>Format 6 stores note-entry layout on <code>pattern_page</code> and optional non-GM
@@ -6090,17 +6108,17 @@ access, subprocess, logging, allocation, or locks.</p>
 they are smoothed atomic updates and may be auditioned during playback. They
 are rejected during a final recording. Whole-strip comparison keeps the same
 delay and true-peak protection, and never overwrites the edited values.</p>
-<p>The graph remains opt-in and disabled by default. The managed engine and loop
-are connected directly first. The graph is activated muted, all three exact
-input pairs plus its playback boundary are connected, and the four synth/loop
-direct links are removed as one rollback-capable transaction before graph
+<p>The graph remains opt-in and disabled by default. The managed engine, internal
+drums when active, and loop are connected directly first. The graph is
+activated muted, its four stereo inputs plus playback boundary are connected,
+and the owned direct links are removed as one rollback-capable transaction before graph
 output is published at a block boundary. Validation, activation, or connection
 failure leaves or restores the exact prior direct links. Shutdown deactivates
 the callback before restoring them, avoiding a doubled final block.</p>
 <p>FX state is saved in the Project while the graph is disabled, but direct
-playback cannot process or meter it. The graph instantiates exactly three
-source kinds: managed instrument, owned loop player, and one stereo live-input
-pair. It deliberately has no general strips, pan, solo, hardware insert,
+playback cannot process or meter it. The graph instantiates exactly four
+source kinds: managed instrument, SHR Drums, owned loop player, and one stereo
+live-input pair. It deliberately has no general strips, pan, solo, hardware insert,
 per-input effect chain, or arbitrary wiring.</p>
 <h4 id="doc-how_it_works--live-patterns-loop-mix-and-the-final-bus" tabindex="-1">Live Patterns, Loop Mix, and the final bus<a class="heading-anchor" href="#doc-how_it_works--live-patterns-loop-mix-and-the-final-bus" aria-label="Link to Live Patterns, Loop Mix, and the final bus">#</a></h4>
 <p>Live Patterns is a sequencer-owned performance view over existing Pattern
@@ -6189,16 +6207,17 @@ an explanation. A failed graph returns to direct playback. None of those
 failures authorizes SHR-DAW to rewire unrelated clients or terminate processes
 it does not own.</p>
 <h4 id="doc-how_it_works--project-and-private-data-safety" tabindex="-1">Project and private-data safety<a class="heading-anchor" href="#doc-how_it_works--project-and-private-data-safety" aria-label="Link to Project and private-data safety">#</a></h4>
-<p>Project format 11 persists the complete tracker state, integer-hundredths
+<p>Project format 12 persists the complete tracker state, integer-hundredths
 Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
 effects routing, one Project-global fixed MASTER STRIP, per-page entry
 mode/anchor, automatic Note Off choice, drum-role/choke overrides,
 explicit software engine/instrument identities, and optional external profile
-metadata. Format 7's former Project-global four slots migrate in memory into
+metadata, Project tonic/mode, selected drum kit, and drum tuning. Format 7's
+former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
-audio or rewrites the file; only an explicit save writes format 11. Format 10
+audio or rewrites the file; only an explicit save writes format 12. Format 10
 infers the Note Off choice from the percussion flag. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3
@@ -6226,7 +6245,7 @@ cleared demo manifest. See
 <a href="#doc-third-party">Licensing and redistribution</a>.</p>
 <h4 id="doc-how_it_works--performance-information-and-honest-limits" tabindex="-1">Performance information and honest limits<a class="heading-anchor" href="#doc-how_it_works--performance-information-and-honest-limits" aria-label="Link to Performance information and honest limits">#</a></h4>
 <p>With the graph disabled, MTR retains its CPU and legacy managed-source display.
-With the graph enabled, it shows the three source readiness/level/mute states,
+With the graph enabled, it shows the four source readiness/level/mute states,
 master level, post-strip sample/true-peak and loudness state, linked gain
 reduction, correlation, and final-recording status. Direct mode reports final-bus metering
 unavailable instead of creating a hidden tap or displaying unrelated audio.</p>
@@ -6241,9 +6260,8 @@ future hardware test and is not implied by synthetic validation.</p>
 graph and effects racks. The graph is implemented and Raspberry Pi measured,
 but remains opt-in and disabled by default. Direct JACK routing is both the
 default and the conservative fallback. The current product compiler instantiates
-exactly three stereo sources while retaining the general four-source bound: the
-managed software instrument, the owned WAV loop, and one exact configured JACK
-capture pair.</p>
+four bounded stereo sources: the managed software instrument, SHR Drums, the
+owned WAV loop, and one exact configured JACK capture pair.</p>
 <p>The active signal flow is:</p>
 <pre><code class="language-text">managed instrument -&gt; SOURCE inserts -------------------------------\
        |                    |                                            ^
@@ -6251,6 +6269,7 @@ capture pair.</p>
        +----------------------&gt; PRE send gain  -&gt; wet AUX 1/2 -&gt; return -+
 owned WAV loop ------------------------------------------------------+-&gt; dry sum
 configured stereo JACK input --------------------------------------/
+in-process SHR Drums stereo bus ------------------------------------/
 
 dry sum -&gt; MASTER inserts -&gt; live master level
         -&gt; fixed MASTER STRIP (INPUT/TONE/GLUE/COLOR/IMAGE/LOUD)
@@ -6281,9 +6300,9 @@ runtime-resolved pair. The saved preferred <code>audio.output</code> pair,
 ordered internal pairs, and final headphone pair remain machine configuration.
 Exact JACK and hardware
 names come from configuration, never Rust constants.</p>
-<p>The typed graph model reserves a fourth source plus hardware returns/sends, but
-the current graph client instantiates only <code>ManagedEngine</code>, <code>LoopPlayer</code>, and
-<code>LiveInput</code>. The loop remains its own rendering client; when the final bus is
+<p>The graph client instantiates <code>ManagedEngine</code>, <code>InternalDrums</code>, <code>LoopPlayer</code>,
+and <code>LiveInput</code>. SHR Drums is a library hosted in-process by SHR-DAW, not a
+second managed synth process. The loop remains its own rendering client; when the final bus is
 active its output is moved off direct playback and into the owned sum. The raw
 synchronized multitrack recorder remains a separate capture client. External
 instruments return only through the configured stereo mix. There is no hardware
@@ -6308,7 +6327,7 @@ restored direct path.</p>
 and future JACK clients. A caller owns its callback allocation and keeps it
 alive until client deactivation returns.</p>
 <h4 id="doc-audio_graph--project-data-and-typed-graph-model" tabindex="-1">Project data and typed graph model<a class="heading-anchor" href="#doc-audio_graph--project-data-and-typed-graph-model" aria-label="Link to Project data and typed graph model">#</a></h4>
-<p>Project formats 10–11 store the managed-source <code>InsertRack</code>, <code>ProjectAuxRouting</code>,
+<p>Project formats 10–12 store the managed-source <code>InsertRack</code>, <code>ProjectAuxRouting</code>,
 and fixed <code>MasterStripSettings</code> as strict JSON inside the versioned <code>.shsong</code>
 line format.
 Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
@@ -6404,7 +6423,7 @@ formatting, decoder work, or unbounded retry. UI-only code performs smoothing,
 <tbody>
 <tr>
 <td>Stereo source strips</td>
-<td style="text-align:right">4 in the general model; exactly 3 instantiated</td>
+<td style="text-align:right">4 instantiated</td>
 </tr>
 <tr>
 <td>Aux buses</td>
@@ -6724,12 +6743,13 @@ clean fallback/ownership behavior. The exact Pi evidence is recorded in
 <a href="#doc-phase1_audio_graph_measurement">Phase 1 dry audio graph measurement</a>. It
 does not imply that an unmeasured creative effect or later graph phase is safe.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-final_performance_bus" data-source="docs/FINAL_PERFORMANCE_BUS.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">Final stereo performance bus</span><span class="document-summary">Exact three-source topology, fixed mastering boundary, monitoring safety, final WAV capture, and hardware acceptance.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FINAL_PERFORMANCE_BUS.md" target="_blank" rel="noopener noreferrer external">View docs/FINAL_PERFORMANCE_BUS.md source</a></div><p>The opt-in owned audio graph has one deliberately small final bus. It is not a
-free-wiring view or a general-purpose mixer. Exactly three stereo sources are
+<details class="document" id="doc-final_performance_bus" data-source="docs/FINAL_PERFORMANCE_BUS.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">Final stereo performance bus</span><span class="document-summary">Exact four-source topology, fixed mastering boundary, monitoring safety, final WAV capture, and hardware acceptance.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FINAL_PERFORMANCE_BUS.md" target="_blank" rel="noopener noreferrer external">View docs/FINAL_PERFORMANCE_BUS.md source</a></div><p>The opt-in owned audio graph has one deliberately small final bus. It is not a
+free-wiring view or a general-purpose mixer. Exactly four stereo sources are
 instantiated:</p>
 <pre><code class="language-text">managed software instrument -&gt; source inserts/optional aux sends --\
 owned four-slot native-rate Loop Mix sum ---------------------------+-&gt; stereo sum
 configured JACK capture L/R ---------------------------------------/
+SHR Drums in-process stereo bus ------------------------------------/
     -&gt; optional aux returns, where routed from the managed source
     -&gt; master insert rack
     -&gt; master level
@@ -6739,7 +6759,7 @@ configured JACK capture L/R ---------------------------------------/
     -&gt; final 24-bit stereo WAV tap
     -&gt; configured JACK playback L/R
 </code></pre>
-<p>The logical Loop and external-input bus strips do not gain individual insert
+<p>The logical Drums, Loop, and external-input bus strips do not gain individual insert
 racks, aux sends, pan, solo, automation, or waveform editing. Their bus
 controls remain a smoothed level and mute. Loop Mix applies its four
 slot-local level/filter/mute controls before this one logical source. The
@@ -6747,8 +6767,8 @@ managed source keeps its existing Project-owned
 insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
-basic three-source summing headroom. These live performance controls are not
-Project data; current Project format 11 stores effect racks/routing and the
+basic four-source summing headroom. These live performance controls are not
+Project data; current Project format 12 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
 Pattern, but not these final-bus levels or mutes. JACK assignments remain
 machine configuration.</p>
@@ -6763,10 +6783,10 @@ Pattern and sum to that pair before the
 graph, so the bus, limiter, final meter, and recorder receive the complete Loop
 sum once. The MTR screen leaves healthy sources unadorned and marks
 only <code>MUTE</code> or <code>OFFLINE</code>.</p>
-<p>Before activation, the synth and loop each have their ordinary direct stereo
-routes. The graph publishes silence while all six source connections and the
-final playback pair are connected. It then removes the exact two synth and two
-loop direct connections as one rollback-capable transaction and publishes the
+<p>Before activation, the synth, drums when active, and loop each have their
+ordinary direct stereo routes. The graph publishes silence while the required
+source connections and final playback pair are connected. It then removes the
+exact owned direct connections as one rollback-capable transaction and publishes the
 callback at a block boundary. A failed connection restores the exact prior
 topology and leaves unrelated JACK connections untouched. Normal shutdown,
 loop replacement, JACK loss, or source disappearance deactivates the callback
@@ -6809,7 +6829,7 @@ interleaved stereo ring transfers it to a non-real-time writer, which performs
 publication.</p>
 <p>The result is one conventional little-endian PCM RIFF/WAVE file: two
 interleaved channels, 24 bits, and the active JACK sample rate. It includes the
-three-source sum, managed-source aux returns, master rack, master level, and
+four-source sum, managed-source aux returns, master rack, master level, and
 complete MASTER STRIP. It excludes raw recorder stems, unrelated JACK clients, interface
 direct monitoring, hardware mixer/insert processing after JACK playback, and
 any downstream speaker/headphone processing.</p>

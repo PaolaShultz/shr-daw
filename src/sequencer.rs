@@ -2176,7 +2176,7 @@ pub fn schedule(
     let mut result = Vec::new();
     let mut at = Duration::ZERO;
     let mut clock_step = 0usize;
-    let mut active: BTreeMap<usize, (PageTarget, u8, u8)> = BTreeMap::new();
+    let mut active: BTreeMap<usize, (PageTarget, u8, u8, bool)> = BTreeMap::new();
     for (order_index, pattern_number) in song.order.iter().enumerate().skip(start_order) {
         let pattern = &song.patterns[pattern_number];
         let mut tempo = pattern.tempo;
@@ -2263,18 +2263,28 @@ pub fn schedule(
                             );
                             programmed[lane_index] = true;
                         }
-                        if let Some((old_target, old_channel, old)) = active.remove(&lane_index) {
-                            push_lane(
-                                &mut result,
-                                event_at,
-                                order_index,
-                                row_index,
-                                vec![0x80 | old_channel, old, 0],
-                                lane_index,
-                                &old_target,
-                            );
+                        if let Some((old_target, old_channel, old, old_percussion)) =
+                            active.remove(&lane_index)
+                        {
+                            // Percussion note-ons are one-shots. A later hit
+                            // never manufactures a release; only an explicit
+                            // OFF/CUT, choke, or transport cleanup catches it.
+                            if !old_percussion {
+                                push_lane(
+                                    &mut result,
+                                    event_at,
+                                    order_index,
+                                    row_index,
+                                    vec![0x80 | old_channel, old, 0],
+                                    lane_index,
+                                    &old_target,
+                                );
+                            }
                         }
-                        active.insert(lane_index, (page.target.clone(), column.channel, note));
+                        active.insert(
+                            lane_index,
+                            (page.target.clone(), column.channel, note, page.percussion),
+                        );
                         let pulses = match cell.command {
                             Command::Retrigger(count) => count,
                             _ => 1,
@@ -2309,7 +2319,7 @@ pub fn schedule(
                                 lane_index,
                                 &page.target,
                             );
-                            if !explicit_release {
+                            if !page.percussion && !explicit_release {
                                 push_lane(
                                     &mut result,
                                     (pulse_at + gate).min(at + row_duration),
@@ -2323,7 +2333,7 @@ pub fn schedule(
                         }
                     }
                     Note::Off => {
-                        if let Some((target, channel, note)) = active.remove(&lane_index) {
+                        if let Some((target, channel, note, _)) = active.remove(&lane_index) {
                             let release_at = if cell.gate == Some(100) {
                                 at + row_duration
                             } else {
@@ -2343,7 +2353,7 @@ pub fn schedule(
                     Note::Empty => {}
                 }
                 if let Command::Cut(tick) = cell.command {
-                    if let Some((target, channel, note)) = active.remove(&lane_index) {
+                    if let Some((target, channel, note, _)) = active.remove(&lane_index) {
                         push_lane(
                             &mut result,
                             at + row_duration.mul_f64(f64::from(tick.min(15)) / 16.0),
@@ -2446,9 +2456,14 @@ fn release_active_notes(
     at: Duration,
     order: usize,
     row: usize,
-    active: &mut BTreeMap<usize, (PageTarget, u8, u8)>,
+    active: &mut BTreeMap<usize, (PageTarget, u8, u8, bool)>,
 ) {
-    for (lane_index, (target, channel, note)) in std::mem::take(active) {
+    for (lane_index, (target, channel, note, percussion)) in std::mem::take(active) {
+        // Preserve one-shot drum tails across the scheduled arrangement end.
+        // Stop/route changes issue their own explicit cleanup.
+        if percussion {
+            continue;
+        }
         push_lane(
             out,
             at,
@@ -4733,7 +4748,7 @@ mod tests {
             root: 1,
             kind: ScaleKind::NaturalMinor,
         };
-        song.drum_kit = "industrial-metal".into();
+        song.drum_kit = "experimental-noise".into();
         song.drum_tuning.mode = shr_drums::TuningMode::Manual;
         for piece in ["kick", "snare"] {
             song.drum_tuning.pieces.insert(
@@ -4750,7 +4765,7 @@ mod tests {
         let encoded = encode(&song).unwrap();
         assert!(encoded.starts_with("SHSYNTH-SONG 12\n"));
         assert!(encoded.contains("project_key=1|minor\n"));
-        assert!(encoded.contains("|shr-drums:industrial-metal|"));
+        assert!(encoded.contains("|shr-drums:experimental-noise|"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
 
@@ -5265,6 +5280,73 @@ mod tests {
         assert_eq!(note_on.at, Duration::from_micros(62_500));
         assert_eq!(note_off.at, Duration::from_micros(112_500));
         assert!(note_off.at <= Duration::from_millis(125));
+    }
+
+    #[test]
+    fn percussion_hits_are_one_shots_until_an_explicit_release() {
+        let c = config();
+        let mut song = Song::new_with_pages(&c, vec![Page::new("Drums", 9, true, 0)]);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.pages[0].target = PageTarget::InternalDrums("big-rock".into());
+        pattern.rows[0][0] = Cell {
+            note: Note::On(49),
+            velocity: Some(110),
+            ..Cell::default()
+        };
+        pattern.rows[2][0] = Cell {
+            note: Note::On(49),
+            velocity: Some(100),
+            command: Command::Retrigger(2),
+            ..Cell::default()
+        };
+        pattern.rows[4][0].note = Note::Off;
+
+        let messages = schedule(&song, &c, 0, 0).unwrap();
+        let attacks = messages
+            .iter()
+            .filter(|message| {
+                message
+                    .bytes
+                    .first()
+                    .is_some_and(|status| *status & 0xf0 == 0x90)
+            })
+            .collect::<Vec<_>>();
+        let releases = messages
+            .iter()
+            .filter(|message| {
+                message
+                    .bytes
+                    .first()
+                    .is_some_and(|status| *status & 0xf0 == 0x80)
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(attacks.len(), 3);
+        assert_eq!(releases.len(), 1);
+        assert_eq!(releases[0].bytes, [0x89, 49, 0]);
+        assert_eq!(releases[0].at, Duration::from_millis(500));
+        assert_eq!(
+            releases[0].target,
+            Some(PageTarget::InternalDrums("big-rock".into()))
+        );
+    }
+
+    #[test]
+    fn percussion_tail_is_not_released_at_arrangement_end() {
+        let c = config();
+        let mut song = Song::new_with_pages(&c, vec![Page::new("Drums", 9, true, 0)]);
+        song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(51);
+
+        let messages = schedule(&song, &c, 0, 0).unwrap();
+        assert!(messages
+            .iter()
+            .any(|message| message.bytes == [0x99, 51, 96]));
+        assert!(!messages.iter().any(|message| {
+            message
+                .bytes
+                .first()
+                .is_some_and(|status| *status & 0xf0 == 0x80)
+        }));
     }
 
     #[test]

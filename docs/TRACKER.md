@@ -199,10 +199,12 @@ their prior automatic drum layout.
 
 The same Tracks **ENTRY** list stores **NOTE OFF ON/OFF** per page. It controls
 whether future Edit and Record input writes automatic release cells. Melodic
-pages default to ON; one-shot percussion pages default to OFF, so a drum hit
-rings until a same-lane retrigger, an explicit OFF/CUT, or transport cleanup.
-The setting never removes an existing explicit OFF cell and never disables
-Stop, Panic, mute, route-change, or shutdown cleanup.
+pages default to ON; one-shot percussion pages default to OFF. Percussion
+playback never generates a release from the Project gate, a retrigger, a later
+same-lane hit, or the Arrangement boundary. A drum voice rings until an
+explicit OFF/CUT, a kit choke, or Stop, Panic, mute, route-change, or shutdown
+cleanup catches it. The setting never removes an existing explicit OFF cell
+and does not disable those deliberate releases.
 
 **ADD** opens an overlay for every persistent advance from 0 through 32 rows
 for note/chord entry, blank, erase, and note-off; 0 keeps the current row. The
@@ -244,8 +246,10 @@ Pattern rather than at the original play cursor.
 Tempo commands inside cells still work inside the current pattern. When
 playback enters the next arrangement step, tempo starts again from that
 referenced pattern's master tempo. The arrangement boundary itself does not
-send note-off for active lanes; a lane is released by its own gate/cut/note-off,
-by a later note in the same lane, or by stop/panic/mute cleanup.
+send note-off for active lanes. Melodic lanes are released by their own
+gate/cut/note-off, by a later same-lane note, or by stop/panic/mute cleanup.
+Percussion lanes release only from an explicit OFF/CUT, a kit choke, or
+deliberate cleanup.
 
 ## Cell editing
 
