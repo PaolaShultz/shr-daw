@@ -27,6 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const SOURCE_NODE: u32 = 1;
 const LOOP_SOURCE_NODE: u32 = 2;
 const INPUT_SOURCE_NODE: u32 = 3;
+const DRUM_SOURCE_NODE: u32 = 4;
 const FIRST_EFFECT_NODE: u32 = 10;
 const FIRST_SEND_NODE: u32 = 30;
 const FIRST_AUX_EFFECT_NODE: u32 = 40;
@@ -113,6 +114,8 @@ fn rollback(connections: &mut impl BoundaryConnections, applied: &[BoundaryChang
 struct BoundaryRoutes {
     direct: Vec<Connection>,
     graph: Vec<Connection>,
+    destinations: [String; 2],
+    live_source_ports: [String; 2],
 }
 
 impl BoundaryRoutes {
@@ -150,8 +153,8 @@ impl BoundaryRoutes {
 
 struct CallbackData {
     plan: GraphPlan,
-    inputs: [*mut JackPort; 6],
-    input_port_ids: [u32; 6],
+    inputs: [*mut JackPort; 8],
+    input_port_ids: [u32; 8],
     output_left: *mut JackPort,
     output_right: *mut JackPort,
     port_get_buffer: PortGetBuffer,
@@ -195,6 +198,7 @@ pub(crate) struct AuxMeterSnapshot {
 pub(crate) struct PerformanceBusPorts {
     pub synth: [String; 2],
     pub loop_player: [String; 2],
+    pub drums: Option<[String; 2]>,
     pub live_input: [String; 2],
     pub playback: [String; 2],
     pub loop_direct_playback: [String; 2],
@@ -216,12 +220,16 @@ impl OwnedAudioGraph {
         let PerformanceBusPorts {
             synth: source_ports,
             loop_player: loop_source_ports,
+            drums: drum_source_ports,
             live_input: live_source_ports,
             playback: destinations,
             loop_direct_playback: loop_destinations,
         } = ports;
         validate_stereo_boundary(&source_ports, "managed-engine source")?;
         validate_stereo_boundary(&loop_source_ports, "owned WAV loop source")?;
+        if let Some(ports) = drum_source_ports.as_ref() {
+            validate_stereo_boundary(ports, "SHR Drums source")?;
+        }
         validate_stereo_boundary(&live_source_ports, "configured stereo input")?;
         validate_stereo_boundary(&destinations, "main output")?;
         validate_stereo_boundary(&loop_destinations, "loop direct output")?;
@@ -257,6 +265,8 @@ impl OwnedAudioGraph {
             jack.register_audio_port("loop_in_r", PortDirection::Input)?,
             jack.register_audio_port("stereo_in_l", PortDirection::Input)?,
             jack.register_audio_port("stereo_in_r", PortDirection::Input)?,
+            jack.register_audio_port("drums_in_l", PortDirection::Input)?,
+            jack.register_audio_port("drums_in_r", PortDirection::Input)?,
         ];
         let input_port_ids = [
             jack.port_id(inputs[0])?,
@@ -265,6 +275,8 @@ impl OwnedAudioGraph {
             jack.port_id(inputs[3])?,
             jack.port_id(inputs[4])?,
             jack.port_id(inputs[5])?,
+            jack.port_id(inputs[6])?,
+            jack.port_id(inputs[7])?,
         ];
         let output_left = jack.register_audio_port("main_out_l", PortDirection::Output)?;
         let output_right = jack.register_audio_port("main_out_r", PortDirection::Output)?;
@@ -275,26 +287,38 @@ impl OwnedAudioGraph {
             jack.port_name_string(inputs[3])?,
             jack.port_name_string(inputs[4])?,
             jack.port_name_string(inputs[5])?,
+            jack.port_name_string(inputs[6])?,
+            jack.port_name_string(inputs[7])?,
             jack.port_name_string(output_left)?,
             jack.port_name_string(output_right)?,
         ];
+        let mut direct = vec![
+            connection(&source_ports[0], &destinations[0]),
+            connection(&source_ports[1], &destinations[1]),
+            connection(&loop_source_ports[0], &loop_destinations[0]),
+            connection(&loop_source_ports[1], &loop_destinations[1]),
+        ];
+        let mut graph = vec![
+            connection(&source_ports[0], &graph_port_names[0]),
+            connection(&source_ports[1], &graph_port_names[1]),
+            connection(&loop_source_ports[0], &graph_port_names[2]),
+            connection(&loop_source_ports[1], &graph_port_names[3]),
+            connection(&live_source_ports[0], &graph_port_names[4]),
+            connection(&live_source_ports[1], &graph_port_names[5]),
+        ];
+        if let Some(drums) = drum_source_ports {
+            direct.push(connection(&drums[0], &destinations[0]));
+            direct.push(connection(&drums[1], &destinations[1]));
+            graph.push(connection(&drums[0], &graph_port_names[6]));
+            graph.push(connection(&drums[1], &graph_port_names[7]));
+        }
+        graph.push(connection(&graph_port_names[8], &destinations[0]));
+        graph.push(connection(&graph_port_names[9], &destinations[1]));
         let routes = BoundaryRoutes {
-            direct: vec![
-                connection(&source_ports[0], &destinations[0]),
-                connection(&source_ports[1], &destinations[1]),
-                connection(&loop_source_ports[0], &loop_destinations[0]),
-                connection(&loop_source_ports[1], &loop_destinations[1]),
-            ],
-            graph: vec![
-                connection(&source_ports[0], &graph_port_names[0]),
-                connection(&source_ports[1], &graph_port_names[1]),
-                connection(&loop_source_ports[0], &graph_port_names[2]),
-                connection(&loop_source_ports[1], &graph_port_names[3]),
-                connection(&live_source_ports[0], &graph_port_names[4]),
-                connection(&live_source_ports[1], &graph_port_names[5]),
-                connection(&graph_port_names[6], &destinations[0]),
-                connection(&graph_port_names[7], &destinations[1]),
-            ],
+            direct,
+            graph,
+            destinations: destinations.clone(),
+            live_source_ports: live_source_ports.clone(),
         };
         let controls = std::sync::Arc::new(BusControls::default());
         let strip_controls = std::sync::Arc::new(
@@ -356,7 +380,7 @@ impl OwnedAudioGraph {
             return Err(error.context("activate owned graph boundary"));
         }
         // The callback samples this once per block. All graph connections are
-        // ready and all four synth/loop direct links are gone before output is
+        // ready and every owned direct source link is gone before output is
         // published.
         callback.armed.store(true, Ordering::Release);
         Ok(Self {
@@ -436,18 +460,12 @@ impl OwnedAudioGraph {
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
     ) -> Result<()> {
-        let destinations = [
-            self.routes.graph[6].destination.clone(),
-            self.routes.graph[7].destination.clone(),
-        ];
+        let destinations = self.routes.destinations.clone();
         let definition = managed_graph_definition(
             self.callback.sample_rate,
             self.callback.plan.maximum_frames() as u32,
             &destinations,
-            &[
-                self.routes.graph[4].source.clone(),
-                self.routes.graph[5].source.clone(),
-            ],
+            &self.routes.live_source_ports,
             self.monitoring,
             rack,
             aux_routing,
@@ -563,6 +581,13 @@ fn managed_graph_definition(
                 },
             },
         },
+        Node {
+            id: DRUM_SOURCE_NODE,
+            layout: ChannelLayout::Stereo,
+            kind: NodeKind::Source {
+                source: SourceKind::InternalDrums,
+            },
+        },
     ];
     let mut edges = Vec::new();
     let mut previous = SOURCE_NODE;
@@ -590,7 +615,7 @@ fn managed_graph_definition(
         from: previous,
         to: MASTER_NODE,
     });
-    for source in [LOOP_SOURCE_NODE, INPUT_SOURCE_NODE] {
+    for source in [LOOP_SOURCE_NODE, INPUT_SOURCE_NODE, DRUM_SOURCE_NODE] {
         edges.push(Edge {
             id: edges.len() as u32 + 1,
             from: source,
@@ -752,7 +777,7 @@ fn dry_graph_definition(
 fn process_block(
     callback: &mut CallbackData,
     frames: usize,
-    inputs: [&[f32]; 6],
+    inputs: [&[f32]; 8],
     output_left: &mut [f32],
     output_right: &mut [f32],
 ) -> ProcessStatus {
@@ -771,6 +796,7 @@ fn process_block(
         (SOURCE_NODE, BusSource::Synth, 0, 1),
         (LOOP_SOURCE_NODE, BusSource::Loop, 2, 3),
         (INPUT_SOURCE_NODE, BusSource::Input, 4, 5),
+        (DRUM_SOURCE_NODE, BusSource::Drums, 6, 7),
     ] {
         let Some(source) = callback.plan.source_buffer_mut(node, frames) else {
             callback.final_capture.callback_violation();
@@ -825,7 +851,7 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
     let callback = unsafe { &mut *argument.cast::<CallbackData>() };
     let start = monotonic_nanoseconds();
     let get_buffer = callback.port_get_buffer;
-    let mut input_pointers = [std::ptr::null_mut(); 6];
+    let mut input_pointers = [std::ptr::null_mut(); 8];
     for (pointer, port) in input_pointers.iter_mut().zip(callback.inputs) {
         *pointer = unsafe { get_buffer(port, frames) }.cast::<f32>();
     }
@@ -965,6 +991,8 @@ mod tests {
                 connection("graph:out_l", "main:l"),
                 connection("graph:out_r", "main:r"),
             ],
+            destinations: ["main:l".into(), "main:r".into()],
+            live_source_ports: ["capture:l".into(), "capture:r".into()],
         }
     }
 
@@ -996,8 +1024,8 @@ mod tests {
         CallbackData {
             plan: GraphPlan::compile(&dry_graph_definition(48_000, maximum_frames, &destinations))
                 .unwrap(),
-            inputs: [std::ptr::null_mut(); 6],
-            input_port_ids: [0; 6],
+            inputs: [std::ptr::null_mut(); 8],
+            input_port_ids: [0; 8],
             output_left: std::ptr::null_mut(),
             output_right: std::ptr::null_mut(),
             port_get_buffer: dummy_get_buffer,
@@ -1024,7 +1052,7 @@ mod tests {
     }
 
     #[test]
-    fn dry_topology_is_valid_and_contains_exactly_three_sources() {
+    fn dry_topology_is_valid_and_contains_exactly_four_sources() {
         let destinations = ["main:l".to_owned(), "main:r".to_owned()];
         let graph = dry_graph_definition(48_000, 128, &destinations);
         assert_eq!(
@@ -1033,17 +1061,18 @@ mod tests {
                 SOURCE_NODE,
                 LOOP_SOURCE_NODE,
                 INPUT_SOURCE_NODE,
+                DRUM_SOURCE_NODE,
                 MASTER_NODE,
                 SINK_NODE
             ]
         );
-        assert_eq!(graph.nodes.len(), 5);
-        assert_eq!(graph.edges.len(), 4);
+        assert_eq!(graph.nodes.len(), 6);
+        assert_eq!(graph.edges.len(), 5);
         assert!(graph.effects.is_empty());
     }
 
     #[test]
-    fn graph_sums_three_distinguishable_stereo_sources_exactly_once() {
+    fn graph_sums_four_distinguishable_stereo_sources_exactly_once() {
         let destinations = ["main:l".to_owned(), "main:r".to_owned()];
         let graph = dry_graph_definition(48_000, 64, &destinations);
         let mut plan = GraphPlan::compile(&graph).unwrap();
@@ -1051,6 +1080,7 @@ mod tests {
             (SOURCE_NODE, 0.01, 0.02),
             (LOOP_SOURCE_NODE, 0.04, 0.08),
             (INPUT_SOURCE_NODE, 0.16, 0.32),
+            (DRUM_SOURCE_NODE, 0.03, 0.06),
         ] {
             plan.source_buffer_mut(node, 64)
                 .unwrap()
@@ -1062,7 +1092,7 @@ mod tests {
             .unwrap()
             .iter()
             .all(|frame| {
-                (frame.left - 0.21).abs() < 1e-7 && (frame.right - 0.42).abs() < 1e-7
+                (frame.left - 0.24).abs() < 1e-7 && (frame.right - 0.48).abs() < 1e-7
             }));
     }
 
@@ -1234,7 +1264,7 @@ mod tests {
                 process_block(
                     &mut callback,
                     128,
-                    [&left, &right, &silence, &silence, &silence, &silence],
+                    [&left, &right, &silence, &silence, &silence, &silence, &silence, &silence,],
                     &mut output_left,
                     &mut output_right,
                 ),
@@ -1250,7 +1280,7 @@ mod tests {
                 process_block(
                     &mut callback,
                     128,
-                    [&left, &right, &silence, &silence, &silence, &silence],
+                    [&left, &right, &silence, &silence, &silence, &silence, &silence, &silence,],
                     &mut output_left,
                     &mut output_right,
                 ),
@@ -1265,7 +1295,10 @@ mod tests {
                 process_block(
                     &mut callback,
                     128,
-                    [&silence, &silence, &silence, &silence, &silence, &silence],
+                    [
+                        &silence, &silence, &silence, &silence, &silence, &silence, &silence,
+                        &silence,
+                    ],
                     &mut output_left,
                     &mut output_right,
                 ),
@@ -1287,7 +1320,9 @@ mod tests {
             let status = process_block(
                 &mut callback,
                 128,
-                [&input, &input, &input, &input, &input, &input],
+                [
+                    &input, &input, &input, &input, &input, &input, &input, &input,
+                ],
                 &mut left,
                 &mut right,
             );

@@ -58,7 +58,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -733,6 +733,9 @@ struct App {
     confirm_delete: Option<String>,
     confirm_load: Option<String>,
     midi_output: engine::SharedOutput,
+    drum_output: crate::drums_host::SharedDrumOutput,
+    drum_host: Option<crate::drums_host::DrumHost>,
+    drum_kits: Vec<crate::drums_host::KitEntry>,
     midi_lifecycle: engine::MidiLifecycle,
     pickup: engine::SharedPickup,
     midi_backend: engine::SharedBackend,
@@ -1191,7 +1194,7 @@ fn configured_gm_drum_route(catalogs: &[Catalog]) -> SoftwareRoute {
         })
 }
 
-fn enforce_fresh_gm_drum_page(pages: &mut Vec<sequencer::Page>, route: &SoftwareRoute) {
+fn enforce_fresh_drum_page(pages: &mut Vec<sequencer::Page>, target: &PageTarget) {
     let drum_index = pages
         .iter()
         .position(|page| page.name.eq_ignore_ascii_case("drums"))
@@ -1202,13 +1205,13 @@ fn enforce_fresh_gm_drum_page(pages: &mut Vec<sequencer::Page>, route: &Software
         page.percussion = true;
         page.note_off_enabled = false;
         page.entry_mode = sequencer::NoteEntryMode::DrumAuto;
-        page.target = PageTarget::Software(route.clone());
+        page.target = target.clone();
         for column in &mut page.columns {
             column.channel = 9;
         }
     } else {
         let mut page = sequencer::Page::new("Drums", 9, true, 0);
-        page.target = PageTarget::Software(route.clone());
+        page.target = target.clone();
         pages.push(page);
     }
 }
@@ -1520,12 +1523,19 @@ impl App {
             .map(|preset| preset.name.as_str())
             .unwrap_or("Unavailable synthv1 preset");
         let gm_drums_route = configured_gm_drum_route(catalogs);
+        let drum_kits = crate::drums_host::discover_kits(&config.drums.kit_directory);
+        let drum_target = drum_kits
+            .iter()
+            .find(|kit| kit.id == "electronic-house")
+            .or_else(|| drum_kits.first())
+            .map(|kit| PageTarget::InternalDrums(kit.id.clone()))
+            .unwrap_or_else(|| PageTarget::Software(gm_drums_route.clone()));
         let factory_routing =
             sequencer::factory_routing_pages(first_synthv1, gm_drums_route.clone());
         let mut routing_defaults =
             sequencer::load_routing_defaults(&routing_defaults_path, &factory_routing)
                 .unwrap_or(factory_routing);
-        enforce_fresh_gm_drum_page(&mut routing_defaults, &gm_drums_route);
+        enforce_fresh_drum_page(&mut routing_defaults, &drum_target);
         let mut defaults_song = Song::new_with_pages(&config.external_midi, routing_defaults);
         sequencer::upgrade_legacy_synth_routes(&mut defaults_song, first_synthv1);
         routing_defaults = defaults_song.patterns.remove(&0).unwrap().pages;
@@ -1536,9 +1546,11 @@ impl App {
             &config.controller_clock,
             config.external_midi.default_tempo,
         ));
+        let drum_output = Arc::new(Mutex::new(None));
         let sequencer = sequencer::Sequencer::start_with_clock(
             &config.external_midi,
             Arc::clone(&midi_output),
+            Arc::clone(&drum_output),
             Arc::clone(&transport_clock),
         );
         let tracker_live_input = sequencer.live_input();
@@ -1630,6 +1642,9 @@ impl App {
             confirm_delete: None,
             confirm_load: None,
             midi_output,
+            drum_output,
+            drum_host: None,
+            drum_kits,
             midi_lifecycle: tracker_io.lifecycle,
             pickup,
             midi_backend,
@@ -2930,11 +2945,16 @@ impl App {
                     PageTarget::ActiveInstrument
                     | PageTarget::Synthv1(_)
                     | PageTarget::Software(_) => 1,
-                    PageTarget::ConfiguredExternal | PageTarget::Midi(_) => 2,
+                    PageTarget::InternalDrums(_) => 2,
+                    PageTarget::ConfiguredExternal | PageTarget::Midi(_) => 3,
                 };
-                match wrapped_index(current, 3, direction) {
+                match wrapped_index(current, 4, direction) {
                     0 => Some(PageTarget::Default),
                     1 => self.first_software_route().map(PageTarget::Software),
+                    2 => self
+                        .drum_kits
+                        .first()
+                        .map(|kit| PageTarget::InternalDrums(kit.id.clone())),
                     _ => Some(PageTarget::ConfiguredExternal),
                 }
             }
@@ -4165,6 +4185,11 @@ impl App {
         }
         self.engine.take();
         self.engine_owner = None;
+        if let Some(drums) = self.drum_host.take() {
+            drums.all_notes_off();
+            drop(drums);
+        }
+        self.config.drums.output_ports = None;
         self.performance_meter
             .set_audio_unavailable(AudioAvailability::Stopped);
         let _ = engine::stop_managed(state);
@@ -4905,14 +4930,14 @@ impl App {
     fn tracker_noob_allows(&self, note: u8) -> bool {
         !self.tracker_noob
             || self.current_page().is_some_and(|page| page.percussion)
-            || self.noob_scale.contains(note)
+            || self.song.project_key.contains(note)
     }
 
     fn sync_playback_noob(&self) {
         if let Ok(mut active) = self.playback_scale.lock() {
             *active = (self.playback_noob
                 && self.screen_keeps_playback_workspace_active(self.screen))
-            .then_some(self.noob_scale);
+            .then_some(self.song.project_key);
         }
     }
 
@@ -4937,8 +4962,10 @@ impl App {
         self.status = if self.playback_noob {
             format!(
                 "N00B {} {} · turn the rotary to change scale",
-                self.config.note_naming.pitch_name(self.noob_scale.root),
-                self.noob_scale.kind.label()
+                self.config
+                    .note_naming
+                    .pitch_name(self.song.project_key.root),
+                self.song.project_key.kind.label()
             )
         } else {
             "Player N00B off · all chromatic notes enabled".into()
@@ -4950,13 +4977,13 @@ impl App {
             return;
         }
         self.silence_live_notes();
-        let kind = match self.noob_scale.kind {
+        let kind = match self.song.project_key.kind {
             ScaleKind::Major => 0,
             ScaleKind::NaturalMinor => 1,
         };
-        let current = usize::from(self.noob_scale.root) * 2 + kind;
+        let current = usize::from(self.song.project_key.root) * 2 + kind;
         let next = wrapped_index(current, 24, direction);
-        self.noob_scale = Scale {
+        self.song.project_key = Scale {
             root: (next / 2) as u8,
             kind: if next % 2 == 0 {
                 ScaleKind::Major
@@ -4964,11 +4991,14 @@ impl App {
                 ScaleKind::NaturalMinor
             },
         };
+        self.noob_scale = self.song.project_key;
         self.sync_playback_noob();
         self.status = format!(
             "N00B {} {} · outside notes stay silent",
-            self.config.note_naming.pitch_name(self.noob_scale.root),
-            self.noob_scale.kind.label()
+            self.config
+                .note_naming
+                .pitch_name(self.song.project_key.root),
+            self.song.project_key.kind.label()
         );
     }
 
@@ -4990,8 +5020,10 @@ impl App {
             self.sync_tracker_route();
             self.status = format!(
                 "FT2 N00B {} {} · current mode unchanged",
-                self.config.note_naming.pitch_name(self.noob_scale.root),
-                self.noob_scale.kind.label()
+                self.config
+                    .note_naming
+                    .pitch_name(self.song.project_key.root),
+                self.song.project_key.kind.label()
             );
         }
     }
@@ -5123,21 +5155,40 @@ impl App {
         };
     }
     fn sync_tracker_route(&mut self) -> bool {
+        let drums_ready = self.ensure_current_internal_drums();
         let plan = self.current_page_software_plan();
         let engine_ready = plan
             .as_ref()
             .is_none_or(|plan| self.ensure_tracker_engine_plan(plan));
-        self.configure_tracker_route_ready(false, engine_ready);
-        engine_ready
+        self.configure_tracker_route_ready(false, drums_ready && engine_ready);
+        drums_ready && engine_ready
     }
 
     fn sync_tracker_route_for_navigation(&mut self) -> bool {
+        let drums_ready = self.ensure_current_internal_drums();
         let plan = self.current_page_software_plan();
         let engine_ready = plan
             .as_ref()
             .is_none_or(|plan| self.ensure_tracker_engine_plan(plan));
-        self.configure_tracker_route_ready(true, engine_ready);
-        engine_ready
+        self.configure_tracker_route_ready(true, drums_ready && engine_ready);
+        drums_ready && engine_ready
+    }
+
+    fn ensure_current_internal_drums(&mut self) -> bool {
+        let kit = self.current_page().and_then(|page| match &page.target {
+            PageTarget::InternalDrums(kit) if self.tracker_workspace_active() => Some(kit.clone()),
+            _ => None,
+        });
+        let Some(kit) = kit else {
+            return true;
+        };
+        match self.ensure_internal_drum_kit(&kit) {
+            Ok(()) => true,
+            Err(_) => {
+                self.status = "SHR DRUMS OFFLINE · kit/route unavailable".into();
+                false
+            }
+        }
     }
 
     fn configure_tracker_route(&mut self, preserve_notes: bool) {
@@ -5195,7 +5246,7 @@ impl App {
                 start_column: self.tracker_track,
                 percussion: page.percussion || columns[self.tracker_track].0 == 9,
                 audition_note,
-                scale: (self.tracker_noob && !page.percussion).then_some(self.noob_scale),
+                scale: (self.tracker_noob && !page.percussion).then_some(self.song.project_key),
                 external: &external,
             };
             if preserve_notes {
@@ -5415,6 +5466,11 @@ impl App {
         {
             targets.push(PageTarget::Software(route));
         }
+        targets.extend(
+            self.drum_kits
+                .iter()
+                .map(|kit| PageTarget::InternalDrums(kit.id.clone())),
+        );
         if !self.config.external_midi.output_match.is_empty() {
             targets.push(PageTarget::ConfiguredExternal);
         }
@@ -5447,6 +5503,11 @@ impl App {
         {
             targets.push(PageTarget::Software(route));
         }
+        targets.extend(
+            self.drum_kits
+                .iter()
+                .map(|kit| PageTarget::InternalDrums(kit.id.clone())),
+        );
         if !self.config.external_midi.output_match.is_empty() {
             targets.push(PageTarget::ConfiguredExternal);
         }
@@ -5507,6 +5568,13 @@ impl App {
                         )
                     })
             }
+            PageTarget::InternalDrums(kit) => {
+                self.drum_kits.iter().any(|candidate| &candidate.id == kit)
+                    && self
+                        .drum_host
+                        .as_ref()
+                        .is_some_and(|host| host.kit_id() == kit && !host.lost())
+            }
             PageTarget::ConfiguredExternal => {
                 self.config.external_midi.enabled
                     && sequencer::matching_output_index(
@@ -5535,6 +5603,9 @@ impl App {
                 .is_none()
                 .then_some("MISSING")
                 .or_else(|| (!self.target_online(target)).then_some("OFFLINE")),
+            PageTarget::InternalDrums(kit) => {
+                (!self.drum_kits.iter().any(|candidate| &candidate.id == kit)).then_some("MISSING")
+            }
             PageTarget::ConfiguredExternal => {
                 if !self.config.external_midi.enabled {
                     Some("OFFLINE")
@@ -5650,6 +5721,11 @@ impl App {
         self.page_target_candidates = vec![PageTarget::Default];
         self.page_target_candidates
             .extend(software.map(PageTarget::Software));
+        self.page_target_candidates.extend(
+            self.drum_kits
+                .iter()
+                .map(|kit| PageTarget::InternalDrums(kit.id.clone())),
+        );
         self.page_target_candidates.push(external);
         self.page_target_selected = self
             .page_target_candidates
@@ -5700,6 +5776,7 @@ impl App {
                         }
                         next_mode = match page.target {
                             PageTarget::Software(_) => PageManagerMode::Engine,
+                            PageTarget::InternalDrums(_) => PageManagerMode::Pages,
                             PageTarget::ConfiguredExternal | PageTarget::Midi(_) => {
                                 PageManagerMode::MidiOutput
                             }
@@ -5958,7 +6035,75 @@ impl App {
         self.loop_runtime_pattern = None;
         self.loop_meter
             .set_audio_unavailable(AudioAvailability::Stopped);
+        if let Some(drums) = self.drum_host.as_ref() {
+            drums.drain();
+        }
         self.status = "tracker stopped".into();
+    }
+
+    fn ensure_internal_drums(
+        &mut self,
+        messages: &[sequencer::ScheduledMessage],
+    ) -> std::result::Result<(), String> {
+        let kits = messages
+            .iter()
+            .filter(|message| {
+                matches!(message.bytes.as_slice(), [status, _, velocity, ..]
+                    if status & 0xf0 == 0x90 && *velocity > 0)
+            })
+            .filter_map(|message| match message.target.as_ref() {
+                Some(PageTarget::InternalDrums(kit)) => Some(kit.clone()),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+        if kits.is_empty() {
+            return Ok(());
+        }
+        if kits.len() != 1 {
+            return Err("one SHR Drums kit may sound at a time".into());
+        }
+        let kit_id = kits.first().expect("one internal kit was checked");
+        self.ensure_internal_drum_kit(kit_id)
+    }
+
+    fn ensure_internal_drum_kit(&mut self, kit_id: &str) -> std::result::Result<(), String> {
+        if self.drum_host.as_ref().is_some_and(|host| {
+            host.matches_configuration(kit_id, self.song.project_key, &self.song.drum_tuning)
+                && !host.lost()
+        }) {
+            return Ok(());
+        }
+        let kit = self
+            .drum_kits
+            .iter()
+            .find(|candidate| &candidate.id == kit_id)
+            .cloned()
+            .ok_or_else(|| format!("SHR Drums kit {kit_id:?} is not installed"))?;
+        if let Some(host) = self.drum_host.take() {
+            host.all_notes_off();
+            drop(host);
+        }
+        if self.config.audio_graph.enabled {
+            self.unload_owned_engine(|owner| matches!(owner, EngineOwner::Tracker(_)));
+        }
+        let available = engine::jack_ports();
+        let resolved = self.config.resolve_audio_route(&available);
+        if resolved.outputs.len() != 2 {
+            return Err("SHR Drums has no resolved stereo playback route".into());
+        }
+        let host = crate::drums_host::DrumHost::start(
+            &self.config.drums,
+            &kit,
+            self.song.project_key,
+            &self.song.drum_tuning,
+            &resolved.outputs,
+            Arc::clone(&self.drum_output),
+        )
+        .map_err(|error| format!("{error:#}"))?;
+        self.config.drums.output_ports = Some(host.output_ports());
+        self.song.drum_kit = kit_id.into();
+        self.drum_host = Some(host);
+        Ok(())
     }
 
     fn begin_mixed_engine_remap(
@@ -6262,6 +6407,10 @@ impl App {
         });
         if notes == 0 && loop_count > 0 && failed_loops.len() == loop_count {
             self.status = "LOOP MIX FAILED · no playable slot".into();
+            return;
+        }
+        if let Err(_error) = self.ensure_internal_drums(&messages) {
+            self.status = "SHR DRUMS FAILED · kit/route unavailable".into();
             return;
         }
         match scheduled_software_plan(&messages) {
@@ -9926,12 +10075,16 @@ impl App {
     }
 
     fn move_bus_selection(&mut self, direction: i8) {
-        self.bus_selected = wrapped_index(self.bus_selected, 4, direction);
+        self.bus_selected = wrapped_index(
+            self.bus_selected,
+            crate::final_bus::SOURCE_COUNT + 1,
+            direction,
+        );
         self.status = format!("final bus · {} selected", self.bus_selection_label());
     }
 
     fn bus_selection_label(&self) -> &'static str {
-        if self.bus_selected < 3 {
+        if self.bus_selected < crate::final_bus::SOURCE_COUNT {
             BusSource::ALL[self.bus_selected].label()
         } else {
             "MASTER"
@@ -9944,7 +10097,7 @@ impl App {
             return;
         };
         let delta = if direction < 0 { -1.0 } else { 1.0 };
-        let value = if self.bus_selected < 3 {
+        let value = if self.bus_selected < crate::final_bus::SOURCE_COUNT {
             let source = BusSource::ALL[self.bus_selected];
             let value = (controls.source_gain_db(source) + delta)
                 .clamp(SOURCE_GAIN_MIN_DB, SOURCE_GAIN_MAX_DB);
@@ -9960,7 +10113,7 @@ impl App {
     }
 
     fn toggle_bus_mute(&mut self) {
-        if self.bus_selected >= 3 {
+        if self.bus_selected >= crate::final_bus::SOURCE_COUNT {
             self.status = "MASTER has level only · mute sources".into();
             return;
         }
@@ -15428,6 +15581,7 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 BusSource::Synth => a.engine.is_some(),
                 BusSource::Loop => a.loop_player.status().loaded,
                 BusSource::Input => input_ready,
+                BusSource::Drums => a.drum_host.as_ref().is_some_and(|host| !host.lost()),
             };
         let (gain, muted) = controls.as_ref().map_or((0.0, false), |controls| {
             (
@@ -15471,12 +15625,16 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         truncate(
             &format!(
                 "{} MASTER {:>4.0}dB",
-                if a.bus_selected == 3 { ">" } else { " " },
+                if a.bus_selected == crate::final_bus::SOURCE_COUNT {
+                    ">"
+                } else {
+                    " "
+                },
                 master_gain
             ),
             width,
         ),
-        if a.bus_selected == 3 {
+        if a.bus_selected == crate::final_bus::SOURCE_COUNT {
             Style::default().fg(Color::Black).bg(Color::Yellow)
         } else {
             Style::default().fg(Color::White)
@@ -16531,6 +16689,7 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_) => {
                     "INTERNAL"
                 }
+                PageTarget::InternalDrums(_) => "SHR DRUMS",
                 PageTarget::Midi(_) | PageTarget::ConfiguredExternal => "EXTERNAL MIDI",
             };
             let software = match &page.target {
@@ -17297,8 +17456,8 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 Span::styled(
                     format!(
                         "{} {}",
-                        a.config.note_naming.pitch_name(a.noob_scale.root),
-                        a.noob_scale.kind.label()
+                        a.config.note_naming.pitch_name(a.song.project_key.root),
+                        a.song.project_key.kind.label()
                     ),
                     Style::default()
                         .fg(Color::LightYellow)
@@ -17514,8 +17673,8 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             "{}N0B {} {}",
             mode.as_ref()
                 .map_or_else(String::new, |mode| format!("{mode} · ")),
-            a.config.note_naming.pitch_name(a.noob_scale.root),
-            a.noob_scale.kind.label()
+            a.config.note_naming.pitch_name(a.song.project_key.root),
+            a.song.project_key.kind.label()
         ))
     } else {
         mode
@@ -18046,6 +18205,7 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .map(|target| match target {
                     PageTarget::Default => "AUTO",
                     PageTarget::Software(_) | PageTarget::Synthv1(_) => "INTERNAL SOFTWARE",
+                    PageTarget::InternalDrums(_) => "SHR DRUMS",
                     PageTarget::ConfiguredExternal | PageTarget::Midi(_) => "EXTERNAL MIDI",
                     PageTarget::ActiveInstrument => "LEGACY INTERNAL",
                 })
@@ -29172,6 +29332,22 @@ mod tests {
             .collect::<Vec<_>>();
         channels.sort_unstable();
         assert_eq!(channels, [0, 1, 2, 9]);
+    }
+
+    #[test]
+    fn internal_drums_do_not_consume_or_replace_the_melodic_software_plan() {
+        let melodic = SoftwareRoute::synthv1("Preset 00");
+        let messages = vec![
+            planned_note(melodic.clone(), 0, 60, 0),
+            sequencer::ScheduledMessage {
+                target: Some(PageTarget::InternalDrums("electronic-house".into())),
+                bytes: vec![0x99, 36, 100],
+                ..planned_note(fluid_route("ignored"), 9, 36, 8)
+            },
+        ];
+        let plan = scheduled_software_plan(&messages).unwrap().unwrap();
+        assert_eq!(plan.parts.len(), 1);
+        assert!(plan.contains_part(&melodic, 0));
     }
 
     #[test]

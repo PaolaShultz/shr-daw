@@ -1,13 +1,14 @@
 # Final stereo performance bus
 
 The opt-in owned audio graph has one deliberately small final bus. It is not a
-free-wiring view or a general-purpose mixer. Exactly three stereo sources are
+free-wiring view or a general-purpose mixer. Exactly four stereo sources are
 instantiated:
 
 ```text
 managed software instrument -> source inserts/optional aux sends --\
 owned four-slot native-rate Loop Mix sum ---------------------------+-> stereo sum
 configured JACK capture L/R ---------------------------------------/
+SHR Drums in-process stereo bus ------------------------------------/
     -> optional aux returns, where routed from the managed source
     -> master insert rack
     -> master level
@@ -18,7 +19,7 @@ configured JACK capture L/R ---------------------------------------/
     -> configured JACK playback L/R
 ```
 
-The logical Loop and external-input bus strips do not gain individual insert
+The logical Drums, Loop, and external-input bus strips do not gain individual insert
 racks, aux sends, pan, solo, automation, or waveform editing. Their bus
 controls remain a smoothed level and mute. Loop Mix applies its four
 slot-local level/filter/mute controls before this one logical source. The
@@ -26,8 +27,8 @@ managed source keeps its existing Project-owned
 insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
-basic three-source summing headroom. These live performance controls are not
-Project data; current Project format 11 stores effect racks/routing and the
+basic four-source summing headroom. These live performance controls are not
+Project data; current Project format 12 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
 Pattern, but not these final-bus levels or mutes. JACK assignments remain
 machine configuration.
@@ -45,10 +46,10 @@ graph, so the bus, limiter, final meter, and recorder receive the complete Loop
 sum once. The MTR screen leaves healthy sources unadorned and marks
 only `MUTE` or `OFFLINE`.
 
-Before activation, the synth and loop each have their ordinary direct stereo
-routes. The graph publishes silence while all six source connections and the
-final playback pair are connected. It then removes the exact two synth and two
-loop direct connections as one rollback-capable transaction and publishes the
+Before activation, the synth, drums when active, and loop each have their
+ordinary direct stereo routes. The graph publishes silence while the required
+source connections and final playback pair are connected. It then removes the
+exact owned direct connections as one rollback-capable transaction and publishes the
 callback at a block boundary. A failed connection restores the exact prior
 topology and leaves unrelated JACK connections untouched. Normal shutdown,
 loop replacement, JACK loss, or source disappearance deactivates the callback
@@ -100,7 +101,7 @@ publication.
 
 The result is one conventional little-endian PCM RIFF/WAVE file: two
 interleaved channels, 24 bits, and the active JACK sample rate. It includes the
-three-source sum, managed-source aux returns, master rack, master level, and
+four-source sum, managed-source aux returns, master rack, master level, and
 complete MASTER STRIP. It excludes raw recorder stems, unrelated JACK clients, interface
 direct monitoring, hardware mixer/insert processing after JACK playback, and
 any downstream speaker/headphone processing.

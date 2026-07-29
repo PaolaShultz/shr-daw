@@ -4,9 +4,8 @@ This document is the current implementation contract for SHR-DAW's owned audio
 graph and effects racks. The graph is implemented and Raspberry Pi measured,
 but remains opt-in and disabled by default. Direct JACK routing is both the
 default and the conservative fallback. The current product compiler instantiates
-exactly three stereo sources while retaining the general four-source bound: the
-managed software instrument, the owned WAV loop, and one exact configured JACK
-capture pair.
+four bounded stereo sources: the managed software instrument, SHR Drums, the
+owned WAV loop, and one exact configured JACK capture pair.
 
 The active signal flow is:
 
@@ -17,6 +16,7 @@ managed instrument -> SOURCE inserts -------------------------------\
        +----------------------> PRE send gain  -> wet AUX 1/2 -> return -+
 owned WAV loop ------------------------------------------------------+-> dry sum
 configured stereo JACK input --------------------------------------/
+in-process SHR Drums stereo bus ------------------------------------/
 
 dry sum -> MASTER inserts -> live master level
         -> fixed MASTER STRIP (INPUT/TONE/GLUE/COLOR/IMAGE/LOUD)
@@ -52,9 +52,9 @@ ordered internal pairs, and final headphone pair remain machine configuration.
 Exact JACK and hardware
 names come from configuration, never Rust constants.
 
-The typed graph model reserves a fourth source plus hardware returns/sends, but
-the current graph client instantiates only `ManagedEngine`, `LoopPlayer`, and
-`LiveInput`. The loop remains its own rendering client; when the final bus is
+The graph client instantiates `ManagedEngine`, `InternalDrums`, `LoopPlayer`,
+and `LiveInput`. SHR Drums is a library hosted in-process by SHR-DAW, not a
+second managed synth process. The loop remains its own rendering client; when the final bus is
 active its output is moved off direct playback and into the owned sum. The raw
 synchronized multitrack recorder remains a separate capture client. External
 instruments return only through the configured stereo mix. There is no hardware
@@ -85,7 +85,7 @@ alive until client deactivation returns.
 
 ## Project data and typed graph model
 
-Project formats 10–11 store the managed-source `InsertRack`, `ProjectAuxRouting`,
+Project formats 10–12 store the managed-source `InsertRack`, `ProjectAuxRouting`,
 and fixed `MasterStripSettings` as strict JSON inside the versioned `.shsong`
 line format.
 Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
@@ -189,7 +189,7 @@ These are rejection limits, not targets and not silent truncation points:
 
 | Resource | Bound |
 | --- | ---: |
-| Stereo source strips | 4 in the general model; exactly 3 instantiated |
+| Stereo source strips | 4 instantiated |
 | Aux buses | 2 |
 | Effects in one serial chain | 8 |
 | Active effect instances | 16 |

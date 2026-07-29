@@ -42,6 +42,7 @@ pub struct StereoPorts {
 pub enum SourceKind {
     ManagedEngine,
     LoopPlayer,
+    InternalDrums,
     LiveInput { ports: StereoPorts },
     HardwareReturn { loop_id: String, ports: StereoPorts },
 }

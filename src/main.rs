@@ -11,6 +11,7 @@ mod controller_profile;
 mod demo;
 mod device_profile;
 mod drum_pattern;
+mod drums_host;
 pub mod dsp;
 pub mod effect_schema;
 pub mod effects;

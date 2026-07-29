@@ -481,18 +481,18 @@ they are smoothed atomic updates and may be auditioned during playback. They
 are rejected during a final recording. Whole-strip comparison keeps the same
 delay and true-peak protection, and never overwrites the edited values.
 
-The graph remains opt-in and disabled by default. The managed engine and loop
-are connected directly first. The graph is activated muted, all three exact
-input pairs plus its playback boundary are connected, and the four synth/loop
-direct links are removed as one rollback-capable transaction before graph
+The graph remains opt-in and disabled by default. The managed engine, internal
+drums when active, and loop are connected directly first. The graph is
+activated muted, its four stereo inputs plus playback boundary are connected,
+and the owned direct links are removed as one rollback-capable transaction before graph
 output is published at a block boundary. Validation, activation, or connection
 failure leaves or restores the exact prior direct links. Shutdown deactivates
 the callback before restoring them, avoiding a doubled final block.
 
 FX state is saved in the Project while the graph is disabled, but direct
-playback cannot process or meter it. The graph instantiates exactly three
-source kinds: managed instrument, owned loop player, and one stereo live-input
-pair. It deliberately has no general strips, pan, solo, hardware insert,
+playback cannot process or meter it. The graph instantiates exactly four
+source kinds: managed instrument, SHR Drums, owned loop player, and one stereo
+live-input pair. It deliberately has no general strips, pan, solo, hardware insert,
 per-input effect chain, or arbitrary wiring.
 
 ## Live Patterns, Loop Mix, and the final bus
@@ -595,16 +595,17 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 11 persists the complete tracker state, integer-hundredths
+Project format 12 persists the complete tracker state, integer-hundredths
 Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
 effects routing, one Project-global fixed MASTER STRIP, per-page entry
 mode/anchor, automatic Note Off choice, drum-role/choke overrides,
 explicit software engine/instrument identities, and optional external profile
-metadata. Format 7's former Project-global four slots migrate in memory into
+metadata, Project tonic/mode, selected drum kit, and drum tuning. Format 7's
+former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
-audio or rewrites the file; only an explicit save writes format 11. Format 10
+audio or rewrites the file; only an explicit save writes format 12. Format 10
 infers the Note Off choice from the percussion flag. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
 marked percussion pages retain their prior automatic drum entry. Format 3
@@ -636,7 +637,7 @@ cleared demo manifest. See
 ## Performance information and honest limits
 
 With the graph disabled, MTR retains its CPU and legacy managed-source display.
-With the graph enabled, it shows the three source readiness/level/mute states,
+With the graph enabled, it shows the four source readiness/level/mute states,
 master level, post-strip sample/true-peak and loudness state, linked gain
 reduction, correlation, and final-recording status. Direct mode reports final-bus metering
 unavailable instead of creating a hidden tap or displaying unrelated audio.

@@ -152,12 +152,12 @@ equal values, and other controls leave them alone. Stopped, unavailable, and
 new meter sessions cannot carry an old `MAX` forward.
 
 FINAL OUT is available only for the active owned graph. It measures after all
-three required sources, master inserts, live master level, fixed strip, and
+four performance sources, master inserts, live master level, fixed strip, and
 linked 8× true-peak limiter. The same final buffer feeds the stereo recorder and playback. Direct
 playback reports this final-bus meter unavailable and stays direct.
 
 The FT2 WAV Loop screen's `LOOP OUT` still measures only the rendered loop. When
-the final bus is active, that loop is one of the three sources in `FINAL OUT`.
+the final bus is active, that loop is one of the four sources in `FINAL OUT`.
 
 On MTR, SOURCE-/SOURCE+ choose a source, LEVEL-/LEVEL+ change it in 1 dB steps,
 MUTE toggles it, and REC starts/stops the final stereo WAV at callback

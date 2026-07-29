@@ -181,6 +181,15 @@ pub struct AudioGraphConfig {
 }
 
 #[derive(Clone, Debug)]
+pub struct DrumEngineConfig {
+    pub client_name: String,
+    pub kit_directory: PathBuf,
+    pub maximum_callback_frames: usize,
+    /// Runtime-only exact JACK ports published by the in-process host.
+    pub output_ports: Option<[String; 2]>,
+}
+
+#[derive(Clone, Debug)]
 pub struct RuntimeConfig {
     /// Legacy names remain public so old callers/configurations keep working.
     pub synth_command: String,
@@ -208,6 +217,7 @@ pub struct RuntimeConfig {
     pub audio_internal_outputs: Vec<StereoOutputConfig>,
     pub audio_headphone_output: Option<StereoOutputConfig>,
     pub audio_graph: AudioGraphConfig,
+    pub drums: DrumEngineConfig,
     /// Optional zero-based CPU reserved by system setup for the managed engine.
     pub audio_engine_cpu: Option<usize>,
     pub cpu_temperature_path: Option<PathBuf>,
@@ -339,6 +349,12 @@ impl Default for RuntimeConfig {
                 input: None,
                 input_direct_monitoring: false,
                 confirm_doubled_monitoring: false,
+            },
+            drums: DrumEngineConfig {
+                client_name: "shr-drums".into(),
+                kit_directory: default_kit_directory(),
+                maximum_callback_frames: 4_096,
+                output_ports: None,
             },
             audio_engine_cpu: None,
             cpu_temperature_path: None,
@@ -578,6 +594,17 @@ impl RuntimeConfig {
                 }
                 "audio.graph.confirm_doubled_monitoring" => {
                     self.audio_graph.confirm_doubled_monitoring = boolean(key, value)?
+                }
+                "drums.client" => self.drums.client_name = required(key, value)?.into(),
+                "drums.kit_directory" => {
+                    self.drums.kit_directory = if value.is_empty() {
+                        default_kit_directory()
+                    } else {
+                        expand_home(value)
+                    }
+                }
+                "drums.maximum_callback_frames" => {
+                    self.drums.maximum_callback_frames = bounded_usize(key, value, 1, 4_096)?
                 }
                 "audio.engine_cpu" => {
                     self.audio_engine_cpu = if value.is_empty() {
@@ -941,6 +968,12 @@ impl RuntimeConfig {
             self.audio_graph.input_direct_monitoring, self.audio_graph.confirm_doubled_monitoring
         ));
         text.push_str(&format!(
+            "drums.client={}\ndrums.kit_directory={}\ndrums.maximum_callback_frames={}\n",
+            self.drums.client_name,
+            self.drums.kit_directory.display(),
+            self.drums.maximum_callback_frames
+        ));
+        text.push_str(&format!(
             "audio.engine_cpu={}\n",
             self.audio_engine_cpu
                 .map(|cpu| cpu.to_string())
@@ -1108,6 +1141,18 @@ fn default_midi_import_directory() -> PathBuf {
         .join("shsynth/midi-inbox")
 }
 
+fn default_kit_directory() -> PathBuf {
+    if let Some(path) = env::var_os("SHSYNTH_KIT_DIR") {
+        return PathBuf::from(path);
+    }
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env::var_os("HOME").unwrap_or_else(|| ".".into())).join(".local/share")
+        })
+        .join("shsynth/kits")
+}
+
 fn atomic_write(path: &Path, text: &str) -> Result<()> {
     crate::fsutil::atomic_write(path, text.as_bytes())
 }
@@ -1227,6 +1272,29 @@ mod tests {
         config.save(&path).unwrap();
         let loaded = RuntimeConfig::load(&path).unwrap();
         assert_eq!(loaded.loop_player.outputs, ["usb:left", "usb:right"]);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn drum_host_configuration_round_trips_without_persisting_runtime_ports() {
+        let path = std::env::temp_dir().join(format!("shsynth-drums-{}.conf", std::process::id()));
+        fs::write(
+            &path,
+            "drums.client=my-drums\ndrums.kit_directory=/private/kits\ndrums.maximum_callback_frames=512\n",
+        )
+        .unwrap();
+        let mut config = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(config.drums.client_name, "my-drums");
+        assert_eq!(config.drums.kit_directory, PathBuf::from("/private/kits"));
+        assert_eq!(config.drums.maximum_callback_frames, 512);
+        assert_eq!(config.drums.output_ports, None);
+        config.drums.output_ports = Some(["runtime:left".into(), "runtime:right".into()]);
+        config.save(&path).unwrap();
+        let loaded = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(loaded.drums.client_name, "my-drums");
+        assert_eq!(loaded.drums.kit_directory, PathBuf::from("/private/kits"));
+        assert_eq!(loaded.drums.maximum_callback_frames, 512);
+        assert_eq!(loaded.drums.output_ports, None);
         let _ = fs::remove_file(path);
     }
 

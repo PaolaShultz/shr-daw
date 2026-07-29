@@ -2544,6 +2544,7 @@ fn start_managed_audio_graph(
         PerformanceBusPorts {
             synth: source_ports,
             loop_player: loop_source_ports,
+            drums: config.drums.output_ports.clone(),
             live_input: live_source_ports,
             playback: destinations,
             loop_direct_playback: loop_destinations,

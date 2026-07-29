@@ -237,9 +237,10 @@ setting is active. See
 
 ## Owned audio graph
 
-The opt-in SHR-owned JACK client sums exactly the managed software instrument,
-the owned WAV loop, and one configured stereo capture pair. The instrument
-retains its Project-persisted source insert rack and two aux buses; all three
+The opt-in SHR-owned JACK client sums the managed software instrument, the
+in-process SHR Drums stereo bus, the owned WAV loop, and one configured stereo
+capture pair. The melodic instrument
+retains its Project-persisted source insert rack and two aux buses; all four
 sources then pass through the master rack, live master level, fixed Project
 MASTER STRIP, final meter, final stereo recorder tap, and playback. It remains
 disabled by default:
@@ -253,6 +254,9 @@ audio.graph.client=shr-graph
 audio.graph.maximum_callback_frames=4096
 audio.graph.input=External mix|system:capture_1|system:capture_2
 audio.graph.input_direct_monitoring=false
+drums.client=shr-drums
+drums.kit_directory=
+drums.maximum_callback_frames=4096
 audio.graph.confirm_doubled_monitoring=false
 ```
 
@@ -307,7 +311,7 @@ them.
 The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback
 because no topology is rebuilt. Final recording rejects those edits. When the
-owned graph is disabled, the same edits update only Project format 11 state.
+owned graph is disabled, the same edits update only Project format 12 state.
 The true-peak limiter remains active whenever the final bus is active and has
 no bypass. Exact ranges and latency are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
@@ -535,10 +539,10 @@ page draft through the same Project and route-synchronization owner used by
 Tracks. Closing with the highlighted ROUTE launcher or Back cancels a dirty
 draft and never saves silently.
 
-An internal route stores the engine identity together with that engine's stable
-instrument identity. Changing the standalone/current engine or catalog order
-cannot retarget it. The editor deliberately asks for the engine first and then
-lists instruments belonging to that engine.
+An internal melodic route stores the engine identity together with that
+engine's stable instrument identity. An SHR Drums route instead stores the
+stable kit ID and remains independent of the melodic engine choice. Changing
+the standalone/current engine or catalog order cannot retarget either route.
 
 An exact hardware port name is saved as the route. If it is missing, the page
 shows `OFFLINE`; if the stable identity matches more than once it shows
@@ -583,7 +587,7 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 11
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 12
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
@@ -592,7 +596,8 @@ every cell field, exactly four optional Loop Mix slots, explicit software
 engine/instrument identity, and optional external profile metadata. The Project
 continues to own the source insert rack, aux routing, master rack, fixed MASTER
 STRIP, final-bus routing, recording configuration, and unrelated Project
-state. A
+state, plus the Project-wide tonic/mode, selected drum kit, and OFF, FOLLOW KEY,
+or MANUAL per-piece drum tuning. A
 format-4-or-newer `default` target plus four `default`
 column markers is the canonical portable/unassigned state; it is not channel
 zero, mute, or disabled. Versions 0 and 1 migrate with empty effects routing;
@@ -617,8 +622,9 @@ fixed strip only in memory. Formats 0–9 store whole-number tempo fields and
 migrate them to integer hundredths in memory. Format 10 stores Pattern and
 tempo-command values as deterministic integer hundredths; `10050` means
 100.50 BPM. Format 10 infers automatic Note Off ON for melodic pages and OFF
-for percussion pages; format 11 persists the per-page choice. Explicit save
-writes format 11. Unknown newer
+for percussion pages; format 11 persists the per-page choice. Format 12 adds
+the Project key, selected drum kit, tuning state, and internal-drum page target.
+Explicit save writes format 12. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 

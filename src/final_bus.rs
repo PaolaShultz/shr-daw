@@ -1,4 +1,4 @@
-//! Fixed three-source final performance bus.
+//! Fixed four-source final performance bus.
 //!
 //! Source faders and the live master fader feed the Project-owned fixed
 //! MASTER STRIP. The strip owns the final true-peak limiter and meters.
@@ -12,7 +12,7 @@ use crate::master_strip::{
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-pub const SOURCE_COUNT: usize = 3;
+pub const SOURCE_COUNT: usize = 4;
 pub const SOURCE_GAIN_MIN_DB: f32 = -60.0;
 pub const SOURCE_GAIN_MAX_DB: f32 = 6.0;
 pub const MASTER_GAIN_MIN_DB: f32 = -60.0;
@@ -25,16 +25,18 @@ pub enum BusSource {
     Synth = 0,
     Loop = 1,
     Input = 2,
+    Drums = 3,
 }
 
 impl BusSource {
-    pub const ALL: [Self; SOURCE_COUNT] = [Self::Synth, Self::Loop, Self::Input];
+    pub const ALL: [Self; SOURCE_COUNT] = [Self::Synth, Self::Loop, Self::Input, Self::Drums];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Synth => "SYNTH",
             Self::Loop => "LOOP",
             Self::Input => "INPUT",
+            Self::Drums => "DRUMS",
         }
     }
 
@@ -192,6 +194,7 @@ impl FinalBusProcessor {
                 source_fader(BusSource::Synth)?,
                 source_fader(BusSource::Loop)?,
                 source_fader(BusSource::Input)?,
+                source_fader(BusSource::Drums)?,
             ],
             master_fader: RuntimeFader::new(controls.master_gain_db(), sample_rate)?,
             strip: MasterStripProcessor::new(sample_rate, maximum_frames, strip_controls, meters)?,

@@ -785,6 +785,9 @@ pub fn convert(smf: &Smf, project_name: &str) -> Result<ImportedProject> {
     )?;
     let song = Song {
         name: crate::sequencer::safe_name(project_name),
+        project_key: Default::default(),
+        drum_kit: "electronic-house".into(),
+        drum_tuning: Default::default(),
         steps_per_beat,
         gate_percent: 80,
         insert_rack: Default::default(),

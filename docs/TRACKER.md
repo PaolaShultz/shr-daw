@@ -15,7 +15,9 @@ tracker header does not repeat `PLY` or `REC` state beside the Project title.
 The normal FT2 screen has **PLAY**, real-time **REC**, and detailed
 **EDIT** modes. **N00B is a separate on/off filter** that can remain enabled in
 all three. It keeps the selected melodic page as the instrument and filters
-input through a chosen chromatic root plus major or natural-minor scale. An
+input through the Project-wide song key: a chromatic tonic plus major or
+natural-minor scale. The key remains saved and available to SHR Drums when
+N00B is off. An
 in-scale key keeps its original pitch; an out-of-scale key is consumed and
 stays silent. N00B never quantizes a rejected key to a different note.
 Each entry to the main FT2 screen opens controller-menu page 1, **PLAY**, where
@@ -59,8 +61,9 @@ whose FT2 workspace exposes four musician-facing pages:
 1. `Software Synth`, a four-track page using the first available synthv1 preset;
 2. `MIDI`, a four-track page using the configured external output, MIDI channel
    1, and program 1;
-3. `Drums`, a four-track page using the discovered FluidSynth General MIDI
-   drum kit, MIDI channel 10, and the existing percussion-note mapping;
+3. `Drums`, a four-track page using the installed SHR Drums starter kit when
+   available, otherwise the discovered FluidSynth General MIDI compatibility
+   kit, with the existing GM percussion-note mapping;
 4. `Loop Mix`, that Pattern's four-slot decoded-WAV source.
 
 Loop Mix is a page in the musician-facing FT2 workflow, not four empty
@@ -108,13 +111,14 @@ on 10 play together through the existing stereo synth output. Channel 10 is
 the normal percussion-page default, not a reservation; an explicit Project may
 route it differently.
 
-Fresh Drums pages store that exact FluidSynth route and channel 10 in all four
-columns. Before live audition, Record/Edit input, or transport notes can reach
-it, the managed engine must select the discovered SoundFont bank/program on
-channel 10. If that preset is missing or selection fails, the route remains
-explicit and visibly offline/silent; SHR does not substitute Player, an older
-FluidSynth part, channel 1, or external MIDI. Loaded Projects keep their saved
-routes and channels, and loading a reusable drum pattern copies cells only.
+Drums pages can explicitly store an SHR Drums kit, a configured/exact external
+MIDI output, or a FluidSynth General MIDI compatibility route. An unavailable
+saved target remains visibly offline and silent; it never falls back to another
+route. SHR Drums is an in-process stereo source and does not consume the one
+managed melodic-synth slot, so it can play beside synthv1, Yoshimi, or
+FluidSynth. Switching targets sends All Notes Off and immediate drum chokes.
+Loaded Projects keep their saved routes and channels, and loading a reusable
+drum pattern copies cells only.
 
 Two different FluidSynth presets cannot share one channel in the current
 playback loop. SHR selects stable channel parts before scheduling, and note
@@ -478,10 +482,11 @@ Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 11
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 12
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
-overrides, cells, source
+overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
+source
 insert rack, two aux routes, and master rack. Portable
 pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
@@ -492,12 +497,14 @@ distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 11. Formats 0–9 migrate
+not rewrite an old file; explicit save writes format 12. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.
 Format 10 pages infer automatic Note Off as ON for melodic pages and OFF for
-percussion pages; format 11 persists the explicit per-page choice.
+percussion pages; format 11 persists the explicit per-page choice. Formats
+0–11 migrate with C major, the starter-kit identity, tuning OFF, and their
+original page routes unchanged.
 Format 5 and older ordinary pages load as Manual with anchor C1 and no
 overrides. Pages carrying the old explicit percussion flag retain their prior
 automatic drum entry.
@@ -540,11 +547,12 @@ effect, and changing Arrangement steps does not change rack order. The two aux
 sends take their pre/post source-insert taps from the one managed software
 instrument, not from individual MIDI lanes.
 
-With the opt-in graph active, the managed source and wet returns, private WAV
-loop, and exact configured stereo external-input return meet once before the
-master rack and final meter. The loop and external input do not acquire source
-inserts or aux sends; the raw multitrack recorder remains a separate capture
-path. See
+With the opt-in graph active, the managed source and wet returns, SHR Drums,
+private WAV loop, and exact configured stereo external-input return meet once
+before the master rack and final meter. SHR Drums has its own final-bus level
+and mute but no multi-mic live mixer. The loop, drums, and external input do
+not acquire the melodic source inserts or aux sends; the raw multitrack
+recorder remains a separate capture path. See
 [How SHR-DAW works](HOW_IT_WORKS.md#the-managed-audio-graph) for the musical
 workflow and [Audio graph and DSP contract](AUDIO_GRAPH.md) for exact effect
 schemas and limits.

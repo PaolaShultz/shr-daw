@@ -5,6 +5,7 @@ use crate::config::{BankSelectMode, ExternalMidiConfig};
 use crate::device_profile::Registry as DeviceProfiles;
 use crate::master_strip::MasterStripSettings;
 use crate::preset::BackendKind;
+use crate::scale::{Scale, ScaleKind};
 use crate::tempo::Bpm;
 use anyhow::{anyhow, bail, Context, Result};
 use midir::{MidiOutput, MidiOutputConnection};
@@ -16,7 +17,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 11;
+pub const SONG_VERSION: u8 = 12;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
@@ -38,6 +39,9 @@ pub fn musician_program(program: u8) -> u16 {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Song {
     pub name: String,
+    pub project_key: Scale,
+    pub drum_kit: String,
+    pub drum_tuning: shr_drums::KitTuning,
     pub steps_per_beat: u8,
     pub gate_percent: u8,
     pub insert_rack: InsertRack,
@@ -237,6 +241,8 @@ pub enum PageTarget {
     /// together so catalog order or the standalone current engine cannot
     /// retarget a Pattern.
     Software(SoftwareRoute),
+    /// In-process SHR Drums kit. This is not a managed synth backend.
+    InternalDrums(String),
     /// An exact ALSA MIDI output port name selected by the user.
     Midi(String),
     /// The configured `external_midi.output` route.
@@ -265,6 +271,7 @@ impl PageTarget {
             Self::ActiveInstrument => "SHR-DAW instrument",
             Self::Synthv1(name) => name,
             Self::Software(route) => &route.instrument,
+            Self::InternalDrums(kit) => kit,
             Self::Midi(name) => name,
             Self::ConfiguredExternal => "Configured MIDI output",
         }
@@ -439,6 +446,9 @@ impl Song {
         );
         Self {
             name: "untitled".into(),
+            project_key: Scale::default(),
+            drum_kit: "electronic-house".into(),
+            drum_tuning: shr_drums::KitTuning::default(),
             steps_per_beat: config.steps_per_beat,
             gate_percent: config.gate_percent,
             insert_rack: InsertRack::default(),
@@ -451,6 +461,18 @@ impl Song {
 
     pub fn validate(&self) -> Result<()> {
         validate_label(&self.name, "project name", 64)?;
+        if self.project_key.root > 11 {
+            bail!("Project key tonic must be 0..=11");
+        }
+        validate_label(&self.drum_kit, "Project drum kit", 64)?;
+        for (piece, tuning) in &self.drum_tuning.pieces {
+            validate_label(piece, "Project drum tuning piece", 64)?;
+            if tuning.target_pitch_class.is_some_and(|pitch| pitch.0 > 11)
+                || !(-2_400..=2_400).contains(&tuning.cents_adjustment)
+            {
+                bail!("Project drum tuning is out of range");
+            }
+        }
         if !(1..=16).contains(&self.steps_per_beat) || !(1..=100).contains(&self.gate_percent) {
             bail!("project steps/gate out of range");
         }
@@ -667,6 +689,9 @@ pub fn save_routing_defaults(path: &Path, pages: &[Page]) -> Result<()> {
     let pattern = Pattern::new(1, Bpm::DEFAULT, 4, pages.to_vec());
     let song = Song {
         name: "FT2 routing defaults".into(),
+        project_key: Scale::default(),
+        drum_kit: "electronic-house".into(),
+        drum_tuning: shr_drums::KitTuning::default(),
         steps_per_beat: 4,
         gate_percent: 80,
         insert_rack: InsertRack::default(),
@@ -982,6 +1007,7 @@ impl Pattern {
                             | PageTarget::ActiveInstrument
                             | PageTarget::Synthv1(_)
                             | PageTarget::Software(_)
+                            | PageTarget::InternalDrums(_)
                     ) {
                         continue;
                     }
@@ -1013,6 +1039,9 @@ impl Pattern {
                     validate_label(route.engine.label(), "pattern page software engine", 32)?;
                     validate_label(&route.instrument, "pattern page software instrument", 255)?;
                 }
+                PageTarget::InternalDrums(kit) => {
+                    validate_label(kit, "pattern page SHR Drums kit", 64)?
+                }
                 PageTarget::Midi(name) => validate_label(name, "pattern page MIDI target", 256)?,
                 _ => {}
             }
@@ -1031,7 +1060,10 @@ impl Pattern {
             }
             if matches!(
                 page.target,
-                PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_)
+                PageTarget::ActiveInstrument
+                    | PageTarget::Synthv1(_)
+                    | PageTarget::Software(_)
+                    | PageTarget::InternalDrums(_)
             ) && page.setup.iter().any(|message| match message.as_slice() {
                 [status, ..] if status & 0xf0 == 0xc0 => true,
                 [status, controller, ..]
@@ -1291,8 +1323,15 @@ pub fn list(base: &Path) -> Vec<String> {
 pub fn encode(song: &Song) -> Result<String> {
     song.validate()?;
     let mut out = format!(
-        "SHSYNTH-SONG {SONG_VERSION}\nname={}\nsteps={}\ngate={}\norder={}\n",
+        "SHSYNTH-SONG {SONG_VERSION}\nname={}\nproject_key={}|{}\ndrum_kit={}\ndrum_tuning={}\nsteps={}\ngate={}\norder={}\n",
         escape(&song.name),
+        song.project_key.root,
+        match song.project_key.kind {
+            ScaleKind::Major => "major",
+            ScaleKind::NaturalMinor => "minor",
+        },
+        escape(&song.drum_kit),
+        escape(&serde_json::to_string(&song.drum_tuning)?),
         song.steps_per_beat,
         song.gate_percent,
         song.order
@@ -1439,6 +1478,9 @@ pub fn decode(text: &str) -> Result<Song> {
         bail!("unsupported song version {version}; file was not changed");
     }
     let mut name = None;
+    let mut project_key = None;
+    let mut drum_kit = None;
+    let mut drum_tuning = None;
     let mut steps = None;
     let mut gate = None;
     let mut legacy_audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT] =
@@ -1459,6 +1501,27 @@ pub fn decode(text: &str) -> Result<Song> {
         let (key, value) = line.split_once('=').context("invalid song line")?;
         match key {
             "name" => set_once(&mut name, unescape(value)?, "name")?,
+            "project_key" if version >= 12 => {
+                let (root, kind) = value.split_once('|').context("invalid Project key")?;
+                set_once(
+                    &mut project_key,
+                    Scale {
+                        root: root.parse()?,
+                        kind: match kind {
+                            "major" => ScaleKind::Major,
+                            "minor" => ScaleKind::NaturalMinor,
+                            _ => bail!("invalid Project key mode"),
+                        },
+                    },
+                    "project_key",
+                )?;
+            }
+            "drum_kit" if version >= 12 => set_once(&mut drum_kit, unescape(value)?, "drum_kit")?,
+            "drum_tuning" if version >= 12 => set_once(
+                &mut drum_tuning,
+                serde_json::from_str::<shr_drums::KitTuning>(&unescape(value)?)?,
+                "drum_tuning",
+            )?,
             "steps" => set_once(&mut steps, value.parse()?, "steps")?,
             "gate" => set_once(&mut gate, value.parse()?, "gate")?,
             "loop" if version <= 6 => {
@@ -1670,7 +1733,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        11,
+                        11..=12,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor, note_off_enabled],
                     ) => (
                         Page {
@@ -1785,6 +1848,21 @@ pub fn decode(text: &str) -> Result<Song> {
     }
     let song = Song {
         name: name.context("missing name")?,
+        project_key: if version >= 12 {
+            project_key.context("missing Project key")?
+        } else {
+            Scale::default()
+        },
+        drum_kit: if version >= 12 {
+            drum_kit.context("missing Project drum kit")?
+        } else {
+            "electronic-house".into()
+        },
+        drum_tuning: if version >= 12 {
+            drum_tuning.context("missing Project drum tuning")?
+        } else {
+            shr_drums::KitTuning::default()
+        },
         steps_per_beat: steps.context("missing steps")?,
         gate_percent: gate.context("missing gate")?,
         insert_rack: if version >= 2 {
@@ -2401,7 +2479,10 @@ fn append_program(
 ) {
     if matches!(
         page.target,
-        PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_)
+        PageTarget::ActiveInstrument
+            | PageTarget::Synthv1(_)
+            | PageTarget::Software(_)
+            | PageTarget::InternalDrums(_)
     ) {
         return;
     }
@@ -2595,6 +2676,7 @@ impl Sequencer {
     pub fn start_with_clock(
         config: &ExternalMidiConfig,
         instrument: crate::engine::SharedOutput,
+        drums: crate::drums_host::SharedDrumOutput,
         clock: Arc<crate::loop_player::TransportClock>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
@@ -2603,7 +2685,7 @@ impl Sequencer {
         let cfg = config.clone();
         let handle = thread::Builder::new()
             .name("shsynth-sequencer".into())
-            .spawn(move || run_transport(rx, thread_status, cfg, instrument, clock))
+            .spawn(move || run_transport(rx, thread_status, cfg, instrument, drums, clock))
             .ok();
         Self {
             tx,
@@ -2723,9 +2805,10 @@ fn run_transport(
     status: Arc<Mutex<SequencerStatus>>,
     config: ExternalMidiConfig,
     instrument: crate::engine::SharedOutput,
+    drums: crate::drums_host::SharedDrumOutput,
     clock: Arc<crate::loop_player::TransportClock>,
 ) {
-    let mut outputs = DestinationPool::new(config.clone(), instrument);
+    let mut outputs = DestinationPool::new(config.clone(), instrument, drums);
     let mut messages = Vec::new();
     let mut repeat_messages = Vec::new();
     let mut index = 0;
@@ -3610,6 +3693,7 @@ fn update_active_notes(
 struct DestinationPool {
     config: ExternalMidiConfig,
     instrument: crate::engine::SharedOutput,
+    drums: crate::drums_host::SharedDrumOutput,
     destinations: BTreeMap<PageTarget, RuntimeDestination>,
 }
 
@@ -3621,14 +3705,20 @@ enum RuntimeDestination {
         connection: MidiOutputConnection,
         notice: Option<String>,
     },
+    InternalDrums,
     Unavailable(String),
 }
 
 impl DestinationPool {
-    fn new(config: ExternalMidiConfig, instrument: crate::engine::SharedOutput) -> Self {
+    fn new(
+        config: ExternalMidiConfig,
+        instrument: crate::engine::SharedOutput,
+        drums: crate::drums_host::SharedDrumOutput,
+    ) -> Self {
         Self {
             config,
             instrument,
+            drums,
             destinations: BTreeMap::new(),
         }
     }
@@ -3637,9 +3727,17 @@ impl DestinationPool {
         if self.destinations.contains_key(target) {
             return;
         }
-        let instrument_online = self.instrument.lock().is_ok_and(|output| output.is_some());
-        let destination = open_runtime_destination(&self.config, target, instrument_online)
-            .unwrap_or_else(|error| RuntimeDestination::Unavailable(error.to_string()));
+        let destination = if matches!(target, PageTarget::InternalDrums(_)) {
+            if self.drums.lock().is_ok_and(|output| output.is_some()) {
+                RuntimeDestination::InternalDrums
+            } else {
+                RuntimeDestination::Unavailable("SHR Drums kit is offline".into())
+            }
+        } else {
+            let instrument_online = self.instrument.lock().is_ok_and(|output| output.is_some());
+            open_runtime_destination(&self.config, target, instrument_online)
+                .unwrap_or_else(|error| RuntimeDestination::Unavailable(error.to_string()))
+        };
         self.destinations.insert(target.clone(), destination);
     }
 
@@ -3666,6 +3764,13 @@ impl DestinationPool {
             RuntimeDestination::Hardware { connection, .. } => {
                 connection.send(bytes).map_err(|error| error.to_string())
             }
+            RuntimeDestination::InternalDrums => self
+                .drums
+                .lock()
+                .map_err(|_| "SHR Drums output lock failed".to_string())?
+                .as_ref()
+                .ok_or_else(|| "SHR Drums kit is offline".to_string())
+                .and_then(|sender| crate::drums_host::send_midi(sender, bytes)),
             RuntimeDestination::Unavailable(error) => return Err(error.clone()),
         };
         if let Err(error) = &result {
@@ -3696,6 +3801,7 @@ impl DestinationPool {
             .and_then(|output| match output {
                 RuntimeDestination::Instrument { notice }
                 | RuntimeDestination::Hardware { notice, .. } => notice.clone(),
+                RuntimeDestination::InternalDrums => None,
                 RuntimeDestination::Unavailable(_) => None,
             })
     }
@@ -3730,8 +3836,18 @@ fn update_target_status(
 }
 
 fn cleanup_owned_notes(outputs: &mut DestinationPool, owners: &mut NoteOwners) {
-    for (target, message) in planned_note_cleanup(owners) {
+    let cleanup = planned_note_cleanup(owners);
+    let internal_targets = cleanup
+        .iter()
+        .filter_map(|(target, _)| {
+            matches!(target, PageTarget::InternalDrums(_)).then_some(target.clone())
+        })
+        .collect::<BTreeSet<_>>();
+    for (target, message) in cleanup {
         outputs.send_cleanup(&target, &message);
+    }
+    for target in internal_targets {
+        outputs.send_cleanup(&target, &[0xb0, 123, 0]);
     }
     owners.clear();
 }
@@ -3845,6 +3961,12 @@ fn resolve_midi_route(
         PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_) => {
             instrument(None, "active SHR-DAW instrument is offline".into())
         }
+        PageTarget::InternalDrums(_) => ResolvedMidiRoute {
+            choice: MidiRouteChoice::Unavailable(
+                "SHR Drums is resolved by the in-process destination".into(),
+            ),
+            notice: None,
+        },
         PageTarget::Default => {
             if config.enabled {
                 match configured() {
@@ -3940,6 +4062,7 @@ fn connect_target(
     match open_runtime_destination(config, target, false)? {
         RuntimeDestination::Hardware { connection, .. } => Ok(connection),
         RuntimeDestination::Instrument { .. } => bail!("unexpected instrument route"),
+        RuntimeDestination::InternalDrums => bail!("unexpected SHR Drums route"),
         RuntimeDestination::Unavailable(error) => bail!(error),
     }
 }
@@ -4099,6 +4222,7 @@ fn target_text(target: &PageTarget) -> String {
             route.engine.label().to_ascii_lowercase(),
             escape(&route.instrument)
         ),
+        PageTarget::InternalDrums(kit) => format!("shr-drums:{}", escape(kit)),
         PageTarget::ConfiguredExternal => "configured".into(),
         PageTarget::Midi(name) => format!(
             "midi:{}",
@@ -4167,6 +4291,13 @@ fn parse_target(value: &str, version: u8) -> Result<PageTarget> {
                 instrument: unescape(instrument)?,
             }))
         }
+        _ if version >= 12 && value.starts_with("shr-drums:") => value
+            .strip_prefix("shr-drums:")
+            .map(unescape)
+            .transpose()?
+            .filter(|kit| !kit.is_empty())
+            .map(PageTarget::InternalDrums)
+            .context("invalid SHR Drums page target"),
         _ => value
             .strip_prefix("midi:")
             .map(unescape)
@@ -4301,8 +4432,19 @@ mod tests {
     fn pages_mut(song: &mut Song) -> &mut [Page] {
         &mut song.patterns.get_mut(&0).unwrap().pages
     }
-    fn downgrade_tempo_fields(text: &str) -> String {
+    fn without_v12_fields(text: &str) -> String {
         text.lines()
+            .filter(|line| {
+                !line.starts_with("project_key=")
+                    && !line.starts_with("drum_kit=")
+                    && !line.starts_with("drum_tuning=")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    fn downgrade_tempo_fields(text: &str) -> String {
+        without_v12_fields(text)
+            .lines()
             .map(|line| {
                 if let Some(value) = line.strip_prefix("pattern=") {
                     let mut fields = value.split('|').map(str::to_owned).collect::<Vec<_>>();
@@ -4354,7 +4496,7 @@ mod tests {
                 !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
             })
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 11") {
+                if line.starts_with("SHSYNTH-SONG 12") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -4577,14 +4719,84 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 11\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 12\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
     }
 
     #[test]
-    fn format_eleven_round_trips_decimal_tempos_and_page_note_off_choice() {
+    fn format_twelve_round_trips_project_key_internal_drums_and_manual_tuning() {
+        let cfg = config();
+        let mut song = Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
+        song.project_key = Scale {
+            root: 1,
+            kind: ScaleKind::NaturalMinor,
+        };
+        song.drum_kit = "industrial-metal".into();
+        song.drum_tuning.mode = shr_drums::TuningMode::Manual;
+        for piece in ["kick", "snare"] {
+            song.drum_tuning.pieces.insert(
+                piece.into(),
+                shr_drums::ManualTuning {
+                    target_pitch_class: Some(shr_drums::PitchClass(1)),
+                    cents_adjustment: 0,
+                },
+            );
+        }
+        let drum_kit = song.drum_kit.clone();
+        pages_mut(&mut song)[2].target = PageTarget::InternalDrums(drum_kit);
+
+        let encoded = encode(&song).unwrap();
+        assert!(encoded.starts_with("SHSYNTH-SONG 12\n"));
+        assert!(encoded.contains("project_key=1|minor\n"));
+        assert!(encoded.contains("|shr-drums:industrial-metal|"));
+        assert_eq!(decode(&encoded).unwrap(), song);
+    }
+
+    #[test]
+    fn format_eleven_preserves_legacy_drum_route_and_migrates_project_defaults() {
+        let cfg = config();
+        let mut original =
+            Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
+        pages_mut(&mut original)[2].target = PageTarget::ConfiguredExternal;
+        let legacy = without_v12_fields(&encode(&original).unwrap()).replacen(
+            "SHSYNTH-SONG 12",
+            "SHSYNTH-SONG 11",
+            1,
+        );
+        let migrated = decode(&legacy).unwrap();
+
+        assert_eq!(migrated.project_key, Scale::default());
+        assert_eq!(migrated.drum_kit, "electronic-house");
+        assert_eq!(migrated.drum_tuning, shr_drums::KitTuning::default());
+        assert_eq!(pages(&migrated)[2].target, PageTarget::ConfiguredExternal);
+    }
+
+    #[test]
+    fn internal_drums_and_one_melodic_software_route_schedule_together() {
+        let cfg = config();
+        let mut song = Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
+        let pages = pages_mut(&mut song);
+        pages[0].target = PageTarget::Software(SoftwareRoute::synthv1("Lead"));
+        pages[2].target = PageTarget::InternalDrums("electronic-house".into());
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.rows[0][0].note = Note::On(60);
+        pattern.rows[0][LANES_PER_PAGE * 2].note = Note::On(36);
+
+        let scheduled = schedule(&song, &cfg, 0, 0).unwrap();
+        assert!(scheduled.iter().any(|message| {
+            message.target == Some(PageTarget::Software(SoftwareRoute::synthv1("Lead")))
+                && message.bytes == [0x90, 60, 96]
+        }));
+        assert!(scheduled.iter().any(|message| {
+            message.target == Some(PageTarget::InternalDrums("electronic-house".into()))
+                && message.bytes == [0x99, 36, 96]
+        }));
+    }
+
+    #[test]
+    fn current_format_round_trips_decimal_tempos_and_page_note_off_choice() {
         let mut song = Song::new(&config());
         let decimal = "100.50".parse::<Bpm>().unwrap();
         let pattern = song.patterns.get_mut(&0).unwrap();
@@ -4592,7 +4804,7 @@ mod tests {
         pattern.pages[0].note_off_enabled = false;
         pattern.rows[3][0].command = Command::Tempo("99.75".parse().unwrap());
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 12\n"));
         assert!(encoded.contains("pattern=0|64|10050|4\n"));
         assert!(encoded.contains("|manual|1|0\n"));
         assert!(encoded.contains("|T9975\n"));
@@ -4605,8 +4817,13 @@ mod tests {
         let legacy = current
             .lines()
             .map(|line| {
-                if line == "SHSYNTH-SONG 11" {
+                if line == "SHSYNTH-SONG 12" {
                     "SHSYNTH-SONG 10".to_owned()
+                } else if line.starts_with("project_key=")
+                    || line.starts_with("drum_kit=")
+                    || line.starts_with("drum_tuning=")
+                {
+                    String::new()
                 } else if line.starts_with("pattern_page=") {
                     line.rsplit_once('|').unwrap().0.to_owned()
                 } else {
@@ -4625,7 +4842,7 @@ mod tests {
     fn format_nine_whole_tempos_migrate_in_memory_without_rewriting() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy =
-            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 9", 1);
+            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 9", 1);
         let base = env::temp_dir().join(format!("shr-tempo-v9-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -4634,7 +4851,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.patterns[&0].tempo, Bpm::DEFAULT);
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 12\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -4646,7 +4863,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 8", 1);
+            .replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 8", 1);
         let base = env::temp_dir().join(format!("shr-strip-v8-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -4656,7 +4873,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.master_strip, MasterStripSettings::default());
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 12\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -4676,7 +4893,7 @@ mod tests {
                 .is_err()
         );
         assert!(decode(&encoded.replacen("\"version\":1", "\"version\":2", 1)).is_err());
-        assert!(decode(&encoded.replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 12", 1)).is_err());
+        assert!(decode(&encoded.replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 13", 1)).is_err());
     }
 
     #[test]
@@ -4848,7 +5065,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 7", 1)
+            .replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 7", 1)
             .replacen(
                 "insert_rack=",
                 "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
@@ -4880,7 +5097,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 6", 1)
+            .replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -5025,7 +5242,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 12\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -6260,14 +6477,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 12\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6276,14 +6493,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 12\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6300,7 +6517,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 11\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 12\n"));
         assert!(encoded.contains("|default|-|manual|1|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -6316,7 +6533,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 11", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 12", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -6337,7 +6554,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 11",
+            "SHSYNTH-SONG 12",
             "SHSYNTH-SONG 4",
             1,
         );
