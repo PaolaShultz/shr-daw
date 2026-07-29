@@ -127,10 +127,23 @@ Their launcher stays inside the overlay border; the bottom reveal remains the
 shared status row. Overlays own transient selection only and do not move,
 replace, or clear that row.
 
-Use the installed Rust 1.85 toolchain because the system Cargo may be too old:
+Use the repository-selected current stable Rust toolchain from
+`rust-toolchain.toml`. The distribution's Rust or Cargo version must not
+constrain project direction: if the selected toolchain or its required
+components are missing or stale, install or update them with `rustup` and
+continue. `Cargo.toml`'s `rust-version` is a minimum accepted version, not an
+instruction to build with that version. Never change code, dependencies, or
+project policy merely to accommodate an obsolete system toolchain. Use an
+older compiler only for an explicitly requested compatibility or historical
+reproduction check, isolated from the normal development toolchain.
+
+At the start of a combined validation, release, or performance pass, update
+the selected stable channel and record the exact compiler used:
 
 ```sh
-PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo check --locked
+rustup update stable
+rustc -vV
+cargo check --locked
 ```
 
 Temporary combined-pass rule: do not run builds or any command that compiles

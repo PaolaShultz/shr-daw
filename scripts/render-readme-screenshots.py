@@ -19,8 +19,6 @@ from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "images"
-PINNED_TOOLCHAIN = Path("/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin")
-PINNED_CARGO = PINNED_TOOLCHAIN / "cargo"
 APPROVED_FONT = Path("/usr/share/consolefonts/Uni2-TerminusBold24x12.psf.gz")
 FALLBACK_FONT = ROOT / "target" / "Uni2-TerminusBold24x12.psf"
 APPROVED_FONT_SHA256 = "76cbb7a30085000dab63323650d2296486f8af5528f51eead1519dbfce96b1f9"
@@ -201,9 +199,7 @@ def screenshot_data() -> dict:
         shlex.split(command)
         if command
         else [
-            os.environ.get(
-                "CARGO", str(PINNED_CARGO if PINNED_CARGO.exists() else "cargo")
-            ),
+            os.environ.get("CARGO", "cargo"),
             "run",
             "--quiet",
             "--locked",
@@ -212,8 +208,6 @@ def screenshot_data() -> dict:
         ]
     )
     env = os.environ.copy()
-    if PINNED_TOOLCHAIN.is_dir():
-        env["PATH"] = f"{PINNED_TOOLCHAIN}:{env.get('PATH', '')}"
     result = subprocess.run(
         args,
         cwd=ROOT,

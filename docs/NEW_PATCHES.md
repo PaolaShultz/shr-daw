@@ -43,7 +43,7 @@ sound is discoverable and that the project still passes:
 
 ```sh
 ./scripts/local.sh list
-PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo test --locked
+cargo test --locked
 ```
 
 If `xmllint` is installed, also run:

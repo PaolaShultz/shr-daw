@@ -320,9 +320,10 @@ and installs that one small tools package with its runtime recommendations so
 recommendations for the main package group is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
-smaller TimGM bank. It requires
-Rust 1.85 or newer; when necessary it installs the official minimal rustup
-toolchain for the current user and runs Cargo as `cargo +1.85.0`.
+smaller TimGM bank. It installs or updates the official minimal current stable
+Rust toolchain for the current user, adds the repository-required rustfmt and
+Clippy components, and runs Cargo through `rustup run stable cargo`. It never
+selects an older compiler merely because the distribution package is stale.
 
 It then runs locked tests, creates a locked release build, installs the files
 with `sudo make install-files`, and normally opens `shr-setup`.
@@ -478,8 +479,8 @@ Exactly one argument is required. `--write` atomically replaces
 directory, compares its bytes with the tracked file, and fails on drift without
 changing the checkout.
 
-The renderer requires Python 3.11, Debian's pinned
-`python3-markdown-it` 2.1.0-5 and `python3-mdit-py-plugins` 0.3.3-1 packages.
+The renderer requires Python 3.13, Debian 13's
+`python3-markdown-it` 3.0.0-3 and `python3-mdit-py-plugins` 0.4.2-1 packages.
 The helper verifies the corresponding upstream versions, enables CommonMark
 tables and strikethrough plus GFM task lists, and fails rather than producing
 different output with an unreviewed renderer version. Generation needs no
@@ -601,18 +602,18 @@ Environment:
 - `SHR_SCREENSHOT_COMMAND` replaces the complete manifest-producing command;
   it is parsed with shell-style quoting but run directly, not through a shell.
 
-The default command uses the installed Rust 1.85 toolchain when present and
-runs `shr screenshots`. Rust renders the real application `draw` function into
-40×13 ratatui test buffers seeded by the deterministic `ScreenshotScenario`
-and `ScreenshotSpecialScenario` fixtures in `src/ui.rs`. The renderer derives
-the complete overview/menu/context/overlay count from that manifest rather
-than embedding an expected count. The compact Levels, Loop Mix, and MASTER
-STRIP fallbacks are rendered at 38×12 and padded with black to the manifest's
-40×13 canvas so the same renderer can prove the non-native path without
-changing image dimensions. JSON supplies each cell's symbol, foreground,
-background, and bold state. A complete render removes only stale TUI PNGs in
-the two owned output namespaces after writing the current manifest. No JACK
-server, engine, MIDI port, or private user file is involved.
+The default command uses Cargo with the repository-selected current stable
+toolchain and runs `shr screenshots`. Rust renders the real application `draw`
+function into 40×13 ratatui test buffers seeded by the deterministic
+`ScreenshotScenario` and `ScreenshotSpecialScenario` fixtures. The renderer
+derives the complete overview/menu/context/overlay count from that manifest
+rather than embedding an expected count. The compact Levels, Loop Mix, and
+MASTER STRIP fallbacks are rendered at 38×12 and padded with black to the
+manifest's 40×13 canvas so the same renderer can prove the non-native path
+without changing image dimensions. JSON supplies each cell's symbol,
+foreground, background, and bold state. A complete render removes only stale
+TUI PNGs in the two owned output namespaces after writing the current
+manifest. No JACK server, engine, MIDI port, or private user file is involved.
 
 ### Image parameters
 

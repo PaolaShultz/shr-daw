@@ -83,7 +83,7 @@ else
   printf '%s\n' '  1–2. dependency installation and FluidSynth service masking are skipped.'
 fi
 printf '%s\n' \
-  '  3. Rust 1.85 may be installed for the current user when missing.' \
+  '  3. Current stable Rust is installed or updated for the current user.' \
   '  4. locked tests and a locked release build run in this checkout.' \
   '  5. sudo installs public application files below /usr/local.'
 if $INIT_CONFIG; then
@@ -178,23 +178,14 @@ if $PLAN_ONLY; then
   exit 0
 fi
 
-version_ok() {
-  local version
-  version="$($1 --version 2>/dev/null | awk '{print $2}')"
-  [[ "$(printf '%s\n' 1.85.0 "$version" | sort -V | head -n1)" == 1.85.0 ]]
-}
-
-CARGO=(cargo)
-if ! command -v cargo >/dev/null || ! version_ok cargo; then
-  if ! command -v rustup >/dev/null; then
-    printf 'Installing the official minimal Rust toolchain for the current user.\n'
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
-      sh -s -- -y --profile minimal --default-toolchain 1.85.0
-    export PATH="$HOME/.cargo/bin:$PATH"
-  fi
-  rustup toolchain install 1.85.0 --profile minimal
-  CARGO=(cargo +1.85.0)
+if ! command -v rustup >/dev/null; then
+  printf 'Installing the official minimal current stable Rust toolchain for the current user.\n'
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+    sh -s -- -y --profile minimal --default-toolchain stable
+  export PATH="$HOME/.cargo/bin:$PATH"
 fi
+rustup toolchain install stable --profile minimal --component rustfmt,clippy
+CARGO=(rustup run stable cargo)
 
 cd "$ROOT"
 "${CARGO[@]}" test --locked

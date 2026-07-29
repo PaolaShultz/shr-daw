@@ -90,7 +90,7 @@ matter. Change those settings yourself if fewer than 40 columns or 13 rows fit.
 For a self-contained local setup, use:
 
 ```sh
-PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo build --locked
+cargo build --locked
 ./scripts/setup-local.sh
 ./scripts/local.sh
 ```

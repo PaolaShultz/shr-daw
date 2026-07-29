@@ -400,7 +400,7 @@ The terminal program, font, scaling, window borders, and fullscreen state all
 matter. Change those settings yourself if fewer than 40 columns or 13 rows fit.</p>
 <h4 id="doc-first_run--run-from-a-development-checkout" tabindex="-1">Run from a development checkout<a class="heading-anchor" href="#doc-first_run--run-from-a-development-checkout" aria-label="Link to Run from a development checkout">#</a></h4>
 <p>For a self-contained local setup, use:</p>
-<pre><code class="language-sh">PATH=$HOME/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo build --locked
+<pre><code class="language-sh">cargo build --locked
 ./scripts/setup-local.sh
 ./scripts/local.sh
 </code></pre>
@@ -3992,11 +3992,14 @@ boot-order recovery, and base-specific PCIe settings. The SHR-DAW assembly uses
 a bottom NVMe base so its GPIO display can occupy the top of the Pi; it does not
 use a top-mounted M.2 HAT. Return here only after <code>findmnt</code> proves that the
 running root filesystem is on the NVMe.</p>
-<p>The supported family is Debian-based Linux. Rust 1.85, Cargo, a C build
-toolchain, <code>pkg-config</code>, Python 3, ripgrep, ALSA development/runtime tools, and
-JACK2 are required to build and diagnose the complete installation. A running
-JACK server is optional for browsing and editing but required for
-software-instrument audio, WAV-loop playback, and multitrack recording.
+<p>The supported family is Debian-based Linux. The current stable Rust toolchain
+selected by <code>rust-toolchain.toml</code>, a C build toolchain, <code>pkg-config</code>, Python 3,
+ripgrep, ALSA development/runtime tools, and JACK2 are required to build and
+diagnose the complete installation. A stale distribution Rust package does not
+set the project's compiler direction; the installer uses the official per-user
+rustup toolchain. A running JACK server is optional for browsing and editing
+but required for software-instrument audio, WAV-loop playback, and multitrack
+recording.
 synthv1, Yoshimi, and FluidSynth/TimGM are separate optional sound engines at
 runtime; the default installer includes all three so their catalogs are useful
 immediately. MIDI controllers, external instruments, audio interfaces, and a
@@ -4020,8 +4023,8 @@ the FluidSynth executable available to SHR;</li>
 <li>detects the current login's <code>rtprio</code> and <code>memlock</code>; if they are inadequate,
 a separate default-no prompt can add the user to <code>audio</code> and create a
 helper-owned limits file only when no distribution policy already suffices;</li>
-<li>installs/selects the official Rust 1.85 toolchain when the current Cargo is
-older, runs the locked tests, and builds the locked release version;</li>
+<li>installs or updates the official current stable Rust toolchain selected by
+the repository, runs the locked tests, and builds the locked release version;</li>
 <li>installs commands, templates, the 21 allowlisted presets, four allowlisted
 CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
 device/controller profiles, drum data, documentation, and
@@ -4080,7 +4083,7 @@ Rust engine ownership, routing, and shutdown path as the main command.</li>
 Existing <code>shsynth</code> configuration and data paths are kept for compatibility.</p>
 <h4 id="doc-installation--repository-local-evaluation" tabindex="-1">Repository-local evaluation<a class="heading-anchor" href="#doc-installation--repository-local-evaluation" aria-label="Link to Repository-local evaluation">#</a></h4>
 <p>Contributors can build and inspect the checkout without installing files:</p>
-<pre><code class="language-sh">PATH=$HOME/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo build --locked
+<pre><code class="language-sh">cargo build --locked
 SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state target/debug/shr config init
 SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state target/debug/shr list
 python3 scripts/render-readme-screenshots.py --check
@@ -8057,7 +8060,7 @@ unless there is a reason not to.</p>
 <p>Do not overwrite an existing patch while experimenting. Check that the new
 sound is discoverable and that the project still passes:</p>
 <pre><code class="language-sh">./scripts/local.sh list
-PATH=$HOME/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo test --locked
+cargo test --locked
 </code></pre>
 <p>If <code>xmllint</code> is installed, also run:</p>
 <pre><code class="language-sh">xmllint --noout &quot;presets/synthv1/New Sound.synthv1&quot;
@@ -11223,9 +11226,10 @@ and installs that one small tools package with its runtime recommendations so
 recommendations for the main package group is deliberate:
 the FluidSynth CLI recommends Qsynth, which in turn recommends the roughly
 142 MiB FluidR3 GM bank, while SHR explicitly installs and configures the much
-smaller TimGM bank. It requires
-Rust 1.85 or newer; when necessary it installs the official minimal rustup
-toolchain for the current user and runs Cargo as <code>cargo +1.85.0</code>.</p>
+smaller TimGM bank. It installs or updates the official minimal current stable
+Rust toolchain for the current user, adds the repository-required rustfmt and
+Clippy components, and runs Cargo through <code>rustup run stable cargo</code>. It never
+selects an older compiler merely because the distribution package is stale.</p>
 <p>It then runs locked tests, creates a locked release build, installs the files
 with <code>sudo make install-files</code>, and normally opens <code>shr-setup</code>.</p>
 <p>Before its first package or service mutation, the installer prints the enabled
@@ -11361,8 +11365,8 @@ python3 scripts/generate-docs-site.py --check
 <code>docs/index.html</code>. <code>--check</code> regenerates the complete page into a temporary
 directory, compares its bytes with the tracked file, and fails on drift without
 changing the checkout.</p>
-<p>The renderer requires Python 3.11, Debian's pinned
-<code>python3-markdown-it</code> 2.1.0-5 and <code>python3-mdit-py-plugins</code> 0.3.3-1 packages.
+<p>The renderer requires Python 3.13, Debian 13's
+<code>python3-markdown-it</code> 3.0.0-3 and <code>python3-mdit-py-plugins</code> 0.4.2-1 packages.
 The helper verifies the corresponding upstream versions, enables CommonMark
 tables and strikethrough plus GFM task lists, and fails rather than producing
 different output with an unreviewed renderer version. Generation needs no
@@ -11467,18 +11471,18 @@ the manifest plus approved PSF before checking 960×624 dimensions and exact
 <li><code>SHR_SCREENSHOT_COMMAND</code> replaces the complete manifest-producing command;
 it is parsed with shell-style quoting but run directly, not through a shell.</li>
 </ul>
-<p>The default command uses the installed Rust 1.85 toolchain when present and
-runs <code>shr screenshots</code>. Rust renders the real application <code>draw</code> function into
-40×13 ratatui test buffers seeded by the deterministic <code>ScreenshotScenario</code>
-and <code>ScreenshotSpecialScenario</code> fixtures in <code>src/ui.rs</code>. The renderer derives
-the complete overview/menu/context/overlay count from that manifest rather
-than embedding an expected count. The compact Levels, Loop Mix, and MASTER
-STRIP fallbacks are rendered at 38×12 and padded with black to the manifest's
-40×13 canvas so the same renderer can prove the non-native path without
-changing image dimensions. JSON supplies each cell's symbol, foreground,
-background, and bold state. A complete render removes only stale TUI PNGs in
-the two owned output namespaces after writing the current manifest. No JACK
-server, engine, MIDI port, or private user file is involved.</p>
+<p>The default command uses Cargo with the repository-selected current stable
+toolchain and runs <code>shr screenshots</code>. Rust renders the real application <code>draw</code>
+function into 40×13 ratatui test buffers seeded by the deterministic
+<code>ScreenshotScenario</code> and <code>ScreenshotSpecialScenario</code> fixtures. The renderer
+derives the complete overview/menu/context/overlay count from that manifest
+rather than embedding an expected count. The compact Levels, Loop Mix, and
+MASTER STRIP fallbacks are rendered at 38×12 and padded with black to the
+manifest's 40×13 canvas so the same renderer can prove the non-native path
+without changing image dimensions. JSON supplies each cell's symbol,
+foreground, background, and bold state. A complete render removes only stale
+TUI PNGs in the two owned output namespaces after writing the current
+manifest. No JACK server, engine, MIDI port, or private user file is involved.</p>
 <h5 id="doc-maintainer_helpers--image-parameters" tabindex="-1">Image parameters<a class="heading-anchor" href="#doc-maintainer_helpers--image-parameters" aria-label="Link to Image parameters">#</a></h5>
 <ul>
 <li>terminal geometry: 40 columns × 13 rows;</li>
@@ -13688,7 +13692,8 @@ restrained family defaults in memory. DRUMS exposes <code>OFF</code>, <code>REVE
 Project/effect-host replacement, and shutdown clear state. Reverb is the
 existing bounded diffused four-line FDN with independent pre-delay and a
 finite 1.5× RT60 plus 0.4-second deadline. Delay sync labels now use the
-correct quarter-note beat values.</p>
+correct quarter-note beat values. The in-process SHR Drums workspace is version
+<code>0.1.1</code>; its <code>0.1.0</code> engine-compatibility floor remains deliberate.</p>
 <p>The 2026-07-29 Rust 1.85 pass ran locked checks in both repositories and only
 focused engine/factory, reverb, delay, drum-host, graph, migration, routing,
 one-shot, coexistence, and FX UI tests. All finished passing after correcting
@@ -13703,6 +13708,14 @@ ignored below <code>$SHSYNTH_USER_DIR/big-rock-effect-audition-20260729-v2/</cod
 running and the temporary review client connected only its own stereo outputs,
 then disconnected cleanly. No JACK server, synth, MIDI transmission,
 recording, release build, or physical route change was started.</p>
+<p>The normal private kit directory now contains exactly the approved Big Rock
+(Muldjord), Experimental Noise (Muldjord), and Electronic House packages.
+Previous local kit entries are recoverable below
+<code>$SHSYNTH_USER_DIR/kit-backups/pre-effects-stack-20260729/</code>. Plain <code>shr</code> resolves
+<code>/usr/local/bin/shr</code> through this checkout's <code>scripts/local.sh</code> to
+<code>target/debug/shr</code>; the previous installed binary is preserved as
+<code>/usr/local/bin/shr.installed-20260727.backup</code>. No environment override is
+required to run the approved kits.</p>
 <p>Version <code>0.3.98</code> adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical
 meters as three groups of six and columns 21–40 show the active TAKE, CHANNEL,
@@ -13915,6 +13928,15 @@ callback comparison remains open because the sole-owner and safe-output gate
 was not met. The planned 480×320 display occupies the top GPIO position
 rather than HDMI, so the design cannot use a top-mounted M.2 HAT; its housing
 will be self-designed and printed around the measured stack.</li>
+<li>At the current project size, the 2 GB development target is accepted for
+serialized work. Fresh tests took 110.65 seconds at 1,501,136 KiB peak RSS;
+a fresh release took 223.14 seconds at 1,407,344 KiB peak RSS. Both completed
+without OOM, while sampled available memory fell to 179,584 KiB and
+111,744 KiB respectively and zram supplied substantial transient headroom.
+The later version-0.4.3 incremental debug build took 47.03 seconds but was
+not memory-instrumented. These facts prove practical 2 GB development with
+documented swap, not simultaneous compilation and live-audio operation or a
+measured speed difference against a 4 GB Pi 5.</li>
 <li>Local configuration selects the MiniLab 3 controller, JACK
 <code>system:playback_1</code>/<code>system:playback_2</code>, AudioBox USB 96 stereo capture on
 <code>system:capture_1</code>/<code>system:capture_2</code>, and the AudioBox MIDI port as external
@@ -14002,10 +14024,10 @@ complete. Detailed UI contracts live in <code>docs/CONTROLLER_INTERFACE.md</code
 <code>docs/README.md</code>.</p>
 <h4 id="doc-workspace_handoff--terminal-project-note-layer" tabindex="-1">Terminal project-note layer<a class="heading-anchor" href="#doc-workspace_handoff--terminal-project-note-layer" aria-label="Link to Terminal project-note layer">#</a></h4>
 <p>This machine is operated through a TTY. Its terminal-only <code>zk</code> notebook is
-rooted at <code>[workspace]</code>, covering <code>shsynth</code>, <code>shr-skills</code>, and later project
+rooted at <code>$HOME/p</code>, covering <code>shsynth</code>, <code>shr-skills</code>, and later project
 directories below that root without copying or moving their Markdown. The
-entry point is <code>[workspace]/Project Hub.md</code>. Configuration, the rebuildable
-SQLite index, and its template are below <code>[workspace]/.zk/</code>, outside both Git
+entry point is <code>$HOME/p/Project Hub.md</code>. Configuration, the rebuildable SQLite
+index, and its template are below <code>$HOME/p/.zk/</code>, outside both Git
 repositories.</p>
 <p>Use:</p>
 <pre><code class="language-sh">pnotes
@@ -14014,8 +14036,12 @@ pnotes search words
 <p>The first command opens all indexed notes in an <code>fzf</code> picker; the second
 full-text filters before opening the picker. The wrapper is
 <code>~/.local/bin/pnotes</code>. Direct <code>zk</code> commands must use
-<code>--notebook-dir=[workspace] --working-dir=[workspace]</code> when invoked from
-elsewhere.</p>
+<code>--notebook-dir=&quot;$HOME/p&quot; --working-dir=&quot;$HOME/p&quot;</code> when invoked from elsewhere.</p>
+<p>Git commits do not trigger a zk-specific synchronization hook and there is no
+resident indexer. The Markdown files are authoritative; zk automatically
+updates its rebuildable SQLite search cache when list/edit/search commands need
+it. Use <code>zk index --force</code> with the explicit notebook and working directories
+after a documentation pass when deterministic index validation is required.</p>
 <p>The index excludes <code>.git</code>, <code>target</code>, <code>user</code>, <code>node_modules</code>, and <code>.zk</code>
 subtrees; keep <code>$SHSYNTH_USER_DIR/</code> excluded. The notebook uses normal Markdown
 links, <code>nano</code> for editing, <code>less</code> for paging, and <code>sed</code> for previews. Installed
@@ -14024,8 +14050,9 @@ components are ARM64 <code>zk</code> 0.15.5 at <code>~/.local/opt/zk-0.15.5/</co
 actively searching, and zero RAM while idle, suitable for the planned 2 GB Pi
 5.</p>
 <h4 id="doc-workspace_handoff--installed-tools-and-current-validation-boundary" tabindex="-1">Installed tools and current validation boundary<a class="heading-anchor" href="#doc-workspace_handoff--installed-tools-and-current-validation-boundary" aria-label="Link to Installed tools and current validation boundary">#</a></h4>
-<p>Rust 1.85, <code>gh</code>, <code>xmllint</code> (<code>libxml2-utils</code>), <code>shellcheck</code>, <code>zk</code>, and <code>fzf</code> are
-installed.
+<p>Rust stable 1.97.1, <code>gh</code>, <code>xmllint</code> (<code>libxml2-utils</code>), <code>shellcheck</code>, <code>zk</code>, and
+<code>fzf</code> are installed. Rust 1.85 remains locally available only for an explicit
+historical comparison; it is not the development or validation default.
 Use the scoped validation policy in <code>AGENTS.md</code>; historical full
 suites, release builds, benchmarks, and screenshot batches are evidence in
 their dated documents, not instructions to repeat them. No current physical or
@@ -15281,9 +15308,8 @@ requires beat-clock and alignment changes.</li>
 </ul>
 <h4 id="doc-post_competition_rhythm_plan--validation-and-handoff" tabindex="-1">Validation and handoff<a class="heading-anchor" href="#doc-post_competition_rhythm_plan--validation-and-handoff" aria-label="Link to Validation and handoff">#</a></h4>
 <p>Every behavior or format package requires the repository's Rust handoff suite
-with the installed Rust 1.85 toolchain:</p>
-<pre><code class="language-sh">export PATH=$HOME/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH
-cargo fmt -- --check
+with the current stable toolchain selected by <code>rust-toolchain.toml</code>:</p>
+<pre><code class="language-sh">cargo fmt -- --check
 cargo test --locked
 cargo clippy --locked -- -D warnings
 cargo build --release --locked

@@ -583,8 +583,9 @@ actively searching, and zero RAM while idle, suitable for the planned 2 GB Pi
 
 ## Installed tools and current validation boundary
 
-Rust 1.85, `gh`, `xmllint` (`libxml2-utils`), `shellcheck`, `zk`, and `fzf` are
-installed.
+Rust stable 1.97.1, `gh`, `xmllint` (`libxml2-utils`), `shellcheck`, `zk`, and
+`fzf` are installed. Rust 1.85 remains locally available only for an explicit
+historical comparison; it is not the development or validation default.
 Use the scoped validation policy in `AGENTS.md`; historical full
 suites, release builds, benchmarks, and screenshot batches are evidence in
 their dated documents, not instructions to repeat them. No current physical or

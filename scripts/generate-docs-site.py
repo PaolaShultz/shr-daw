@@ -36,8 +36,8 @@ OUTPUT = DOCS_DIR / "index.html"
 REPOSITORY_URL = "https://github.com/PaolaShultz/shr-daw"
 SITE_URL = "https://paolashultz.github.io/shr-daw/"
 SOCIAL_IMAGE = "docs/images/shr-daw-social-card.png"
-EXPECTED_MARKDOWN_IT = "2.1.0"
-EXPECTED_MDIT_PLUGINS = "0.3.3"
+EXPECTED_MARKDOWN_IT = "3.0.0"
+EXPECTED_MDIT_PLUGINS = "0.4.2"
 
 GROUP_META = {
     "Overview": (

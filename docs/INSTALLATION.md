@@ -26,11 +26,14 @@ a bottom NVMe base so its GPIO display can occupy the top of the Pi; it does not
 use a top-mounted M.2 HAT. Return here only after `findmnt` proves that the
 running root filesystem is on the NVMe.
 
-The supported family is Debian-based Linux. Rust 1.85, Cargo, a C build
-toolchain, `pkg-config`, Python 3, ripgrep, ALSA development/runtime tools, and
-JACK2 are required to build and diagnose the complete installation. A running
-JACK server is optional for browsing and editing but required for
-software-instrument audio, WAV-loop playback, and multitrack recording.
+The supported family is Debian-based Linux. The current stable Rust toolchain
+selected by `rust-toolchain.toml`, a C build toolchain, `pkg-config`, Python 3,
+ripgrep, ALSA development/runtime tools, and JACK2 are required to build and
+diagnose the complete installation. A stale distribution Rust package does not
+set the project's compiler direction; the installer uses the official per-user
+rustup toolchain. A running JACK server is optional for browsing and editing
+but required for software-instrument audio, WAV-loop playback, and multitrack
+recording.
 synthv1, Yoshimi, and FluidSynth/TimGM are separate optional sound engines at
 runtime; the default installer includes all three so their catalogs are useful
 immediately. MIDI controllers, external instruments, audio interfaces, and a
@@ -59,8 +62,8 @@ The installer:
 - detects the current login's `rtprio` and `memlock`; if they are inadequate,
   a separate default-no prompt can add the user to `audio` and create a
   helper-owned limits file only when no distribution policy already suffices;
-- installs/selects the official Rust 1.85 toolchain when the current Cargo is
-  older, runs the locked tests, and builds the locked release version;
+- installs or updates the official current stable Rust toolchain selected by
+  the repository, runs the locked tests, and builds the locked release version;
 - installs commands, templates, the 21 allowlisted presets, four allowlisted
   CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
   device/controller profiles, drum data, documentation, and
@@ -133,7 +136,7 @@ Existing `shsynth` configuration and data paths are kept for compatibility.
 Contributors can build and inspect the checkout without installing files:
 
 ```sh
-PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo build --locked
+cargo build --locked
 SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state target/debug/shr config init
 SHSYNTH_STATE_DIR=/tmp/shr-daw-judge-state target/debug/shr list
 python3 scripts/render-readme-screenshots.py --check

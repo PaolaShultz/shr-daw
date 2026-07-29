@@ -51,7 +51,7 @@ the full [installation guide](docs/INSTALLATION.md).
 For a repository-local development checkout:
 
 ```sh
-PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH cargo build --locked
+cargo build --locked
 ./scripts/setup-local.sh
 ./scripts/local.sh
 ```

@@ -431,10 +431,9 @@ After the competition:
 ## Validation and handoff
 
 Every behavior or format package requires the repository's Rust handoff suite
-with the installed Rust 1.85 toolchain:
+with the current stable toolchain selected by `rust-toolchain.toml`:
 
 ```sh
-export PATH=/home/patch/.rustup/toolchains/1.85.0-aarch64-unknown-linux-gnu/bin:$PATH
 cargo fmt -- --check
 cargo test --locked
 cargo clippy --locked -- -D warnings
