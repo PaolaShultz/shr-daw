@@ -188,7 +188,8 @@ DELAY`, and `DELAY`; ordinary tracker Stop drains naturally, while Panic,
 Project/effect-host replacement, and shutdown clear state. Reverb is the
 existing bounded diffused four-line FDN with independent pre-delay and a
 finite 1.5× RT60 plus 0.4-second deadline. Delay sync labels now use the
-correct quarter-note beat values.
+correct quarter-note beat values. The in-process SHR Drums workspace is version
+`0.1.1`; its `0.1.0` engine-compatibility floor remains deliberate.
 
 The 2026-07-29 Rust 1.85 pass ran locked checks in both repositories and only
 focused engine/factory, reverb, delay, drum-host, graph, migration, routing,
@@ -204,6 +205,15 @@ ignored below `user/big-rock-effect-audition-20260729-v2/`. JACK was already
 running and the temporary review client connected only its own stereo outputs,
 then disconnected cleanly. No JACK server, synth, MIDI transmission,
 recording, release build, or physical route change was started.
+
+The normal private kit directory now contains exactly the approved Big Rock
+(Muldjord), Experimental Noise (Muldjord), and Electronic House packages.
+Previous local kit entries are recoverable below
+`user/kit-backups/pre-effects-stack-20260729/`. Plain `shr` resolves
+`/usr/local/bin/shr` through this checkout's `scripts/local.sh` to
+`target/debug/shr`; the previous installed binary is preserved as
+`/usr/local/bin/shr.installed-20260727.backup`. No environment override is
+required to run the approved kits.
 
 Version `0.3.98` adds the dedicated 18-channel Levels overview without changing
 Project storage. At exact 40×13, columns 1–20 show all 18 nine-segment vertical
@@ -439,6 +449,15 @@ sample redistribution.
   was not met. The planned 480×320 display occupies the top GPIO position
   rather than HDMI, so the design cannot use a top-mounted M.2 HAT; its housing
   will be self-designed and printed around the measured stack.
+- At the current project size, the 2 GB development target is accepted for
+  serialized work. Fresh tests took 110.65 seconds at 1,501,136 KiB peak RSS;
+  a fresh release took 223.14 seconds at 1,407,344 KiB peak RSS. Both completed
+  without OOM, while sampled available memory fell to 179,584 KiB and
+  111,744 KiB respectively and zram supplied substantial transient headroom.
+  The later version-0.4.3 incremental debug build took 47.03 seconds but was
+  not memory-instrumented. These facts prove practical 2 GB development with
+  documented swap, not simultaneous compilation and live-audio operation or a
+  measured speed difference against a 4 GB Pi 5.
 - Local configuration selects the MiniLab 3 controller, JACK
   `system:playback_1`/`system:playback_2`, AudioBox USB 96 stereo capture on
   `system:capture_1`/`system:capture_2`, and the AudioBox MIDI port as external
@@ -530,10 +549,10 @@ complete. Detailed UI contracts live in `docs/CONTROLLER_INTERFACE.md`,
 ## Terminal project-note layer
 
 This machine is operated through a TTY. Its terminal-only `zk` notebook is
-rooted at `/home/patch/p`, covering `shsynth`, `shr-skills`, and later project
+rooted at `$HOME/p`, covering `shsynth`, `shr-skills`, and later project
 directories below that root without copying or moving their Markdown. The
-entry point is `/home/patch/p/Project Hub.md`. Configuration, the rebuildable
-SQLite index, and its template are below `/home/patch/p/.zk/`, outside both Git
+entry point is `$HOME/p/Project Hub.md`. Configuration, the rebuildable SQLite
+index, and its template are below `$HOME/p/.zk/`, outside both Git
 repositories.
 
 Use:
@@ -546,8 +565,13 @@ pnotes search words
 The first command opens all indexed notes in an `fzf` picker; the second
 full-text filters before opening the picker. The wrapper is
 `~/.local/bin/pnotes`. Direct `zk` commands must use
-`--notebook-dir=/home/patch/p --working-dir=/home/patch/p` when invoked from
-elsewhere.
+`--notebook-dir="$HOME/p" --working-dir="$HOME/p"` when invoked from elsewhere.
+
+Git commits do not trigger a zk-specific synchronization hook and there is no
+resident indexer. The Markdown files are authoritative; zk automatically
+updates its rebuildable SQLite search cache when list/edit/search commands need
+it. Use `zk index --force` with the explicit notebook and working directories
+after a documentation pass when deterministic index validation is required.
 
 The index excludes `.git`, `target`, `user`, `node_modules`, and `.zk`
 subtrees; keep `shsynth/user/` excluded. The notebook uses normal Markdown
