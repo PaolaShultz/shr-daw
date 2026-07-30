@@ -1540,7 +1540,7 @@ mod tests {
             &mut sustained,
         )
         .unwrap();
-        let mut expected_notes = parts
+        let expected_notes = parts
             .iter()
             .flat_map(|part| {
                 part.notes
@@ -1548,6 +1548,16 @@ mod tests {
                     .map(|note| (part.channel, note.note, note.velocity, note.start, note.end))
             })
             .collect::<Vec<_>>();
+        let mut expected_percussion = expected_notes
+            .iter()
+            .filter(|note| note.0 == 9)
+            .map(|note| (note.0, note.1, note.2, note.3))
+            .collect::<Vec<_>>();
+        let mut expected_notes = expected_notes
+            .into_iter()
+            .filter(|note| note.0 != 9)
+            .collect::<Vec<_>>();
+        expected_percussion.sort_unstable();
         expected_notes.sort_unstable();
 
         let imported = convert(&parsed, "house-of-the-rising-sun").unwrap();
@@ -1603,6 +1613,7 @@ mod tests {
         )
         .unwrap();
         let mut active: BTreeMap<usize, (u8, u8, u8, u64)> = BTreeMap::new();
+        let mut actual_percussion = Vec::new();
         let mut actual_notes = Vec::new();
         for message in scheduled {
             if message.bytes.len() != 3 {
@@ -1617,7 +1628,11 @@ mod tests {
             };
             match status & 0xf0 {
                 0x90 if message.bytes[2] > 0 => {
-                    active.insert(lane, (channel, note, message.bytes[2], tick));
+                    if first.pages[lane / LANES_PER_PAGE].percussion {
+                        actual_percussion.push((channel, note, message.bytes[2], tick));
+                    } else {
+                        active.insert(lane, (channel, note, message.bytes[2], tick));
+                    }
                 }
                 0x80 | 0x90 => {
                     // The scheduler may emit a harmless repeated lane-cleanup
@@ -1632,7 +1647,12 @@ mod tests {
             }
         }
         assert!(active.is_empty());
+        actual_percussion.sort_unstable();
         actual_notes.sort_unstable();
+        assert_eq!(
+            actual_percussion, expected_percussion,
+            "every imported percussion attack must survive as a one-shot"
+        );
         assert_eq!(
             actual_notes, expected_notes,
             "every imported channel, pitch, velocity, start, and duration must survive"

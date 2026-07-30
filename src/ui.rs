@@ -24314,7 +24314,7 @@ mod tests {
         a.screen = Screen::Meter;
         a.bus_selected = 0;
         a.move_bus_selection(-1);
-        assert_eq!(a.bus_selected, 3);
+        assert_eq!(a.bus_selected, crate::final_bus::SOURCE_COUNT);
 
         a.screen = Screen::Routing;
         a.routing.selected = 0;

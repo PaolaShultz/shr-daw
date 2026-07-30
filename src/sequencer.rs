@@ -5105,7 +5105,7 @@ mod tests {
     }
 
     #[test]
-    fn playback_still_interrupts_a_cymbal_explicitly_stored_in_the_same_lane() {
+    fn playback_does_not_manufacture_a_release_between_percussion_one_shots() {
         let cfg = config();
         let mut song = Song::new_with_pages(&cfg, vec![Page::new("DRUMS", 9, true, 0)]);
         let pattern = song.patterns.get_mut(&0).unwrap();
@@ -5116,7 +5116,7 @@ mod tests {
             .iter()
             .find(|message| message.bytes == [0x99, 36, 96])
             .unwrap();
-        assert!(scheduled.iter().any(|message| {
+        assert!(!scheduled.iter().any(|message| {
             message.at == kick.at && message.lane == Some(0) && message.bytes == [0x89, 49, 0]
         }));
     }

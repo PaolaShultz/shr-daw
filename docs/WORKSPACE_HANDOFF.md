@@ -220,6 +220,40 @@ deliberate pin update. Ignored raw build, runtime, output, and system evidence
 remains below `user/compiler-ab-20260729/`. No JACK lifecycle, connection,
 physical route, MIDI, synth, audible playback, or hardware setting changed.
 
+The 2026-07-30 Rust 1.97.1 follow-up kept the original compiler A/B intact and
+localized its final-strip regression to modulo indexing inside the 24-tap,
+4×/8× true-peak interpolation loop. Cortex-A76-native code generation,
+native plus `opt-level=2`, and forced inlining did not improve that boundary.
+The adopted implementation instead preserves tap and floating-point
+accumulation order while splitting the ring scan before and after its wrap.
+Against the ordinary Rust 1.97.1 build, representative complete-strip means
+improved about 43%, isolated interpolation improved 52–57%, dry graph medians
+improved 43–47%, fully enabled graph medians improved 21–27%, and combined
+drum-plus-melody final-bus medians improved 13–15%. Standalone drum DSP stayed
+within noise. All 14 complete-graph output hashes remained bit-identical, and
+a focused test locks bit-exact equivalence against the old modulo expression.
+The optimized 1.97.1 strip-bearing graph is now generally within about 1–7% of
+the original 1.85 controlled medians, so there is no separate old-compiler
+release path. The owning explanation and exact results are in
+`docs/RUST_COMPILER_AB_2026-07-29.md` and
+`docs/MASTER_STRIP_MEASUREMENT.md`; ignored raw follow-up evidence is below
+`user/compiler-options-20260730/` and
+`user/compiler-source-options-20260730/`. Do not cosmetically collapse the two
+ring ranges back into a modulo-indexed loop without rerunning the focused
+benchmark and bit-exact reference test.
+
+The requested full adoption validation used exact Rust 1.97.1 in SHR-DAW and
+its live SHR Drums path dependency. SHR-DAW finished with 856 tests passed and
+6 explicitly ignored private render tests; SHR Drums finished with 12 passed
+and none ignored. Release all-target builds succeeded in both repositories.
+The first full SHR-DAW run exposed four stale test expectations from the
+earlier fourth graph source, percussion one-shot, and fifth final-bus row
+changes. Their test-only repairs now derive production counts and distinguish
+percussion attacks from melodic notes that own durations; no production
+behavior changed. Formatting, deterministic documentation generation/check,
+and diff whitespace validation passed. Ignored validation transcripts remain
+below `user/adopt-modulo-free-20260730/validation/`.
+
 The same pass repaired the non-audible `final-mix-stress` fixture after it
 exposed a stale three-source allocation against the current four-source bus.
 The helper now derives the production source count, supplies a distinct drum

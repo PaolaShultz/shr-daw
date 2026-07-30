@@ -26,6 +26,13 @@ Rust 1.97.1 is adopted as the exact repository pin as requested. That adoption
 does not turn the runtime regression into a speed improvement; future compiler
 changes should rerun this short comparison deliberately.
 
+A separate 2026-07-30 follow-up, documented below, found that LLVM 22 made the
+interpolator's modulo-indexed inner loop unusually expensive. Splitting the
+ring scan at its wrap removed the modulo while preserving accumulation order
+and bit-exact output. That source optimization recovered most of the lost
+runtime performance. It does not retroactively change the compiler-only A/B
+above.
+
 ## Compared source and compilers
 
 Both release artifacts used:
@@ -148,6 +155,160 @@ Median involuntary context switches were 1,382 and 1,458 respectively.
 The agreement between the isolated strip and graph/final-bus rows localizes
 the important regression to work containing the fixed final processor. This
 pass does not attempt a compiler-backend diagnosis.
+
+## Post-A/B Rust 1.97.1 optimization
+
+On 2026-07-30 a short follow-up tested whether ordinary Rust 1.97.1 codegen
+options could recover the final-strip regression before changing DSP source.
+It used baseline commit
+`6b352b5dad0d875d4cc00588872e76d9af74d793`, the same `Cargo.lock` hash and
+SHR Drums commit recorded above, the pinned Rust 1.97.1 compiler, the existing
+release profile, CPU 0 affinity, and the same deterministic commands. JACK
+remained untouched on CPU 3. The Pi stayed at 2.4 GHz, 53.8–59.3 °C, and
+firmware throttle state `0x0`.
+
+### Compiler-option candidates
+
+Three artifacts compared the existing build, `-C target-cpu=native`, and
+`target-cpu=native` with `-C opt-level=2`. The default AArch64 target already
+enables NEON. Native Cortex-A76 selection additionally exposed AES, CRC,
+dot-product, FP16, LSE, and other Pi 5 features, but those features did not
+accelerate this floating-point interpolator. Each strip value below is the
+median of three interleaved 5,000-callback run means.
+
+| Boundary | Existing Rust 1.97.1 | Cortex-A76 native | Native plus opt-level 2 |
+| --- | ---: | ---: | ---: |
+| 64 neutral | 100.620 µs | 101.464 µs (+0.84%) | 102.408 µs (+1.78%) |
+| 64 active | 100.674 µs | 101.555 µs (+0.88%) | 102.253 µs (+1.57%) |
+| 128 neutral | 201.483 µs | 202.425 µs (+0.47%) | 204.119 µs (+1.31%) |
+| 128 active | 201.246 µs | 202.936 µs (+0.84%) | 204.603 µs (+1.67%) |
+| 4× interpolator | 38.895 µs | 38.998 µs (+0.26%) | 39.933 µs (+2.67%) |
+| 8× interpolator | 77.895 µs | 78.020 µs (+0.16%) | 79.056 µs (+1.49%) |
+
+Four short complete-graph runs per artifact were mixed but effectively
+unchanged. Most medians and p99 values stayed within about ±1%; isolated
+exceptions did not repeat across buffer sizes or median and p99. All 14
+workload/buffer output hashes matched exactly. The tested artifacts were:
+
+| Build | SHA-256 | Bytes |
+| --- | --- | ---: |
+| Existing release | `16e1c1369caa4e5d5b5900f1e0a5e0430b83ddd8ea6c3f1fc21b8b668a0d35f1` | 4,199,264 |
+| Cortex-A76 native | `6326da0ad33385d3101489c02f4024a4048a59c489c13ec19f9dda2dbd90780e` | 4,330,336 |
+| Native plus opt-level 2 | `08ed1b271530b233ebec3737c22f074289117f190fbc236280ae55f6962b00e5` | 4,133,728 |
+
+Only the existing artifact used a fresh target and took 149.35 seconds. The
+two option candidates reused dependencies and took 128.10 and 121.29 seconds,
+so those wall times are not clean-build comparisons.
+
+### Focused source candidates
+
+Forcing `TruePeakInterpolator::process` from `#[inline]` to
+`#[inline(always)]` changed complete-strip means by only −0.4% to +0.4%. That
+annotation was restored; inlining was not the cause.
+
+The successful candidate kept the original tap and floating-point accumulation
+order but replaced this inner-loop index:
+
+```text
+(write + tap) % INTERPOLATOR_TAPS
+```
+
+with two bounded ranges, one before and one after the ring-buffer wrap. This
+removes a modulo operation for every tap and phase without changing
+coefficients, state, latency, or DSP output. The source records why the ranges
+must not be casually collapsed back into a modulo-indexed loop, and a focused
+test compares the optimized loop bit-for-bit with the retained test-only
+modulo reference.
+
+| Boundary | Existing Rust 1.97.1 | Modulo-free scan | Change |
+| --- | ---: | ---: | ---: |
+| 64 neutral | 100.599 µs | 57.488 µs | −42.85% |
+| 64 active | 100.842 µs | 57.382 µs | −43.10% |
+| 128 neutral | 200.942 µs | 114.701 µs | −42.92% |
+| 128 active | 201.262 µs | 114.794 µs | −42.96% |
+| 4× interpolator | 38.919 µs | 18.619 µs | −52.16% |
+| 8× interpolator | 77.874 µs | 33.630 µs | −56.81% |
+
+Three interleaved complete-graph runs per artifact confirmed that the gain
+appears only where final-strip work is present:
+
+| Workload | Frames | Median before → after | Change | p99 before → after | Change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Dry graph + final strip | 64 | 95.018 → 54.277 µs | −42.88% | 137.739 → 86.259 µs | −37.38% |
+| Dry graph + final strip | 128 | 203.221 → 108.444 µs | −46.64% | 248.165 → 149.295 µs | −39.84% |
+| `phase4-full` + final strip | 64 | 195.961 → 143.276 µs | −26.89% | 236.220 → 201.850 µs | −14.55% |
+| `phase4-full` + final strip | 128 | 391.219 → 310.034 µs | −20.75% | 436.089 → 350.274 µs | −19.68% |
+| Drums + melody + final bus | 64 | 302.183 → 261.516 µs | −13.46% | 340.849 → 305.424 µs | −10.39% |
+| Drums + melody + final bus | 128 | 611.217 → 517.385 µs | −15.35% | 639.569 → 551.588 µs | −13.76% |
+
+Standalone drum boundaries remained within observed noise. Every before/after
+workload repeated the same output hash across all runs, and all 14 paired
+hashes matched. The output difference is therefore exactly zero.
+
+Comparing the optimized Rust 1.97.1 source with the original controlled Rust
+1.85 artifact is **source plus compiler**, not a compiler-only result. It is
+still useful for deciding whether a split production toolchain is warranted:
+the optimized 1.97.1 results are within about 1–7% of the original 1.85
+medians for the strip-bearing graph rows, while the 4× interpolator is about
+10% faster. That small remaining mixed difference does not justify maintaining
+Rust 1.85 for release builds.
+
+The failed inline artifact SHA-256 was
+`f1717d3845e344ddc584d8069369fff92f3cf5dd5b824e8d46db2a72b668a1ef`;
+the successful candidate artifact SHA-256 was
+`3b6e1638f38f8104017c2995d7c5fd1cb32e992fac2b1c450672d36d49f695be`.
+Both builds reused dependencies and took about 128 seconds, so their build
+times are descriptive only.
+
+Ignored option-build and runtime evidence is below
+`$SHSYNTH_USER_DIR/compiler-options-20260730/`. Ignored source-candidate
+artifacts, interleaved runs, hashes, `/usr/bin/time -v` records, and thermal
+snapshots are below
+`$SHSYNTH_USER_DIR/compiler-source-options-20260730/`.
+
+The durable lesson is to keep one pinned development and production toolchain.
+When a future compiler regression localizes to one DSP boundary, first inspect
+that hot loop and compare bit-exact source shapes with the existing short
+harness. CPU-specific flags, weaker whole-program optimization, a second
+release compiler, and arbitrary inlining annotations did not solve this case.
+
+### Adoption validation
+
+The requested full adoption pass used exact Rust 1.97.1 and Cargo 1.97.1:
+
+```sh
+cargo fmt --all
+make docs-site
+make check-docs-site
+git diff --check
+cargo test --locked --all-targets
+cargo build --release --locked --all-targets
+```
+
+The Cargo test and build commands ran in both SHR-DAW and the live SHR Drums
+path dependency. The first full SHR-DAW suite exposed four deterministic stale
+test expectations left by earlier product changes: the managed graph expected
+only three source nodes, the MIDI fixture and sequencer test expected
+manufactured percussion note-offs after percussion became intentional
+one-shots, and the final-bus list-wrap test hard-coded four rows before SHR
+Drums became the fourth source. The repairs changed test expectations only:
+they now derive the production source/row count, verify percussion attacks
+separately from duration-owning melodic notes, and preserve the documented
+one-shot contract. All four passed alone before the complete suite was rerun.
+
+Final validation results:
+
+- SHR-DAW: 856 passed, 0 failed, and 6 explicitly ignored private render tests;
+- SHR Drums: 12 passed, 0 failed, and 0 ignored;
+- SHR-DAW release all-target build: 264.20 seconds, 1,515,280 KiB peak RSS;
+- SHR Drums release all-target build: 22.23 seconds, 301,120 KiB peak RSS;
+- generated documentation check, formatting, and diff whitespace check passed;
+  and
+- the normal stripped `target/release/shr` is 4,264,800 bytes with SHA-256
+  `4dced24d5f9cb5612b48825a4e4ea3fb213cfae6fedbbb1140b4cf52b8df409d`.
+
+Ignored validation transcripts and `/usr/bin/time -v` records are below
+`$SHSYNTH_USER_DIR/adopt-modulo-free-20260730/validation/`.
 
 ## Output equivalence
 

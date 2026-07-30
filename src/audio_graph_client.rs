@@ -1120,6 +1120,7 @@ mod tests {
                 SOURCE_NODE,
                 LOOP_SOURCE_NODE,
                 INPUT_SOURCE_NODE,
+                DRUM_SOURCE_NODE,
                 FIRST_EFFECT_NODE,
                 FIRST_EFFECT_NODE + 1,
                 MASTER_NODE,
@@ -1127,7 +1128,7 @@ mod tests {
             ]
         );
         assert_eq!(graph.source_chains[0].effects, [eq, compressor]);
-        assert_eq!(graph.edges.len(), 6);
+        assert_eq!(graph.edges.len(), 7);
     }
 
     #[test]

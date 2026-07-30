@@ -1335,8 +1335,18 @@ impl TruePeakInterpolator {
         for (phase, frame) in output.iter_mut().enumerate().take(self.factor) {
             let mut left = 0.0_f32;
             let mut right = 0.0_f32;
-            for tap in 0..INTERPOLATOR_TAPS {
-                let index = (self.write + tap) % INTERPOLATOR_TAPS;
+            // Preserve tap order but split at the ring wrap. Replacing these
+            // ranges with `(write + tap) % INTERPOLATOR_TAPS` made this loop
+            // 2.1–2.3× slower with Rust 1.97.1/LLVM 22 on the Raspberry Pi 5.
+            let first_count = INTERPOLATOR_TAPS - self.write;
+            for tap in 0..first_count {
+                let index = self.write + tap;
+                let coefficient = self.kernels[phase][tap];
+                left += self.history[index].left * coefficient;
+                right += self.history[index].right * coefficient;
+            }
+            for tap in first_count..INTERPOLATOR_TAPS {
+                let index = tap - first_count;
                 let coefficient = self.kernels[phase][tap];
                 left += self.history[index].left * coefficient;
                 right += self.history[index].right * coefficient;
@@ -2584,6 +2594,43 @@ mod tests {
         processor.process(&mut audible);
         let left = audible.iter().map(|frame| frame.left).collect::<Vec<_>>();
         assert!(maximum_step(&left) < 0.2);
+    }
+
+    #[test]
+    fn split_ring_interpolation_is_bit_exact_with_modulo_reference() {
+        fn reference_process(
+            interpolator: &mut TruePeakInterpolator,
+            input: StereoFrame,
+        ) -> [StereoFrame; OVERSAMPLE_FACTOR] {
+            interpolator.history[interpolator.write] = input.finite_or_silence();
+            interpolator.write = (interpolator.write + 1) % INTERPOLATOR_TAPS;
+            let mut output = [StereoFrame::SILENCE; OVERSAMPLE_FACTOR];
+            for (phase, frame) in output.iter_mut().enumerate().take(interpolator.factor) {
+                let mut left = 0.0_f32;
+                let mut right = 0.0_f32;
+                for tap in 0..INTERPOLATOR_TAPS {
+                    let index = (interpolator.write + tap) % INTERPOLATOR_TAPS;
+                    let coefficient = interpolator.kernels[phase][tap];
+                    left += interpolator.history[index].left * coefficient;
+                    right += interpolator.history[index].right * coefficient;
+                }
+                *frame = StereoFrame::new(left, right).finite_or_silence();
+            }
+            output
+        }
+
+        for factor in [4, 8] {
+            let mut optimized = TruePeakInterpolator::new(factor).unwrap();
+            let mut reference = optimized.clone();
+            for index in 0..4_096 {
+                let phase = index as f32 * 0.037;
+                let input = StereoFrame::new(phase.sin() * 0.73, phase.cos() * -0.61);
+                assert_eq!(
+                    optimized.process(input),
+                    reference_process(&mut reference, input)
+                );
+            }
+        }
     }
 
     #[test]

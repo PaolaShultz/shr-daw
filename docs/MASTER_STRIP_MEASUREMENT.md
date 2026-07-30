@@ -175,6 +175,46 @@ storage. The 8× candidate was retained: the maximally active complete
 processor stayed below 7% mean, 8% p99, and 20% maximum of either callback
 deadline while providing the lower BS.1770 theoretical under-read.
 
+### Current Pi 5 interpolation result
+
+The 2026-07-29 controlled compiler A/B found that the modulo-indexed
+interpolator loop compiled materially slower with Rust 1.97.1/LLVM 22 than
+with Rust 1.85.0/LLVM 19. The compiler comparison and its original source are
+preserved unchanged in
+[Rust compiler A/B on Raspberry Pi 5](RUST_COMPILER_AB_2026-07-29.md).
+
+The 2026-07-30 follow-up retained pinned Rust 1.97.1 and removed the modulo from
+the production inner loop. The ring scan is now split into the samples before
+and after its wrap. Tap order, coefficient order, state, latency, and
+floating-point accumulation order remain unchanged. A test-only modulo
+reference proves bit-exact interpolation for both factors, and the complete
+graph produced identical output hashes at both callback sizes.
+
+Three interleaved 5,000-callback runs per artifact on the repository Raspberry
+Pi 5 produced these median run means:
+
+| Frames | Profile | Before | Modulo-free | Change |
+|---:|---|---:|---:|---:|
+| 64 | neutral | 100.599 µs | 57.488 µs | −42.85% |
+| 64 | maximally active | 100.842 µs | 57.382 µs | −43.10% |
+| 128 | neutral | 200.942 µs | 114.701 µs | −42.92% |
+| 128 | maximally active | 201.262 µs | 114.794 µs | −42.96% |
+| 128 | 4× interpolator | 38.919 µs | 18.619 µs | −52.16% |
+| 128 | 8× interpolator | 77.874 µs | 33.630 µs | −56.81% |
+
+The machine remained at 2.4 GHz, 55.4–59.3 °C, and throttle state `0x0`.
+Standalone drum processing stayed within noise, while strip-bearing complete
+graph medians improved 13–47% depending on how much of the workload was final
+strip work. These are offline CPU results, not JACK or listening acceptance.
+Ignored raw evidence is below
+`$SHSYNTH_USER_DIR/compiler-source-options-20260730/`.
+
+Do not replace the two bounded ring ranges with
+`(write + tap) % INTERPOLATOR_TAPS` as a cosmetic simplification. On this
+compiler and target, that mathematically equivalent source shape made the 8×
+interpolator about 2.3 times as expensive. Rerun the focused benchmark and
+bit-exact reference test before changing this loop shape.
+
 Two additional two-second, three-source release-mode recorder stresses at
 64 and 128 frames processed 96,000 frames each with zero drops or overflows
 and byte-identical post-strip playback and WAV PCM. These are synthetic,
