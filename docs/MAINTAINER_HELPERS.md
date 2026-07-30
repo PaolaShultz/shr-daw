@@ -752,6 +752,14 @@ sudo make install-files
 sudo make uninstall
 ```
 
+`make test` runs the deterministic product regression gate. DSP audition
+renderers, exhaustive quality matrices, wall-clock microbenchmarks, legacy
+baselines, and rejected-candidate comparisons are explicitly ignored and run
+only when a maintainer selects their exact test name with Cargo's
+`--ignored --exact` filters. Operational latency, alignment, stability,
+allocation, bounded-output, and representative adopted-quality checks remain
+in the default gate.
+
 Variables:
 
 - `CARGO` selects Cargo;

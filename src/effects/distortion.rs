@@ -466,6 +466,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "maintainer-only legacy alias characterization"]
     fn legacy_transfer_high_frequency_alias_is_measured() {
         let length = 4_096;
         let fundamental_bin = 900;
@@ -515,14 +516,18 @@ mod tests {
             "soft-cubic alias: legacy {legacy_alias_db:.2} dBc, ADAA {improved_alias_db:.2} dBc"
         );
 
-        assert!((-24.1..=-23.8).contains(&legacy_alias_db));
         assert!(
             improved_alias_db < legacy_alias_db - 12.0,
             "legacy {legacy_alias_db:.2} dBc, ADAA {improved_alias_db:.2} dBc"
         );
+        assert!(
+            improved_alias_db < -36.0,
+            "ADAA alias {improved_alias_db:.2} dBc"
+        );
     }
 
     #[test]
+    #[ignore = "maintainer-only distortion quality and cost characterization"]
     fn all_modes_have_multitone_harmonic_alias_and_cost_characterization() {
         const LENGTH: usize = 4_096;
         let low_bin = 93;

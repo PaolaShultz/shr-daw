@@ -689,6 +689,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "maintainer-only reverb quality and cost characterization"]
     fn reverb_output_characterization_covers_density_bands_modes_and_ringing() {
         let mut rows = Vec::new();
         for voicing in 0..=2 {

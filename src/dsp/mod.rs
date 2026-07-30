@@ -985,6 +985,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "maintainer-only legacy interpolation characterization"]
     fn linear_fractional_delay_high_frequency_loss_matches_its_known_response() {
         let sample_rate = 48_000.0;
         let frequency = 10_000.0;
@@ -1006,11 +1007,10 @@ mod tests {
     }
 
     #[test]
-    fn third_order_lagrange_candidate_reduces_useful_band_error_and_is_gain_bounded() {
+    fn third_order_lagrange_reduces_useful_band_error_and_is_gain_bounded() {
         let sample_rate = 48_000.0_f64;
         let length = 48_000;
         let delay_samples = 4.5_f32;
-        let mut responses = Vec::new();
         for frequency in [1_000.0_f64, 5_000.0, 10_000.0, 18_000.0] {
             let mut linear = FractionalDelayLine::new(32).unwrap();
             let mut lagrange = FractionalDelayLine::new(32).unwrap();
@@ -1044,13 +1044,7 @@ mod tests {
             let lagrange_rms_error = (lagrange_error / count as f64).sqrt();
             let linear_gain = (linear_energy / count as f64).sqrt() * 2.0_f64.sqrt();
             let lagrange_gain = (lagrange_energy / count as f64).sqrt() * 2.0_f64.sqrt();
-            responses.push((
-                frequency,
-                20.0 * linear_gain.log10(),
-                20.0 * lagrange_gain.log10(),
-                linear_rms_error,
-                lagrange_rms_error,
-            ));
+            assert!(linear_gain.is_finite() && lagrange_gain.is_finite());
             assert!(
                 lagrange_rms_error < linear_rms_error,
                 "{frequency} Hz: linear {linear_rms_error}, Lagrange {lagrange_rms_error}"
@@ -1086,33 +1080,6 @@ mod tests {
                 );
             }
         }
-        eprintln!("fractional delay response (Hz, linear dB, Lagrange-3 dB, linear RMS error, Lagrange-3 RMS error): {responses:?}");
-
-        let mut benchmark_delay = FractionalDelayLine::new(64).unwrap();
-        for index in 0..66 {
-            benchmark_delay.push((index as f32 * 0.37).sin());
-        }
-        let iterations = 2_000_000;
-        let start = std::time::Instant::now();
-        let mut sum = 0.0_f32;
-        for index in 0..iterations {
-            let delay = 4.0 + (index % 100) as f32 * 0.01;
-            sum += std::hint::black_box(benchmark_delay.read_linear(delay));
-        }
-        std::hint::black_box(sum);
-        let linear_time = start.elapsed();
-        let start = std::time::Instant::now();
-        let mut sum = 0.0_f32;
-        for index in 0..iterations {
-            let delay = 4.0 + (index % 100) as f32 * 0.01;
-            sum += std::hint::black_box(benchmark_delay.read_lagrange3(delay));
-        }
-        std::hint::black_box(sum);
-        let lagrange_time = start.elapsed();
-        eprintln!(
-            "fractional delay core cost: linear {linear_time:?}, Lagrange-3 {lagrange_time:?}, ratio {:.3}",
-            lagrange_time.as_secs_f64() / linear_time.as_secs_f64()
-        );
     }
 
     #[test]

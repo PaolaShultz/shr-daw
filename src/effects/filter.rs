@@ -398,6 +398,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "maintainer-only filter quality and cost characterization"]
     fn filter_drive_alias_is_measured_through_the_resonant_tpt_stage() {
         const LENGTH: usize = 4_096;
         let bins = [700, 900, 1_300];

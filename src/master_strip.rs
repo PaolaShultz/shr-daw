@@ -2634,6 +2634,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "maintainer-only rejected oversampling-candidate characterization"]
     fn four_and_eight_times_candidates_measure_expected_theoretical_tradeoff() {
         let mut four = TruePeakInterpolator::new(4).unwrap();
         let mut eight = TruePeakInterpolator::new(8).unwrap();
