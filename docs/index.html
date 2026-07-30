@@ -1311,10 +1311,11 @@ and interface availability. Turn and click/Enter to activate a
 field; Back/Esc cancels that field first. Only <strong>APPLY ROUTING</strong> changes the
 Project. <strong>APPLY</strong> and <strong>CANCEL</strong> remain visible in the overlay's bottom border
 even while the longer field list scrolls; keyboard <code>A</code> and <code>C</code> invoke the same
-whole-draft actions. The same highlighted ROUTE item or Back closes and cancels
-every unconfirmed change. Back from an active field cancels only that field
-first. At 40×13 the bordered outer window is 38×11 at <code>(1,1)</code> and the usable
-inner area is 36×9 at <code>(2,2)</code>; row 13 remains the shared status row.</p>
+whole-draft actions. Once open, the ROUTE launcher position is relabeled
+<strong>CANCEL</strong>, so there is only one visible whole-draft cancel command; it or Back
+discards every unconfirmed change. Back from an active field cancels only that
+field first. At 40×13 the bordered outer window is 38×11 at <code>(1,1)</code> and the
+usable inner area is 36×9 at <code>(2,2)</code>; row 13 remains the shared status row.</p>
 <h4 id="doc-tracker--step-editing" tabindex="-1">Step editing<a class="heading-anchor" href="#doc-tracker--step-editing" aria-label="Link to Step editing">#</a></h4>
 <p>Step entry accepts notes and chords from any configured musical input.
 <strong>TRACKS</strong> → <strong>SYS</strong> → <strong>ENTRY</strong> selects one persisted layout for each page:</p>
@@ -2012,7 +2013,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 normal</td>
-<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> visible in its bottom border while preserving the launcher; Back still cancels an active field before the whole draft.</td>
+<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> visible in its bottom border; the existing launcher position becomes the one <code>CANCEL</code> command instead of adding a duplicate. Back still cancels an active field before the whole draft.</td>
 </tr>
 <tr>
 <td>FT2 record</td>
@@ -3815,7 +3816,7 @@ Esc, to close. There is no extra controller Back item.</p>
 <p>PATTERN selects an existing Pattern and links to Pattern tools or Project Files.</p>
 <p><img src="images/menu/overlay-ft2-song.png" alt="SONG overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="33c4e8dbcdc02718a124fba36912ad599c73a84cc45e6919e098668e4fceda07" class="tui-shot" id="shot-33c4e8dbcdc0" /></p>
 <p>SONG selects an Arrangement step and links to Arrangement or page tools.</p>
-<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="1b2aff601a8c7e95e673334928b044a2ecd987dd1d6cfffa74fca7cdb31a4d37" class="tui-shot" id="shot-1b2aff601a8c" /></p>
+<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7a13d292582c0ff51f7146609f5bf5ed941df50ee5bc27ad9a291c4d315ea16d" class="tui-shot" id="shot-7a13d292582c" /></p>
 <p>ROUTE edits a detached page-routing draft that changes the Project only on Apply.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" tabindex="-1">SYS — safety, filter, help, and exit<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" aria-label="Link to SYS — safety, filter, help, and exit">#</a></h5>
 <p><img src="images/menu/ft2-play-sys.png" alt="Populated FT2 Pattern in Play mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0b077d999bd6987102baf869a7a74dee102380598ded91c47b3edaf187135f5f" class="tui-shot" id="shot-0b077d999bd6" /></p>
@@ -4092,7 +4093,7 @@ the reference. <code>REMOVE</code> removes only this step, not the underlying Pa
 <p><img src="images/menu/arrange-sys.png" alt="Populated Arrangement screen with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7faa26f6c68053887808db4a532b9dc81c1714d54f68b281a9882688bbd7657b" class="tui-shot" id="shot-7faa26f6c680" /></p>
 <p><code>PANIC</code> and <code>HELP</code> remain available. <code>EXIT</code> returns to the tracker.</p>
 <h4 id="doc-menu-tracker_and_projects--route-master-overlay" tabindex="-1">ROUTE master overlay<a class="heading-anchor" href="#doc-menu-tracker_and_projects--route-master-overlay" aria-label="Link to ROUTE master overlay">#</a></h4>
-<p><a class="repeated-image-link" href="#shot-1b2aff601a8c">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
+<p><a class="repeated-image-link" href="#shot-7a13d292582c">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
 <p>ROUTE is the quick transactional editor for the active Pattern page. The top
 row shows the page/master destination and its current resolved state. The next
 16 rows show channel, bank MSB, bank LSB, and program/instrument for each of the
@@ -4109,9 +4110,10 @@ Apply, the Project, runtime route, engine, transport, and recorder are otherwise
 untouched.</p>
 <p>The bottom border always shows <code>APPLY</code> and <code>CANCEL</code>, so neither whole-draft
 action depends on scrolling to the final list row. Keyboard <code>A</code> and <code>C</code> invoke
-the same actions. Pressing the highlighted <code>ROUTE</code> menu item also closes the
-overlay and cancels its whole unconfirmed draft. Back/Esc from the main list
-does the same, while Back/Esc during a field edit cancels only that field.
+the same actions. The original <code>ROUTE</code> launcher position becomes that single
+<code>CANCEL</code> command while the overlay is open; it is not duplicated. Back/Esc from
+the main list does the same, while Back/Esc during a field edit cancels only
+that field.
 Missing preferred hardware remains visible and saved as preferred; an exact
 external target stays offline or ambiguous and never uses either the
 configured hardware default or the Pattern's software synth. <code>AUTO</code> alone
@@ -14701,9 +14703,11 @@ test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.</p>
 <p>FT2's quick ROUTE overlay now keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> commands
 visible in its bottom border at native 40×13 instead of hiding Apply below 21
-scrolling fields and exposing only an ambiguous ROUTE toggle. Keyboard <code>A</code> and
-<code>C</code>, mouse, and controller commands share those exact actions; Back remains
-field-first. Playback labels MIDI-take persistence as <code>IDEA+</code>, not an
+scrolling fields and exposing only an ambiguous ROUTE toggle. The original
+launcher position becomes the single <code>CANCEL</code> command, rather than adding a
+second control for the same discard operation. Keyboard <code>A</code> and <code>C</code>, mouse,
+and controller commands share those exact actions; Back remains field-first.
+Playback labels MIDI-take persistence as <code>IDEA+</code>, not an
 instrument save, and <code>SOUNDS</code> returns directly to Presets and its visible
 <code>LOAD</code>. In-app and terminal MIDI Learn now capture the complete optional
 encoder-Shift gesture. Holding Shift, turning left and right, then releasing

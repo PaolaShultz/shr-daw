@@ -12664,13 +12664,6 @@ fn perform(
             a.stop_loop_preview(true);
         } else if action == Action::ApplyRouteOverlay && overlay_kind == OverlayKind::TrackerRoute {
             a.confirm_route_overlay();
-        } else if action == Action::CancelRouteOverlay && overlay_kind == OverlayKind::TrackerRoute
-        {
-            if a.mixed_engine_remap.is_some() {
-                a.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
-            } else {
-                a.close_overlay(true);
-            }
         } else if action == Action::PreviewRouteDraft {
             a.preview_route_draft();
         } else if action == Action::TapTempo {
@@ -13161,7 +13154,7 @@ fn perform(
         | Action::OpenTrackerAdvanceOverlay
         | Action::OpenEntryLayoutOverlay
         | Action::OpenEffectsOverlay => a.open_overlay(action),
-        Action::ApplyRouteOverlay | Action::CancelRouteOverlay => {
+        Action::ApplyRouteOverlay => {
             unreachable!("route overlay actions are handled before contextual dispatch")
         }
         Action::PreviewRouteDraft => a.preview_route_draft(),
@@ -21266,10 +21259,10 @@ mod tests {
         a.open_overlay(Action::OpenRouteOverlay);
         let buffer = render_app(&mut a, 40, 20);
         let row = row_text(&buffer, 18);
-        assert_eq!(row.matches('[').count(), 3);
+        assert_eq!(row.matches('[').count(), 2);
         assert!(row.contains("APPLY"));
         assert!(row.contains("CANCEL"));
-        assert!(row.contains("ROUTE"));
+        assert!(!row.contains("ROUTE"));
         assert!(row_text(&buffer, 19).starts_with('‖'));
         assert_eq!(
             a.hits
@@ -21277,11 +21270,7 @@ mod tests {
                 .iter()
                 .map(|(_, action)| *action)
                 .collect::<Vec<_>>(),
-            vec![
-                Action::ApplyRouteOverlay,
-                Action::CancelRouteOverlay,
-                Action::OpenRouteOverlay,
-            ]
+            vec![Action::ApplyRouteOverlay, Action::OpenRouteOverlay]
         );
     }
 
@@ -21301,7 +21290,7 @@ mod tests {
         assert_eq!(buffer_cell(&buffer, 38, 11).symbol, "╝");
         assert!(row_text(&buffer, 11).contains("APPLY"));
         assert!(row_text(&buffer, 11).contains("CANCEL"));
-        assert!(row_text(&buffer, 11).contains("ROUTE"));
+        assert!(!row_text(&buffer, 11).contains("ROUTE"));
         assert!(row_text(&buffer, 12).starts_with(transport_glyph(a.transport_indicator()).0));
     }
 
@@ -21322,7 +21311,7 @@ mod tests {
             .columns[0]
             .channel = 7;
         perform(
-            Action::CancelRouteOverlay,
+            Action::OpenRouteOverlay,
             &mut cancelled,
             Path::new("/none"),
             None,

@@ -139,7 +139,6 @@ pub enum Action {
     OpenSongOverlay,
     OpenRouteOverlay,
     ApplyRouteOverlay,
-    CancelRouteOverlay,
     PreviewRouteDraft,
     OpenPatternLengthOverlay,
     OpenNoteLengthOverlay,

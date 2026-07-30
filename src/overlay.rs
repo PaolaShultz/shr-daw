@@ -228,15 +228,16 @@ impl OverlayState {
     /// TAP at the tempo anchor.
     pub fn controller_action(&self, item: usize) -> Option<(&'static str, Action)> {
         if self.kind == OverlayKind::TrackerRoute {
-            let mut free = (0..4).filter(|candidate| *candidate != self.launcher.item);
-            let apply = free.next().unwrap_or(0);
-            let cancel = free.next().unwrap_or(1);
+            let apply = (0..4)
+                .find(|candidate| *candidate != self.launcher.item)
+                .unwrap_or(0);
             if item == apply {
                 return Some(("APPLY", Action::ApplyRouteOverlay));
             }
-            if item == cancel {
-                return Some(("CANCEL", Action::CancelRouteOverlay));
+            if item == self.launcher.item {
+                return Some(("CANCEL", self.launcher.action));
             }
+            return None;
         }
         if self.launcher.item == item {
             return Some((self.launcher.label, self.launcher.action));

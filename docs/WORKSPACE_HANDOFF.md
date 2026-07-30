@@ -53,9 +53,11 @@ recording, audible, or physical-hardware test was involved.
 
 FT2's quick ROUTE overlay now keeps whole-draft `APPLY` and `CANCEL` commands
 visible in its bottom border at native 40×13 instead of hiding Apply below 21
-scrolling fields and exposing only an ambiguous ROUTE toggle. Keyboard `A` and
-`C`, mouse, and controller commands share those exact actions; Back remains
-field-first. Playback labels MIDI-take persistence as `IDEA+`, not an
+scrolling fields and exposing only an ambiguous ROUTE toggle. The original
+launcher position becomes the single `CANCEL` command, rather than adding a
+second control for the same discard operation. Keyboard `A` and `C`, mouse,
+and controller commands share those exact actions; Back remains field-first.
+Playback labels MIDI-take persistence as `IDEA+`, not an
 instrument save, and `SOUNDS` returns directly to Presets and its visible
 `LOAD`. In-app and terminal MIDI Learn now capture the complete optional
 encoder-Shift gesture. Holding Shift, turning left and right, then releasing
