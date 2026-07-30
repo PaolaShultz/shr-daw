@@ -223,21 +223,13 @@ impl OverlayState {
     }
 
     /// Controller actions that remain available while this overlay owns
-    /// transient selection. The launcher's original position is preserved;
-    /// Loop Browser adds contextual stop/play anchors and Song Navigation adds
-    /// TAP at the tempo anchor.
+    /// transient selection. ROUTE uses its canonical contextual controller
+    /// page; other overlays preserve their launcher position, with the Loop
+    /// Browser and Song Navigation adding their documented anchors.
     pub fn controller_action(&self, item: usize) -> Option<(&'static str, Action)> {
         if self.kind == OverlayKind::TrackerRoute {
-            let apply = (0..4)
-                .find(|candidate| *candidate != self.launcher.item)
-                .unwrap_or(0);
-            if item == apply {
-                return Some(("APPLY", Action::ApplyRouteOverlay));
-            }
-            if item == self.launcher.item {
-                return Some(("CANCEL", self.launcher.action));
-            }
-            return None;
+            let slot = navigation::ROUTE_OVERLAY_PAGE.slots.get(item).copied()?;
+            return slot.dispatch().map(|action| (slot.label, action));
         }
         if self.launcher.item == item {
             return Some((self.launcher.label, self.launcher.action));
@@ -368,6 +360,29 @@ mod controller_tests {
         );
         assert_eq!(state.controller_action(3), Some(("TAP", Action::TapTempo)));
     }
+
+    #[test]
+    fn route_overlay_uses_the_canonical_apply_and_cancel_controller_page() {
+        let state = overlay(
+            OverlayKind::TrackerRoute,
+            OverlayLauncher {
+                action: Action::OpenRouteOverlay,
+                label: "ROUTE",
+                page: 1,
+                item: 3,
+            },
+        );
+        assert_eq!(
+            state.controller_action(0),
+            Some(("APPLY", Action::ApplyRouteOverlay))
+        );
+        assert_eq!(state.controller_action(1), None);
+        assert_eq!(state.controller_action(2), None);
+        assert_eq!(
+            state.controller_action(3),
+            Some(("CANCEL", Action::CancelRouteOverlay))
+        );
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -405,6 +420,20 @@ pub fn geometry(area: Rect) -> OverlayGeometry {
     OverlayGeometry { outer, inner }
 }
 
+/// ROUTE leaves the same two controller rows used by ordinary working
+/// screens. Other overlays retain their compact launcher-in-border layout.
+pub fn geometry_for(kind: OverlayKind, area: Rect) -> OverlayGeometry {
+    if kind != OverlayKind::TrackerRoute || area.height < 5 {
+        return geometry(area);
+    }
+    geometry(Rect::new(
+        area.x,
+        area.y,
+        area.width,
+        area.height.saturating_sub(2),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,6 +460,13 @@ mod tests {
         let geometry = geometry(Rect::new(0, 0, 80, 24));
         assert_eq!(geometry.outer, Rect::new(21, 3, 38, 18));
         assert_eq!(geometry.inner, Rect::new(22, 4, 36, 16));
+    }
+
+    #[test]
+    fn route_overlay_reserves_the_two_standard_controller_rows() {
+        let geometry = geometry_for(OverlayKind::TrackerRoute, Rect::new(0, 0, 40, 13));
+        assert_eq!(geometry.outer, Rect::new(1, 1, 38, 9));
+        assert_eq!(geometry.inner, Rect::new(2, 2, 36, 7));
     }
 
     #[test]

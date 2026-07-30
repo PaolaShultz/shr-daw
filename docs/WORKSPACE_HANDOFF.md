@@ -80,22 +80,26 @@ the harness took 49.32 seconds and total wall time including 21.05 seconds of
 test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.
 
-FT2's quick ROUTE overlay now keeps whole-draft `APPLY` and `CANCEL` commands
-visible in its bottom border at native 40×13 instead of hiding Apply below 21
-scrolling fields and exposing only an ambiguous ROUTE toggle. The original
-launcher position becomes the single `CANCEL` command, rather than adding a
-second control for the same discard operation. Keyboard `A` and `C`, mouse,
-and controller commands share those exact actions; Back remains field-first.
+FT2's quick ROUTE overlay keeps whole-draft `APPLY` and `CANCEL` commands in
+the standard controller action row at native 40×13 instead of hiding Apply
+below the scrolling fields or drawing custom controls into the overlay border.
+Its canonical ROUTE controller page, mouse targets, and keyboard `A`/`C` share
+those direct actions; Back remains field-first. An SHR Drums target now exposes
+the installed drum sets through the route draft's `KIT` field and persists the
+applied selection with the Project, resetting only prior-kit tuning overrides
+while preserving the Project key and drum effects.
 Playback labels MIDI-take persistence as `IDEA+`, not an
 instrument save, and `SOUNDS` returns directly to Presets and its visible
 `LOAD`. In-app and terminal MIDI Learn now capture the complete optional
-encoder-Shift gesture. Holding Shift, turning left and right, then releasing
-records both the modifier and either the ordinary rotary CC or its separate
+encoder-Shift gesture. Holding Shift, turning left once, then releasing records
+both the modifier and either the ordinary rotary CC or its separate
 shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
-debug build passed with Rust 1.97.1, and the three affected native screenshots
-were regenerated and visually inspected. No test suite or physical controller,
-MIDI transmission, synth, JACK, playback, or audible check was run for this
-incremental repair.
+debug build and affected screenshots recorded for the preceding implementation
+predate this correction and do not validate it. The current repair has only
+source formatting, source inspection, and documentation checks because the
+temporary combined-build gate remains active. No Rust build/test, screenshot
+regeneration, physical controller, MIDI transmission, synth, JACK, playback,
+or audible check was run for it.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed

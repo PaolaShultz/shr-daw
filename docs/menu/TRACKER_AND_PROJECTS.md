@@ -39,13 +39,16 @@ cell cursor and highlighted row remain the next edit/play location.
 
 `PAGE`, `PATTERN`, `SONG`, and `ROUTE` open the reusable centered overlay while
 the Pattern remains visible around it. Turn the master rotary or use Up/Down;
-click/Enter selects. Only the highlighted launcher remains on the overlay's
-bottom border near its original physical position; the final row remains the
-shared status row. Press that same menu item, or keyboard Back/
-Esc, to close. There is no extra controller Back item.
+click/Enter selects. PAGE, PATTERN, and SONG keep only their highlighted
+launcher on the overlay's bottom border near its original physical position.
+ROUTE ends above a normal controller strip whose ROUTE page exposes APPLY and
+CANCEL on the physical item buttons. The final row remains the shared status
+row. Press an ordinary overlay's launcher again, or use keyboard Back/Esc, to
+close. There is no extra controller Back item.
 
-On 40×13 the outer border is 38×11 at `(1,1)` and its usable inner content is
-36×9 at `(2,2)`.
+On 40×13 the ordinary overlay border is 38×11 at `(1,1)` with 36×9 usable
+content. ROUTE reserves the two controller rows, so its border is 38×9 with
+36×7 usable content.
 
 ![PAGE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-page.png)
 
@@ -61,7 +64,10 @@ SONG selects an Arrangement step and links to Arrangement or page tools.
 
 ![ROUTE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-route.png)
 
-ROUTE edits a detached page-routing draft that changes the Project only on Apply.
+ROUTE edits a detached page-routing draft that changes the Project only on
+Apply. For an SHR Drums target, choose `KIT`, click, and turn the encoder to
+select any installed drum set. Applying a different kit resets old kit-specific
+tuning overrides while preserving the Project key and drum effects.
 
 ### SYS — safety, filter, help, and exit
 
@@ -485,10 +491,12 @@ the reference. `REMOVE` removes only this step, not the underlying Pattern.
 ![ROUTE master overlay over the active Pattern](../images/menu/overlay-ft2-route.png)
 
 ROUTE is the quick transactional editor for the active Pattern page. The top
-row shows the page/master destination and its current resolved state. The next
-16 rows show channel, bank MSB, bank LSB, and program/instrument for each of the
-page's four columns; profile-provided instrument names appear when available.
-Long hardware names are deliberately shortened inside the border.
+rows show the page/master destination and its current resolved state, the
+software engine/instrument, SHR Drums kit, or external MIDI output, and the
+optional device profile as applicable. The next 16 rows show channel, bank MSB,
+bank LSB, and program/instrument for each of the page's four columns;
+profile-provided instrument names appear when available. Long names are
+deliberately shortened inside the border.
 
 Turn to a row and click/Enter to make that field active. Only then does rotary
 movement change the detached draft. Click/Enter keeps the field in the draft;
@@ -500,12 +508,11 @@ free play; `APPLY ROUTING` sends the selected column's program again. Until
 Apply, the Project, runtime route, engine, transport, and recorder are otherwise
 untouched.
 
-The bottom border always shows `APPLY` and `CANCEL`, so neither whole-draft
-action depends on scrolling to the final list row. Keyboard `A` and `C` invoke
-the same actions. The original `ROUTE` launcher position becomes that single
-`CANCEL` command while the overlay is open; it is not duplicated. Back/Esc from
-the main list does the same, while Back/Esc during a field edit cancels only
-that field.
+The standard bottom controller action row always shows `APPLY` and `CANCEL`, so
+neither whole-draft action depends on scrolling to the final list row.
+Positions 5 and 8 activate those exact actions on the controller; mouse and
+keyboard `A`/`C` share them. Back/Esc from the main list cancels the draft,
+while Back/Esc during a field edit cancels only that field.
 Missing preferred hardware remains visible and saved as preferred; an exact
 external target stays offline or ambiguous and never uses either the
 configured hardware default or the Pattern's software synth. `AUTO` alone

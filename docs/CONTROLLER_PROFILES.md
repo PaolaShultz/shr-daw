@@ -29,7 +29,7 @@ quarantined.
 
 First turn the master encoder left and let it settle, turn it right and let it
 settle, then click and release it. At the optional encoder Shift step, hold the
-modifier, turn left, turn right, then release it; Learn stores either the
+modifier, turn left once, then release it; Learn stores either the
 ordinary rotary CC or the different relative CC emitted only while Shift is
 held. Skipping remains valid. The learned encoder then browses the optional
 control and command-button roles.

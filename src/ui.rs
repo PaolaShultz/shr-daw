@@ -2712,6 +2712,19 @@ impl App {
         }
     }
 
+    fn overlay_controller_action(&self, item: usize) -> Option<(&'static str, Action)> {
+        let overlay = self.overlay.as_ref()?;
+        if self.mixed_engine_remap.is_some() && overlay.kind == OverlayKind::TrackerRoute {
+            return match item {
+                0 => Some(("STOP", Action::StopAll)),
+                1 => Some(("PREVIEW", Action::PreviewRouteDraft)),
+                3 => Some(("CANCEL", Action::CancelRouteOverlay)),
+                _ => None,
+            };
+        }
+        overlay.controller_action(item)
+    }
+
     fn overlay_pattern_locations(&self) -> Vec<(u16, usize)> {
         let mut locations = Vec::new();
         for (order, pattern) in self.song.order.iter().copied().enumerate() {
@@ -2976,17 +2989,28 @@ impl App {
             .as_ref()
             .and_then(OverlayState::route)
             .map(|route| route.page.clone());
-        let internal = current_page
+        let software = current_page
             .as_ref()
             .is_some_and(|page| matches!(page.target, PageTarget::Software(_)));
+        let internal_drums = current_page
+            .as_ref()
+            .is_some_and(|page| matches!(page.target, PageTarget::InternalDrums(_)));
         let external = current_page.as_ref().is_some_and(|page| {
             matches!(
                 page.target,
                 PageTarget::ConfiguredExternal | PageTarget::Midi(_)
             )
         });
-        if matches!(field, RouteField::Engine | RouteField::Instrument) && !internal {
+        if field == RouteField::Engine && !software {
             self.status = "Select INTERNAL before engine/sound".into();
+            return;
+        }
+        if field == RouteField::Instrument && !software && !internal_drums {
+            self.status = "Select INTERNAL or SHR DRUMS before sound/kit".into();
+            return;
+        }
+        if field == RouteField::Instrument && internal_drums && self.drum_kits.is_empty() {
+            self.status = "NO SHR DRUMS KITS · install one or change target".into();
             return;
         }
         if matches!(field, RouteField::MidiOutput | RouteField::DeviceProfile) && !external {
@@ -3039,25 +3063,35 @@ impl App {
                         })
                     })
             }
-            RouteField::Instrument => {
-                let PageTarget::Software(route) = &page.target else {
-                    return None;
-                };
-                let presets = &self
-                    .catalogs
-                    .iter()
-                    .find(|catalog| catalog.backend == route.engine)?
-                    .presets;
-                let current = presets
-                    .iter()
-                    .position(|preset| preset.route_id() == route.instrument)
-                    .unwrap_or(0);
-                let preset = presets.get(wrapped_index(current, presets.len(), direction))?;
-                Some(PageTarget::Software(SoftwareRoute {
-                    engine: route.engine,
-                    instrument: preset.route_id(),
-                }))
-            }
+            RouteField::Instrument => match &page.target {
+                PageTarget::Software(route) => {
+                    let presets = &self
+                        .catalogs
+                        .iter()
+                        .find(|catalog| catalog.backend == route.engine)?
+                        .presets;
+                    let current = presets
+                        .iter()
+                        .position(|preset| preset.route_id() == route.instrument)
+                        .unwrap_or(0);
+                    let preset = presets.get(wrapped_index(current, presets.len(), direction))?;
+                    Some(PageTarget::Software(SoftwareRoute {
+                        engine: route.engine,
+                        instrument: preset.route_id(),
+                    }))
+                }
+                PageTarget::InternalDrums(kit) => {
+                    let current = self
+                        .drum_kits
+                        .iter()
+                        .position(|candidate| candidate.id == *kit)
+                        .unwrap_or(0);
+                    self.drum_kits
+                        .get(wrapped_index(current, self.drum_kits.len(), direction))
+                        .map(|kit| PageTarget::InternalDrums(kit.id.clone()))
+                }
+                _ => None,
+            },
             RouteField::MidiOutput => {
                 let mut outputs = vec![PageTarget::ConfiguredExternal];
                 outputs.extend(
@@ -3174,6 +3208,14 @@ impl App {
             return;
         };
         *page = route.page;
+        let mut kit_changed = false;
+        if let PageTarget::InternalDrums(kit) = &page.target {
+            kit_changed = candidate.drum_kit.as_str() != kit.as_str();
+            candidate.drum_kit.clone_from(kit);
+            if kit_changed {
+                candidate.drum_tuning = shr_drums::KitTuning::default();
+            }
+        }
         if let Err(_error) = candidate.validate() {
             self.status = "ROUTE CONFLICT · fix highlighted field".into();
             return;
@@ -3182,7 +3224,7 @@ impl App {
         self.song = candidate;
         self.close_overlay(false);
         self.clamp_tracker_cursor();
-        self.sync_tracker_route();
+        let route_ready = self.sync_tracker_route();
         let program_sent = self
             .current_page()
             .cloned()
@@ -3193,6 +3235,10 @@ impl App {
         }
         self.status = if program_sent {
             "PROGRAM SENT · routing applied".into()
+        } else if !route_ready {
+            self.status.clone()
+        } else if kit_changed {
+            "SHR DRUMS KIT APPLIED · tuning reset".into()
         } else {
             String::new()
         };
@@ -12431,9 +12477,9 @@ fn dispatch_pad(
         }
         return;
     }
-    if let Some(overlay) = app.overlay.as_ref() {
+    if app.overlay.is_some() {
         if let MenuInput::ActivateItem(item) = pad.menu_input() {
-            if let Some((_, action)) = overlay.controller_action(item) {
+            if let Some((_, action)) = app.overlay_controller_action(item) {
                 perform(action, app, state, Some(tx));
             }
         }
@@ -12736,6 +12782,13 @@ fn perform(
             a.stop_loop_preview(true);
         } else if action == Action::ApplyRouteOverlay && overlay_kind == OverlayKind::TrackerRoute {
             a.confirm_route_overlay();
+        } else if action == Action::CancelRouteOverlay && overlay_kind == OverlayKind::TrackerRoute
+        {
+            if a.mixed_engine_remap.is_some() {
+                a.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
+            } else {
+                a.close_overlay(true);
+            }
         } else if action == Action::PreviewRouteDraft {
             a.preview_route_draft();
         } else if action == Action::TapTempo {
@@ -13226,7 +13279,7 @@ fn perform(
         | Action::OpenTrackerAdvanceOverlay
         | Action::OpenEntryLayoutOverlay
         | Action::OpenEffectsOverlay => a.open_overlay(action),
-        Action::ApplyRouteOverlay => {
+        Action::ApplyRouteOverlay | Action::CancelRouteOverlay => {
             unreachable!("route overlay actions are handled before contextual dispatch")
         }
         Action::PreviewRouteDraft => a.preview_route_draft(),
@@ -13766,18 +13819,14 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                     .as_ref()
                     .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute) =>
             {
-                a.confirm_route_overlay()
+                perform(Action::ApplyRouteOverlay, a, state, Some(tx));
             }
             KeyCode::Char('c') | KeyCode::Char('C')
                 if a.overlay
                     .as_ref()
                     .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute) =>
             {
-                if a.mixed_engine_remap.is_some() {
-                    a.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
-                } else {
-                    a.close_overlay(true);
-                }
+                perform(Action::CancelRouteOverlay, a, state, Some(tx));
             }
             KeyCode::Char('p') | KeyCode::Char('P')
                 if a.overlay
@@ -15115,7 +15164,7 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
         Span::raw("Master rotary required")
     };
     let gesture = if role == crate::controller_learn::LearnRole::EncoderModifier {
-        "Hold Shift · turn left, right · release"
+        "Hold Shift · turn left · release"
     } else if session.can_finish() {
         "Move once · auto-next after release"
     } else {
@@ -17132,6 +17181,15 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 PageTarget::Software(route) => Some(route),
                 _ => None,
             };
+            let drum_kit = match &page.target {
+                PageTarget::InternalDrums(id) => Some(
+                    a.drum_kits
+                        .iter()
+                        .find(|kit| kit.id == *id)
+                        .map_or(id.as_str(), |kit| kit.name.as_str()),
+                ),
+                _ => None,
+            };
             let midi_output = match &page.target {
                 PageTarget::ConfiguredExternal => {
                     Some(a.config.external_midi.output_match.as_str())
@@ -17143,18 +17201,24 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 || format!("TARGET · {target_kind}"),
                 |issue| crate::ui_text::label_value(&format!("TARGET · {target_kind}"), issue, 35),
             );
+            let engine_label = if drum_kit.is_some() {
+                "SHR DRUMS"
+            } else {
+                software.map_or("—", |route| route.engine.label())
+            };
+            let instrument_label = drum_kit
+                .unwrap_or_else(|| software.map_or("—", |route| route.instrument.as_str()));
             let mut rows = vec![
                 target,
+                crate::ui_text::fixed_label_value("ENGINE · ", 9, engine_label, 35),
                 crate::ui_text::fixed_label_value(
-                    "ENGINE · ",
+                    if drum_kit.is_some() {
+                        "KIT · "
+                    } else {
+                        "INSTR · "
+                    },
                     9,
-                    software.map_or("—", |route| route.engine.label()),
-                    35,
-                ),
-                crate::ui_text::fixed_label_value(
-                    "INSTR · ",
-                    9,
-                    software.map_or("—", |route| route.instrument.as_str()),
+                    instrument_label,
                     35,
                 ),
                 crate::ui_text::fixed_label_value("MIDI OUT ", 9, midi_output.unwrap_or("—"), 35),
@@ -17298,13 +17362,13 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
 }
 
 fn draw_overlay<B: Backend>(f: &mut Frame<B>, a: &mut App) {
-    let geometry = overlay::geometry(f.size());
-    if geometry.outer.width == 0 || geometry.outer.height == 0 {
-        return;
-    }
     let Some(snapshot) = a.overlay.as_ref().cloned() else {
         return;
     };
+    let geometry = overlay::geometry_for(snapshot.kind, f.size());
+    if geometry.outer.width == 0 || geometry.outer.height == 0 {
+        return;
+    }
     let rows = overlay_rows(a, &snapshot);
     let visible_rows = usize::from(geometry.inner.height);
     if let Some(overlay) = a.overlay.as_mut() {
@@ -17391,7 +17455,11 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         return;
     };
     let z = f.size();
-    let geometry = overlay::geometry(z);
+    if overlay.kind == OverlayKind::TrackerRoute && z.height >= 3 && z.width >= 4 {
+        draw_route_overlay_controller(f, a);
+        return;
+    }
+    let geometry = overlay::geometry_for(overlay.kind, z);
     if geometry.outer.height == 0 {
         return;
     }
@@ -17405,15 +17473,7 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let menu_x = geometry.inner.x;
     let width = menu_width / 4;
     for item in 0..4 {
-        let remap_action = (a.mixed_engine_remap.is_some()
-            && overlay.kind == OverlayKind::TrackerRoute)
-            .then_some(match item {
-                0 => Some(("STOP", Action::StopAll)),
-                1 => Some(("PREVIEW", Action::PreviewRouteDraft)),
-                _ => None,
-            })
-            .flatten();
-        let Some((label, action)) = remap_action.or_else(|| overlay.controller_action(item)) else {
+        let Some((label, action)) = a.overlay_controller_action(item) else {
             continue;
         };
         let button = rect(menu_x + item as u16 * width, row.y, width, 1);
@@ -17427,6 +17487,58 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::LightYellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            button,
+        );
+        a.hits.actions.push((button, action));
+    }
+}
+
+fn draw_route_overlay_controller<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let menu_width = z.width.min(40);
+    let menu_x = z.x + z.width.saturating_sub(menu_width) / 2;
+    let page_y = z.y + z.height - 3;
+    let action_y = z.y + z.height - 2;
+    f.render_widget(Clear, rect(menu_x, page_y, menu_width, 2));
+    f.render_widget(
+        Paragraph::new(BUILD_BADGE).style(Style::default().fg(if cfg!(debug_assertions) {
+            Color::Yellow
+        } else {
+            Color::Green
+        })),
+        rect(menu_x, page_y, 3, 1),
+    );
+    let page = navigation::ROUTE_OVERLAY_PAGE;
+    let page_width = menu_width / 4;
+    f.render_widget(
+        Paragraph::new(format!(
+            "*1:{}",
+            truncate(page.label, usize::from(page_width.saturating_sub(6)))
+        ))
+        .alignment(Alignment::Center)
+        .style(
+            Style::default()
+                .fg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        rect(menu_x + 3, page_y, page_width.saturating_sub(3), 1),
+    );
+    for item in 0..4 {
+        let Some((label, action)) = a.overlay_controller_action(item) else {
+            continue;
+        };
+        let button = rect(menu_x + item as u16 * page_width, action_y, page_width, 1);
+        f.render_widget(
+            Paragraph::new(format!(
+                "[{}]",
+                truncate(label, usize::from(button.width.saturating_sub(3)))
+            ))
+            .alignment(Alignment::Center)
+            .style(
+                Style::default()
+                    .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
             button,
@@ -21345,26 +21457,26 @@ mod tests {
         let buffer = render_app(&mut a, 40, 20);
         let overlay = a.overlay.as_ref().unwrap();
         assert!(overlay.scroll > 0);
-        assert!(inner_text(&buffer, Rect::new(2, 2, 36, 16)).contains("APPLY ROUTING"));
-        for y in 2..18 {
+        assert!(inner_text(&buffer, Rect::new(2, 2, 36, 14)).contains("APPLY ROUTING"));
+        for y in 2..16 {
             assert_eq!(buffer_cell(&buffer, 1, y).symbol, "║");
             assert_eq!(buffer_cell(&buffer, 38, y).symbol, "║");
         }
     }
 
     #[test]
-    fn overlay_launcher_stays_inside_border_and_leaves_last_row_for_status() {
+    fn route_overlay_uses_the_standard_controller_rows_and_direct_actions() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.menu_page_by_screen[Screen::Tracker.index()] = 2;
         a.open_overlay(Action::OpenRouteOverlay);
         let buffer = render_app(&mut a, 40, 20);
+        assert!(row_text(&buffer, 17).contains("1:ROUT"));
         let row = row_text(&buffer, 18);
         assert_eq!(row.matches('[').count(), 2);
         assert!(row.contains("APPLY"));
         assert!(row.contains("CANCEL"));
-        assert!(!row.contains("ROUTE"));
         assert!(row_text(&buffer, 19).starts_with('‖'));
         assert_eq!(
             a.hits
@@ -21372,33 +21484,35 @@ mod tests {
                 .iter()
                 .map(|(_, action)| *action)
                 .collect::<Vec<_>>(),
-            vec![Action::ApplyRouteOverlay, Action::OpenRouteOverlay]
+            vec![Action::ApplyRouteOverlay, Action::CancelRouteOverlay]
         );
+        assert!(a.hits.actions.iter().all(|(area, _)| area.y == 18));
     }
 
     #[test]
-    fn forty_by_thirteen_overlay_preserves_all_four_one_cell_reveals() {
+    fn forty_by_thirteen_route_overlay_reserves_controller_and_status_rows() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.open_overlay(Action::OpenRouteOverlay);
         let buffer = render_app(&mut a, 40, 13);
-        let geometry = overlay::geometry(Rect::new(0, 0, 40, 13));
+        let geometry = overlay::geometry_for(OverlayKind::TrackerRoute, Rect::new(0, 0, 40, 13));
 
-        assert_eq!(geometry.outer, Rect::new(1, 1, 38, 11));
+        assert_eq!(geometry.outer, Rect::new(1, 1, 38, 9));
         assert_eq!(buffer_cell(&buffer, 1, 1).symbol, "╔");
         assert_eq!(buffer_cell(&buffer, 38, 1).symbol, "╗");
-        assert_eq!(buffer_cell(&buffer, 1, 11).symbol, "╚");
-        assert_eq!(buffer_cell(&buffer, 38, 11).symbol, "╝");
+        assert_eq!(buffer_cell(&buffer, 1, 9).symbol, "╚");
+        assert_eq!(buffer_cell(&buffer, 38, 9).symbol, "╝");
+        assert!(row_text(&buffer, 10).contains("1:ROUT"));
         assert!(row_text(&buffer, 11).contains("APPLY"));
         assert!(row_text(&buffer, 11).contains("CANCEL"));
-        assert!(!row_text(&buffer, 11).contains("ROUTE"));
         assert!(row_text(&buffer, 12).starts_with(transport_glyph(a.transport_indicator()).0));
     }
 
     #[test]
     fn route_overlay_visible_apply_and_cancel_own_the_whole_draft() {
         let p = presets();
+        let (tx, _rx) = mpsc::channel();
         let mut cancelled = app(&p);
         cancelled.screen = Screen::Tracker;
         let original = cancelled.song.clone();
@@ -21412,11 +21526,12 @@ mod tests {
             .page
             .columns[0]
             .channel = 7;
-        perform(
-            Action::OpenRouteOverlay,
+        dispatch_pad(
+            crate::pads::PadAction::TapTempo,
+            true,
             &mut cancelled,
             Path::new("/none"),
-            None,
+            &tx,
         );
         assert!(cancelled.overlay.is_none());
         assert_eq!(cancelled.song, original);
@@ -21434,14 +21549,63 @@ mod tests {
             .page
             .columns[0]
             .channel = 7;
-        perform(
-            Action::ApplyRouteOverlay,
+        dispatch_pad(
+            crate::pads::PadAction::Stop,
+            true,
             &mut applied,
             Path::new("/none"),
-            None,
+            &tx,
         );
         assert!(applied.overlay.is_none());
         assert_eq!(applied.current_page().unwrap().columns[0].channel, 7);
+    }
+
+    #[test]
+    fn route_overlay_cycles_and_applies_the_shr_drums_kit() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.drum_kits = vec![
+            crate::drums_host::KitEntry {
+                id: "electronic-house".into(),
+                name: "Electronic House".into(),
+                path: PathBuf::from("/kits/electronic-house"),
+            },
+            crate::drums_host::KitEntry {
+                id: "big-rock-muldjord".into(),
+                name: "Big Rock".into(),
+                path: PathBuf::from("/kits/big-rock-muldjord"),
+            },
+        ];
+        a.current_page_mut().unwrap().target = PageTarget::InternalDrums("electronic-house".into());
+        a.song.drum_kit = "electronic-house".into();
+        a.song.drum_tuning.mode = shr_drums::TuningMode::FollowProjectKey;
+
+        a.open_overlay(Action::OpenRouteOverlay);
+        a.overlay.as_mut().unwrap().selection = 2;
+        a.activate_overlay();
+        a.move_overlay(1);
+
+        assert_eq!(
+            a.overlay
+                .as_ref()
+                .and_then(OverlayState::route)
+                .map(|route| route.page.target.clone()),
+            Some(PageTarget::InternalDrums("big-rock-muldjord".into()))
+        );
+        assert!(buffer_text(&render_app(&mut a, 40, 13)).contains("KIT"));
+        assert!(buffer_text(&render_app(&mut a, 40, 13)).contains("Big Rock"));
+
+        a.activate_overlay();
+        a.screen = Screen::Home;
+        perform(Action::ApplyRouteOverlay, &mut a, Path::new("/none"), None);
+        assert_eq!(
+            a.current_page().unwrap().target,
+            PageTarget::InternalDrums("big-rock-muldjord".into())
+        );
+        assert_eq!(a.song.drum_kit, "big-rock-muldjord");
+        assert_eq!(a.song.drum_tuning, shr_drums::KitTuning::default());
+        assert_eq!(a.status, "SHR DRUMS KIT APPLIED · tuning reset");
     }
 
     #[test]

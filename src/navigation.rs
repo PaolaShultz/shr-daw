@@ -139,6 +139,7 @@ pub enum Action {
     OpenSongOverlay,
     OpenRouteOverlay,
     ApplyRouteOverlay,
+    CancelRouteOverlay,
     PreviewRouteDraft,
     OpenPatternLengthOverlay,
     OpenNoteLengthOverlay,
@@ -515,6 +516,16 @@ const TRACKER: [MenuPage; 4] = [
         ],
     ),
 ];
+
+pub const ROUTE_OVERLAY_PAGE: MenuPage = page(
+    "ROUTE",
+    [
+        on("APPLY", Action::ApplyRouteOverlay),
+        off(""),
+        off(""),
+        on("CANCEL", Action::CancelRouteOverlay),
+    ],
+);
 const TRACKER_TOOLS: [MenuPage; 4] = [
     page(
         "OPS",
@@ -1862,6 +1873,7 @@ mod tests {
             .into_iter()
             .flat_map(|(screen, context)| pages(screen, context))
             .flat_map(|page| page.slots)
+            .chain(ROUTE_OVERLAY_PAGE.slots)
             .filter_map(MenuSlot::dispatch)
             .collect::<HashSet<_>>();
         let inventory = [
@@ -1875,6 +1887,8 @@ mod tests {
             Action::OpenPatternOverlay,
             Action::OpenSongOverlay,
             Action::OpenRouteOverlay,
+            Action::ApplyRouteOverlay,
+            Action::CancelRouteOverlay,
             Action::OpenEffectsOverlay,
             Action::OpenTrackerArrange,
             Action::OpenLivePatterns,

@@ -44,7 +44,7 @@ or `q` can still exit from the splash.
 | MTR | With the final bus active: choose Synth/Loop/Input/Drums, adjust its bounded smoothed level, use MUTE for optional sources or the one MON ON/MON OFF Input action, inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. Input monitoring defaults off and MON ON can activate the bus without launching an optional source. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus inactive, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP. |
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play and use the explicit `IDEA+` command to save a new Idea; use `SOUNDS` to return directly to the Presets catalog and its visible `LOAD`; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint each render their own 12-control three-by-four layout and use the same physical pickup crossing path without sharing parameter identity. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
-| FT2 normal | The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE keeps whole-draft `APPLY` and `CANCEL` visible in its bottom border; the existing launcher position becomes the one `CANCEL` command instead of adding a duplicate. Back still cancels an active field before the whole draft. |
+| FT2 normal | The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE reserves the standard two controller rows below its window; its canonical ROUTE page exposes whole-draft `APPLY` and `CANCEL` through the physical item buttons, mouse, and keyboard `A`/`C`. Its `KIT` field selects an installed SHR Drums kit when the target is SHR Drums; applying a different kit resets old kit-specific tuning while preserving the Project key and drum effects. Back still cancels an active field before the whole draft. |
 | FT2 record | Record quantized note-ons and, when enabled for the page, release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. Stopped REC loops the selected Pattern; REC during Play punches into the Arrangement. Exact page/lane owners survive cursor moves and boundaries. Shift-rotary column turns are ignored while recorded notes are held; Edit note length does not affect REC. |
 | FT2 edit | A contextual four-page command set only: EDIT has cell edit, blank/skip, erase, and note off; SET has independent 1/1–1/128 LENGTH and 0–32 ADD selectors plus column movement; SELECT has page and route selection; SYS has panic, N00B, help, and a one-level Exit back to normal FT2. It contains no Play/Record/Edit mode duplicates. Manual writes from the selected column, One column uses its C1–C4 anchor, and Drum auto allocates simultaneous hits without moving the cursor. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
@@ -109,18 +109,21 @@ uses a brighter version of its threshold colour rather than a line or square.
 An overlay is transient state above its caller, not another `Screen` and not a
 second Project/engine owner. Its central state records identity, caller, title,
 canonical launcher, selection/scroll, active field snapshot, typed draft, and
-the caller's controller-page state. At 40×13 its outer rectangle is exactly
-`x=1`, `y=1`, `width=38`, `height=11`; the bordered inner content is exactly
-`x=2`, `y=2`, `width=36`, `height=9`. This leaves one cell visible on every
-side, including the final status row below it.
+the caller's controller-page state. At 40×13 an ordinary overlay's outer
+rectangle is exactly `x=1`, `y=1`, `width=38`, `height=11`; its bordered inner
+content is `x=2`, `y=2`, `width=36`, `height=9`. ROUTE reserves the two
+controller rows and therefore uses outer `38×9` and inner `36×7` rectangles at
+the same origin. Every form leaves the final shared status row untouched.
 
-While open, the launcher remains on the overlay's bottom border near its
-original physical item position and with an active highlight. Overlay-owned
-actions may share that border: Loop Browser keeps STOP at position 5 and PLAY
-preview at position 6, and the Song overlay keeps TAP at position 8. All
-unrelated caller commands are hidden and silent. The overlay never occupies or
-clears the shared status row. There is no controller-strip Back button.
-Pressing the highlighted launcher again closes the overlay. The rotary and
+While an ordinary navigation overlay is open, the launcher remains on its
+bottom border near the original physical item position and with an active
+highlight. Loop Browser keeps STOP at position 5 and PLAY preview at position
+6, and the Song overlay keeps TAP at position 8. ROUTE is the deliberate
+exception: its window ends above the canonical controller page/action rows,
+where the ROUTE page maps APPLY to position 5 and CANCEL to position 8 through
+the same table used for rendering and physical dispatch. All unrelated caller
+commands are hidden and silent. No overlay occupies or clears the shared status
+row. There is no controller-strip Back button. The rotary and
 Up/Down browse; rotary click and Enter select or confirm. Back/Esc cancels an
 active field first, then cancels the overlay draft and closes, before a later
 Back can leave the caller. Four-button page-selection state and every layout's

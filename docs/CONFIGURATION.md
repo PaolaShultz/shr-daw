@@ -546,22 +546,25 @@ opened. On the
 controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
 
-FT2 **SELECT** → **ROUTE** is the passive quick editor. Its 38×11 bordered overlay
-shows `TARGET`, `ENGINE`, `INSTR`, `MIDI OUT`, optional `PROFILE`, and the 16
-per-column channel/bank/program rows in a scrolling 36×9 content area. The
-overlay begins at `(1,1)`, its content begins at `(2,2)`, and the final terminal
-row remains the shared status row. Opening and browsing use cached discovery information;
+FT2 **SELECT** → **ROUTE** is the passive quick editor. Its 38×9 bordered overlay
+shows `TARGET`, `ENGINE`, `INSTR` or the SHR Drums `KIT`, `MIDI OUT`, optional
+`PROFILE`, and the 16 per-column channel/bank/program rows in a scrolling 36×7
+content area. The overlay begins at `(1,1)`, its content begins at `(2,2)`, and
+the standard controller page/action rows remain immediately above the shared
+status row. Opening and browsing use cached discovery information;
 they do not create a MIDI discovery client, send MIDI, synchronize routes, or
 start an engine. A field changes only after click/Enter activates it. Back/Esc
 cancels that field first. **APPLY ROUTING** validates and copies the detached
 page draft through the same Project and route-synchronization owner used by
-Tracks. Closing with the highlighted ROUTE launcher or Back cancels a dirty
-draft and never saves silently.
+Tracks. The controller action row's direct **CANCEL** action or Back cancels a
+dirty draft and never saves silently.
 
 An internal melodic route stores the engine identity together with that
 engine's stable instrument identity. An SHR Drums route instead stores the
-stable kit ID and remains independent of the melodic engine choice. Changing
-the standalone/current engine or catalog order cannot retarget either route.
+stable kit ID and remains independent of the melodic engine choice. Applying a
+different kit resets tuning overrides owned by the prior kit while retaining
+the Project key and drum effects. Changing the standalone/current engine or
+catalog order cannot retarget either route.
 
 An exact hardware port name is saved as the route. If it is missing, the page
 shows `OFFLINE`; if the stable identity matches more than once it shows

@@ -875,7 +875,7 @@ Keyboard Up/Down/Enter still work. Optional command buttons may be skipped once
 the learned encoder can turn and click. Home does not learn or send MIDI by
 itself; Learn keeps selected-controller messages isolated until an explicit
 save or cancel. Its optional encoder-Shift step learns the complete gesture:
-hold Shift, turn left, turn right, then release. This captures either the
+hold Shift, turn left once, then release. This captures either the
 ordinary rotary CC or a different CC emitted only while Shift is held.
 Separate performance inputs continue to bypass controller interpretation.</p>
 <p>The controller menu has four pages. Page 1 is OPS. On child screens, page
@@ -1318,15 +1318,19 @@ while retaining unrelated draft edits.</p>
 <p>For a quick routing change, <strong>SELECT</strong> → <strong>ROUTE</strong> opens a centered overlay over
 FT2. It shows target type, software engine/instrument or MIDI output, optional
 device profile, plus all four columns' channel, bank, program/instrument name,
-and interface availability. Turn and click/Enter to activate a
+and interface availability. With an SHR Drums target, the <strong>KIT</strong> field cycles
+the installed drum sets and stores the chosen kit with the Project. Applying a
+different kit resets the old kit's tuning overrides; the Project key and drum
+effects remain unchanged. Turn and click/Enter to activate a
 field; Back/Esc cancels that field first. Only <strong>APPLY ROUTING</strong> changes the
-Project. <strong>APPLY</strong> and <strong>CANCEL</strong> remain visible in the overlay's bottom border
-even while the longer field list scrolls; keyboard <code>A</code> and <code>C</code> invoke the same
-whole-draft actions. Once open, the ROUTE launcher position is relabeled
-<strong>CANCEL</strong>, so there is only one visible whole-draft cancel command; it or Back
-discards every unconfirmed change. Back from an active field cancels only that
-field first. At 40×13 the bordered outer window is 38×11 at <code>(1,1)</code> and the
-usable inner area is 36×9 at <code>(2,2)</code>; row 13 remains the shared status row.</p>
+Project. The window ends above the normal two controller rows. The contextual
+<strong>ROUTE</strong> page puts <strong>APPLY</strong> at physical position 5 and <strong>CANCEL</strong> at position
+8; those controller buttons, mouse targets, and keyboard <code>A</code>/<code>C</code> invoke the
+same direct actions even while the longer field list scrolls. Back from an
+active field cancels only that field first, then Back or <strong>CANCEL</strong> discards the
+whole draft. At 40×13 the bordered outer window is 38×9 at <code>(1,1)</code>, its usable
+inner area is 36×7 at <code>(2,2)</code>, rows 11–12 are the controller rows, and row 13
+remains the shared status row.</p>
 <h4 id="doc-tracker--step-editing" tabindex="-1">Step editing<a class="heading-anchor" href="#doc-tracker--step-editing" aria-label="Link to Step editing">#</a></h4>
 <p>Step entry accepts notes and chords from any configured musical input.
 <strong>TRACKS</strong> → <strong>SYS</strong> → <strong>ENTRY</strong> selects one persisted layout for each page:</p>
@@ -2026,7 +2030,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 normal</td>
-<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> visible in its bottom border; the existing launcher position becomes the one <code>CANCEL</code> command instead of adding a duplicate. Back still cancels an active field before the whole draft.</td>
+<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE reserves the standard two controller rows below its window; its canonical ROUTE page exposes whole-draft <code>APPLY</code> and <code>CANCEL</code> through the physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code>. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; applying a different kit resets old kit-specific tuning while preserving the Project key and drum effects. Back still cancels an active field before the whole draft.</td>
 </tr>
 <tr>
 <td>FT2 record</td>
@@ -2149,17 +2153,20 @@ uses a brighter version of its threshold colour rather than a line or square.</p
 <p>An overlay is transient state above its caller, not another <code>Screen</code> and not a
 second Project/engine owner. Its central state records identity, caller, title,
 canonical launcher, selection/scroll, active field snapshot, typed draft, and
-the caller's controller-page state. At 40×13 its outer rectangle is exactly
-<code>x=1</code>, <code>y=1</code>, <code>width=38</code>, <code>height=11</code>; the bordered inner content is exactly
-<code>x=2</code>, <code>y=2</code>, <code>width=36</code>, <code>height=9</code>. This leaves one cell visible on every
-side, including the final status row below it.</p>
-<p>While open, the launcher remains on the overlay's bottom border near its
-original physical item position and with an active highlight. Overlay-owned
-actions may share that border: Loop Browser keeps STOP at position 5 and PLAY
-preview at position 6, and the Song overlay keeps TAP at position 8. All
-unrelated caller commands are hidden and silent. The overlay never occupies or
-clears the shared status row. There is no controller-strip Back button.
-Pressing the highlighted launcher again closes the overlay. The rotary and
+the caller's controller-page state. At 40×13 an ordinary overlay's outer
+rectangle is exactly <code>x=1</code>, <code>y=1</code>, <code>width=38</code>, <code>height=11</code>; its bordered inner
+content is <code>x=2</code>, <code>y=2</code>, <code>width=36</code>, <code>height=9</code>. ROUTE reserves the two
+controller rows and therefore uses outer <code>38×9</code> and inner <code>36×7</code> rectangles at
+the same origin. Every form leaves the final shared status row untouched.</p>
+<p>While an ordinary navigation overlay is open, the launcher remains on its
+bottom border near the original physical item position and with an active
+highlight. Loop Browser keeps STOP at position 5 and PLAY preview at position
+6, and the Song overlay keeps TAP at position 8. ROUTE is the deliberate
+exception: its window ends above the canonical controller page/action rows,
+where the ROUTE page maps APPLY to position 5 and CANCEL to position 8 through
+the same table used for rendering and physical dispatch. All unrelated caller
+commands are hidden and silent. No overlay occupies or clears the shared status
+row. There is no controller-strip Back button. The rotary and
 Up/Down browse; rotary click and Enter select or confirm. Back/Esc cancels an
 active field first, then cancels the overlay draft and closes, before a later
 Back can leave the caller. Four-button page-selection state and every layout's
@@ -3823,12 +3830,15 @@ cell cursor and highlighted row remain the next edit/play location.</p>
 <p><img src="images/menu/ft2-play-select.png" alt="Populated FT2 Pattern with the SELECT controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="e14454a0ffeb007700efab43487916c4726b61520aed81f4c79857aa762b4fa5" class="tui-shot" id="shot-e14454a0ffeb" /></p>
 <p><code>PAGE</code>, <code>PATTERN</code>, <code>SONG</code>, and <code>ROUTE</code> open the reusable centered overlay while
 the Pattern remains visible around it. Turn the master rotary or use Up/Down;
-click/Enter selects. Only the highlighted launcher remains on the overlay's
-bottom border near its original physical position; the final row remains the
-shared status row. Press that same menu item, or keyboard Back/
-Esc, to close. There is no extra controller Back item.</p>
-<p>On 40×13 the outer border is 38×11 at <code>(1,1)</code> and its usable inner content is
-36×9 at <code>(2,2)</code>.</p>
+click/Enter selects. PAGE, PATTERN, and SONG keep only their highlighted
+launcher on the overlay's bottom border near its original physical position.
+ROUTE ends above a normal controller strip whose ROUTE page exposes APPLY and
+CANCEL on the physical item buttons. The final row remains the shared status
+row. Press an ordinary overlay's launcher again, or use keyboard Back/Esc, to
+close. There is no extra controller Back item.</p>
+<p>On 40×13 the ordinary overlay border is 38×11 at <code>(1,1)</code> with 36×9 usable
+content. ROUTE reserves the two controller rows, so its border is 38×9 with
+36×7 usable content.</p>
 <p><img src="images/menu/overlay-ft2-page.png" alt="PAGE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="68930508134b43d8a4bb1263d86289384f016ae24e10618ca08343c76c2502de" class="tui-shot" id="shot-68930508134b" /></p>
 <p>PAGE selects a page/column location and can open the detailed Tracks manager.</p>
 <p><img src="images/menu/overlay-ft2-pattern.png" alt="PATTERN overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="45134562cfecaa4ee5b403ce37bf91af64cf47245fc36c09bf1d5e3e94871114" class="tui-shot" id="shot-45134562cfec" /></p>
@@ -3836,7 +3846,10 @@ Esc, to close. There is no extra controller Back item.</p>
 <p><img src="images/menu/overlay-ft2-song.png" alt="SONG overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="33c4e8dbcdc02718a124fba36912ad599c73a84cc45e6919e098668e4fceda07" class="tui-shot" id="shot-33c4e8dbcdc0" /></p>
 <p>SONG selects an Arrangement step and links to Arrangement or page tools.</p>
 <p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7a13d292582c0ff51f7146609f5bf5ed941df50ee5bc27ad9a291c4d315ea16d" class="tui-shot" id="shot-7a13d292582c" /></p>
-<p>ROUTE edits a detached page-routing draft that changes the Project only on Apply.</p>
+<p>ROUTE edits a detached page-routing draft that changes the Project only on
+Apply. For an SHR Drums target, choose <code>KIT</code>, click, and turn the encoder to
+select any installed drum set. Applying a different kit resets old kit-specific
+tuning overrides while preserving the Project key and drum effects.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" tabindex="-1">SYS — safety, filter, help, and exit<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" aria-label="Link to SYS — safety, filter, help, and exit">#</a></h5>
 <p><img src="images/menu/ft2-play-sys.png" alt="Populated FT2 Pattern in Play mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0b077d999bd6987102baf869a7a74dee102380598ded91c47b3edaf187135f5f" class="tui-shot" id="shot-0b077d999bd6" /></p>
 <p><code>PANIC</code> stops all owned notes and transports. <code>N00B</code> immediately toggles the
@@ -4114,10 +4127,12 @@ the reference. <code>REMOVE</code> removes only this step, not the underlying Pa
 <h4 id="doc-menu-tracker_and_projects--route-master-overlay" tabindex="-1">ROUTE master overlay<a class="heading-anchor" href="#doc-menu-tracker_and_projects--route-master-overlay" aria-label="Link to ROUTE master overlay">#</a></h4>
 <p><a class="repeated-image-link" href="#shot-7a13d292582c">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
 <p>ROUTE is the quick transactional editor for the active Pattern page. The top
-row shows the page/master destination and its current resolved state. The next
-16 rows show channel, bank MSB, bank LSB, and program/instrument for each of the
-page's four columns; profile-provided instrument names appear when available.
-Long hardware names are deliberately shortened inside the border.</p>
+rows show the page/master destination and its current resolved state, the
+software engine/instrument, SHR Drums kit, or external MIDI output, and the
+optional device profile as applicable. The next 16 rows show channel, bank MSB,
+bank LSB, and program/instrument for each of the page's four columns;
+profile-provided instrument names appear when available. Long names are
+deliberately shortened inside the border.</p>
 <p>Turn to a row and click/Enter to make that field active. Only then does rotary
 movement change the detached draft. Click/Enter keeps the field in the draft;
 Back/Esc restores that field's prior value. <code>APPLY ROUTING</code> validates and
@@ -4127,12 +4142,11 @@ field also sends that column's bank/program selection immediately for hardware
 free play; <code>APPLY ROUTING</code> sends the selected column's program again. Until
 Apply, the Project, runtime route, engine, transport, and recorder are otherwise
 untouched.</p>
-<p>The bottom border always shows <code>APPLY</code> and <code>CANCEL</code>, so neither whole-draft
-action depends on scrolling to the final list row. Keyboard <code>A</code> and <code>C</code> invoke
-the same actions. The original <code>ROUTE</code> launcher position becomes that single
-<code>CANCEL</code> command while the overlay is open; it is not duplicated. Back/Esc from
-the main list does the same, while Back/Esc during a field edit cancels only
-that field.
+<p>The standard bottom controller action row always shows <code>APPLY</code> and <code>CANCEL</code>, so
+neither whole-draft action depends on scrolling to the final list row.
+Positions 5 and 8 activate those exact actions on the controller; mouse and
+keyboard <code>A</code>/<code>C</code> share them. Back/Esc from the main list cancels the draft,
+while Back/Esc during a field edit cancels only that field.
 Missing preferred hardware remains visible and saved as preferred; an exact
 external target stays offline or ambiguous and never uses either the
 configured hardware default or the Pattern's software synth. <code>AUTO</code> alone
@@ -5471,21 +5485,24 @@ opened. On the
 <strong>COLUMN</strong> and <strong>BANK</strong> pages, <strong>COL−/COL+</strong>, <strong>PROG−/PROG+</strong>, and the bank
 controls edit the selected column. In a target/channel chooser, <strong>CONFIRM</strong>
 keeps that field and <strong>EXIT</strong> cancels it.</p>
-<p>FT2 <strong>SELECT</strong> → <strong>ROUTE</strong> is the passive quick editor. Its 38×11 bordered overlay
-shows <code>TARGET</code>, <code>ENGINE</code>, <code>INSTR</code>, <code>MIDI OUT</code>, optional <code>PROFILE</code>, and the 16
-per-column channel/bank/program rows in a scrolling 36×9 content area. The
-overlay begins at <code>(1,1)</code>, its content begins at <code>(2,2)</code>, and the final terminal
-row remains the shared status row. Opening and browsing use cached discovery information;
+<p>FT2 <strong>SELECT</strong> → <strong>ROUTE</strong> is the passive quick editor. Its 38×9 bordered overlay
+shows <code>TARGET</code>, <code>ENGINE</code>, <code>INSTR</code> or the SHR Drums <code>KIT</code>, <code>MIDI OUT</code>, optional
+<code>PROFILE</code>, and the 16 per-column channel/bank/program rows in a scrolling 36×7
+content area. The overlay begins at <code>(1,1)</code>, its content begins at <code>(2,2)</code>, and
+the standard controller page/action rows remain immediately above the shared
+status row. Opening and browsing use cached discovery information;
 they do not create a MIDI discovery client, send MIDI, synchronize routes, or
 start an engine. A field changes only after click/Enter activates it. Back/Esc
 cancels that field first. <strong>APPLY ROUTING</strong> validates and copies the detached
 page draft through the same Project and route-synchronization owner used by
-Tracks. Closing with the highlighted ROUTE launcher or Back cancels a dirty
-draft and never saves silently.</p>
+Tracks. The controller action row's direct <strong>CANCEL</strong> action or Back cancels a
+dirty draft and never saves silently.</p>
 <p>An internal melodic route stores the engine identity together with that
 engine's stable instrument identity. An SHR Drums route instead stores the
-stable kit ID and remains independent of the melodic engine choice. Changing
-the standalone/current engine or catalog order cannot retarget either route.</p>
+stable kit ID and remains independent of the melodic engine choice. Applying a
+different kit resets tuning overrides owned by the prior kit while retaining
+the Project key and drum effects. Changing the standalone/current engine or
+catalog order cannot retarget either route.</p>
 <p>An exact hardware port name is saved as the route. If it is missing, the page
 shows <code>OFFLINE</code>; if the stable identity matches more than once it shows
 <code>AMBIG</code>. Neither state changes, deletes, or falls back from the saved route.
@@ -5779,7 +5796,7 @@ and wait for the ready indication; its release and already queued traffic are
 quarantined.</p>
 <p>First turn the master encoder left and let it settle, turn it right and let it
 settle, then click and release it. At the optional encoder Shift step, hold the
-modifier, turn left, turn right, then release it; Learn stores either the
+modifier, turn left once, then release it; Learn stores either the
 ordinary rotary CC or the different relative CC emitted only while Shift is
 held. Skipping remains valid. The learned encoder then browses the optional
 control and command-button roles.
@@ -14777,22 +14794,26 @@ audition renderers. Their exact scope and opt-in command live in
 the harness took 49.32 seconds and total wall time including 21.05 seconds of
 test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.</p>
-<p>FT2's quick ROUTE overlay now keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> commands
-visible in its bottom border at native 40×13 instead of hiding Apply below 21
-scrolling fields and exposing only an ambiguous ROUTE toggle. The original
-launcher position becomes the single <code>CANCEL</code> command, rather than adding a
-second control for the same discard operation. Keyboard <code>A</code> and <code>C</code>, mouse,
-and controller commands share those exact actions; Back remains field-first.
+<p>FT2's quick ROUTE overlay keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> commands in
+the standard controller action row at native 40×13 instead of hiding Apply
+below the scrolling fields or drawing custom controls into the overlay border.
+Its canonical ROUTE controller page, mouse targets, and keyboard <code>A</code>/<code>C</code> share
+those direct actions; Back remains field-first. An SHR Drums target now exposes
+the installed drum sets through the route draft's <code>KIT</code> field and persists the
+applied selection with the Project, resetting only prior-kit tuning overrides
+while preserving the Project key and drum effects.
 Playback labels MIDI-take persistence as <code>IDEA+</code>, not an
 instrument save, and <code>SOUNDS</code> returns directly to Presets and its visible
 <code>LOAD</code>. In-app and terminal MIDI Learn now capture the complete optional
-encoder-Shift gesture. Holding Shift, turning left and right, then releasing
-records both the modifier and either the ordinary rotary CC or its separate
+encoder-Shift gesture. Holding Shift, turning left once, then releasing records
+both the modifier and either the ordinary rotary CC or its separate
 shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
-debug build passed with Rust 1.97.1, and the three affected native screenshots
-were regenerated and visually inspected. No test suite or physical controller,
-MIDI transmission, synth, JACK, playback, or audible check was run for this
-incremental repair.</p>
+debug build and affected screenshots recorded for the preceding implementation
+predate this correction and do not validate it. The current repair has only
+source formatting, source inspection, and documentation checks because the
+temporary combined-build gate remains active. No Rust build/test, screenshot
+regeneration, physical controller, MIDI transmission, synth, JACK, playback,
+or audible check was run for it.</p>
 <p>The complete first musician/operator workflow review and its persistent repair
 ledger are in <code>docs/WORKFLOW_AUDIT_HANDOFF.md</code>. Its R01–R15 repair queue passed
 the authorized combined acceptance pass on 2026-07-23. The ledger records the

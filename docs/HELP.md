@@ -31,7 +31,7 @@ Keyboard Up/Down/Enter still work. Optional command buttons may be skipped once
 the learned encoder can turn and click. Home does not learn or send MIDI by
 itself; Learn keeps selected-controller messages isolated until an explicit
 save or cancel. Its optional encoder-Shift step learns the complete gesture:
-hold Shift, turn left, turn right, then release. This captures either the
+hold Shift, turn left once, then release. This captures either the
 ordinary rotary CC or a different CC emitted only while Shift is held.
 Separate performance inputs continue to bypass controller interpretation.
 

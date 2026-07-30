@@ -122,10 +122,13 @@ yellow and red appear only at their documented active thresholds. A held peak
 may use a brighter version of the same threshold colour, but not a different
 shape. The startup splash uses two identical circular-LED rows per channel.
 
-Master overlays preserve a one-cell reveal on the left, right, top, and bottom.
-Their launcher stays inside the overlay border; the bottom reveal remains the
-shared status row. Overlays own transient selection only and do not move,
-replace, or clear that row.
+Master overlays preserve a one-cell reveal on the left, right, and top.
+Ordinary navigation overlays keep their launcher inside the border and leave
+the shared status row as their bottom reveal. FT2 ROUTE instead ends above the
+two canonical controller rows: its contextual page row and action row own
+APPLY/CANCEL through the same menu table and controller dispatcher used by
+working screens. Overlays own transient selection only and do not move,
+replace, or clear the shared status row.
 
 Use the exact repository-selected Rust toolchain from `rust-toolchain.toml`.
 Newer stable releases are adopted deliberately by updating that pin, never

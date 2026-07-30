@@ -168,15 +168,19 @@ while retaining unrelated draft edits.
 For a quick routing change, **SELECT** → **ROUTE** opens a centered overlay over
 FT2. It shows target type, software engine/instrument or MIDI output, optional
 device profile, plus all four columns' channel, bank, program/instrument name,
-and interface availability. Turn and click/Enter to activate a
+and interface availability. With an SHR Drums target, the **KIT** field cycles
+the installed drum sets and stores the chosen kit with the Project. Applying a
+different kit resets the old kit's tuning overrides; the Project key and drum
+effects remain unchanged. Turn and click/Enter to activate a
 field; Back/Esc cancels that field first. Only **APPLY ROUTING** changes the
-Project. **APPLY** and **CANCEL** remain visible in the overlay's bottom border
-even while the longer field list scrolls; keyboard `A` and `C` invoke the same
-whole-draft actions. Once open, the ROUTE launcher position is relabeled
-**CANCEL**, so there is only one visible whole-draft cancel command; it or Back
-discards every unconfirmed change. Back from an active field cancels only that
-field first. At 40×13 the bordered outer window is 38×11 at `(1,1)` and the
-usable inner area is 36×9 at `(2,2)`; row 13 remains the shared status row.
+Project. The window ends above the normal two controller rows. The contextual
+**ROUTE** page puts **APPLY** at physical position 5 and **CANCEL** at position
+8; those controller buttons, mouse targets, and keyboard `A`/`C` invoke the
+same direct actions even while the longer field list scrolls. Back from an
+active field cancels only that field first, then Back or **CANCEL** discards the
+whole draft. At 40×13 the bordered outer window is 38×9 at `(1,1)`, its usable
+inner area is 36×7 at `(2,2)`, rows 11–12 are the controller rows, and row 13
+remains the shared status row.
 
 ## Step editing
 
