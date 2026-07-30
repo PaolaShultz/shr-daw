@@ -44,42 +44,48 @@ a -18 dB post-insert send. Return changes also use 3 dB steps and wrap from
 
 ## Ownership boundary
 
-One SHR-owned JACK client contains the current stereo graph. Effects are
-internal processors, not separate JACK clients or processes. That client has
-four stereo input boundaries and one stereo output boundary to the
-runtime-resolved pair. The saved preferred `audio.output` pair,
+One application-owned JACK client contains the current stereo graph. Its
+lifetime is independent of every optional sound source, so MTR Input **MON ON**
+can activate it without a managed synth, Loop, or drums. Effects are internal
+processors, not separate JACK clients or processes. That client has four
+stereo input boundaries and one stereo output boundary to the runtime-resolved
+pair. The saved preferred `audio.output` pair,
 ordered internal pairs, and final headphone pair remain machine configuration.
 Exact JACK and hardware
 names come from configuration, never Rust constants.
 
-The graph client instantiates `ManagedEngine`, `InternalDrums`, `LoopPlayer`,
-and `LiveInput`. SHR Drums is a library hosted in-process by SHR-DAW, not a
-second managed synth process. Its fixed Project drum rack runs in that host
-before either the graph boundary or direct playback, so drum effects remain
-correct when the owned graph is disabled. The loop remains its own rendering client; when the final bus is
-active its output is moved off direct playback and into the owned sum. The raw
-synchronized multitrack recorder remains a separate capture client. External
-instruments return only through the configured stereo mix. There is no hardware
-insert or per-interface-channel processing.
+The compiled plan has fixed `ManagedEngine`, `InternalDrums`, `LoopPlayer`,
+and `LiveInput` nodes, but only the exact configured live input and playback
+pair are required for input monitoring. Optional sources attach silently when
+their exact ports exist and can disappear or return without stopping the bus
+or creating a duplicate playback path. SHR Drums is a library hosted
+in-process by SHR-DAW, not a second managed synth process. Its fixed Project
+drum rack runs in that host before either the graph boundary or direct
+playback, so drum effects remain correct when the owned graph is disabled. The
+loop remains its own rendering client; when the final bus is active its output
+is moved off direct playback and into the owned sum. The raw synchronized
+multitrack recorder remains a separate capture client. External instruments
+return only through the configured stereo mix. There is no hardware insert or
+per-interface-channel processing.
 
 The graph may connect and disconnect only SHR-owned endpoints. It must not
 alter unrelated JACK connections or terminate a client/process it does not
 own. Until the graph is activated successfully, the managed engine and loop use
 their exact direct routes. The raw recorder routes are unchanged.
 
-For every current managed-engine start, direct playback is connected first. The
-owned callback publishes silence while its eight boundary links are prepared;
-the two synth and two loop direct links are then removed in the same
-rollback-capable transaction.
-Only after that commit does an atomic flag publish graph output at a block
-boundary. A rejected graph, activation failure, ambiguous engine-output pair,
-or connection failure leaves or restores the exact direct topology.
+The owned callback publishes silence while the required input/output links and
+each currently available optional source boundary are prepared. Only exact
+SHR-owned synth, loop, or drum direct links are removed in the same
+rollback-capable transaction. Only after that commit does an atomic flag
+publish graph output at a block boundary. A rejected graph, activation
+failure, ambiguous optional output pair, or connection failure leaves
+monitoring off and restores the exact prior owned topology.
 
 On normal shutdown, the publish flag is cleared and JACK deactivation joins the
-owned callback before the synth and loop direct links are restored. Closing that client then
-releases only its registered ports and their graph-boundary connections. This
-ordering prevents a final already-started graph block from overlapping the
-restored direct path.
+owned callback before available synth, loop, and drum direct links are
+restored. Closing that client then releases only its registered ports and their
+graph-boundary connections. This ordering prevents a final already-started
+graph block from overlapping the restored direct path.
 
 `src/jack.rs` is the shared dynamic-loading and lifetime boundary for current
 and future JACK clients. A caller owns its callback allocation and keeps it
@@ -138,8 +144,8 @@ rejected.
 
 ### Typed nodes
 
-Source node kinds are `ManagedEngine`, `LoopPlayer`, `LiveInput`, and
-`HardwareReturn`. Processor kinds are `Utility`, `Eq`, `Compressor`,
+Source node kinds are `ManagedEngine`, `InternalDrums`, `LoopPlayer`,
+`LiveInput`, and `HardwareReturn`. Processor kinds are `Utility`, `Eq`, `Compressor`,
 `Distortion`, `Delay`, `Reverb`, `Chorus`, `Flanger`, `Phaser`, `TremoloPan`,
 `Filter`, `Gate`, and `Crusher`. Bus kinds are `StereoMixer`, `SendTap`, and
 `AuxReturn`. Sink/tap kinds are `MainPlayback`, `HardwareSend`, `RecordPreFx`,
@@ -173,7 +179,7 @@ The graph plan, filter coefficients, port resolution, delay memory, and all
 callback buffers are prepared before activation. External connection failure
 or rejected validation leaves the old graph and direct route unchanged.
 
-The synchronized raw recorder remains outside this Synth/Loop/Input graph.
+The synchronized raw recorder remains outside this Synth/Loop/Input/Drums graph.
 Its dedicated Levels overview opens at most one recorder-owned meter client
 for the first 18 exact configured capture sources. Starting a take deactivates
 that client before activating the recording client; returning to Levels may

@@ -7,7 +7,7 @@ product, installation, FT2, and hardware documents linked below.
 ## Version numbering
 
 The package uses `major.minor.patch` numbering. Version `0.3.92` corrected the
-unintended `0.392.0`; the current checked-progress version is `0.4.5`.
+unintended `0.392.0`; the current checked-progress version is `0.4.6`.
 
 - Meaningful checked progress before the next milestone increments the patch:
   `0.3.99`, `0.3.100`, `0.3.101`, and so on.
@@ -17,7 +17,10 @@ unintended `0.392.0`; the current checked-progress version is `0.4.5`.
   `0.4.3`. Moj Sint's working fourth-backend integration is `0.4.4`; it does
   not reuse the earlier SHR Drums/effects bump. Version `0.4.5` makes all seven
   authored Moj Sint starts selectable and accepts strict schema 3 patch
-  identity.
+  identity. Version `0.4.6` makes Input monitoring a deliberate MTR action,
+  moves final-bus ownership out of the optional managed synth, reconnects
+  optional sources without duplicate playback, and records the same
+  post-master samples sent to playback.
 - The completed 0.5 milestone becomes `0.5.0`; later checked progress toward
   0.6 uses `0.5.1`, `0.5.2`, and so on.
 - The completed 0.6 milestone becomes `0.6.0`.

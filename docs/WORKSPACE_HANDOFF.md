@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.4.5`.
+corrected starting point; the current checked-progress version is `0.4.6`.
 
 Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD
@@ -37,6 +37,35 @@ Matched Idealized, Matched Linear Mixer, Matched Linear Ladder, and Matched No
 Drift or Feedback remain one editable instrument, each with the same eight
 timbral controls plus ADSR. EVOLVE 0.5 truthfully represents authored static
 oscillator character without drift; no diagnostic uses hidden state.
+
+Version `0.4.6` moves the final stereo bus out of the optional managed-synth
+owner. MTR Input now has one source-position action: `MON ON` while software
+monitoring is off and `MON OFF` while it is on; there is no duplicate Input
+mute. Monitoring defaults off. MON ON can activate the owned bus from only the
+exact configured Input and playback pairs and never starts a synth, Loop, or
+drums. Optional sources attach, disappear, and reconnect by exact owned links
+without duplicate playback. The callback order is Input source level,
+complete sum, master inserts, master level, fixed MASTER STRIP, limiter/final
+meter, one final-WAV tap, then playback; recording receives that same final
+slice. Audio Recorder `LEVELS` still opens only the unchanged 18-channel meter
+overview. The private repository-local configuration declares the observed
+AudioBox direct monitor active, so MON ON remains refused until the owner
+physically disables that monitor and deliberately updates the declaration.
+This release has deterministic software verification only; it does not claim
+new JACK, audible, or hardware validation.
+
+The locked 0.4.6 combined gate used Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`). Focused graph ownership,
+monitor/UI, Recorder LEVELS, and four observed regression tests passed. The
+final normal default suite passed 876 tests with zero failures and 12 ignored;
+the harness took 49.93 seconds and total wall time was 50.03 seconds. Locked
+`cargo check` passed in 8.51 seconds. Locked debug and release builds passed in
+12.80 and 141.44 seconds at `target/debug/shr` and `target/release/shr`.
+Screenshot manifests expose `DEV` and `REL` respectively; 141 deterministic
+images, the pinned PSF self-test, and generated documentation drift checks
+passed. `/usr/local/bin/shr` still resolves to `scripts/local.sh`, whose default
+binary is this checkout's `target/debug/shr`. No ignored R&D/audition test or
+physical/audio action was run.
 
 The default Rust test gate now contains deterministic product regressions only.
 Operational latency and alignment, finite and bounded audio, allocation

@@ -223,7 +223,7 @@ preference remains `missing` and blocks start until assigned or disarmed.
 The setup screen shows elapsed time, armed count, selected-track level, writer
 high-water, drops, overflows, xruns, saved path, and errors.
 
-Open **MONITOR** from Audio Recorder to see the dedicated 18-channel Levels
+Open **LEVELS** from Audio Recorder to see the dedicated 18-channel Levels
 overview. At exactly 40×13 it always shows 18 one-column, nine-LED vertical
 meters as three groups of six. Their thresholds are −48, −36, −30, −24, −18,
 −12, −6, −3, and −1 dBFS: green through −18, yellow from −12 through −3, and
@@ -272,12 +272,16 @@ configuration, session layout, recovery, and hardware-free stress validation.
 
 ## Performance meters
 
-Open Performance from Home, or press `m` on Presets. With the graph disabled,
-MTR shows passive whole-core CPU and legacy meter information. With it enabled,
-MTR controls Synth/Loop/Input levels and mutes, master level, the fixed strip's
-linked true-peak boundary, `FINAL OUT`, and final stereo recording.
+Open Performance from Home, or press `m` on Presets. With the graph inactive,
+MTR shows passive whole-core CPU and legacy meter information. With it active,
+MTR controls Synth/Loop/Input/Drums levels, master level, the fixed strip's
+linked true-peak boundary, `FINAL OUT`, and final stereo recording. Synth,
+Loop, and Drums use MUTE. Input uses that same single position for MON ON or
+MON OFF, never a duplicate mute. Input monitoring starts off; MON ON can
+activate the bus without starting or requiring any optional source.
 
-`FINAL OUT` is the post-strip buffer shared by recording and playback. The
+`FINAL OUT` is the post-strip buffer shared by recording and playback. Input
+is present in both only while MON is on. The
 Loop Mix's separate `LOOP OUT` measures the complete four-slot sum. RESET clears
 presentation holds, not audio state. MTR does not report callback timing or
 xruns; see [Final performance bus](FINAL_PERFORMANCE_BUS.md) for the exact

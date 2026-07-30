@@ -1,8 +1,8 @@
 # Final stereo performance bus
 
-The opt-in owned audio graph has one deliberately small final bus. It is not a
-free-wiring view or a general-purpose mixer. Exactly four stereo sources are
-instantiated:
+The owned audio graph has one deliberately small final bus. It is not a
+free-wiring view or a general-purpose mixer. Input is the only required source;
+the managed synth, Loop Mix, and SHR Drums attach when present:
 
 ```text
 managed software instrument -> source inserts/optional aux sends --\
@@ -22,13 +22,17 @@ SHR Drums in-process stereo bus ------------------------------------/
 The logical Loop and external-input bus strips do not gain individual insert
 racks, aux sends, pan, solo, automation, or waveform editing. Drums has only
 its fixed Reverb-then-Delay rack before this bus; it does not become a general
-mixer strip. Their bus controls remain a smoothed level and mute. Loop Mix applies its four
+mixer strip. Synth, Loop, and Drums retain a smoothed level and mute. Input
+instead has one unambiguous **MON ON**/**MON OFF** control in the same MTR
+source-control position; it is never shown beside a duplicate Input mute.
+Loop Mix applies its four
 slot-local level/filter/mute controls before this one logical source. The
 managed source keeps its existing Project-owned
 insert/aux routing. Master level follows the complete sum. Source gain is
 bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
-basic four-source summing headroom. These live performance controls are not
+basic summing headroom. Input monitoring always starts OFF. These live
+performance controls are not
 Project data; current Project format 13 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
 Pattern, but not these final-bus levels or mutes. JACK assignments remain
@@ -39,28 +43,27 @@ machine configuration.
 The configured input is `audio.graph.input=LABEL|LEFT|RIGHT`. When that optional
 new key is blank, the first legacy `capture.input` pair is reused so older
 runtime configuration remains useful. Both exact names must exist and be
-distinct. A similar-looking or adjacent port is never substituted. The owned
-Loop Mix client must be loaded and expose its exact configured output ports
-before the bus can activate. Exactly four renderers serve only the active
-Pattern and sum to that pair before the
-graph, so the bus, limiter, final meter, and recorder receive the complete Loop
-sum once. The MTR screen leaves healthy sources unadorned and marks
-only `MUTE` or `OFFLINE`.
+distinct. A similar-looking or adjacent port is never substituted. MTR Input
+**MON ON** can activate the bus with only this input and the exact playback
+pair. It never starts a synth, WAV loop, or drum host. Missing optional sources
+stay `OFFLINE`; when Loop is present, its four active renderers sum to one pair
+before the graph, so the bus, limiter, final meter, and recorder receive the
+complete Loop sum once.
 
-Before activation, the synth, drums when active, and loop each have their
-ordinary direct stereo routes. The graph publishes silence while the required
-source connections and final playback pair are connected. It then removes the
-exact owned direct connections as one rollback-capable transaction and publishes the
-callback at a block boundary. A failed connection restores the exact prior
-topology and leaves unrelated JACK connections untouched. Normal shutdown,
-loop replacement, JACK loss, or source disappearance deactivates the callback
-before restoring the direct routes. A missing source remains missing; recovery
-does not invent a replacement.
+Before attachment, synth, drums, and Loop may have their ordinary direct stereo
+routes. The graph connects a present source to its fixed input and removes only
+that source's exact owned direct links as one rollback-capable transaction.
+Optional disappearance is silence, not bus failure; periodic owner-thread
+reconciliation reconnects only the remembered exact names when they return.
+Input loss while MON is on faults a final recording and reports the nearby
+recovery state. JACK loss deactivates the callback before restoring available
+owned direct routes. No path invents a replacement or alters an unrelated
+link.
 
 `audio.graph.input_direct_monitoring` describes whether the interface's own
 zero/low-latency direct monitor is also audible. The final bus is software
 monitoring. Enabling both without
-`audio.graph.confirm_doubled_monitoring=true` refuses graph activation because
+`audio.graph.confirm_doubled_monitoring=true` refuses **MON ON** because
 the delayed software copy and direct copy can comb-filter or sound doubled.
 Confirmation is deliberately explicit; it does not change interface hardware.
 
@@ -101,9 +104,11 @@ interleaved stereo ring transfers it to a non-real-time writer, which performs
 publication.
 
 The result is one conventional little-endian PCM RIFF/WAVE file: two
-interleaved channels, 24 bits, and the active JACK sample rate. It includes the
-four-source sum, managed-source aux returns, master rack, master level, and
-complete MASTER STRIP. It excludes raw recorder stems, unrelated JACK clients, interface
+interleaved channels, 24 bits, and the active JACK sample rate. It includes
+every present unmuted optional source and the configured external input only
+while Input MON is on, plus managed-source aux returns, master rack, master
+level, and complete MASTER STRIP. It excludes raw recorder stems, unrelated
+JACK clients, interface
 direct monitoring, hardware mixer/insert processing after JACK playback, and
 any downstream speaker/headphone processing.
 
@@ -122,12 +127,13 @@ Use the setup wizard or edit private runtime configuration only after obtaining
 the exact JACK names from the current machine. Choose one stereo capture pair
 that already contains the desired external-gear mix. Keep interface direct
 monitoring off for the normal software-monitored workflow, set conservative
-hardware gains, and enable `audio.graph.enabled` only when the synth, loop,
-input pair, and playback pair are all ready.
+hardware gains. Leave Input MON off until the hardware direct monitor is
+disabled, then use MTR **MON ON**; `audio.graph.enabled` is needed only for
+automatic final-bus startup, not for that explicit input-only action.
 
-After an absent source returns, MTR `RESET` retries activation against those
-same remembered exact names. It never rewrites the mapping or chooses another
-port.
+Optional sources reconcile automatically when they appear or return. MTR
+`RESET` remains a manual retry for a stopped or failed bus. Neither path
+rewrites the mapping or chooses another port.
 
 No MR18 name is compiled into SHR. A future MR18 acceptance must follow
 [the hardware plan](MR18_TEST_PLAN.md): discover and record the actual names,

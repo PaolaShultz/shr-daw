@@ -1,7 +1,4 @@
 use crate::audio_graph::{InsertRack, ProjectAuxRouting};
-use crate::audio_graph_client::{
-    AuxMeterSnapshot, EffectMeterSnapshot, OwnedAudioGraph, PerformanceBusPorts,
-};
 use crate::audio_graph_runtime::CallbackTimingSnapshot;
 use crate::config::{BackendConfig, RuntimeConfig};
 use crate::control::{self, CONTROLS};
@@ -50,9 +47,6 @@ pub struct Engine {
     control_routes: Vec<(u8, u8)>,
     fluid_soundfonts: Vec<(PathBuf, u16)>,
     fluid_selections: BTreeMap<u8, (u16, u8)>,
-    audio_graph: Option<OwnedAudioGraph>,
-    final_recording_last: crate::audio_recorder::FinalMixRecorderStatus,
-    audio_graph_fallback: Option<String>,
     audio_route_notice: Option<String>,
     midi_lifecycle: Option<MidiLifecycle>,
     #[cfg(test)]
@@ -692,9 +686,6 @@ impl Engine {
             control_routes: Vec::new(),
             fluid_soundfonts,
             fluid_selections: BTreeMap::new(),
-            audio_graph: None,
-            final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
-            audio_graph_fallback: None,
             audio_route_notice: None,
             midi_lifecycle: None,
             test_process: true,
@@ -742,9 +733,9 @@ impl Engine {
         state: &Path,
         output: SharedOutput,
         config: &RuntimeConfig,
-        rack: &InsertRack,
-        aux_routing: &ProjectAuxRouting,
-        master_strip: &MasterStripSettings,
+        _rack: &InsertRack,
+        _aux_routing: &ProjectAuxRouting,
+        _master_strip: &MasterStripSettings,
     ) -> Result<Self> {
         let fluid_parts = (preset.backend == BackendKind::FluidSynth)
             .then(|| FluidSynthPart {
@@ -759,9 +750,9 @@ impl Engine {
             state,
             output,
             config,
-            rack,
-            aux_routing,
-            master_strip,
+            _rack,
+            _aux_routing,
+            _master_strip,
         )
     }
 
@@ -774,9 +765,9 @@ impl Engine {
         state: &Path,
         output: SharedOutput,
         config: &RuntimeConfig,
-        rack: &InsertRack,
-        aux_routing: &ProjectAuxRouting,
-        master_strip: &MasterStripSettings,
+        _rack: &InsertRack,
+        _aux_routing: &ProjectAuxRouting,
+        _master_strip: &MasterStripSettings,
     ) -> Result<Self> {
         fs::create_dir_all(state)?;
         let EnginePreflight {
@@ -814,8 +805,6 @@ impl Engine {
             .stderr(Stdio::from(log_err))
             .spawn()
             .with_context(|| format!("start {}", backend_config.command))?;
-        let mut audio_graph = None;
-        let mut audio_graph_fallback = None;
         let mut audio_route_notice = None;
         let startup_deadline = Instant::now() + config.startup_timeout;
         let prepare = (|| -> Result<()> {
@@ -837,20 +826,6 @@ impl Engine {
                 &runtime_config,
                 startup_deadline,
             )?;
-            if config.audio_graph.enabled {
-                match start_managed_audio_graph(
-                    &backend_config.client_name,
-                    &runtime_config,
-                    rack,
-                    aux_routing,
-                    master_strip,
-                ) {
-                    Ok(graph) => audio_graph = Some(graph),
-                    Err(error) => {
-                        audio_graph_fallback = Some(format!("{error:#}"));
-                    }
-                }
-            }
             if config.midi_autoconnect {
                 attach_midi_output(&output, &backend_config.midi_output_match, preset.backend)?;
                 retain_midi_destination("SHR-DAW MIDI output", &backend_config.client_name);
@@ -874,7 +849,6 @@ impl Engine {
             if let Ok(mut connection) = output.lock() {
                 *connection = None;
             }
-            audio_graph.take();
             terminate(&mut child);
             cleanup_state(state);
             return Err(error);
@@ -907,9 +881,6 @@ impl Engine {
             },
             fluid_soundfonts,
             fluid_selections: BTreeMap::new(),
-            audio_graph,
-            final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
-            audio_graph_fallback,
             audio_route_notice,
             midi_lifecycle: None,
             #[cfg(test)]
@@ -934,193 +905,15 @@ impl Engine {
     }
 
     pub fn audio_route_status(&self) -> Option<String> {
-        let graph = if self.audio_graph.is_some() {
-            Some("owned insert graph active".to_owned())
-        } else {
-            self.audio_graph_fallback
-                .as_ref()
-                .map(|error| format!("direct audio fallback · {error}"))
-        };
-        match (&self.audio_route_notice, graph) {
-            (Some(route), Some(graph)) => Some(format!("{route} · {graph}")),
-            (Some(route), None) => Some(route.clone()),
-            (None, graph) => graph,
-        }
+        self.audio_route_notice.clone()
     }
 
-    pub fn publish_fx_routing(
-        &mut self,
-        rack: &InsertRack,
-        aux_routing: &ProjectAuxRouting,
-    ) -> Result<bool> {
-        let Some(graph) = self.audio_graph.as_mut() else {
-            return Ok(false);
-        };
-        graph.publish_routing(rack, aux_routing)?;
-        Ok(true)
-    }
-
-    pub(crate) fn retry_audio_graph(
-        &mut self,
-        config: &RuntimeConfig,
-        rack: &InsertRack,
-        aux_routing: &ProjectAuxRouting,
-        master_strip: &MasterStripSettings,
-    ) -> Result<bool> {
-        if self.audio_graph.is_some() || !config.audio_graph.enabled {
-            return Ok(self.audio_graph.is_some());
-        }
-        let backend = backend_config(config, self.backend);
-        let graph = start_managed_audio_graph(
-            &backend.client_name,
-            config,
-            rack,
-            aux_routing,
-            master_strip,
-        )?;
-        self.audio_graph = Some(graph);
-        self.audio_graph_fallback = None;
-        Ok(true)
-    }
-
-    pub(crate) fn suspend_audio_graph(&mut self) -> Result<bool> {
-        let Some((_timing, restored)) = self.stop_audio_graph() else {
-            return Ok(false);
-        };
-        restored?;
-        self.audio_graph_fallback =
-            Some("final bus suspended · exact direct routes restored".into());
-        Ok(true)
-    }
-
-    pub(crate) fn effect_meter(&self, effect_id: u32) -> Option<EffectMeterSnapshot> {
-        self.audio_graph.as_ref()?.effect_meter(effect_id)
-    }
-
-    pub(crate) fn master_meter(&self) -> Option<AuxMeterSnapshot> {
-        self.audio_graph.as_ref()?.master_meter()
-    }
-
-    pub(crate) fn final_bus_meter(&self) -> Option<crate::final_bus::FinalBusMeterSnapshot> {
-        Some(self.audio_graph.as_ref()?.final_bus_meter())
-    }
-
-    pub(crate) fn bus_controls(&self) -> Option<std::sync::Arc<crate::final_bus::BusControls>> {
-        Some(self.audio_graph.as_ref()?.bus_controls())
-    }
-
-    pub(crate) fn apply_master_strip(&self, settings: &MasterStripSettings) -> Result<bool> {
-        let Some(graph) = self.audio_graph.as_ref() else {
-            return Ok(false);
-        };
-        graph
-            .master_strip_controls()
-            .apply(settings)
-            .map_err(anyhow::Error::msg)?;
-        Ok(true)
-    }
-
-    pub(crate) fn reset_master_strip_loudness(&self) -> bool {
-        let Some(graph) = self.audio_graph.as_ref() else {
-            return false;
-        };
-        graph.master_strip_controls().reset_loudness();
-        true
-    }
-
-    pub(crate) fn final_recording_status(
-        &mut self,
-    ) -> Option<crate::audio_recorder::FinalMixRecorderStatus> {
-        if let Some(graph) = self.audio_graph.as_mut() {
-            self.final_recording_last = graph.final_recording_status();
-        }
-        Some(self.final_recording_last.clone())
-    }
-
-    pub(crate) fn final_recording_active(&self) -> bool {
-        self.audio_graph
-            .as_ref()
-            .is_some_and(|graph| graph.final_recording_active())
-    }
-
-    pub(crate) fn start_final_recording(&mut self, name: Option<&str>) -> Result<()> {
-        let graph = self
-            .audio_graph
-            .as_mut()
-            .context("final mix unavailable · owned graph is inactive")?;
-        graph.start_final_recording(name)?;
-        self.final_recording_last = graph.final_recording_status();
-        Ok(())
-    }
-
-    pub(crate) fn stop_final_recording(&mut self) -> Result<()> {
-        let graph = self
-            .audio_graph
-            .as_mut()
-            .context("final mix unavailable · owned graph is inactive")?;
-        let result = graph.stop_final_recording();
-        self.final_recording_last = graph.final_recording_status();
-        result
+    pub(crate) fn managed_client_name(&self) -> Option<&str> {
+        self.managed_client_name.as_deref()
     }
 
     pub(crate) fn process_id(&self) -> u32 {
         self.child.id()
-    }
-
-    pub(crate) fn audio_graph_sample_rate(&self) -> Option<u32> {
-        self.audio_graph.as_ref().map(OwnedAudioGraph::sample_rate)
-    }
-
-    pub(crate) fn finish_audio_graph_checkpoint(
-        &mut self,
-    ) -> Option<(CallbackTimingSnapshot, Result<()>)> {
-        self.stop_audio_graph()
-    }
-
-    /// JACK shutdown notification is callback-safe; route recovery runs here
-    /// on the UI/owner thread and touches only the exact managed direct links.
-    pub fn poll_audio_graph(&mut self) -> Option<String> {
-        if !self
-            .audio_graph
-            .as_ref()
-            .is_some_and(|graph| graph.client_lost())
-        {
-            return None;
-        }
-        let source_lost = self
-            .audio_graph
-            .as_ref()
-            .is_some_and(|graph| graph.source_lost());
-        let (timing, restored) = self.stop_audio_graph()?;
-        let loss = if source_lost {
-            "SOURCE LOST"
-        } else {
-            "AUDIO GRAPH LOST"
-        };
-        let detail = match &restored {
-            Ok(()) => format!(
-                "{loss} · exact direct routes restored · {}",
-                audio_graph_metrics(&timing)
-            ),
-            Err(error) => format!(
-                "{loss} · exact direct restore unavailable: {error:#} · {}",
-                audio_graph_metrics(&timing)
-            ),
-        };
-        self.audio_graph_fallback = Some(detail);
-        Some(match restored {
-            Ok(()) => format!("{loss} · direct routes restored"),
-            Err(_) => format!("{loss} · restore unavailable · ROUTING"),
-        })
-    }
-
-    fn stop_audio_graph(&mut self) -> Option<(CallbackTimingSnapshot, Result<()>)> {
-        let mut graph = self.audio_graph.take()?;
-        let restored = graph.restore_direct();
-        self.final_recording_last = graph.final_recording_status();
-        let timing = graph.timing();
-        drop(graph);
-        Some((timing, restored))
     }
 
     pub fn send(&self, message: &[u8]) -> Result<()> {
@@ -1418,9 +1211,6 @@ fn set_command_affinity(command: &mut Command, cpu: Option<usize>) {
 impl Drop for Engine {
     fn drop(&mut self) {
         self.panic();
-        // Restore the conservative dry boundary and deactivate the graph while
-        // its callback allocation and the managed source are both still alive.
-        self.audio_graph.take();
         if let Some(stdin) = self.stdin.as_mut() {
             let _ = match self.backend {
                 BackendKind::Yoshimi => writeln!(stdin, "exit y"),
@@ -2574,55 +2364,8 @@ fn connect_audio(client_name: &str, config: &RuntimeConfig, deadline: Instant) -
     Ok(())
 }
 
-fn start_managed_audio_graph(
-    client_name: &str,
-    config: &RuntimeConfig,
-    rack: &InsertRack,
-    aux_routing: &ProjectAuxRouting,
-    master_strip: &MasterStripSettings,
-) -> Result<OwnedAudioGraph> {
-    let available = jack_ports();
-    let source_ports = resolve_managed_audio_outputs(client_name, available.clone())?;
-    let (loop_source_ports, live_source_ports) =
-        resolve_performance_bus_sources(config, &available)?;
-    let destinations: [String; 2] = config
-        .audio_outputs
-        .clone()
-        .try_into()
-        .map_err(|_| anyhow!("owned graph requires exactly two configured main outputs"))?;
-    let loop_destinations: [String; 2] = config
-        .loop_player
-        .outputs
-        .clone()
-        .try_into()
-        .map_err(|_| anyhow!("final bus requires exactly two configured loop.output routes"))?;
-    OwnedAudioGraph::start_with_routing(
-        &config.audio_graph,
-        PerformanceBusPorts {
-            synth: source_ports,
-            loop_player: loop_source_ports,
-            drums: config.drums.output_ports.clone(),
-            live_input: live_source_ports,
-            playback: destinations,
-            loop_direct_playback: loop_destinations,
-        },
-        &config.capture,
-        rack,
-        aux_routing,
-        master_strip,
-    )
-}
-
-fn resolve_performance_bus_sources(
-    config: &RuntimeConfig,
-    available: &[String],
-) -> Result<([String; 2], [String; 2])> {
-    let loop_source_ports = crate::loop_player::configured_output_ports(&config.loop_player);
-    for port in &loop_source_ports {
-        if !available.iter().any(|candidate| candidate == port) {
-            bail!("owned WAV loop source {port:?} is offline; load the configured loop before activating the final bus");
-        }
-    }
+#[cfg(test)]
+fn resolve_final_bus_input(config: &RuntimeConfig, available: &[String]) -> Result<[String; 2]> {
     let input = config
         .audio_graph
         .input
@@ -2635,14 +2378,14 @@ fn resolve_performance_bus_sources(
             bail!("configured final-bus input {port:?} is offline; no nearby JACK port is substituted");
         }
     }
-    Ok((loop_source_ports, live_source_ports))
+    Ok(live_source_ports)
 }
 
 fn managed_audio_outputs(client_name: &str) -> Result<[String; 2]> {
     resolve_managed_audio_outputs(client_name, jack_ports())
 }
 
-fn resolve_managed_audio_outputs(
+pub(crate) fn resolve_managed_audio_outputs(
     client_name: &str,
     ports: impl IntoIterator<Item = String>,
 ) -> Result<[String; 2]> {
@@ -2904,6 +2647,22 @@ pub fn daemon(preset: Preset, state: PathBuf, config: RuntimeConfig) -> Result<(
     router.arm_pickup(&initial_values(&preset)?);
     let mut engine = Engine::start(&preset, &state, router.output(), &config)?;
     engine.bind_midi_lifecycle(router.lifecycle());
+    let rack = InsertRack::default();
+    let aux_routing = ProjectAuxRouting::default();
+    let master_strip = MasterStripSettings::default();
+    let mut final_bus = crate::audio_graph_client::FinalBusOwner::default();
+    if config.audio_graph.enabled {
+        final_bus.activate(
+            &config,
+            engine.managed_client_name(),
+            None,
+            None,
+            &rack,
+            &aux_routing,
+            &master_strip,
+            false,
+        )?;
+    }
     if let Some(route) = engine.audio_route_status() {
         eprintln!("AUDIO ROUTE · {route}");
     }
@@ -2911,18 +2670,20 @@ pub fn daemon(preset: Preset, state: PathBuf, config: RuntimeConfig) -> Result<(
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&stop))?;
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&stop))?;
+    let mut next_source_scan = Instant::now();
     while !stop.load(std::sync::atomic::Ordering::Relaxed) && engine.alive() {
-        if let Some(status) = engine.poll_audio_graph() {
+        thread::sleep(Duration::from_millis(100));
+        if let Some(status) = final_bus.poll() {
             eprintln!("{status}");
         }
-        thread::sleep(Duration::from_millis(100));
-    }
-    if let Some((timing, restored)) = engine.stop_audio_graph() {
-        eprintln!("AUDIO GRAPH METRICS · {}", audio_graph_metrics(&timing));
-        if let Err(error) = restored {
-            eprintln!("AUDIO GRAPH SHUTDOWN · direct restore unavailable: {error:#}");
+        if final_bus.active() && Instant::now() >= next_source_scan {
+            if let Err(error) = final_bus.sync_sources(engine.managed_client_name(), None, None) {
+                eprintln!("AUDIO SOURCE RETRY FAILED · {error:#}");
+            }
+            next_source_scan = Instant::now() + Duration::from_secs(1);
         }
     }
+    let _ = final_bus.deactivate();
     drop(engine);
     let _ = fs::remove_file(state.join("daemon.pid"));
     Ok(())
@@ -3664,29 +3425,21 @@ mod tests {
     }
 
     #[test]
-    fn final_bus_sources_stay_exact_across_absence_and_reconnection() {
+    fn final_bus_input_stays_exact_while_optional_loop_is_absent() {
         let mut config = RuntimeConfig::default();
         config.audio_graph.input = Some(crate::config::StereoInputConfig {
             name: "External mix".into(),
             left_port: "interface:mix_l".into(),
             right_port: "interface:mix_r".into(),
         });
-        let loop_ports = crate::loop_player::configured_output_ports(&config.loop_player);
-        let nearby = vec![
-            loop_ports[0].clone(),
-            loop_ports[1].clone(),
-            "interface:mix_l".into(),
-            "interface:nearby_r".into(),
-        ];
-        let error = resolve_performance_bus_sources(&config, &nearby)
+        let nearby = vec!["interface:mix_l".into(), "interface:nearby_r".into()];
+        let error = resolve_final_bus_input(&config, &nearby)
             .unwrap_err()
             .to_string();
         assert!(error.contains("interface:mix_r"));
         let mut returned = nearby;
         returned.push("interface:mix_r".into());
-        let (resolved_loop, resolved_input) =
-            resolve_performance_bus_sources(&config, &returned).unwrap();
-        assert_eq!(resolved_loop, loop_ports);
+        let resolved_input = resolve_final_bus_input(&config, &returned).unwrap();
         assert_eq!(resolved_input, ["interface:mix_l", "interface:mix_r"]);
         assert_eq!(
             config.audio_graph.input.unwrap().right_port,

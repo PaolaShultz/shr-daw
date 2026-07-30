@@ -185,9 +185,10 @@ decisions, not architectural follow-ons.
 The graph uses internal preallocated mixer, send-tap, and return nodes rather
 than relying on implicit JACK summing. That makes independent send/return gain,
 pre/post placement, return metering, and exactly-once mixing explicit and
-testable. The final bus adds only smoothed level/mute per source and master
-level. A fuller mixer would still be needed for pan, solo, per-input inserts,
-or shared aux sends, none of which is current product scope.
+testable. The final bus adds smoothed level per source and master level, MUTE
+for Synth/Loop/Drums, and one MON ON/OFF action for Input. A fuller mixer would
+still be needed for pan, solo, per-input inserts, or shared aux sends, none of
+which is current product scope.
 
 Primary source: [JACK 2 `jack_port_get_buffer` API
 contract](https://github.com/jackaudio/jack2/blob/develop/common/jack/jack.h),

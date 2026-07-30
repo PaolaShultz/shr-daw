@@ -132,8 +132,12 @@ struct RuntimeFader {
 }
 
 impl RuntimeFader {
-    fn new(gain_db: f32, sample_rate: u32) -> Result<Self, String> {
-        let gain = db_to_gain(gain_db).map_err(|error| error.to_string())?;
+    fn new(gain_db: f32, muted: bool, sample_rate: u32) -> Result<Self, String> {
+        let gain = if muted {
+            0.0
+        } else {
+            db_to_gain(gain_db).map_err(|error| error.to_string())?
+        };
         Ok(Self {
             value: SmoothedValue::new(gain).map_err(|error| error.to_string())?,
             last_target: gain,
@@ -182,12 +186,11 @@ impl FinalBusProcessor {
         meters: Arc<FinalBusMeters>,
     ) -> Result<Self, String> {
         let source_fader = |source| {
-            let gain_db = if controls.source_muted(source) {
-                SOURCE_GAIN_MIN_DB
-            } else {
-                controls.source_gain_db(source)
-            };
-            RuntimeFader::new(gain_db, sample_rate)
+            RuntimeFader::new(
+                controls.source_gain_db(source),
+                controls.source_muted(source),
+                sample_rate,
+            )
         };
         Ok(Self {
             source_faders: [
@@ -196,7 +199,7 @@ impl FinalBusProcessor {
                 source_fader(BusSource::Input)?,
                 source_fader(BusSource::Drums)?,
             ],
-            master_fader: RuntimeFader::new(controls.master_gain_db(), sample_rate)?,
+            master_fader: RuntimeFader::new(controls.master_gain_db(), false, sample_rate)?,
             strip: MasterStripProcessor::new(sample_rate, maximum_frames, strip_controls, meters)?,
             controls,
         })

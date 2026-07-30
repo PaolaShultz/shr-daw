@@ -1250,6 +1250,13 @@ impl LoopPlayer {
         self.clear_meter();
     }
 
+    pub(crate) fn owned_output_ports(&self) -> Option<[String; 2]> {
+        self.active
+            .as_ref()
+            .filter(|active| active.client_state.active.load(Ordering::Acquire))
+            .map(|_| configured_output_ports(&self.config))
+    }
+
     #[cfg(test)]
     pub fn unload(&mut self) {
         self.unload_slot(0);

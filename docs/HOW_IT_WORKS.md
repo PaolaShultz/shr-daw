@@ -39,11 +39,14 @@ configured JACK sources -> fixed 18-channel meter snapshot
                         \-> shared callback timeline -> mono stems + manifest
 ```
 
-The raw-stem recorder remains separate. When enabled, the final bus owns the
-exact synth, SHR Drums, loop, and one configured stereo-input pair and removes
-the direct synth/drum/loop routes transactionally. `FINAL OUT`, final WAV, and
-playback then share the same post-strip samples. They do not secretly include
-unrelated JACK clients or downstream interface processing.
+The raw-stem recorder remains separate. The application owns the final bus
+independently of its optional synth, SHR Drums, and Loop sources. Input MON ON
+can therefore activate only the exact stereo-input pair and playback pair; it
+does not launch missing sound sources. Present optional direct routes move into
+the bus transactionally and reconcile when sources disappear or return.
+`FINAL OUT`, final WAV, and playback then share the same post-strip samples.
+They do not secretly include unrelated JACK clients or downstream interface
+processing.
 
 ## Controller and performance input roles
 
@@ -381,9 +384,10 @@ would leave MIDI range.
 ## The managed audio graph
 
 Without the owned graph, the managed instrument, SHR Drums, and owned loop use
-their exact configured direct playback routes. With `audio.graph.enabled=true`,
-those three sources and one exact configured stereo JACK capture pair move
-transactionally into this route:
+their exact configured direct playback routes. `audio.graph.enabled=true`
+starts the bus automatically; MTR Input MON ON can start it explicitly with
+only one exact configured stereo JACK capture pair and the playback pair.
+Whichever optional sources are present move transactionally into this route:
 
 ```text
 managed instrument -> SOURCE inserts + AUX returns --+
@@ -659,15 +663,16 @@ cleared demo manifest. See
 
 ## Performance information and honest limits
 
-With the graph disabled, MTR retains its CPU and legacy managed-source display.
-With the graph enabled, it shows the four source readiness/level/mute states,
-master level, post-strip sample/true-peak and loudness state, linked gain
-reduction, correlation, and final-recording status. Direct mode reports final-bus metering
+With the graph inactive, MTR retains its CPU and legacy managed-source display.
+With the graph active, it shows four source readiness/level states, MUTE for
+Synth/Loop/Drums, the one MON ON/MON OFF action for Input, master level,
+post-strip sample/true-peak and loudness state, linked gain reduction,
+correlation, and final-recording status. Direct mode reports final-bus metering
 unavailable instead of creating a hidden tap or displaying unrelated audio.
 
 Maintainer checkpoints separately collect callback count, mean, p95, p99,
 maximum, deadline misses, oversized blocks, xruns, process/core CPU, memory,
 and shutdown behavior. The earlier one-source graph passed its recorded
-Raspberry Pi engineering checkpoints. The four-source final bus has separate
+Raspberry Pi engineering checkpoints. The fixed four-node final bus has separate
 hardware-free stress evidence; full-duplex interface acceptance remains a
 future hardware test and is not implied by synthetic validation.

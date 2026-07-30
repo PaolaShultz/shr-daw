@@ -52,7 +52,8 @@ with `shr-audio-tune plan 3`, and inspect or retry it with
 
 The effects graph is disabled by default, so synth, SHR Drums, and loop audio
 initially use their configured direct routes. Read [How SHR-DAW
-works](HOW_IT_WORKS.md) before enabling the four-source final bus.
+works](HOW_IT_WORKS.md) before enabling the fixed final bus or Input software
+monitoring.
 
 ## Choose how to play
 

@@ -157,8 +157,9 @@ section through the existing front-page order.
 ## Performance meters
 
 Home PERFORMANCE, or keyboard m, opens the meter/mix surface. With the
-owned graph disabled it retains the passive CPU and legacy output view. With
-the graph enabled it shows Synth, Loop, and Input readiness, level and mute;
+owned graph inactive it retains the passive CPU and legacy output view. With
+the graph active it shows Synth, Loop, Input, and Drums readiness and level;
+Synth, Loop, and Drums use MUTE while Input uses one MON ON/MON OFF action;
 master level; final sample peak and dBTP; GLUE/limiter gain reduction,
 correlation, LUFS-M/S/I; and final-record
 elapsed time, size, drop/error state, and path.
@@ -174,22 +175,27 @@ equal values, and other controls leave them alone. Stopped, unavailable, and
 new meter sessions cannot carry an old `MAX` forward.
 
 FINAL OUT is available only for the active owned graph. It measures after all
-four performance sources, master inserts, live master level, fixed strip, and
+present optional sources and the deliberately monitored Input, master inserts,
+live master level, fixed strip, and
 linked 8× true-peak limiter. The same final buffer feeds the stereo recorder and playback. Direct
 playback reports this final-bus meter unavailable and stays direct.
 
 The FT2 WAV Loop screen's `LOOP OUT` still measures only the rendered loop. When
 the final bus is active, that loop is one of the four sources in `FINAL OUT`.
 
-On MTR, SOURCE-/SOURCE+ choose a source, LEVEL-/LEVEL+ change it in 1 dB steps,
-MUTE toggles it, and REC starts/stops the final stereo WAV at callback
-boundaries. RESET clears presentation holds and, when the bus is unavailable,
-retries the same exact remembered source mapping. Source and master changes are
-smoothed; there are no pan, solo, aux, or per-input effect controls.
+On MTR, SOURCE-/SOURCE+ choose a source and LEVEL-/LEVEL+ change it in 1 dB
+steps. The same source-control position shows MUTE for Synth/Loop/Drums, MON ON
+for an unmonitored Input, or MON OFF for a monitored Input. Keyboard `m`, its
+controller item, and the visible pointer target invoke that same action. MON ON
+activates the input-only final bus when needed; it never starts an optional
+source. REC starts/stops the final stereo WAV at callback boundaries. RESET
+clears presentation holds and, when the bus is unavailable, retries the same
+exact remembered source mapping. Source and master changes are smoothed; there
+are no pan, solo, aux, or per-input effect controls.
 
 ## 18-channel input levels
 
-Audio Recorder **MONITOR** opens Levels. At native 40×13 all 18 inputs stay
+Audio Recorder **LEVELS** opens Levels. At native 40×13 all 18 inputs stay
 visible as three groups of six; selection never scrolls or banks them. Each
 nine-LED column is smoothed RMS at −48, −36, −30, −24, −18, −12, −6, −3, and
 −1 dBFS. Green covers −48 through −18, yellow −12 through −3, and red −1. A

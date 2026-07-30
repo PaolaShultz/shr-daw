@@ -117,7 +117,7 @@ during a take.
 
 ### The 18-channel Levels overview
 
-Audio Recorder **MONITOR** opens a separate overview whose purpose is level
+Audio Recorder **LEVELS** opens a separate overview whose purpose is level
 comparison, not track setup. At exactly 40×13, columns 1–20 hold all 18 meters
 as `6 + blank + 6 + blank + 6`. Rows 2–10 are the nine circular LEDs and rows
 11–12 hold compact channel labels. Columns 21–40 are a visible TAKE, CHANNEL,

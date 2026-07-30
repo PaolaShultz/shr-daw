@@ -219,7 +219,7 @@ separate below the two controller rows. It never starts or restarts JACK.
 ![Populated Audio recorder screen with the RECORD controller page](../images/menu/audio-recorder-record.png)
 
 `RECORD` starts all armed tracks at one callback boundary. `ARM` toggles the
-selected track. `MONITOR` opens the separate 18-channel Levels overview. An
+selected track. `LEVELS` opens the separate 18-channel Levels overview. An
 armed missing source prevents a take from starting.
 
 ### TRACK — choose the inputs
@@ -310,10 +310,11 @@ RMS/peak, route, or metadata detail panel.
 
 ## Performance meter
 
-With the final bus enabled, MTR selects the managed Synth, Loop, or exact Input
-source, controls its bounded level/mute, shows readiness and the post-limiter
+With the final bus active, MTR selects Synth, Loop, exact Input, or SHR Drums,
+controls its bounded level and one context-specific source action, shows
+readiness and the post-limiter
 true-peak final meter, opens the fixed MASTER STRIP, and controls final stereo
-recording. With the graph disabled it
+recording. With the graph inactive it
 keeps the CPU/legacy meter presentation without pretending that direct output
 is being measured. CPU is whole-core `/proc/stat` activity, not callback timing
 or xruns.
@@ -327,14 +328,18 @@ colour. No square bar or line-marker glyph represents level or peak.
 
 ![Populated performance meter with the OPS controller page](../images/menu/performance-meter-ops.png)
 
-`SOURCE-`/`SOURCE+` choose Synth, Loop, or Input. `LEVEL-`/`LEVEL+` change only
+`SOURCE-`/`SOURCE+` choose Synth, Loop, Input, or Drums. `LEVEL-`/`LEVEL+` change only
 that source's bounded final-bus level.
 
 ### MIX — mute, record, and holds
 
 ![Populated performance meter with the MIX controller page](../images/menu/performance-meter-mix.png)
 
-`MUTE` changes the selected source. `RECORD` toggles the callback-boundary final
+The first position is `MUTE` for Synth, Loop, and Drums. For Input it is
+`MON ON` while monitoring is off and `MON OFF` while monitoring is on; no
+second Input mute is shown. Controller, pointer, and keyboard `m` all invoke
+this same visible action. MON ON starts the owned final bus if needed without
+starting an optional source. `RECORD` toggles the callback-boundary final
 stereo recorder. `RESET` clears presentation peak/clip holds; it does not reset
 effects, CPU state, or transport.
 

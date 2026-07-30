@@ -14,6 +14,20 @@ scoped commit and verification evidence, and leave any remaining question or
 physical gate visible. This file is a work ledger, not a replacement for the
 focused documents that define current behavior.
 
+## 0.4.6 software-monitor repair
+
+The post-audit 0.4.6 repair gives MTR Input one visible MON ON/MON OFF action,
+defaulting off, and moves the final-bus owner out of the optional managed
+synth. Only exact Input and playback ports are required for MON ON. Synth,
+Loop, and drums remain optional and reconnect by owned links without duplicate
+playback. Audio Recorder LEVELS remains the unchanged non-audible 18-channel
+overview; raw stems remain pre-master, while MTR final recording receives the
+same post-master sample slice as playback. Deterministic source and test
+evidence covers activation, rollback, reconnection, sample identity,
+shutdown, and the native/controller/pointer/keyboard action. No new JACK,
+audible, or hardware acceptance is claimed. The required physical next step is
+to disable the AudioBox hardware direct monitor before MON ON.
+
 ## Rules for the next worker
 
 1. Read `AGENTS.md`, `docs/WORKSPACE_HANDOFF.md`, and this file completely.

@@ -1,6 +1,7 @@
 use crate::audio_graph::{
     EffectId, EffectKind, InsertRack, ProjectAuxRouting, SendPoint, MAX_AUX_BUSES,
 };
+use crate::audio_graph_client::FinalBusOwner;
 use crate::audio_recorder::{AudioRecorder, RecorderStatus, RecorderTrackStatus};
 use crate::chord::HeldNotes;
 use crate::config::{ExternalMidiConfig, RuntimeConfig};
@@ -711,6 +712,9 @@ struct App {
     home_offset: usize,
     screen: Screen,
     engine: Option<Engine>,
+    final_bus: FinalBusOwner,
+    input_monitoring: bool,
+    next_final_bus_source_scan: Instant,
     engine_owner: Option<EngineOwner>,
     tracker_engine_plan: Option<SoftwarePlaybackPlan>,
     engine_state: PathBuf,
@@ -718,6 +722,8 @@ struct App {
     tracker_engine_start_override: Option<std::result::Result<(), String>>,
     #[cfg(test)]
     engine_start_script: std::collections::VecDeque<std::result::Result<(), String>>,
+    #[cfg(test)]
+    final_bus_activation_override: Option<std::result::Result<(), String>>,
     playing: Option<Preset>,
     values: HashMap<u8, f32>,
     original_values: HashMap<u8, f32>,
@@ -1518,6 +1524,22 @@ where
     Ok(())
 }
 
+fn audio_graph_edit_blocker_for(
+    graph_active: bool,
+    recording_active: bool,
+    transport_active: bool,
+) -> Option<&'static str> {
+    if !graph_active {
+        None
+    } else if recording_active {
+        Some("STOP RECORDING · FX structure locked")
+    } else if transport_active {
+        Some("STOP TRANSPORT · FX structure locked")
+    } else {
+        None
+    }
+}
+
 impl App {
     // Keep construction dependencies explicit at the one application assembly
     // boundary; hiding them in another bag type would not simplify ownership.
@@ -1630,6 +1652,9 @@ impl App {
             home_offset: 0,
             screen: Screen::Home,
             engine: None,
+            final_bus: FinalBusOwner::default(),
+            input_monitoring: false,
+            next_final_bus_source_scan: Instant::now(),
             engine_owner: None,
             tracker_engine_plan: None,
             engine_state,
@@ -1637,6 +1662,8 @@ impl App {
             tracker_engine_start_override: Some(Ok(())),
             #[cfg(test)]
             engine_start_script: std::collections::VecDeque::new(),
+            #[cfg(test)]
+            final_bus_activation_override: Some(Ok(())),
             playing: None,
             values: HashMap::new(),
             original_values: HashMap::new(),
@@ -3831,12 +3858,19 @@ impl App {
                 fluid_parts,
             );
         }
+        let mut engine_config = self.config.clone();
+        if self.final_bus.active() {
+            // The application-owned final bus already owns playback. A newly
+            // arriving optional synth must not create a second direct path
+            // before the bus attaches its exact source ports.
+            engine_config.audio_autoconnect = false;
+        }
         if fluid_parts.is_empty() {
             Engine::start_with_routing(
                 preset,
                 state,
                 Arc::clone(&self.midi_output),
-                &self.config,
+                &engine_config,
                 &self.song.insert_rack,
                 &self.song.aux_routing,
                 &self.song.master_strip,
@@ -3847,7 +3881,7 @@ impl App {
                 fluid_parts,
                 state,
                 Arc::clone(&self.midi_output),
-                &self.config,
+                &engine_config,
                 &self.song.insert_rack,
                 &self.song.aux_routing,
                 &self.song.master_strip,
@@ -3868,6 +3902,7 @@ impl App {
         self.values = session.values;
         self.original_values = session.original_values;
         self.arm_pickup();
+        self.retry_final_bus();
     }
 
     fn replace_engine_process(
@@ -3907,12 +3942,6 @@ impl App {
         }
         let previous = self.engine_session();
         if let Some(engine) = self.engine.as_mut() {
-            if engine.final_recording_active() {
-                let _ = engine.stop_final_recording();
-                if let Some(status) = engine.final_recording_status() {
-                    self.final_recording_last = status;
-                }
-            }
             engine.panic();
         }
         drop(self.engine.take());
@@ -3934,6 +3963,7 @@ impl App {
                 self.engine_owner = Some(owner);
                 self.tracker_engine_plan = tracker_plan;
                 self.playing = Some(preset.clone());
+                self.retry_final_bus();
                 Ok(audio_route)
             }
             Err(start_error) => {
@@ -4135,11 +4165,7 @@ impl App {
             Some(RecordingOwner::Multitrack)
         } else if self.recorder.is_recording() {
             Some(RecordingOwner::Idea)
-        } else if self
-            .engine
-            .as_ref()
-            .is_some_and(Engine::final_recording_active)
-        {
+        } else if self.final_bus.recording_active() {
             Some(RecordingOwner::Final)
         } else {
             None
@@ -4157,13 +4183,9 @@ impl App {
             self.stop_recording();
         }
         if starting != RecordingOwner::Final {
-            if let Some(engine) = self.engine.as_mut() {
-                if engine.final_recording_active() {
-                    let _ = engine.stop_final_recording();
-                    if let Some(status) = engine.final_recording_status() {
-                        self.final_recording_last = status;
-                    }
-                }
+            if self.final_bus.recording_active() {
+                let _ = self.final_bus.stop_recording();
+                self.final_recording_last = self.final_bus.recording_status();
             }
         }
     }
@@ -4223,14 +4245,11 @@ impl App {
         self.audio_recorder.stop_monitoring();
         self.stop_recording();
         self.stop_playback();
-        if let Some(engine) = self.engine.as_mut() {
-            if engine.final_recording_active() {
-                let _ = engine.stop_final_recording();
-            }
-            if let Some(status) = engine.final_recording_status() {
-                self.final_recording_last = status;
-            }
+        if self.final_bus.recording_active() {
+            let _ = self.final_bus.stop_recording();
         }
+        self.final_recording_last = self.final_bus.recording_status();
+        self.final_bus.deactivate();
         self.engine.take();
         self.engine_owner = None;
         if let Some(drums) = self.drum_host.take() {
@@ -6185,9 +6204,6 @@ impl App {
             host.all_notes_off();
             drop(host);
         }
-        if self.config.audio_graph.enabled {
-            self.unload_owned_engine(|owner| matches!(owner, EngineOwner::Tracker(_)));
-        }
         let available = engine::jack_ports();
         let resolved = self.config.resolve_audio_route(&available);
         if resolved.outputs.len() != 2 {
@@ -6207,6 +6223,9 @@ impl App {
         self.config.drums.output_ports = Some(host.output_ports());
         self.song.drum_kit = kit_id.into();
         self.drum_host = Some(host);
+        if self.final_bus.active() {
+            self.retry_final_bus();
+        }
         Ok(())
     }
 
@@ -7542,8 +7561,8 @@ impl App {
     }
 
     fn suspend_final_bus(&mut self) {
-        if let Some(engine) = self.engine.as_mut() {
-            if let Err(_error) = engine.suspend_audio_graph() {
+        if let Some((_timing, restored)) = self.final_bus.deactivate() {
+            if restored.is_err() {
                 self.status = "FINAL BUS SUSPEND FAILED · retry".into();
             }
         }
@@ -7664,21 +7683,48 @@ impl App {
         self.status = format!("SLOT {} FILTER neutral", slot + 1);
     }
 
-    fn retry_final_bus(&mut self) {
-        let Some(engine) = self.engine.as_mut() else {
-            return;
-        };
-        match engine.retry_audio_graph(
+    fn retry_final_bus(&mut self) -> bool {
+        if !self.config.audio_graph.enabled && !self.input_monitoring {
+            return false;
+        }
+        #[cfg(test)]
+        if let Some(result) = self.final_bus_activation_override.as_ref() {
+            if let Err(error) = result {
+                self.audio_fallback = Some(format!("final bus unavailable · {error}"));
+                self.status = "FINAL BUS UNAVAILABLE · retry MIX".into();
+                return false;
+            }
+            return true;
+        }
+        let managed_client_name = self
+            .engine
+            .as_ref()
+            .and_then(Engine::managed_client_name)
+            .map(str::to_owned);
+        let loop_ports = self.loop_player.owned_output_ports();
+        let drum_ports = self
+            .drum_host
+            .as_ref()
+            .filter(|host| !host.lost())
+            .map(crate::drums_host::DrumHost::output_ports);
+        match self.final_bus.activate(
             &self.config,
+            managed_client_name.as_deref(),
+            loop_ports,
+            drum_ports,
             &self.song.insert_rack,
             &self.song.aux_routing,
             &self.song.master_strip,
+            self.input_monitoring,
         ) {
-            Ok(true) => {}
-            Ok(false) => {}
+            Ok(_) => {
+                self.audio_fallback = self.final_bus.fallback().map(str::to_owned);
+                true
+            }
             Err(error) => {
                 self.audio_fallback = Some(format!("final bus unavailable · {error:#}"));
                 self.status = "FINAL BUS UNAVAILABLE · retry MIX".into();
+                false
             }
         }
     }
@@ -7954,8 +8000,8 @@ impl App {
                 if update_runtime {
                     self.loop_meter
                         .set_audio_unavailable(AudioAvailability::Stopped);
-                    if let Some(engine) = self.engine.as_mut() {
-                        if let Err(_error) = engine.suspend_audio_graph() {
+                    if let Some((_timing, restored)) = self.final_bus.deactivate() {
+                        if restored.is_err() {
                             let _ = fs::remove_file(&path);
                             self.status = "FINAL BUS SUSPEND FAILED · retry".into();
                             return false;
@@ -9823,10 +9869,7 @@ impl App {
         if self.tracker_recording.is_some()
             || self.audio_recorder.status().recording
             || self.recorder.is_recording()
-            || self
-                .engine
-                .as_ref()
-                .is_some_and(Engine::final_recording_active)
+            || self.final_bus.recording_active()
         {
             TransportIndicator::Record
         } else if self.playback.is_some()
@@ -9845,11 +9888,7 @@ impl App {
     fn home_activity(&self) -> Option<&'static str> {
         if self.audio_recorder.status().recording {
             Some("● REC · RECORDER · raw multitrack")
-        } else if self
-            .engine
-            .as_ref()
-            .is_some_and(Engine::final_recording_active)
-        {
+        } else if self.final_bus.recording_active() {
             Some("● REC · PERFORMANCE · final stereo")
         } else if self.tracker_recording.is_some() {
             Some("● REC · FT2 · Pattern capture")
@@ -9869,26 +9908,16 @@ impl App {
     }
 
     fn audio_graph_edit_blocker(&self) -> Option<&'static str> {
-        if !self.config.audio_graph.enabled {
-            return None;
-        }
-        if self.audio_recorder.status().recording
-            || self.recorder.is_recording()
-            || self
-                .engine
-                .as_ref()
-                .is_some_and(Engine::final_recording_active)
-        {
-            return Some("STOP RECORDING · FX structure locked");
-        }
-        if self.playback.is_some()
-            || self.sequencer.status().playing
-            || self.loop_player.status().playing
-            || self.song_previewing
-        {
-            return Some("STOP TRANSPORT · FX structure locked");
-        }
-        None
+        audio_graph_edit_blocker_for(
+            self.final_bus.active(),
+            self.audio_recorder.status().recording
+                || self.recorder.is_recording()
+                || self.final_bus.recording_active(),
+            self.playback.is_some()
+                || self.sequencer.status().playing
+                || self.loop_player.status().playing
+                || self.song_previewing,
+        )
     }
 
     fn move_master_strip_selection(&mut self, direction: i8) {
@@ -9916,11 +9945,7 @@ impl App {
     }
 
     fn master_strip_edit_allowed(&mut self) -> bool {
-        if self
-            .engine
-            .as_ref()
-            .is_some_and(Engine::final_recording_active)
-        {
+        if self.final_bus.recording_active() {
             self.status = "FINAL RECORDING · MASTER STRIP edit rejected".into();
             false
         } else {
@@ -9940,8 +9965,8 @@ impl App {
             self.status = "MASTER STRIP value rejected".into();
             return;
         }
-        if let Some(engine) = self.engine.as_ref() {
-            match engine.apply_master_strip(&settings) {
+        if self.final_bus.active() {
+            match self.final_bus.apply_master_strip(&settings) {
                 Ok(true) => {}
                 Ok(false) => {
                     self.song.master_strip = settings;
@@ -10015,11 +10040,7 @@ impl App {
     }
 
     fn reset_master_strip_loudness(&mut self) {
-        if self
-            .engine
-            .as_ref()
-            .is_some_and(Engine::reset_master_strip_loudness)
-        {
+        if self.final_bus.reset_master_strip_loudness() {
             self.status = "LUFS-I reset".into();
         } else {
             self.status = "LUFS-I reset applies when final bus starts".into();
@@ -10203,7 +10224,7 @@ impl App {
     }
 
     fn adjust_bus_level(&mut self, direction: i8) {
-        let Some(controls) = self.engine.as_ref().and_then(Engine::bus_controls) else {
+        let Some(controls) = self.final_bus.controls() else {
             self.status = "FINAL BUS OFFLINE · load sources".into();
             return;
         };
@@ -10228,11 +10249,15 @@ impl App {
             self.status = "MASTER has level only · mute sources".into();
             return;
         }
-        let Some(controls) = self.engine.as_ref().and_then(Engine::bus_controls) else {
+        let source = BusSource::ALL[self.bus_selected];
+        if source == BusSource::Input {
+            self.toggle_input_monitoring();
+            return;
+        }
+        let Some(controls) = self.final_bus.controls() else {
             self.status = "final bus unavailable".into();
             return;
         };
-        let source = BusSource::ALL[self.bus_selected];
         let muted = !controls.source_muted(source);
         controls.set_source_muted(source, muted);
         self.status = if muted {
@@ -10242,24 +10267,57 @@ impl App {
         };
     }
 
+    fn toggle_input_monitoring(&mut self) {
+        if self.input_monitoring {
+            if self.final_bus.active() {
+                let _ = self.final_bus.set_input_monitoring(false);
+            }
+            self.input_monitoring = false;
+            self.status = "INPUT MON OFF".into();
+            return;
+        }
+        if self.config.audio_graph.input_direct_monitoring
+            && !self.config.audio_graph.confirm_doubled_monitoring
+        {
+            self.status = "MONITOR REFUSED · disable interface direct monitor".into();
+            return;
+        }
+        self.input_monitoring = true;
+        if self.retry_final_bus() {
+            if self.final_bus.active() {
+                if let Err(_error) = self.final_bus.set_input_monitoring(true) {
+                    self.input_monitoring = false;
+                    self.status = "MONITOR REFUSED · disable interface direct monitor".into();
+                    return;
+                }
+            }
+            self.status = "INPUT MON ON · post-master playback".into();
+        } else {
+            self.input_monitoring = false;
+            if self.final_bus.active() {
+                let _ = self.final_bus.set_input_monitoring(false);
+            }
+            if !self.status.contains("REFUSED") {
+                self.status = "INPUT MON FAILED · routes unchanged · retry".into();
+            }
+        }
+    }
+
     fn toggle_final_recording(&mut self) {
-        let Some(active) = self.engine.as_ref().map(Engine::final_recording_active) else {
+        if !self.final_bus.active() {
             self.status = "FINAL REC OFFLINE · retry MIX".into();
             return;
-        };
+        }
+        let active = self.final_bus.recording_active();
         if !active {
             self.finish_competing_recordings(RecordingOwner::Final);
         }
-        let engine = self
-            .engine
-            .as_mut()
-            .expect("final recording preflight retained the owned engine");
         let result = if active {
-            engine.stop_final_recording()
+            self.final_bus.stop_recording()
         } else {
-            engine.start_final_recording(None)
+            self.final_bus.start_recording(None)
         };
-        let final_status = engine.final_recording_status().unwrap_or_default();
+        let final_status = self.final_bus.recording_status();
         self.final_recording_last = final_status.clone();
         self.status = match result {
             Ok(()) if active => final_status.path.map_or_else(
@@ -10560,8 +10618,8 @@ impl App {
                 drop(host);
             }
         }
-        if let Some(engine) = self.engine.as_mut() {
-            match engine.publish_fx_routing(rack, aux_routing) {
+        if self.final_bus.active() {
+            match self.final_bus.publish_routing(rack, aux_routing) {
                 Ok(_) => {}
                 Err(_error) => {
                     return Err("FX NOT APPLIED · old graph kept".into());
@@ -10588,14 +10646,14 @@ impl App {
             host.all_notes_off();
             drop(host);
         }
-        let Some(engine) = self.engine.as_mut() else {
+        if !self.final_bus.active() {
             return Ok(());
-        };
-        match engine.apply_master_strip(strip) {
+        }
+        match self.final_bus.apply_master_strip(strip) {
             Ok(_) => Ok(()),
             Err(_error) => {
-                let rack_restored = engine.publish_fx_routing(&old_rack, &old_aux).is_ok();
-                let strip_restored = engine.apply_master_strip(&old_strip).is_ok();
+                let rack_restored = self.final_bus.publish_routing(&old_rack, &old_aux).is_ok();
+                let strip_restored = self.final_bus.apply_master_strip(&old_strip).is_ok();
                 if rack_restored && strip_restored {
                     Err("PROJECT AUDIO NOT APPLIED · old graph kept".into())
                 } else {
@@ -11712,6 +11770,26 @@ impl App {
         if let Some(session) = self.controller_learn.as_mut() {
             session.tick(now);
         }
+        if self.final_bus.active() && now >= self.next_final_bus_source_scan {
+            let managed_client_name = self
+                .engine
+                .as_ref()
+                .and_then(Engine::managed_client_name)
+                .map(str::to_owned);
+            let loop_ports = self.loop_player.owned_output_ports();
+            let drum_ports = self
+                .drum_host
+                .as_ref()
+                .filter(|host| !host.lost())
+                .map(crate::drums_host::DrumHost::output_ports);
+            if let Err(_error) =
+                self.final_bus
+                    .sync_sources(managed_client_name.as_deref(), loop_ports, drum_ports)
+            {
+                self.status = "OPTIONAL SOURCE ROUTE FAILED · retry".into();
+            }
+            self.next_final_bus_source_scan = now + Duration::from_secs(1);
+        }
         self.refresh_cpu_temperature(now);
         if !self.loop_meter.is_presentation() {
             if let Some(snapshot) = self.loop_player.meter_snapshot() {
@@ -11724,8 +11802,8 @@ impl App {
         if self.screen == Screen::Meter {
             self.performance_meter
                 .poll_cpu(now, Path::new("/proc/stat"));
-            if let Some(engine) = self.engine.as_ref() {
-                if let Some(meter) = engine.master_meter() {
+            if self.final_bus.active() {
+                if let Some(meter) = self.final_bus.master_meter() {
                     self.performance_meter.update_audio(meter.output, now);
                 } else {
                     self.performance_meter
@@ -11874,18 +11952,12 @@ impl App {
                 crate::ui_text::fit_middle(tracker.error.as_deref().unwrap_or("target"), 18)
             );
         }
-        if let Some(status) = self.engine.as_mut().and_then(Engine::poll_audio_graph) {
+        if let Some(status) = self.final_bus.poll() {
             self.performance_meter
                 .set_audio_unavailable(AudioAvailability::DirectUnavailable);
             self.status = status;
         }
-        if let Some(status) = self
-            .engine
-            .as_mut()
-            .and_then(Engine::final_recording_status)
-        {
-            self.final_recording_last = status;
-        }
+        self.final_recording_last = self.final_bus.recording_status();
         if self.engine.as_mut().is_some_and(|engine| !engine.alive()) {
             self.playback.take();
             self.engine.take();
@@ -13220,8 +13292,8 @@ fn perform(
         Action::ResetMeter => {
             a.performance_meter.clear_holds();
             a.status = "meter MAX, bright peak, and clip holds cleared".into();
-            if a.config.audio_graph.enabled
-                && a.engine.as_ref().and_then(Engine::bus_controls).is_none()
+            if (a.config.audio_graph.enabled || a.input_monitoring)
+                && a.final_bus.controls().is_none()
             {
                 a.retry_final_bus();
             }
@@ -14127,6 +14199,21 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 return false;
             }
             _ => {}
+        }
+    }
+    if a.screen == Screen::Meter {
+        let action = match code {
+            KeyCode::Left => Some(Action::BusSelectPrevious),
+            KeyCode::Right => Some(Action::BusSelectNext),
+            KeyCode::Char('-') => Some(Action::BusLevelDecrease),
+            KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::BusLevelIncrease),
+            KeyCode::Char('m') => Some(Action::BusMute),
+            KeyCode::Char('r') => Some(Action::FinalRecordToggle),
+            KeyCode::Char('x') => Some(Action::ResetMeter),
+            _ => None,
+        };
+        if let Some(action) = action {
+            return perform(action, a, state, Some(tx));
         }
     }
     if a.screen == Screen::MultichannelMonitor {
@@ -15161,7 +15248,7 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             inner_width,
         )));
     } else if a.fx_target == MASTER_FX_TARGET {
-        if let Some(meter) = a.engine.as_ref().and_then(Engine::master_meter) {
+        if let Some(meter) = a.final_bus.master_meter() {
             let peak = meter.output.peak.left.max(meter.output.peak.right);
             let rms = meter.output.rms.left.max(meter.output.rms.right);
             lines.push(Spans::from(crate::ui_text::fit_line(
@@ -15348,9 +15435,8 @@ fn draw_master_strip<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let width = usize::from(body.width.saturating_sub(2));
     let settings = &a.song.master_strip;
     let meter = a
-        .engine
-        .as_ref()
-        .and_then(Engine::final_bus_meter)
+        .final_bus
+        .meter()
         .or(a.master_strip_meter_preview)
         .unwrap_or_default();
     let title = crate::ui_text::label_value(
@@ -15883,11 +15969,9 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
     let width = usize::from(body.width.saturating_sub(2));
-    let controls = a.engine.as_ref().and_then(Engine::bus_controls);
-    let meter = a.engine.as_ref().and_then(Engine::final_bus_meter);
-    if let Some(recording) = a.engine.as_mut().and_then(Engine::final_recording_status) {
-        a.final_recording_last = recording;
-    }
+    let controls = a.final_bus.controls();
+    let meter = a.final_bus.meter();
+    a.final_recording_last = a.final_bus.recording_status();
     let recording = a.final_recording_last.clone();
     let active = controls.is_some() && meter.is_some();
     let input = a
@@ -15926,7 +16010,9 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             )
         });
         let selected = a.bus_selected == index;
-        let state = if muted {
+        let state = if source == BusSource::Input && !a.input_monitoring {
+            " · MON OFF"
+        } else if muted {
             " · MUTE"
         } else if !ready {
             " · OFFLINE"
@@ -16033,13 +16119,15 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             Color::White
         }),
     )));
-    if a.config.audio_graph.input_direct_monitoring {
+    if a.config.audio_graph.input_direct_monitoring
+        && (a.input_monitoring || a.bus_selected == BusSource::Input as usize)
+    {
         lines.push(Spans::from(Span::styled(
             truncate(
                 if a.config.audio_graph.confirm_doubled_monitoring {
                     "MONITOR · software + confirmed direct"
                 } else {
-                    "MONITOR REFUSED · doubled path"
+                    "MON REFUSED · disable direct monitor"
                 },
                 width,
             ),
@@ -16181,7 +16269,7 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         lines.push(Spans::from(values));
     }
     let meter = (!is_drum_fx_target(a.fx_target))
-        .then(|| a.engine.as_ref().and_then(|engine| engine.effect_meter(id)))
+        .then(|| a.final_bus.effect_meter(id))
         .flatten();
     let meter_line = if effect.kind == EffectKind::Compressor {
         let gain_reduction_db = if effect.bypass {
@@ -17624,7 +17712,19 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             continue;
         }
         let color = Color::Yellow;
-        let text = truncate(slot.label, usize::from(r.width.saturating_sub(3)));
+        let label = if slot.dispatch() == Some(Action::BusMute)
+            && a.bus_selected < crate::final_bus::SOURCE_COUNT
+            && BusSource::ALL[a.bus_selected] == BusSource::Input
+        {
+            if a.input_monitoring {
+                "MON OFF"
+            } else {
+                "MON ON"
+            }
+        } else {
+            slot.label
+        };
+        let text = truncate(label, usize::from(r.width.saturating_sub(3)));
         f.render_widget(
             Paragraph::new(format!("[{text}]"))
                 .alignment(Alignment::Center)
@@ -20078,6 +20178,8 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
             app.status.clear();
         }
         Screen::Meter => {
+            app.bus_selected = BusSource::Input as usize;
+            app.input_monitoring = false;
             app.performance_meter.seed_presentation(
                 [Some(18.0), Some(43.0), Some(67.0), Some(91.0)],
                 [
@@ -20093,7 +20195,7 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
                 [-2.7, -0.6],
                 Instant::now(),
             );
-            app.status = "passive meter · RESET clears held maxima".into();
+            app.status = "INPUT MON OFF · MON ON activates final bus".into();
         }
         _ => {}
     }
@@ -21420,7 +21522,7 @@ mod tests {
         a.open_overlay(Action::OpenRouteOverlay);
         let (tx, _rx) = mpsc::channel();
         dispatch_pad(
-            crate::pads::PadAction::Item1,
+            crate::pads::PadAction::Item2,
             true,
             &mut a,
             Path::new("/none"),
@@ -23774,6 +23876,139 @@ mod tests {
     }
 
     #[test]
+    fn input_monitor_defaults_off_and_owns_one_dynamic_mtr_control() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Meter;
+        a.bus_selected = BusSource::Input as usize;
+        a.select_menu_page(1);
+        assert!(!a.input_monitoring);
+        let pages = navigation::pages(Screen::Meter, MenuContext::Normal);
+        assert_eq!(
+            pages
+                .iter()
+                .flat_map(|page| page.slots)
+                .filter(|slot| slot.dispatch() == Some(Action::BusMute))
+                .count(),
+            1
+        );
+        let off = render_app(&mut a, 40, 13);
+        assert!(row_text(&off, 11).contains("[MON ON]"));
+        assert!(!buffer_text(&off).contains("[MUTE]"));
+
+        perform(Action::BusMute, &mut a, Path::new("/none"), None);
+        assert!(a.input_monitoring);
+        let on = render_app(&mut a, 40, 13);
+        assert!(row_text(&on, 11).contains("[MON OFF]"));
+        perform(Action::BusMute, &mut a, Path::new("/none"), None);
+        assert!(!a.input_monitoring);
+    }
+
+    #[test]
+    fn input_monitor_refuses_doubled_path_and_rolls_back_failed_activation() {
+        let p = presets();
+        let mut refused = app(&p);
+        refused.screen = Screen::Meter;
+        refused.bus_selected = BusSource::Input as usize;
+        refused.config.audio_graph.input_direct_monitoring = true;
+        refused.config.audio_graph.confirm_doubled_monitoring = false;
+        refused.toggle_bus_mute();
+        assert!(!refused.input_monitoring);
+        assert!(refused.status.contains("disable interface direct monitor"));
+
+        refused.config.audio_graph.confirm_doubled_monitoring = true;
+        refused.toggle_bus_mute();
+        assert!(refused.input_monitoring);
+
+        let mut failed = app(&p);
+        failed.screen = Screen::Meter;
+        failed.bus_selected = BusSource::Input as usize;
+        failed.final_bus_activation_override = Some(Err("injected route failure".into()));
+        failed.toggle_bus_mute();
+        assert!(!failed.input_monitoring);
+        assert!(!failed.final_bus.active());
+        assert!(failed.status.contains("routes unchanged"));
+    }
+
+    #[test]
+    fn input_monitor_pointer_controller_and_keyboard_share_the_visible_action() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+
+        let mut pointer = app(&p);
+        pointer.screen = Screen::Meter;
+        pointer.bus_selected = BusSource::Input as usize;
+        pointer.select_menu_page(1);
+        render_app(&mut pointer, 40, 13);
+        let area = pointer
+            .hits
+            .actions
+            .iter()
+            .find_map(|(area, action)| (*action == Action::BusMute).then_some(*area))
+            .unwrap();
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: area.x,
+                row: area.y,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut pointer,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(pointer.input_monitoring);
+
+        let mut controller = app(&p);
+        controller.screen = Screen::Meter;
+        controller.bus_selected = BusSource::Input as usize;
+        dispatch_pad(
+            crate::pads::PadAction::Page2,
+            true,
+            &mut controller,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_pad(
+            crate::pads::PadAction::Item1,
+            true,
+            &mut controller,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(controller.input_monitoring);
+
+        let mut keyboard = app(&p);
+        keyboard.screen = Screen::Meter;
+        keyboard.bus_selected = BusSource::Input as usize;
+        key(KeyCode::Char('m'), &mut keyboard, Path::new("/none"), &tx);
+        assert!(keyboard.input_monitoring);
+    }
+
+    #[test]
+    fn recorder_levels_label_opens_the_unchanged_eighteen_channel_overview() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::AudioRecorder;
+        let slot = navigation::slot(Screen::AudioRecorder, MenuContext::Normal, 0, 0).unwrap();
+        assert_eq!(slot.label, "LEVELS");
+        assert_eq!(slot.dispatch(), Some(Action::OpenMultichannelMonitor));
+        let selected = a.audio_track_selected;
+        perform(
+            Action::OpenMultichannelMonitor,
+            &mut a,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(a.screen, Screen::MultichannelMonitor);
+        assert_eq!(a.audio_track_selected, selected);
+        let buffer = render_app(&mut a, 40, 13);
+        assert_eq!(a.hits.monitor_channels.len(), 18);
+        assert!(buffer_text(&buffer).contains("01"));
+        assert!(buffer_text(&buffer).contains("18"));
+    }
+
+    #[test]
     fn native_recorder_reserves_source_integrity_and_result_rows() {
         let mut a = screenshot_app(RuntimeConfig::default());
         configure_screenshot_scenario(&mut a, ScreenshotScenario::AudioRecorder);
@@ -24178,15 +24413,16 @@ mod tests {
         a.config.audio_graph.enabled = true;
         a.recorder.start(Instant::now());
         assert_eq!(
-            a.audio_graph_edit_blocker(),
+            audio_graph_edit_blocker_for(true, true, false),
             Some("STOP RECORDING · FX structure locked")
         );
         a.recorder.stop(Instant::now());
         a.song_previewing = true;
         assert_eq!(
-            a.audio_graph_edit_blocker(),
+            audio_graph_edit_blocker_for(true, false, true),
             Some("STOP TRANSPORT · FX structure locked")
         );
+        assert_eq!(a.audio_graph_edit_blocker(), None);
     }
     #[test]
     fn renders_smaller_and_tiny_gracefully() {
@@ -25471,10 +25707,7 @@ mod tests {
         perform(Action::Down, &mut a, Path::new("/none"), None);
         assert_eq!(a.bus_selected, 1);
         perform(Action::Activate, &mut a, Path::new("/none"), None);
-        assert!(a
-            .engine
-            .as_ref()
-            .is_none_or(|engine| !engine.final_recording_active()));
+        assert!(!a.final_bus.recording_active());
     }
 
     #[test]
@@ -25541,7 +25774,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE", "N00B"] {
+        for label in ["PLAY", "SOUND", "SYS", "RESET", "IDEA+", "N00B", "SOUNDS"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
         for removed in ["NAV", "IDEAS", "PRESETS", "FT2", "AUDIO"] {
@@ -25550,7 +25783,7 @@ mod tests {
         assert!(!text.contains("PLY"));
         assert!(row_text(terminal.backend().buffer(), 12).starts_with('■'));
         assert_eq!(a.hits.menu_pages.len(), 3);
-        assert_eq!(a.hits.actions.len(), 3);
+        assert_eq!(a.hits.actions.len(), 4);
     }
 
     #[test]

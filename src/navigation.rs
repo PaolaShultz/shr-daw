@@ -1009,7 +1009,7 @@ const AUDIO: [MenuPage; 4] = [
     page(
         "RECORD",
         [
-            on("MONITOR", Action::OpenMultichannelMonitor),
+            on("LEVELS", Action::OpenMultichannelMonitor),
             off(""),
             on("RECORD", Action::AudioRecordToggle),
             on("ARM", Action::AudioToggleArm),
@@ -1646,6 +1646,7 @@ mod tests {
                         (screen, slot.dispatch()),
                         (Screen::MultichannelMonitor, Some(Action::OpenAudioRecorder))
                             | (Screen::AudioRecorder, Some(Action::OpenMultichannelMonitor))
+                            | (Screen::Playback, Some(Action::OpenPresets))
                     ) {
                         continue;
                     }

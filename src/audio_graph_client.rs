@@ -111,16 +111,58 @@ fn rollback(connections: &mut impl BoundaryConnections, applied: &[BoundaryChang
     first_error.map_or(Ok(()), Err)
 }
 
+fn sync_optional_if_available(
+    connections: &mut impl BoundaryConnections,
+    source: &OptionalSourceRoutes,
+    available_ports: &[String],
+) -> Result<bool> {
+    if !source
+        .ports
+        .iter()
+        .all(|port| available_ports.iter().any(|candidate| candidate == port))
+    {
+        return Ok(false);
+    }
+    apply_transaction(
+        connections,
+        &BoundaryRoutes::source_connection_changes(source),
+    )?;
+    Ok(true)
+}
+
 struct BoundaryRoutes {
-    direct: Vec<Connection>,
-    graph: Vec<Connection>,
+    required_graph: Vec<Connection>,
+    optional_sources: Vec<OptionalSourceRoutes>,
     destinations: [String; 2],
+    loop_destinations: [String; 2],
+    graph_inputs: [String; 8],
     live_source_ports: [String; 2],
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct OptionalSourceRoutes {
+    source: BusSource,
+    ports: [String; 2],
+    direct: [Connection; 2],
+    graph: [Connection; 2],
+}
+
 impl BoundaryRoutes {
+    #[cfg(test)]
     fn direct_connection_changes(&self) -> Vec<BoundaryChange> {
-        self.direct
+        self.optional_sources
+            .iter()
+            .flat_map(|source| source.direct.iter())
+            .cloned()
+            .map(|connection| BoundaryChange {
+                kind: ChangeKind::Connect,
+                connection,
+            })
+            .collect()
+    }
+
+    fn required_connection_changes(&self) -> Vec<BoundaryChange> {
+        self.required_graph
             .iter()
             .cloned()
             .map(|connection| BoundaryChange {
@@ -130,8 +172,9 @@ impl BoundaryRoutes {
             .collect()
     }
 
-    fn activation_changes(&self) -> Vec<BoundaryChange> {
-        self.graph
+    fn source_connection_changes(source: &OptionalSourceRoutes) -> Vec<BoundaryChange> {
+        source
+            .graph
             .iter()
             .cloned()
             .map(|connection| BoundaryChange {
@@ -139,7 +182,8 @@ impl BoundaryRoutes {
                 connection,
             })
             .chain(
-                self.direct
+                source
+                    .direct
                     .iter()
                     .cloned()
                     .map(|connection| BoundaryChange {
@@ -148,6 +192,18 @@ impl BoundaryRoutes {
                     }),
             )
             .collect()
+    }
+
+    fn source_routes(&self, source: BusSource) -> Option<&OptionalSourceRoutes> {
+        self.optional_sources
+            .iter()
+            .find(|routes| routes.source == source)
+    }
+
+    fn source_routes_mut(&mut self, source: BusSource) -> Option<&mut OptionalSourceRoutes> {
+        self.optional_sources
+            .iter_mut()
+            .find(|routes| routes.source == source)
     }
 }
 
@@ -162,6 +218,7 @@ struct CallbackData {
     armed: AtomicBool,
     client_lost: AtomicBool,
     source_lost: AtomicBool,
+    input_monitoring: AtomicBool,
     timing: CallbackTimingCounters,
     final_bus: FinalBusProcessor,
     final_capture: FinalMixCapture,
@@ -183,6 +240,22 @@ pub(crate) struct OwnedAudioGraph {
     monitoring: Monitoring,
 }
 
+pub(crate) struct FinalBusOwner {
+    graph: Option<OwnedAudioGraph>,
+    last_recording: FinalMixRecorderStatus,
+    fallback: Option<String>,
+}
+
+impl Default for FinalBusOwner {
+    fn default() -> Self {
+        Self {
+            graph: None,
+            last_recording: FinalMixRecorderStatus::default(),
+            fallback: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct EffectMeterSnapshot {
     pub input: MeterSnapshot,
@@ -196,12 +269,249 @@ pub(crate) struct AuxMeterSnapshot {
 }
 
 pub(crate) struct PerformanceBusPorts {
-    pub synth: [String; 2],
-    pub loop_player: [String; 2],
+    pub synth: Option<[String; 2]>,
+    pub loop_player: Option<[String; 2]>,
     pub drums: Option<[String; 2]>,
     pub live_input: [String; 2],
     pub playback: [String; 2],
     pub loop_direct_playback: [String; 2],
+}
+
+impl FinalBusOwner {
+    pub(crate) fn active(&self) -> bool {
+        self.graph.is_some()
+    }
+
+    pub(crate) fn fallback(&self) -> Option<&str> {
+        self.fallback.as_deref()
+    }
+
+    pub(crate) fn activate(
+        &mut self,
+        config: &crate::config::RuntimeConfig,
+        managed_client_name: Option<&str>,
+        loop_ports: Option<[String; 2]>,
+        drum_ports: Option<[String; 2]>,
+        rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
+        master_strip: &MasterStripSettings,
+        input_monitoring: bool,
+    ) -> Result<bool> {
+        if let Some(graph) = self.graph.as_mut() {
+            if input_monitoring {
+                let available = crate::engine::jack_ports();
+                if !graph.retry_required_connections(&available)? {
+                    bail!("configured final-bus input is offline; MON ON left monitoring off");
+                }
+            }
+            graph.set_input_monitoring(input_monitoring)?;
+            self.sync_sources(managed_client_name, loop_ports, drum_ports)?;
+            self.fallback = None;
+            return Ok(false);
+        }
+        let available = crate::engine::jack_ports();
+        let input = config
+            .audio_graph
+            .input
+            .as_ref()
+            .or_else(|| config.capture.inputs.first())
+            .context("final bus needs one configured stereo JACK input")?;
+        let live_input = [input.left_port.clone(), input.right_port.clone()];
+        for port in &live_input {
+            if !available.iter().any(|candidate| candidate == port) {
+                bail!(
+                    "configured final-bus input {port:?} is offline; no nearby JACK port is substituted"
+                );
+            }
+        }
+        let resolved_audio = config.resolve_audio_route(&available);
+        let playback: [String; 2] = resolved_audio
+            .outputs
+            .try_into()
+            .map_err(|_| anyhow!("owned graph requires exactly two configured main outputs"))?;
+        let loop_direct_playback: [String; 2] =
+            config.loop_player.outputs.clone().try_into().map_err(|_| {
+                anyhow!("final bus requires exactly two configured loop.output routes")
+            })?;
+        let synth = managed_client_name.and_then(|client_name| {
+            crate::engine::resolve_managed_audio_outputs(client_name, available.clone()).ok()
+        });
+        let graph = OwnedAudioGraph::start_with_routing(
+            &config.audio_graph,
+            PerformanceBusPorts {
+                synth,
+                loop_player: loop_ports,
+                drums: drum_ports,
+                live_input,
+                playback,
+                loop_direct_playback,
+            },
+            &config.capture,
+            rack,
+            aux_routing,
+            master_strip,
+            input_monitoring,
+            &available,
+        )?;
+        self.graph = Some(graph);
+        self.fallback = resolved_audio.notice;
+        Ok(true)
+    }
+
+    pub(crate) fn sync_sources(
+        &mut self,
+        managed_client_name: Option<&str>,
+        loop_ports: Option<[String; 2]>,
+        drum_ports: Option<[String; 2]>,
+    ) -> Result<()> {
+        let Some(graph) = self.graph.as_mut() else {
+            return Ok(());
+        };
+        let available = crate::engine::jack_ports();
+        let synth = managed_client_name.and_then(|client_name| {
+            crate::engine::resolve_managed_audio_outputs(client_name, available.clone()).ok()
+        });
+        graph.sync_optional_source(BusSource::Synth, synth, &available)?;
+        graph.sync_optional_source(BusSource::Loop, loop_ports, &available)?;
+        graph.sync_optional_source(BusSource::Drums, drum_ports, &available)?;
+        Ok(())
+    }
+
+    pub(crate) fn set_input_monitoring(&mut self, enabled: bool) -> Result<()> {
+        self.graph
+            .as_mut()
+            .context("final bus is inactive")?
+            .set_input_monitoring(enabled)
+    }
+
+    pub(crate) fn effect_meter(&self, effect_id: u32) -> Option<EffectMeterSnapshot> {
+        self.graph.as_ref()?.effect_meter(effect_id)
+    }
+
+    pub(crate) fn master_meter(&self) -> Option<AuxMeterSnapshot> {
+        self.graph.as_ref()?.master_meter()
+    }
+
+    pub(crate) fn meter(&self) -> Option<FinalBusMeterSnapshot> {
+        Some(self.graph.as_ref()?.final_bus_meter())
+    }
+
+    pub(crate) fn controls(&self) -> Option<std::sync::Arc<BusControls>> {
+        Some(self.graph.as_ref()?.bus_controls())
+    }
+
+    pub(crate) fn apply_master_strip(&self, settings: &MasterStripSettings) -> Result<bool> {
+        let Some(graph) = self.graph.as_ref() else {
+            return Ok(false);
+        };
+        graph
+            .master_strip_controls()
+            .apply(settings)
+            .map_err(anyhow::Error::msg)?;
+        Ok(true)
+    }
+
+    pub(crate) fn reset_master_strip_loudness(&self) -> bool {
+        let Some(graph) = self.graph.as_ref() else {
+            return false;
+        };
+        graph.master_strip_controls().reset_loudness();
+        true
+    }
+
+    pub(crate) fn publish_routing(
+        &mut self,
+        rack: &InsertRack,
+        aux_routing: &ProjectAuxRouting,
+    ) -> Result<bool> {
+        let Some(graph) = self.graph.as_mut() else {
+            return Ok(false);
+        };
+        graph.publish_routing(rack, aux_routing)?;
+        Ok(true)
+    }
+
+    pub(crate) fn recording_status(&mut self) -> FinalMixRecorderStatus {
+        if let Some(graph) = self.graph.as_mut() {
+            self.last_recording = graph.final_recording_status();
+        }
+        self.last_recording.clone()
+    }
+
+    pub(crate) fn recording_active(&self) -> bool {
+        self.graph
+            .as_ref()
+            .is_some_and(OwnedAudioGraph::final_recording_active)
+    }
+
+    pub(crate) fn start_recording(&mut self, name: Option<&str>) -> Result<()> {
+        let graph = self
+            .graph
+            .as_mut()
+            .context("final mix unavailable · owned graph is inactive")?;
+        graph.start_final_recording(name)?;
+        self.last_recording = graph.final_recording_status();
+        Ok(())
+    }
+
+    pub(crate) fn stop_recording(&mut self) -> Result<()> {
+        let graph = self
+            .graph
+            .as_mut()
+            .context("final mix unavailable · owned graph is inactive")?;
+        let result = graph.stop_final_recording();
+        self.last_recording = graph.final_recording_status();
+        result
+    }
+
+    pub(crate) fn sample_rate(&self) -> Option<u32> {
+        self.graph.as_ref().map(OwnedAudioGraph::sample_rate)
+    }
+
+    pub(crate) fn poll(&mut self) -> Option<String> {
+        if self
+            .graph
+            .as_ref()
+            .is_some_and(OwnedAudioGraph::client_lost)
+        {
+            let (_, restored) = self.deactivate()?;
+            let message = match restored {
+                Ok(()) => "AUDIO GRAPH LOST · exact direct routes restored".to_owned(),
+                Err(error) => {
+                    format!("AUDIO GRAPH LOST · direct restore unavailable: {error:#}")
+                }
+            };
+            self.fallback = Some(message.clone());
+            return Some(message);
+        }
+        if self
+            .graph
+            .as_ref()
+            .is_some_and(OwnedAudioGraph::source_lost)
+        {
+            let available = crate::engine::jack_ports();
+            return match self
+                .graph
+                .as_mut()
+                .expect("source-loss check retained graph")
+                .retry_required_connections(&available)
+            {
+                Ok(true) => Some("INPUT MONITOR RESTORED".into()),
+                Ok(false) => Some("INPUT OFFLINE · reconnect configured capture".into()),
+                Err(error) => Some(format!("INPUT MONITOR RETRY FAILED · {error:#}")),
+            };
+        }
+        None
+    }
+
+    pub(crate) fn deactivate(&mut self) -> Option<(CallbackTimingSnapshot, Result<()>)> {
+        let mut graph = self.graph.take()?;
+        let restored = graph.restore_direct();
+        self.last_recording = graph.final_recording_status();
+        let timing = graph.timing();
+        drop(graph);
+        Some((timing, restored))
+    }
 }
 
 impl OwnedAudioGraph {
@@ -216,6 +526,8 @@ impl OwnedAudioGraph {
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
         master_strip: &MasterStripSettings,
+        input_monitoring: bool,
+        available_ports: &[String],
     ) -> Result<Self> {
         let PerformanceBusPorts {
             synth: source_ports,
@@ -225,15 +537,20 @@ impl OwnedAudioGraph {
             playback: destinations,
             loop_direct_playback: loop_destinations,
         } = ports;
-        validate_stereo_boundary(&source_ports, "managed-engine source")?;
-        validate_stereo_boundary(&loop_source_ports, "owned WAV loop source")?;
+        if let Some(ports) = source_ports.as_ref() {
+            validate_stereo_boundary(ports, "managed-engine source")?;
+        }
+        if let Some(ports) = loop_source_ports.as_ref() {
+            validate_stereo_boundary(ports, "owned WAV loop source")?;
+        }
         if let Some(ports) = drum_source_ports.as_ref() {
             validate_stereo_boundary(ports, "SHR Drums source")?;
         }
         validate_stereo_boundary(&live_source_ports, "configured stereo input")?;
         validate_stereo_boundary(&destinations, "main output")?;
         validate_stereo_boundary(&loop_destinations, "loop direct output")?;
-        if config.input_direct_monitoring && !config.confirm_doubled_monitoring {
+        if input_monitoring && config.input_direct_monitoring && !config.confirm_doubled_monitoring
+        {
             bail!("configured stereo input has interface direct monitoring enabled; confirm the deliberate doubled monitoring path or disable direct monitoring before software monitoring");
         }
 
@@ -244,7 +561,7 @@ impl OwnedAudioGraph {
         }
         let monitoring = Monitoring {
             direct: config.input_direct_monitoring,
-            software: true,
+            software: input_monitoring,
             doubled_path_confirmed: config.confirm_doubled_monitoring,
         };
         let definition = managed_graph_definition(
@@ -292,35 +609,46 @@ impl OwnedAudioGraph {
             jack.port_name_string(output_left)?,
             jack.port_name_string(output_right)?,
         ];
-        let mut direct = vec![
-            connection(&source_ports[0], &destinations[0]),
-            connection(&source_ports[1], &destinations[1]),
-            connection(&loop_source_ports[0], &loop_destinations[0]),
-            connection(&loop_source_ports[1], &loop_destinations[1]),
-        ];
-        let mut graph = vec![
-            connection(&source_ports[0], &graph_port_names[0]),
-            connection(&source_ports[1], &graph_port_names[1]),
-            connection(&loop_source_ports[0], &graph_port_names[2]),
-            connection(&loop_source_ports[1], &graph_port_names[3]),
+        let required_graph = vec![
             connection(&live_source_ports[0], &graph_port_names[4]),
             connection(&live_source_ports[1], &graph_port_names[5]),
+            connection(&graph_port_names[8], &destinations[0]),
+            connection(&graph_port_names[9], &destinations[1]),
         ];
-        if let Some(drums) = drum_source_ports {
-            direct.push(connection(&drums[0], &destinations[0]));
-            direct.push(connection(&drums[1], &destinations[1]));
-            graph.push(connection(&drums[0], &graph_port_names[6]));
-            graph.push(connection(&drums[1], &graph_port_names[7]));
+        let mut optional_sources = Vec::new();
+        if let Some(source_ports) = source_ports {
+            optional_sources.push(optional_source_routes(
+                BusSource::Synth,
+                source_ports,
+                &destinations,
+                [&graph_port_names[0], &graph_port_names[1]],
+            ));
         }
-        graph.push(connection(&graph_port_names[8], &destinations[0]));
-        graph.push(connection(&graph_port_names[9], &destinations[1]));
+        if let Some(loop_source_ports) = loop_source_ports {
+            optional_sources.push(optional_source_routes(
+                BusSource::Loop,
+                loop_source_ports,
+                &loop_destinations,
+                [&graph_port_names[2], &graph_port_names[3]],
+            ));
+        }
+        if let Some(drums) = drum_source_ports {
+            optional_sources.push(optional_source_routes(
+                BusSource::Drums,
+                drums,
+                &destinations,
+                [&graph_port_names[6], &graph_port_names[7]],
+            ));
+        }
         let routes = BoundaryRoutes {
-            direct,
-            graph,
+            required_graph,
+            optional_sources,
             destinations: destinations.clone(),
+            loop_destinations: loop_destinations.clone(),
+            graph_inputs: std::array::from_fn(|index| graph_port_names[index].clone()),
             live_source_ports: live_source_ports.clone(),
         };
-        let controls = std::sync::Arc::new(BusControls::default());
+        let controls = initial_bus_controls(input_monitoring);
         let strip_controls = std::sync::Arc::new(
             MasterStripControls::new(sample_rate, master_strip)
                 .map_err(anyhow::Error::msg)
@@ -354,6 +682,7 @@ impl OwnedAudioGraph {
             armed: AtomicBool::new(false),
             client_lost: AtomicBool::new(false),
             source_lost: AtomicBool::new(false),
+            input_monitoring: AtomicBool::new(input_monitoring),
             timing: CallbackTimingCounters::default(),
             final_bus,
             final_capture,
@@ -371,13 +700,15 @@ impl OwnedAudioGraph {
         jack.activate().context("activate owned audio graph")?;
         // Re-establish the conservative route through JACK's checked API even
         // if the legacy jack_connect helper was unavailable or raced startup.
-        if let Err(error) = apply_transaction(&mut jack, &routes.direct_connection_changes()) {
-            jack.deactivate();
-            return Err(error.context("establish direct fallback before graph routing"));
-        }
-        if let Err(error) = apply_transaction(&mut jack, &routes.activation_changes()) {
+        if let Err(error) = apply_transaction(&mut jack, &routes.required_connection_changes()) {
             jack.deactivate();
             return Err(error.context("activate owned graph boundary"));
+        }
+        for source in &routes.optional_sources {
+            if let Err(error) = sync_optional_if_available(&mut jack, source, available_ports) {
+                jack.deactivate();
+                return Err(error.context("activate optional final-bus source boundary"));
+            }
         }
         // The callback samples this once per block. All graph connections are
         // ready and every owned direct source link is gone before output is
@@ -395,9 +726,81 @@ impl OwnedAudioGraph {
         })
     }
 
+    pub(crate) fn set_input_monitoring(&mut self, enabled: bool) -> Result<()> {
+        if enabled && self.monitoring.direct && !self.monitoring.doubled_path_confirmed {
+            bail!("interface direct monitor is declared active; disable it before SHR software monitoring or deliberately confirm the doubled path");
+        }
+        self.monitoring.software = enabled;
+        self.callback
+            .input_monitoring
+            .store(enabled, Ordering::Release);
+        self.controls.set_source_muted(BusSource::Input, !enabled);
+        Ok(())
+    }
+
+    pub(crate) fn sync_optional_source(
+        &mut self,
+        source: BusSource,
+        ports: Option<[String; 2]>,
+        available_ports: &[String],
+    ) -> Result<()> {
+        if source == BusSource::Input {
+            bail!("Input is the required final-bus source, not an optional source");
+        }
+        if let Some(ports) = ports {
+            validate_stereo_boundary(&ports, source.label())?;
+            let destinations = if source == BusSource::Loop {
+                self.routes.loop_destinations.clone()
+            } else {
+                self.routes.destinations.clone()
+            };
+            let input_indices = match source {
+                BusSource::Synth => [0, 1],
+                BusSource::Loop => [2, 3],
+                BusSource::Drums => [6, 7],
+                BusSource::Input => unreachable!(),
+            };
+            let graph_inputs = [
+                self.routes.graph_inputs[input_indices[0]].as_str(),
+                self.routes.graph_inputs[input_indices[1]].as_str(),
+            ];
+            let replacement = optional_source_routes(source, ports, &destinations, graph_inputs);
+            if let Some(existing) = self.routes.source_routes_mut(source) {
+                if existing.ports != replacement.ports {
+                    *existing = replacement;
+                }
+            } else {
+                self.routes.optional_sources.push(replacement);
+            }
+        }
+        let Some(routes) = self.routes.source_routes(source).cloned() else {
+            return Ok(());
+        };
+        sync_optional_if_available(&mut self.jack, &routes, available_ports)
+            .with_context(|| format!("connect optional {} source", source.label()))?;
+        Ok(())
+    }
+
+    pub(crate) fn retry_required_connections(
+        &mut self,
+        available_ports: &[String],
+    ) -> Result<bool> {
+        if !self
+            .routes
+            .live_source_ports
+            .iter()
+            .all(|port| available_ports.iter().any(|candidate| candidate == port))
+        {
+            return Ok(false);
+        }
+        apply_transaction(&mut self.jack, &self.routes.required_connection_changes())
+            .context("restore exact Input monitoring boundary")?;
+        self.callback.source_lost.store(false, Ordering::Release);
+        Ok(true)
+    }
+
     pub(crate) fn client_lost(&self) -> bool {
         self.callback.client_lost.load(Ordering::Acquire)
-            || self.callback.source_lost.load(Ordering::Acquire)
     }
 
     pub(crate) fn source_lost(&self) -> bool {
@@ -488,16 +891,24 @@ impl OwnedAudioGraph {
             let _ = self.restore_direct();
             return Err(error.context("reactivate audio graph after rack publication"));
         }
-        if let Err(error) = apply_transaction(&mut self.jack, &self.routes.activation_changes()) {
+        if let Err(error) =
+            apply_transaction(&mut self.jack, &self.routes.required_connection_changes())
+        {
             let _ = self.restore_direct();
             return Err(error.context("restore audio graph boundary after rack publication"));
+        }
+        for routes in self.routes.optional_sources.clone() {
+            let _ = apply_transaction(
+                &mut self.jack,
+                &BoundaryRoutes::source_connection_changes(&routes),
+            );
         }
         self.callback.armed.store(true, Ordering::Release);
         Ok(())
     }
 
-    /// Restore all four exact synth/loop direct links best-effort. This runs only on the
-    /// non-real-time owner thread, including client-loss recovery.
+    /// Restore available optional-source direct links best-effort. This runs
+    /// only on the non-real-time owner thread, including client-loss recovery.
     pub(crate) fn restore_direct(&mut self) -> Result<()> {
         self.callback.armed.store(false, Ordering::Release);
         // Join the callback before creating either direct link. A callback
@@ -506,12 +917,23 @@ impl OwnedAudioGraph {
         self.jack.deactivate();
         let recorder_result = self.final_recorder.stop_after_deactivate();
         let mut first_error = None;
-        for connection in &self.routes.direct {
-            if let Err(error) = self
-                .jack
-                .ensure_connection(&connection.source, &connection.destination)
-            {
-                first_error.get_or_insert(error);
+        let available_ports = crate::engine::jack_ports();
+        for source in &self.routes.optional_sources {
+            for connection in &source.direct {
+                if let Err(error) = self
+                    .jack
+                    .ensure_connection(&connection.source, &connection.destination)
+                {
+                    // Optional sources may have disappeared. Their absent
+                    // ports are silence, not a shutdown failure.
+                    if source
+                        .ports
+                        .iter()
+                        .all(|port| available_ports.iter().any(|candidate| candidate == port))
+                    {
+                        first_error.get_or_insert(error);
+                    }
+                }
             }
         }
         if let Err(error) = recorder_result {
@@ -533,6 +955,32 @@ fn connection(source: &str, destination: &str) -> Connection {
         source: source.into(),
         destination: destination.into(),
     }
+}
+
+fn optional_source_routes(
+    source: BusSource,
+    ports: [String; 2],
+    destinations: &[String; 2],
+    graph_inputs: [&str; 2],
+) -> OptionalSourceRoutes {
+    OptionalSourceRoutes {
+        source,
+        direct: [
+            connection(&ports[0], &destinations[0]),
+            connection(&ports[1], &destinations[1]),
+        ],
+        graph: [
+            connection(&ports[0], graph_inputs[0]),
+            connection(&ports[1], graph_inputs[1]),
+        ],
+        ports,
+    }
+}
+
+fn initial_bus_controls(input_monitoring: bool) -> std::sync::Arc<BusControls> {
+    let controls = std::sync::Arc::new(BusControls::default());
+    controls.set_source_muted(BusSource::Input, !input_monitoring);
+    controls
 }
 
 fn validate_stereo_boundary(ports: &[String; 2], description: &str) -> Result<()> {
@@ -912,8 +1360,8 @@ unsafe extern "C" fn port_connect_callback(
     }
     let callback = unsafe { &*argument.cast::<CallbackData>() };
     if callback.armed.load(Ordering::Acquire)
-        && callback
-            .input_port_ids
+        && callback.input_monitoring.load(Ordering::Acquire)
+        && callback.input_port_ids[4..=5]
             .iter()
             .any(|port| *port == first || *port == second)
     {
@@ -940,6 +1388,7 @@ mod tests {
     use super::*;
     use crate::dsp::allocation_test::assert_no_allocations;
     use std::collections::BTreeSet;
+    use std::path::PathBuf;
 
     #[derive(Default)]
     struct MockConnections {
@@ -974,24 +1423,41 @@ mod tests {
     }
 
     fn routes() -> BoundaryRoutes {
+        let graph_inputs = [
+            "graph:in_l",
+            "graph:in_r",
+            "graph:loop_l",
+            "graph:loop_r",
+            "graph:input_l",
+            "graph:input_r",
+            "graph:drums_l",
+            "graph:drums_r",
+        ]
+        .map(str::to_owned);
         BoundaryRoutes {
-            direct: vec![
-                connection("engine:l", "main:l"),
-                connection("engine:r", "main:r"),
-                connection("loop:l", "loop-playback:l"),
-                connection("loop:r", "loop-playback:r"),
-            ],
-            graph: vec![
-                connection("engine:l", "graph:in_l"),
-                connection("engine:r", "graph:in_r"),
-                connection("loop:l", "graph:loop_l"),
-                connection("loop:r", "graph:loop_r"),
+            required_graph: vec![
                 connection("capture:l", "graph:input_l"),
                 connection("capture:r", "graph:input_r"),
                 connection("graph:out_l", "main:l"),
                 connection("graph:out_r", "main:r"),
             ],
+            optional_sources: vec![
+                optional_source_routes(
+                    BusSource::Synth,
+                    ["engine:l".into(), "engine:r".into()],
+                    &["main:l".into(), "main:r".into()],
+                    ["graph:in_l", "graph:in_r"],
+                ),
+                optional_source_routes(
+                    BusSource::Loop,
+                    ["loop:l".into(), "loop:r".into()],
+                    &["loop-playback:l".into(), "loop-playback:r".into()],
+                    ["graph:loop_l", "graph:loop_r"],
+                ),
+            ],
             destinations: ["main:l".into(), "main:r".into()],
+            loop_destinations: ["loop-playback:l".into(), "loop-playback:r".into()],
+            graph_inputs,
             live_source_ports: ["capture:l".into(), "capture:r".into()],
         }
     }
@@ -1009,23 +1475,31 @@ mod tests {
     }
 
     fn callback(maximum_frames: u32) -> CallbackData {
+        callback_with_recorder(maximum_frames, std::env::temp_dir(), true).0
+    }
+
+    fn callback_with_recorder(
+        maximum_frames: u32,
+        directory: PathBuf,
+        input_monitoring: bool,
+    ) -> (CallbackData, FinalMixRecorder, std::sync::Arc<BusControls>) {
         let destinations = ["main:l".to_owned(), "main:r".to_owned()];
         let controls = std::sync::Arc::new(BusControls::default());
         for source in BusSource::ALL {
             assert!(controls.set_source_gain_db(source, 0.0));
         }
+        controls.set_source_muted(BusSource::Input, !input_monitoring);
         let meters = std::sync::Arc::new(FinalBusMeters::default());
         let strip_controls = std::sync::Arc::new(
             MasterStripControls::new(48_000, &MasterStripSettings::default()).unwrap(),
         );
         let recorder =
-            FinalMixRecorder::new(std::env::temp_dir(), 48_000, 4096, maximum_frames as usize)
-                .unwrap();
-        CallbackData {
+            FinalMixRecorder::new(directory, 48_000, 4096, maximum_frames as usize).unwrap();
+        let callback = CallbackData {
             plan: GraphPlan::compile(&dry_graph_definition(48_000, maximum_frames, &destinations))
                 .unwrap(),
             inputs: [std::ptr::null_mut(); 8],
-            input_port_ids: [0; 8],
+            input_port_ids: [10, 11, 12, 13, 14, 15, 16, 17],
             output_left: std::ptr::null_mut(),
             output_right: std::ptr::null_mut(),
             port_get_buffer: dummy_get_buffer,
@@ -1033,18 +1507,20 @@ mod tests {
             armed: AtomicBool::new(false),
             client_lost: AtomicBool::new(false),
             source_lost: AtomicBool::new(false),
+            input_monitoring: AtomicBool::new(input_monitoring),
             timing: CallbackTimingCounters::default(),
             final_bus: FinalBusProcessor::new(
                 48_000,
                 maximum_frames as usize,
-                controls,
+                std::sync::Arc::clone(&controls),
                 strip_controls,
                 meters,
             )
             .unwrap(),
             final_capture: recorder.capture_handle(),
             final_buffer: vec![StereoFrame::SILENCE; maximum_frames as usize].into_boxed_slice(),
-        }
+        };
+        (callback, recorder, controls)
     }
 
     unsafe extern "C" fn dummy_get_buffer(_: *mut JackPort, _: c_uint) -> *mut c_void {
@@ -1222,8 +1698,12 @@ mod tests {
         let mut connections = MockConnections::default();
         apply_transaction(&mut connections, &routes.direct_connection_changes()).unwrap();
         let direct = connections.connected.clone();
-        connections.fail_at = Some(10);
-        assert!(apply_transaction(&mut connections, &routes.activation_changes()).is_err());
+        connections.fail_at = Some(connections.operations + 3);
+        assert!(apply_transaction(
+            &mut connections,
+            &BoundaryRoutes::source_connection_changes(&routes.optional_sources[0])
+        )
+        .is_err());
         assert_eq!(connections.connected, direct);
     }
 
@@ -1234,22 +1714,211 @@ mod tests {
         connections
             .connected
             .insert(("unrelated:out".into(), "unrelated:in".into()));
-        for direct in &routes.direct {
-            connections
-                .connected
-                .insert((direct.source.clone(), direct.destination.clone()));
+        apply_transaction(&mut connections, &routes.direct_connection_changes()).unwrap();
+        apply_transaction(&mut connections, &routes.required_connection_changes()).unwrap();
+        for source in &routes.optional_sources {
+            apply_transaction(
+                &mut connections,
+                &BoundaryRoutes::source_connection_changes(source),
+            )
+            .unwrap();
         }
-        apply_transaction(&mut connections, &routes.activation_changes()).unwrap();
         let expected = routes
-            .graph
+            .required_graph
             .iter()
             .map(|route| (route.source.clone(), route.destination.clone()))
+            .chain(routes.optional_sources.iter().flat_map(|source| {
+                source
+                    .graph
+                    .iter()
+                    .map(|route| (route.source.clone(), route.destination.clone()))
+            }))
             .chain(std::iter::once((
                 "unrelated:out".into(),
                 "unrelated:in".into(),
             )))
             .collect();
         assert_eq!(connections.connected, expected);
+    }
+
+    #[test]
+    fn owner_shutdown_restores_only_owned_optional_routes() {
+        let routes = routes();
+        let unrelated = ("unrelated:out".to_owned(), "unrelated:in".to_owned());
+        let mut connections = MockConnections::default();
+        connections.connected.insert(unrelated.clone());
+        apply_transaction(&mut connections, &routes.required_connection_changes()).unwrap();
+        for source in &routes.optional_sources {
+            apply_transaction(
+                &mut connections,
+                &BoundaryRoutes::source_connection_changes(source),
+            )
+            .unwrap();
+        }
+
+        // Closing the owned JACK client releases only graph-port boundaries.
+        connections.connected.retain(|(source, destination)| {
+            !source.starts_with("graph:") && !destination.starts_with("graph:")
+        });
+        apply_transaction(&mut connections, &routes.direct_connection_changes()).unwrap();
+
+        let expected = routes
+            .optional_sources
+            .iter()
+            .flat_map(|source| source.direct.iter())
+            .map(|route| (route.source.clone(), route.destination.clone()))
+            .chain(std::iter::once(unrelated))
+            .collect();
+        assert_eq!(connections.connected, expected);
+    }
+
+    #[test]
+    fn input_only_activation_requires_only_exact_input_and_output_routes() {
+        let routes = routes();
+        let mut connections = MockConnections::default();
+        apply_transaction(&mut connections, &routes.required_connection_changes()).unwrap();
+        assert_eq!(
+            connections.connected,
+            routes
+                .required_graph
+                .iter()
+                .map(|route| (route.source.clone(), route.destination.clone()))
+                .collect()
+        );
+        assert!(!connections
+            .connected
+            .iter()
+            .any(|(source, _)| source.starts_with("engine:") || source.starts_with("loop:")));
+    }
+
+    #[test]
+    fn optional_sources_can_arrive_disappear_and_reconnect_without_duplicates() {
+        let routes = routes();
+        let source = &routes.optional_sources[0];
+        let mut connections = MockConnections::default();
+        apply_transaction(&mut connections, &routes.direct_connection_changes()).unwrap();
+        let without_source = vec!["capture:l".into(), "capture:r".into()];
+        assert!(!sync_optional_if_available(&mut connections, source, &without_source).unwrap());
+        let direct = connections.connected.clone();
+
+        let present = vec![source.ports[0].clone(), source.ports[1].clone()];
+        assert!(sync_optional_if_available(&mut connections, source, &present).unwrap());
+        assert!(source.graph.iter().all(|route| connections
+            .connected
+            .contains(&(route.source.clone(), route.destination.clone()))));
+        assert!(source.direct.iter().all(|route| !connections
+            .connected
+            .contains(&(route.source.clone(), route.destination.clone()))));
+
+        for route in &source.graph {
+            connections
+                .connected
+                .remove(&(route.source.clone(), route.destination.clone()));
+        }
+        assert!(!sync_optional_if_available(&mut connections, source, &without_source).unwrap());
+        assert!(sync_optional_if_available(&mut connections, source, &present).unwrap());
+        let after_reconnect = connections.connected.clone();
+        assert!(sync_optional_if_available(&mut connections, source, &present).unwrap());
+        assert_eq!(connections.connected, after_reconnect);
+        assert_ne!(connections.connected, direct);
+    }
+
+    #[test]
+    fn input_monitor_controls_default_off_and_only_deliberate_enable_unmutes() {
+        let controls = initial_bus_controls(false);
+        assert!(controls.source_muted(BusSource::Input));
+        assert!(!controls.source_muted(BusSource::Synth));
+        let confirmed = initial_bus_controls(true);
+        assert!(!confirmed.source_muted(BusSource::Input));
+    }
+
+    #[test]
+    fn input_monitor_gate_and_final_wav_are_identical_to_post_master_playback() {
+        let directory =
+            std::env::temp_dir().join(format!("shr-input-final-identity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        let (mut callback, mut recorder, controls) =
+            callback_with_recorder(256, directory.clone(), false);
+        callback.armed.store(true, Ordering::Release);
+        recorder.start(Some("input-monitor")).unwrap();
+
+        let silence = [0.0; 256];
+        let input_left = [0.125; 256];
+        let input_right = [-0.25; 256];
+        let mut playback_left = [1.0; 256];
+        let mut playback_right = [1.0; 256];
+        let inputs = [
+            &silence[..],
+            &silence[..],
+            &silence[..],
+            &silence[..],
+            &input_left[..],
+            &input_right[..],
+            &silence[..],
+            &silence[..],
+        ];
+        assert_eq!(
+            process_block(
+                &mut callback,
+                256,
+                inputs,
+                &mut playback_left,
+                &mut playback_right,
+            ),
+            ProcessStatus::Complete
+        );
+        assert_eq!(playback_left, [0.0; 256]);
+        assert_eq!(playback_right, [0.0; 256]);
+
+        callback.input_monitoring.store(true, Ordering::Release);
+        controls.set_source_muted(BusSource::Input, false);
+        let mut monitored_left = [0.0; 256];
+        let mut monitored_right = [0.0; 256];
+        assert_eq!(
+            process_block(
+                &mut callback,
+                256,
+                inputs,
+                &mut monitored_left,
+                &mut monitored_right,
+            ),
+            ProcessStatus::Complete
+        );
+        assert!(monitored_left.iter().any(|sample| sample.abs() > 0.0));
+        assert!(monitored_right.iter().any(|sample| sample.abs() > 0.0));
+
+        recorder.request_stop();
+        callback.final_capture.capture(&[]);
+        recorder.finish_stop().unwrap();
+        let path = recorder.status().path.unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let decoded = bytes[44..]
+            .chunks_exact(6)
+            .map(|frame| {
+                let decode = |sample: &[u8]| {
+                    let raw = i32::from(sample[0])
+                        | (i32::from(sample[1]) << 8)
+                        | (i32::from(sample[2]) << 16);
+                    let signed = if raw & 0x80_0000 != 0 {
+                        raw | !0xff_ffff
+                    } else {
+                        raw
+                    };
+                    signed as f32 / 8_388_607.0
+                };
+                StereoFrame::new(decode(&frame[..3]), decode(&frame[3..]))
+            })
+            .collect::<Vec<_>>();
+        let playback = playback_left
+            .iter()
+            .zip(&playback_right)
+            .chain(monitored_left.iter().zip(&monitored_right));
+        for (recorded, (left, right)) in decoded.iter().zip(playback) {
+            assert!((recorded.left - left).abs() <= 1.0 / 8_388_607.0);
+            assert!((recorded.right - right).abs() <= 1.0 / 8_388_607.0);
+        }
+        assert_eq!(decoded.len(), 512);
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -1350,6 +2019,23 @@ mod tests {
         let pointer = ((&mut callback) as *mut CallbackData).cast();
         unsafe { shutdown_callback(pointer) };
         assert!(callback.client_lost.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn optional_loss_is_silent_and_input_loss_faults_only_while_monitored() {
+        let mut callback = callback(64);
+        let pointer = ((&mut callback) as *mut CallbackData).cast();
+        callback.armed.store(true, Ordering::Release);
+        unsafe { port_connect_callback(10, 99, 0, pointer) };
+        assert!(!callback.source_lost.load(Ordering::Acquire));
+
+        callback.input_monitoring.store(false, Ordering::Release);
+        unsafe { port_connect_callback(14, 99, 0, pointer) };
+        assert!(!callback.source_lost.load(Ordering::Acquire));
+
+        callback.input_monitoring.store(true, Ordering::Release);
+        unsafe { port_connect_callback(15, 99, 0, pointer) };
+        assert!(callback.source_lost.load(Ordering::Acquire));
     }
 
     #[test]

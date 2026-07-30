@@ -154,14 +154,15 @@ to its inputs and use the interface's monitor balance. This mixes the external
 sound with SHR-DAW software instruments without a second software-monitoring
 path or its additional CPU work.
 
-Those JACK capture inputs remain available to the raw multitrack recorder. The
-optional owned final bus additionally resolves exactly one configured stereo
-capture pair and software-monitors it alongside the managed synth and complete
-Loop Mix sum. The resulting limited stereo samples feed both playback and the dedicated
-24-bit final-mix recorder. This is not a free-routing mixer and does not add
-per-interface-channel processing.
+Those JACK capture inputs remain available to the raw multitrack recorder. MTR
+Input MON ON resolves exactly one configured stereo capture pair and can
+activate the owned final bus without a synth, Loop, or drums. Optional sources
+attach only when their exact ports exist. The resulting complete limited
+stereo samples feed both playback and the dedicated 24-bit final-mix recorder.
+This is not a free-routing mixer and does not add per-interface-channel
+processing.
 
-Do not also direct-monitor the same capture pair at the interface unless the
+Input monitoring starts off. Do not also direct-monitor the same capture pair at the interface unless the
 doubled path is deliberate: otherwise the two latencies can cause excess level
 and comb filtering. SHR-DAW refuses a configuration that declares both modes
 unless explicit confirmation is set. See

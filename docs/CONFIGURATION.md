@@ -246,13 +246,13 @@ setting is active. See
 
 ## Owned audio graph
 
-The opt-in SHR-owned JACK client sums the managed software instrument, the
-in-process SHR Drums stereo bus, the owned WAV loop, and one configured stereo
-capture pair. The melodic instrument
-retains its Project-persisted source insert rack and two aux buses; all four
-sources then pass through the master rack, live master level, fixed Project
-MASTER STRIP, final meter, final stereo recorder tap, and playback. It remains
-disabled by default:
+The SHR-owned JACK client sums whichever optional managed instrument, SHR
+Drums, and Loop sources are present plus one configured stereo capture pair.
+The melodic instrument retains its Project-persisted source insert rack and
+two aux buses. The complete sum then passes through the master rack, live
+master level, fixed Project MASTER STRIP, final meter, final stereo recorder
+tap, and playback. Automatic startup remains disabled by default; MTR Input
+**MON ON** explicitly starts this same bus for input-only monitoring:
 
 ```text
 audio.autoconnect=true
@@ -278,12 +278,15 @@ nearby name. The callback frame bound may be 1–4096 and must cover the active
 JACK period; an unexpectedly larger callback faults final recording and writes
 safe silence rather than overrunning fixed memory.
 
-On managed-engine and loop load, SHR-DAW first establishes their direct
-playback. The graph client stays muted while the exact synth, loop, live-input,
-and playback links are connected. It then removes the four direct synth/loop
-links transactionally before publishing at a callback boundary. Failure leaves
-or restores those exact prior links. Shutdown restores only them; unrelated
-JACK clients and connections are not changed.
+Input software monitoring starts OFF every time. **MON ON** requires only the
+exact input and playback pairs; no synth, Loop, or drum source is launched or
+required. Present optional sources are connected to their fixed graph inputs
+and their exact owned direct links are removed transactionally. Missing
+optional sources remain silent and can attach later; disappearance removes
+only that source, and the same exact ports reconnect when they return.
+Activation failure leaves monitoring OFF and restores the prior owned links.
+Shutdown restores only available owned direct links; unrelated JACK clients
+and connections are not changed.
 
 A managed engine is ready only after one client resolves to exactly two
 unambiguous JACK audio outputs; the presence of a MIDI port is insufficient.
@@ -304,18 +307,16 @@ instead of choosing a nearby endpoint.
 Software monitoring means the configured capture pair passes through the final
 bus and adds JACK-buffer plus complete strip latency: 133 samples
 (2.770833 ms) at 48 kHz or 123 samples (2.789116 ms) at 44.1 kHz. Interface direct
-monitoring is outside SHR-DAW. If both are declared, activation is refused
+monitoring is outside SHR-DAW. If both are declared, **MON ON** is refused
 unless `audio.graph.confirm_doubled_monitoring=true` deliberately acknowledges
-the doubled/comb-filtered path. See [Final performance bus](FINAL_PERFORMANCE_BUS.md).
+the doubled/comb-filtered path. SHR cannot change the interface hardware
+monitor control. See [Final performance bus](FINAL_PERFORMANCE_BUS.md).
 
-An orderly `shr stop` writes the owned graph's
-callback count, mean, p95, p99, maximum, missed-deadline count, and oversized
-callback count to the private `engine.log`. The FX rack/editor remains
-available while the graph is disabled, and those validated Project edits do
-not publish a runtime plan. With the graph enabled, stop transport and all
-recording before an FX change can rebuild and publish the owned graph. Projects
-save their racks in either mode, but direct playback does not process or meter
-them.
+The FX rack/editor remains available while the bus is inactive, and those
+validated Project edits do not publish a runtime plan. With the bus active,
+stop transport and all recording before an FX change can rebuild and publish
+the owned graph. Projects save their racks in either mode, but direct playback
+does not process or meter them.
 
 The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback

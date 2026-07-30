@@ -188,7 +188,9 @@ and exit stop all four and retain All Notes Off.
 
 The four WAV renderers sum inside one owned `shs-loop` JACK client and expose
 the existing logical Loop stereo source. The final bus therefore remains
-exactly Synth, Loop, and Input. It does not gain four general-purpose strips.
+exactly four fixed nodes: Synth, Loop, Input, and Drums. It does not gain four
+general-purpose Loop strips. Optional sources can be absent; Input MON ON
+requires only the exact Input and playback pairs.
 
 In direct mode the Loop output owns its configured playback connections. A
 final-bus transaction moves that one summed source into the graph and removes

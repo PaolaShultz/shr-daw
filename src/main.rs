@@ -209,9 +209,20 @@ fn effects_checkpoint(
         &master_strip::MasterStripSettings::default(),
     )?;
     engine.bind_midi_lifecycle(router.lifecycle());
+    let mut final_bus = audio_graph_client::FinalBusOwner::default();
+    final_bus.activate(
+        &config,
+        engine.managed_client_name(),
+        None,
+        None,
+        &rack,
+        &aux_routing,
+        &master_strip::MasterStripSettings::default(),
+        false,
+    )?;
     checkpoint_event("engine-and-graph-ready");
-    let sample_rate = engine
-        .audio_graph_sample_rate()
+    let sample_rate = final_bus
+        .sample_rate()
         .context("owned graph sample rate unavailable")?;
     let effect_memory_bytes = rack
         .effects
@@ -241,8 +252,8 @@ fn effects_checkpoint(
         owner_rss_kib = owner_rss_kib.max(process_rss_kib(owner_pid).unwrap_or(0));
         synth_rss_kib = synth_rss_kib.max(process_rss_kib(synth_pid).unwrap_or(0));
     }
-    let final_meter = engine
-        .final_bus_meter()
+    let final_meter = final_bus
+        .meter()
         .context("owned graph final meter unavailable")?;
     checkpoint_event("measurement-complete");
     let _ = engine.send(&[0x80, 48, 0]);
@@ -260,8 +271,8 @@ fn effects_checkpoint(
     let clock_ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
     let cpu_percent = |ticks: u64| ticks as f64 / clock_ticks / elapsed * 100.0;
     checkpoint_event("graph-restore-start");
-    let (timing, restored) = engine
-        .finish_audio_graph_checkpoint()
+    let (timing, restored) = final_bus
+        .deactivate()
         .context("owned graph fell back before checkpoint completed")?;
     checkpoint_event("graph-restored");
     println!(
