@@ -1,4 +1,4 @@
-use crate::control::{by_cc, normalize, value_from_cc};
+use crate::control::{by_cc, normalize, value_from_cc, CONTROLS, MOJ_CONTROLS};
 use crate::pads::{EncoderAction, PadAction, PadConfig};
 use crate::preset::BackendKind;
 use std::collections::HashMap;
@@ -24,31 +24,33 @@ impl Pickup {
         self.controls = values
             .iter()
             .filter_map(|(&cc, &value)| {
-                by_cc(cc).map(|control| {
-                    (
-                        cc,
-                        PickupControl {
-                            target: normalize(control, value),
-                            previous: None,
-                            caught: false,
-                        },
-                    )
-                })
+                by_cc(cc)
+                    .map(|control| normalize(control, value))
+                    .or_else(|| crate::control::moj_by_cc(cc).map(|_| value.clamp(0.0, 1.0)))
+                    .map(|target| {
+                        (
+                            cc,
+                            PickupControl {
+                                target,
+                                previous: None,
+                                caught: false,
+                            },
+                        )
+                    })
             })
             .collect();
     }
 
     pub fn accept(&mut self, cc: u8, value: f32) -> bool {
-        let Some(control) = by_cc(cc) else {
-            return true;
-        };
         let Some(state) = self.controls.get_mut(&cc) else {
             return true;
         };
         if state.caught {
             return true;
         }
-        let current = normalize(control, value);
+        let current = by_cc(cc)
+            .map(|control| normalize(control, value))
+            .unwrap_or_else(|| value.clamp(0.0, 1.0));
         let close = (current - state.target).abs() <= PICKUP_TOLERANCE;
         let crossed = state
             .previous
@@ -98,6 +100,10 @@ pub fn route_with_pad_lock<'a>(
     encoder = encoder.or(note_encoder);
     let encoder_consumed = cc_encoder_consumed || note_encoder_consumed;
     let consumed = lock_consumed || pad_consumed || encoder_consumed;
+    let mapped_position = (!consumed && message.len() >= 3 && message[0] & 0xf0 == 0xb0)
+        .then(|| pads.target_cc(message[1]))
+        .flatten()
+        .and_then(|target| CONTROLS.iter().position(|control| control.cc == target));
     let value = if backend == BackendKind::Synthv1
         && !consumed
         && message.len() >= 3
@@ -106,15 +112,26 @@ pub fn route_with_pad_lock<'a>(
         pads.target_cc(message[1])
             .and_then(by_cc)
             .map(|c| (c.cc, value_from_cc(c, message[2])))
+    } else if backend == BackendKind::MojSint {
+        mapped_position.map(|index| {
+            (
+                MOJ_CONTROLS[index].cc,
+                f32::from(message[2].min(127)) / 127.0,
+            )
+        })
     } else {
         None
     };
-    let translated = (backend != BackendKind::Synthv1
-        && !consumed
-        && message.len() >= 3
-        && message[0] & 0xf0 == 0xb0
-        && pads.target_cc(message[1]) == Some(crate::control::VOLUME_CC))
-    .then(|| [message[0], 7, message[2]]);
+    let translated = if backend == BackendKind::MojSint {
+        mapped_position.map(|index| [message[0], MOJ_CONTROLS[index].cc, message[2].min(127)])
+    } else {
+        (backend != BackendKind::Synthv1
+            && !consumed
+            && message.len() >= 3
+            && message[0] & 0xf0 == 0xb0
+            && pads.target_cc(message[1]) == Some(crate::control::VOLUME_CC))
+        .then(|| [message[0], 7, message[2]])
+    };
     Routed {
         consumed,
         pad,
@@ -301,5 +318,24 @@ mod tests {
         pickup.arm(&HashMap::from([(76, -0.5)]));
         assert!(!pickup.accept(76, 1.0));
         assert!(pickup.accept(76, -0.5));
+    }
+
+    #[test]
+    fn moj_sint_uses_position_matched_ccs_and_normalized_pickup() {
+        let pads = PadConfig {
+            controls: HashMap::from([(86, 74), (87, 82)]),
+            ..PadConfig::default()
+        };
+        let color = route(&pads, BackendKind::MojSint, &[0xb0, 86, 64]);
+        assert_eq!(color.value, Some((20, 64.0 / 127.0)));
+        assert_eq!(color.translated, Some([0xb0, 20, 64]));
+        let attack = route(&pads, BackendKind::MojSint, &[0xb0, 87, 32]);
+        assert_eq!(attack.value, Some((28, 32.0 / 127.0)));
+        assert_eq!(attack.translated, Some([0xb0, 28, 32]));
+
+        let mut pickup = Pickup::default();
+        pickup.arm(&HashMap::from([(20, 0.75)]));
+        assert!(!pickup.accept(20, 0.2));
+        assert!(pickup.accept(20, 0.8));
     }
 }

@@ -4878,25 +4878,36 @@ mod tests {
     }
 
     #[test]
-    fn internal_drums_and_one_melodic_software_route_schedule_together() {
+    fn internal_drums_and_moj_sint_schedule_together_without_duplicate_routes() {
         let cfg = config();
         let mut song = Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
-        let pages = pages_mut(&mut song);
-        pages[0].target = PageTarget::Software(SoftwareRoute::synthv1("Lead"));
-        pages[2].target = PageTarget::InternalDrums("electronic-house".into());
+        let song_pages = pages_mut(&mut song);
+        let moj = SoftwareRoute {
+            engine: BackendKind::MojSint,
+            instrument: "Model D Baseline".into(),
+        };
+        song_pages[0].target = PageTarget::Software(moj.clone());
+        song_pages[2].target = PageTarget::InternalDrums("electronic-house".into());
         let pattern = song.patterns.get_mut(&0).unwrap();
         pattern.rows[0][0].note = Note::On(60);
         pattern.rows[0][LANES_PER_PAGE * 2].note = Note::On(36);
 
         let scheduled = schedule(&song, &cfg, 0, 0).unwrap();
         assert!(scheduled.iter().any(|message| {
-            message.target == Some(PageTarget::Software(SoftwareRoute::synthv1("Lead")))
+            message.target == Some(PageTarget::Software(moj.clone()))
                 && message.bytes == [0x90, 60, 96]
         }));
         assert!(scheduled.iter().any(|message| {
             message.target == Some(PageTarget::InternalDrums("electronic-house".into()))
                 && message.bytes == [0x99, 36, 96]
         }));
+        let encoded = encode(&song).unwrap();
+        let restored = decode(&encoded).unwrap();
+        assert_eq!(
+            pages(&restored)[0].target,
+            PageTarget::Software(moj),
+            "Project retains Moj route identity"
+        );
     }
 
     #[test]

@@ -19,7 +19,7 @@ Read the complete public documentation at
 
 ## Features
 
-- Play synthv1, Yoshimi, or FluidSynth through one safely managed engine.
+- Play synthv1, Yoshimi, FluidSynth, or Moj Sint through one safely managed engine.
 - Build routed multi-page Patterns, Arrangements, drum parts, and private WAV
   loop performances in the FT2 workspace, including quantized Live Patterns
   and a four-slot Loop Mix.
@@ -65,7 +65,7 @@ launch this checkout's visibly marked `DEV` binary.
 
 ![Preset browser showing synthv1 sounds](docs/images/shr-daw-presets.png)
 
-Browse the separate synthv1, Yoshimi, and FluidSynth catalogs.
+Browse the separate synthv1, Yoshimi, FluidSynth, and Moj Sint catalogs.
 
 ### Playback
 

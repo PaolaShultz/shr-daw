@@ -74,6 +74,11 @@ Synthv1 controls use pickup. After loading, idea load, or RESET, mapped CCs are
 blocked until the physical control reaches the stored value. This prevents
 jumps during live audio.
 
+Moj Sint uses the same pickup behavior with its own CC 20–31 macro identity:
+EVOLVE, SHAPE, COLOR, EDGE, COUPLE, MOTION, DEPTH, SPACE, then ADSR. RESET
+restores the loaded `.mojsint` values in place without restarting the host.
+Those controls never use synthv1 XML names or parameter indices.
+
 The dots beside synthv1 values compare the current sound to the loaded preset:
 green is lower, yellow is near original, red is higher.
 

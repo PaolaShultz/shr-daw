@@ -4,7 +4,7 @@ use crate::audio_graph::{
 use crate::audio_recorder::{AudioRecorder, RecorderStatus, RecorderTrackStatus};
 use crate::chord::HeldNotes;
 use crate::config::{ExternalMidiConfig, RuntimeConfig};
-use crate::control::{parameter_color, CONTROLS, VOLUME_CC};
+use crate::control::{parameter_color, CONTROLS, MOJ_CONTROLS, VOLUME_CC};
 use crate::device_profile::{DeviceProfile, Registry as DeviceProfiles};
 use crate::drum_pattern::{self, DrumPattern};
 use crate::engine::{self, Engine, MidiEvent};
@@ -17573,10 +17573,8 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         rect(z.x + z.width.saturating_sub(3), z.y, z.width.min(3), 1),
     );
     let inner = params;
-    if a.playing
-        .as_ref()
-        .is_some_and(|preset| preset.backend == BackendKind::Synthv1)
-    {
+    let playing_backend = a.playing.as_ref().map(|preset| preset.backend);
+    if playing_backend == Some(BackendKind::Synthv1) {
         for (i, c) in CONTROLS.iter().enumerate() {
             let col = (i % 4) as u16;
             let control_row = (i / 4) as u16;
@@ -17608,6 +17606,37 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .alignment(Alignment::Center),
                 rect(x, label_y + 1, w, 1),
             );
+        }
+    } else if playing_backend == Some(BackendKind::MojSint) {
+        for (i, control) in MOJ_CONTROLS.iter().enumerate() {
+            let col = (i % 4) as u16;
+            let control_row = (i / 4) as u16;
+            let label_y = inner.y + control_row * 2;
+            if label_y >= inner.y + inner.height {
+                break;
+            }
+            let x = inner.x + col * inner.width / 4;
+            let next_x = inner.x + (col + 1) * inner.width / 4;
+            let width = next_x - x;
+            let value = a.values.get(&control.cc).copied().unwrap_or(0.0);
+            let original = a.original_values.get(&control.cc).copied().unwrap_or(0.0);
+            f.render_widget(
+                Paragraph::new(truncate(control.name, width as usize))
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(Color::White)),
+                rect(x, label_y, width, 1),
+            );
+            if label_y + 1 < inner.y + inner.height {
+                f.render_widget(
+                    Paragraph::new(Spans::from(vec![
+                        Span::styled(format!("{value:>5.2}"), Style::default().fg(Color::Yellow)),
+                        Span::raw(" "),
+                        Span::styled("●", Style::default().fg(parameter_color(value, original))),
+                    ]))
+                    .alignment(Alignment::Center),
+                    rect(x, label_y + 1, width, 1),
+                );
+            }
         }
     } else {
         f.render_widget(
@@ -21928,6 +21957,35 @@ mod tests {
         render(40, 13, Screen::MasterStripAdvanced);
         render(40, 13, Screen::Meter);
         render(40, 13, Screen::Routing);
+    }
+
+    #[test]
+    fn moj_sint_playback_uses_three_rows_of_four_real_controls() {
+        let presets = presets();
+        let mut app = app(&presets);
+        app.screen = Screen::Playback;
+        app.playing = Some(Preset {
+            backend: BackendKind::MojSint,
+            name: "Model D".into(),
+            category: None,
+            id: PresetId::MojSint {
+                path: PathBuf::from("model-d.mojsint"),
+            },
+        });
+        app.values = MOJ_CONTROLS
+            .iter()
+            .map(|control| (control.cc, 0.5))
+            .collect();
+        app.original_values = app.values.clone();
+        let text = buffer_text(&render_app(&mut app, 40, 13));
+        for label in [
+            "Evolve", "Shape", "Color", "Edge", "Couple", "Motion", "Depth", "Space", "Attack",
+            "Decay", "Sustain", "Release",
+        ] {
+            assert!(text.contains(label), "missing {label} in\n{text}");
+        }
+        assert!(!text.contains("Width"));
+        assert!(!text.contains("No synthv1"));
     }
 
     #[test]

@@ -1,5 +1,6 @@
-//! The synthv1-only mapped control profile. Yoshimi and FluidSynth deliberately
-//! do not inherit these plugin parameter indices or reset semantics.
+//! Backend-specific mapped control profiles. Moj Sint shares the twelve
+//! physical positions and pickup behavior, but never synthv1 parameter indices
+//! or XML semantics.
 
 use std::collections::HashMap;
 
@@ -117,6 +118,83 @@ pub const CONTROLS: [Control; MAPPED_CONTROL_CAPACITY - 4] = [
         max: 1.0,
     },
 ];
+
+#[derive(Clone, Copy, Debug)]
+pub struct MojControl {
+    pub cc: u8,
+    pub name: &'static str,
+    pub macro_id: &'static str,
+}
+
+pub const MOJ_CONTROLS: [MojControl; 12] = [
+    MojControl {
+        cc: 20,
+        name: "Evolve",
+        macro_id: "evolve",
+    },
+    MojControl {
+        cc: 21,
+        name: "Shape",
+        macro_id: "shape",
+    },
+    MojControl {
+        cc: 22,
+        name: "Color",
+        macro_id: "color",
+    },
+    MojControl {
+        cc: 23,
+        name: "Edge",
+        macro_id: "edge",
+    },
+    MojControl {
+        cc: 24,
+        name: "Couple",
+        macro_id: "couple",
+    },
+    MojControl {
+        cc: 25,
+        name: "Motion",
+        macro_id: "motion",
+    },
+    MojControl {
+        cc: 26,
+        name: "Depth",
+        macro_id: "depth",
+    },
+    MojControl {
+        cc: 27,
+        name: "Space",
+        macro_id: "space",
+    },
+    MojControl {
+        cc: 28,
+        name: "Attack",
+        macro_id: "attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Decay",
+        macro_id: "decay",
+    },
+    MojControl {
+        cc: 30,
+        name: "Sustain",
+        macro_id: "sustain",
+    },
+    MojControl {
+        cc: 31,
+        name: "Release",
+        macro_id: "release",
+    },
+];
+
+pub fn moj_by_cc(cc: u8) -> Option<MojControl> {
+    MOJ_CONTROLS
+        .iter()
+        .copied()
+        .find(|control| control.cc == cc)
+}
 
 pub fn defaults() -> HashMap<u8, f32> {
     CONTROLS.iter().map(|c| (c.cc, c.min)).collect()

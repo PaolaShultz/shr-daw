@@ -127,11 +127,13 @@ display, never the MIDI notes.
 
 ## Software instruments and ownership
 
-SHR-DAW browses three separately installed instrument hosts:
+SHR-DAW browses four separately installed instrument hosts:
 
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks; and
-- [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts.
+- [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
+  and
+- Moj Sint for strict `.mojsint` Model D presets and its dedicated live host.
 
 Only one SHR-managed software engine process runs at a time. synthv1 and
 Yoshimi retain one current preset. FluidSynth is the exception at the
@@ -141,7 +143,13 @@ stereo source. Loading another standalone sound may reuse or replace the owned
 process; replacement sends All Notes Off, performs a clean shutdown, and
 starts the next configured host. SHR-DAW records enough process identity to
 stop only the engine it started. It neither layers managed backends nor kills
-an unrelated synthv1, Yoshimi, or FluidSynth process opened by the user.
+an unrelated synthv1, Yoshimi, FluidSynth, or Moj Sint process opened by the
+user.
+
+Moj Sint is started with `--client-name` and `--preset`, publishes exactly
+`out_l`/`out_r`, and accepts its twelve macros on CC 20–31. SHR verifies the
+configured port names and owns only the child it started. The browser never
+launches it; LOAD is the transaction boundary.
 
 A managed host becomes ready only after SHR resolves one unambiguous stereo
 JACK output pair for it; a MIDI JACK/ALSA port alone is not readiness. Exact
@@ -184,16 +192,18 @@ route while leaving all three engines available on demand.
 
 Commands, client names, preset roots, SoundFonts, MIDI ports, and JACK ports
 are configuration. The engine code does not assume the development hardware.
-The three catalogs also remain separate: a synthv1 XML preset is not treated as
-a Yoshimi instrument or a SoundFont program.
+The four catalogs also remain separate: synthv1 XML, Yoshimi instruments,
+SoundFont programs, and `.mojsint` files never borrow one another's parsers or
+controls.
 
 ## Three different kinds of recording
 
 SHR-DAW uses “record” for three intentionally different jobs:
 
 1. An **Idea** captures free-time MIDI while playing a managed sound. It keeps
-   event timing and instrument identity; synthv1 Ideas also keep a private
-   preset snapshot and the mapped control values. `PLAY` plays that MIDI back
+   event timing and instrument identity; synthv1 and Moj Sint Ideas also keep
+   a private preset snapshot and backend-specific mapped control values. `PLAY`
+   plays that MIDI back
    through the restored instrument. An Idea is not audio.
 2. FT2 **REC** quantizes notes into the selected Pattern page using that
    page's Manual, One-column, or Drum-auto allocator. Recording from stop loops

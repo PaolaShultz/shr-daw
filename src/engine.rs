@@ -795,11 +795,13 @@ impl Engine {
         let log_err = log.try_clone()?;
         set_command_affinity(&mut command, config.audio_engine_cpu);
         let mut child = command
-            .stdin(if preset.backend == BackendKind::Synthv1 {
-                Stdio::null()
-            } else {
-                Stdio::piped()
-            })
+            .stdin(
+                if matches!(preset.backend, BackendKind::Synthv1 | BackendKind::MojSint) {
+                    Stdio::null()
+                } else {
+                    Stdio::piped()
+                },
+            )
             .stdout(Stdio::from(log))
             .stderr(Stdio::from(log_err))
             .spawn()
@@ -814,6 +816,7 @@ impl Engine {
                 &mut child,
                 preset.backend,
                 &backend_config.client_name,
+                (preset.backend == BackendKind::MojSint).then_some(&config.moj_sint.output_ports),
                 startup_deadline,
                 &log_path,
             )?;
@@ -881,6 +884,15 @@ impl Engine {
                     .controls
                     .iter()
                     .map(|(&incoming, &target)| (incoming, target))
+                    .collect()
+            } else if preset.backend == BackendKind::MojSint {
+                controller
+                    .controls
+                    .iter()
+                    .filter_map(|(&incoming, &target)| {
+                        let index = CONTROLS.iter().position(|control| control.cc == target)?;
+                        Some((incoming, control::MOJ_CONTROLS[index].cc))
+                    })
                     .collect()
             } else {
                 Vec::new()
@@ -1165,7 +1177,7 @@ impl Engine {
     }
 
     pub fn supports_parameter_reset(&self) -> bool {
-        self.backend == BackendKind::Synthv1
+        matches!(self.backend, BackendKind::Synthv1 | BackendKind::MojSint)
     }
 
     pub fn set_mapped_parameters(&self, values: &std::collections::HashMap<u8, f32>) -> Result<()> {
@@ -1175,8 +1187,20 @@ impl Engine {
                 self.backend.label()
             );
         }
-        for message in mapped_parameter_messages(&self.control_routes, values) {
-            self.send(&message)?;
+        if self.backend == BackendKind::MojSint {
+            for control in control::MOJ_CONTROLS {
+                if let Some(value) = values.get(&control.cc) {
+                    self.send(&[
+                        0xb0,
+                        control.cc,
+                        (value.clamp(0.0, 1.0) * 127.0).round() as u8,
+                    ])?;
+                }
+            }
+        } else {
+            for message in mapped_parameter_messages(&self.control_routes, values) {
+                self.send(&message)?;
+            }
         }
         Ok(())
     }
@@ -1394,6 +1418,7 @@ impl Drop for Engine {
                 BackendKind::Yoshimi => writeln!(stdin, "exit y"),
                 BackendKind::FluidSynth => writeln!(stdin, "quit"),
                 BackendKind::Synthv1 => Ok(()),
+                BackendKind::MojSint => Ok(()),
             };
             let _ = stdin.flush();
         }
@@ -1425,6 +1450,7 @@ fn backend_config(config: &RuntimeConfig, backend: BackendKind) -> BackendConfig
         },
         BackendKind::Yoshimi => config.yoshimi.backend.clone(),
         BackendKind::FluidSynth => config.fluidsynth.backend.clone(),
+        BackendKind::MojSint => config.moj_sint.backend.clone(),
     }
 }
 
@@ -1462,6 +1488,11 @@ fn backend_command(preset: &Preset, state: &Path, config: &RuntimeConfig) -> Res
                 .arg("--load-config")
                 .arg(state.join("fluidsynth.conf"));
         }
+        PresetId::MojSint { path } => {
+            command
+                .args(["--client-name", &backend.client_name, "--preset"])
+                .arg(safe_command_path(path)?);
+        }
     }
     Ok(command)
 }
@@ -1487,6 +1518,7 @@ fn wait_ready(
     child: &mut Child,
     backend: BackendKind,
     client_name: &str,
+    expected_ports: Option<&[String; 2]>,
     deadline: Instant,
     log_path: &Path,
 ) -> Result<()> {
@@ -1498,8 +1530,19 @@ fn wait_ready(
                 log_path.display()
             );
         }
-        if resolve_managed_audio_outputs(client_name, jack_ports()).is_ok() {
-            return Ok(());
+        if let Ok(outputs) = resolve_managed_audio_outputs(client_name, jack_ports()) {
+            let names_match = expected_ports.is_none_or(|expected| {
+                outputs.iter().zip(expected).all(|(actual, expected)| {
+                    actual
+                        .rsplit_once(':')
+                        .map(|(_, port)| port)
+                        .unwrap_or(actual)
+                        == expected
+                })
+            });
+            if names_match {
+                return Ok(());
+            }
         }
         thread::sleep(Duration::from_millis(100));
     }
@@ -2157,6 +2200,7 @@ fn connect_midi_input(
         &config.client_name,
         &config.yoshimi.backend.client_name,
         &config.fluidsynth.backend.client_name,
+        &config.moj_sint.backend.client_name,
     ] {
         disconnect_direct_midi(&input_name, client);
     }
@@ -3855,6 +3899,33 @@ mod tests {
         assert_eq!(
             args.get(load + 1).map(String::as_str),
             Some("/tmp/shr-state/fluidsynth.conf")
+        );
+    }
+
+    #[test]
+    fn managed_moj_sint_uses_the_documented_distinct_host_invocation() {
+        let preset = Preset {
+            backend: BackendKind::MojSint,
+            name: "Model D".into(),
+            category: None,
+            id: PresetId::MojSint {
+                path: PathBuf::from("/sounds/model-d.mojsint"),
+            },
+        };
+        let config = RuntimeConfig::default();
+        let command = backend_command(&preset, Path::new("/tmp/shr-state"), &config).unwrap();
+        assert_eq!(command.get_program(), "moj-sint");
+        assert_eq!(
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            [
+                "--client-name",
+                "shs-moj-sint",
+                "--preset",
+                "/sounds/model-d.mojsint"
+            ]
         );
     }
 

@@ -30,6 +30,12 @@ pub struct FluidSynthConfig {
     pub gain: f32,
 }
 
+#[derive(Clone, Debug)]
+pub struct MojSintConfig {
+    pub backend: BackendConfig,
+    pub output_ports: [String; 2],
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BankSelectMode {
     Off,
@@ -198,6 +204,7 @@ pub struct RuntimeConfig {
     pub midi_output_match: String,
     pub yoshimi: YoshimiConfig,
     pub fluidsynth: FluidSynthConfig,
+    pub moj_sint: MojSintConfig,
     pub startup_timeout: Duration,
     pub note_naming: NoteNaming,
     pub midi_autoconnect: bool,
@@ -332,6 +339,10 @@ impl Default for RuntimeConfig {
                 soundfonts: Vec::new(),
                 gain: 0.4,
             },
+            moj_sint: MojSintConfig {
+                backend: BackendConfig::default(),
+                output_ports: ["out_l".into(), "out_r".into()],
+            },
             startup_timeout: Duration::ZERO,
             note_naming: NoteNaming::German,
             midi_autoconnect: false,
@@ -429,6 +440,8 @@ impl RuntimeConfig {
         let mut saw_yoshimi_roots = false;
         let mut saw_categories = false;
         let mut saw_soundfonts = false;
+        let mut saw_moj_roots = false;
+        let mut saw_moj_outputs = false;
         let mut saw_external_channels = false;
         let mut saw_percussion_notes = false;
         let mut saw_capture_inputs = false;
@@ -523,6 +536,32 @@ impl RuntimeConfig {
                     replace_list_once(&mut self.fluidsynth.soundfonts, &mut saw_soundfonts);
                     if !value.is_empty() {
                         self.fluidsynth.soundfonts.push(expand_home(value));
+                    }
+                }
+                "moj_sint.command" => self.moj_sint.backend.command = required(key, value)?.into(),
+                "moj_sint.client" => {
+                    self.moj_sint.backend.client_name = required(key, value)?.into()
+                }
+                "moj_sint.midi_output" => {
+                    self.moj_sint.backend.midi_output_match = required(key, value)?.into()
+                }
+                "moj_sint.preset_root" => {
+                    replace_list_once(&mut self.moj_sint.backend.preset_roots, &mut saw_moj_roots);
+                    if !value.is_empty() {
+                        self.moj_sint.backend.preset_roots.push(expand_home(value));
+                    }
+                }
+                "moj_sint.output" => {
+                    if !saw_moj_outputs {
+                        self.moj_sint.output_ports = [String::new(), String::new()];
+                        saw_moj_outputs = true;
+                    }
+                    if self.moj_sint.output_ports[0].is_empty() {
+                        self.moj_sint.output_ports[0] = required(key, value)?.into();
+                    } else if self.moj_sint.output_ports[1].is_empty() {
+                        self.moj_sint.output_ports[1] = required(key, value)?.into();
+                    } else {
+                        bail!("moj_sint.output accepts exactly two entries");
                     }
                 }
                 "midi.autoconnect" => self.midi_autoconnect = boolean(key, value)?,
@@ -781,6 +820,11 @@ impl RuntimeConfig {
         if self.audio_graph.enabled && (!self.audio_autoconnect || self.audio_outputs.len() != 2) {
             bail!("audio.graph.enabled requires audio.autoconnect and two audio.output entries");
         }
+        if self.moj_sint.output_ports.iter().any(String::is_empty)
+            || self.moj_sint.output_ports[0] == self.moj_sint.output_ports[1]
+        {
+            bail!("Moj Sint requires exactly two distinct moj_sint.output entries");
+        }
         if self
             .audio_graph
             .input
@@ -907,6 +951,21 @@ impl RuntimeConfig {
         }
         if self.fluidsynth.soundfonts.is_empty() {
             text.push_str("fluidsynth.soundfont=\n");
+        }
+        text.push_str(&format!(
+            "moj_sint.command={}\nmoj_sint.client={}\nmoj_sint.midi_output={}\n",
+            self.moj_sint.backend.command,
+            self.moj_sint.backend.client_name,
+            self.moj_sint.backend.midi_output_match
+        ));
+        for root in &self.moj_sint.backend.preset_roots {
+            text.push_str(&format!("moj_sint.preset_root={}\n", root.display()));
+        }
+        if self.moj_sint.backend.preset_roots.is_empty() {
+            text.push_str("moj_sint.preset_root=\n");
+        }
+        for output in &self.moj_sint.output_ports {
+            text.push_str(&format!("moj_sint.output={output}\n"));
         }
         text.push_str(&format!("midi.autoconnect={}\n", self.midi_autoconnect));
         for input in &self.midi_input_matches {
@@ -1657,6 +1716,27 @@ mod tests {
         let config = RuntimeConfig::load(&path).unwrap();
         assert_eq!(config.client_name, "synth #1");
         assert_eq!(config.midi_input_matches, ["Controller #1"]);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn moj_sint_configuration_round_trips_and_requires_two_distinct_outputs() {
+        let path =
+            std::env::temp_dir().join(format!("shsynth-moj-config-{}.conf", std::process::id()));
+        let mut config = RuntimeConfig::default();
+        config.moj_sint.backend.command = "/opt/moj/bin/moj-sint".into();
+        config.moj_sint.backend.preset_roots = vec![PathBuf::from("/sounds/moj")];
+        config.moj_sint.output_ports = ["out_l".into(), "out_r".into()];
+        config.save(&path).unwrap();
+        let loaded = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(loaded.moj_sint.backend.command, "/opt/moj/bin/moj-sint");
+        assert_eq!(
+            loaded.moj_sint.backend.preset_roots,
+            [PathBuf::from("/sounds/moj")]
+        );
+        assert_eq!(loaded.moj_sint.output_ports, ["out_l", "out_r"]);
+        fs::write(&path, "moj_sint.output=only_one\n").unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
         let _ = fs::remove_file(path);
     }
 }

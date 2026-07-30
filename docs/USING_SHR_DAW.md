@@ -15,16 +15,22 @@ want to share what happened, record a rough demo and send it to friends.
 
 ## Instruments
 
-The Presets screen browses three kinds of software instruments:
+The Presets screen browses four kinds of software instruments:
 
 - synthv1 presets;
 - Yoshimi `.xiz` banks;
 - FluidSynth `.sf2` and `.sf3` SoundFonts.
+- Moj Sint `.mojsint` Model D presets.
+
+`ENGINE-` and `ENGINE+` change catalogs without starting sound. `LOAD` is the
+only preset-start transaction. Moj Sint reuses the owned-process, direct
+playback, optional graph, panic, replacement, and shutdown paths while keeping
+its own preset and control semantics.
 
 Changing engine does not mix their files or control rules. The Playback screen
 shows held note names with each note's decimal MIDI velocity directly beneath
 it, chord names, a continuous keyboard-state strip, MIDI idea recording, and
-the 12 mapped synthv1 controls. This is a practical way to practise soft/loud
+the selected backend's 12 mapped controls. This is a practical way to practise soft/loud
 key control, even chord attacks, and bass-plus-chord balance. It reports the
 controller's MIDI strike velocity (1–127), not measured audio loudness; the
 instrument and its settings decide how strongly that velocity changes sound.
@@ -108,7 +114,7 @@ ownership, routing, realtime limits, and unsupported DJ features.
 ## MIDI ideas
 
 Ideas capture free playing as MIDI. Each saved idea keeps its timing and
-instrument identity. A synthv1 idea includes its own private preset snapshot;
+instrument identity. A synthv1 or Moj Sint idea includes its own private preset snapshot;
 other engines retain the external instrument reference. Mapped synthv1 control
 values are saved too. Loading an idea can replace the current managed engine,
 then PLAY runs through the restored idea instrument rather than an arbitrary

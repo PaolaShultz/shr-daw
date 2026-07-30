@@ -24,7 +24,7 @@ invoke that page's items wherever a controller strip is present.
 
 **Software Synths** opens Presets. Turn the main encoder, use the arrow keys,
 or use the mouse wheel to choose a sound. Loading replaces the one managed software
-instrument; it never layers engines. synthv1, Yoshimi, and FluidSynth remain
+instrument; it never layers engines. synthv1, Yoshimi, FluidSynth, and Moj Sint remain
 separate catalogs selected with the Engine page.
 
 Home keeps **MIDI Learn**, **Routing**, and **Effects** separate. Routing is the
@@ -62,7 +62,7 @@ for STOP/PANIC where that direct safety action exists.
 
 ![Populated Presets screen with the ENGINE controller page](../images/menu/presets-engine.png)
 
-`ENGINE-` and `ENGINE+` move among synthv1, Yoshimi, and FluidSynth. Changing catalogs does not
+`ENGINE-` and `ENGINE+` move among synthv1, Yoshimi, FluidSynth, and Moj Sint. Changing catalogs does not
 load a sound until `LOAD` is used.
 
 ### SYS — safety and help
@@ -77,7 +77,7 @@ computer-keyboard-only from Home.
 
 Playback appears after a sound is loaded. At native 40×13 the body shows the
 held chord and notes, each note's decimal MIDI strike velocity directly beneath
-it, and the 12 mapped synthv1 controls. Taller terminals use spare space for a
+it, and the selected backend's 12 mapped controls. Taller terminals use spare space for a
 continuous two-row keyboard state. The
 aligned velocity row helps with gentle/strong control, consistent chord
 attacks, and bass-plus-chord balance. It is MIDI input data, not an audio
@@ -86,7 +86,9 @@ result.
 On the keyboard, red white-key areas are held natural notes and red upper `└`
 marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
-main encoder press resets only these mapped controls and re-arms pickup; it does
+Moj Sint uses EVOLVE through SPACE in the first two rows and ADSR in the third;
+synthv1 retains its own names and indices. The main encoder press resets only
+these mapped controls and re-arms pickup; it does
 not restart the synth.
 
 ### PLAY — capture a MIDI take

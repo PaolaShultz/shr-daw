@@ -103,8 +103,8 @@ eight simultaneous tracker lanes, and further pages extend that pool within
 the Project and synth voice limits. The same route may also be used on several
 channels.
 
-SHR still owns one synth host at a time. synthv1 and Yoshimi expose one current
-preset, while one owned FluidSynth process is multitimbral: each distinct
+SHR still owns one synth host at a time. synthv1, Yoshimi, and Moj Sint expose
+one current preset, while one owned FluidSynth process is multitimbral: each distinct
 SoundFont preset/channel pair is selected once without changing other
 channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
 on 10 play together through the existing stereo synth output. Channel 10 is
@@ -115,8 +115,8 @@ Drums pages can explicitly store an SHR Drums kit, a configured/exact external
 MIDI output, or a FluidSynth General MIDI compatibility route. An unavailable
 saved target remains visibly offline and silent; it never falls back to another
 route. SHR Drums is an in-process stereo source and does not consume the one
-managed melodic-synth slot, so it can play beside synthv1, Yoshimi, or
-FluidSynth. Switching targets sends All Notes Off and immediate drum chokes.
+managed melodic-synth slot, so it can play beside synthv1, Yoshimi, FluidSynth,
+or Moj Sint. Switching targets sends All Notes Off and immediate drum chokes.
 Loaded Projects keep their saved routes and channels, and loading a reusable
 drum pattern copies cells only.
 
@@ -126,7 +126,7 @@ tails plus Pattern/Arrangement loop boundaries are not treated as safe dynamic
 preset-change points. Consequently even apparently non-overlapping uses on one
 channel are refused for now with a channel-conflict error. Identical
 route/channel sharing is safe and is never that conflict. FluidSynth plus
-synthv1 or Yoshimi is also refused because that would require a second managed
+another managed backend is also refused because that would require a second managed
 backend; external MIDI pages and the WAV loop remain independent.
 
 Pressing Play on such a mixed Project opens an explicit recovery choice instead

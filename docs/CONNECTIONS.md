@@ -20,7 +20,7 @@ mouse.
 The main paths are:
 
 - controller or computer keyboard → SHR-DAW;
-- SHR-DAW → synthv1, Yoshimi, or FluidSynth → JACK audio output;
+- SHR-DAW → synthv1, Yoshimi, FluidSynth, or Moj Sint → JACK audio output;
 - tracker pages → optional external MIDI instruments;
 - optional audio inputs → direct monitoring and/or synchronized stem recording.
 
@@ -71,11 +71,13 @@ own configured FluidSynth when selected.
 
 ## Software instruments
 
-SHR-DAW supports synthv1, Yoshimi, and FluidSynth as separately installed
+SHR-DAW supports synthv1, Yoshimi, FluidSynth, and Moj Sint as separately installed
 programs. Only one SHR-DAW-managed software-engine process runs at a time.
 synthv1 and Yoshimi provide one current preset; one FluidSynth process may play
 several SoundFont presets on different MIDI channels while retaining one
-stereo JACK source. The standalone Software Synth workspace keeps its sound
+stereo JACK source. Moj Sint contributes exactly `out_l` and `out_r` plus one
+ALSA Sequencer input; it creates no JACK connections itself. The standalone
+Software Synth workspace keeps its sound
 after leaving Presets or Playback. FT2 uses the engine/instrument pair saved by
 its current Pattern; if the Project is genuinely new, empty, unsaved, and
 otherwise still at its defaults, entering FT2 assigns the current standalone

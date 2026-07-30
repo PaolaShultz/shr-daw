@@ -4,12 +4,14 @@ use anyhow::{bail, Context, Result};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use quick_xml::XmlVersion;
+use serde::Deserialize;
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -17,16 +19,23 @@ pub enum BackendKind {
     Synthv1,
     Yoshimi,
     FluidSynth,
+    MojSint,
 }
 
 impl BackendKind {
-    pub const ALL: [Self; 3] = [Self::Synthv1, Self::Yoshimi, Self::FluidSynth];
+    pub const ALL: [Self; 4] = [
+        Self::Synthv1,
+        Self::Yoshimi,
+        Self::FluidSynth,
+        Self::MojSint,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Synthv1 => "synthv1",
             Self::Yoshimi => "Yoshimi",
             Self::FluidSynth => "FluidSynth",
+            Self::MojSint => "Moj Sint",
         }
     }
 
@@ -51,6 +60,7 @@ impl std::str::FromStr for BackendKind {
             "synthv1" | "synth" => Ok(Self::Synthv1),
             "yoshimi" => Ok(Self::Yoshimi),
             "fluidsynth" | "fluid" => Ok(Self::FluidSynth),
+            "moj sint" | "moj-sint" | "moj_sint" | "mojsint" => Ok(Self::MojSint),
             _ => bail!("unknown sound engine {value:?}"),
         }
     }
@@ -69,6 +79,9 @@ pub enum PresetId {
         soundfont_index: u8,
         bank: u16,
         program: u8,
+    },
+    MojSint {
+        path: PathBuf,
     },
 }
 
@@ -124,6 +137,7 @@ impl Preset {
                     .unwrap_or("soundfont");
                 format!("sf{soundfont_index}:{soundfont}:{bank}:{program}")
             }
+            PresetId::MojSint { .. } => self.name.clone(),
         }
     }
 
@@ -190,7 +204,236 @@ pub fn discover_all(config: &RuntimeConfig, synthv1_dir: &Path) -> Vec<Catalog> 
             discover_fluidsynth(&config.fluidsynth.soundfonts),
             &config.fluidsynth.backend.command,
         ),
+        catalog(
+            BackendKind::MojSint,
+            command_exists(&config.moj_sint.backend.command),
+            discover_moj_sint(&config.moj_sint.backend.preset_roots),
+            &config.moj_sint.backend.command,
+        ),
     ]
+}
+
+const MAX_MOJ_PRESETS: usize = 512;
+const MAX_MOJ_PRESET_BYTES: u64 = 1_048_576;
+
+pub fn discover_moj_sint(roots: &[PathBuf]) -> Result<Vec<Preset>> {
+    let mut presets = Vec::new();
+    let mut pending = roots
+        .iter()
+        .filter(|root| root.is_dir())
+        .cloned()
+        .collect::<Vec<_>>();
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)
+            .with_context(|| format!("read Moj Sint preset root {}", directory.display()))?
+        {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            let path = entry.path();
+            if file_type.is_dir() {
+                pending.push(path);
+            } else if file_type.is_file() && extension_is(&path, "mojsint") {
+                if presets.len() == MAX_MOJ_PRESETS {
+                    bail!("Moj Sint catalog exceeds {MAX_MOJ_PRESETS} regular files");
+                }
+                let (name, _) = read_moj_sint(&path)?;
+                presets.push(Preset {
+                    backend: BackendKind::MojSint,
+                    name,
+                    category: None,
+                    id: PresetId::MojSint { path },
+                });
+            }
+        }
+    }
+    sort_presets(&mut presets);
+    Ok(presets)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV2 {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    macros: MojMacrosV2,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV1 {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    envelope: MojLegacyEnvelope,
+    macros: MojMacrosV1,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojLegacyEnvelope {
+    attack_seconds: f32,
+    decay_seconds: f32,
+    sustain_level: f32,
+    release_seconds: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosV2 {
+    evolve: f32,
+    shape: f32,
+    color: f32,
+    edge: f32,
+    couple: f32,
+    motion: f32,
+    depth: f32,
+    space: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosV1 {
+    evolve: f32,
+    shape: f32,
+    color: f32,
+    edge: f32,
+    couple: f32,
+    motion: f32,
+    depth: f32,
+    width: f32,
+    space: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+
+impl MojMacrosV2 {
+    fn values(self) -> [f32; 12] {
+        [
+            self.evolve,
+            self.shape,
+            self.color,
+            self.edge,
+            self.couple,
+            self.motion,
+            self.depth,
+            self.space,
+            self.attack,
+            self.decay,
+            self.sustain,
+            self.release,
+        ]
+    }
+}
+
+fn read_moj_sint(path: &Path) -> Result<(String, HashMap<u8, f32>)> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .with_context(|| format!("open Moj Sint preset {}", path.display()))?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_MOJ_PRESET_BYTES {
+        bail!(
+            "Moj Sint preset must be a regular file no larger than 1 MiB: {}",
+            path.display()
+        );
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_MOJ_PRESET_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_MOJ_PRESET_BYTES {
+        bail!("Moj Sint preset exceeds 1 MiB: {}", path.display());
+    }
+    let source = String::from_utf8(bytes).context("Moj Sint preset is not UTF-8")?;
+    let value: toml::Value =
+        toml::from_str(&source).with_context(|| format!("parse {}", path.display()))?;
+    let version = value
+        .get("schema_version")
+        .and_then(toml::Value::as_integer)
+        .context("Moj Sint preset has no numeric schema_version")?;
+    let (name, voices, output_gain, values) = match version {
+        2 => {
+            let document: MojPresetV2 = toml::from_str(&source)?;
+            debug_assert_eq!(document.schema_version, 2);
+            (
+                document.name,
+                document.voices,
+                document.output_gain,
+                document.macros.values(),
+            )
+        }
+        1 => {
+            let document: MojPresetV1 = toml::from_str(&source)?;
+            if document.schema_version != 1
+                || !document.envelope.attack_seconds.is_finite()
+                || document.envelope.attack_seconds <= 0.0
+                || !document.envelope.decay_seconds.is_finite()
+                || document.envelope.decay_seconds <= 0.0
+                || !document.envelope.release_seconds.is_finite()
+                || document.envelope.release_seconds <= 0.0
+                || !document.envelope.sustain_level.is_finite()
+                || !(0.0..=1.0).contains(&document.envelope.sustain_level)
+            {
+                bail!("invalid version-1 Moj Sint envelope");
+            }
+            let _legacy = (
+                document.envelope.attack_seconds,
+                document.envelope.decay_seconds,
+                document.envelope.sustain_level,
+                document.envelope.release_seconds,
+                document.macros.width,
+            );
+            (
+                document.name,
+                document.voices,
+                document.output_gain,
+                MojMacrosV2 {
+                    evolve: document.macros.evolve,
+                    shape: document.macros.shape,
+                    color: document.macros.color,
+                    edge: document.macros.edge,
+                    couple: document.macros.couple,
+                    motion: document.macros.motion,
+                    depth: document.macros.depth,
+                    space: document.macros.space,
+                    attack: document.macros.attack,
+                    decay: document.macros.decay,
+                    sustain: document.macros.sustain,
+                    release: document.macros.release,
+                }
+                .values(),
+            )
+        }
+        unsupported => bail!("unsupported Moj Sint preset schema {unsupported}"),
+    };
+    let _ = value;
+    if name.trim().is_empty()
+        || !(1..=64).contains(&voices)
+        || !output_gain.is_finite()
+        || !(0.0..=1.0).contains(&output_gain)
+        || values
+            .iter()
+            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
+    {
+        bail!("invalid bounded Moj Sint preset {}", path.display());
+    }
+    Ok((
+        name,
+        crate::control::MOJ_CONTROLS
+            .iter()
+            .zip(values)
+            .map(|(control, value)| (control.cc, value))
+            .collect(),
+    ))
 }
 
 fn catalog(
@@ -549,6 +792,9 @@ fn sort_presets(presets: &mut [Preset]) {
 }
 
 pub fn values(preset: &Preset) -> Result<HashMap<u8, f32>> {
+    if let PresetId::MojSint { path } = &preset.id {
+        return read_moj_sint(path).map(|(_, values)| values);
+    }
     let PresetId::Synthv1 { path } = &preset.id else {
         return Ok(HashMap::new());
     };
@@ -668,8 +914,11 @@ mod tests {
 
     #[test]
     fn engine_cycle_wraps_in_both_directions() {
-        assert_eq!(BackendKind::Synthv1.next(-1), BackendKind::FluidSynth);
-        assert_eq!(BackendKind::FluidSynth.next(1), BackendKind::Synthv1);
+        assert_eq!(BackendKind::Synthv1.next(-1), BackendKind::MojSint);
+        assert_eq!(BackendKind::Synthv1.next(1), BackendKind::Yoshimi);
+        assert_eq!(BackendKind::Yoshimi.next(1), BackendKind::FluidSynth);
+        assert_eq!(BackendKind::FluidSynth.next(1), BackendKind::MojSint);
+        assert_eq!(BackendKind::MojSint.next(1), BackendKind::Synthv1);
     }
 
     #[test]
@@ -737,6 +986,48 @@ mod tests {
             discover_yoshimi(&[base.clone()], &["bass".into(), "lead".into()], 8).unwrap();
         assert_eq!(presets.len(), 1);
         assert_eq!(presets[0].category.as_deref(), Some("Lead"));
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn moj_sint_discovery_is_regular_bounded_strict_and_has_twelve_values() {
+        let base = std::env::temp_dir().join(format!("shsynth-moj-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let source = r#"
+schema_version = 2
+name = "Model D Test"
+voices = 8
+output_gain = 0.2
+[macros]
+evolve = 0.0
+shape = 0.5
+color = 0.4
+edge = 0.0
+couple = 0.0
+motion = 0.4
+depth = 0.0
+space = 0.45
+attack = 0.2
+decay = 0.6
+sustain = 0.7
+release = 0.6
+"#;
+        fs::write(base.join("model-d.mojsint"), source).unwrap();
+        fs::write(base.join("ignored.txt"), source).unwrap();
+        std::os::unix::fs::symlink(base.join("model-d.mojsint"), base.join("linked.mojsint"))
+            .unwrap();
+        let presets = discover_moj_sint(std::slice::from_ref(&base)).unwrap();
+        assert_eq!(presets.len(), 1);
+        assert_eq!(presets[0].backend, BackendKind::MojSint);
+        assert_eq!(presets[0].name, "Model D Test");
+        assert_eq!(values(&presets[0]).unwrap().len(), 12);
+        fs::write(
+            base.join("bad.mojsint"),
+            source.replace("release = 0.6", "release = 0.6\nwidth = 0.5"),
+        )
+        .unwrap();
+        assert!(discover_moj_sint(std::slice::from_ref(&base)).is_err());
         let _ = fs::remove_dir_all(base);
     }
 

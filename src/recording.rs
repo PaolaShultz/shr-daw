@@ -1,4 +1,4 @@
-use crate::control::CONTROLS;
+use crate::control::{CONTROLS, MOJ_CONTROLS};
 use crate::preset::{BackendKind, Preset, PresetId};
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
@@ -8,7 +8,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 const MAX_IDEA_MIDI_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_IDEA_METADATA_BYTES: u64 = 1024 * 1024;
 const MAX_PRESET_REFERENCE_BYTES: u64 = 64 * 1024;
@@ -175,7 +175,7 @@ fn load_core(base: &Path, name: &str) -> Result<(PathBuf, Preset, Vec<TimedEvent
 }
 
 fn read_saved_parameters(path: &Path, backend: BackendKind) -> Result<HashMap<u8, f32>> {
-    if backend != BackendKind::Synthv1 || !path.is_file() {
+    if !matches!(backend, BackendKind::Synthv1 | BackendKind::MojSint) || !path.is_file() {
         return Ok(HashMap::new());
     }
     let metadata: serde_json::Value = serde_json::from_slice(&read_owned_file(
@@ -191,23 +191,29 @@ fn read_saved_parameters(path: &Path, backend: BackendKind) -> Result<HashMap<u8
         return Ok(HashMap::new());
     };
     let mut values = HashMap::new();
-    for control in CONTROLS {
-        let Some(value) = parameters.get(control.xml_name) else {
+    let controls = match backend {
+        BackendKind::Synthv1 => CONTROLS
+            .iter()
+            .map(|control| (control.cc, control.xml_name, control.min, control.max))
+            .collect::<Vec<_>>(),
+        BackendKind::MojSint => MOJ_CONTROLS
+            .iter()
+            .map(|control| (control.cc, control.macro_id, 0.0, 1.0))
+            .collect(),
+        _ => Vec::new(),
+    };
+    for (cc, name, minimum, maximum) in controls {
+        let Some(value) = parameters.get(name) else {
             continue;
         };
         let value = value
             .as_f64()
-            .with_context(|| format!("idea parameter {} is not numeric", control.xml_name))?;
+            .with_context(|| format!("idea parameter {name} is not numeric"))?;
         let value = value as f32;
-        if !value.is_finite() || !(control.min..=control.max).contains(&value) {
-            bail!(
-                "idea parameter {} must be {}..={}",
-                control.xml_name,
-                control.min,
-                control.max
-            );
+        if !value.is_finite() || !(minimum..=maximum).contains(&value) {
+            bail!("idea parameter {name} must be {minimum}..={maximum}");
         }
-        values.insert(control.cc, value);
+        values.insert(cc, value);
     }
     Ok(values)
 }
@@ -252,6 +258,8 @@ pub fn save(
         write_preset_ref(&tmp.join("preset.ref"), preset)?;
         if let PresetId::Synthv1 { path } = &preset.id {
             fs::copy(path, tmp.join("preset.synthv1"))?;
+        } else if let PresetId::MojSint { path } = &preset.id {
+            fs::copy(path, tmp.join("preset.mojsint"))?;
         }
         fs::write(tmp.join("recording.mid"), encode_smf(events))?;
         let created = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -269,8 +277,20 @@ pub fn save(
                 }
                 parameters.insert(control.xml_name.into(), serde_json::json!(value));
             }
+        } else if preset.backend == BackendKind::MojSint {
+            for control in MOJ_CONTROLS {
+                let value = values.get(&control.cc).copied().unwrap_or(0.0);
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    bail!("idea parameter {} must be 0..=1", control.macro_id);
+                }
+                parameters.insert(control.macro_id.into(), serde_json::json!(value));
+            }
         }
-        let snapshot = matches!(preset.id, PresetId::Synthv1 { .. }).then_some("preset.synthv1");
+        let snapshot = match preset.id {
+            PresetId::Synthv1 { .. } => Some("preset.synthv1"),
+            PresetId::MojSint { .. } => Some("preset.mojsint"),
+            _ => None,
+        };
         let metadata = serde_json::json!({
             "format": "shsynth-idea",
             "version": FORMAT_VERSION,
@@ -334,6 +354,7 @@ fn write_preset_ref(path: &Path, preset: &Preset) -> Result<()> {
             safe_ref_value(&soundfont.to_string_lossy())?,
             format!("soundfont_index={soundfont_index}\nbank={bank}\nprogram={program}\n"),
         ),
+        PresetId::MojSint { .. } => ("preset.mojsint".to_owned(), String::new()),
     };
     fs::write(
         path,
@@ -365,11 +386,19 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
     let name = field("name=").context("preset reference has no name")?;
     let category = field("category=").filter(|value| !value.is_empty());
     let source = field("path=").context("preset reference has no path")?;
-    let source = if backend == BackendKind::Synthv1 {
-        if source != "preset.synthv1" {
-            bail!("synthv1 idea must use its private preset snapshot");
+    let source = if matches!(backend, BackendKind::Synthv1 | BackendKind::MojSint) {
+        let expected = if backend == BackendKind::Synthv1 {
+            "preset.synthv1"
+        } else {
+            "preset.mojsint"
+        };
+        if source != expected {
+            bail!(
+                "{} idea must use its private preset snapshot",
+                backend.label()
+            );
         }
-        idea_dir.join("preset.synthv1")
+        idea_dir.join(expected)
     } else {
         PathBuf::from(source)
     };
@@ -391,6 +420,7 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
                 .context("FluidSynth reference has no program")?
                 .parse()?,
         },
+        BackendKind::MojSint => PresetId::MojSint { path: source },
     };
     Ok(Preset {
         backend,
@@ -433,7 +463,11 @@ fn read_owned_file(path: &Path, max_bytes: u64, label: &str) -> Result<Vec<u8>> 
 fn sync_idea_files(dir: &Path, has_snapshot: bool) -> Result<()> {
     let mut names = vec!["preset.ref", "recording.mid", "metadata.json"];
     if has_snapshot {
-        names.push("preset.synthv1");
+        if dir.join("preset.synthv1").is_file() {
+            names.push("preset.synthv1");
+        } else {
+            names.push("preset.mojsint");
+        }
     }
     for name in names {
         fs::File::open(dir.join(name))?.sync_all()?;
@@ -929,6 +963,35 @@ mod tests {
         for control in CONTROLS {
             assert!((restored[&control.cc] - values[&control.cc]).abs() < 0.000_01);
         }
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn moj_sint_idea_owns_preset_snapshot_and_restores_all_macros() {
+        let base = std::env::temp_dir().join(format!("shsynth-moj-idea-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let preset_path = base.join("source.mojsint");
+        fs::write(&preset_path, "strict preset snapshot fixture").unwrap();
+        let preset = Preset {
+            backend: BackendKind::MojSint,
+            name: "Model D".into(),
+            category: None,
+            id: PresetId::MojSint { path: preset_path },
+        };
+        let values = MOJ_CONTROLS
+            .iter()
+            .enumerate()
+            .map(|(index, control)| (control.cc, index as f32 / 11.0))
+            .collect::<HashMap<_, _>>();
+        let saved = save(&base, "moj", &preset, &values, &[]).unwrap();
+        assert!(saved.join("preset.mojsint").is_file());
+        assert!(!saved.join("preset.synthv1").exists());
+        let (loaded, restored, events) = load_with_parameters(&base, "moj").unwrap();
+        assert_eq!(loaded.backend, BackendKind::MojSint);
+        assert!(matches!(loaded.id, PresetId::MojSint { .. }));
+        assert_eq!(restored, values);
+        assert!(events.is_empty());
         let _ = fs::remove_dir_all(base);
     }
 
