@@ -500,12 +500,16 @@ free play; `APPLY ROUTING` sends the selected column's program again. Until
 Apply, the Project, runtime route, engine, transport, and recorder are otherwise
 untouched.
 
-Pressing the highlighted `ROUTE` menu item closes the overlay and cancels its
-whole unconfirmed draft. Back/Esc from the main list does the same. Missing
-preferred hardware remains visible and saved as preferred; an exact external
-target stays offline or ambiguous and never uses either the configured
-hardware default or the Pattern's software synth. `AUTO` alone keeps portable
-machine-default behavior and owns no explicit channel/bank/program values.
+The bottom border always shows `APPLY` and `CANCEL`, so neither whole-draft
+action depends on scrolling to the final list row. Keyboard `A` and `C` invoke
+the same actions. Pressing the highlighted `ROUTE` menu item also closes the
+overlay and cancels its whole unconfirmed draft. Back/Esc from the main list
+does the same, while Back/Esc during a field edit cancels only that field.
+Missing preferred hardware remains visible and saved as preferred; an exact
+external target stays offline or ambiguous and never uses either the
+configured hardware default or the Pattern's software synth. `AUTO` alone
+keeps portable machine-default behavior and owns no explicit
+channel/bank/program values.
 
 ## Tracks and routing
 

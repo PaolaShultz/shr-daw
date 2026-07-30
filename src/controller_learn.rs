@@ -96,7 +96,7 @@ impl LearnRole {
             Self::EncoderClockwise => "MASTER ENCODER · TURN RIGHT".into(),
             Self::EncoderCounterClockwise => "MASTER ENCODER · TURN LEFT".into(),
             Self::EncoderClick => "MASTER ENCODER · CLICK".into(),
-            Self::EncoderModifier => "ENCODER SHIFT · HOLD BUTTON".into(),
+            Self::EncoderModifier => "ENCODER SHIFT · HOLD + TURN LEFT".into(),
             Self::Pad(4) => "PAGE SWITCH · BUTTON OR MODIFIER + CONTROL".into(),
             Self::Pad(index) => format!("COMMAND BUTTON · {}", COMMAND_ACTIONS[index]),
             Self::Confirm => "REVIEW AND SAVE".into(),
@@ -127,17 +127,51 @@ enum LearnInput {
 
 #[derive(Clone, Copy, Debug)]
 enum LearnState {
-    EntryQuiet { deadline: Instant },
+    EntryQuiet {
+        deadline: Instant,
+    },
     Armed,
-    Settling { cc: u8, deadline: Instant },
-    ButtonHeld { input: LearnInput },
-    CycleCandidate { modifier: LearnInput },
-    CycleConfirm { candidate: LearnInput },
-    CycleConfirmHeld { candidate: LearnInput },
-    CycleChordHeld { modifier: LearnInput },
-    PostRelease { deadline: Instant },
-    NavigationSettling { cc: u8, deadline: Instant },
-    SaveButtonHeld { input: LearnInput, saved: bool },
+    Settling {
+        cc: u8,
+        deadline: Instant,
+    },
+    ButtonHeld {
+        input: LearnInput,
+    },
+    EncoderModifierCandidate {
+        modifier: LearnInput,
+    },
+    EncoderModifierTurnRight {
+        modifier: LearnInput,
+        cc: u8,
+        reverse: bool,
+    },
+    EncoderModifierChordHeld {
+        modifier: LearnInput,
+    },
+    CycleCandidate {
+        modifier: LearnInput,
+    },
+    CycleConfirm {
+        candidate: LearnInput,
+    },
+    CycleConfirmHeld {
+        candidate: LearnInput,
+    },
+    CycleChordHeld {
+        modifier: LearnInput,
+    },
+    PostRelease {
+        deadline: Instant,
+    },
+    NavigationSettling {
+        cc: u8,
+        deadline: Instant,
+    },
+    SaveButtonHeld {
+        input: LearnInput,
+        saved: bool,
+    },
     Saved,
 }
 
@@ -349,6 +383,73 @@ impl LearnSession {
                 }
                 return LearnAction::None;
             }
+            LearnState::EncoderModifierCandidate { modifier } => {
+                if modifier.is_release(message) {
+                    self.state = LearnState::Armed;
+                    self.feedback =
+                        "Shift released too soon · hold Shift and turn the encoder left".into();
+                } else if let Some((cc, value)) = moving_cc(message) {
+                    let modifier_cc = match modifier {
+                        LearnInput::Cc { cc, .. } => Some(cc),
+                        LearnInput::Note { .. } => None,
+                    };
+                    let ordinary_cc = self.draft.encoder_relative_cc;
+                    if Some(cc) == modifier_cc {
+                        return LearnAction::None;
+                    }
+                    if Some(cc) != ordinary_cc && used_ccs(&self.draft).contains(&cc) {
+                        self.feedback =
+                            format!("Conflict · shifted encoder CC {cc} is already assigned");
+                        return LearnAction::None;
+                    }
+                    self.state = LearnState::EncoderModifierTurnRight {
+                        modifier,
+                        cc,
+                        reverse: value > 64,
+                    };
+                    self.feedback =
+                        format!("Shift+left learned on CC {cc} · keep holding · turn right");
+                }
+                return LearnAction::None;
+            }
+            LearnState::EncoderModifierTurnRight {
+                modifier,
+                cc,
+                reverse,
+            } => {
+                if modifier.is_release(message) {
+                    self.state = LearnState::Armed;
+                    self.feedback =
+                        "Shift released too soon · hold Shift, turn left, then right".into();
+                } else if let Some((candidate_cc, value)) = moving_cc(message) {
+                    if candidate_cc != cc {
+                        self.feedback =
+                            format!("Expected shifted encoder CC {cc} · got CC {candidate_cc}");
+                    } else if (value < 64) != reverse {
+                        self.feedback =
+                            "Direction conflict · keep holding Shift and turn right".into();
+                    } else {
+                        self.draft.encoder_modifier = Some(modifier.controller_button());
+                        if Some(cc) == self.draft.encoder_relative_cc {
+                            self.draft.encoder_modified_relative_cc = None;
+                            self.draft.encoder_modified_relative_reverse = false;
+                        } else {
+                            self.draft.encoder_modified_relative_cc = Some(cc);
+                            self.draft.encoder_modified_relative_reverse = reverse;
+                        }
+                        self.state = LearnState::EncoderModifierChordHeld { modifier };
+                        self.feedback =
+                            "Shift+rotary learned · OK · release Shift to continue".into();
+                    }
+                }
+                return LearnAction::None;
+            }
+            LearnState::EncoderModifierChordHeld { modifier } => {
+                if modifier.is_release(message) {
+                    self.advance_after_capture();
+                }
+                return LearnAction::None;
+            }
             LearnState::CycleCandidate { modifier } => {
                 if modifier.is_release(message) {
                     self.state = LearnState::CycleConfirm {
@@ -495,21 +596,33 @@ impl LearnSession {
             }
             return LearnAction::None;
         }
+        if role == LearnRole::EncoderModifier {
+            let input = match self.learn_encoder_modifier_button(message) {
+                Ok(input) => input,
+                Err(message) => {
+                    self.feedback = message;
+                    return LearnAction::None;
+                }
+            };
+            self.state = LearnState::EncoderModifierCandidate { modifier: input };
+            self.feedback = format!(
+                "{} held · now turn the encoder left",
+                learn_input_description(input)
+            );
+            return LearnAction::None;
+        }
         let accepted = match role {
             LearnRole::AbsoluteControl(index) => self.learn_absolute(index, message),
             LearnRole::EncoderCounterClockwise => self.learn_encoder_counterclockwise(message),
             LearnRole::EncoderClockwise => self.learn_encoder_clockwise(message),
             LearnRole::EncoderClick => self.learn_click(message),
-            LearnRole::EncoderModifier => self.learn_encoder_modifier(message),
+            LearnRole::EncoderModifier => unreachable!("handled as a held Shift+rotary chord"),
             LearnRole::Pad(index) => self.learn_pad(index, message),
             LearnRole::Confirm => return LearnAction::None,
         };
         match accepted {
             Ok(description) => {
-                if matches!(
-                    role,
-                    LearnRole::EncoderClick | LearnRole::EncoderModifier | LearnRole::Pad(_)
-                ) {
+                if matches!(role, LearnRole::EncoderClick | LearnRole::Pad(_)) {
                     let Some(input) = LearnInput::from_message(message) else {
                         return LearnAction::None;
                     };
@@ -650,7 +763,7 @@ impl LearnSession {
         }
     }
 
-    fn learn_encoder_modifier(&mut self, message: &[u8]) -> Result<String, String> {
+    fn learn_encoder_modifier_button(&self, message: &[u8]) -> Result<LearnInput, String> {
         let input = LearnInput::from_message(message)
             .ok_or_else(|| "Expected an unused CC or note press".to_owned())?;
         match input {
@@ -660,13 +773,7 @@ impl LearnSession {
             LearnInput::Note { note, .. } if used_notes(&self.draft).contains(&note) => Err(
                 format!("Conflict · note {note} is already assigned · retry"),
             ),
-            _ => {
-                self.draft.encoder_modifier = Some(input.controller_button());
-                Ok(format!(
-                    "{} = encoder Shift",
-                    learn_input_description(input)
-                ))
-            }
+            _ => Ok(input),
         }
     }
 
@@ -746,7 +853,11 @@ impl LearnSession {
                 self.draft.encoder_press_note = None;
                 self.draft.encoder_press_channel = None;
             }
-            LearnRole::EncoderModifier => self.draft.encoder_modifier = None,
+            LearnRole::EncoderModifier => {
+                self.draft.encoder_modifier = None;
+                self.draft.encoder_modified_relative_cc = None;
+                self.draft.encoder_modified_relative_reverse = false;
+            }
             LearnRole::AbsoluteControl(index) => {
                 let target = CONTROLS[index].cc;
                 self.draft.controls.retain(|_, mapped| *mapped != target);
@@ -790,6 +901,13 @@ fn cc_number(message: &[u8]) -> Option<u8> {
 
 fn cc_message(message: &[u8], cc: u8) -> bool {
     cc_number(message) == Some(cc)
+}
+
+fn moving_cc(message: &[u8]) -> Option<(u8, u8)> {
+    if message.len() < 3 || message[0] & 0xf0 != 0xb0 || matches!(message[2], 0 | 64) {
+        return None;
+    }
+    Some((message[1], message[2]))
 }
 
 fn message_marks_activity(message: &[u8]) -> bool {
@@ -918,6 +1036,37 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
             Button::Cc { cc, channel } => ControllerButton::Cc { channel, cc },
             Button::Note { note, channel } => ControllerButton::Note { channel, note },
         });
+        let mut shifted_turn_conflicts = used_ccs(config);
+        if let Some(ordinary_cc) = config.encoder_relative_cc {
+            shifted_turn_conflicts.remove(&ordinary_cc);
+        }
+        let (cc, value) = capture_cc_value(
+            &receiver,
+            "Keep holding Shift and turn the main encoder counterclockwise",
+            &shifted_turn_conflicts,
+        )?;
+        if matches!(value, 0 | 64) {
+            bail!("shifted encoder sent only a stationary value; turn it farther and retry");
+        }
+        let right_value = capture_matching_moving_cc(
+            &receiver,
+            "Keep holding Shift and turn the main encoder clockwise",
+            cc,
+        )?;
+        let reverse = value > 64;
+        if (right_value < 64) != reverse {
+            bail!("shifted encoder direction conflict; turn right and retry");
+        }
+        if Some(cc) == config.encoder_relative_cc {
+            config.encoder_modified_relative_cc = None;
+            config.encoder_modified_relative_reverse = false;
+            println!("  shifted encoder keeps ordinary CC {cc}");
+        } else {
+            config.encoder_modified_relative_cc = Some(cc);
+            config.encoder_modified_relative_reverse = reverse;
+            println!("  shifted encoder CC {cc}; direction convention detected");
+        }
+        println!("  release encoder Shift");
     }
 
     let layout = ask_number("Command buttons available (0, 4, 5, or 8) [0]: ", 0, 8)?;
@@ -1086,6 +1235,25 @@ fn capture_cc_value(
         let message = receiver.recv().context("MIDI learn input closed")?;
         if message.len() >= 3 && message[0] & 0xf0 == 0xb0 && !used.contains(&message[1]) {
             return Ok((message[1], message[2]));
+        }
+    }
+}
+
+fn capture_matching_moving_cc(
+    receiver: &Receiver<Vec<u8>>,
+    prompt: &str,
+    expected_cc: u8,
+) -> Result<u8> {
+    receiver.try_iter().for_each(drop);
+    println!("{prompt} …");
+    loop {
+        let message = receiver.recv().context("MIDI learn input closed")?;
+        if message.len() >= 3
+            && message[0] & 0xf0 == 0xb0
+            && message[1] == expected_cc
+            && !matches!(message[2], 0 | 64)
+        {
+            return Ok(message[2]);
         }
     }
 }
@@ -1353,7 +1521,7 @@ mod tests {
     }
 
     #[test]
-    fn optional_encoder_shift_learns_a_held_button_before_controls() {
+    fn optional_encoder_shift_learns_a_changed_relative_cc_before_controls() {
         let mut h = Harness::new();
         h.send(&[0xb0, 28, 63]);
         h.settle();
@@ -1364,7 +1532,11 @@ mod tests {
         assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
 
         h.send(&[0xb0, 27, 127]);
-        assert!(h.learn.feedback().contains("encoder Shift"));
+        assert!(h.learn.feedback().contains("turn the encoder left"));
+        h.send(&[0xb0, 29, 63]);
+        assert!(h.learn.feedback().contains("turn right"));
+        h.send(&[0xb0, 29, 65]);
+        assert!(h.learn.feedback().contains("release Shift"));
         h.send(&[0xb0, 27, 0]);
 
         assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
@@ -1372,6 +1544,31 @@ mod tests {
             h.learn.draft().encoder_modifier,
             Some(ControllerButton::Cc { channel: 0, cc: 27 })
         );
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(29));
+        assert!(!h.learn.draft().encoder_modified_relative_reverse);
+    }
+
+    #[test]
+    fn optional_encoder_shift_accepts_the_ordinary_relative_cc() {
+        let mut h = Harness::new();
+        h.send(&[0xb0, 28, 63]);
+        h.settle();
+        h.send(&[0xb0, 28, 65]);
+        h.settle();
+        h.send(&[0xb0, 118, 127]);
+        h.send(&[0xb0, 118, 0]);
+
+        h.send(&[0xb0, 27, 127]);
+        h.send(&[0xb0, 28, 63]);
+        h.send(&[0xb0, 28, 65]);
+        h.send(&[0xb0, 27, 0]);
+
+        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
+        assert_eq!(
+            h.learn.draft().encoder_modifier,
+            Some(ControllerButton::Cc { channel: 0, cc: 27 })
+        );
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
     }
 
     #[test]

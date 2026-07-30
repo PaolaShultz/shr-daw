@@ -12662,6 +12662,15 @@ fn perform(
             a.toggle_loop_preview();
         } else if action == Action::LoopPreviewStop {
             a.stop_loop_preview(true);
+        } else if action == Action::ApplyRouteOverlay && overlay_kind == OverlayKind::TrackerRoute {
+            a.confirm_route_overlay();
+        } else if action == Action::CancelRouteOverlay && overlay_kind == OverlayKind::TrackerRoute
+        {
+            if a.mixed_engine_remap.is_some() {
+                a.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
+            } else {
+                a.close_overlay(true);
+            }
         } else if action == Action::PreviewRouteDraft {
             a.preview_route_draft();
         } else if action == Action::TapTempo {
@@ -13152,6 +13161,9 @@ fn perform(
         | Action::OpenTrackerAdvanceOverlay
         | Action::OpenEntryLayoutOverlay
         | Action::OpenEffectsOverlay => a.open_overlay(action),
+        Action::ApplyRouteOverlay | Action::CancelRouteOverlay => {
+            unreachable!("route overlay actions are handled before contextual dispatch")
+        }
         Action::PreviewRouteDraft => a.preview_route_draft(),
         Action::OpenAudioRecorder => {
             a.set_tracker_edit(false);
@@ -13684,6 +13696,24 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Up | KeyCode::Char('k') => a.move_overlay(-1),
             KeyCode::Down | KeyCode::Char('j') => a.move_overlay(1),
             KeyCode::Enter => a.activate_overlay(),
+            KeyCode::Char('a') | KeyCode::Char('A')
+                if a.overlay
+                    .as_ref()
+                    .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute) =>
+            {
+                a.confirm_route_overlay()
+            }
+            KeyCode::Char('c') | KeyCode::Char('C')
+                if a.overlay
+                    .as_ref()
+                    .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute) =>
+            {
+                if a.mixed_engine_remap.is_some() {
+                    a.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
+                } else {
+                    a.close_overlay(true);
+                }
+            }
             KeyCode::Char('p') | KeyCode::Char('P')
                 if a.overlay
                     .as_ref()
@@ -15004,7 +15034,9 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
     } else {
         Span::raw("Master rotary required")
     };
-    let gesture = if session.can_finish() {
+    let gesture = if role == crate::controller_learn::LearnRole::EncoderModifier {
+        "Hold Shift · turn left, right · release"
+    } else if session.can_finish() {
         "Move once · auto-next after release"
     } else {
         "Finish left, right, click and release"
@@ -15044,13 +15076,18 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
             draft.pads.len() + draft.cc_buttons.len()
         )),
         Spans::from(format!(
-            "Encoder · turn {} · click {}",
+            "Encoder · turn {} · click {} · Shift {}",
             if draft.encoder_relative_cc.is_some() {
                 "OK"
             } else {
                 "--"
             },
             if draft.encoder_press_cc.is_some() || draft.encoder_press_note.is_some() {
+                "OK"
+            } else {
+                "--"
+            },
+            if draft.encoder_modifier.is_some() {
                 "OK"
             } else {
                 "--"
@@ -21229,12 +21266,23 @@ mod tests {
         a.open_overlay(Action::OpenRouteOverlay);
         let buffer = render_app(&mut a, 40, 20);
         let row = row_text(&buffer, 18);
-        assert_eq!(row.matches('[').count(), 1);
+        assert_eq!(row.matches('[').count(), 3);
+        assert!(row.contains("APPLY"));
+        assert!(row.contains("CANCEL"));
         assert!(row.contains("ROUTE"));
-        assert_eq!(buffer_cell(&buffer, 29, 18).bg, Color::LightYellow);
         assert!(row_text(&buffer, 19).starts_with('‖'));
-        assert_eq!(a.hits.actions.len(), 1);
-        assert_eq!(a.hits.actions[0].1, Action::OpenRouteOverlay);
+        assert_eq!(
+            a.hits
+                .actions
+                .iter()
+                .map(|(_, action)| *action)
+                .collect::<Vec<_>>(),
+            vec![
+                Action::ApplyRouteOverlay,
+                Action::CancelRouteOverlay,
+                Action::OpenRouteOverlay,
+            ]
+        );
     }
 
     #[test]
@@ -21251,8 +21299,58 @@ mod tests {
         assert_eq!(buffer_cell(&buffer, 38, 1).symbol, "╗");
         assert_eq!(buffer_cell(&buffer, 1, 11).symbol, "╚");
         assert_eq!(buffer_cell(&buffer, 38, 11).symbol, "╝");
+        assert!(row_text(&buffer, 11).contains("APPLY"));
+        assert!(row_text(&buffer, 11).contains("CANCEL"));
         assert!(row_text(&buffer, 11).contains("ROUTE"));
         assert!(row_text(&buffer, 12).starts_with(transport_glyph(a.transport_indicator()).0));
+    }
+
+    #[test]
+    fn route_overlay_visible_apply_and_cancel_own_the_whole_draft() {
+        let p = presets();
+        let mut cancelled = app(&p);
+        cancelled.screen = Screen::Tracker;
+        let original = cancelled.song.clone();
+        cancelled.open_overlay(Action::OpenRouteOverlay);
+        cancelled
+            .overlay
+            .as_mut()
+            .unwrap()
+            .route_mut()
+            .unwrap()
+            .page
+            .columns[0]
+            .channel = 7;
+        perform(
+            Action::CancelRouteOverlay,
+            &mut cancelled,
+            Path::new("/none"),
+            None,
+        );
+        assert!(cancelled.overlay.is_none());
+        assert_eq!(cancelled.song, original);
+        assert_eq!(cancelled.status, "Cancelled · routing draft discarded");
+
+        let mut applied = app(&p);
+        applied.screen = Screen::Tracker;
+        applied.open_overlay(Action::OpenRouteOverlay);
+        applied
+            .overlay
+            .as_mut()
+            .unwrap()
+            .route_mut()
+            .unwrap()
+            .page
+            .columns[0]
+            .channel = 7;
+        perform(
+            Action::ApplyRouteOverlay,
+            &mut applied,
+            Path::new("/none"),
+            None,
+        );
+        assert!(applied.overlay.is_none());
+        assert_eq!(applied.current_page().unwrap().columns[0].channel, 7);
     }
 
     #[test]

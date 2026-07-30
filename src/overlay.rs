@@ -227,6 +227,17 @@ impl OverlayState {
     /// Loop Browser adds contextual stop/play anchors and Song Navigation adds
     /// TAP at the tempo anchor.
     pub fn controller_action(&self, item: usize) -> Option<(&'static str, Action)> {
+        if self.kind == OverlayKind::TrackerRoute {
+            let mut free = (0..4).filter(|candidate| *candidate != self.launcher.item);
+            let apply = free.next().unwrap_or(0);
+            let cancel = free.next().unwrap_or(1);
+            if item == apply {
+                return Some(("APPLY", Action::ApplyRouteOverlay));
+            }
+            if item == cancel {
+                return Some(("CANCEL", Action::CancelRouteOverlay));
+            }
+        }
         if self.launcher.item == item {
             return Some((self.launcher.label, self.launcher.action));
         }

@@ -502,7 +502,9 @@ instrument and its settings decide how strongly that velocity changes sound.
 <code>display.note_names</code> in
 <code>shsynth.conf</code> selects German <code>B</code>/<code>H</code> spelling or English <code>A#</code>/<code>B</code> spelling.
 Recognized major triads use the explicit <code>maj</code> label, such as <code>C maj</code>, so the
-display does not rely on an omitted suffix to teach the chord quality.</p>
+display does not rely on an omitted suffix to teach the chord quality.
+<code>IDEA+</code> stores a captured MIDI take with the current sound; it is not a
+preset-save command. <code>SOUNDS</code> returns to Presets and its visible <code>LOAD</code>.</p>
 <p>The loaded standalone instrument stays running when you leave Presets or
 Playback, so it remains available for effects and other screens. Global panic,
 application shutdown, loading a replacement, or entering FT2 with a different
@@ -545,7 +547,10 @@ than assigning it to a destructive, transport, or confirmation action.</p>
 Patterns, pages, Arrangement, Projects, drums, Live Patterns, and the fourth
 musician-facing Loop Mix page. Recorder captures raw synchronized stems; Performance owns
 the optional final bus and stereo recording. Routing edits machine choices,
-while MIDI Learn configures the controller without forwarding learned input.</p>
+while MIDI Learn configures the controller without forwarding learned input.
+Its optional encoder-Shift step learns the whole held gesture—left turn, right
+turn, then release—so controllers that change the rotary CC while Shift is held
+do not require a hand-edited mapping.</p>
 <p>Temporary master overlays keep their caller visible and cancel unconfirmed
 drafts on close. For every screen, controller page, shortcut, and exact loop
 workflow, use the <a href="#doc-menu_manual">visual menu manual</a>, <a href="#doc-tracker">tracker
@@ -864,8 +869,10 @@ learned encoder turn and click, Home highlights MIDI Learn and explains why.
 Keyboard Up/Down/Enter still work. Optional command buttons may be skipped once
 the learned encoder can turn and click. Home does not learn or send MIDI by
 itself; Learn keeps selected-controller messages isolated until an explicit
-save or cancel. Separate performance inputs continue to bypass controller
-interpretation.</p>
+save or cancel. Its optional encoder-Shift step learns the complete gesture:
+hold Shift, turn left, turn right, then release. This captures either the
+ordinary rotary CC or a different CC emitted only while Shift is held.
+Separate performance inputs continue to bypass controller interpretation.</p>
 <p>The controller menu has four pages. Page 1 is OPS. On child screens, page
 4 item 4 is EXIT and returns one level. Empty buttons are hidden and silent.</p>
 <p>Home is the only screen without the shared working-screen status row. The
@@ -927,6 +934,9 @@ to cycle every root plus MAJOR or natural MINOR choice. Notes in the chosen
 scale keep their pitch and sound normally; notes outside it stay silent.
 Pressing N00B again restores all chromatic notes. Changing or leaving the
 filter releases held notes first.</p>
+<p>Playback <code>IDEA+</code> stores the captured MIDI take with its current sound; it
+does not save a synth preset. <code>SOUNDS</code> returns directly to Presets, where
+<code>LOAD</code> starts the highlighted instrument.</p>
 <h4 id="doc-help--effects-graph" tabindex="-1">Effects graph<a class="heading-anchor" href="#doc-help--effects-graph" aria-label="Link to Effects graph">#</a></h4>
 <p>Playback SYS FX or FT2 Tools OPS FX opens the current Project's FX rack. In
 FT2, uppercase F opens it directly. Back returns to the calling Player or FT2
@@ -1076,6 +1086,10 @@ substituting another instrument.</p>
 resolve; they never substitute another output or the Pattern's software synth.
 Portable AUTO pages resolve the current machine default instead. Reconnect an
 exact target and play again without rewriting the Project.</p>
+<p>The quick FT2 ROUTE overlay keeps <code>APPLY</code> and <code>CANCEL</code> visible in its bottom
+border. APPLY validates and saves the whole routing draft; CANCEL discards it.
+Back during a field edit cancels that field first, while Back from the main
+list cancels the whole draft. Keyboard <code>A</code> and <code>C</code> match the visible actions.</p>
 <p>FILES NEW PRJ requires a second press, clears the current unsaved Project, and
 starts the next <code>project-001</code> style name. SAVE AS writes and switches to the
 next non-overwriting <code>&lt;name&gt;-copy-001</code> file. Pattern Repeat/Remove operations
@@ -1295,9 +1309,12 @@ FT2. It shows target type, software engine/instrument or MIDI output, optional
 device profile, plus all four columns' channel, bank, program/instrument name,
 and interface availability. Turn and click/Enter to activate a
 field; Back/Esc cancels that field first. Only <strong>APPLY ROUTING</strong> changes the
-Project. The same highlighted ROUTE item or Back closes and cancels every
-unconfirmed change. At 40×13 the bordered outer window is 38×11 at <code>(1,1)</code> and
-the usable inner area is 36×9 at <code>(2,2)</code>; row 13 remains the shared status row.</p>
+Project. <strong>APPLY</strong> and <strong>CANCEL</strong> remain visible in the overlay's bottom border
+even while the longer field list scrolls; keyboard <code>A</code> and <code>C</code> invoke the same
+whole-draft actions. The same highlighted ROUTE item or Back closes and cancels
+every unconfirmed change. Back from an active field cancels only that field
+first. At 40×13 the bordered outer window is 38×11 at <code>(1,1)</code> and the usable
+inner area is 36×9 at <code>(2,2)</code>; row 13 remains the shared status row.</p>
 <h4 id="doc-tracker--step-editing" tabindex="-1">Step editing<a class="heading-anchor" href="#doc-tracker--step-editing" aria-label="Link to Step editing">#</a></h4>
 <p>Step entry accepts notes and chords from any configured musical input.
 <strong>TRACKS</strong> → <strong>SYS</strong> → <strong>ENTRY</strong> selects one persisted layout for each page:</p>
@@ -1987,7 +2004,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>Playback</td>
-<td>Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact <code>SCALE</code> control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint each render their own 12-control three-by-four layout and use the same physical pickup crossing path without sharing parameter identity.</td>
+<td>Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact <code>SCALE</code> control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play and use the explicit <code>IDEA+</code> command to save a new Idea; use <code>SOUNDS</code> to return directly to the Presets catalog and its visible <code>LOAD</code>; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint each render their own 12-control three-by-four layout and use the same physical pickup crossing path without sharing parameter identity.</td>
 </tr>
 <tr>
 <td>Ideas</td>
@@ -1995,7 +2012,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 normal</td>
-<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit.</td>
+<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> visible in its bottom border while preserving the launcher; Back still cancels an active field before the whole draft.</td>
 </tr>
 <tr>
 <td>FT2 record</td>
@@ -2367,9 +2384,9 @@ channel-1 pads cannot safely be commands because they collide with the keys.</li
 <td>Playback</td>
 <td>Sound</td>
 <td>Reset controls</td>
-<td>Save</td>
+<td>Idea+</td>
 <td>N00B on/off</td>
-<td>—</td>
+<td>Sounds</td>
 </tr>
 <tr>
 <td>Playback</td>
@@ -3380,14 +3397,17 @@ not restart the synth.</p>
 <p><a class="repeated-image-link" href="#shot-889a405e74bb">Populated Playback screen with the PLAY controller page (shown earlier)</a></p>
 <p><code>PLAY</code> plays or stops the captured take. <code>RECORD</code> starts or stops free-time MIDI
 capture.</p>
-<h5 id="doc-menu-everyday_screens--sound-reset-save-and-scale-filter" tabindex="-1">SOUND — reset, save, and scale filter<a class="heading-anchor" href="#doc-menu-everyday_screens--sound-reset-save-and-scale-filter" aria-label="Link to SOUND — reset, save, and scale filter">#</a></h5>
-<p><img src="images/menu/playback-sound.png" alt="Populated Playback screen with the SOUND controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="28eeb1d3c3a2d329acad4ade24d031a22f687be8f4cded718759e6906c7afdb4" class="tui-shot" id="shot-28eeb1d3c3a2" /></p>
+<h5 id="doc-menu-everyday_screens--sound-reset-idea-save-scale-filter-and-sounds" tabindex="-1">SOUND — reset, Idea save, scale filter, and sounds<a class="heading-anchor" href="#doc-menu-everyday_screens--sound-reset-idea-save-scale-filter-and-sounds" aria-label="Link to SOUND — reset, Idea save, scale filter, and sounds">#</a></h5>
+<p><img src="images/menu/playback-sound.png" alt="Populated Playback screen with the SOUND controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="63db611b9d5d1a12260f2e87eeb5e20fc62c818030648c495072ce9dabf25470" class="tui-shot" id="shot-63db611b9d5d" /></p>
 <p><code>RESET</code> restores the 12 mapped parameters in place and re-arms hardware pickup.
-<code>SAVE</code> publishes a new non-overwriting Idea. <code>N00B</code> toggles the optional scale
-filter without leaving Playback or hiding any normal content. While it is on, a
-single compact <code>SCALE</code> rotary appears below the 12 controls; turning the master
-encoder cycles every chromatic root in major and natural minor. Pressing N00B
-again removes only that control and restores chromatic play.</p>
+<code>IDEA+</code> publishes the captured MIDI take plus its sound as a new
+non-overwriting Idea; it does not save a synth preset. <code>N00B</code> toggles the
+optional scale filter without leaving Playback or hiding any normal content.
+<code>SOUNDS</code> returns directly to Presets, where <code>LOAD</code> starts the highlighted
+sound. While N00B is on, a single compact <code>SCALE</code> rotary appears below the 12
+controls; turning the master encoder cycles every chromatic root in major and
+natural minor. Pressing N00B again removes only that control and restores
+chromatic play.</p>
 <h5 id="doc-menu-everyday_screens--sys-safety-effects-help-and-return" tabindex="-1">SYS — safety, effects, help, and return<a class="heading-anchor" href="#doc-menu-everyday_screens--sys-safety-effects-help-and-return" aria-label="Link to SYS — safety, effects, help, and return">#</a></h5>
 <p><img src="images/menu/playback-sys.png" alt="Populated Playback screen with the SYS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="f17d8482dd5bfbec7142c08a0b26648a563bd43ba7e076d5323442fd919ed6bd" class="tui-shot" id="shot-f17d8482dd5b" /></p>
 <p><code>PANIC</code> performs the global owned stop. <code>FX</code> opens the current Project rack
@@ -3420,7 +3440,7 @@ boundaries.</p>
 <p><code>PANIC</code> stops owned notes and transports. <code>HELP</code> opens contextual help. <code>EXIT</code>
 returns Home.</p>
 <h4 id="doc-menu-everyday_screens--midi-learn" tabindex="-1">MIDI Learn<a class="heading-anchor" href="#doc-menu-everyday_screens--midi-learn" aria-label="Link to MIDI Learn">#</a></h4>
-<p><img src="images/menu/midi-learn.png" alt="Non-audible MIDI Learn screen waiting for a master-encoder gesture" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="43914c26ba3968b218127d30858768cef1a78bcfa955cb2ba50e5dbfea8b9cae" class="tui-shot" id="shot-43914c26ba39" /></p>
+<p><img src="images/menu/midi-learn.png" alt="Non-audible MIDI Learn screen waiting for a master-encoder gesture" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="363d1eadb78b4881eb8c1bc9a96cd23275af83c16785c16c7253b26e0008a0e6" class="tui-shot" id="shot-363d1eadb78b" /></p>
 <p>MIDI Learn isolates controller messages from instruments while it captures the
 master rotary's counter-clockwise turn, clockwise turn, and click, followed by
 optional absolute controls and command buttons. Release each opening control
@@ -3795,7 +3815,7 @@ Esc, to close. There is no extra controller Back item.</p>
 <p>PATTERN selects an existing Pattern and links to Pattern tools or Project Files.</p>
 <p><img src="images/menu/overlay-ft2-song.png" alt="SONG overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="33c4e8dbcdc02718a124fba36912ad599c73a84cc45e6919e098668e4fceda07" class="tui-shot" id="shot-33c4e8dbcdc0" /></p>
 <p>SONG selects an Arrangement step and links to Arrangement or page tools.</p>
-<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="2e443bd7c9b9397854258bb6356e26b2dc5ff9f866f6668b39eb8122d27e4665" class="tui-shot" id="shot-2e443bd7c9b9" /></p>
+<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="1b2aff601a8c7e95e673334928b044a2ecd987dd1d6cfffa74fca7cdb31a4d37" class="tui-shot" id="shot-1b2aff601a8c" /></p>
 <p>ROUTE edits a detached page-routing draft that changes the Project only on Apply.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" tabindex="-1">SYS — safety, filter, help, and exit<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" aria-label="Link to SYS — safety, filter, help, and exit">#</a></h5>
 <p><img src="images/menu/ft2-play-sys.png" alt="Populated FT2 Pattern in Play mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0b077d999bd6987102baf869a7a74dee102380598ded91c47b3edaf187135f5f" class="tui-shot" id="shot-0b077d999bd6" /></p>
@@ -4072,7 +4092,7 @@ the reference. <code>REMOVE</code> removes only this step, not the underlying Pa
 <p><img src="images/menu/arrange-sys.png" alt="Populated Arrangement screen with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7faa26f6c68053887808db4a532b9dc81c1714d54f68b281a9882688bbd7657b" class="tui-shot" id="shot-7faa26f6c680" /></p>
 <p><code>PANIC</code> and <code>HELP</code> remain available. <code>EXIT</code> returns to the tracker.</p>
 <h4 id="doc-menu-tracker_and_projects--route-master-overlay" tabindex="-1">ROUTE master overlay<a class="heading-anchor" href="#doc-menu-tracker_and_projects--route-master-overlay" aria-label="Link to ROUTE master overlay">#</a></h4>
-<p><a class="repeated-image-link" href="#shot-2e443bd7c9b9">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
+<p><a class="repeated-image-link" href="#shot-1b2aff601a8c">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
 <p>ROUTE is the quick transactional editor for the active Pattern page. The top
 row shows the page/master destination and its current resolved state. The next
 16 rows show channel, bank MSB, bank LSB, and program/instrument for each of the
@@ -4087,12 +4107,16 @@ field also sends that column's bank/program selection immediately for hardware
 free play; <code>APPLY ROUTING</code> sends the selected column's program again. Until
 Apply, the Project, runtime route, engine, transport, and recorder are otherwise
 untouched.</p>
-<p>Pressing the highlighted <code>ROUTE</code> menu item closes the overlay and cancels its
-whole unconfirmed draft. Back/Esc from the main list does the same. Missing
-preferred hardware remains visible and saved as preferred; an exact external
-target stays offline or ambiguous and never uses either the configured
-hardware default or the Pattern's software synth. <code>AUTO</code> alone keeps portable
-machine-default behavior and owns no explicit channel/bank/program values.</p>
+<p>The bottom border always shows <code>APPLY</code> and <code>CANCEL</code>, so neither whole-draft
+action depends on scrolling to the final list row. Keyboard <code>A</code> and <code>C</code> invoke
+the same actions. Pressing the highlighted <code>ROUTE</code> menu item also closes the
+overlay and cancels its whole unconfirmed draft. Back/Esc from the main list
+does the same, while Back/Esc during a field edit cancels only that field.
+Missing preferred hardware remains visible and saved as preferred; an exact
+external target stays offline or ambiguous and never uses either the
+configured hardware default or the Pattern's software synth. <code>AUTO</code> alone
+keeps portable machine-default behavior and owns no explicit
+channel/bank/program values.</p>
 <h4 id="doc-menu-tracker_and_projects--tracks-and-routing" tabindex="-1">Tracks and routing<a class="heading-anchor" href="#doc-menu-tracker_and_projects--tracks-and-routing" aria-label="Link to Tracks and routing">#</a></h4>
 <p>The Tracks screen edits four-lane pages. Changes are kept as a draft until
 <code>DONE</code>; <code>EXIT</code> restores the original Project. Turn the encoder to choose a page
@@ -5355,10 +5379,11 @@ encoder.modified_relative_reverse=false
 <code>encoder.modified_relative_cc</code> when held turns keep using the ordinary
 <code>encoder.relative_cc</code>; otherwise the shifted CC is consumed but navigates only
 while the configured modifier is down. The reviewed MiniLab 3 profile maps
-DAW Shift CC27 and shifted rotary CC29 automatically. MIDI Learn offers
-<strong>ENCODER SHIFT</strong> as an optional step, so custom mappings do not hard-code the
-button; a custom controller that changes its turn CC also needs the shifted
-relative-CC keys or a reviewed profile.</p>
+DAW Shift CC27 and shifted rotary CC29 automatically. MIDI Learn's optional
+<strong>ENCODER SHIFT</strong> step captures the complete held gesture: hold Shift, turn
+left, turn right, then release. It stores a separate shifted relative CC when
+the controller emits one, or leaves the ordinary encoder CC active when held
+turns keep using it. The explicit keys remain available for manual profiles.</p>
 <p>Four-button layout:</p>
 <pre><code class="language-text">menu.layout=4
 pad.40=stop
@@ -5720,18 +5745,22 @@ offers non-audible MIDI learn for the missing controls. Learning never forwards
 messages to a synth. It can identify absolute knob/fader CCs, either direction
 convention for a relative encoder, a CC or note encoder press, and command
 buttons that send either notes or CCs. An optional <strong>ENCODER SHIFT</strong> step learns
-the held button used for secondary encoder navigation. Each step keeps the first qualifying
-gesture. The in-app learner visibly keeps <code>OK</code> on that role until the physical
-gesture is finished: a button advances on its matching CC-off, Note Off, or
-velocity-zero Note On, while a knob/fader or relative encoder advances
-automatically after its CC stream has been quiet for the short settle period.
+the held button plus the rotary's held left/right messages used for secondary
+navigation. Each step keeps the first qualifying gesture. The in-app learner
+visibly keeps <code>OK</code> on that role until the physical gesture is finished: a
+button advances on its matching CC-off, Note Off, or velocity-zero Note On,
+while a knob/fader or relative encoder advances automatically after its CC
+stream has been quiet for the short settle period.
 Extra values and encoder neutral/reset packets extend that same gesture instead
 of becoming the next role. On entry, release the control that opened MIDI Learn
 and wait for the ready indication; its release and already queued traffic are
 quarantined.</p>
 <p>First turn the master encoder left and let it settle, turn it right and let it
-settle, then click and release it. Learn or skip the optional encoder Shift;
-the learned encoder then browses the optional control and command-button roles.
+settle, then click and release it. At the optional encoder Shift step, hold the
+modifier, turn left, turn right, then release it; Learn stores either the
+ordinary rotary CC or the different relative CC emitted only while Shift is
+held. Skipping remains valid. The learned encoder then browses the optional
+control and command-button roles.
 One rotary gesture moves by exactly one role,
 regardless of how many packets it emits. Each learned absolute control advances
 to the next control automatically after settling, and each learned command
@@ -14670,6 +14699,20 @@ audition renderers. Their exact scope and opt-in command live in
 the harness took 49.32 seconds and total wall time including 21.05 seconds of
 test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.</p>
+<p>FT2's quick ROUTE overlay now keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> commands
+visible in its bottom border at native 40×13 instead of hiding Apply below 21
+scrolling fields and exposing only an ambiguous ROUTE toggle. Keyboard <code>A</code> and
+<code>C</code>, mouse, and controller commands share those exact actions; Back remains
+field-first. Playback labels MIDI-take persistence as <code>IDEA+</code>, not an
+instrument save, and <code>SOUNDS</code> returns directly to Presets and its visible
+<code>LOAD</code>. In-app and terminal MIDI Learn now capture the complete optional
+encoder-Shift gesture. Holding Shift, turning left and right, then releasing
+records both the modifier and either the ordinary rotary CC or its separate
+shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
+debug build passed with Rust 1.97.1, and the three affected native screenshots
+were regenerated and visually inspected. No test suite or physical controller,
+MIDI transmission, synth, JACK, playback, or audible check was run for this
+incremental repair.</p>
 <p>The complete first musician/operator workflow review and its persistent repair
 ledger are in <code>docs/WORKFLOW_AUDIT_HANDOFF.md</code>. Its R01–R15 repair queue passed
 the authorized combined acceptance pass on 2026-07-23. The ledger records the

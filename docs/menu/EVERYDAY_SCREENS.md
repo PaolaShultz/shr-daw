@@ -105,16 +105,19 @@ not restart the synth.
 `PLAY` plays or stops the captured take. `RECORD` starts or stops free-time MIDI
 capture.
 
-### SOUND — reset, save, and scale filter
+### SOUND — reset, Idea save, scale filter, and sounds
 
 ![Populated Playback screen with the SOUND controller page](../images/menu/playback-sound.png)
 
 `RESET` restores the 12 mapped parameters in place and re-arms hardware pickup.
-`SAVE` publishes a new non-overwriting Idea. `N00B` toggles the optional scale
-filter without leaving Playback or hiding any normal content. While it is on, a
-single compact `SCALE` rotary appears below the 12 controls; turning the master
-encoder cycles every chromatic root in major and natural minor. Pressing N00B
-again removes only that control and restores chromatic play.
+`IDEA+` publishes the captured MIDI take plus its sound as a new
+non-overwriting Idea; it does not save a synth preset. `N00B` toggles the
+optional scale filter without leaving Playback or hiding any normal content.
+`SOUNDS` returns directly to Presets, where `LOAD` starts the highlighted
+sound. While N00B is on, a single compact `SCALE` rotary appears below the 12
+controls; turning the master encoder cycles every chromatic root in major and
+natural minor. Pressing N00B again removes only that control and restores
+chromatic play.
 
 ### SYS — safety, effects, help, and return
 

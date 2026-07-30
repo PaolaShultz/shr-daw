@@ -80,6 +80,8 @@ instrument and its settings decide how strongly that velocity changes sound.
 `shsynth.conf` selects German `B`/`H` spelling or English `A#`/`B` spelling.
 Recognized major triads use the explicit `maj` label, such as `C maj`, so the
 display does not rely on an omitted suffix to teach the chord quality.
+`IDEA+` stores a captured MIDI take with the current sound; it is not a
+preset-save command. `SOUNDS` returns to Presets and its visible `LOAD`.
 
 The loaded standalone instrument stays running when you leave Presets or
 Playback, so it remains available for effects and other screens. Global panic,
@@ -134,6 +136,9 @@ Patterns, pages, Arrangement, Projects, drums, Live Patterns, and the fourth
 musician-facing Loop Mix page. Recorder captures raw synchronized stems; Performance owns
 the optional final bus and stereo recording. Routing edits machine choices,
 while MIDI Learn configures the controller without forwarding learned input.
+Its optional encoder-Shift step learns the whole held gesture—left turn, right
+turn, then release—so controllers that change the rotary CC while Shift is held
+do not require a hand-edited mapping.
 
 Temporary master overlays keep their caller visible and cancel unconfirmed
 drafts on close. For every screen, controller page, shortcut, and exact loop

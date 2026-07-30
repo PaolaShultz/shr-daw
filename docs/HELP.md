@@ -30,8 +30,10 @@ learned encoder turn and click, Home highlights MIDI Learn and explains why.
 Keyboard Up/Down/Enter still work. Optional command buttons may be skipped once
 the learned encoder can turn and click. Home does not learn or send MIDI by
 itself; Learn keeps selected-controller messages isolated until an explicit
-save or cancel. Separate performance inputs continue to bypass controller
-interpretation.
+save or cancel. Its optional encoder-Shift step learns the complete gesture:
+hold Shift, turn left, turn right, then release. This captures either the
+ordinary rotary CC or a different CC emitted only while Shift is held.
+Separate performance inputs continue to bypass controller interpretation.
 
 The controller menu has four pages. Page 1 is OPS. On child screens, page
 4 item 4 is EXIT and returns one level. Empty buttons are hidden and silent.
@@ -105,6 +107,10 @@ to cycle every root plus MAJOR or natural MINOR choice. Notes in the chosen
 scale keep their pitch and sound normally; notes outside it stay silent.
 Pressing N00B again restores all chromatic notes. Changing or leaving the
 filter releases held notes first.
+
+Playback `IDEA+` stores the captured MIDI take with its current sound; it
+does not save a synth preset. `SOUNDS` returns directly to Presets, where
+`LOAD` starts the highlighted instrument.
 
 ## Effects graph
 
@@ -286,6 +292,11 @@ Exact saved targets keep their data and show OFFLINE or AMBIG when they cannot
 resolve; they never substitute another output or the Pattern's software synth.
 Portable AUTO pages resolve the current machine default instead. Reconnect an
 exact target and play again without rewriting the Project.
+
+The quick FT2 ROUTE overlay keeps `APPLY` and `CANCEL` visible in its bottom
+border. APPLY validates and saves the whole routing draft; CANCEL discards it.
+Back during a field edit cancels that field first, while Back from the main
+list cancels the whole draft. Keyboard `A` and `C` match the visible actions.
 
 FILES NEW PRJ requires a second press, clears the current unsaved Project, and
 starts the next `project-001` style name. SAVE AS writes and switches to the

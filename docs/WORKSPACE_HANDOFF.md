@@ -51,6 +51,21 @@ the harness took 49.32 seconds and total wall time including 21.05 seconds of
 test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.
 
+FT2's quick ROUTE overlay now keeps whole-draft `APPLY` and `CANCEL` commands
+visible in its bottom border at native 40×13 instead of hiding Apply below 21
+scrolling fields and exposing only an ambiguous ROUTE toggle. Keyboard `A` and
+`C`, mouse, and controller commands share those exact actions; Back remains
+field-first. Playback labels MIDI-take persistence as `IDEA+`, not an
+instrument save, and `SOUNDS` returns directly to Presets and its visible
+`LOAD`. In-app and terminal MIDI Learn now capture the complete optional
+encoder-Shift gesture. Holding Shift, turning left and right, then releasing
+records both the modifier and either the ordinary rotary CC or its separate
+shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
+debug build passed with Rust 1.97.1, and the three affected native screenshots
+were regenerated and visually inspected. No test suite or physical controller,
+MIDI transmission, synth, JACK, playback, or audible check was run for this
+incremental repair.
+
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
 the authorized combined acceptance pass on 2026-07-23. The ledger records the

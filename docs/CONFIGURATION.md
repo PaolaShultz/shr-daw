@@ -463,10 +463,11 @@ Use `note.1.27` instead when the button sends a note. Omit
 `encoder.modified_relative_cc` when held turns keep using the ordinary
 `encoder.relative_cc`; otherwise the shifted CC is consumed but navigates only
 while the configured modifier is down. The reviewed MiniLab 3 profile maps
-DAW Shift CC27 and shifted rotary CC29 automatically. MIDI Learn offers
-**ENCODER SHIFT** as an optional step, so custom mappings do not hard-code the
-button; a custom controller that changes its turn CC also needs the shifted
-relative-CC keys or a reviewed profile.
+DAW Shift CC27 and shifted rotary CC29 automatically. MIDI Learn's optional
+**ENCODER SHIFT** step captures the complete held gesture: hold Shift, turn
+left, turn right, then release. It stores a separate shifted relative CC when
+the controller emits one, or leaves the ordinary encoder CC active when held
+turns keep using it. The explicit keys remain available for manual profiles.
 
 Four-button layout:
 

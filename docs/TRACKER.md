@@ -170,9 +170,12 @@ FT2. It shows target type, software engine/instrument or MIDI output, optional
 device profile, plus all four columns' channel, bank, program/instrument name,
 and interface availability. Turn and click/Enter to activate a
 field; Back/Esc cancels that field first. Only **APPLY ROUTING** changes the
-Project. The same highlighted ROUTE item or Back closes and cancels every
-unconfirmed change. At 40×13 the bordered outer window is 38×11 at `(1,1)` and
-the usable inner area is 36×9 at `(2,2)`; row 13 remains the shared status row.
+Project. **APPLY** and **CANCEL** remain visible in the overlay's bottom border
+even while the longer field list scrolls; keyboard `A` and `C` invoke the same
+whole-draft actions. The same highlighted ROUTE item or Back closes and cancels
+every unconfirmed change. Back from an active field cancels only that field
+first. At 40×13 the bordered outer window is 38×11 at `(1,1)` and the usable
+inner area is 36×9 at `(2,2)`; row 13 remains the shared status row.
 
 ## Step editing
 

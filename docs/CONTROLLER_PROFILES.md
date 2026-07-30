@@ -16,19 +16,23 @@ offers non-audible MIDI learn for the missing controls. Learning never forwards
 messages to a synth. It can identify absolute knob/fader CCs, either direction
 convention for a relative encoder, a CC or note encoder press, and command
 buttons that send either notes or CCs. An optional **ENCODER SHIFT** step learns
-the held button used for secondary encoder navigation. Each step keeps the first qualifying
-gesture. The in-app learner visibly keeps `OK` on that role until the physical
-gesture is finished: a button advances on its matching CC-off, Note Off, or
-velocity-zero Note On, while a knob/fader or relative encoder advances
-automatically after its CC stream has been quiet for the short settle period.
+the held button plus the rotary's held left/right messages used for secondary
+navigation. Each step keeps the first qualifying gesture. The in-app learner
+visibly keeps `OK` on that role until the physical gesture is finished: a
+button advances on its matching CC-off, Note Off, or velocity-zero Note On,
+while a knob/fader or relative encoder advances automatically after its CC
+stream has been quiet for the short settle period.
 Extra values and encoder neutral/reset packets extend that same gesture instead
 of becoming the next role. On entry, release the control that opened MIDI Learn
 and wait for the ready indication; its release and already queued traffic are
 quarantined.
 
 First turn the master encoder left and let it settle, turn it right and let it
-settle, then click and release it. Learn or skip the optional encoder Shift;
-the learned encoder then browses the optional control and command-button roles.
+settle, then click and release it. At the optional encoder Shift step, hold the
+modifier, turn left, turn right, then release it; Learn stores either the
+ordinary rotary CC or the different relative CC emitted only while Shift is
+held. Skipping remains valid. The learned encoder then browses the optional
+control and command-button roles.
 One rotary gesture moves by exactly one role,
 regardless of how many packets it emits. Each learned absolute control advances
 to the next control automatically after settling, and each learned command
