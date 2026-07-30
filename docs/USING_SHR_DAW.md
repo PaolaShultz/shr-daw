@@ -1,17 +1,53 @@
 # Using SHR-DAW
 
-SHR-DAW is designed to feel like a small hardware music appliance. After setup,
-the main performance and sequencing workflow can be used without a mouse or
-computer keyboard.
+SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching
+workstation, not a desktop production DAW. It is designed to feel like a small
+hardware music appliance around a 40×13 TUI. Physical MIDI controls can carry
+the main workflow after setup, while MIDI keyboards, the computer keyboard,
+and terminal mouse/pointer input remain supported.
 
 ## What it is for
 
 SHR-DAW began with a personal need: play synths and capture ideas quickly while
-on the move or jamming with friends. It helps you try sounds and develop
-musical ideas without turning the session into a production job.
+on the move or jamming with friends. It helps keep an idea before it disappears,
+then turn drums, bass, chords, melodies, loops, or tracker Patterns into a short
+musical sketch.
 
-A finished track is not the goal. Keep the idea while it is fresh. When you
-want to share what happened, record a rough demo and send it to friends.
+Going from the first idea to a shareable sketch in roughly 10–15 minutes is an
+intended workflow and design goal. It is not a measured completion time,
+guarantee, or promise of a finished production. SHR can record the rough result
+as a final stereo WAV, but sending that file to someone uses ordinary tools
+outside SHR-DAW.
+
+## From idea to rough sketch
+
+1. Start a new Project or load one you already have.
+2. Choose a software instrument or a routed external MIDI instrument. Browsing
+   remains silent; `LOAD` is the only managed preset-start transaction.
+3. Create drums, melodic parts, free-timed MIDI Ideas, or Pattern-owned loops.
+4. Build Patterns and order them in the Arrangement, or perform them through
+   Live Patterns.
+5. Use the source, aux, DRUMS, master, and fixed-strip processing where it helps.
+6. Record the final stereo performance WAV or synchronized raw stems.
+7. Share the resulting file outside SHR-DAW.
+
+## What SHR-DAW is not
+
+SHR-DAW has no desktop GUI. It supports terminal pointer input, but it is not
+designed around large mouse-driven windows, timelines, plugin panels, or mixer
+screens. It is not a replacement for Ardour, Ableton Live, Reaper, Bitwig, or a
+comparable full-scale production workstation.
+
+It is not a general plugin-format host, free-wiring system, unlimited-track
+mixer, waveform editor, or full mastering environment. It does not provide an
+offline whole-song renderer, an integrated export command, file upload,
+messaging, or collaborator-sharing service. The music can leave SHR as a
+recorded WAV; delivery happens elsewhere.
+
+SHR also does not try to automate every musical choice. The current tools help
+you play, filter, sequence, arrange, shape, and record the choices you make.
+Possible future assistance remains optional, reviewable proposal work, not a
+current capability.
 
 ## Instruments
 
@@ -67,6 +103,12 @@ FT2 toggles the same selected scale directly in Play, Record, and Edit on
 melodic pages; it never opens another workspace or changes the current mode.
 Record and Edit write only allowed notes; Edit note length remains
 independent from its row advance. Moving to Drums turns the filter off.
+
+The musician selects and stores the Project tonic and major or natural-minor
+mode. N00B filters live melodic input against that selected scale. SHR Drums
+already offers `OFF`, `FOLLOW KEY`, and `MANUAL` tuning per piece; `FOLLOW KEY`
+uses the stored Project key. SHR does not detect a song key from audio or infer
+one from a finished Arrangement.
 
 ```text
 press -> hear -> see notes -> read a chord name -> change -> compare -> ask why
@@ -136,6 +178,13 @@ then PLAY runs through the restored idea instrument rather than an arbitrary
 active engine.
 
 ## Effects and routing
+
+SHR's effects are bounded real-time processors designed and measured for
+Raspberry Pi constraints. The 13 implemented effect types, source and master
+racks, two aux paths, fixed DRUMS rack, meters, LUFS readout, true-peak limiter,
+and fixed final master strip can shape, characterise, and give a sketch a quick
+final polish. They are not a commercial plugin suite or a promise of
+professional mastering.
 
 Open Effects from Home, Playback **SYS** → **FX**, or FT2's page tools; Back
 returns to the caller. `TARGET` selects SOURCE, AUX 1, AUX 2, DRUMS, or MASTER.

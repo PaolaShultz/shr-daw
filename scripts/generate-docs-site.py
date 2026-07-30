@@ -1404,12 +1404,12 @@ def build_page(
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n',
         '<meta name="color-scheme" content="dark">\n',
         '<meta name="theme-color" content="#090c0b">\n',
-        "<title>SHR-DAW | Raspberry Pi mini DAW</title>\n",
+        "<title>SHR-DAW | Raspberry Pi terminal groovebox</title>\n",
         f'<meta name="description" content="{html.escape(intro, quote=True)}">\n',
         f'<link rel="canonical" href="{SITE_URL}">\n',
         '<meta property="og:type" content="website">\n',
         '<meta property="og:site_name" content="SHR-DAW">\n',
-        '<meta property="og:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
+        '<meta property="og:title" content="SHR-DAW | Raspberry Pi terminal groovebox">\n',
         f'<meta property="og:description" content="{html.escape(intro, quote=True)}">\n',
         f'<meta property="og:url" content="{SITE_URL}">\n',
         f'<meta property="og:image" content="{SITE_URL}images/shr-daw-social-card.png">\n',
@@ -1418,7 +1418,7 @@ def build_page(
         f'<meta property="og:image:height" content="{social_height}">\n',
         '<meta property="og:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">\n',
         '<meta name="twitter:card" content="summary_large_image">\n',
-        '<meta name="twitter:title" content="SHR-DAW | Raspberry Pi mini DAW">\n',
+        '<meta name="twitter:title" content="SHR-DAW | Raspberry Pi terminal groovebox">\n',
         f'<meta name="twitter:description" content="{html.escape(intro, quote=True)}">\n',
         f'<meta name="twitter:image" content="{SITE_URL}images/shr-daw-social-card.png">\n',
         "<style>\n",
@@ -1452,12 +1452,12 @@ def build_page(
         "</aside>\n",
         '<main id="main-content">\n',
         '<section class="hero" id="top"><div class="hero-copy">'
-        '<p class="eyebrow">Raspberry Pi music workstation</p>'
+        '<p class="eyebrow">Raspberry Pi terminal groovebox</p>'
         "<h1>SHR-DAW</h1>"
         f'<p class="intro">{html.escape(intro)}</p>'
         '<p class="status-line"><span class="led" aria-hidden="true"></span>'
         f'<span class="version">Version {html.escape(version)}</span>'
-        "<span>40×13 interface · FT2-style tracker · JACK recording</span></p>"
+        "<span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p>"
         '<div class="button-row"><a class="button" href="#start-here">Start here</a>'
         f'<a class="button secondary external" href="{REPOSITORY_URL}" '
         'target="_blank" rel="noopener noreferrer external">View source</a></div>'
@@ -1468,7 +1468,7 @@ def build_page(
         "</section>\n",
         '<section class="overview-block" aria-labelledby="features-title">'
         '<p class="eyebrow">What it does</p>'
-        '<h2 id="features-title">Make music on a small, focused screen</h2>'
+        '<h2 id="features-title">Make a rough sketch on a small terminal screen</h2>'
         f'<div class="feature-grid">{feature_cards}</div></section>\n',
         '<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title">'
         '<p class="eyebrow">The 40×13 interface</p>'

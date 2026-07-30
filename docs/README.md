@@ -14,8 +14,9 @@ configuration, or the architecture contracts.
 ## Start and use
 
 - [First run](FIRST_RUN.md) — configure hardware and open SHR-DAW.
-- [Using SHR-DAW](USING_SHR_DAW.md) — musical purpose, instruments, screens,
-  MIDI Ideas, effects, input levels, recording, and commands.
+- [Using SHR-DAW](USING_SHR_DAW.md) — musical purpose, the realistic
+  idea-to-sketch workflow, non-goals, instruments, effects, recording, and
+  commands.
 - [Complete screen and menu manual](MENU_MANUAL.md) — deterministic images
   covering every populated 40×13 screen, contextual editor, visible Levels
   command page, and controller menu page, with explanations.
@@ -114,8 +115,9 @@ setup guide.
 
 - [Release roadmap](RELEASE_ROADMAP.md) — ordered 0.4, 0.5, and 0.6 acceptance
   gates and the rule that keeps unrelated ideas out of the current milestone.
-- [Future improvements](FUTURE_IMPROVEMENTS.md) — deferred routing and product
-  ideas, including the deliberately unreasonable challenges.
+- [Future improvements](FUTURE_IMPROVEMENTS.md) — unscheduled smart musical
+  assistance, deferred routing and product ideas, and the deliberately
+  unreasonable challenges.
 - [Raspberry Pi 5 headroom and footprint plan](PI5_HEADROOM_PLAN.md) —
   completed platform baseline followed by the later dependency/footprint,
   real-time-core, and PRESTO experiments.

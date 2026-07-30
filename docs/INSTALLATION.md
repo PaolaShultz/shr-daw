@@ -10,12 +10,13 @@ comes before mutation. Destructive and unrelated system changes default to no;
 the single boot-service choice defaults to yes only after the user explicitly
 selects JACK hardware and timing.
 
-Current physical audio and MIDI evidence comes from Patchbox OS based on Debian
-12 (Bookworm). The clean Raspberry Pi OS Lite 64-bit path has isolated fixture
-coverage but still needs the release roadmap's fresh-image and physical audio
-acceptance on the Raspberry Pi 5. Record the exact image and version used rather
-than treating “Lite” as a reproducible version identifier. The
-[release roadmap](RELEASE_ROADMAP.md) owns the gate; the
+Current connected physical audio and MIDI evidence comes from Patchbox OS based
+on Debian 12 (Bookworm). The clean Raspberry Pi OS Lite 64-bit install, setup,
+doctor, and silent-engine path was accepted separately on the Raspberry Pi 5.
+Those are different evidence: neither proves that every hardware and audio path
+has been physically accepted on every supported image. Record the exact image
+and version used rather than treating “Lite” as a reproducible version
+identifier. The [release roadmap](RELEASE_ROADMAP.md) owns the gate; the
 [Pi 5 plan](PI5_HEADROOM_PLAN.md) owns the state comparison.
 
 For the planned native-NVMe Pi 5, first follow

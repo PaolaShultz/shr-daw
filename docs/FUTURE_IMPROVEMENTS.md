@@ -8,6 +8,34 @@ These entries do not enter the current 0.4, 0.5, or 0.6 scope automatically.
 The [release roadmap](RELEASE_ROADMAP.md) owns development order; an item here
 becomes a milestone requirement only when the owner explicitly moves it there.
 
+## Future smart musical assistance — unscheduled
+
+Smart assistance should remove repetitive musical work while leaving the
+musician in control of the musical decision.
+
+Possible helpers include:
+
+- optional key or harmony inference with visible uncertainty;
+- chord-progression suggestions and user-confirmed progression generation;
+- arpeggiated fills and filler parts that follow the selected harmony;
+- bass notes that follow chord changes, with rhythm suggestions informed by
+  kick timing;
+- context-aware accompaniment;
+- arrangement suggestions that help complete a short sketch; and
+- other explicitly reviewable helpers for repetitive musical work.
+
+None of these helpers exists or belongs to a release milestone today. They
+must not act without clear review and confirmation. An idea enters milestone
+scope only when the owner moves it into the release roadmap with an action,
+result, state boundary, and acceptance path.
+
+Current key and tuning behavior is narrower and already useful. The musician
+selects the Project tonic and major or natural-minor mode, and N00B filters
+live melodic input against that scale. SHR Drums already supports `OFF`,
+`FOLLOW KEY`, and `MANUAL` per-piece tuning; `FOLLOW KEY` follows the stored
+Project key. Only automatic key inference and higher-level tuning suggestions
+belong to this future section.
+
 ## Safe fallback for unknown USB MIDI devices
 
 When a USB MIDI input is connected without a saved or reviewed controller
@@ -24,14 +52,12 @@ separate from command-button assignment: a knob or encoder can be proposed from
 observed continuous traffic, while transport and other command buttons require
 clear review or explicit learning before activation.
 
-## Raspberry Pi 5 Headroom pass
+## Raspberry Pi 5 headroom pass
 
-An unscheduled post-Build Week pass will compare the current Raspberry Pi 4
-development host with an ordered but not-yet-present 2 GB Raspberry Pi 5 and
-NVMe setup. It will measure clean and incremental builds, memory, storage,
-thermal/power behavior, private-cache benefits from real-time core placement,
-effect state and callback cost, and dependency/library footprint before making
-any optimization claim.
+The Raspberry Pi 5 and NVMe baseline is complete. Remaining unscheduled work
+may compare dependency and library footprint, private-cache benefits from
+real-time core placement, and effect state and callback cost before making any
+new optimization claim.
 
 The proposal keeps one effects rack. Effects that later pass fixed low-state
 and low-callback-cost gates may receive the compact `» PRESTO` mark; unmarked
@@ -101,9 +127,9 @@ ordinary drum loops should feel like a pleasant afternoon.
 ## Audio effects graph: inserts, sends, and returns
 
 The current narrow performance bus now sums exactly the managed instrument,
-owned loop, and one configured stereo input before the master, dedicated
-limiter, final meter, recorder, and playback. The broader proposed migration to
-a bounded multi-strip mixer with genuinely shared multi-source aux buses is in the
+SHR Drums, owned loop, and one configured stereo input before the master,
+dedicated limiter, final meter, recorder, and playback. The broader proposed
+migration to a bounded multi-strip mixer with genuinely shared multi-source aux buses is in the
 [post-competition mixer and shared-aux plan](POST_COMPETITION_MIXER_AUX_PLAN.md).
 It also records the current dry/wet behavior, the audio-source boundary behind
 tracker lanes, Project migration, and recording taps. The two narrow meter and
@@ -116,7 +142,7 @@ and an ordered master rack. It retains strict Project persistence, stopped
 structural publication, compact editors, and meters. Evidence is in the
 [Phase 2 insert-effects measurement](PHASE2_AUDIO_GRAPH_MEASUREMENT.md) and
 [Phase 3/4 effects measurement](PHASE3_4_AUDIO_GRAPH_MEASUREMENT.md). The
-three-source path has hardware-independent evidence, while full-duplex physical
+four-source path has hardware-independent evidence, while full-duplex physical
 interface acceptance remains deliberately deferred.
 
 ### Product idea
@@ -143,11 +169,11 @@ hiding both behaviors behind a generic “effect” switch.
 
 ### Current architecture boundary
 
-SHR-DAW now owns a bounded three-source stereo sum. The managed source's dry
-path and two wet returns meet the complete internally summed four-slot Loop Mix
-and configured live-input pair, then pass through the master, final
-limiter/meter/recorder and playback. The raw synchronized multitrack recorder
-remains a separate workflow.
+SHR-DAW now owns a bounded four-source stereo sum. The managed source's dry
+path and two wet returns meet SHR Drums, the complete internally summed
+four-slot Loop Mix, and the configured live-input pair, then pass through the
+master, final limiter/meter/recorder and playback. The raw synchronized
+multitrack recorder remains a separate workflow.
 
 Loop Mix settings now belong to each FT2 Pattern, while one fixed four-renderer
 client serves only the active Pattern and one bounded incoming preparation.

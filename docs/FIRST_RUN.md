@@ -50,9 +50,9 @@ with `shr-audio-tune plan 3`, and inspect or retry it with
 `sudo shr-audio-tune recover`. Details and rollback are in
 [Raspberry Pi audio-system optimization](AUDIO_SYSTEM_OPTIMIZATION.md).
 
-The effects graph is disabled by default, so synth and loop audio initially use
-their configured direct routes. Read [How SHR-DAW works](HOW_IT_WORKS.md)
-before enabling the three-source final bus.
+The effects graph is disabled by default, so synth, SHR Drums, and loop audio
+initially use their configured direct routes. Read [How SHR-DAW
+works](HOW_IT_WORKS.md) before enabling the four-source final bus.
 
 ## Choose how to play
 

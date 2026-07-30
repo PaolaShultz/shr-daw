@@ -1,14 +1,16 @@
 
 ![SHR-DAW](docs/images/shr-daw-header.jpg)
 
-SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal,
-optional MIDI gear, software instruments, FT2-style sequencing, WAV loops,
-effects, and JACK recording.
+SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching
+workstation written in Rust. Its main interface is a compact 40×13 TUI for
+64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical
+idea into a shareable rough sketch, not to replace a desktop production DAW.
 
 It grew from a personal need to play synths and capture ideas quickly while on
-the move or jamming with friends. Its purpose is exploration. A finished
-production was never the goal, although it can record a rough demo to send to
-friends.
+the move or jamming with friends. Going from an idea to a shareable sketch in
+roughly 10–15 minutes is an intended workflow and design goal, not a benchmark
+or guarantee. The useful result is a rough demo or coherent sketch; sharing the
+recorded WAV happens outside SHR-DAW.
 
 Read the complete public documentation at
 [paolashultz.github.io/shr-daw](https://paolashultz.github.io/shr-daw/).
@@ -19,22 +21,44 @@ Read the complete public documentation at
 
 ## Features
 
-- Play synthv1, Yoshimi, FluidSynth, or Moj Sint through one safely managed engine.
-- Build routed multi-page Patterns, Arrangements, drum parts, and private WAV
-  loop performances in the FT2 workspace, including quantized Live Patterns
-  and a four-slot Loop Mix.
-- Save free-timed MIDI Ideas, synchronized raw JACK stems, or the protected
-  final stereo performance mix.
-- Use the computer keyboard, mouse, or a configured four-, five-, or
-  eight-button controller.
+- Play synthv1, Yoshimi, FluidSynth, or seven editable Moj Sint Model D starts
+  through one safely managed melodic engine, alongside in-process SHR Drums.
+- Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum,
+  and loop parts as multi-page Patterns and Arrangements; or perform them with
+  Live Patterns and the four-slot Loop Mix.
+- Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay
+  DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.
+- Record synchronized raw mono stems or a real-time final 24-bit stereo WAV
+  after the fixed master strip and protected true-peak path.
+- Play and navigate with physical MIDI controls, MIDI keyboards, the computer
+  keyboard, or terminal mouse/pointer input.
 
 See [Using SHR-DAW](docs/USING_SHR_DAW.md) for musical workflows and
 [How it works](docs/HOW_IT_WORKS.md) for routing, ownership, storage, and
 failure boundaries.
 
+## A quick sketch
+
+1. Start or load a Project and choose a software or routed external instrument.
+2. Add drums, melodic parts, MIDI Ideas, or Pattern-owned loops.
+3. Build Patterns and an Arrangement, or perform through Live Patterns.
+4. Shape the sketch with the source, aux, DRUMS, master, and fixed-strip processing.
+5. Record the final stereo performance WAV or synchronized raw stems.
+6. Share the resulting file outside SHR-DAW with the tools you already use.
+
+## What it is not
+
+- It is not a desktop GUI or a replacement for Ardour, Ableton Live, Reaper,
+  Bitwig, or another full-scale production workstation.
+- It is not a general plugin host, free-wiring or unlimited-track mixer,
+  waveform editor, or full mastering environment.
+- It has no offline whole-song renderer, integrated export/upload/sharing
+  service, or system for automating every musical decision.
+
 ## Install and run
 
-On Patchbox OS, Raspberry Pi OS, or Debian:
+The clean target is 64-bit Raspberry Pi OS Lite. Patchbox OS and the broader
+Debian-based path remain supported installation routes:
 
 ```sh
 ./scripts/install.sh
@@ -46,7 +70,8 @@ shr
 JACK is optional for browsing and external-MIDI sequencing, but required for
 software-instrument audio, WAV loops, effects, and audio recording. SHR-DAW
 does not start or restart JACK. Continue with [First run](docs/FIRST_RUN.md) or
-the full [installation guide](docs/INSTALLATION.md).
+the full [installation guide](docs/INSTALLATION.md), which keeps clean Lite
+installation evidence distinct from connected physical audio/MIDI evidence.
 
 For a repository-local development checkout:
 
@@ -65,63 +90,37 @@ launch this checkout's visibly marked `DEV` binary.
 
 ![Preset browser showing synthv1 sounds](docs/images/shr-daw-presets.png)
 
-Browse the separate synthv1, Yoshimi, FluidSynth, and Moj Sint catalogs.
-
 ### Playback
 
 ![Playback screen with held notes, velocities, and mapped controls](docs/images/shr-daw-playback.png)
-
-Play the loaded sound, inspect notes and chords, shape mapped controls, and
-capture MIDI Ideas.
 
 ### FT2 Pattern editor
 
 ![FT2 Pattern editor with four lanes of note data](docs/images/shr-daw-ft2-pattern.png)
 
-Edit routed melodic or percussion pages and arrange reusable Patterns.
-
 ### Live Patterns
 
 ![Live Patterns screen with selected, playing, queued, and lane-shaping states](docs/images/shr-daw-live-patterns.png)
-
-Browse without launching, queue or retrigger at Pattern/bar boundaries, shape
-four MIDI lanes live, and optionally capture successful launches.
 
 ### Loop Mix
 
 ![Four-slot Loop Mix with playing, queued, muted, and fault states](docs/images/shr-daw-ft2-loop.png)
 
-Each FT2 Pattern owns four private native-rate WAV references. Arrangement and
-Live Pattern changes switch MIDI and loops together; launch/stop, smoothed
-level, and bipolar filtering remain available per slot.
-
 ### Audio recorder
 
 ![Synchronized multitrack recorder with armed and missing inputs](docs/images/shr-daw-audio-recorder.png)
-
-Map exact JACK inputs and record one callback-aligned take as separate mono
-stems.
 
 ### 18-channel input levels
 
 ![All 18 recording inputs shown as three groups of six vertical meters](docs/images/shr-daw-input-monitor.png)
 
-Compare all 18 recording levels at once while keeping setup, routing, and the
-final-bus mixer separate.
-
 ### Performance bus
 
 ![Final performance bus with source, limiter, meter, and recording status](docs/images/shr-daw-performance-meter.png)
 
-Control and record the opt-in four-source final bus, or inspect the passive
-meter view while the graph is disabled.
-
 ### MASTER STRIP
 
 ![Fixed stereo MASTER STRIP with six sections and mastering meters](docs/images/shr-daw-master-strip.png)
-
-Shape and meter the final stereo mix through a fixed, Project-owned mastering
-path with protected true-peak output.
 
 The [screen and menu manual](docs/MENU_MANUAL.md) contains the complete visual
 tour without duplicating its controls here.
@@ -139,14 +138,14 @@ tour without duplicating its controls here.
 
 ## Built with Codex
 
-SHR-DAW was a pre-existing personal project that was meaningfully extended
-during OpenAI Build Week using GPT-5.6 through Codex CLI directly on the target
-Raspberry Pi. Codex accelerated Rust implementation, ALSA/JACK/MIDI diagnosis,
-controller setup, original preset and rhythm design, safety review, validation,
-and documentation. The creator chose the product and musical direction,
-supplied and operated the hardware, judged the sound, and controlled public
-release. The [development story and dated baseline](docs/BUILD_WEEK.md) describe
-that collaboration and distinguish earlier work from Build Week additions.
+Rust source, focused architecture notes, deterministic tests, and repeatable
+builds make SHR-DAW inspectable and modifiable by hand or with coding agents
+such as Codex CLI. It has no stable public plugin API, and generated code is not
+trusted automatically: DSP changes need deterministic checks and Raspberry Pi
+measurement, while hardware routes and audible results need human testing.
+Public changes remain subject to maintainer review. The
+[development story and dated baseline](docs/BUILD_WEEK.md) records the
+project's Codex-assisted work on Raspberry Pi and who made each kind of decision.
 
 ## Licence
 

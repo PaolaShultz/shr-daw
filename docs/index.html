@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#090c0b">
-<title>SHR-DAW | Raspberry Pi mini DAW</title>
-<meta name="description" content="SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal, optional MIDI gear, software instruments, FT2-style sequencing, WAV loops, effects, and JACK recording.">
+<title>SHR-DAW | Raspberry Pi terminal groovebox</title>
+<meta name="description" content="SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.">
 <link rel="canonical" href="https://paolashultz.github.io/shr-daw/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="SHR-DAW">
-<meta property="og:title" content="SHR-DAW | Raspberry Pi mini DAW">
-<meta property="og:description" content="SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal, optional MIDI gear, software instruments, FT2-style sequencing, WAV loops, effects, and JACK recording.">
+<meta property="og:title" content="SHR-DAW | Raspberry Pi terminal groovebox">
+<meta property="og:description" content="SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.">
 <meta property="og:url" content="https://paolashultz.github.io/shr-daw/">
 <meta property="og:image" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
 <meta property="og:image:type" content="image/png">
@@ -19,8 +19,8 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="SHR-DAW | Raspberry Pi mini DAW">
-<meta name="twitter:description" content="SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal, optional MIDI gear, software instruments, FT2-style sequencing, WAV loops, effects, and JACK recording.">
+<meta name="twitter:title" content="SHR-DAW | Raspberry Pi terminal groovebox">
+<meta name="twitter:description" content="SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.">
 <meta name="twitter:image" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
 <style>
 :root {
@@ -317,14 +317,14 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <details><summary>Licence</summary><ul><li><a href="#doc-license">MIT licence</a></li></ul></details>
 <ul class="page-links archive-link"><li><a href="#technical-records">Technical records and future plans</a></li></ul></aside>
 <main id="main-content">
-<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi music workstation</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a compact Raspberry Pi music workstation for a 40×13 terminal, optional MIDI gear, software instruments, FT2-style sequencing, WAV loops, effects, and JACK recording.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.5</span><span>40×13 interface · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make music on a small, focused screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, or Moj Sint through one safely managed engine.</div><div class="feature-card">Build routed multi-page Patterns, Arrangements, drum parts, and private WAV loop performances in the FT2 workspace, including quantized Live Patterns and a four-slot Loop Mix.</div><div class="feature-card">Save free-timed MIDI Ideas, synchronized raw JACK stems, or the protected final stereo performance mix.</div><div class="feature-card">Use the computer keyboard, mouse, or a configured four-, five-, or eight-button controller.</div></div></section>
+<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.5</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, or seven editable Moj Sint Model D starts through one safely managed melodic engine, alongside in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum, and loop parts as multi-page Patterns and Arrangements; or perform them with Live Patterns and the four-slot Loop Mix.</div><div class="feature-card">Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.</div><div class="feature-card">Record synchronized raw mono stems or a real-time final 24-bit stereo WAV after the fixed master strip and protected true-peak path.</div><div class="feature-card">Play and navigate with physical MIDI controls, MIDI keyboards, the computer keyboard, or terminal mouse/pointer input.</div></div></section>
 <section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="ce56af5771a347d8b738c107d6e60511647f685cb06955d59f85142e27d128fa" decoding="async" height="624" id="shot-ce56af5771a3" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="889a405e74bbeb38078e626f9d6ad5313d15938a14f55da06a15fdabe7c8cb5d" decoding="async" height="624" id="shot-889a405e74bb" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="dccca5c68ac49005acf541ccbe9f54b46044d42098cea5e3d49a649c7d89b484" decoding="async" height="624" id="shot-dccca5c68ac4" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="7a12a37b68fc796901ddac77eb6d7ae2ddeb919b352b983fffba920ac60f7b2f" decoding="async" height="624" id="shot-7a12a37b68fc" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
-<section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, instruments, screens, MIDI Ideas, effects, input levels, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
+<section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
 <section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>./scripts/install.sh
 shr-setup
 shr doctor
-shr</code></pre><p>JACK is optional for browsing and external-MIDI sequencing, but required for software-instrument audio, WAV loops, effects, and audio recording. SHR-DAW does not start or restart JACK. Continue with First run or the full installation guide.</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
+shr</code></pre><p>JACK is optional for browsing and external-MIDI sequencing, but required for software-instrument audio, WAV loops, effects, and audio recording. SHR-DAW does not start or restart JACK. Continue with First run or the full installation guide, which keeps clean Lite installation evidence distinct from connected physical audio/MIDI evidence.</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
 <section class="documentation-library" id="documentation" aria-labelledby="documentation-title"><header class="library-header"><p class="eyebrow">Detailed guides</p><h2 id="documentation-title">The manual, when you need it</h2><p>Choose a subject and open only that guide. Measurements, maintainer records, and future plans stay in a separate archive below.</p></header>
 <section class="library-group" aria-labelledby="group-start-and-use"><header class="group-header"><p class="eyebrow">Current behaviour</p><h3 id="group-start-and-use">Start and use</h3><p>Musician-facing workflows, screens, performance tools, and physical connections.</p></header>
 <details class="document" id="doc-first_run" data-source="docs/FIRST_RUN.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">First run</span><span class="document-summary">Configure hardware and open SHR-DAW.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FIRST_RUN.md" target="_blank" rel="noopener noreferrer external">View docs/FIRST_RUN.md source</a></div><p>You do not need a full hardware studio to start. SHR-DAW is designed around a
@@ -368,9 +368,9 @@ with <code>shr-audio-tune plan 3</code>, and inspect or retry it with
 <code>shr-audio-tune status</code>, <code>shr-audio-tune doctor 3</code>, or
 <code>sudo shr-audio-tune recover</code>. Details and rollback are in
 <a href="#doc-audio_system_optimization">Raspberry Pi audio-system optimization</a>.</p>
-<p>The effects graph is disabled by default, so synth and loop audio initially use
-their configured direct routes. Read <a href="#doc-how_it_works">How SHR-DAW works</a>
-before enabling the three-source final bus.</p>
+<p>The effects graph is disabled by default, so synth, SHR Drums, and loop audio
+initially use their configured direct routes. Read <a href="#doc-how_it_works">How SHR-DAW
+works</a> before enabling the four-source final bus.</p>
 <h4 id="doc-first_run--choose-how-to-play" tabindex="-1">Choose how to play<a class="heading-anchor" href="#doc-first_run--choose-how-to-play" aria-label="Link to Choose how to play">#</a></h4>
 <ul>
 <li>Use the configured control surface for the primary four-page/four-button
@@ -433,15 +433,47 @@ deeply customized hardware.</p>
 <p>Next, read <a href="#doc-using_shr_daw">Using SHR-DAW</a>. For a larger hardware rig, see
 <a href="#doc-connections">Physical connections</a>.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-using_shr_daw" data-source="docs/USING_SHR_DAW.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Using SHR-DAW</span><span class="document-summary">Musical purpose, instruments, screens, MIDI Ideas, effects, input levels, recording, and commands.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/USING_SHR_DAW.md" target="_blank" rel="noopener noreferrer external">View docs/USING_SHR_DAW.md source</a></div><p>SHR-DAW is designed to feel like a small hardware music appliance. After setup,
-the main performance and sequencing workflow can be used without a mouse or
-computer keyboard.</p>
+<details class="document" id="doc-using_shr_daw" data-source="docs/USING_SHR_DAW.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Using SHR-DAW</span><span class="document-summary">Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/USING_SHR_DAW.md" target="_blank" rel="noopener noreferrer external">View docs/USING_SHR_DAW.md source</a></div><p>SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching
+workstation, not a desktop production DAW. It is designed to feel like a small
+hardware music appliance around a 40×13 TUI. Physical MIDI controls can carry
+the main workflow after setup, while MIDI keyboards, the computer keyboard,
+and terminal mouse/pointer input remain supported.</p>
 <h4 id="doc-using_shr_daw--what-it-is-for" tabindex="-1">What it is for<a class="heading-anchor" href="#doc-using_shr_daw--what-it-is-for" aria-label="Link to What it is for">#</a></h4>
 <p>SHR-DAW began with a personal need: play synths and capture ideas quickly while
-on the move or jamming with friends. It helps you try sounds and develop
-musical ideas without turning the session into a production job.</p>
-<p>A finished track is not the goal. Keep the idea while it is fresh. When you
-want to share what happened, record a rough demo and send it to friends.</p>
+on the move or jamming with friends. It helps keep an idea before it disappears,
+then turn drums, bass, chords, melodies, loops, or tracker Patterns into a short
+musical sketch.</p>
+<p>Going from the first idea to a shareable sketch in roughly 10–15 minutes is an
+intended workflow and design goal. It is not a measured completion time,
+guarantee, or promise of a finished production. SHR can record the rough result
+as a final stereo WAV, but sending that file to someone uses ordinary tools
+outside SHR-DAW.</p>
+<h4 id="doc-using_shr_daw--from-idea-to-rough-sketch" tabindex="-1">From idea to rough sketch<a class="heading-anchor" href="#doc-using_shr_daw--from-idea-to-rough-sketch" aria-label="Link to From idea to rough sketch">#</a></h4>
+<ol>
+<li>Start a new Project or load one you already have.</li>
+<li>Choose a software instrument or a routed external MIDI instrument. Browsing
+remains silent; <code>LOAD</code> is the only managed preset-start transaction.</li>
+<li>Create drums, melodic parts, free-timed MIDI Ideas, or Pattern-owned loops.</li>
+<li>Build Patterns and order them in the Arrangement, or perform them through
+Live Patterns.</li>
+<li>Use the source, aux, DRUMS, master, and fixed-strip processing where it helps.</li>
+<li>Record the final stereo performance WAV or synchronized raw stems.</li>
+<li>Share the resulting file outside SHR-DAW.</li>
+</ol>
+<h4 id="doc-using_shr_daw--what-shr-daw-is-not" tabindex="-1">What SHR-DAW is not<a class="heading-anchor" href="#doc-using_shr_daw--what-shr-daw-is-not" aria-label="Link to What SHR-DAW is not">#</a></h4>
+<p>SHR-DAW has no desktop GUI. It supports terminal pointer input, but it is not
+designed around large mouse-driven windows, timelines, plugin panels, or mixer
+screens. It is not a replacement for Ardour, Ableton Live, Reaper, Bitwig, or a
+comparable full-scale production workstation.</p>
+<p>It is not a general plugin-format host, free-wiring system, unlimited-track
+mixer, waveform editor, or full mastering environment. It does not provide an
+offline whole-song renderer, an integrated export command, file upload,
+messaging, or collaborator-sharing service. The music can leave SHR as a
+recorded WAV; delivery happens elsewhere.</p>
+<p>SHR also does not try to automate every musical choice. The current tools help
+you play, filter, sequence, arrange, shape, and record the choices you make.
+Possible future assistance remains optional, reviewable proposal work, not a
+current capability.</p>
 <h4 id="doc-using_shr_daw--instruments" tabindex="-1">Instruments<a class="heading-anchor" href="#doc-using_shr_daw--instruments" aria-label="Link to Instruments">#</a></h4>
 <p>The Presets screen browses four kinds of software instruments:</p>
 <ul>
@@ -490,6 +522,11 @@ play.</p>
 melodic pages; it never opens another workspace or changes the current mode.
 Record and Edit write only allowed notes; Edit note length remains
 independent from its row advance. Moving to Drums turns the filter off.</p>
+<p>The musician selects and stores the Project tonic and major or natural-minor
+mode. N00B filters live melodic input against that selected scale. SHR Drums
+already offers <code>OFF</code>, <code>FOLLOW KEY</code>, and <code>MANUAL</code> tuning per piece; <code>FOLLOW KEY</code>
+uses the stored Project key. SHR does not detect a song key from audio or infer
+one from a finished Arrangement.</p>
 <pre><code class="language-text">press -&gt; hear -&gt; see notes -&gt; read a chord name -&gt; change -&gt; compare -&gt; ask why
 </code></pre>
 <h4 id="doc-using_shr_daw--screens" tabindex="-1">Screens<a class="heading-anchor" href="#doc-using_shr_daw--screens" aria-label="Link to Screens">#</a></h4>
@@ -544,6 +581,12 @@ values are saved too. Loading an idea can replace the current managed engine,
 then PLAY runs through the restored idea instrument rather than an arbitrary
 active engine.</p>
 <h4 id="doc-using_shr_daw--effects-and-routing" tabindex="-1">Effects and routing<a class="heading-anchor" href="#doc-using_shr_daw--effects-and-routing" aria-label="Link to Effects and routing">#</a></h4>
+<p>SHR's effects are bounded real-time processors designed and measured for
+Raspberry Pi constraints. The 13 implemented effect types, source and master
+racks, two aux paths, fixed DRUMS rack, meters, LUFS readout, true-peak limiter,
+and fixed final master strip can shape, characterise, and give a sketch a quick
+final polish. They are not a commercial plugin suite or a promise of
+professional mastering.</p>
 <p>Open Effects from Home, Playback <strong>SYS</strong> → <strong>FX</strong>, or FT2's page tools; Back
 returns to the caller. <code>TARGET</code> selects SOURCE, AUX 1, AUX 2, DRUMS, or MASTER.</p>
 <p>Source effects process the managed instrument in series. Aux sends make
@@ -4105,12 +4148,13 @@ permissions, creates a user JACK command only when no system service or live
 comes before mutation. Destructive and unrelated system changes default to no;
 the single boot-service choice defaults to yes only after the user explicitly
 selects JACK hardware and timing.</p>
-<p>Current physical audio and MIDI evidence comes from Patchbox OS based on Debian
-12 (Bookworm). The clean Raspberry Pi OS Lite 64-bit path has isolated fixture
-coverage but still needs the release roadmap's fresh-image and physical audio
-acceptance on the Raspberry Pi 5. Record the exact image and version used rather
-than treating “Lite” as a reproducible version identifier. The
-<a href="#doc-release_roadmap">release roadmap</a> owns the gate; the
+<p>Current connected physical audio and MIDI evidence comes from Patchbox OS based
+on Debian 12 (Bookworm). The clean Raspberry Pi OS Lite 64-bit install, setup,
+doctor, and silent-engine path was accepted separately on the Raspberry Pi 5.
+Those are different evidence: neither proves that every hardware and audio path
+has been physically accepted on every supported image. Record the exact image
+and version used rather than treating “Lite” as a reproducible version
+identifier. The <a href="#doc-release_roadmap">release roadmap</a> owns the gate; the
 <a href="#doc-pi5_headroom_plan">Pi 5 plan</a> owns the state comparison.</p>
 <p>For the planned native-NVMe Pi 5, first follow
 <a href="#doc-pi5_nvme_install">Raspberry Pi 5 NVMe installation</a>. It covers safe drive
@@ -5834,9 +5878,10 @@ up, verified, left untested, and what I should do next.</p>
 <section class="library-group" aria-labelledby="group-architecture-and-safety"><header class="group-header"><p class="eyebrow">Current contracts</p><h3 id="group-architecture-and-safety">Architecture and safety</h3><p>Implementation boundaries, ownership, recording, routing, and operational safety.</p></header>
 <details class="document" id="doc-how_it_works" data-source="docs/HOW_IT_WORKS.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">How SHR-DAW works</span><span class="document-summary">End-to-end MIDI/audio routing, instrument ownership, Ideas, FT2 Projects, loops, recording, the full effect palette, graph safety, persistence, and honest current limits.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/HOW_IT_WORKS.md" target="_blank" rel="noopener noreferrer external">View docs/HOW_IT_WORKS.md source</a></div><p>SHR-DAW is a small music workstation built from several deliberately separate
 parts: role-separated controller/performance inputs, one managed software
-engine, an FT2-style MIDI sequencer, a private WAV loop player, a synchronized
-raw multitrack recorder, and an optional owned final performance bus. This
-guide connects those parts and explains what the musician can do with them.
+engine, in-process SHR Drums, an FT2-style MIDI sequencer, a private WAV loop
+player, a synchronized raw multitrack recorder, and an optional owned final
+performance bus. This guide connects those parts and explains what the musician
+can do with them.
 For exact configuration keys use
 <a href="#doc-configuration">Configuration and routing</a>; for the DSP and real-time
 contract use <a href="#doc-audio_graph">Audio graph and DSP contract</a>.</p>
@@ -5855,19 +5900,21 @@ screen, menus, pickup                           managed synth &lt;-+  |
 FT2 scheduler -&gt; each page's MIDI destination -&gt; software or hardware instrument
 
 managed synth audio -&gt; direct JACK playback (graph disabled)
+SHR Drums audio ----&gt; direct JACK playback (graph disabled)
 private WAV loop  --&gt; direct JACK playback (graph disabled)
 
 managed synth SOURCE/AUX --+
 private WAV loop -----------+-&gt; MASTER rack -&gt; live fader -&gt; MASTER STRIP
+SHR Drums ------------------+
 configured stereo input ----+                        +-&gt; FINAL OUT + final WAV + playback
 configured JACK sources -&gt; fixed 18-channel meter snapshot
                         \-&gt; shared callback timeline -&gt; mono stems + manifest
 </code></pre>
 <p>The raw-stem recorder remains separate. When enabled, the final bus owns the
-exact synth, loop, and one configured stereo-input pair and removes the direct
-synth/loop routes transactionally. <code>FINAL OUT</code>, final WAV, and playback then
-share the same post-strip samples. They do not secretly include unrelated
-JACK clients or downstream interface processing.</p>
+exact synth, SHR Drums, loop, and one configured stereo-input pair and removes
+the direct synth/drum/loop routes transactionally. <code>FINAL OUT</code>, final WAV, and
+playback then share the same post-strip samples. They do not secretly include
+unrelated JACK clients or downstream interface processing.</p>
 <h4 id="doc-how_it_works--controller-and-performance-input-roles" tabindex="-1">Controller and performance input roles<a class="heading-anchor" href="#doc-how_it_works--controller-and-performance-input-roles" aria-label="Link to Controller and performance input roles">#</a></h4>
 <p>SHR-DAW opens each exact ALSA source at most once, then classifies messages by
 the configured role before they reach an instrument:</p>
@@ -6167,12 +6214,13 @@ channels, bank, program, tempo, or Arrangement. User saves are separate
 percussion pages and note-offs unchanged and refuses the whole edit if a note
 would leave MIDI range.</p>
 <h4 id="doc-how_it_works--the-managed-audio-graph" tabindex="-1">The managed audio graph<a class="heading-anchor" href="#doc-how_it_works--the-managed-audio-graph" aria-label="Link to The managed audio graph">#</a></h4>
-<p>Without the owned graph, the managed instrument and owned loop use their exact
-configured direct playback routes. With <code>audio.graph.enabled=true</code>, those two
-sources and one exact configured stereo JACK capture pair move transactionally
-into this route:</p>
+<p>Without the owned graph, the managed instrument, SHR Drums, and owned loop use
+their exact configured direct playback routes. With <code>audio.graph.enabled=true</code>,
+those three sources and one exact configured stereo JACK capture pair move
+transactionally into this route:</p>
 <pre><code class="language-text">managed instrument -&gt; SOURCE inserts + AUX returns --+
 owned WAV loop ---------------------------------------+-&gt; stereo sum
+SHR Drums --------------------------------------------+
 configured capture L/R -------------------------------+
  -&gt; MASTER rack -&gt; live master level
  -&gt; fixed INPUT/TONE/GLUE/COLOR/IMAGE/LOUD strip -&gt; FINAL OUT
@@ -6421,7 +6469,7 @@ unavailable instead of creating a hidden tap or displaying unrelated audio.</p>
 <p>Maintainer checkpoints separately collect callback count, mean, p95, p99,
 maximum, deadline misses, oversized blocks, xruns, process/core CPU, memory,
 and shutdown behavior. The earlier one-source graph passed its recorded
-Raspberry Pi engineering checkpoints. The three-source final bus has separate
+Raspberry Pi engineering checkpoints. The four-source final bus has separate
 hardware-free stress evidence; full-duplex interface acceptance remains a
 future hardware test and is not implied by synthetic validation.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
@@ -15269,12 +15317,36 @@ and</li>
 <a href="#doc-mr18_test_plan">MR18 acceptance plan</a>. The release is not marked checked
 until that physical gate passes.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-future_improvements" data-source="docs/FUTURE_IMPROVEMENTS.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Future improvements</span><span class="document-summary">Deferred routing and product ideas, including the deliberately unreasonable challenges.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FUTURE_IMPROVEMENTS.md" target="_blank" rel="noopener noreferrer external">View docs/FUTURE_IMPROVEMENTS.md source</a></div><p>This file records useful extensions that are deliberately not part of the
+<details class="document" id="doc-future_improvements" data-source="docs/FUTURE_IMPROVEMENTS.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Future improvements</span><span class="document-summary">Unscheduled smart musical assistance, deferred routing and product ideas, and the deliberately unreasonable challenges.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FUTURE_IMPROVEMENTS.md" target="_blank" rel="noopener noreferrer external">View docs/FUTURE_IMPROVEMENTS.md source</a></div><p>This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.</p>
 <p>These entries do not enter the current 0.4, 0.5, or 0.6 scope automatically.
 The <a href="#doc-release_roadmap">release roadmap</a> owns development order; an item here
 becomes a milestone requirement only when the owner explicitly moves it there.</p>
+<h4 id="doc-future_improvements--future-smart-musical-assistance-unscheduled" tabindex="-1">Future smart musical assistance — unscheduled<a class="heading-anchor" href="#doc-future_improvements--future-smart-musical-assistance-unscheduled" aria-label="Link to Future smart musical assistance — unscheduled">#</a></h4>
+<p>Smart assistance should remove repetitive musical work while leaving the
+musician in control of the musical decision.</p>
+<p>Possible helpers include:</p>
+<ul>
+<li>optional key or harmony inference with visible uncertainty;</li>
+<li>chord-progression suggestions and user-confirmed progression generation;</li>
+<li>arpeggiated fills and filler parts that follow the selected harmony;</li>
+<li>bass notes that follow chord changes, with rhythm suggestions informed by
+kick timing;</li>
+<li>context-aware accompaniment;</li>
+<li>arrangement suggestions that help complete a short sketch; and</li>
+<li>other explicitly reviewable helpers for repetitive musical work.</li>
+</ul>
+<p>None of these helpers exists or belongs to a release milestone today. They
+must not act without clear review and confirmation. An idea enters milestone
+scope only when the owner moves it into the release roadmap with an action,
+result, state boundary, and acceptance path.</p>
+<p>Current key and tuning behavior is narrower and already useful. The musician
+selects the Project tonic and major or natural-minor mode, and N00B filters
+live melodic input against that scale. SHR Drums already supports <code>OFF</code>,
+<code>FOLLOW KEY</code>, and <code>MANUAL</code> per-piece tuning; <code>FOLLOW KEY</code> follows the stored
+Project key. Only automatic key inference and higher-level tuning suggestions
+belong to this future section.</p>
 <h4 id="doc-future_improvements--safe-fallback-for-unknown-usb-midi-devices" tabindex="-1">Safe fallback for unknown USB MIDI devices<a class="heading-anchor" href="#doc-future_improvements--safe-fallback-for-unknown-usb-midi-devices" aria-label="Link to Safe fallback for unknown USB MIDI devices">#</a></h4>
 <p>When a USB MIDI input is connected without a saved or reviewed controller
 profile, SHR should eventually offer or apply a useful fallback mapping instead
@@ -15288,13 +15360,11 @@ as channel-qualified commands. Safe continuous-control discovery should be
 separate from command-button assignment: a knob or encoder can be proposed from
 observed continuous traffic, while transport and other command buttons require
 clear review or explicit learning before activation.</p>
-<h4 id="doc-future_improvements--raspberry-pi-5-headroom-pass" tabindex="-1">Raspberry Pi 5 Headroom pass<a class="heading-anchor" href="#doc-future_improvements--raspberry-pi-5-headroom-pass" aria-label="Link to Raspberry Pi 5 Headroom pass">#</a></h4>
-<p>An unscheduled post-Build Week pass will compare the current Raspberry Pi 4
-development host with an ordered but not-yet-present 2 GB Raspberry Pi 5 and
-NVMe setup. It will measure clean and incremental builds, memory, storage,
-thermal/power behavior, private-cache benefits from real-time core placement,
-effect state and callback cost, and dependency/library footprint before making
-any optimization claim.</p>
+<h4 id="doc-future_improvements--raspberry-pi-5-headroom-pass" tabindex="-1">Raspberry Pi 5 headroom pass<a class="heading-anchor" href="#doc-future_improvements--raspberry-pi-5-headroom-pass" aria-label="Link to Raspberry Pi 5 headroom pass">#</a></h4>
+<p>The Raspberry Pi 5 and NVMe baseline is complete. Remaining unscheduled work
+may compare dependency and library footprint, private-cache benefits from
+real-time core placement, and effect state and callback cost before making any
+new optimization claim.</p>
 <p>The proposal keeps one effects rack. Effects that later pass fixed low-state
 and low-callback-cost gates may receive the compact <code>» PRESTO</code> mark; unmarked
 effects remain normal first-class choices. No hardware result, marker, library
@@ -15352,9 +15422,9 @@ make something new. If the little box survives the Space Shuttle challenge,
 ordinary drum loops should feel like a pleasant afternoon.</p>
 <h4 id="doc-future_improvements--audio-effects-graph-inserts-sends-and-returns" tabindex="-1">Audio effects graph: inserts, sends, and returns<a class="heading-anchor" href="#doc-future_improvements--audio-effects-graph-inserts-sends-and-returns" aria-label="Link to Audio effects graph: inserts, sends, and returns">#</a></h4>
 <p>The current narrow performance bus now sums exactly the managed instrument,
-owned loop, and one configured stereo input before the master, dedicated
-limiter, final meter, recorder, and playback. The broader proposed migration to
-a bounded multi-strip mixer with genuinely shared multi-source aux buses is in the
+SHR Drums, owned loop, and one configured stereo input before the master,
+dedicated limiter, final meter, recorder, and playback. The broader proposed
+migration to a bounded multi-strip mixer with genuinely shared multi-source aux buses is in the
 <a href="#doc-post_competition_mixer_aux_plan">post-competition mixer and shared-aux plan</a>.
 It also records the current dry/wet behavior, the audio-source boundary behind
 tracker lanes, Project migration, and recording taps. The two narrow meter and
@@ -15366,7 +15436,7 @@ and an ordered master rack. It retains strict Project persistence, stopped
 structural publication, compact editors, and meters. Evidence is in the
 <a href="#doc-phase2_audio_graph_measurement">Phase 2 insert-effects measurement</a> and
 <a href="#doc-phase3_4_audio_graph_measurement">Phase 3/4 effects measurement</a>. The
-three-source path has hardware-independent evidence, while full-duplex physical
+four-source path has hardware-independent evidence, while full-duplex physical
 interface acceptance remains deliberately deferred.</p>
 <h5 id="doc-future_improvements--product-idea" tabindex="-1">Product idea<a class="heading-anchor" href="#doc-future_improvements--product-idea" aria-label="Link to Product idea">#</a></h5>
 <p>Effects should be reusable audio processors that can be placed deliberately in
@@ -15389,11 +15459,11 @@ a shared effect while the dry signal continues to the master; its return must be
 mixed exactly once. The UI and Project format should use those words rather than
 hiding both behaviors behind a generic “effect” switch.</p>
 <h5 id="doc-future_improvements--current-architecture-boundary" tabindex="-1">Current architecture boundary<a class="heading-anchor" href="#doc-future_improvements--current-architecture-boundary" aria-label="Link to Current architecture boundary">#</a></h5>
-<p>SHR-DAW now owns a bounded three-source stereo sum. The managed source's dry
-path and two wet returns meet the complete internally summed four-slot Loop Mix
-and configured live-input pair, then pass through the master, final
-limiter/meter/recorder and playback. The raw synchronized multitrack recorder
-remains a separate workflow.</p>
+<p>SHR-DAW now owns a bounded four-source stereo sum. The managed source's dry
+path and two wet returns meet SHR Drums, the complete internally summed
+four-slot Loop Mix, and the configured live-input pair, then pass through the
+master, final limiter/meter/recorder and playback. The raw synchronized
+multitrack recorder remains a separate workflow.</p>
 <p>Loop Mix settings now belong to each FT2 Pattern, while one fixed four-renderer
 client serves only the active Pattern and one bounded incoming preparation.
 That ownership correction does not imply playlists, companion mode, a
@@ -15753,7 +15823,7 @@ changes use the repository's targeted documentation checks.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-post_competition_mixer_aux_plan" data-source="docs/POST_COMPETITION_MIXER_AUX_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition mixer and shared-aux plan</span><span class="document-summary">Multi-strip mixer and shared-aux migration.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_MIXER_AUX_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_MIXER_AUX_PLAN.md source</a></div><blockquote>
 <p><strong>Historical proposal boundary:</strong> SHR-DAW now has a deliberately narrow
-three-source final performance bus and Project format 5. The general
+four-source final performance bus and Project format 13. The general
 multi-strip/shared-aux, pan/solo, hardware-insert, and free-routing work below
 remains a proposal, not current behavior. See
 <a href="#doc-final_performance_bus">Final performance bus</a>.</p>

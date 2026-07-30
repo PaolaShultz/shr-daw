@@ -2,9 +2,10 @@
 
 SHR-DAW is a small music workstation built from several deliberately separate
 parts: role-separated controller/performance inputs, one managed software
-engine, an FT2-style MIDI sequencer, a private WAV loop player, a synchronized
-raw multitrack recorder, and an optional owned final performance bus. This
-guide connects those parts and explains what the musician can do with them.
+engine, in-process SHR Drums, an FT2-style MIDI sequencer, a private WAV loop
+player, a synchronized raw multitrack recorder, and an optional owned final
+performance bus. This guide connects those parts and explains what the musician
+can do with them.
 For exact configuration keys use
 [Configuration and routing](CONFIGURATION.md); for the DSP and real-time
 contract use [Audio graph and DSP contract](AUDIO_GRAPH.md).
@@ -27,20 +28,22 @@ screen, menus, pickup                           managed synth <-+  |
 FT2 scheduler -> each page's MIDI destination -> software or hardware instrument
 
 managed synth audio -> direct JACK playback (graph disabled)
+SHR Drums audio ----> direct JACK playback (graph disabled)
 private WAV loop  --> direct JACK playback (graph disabled)
 
 managed synth SOURCE/AUX --+
 private WAV loop -----------+-> MASTER rack -> live fader -> MASTER STRIP
+SHR Drums ------------------+
 configured stereo input ----+                        +-> FINAL OUT + final WAV + playback
 configured JACK sources -> fixed 18-channel meter snapshot
                         \-> shared callback timeline -> mono stems + manifest
 ```
 
 The raw-stem recorder remains separate. When enabled, the final bus owns the
-exact synth, loop, and one configured stereo-input pair and removes the direct
-synth/loop routes transactionally. `FINAL OUT`, final WAV, and playback then
-share the same post-strip samples. They do not secretly include unrelated
-JACK clients or downstream interface processing.
+exact synth, SHR Drums, loop, and one configured stereo-input pair and removes
+the direct synth/drum/loop routes transactionally. `FINAL OUT`, final WAV, and
+playback then share the same post-strip samples. They do not secretly include
+unrelated JACK clients or downstream interface processing.
 
 ## Controller and performance input roles
 
@@ -377,14 +380,15 @@ would leave MIDI range.
 
 ## The managed audio graph
 
-Without the owned graph, the managed instrument and owned loop use their exact
-configured direct playback routes. With `audio.graph.enabled=true`, those two
-sources and one exact configured stereo JACK capture pair move transactionally
-into this route:
+Without the owned graph, the managed instrument, SHR Drums, and owned loop use
+their exact configured direct playback routes. With `audio.graph.enabled=true`,
+those three sources and one exact configured stereo JACK capture pair move
+transactionally into this route:
 
 ```text
 managed instrument -> SOURCE inserts + AUX returns --+
 owned WAV loop ---------------------------------------+-> stereo sum
+SHR Drums --------------------------------------------+
 configured capture L/R -------------------------------+
  -> MASTER rack -> live master level
  -> fixed INPUT/TONE/GLUE/COLOR/IMAGE/LOUD strip -> FINAL OUT
@@ -664,6 +668,6 @@ unavailable instead of creating a hidden tap or displaying unrelated audio.
 Maintainer checkpoints separately collect callback count, mean, p95, p99,
 maximum, deadline misses, oversized blocks, xruns, process/core CPU, memory,
 and shutdown behavior. The earlier one-source graph passed its recorded
-Raspberry Pi engineering checkpoints. The three-source final bus has separate
+Raspberry Pi engineering checkpoints. The four-source final bus has separate
 hardware-free stress evidence; full-duplex interface acceptance remains a
 future hardware test and is not implied by synthetic validation.
