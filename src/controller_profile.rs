@@ -26,6 +26,10 @@ pub struct ControllerProfile {
     #[serde(default)]
     pub encoder_relative_reverse: bool,
     #[serde(default)]
+    pub encoder_modified_relative_cc: Option<u8>,
+    #[serde(default)]
+    pub encoder_modified_relative_reverse: bool,
+    #[serde(default)]
     pub encoder_press_cc: Option<u8>,
     #[serde(default)]
     pub encoder_press_note: Option<u8>,
@@ -108,6 +112,10 @@ impl ControllerProfile {
         }
         for (number, description) in [
             (self.encoder_relative_cc, "controller profile encoder CC"),
+            (
+                self.encoder_modified_relative_cc,
+                "controller profile modified encoder CC",
+            ),
             (self.encoder_press_cc, "controller profile encoder press CC"),
             (
                 self.encoder_press_note,
@@ -127,6 +135,7 @@ impl ControllerProfile {
         for cc in self.cc_buttons.keys().copied().chain(
             [
                 self.encoder_relative_cc,
+                self.encoder_modified_relative_cc,
                 self.encoder_press_cc,
                 self.encoder_modifier_cc,
                 self.lock_cc,
@@ -141,6 +150,18 @@ impl ControllerProfile {
         if self.encoder_press_cc.is_some() && self.encoder_press_note.is_some() {
             bail!(
                 "controller profile {} encoder press must use either a CC or a note",
+                self.id
+            );
+        }
+        if self.encoder_modified_relative_cc.is_some() && self.encoder_modifier_cc.is_none() {
+            bail!(
+                "controller profile {} modified encoder CC requires an encoder modifier",
+                self.id
+            );
+        }
+        if self.encoder_modified_relative_reverse && self.encoder_modified_relative_cc.is_none() {
+            bail!(
+                "controller profile {} modified encoder reverse requires its CC",
                 self.id
             );
         }
@@ -199,6 +220,8 @@ impl ControllerProfile {
         config.controls.clone_from(&self.controls);
         config.encoder_relative_cc = self.encoder_relative_cc;
         config.encoder_relative_reverse = self.encoder_relative_reverse;
+        config.encoder_modified_relative_cc = self.encoder_modified_relative_cc;
+        config.encoder_modified_relative_reverse = self.encoder_modified_relative_reverse;
         config.encoder_press_cc = self.encoder_press_cc;
         config.encoder_press_note = self.encoder_press_note;
         config.encoder_press_channel = self.encoder_press_channel.map(|channel| channel - 1);
@@ -233,6 +256,45 @@ impl ControllerProfile {
     }
 }
 
+/// Adds only the reviewed shifted-encoder packet to an otherwise learned
+/// mapping when the connected device, ordinary encoder, and Shift button all
+/// agree with that reviewed profile. This keeps existing user mappings intact
+/// and changes only the in-memory router configuration.
+pub fn augment_shifted_encoder_for_connected(
+    current: &mut PadConfig,
+    connected_name: &str,
+    catalog: &Catalog,
+) -> bool {
+    if current.encoder_modified_relative_cc.is_some() {
+        return false;
+    }
+    let Some(profile) = catalog.matching(connected_name) else {
+        return false;
+    };
+    let profile_modifier = profile.encoder_modifier_cc.map(|cc| ControllerButton::Cc {
+        channel: profile.encoder_modifier_channel.unwrap_or(1) - 1,
+        cc,
+    });
+    if current.encoder_relative_cc != profile.encoder_relative_cc
+        || current.encoder_relative_reverse != profile.encoder_relative_reverse
+        || current.encoder_modifier != profile_modifier
+    {
+        return false;
+    }
+    let Some(modified_cc) = profile.encoder_modified_relative_cc else {
+        return false;
+    };
+    current.encoder_modified_relative_cc = Some(modified_cc);
+    current.encoder_modified_relative_reverse = profile.encoder_modified_relative_reverse;
+    if current.validate().is_ok() {
+        true
+    } else {
+        current.encoder_modified_relative_cc = None;
+        current.encoder_modified_relative_reverse = false;
+        false
+    }
+}
+
 #[derive(Default)]
 pub struct Catalog {
     profiles: Vec<ControllerProfile>,
@@ -240,9 +302,20 @@ pub struct Catalog {
 
 impl Catalog {
     pub fn discover() -> Self {
+        Self::discover_in(roots())
+    }
+
+    /// Loads only profiles shipped with this binary/checkout. Runtime
+    /// compatibility repairs must not be masked by an older downloaded
+    /// catalog, while ordinary profile discovery still honors user roots.
+    pub fn discover_bundled() -> Self {
+        Self::discover_in(bundled_roots())
+    }
+
+    fn discover_in(roots: Vec<PathBuf>) -> Self {
         let mut profiles = Vec::new();
         let mut ids = HashSet::new();
-        for root in roots() {
+        for root in roots {
             let path = root.join("catalog.json");
             let Ok(text) = fs::read_to_string(&path) else {
                 continue;
@@ -380,6 +453,12 @@ fn roots() -> Vec<PathBuf> {
     if let Some(parent) = user_catalog_path().parent() {
         roots.push(parent.to_path_buf());
     }
+    roots.extend(bundled_roots());
+    roots
+}
+
+fn bundled_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
     if let Ok(exe) = env::current_exe() {
         if let Some(parent) = exe.parent() {
             roots.push(parent.join("../share/shsynth/controller-profiles"));
@@ -405,7 +484,7 @@ mod tests {
     fn bundled_catalog_is_valid_and_matches_punctuation_insensitively() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("controller-profiles/catalog.json");
         assert!(validate_catalog(&path).unwrap() >= 1);
-        let catalog = Catalog::discover();
+        let catalog = Catalog::discover_bundled();
         let profile = catalog.matching("20:0 Arturia MiniLab3 MIDI 1").unwrap();
         assert_eq!(profile.id, "arturia-minilab-3");
         let mut config = PadConfig::default();
@@ -415,6 +494,7 @@ mod tests {
         assert_eq!(config.pad_channels.len(), 8);
         assert!(config.pad_channels.values().all(|channel| *channel == 9));
         assert_eq!(config.encoder_relative_cc, Some(114));
+        assert_eq!(config.encoder_modified_relative_cc, Some(29));
         assert_eq!(config.encoder_press_cc, Some(115));
         assert_eq!(config.encoder_press_channel, Some(0));
         assert_eq!(
@@ -440,6 +520,47 @@ mod tests {
         assert_eq!(config.lock_action(&[0xb0, 27, 127]), (false, false));
     }
 
+    #[test]
+    fn matching_reviewed_profile_repairs_only_missing_shift_turn_in_memory() {
+        let catalog = Catalog::discover_bundled();
+        let mut learned = PadConfig {
+            input_match: Some("Minilab3 MIDI".into()),
+            profile: Some("learned".into()),
+            encoder_relative_cc: Some(114),
+            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 27 }),
+            pads: HashMap::from([(99, PadAction::Item1)]),
+            ..PadConfig::default()
+        };
+        let original_pads = learned.pads.clone();
+
+        assert!(augment_shifted_encoder_for_connected(
+            &mut learned,
+            "20:0 Arturia MiniLab3 MIDI 1",
+            &catalog,
+        ));
+        assert_eq!(learned.encoder_modified_relative_cc, Some(29));
+        assert_eq!(learned.pads, original_pads);
+        assert_eq!(learned.profile.as_deref(), Some("learned"));
+
+        assert!(!augment_shifted_encoder_for_connected(
+            &mut learned,
+            "20:0 Arturia MiniLab3 MIDI 1",
+            &catalog,
+        ));
+
+        let mut custom = PadConfig {
+            encoder_relative_cc: Some(114),
+            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 9 }),
+            ..PadConfig::default()
+        };
+        assert!(!augment_shifted_encoder_for_connected(
+            &mut custom,
+            "20:0 Arturia MiniLab3 MIDI 1",
+            &catalog,
+        ));
+        assert_eq!(custom.encoder_modified_relative_cc, None);
+    }
+
     fn minimal_profile() -> ControllerProfile {
         ControllerProfile {
             id: "test-controller".into(),
@@ -449,6 +570,8 @@ mod tests {
             controls: HashMap::new(),
             encoder_relative_cc: None,
             encoder_relative_reverse: false,
+            encoder_modified_relative_cc: None,
+            encoder_modified_relative_reverse: false,
             encoder_press_cc: None,
             encoder_press_note: None,
             encoder_press_channel: None,

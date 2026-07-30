@@ -88,9 +88,13 @@ configured controller input to select one unique reviewed profile before the
 MIDI router opens. The bundled MiniLab 3 default mirrors the verified learned
 mapping: encoder turn CC 114 and press CC 115 on channel 1, plus the eight
 Arturia/DAW factory pads on channel 10. DAW Shift CC 27 on channel 1 is the
-held encoder modifier, so ordinary FT2 turns move rows and Shift-turns move
-columns. Unknown or ambiguous controllers remain
-unmapped rather than inheriting this device-specific default.
+held encoder modifier, and the reviewed DAW shifted turn is relative CC 29.
+Ordinary turns therefore stay on the directly learned CC114 while held Shift
+turns are classified on the documented DAW CC29. An older learned MiniLab
+mapping with the same ordinary encoder and modifier receives only that reviewed
+shifted CC in memory; SHR does not rewrite the private file. Unknown or
+ambiguous controllers remain unmapped rather than inheriting this
+device-specific default.
 
 ## Upstream mapping sources
 
@@ -127,10 +131,14 @@ Optional `note_button_channels` and `cc_button_channels` objects map the same
 note/CC keys to 1-based MIDI channels. Missing qualifiers preserve legacy
 all-channel profiles. MIDI learn records the channel observed for every learned
 note or CC command, and save/load retains it.
-Encoder turn, press, held modifier, and optional lock messages are separate so
-they cannot collide with continuous controls. The held modifier is stored as
-`encoder.modifier=cc.CHANNEL.NUMBER` or `note.CHANNEL.NUMBER`. All physical note and CC numbers must be valid MIDI
-data bytes (0–127), and an encoder press cannot reuse a command-button note.
+Encoder turn, optional shifted turn, press, held modifier, and optional lock
+messages are separate so they cannot collide with continuous controls. The
+held modifier is stored as `encoder.modifier=cc.CHANNEL.NUMBER` or
+`note.CHANNEL.NUMBER`. A controller that changes the rotary CC while Shift is
+held also stores `encoder.modified_relative_cc`; its direction convention uses
+`encoder.modified_relative_reverse`. All physical note and CC numbers must be
+valid MIDI data bytes (0–127), and an encoder press cannot reuse a
+command-button note.
 Learned page-cycle chords are stored as `page_cycle.modifier` and
 `page_cycle.trigger` values such as `cc.1.27`; the modifier and trigger must be
 different messages, while the trigger may deliberately reuse a normal mapping.
@@ -148,8 +156,10 @@ actions. Legacy `item-1` through `item-4` profile values remain compatible.
 Direct capture on this unit found User 1 pads on channel 1, the same
 channel as its keyboard, so User 1 pads are not safe command buttons: their
 messages are indistinguishable from keyboard notes. DAW Shift emits CC27 and
-is bound only as the held encoder modifier, not as persistent pad lock; normal
-arpeggiator, program, and bank gestures therefore cannot toggle SHR lock state.
+is bound only as the held encoder modifier; the shifted rotary's DAW CC29 is
+accepted only while that configured modifier is down. Neither is a persistent
+pad lock, so normal arpeggiator, program, and bank gestures cannot toggle SHR
+lock state.
 Selecting the controller's DAW program does not itself require a proprietary
 DAW script for these ordinary MIDI note commands. Arturia mode has the same
 captured channel-10 pad notes, so use DAW mode only if another ordinary mapping

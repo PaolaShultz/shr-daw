@@ -23,9 +23,10 @@ invoke that page's items wherever a controller strip is present.
 ## Presets
 
 **Software Synths** opens Presets. Turn the main encoder, use the arrow keys,
-or use the mouse wheel to choose a sound. Loading replaces the one managed software
-instrument; it never layers engines. synthv1, Yoshimi, FluidSynth, and Moj Sint remain
-separate catalogs selected with the Engine page.
+or use the mouse wheel to choose a sound. Hold the configured encoder Shift
+while turning to move between the synthv1, Yoshimi, FluidSynth, and Moj Sint
+catalogs. Loading replaces the one managed software instrument; it never
+layers engines.
 
 Home keeps **MIDI Learn**, **Routing**, and **Effects** separate. Routing is the
 rotary browse/edit/confirm/cancel editor; Effects is the existing Project rack.
@@ -58,12 +59,13 @@ physical command pads deliberately do not duplicate that coarse scrolling.
 On the controller, LOAD uses semantic position 6; position 5 remains available
 for STOP/PANIC where that direct safety action exists.
 
-### ENGINE — change instrument host
+### Change instrument host
 
-![Populated Presets screen with the ENGINE controller page](../images/menu/presets-engine.png)
-
-`ENGINE-` and `ENGINE+` move among synthv1, Yoshimi, FluidSynth, and Moj Sint. Changing catalogs does not
-load a sound until `LOAD` is used.
+Shift-turn the main rotary to move among synthv1, Yoshimi, FluidSynth, and Moj
+Sint in either direction. Keyboard `[`/`]` and clicking the left/right half of
+the Presets heading remain equivalent. Catalog changes are silent: they only
+change the list and reset its selection according to the existing catalog
+contract. `LOAD` is the sole managed preset start or replacement action.
 
 The Moj Sint catalog has seven ordered starts: Full Bass, Full Lead, Full
 Filter Articulation, Matched Idealized, Matched Linear Mixer, Matched Linear

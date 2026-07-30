@@ -412,15 +412,7 @@ const PRESETS: [MenuPage; 4] = [
             off(""),
         ],
     ),
-    page(
-        "ENGINE",
-        [
-            on("ENGINE-", Action::PreviousEngine),
-            on("ENGINE+", Action::NextEngine),
-            off(""),
-            off(""),
-        ],
-    ),
+    page("", [off(""), off(""), off(""), off("")]),
     page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
@@ -1596,6 +1588,13 @@ mod tests {
             .iter()
             .flat_map(|page| page.slots)
             .any(|slot| slot.dispatch() == Some(Action::OpenPageOverlay)));
+        assert!(PRESETS
+            .iter()
+            .flat_map(|page| page.slots)
+            .all(|slot| !matches!(
+                slot.dispatch(),
+                Some(Action::PreviousEngine | Action::NextEngine)
+            )));
     }
 
     #[test]
@@ -1866,8 +1865,6 @@ mod tests {
         let inventory = [
             Action::Home,
             Action::End,
-            Action::PreviousEngine,
-            Action::NextEngine,
             Action::Activate,
             Action::Back,
             Action::StopAll,

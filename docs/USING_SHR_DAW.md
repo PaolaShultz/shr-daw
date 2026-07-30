@@ -22,14 +22,16 @@ The Presets screen browses four kinds of software instruments:
 - FluidSynth `.sf2` and `.sf3` SoundFonts.
 - Moj Sint `.mojsint` Model D presets.
 
-`ENGINE-` and `ENGINE+` change catalogs without starting sound. `LOAD` is the
-only preset-start transaction. Moj Sint reuses the owned-process, direct
-playback, optional graph, panic, replacement, and shutdown paths while keeping
-its own preset and control semantics. Its seven ordered starts are Full Bass,
-Full Lead, Full Filter Articulation, Matched Idealized, Matched Linear Mixer,
-Matched Linear Ladder, and Matched No Drift or Feedback. They preserve the
-authored Model D audition coordinates and all remain editable through the same
-twelve Playback controls.
+The ordinary rotary browses the current catalog. Hold its configured Shift
+while turning to change catalogs in either direction; keyboard `[`/`]` and the
+clickable heading halves remain available. Catalog browsing stays silent, and
+`LOAD` is the only preset-start or replacement transaction. Moj Sint reuses
+the owned-process, direct playback, optional graph, panic, replacement, and
+shutdown paths while keeping its own preset and control semantics. Its seven
+ordered starts are Full Bass, Full Lead, Full Filter Articulation, Matched
+Idealized, Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
+Feedback. They preserve the authored Model D audition coordinates and all
+remain editable through the same twelve Playback controls.
 
 Changing engine does not mix their files or control rules. The Playback screen
 shows held note names with each note's decimal MIDI velocity directly beneath
@@ -79,6 +81,12 @@ once. The master rotary browses the current content; press
 it to select or confirm. Back returns one level, and controller MIDI never
 quits the application.
 
+On screens that already have a second reversible browse axis, holding the
+configured encoder Shift gives the rotary that axis: Presets engine, FT2
+column, Tracks column, Live Pattern lane, Loop Mix slot, drum genre, FX target,
+or MASTER STRIP detail section. Other screens leave Shift-turn inert rather
+than assigning it to a destructive, transport, or confirmation action.
+
 Software Synths leads from Presets to Playback and MIDI Ideas. FT2 owns
 Patterns, pages, Arrangement, Projects, drums, Live Patterns, and the fourth
 musician-facing Loop Mix page. Recorder captures raw synchronized stems; Performance owns
@@ -102,7 +110,8 @@ requires Append/Replace confirmation before the Arrangement changes.
 
 The same screen gives the selected page's four MIDI lanes transient mute,
 velocity, gate, and transpose controls. They leave cell data unchanged, survive
-navigation, and reset safely when another Project loads.
+navigation, and reset safely when another Project loads. Shift-rotary changes
+the lane through the same path as Left/Right while preserving Pattern browse.
 
 **Loop Mix** is decoded audio, not fake MIDI lanes, but its four private WAV
 slots belong to the selected FT2 Pattern. Browsing another Pattern changes the
@@ -111,6 +120,8 @@ switch MIDI and loops together and restart Pattern-local phase; repeated
 references share settings but each step restarts. All active WAVs must match
 their owning Pattern's tempo and JACK sample rate. One bad slot does not stop
 healthy loops or MIDI, and SHR-DAW does not time-stretch them.
+The ordinary rotary browses inbox files; Shift-rotary changes the selected loop
+slot without launching it.
 
 See [Live performance](LIVE_PERFORMANCE.md) for exact controls, capture,
 ownership, routing, realtime limits, and unsupported DJ features.

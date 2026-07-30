@@ -370,8 +370,7 @@ impl MidiRouter {
         if !config.midi_autoconnect {
             bail!("MIDI routing is disabled in shsynth.conf");
         }
-        let pads = PadConfig::load(&state.join("controller.conf"))?;
-        let controller = Arc::new(RwLock::new(pads));
+        let mut pads = PadConfig::load(&state.join("controller.conf"))?;
         let learn_mode = Arc::new(AtomicBool::new(false));
         let fx_control_mode = Arc::new(AtomicBool::new(false));
         let output = Arc::new(Mutex::new(None));
@@ -381,12 +380,21 @@ impl MidiRouter {
         let tracker_input = Arc::new(Mutex::new(None));
         let playback_scale = Arc::new(Mutex::new(None));
         let live_state = Arc::new(Mutex::new(LiveMidiState::default()));
-        let pads_snapshot = controller
-            .read()
-            .map(|pads| pads.clone())
-            .unwrap_or_default();
         let names = midi_input_names()?;
-        let mut plan = plan_midi_inputs(&names, &pads_snapshot, config);
+        let mut plan = plan_midi_inputs(&names, &pads, config);
+        if let Some(connected) = plan
+            .availability
+            .controller
+            .as_ref()
+            .and_then(|state| state.resolved.as_deref())
+        {
+            crate::controller_profile::augment_shifted_encoder_for_connected(
+                &mut pads,
+                connected,
+                &crate::controller_profile::Catalog::discover_bundled(),
+            );
+        }
+        let controller = Arc::new(RwLock::new(pads));
         let mut inputs = Vec::new();
         let mut opened_names = Vec::new();
         for planned in plan.inputs.clone() {
@@ -2136,8 +2144,13 @@ fn connect_midi_input(
                         let _ = tx.send(MidiEvent::MappedControl(cc, value));
                         return;
                     }
-                    let routed =
-                        crate::midi::route_with_pad_lock(&pads, backend, message, pad_locked);
+                    let routed = crate::midi::route_with_pad_lock_and_modifier(
+                        &pads,
+                        backend,
+                        message,
+                        pad_locked,
+                        encoder_modifier_down,
+                    );
                     if let Some((cc, value)) = routed.value {
                         let _ = tx.send(MidiEvent::MappedControl(cc, value));
                     }
@@ -2156,7 +2169,7 @@ fn connect_midi_input(
                         }
                     }
                     if let Some(action) = routed.encoder {
-                        let event = if encoder_modifier_down {
+                        let event = if routed.encoder_modified {
                             MidiEvent::EncoderModified(action)
                         } else {
                             MidiEvent::Encoder(action)

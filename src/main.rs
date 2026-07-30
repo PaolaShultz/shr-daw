@@ -1430,12 +1430,29 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
                 .encoder_modifier
                 .map(|button| button.to_string())
                 .unwrap_or_else(|| "off".into());
+            let modified_turn = if config.encoder_modifier.is_none() {
+                "off".into()
+            } else {
+                config.encoder_modified_relative_cc.map_or_else(
+                    || "same CC".into(),
+                    |cc| {
+                        format!(
+                            "CC {cc} ({})",
+                            if config.encoder_modified_relative_reverse {
+                                "reversed"
+                            } else {
+                                "normal"
+                            }
+                        )
+                    },
+                )
+            };
             let lock = config
                 .lock_cc
                 .map(|cc| format!("CC {cc}"))
                 .unwrap_or_else(|| "off".into());
             println!(
-                "encoder: turn {encoder_turn}, press {encoder_press}, Shift {encoder_modifier}; pad lock {lock}"
+                "encoder: turn {encoder_turn}, press {encoder_press}, Shift {encoder_modifier}, Shift turn {modified_turn}; pad lock {lock}"
             );
             if let (Some(modifier), Some(trigger)) =
                 (config.page_cycle_modifier, config.page_cycle_trigger)

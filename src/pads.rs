@@ -193,6 +193,11 @@ pub struct PadConfig {
     pub controls: HashMap<u8, u8>,
     pub encoder_relative_cc: Option<u8>,
     pub encoder_relative_reverse: bool,
+    /// Optional relative CC emitted only while the configured encoder
+    /// modifier is held. Some controllers change the encoder's CC instead of
+    /// continuing to emit `encoder_relative_cc`.
+    pub encoder_modified_relative_cc: Option<u8>,
+    pub encoder_modified_relative_reverse: bool,
     pub encoder_press_cc: Option<u8>,
     pub encoder_press_note: Option<u8>,
     /// Optional zero-based channel qualifier for either encoder press form.
@@ -222,6 +227,8 @@ impl Default for PadConfig {
             controls: HashMap::new(),
             encoder_relative_cc: None,
             encoder_relative_reverse: false,
+            encoder_modified_relative_cc: None,
+            encoder_modified_relative_reverse: false,
             encoder_press_cc: None,
             encoder_press_note: None,
             encoder_press_channel: None,
@@ -298,6 +305,19 @@ impl PadConfig {
                     "true" | "yes" | "1" => true,
                     "false" | "no" | "0" => false,
                     _ => bail!("encoder.relative_reverse must be true or false"),
+                };
+                continue;
+            }
+            if key.trim() == "encoder.modified_relative_cc" {
+                self.encoder_modified_relative_cc =
+                    optional_midi_number(value, "modified encoder relative CC")?;
+                continue;
+            }
+            if key.trim() == "encoder.modified_relative_reverse" {
+                self.encoder_modified_relative_reverse = match value.trim() {
+                    "true" | "yes" | "1" => true,
+                    "false" | "no" | "0" => false,
+                    _ => bail!("encoder.modified_relative_reverse must be true or false"),
                 };
                 continue;
             }
@@ -427,6 +447,10 @@ impl PadConfig {
         }
         for (number, description) in [
             (self.encoder_relative_cc, "encoder relative CC"),
+            (
+                self.encoder_modified_relative_cc,
+                "modified encoder relative CC",
+            ),
             (self.encoder_press_cc, "encoder press CC"),
             (self.encoder_press_note, "encoder press note"),
             (self.lock_cc, "pad lock CC"),
@@ -437,6 +461,7 @@ impl PadConfig {
         }
         for encoder_cc in [
             self.encoder_relative_cc,
+            self.encoder_modified_relative_cc,
             self.encoder_press_cc,
             self.lock_cc,
         ]
@@ -457,13 +482,29 @@ impl PadConfig {
         {
             bail!("a controller CC cannot be both continuous and a command button");
         }
-        if self.encoder_relative_cc == self.encoder_press_cc && self.encoder_relative_cc.is_some() {
-            bail!("encoder turn and press CCs must be different");
+        if (self.encoder_relative_cc == self.encoder_press_cc && self.encoder_relative_cc.is_some())
+            || (self.encoder_modified_relative_cc == self.encoder_press_cc
+                && self.encoder_modified_relative_cc.is_some())
+            || (self.encoder_relative_cc == self.encoder_modified_relative_cc
+                && self.encoder_relative_cc.is_some())
+        {
+            bail!("ordinary turn, shifted turn, and encoder press CCs must be different");
         }
         if self.lock_cc.is_some()
-            && [self.encoder_relative_cc, self.encoder_press_cc].contains(&self.lock_cc)
+            && [
+                self.encoder_relative_cc,
+                self.encoder_modified_relative_cc,
+                self.encoder_press_cc,
+            ]
+            .contains(&self.lock_cc)
         {
             bail!("pad lock CC must differ from encoder CCs");
+        }
+        if self.encoder_modified_relative_cc.is_some() && self.encoder_modifier.is_none() {
+            bail!("modified encoder relative CC requires an encoder modifier");
+        }
+        if self.encoder_modified_relative_reverse && self.encoder_modified_relative_cc.is_none() {
+            bail!("modified encoder reverse requires a modified encoder relative CC");
         }
         if self.encoder_press_cc.is_some() && self.encoder_press_note.is_some() {
             bail!("encoder press must use either a CC or a note, not both");
@@ -486,6 +527,7 @@ impl PadConfig {
                         || self.cc_buttons.contains_key(&cc)
                         || [
                             self.encoder_relative_cc,
+                            self.encoder_modified_relative_cc,
                             self.encoder_press_cc,
                             self.lock_cc,
                         ]
@@ -568,7 +610,7 @@ impl PadConfig {
         }
         let mut entries: Vec<_> = self.pads.iter().collect();
         entries.sort_by_key(|(note, _)| **note);
-        let mut text = String::from("# SHR-DAW controller profile v6\n");
+        let mut text = String::from("# SHR-DAW controller profile v7\n");
         if let Some(input) = &self.input_match {
             text.push_str(&format!("input={input}\n"));
         }
@@ -577,7 +619,7 @@ impl PadConfig {
             self.profile.as_deref().unwrap_or_default()
         ));
         text.push_str(&format!(
-            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nencoder.modifier={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
+            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.modified_relative_cc={}\nencoder.modified_relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nencoder.modifier={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
             match self.layout {
                 ControllerLayout::Eight => 8,
                 ControllerLayout::Five => 5,
@@ -587,6 +629,10 @@ impl PadConfig {
                 .map(|cc| cc.to_string())
                 .unwrap_or_default(),
             self.encoder_relative_reverse,
+            self.encoder_modified_relative_cc
+                .map(|cc| cc.to_string())
+                .unwrap_or_default(),
+            self.encoder_modified_relative_reverse,
             self.encoder_press_cc
                 .map(|cc| cc.to_string())
                 .unwrap_or_default(),
@@ -690,29 +736,47 @@ impl PadConfig {
     /// also treats its zero reset packet as stationary. Press and release are
     /// both consumed, while only a non-zero press selects.
     pub fn encoder_action(&self, message: &[u8]) -> (bool, Option<EncoderAction>) {
+        let (consumed, action) = relative_encoder_action(
+            message,
+            self.encoder_relative_cc,
+            self.encoder_relative_reverse,
+        );
+        if consumed {
+            return (consumed, action);
+        }
+        self.encoder_press_action(message)
+    }
+
+    /// Classifies both ordinary and modifier-specific encoder CCs. A shifted
+    /// CC is always consumed, but it navigates only while the configured
+    /// modifier is actually held.
+    pub fn encoder_action_with_modifier(
+        &self,
+        message: &[u8],
+        modifier_down: bool,
+    ) -> (bool, Option<EncoderAction>, bool) {
+        let (modified_consumed, modified_action) = relative_encoder_action(
+            message,
+            self.encoder_modified_relative_cc,
+            self.encoder_modified_relative_reverse,
+        );
+        if modified_consumed {
+            return (
+                true,
+                modifier_down.then_some(modified_action).flatten(),
+                modifier_down,
+            );
+        }
+        let (consumed, action) = self.encoder_action(message);
+        let modified = modifier_down
+            && action.is_some()
+            && self.encoder_relative_cc == message.get(1).copied();
+        (consumed, action, modified)
+    }
+
+    fn encoder_press_action(&self, message: &[u8]) -> (bool, Option<EncoderAction>) {
         if message.len() < 3 || message[0] & 0xf0 != 0xb0 {
             return (false, None);
-        }
-        if self.encoder_relative_cc == Some(message[1]) {
-            let mut action = if self.encoder_relative_reverse && message[2] == 0 {
-                // Two's-complement/high-low relative encoders reset to zero.
-                // Zero is neutral, not another clockwise packet.
-                None
-            } else {
-                match message[2].cmp(&64) {
-                    std::cmp::Ordering::Less => Some(EncoderAction::Up),
-                    std::cmp::Ordering::Greater => Some(EncoderAction::Down),
-                    std::cmp::Ordering::Equal => None,
-                }
-            };
-            if self.encoder_relative_reverse {
-                action = action.map(|action| match action {
-                    EncoderAction::Up => EncoderAction::Down,
-                    EncoderAction::Down => EncoderAction::Up,
-                    EncoderAction::Select => EncoderAction::Select,
-                });
-            }
-            return (true, action);
         }
         if self.encoder_press_cc == Some(message[1]) {
             if self
@@ -787,6 +851,35 @@ impl PadConfig {
         }
         (true, message[2] > 0)
     }
+}
+
+fn relative_encoder_action(
+    message: &[u8],
+    configured_cc: Option<u8>,
+    reverse: bool,
+) -> (bool, Option<EncoderAction>) {
+    if message.len() < 3 || message[0] & 0xf0 != 0xb0 || configured_cc != Some(message[1]) {
+        return (false, None);
+    }
+    let mut action = if reverse && message[2] == 0 {
+        // Two's-complement/high-low relative encoders reset to zero. Zero is
+        // neutral, not another clockwise packet.
+        None
+    } else {
+        match message[2].cmp(&64) {
+            std::cmp::Ordering::Less => Some(EncoderAction::Up),
+            std::cmp::Ordering::Greater => Some(EncoderAction::Down),
+            std::cmp::Ordering::Equal => None,
+        }
+    };
+    if reverse {
+        action = action.map(|action| match action {
+            EncoderAction::Up => EncoderAction::Down,
+            EncoderAction::Down => EncoderAction::Up,
+            EncoderAction::Select => EncoderAction::Select,
+        });
+    }
+    (true, action)
 }
 
 pub(crate) fn midi_number(value: &str, description: &str) -> Result<u8> {
@@ -1000,6 +1093,7 @@ mod tests {
         ));
         let config = PadConfig {
             encoder_relative_cc: Some(114),
+            encoder_modified_relative_cc: Some(29),
             encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 27 }),
             ..PadConfig::default()
         };
@@ -1017,6 +1111,23 @@ mod tests {
         assert_eq!(
             loaded.encoder_modifier_action(&[0xb1, 27, 127]),
             (false, false)
+        );
+        assert_eq!(
+            loaded.encoder_action_with_modifier(&[0xb0, 29, 63], true),
+            (true, Some(EncoderAction::Up), true)
+        );
+        assert_eq!(
+            loaded.encoder_action_with_modifier(&[0xb0, 29, 65], true),
+            (true, Some(EncoderAction::Down), true)
+        );
+        assert_eq!(
+            loaded.encoder_action_with_modifier(&[0xb0, 29, 65], false),
+            (true, None, false),
+            "the Shift-only CC stays consumed after release"
+        );
+        assert_eq!(
+            loaded.encoder_action_with_modifier(&[0xb0, 114, 65], false),
+            (true, Some(EncoderAction::Down), false)
         );
         let _ = fs::remove_file(path);
     }
@@ -1224,6 +1335,18 @@ mod tests {
         config = PadConfig {
             encoder_press_cc: Some(118),
             encoder_press_note: Some(99),
+            ..PadConfig::default()
+        };
+        assert!(config.save(&path).is_err());
+
+        config = PadConfig {
+            encoder_modified_relative_cc: Some(29),
+            ..PadConfig::default()
+        };
+        assert!(config.save(&path).is_err());
+
+        config = PadConfig {
+            encoder_modified_relative_reverse: true,
             ..PadConfig::default()
         };
         assert!(config.save(&path).is_err());

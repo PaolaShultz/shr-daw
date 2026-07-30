@@ -70,6 +70,11 @@ Project adopts the current engine/instrument on page 1 without restarting it;
 without a Player instrument, FT2 loads the first available synthv1 preset.
 Saved or explicitly changed Projects keep their routes.
 
+Turn the main rotary to browse sounds. Hold the configured encoder Shift while
+turning to change engine catalog in either direction; `[`/`]` and the two
+heading halves remain available. Catalog changes are silent. Only LOAD starts
+or replaces the managed preset.
+
 Synthv1 controls use pickup. After loading, idea load, or RESET, mapped CCs are
 blocked until the physical control reaches the stored value. This prevents
 jumps during live audio.
@@ -106,7 +111,9 @@ filter releases held notes first.
 Playback SYS FX or FT2 Tools OPS FX opens the current Project's FX rack. In
 FT2, uppercase F opens it directly. Back returns to the calling Player or FT2
 screen while its instrument remains active. TARGET cycles SOURCE,
-AUX 1, AUX 2, and MASTER. Source effects change the instrument in series.
+AUX 1, AUX 2, DRUMS, and MASTER. Shift-rotary selects that target in either
+direction while the ordinary rotary browses rack rows. Source effects change
+the instrument in series.
 Each aux makes a parallel wet copy: SEND sets how much enters it, POINT chooses
 before or after source effects, and RETURN sets how much comes back. Master
 effects change the final dry-plus-aux mix.
@@ -138,6 +145,8 @@ LOUD/CEIL. DETAIL exposes only that section's values. Optional sections have
 smoothed BYPASS. A/B keeps the same delay and protected true-peak limiter.
 RESET I clears LUFS-I. Playback allows smoothed value changes, but a final
 recording rejects them; with no owned graph they change only the Project.
+In DETAIL, the ordinary rotary browses parameters and Shift-rotary changes
+section through the existing front-page order.
 
 ## Performance meters
 
@@ -290,7 +299,8 @@ and melody-only semitone/octave transpose actions. PATTERN DRUMS loads bundled
 grooves into the percussion page without changing its MIDI route. FILTER picks
 genre, meter, and 32/64/128-row length (24/48/96 in 3/4). Empty Patterns resize;
 existing melody is protected. Saved drum patterns are separate `.shdrum` files;
-only user saves can be deleted.
+only user saves can be deleted. The ordinary rotary browses the filtered list;
+Shift-rotary changes genre through the same wrapping action as GENRE-/GENRE+.
 FILES CLEAN deletes only a zero-reference Pattern and never edits Arrangement
 steps.
 
@@ -305,12 +315,15 @@ confirms an Arrangement change.
 SHAPE controls transient mute, velocity, gate, and transpose for the selected
 page's four MIDI lanes. The values survive navigation but reset on Project
 load/new. Keyboard: `l`/`L` launch/now, `c` cancel, `r` retrigger, `q`
-quantization, and `m`/`v`/`g`/`t` lane shaping.
+quantization, and `m`/`v`/`g`/`t` lane shaping. Shift-rotary selects the lane
+through the same previous/next path as Left/Right.
 
 ## Loops and audio
 
 Loop Mix has four slots owned by the FT2 cursor's Pattern. Browsing changes the
 editor, not the sounding Pattern. SLOT-/SLOT+ changes selection without launch.
+Shift-rotary uses that same slot action while the ordinary rotary keeps
+browsing WAV choices.
 LAUNCH and STOP queue the selected slot for the next Pattern-local bar; a new
 command replaces the queue and CANCEL removes it. MIX controls smoothed level
 and mute. FILTER turns left for low-pass, right for high-pass, with neutral at

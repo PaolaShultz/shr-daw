@@ -1136,6 +1136,7 @@ fn used_ccs(config: &PadConfig) -> HashSet<u8> {
         .chain(
             [
                 config.encoder_relative_cc,
+                config.encoder_modified_relative_cc,
                 config.encoder_press_cc,
                 config.lock_cc,
             ]

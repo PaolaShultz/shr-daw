@@ -19,9 +19,10 @@ does not add a second `PLY`/`REC` label.
 
 ## FT2 Pattern — Play mode
 
-Turn the main encoder to select the previous or next column, including across
-page boundaries. Keyboard Up/Down still moves rows, and Left/right move the
-order or lane. The shaded column is the live selection; the stronger yellow
+Turn the main encoder to move rows. Hold the configured encoder Shift while
+turning to select the previous or next column, including across page
+boundaries. Keyboard Up/Down and Left/Right remain the row and column
+alternatives. The shaded column is the live selection; the stronger yellow
 cell cursor and highlighted row remain the next edit/play location.
 
 ### PLAY — transport and entry
@@ -228,6 +229,8 @@ Arrangement. Browsing changes the white selection only. Green `PLAY` and yellow
 `Q` identify current and queued Patterns independently, while the lower rows
 show transient lane shaping. Each row's loop count belongs to that Pattern;
 launch and retrigger switch/restart its MIDI and Loop Mix together.
+The ordinary rotary browses Patterns or adjusts the selected shape control;
+Shift-rotary changes lane through the existing Left/Right action.
 
 ### LAUNCH — select, queue, cancel, retrigger
 
@@ -401,6 +404,8 @@ its route. `SAVE` stores the current percussion page as a user rhythm.
 
 `GENRE-` and `GENRE+` move among the available genres and `ALL`. `METER`
 toggles 3/4 and 4/4. `SIZE` cycles the supported Pattern lengths for that meter.
+Shift-rotary reuses the genre actions in both directions while the ordinary
+rotary continues to browse rhythms.
 
 ### MOVE — navigate a long result list
 
@@ -503,8 +508,9 @@ machine-default behavior and owns no explicit channel/bank/program values.
 
 The Tracks screen edits four-lane pages. Changes are kept as a draft until
 `DONE`; `EXIT` restores the original Project. Turn the encoder to choose a page
-in normal mode. A destination is shared by the page, while channel, bank, and
-program belong to the selected column.
+in normal mode; Shift-turn it to choose a column through the existing bounded
+Column−/Column+ action. A destination is shared by the page, while channel,
+bank, and program belong to the selected column.
 
 Open it from the PAGE overlay's `MANAGE PAGES / TRACKS` row. It intentionally
 remains a full screen because adding pages and coordinating several fields is

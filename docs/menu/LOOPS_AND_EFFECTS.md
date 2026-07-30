@@ -19,7 +19,8 @@ the complete Loop source once.
 
 Selection is white and never launches. Rows separately show playing, stopped,
 queued launch/stop, muted, missing, and faulted slots. One bad WAV does not stop
-the other three.
+the other three. The ordinary rotary browses inbox WAVs; Shift-rotary changes
+the selected slot through the same wrapping action as `SLOT-`/`SLOT+`.
 
 These ownership and state shots use the same real renderer without starting
 audio:
@@ -114,12 +115,14 @@ performing another automatic analysis.
 
 ## FX Rack
 
-The rack targets `SOURCE`, `AUX 1`, `AUX 2`, or `MASTER`. Source and master
-racks are serial inserts. Aux buses have an independent send level, pre/post
-source-insert point, wet-only processor rack, and return level. Each rack is
-bounded to eight effects. With the graph active, FX changes are refused while
-transport or recording makes publication unsafe. With it disabled, the same
-controls edit saved Project data without touching audio.
+The rack targets `SOURCE`, `AUX 1`, `AUX 2`, `DRUMS`, or `MASTER`. Source,
+drum, and master racks are serial inserts. Aux buses have an independent send
+level, pre/post source-insert point, wet-only processor rack, and return level.
+Each rack is bounded to eight effects. The ordinary rotary browses its rows;
+Shift-rotary selects the previous or next target in the existing order. With
+the graph active, FX changes are refused while transport or recording makes
+publication unsafe. With it disabled, the same controls edit saved Project
+data without touching audio.
 
 The first screenshot shows a populated source chain. Selecting another target
 keeps the same menu but changes the body and which routing actions apply.
@@ -148,9 +151,10 @@ Project-global mastering path after this reorderable rack.
 
 ![Populated FX Rack with the ROUTE page](../images/menu/fx-rack-route.png)
 
-`TARGET` cycles Source, Aux 1, Aux 2, and Master. On an aux target, `SEND-` and
-`SEND+` adjust its send level in dB and `POINT` toggles pre/post source inserts.
-Those three controls report that an aux must be selected when used elsewhere.
+`TARGET` cycles Source, Aux 1, Aux 2, Drums, and Master forward. Shift-rotary
+uses that same order in either direction. On an aux target, `SEND-` and `SEND+`
+adjust its send level in dB and `POINT` toggles pre/post source inserts. Those
+three controls report that an aux must be selected when used elsewhere.
 
 ### SYS — return level, help, and exit
 
@@ -208,9 +212,11 @@ recording rejects them.
 
 ![MASTER STRIP GLUE detail](../images/menu/master-strip-detail-param.png)
 
-The detail page lists only the selected section's parameters. `VALUE-` and
-`VALUE+` change the selected value; the next page retains bypass, A/B, and
-integrated reset.
+The detail page lists only the selected section's parameters. The ordinary
+rotary browses its parameters; Shift-rotary selects the previous or next
+section through the front-page order and starts at that section's first
+parameter. `VALUE-` and `VALUE+` change the selected value; the next page
+retains bypass, A/B, and integrated reset.
 
 ![Compact MASTER STRIP fallback](../images/menu/master-strip-compact.png)
 

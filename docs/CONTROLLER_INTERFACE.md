@@ -40,7 +40,7 @@ or `q` can still exit from the splash.
 | Screen or mode | Existing user-facing operations and input paths |
 |---|---|
 | Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard, with the same rotary `SAVE (AUTO)` / `SAVE (NAME)` / `DON'T SAVE` / `BACK` protection used by dirty FT2 replacement paths. |
-| Presets | Select previous/next, keyboard page up/down, first/last, previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, engine choice, panic, contextual help, and Exit to Home. |
+| Presets | Select previous/next, keyboard page up/down, first/last, Shift-rotary previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, load, panic, contextual help, and Exit to Home; engine browsing remains available from Shift-rotary, `[`/`]`, and the two header halves. |
 | MTR | With the final bus enabled: choose Synth/Loop/Input, adjust its bounded smoothed level, toggle mute, inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus disabled, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP. |
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play/save MIDI Ideas; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint each render their own 12-control three-by-four layout and use the same physical pickup crossing path without sharing parameter identity. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
@@ -48,20 +48,20 @@ or `q` can still exit from the splash.
 | FT2 record | Record quantized note-ons and, when enabled for the page, release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. Stopped REC loops the selected Pattern; REC during Play punches into the Arrangement. Exact page/lane owners survive cursor moves and boundaries. Shift-rotary column turns are ignored while recorded notes are held; Edit note length does not affect REC. |
 | FT2 edit | A contextual four-page command set only: EDIT has cell edit, blank/skip, erase, and note off; SET has independent 1/1–1/128 LENGTH and 0–32 ADD selectors plus column movement; SELECT has page and route selection; SYS has panic, N00B, help, and a one-level Exit back to normal FT2. It contains no Play/Record/Edit mode duplicates. Manual writes from the selected column, One column uses its C1–C4 anchor, and Drum auto allocates simultaneous hits without moving the cursor. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
-| Live Patterns | Browse four existing Patterns at a time without launch; distinguish selection/current/queue; replace or cancel Pattern/bar-boundary queues; deliberate immediate launch and current retrigger; capture only successful activations with Append/Replace confirmation; transient four-lane mute, velocity, gate, and transpose; literal Stop, Panic, keyboard equivalents, and preserved FT2 cursor. |
-| Loop Mix | Pattern-owned fourth musician-facing FT2 page; select one of four private WAV slots without launch; queue independent launch/stop at the next Pattern-local bar; replace/cancel commands; show play/stop/queue/mute/missing/fault states; smoothed level and bipolar filter; import/attach/remove only the FT2 cursor Pattern's selected slot; isolate faults; shared library overlay and align child. |
+| Live Patterns | Browse four existing Patterns at a time without launch; use Shift-rotary or Left/Right for the tracker lane; distinguish selection/current/queue; replace or cancel Pattern/bar-boundary queues; deliberate immediate launch and current retrigger; capture only successful activations with Append/Replace confirmation; transient four-lane mute, velocity, gate, and transpose; literal Stop, Panic, keyboard equivalents, and preserved FT2 cursor. |
+| Loop Mix | Pattern-owned fourth musician-facing FT2 page; browse inbox WAVs with the ordinary rotary and select one of four private WAV slots with Shift-rotary, Left/Right, or the existing slot buttons, all without launch; queue independent launch/stop at the next Pattern-local bar; replace/cancel commands; show play/stop/queue/mute/missing/fault states; smoothed level and bipolar filter; import/attach/remove only the FT2 cursor Pattern's selected slot; isolate faults; shared library overlay and align child. |
 | FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
-| Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; load into the percussion page; save that page separately; confirmed deletion of user saves only; list navigation. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
+| Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; browse the filtered list with the ordinary rotary and change genre with Shift-rotary or the existing Genre−/Genre+ actions; load into the percussion page; save that page separately; confirmed deletion of user saves only. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
 | FT2 arrange | Select arrangement step; append/insert current pattern; duplicate/remove step; move step earlier/later; jump to referenced pattern; play from selected step; back and panic. |
 | Pattern setup | Choose 3/4 or 4/4 and pattern length; CONFIRM performs NEW/CLEAR with that shape, KEEP performs the same operation with the current Pattern's shape, and Exit cancels. |
-| Tracks page manager | Select pages with the encoder; add a four-lane page; edit target, column, channel, bank, program, and the per-page Manual/One-column/Drum-auto entry layout; confirm all changes; or exit and restore the original Project. |
+| Tracks page manager | Select pages with the encoder and change the selected column with Shift-rotary or the existing Column−/Column+ actions; add a four-lane page; edit target, channel, bank, program, and the per-page Manual/One-column/Drum-auto entry layout; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Select and name a track (`NAME` accepts the current value by rotary click and allows optional keyboard editing); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
 | 18-channel Levels | Show all 18 recording inputs simultaneously as three groups of six fixed nine-LED dBFS meters. Encoder, Left/Right, `j`/`k`, or pointer selects without scrolling; encoder click/Enter/Space arms the selected channel. Visible TAKE, CHANNEL, and SYS pages provide setup, record, literal Stop, reset, previous/next, arm, refresh, Panic, Help, and Exit. At native 40×13 it omits controller rows but keeps shared row 13; compact geometry falls back rather than cropping. |
-| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, or master; select the typed `+ INSERT EFFECT` row; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
-| MASTER STRIP | Compact fixed-order INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL front page with one selected-section value and bounded mastering meters; DETAIL opens only that section's advanced values. Optional sections have smoothed bypass; A/B retains fixed latency and true-peak protection; RESET I clears integrated loudness. Playback allows numerical audition without a topology rebuild, final recording rejects edits, and a disabled graph changes only Project state. Back preserves caller, page, FX/tracker selection, and cursor. |
+| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, drum, or master with Shift-rotary or the existing forward TARGET action; select the typed `+ INSERT EFFECT` row with the ordinary rotary; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. Shift-rotary is inert in the type and parameter editors. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
+| MASTER STRIP | Compact fixed-order INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL front page with one selected-section value and bounded mastering meters; DETAIL opens only that section's advanced values. In DETAIL, the ordinary rotary browses that section's parameters and Shift-rotary changes section through the existing previous/next order. Optional sections have smoothed bypass; A/B retains fixed latency and true-peak protection; RESET I clears integrated loudness. Playback allows numerical audition without a topology rebuild, final recording rejects edits, and a disabled graph changes only Project state. Back preserves caller, page, FX/tracker selection, and cursor. |
 | Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external enable/output/profile, controller clock enable/output, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate performance inputs, backs up and atomically saves it, safely activates live MIDI input changes, refreshes discovery, and rolls back on failure. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
@@ -150,6 +150,33 @@ input, toggle, and return layer.
 
 ## Input model
 
+Shift state always comes from the configured encoder modifier. A controller
+profile may also declare the separate relative CC that its rotary emits while
+that modifier is held; those packets are consumed but navigate only while the
+configured Shift is down. Releasing Shift immediately restores the ordinary
+rotary path. The following table is the current secondary-navigation contract:
+
+| Screen/context | Ordinary rotary | Shift+rotary | Existing action reused |
+|---|---|---|---|
+| Presets | Preset in current catalog | Previous/next engine catalog, wrapping in engine order | PreviousEngine/NextEngine; same behavior as `[`/`]` and the header halves |
+| FT2 Play/REC/Edit grid | Row | Previous/next column across page boundaries | Existing page-spanning tracker-column move; ignored in REC while a recorded note is held |
+| Tracks browse | Page | Previous/next column, bounded within the page | Column−/Column+ |
+| Live Patterns | Pattern browse, or the active shape value | Previous/next tracker lane | Left/Right and PreviousTrack/NextTrack |
+| Loop Mix | Inbox WAV browse | Previous/next loop slot, wrapping | Slot−/Slot+ and Left/Right |
+| Drum patterns | Filtered rhythm list | Previous/next genre, using existing wrap | Genre−/Genre+ |
+| FX rack, including an empty rack | Effect row | Previous/next source/AUX/drum/master target | TARGET's existing forward order plus its exact reverse |
+| MASTER STRIP detail | Parameter in the current section | Previous/next section, wrapping | The front-page section order; its existing section change resets parameter selection to the first value |
+
+Shift+rotary is intentionally inert on Home, Playback, Ideas, Help, Project
+files, Pattern tools, Arrangement, Pattern setup, FT2 Tools, Loop Align, Audio
+Recorder, Levels, the FX type and parameter editors, the MASTER STRIP front
+page, MTR, and Routing because each has no separate reversible adjacent
+navigation axis beyond the ordinary rotary. It is also inert in FT2 cell edit,
+Tracks field edit, overlays, confirmations, naming, and other transient editors:
+their one browse/edit axis and caller boundary stay exclusive. Four-button
+page-select mode remains an explicit exception in which the rotary continues
+to select controller pages while Shift is held.
+
 - Eight buttons: four direct page selectors plus four item buttons.
 - Five buttons: one page-cycle button plus four item buttons.
 - Four buttons: four item buttons; encoder press enters/leaves page-selection
@@ -220,7 +247,6 @@ Blank physical positions and wholly empty pages are omitted.
 | Screen/context | Page | Item 1 | Item 2 | Item 3 | Item 4 |
 |---|---|---|---|---|---|
 | Presets | Ops | First | Load | Last | — |
-| Presets | Engine | Engine− | Engine+ | — | — |
 | Presets | Sys | Panic | Help | — | Exit |
 | MTR | Ops | Source− | Source+ | Level− | Level+ |
 | MTR | Mix | Mute | — | Final rec/stop | Reset holds |
@@ -397,11 +423,12 @@ the verified synthv1 0.9.29 indices/ranges and green/yellow/red ±0.03 indicator
 are unchanged. `MAPPED_CONTROL_CAPACITY` reserves 16 entries while only the 12
 schema-verified controls are populated.
 
-Live Pattern lane shaping and Loop Mix use the profile/configured relative
-master encoder plus visible action selection, with equivalent keyboard paths.
-They add no hard-coded hardware CC and no hidden absolute-knob mode. If a
-future profile maps an absolute continuous control, it must use the same pickup
-crossing rule and re-arm whenever a Project or runtime value resets.
+All Shift-rotary secondary navigation uses the profile/configured modifier and
+optional shifted relative CC plus the same semantic actions as visible or
+keyboard navigation. It adds no hard-coded hardware message and no hidden
+absolute-knob mode. If a future profile maps an absolute continuous control,
+it must use the same pickup crossing rule and re-arm whenever a Project or
+runtime value resets.
 
 `Action` and the empty menu slots remain extension points. Future features are
 not shown on the hardware menu until they actually dispatch a working action.

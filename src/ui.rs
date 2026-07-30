@@ -900,6 +900,18 @@ enum LiveShapeFocus {
     Transpose,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SecondaryNavigation {
+    PresetEngine,
+    TrackerColumn,
+    TracksColumn,
+    LiveLane,
+    LoopSlot,
+    DrumGenre,
+    FxTarget,
+    MasterStripSection,
+}
+
 struct StatusClock {
     text: String,
     since: Instant,
@@ -9825,15 +9837,19 @@ impl App {
             );
             self.status = self.master_strip_parameter_value();
         } else {
-            let current = MasterStripSection::ALL
-                .iter()
-                .position(|section| *section == self.master_strip_section)
-                .unwrap_or(0);
-            self.master_strip_section = MasterStripSection::ALL
-                [wrapped_index(current, MasterStripSection::ALL.len(), direction)];
-            self.master_strip_parameter = 0;
-            self.status = format!("{} selected", self.master_strip_section.label());
+            self.move_master_strip_section(direction);
         }
+    }
+
+    fn move_master_strip_section(&mut self, direction: i8) {
+        let current = MasterStripSection::ALL
+            .iter()
+            .position(|section| *section == self.master_strip_section)
+            .unwrap_or(0);
+        self.master_strip_section = MasterStripSection::ALL
+            [wrapped_index(current, MasterStripSection::ALL.len(), direction)];
+        self.master_strip_parameter = 0;
+        self.status = format!("{} selected", self.master_strip_section.label());
     }
 
     fn master_strip_edit_allowed(&mut self) -> bool {
@@ -10876,8 +10892,8 @@ impl App {
         }
     }
 
-    fn cycle_fx_target(&mut self) {
-        self.fx_target = (self.fx_target + 1) % FX_TARGET_COUNT;
+    fn cycle_fx_target(&mut self, direction: i8) {
+        self.fx_target = wrapped_index(self.fx_target, FX_TARGET_COUNT, direction);
         self.fx_selection = if is_drum_fx_target(self.fx_target) {
             self.song
                 .drum_rack
@@ -12315,23 +12331,97 @@ fn dispatch_modified_encoder(
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
 ) {
-    let tracker_grid_owns_shift = app.screen == Screen::Tracker
-        && app.overlay.is_none()
-        && app.pending_project_action.is_none()
-        && app.note_editor.is_none()
-        && app.project_name_input.is_none()
-        && !app.mixed_engine_prompt_active()
-        && !(app.controller_layout == ControllerLayout::Four && app.page_select_mode);
-    if tracker_grid_owns_shift {
-        match action {
-            crate::pads::EncoderAction::Up => app.move_tracker_rotary_column(-1),
-            crate::pads::EncoderAction::Down => app.move_tracker_rotary_column(1),
-            crate::pads::EncoderAction::Select => {
-                dispatch_encoder_input(action, app, state, tx, true);
-            }
-        }
-    } else {
+    if action == crate::pads::EncoderAction::Select
+        || (app.controller_layout == ControllerLayout::Four && app.page_select_mode)
+    {
         dispatch_encoder_input(action, app, state, tx, true);
+        return;
+    }
+    let direction = match action {
+        crate::pads::EncoderAction::Up => -1,
+        crate::pads::EncoderAction::Down => 1,
+        crate::pads::EncoderAction::Select => unreachable!(),
+    };
+    if let Some(target) = secondary_navigation_for(app) {
+        apply_secondary_navigation(target, direction, app, state, tx);
+    }
+}
+
+fn secondary_navigation_for(app: &App) -> Option<SecondaryNavigation> {
+    if app.overlay.is_some()
+        || app.pending_project_action.is_some()
+        || app.project_guard_naming
+        || app.project_name_input.is_some()
+        || app.audio_track_name_input.is_some()
+        || app.controller_learn.is_some()
+        || app.mixed_engine_prompt_active()
+    {
+        return None;
+    }
+    match app.screen {
+        Screen::Presets if !app.keyboard_modal_active() => Some(SecondaryNavigation::PresetEngine),
+        Screen::Tracker if app.note_editor.is_none() => Some(SecondaryNavigation::TrackerColumn),
+        Screen::TrackerPages if app.page_manager_mode == PageManagerMode::Pages => {
+            Some(SecondaryNavigation::TracksColumn)
+        }
+        Screen::LivePatterns if !app.keyboard_modal_active() => Some(SecondaryNavigation::LiveLane),
+        Screen::TrackerLoop if !app.keyboard_modal_active() => Some(SecondaryNavigation::LoopSlot),
+        Screen::TrackerFiles
+            if app.tracker_files_mode == TrackerFilesMode::Drums
+                && !app.keyboard_modal_active() =>
+        {
+            Some(SecondaryNavigation::DrumGenre)
+        }
+        Screen::FxRack if app.fx_type_edit.is_none() && !app.keyboard_modal_active() => {
+            Some(SecondaryNavigation::FxTarget)
+        }
+        Screen::MasterStripAdvanced if !app.keyboard_modal_active() => {
+            Some(SecondaryNavigation::MasterStripSection)
+        }
+        _ => None,
+    }
+}
+
+fn apply_secondary_navigation(
+    target: SecondaryNavigation,
+    direction: i8,
+    app: &mut App,
+    state: &Path,
+    tx: &std::sync::mpsc::Sender<MidiEvent>,
+) {
+    let action = match (target, direction < 0) {
+        (SecondaryNavigation::PresetEngine, true) => Some(Action::PreviousEngine),
+        (SecondaryNavigation::PresetEngine, false) => Some(Action::NextEngine),
+        (SecondaryNavigation::TracksColumn | SecondaryNavigation::LiveLane, true) => {
+            Some(Action::PreviousTrack)
+        }
+        (SecondaryNavigation::TracksColumn | SecondaryNavigation::LiveLane, false) => {
+            Some(Action::NextTrack)
+        }
+        (SecondaryNavigation::LoopSlot, true) => Some(Action::LoopSlotPrevious),
+        (SecondaryNavigation::LoopSlot, false) => Some(Action::LoopSlotNext),
+        (SecondaryNavigation::DrumGenre, true) => Some(Action::DrumGenreDown),
+        (SecondaryNavigation::DrumGenre, false) => Some(Action::DrumGenreUp),
+        (
+            SecondaryNavigation::TrackerColumn
+            | SecondaryNavigation::FxTarget
+            | SecondaryNavigation::MasterStripSection,
+            _,
+        ) => None,
+    };
+    if let Some(action) = action {
+        perform(action, app, state, Some(tx));
+        return;
+    }
+    match target {
+        SecondaryNavigation::TrackerColumn => app.move_tracker_rotary_column(direction),
+        SecondaryNavigation::FxTarget => app.cycle_fx_target(direction),
+        SecondaryNavigation::MasterStripSection => app.move_master_strip_section(direction),
+        SecondaryNavigation::PresetEngine
+        | SecondaryNavigation::TracksColumn
+        | SecondaryNavigation::LiveLane
+        | SecondaryNavigation::LoopSlot
+        | SecondaryNavigation::DrumGenre => {}
     }
 }
 
@@ -13382,7 +13472,7 @@ fn perform(
         Action::FxBypass => a.toggle_effect_bypass(),
         Action::FxKindPrevious => a.cycle_effect_kind(-1),
         Action::FxKindNext => a.cycle_effect_kind(1),
-        Action::FxTargetNext => a.cycle_fx_target(),
+        Action::FxTargetNext => a.cycle_fx_target(1),
         Action::FxSendDecrease => a.adjust_aux_send(-1),
         Action::FxSendIncrease => a.adjust_aux_send(1),
         Action::FxSendPoint => a.toggle_aux_send_point(),
@@ -17361,8 +17451,6 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     if z.height < 4 {
         return;
     }
-    a.hits.actions.clear();
-    a.hits.menu_pages.clear();
     let pages = navigation::pages(a.screen, a.menu_context());
     // The hardware surface is four compact columns.  Do not turn a five-letter
     // label into a terminal-wide button on larger displays.
@@ -17463,6 +17551,17 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     a.ensure_visible(rows);
     let inner = rect(list.x + 1, list.y + 1, list.width - 2, list.height - 2);
     a.hits.list = inner;
+    let engine_previous = rect(head.x, head.y, head.width / 2, 1);
+    let engine_next = rect(
+        head.x + head.width / 2,
+        head.y,
+        head.width - head.width / 2,
+        1,
+    );
+    a.hits
+        .actions
+        .push((engine_previous, Action::PreviousEngine));
+    a.hits.actions.push((engine_next, Action::NextEngine));
     let now = a
         .playing
         .as_ref()
@@ -20730,6 +20829,20 @@ mod tests {
     }
     fn app(presets: &[Preset]) -> App {
         app_with_routing_defaults(presets, PathBuf::from("/none"))
+    }
+    fn enable_all_test_catalogs(app: &mut App, presets: &[Preset]) {
+        app.catalogs = BackendKind::ALL
+            .into_iter()
+            .map(|backend| Catalog {
+                backend,
+                presets: (backend == BackendKind::Synthv1)
+                    .then(|| presets.to_vec())
+                    .unwrap_or_default(),
+                unavailable: None,
+            })
+            .collect();
+        app.backend_index = 0;
+        app.presets = presets.to_vec();
     }
     fn app_with_routing_defaults(presets: &[Preset], defaults: PathBuf) -> App {
         let catalogs = [
@@ -25192,7 +25305,7 @@ mod tests {
         a.fx_add_kind = 0;
         a.add_effect();
         let source_id = a.selected_effect_id().unwrap();
-        a.cycle_fx_target();
+        a.cycle_fx_target(1);
         a.fx_add_kind = FIRST_AUX_EFFECT_INDEX;
         a.add_effect();
         let first_aux_effect = a.selected_effect_id().unwrap();
@@ -25209,7 +25322,7 @@ mod tests {
         assert_eq!(a.song.aux_routing.sends[0].point, SendPoint::PreInsert);
         assert_eq!(a.song.aux_routing.buses[0].return_gain_db, -3.0);
 
-        a.cycle_fx_target();
+        a.cycle_fx_target(1);
         a.fx_add_kind = 8;
         a.add_effect();
         assert_eq!(a.song.aux_routing.buses.len(), 2);
@@ -25218,13 +25331,13 @@ mod tests {
             a.song.aux_routing.sends[1].level_db
         );
         let second_aux_effect = a.selected_effect_id().unwrap();
-        a.cycle_fx_target();
+        a.cycle_fx_target(1);
         assert_eq!(a.fx_target, DRUM_FX_TARGET);
         assert_eq!(
             crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
             "REVERB"
         );
-        a.cycle_fx_target();
+        a.cycle_fx_target(1);
         a.fx_add_kind = 0;
         a.add_effect();
         let master_effect = a.selected_effect_id().unwrap();
@@ -25399,6 +25512,54 @@ mod tests {
     }
 
     #[test]
+    fn ft2_shift_rotary_crosses_both_page_boundaries_without_moving_other_state() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        fill_demo_song(&mut a);
+        a.screen = Screen::Tracker;
+        a.tracker_mode = TrackerMode::Play;
+        a.tracker_order = 2;
+        a.tracker_row = 9;
+        a.arrange_selected = 3;
+        a.sequencer.play(&a.song, 1, 4);
+        let transport = a.sequencer.status();
+        let order = a.song.order.clone();
+
+        for (page, expected) in [(0, (1, 0)), (1, (2, 0))] {
+            a.tracker_page = page;
+            a.tracker_track = LANES_PER_PAGE - 1;
+            dispatch_modified_encoder(
+                crate::pads::EncoderAction::Down,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!((a.tracker_page, a.tracker_track), expected);
+        }
+        for (page, expected) in [(2, (1, LANES_PER_PAGE - 1)), (1, (0, LANES_PER_PAGE - 1))] {
+            a.tracker_page = page;
+            a.tracker_track = 0;
+            dispatch_modified_encoder(
+                crate::pads::EncoderAction::Up,
+                &mut a,
+                Path::new("/none"),
+                &tx,
+            );
+            assert_eq!((a.tracker_page, a.tracker_track), expected);
+        }
+
+        assert_eq!(a.tracker_row, 9);
+        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        assert_eq!(a.tracker_order, 2);
+        assert_eq!(a.arrange_selected, 3);
+        assert_eq!(a.song.order, order);
+        assert_eq!(a.sequencer.status().playing, transport.playing);
+        assert_eq!(a.sequencer.status().order, transport.order);
+        assert_eq!(a.sequencer.status().row, transport.row);
+    }
+
+    #[test]
     fn ft2_record_shift_rotary_ignores_turns_until_every_recorded_note_is_off() {
         let p = presets();
         let (tx, _rx) = mpsc::channel();
@@ -25460,6 +25621,221 @@ mod tests {
         assert_eq!(recording.notes, 1);
         assert_eq!(a.tracker_row, 7);
         assert_eq!(a.tracker_mode, TrackerMode::Rec);
+    }
+
+    #[test]
+    fn shift_rotary_uses_each_existing_secondary_axis_without_triggering_work() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        enable_all_test_catalogs(&mut a, &p);
+
+        a.screen = Screen::Presets;
+        a.selected = 1;
+        let first_backend = a.selected_backend();
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_ne!(a.selected_backend(), first_backend);
+        assert_eq!(a.selected, 0);
+        assert!(a.engine.is_none());
+        assert!(a.engine_owner.is_none());
+        assert!(a.playing.is_none());
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Up,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.selected_backend(), first_backend);
+        assert!(a.engine.is_none());
+
+        a.screen = Screen::TrackerPages;
+        a.page_manager_mode = PageManagerMode::Pages;
+        a.tracker_page = 1;
+        a.tracker_track = 1;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!((a.tracker_page, a.tracker_track), (1, 2));
+
+        a.screen = Screen::LivePatterns;
+        a.tracker_page = 0;
+        a.tracker_track = 1;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!((a.tracker_page, a.tracker_track), (0, 2));
+
+        a.screen = Screen::TrackerLoop;
+        a.loop_slot_selected = 0;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Up,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.loop_slot_selected, crate::loop_player::LOOP_SLOTS - 1);
+
+        a.screen = Screen::TrackerFiles;
+        a.tracker_files_mode = TrackerFilesMode::Drums;
+        a.drum_patterns = ["Jazz", "Rock"]
+            .into_iter()
+            .map(|genre| drum_pattern::Entry {
+                name: format!("{genre} test"),
+                genre: genre.into(),
+                meter: 4,
+                rows: 32,
+                path: PathBuf::from(format!("{genre}.shdrum")),
+                user: false,
+                bundled: None,
+            })
+            .collect();
+        a.drum_meter = 4;
+        a.drum_target_rows = 32;
+        a.drum_genre_selected = 0;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.drum_genre_selected, 1);
+
+        a.screen = Screen::FxRack;
+        a.fx_target = 0;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Up,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.fx_target, FX_TARGET_COUNT - 1);
+
+        a.screen = Screen::MasterStripAdvanced;
+        a.master_strip_section = MasterStripSection::Input;
+        a.master_strip_parameter = 1;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Up,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.master_strip_section, MasterStripSection::Loud);
+        assert_eq!(
+            a.master_strip_parameter, 0,
+            "the existing section action owns its parameter reset"
+        );
+    }
+
+    #[test]
+    fn shift_rotary_is_inert_without_a_secondary_axis_and_inside_overlays() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+
+        a.screen = Screen::Home;
+        a.home_selected = 3;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.home_selected, 3);
+
+        a.screen = Screen::Ideas;
+        a.idea_selected = 0;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.idea_selected, 0);
+
+        a.screen = Screen::Tracker;
+        a.open_overlay(Action::OpenPageOverlay);
+        a.overlay.as_mut().unwrap().selection = 1;
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Down,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.overlay.as_ref().unwrap().selection, 1);
+        assert_eq!((a.tracker_page, a.tracker_track), (0, 0));
+    }
+
+    #[test]
+    fn shift_rotary_screen_inventory_is_explicit() {
+        let p = presets();
+        let mut a = app(&p);
+        a.page_manager_mode = PageManagerMode::Pages;
+        a.fx_type_edit = None;
+        let expected = [
+            (Screen::Home, None),
+            (Screen::Presets, Some(SecondaryNavigation::PresetEngine)),
+            (Screen::Playback, None),
+            (Screen::Ideas, None),
+            (Screen::Help, None),
+            (Screen::Tracker, Some(SecondaryNavigation::TrackerColumn)),
+            (Screen::TrackerFiles, None),
+            (Screen::TrackerArrange, None),
+            (
+                Screen::TrackerPages,
+                Some(SecondaryNavigation::TracksColumn),
+            ),
+            (Screen::TrackerTools, None),
+            (Screen::LivePatterns, Some(SecondaryNavigation::LiveLane)),
+            (Screen::TrackerLoop, Some(SecondaryNavigation::LoopSlot)),
+            (Screen::TrackerLoopAlign, None),
+            (Screen::AudioRecorder, None),
+            (Screen::MultichannelMonitor, None),
+            (Screen::FxRack, Some(SecondaryNavigation::FxTarget)),
+            (Screen::FxEditor, None),
+            (Screen::MasterStrip, None),
+            (
+                Screen::MasterStripAdvanced,
+                Some(SecondaryNavigation::MasterStripSection),
+            ),
+            (Screen::Meter, None),
+            (Screen::Routing, None),
+        ];
+        assert_eq!(expected.len(), Screen::ALL.len());
+        for (screen, target) in expected {
+            a.screen = screen;
+            assert_eq!(
+                secondary_navigation_for(&a),
+                target,
+                "unexpected Shift-rotary mapping on {}",
+                screen.label()
+            );
+        }
+
+        a.screen = Screen::TrackerFiles;
+        a.tracker_files_mode = TrackerFilesMode::Drums;
+        assert_eq!(
+            secondary_navigation_for(&a),
+            Some(SecondaryNavigation::DrumGenre)
+        );
+        a.screen = Screen::TrackerPages;
+        a.page_manager_mode = PageManagerMode::Target;
+        assert_eq!(secondary_navigation_for(&a), None);
+        a.screen = Screen::FxRack;
+        a.fx_add_kind = 0;
+        a.add_effect();
+        assert!(a.fx_type_edit.is_some());
+        assert_eq!(secondary_navigation_for(&a), None);
     }
 
     #[test]
@@ -26008,9 +26384,18 @@ mod tests {
         let b = TestBackend::new(40, 13);
         let mut t = Terminal::new(b).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
-        assert_eq!(a.hits.actions.len(), 3);
-        assert_eq!(a.hits.menu_pages.len(), 3);
-        assert!(a.hits.actions.iter().all(|(r, _)| r.width == 10));
+        assert_eq!(a.hits.actions.len(), 5);
+        assert_eq!(a.hits.menu_pages.len(), 2);
+        assert_eq!(a.hits.action(2, 0), Some(Action::PreviousEngine));
+        assert_eq!(a.hits.action(30, 0), Some(Action::NextEngine));
+        assert!(a
+            .hits
+            .actions
+            .iter()
+            .filter(|(_, action)| {
+                !matches!(action, Action::PreviousEngine | Action::NextEngine)
+            })
+            .all(|(r, _)| r.width == 10));
         let (tx, _) = mpsc::channel();
         mouse(
             MouseEvent {
@@ -26027,7 +26412,7 @@ mod tests {
         mouse(
             MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
-                column: 12,
+                column: 32,
                 row: 10,
                 modifiers: crossterm::event::KeyModifiers::NONE,
             },
@@ -26035,8 +26420,45 @@ mod tests {
             Path::new("/nonexistent"),
             &tx,
         );
-        assert_eq!(a.menu_page(), 1);
+        assert_eq!(a.menu_page(), 3);
         assert_eq!(a.selected, 8, "page selection preserves the list cursor");
+    }
+
+    #[test]
+    fn preset_pointer_and_keyboard_keep_silent_engine_selection_in_both_directions() {
+        let p = presets();
+        let mut a = app(&p);
+        enable_all_test_catalogs(&mut a, &p);
+        a.screen = Screen::Presets;
+        a.selected = 1;
+        render_app(&mut a, 40, 13);
+        let original = a.selected_backend();
+        let (tx, _rx) = mpsc::channel();
+        let left = |column| MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+
+        mouse(left(30), &mut a, Path::new("/none"), &tx);
+        assert_ne!(a.selected_backend(), original);
+        assert_eq!(a.selected, 0);
+        assert!(a.engine.is_none());
+        assert!(a.engine_owner.is_none());
+        assert!(a.playing.is_none());
+
+        mouse(left(2), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.selected_backend(), original);
+        assert!(a.engine.is_none());
+        assert!(a.engine_owner.is_none());
+        assert!(a.playing.is_none());
+
+        key(KeyCode::Char(']'), &mut a, Path::new("/none"), &tx);
+        assert_ne!(a.selected_backend(), original);
+        key(KeyCode::Char('['), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.selected_backend(), original);
+        assert!(a.engine.is_none());
     }
 
     #[test]
@@ -26048,7 +26470,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
 
-        assert_eq!(a.hits.menu_pages.len(), 3);
+        assert_eq!(a.hits.menu_pages.len(), 2);
         assert!(a
             .hits
             .menu_pages
@@ -26058,7 +26480,12 @@ mod tests {
             .hits
             .actions
             .iter()
+            .filter(|(_, action)| {
+                !matches!(action, Action::PreviousEngine | Action::NextEngine)
+            })
             .all(|(area, _)| area.width == 10 && area.x >= 20 && area.x < 60));
+        assert_eq!(a.hits.action(10, 0), Some(Action::PreviousEngine));
+        assert_eq!(a.hits.action(70, 0), Some(Action::NextEngine));
     }
 
     #[test]

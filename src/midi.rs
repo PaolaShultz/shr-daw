@@ -67,6 +67,7 @@ pub struct Routed<'a> {
     pub consumed: bool,
     pub pad: Option<PadAction>,
     pub encoder: Option<EncoderAction>,
+    pub encoder_modified: bool,
     pub value: Option<(u8, f32)>,
     pub translated: Option<[u8; 3]>,
     pub forward: Option<&'a [u8]>,
@@ -77,11 +78,22 @@ pub fn route<'a>(pads: &PadConfig, backend: BackendKind, message: &'a [u8]) -> R
     route_with_pad_lock(pads, backend, message, false)
 }
 
+#[cfg(test)]
 pub fn route_with_pad_lock<'a>(
     pads: &PadConfig,
     backend: BackendKind,
     message: &'a [u8],
     pad_locked: bool,
+) -> Routed<'a> {
+    route_with_pad_lock_and_modifier(pads, backend, message, pad_locked, false)
+}
+
+pub fn route_with_pad_lock_and_modifier<'a>(
+    pads: &PadConfig,
+    backend: BackendKind,
+    message: &'a [u8],
+    pad_locked: bool,
+    encoder_modifier_down: bool,
 ) -> Routed<'a> {
     let (lock_consumed, _) = pads.lock_action(message);
     let (mut pad_consumed, mut pad) = if pad_locked {
@@ -95,8 +107,12 @@ pub fn route_with_pad_lock<'a>(
             pad = pressed.then_some(action);
         }
     }
-    let (cc_encoder_consumed, mut encoder) = pads.encoder_action(message);
+    let (cc_encoder_consumed, mut encoder, mut encoder_modified) =
+        pads.encoder_action_with_modifier(message, encoder_modifier_down);
     let (note_encoder_consumed, note_encoder) = pads.encoder_note_action(message);
+    if encoder.is_none() {
+        encoder_modified = encoder_modifier_down && note_encoder.is_some();
+    }
     encoder = encoder.or(note_encoder);
     let encoder_consumed = cc_encoder_consumed || note_encoder_consumed;
     let consumed = lock_consumed || pad_consumed || encoder_consumed;
@@ -136,6 +152,7 @@ pub fn route_with_pad_lock<'a>(
         consumed,
         pad,
         encoder,
+        encoder_modified,
         value,
         translated,
         forward: (!consumed && translated.is_none()).then_some(message),
@@ -213,6 +230,67 @@ mod tests {
         assert!(release.consumed);
         assert!(release.encoder.is_none());
         assert!(release.forward.is_none());
+    }
+
+    #[test]
+    fn configured_shifted_encoder_cc_is_consumed_and_classified_only_while_held() {
+        let pads = PadConfig {
+            encoder_relative_cc: Some(114),
+            encoder_modified_relative_cc: Some(29),
+            encoder_modifier: Some(crate::pads::ControllerButton::Cc { channel: 0, cc: 27 }),
+            ..PadConfig::default()
+        };
+        let (consumed, mut modifier_down) = pads.encoder_modifier_action(&[0xb0, 27, 127]);
+        assert!(consumed);
+        assert!(modifier_down);
+
+        let left = route_with_pad_lock_and_modifier(
+            &pads,
+            BackendKind::Synthv1,
+            &[0xb0, 29, 63],
+            false,
+            modifier_down,
+        );
+        assert_eq!(left.encoder, Some(EncoderAction::Up));
+        assert!(left.encoder_modified);
+        assert!(left.consumed);
+        assert!(left.forward.is_none());
+
+        let right = route_with_pad_lock_and_modifier(
+            &pads,
+            BackendKind::Synthv1,
+            &[0xb0, 29, 65],
+            false,
+            modifier_down,
+        );
+        assert_eq!(right.encoder, Some(EncoderAction::Down));
+        assert!(right.encoder_modified);
+        assert!(right.forward.is_none());
+
+        let (consumed, released) = pads.encoder_modifier_action(&[0xb0, 27, 0]);
+        assert!(consumed);
+        modifier_down = released;
+        let ordinary = route_with_pad_lock_and_modifier(
+            &pads,
+            BackendKind::Synthv1,
+            &[0xb0, 114, 65],
+            false,
+            modifier_down,
+        );
+        assert_eq!(ordinary.encoder, Some(EncoderAction::Down));
+        assert!(!ordinary.encoder_modified);
+
+        for musical in [[0x90, 60, 100], [0x80, 60, 0]] {
+            let routed = route_with_pad_lock_and_modifier(
+                &pads,
+                BackendKind::Synthv1,
+                &musical,
+                false,
+                modifier_down,
+            );
+            assert!(!routed.consumed);
+            assert_eq!(routed.forward, Some(&musical[..]));
+        }
     }
 
     #[test]

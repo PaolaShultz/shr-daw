@@ -455,12 +455,18 @@ boundaries:
 
 ```text
 encoder.modifier=cc.1.27
+encoder.modified_relative_cc=29
+encoder.modified_relative_reverse=false
 ```
 
-Use `note.1.27` instead when the button sends a note. The reviewed MiniLab 3
-DAW profile maps its Shift CC automatically. MIDI Learn offers **ENCODER
-SHIFT** as an optional step, so custom or previously learned profiles do not
-depend on a device constant.
+Use `note.1.27` instead when the button sends a note. Omit
+`encoder.modified_relative_cc` when held turns keep using the ordinary
+`encoder.relative_cc`; otherwise the shifted CC is consumed but navigates only
+while the configured modifier is down. The reviewed MiniLab 3 profile maps
+DAW Shift CC27 and shifted rotary CC29 automatically. MIDI Learn offers
+**ENCODER SHIFT** as an optional step, so custom mappings do not hard-code the
+button; a custom controller that changes its turn CC also needs the shifted
+relative-CC keys or a reviewed profile.
 
 Four-button layout:
 
@@ -501,9 +507,11 @@ shr pads clear 51
 
 Controller buttons may send notes (`pad.N=ROLE`) or CCs
 (`button.cc.N=ROLE`). `encoder.relative_reverse=true` supports relative
-encoders whose clockwise messages are below 64, and `encoder.press_note=N`
-supports encoder presses sent as notes. Normally `shr-setup` or `shr pads
-learn` writes these details. See
+encoders whose clockwise messages are below 64.
+`encoder.modified_relative_reverse=true` applies the same convention to a
+separate shifted turn CC, and `encoder.press_note=N` supports encoder presses
+sent as notes. Normally `shr-setup` or `shr pads learn` writes these details.
+See
 [Automatic controller setup and MIDI learn](CONTROLLER_PROFILES.md).
 
 ## Tracker pages
