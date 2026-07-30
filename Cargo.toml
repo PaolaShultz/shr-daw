@@ -30,3 +30,14 @@ unicode-width = "0.1"
 strip = true
 lto = true
 codegen-units = 1
+
+# The repository-local launcher deliberately runs target/debug/shr. Retain
+# assertions and debug symbols, but optimize the production DSP callbacks so
+# the DEV artifact can still meet JACK's real-time deadline.
+[profile.dev]
+opt-level = 2
+
+# Keep the full unit suite quick to compile and fully instrumented. Runnable
+# DEV/REL callback performance is measured separately.
+[profile.test]
+opt-level = 0

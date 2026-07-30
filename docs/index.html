@@ -1567,9 +1567,14 @@ automatic names keep both actions usable from a four-button controller.
 <strong>NAME</strong> starts with the current display name. Main-rotary click accepts it,
 while computer-keyboard editing is optional; collisions are refused and a
 saved rename keeps the loaded Project state.</p>
-<p>FT2 workspace Exit, New Project, LOAD, MIDI replacement, and
-computer-keyboard quit share one dirty-Project guard. The rotary list opens on
-<code>SAVE (AUTO)</code>, followed by <code>SAVE (NAME)</code>, <code>DON'T SAVE</code>, and <code>BACK</code>.
+<p>FT2 workspace Exit and computer-keyboard quit open the dirty-Project guard only
+after at least one note event exists anywhere in the Project. With zero note
+events, Exit discards unsaved setup experiments back to the clean baseline and
+returns without a save question; quit likewise never asks to save. Empty
+routing/template work is retained only through an explicit <strong>SAVE</strong>. New
+Project, LOAD, and MIDI replacement still protect any dirty Project before
+replacement. The rotary guard opens on <code>SAVE (AUTO)</code>, followed by
+<code>SAVE (NAME)</code>, <code>DON'T SAVE</code>, and <code>BACK</code>.
 <code>SAVE (AUTO)</code> reuses a saved identity or chooses the next free automatic name.
 <code>SAVE (NAME)</code> starts with a collision-free automatic suggestion that rotary
 click accepts without typing. <code>DON'T SAVE</code> explicitly restores the clean
@@ -2010,7 +2015,7 @@ or <code>q</code> can still exit from the splash.</p>
 <tbody>
 <tr>
 <td>Home</td>
-<td>Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or <code>q</code> quits from the computer keyboard, with the same rotary <code>SAVE (AUTO)</code> / <code>SAVE (NAME)</code> / <code>DON'T SAVE</code> / <code>BACK</code> protection used by dirty FT2 replacement paths.</td>
+<td>Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or <code>q</code> quits from the computer keyboard. A note-bearing dirty Project uses the rotary <code>SAVE (AUTO)</code> / <code>SAVE (NAME)</code> / <code>DON'T SAVE</code> / <code>BACK</code> protection; a zero-note Project never asks to save on exit.</td>
 </tr>
 <tr>
 <td>Presets</td>
@@ -2030,7 +2035,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 normal</td>
-<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE reserves the standard two controller rows below its window; its canonical ROUTE page exposes whole-draft <code>APPLY</code> and <code>CANCEL</code> through the physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code>. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; applying a different kit resets old kit-specific tuning while preserving the Project key and drum effects. Back still cancels an active field before the whole draft.</td>
+<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE reserves the standard two controller rows below its window; its canonical ROUTE page exposes whole-draft <code>APPLY</code> and <code>CANCEL</code> through the physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code>. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; applying a different kit resets old kit-specific tuning while preserving the Project key and drum effects. Back still cancels an active field before the whole draft. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template.</td>
 </tr>
 <tr>
 <td>FT2 record</td>
@@ -12159,6 +12164,10 @@ ignored <code>$SHSYNTH_USER_DIR/</code> directory.</li>
 <li><code>SHSYNTH_BIN</code> may explicitly select an already-built <code>shr</code> executable. It
 defaults to <code>target/debug/shr</code> in this checkout.</li>
 </ul>
+<p>The development artifact retains debug assertions and symbols, while the
+repository Cargo development profile optimizes its production DSP callbacks.
+This is required because the local launcher uses that artifact with the same
+JACK callback deadlines as a release build.</p>
 <p>The wrapper exports:</p>
 <ul>
 <li><code>XDG_STATE_HOME=$SHSYNTH_USER_DIR/state</code>;</li>
@@ -14802,18 +14811,32 @@ those direct actions; Back remains field-first. An SHR Drums target now exposes
 the installed drum sets through the route draft's <code>KIT</code> field and persists the
 applied selection with the Project, resetting only prior-kit tuning overrides
 while preserving the Project key and drum effects.
+FT2 Exit and computer-keyboard quit now bypass the save guard whenever the
+entire Project has zero note events, regardless of unsaved route, kit, effect,
+name, or other setup changes. FT2 Exit restores the clean baseline; an empty
+template persists only through explicit Save. Note-bearing dirty Projects keep
+the existing four-choice save guard, and dirty replacement paths remain
+protected. The local launcher still deliberately uses <code>target/debug/shr</code>; its
+Cargo development profile now retains assertions and debug symbols while
+optimizing DSP callbacks. On the Pi 5, the rebuilt DEV artifact completed the
+offline 128-frame compiler callback matrix with zero deadline misses; SHR
+Drums averaged 15.16–27.66% of the 2.667 ms deadline and its worst measured
+callback was 0.903 ms. The prior unoptimized DEV artifact held about 89% of one
+CPU and produced thousands of <code>shr-drums</code> JACK deadline errors per minute,
+while temperature, throttle, memory, swap, and I/O were healthy.
 Playback labels MIDI-take persistence as <code>IDEA+</code>, not an
 instrument save, and <code>SOUNDS</code> returns directly to Presets and its visible
 <code>LOAD</code>. In-app and terminal MIDI Learn now capture the complete optional
 encoder-Shift gesture. Holding Shift, turning left once, then releasing records
 both the modifier and either the ordinary rotary CC or its separate
 shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
-debug build and affected screenshots recorded for the preceding implementation
-predate this correction and do not validate it. The current repair has only
-source formatting, source inspection, and documentation checks because the
-temporary combined-build gate remains active. No Rust build/test, screenshot
-regeneration, physical controller, MIDI transmission, synth, JACK, playback,
-or audible check was run for it.</p>
+combined repair used Rust 1.97.1 and passed the complete normal suite with 880
+passing, zero failing, and 12 intentionally ignored in 51.15 seconds. The
+optimized DEV artifact built successfully and its deterministic offline
+callback measurement passed as recorded above. Formatting, diff checks, and
+two-write deterministic documentation generation/checks passed. No screenshot
+regeneration, physical controller, MIDI transmission, synth start, JACK
+mutation, playback, recording, or audible check was run.</p>
 <p>The complete first musician/operator workflow review and its persistent repair
 ledger are in <code>docs/WORKFLOW_AUDIT_HANDOFF.md</code>. Its R01–R15 repair queue passed
 the authorized combined acceptance pass on 2026-07-23. The ledger records the

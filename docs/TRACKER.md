@@ -461,9 +461,14 @@ automatic names keep both actions usable from a four-button controller.
 while computer-keyboard editing is optional; collisions are refused and a
 saved rename keeps the loaded Project state.
 
-FT2 workspace Exit, New Project, LOAD, MIDI replacement, and
-computer-keyboard quit share one dirty-Project guard. The rotary list opens on
-`SAVE (AUTO)`, followed by `SAVE (NAME)`, `DON'T SAVE`, and `BACK`.
+FT2 workspace Exit and computer-keyboard quit open the dirty-Project guard only
+after at least one note event exists anywhere in the Project. With zero note
+events, Exit discards unsaved setup experiments back to the clean baseline and
+returns without a save question; quit likewise never asks to save. Empty
+routing/template work is retained only through an explicit **SAVE**. New
+Project, LOAD, and MIDI replacement still protect any dirty Project before
+replacement. The rotary guard opens on `SAVE (AUTO)`, followed by
+`SAVE (NAME)`, `DON'T SAVE`, and `BACK`.
 `SAVE (AUTO)` reuses a saved identity or chooses the next free automatic name.
 `SAVE (NAME)` starts with a collision-free automatic suggestion that rotary
 click accepts without typing. `DON'T SAVE` explicitly restores the clean

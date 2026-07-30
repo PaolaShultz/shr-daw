@@ -88,18 +88,32 @@ those direct actions; Back remains field-first. An SHR Drums target now exposes
 the installed drum sets through the route draft's `KIT` field and persists the
 applied selection with the Project, resetting only prior-kit tuning overrides
 while preserving the Project key and drum effects.
+FT2 Exit and computer-keyboard quit now bypass the save guard whenever the
+entire Project has zero note events, regardless of unsaved route, kit, effect,
+name, or other setup changes. FT2 Exit restores the clean baseline; an empty
+template persists only through explicit Save. Note-bearing dirty Projects keep
+the existing four-choice save guard, and dirty replacement paths remain
+protected. The local launcher still deliberately uses `target/debug/shr`; its
+Cargo development profile now retains assertions and debug symbols while
+optimizing DSP callbacks. On the Pi 5, the rebuilt DEV artifact completed the
+offline 128-frame compiler callback matrix with zero deadline misses; SHR
+Drums averaged 15.16–27.66% of the 2.667 ms deadline and its worst measured
+callback was 0.903 ms. The prior unoptimized DEV artifact held about 89% of one
+CPU and produced thousands of `shr-drums` JACK deadline errors per minute,
+while temperature, throttle, memory, swap, and I/O were healthy.
 Playback labels MIDI-take persistence as `IDEA+`, not an
 instrument save, and `SOUNDS` returns directly to Presets and its visible
 `LOAD`. In-app and terminal MIDI Learn now capture the complete optional
 encoder-Shift gesture. Holding Shift, turning left once, then releasing records
 both the modifier and either the ordinary rotary CC or its separate
 shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
-debug build and affected screenshots recorded for the preceding implementation
-predate this correction and do not validate it. The current repair has only
-source formatting, source inspection, and documentation checks because the
-temporary combined-build gate remains active. No Rust build/test, screenshot
-regeneration, physical controller, MIDI transmission, synth, JACK, playback,
-or audible check was run for it.
+combined repair used Rust 1.97.1 and passed the complete normal suite with 880
+passing, zero failing, and 12 intentionally ignored in 51.15 seconds. The
+optimized DEV artifact built successfully and its deterministic offline
+callback measurement passed as recorded above. Formatting, diff checks, and
+two-write deterministic documentation generation/checks passed. No screenshot
+regeneration, physical controller, MIDI transmission, synth start, JACK
+mutation, playback, recording, or audible check was run.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed

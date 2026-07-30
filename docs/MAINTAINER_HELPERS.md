@@ -94,6 +94,11 @@ Environment:
 - `SHSYNTH_BIN` may explicitly select an already-built `shr` executable. It
   defaults to `target/debug/shr` in this checkout.
 
+The development artifact retains debug assertions and symbols, while the
+repository Cargo development profile optimizes its production DSP callbacks.
+This is required because the local launcher uses that artifact with the same
+JACK callback deadlines as a release build.
+
 The wrapper exports:
 
 - `XDG_STATE_HOME=$SHSYNTH_USER_DIR/state`;

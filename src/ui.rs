@@ -2003,6 +2003,24 @@ impl App {
     }
 
     fn begin_project_action(&mut self, action: PendingProjectAction) {
+        if matches!(
+            action,
+            PendingProjectAction::ExitTracker | PendingProjectAction::Quit
+        ) && !self
+            .song
+            .patterns
+            .values()
+            .any(sequencer::pattern_has_note_events)
+        {
+            if action == PendingProjectAction::ExitTracker
+                && self.project_is_dirty()
+                && !self.restore_clean_project_for_exit()
+            {
+                return;
+            }
+            self.complete_project_action(action);
+            return;
+        }
         if self.project_is_dirty() {
             self.pending_project_action = Some(action);
             self.project_guard_selected = ProjectGuardChoice::SaveAuto;
@@ -17515,7 +17533,7 @@ fn draw_route_overlay_controller<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     f.render_widget(
         Paragraph::new(format!(
             "*1:{}",
-            truncate(page.label, usize::from(page_width.saturating_sub(6)))
+            truncate(page.label, usize::from(page_width.saturating_sub(3)))
         ))
         .alignment(Alignment::Center)
         .style(
@@ -21579,7 +21597,7 @@ mod tests {
         ];
         a.current_page_mut().unwrap().target = PageTarget::InternalDrums("electronic-house".into());
         a.song.drum_kit = "electronic-house".into();
-        a.song.drum_tuning.mode = shr_drums::TuningMode::FollowProjectKey;
+        a.song.drum_tuning.mode = shr_drums::TuningMode::FollowKey;
 
         a.open_overlay(Action::OpenRouteOverlay);
         a.overlay.as_mut().unwrap().selection = 2;
@@ -23249,6 +23267,7 @@ mod tests {
         a.tracker_page = 1;
         a.tracker_track = 3;
         a.song.name = "unsaved edit".into();
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
 
         assert!(!a.request_quit());
         assert_eq!(a.pending_project_action, Some(PendingProjectAction::Quit));
@@ -23310,6 +23329,36 @@ mod tests {
         assert!(base.join("project-001.shsong").is_file());
         assert!(!a.project_is_dirty());
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn zero_note_project_never_prompts_to_save_on_ft2_exit_or_app_quit() {
+        let p = presets();
+        let mut ft2_exit = app(&p);
+        ft2_exit.screen = Screen::Tracker;
+        let baseline = ft2_exit.project_clean_baseline.clone();
+        ft2_exit.song.patterns.get_mut(&0).unwrap().pages[0]
+            .column_mut(0)
+            .channel = 7;
+        assert!(ft2_exit.project_is_dirty());
+
+        ft2_exit.begin_project_action(PendingProjectAction::ExitTracker);
+
+        assert_eq!(ft2_exit.screen, Screen::Home);
+        assert!(ft2_exit.pending_project_action.is_none());
+        assert_eq!(ft2_exit.song, baseline);
+        assert!(!ft2_exit.project_is_dirty());
+
+        let mut app_quit = app(&p);
+        app_quit.song.patterns.get_mut(&0).unwrap().pages[0]
+            .column_mut(0)
+            .channel = 7;
+        assert!(app_quit.project_is_dirty());
+
+        app_quit.begin_project_action(PendingProjectAction::Quit);
+
+        assert!(app_quit.quit_requested);
+        assert!(app_quit.pending_project_action.is_none());
     }
 
     #[test]
