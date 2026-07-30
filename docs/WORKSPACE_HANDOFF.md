@@ -38,6 +38,19 @@ Drift or Feedback remain one editable instrument, each with the same eight
 timbral controls plus ADSR. EVOLVE 0.5 truthfully represents authored static
 oscillator character without drift; no diagnostic uses hidden state.
 
+The default Rust test gate now contains deterministic product regressions only.
+Operational latency and alignment, finite and bounded audio, allocation
+contracts, recovery, routing, persistence, UI behavior, and representative
+adopted DSP-quality limits remain mandatory. Six development-only DSP checks
+for legacy baselines, exhaustive quality/cost matrices, and a rejected
+oversampling candidate are explicitly ignored alongside the six private WAV
+audition renderers. Their exact scope and opt-in command live in
+`docs/MAINTAINER_HELPERS.md`. The first locked default run after the split, on
+2026-07-30 with Rust 1.97.1, passed 864 tests with zero failures and 12 ignored;
+the harness took 49.32 seconds and total wall time including 21.05 seconds of
+test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
+recording, audible, or physical-hardware test was involved.
+
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed
 the authorized combined acceptance pass on 2026-07-23. The ledger records the

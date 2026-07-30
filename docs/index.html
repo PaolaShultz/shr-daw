@@ -1388,6 +1388,12 @@ all MIDI programs 1–128 remain available. Performance notes audition the
 draft sound on that page's exact target and selected-column channel. Confirm
 keeps the cell override without changing the column master; cancel restores
 the previous value and selection.</p>
+<p>In the ROUTE overlay, confirming an external column's PROGRAM sends that
+column's bank/program selection immediately, so a connected hardware
+instrument changes sound for stopped FT2 free play before the Project route is
+applied. APPLY ROUTING keeps the route in the Pattern and sends the selected
+column's program again. The Tracks screen's DONE action follows the same
+selected-column rule. These actions do not wait for Play or for the next note.</p>
 <h4 id="doc-tracker--real-time-recording" tabindex="-1">Real-time recording<a class="heading-anchor" href="#doc-tracker--real-time-recording" aria-label="Link to Real-time recording">#</a></h4>
 <p>From stopped transport, <strong>REC</strong> starts the selected Pattern from row 1 and
 loops it. Pressing <strong>REC</strong> during Play punches into the current Arrangement
@@ -4076,8 +4082,11 @@ Long hardware names are deliberately shortened inside the border.</p>
 movement change the detached draft. Click/Enter keeps the field in the draft;
 Back/Esc restores that field's prior value. <code>APPLY ROUTING</code> validates and
 copies the page through the existing Project owner, releases old auditions,
-and runs the existing route synchronization. Until Apply, the Project, runtime
-route, engine, transport, and recorder are untouched.</p>
+and runs the existing route synchronization. Confirming an external PROGRAM
+field also sends that column's bank/program selection immediately for hardware
+free play; <code>APPLY ROUTING</code> sends the selected column's program again. Until
+Apply, the Project, runtime route, engine, transport, and recorder are otherwise
+untouched.</p>
 <p>Pressing the highlighted <code>ROUTE</code> menu item closes the overlay and cancels its
 whole unconfirmed draft. Back/Esc from the main list does the same. Missing
 preferred hardware remains visible and saved as preferred; an exact external
@@ -4097,11 +4106,13 @@ more detailed than quick overlay navigation.</p>
 <p><img src="images/menu/tracks-ops.png" alt="Populated Tracks screen with the OPS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0f6b20ccc6a9b3b05b2b5b25f6a4932729d5b3627235519bb01d9e1ad44f6798" class="tui-shot" id="shot-0f6b20ccc6a9" /></p>
 <p><code>ADD</code> adds one four-lane page. <code>TARGET</code> opens the destination field. <code>CHANNEL</code>
 opens the selected column's MIDI channel field. <code>DONE</code> validates conflicts and
-keeps all page-manager changes.</p>
+keeps all page-manager changes. For an external MIDI page, <code>DONE</code> also sends
+the selected column's bank/program choice immediately for FT2 free play.</p>
 <h5 id="doc-menu-tracker_and_projects--column-choose-column-and-program" tabindex="-1">COLUMN — choose column and program<a class="heading-anchor" href="#doc-menu-tracker_and_projects--column-choose-column-and-program" aria-label="Link to COLUMN — choose column and program">#</a></h5>
 <p><img src="images/menu/tracks-column.png" alt="Populated Tracks screen with the COLUMN page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="c0c3f3e0f45b1b3f8390c53674f2a91955d86c65fc8a6b967988c213f208a874" class="tui-shot" id="shot-c0c3f3e0f45b" /></p>
 <p><code>COL-</code> and <code>COL+</code> select one of the page's four columns. <code>PROG-</code> and <code>PROG+</code>
-choose its 0–127 program, using a device profile's name when available.</p>
+choose its 0–127 program, using a device profile's name when available. <code>DONE</code>
+on OPS sends that selected program as well as keeping it in the Pattern.</p>
 <h5 id="doc-menu-tracker_and_projects--bank-choose-the-selected-columns-bank" tabindex="-1">BANK — choose the selected column's bank<a class="heading-anchor" href="#doc-menu-tracker_and_projects--bank-choose-the-selected-columns-bank" aria-label="Link to BANK — choose the selected column&#x27;s bank">#</a></h5>
 <p><img src="images/menu/tracks-bank.png" alt="Populated Tracks screen with the BANK page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="48973738961b3dd21d22dd4405a5ce4dfbf6d2702797fa20760d690a899b1252" class="tui-shot" id="shot-48973738961b" /></p>
 <p><code>MSB-</code>, <code>MSB+</code>, <code>LSB-</code>, and <code>LSB+</code> adjust the MIDI bank-select bytes for the
@@ -12630,6 +12641,32 @@ sudo make install
 sudo make install-files
 sudo make uninstall
 </code></pre>
+<p><code>make test</code> runs the deterministic product regression gate. DSP audition
+renderers, exhaustive quality matrices, wall-clock microbenchmarks, legacy
+baselines, and rejected-candidate comparisons are explicitly ignored and run
+only when a maintainer selects their exact test name with Cargo's
+<code>--ignored --exact</code> filters. Operational latency, alignment, stability,
+allocation, bounded-output, and representative adopted-quality checks remain
+in the default gate.</p>
+<p>Run the default gate with:</p>
+<pre><code class="language-sh">make test
+</code></pre>
+<p>To deliberately run one opt-in test without running the others:</p>
+<pre><code class="language-sh">cargo test --locked NAME -- --ignored --exact
+</code></pre>
+<p>The ignored set contains six private WAV audition renderers and six
+maintainer-only DSP investigations: the legacy linear-interpolation loss
+baseline, the legacy distortion-alias baseline, the exhaustive distortion and
+filter quality/cost matrices, the exhaustive reverb output/cost
+characterization, and the rejected 4× versus adopted 8× master-strip
+oversampling comparison. Ignored tests still compile with the test target but
+do not execute or determine whether the default gate passes.</p>
+<p>On 2026-07-30, the first locked default-gate run after this split used Rust
+1.97.1 and completed with 864 passed, zero failed, and 12 ignored. The test
+harness took 49.32 seconds; compilation took 21.05 seconds and total measured
+wall time was 70.48 seconds at 198% aggregate CPU and 1,202,320 KiB peak RSS.
+This is a dated development measurement, not a performance threshold or
+physical/audio acceptance.</p>
 <p>Variables:</p>
 <ul>
 <li><code>CARGO</code> selects Cargo;</li>
@@ -14621,6 +14658,18 @@ Matched Idealized, Matched Linear Mixer, Matched Linear Ladder, and Matched No
 Drift or Feedback remain one editable instrument, each with the same eight
 timbral controls plus ADSR. EVOLVE 0.5 truthfully represents authored static
 oscillator character without drift; no diagnostic uses hidden state.</p>
+<p>The default Rust test gate now contains deterministic product regressions only.
+Operational latency and alignment, finite and bounded audio, allocation
+contracts, recovery, routing, persistence, UI behavior, and representative
+adopted DSP-quality limits remain mandatory. Six development-only DSP checks
+for legacy baselines, exhaustive quality/cost matrices, and a rejected
+oversampling candidate are explicitly ignored alongside the six private WAV
+audition renderers. Their exact scope and opt-in command live in
+<code>docs/MAINTAINER_HELPERS.md</code>. The first locked default run after the split, on
+2026-07-30 with Rust 1.97.1, passed 864 tests with zero failures and 12 ignored;
+the harness took 49.32 seconds and total wall time including 21.05 seconds of
+test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
+recording, audible, or physical-hardware test was involved.</p>
 <p>The complete first musician/operator workflow review and its persistent repair
 ledger are in <code>docs/WORKFLOW_AUDIT_HANDOFF.md</code>. Its R01–R15 repair queue passed
 the authorized combined acceptance pass on 2026-07-23. The ledger records the

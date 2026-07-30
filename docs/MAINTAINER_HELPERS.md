@@ -760,6 +760,33 @@ only when a maintainer selects their exact test name with Cargo's
 allocation, bounded-output, and representative adopted-quality checks remain
 in the default gate.
 
+Run the default gate with:
+
+```sh
+make test
+```
+
+To deliberately run one opt-in test without running the others:
+
+```sh
+cargo test --locked NAME -- --ignored --exact
+```
+
+The ignored set contains six private WAV audition renderers and six
+maintainer-only DSP investigations: the legacy linear-interpolation loss
+baseline, the legacy distortion-alias baseline, the exhaustive distortion and
+filter quality/cost matrices, the exhaustive reverb output/cost
+characterization, and the rejected 4× versus adopted 8× master-strip
+oversampling comparison. Ignored tests still compile with the test target but
+do not execute or determine whether the default gate passes.
+
+On 2026-07-30, the first locked default-gate run after this split used Rust
+1.97.1 and completed with 864 passed, zero failed, and 12 ignored. The test
+harness took 49.32 seconds; compilation took 21.05 seconds and total measured
+wall time was 70.48 seconds at 198% aggregate CPU and 1,202,320 KiB peak RSS.
+This is a dated development measurement, not a performance threshold or
+physical/audio acceptance.
+
 Variables:
 
 - `CARGO` selects Cargo;
