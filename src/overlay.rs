@@ -2,6 +2,8 @@
 //!
 //! The overlay owns transient navigation and edit state only. Project, engine,
 //! transport, recorder, and persistence ownership remains with the caller.
+//! A workflow may explicitly audition a detached choice without transferring
+//! that ownership; FT2 ROUTE uses this for external MIDI program selection.
 
 use crate::navigation::{self, Action, MenuContext, Screen};
 use crate::sequencer::Page;

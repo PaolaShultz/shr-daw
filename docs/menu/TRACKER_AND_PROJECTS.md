@@ -494,8 +494,11 @@ Turn to a row and click/Enter to make that field active. Only then does rotary
 movement change the detached draft. Click/Enter keeps the field in the draft;
 Back/Esc restores that field's prior value. `APPLY ROUTING` validates and
 copies the page through the existing Project owner, releases old auditions,
-and runs the existing route synchronization. Until Apply, the Project, runtime
-route, engine, transport, and recorder are untouched.
+and runs the existing route synchronization. Confirming an external PROGRAM
+field also sends that column's bank/program selection immediately for hardware
+free play; `APPLY ROUTING` sends the selected column's program again. Until
+Apply, the Project, runtime route, engine, transport, and recorder are otherwise
+untouched.
 
 Pressing the highlighted `ROUTE` menu item closes the overlay and cancels its
 whole unconfirmed draft. Back/Esc from the main list does the same. Missing
@@ -522,14 +525,16 @@ more detailed than quick overlay navigation.
 
 `ADD` adds one four-lane page. `TARGET` opens the destination field. `CHANNEL`
 opens the selected column's MIDI channel field. `DONE` validates conflicts and
-keeps all page-manager changes.
+keeps all page-manager changes. For an external MIDI page, `DONE` also sends
+the selected column's bank/program choice immediately for FT2 free play.
 
 ### COLUMN — choose column and program
 
 ![Populated Tracks screen with the COLUMN page](../images/menu/tracks-column.png)
 
 `COL-` and `COL+` select one of the page's four columns. `PROG-` and `PROG+`
-choose its 0–127 program, using a device profile's name when available.
+choose its 0–127 program, using a device profile's name when available. `DONE`
+on OPS sends that selected program as well as keeping it in the Pattern.
 
 ### BANK — choose the selected column's bank
 

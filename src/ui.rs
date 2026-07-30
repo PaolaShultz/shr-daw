@@ -3156,11 +3156,19 @@ impl App {
         self.close_overlay(false);
         self.clamp_tracker_cursor();
         self.sync_tracker_route();
+        let program_sent = self
+            .current_page()
+            .cloned()
+            .is_some_and(|page| self.send_tracker_program_selection(&page, self.tracker_track));
         if self.mixed_engine_remap.is_some() {
             self.advance_mixed_engine_remap();
             return;
         }
-        self.status.clear();
+        self.status = if program_sent {
+            "PROGRAM SENT · routing applied".into()
+        } else {
+            String::new()
+        };
     }
 
     fn activate_overlay(&mut self) {
@@ -3178,6 +3186,12 @@ impl App {
             .as_ref()
             .is_some_and(|overlay| overlay.active_field.is_some())
         {
+            let confirmed_program = self.overlay.as_ref().and_then(|overlay| {
+                let RouteField::Program(column) = overlay.active_field? else {
+                    return None;
+                };
+                overlay.route().map(|route| (route.page.clone(), column))
+            });
             if let Some(overlay) = self.overlay.as_mut() {
                 overlay.confirm_route_field();
             }
@@ -3185,7 +3199,13 @@ impl App {
                 self.confirm_route_overlay();
                 return;
             }
-            self.status = "Draft kept · APPLY saves Project route".into();
+            let program_sent = confirmed_program
+                .is_some_and(|(page, column)| self.send_tracker_program_selection(&page, column));
+            self.status = if program_sent {
+                "PROGRAM SENT · draft kept · APPLY saves route".into()
+            } else {
+                "Draft kept · APPLY saves Project route".into()
+            };
             return;
         }
         let Some((kind, selection)) = self
@@ -5286,8 +5306,15 @@ impl App {
     }
 
     fn tracker_external_config(&self) -> ExternalMidiConfig {
+        let Some(page) = self.current_page() else {
+            return self.config.external_midi.clone();
+        };
+        self.tracker_external_config_for_page(page)
+    }
+
+    fn tracker_external_config_for_page(&self, page: &sequencer::Page) -> ExternalMidiConfig {
         let mut external = self.config.external_midi.clone();
-        if let Some(profile) = self.tracker_device_profile() {
+        if let Some(profile) = self.tracker_device_profile_for_page(page) {
             profile.apply_midi_selection(&mut external);
         }
         external
@@ -5373,21 +5400,30 @@ impl App {
     }
 
     fn tracker_program_messages(&self, program: u8) -> Vec<Vec<u8>> {
-        let external = self.tracker_external_config();
-        if !external.program_changes {
-            return Vec::new();
-        }
         let Some(page) = self.current_page() else {
             return Vec::new();
         };
+        self.tracker_program_messages_for(page, self.tracker_track, program)
+    }
+
+    fn tracker_program_messages_for(
+        &self,
+        page: &sequencer::Page,
+        column_index: usize,
+        program: u8,
+    ) -> Vec<Vec<u8>> {
+        let external = self.tracker_external_config_for_page(page);
+        if !external.program_changes {
+            return Vec::new();
+        }
         if matches!(
             page.target,
             PageTarget::ActiveInstrument | PageTarget::Synthv1(_) | PageTarget::Software(_)
         ) {
             return Vec::new();
         }
-        let column = page.column(self.tracker_track);
-        let channel = page.runtime_channel(self.tracker_track, &self.config.external_midi);
+        let column = page.column(column_index);
+        let channel = page.runtime_channel(column_index, &self.config.external_midi);
         let mut messages = Vec::new();
         match external.bank_select {
             crate::config::BankSelectMode::Off => {}
@@ -5401,6 +5437,25 @@ impl App {
         }
         messages.push(vec![0xc0 | channel, program]);
         messages
+    }
+
+    fn send_tracker_program_selection(&self, page: &sequencer::Page, column_index: usize) -> bool {
+        if !matches!(
+            page.target,
+            PageTarget::ConfiguredExternal | PageTarget::Midi(_)
+        ) {
+            return false;
+        }
+        let target = page.target.clone();
+        let program = page.column(column_index).program;
+        let messages = self.tracker_program_messages_for(page, column_index, program);
+        if messages.is_empty() {
+            return false;
+        }
+        for message in messages {
+            self.tracker_live_input.send(&target, &message);
+        }
+        true
     }
 
     fn audition_keyboard_note(&mut self, note: u8, velocity: u8) {
@@ -5694,7 +5749,15 @@ impl App {
         self.page_field_original = None;
         self.set_screen(Screen::Tracker);
         self.sync_tracker_route();
-        self.status.clear();
+        let program_sent = self
+            .current_page()
+            .cloned()
+            .is_some_and(|page| self.send_tracker_program_selection(&page, self.tracker_track));
+        self.status = if program_sent {
+            "PROGRAM SENT · tracks confirmed".into()
+        } else {
+            String::new()
+        };
     }
     fn move_page_selection(&mut self, direction: i8) {
         if self.page_manager_mode != PageManagerMode::Pages {
@@ -21789,7 +21852,7 @@ mod tests {
     }
 
     #[test]
-    fn route_overlay_is_passive_transactional_and_uses_the_existing_owner() {
+    fn route_overlay_is_transactional_except_for_explicit_program_audition() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
@@ -21815,6 +21878,35 @@ mod tests {
         assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
         assert_eq!(a.audition_release_revision, release_revision + 1);
         assert!(a.engine.is_none());
+    }
+
+    #[test]
+    fn route_overlay_confirm_sends_external_program_before_project_apply() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.config.external_midi.program_changes = true;
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.current_page_mut().unwrap().device_profile = Some("roland-d-50".into());
+        let original = a.song.clone();
+        a.open_overlay(Action::OpenRouteOverlay);
+
+        a.overlay.as_mut().unwrap().selection = 8;
+        a.activate_overlay();
+        a.move_overlay(1);
+        let draft_page = a.overlay.as_ref().unwrap().route().unwrap().page.clone();
+        assert_eq!(
+            a.tracker_program_messages_for(&draft_page, 0, 1),
+            vec![vec![0xc0, 1]]
+        );
+        a.activate_overlay();
+
+        assert_eq!(a.song, original, "program confirmation remains a draft");
+        assert_eq!(
+            a.overlay.as_ref().unwrap().route().unwrap().page.columns[0].program,
+            1
+        );
+        assert_eq!(a.status, "PROGRAM SENT · draft kept · APPLY saves route");
     }
 
     #[test]

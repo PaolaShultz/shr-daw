@@ -278,6 +278,13 @@ draft sound on that page's exact target and selected-column channel. Confirm
 keeps the cell override without changing the column master; cancel restores
 the previous value and selection.
 
+In the ROUTE overlay, confirming an external column's PROGRAM sends that
+column's bank/program selection immediately, so a connected hardware
+instrument changes sound for stopped FT2 free play before the Project route is
+applied. APPLY ROUTING keeps the route in the Pattern and sends the selected
+column's program again. The Tracks screen's DONE action follows the same
+selected-column rule. These actions do not wait for Play or for the next note.
+
 ## Real-time recording
 
 From stopped transport, **REC** starts the selected Pattern from row 1 and
