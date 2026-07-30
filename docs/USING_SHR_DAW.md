@@ -25,7 +25,11 @@ The Presets screen browses four kinds of software instruments:
 `ENGINE-` and `ENGINE+` change catalogs without starting sound. `LOAD` is the
 only preset-start transaction. Moj Sint reuses the owned-process, direct
 playback, optional graph, panic, replacement, and shutdown paths while keeping
-its own preset and control semantics.
+its own preset and control semantics. Its seven ordered starts are Full Bass,
+Full Lead, Full Filter Articulation, Matched Idealized, Matched Linear Mixer,
+Matched Linear Ladder, and Matched No Drift or Feedback. They preserve the
+authored Model D audition coordinates and all remain editable through the same
+twelve Playback controls.
 
 Changing engine does not mix their files or control rules. The Playback screen
 shows held note names with each note's decimal MIDI velocity directly beneath

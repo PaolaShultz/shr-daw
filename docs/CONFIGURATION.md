@@ -40,8 +40,10 @@ accepts:
 Moj Sint defaults to command `moj-sint`, client/MIDI identity
 `shs-moj-sint`, and output short names `out_l` then `out_r`. Discovery indexes
 at most 512 regular, non-symlink `.mojsint` files of at most 1 MiB and strictly
-validates their versioned fields before showing them. The host is invoked only
-by `LOAD` as `moj-sint --client-name NAME --preset FILE`.
+validates schema 1–3 before showing them. Schema 3 requires one authored
+`bass`, `lead`, or `filter_articulation` Model D patch; older versions migrate
+to bass in memory. The host is invoked only by `LOAD` as
+`moj-sint --client-name NAME --preset FILE`.
 | Managed MIDI/audio | `midi.autoconnect`; legacy ordered controller fallbacks in repeated `midi.input`; `midi.controller_musical_input`; simultaneous repeated `midi.performance_input`; `audio.autoconnect`, exactly two preferred `audio.output` entries, ordered `audio.internal_output=NAME|LEFT|RIGHT` fallbacks, final optional `audio.headphone_output=NAME|LEFT|RIGHT`; optional `audio.engine_cpu` |
 | Owned final bus | `audio.graph.enabled`, `.client`, `.maximum_callback_frames` (1–4096), `.input`, monitoring confirmations |
 | External tracker MIDI | `external_midi.enabled`, `.client`, `.output`, `.max_tracks`, repeated `.channel`, `.melody_channel`, optional `.percussion_channel` and `.percussion_program`, `.percussion_input_base`, repeated `.percussion_note`, `.bank_select` (`off`, `cc0`, or `cc0+cc32`), `.program_changes`, `.send_transport`, `.default_tempo` (decimal 20.00–300.00), private `.import_directory`, `.pattern_rows` (1–256), `.steps_per_beat` (1–16), `.live_thru`, `.profile`, `.gate_percent` (1–100), `.gesture_settle_ms` |

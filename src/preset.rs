@@ -252,6 +252,25 @@ pub fn discover_moj_sint(roots: &[PathBuf]) -> Result<Vec<Preset>> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct MojPresetV3 {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    model_d_patch: MojModelDPatch,
+    macros: MojMacrosV2,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MojModelDPatch {
+    Bass,
+    Lead,
+    FilterArticulation,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MojPresetV2 {
     schema_version: u32,
     name: String,
@@ -361,6 +380,17 @@ fn read_moj_sint(path: &Path) -> Result<(String, HashMap<u8, f32>)> {
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
     let (name, voices, output_gain, values) = match version {
+        3 => {
+            let document: MojPresetV3 = toml::from_str(&source)?;
+            debug_assert_eq!(document.schema_version, 3);
+            let _validated_patch = document.model_d_patch;
+            (
+                document.name,
+                document.voices,
+                document.output_gain,
+                document.macros.values(),
+            )
+        }
         2 => {
             let document: MojPresetV2 = toml::from_str(&source)?;
             debug_assert_eq!(document.schema_version, 2);
@@ -995,36 +1025,75 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
         let source = r#"
-schema_version = 2
-name = "Model D Test"
+schema_version = 3
+name = "01 Full Bass"
 voices = 8
 output_gain = 0.2
+model_d_patch = "bass"
 [macros]
-evolve = 0.0
+evolve = 1.0
 shape = 0.5
 color = 0.4
-edge = 0.0
-couple = 0.0
+edge = 1.0
+couple = 1.0
 motion = 0.4
-depth = 0.0
+depth = 1.0
 space = 0.45
 attack = 0.2
 decay = 0.6
 sustain = 0.7
 release = 0.6
 "#;
-        fs::write(base.join("model-d.mojsint"), source).unwrap();
-        fs::write(base.join("ignored.txt"), source).unwrap();
-        std::os::unix::fs::symlink(base.join("model-d.mojsint"), base.join("linked.mojsint"))
+        let names = [
+            "01 Full Bass",
+            "02 Full Lead",
+            "03 Full Filter Articulation",
+            "04 Matched Idealized",
+            "05 Matched Linear Mixer",
+            "06 Matched Linear Ladder",
+            "07 Matched No Drift or Feedback",
+        ];
+        for (index, name) in names.iter().enumerate() {
+            let patch = match index {
+                1 => "lead",
+                2 => "filter_articulation",
+                _ => "bass",
+            };
+            fs::write(
+                base.join(format!("{index:02}.mojsint")),
+                source.replace("01 Full Bass", name).replace(
+                    "model_d_patch = \"bass\"",
+                    &format!("model_d_patch = \"{patch}\""),
+                ),
+            )
             .unwrap();
+        }
+        fs::write(base.join("ignored.txt"), source).unwrap();
+        std::os::unix::fs::symlink(base.join("00.mojsint"), base.join("linked.mojsint")).unwrap();
         let presets = discover_moj_sint(std::slice::from_ref(&base)).unwrap();
-        assert_eq!(presets.len(), 1);
+        assert_eq!(presets.len(), 7);
         assert_eq!(presets[0].backend, BackendKind::MojSint);
-        assert_eq!(presets[0].name, "Model D Test");
+        assert_eq!(
+            presets
+                .iter()
+                .map(|preset| preset.name.as_str())
+                .collect::<Vec<_>>(),
+            names
+        );
         assert_eq!(values(&presets[0]).unwrap().len(), 12);
+        let version_two = base.join("legacy-v2.mojsint");
+        fs::write(
+            &version_two,
+            source
+                .replace("schema_version = 3", "schema_version = 2")
+                .replace("model_d_patch = \"bass\"\n", ""),
+        )
+        .unwrap();
+        assert_eq!(read_moj_sint(&version_two).unwrap().1.len(), 12);
+        fs::remove_file(version_two).unwrap();
         fs::write(
             base.join("bad.mojsint"),
-            source.replace("release = 0.6", "release = 0.6\nwidth = 0.5"),
+            source.replace("model_d_patch = \"bass\"", "model_d_patch = \"unknown\""),
         )
         .unwrap();
         assert!(discover_moj_sint(std::slice::from_ref(&base)).is_err());

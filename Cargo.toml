@@ -1,6 +1,6 @@
 [package]
 name = "shr-daw"
-version = "0.4.4"
+version = "0.4.5"
 edition = "2021"
 rust-version = "1.97"
 description = "Raspberry Pi mini DAW with a Rust TUI, FT2-style MIDI tracker, routing, synth hosts, loops, and recording"

@@ -65,6 +65,11 @@ for STOP/PANIC where that direct safety action exists.
 `ENGINE-` and `ENGINE+` move among synthv1, Yoshimi, FluidSynth, and Moj Sint. Changing catalogs does not
 load a sound until `LOAD` is used.
 
+The Moj Sint catalog has seven ordered starts: Full Bass, Full Lead, Full
+Filter Articulation, Matched Idealized, Matched Linear Mixer, Matched Linear
+Ladder, and Matched No Drift or Feedback. Selecting one only browses; `LOAD`
+starts it.
+
 ### SYS — safety and help
 
 ![Populated Presets screen with the SYS controller page](../images/menu/presets-sys.png)

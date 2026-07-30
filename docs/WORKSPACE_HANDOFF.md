@@ -18,9 +18,9 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.4.4`.
+corrected starting point; the current checked-progress version is `0.4.5`.
 
-Version `0.4.4` adds Moj Sint 0.2.0 as a real fourth managed backend. Presets
+Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD
 alone starts `moj-sint --client-name ... --preset ...`. Playback renders the
 eight Model D controls plus ADSR in the existing three-by-four geometry, with
@@ -28,6 +28,15 @@ Moj-specific CCs, defaults, RESET, pickup, Project/Idea/FT2 identity, and no
 synthv1 XML or parameter-index reuse. SHR Drums remains unchanged at 0.1.1 and
 continues as the in-process fourth final-bus source beside the one managed
 melodic engine.
+
+Version `0.4.5` pairs with Moj Sint 0.2.1 and exposes all seven authored Model D
+starts instead of only the idealized reference. Strict schema 3 carries bass,
+lead, or filter-articulation patch identity; schemas 1 and 2 remain strict
+in-memory bass migrations. Full Bass, Full Lead, Full Filter Articulation,
+Matched Idealized, Matched Linear Mixer, Matched Linear Ladder, and Matched No
+Drift or Feedback remain one editable instrument, each with the same eight
+timbral controls plus ADSR. EVOLVE 0.5 truthfully represents authored static
+oscillator character without drift; no diagnostic uses hidden state.
 
 The complete first musician/operator workflow review and its persistent repair
 ledger are in `docs/WORKFLOW_AUDIT_HANDOFF.md`. Its R01–R15 repair queue passed

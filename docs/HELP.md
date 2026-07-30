@@ -78,6 +78,8 @@ Moj Sint uses the same pickup behavior with its own CC 20–31 macro identity:
 EVOLVE, SHAPE, COLOR, EDGE, COUPLE, MOTION, DEPTH, SPACE, then ADSR. RESET
 restores the loaded `.mojsint` values in place without restarting the host.
 Those controls never use synthv1 XML names or parameter indices.
+Its seven numbered factory starts preserve the three full authored patches and
+four matched diagnostic configurations; every start keeps all twelve controls.
 
 The dots beside synthv1 values compare the current sound to the loaded preset:
 green is lower, yellow is near original, red is higher.

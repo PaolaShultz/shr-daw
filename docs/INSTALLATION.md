@@ -36,8 +36,8 @@ but required for software-instrument audio, WAV-loop playback, and multitrack
 recording.
 synthv1, Yoshimi, FluidSynth/TimGM, and Moj Sint are separate optional sound
 engines at runtime. The default installer includes the first three. Install the
-Moj Sint 0.2.0 sibling repository separately so `moj-sint` is on `PATH`, then
-install its strict `.mojsint` presets under one configured
+Moj Sint 0.2.1 sibling repository separately so `moj-sint` is on `PATH`, then
+install all seven strict factory `.mojsint` presets under one configured
 `moj_sint.preset_root`; SHR never copies private presets from that repository.
 MIDI controllers, external instruments, audio interfaces, and a
 480×320 display are optional hardware. On that display the current fixed TTY
