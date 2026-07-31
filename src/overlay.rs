@@ -132,34 +132,6 @@ impl RouteField {
     pub fn from_page_row(page: &Page, row: usize) -> Option<Self> {
         Self::rows(page).get(row).copied()
     }
-
-    pub const fn from_row(row: usize) -> Option<Self> {
-        if row == 0 {
-            return Some(Self::Target);
-        }
-        if row == 1 {
-            return Some(Self::Engine);
-        }
-        if row == 2 {
-            return Some(Self::Instrument);
-        }
-        if row == 3 {
-            return Some(Self::MidiOutput);
-        }
-        if row == 4 {
-            return Some(Self::DeviceProfile);
-        }
-        if row >= 21 {
-            return None;
-        }
-        let column = (row - 5) / 4;
-        match (row - 5) % 4 {
-            0 => Some(Self::Channel(column)),
-            1 => Some(Self::BankMsb(column)),
-            2 => Some(Self::BankLsb(column)),
-            _ => Some(Self::Program(column)),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
