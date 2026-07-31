@@ -687,7 +687,7 @@ fn usage() {
     println!(
         "Usage: shr [COMMAND]\n\
          \n\
-         With no command, opens the terminal instrument browser.\n\
+         With no command, opens the SHR-DAW Home screen.\n\
          \n\
          Application:\n\
            menu\n\
@@ -712,15 +712,19 @@ fn usage() {
          \n\
          Non-audible maintenance:\n\
            screenshots\n\
-           effects-checkpoint PRESET [PROFILE] [SECONDS]\n\
            recorder-stress DEST [SECONDS] [CHANNELS] [RATE] [CALLBACK]\n\
            final-mix-stress DEST [SECONDS] [RATE] [CALLBACK]\n\
            master-strip-bench [CALLBACKS] [RATE]\n\
            compiler-ab-bench KIT_DIR [CALLBACKS]\n\
          \n\
+         Audio-changing checkpoint (starts a JACK graph, synth, and note;\n\
+           requires explicit authorization):\n\
+           effects-checkpoint PRESET [PROFILE] [SECONDS]\n\
+           phase2-checkpoint PRESET [PROFILE] [SECONDS] (compatibility alias)\n\
+         \n\
          Help: help, -h, --help\n\
-         Compatibility aliases: logs; pads detect; casio status|dry-run;\n\
-           phase2-checkpoint. Internal process command: daemon PRESET."
+         Compatibility aliases: logs; pads detect; casio status|dry-run.\n\
+         Internal process command: daemon PRESET."
     );
 }
 

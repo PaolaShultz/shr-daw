@@ -82,11 +82,11 @@ the harness took 49.32 seconds and total wall time including 21.05 seconds of
 test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.
 
-One source-level help contradiction remains open. `shr --help` classifies
-`effects-checkpoint` as non-audible maintenance, but the command starts the
-prepared JACK graph and synth, sends a low-gain note, and takes a bounded
-measurement. Public guides keep the stricter explicit-authorization warning.
-Do not treat the current CLI category label as permission to run it.
+`shr --help` separates `effects-checkpoint` from non-audible maintenance. Its
+own section states that the command starts a JACK graph, synth, and note and
+requires explicit authorization. The section labels `phase2-checkpoint` as the
+same audio-changing compatibility alias. The no-command description also names
+the current SHR-DAW Home screen instead of the retired instrument-browser entry.
 
 FT2's quick ROUTE overlay keeps whole-route `APPLY` and `CANCEL` commands in
 the standard controller action row at native 40×13 instead of hiding Apply
