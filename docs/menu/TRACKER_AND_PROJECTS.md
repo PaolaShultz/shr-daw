@@ -66,8 +66,11 @@ SONG selects an Arrangement step and links to Arrangement or page tools.
 
 ROUTE edits a detached page-routing draft that changes the Project only on
 Apply. For an SHR Drums target, choose `KIT`, click, and turn the encoder to
-select any installed drum set. Applying a different kit resets old kit-specific
-tuning overrides while preserving the Project key and drum effects.
+select any installed drum set; the redundant engine row is omitted. Applying a
+different kit must start it before completing the route change. Failure keeps
+the draft open and restores the previous kit. A successful change resets old
+kit-specific tuning overrides while preserving the Project key and drum
+effects.
 
 ### SYS — safety, filter, help, and exit
 

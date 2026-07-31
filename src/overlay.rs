@@ -6,7 +6,7 @@
 //! that ownership; FT2 ROUTE uses this for external MIDI program selection.
 
 use crate::navigation::{self, Action, MenuContext, Screen};
-use crate::sequencer::Page;
+use crate::sequencer::{Page, PageTarget};
 use ratatui::layout::Rect;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,6 +106,32 @@ pub enum RouteField {
 
 impl RouteField {
     pub const ROWS: usize = 22;
+
+    pub fn rows(page: &Page) -> Vec<Self> {
+        let mut rows = Vec::with_capacity(Self::ROWS - 1);
+        rows.push(Self::Target);
+        if !matches!(page.target, PageTarget::InternalDrums(_)) {
+            rows.push(Self::Engine);
+        }
+        rows.extend([Self::Instrument, Self::MidiOutput, Self::DeviceProfile]);
+        for column in 0..4 {
+            rows.extend([
+                Self::Channel(column),
+                Self::BankMsb(column),
+                Self::BankLsb(column),
+                Self::Program(column),
+            ]);
+        }
+        rows
+    }
+
+    pub fn row_count(page: &Page) -> usize {
+        Self::rows(page).len() + 1
+    }
+
+    pub fn from_page_row(page: &Page, row: usize) -> Option<Self> {
+        Self::rows(page).get(row).copied()
+    }
 
     pub const fn from_row(row: usize) -> Option<Self> {
         if row == 0 {
@@ -467,6 +493,19 @@ mod tests {
         let geometry = geometry_for(OverlayKind::TrackerRoute, Rect::new(0, 0, 40, 13));
         assert_eq!(geometry.outer, Rect::new(1, 1, 38, 9));
         assert_eq!(geometry.inner, Rect::new(2, 2, 36, 7));
+    }
+
+    #[test]
+    fn drum_route_uses_one_kit_row_without_an_engine_row() {
+        let mut page = Page::new("Drums", 9, true, 0);
+        page.target = PageTarget::InternalDrums("big-rock-muldjord".into());
+
+        let rows = RouteField::rows(&page);
+
+        assert_eq!(rows[0], RouteField::Target);
+        assert_eq!(rows[1], RouteField::Instrument);
+        assert!(!rows.contains(&RouteField::Engine));
+        assert_eq!(RouteField::row_count(&page), RouteField::ROWS - 1);
     }
 
     #[test]

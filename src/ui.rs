@@ -756,6 +756,10 @@ struct App {
     drum_output: crate::drums_host::SharedDrumOutput,
     drum_host: Option<crate::drums_host::DrumHost>,
     drum_kits: Vec<crate::drums_host::KitEntry>,
+    #[cfg(test)]
+    drum_start_script: std::collections::VecDeque<std::result::Result<(), String>>,
+    #[cfg(test)]
+    test_drum_kit: Option<String>,
     midi_lifecycle: engine::MidiLifecycle,
     pickup: engine::SharedPickup,
     midi_backend: engine::SharedBackend,
@@ -1575,7 +1579,7 @@ impl App {
         let drum_kits = crate::drums_host::discover_kits(&config.drums.kit_directory);
         let drum_target = drum_kits
             .iter()
-            .find(|kit| kit.id == "electronic-house")
+            .find(|kit| kit.id == "big-rock-muldjord")
             .or_else(|| drum_kits.first())
             .map(|kit| PageTarget::InternalDrums(kit.id.clone()))
             .unwrap_or_else(|| PageTarget::Software(gm_drums_route.clone()));
@@ -1699,6 +1703,10 @@ impl App {
             drum_output,
             drum_host: None,
             drum_kits,
+            #[cfg(test)]
+            drum_start_script: std::collections::VecDeque::new(),
+            #[cfg(test)]
+            test_drum_kit: None,
             midi_lifecycle: tracker_io.lifecycle,
             pickup,
             midi_backend,
@@ -2764,7 +2772,9 @@ impl App {
             OverlayKind::TrackerPage => self.current_pages().len() + 2,
             OverlayKind::TrackerPattern => self.overlay_pattern_locations().len() + 2,
             OverlayKind::TrackerSong => self.song.order.len() + 3,
-            OverlayKind::TrackerRoute => RouteField::ROWS,
+            OverlayKind::TrackerRoute => overlay
+                .route()
+                .map_or(RouteField::ROWS, |route| RouteField::row_count(&route.page)),
             OverlayKind::TrackerPatternLength => pattern_length_choices().len(),
             OverlayKind::TrackerNoteLength => NoteLength::ALL.len(),
             OverlayKind::TrackerAdvance => 33,
@@ -3239,10 +3249,28 @@ impl App {
             return;
         }
         self.release_tracker_audition();
+        let previous_song = self.song.clone();
         self.song = candidate;
+        let route_ready = self.sync_tracker_route();
+        if kit_changed && !route_ready {
+            let failure = self.status.clone();
+            self.song = previous_song;
+            let restored = self.sync_tracker_route();
+            self.status = if restored {
+                let reason = failure
+                    .strip_prefix("DRUM KIT FAILED · ")
+                    .unwrap_or(&failure);
+                format!(
+                    "KIT FAILED · OLD RESTORED · {}",
+                    crate::ui_text::fit_middle(reason, 10)
+                )
+            } else {
+                "KIT FAILED · OLD KIT OFFLINE".into()
+            };
+            return;
+        }
         self.close_overlay(false);
         self.clamp_tracker_cursor();
-        let route_ready = self.sync_tracker_route();
         let program_sent = self
             .current_page()
             .cloned()
@@ -3366,9 +3394,20 @@ impl App {
                 }
             }
             OverlayKind::TrackerRoute => {
-                if selection == RouteField::ROWS - 1 {
+                let route_page = self
+                    .overlay
+                    .as_ref()
+                    .and_then(OverlayState::route)
+                    .map(|route| route.page.clone());
+                let row_count = route_page
+                    .as_ref()
+                    .map_or(RouteField::ROWS, RouteField::row_count);
+                if selection == row_count - 1 {
                     self.confirm_route_overlay();
-                } else if let Some(field) = RouteField::from_row(selection) {
+                } else if let Some(field) = route_page
+                    .as_ref()
+                    .and_then(|page| RouteField::from_page_row(page, selection))
+                {
                     if let Some(overlay) = self.overlay.as_mut() {
                         overlay.begin_route_field(field);
                     }
@@ -5315,8 +5354,11 @@ impl App {
         };
         match self.ensure_internal_drum_kit(&kit) {
             Ok(()) => true,
-            Err(_) => {
-                self.status = "SHR DRUMS OFFLINE · kit/route unavailable".into();
+            Err(error) => {
+                self.status = format!(
+                    "DRUM KIT FAILED · {}",
+                    crate::ui_text::fit_middle(&error, 20)
+                );
                 false
             }
         }
@@ -6244,6 +6286,17 @@ impl App {
     }
 
     fn ensure_internal_drum_kit(&mut self, kit_id: &str) -> std::result::Result<(), String> {
+        #[cfg(test)]
+        if let Some(result) = self.drum_start_script.pop_front() {
+            if result.is_ok() {
+                self.test_drum_kit = Some(kit_id.into());
+            }
+            return result;
+        }
+        #[cfg(test)]
+        if self.test_drum_kit.as_deref() == Some(kit_id) {
+            return Ok(());
+        }
         let tempo = self.current_tempo();
         if self.drum_host.as_ref().is_some_and(|host| {
             host.matches_configuration(
@@ -17219,16 +17272,18 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 || format!("TARGET · {target_kind}"),
                 |issue| crate::ui_text::label_value(&format!("TARGET · {target_kind}"), issue, 35),
             );
-            let engine_label = if drum_kit.is_some() {
-                "SHR DRUMS"
-            } else {
-                software.map_or("—", |route| route.engine.label())
-            };
             let instrument_label = drum_kit
                 .unwrap_or_else(|| software.map_or("—", |route| route.instrument.as_str()));
-            let mut rows = vec![
-                target,
-                crate::ui_text::fixed_label_value("ENGINE · ", 9, engine_label, 35),
+            let mut rows = vec![target];
+            if drum_kit.is_none() {
+                rows.push(crate::ui_text::fixed_label_value(
+                    "ENGINE · ",
+                    9,
+                    software.map_or("—", |route| route.engine.label()),
+                    35,
+                ));
+            }
+            rows.extend([
                 crate::ui_text::fixed_label_value(
                     if drum_kit.is_some() {
                         "KIT · "
@@ -17246,7 +17301,7 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                     page.device_profile.as_deref().unwrap_or("RAW MIDI"),
                     35,
                 ),
-            ];
+            ]);
             for column_index in 0..LANES_PER_PAGE {
                 let column = page.column(column_index);
                 let auto = page.target == PageTarget::Default;
@@ -21600,7 +21655,7 @@ mod tests {
         a.song.drum_tuning.mode = shr_drums::TuningMode::FollowKey;
 
         a.open_overlay(Action::OpenRouteOverlay);
-        a.overlay.as_mut().unwrap().selection = 2;
+        a.overlay.as_mut().unwrap().selection = 1;
         a.activate_overlay();
         a.move_overlay(1);
 
@@ -21611,11 +21666,13 @@ mod tests {
                 .map(|route| route.page.target.clone()),
             Some(PageTarget::InternalDrums("big-rock-muldjord".into()))
         );
-        assert!(buffer_text(&render_app(&mut a, 40, 13)).contains("KIT"));
-        assert!(buffer_text(&render_app(&mut a, 40, 13)).contains("Big Rock"));
+        let rendered = buffer_text(&render_app(&mut a, 40, 13));
+        assert!(rendered.contains("KIT"));
+        assert!(rendered.contains("Big Rock"));
+        assert!(!rendered.contains("ENGINE"));
 
         a.activate_overlay();
-        a.screen = Screen::Home;
+        a.drum_start_script.push_back(Ok(()));
         perform(Action::ApplyRouteOverlay, &mut a, Path::new("/none"), None);
         assert_eq!(
             a.current_page().unwrap().target,
@@ -21623,7 +21680,48 @@ mod tests {
         );
         assert_eq!(a.song.drum_kit, "big-rock-muldjord");
         assert_eq!(a.song.drum_tuning, shr_drums::KitTuning::default());
+        assert_eq!(a.test_drum_kit.as_deref(), Some("big-rock-muldjord"));
         assert_eq!(a.status, "SHR DRUMS KIT APPLIED · tuning reset");
+    }
+
+    #[test]
+    fn failed_drum_kit_apply_restores_the_previous_kit_and_keeps_the_draft() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.drum_kits = vec![
+            crate::drums_host::KitEntry {
+                id: "electronic-house".into(),
+                name: "Electronic House".into(),
+                path: PathBuf::from("/kits/electronic-house"),
+            },
+            crate::drums_host::KitEntry {
+                id: "big-rock-muldjord".into(),
+                name: "Big Rock".into(),
+                path: PathBuf::from("/kits/big-rock-muldjord"),
+            },
+        ];
+        a.current_page_mut().unwrap().target = PageTarget::InternalDrums("electronic-house".into());
+        a.song.drum_kit = "electronic-house".into();
+        a.test_drum_kit = Some("electronic-house".into());
+        a.open_overlay(Action::OpenRouteOverlay);
+        a.overlay.as_mut().unwrap().selection = 1;
+        a.activate_overlay();
+        a.move_overlay(1);
+        a.activate_overlay();
+        a.drum_start_script
+            .push_back(Err("sample decode failed".into()));
+
+        perform(Action::ApplyRouteOverlay, &mut a, Path::new("/none"), None);
+
+        assert!(a.overlay.is_some());
+        assert_eq!(
+            a.current_page().unwrap().target,
+            PageTarget::InternalDrums("electronic-house".into())
+        );
+        assert_eq!(a.song.drum_kit, "electronic-house");
+        assert_eq!(a.test_drum_kit.as_deref(), Some("electronic-house"));
+        assert!(a.status.starts_with("KIT FAILED · OLD RESTORED · "));
     }
 
     #[test]

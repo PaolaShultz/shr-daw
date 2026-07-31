@@ -169,9 +169,12 @@ For a quick routing change, **SELECT** → **ROUTE** opens a centered overlay ov
 FT2. It shows target type, software engine/instrument or MIDI output, optional
 device profile, plus all four columns' channel, bank, program/instrument name,
 and interface availability. With an SHR Drums target, the **KIT** field cycles
-the installed drum sets and stores the chosen kit with the Project. Applying a
-different kit resets the old kit's tuning overrides; the Project key and drum
-effects remain unchanged. Turn and click/Enter to activate a
+the installed drum sets; there is no redundant engine field. Big Rock is the
+fresh-Project default when installed, while other kits remain explicit
+choices. Applying a different kit must start it before the
+route change completes and resets the old kit's tuning overrides; the Project
+key and drum effects remain unchanged. A failed load restores the previous kit
+and keeps the draft open with the failure visible. Turn and click/Enter to activate a
 field; Back/Esc cancels that field first. Only **APPLY ROUTING** changes the
 Project. The window ends above the normal two controller rows. The contextual
 **ROUTE** page puts **APPLY** at physical position 5 and **CANCEL** at position
