@@ -860,6 +860,7 @@ mod tests {
     #[test]
     fn qualified_profile_application_and_controller_save_retain_channels() {
         let mut profile = minimal_profile();
+        profile.layout = 8;
         profile.note_buttons.insert(36, "page-1".into());
         profile.note_button_channels.insert(36, 10);
         profile.cc_buttons.insert(44, "item-1".into());

@@ -163,6 +163,7 @@ impl PadAction {
         }
     }
 
+    #[cfg(test)]
     pub const fn menu_input(self) -> MenuInput {
         match self {
             Self::Pad1 => MenuInput::SelectPage(0),
