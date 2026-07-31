@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = ROOT / "docs"
 OUTPUT = DOCS_DIR / "index.html"
 REPOSITORY_URL = "https://github.com/PaolaShultz/shr-daw"
+SHR_DRUMS_URL = "https://github.com/PaolaShultz/shr-drums"
 SITE_URL = "https://paolashultz.github.io/shr-daw/"
 SOCIAL_IMAGE = "docs/images/shr-daw-social-card.png"
 EXPECTED_MARKDOWN_IT = "3.0.0"
@@ -760,6 +761,15 @@ def nav_html(groups: dict[str, list[Document]]) -> str:
             f"<ul>{links}</ul></details>"
         )
     sections.append(
+        '<details><summary>Related public documentation</summary><ul>'
+        f'<li><a class="external" href="{SHR_DRUMS_URL}" target="_blank" '
+        'rel="noopener noreferrer external">SHR Drums engine, kit format, and sources</a></li>'
+        '<li><a class="external" '
+        f'href="{source_url(Path("docs/UCENJE_KROZ_ISTRAZIVANJE.md"))}" '
+        'target="_blank" rel="noopener noreferrer external" lang="hr">'
+        'Učenje kroz istraživanje (Hrvatski)</a></li></ul></details>'
+    )
+    sections.append(
         '<ul class="page-links archive-link">'
         '<li><a href="#technical-records">Technical records and future plans</a></li>'
         "</ul>"
@@ -988,7 +998,11 @@ a.external::after { content: " ↗"; color: var(--yellow); font-size: .8em; }
   width: 100%; border: 1px solid var(--line); border-radius: .35rem;
   background: var(--panel); color: var(--text); padding: .62rem .7rem; font: inherit;
 }
+.search-scope { display: flex; align-items: start; gap: .45rem; margin: .55rem 0 0; }
+.search-scope input { width: auto; margin-top: .25rem; accent-color: var(--green); }
+.search-scope label { margin: 0; color: var(--text); }
 .search-help { margin: .35rem 0 0; color: var(--muted); font-size: .75rem; }
+.no-js .search-box { display: none; }
 #search-results { margin: .7rem 0 1.1rem; padding: 0; list-style: none; }
 #search-results li { margin-bottom: .65rem; }
 #search-results a { display: block; font-weight: 700; font-size: .9rem; }
@@ -1199,6 +1213,7 @@ JS = r"""
   const toggle = document.querySelector(".nav-toggle");
   const nav = document.getElementById("site-nav");
   const search = document.getElementById("doc-search");
+  const includeArchive = document.getElementById("search-archive");
   const results = document.getElementById("search-results");
   const status = document.getElementById("search-status");
 
@@ -1232,6 +1247,7 @@ JS = r"""
         href: `#${article.id}`,
         source: article.dataset.source,
         kind: article.dataset.kind,
+        archive: article.closest(".archive-collection") !== null,
         text: normalize(article.textContent)
       };
     });
@@ -1243,6 +1259,7 @@ JS = r"""
         href: `#${heading.id}`,
         source: article.dataset.source,
         kind: article.dataset.kind,
+        archive: article.closest(".archive-collection") !== null,
         text: normalize(title)
       };
     });
@@ -1254,11 +1271,16 @@ JS = r"""
     const query = normalize(search.value.trim());
     results.replaceChildren();
     if (query.length < 2) {
-      status.textContent = query ? "Type at least two characters." : "Search all headings and document text.";
+      status.textContent = query
+        ? "Type at least two characters."
+        : includeArchive.checked
+          ? "Search current guides and the technical archive."
+          : "Search current guides. The technical archive is off.";
       return;
     }
     const terms = query.split(/\s+/).filter(Boolean);
     const matches = buildSearchIndex()
+      .filter((entry) => includeArchive.checked || !entry.archive)
       .filter((entry) => terms.every((term) => entry.text.includes(term)))
       .slice(0, 30);
     for (const entry of matches) {
@@ -1276,6 +1298,7 @@ JS = r"""
       : "No matching documentation.";
   };
   search.addEventListener("input", renderSearch);
+  includeArchive.addEventListener("change", renderSearch);
 
   const revealTarget = () => {
     if (!location.hash) return;
@@ -1443,9 +1466,11 @@ def build_page(
         '<div class="search-box"><label for="doc-search">Search this page</label>'
         '<input id="doc-search" type="search" autocomplete="off" '
         'placeholder="Try “loops” or “JACK”">'
+        '<span class="search-scope"><input id="search-archive" type="checkbox">'
+        '<label for="search-archive">Include technical archive</label></span>'
         '<p class="search-help">Press / to search</p>'
         '<p class="sr-only" id="search-status" aria-live="polite">'
-        "Search all headings and document text.</p>"
+        "Search current guides. The technical archive is off.</p>"
         '<ul id="search-results"></ul></div>',
         "<noscript><p>Search needs JavaScript; all navigation and documentation remain available below.</p></noscript>",
         nav_html(groups),

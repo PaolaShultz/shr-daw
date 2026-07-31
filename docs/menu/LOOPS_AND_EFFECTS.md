@@ -169,6 +169,8 @@ return level. `HELP` opens the local reference. `EXIT` returns one level.
 
 OPS exposes only `ADD`; unavailable edit and delete actions stay hidden.
 
+![Empty FX rack with its ORDER context](../images/menu/fx-rack-empty-order.png)
+
 The empty MASTER rack's ORDER page still exposes `STRIP`; other targets ask
 for MASTER rather than opening a misleading per-source mastering path.
 
@@ -210,13 +212,27 @@ limiter. `RESET I` clears only integrated loudness. Edited settings stay
 intact. Numerical and bypass updates are smoothed during playback; final
 recording rejects them.
 
+![MASTER STRIP front page with the SYS commands](../images/menu/master-strip-sys.png)
+
+The front-page SYS commands keep `PANIC`, `HELP`, and `EXIT` available without
+changing the selected section or caller.
+
 ![MASTER STRIP GLUE detail](../images/menu/master-strip-detail-param.png)
 
 The detail page lists only the selected section's parameters. The ordinary
 rotary browses its parameters; Shift-rotary selects the previous or next
 section through the front-page order and starts at that section's first
-parameter. `VALUE-` and `VALUE+` change the selected value; the next page
-retains bypass, A/B, and integrated reset.
+parameter. `VALUE-` and `VALUE+` change the selected value.
+
+![MASTER STRIP detail with STATE commands](../images/menu/master-strip-detail-state.png)
+
+STATE retains section bypass, A/B comparison, and integrated loudness reset
+while the detail values stay visible.
+
+![MASTER STRIP detail with SYS commands](../images/menu/master-strip-detail-sys.png)
+
+SYS keeps global Panic, contextual Help, and one-level Exit available from the
+detail view.
 
 ![Compact MASTER STRIP fallback](../images/menu/master-strip-compact.png)
 

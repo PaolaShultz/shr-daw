@@ -71,8 +71,9 @@ The installer:
   releases are adopted deliberately by changing the repository pin;
 - installs commands, templates, the 21 allowlisted presets, four allowlisted
   CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
-  device/controller profiles, drum data, documentation, and
-  all 97 menu-manual images below the selected prefix (normally `/usr/local`);
+  device/controller profiles, drum data, documentation, and the complete
+  generated menu-manual image set below the selected prefix (normally
+  `/usr/local`);
 - opens the routing wizard.
 
 On stock Raspberry Pi OS, the routing wizard asks for a stable ALSA card name

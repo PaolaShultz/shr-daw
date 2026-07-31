@@ -59,8 +59,10 @@ final row remains the shared status row. That same menu
 item closes it; there is no fourth-button Back item. The rotary and Up/Down
 browse, click/Enter selects or confirms, and Back/Esc cancels the current field
 before cancelling and closing the overlay. Unconfirmed drafts never save on
-close. On the native 40×13 display the outer rectangle is 38×11 at `(1,1)` and
-the usable inner area is 36×9 at `(2,2)`.
+close. FT2 ROUTE is the deliberate live-audition exception: valid active-field
+choices change the Project and live route at once, Apply keeps them, and Cancel
+restores the opening route snapshot. On the native 40×13 display the outer
+rectangle is 38×11 at `(1,1)` and the usable inner area is 36×9 at `(2,2)`.
 
 The yellow page name at the bottom is the page currently selected. The yellow
 bracketed numbers below the actions are the physical item positions. The shared

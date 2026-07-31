@@ -71,6 +71,12 @@ configuration, or the architecture contracts.
   provenance, and redistribution rules.
 - [New patches and sounds](NEW_PATCHES.md) — synthv1 schema and authoring
   workflow.
+- [SHR Drums](https://github.com/PaolaShultz/shr-drums): public source for the
+  in-process drum engine; its
+  [package format](https://github.com/PaolaShultz/shr-drums/blob/main/FORMAT.md)
+  and
+  [sample provenance](https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md)
+  live with that repository.
 
 ## Measurements and audits
 
@@ -100,6 +106,8 @@ configuration, or the architecture contracts.
   and the related Make targets.
 - [Development story and Build Week record](BUILD_WEEK.md) — chronology,
   model provenance, division of work, target-native workflow, and evaluation.
+- [Učenje kroz istraživanje](UCENJE_KROZ_ISTRAZIVANJE.md): the creator's
+  Croatian essay about learning through musical exploration.
 - [Feature and quirk matrix](BUILD_WEEK_FEATURE_MATRIX.md) — subsystem-level
   access, persistence, failure, safety, architecture, and test inventory.
 - [Workflow audit and repair handoff](WORKFLOW_AUDIT_HANDOFF.md) — complete

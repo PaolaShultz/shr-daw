@@ -17,6 +17,10 @@ mouse.
 
 ![Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones](images/shr-daw-physical-connections.jpg)
 
+For a full-width browser view of the same approved specification, open the
+[standalone connection diagram](images/preview.html). It uses the tracked
+image directly and does not redraw devices, ports, or cables.
+
 The main paths are:
 
 - controller or computer keyboard → SHR-DAW;

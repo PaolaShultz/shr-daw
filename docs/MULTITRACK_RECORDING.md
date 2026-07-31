@@ -9,6 +9,10 @@ remains distinct from the owned performance bus and its one-file
 post-strip [final stereo recording](FINAL_PERFORMANCE_BUS.md#final-recording).
 Use the interface or mixer for safe low-latency audible raw-input monitoring.
 
+This page owns source mapping, callback guarantees, take storage, recovery, and
+the hardware-free stress path. The [menu manual](MENU_MANUAL.md) owns the
+visible Recorder and Levels controls.
+
 ## What one take guarantees
 
 All armed tracks enter and leave capture on the same JACK callback boundary.

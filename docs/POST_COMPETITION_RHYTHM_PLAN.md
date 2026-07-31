@@ -1,5 +1,9 @@
 # Post-competition rhythm plan
 
+Created: 2026-07-19
+
+Status: proposal archive, not current behavior or scheduled release scope
+
 This document is an execution plan for work **after the competition**. None of
 the behavior below is part of the competition build, and the submission should
 not be destabilized to begin it early. The work is deliberately split into

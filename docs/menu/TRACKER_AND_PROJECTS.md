@@ -62,16 +62,8 @@ PATTERN selects an existing Pattern and links to Pattern tools or Project Files.
 
 SONG selects an Arrangement step and links to Arrangement or page tools.
 
-![ROUTE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-route.png)
-
-ROUTE applies each encoder change to the live page route immediately. For an
-SHR Drums target, choose `KIT`, click, and turn the encoder to hear any
-installed drum set; the redundant engine row is omitted. APPLY keeps the live
-result. CANCEL restores the complete route from when ROUTE opened, and Back
-while editing restores that field. A different kit must start before the live
-change succeeds; failure restores the previous route and kit. A successful
-change resets old kit-specific tuning overrides while preserving the Project
-key and drum effects.
+ROUTE opens the quick live route editor. Its complete field and rollback
+contract appears in [ROUTE master overlay](#route-master-overlay).
 
 ### SYS — safety, filter, help, and exit
 
@@ -320,6 +312,14 @@ The MIDI browser follows no symlinks and accepts bounded regular `.mid` and
 the source file or an existing Project. Saved-Project `PREVIEW` remains on the
 separate PREVIEW command page.
 
+### PREVIEW: hear the selected saved Project
+
+![Project Files with the PREVIEW command page](../images/menu/files-preview.png)
+
+`PREVIEW` starts or stops a bounded preview of the selected saved Project. It
+does not replace the Project being edited. Using the same command again,
+leaving the screen, or using Panic stops the preview.
+
 ### PROJECT — lifecycle and Pattern child
 
 ![Populated Project Files screen with the PROJECT page](../images/menu/files-project.png)
@@ -503,20 +503,18 @@ profile-provided instrument names appear when available. Long names are
 deliberately shortened inside the border.
 
 Turn to a row and click/Enter to make that field active. Only then does rotary
-movement change the detached draft. Click/Enter keeps the field in the draft;
-Back/Esc restores that field's prior value. `APPLY ROUTING` validates and
-copies the page through the existing Project owner, releases old auditions,
-and runs the existing route synchronization. Confirming an external PROGRAM
-field also sends that column's bank/program selection immediately for hardware
-free play; `APPLY ROUTING` sends the selected column's program again. Until
-Apply, the Project, runtime route, engine, transport, and recorder are otherwise
-untouched.
+movement validate and apply the choice to the Project and live route. This
+allows immediate software instrument, drum kit, and external program audition.
+A failed engine, kit, or route change restores the previous field value and
+live route. Click/Enter keeps the current field value; Back/Esc restores the
+value from before that field was opened.
 
 The standard bottom controller action row always shows `APPLY` and `CANCEL`, so
-neither whole-draft action depends on scrolling to the final list row.
+neither whole-route action depends on scrolling to the final list row.
 Positions 5 and 8 activate those exact actions on the controller; mouse and
-keyboard `A`/`C` share them. Back/Esc from the main list cancels the draft,
-while Back/Esc during a field edit cancels only that field.
+keyboard `A`/`C` share them. Apply keeps the current live result. Cancel or
+Back/Esc from the main list restores the complete route snapshot from when the
+overlay opened. Back/Esc during a field edit restores only that field.
 Missing preferred hardware remains visible and saved as preferred; an exact
 external target stays offline or ambiguous and never uses either the
 configured hardware default or the Pattern's software synth. `AUTO` alone

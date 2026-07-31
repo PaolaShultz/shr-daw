@@ -242,9 +242,10 @@ the current Pattern's pages, preserves the selected column, and can open the
 full Tracks manager. PATTERN selects an existing Pattern or opens Pattern/Project tools.
 SONG selects an Arrangement step and can open detailed Arrangement or Loop/
 page tools. ROUTE shows the active page destination and all four columns'
-channel, bank, program, profile name, and availability. ROUTE changes remain a
-draft until `APPLY ROUTING`; closing it with its highlighted launcher or Back
-cancels the draft safely.
+channel, bank, program, profile name, and availability. Turning an active field
+validates and applies the choice to the Project and live route. `APPLY ROUTING`
+keeps the result. `CANCEL` or Back from the main list restores the route from
+when ROUTE opened; Back during field editing restores that field first.
 
 With controller clock enabled, SHR sends the current/default tempo at 24 PPQN
 to one exact controller MIDI port while the app is open; tracker transport adds

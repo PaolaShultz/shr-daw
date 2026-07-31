@@ -120,6 +120,22 @@ authoritative cultural transcription. The structural and naming audit is in
 `docs/DRUM_PATTERN_AUDIT.md`; groove, feel, and final curation still require
 human listening.
 
+## SHR Drums engine and kit sources
+
+The in-process drum engine is the separate MIT-licensed
+[SHR Drums repository](https://github.com/PaolaShultz/shr-drums). Version 0.2
+keeps the strict format 1 package boundary and adds an optional advanced
+modeled-voice graph. The public
+[format contract](https://github.com/PaolaShultz/shr-drums/blob/main/FORMAT.md)
+defines validation and compatibility. Its
+[source record](https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md)
+owns sample provenance.
+
+Compiled `.shrkit` packages, source archives, and private review renders are
+not bundled by this repository. Their presence on a developer machine does not
+grant redistribution rights. Package or appliance distributors must review
+the kit's own manifest, source record, asset licence, and required notices.
+
 ## Public-domain demo compositions
 
 The ten demo arrangements in `demos/` are newly programmed for SHR-DAW and are

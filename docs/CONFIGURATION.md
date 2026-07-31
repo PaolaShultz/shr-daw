@@ -1,9 +1,13 @@
 # Configuration and tracker routing
 
-SHR-DAW is a Raspberry Pi mini DAW and MIDI routing hub. Machine defaults and
-hardware fallbacks belong in `shsynth.conf` or `controller.conf`; only a page
-deliberately bound to exact hardware stores that preferred target in a Project.
-Names are not compiled into the program.
+This guide owns configuration keys, persisted route fields, and machine
+fallbacks. The [Tracker guide](TRACKER.md) owns the musical workflow, while the
+[Controller interface](CONTROLLER_INTERFACE.md) owns visible actions.
+
+Machine defaults and hardware fallbacks belong in `shsynth.conf` or
+`controller.conf`. Only a page deliberately bound to exact hardware stores
+that preferred target in a Project. Hardware names are never compiled into the
+program.
 
 Both configuration files use one `KEY=VALUE` entry per line. A comment must
 start with `#` after optional leading whitespace; `#` inside a value is kept as
@@ -549,7 +553,7 @@ opened. On the
 controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
 
-FT2 **SELECT** → **ROUTE** is the passive quick editor. Its 38×9 bordered overlay
+FT2 **SELECT** → **ROUTE** is the quick route editor. Its 38×9 bordered overlay
 shows `TARGET`, `ENGINE`, `INSTR` or the SHR Drums `KIT`, `MIDI OUT`, optional
 `PROFILE`, and the 16 per-column channel/bank/program rows in a scrolling 36×7
 content area. The overlay begins at `(1,1)`, its content begins at `(2,2)`, and
@@ -557,10 +561,14 @@ the standard controller page/action rows remain immediately above the shared
 status row. Opening and browsing use cached discovery information;
 they do not create a MIDI discovery client, send MIDI, synchronize routes, or
 start an engine. A field changes only after click/Enter activates it. Back/Esc
-cancels that field first. **APPLY ROUTING** validates and copies the detached
-page draft through the same Project and route-synchronization owner used by
-Tracks. The controller action row's direct **CANCEL** action or Back cancels a
-dirty draft and never saves silently.
+cancels that field first.
+
+Turning an active field validates and applies each choice to the Project and
+live route. A failed choice restores the previous field value and route.
+Click/Enter keeps the current field value; Back/Esc restores the value from
+before that field was opened. **APPLY ROUTING** keeps the resulting route.
+The controller action row's direct **CANCEL** action, or Back from the main
+list, restores the complete route snapshot from when ROUTE opened.
 
 An internal melodic route stores the engine identity together with that
 engine's stable instrument identity. An SHR Drums route instead stores the

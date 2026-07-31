@@ -2,13 +2,18 @@
 
 SHR-DAW is a small music workstation built from several deliberately separate
 parts: role-separated controller/performance inputs, one managed software
-engine, in-process SHR Drums, an FT2-style MIDI sequencer, a private WAV loop
-player, a synchronized raw multitrack recorder, and an optional owned final
-performance bus. This guide connects those parts and explains what the musician
-can do with them.
+engine, in-process SHR Drums, a FastTracker II (FT2)-style MIDI sequencer, a
+private WAV loop player, a synchronized raw multitrack recorder, and an
+optional owned final performance bus. This guide connects those parts and
+explains what the musician can do with them.
 For exact configuration keys use
 [Configuration and routing](CONFIGURATION.md); for the DSP and real-time
 contract use [Audio graph and DSP contract](AUDIO_GRAPH.md).
+
+In architecture pages, **owned** means started or created by SHR-DAW and
+therefore safe for it to change or stop. An **exact route** is a saved endpoint
+that is never guessed. To **publish** a graph plan means making a validated,
+bounded plan active for the audio callback.
 
 ## The whole signal model
 
@@ -300,87 +305,28 @@ overridden for writable user memories, and never remove raw channels 1–16 or
 the musician-facing 1–128 numeric fallback. They describe rather than detect
 downstream DIN hardware. See [MIDI device profiles](MIDI_DEVICE_PROFILES.md).
 
-## FT2 Play, Record, and Edit modes with N00B
+## FT2 ownership
 
-The FT2 screen has three explicit modes:
+Play, Record, and Edit are separate modes over the same Pattern data. Each
+Pattern page owns four lanes, its route, entry layout, automatic Note Off
+choice, and live-audition destination. Record quantizes performance input.
+Edit writes deliberate cells with independent note length and row advance.
+N00B is a scale filter layered over those modes, not another mode.
 
-- **Play** navigates rows, pages, lanes, and Arrangement steps and starts
-  transport from the cursor or Project beginning.
-- **Record** performs quantized capture into the selected online Pattern page,
-  whether its exact target is the Pattern-owned software instrument or hardware.
-- **Edit** writes notes or chords from MIDI/computer-keyboard input. Blank,
-  erase, and note-off are explicit operations, and the persistent 0–32-row
-  advance determines the next cursor position. Its independent 1/1–1/128
-  length selector writes the existing gate/note-off representation. Edit has
-  only contextual EDIT, SET, SELECT, and SYS command pages; SYS Exit returns
-  one level to normal FT2 without changing Pattern, page, column, or row.
+Manual, One column, and Drum auto change only future entry. They do not rewrite
+existing cells or move the visible cursor. Cell Edit remains transactional:
+Confirm publishes the complete cell and Exit restores the original.
 
-Every Pattern page separately persists a note-entry layout. Manual starts at
-the musician's selected column. One column redirects every future note and
-recorded release to its persisted C1–C4 anchor, making it intentionally
-monophonic without changing that column's route. Drum auto performs a
-deterministic, atomic four-lane allocation when notes are inserted. Alternating
-core hits reuse a compact primary lane, simultaneous/quantized groups claim
-distinct empty cells, and fills spill without overwriting the target row.
-Automatic writes never move the visible lane cursor.
+An explicit page route is authoritative. A genuinely new, empty, unsaved
+Project may adopt the current Player instrument for page 1 without restarting
+it; saved or otherwise changed Projects keep their own routes. Route changes
+release the old destination before the new one is armed.
 
-Each page also persists whether future Edit/Record entry writes automatic OFF
-cells. Melodic pages default on and one-shot percussion pages default off.
-Turning it off leaves explicit OFF/CUT cells and all transport cleanup intact;
-same-lane retrigger still interrupts the previous lane note.
-
-Drum auto classifies notes as core, long-tail, or other percussion, with an
-optional choke group. General MIDI cymbals and hi-hats provide defaults;
-unknown notes are ordinary short percussion, and a page may persist non-GM
-overrides. Unrelated active cymbal lanes are excluded during placement.
-Same-note retriggers and matching choke groups may reuse the relevant lane.
-This is not a scheduler rule: once a cell is stored, the existing lane
-scheduler interrupts the previous same-lane note for every sound.
-
-**N00B is an independent filter switch, not a fourth mode.** It can remain on
-through Play, Record, and Edit. The chosen root plus major or natural-minor
-scale gates input on the selected melodic page: accepted notes retain their
-exact pitch, rejected notes stay silent, and Record/Edit write only accepted
-notes. Player shows the scale as a compact in-place rotary while the filter is
-enabled. FT2 reuses that selection and toggles it without opening another
-screen. Switching N00B never changes the underlying mode. It turns off on
-percussion pages.
-
-The selected Pattern page owns live audition. A software page loads its saved
-engine/instrument pair; MIDI pages keep independent destination/channel/program routes;
-and percussion pages use their channel and drum mapping. Route changes cancel
-the old destination/channel before the new one is armed. An explicit FT2 route
-is authoritative. Only a genuinely new, empty, unsaved default Project may
-replace its factory page 1 route with the currently loaded Player instrument;
-ownership of the already-running managed engine then moves to FT2 without a
-restart. With no Player engine, that fresh Project loads the first available
-synthv1 preset. Saved and otherwise changed Projects are never inferred from an
-empty note grid and keep their routes.
-
-Cell Edit is transactional: changes are made to a draft, `CONFIRM` publishes
-the whole cell, and `EXIT` restores the original. A cell can hold a note or
-note-off, inherited/explicit velocity and gate, a per-note program override,
-and one command: cut, delay, retrigger, tempo, or none. Program audition uses
-the selected page destination and column channel without inserting a note or
-duplicating generic live thru.
-
-Pattern Setup initially offers musically convenient meter-specific shapes:
-4/4 Patterns of 8/16/32/64/128 rows and corresponding 3/4 Patterns of
-6/12/24/48/96 rows.
-`CONFIRM` performs NEW or CLEAR with the newly selected shape. `KEEP` performs
-the same requested operation while retaining the current Pattern's shape:
-NEW creates a blank Pattern with that meter/length, and CLEAR removes content
-without reshaping. The interactive length chooser exposes every size from 1 through
-32 rows, plus 48, 64, 96, 128, 192, and 256 rows. Groove timing remains planned
-work rather than a current menu promise.
-
-The reusable drum library contains 72 authored four-lane starting points in ten
-creative genre groups. Filters choose 3/4 or 4/4 and a 2/4/8-bar phrase. Loading
-changes the first percussion page's cells without replacing its MIDI target,
-channels, bank, program, tempo, or Arrangement. User saves are separate
-`.shdrum` files; bundled patterns are read-only. Melody-only transpose leaves
-percussion pages and note-offs unchanged and refuses the whole edit if a note
-would leave MIDI range.
+Pattern setup, drum-library loading, transpose, and Arrangement operations
+change Project records without changing private source libraries. The exact
+musician workflow and field behavior belong to the [Tracker
+guide](TRACKER.md). The [Project storage sections](CONFIGURATION.md#tracker-pages)
+define what is persisted.
 
 ## The managed audio graph
 
@@ -524,69 +470,25 @@ per-input effect chain, or arbitrary wiring.
 ## Live Patterns, Loop Mix, and the final bus
 
 Live Patterns is a sequencer-owned performance view over existing Pattern
-records. Browsing is UI state only. A successful activation is scheduled at a
-Pattern/bar boundary, validated against its exact targets, and published to
-capture only after it actually starts. Quantized transitions retain held lanes
-whose destination/channel/note remains valid; changed owners release before
-new events. A different managed instrument is prepared at the boundary after
-old notes release, never layered in advance.
+records. Browsing is UI state. Successful activations occur at validated
+Pattern or bar boundaries. Temporary lane shaping changes a runtime copy and
+is dropped when the Project is replaced.
 
-Transient lane mute/velocity/gate/transpose shapes a runtime Pattern copy.
-Stored cells and persisted lane settings remain unchanged. The state belongs
-to the open Project and is dropped on Project replacement.
+Each Pattern owns four optional references to private WAVs. The fixed renderers
+share one owned JACK client and sum to one logical Loop source. Only the active
+and incoming Pattern are prepared. The callback publishes a fixed renderer set
+without allocation, locks, decoding, or file access. A failed slot stays silent
+without stopping healthy slots or MIDI.
 
-Every Pattern owns four optional references to privately imported mono or stereo
-WAVs. This keeps its MIDI pages and Loop Mix material together without making
-decoded audio into MIDI lanes. Repeated Arrangement steps share the Pattern
-record; a clone copies references/settings into an independent Pattern but
-never copies the WAV. The import inbox is only a browser source; each selected
-file is validated and copied without replacement below the private SHR data
-directory. Every populated slot saves filename, interpreted source BPM,
-half/normal/double mode, non-destructive cut, whole-bar placement offset, level,
-and bipolar filter.
+Arrangement steps and Live retriggers restart Pattern-local phase for MIDI and
+loops together. In direct mode the Loop output connects to playback. An active
+final-bus transaction moves that same output into the sum and removes the
+direct links, so the path is never doubled. Removing a slot detaches its
+Project reference and keeps the private WAV.
 
-Loop analysis is offline, outside the JACK callback. `AUTO` uses bounded pulse
-and duration analysis when useful and proposes a whole-bar interpretation.
-Playback remains native-speed and requires every active slot's interpreted BPM
-to equal its Pattern tempo and its sample rate to match JACK. Incompatible
-slots are refused rather than drifting. Each decoded WAV is bounded to
-6,000,000 frames, about 125 seconds at 48 kHz.
-
-The four fixed renderers share one owned JACK client and sum internally after
-region/phase, smoothed level, and the neutral/low-pass/high-pass filter. The
-callback allocates and locks nothing. In direct mode its one output pair
-connects to playback. An active performance-bus transaction moves that exact
-pair into the sum and removes the direct links, so there is never a parallel
-doubled path. `LOOP OUT` means the complete four-slot Loop source; `FINAL OUT`
-includes all three logical bus sources.
-
-Only the active and incoming Pattern are prepared; saved Patterns add no JACK
-clients, callback renderers, mixer sources, or eager decoding. Each Pattern
-activation invalidates old runtime queues and publishes one fixed four-slot
-renderer set through a single bounded atomic handoff. The callback swaps only
-pointers; the owner thread reclaims the retired set. Outgoing audio becomes
-silent at the MIDI boundary even if incoming preparation is late. Healthy
-prepared slots start at the same boundary; failed ones remain silent and
-faulted.
-
-The slots share the owning Pattern's local transport origin, meter, tempo, and
-bar scheduler but launch/stop independently. Every Arrangement step and Live
-retrigger restarts local phase. Starting at a middle row seeks from that local
-beat; preceding Arrangement steps never contribute phase. Different whole-bar
-lengths retain phase. The summed Loop source
-receives only its final-bus level/mute, then shares the
-master, limiter, final meter, recorder, and playback with the other sources.
-`REMOVE` detaches only the selected Pattern slot while keeping the private WAV.
-`LIBRARY` opens the shared overlay for that slot and browses inbox and private
-files without auto-preview.
-Controller PLAY explicitly previews the selection. Changing selection, STOP,
-Back, closing/leaving the browser, or leaving Loop Mix stops preview.
-Activating an inbox entry imports and loads it; activating a
-private/current/saved entry attaches and loads it. Failed preview/import keeps
-the caller and selection for retry, and import failure rolls back its private
-copy and Project attachment. It does not delete existing library files. The
-screen shows only active, queued, muted, missing, and fault states. One bad slot
-does not stop healthy slots. See [Live performance](LIVE_PERFORMANCE.md).
+See [Live performance](LIVE_PERFORMANCE.md) for launch, preview, capture, and
+boundary controls. See [Audio graph and DSP contract](AUDIO_GRAPH.md) for the
+callback and routing limits.
 
 ## Note ownership and failure behavior
 

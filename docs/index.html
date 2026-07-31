@@ -102,7 +102,11 @@ a.external::after { content: " ↗"; color: var(--yellow); font-size: .8em; }
   width: 100%; border: 1px solid var(--line); border-radius: .35rem;
   background: var(--panel); color: var(--text); padding: .62rem .7rem; font: inherit;
 }
+.search-scope { display: flex; align-items: start; gap: .45rem; margin: .55rem 0 0; }
+.search-scope input { width: auto; margin-top: .25rem; accent-color: var(--green); }
+.search-scope label { margin: 0; color: var(--text); }
 .search-help { margin: .35rem 0 0; color: var(--muted); font-size: .75rem; }
+.no-js .search-box { display: none; }
 #search-results { margin: .7rem 0 1.1rem; padding: 0; list-style: none; }
 #search-results li { margin-bottom: .65rem; }
 #search-results a { display: block; font-weight: 700; font-size: .9rem; }
@@ -310,415 +314,266 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <a class="skip-link" href="#main-content">Skip to documentation</a>
 <header class="site-header"><a class="brand" href="#top"><span class="leds" aria-hidden="true"><span class="led"></span><span class="led yellow"></span><span class="led red"></span></span><span>SHR-DAW</span></a><div class="header-links"><a href="#features-title">About</a><a href="#screenshots">Screens</a><a href="#install">Install</a><a class="external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">Source</a><button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Documentation</button></div></header>
 <div class="site-shell">
-<aside class="site-nav" id="site-nav" aria-label="Documentation navigation"><h2>Documentation</h2><div class="search-box"><label for="doc-search">Search this page</label><input id="doc-search" type="search" autocomplete="off" placeholder="Try “loops” or “JACK”"><p class="search-help">Press / to search</p><p class="sr-only" id="search-status" aria-live="polite">Search all headings and document text.</p><ul id="search-results"></ul></div><noscript><p>Search needs JavaScript; all navigation and documentation remain available below.</p></noscript><ul class="page-links"><li><a href="#features-title">What it does</a></li><li><a href="#screenshots">Screens</a></li><li><a href="#start-here">Where to begin</a></li><li><a href="#install">Install</a></li><li><a href="#documentation">Detailed guides</a></li></ul>
+<aside class="site-nav" id="site-nav" aria-label="Documentation navigation"><h2>Documentation</h2><div class="search-box"><label for="doc-search">Search this page</label><input id="doc-search" type="search" autocomplete="off" placeholder="Try “loops” or “JACK”"><span class="search-scope"><input id="search-archive" type="checkbox"><label for="search-archive">Include technical archive</label></span><p class="search-help">Press / to search</p><p class="sr-only" id="search-status" aria-live="polite">Search current guides. The technical archive is off.</p><ul id="search-results"></ul></div><noscript><p>Search needs JavaScript; all navigation and documentation remain available below.</p></noscript><ul class="page-links"><li><a href="#features-title">What it does</a></li><li><a href="#screenshots">Screens</a></li><li><a href="#start-here">Where to begin</a></li><li><a href="#install">Install</a></li><li><a href="#documentation">Detailed guides</a></li></ul>
 <details open><summary>Start and use</summary><ul><li><a href="#doc-first_run">First run</a></li><li><a href="#doc-using_shr_daw">Using SHR-DAW</a></li><li><a href="#doc-menu_manual">Screen and menu manual</a></li><li><a href="#doc-help">SHR-DAW Help</a></li><li><a href="#doc-tracker">Tracker guide</a></li><li><a href="#doc-live_performance">Live performance</a></li><li><a href="#doc-demo_songs">Public-domain demo songs</a></li><li><a href="#doc-controller_interface">Controller action inventory and paging design</a></li><li><a href="#doc-connections">Physical connections</a></li><li><a href="#doc-menu-everyday_screens">Everyday screens</a></li><li><a href="#doc-menu-loops_and_effects">Loops and effects</a></li><li><a href="#doc-menu-tracker_and_projects">FT2, Projects, and Patterns</a></li></ul></details>
 <details><summary>Install and configure</summary><ul><li><a href="#doc-installation">Installation</a></li><li><a href="#doc-pi5_nvme_install">Raspberry Pi 5 NVMe installation</a></li><li><a href="#doc-audio_system_optimization">Raspberry Pi audio-system policy</a></li><li><a href="#doc-configuration">Configuration and tracker routing</a></li><li><a href="#doc-midi_device_profiles">MIDI device profiles</a></li><li><a href="#doc-controller_profiles">Automatic controller setup and MIDI learn</a></li><li><a href="#doc-codex_assisted_setup">Codex-assisted SHR-DAW setup</a></li></ul></details>
 <details><summary>Architecture and safety</summary><ul><li><a href="#doc-how_it_works">How SHR-DAW works</a></li><li><a href="#doc-audio_graph">Audio graph and DSP contract</a></li><li><a href="#doc-final_performance_bus">Final stereo performance bus</a></li><li><a href="#doc-multitrack_recording">Synchronized multitrack recording</a></li><li><a href="#doc-mr18_test_plan">Midas M AIR MR18 acceptance plan</a></li><li><a href="#doc-multitrack_presentation">Three-minute multitrack presentation</a></li><li><a href="#doc-third-party">Licensing and redistribution</a></li><li><a href="#doc-new_patches">New patches and sounds</a></li></ul></details>
 <details><summary>Licence</summary><ul><li><a href="#doc-license">MIT licence</a></li></ul></details>
+<details><summary>Related public documentation</summary><ul><li><a class="external" href="https://github.com/PaolaShultz/shr-drums" target="_blank" rel="noopener noreferrer external">SHR Drums engine, kit format, and sources</a></li><li><a class="external" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external" lang="hr">Učenje kroz istraživanje (Hrvatski)</a></li></ul></details>
 <ul class="page-links archive-link"><li><a href="#technical-records">Technical records and future plans</a></li></ul></aside>
 <main id="main-content">
 <section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.6</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, or seven editable Moj Sint Model D starts through one safely managed melodic engine, alongside in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum, and loop parts as multi-page Patterns and Arrangements; or perform them with Live Patterns and the four-slot Loop Mix.</div><div class="feature-card">Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.</div><div class="feature-card">Record synchronized raw mono stems or a real-time final 24-bit stereo WAV after the fixed master strip and protected true-peak path.</div><div class="feature-card">Play and navigate with physical MIDI controls, MIDI keyboards, the computer keyboard, or terminal mouse/pointer input.</div></div></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, or seven editable Moj Sint Model D starts through one managed melodic engine, alongside in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum, and loop parts as multi-page Patterns and Arrangements; or perform them with Live Patterns and the four-slot Loop Mix.</div><div class="feature-card">Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.</div><div class="feature-card">Record synchronized raw mono stems or a real-time final 24-bit stereo WAV after the fixed master strip and protected true-peak path.</div><div class="feature-card">Play and navigate with physical MIDI controls, MIDI keyboards, the computer keyboard, or terminal mouse/pointer input.</div></div></section>
 <section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="ce56af5771a347d8b738c107d6e60511647f685cb06955d59f85142e27d128fa" decoding="async" height="624" id="shot-ce56af5771a3" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="889a405e74bbeb38078e626f9d6ad5313d15938a14f55da06a15fdabe7c8cb5d" decoding="async" height="624" id="shot-889a405e74bb" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="dccca5c68ac49005acf541ccbe9f54b46044d42098cea5e3d49a649c7d89b484" decoding="async" height="624" id="shot-dccca5c68ac4" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="3e12ff768e9d441b7b52e19106d96262872152d881deb66e9f9b89fcfbccabfa" decoding="async" height="624" id="shot-3e12ff768e9d" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
 <section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
 <section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>./scripts/install.sh
 shr-setup
 shr doctor
-shr</code></pre><p>JACK is optional for browsing and external-MIDI sequencing, but required for software-instrument audio, WAV loops, effects, and audio recording. SHR-DAW does not start or restart JACK. Continue with First run or the full installation guide, which keeps clean Lite installation evidence distinct from connected physical audio/MIDI evidence.</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
+shr</code></pre><p>The JACK Audio Connection Kit (JACK) is optional for browsing and external-MIDI sequencing, but required for software-instrument audio, WAV loops, effects, and audio recording. SHR-DAW does not start or restart JACK. Continue with First run or the full installation guide, which keeps clean Lite installation evidence distinct from connected physical audio/MIDI evidence.</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
 <section class="documentation-library" id="documentation" aria-labelledby="documentation-title"><header class="library-header"><p class="eyebrow">Detailed guides</p><h2 id="documentation-title">The manual, when you need it</h2><p>Choose a subject and open only that guide. Measurements, maintainer records, and future plans stay in a separate archive below.</p></header>
 <section class="library-group" aria-labelledby="group-start-and-use"><header class="group-header"><p class="eyebrow">Current behaviour</p><h3 id="group-start-and-use">Start and use</h3><p>Musician-facing workflows, screens, performance tools, and physical connections.</p></header>
-<details class="document" id="doc-first_run" data-source="docs/FIRST_RUN.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">First run</span><span class="document-summary">Configure hardware and open SHR-DAW.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FIRST_RUN.md" target="_blank" rel="noopener noreferrer external">View docs/FIRST_RUN.md source</a></div><p>You do not need a full hardware studio to start. SHR-DAW is designed around a
-small paged MIDI control surface, and the computer keyboard remains a complete
-input option. External synths, an audio interface, mixer, and dedicated display
-are optional.</p>
+<details class="document" id="doc-first_run" data-source="docs/FIRST_RUN.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">First run</span><span class="document-summary">Configure hardware and open SHR-DAW.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FIRST_RUN.md" target="_blank" rel="noopener noreferrer external">View docs/FIRST_RUN.md source</a></div><p>You can start with a Raspberry Pi and a terminal. A MIDI keyboard, control
+surface, audio interface, mixer, and dedicated display are optional.</p>
 <h4 id="doc-first_run--configure-and-start" tabindex="-1">Configure and start<a class="heading-anchor" href="#doc-first_run--configure-and-start" aria-label="Link to Configure and start">#</a></h4>
-<p>Run these commands after installation:</p>
+<p>After installation, run:</p>
 <pre><code class="language-sh">shr-setup
 shr doctor
 shr
 </code></pre>
-<p>The setup wizard selects the control surface and performance keyboard inputs
-separately, selects English or German note spelling, installs four starter
-loops and ten cleared demo Projects, and finds ALSA MIDI and JACK audio ports. It can also
-download four private MusicRadar drum loops after showing the redistribution
-restriction. You can enter an exact port name if automatic detection is not
-enough. Run <code>shr-setup</code> again after changing a controller, MIDI interface,
-sound card, or JACK port layout.</p>
-<p>The preferred playback pair is followed by optional named internal-device and
-analogue-headphone fallbacks. The headphone pair is always tried last. These
-are remembered machine choices: disconnecting hardware never replaces them,
-and the fallback banner names both the active substitute and missing preference.</p>
-<p><code>shr doctor</code> checks the complete audio/MIDI setup, so it reports missing JACK
-as a problem and keeps a strict failing exit status. Its final grouped
-<code>CORE / EDITOR</code>, <code>MIDI</code>, <code>JACK AUDIO</code>, and <code>AUDIO TUNING</code> summaries distinguish
-which capabilities are ready. Audio tuning reports configured intent separately
-from live state: for example, reboot required, stale kernel tokens, an inactive
-but enabled JACK service, duplicate JACK processes, an administrator-owned
-setting left untouched, or an available rollback. Each non-ready state names
-the precise safe inspection or repair command; doctor does not change system
-policy or service state. The preset browser and external-MIDI tracker can still
-open without JACK; loading a software instrument, playing a WAV loop, and
-recording audio require it. SHR-DAW does not start or restart JACK.</p>
-<p>Setup first retains a working distribution policy and JACK owner. A clean
-64-bit Raspberry Pi OS Lite login can opt into missing real-time permissions;
-Patchbox keeps its existing policy and shared JACK service. All system-changing
-setup questions default to no, and the final summary identifies logout/login,
-reboot, or next explicit JACK-start actions. Preview the optional CPU policy
-with <code>shr-audio-tune plan 3</code>, and inspect or retry it with
-<code>shr-audio-tune status</code>, <code>shr-audio-tune doctor 3</code>, or
-<code>sudo shr-audio-tune recover</code>. Details and rollback are in
-<a href="#doc-audio_system_optimization">Raspberry Pi audio-system optimization</a>.</p>
-<p>The effects graph is disabled by default, so synth, SHR Drums, and loop audio
-initially use their configured direct routes. Read <a href="#doc-how_it_works">How SHR-DAW
-works</a> before enabling the fixed final bus or Input software
+<p><code>shr-setup</code> keeps controller input and musical keyboard input as separate
+choices. It also asks about note spelling, MIDI output, JACK Audio Connection
+Kit (JACK) playback, audio capture, and optional CPU tuning. The wizard seeds
+four starter loops and ten cleared demo Projects. You may also choose a private
+MusicRadar loop download after reading its redistribution limit.</p>
+<p>Run setup again when a controller, interface, sound card, or port layout
+changes. Remembered hardware choices are not replaced just because a device is
+temporarily disconnected. If the preferred playback pair is missing, SHR tries
+the configured fallbacks in order and reports which one it used.</p>
+<p><code>shr doctor</code> is a strict check of the complete setup. Missing JACK therefore
+produces a failing result even though the preset browser and external MIDI
+tracker can still open. Software instruments, WAV loops, effects, and audio
+recording require JACK. SHR-DAW never starts or restarts JACK.</p>
+<p>Doctor groups its report into <code>CORE / EDITOR</code>, <code>MIDI</code>, <code>JACK AUDIO</code>, and
+<code>AUDIO TUNING</code>. It does not change policy or services. Each problem includes
+the relevant inspection or recovery command. The optional CPU policy and its
+rollback are documented in <a href="#doc-audio_system_optimization">Raspberry Pi audio-system
+optimization</a>.</p>
+<p>The effects graph starts disabled. Software instruments, SHR Drums, and loops
+first use their configured direct routes. Read <a href="#doc-how_it_works">How SHR-DAW
+works</a> before enabling the final bus or Input software
 monitoring.</p>
-<h4 id="doc-first_run--choose-how-to-play" tabindex="-1">Choose how to play<a class="heading-anchor" href="#doc-first_run--choose-how-to-play" aria-label="Link to Choose how to play">#</a></h4>
+<h4 id="doc-first_run--play-something" tabindex="-1">Play something<a class="heading-anchor" href="#doc-first_run--play-something" aria-label="Link to Play something">#</a></h4>
 <ul>
-<li>Use the configured control surface for the primary four-page/four-button
-menus and synth controls.</li>
-<li>Add one or more performance MIDI keyboards to play velocity, chords, and live
-recordings. They bypass controller mappings even when note or CC numbers
-overlap.</li>
-<li>The terminal keyboard is a fully qualified input device alongside configured
-controller and performance inputs. Use it to navigate and enter tracker
-notes with <code>Z S X D C V G B H N J M</code> whenever convenient.</li>
-<li>Open <strong>FILES</strong> in FT2 to load one of the seeded demo Projects; its <code>AUTO</code>
-pages use whatever MIDI destination and channels this machine currently has.</li>
-<li>Open <strong>LIVE</strong> from FT2 tools to queue existing tracker Patterns without
-changing the saved Arrangement, or open <strong>LOOP</strong> to perform up to four
-tempo-compatible private WAV slots.</li>
-<li>Add external MIDI instruments and audio hardware only when useful.</li>
+<li>Use the computer keyboard to navigate and enter notes. The tracker note keys
+are <code>Z S X D C V G B H N J M</code>.</li>
+<li>A configured MIDI keyboard adds velocity, chords, and live recording. Its
+musical messages bypass controller commands.</li>
+<li>A configured control surface provides the four-page menus, main encoder,
+pads, and mapped synth controls.</li>
+<li>In the FastTracker II (FT2)-style tracker, open <strong>FILES</strong> to load a seeded
+demo Project. Its portable <code>AUTO</code> routes use the destinations and channels
+configured on this machine.</li>
+<li>Open <strong>LIVE</strong> to perform existing Patterns without changing the saved
+Arrangement. Open <strong>LOOP</strong> for the selected Pattern's four WAV slots.</li>
 </ul>
-<p>Computer-keyboard step entry is available, while free live performance of a
-software synth, a wider keyboard range, and more performance bindings remain
-future features. <code>?</code> and F1 already open Help.</p>
+<p><code>?</code> and F1 open contextual Help. The <a href="#doc-using_shr_daw">Using SHR-DAW</a> guide
+continues from here without repeating every screen action.</p>
 <h4 id="doc-first_run--terminal-size" tabindex="-1">Terminal size<a class="heading-anchor" href="#doc-first_run--terminal-size" aria-label="Link to Terminal size">#</a></h4>
-<p>SHR-DAW is designed for a 40×13 terminal. It adapts to the terminal cell size
-and reports when the window is too small. The installer does not change the
-font, desktop, display resolution, or fullscreen settings.</p>
-<p>Pixel resolution does not determine the number of terminal cells by itself.
-The terminal program, font, scaling, window borders, and fullscreen state all
-matter. Change those settings yourself if fewer than 40 columns or 13 rows fit.</p>
-<h4 id="doc-first_run--run-from-a-development-checkout" tabindex="-1">Run from a development checkout<a class="heading-anchor" href="#doc-first_run--run-from-a-development-checkout" aria-label="Link to Run from a development checkout">#</a></h4>
-<p>For a self-contained local setup, use:</p>
+<p>The native layout is 40 columns by 13 rows. SHR adapts to the terminal cell
+size and reports when the window is too small. The installer does not change
+the console font, display resolution, desktop, window borders, scaling, or
+fullscreen mode.</p>
+<p>Pixel resolution alone does not determine the available row and column count.
+Adjust your terminal settings if fewer than 40 columns or 13 rows fit.</p>
+<h4 id="doc-first_run--run-a-development-checkout" tabindex="-1">Run a development checkout<a class="heading-anchor" href="#doc-first_run--run-a-development-checkout" aria-label="Link to Run a development checkout">#</a></h4>
+<p>For a repository-local setup:</p>
 <pre><code class="language-sh">cargo build --locked
 ./scripts/setup-local.sh
 ./scripts/local.sh
 </code></pre>
-<p>This keeps configuration, logs, ideas, songs, recordings, downloads, and local
-presets below the ignored <code>$SHSYNTH_USER_DIR/</code> directory. Existing private files are not
-replaced. Set <code>SHSYNTH_USER_DIR</code> to use a different private directory. These
-helpers neither install packages nor start JACK; <code>setup-local.sh</code> only runs the
-routing wizard, and <code>local.sh</code> launches this checkout's <code>target/debug/shr</code>,
-identified as <code>DEV</code> in the TUI.</p>
-<h4 id="doc-first_run--if-setup-is-unusual" tabindex="-1">If setup is unusual<a class="heading-anchor" href="#doc-first_run--if-setup-is-unusual" aria-label="Link to If setup is unusual">#</a></h4>
-<p>The installer and setup wizard are the normal path. For uncommon controllers,
-complex routing, or recovery, Codex CLI can use the project's assisted-setup
-brief. Follow the official
-<a href="https://developers.openai.com/codex/cli/" class="external" target="_blank" rel="noopener noreferrer external">Codex CLI installation and sign-in guide</a>,
-then run:</p>
-<pre><code class="language-sh">cd /path/to/shr-daw
-codex -C . &quot;$(cat docs/CODEX_ASSISTED_SETUP.md)&quot;
+<p>The local helpers keep configuration, logs, Projects, Ideas, recordings,
+downloads, loops, and private presets below ignored <code>$SHSYNTH_USER_DIR/</code>. They preserve
+existing private files and do not install packages or start JACK.
+<code>setup-local.sh</code> configures the checkout. <code>local.sh</code> launches its
+<code>target/debug/shr</code>, identified as <code>DEV</code> in the TUI. Set <code>SHSYNTH_USER_DIR</code> to
+use another private root.</p>
+<h4 id="doc-first_run--unusual-hardware-or-recovery" tabindex="-1">Unusual hardware or recovery<a class="heading-anchor" href="#doc-first_run--unusual-hardware-or-recovery" aria-label="Link to Unusual hardware or recovery">#</a></h4>
+<p>The installer and setup wizard are the normal path. For an uncommon controller,
+complex route, or recovery problem, follow the
+<a href="#doc-codex_assisted_setup">Codex-assisted setup brief</a>. It keeps hardware
+inspection, audible tests, and system changes behind explicit permission.</p>
+<p>After installing and signing in to Codex CLI, start that brief from the
+checkout:</p>
+<pre><code class="language-sh">codex -C . &quot;$(cat docs/CODEX_ASSISTED_SETUP.md)&quot;
 </code></pre>
-<p>This optional path can identify controller messages one physical control at a
-time, inspect ALSA MIDI and JACK routes, repair setup problems, and help with
-SoundFonts or complex external-instrument routing. Read the
-<a href="#doc-codex_assisted_setup">assisted-setup brief</a> for its safety rules. Audible
-tests and system-wide changes still require the user's permission.</p>
-<p>Known USB controllers are matched during <code>shr-setup</code>; unknown devices can be
-mapped immediately with the non-audible MIDI learner. Profiles remain ordinary
-data and learned mappings remain private. See
-<a href="#doc-controller_profiles">Automatic controller setup and MIDI learn</a>. Assisted
-discovery remains useful for proprietary modes, displays, LED feedback, or
-deeply customized hardware.</p>
-<p>Next, read <a href="#doc-using_shr_daw">Using SHR-DAW</a>. For a larger hardware rig, see
-<a href="#doc-connections">Physical connections</a>.</p>
+<p>Known USB controllers are matched during setup. Unknown devices can use the
+non-audible MIDI learner; learned mappings remain private. See
+<a href="#doc-controller_profiles">Automatic controller setup and MIDI learn</a>.</p>
+<p>For a larger rig, continue with <a href="#doc-connections">Physical connections</a>.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-using_shr_daw" data-source="docs/USING_SHR_DAW.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Using SHR-DAW</span><span class="document-summary">Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/USING_SHR_DAW.md" target="_blank" rel="noopener noreferrer external">View docs/USING_SHR_DAW.md source</a></div><p>SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching
-workstation, not a desktop production DAW. It is designed to feel like a small
-hardware music appliance around a 40×13 TUI. Physical MIDI controls can carry
-the main workflow after setup, while MIDI keyboards, the computer keyboard,
-and terminal mouse/pointer input remain supported.</p>
-<h4 id="doc-using_shr_daw--what-it-is-for" tabindex="-1">What it is for<a class="heading-anchor" href="#doc-using_shr_daw--what-it-is-for" aria-label="Link to What it is for">#</a></h4>
-<p>SHR-DAW began with a personal need: play synths and capture ideas quickly while
-on the move or jamming with friends. It helps keep an idea before it disappears,
-then turn drums, bass, chords, melodies, loops, or tracker Patterns into a short
-musical sketch.</p>
-<p>Going from the first idea to a shareable sketch in roughly 10–15 minutes is an
-intended workflow and design goal. It is not a measured completion time,
-guarantee, or promise of a finished production. SHR can record the rough result
-as a final stereo WAV, but sending that file to someone uses ordinary tools
-outside SHR-DAW.</p>
-<h4 id="doc-using_shr_daw--from-idea-to-rough-sketch" tabindex="-1">From idea to rough sketch<a class="heading-anchor" href="#doc-using_shr_daw--from-idea-to-rough-sketch" aria-label="Link to From idea to rough sketch">#</a></h4>
+<details class="document" id="doc-using_shr_daw" data-source="docs/USING_SHR_DAW.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Using SHR-DAW</span><span class="document-summary">Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/USING_SHR_DAW.md" target="_blank" rel="noopener noreferrer external">View docs/USING_SHR_DAW.md source</a></div><p>SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation built
+around a 40×13 terminal. It supports a control surface, MIDI keyboards, the
+computer keyboard, and terminal pointer input. It is meant for quick musical
+work, not as a desktop production DAW.</p>
+<h4 id="doc-using_shr_daw--from-an-idea-to-a-sketch" tabindex="-1">From an idea to a sketch<a class="heading-anchor" href="#doc-using_shr_daw--from-an-idea-to-a-sketch" aria-label="Link to From an idea to a sketch">#</a></h4>
 <ol>
-<li>Start a new Project or load one you already have.</li>
-<li>Choose a software instrument or a routed external MIDI instrument. Browsing
-remains silent; <code>LOAD</code> is the only managed preset-start transaction.</li>
-<li>Create drums, melodic parts, free-timed MIDI Ideas, or Pattern-owned loops.</li>
-<li>Build Patterns and order them in the Arrangement, or perform them through
-Live Patterns.</li>
-<li>Use the source, aux, DRUMS, master, and fixed-strip processing where it helps.</li>
-<li>Record the final stereo performance WAV or synchronized raw stems.</li>
-<li>Share the resulting file outside SHR-DAW.</li>
+<li>Start a Project or load one from <strong>FILES</strong>.</li>
+<li>Choose a software instrument or a routed external MIDI instrument.</li>
+<li>Play freely, record a MIDI Idea, enter tracker notes, add drums, or attach
+Pattern-owned WAV loops.</li>
+<li>Build an Arrangement or perform the existing Patterns through <strong>LIVE</strong>.</li>
+<li>Add only the effects and final processing the sketch needs.</li>
+<li>Record the final stereo performance or synchronized raw stems.</li>
+<li>Share the resulting files with tools outside SHR-DAW.</li>
 </ol>
-<h4 id="doc-using_shr_daw--what-shr-daw-is-not" tabindex="-1">What SHR-DAW is not<a class="heading-anchor" href="#doc-using_shr_daw--what-shr-daw-is-not" aria-label="Link to What SHR-DAW is not">#</a></h4>
-<p>SHR-DAW has no desktop GUI. It supports terminal pointer input, but it is not
-designed around large mouse-driven windows, timelines, plugin panels, or mixer
-screens. It is not a replacement for Ardour, Ableton Live, Reaper, Bitwig, or a
-comparable full-scale production workstation.</p>
-<p>It is not a general plugin-format host, free-wiring system, unlimited-track
-mixer, waveform editor, or full mastering environment. It does not provide an
-offline whole-song renderer, an integrated export command, file upload,
-messaging, or collaborator-sharing service. The music can leave SHR as a
-recorded WAV; delivery happens elsewhere.</p>
-<p>SHR also does not try to automate every musical choice. The current tools help
-you play, filter, sequence, arrange, shape, and record the choices you make.
-Possible future assistance remains optional, reviewable proposal work, not a
-current capability.</p>
-<h4 id="doc-using_shr_daw--instruments" tabindex="-1">Instruments<a class="heading-anchor" href="#doc-using_shr_daw--instruments" aria-label="Link to Instruments">#</a></h4>
-<p>The Presets screen browses four kinds of software instruments:</p>
+<p>The intended idea-to-sketch target is roughly 10 to 15 minutes. That is a
+design goal, not a measured guarantee or a promise of a finished production.</p>
+<h4 id="doc-using_shr_daw--boundaries" tabindex="-1">Boundaries<a class="heading-anchor" href="#doc-using_shr_daw--boundaries" aria-label="Link to Boundaries">#</a></h4>
+<p>SHR-DAW has no desktop timeline, plugin windows, waveform editor, free-wiring
+matrix, unlimited mixer, offline song renderer, upload service, or messaging
+system. It does not replace Ardour, Ableton Live, Reaper, Bitwig, or another
+full production workstation.</p>
+<p>The program helps you play, sequence, arrange, shape, and record your own
+choices. Proposed musical assistants remain in
+<a href="#doc-future_improvements">Future improvements</a>; they are not current features.</p>
+<h4 id="doc-using_shr_daw--terms-used-in-the-guides" tabindex="-1">Terms used in the guides<a class="heading-anchor" href="#doc-using_shr_daw--terms-used-in-the-guides" aria-label="Link to Terms used in the guides">#</a></h4>
+<ul>
+<li><strong>FT2</strong> means the vertical Pattern editor inspired by FastTracker II. SHR-DAW
+is not an FT2 clone and does not read XM files.</li>
+<li><strong>MTR</strong> is the on-screen performance meter and final-bus control surface.</li>
+<li><strong>JACK</strong> is the JACK Audio Connection Kit, the low-latency audio server and
+connection graph. <strong>ALSA</strong> is the Advanced Linux Sound Architecture layer
+used for Linux MIDI and audio devices.</li>
+<li>A MIDI <strong>CC</strong> is a Control Change message. <strong>PPQN</strong> means pulses per quarter
+note and describes MIDI clock resolution.</li>
+<li><strong>LUFS</strong> measures perceived loudness relative to full scale. <strong>dBTP</strong> means
+decibels true peak.</li>
+<li><strong>XDG directories</strong> are the standard Linux locations used for private
+configuration and data.</li>
+<li><strong>Owned</strong> means SHR-DAW started or created something and may safely change or
+stop it. An <strong>exact route</strong> is one saved endpoint that SHR never guesses.</li>
+</ul>
+<h4 id="doc-using_shr_daw--instruments-and-playback" tabindex="-1">Instruments and Playback<a class="heading-anchor" href="#doc-using_shr_daw--instruments-and-playback" aria-label="Link to Instruments and Playback">#</a></h4>
+<p>Presets browses four software backends:</p>
 <ul>
 <li>synthv1 presets;</li>
 <li>Yoshimi <code>.xiz</code> banks;</li>
-<li>FluidSynth <code>.sf2</code> and <code>.sf3</code> SoundFonts.</li>
+<li>FluidSynth <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
 <li>Moj Sint <code>.mojsint</code> Model D presets.</li>
 </ul>
-<p>The ordinary rotary browses the current catalog. Hold its configured Shift
-while turning to change catalogs in either direction; keyboard <code>[</code>/<code>]</code> and the
-clickable heading halves remain available. Catalog browsing stays silent, and
-<code>LOAD</code> is the only preset-start or replacement transaction. Moj Sint reuses
-the owned-process, direct playback, optional graph, panic, replacement, and
-shutdown paths while keeping its own preset and control semantics. Its seven
-ordered starts are Full Bass, Full Lead, Full Filter Articulation, Matched
-Idealized, Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
-Feedback. They preserve the authored Model D audition coordinates and all
-remain editable through the same twelve Playback controls.</p>
-<p>Changing engine does not mix their files or control rules. The Playback screen
-shows held note names with each note's decimal MIDI velocity directly beneath
-it, chord names, a continuous keyboard-state strip, MIDI idea recording, and
-the selected backend's 12 mapped controls. This is a practical way to practise soft/loud
-key control, even chord attacks, and bass-plus-chord balance. It reports the
-controller's MIDI strike velocity (1–127), not measured audio loudness; the
-instrument and its settings decide how strongly that velocity changes sound.
-<code>display.note_names</code> in
-<code>shsynth.conf</code> selects German <code>B</code>/<code>H</code> spelling or English <code>A#</code>/<code>B</code> spelling.
-Recognized major triads use the explicit <code>maj</code> label, such as <code>C maj</code>, so the
-display does not rely on an omitted suffix to teach the chord quality.
-<code>IDEA+</code> stores a captured MIDI take with the current sound; it is not a
-preset-save command. <code>SOUNDS</code> returns to Presets and its visible <code>LOAD</code>.</p>
-<p>The loaded standalone instrument stays running when you leave Presets or
-Playback, so it remains available for effects and other screens. Global panic,
-application shutdown, loading a replacement, or entering FT2 with a different
-explicit software route still ends it safely. Entering a genuinely new, empty,
-unsaved default FT2 Project assigns the current Player engine/instrument to page
-1 without restarting it. With no Player instrument loaded, FT2 loads the first
-available synthv1 preset itself. Saved or explicitly changed Projects keep their
-own routes, including saved Projects with empty note grids.</p>
-<h4 id="doc-using_shr_daw--learning-by-exploration" tabindex="-1">Learning by exploration<a class="heading-anchor" href="#doc-using_shr_daw--learning-by-exploration" aria-label="Link to Learning by exploration">#</a></h4>
-<p>Playback N00B toggles a root plus major or natural-minor scale filter without
-leaving Player. While it is on, the same screen adds one compact <code>SCALE</code> rotary;
-turning the master encoder cycles the scale while every normal Player control,
-chord, note, velocity, and keyboard display remains visible. Allowed notes keep
-their pitch, other notes stay silent, and pressing N00B again restores chromatic
-play.</p>
-<p>FT2 toggles the same selected scale directly in Play, Record, and Edit on
-melodic pages; it never opens another workspace or changes the current mode.
-Record and Edit write only allowed notes; Edit note length remains
-independent from its row advance. Moving to Drums turns the filter off.</p>
-<p>The musician selects and stores the Project tonic and major or natural-minor
-mode. N00B filters live melodic input against that selected scale. SHR Drums
-already offers <code>OFF</code>, <code>FOLLOW KEY</code>, and <code>MANUAL</code> tuning per piece; <code>FOLLOW KEY</code>
-uses the stored Project key. SHR does not detect a song key from audio or infer
-one from a finished Arrangement.</p>
-<pre><code class="language-text">press -&gt; hear -&gt; see notes -&gt; read a chord name -&gt; change -&gt; compare -&gt; ask why
+<p>Browsing is silent. <code>LOAD</code> is the only managed start or replacement action.
+Only one SHR-managed melodic engine runs at a time. The loaded instrument
+continues when you leave Presets or Playback and stops on replacement, Panic,
+shutdown, or an FT2 route that needs a different backend.</p>
+<p>Playback shows held notes, decimal MIDI strike velocity, chord names, a
+keyboard-state strip when space permits, and 12 controls for the active
+backend. <code>IDEA+</code> saves the captured MIDI take and its sound identity; it does
+not save an instrument preset. <code>SOUNDS</code> returns to Presets and its visible
+<code>LOAD</code>.</p>
+<p>Moj Sint keeps its own preset format and controls. Its seven authored starts
+remain one editable Model D instrument family. SHR Drums is separate from the
+managed melodic engine and runs in process. Its public source, format, and
+provenance are linked from <a href="#documentation">the documentation index</a>.</p>
+<h4 id="doc-using_shr_daw--explore-with-n00b" tabindex="-1">Explore with N00B<a class="heading-anchor" href="#doc-using_shr_daw--explore-with-n00b" aria-label="Link to Explore with N00B">#</a></h4>
+<p>Playback N00B filters live melodic input to a selected root plus major or
+natural-minor scale. Allowed notes keep their pitch; other notes stay silent.
+The screen still shows the normal notes, chords, velocities, keyboard, and
+controls.</p>
+<p>FT2 uses the same scale on melodic pages in Play, Record, and Edit. Record and
+Edit write only accepted notes. Moving to a percussion page turns the filter
+off. The Project stores its tonic and scale mode; SHR does not infer a key from
+audio or a finished Arrangement.</p>
+<p>The practical loop is simple:</p>
+<pre><code class="language-text">press -&gt; hear -&gt; see -&gt; change -&gt; compare -&gt; ask why
 </code></pre>
-<h4 id="doc-using_shr_daw--screens" tabindex="-1">Screens<a class="heading-anchor" href="#doc-using_shr_daw--screens" aria-label="Link to Screens">#</a></h4>
+<h4 id="doc-using_shr_daw--workspaces" tabindex="-1">Workspaces<a class="heading-anchor" href="#doc-using_shr_daw--workspaces" aria-label="Link to Workspaces">#</a></h4>
 <p>Home opens Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing,
-Effects, Ideas, or Help. Recorder's Audio screen owns setup, naming, assignment,
-and take routing; its Levels screen keeps all 18 recording inputs visible at
-once. The master rotary browses the current content; press
-it to select or confirm. Back returns one level, and controller MIDI never
-quits the application.</p>
-<p>On screens that already have a second reversible browse axis, holding the
-configured encoder Shift gives the rotary that axis: Presets engine, FT2
-column, Tracks column, Live Pattern lane, Loop Mix slot, drum genre, FX target,
-or MASTER STRIP detail section. Other screens leave Shift-turn inert rather
-than assigning it to a destructive, transport, or confirmation action.</p>
-<p>Software Synths leads from Presets to Playback and MIDI Ideas. FT2 owns
-Patterns, pages, Arrangement, Projects, drums, Live Patterns, and the fourth
-musician-facing Loop Mix page. Recorder captures raw synchronized stems; Performance owns
-the optional final bus and stereo recording. Routing edits machine choices,
-while MIDI Learn configures the controller without forwarding learned input.
-Its optional encoder-Shift step learns the whole held gesture—left turn, right
-turn, then release—so controllers that change the rotary CC while Shift is held
-do not require a hand-edited mapping.</p>
-<p>Temporary master overlays keep their caller visible and cancel unconfirmed
-drafts on close. For every screen, controller page, shortcut, and exact loop
-workflow, use the <a href="#doc-menu_manual">visual menu manual</a>, <a href="#doc-tracker">tracker
-guide</a>, and <a href="#doc-controller_interface">controller interface</a>.
-Controller-clock setup belongs in <a href="#doc-configuration--dedicated-controller-clock-and-transport">Configuration and
-routing</a>.</p>
-<h4 id="doc-using_shr_daw--live-performance" tabindex="-1">Live performance<a class="heading-anchor" href="#doc-using_shr_daw--live-performance" aria-label="Link to Live performance">#</a></h4>
-<p><strong>Live Patterns</strong> browses four existing tracker Patterns at a time without
-launching them. A launch queues for the selected Pattern or bar boundary;
-retrigger, queue replacement/cancel, deliberate immediate launch, and literal
-Stop remain visible. Optional capture records only successful activations and
-requires Append/Replace confirmation before the Arrangement changes.</p>
-<p>The same screen gives the selected page's four MIDI lanes transient mute,
-velocity, gate, and transpose controls. They leave cell data unchanged, survive
-navigation, and reset safely when another Project loads. Shift-rotary changes
-the lane through the same path as Left/Right while preserving Pattern browse.</p>
-<p><strong>Loop Mix</strong> is decoded audio, not fake MIDI lanes, but its four private WAV
-slots belong to the selected FT2 Pattern. Browsing another Pattern changes the
-editor without changing the sound. Arrangement and Live Pattern boundaries
-switch MIDI and loops together and restart Pattern-local phase; repeated
-references share settings but each step restarts. All active WAVs must match
-their owning Pattern's tempo and JACK sample rate. One bad slot does not stop
-healthy loops or MIDI, and SHR-DAW does not time-stretch them.
-The ordinary rotary browses inbox files; Shift-rotary changes the selected loop
-slot without launching it.</p>
-<p>See <a href="#doc-live_performance">Live performance</a> for exact controls, capture,
-ownership, routing, realtime limits, and unsupported DJ features.</p>
-<h4 id="doc-using_shr_daw--midi-ideas" tabindex="-1">MIDI ideas<a class="heading-anchor" href="#doc-using_shr_daw--midi-ideas" aria-label="Link to MIDI ideas">#</a></h4>
-<p>Ideas capture free playing as MIDI. Each saved idea keeps its timing and
-instrument identity. A synthv1 or Moj Sint idea includes its own private preset snapshot;
-other engines retain the external instrument reference. Mapped synthv1 control
-values are saved too. Loading an idea can replace the current managed engine,
-then PLAY runs through the restored idea instrument rather than an arbitrary
-active engine.</p>
-<h4 id="doc-using_shr_daw--effects-and-routing" tabindex="-1">Effects and routing<a class="heading-anchor" href="#doc-using_shr_daw--effects-and-routing" aria-label="Link to Effects and routing">#</a></h4>
-<p>SHR's effects are bounded real-time processors designed and measured for
-Raspberry Pi constraints. The 13 implemented effect types, source and master
-racks, two aux paths, fixed DRUMS rack, meters, LUFS readout, true-peak limiter,
-and fixed final master strip can shape, characterise, and give a sketch a quick
-final polish. They are not a commercial plugin suite or a promise of
-professional mastering.</p>
-<p>Open Effects from Home, Playback <strong>SYS</strong> → <strong>FX</strong>, or FT2's page tools; Back
-returns to the caller. <code>TARGET</code> selects SOURCE, AUX 1, AUX 2, DRUMS, or MASTER.</p>
-<p>Source effects process the managed instrument in series. Aux sends make
-parallel wet-only copies, and the master rack processes the complete final-bus
-sum. DRUMS is a fixed Reverb-then-Delay rack whose bypass states are shown as
-<code>OFF</code>, <code>REVERB</code>, <code>REVERB + DELAY</code>, or <code>DELAY</code>; it processes internal drums even
-on direct routing. Other Project rack edits remain available with the graph
-disabled, but direct audio does not process or meter them. Stop transport
-before changing the drum rack, and with the graph active stop transport and all
-recording before changing graph FX. See <a href="#doc-how_it_works--the-managed-audio-graph">How SHR-DAW
-works</a> for placement, effect choices,
-bypass, and routing.</p>
-<p>On the MASTER target choose <strong>STRIP</strong>, or use MTR <strong>NAV</strong> → <strong>STRIP</strong>, for the
-fixed Project-global MASTER STRIP after the rack and live master fader. Browse
-INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL; <strong>DETAIL</strong> opens only the
-selected section's parameters. Optional sections have smoothed bypass.
-<strong>A/B</strong> keeps the same latency and true-peak protection while comparing the
-optional processing; <strong>RESET I</strong> clears integrated loudness. Numerical edits
-are safe during playback but are refused during final recording. See
+Effects, Ideas, and Help. The main encoder browses; press it to select. Back
+returns one level. Controller MIDI never quits the application.</p>
+<p>Shift plus the main rotary changes a second reversible browse axis only where
+one exists, such as Preset engine, FT2 column, Live lane, Loop slot, drum
+genre, FX target, or MASTER STRIP section. It stays inert where an accidental
+turn could trigger transport, confirmation, or a destructive action.</p>
+<p>Ordinary overlays preserve their caller and discard unconfirmed drafts. FT2
+ROUTE is the live-audition exception: valid active-field choices change the
+Project and live route at once, Apply keeps them, and Cancel restores the route
+snapshot from when the overlay opened.</p>
+<p>Use these focused guides for exact actions:</p>
+<ul>
+<li><a href="#doc-menu_manual">Screen and menu manual</a> for every screen and controller
+page;</li>
+<li><a href="#doc-tracker">Tracker guide</a> for FT2 editing, routing, Patterns, Arrangement,
+drums, loops, and files;</li>
+<li><a href="#doc-controller_interface">Controller interface</a> for the complete physical
+action contract;</li>
+<li><a href="#doc-configuration">Configuration and routing</a> for machine settings and
+persisted route fields.</li>
+</ul>
+<h4 id="doc-using_shr_daw--live-patterns-loop-mix-and-ideas" tabindex="-1">Live Patterns, Loop Mix, and Ideas<a class="heading-anchor" href="#doc-using_shr_daw--live-patterns-loop-mix-and-ideas" aria-label="Link to Live Patterns, Loop Mix, and Ideas">#</a></h4>
+<p>Live Patterns lets you browse without launching, then queue activation at a
+Pattern or bar boundary. It can also capture successful activations for an
+explicit Append or Replace confirmation. Its lane mute, velocity, gate, and
+transpose controls are temporary and do not rewrite note cells.</p>
+<p>Each FT2 Pattern owns up to four private WAV loop references. Loop Mix browsing
+does not launch audio. Arrangement and Live boundaries switch the MIDI and WAV
+owners together. A bad slot is isolated, and SHR does not time-stretch files.</p>
+<p>Ideas preserve free-timed MIDI. A synthv1 or Moj Sint Idea includes its private
+preset snapshot; other backends keep their instrument reference. Loading an
+Idea restores its sound before playback.</p>
+<p>See <a href="#doc-live_performance">Live performance</a> for boundary timing, capture,
+failure behavior, and realtime limits.</p>
+<h4 id="doc-using_shr_daw--effects-and-final-sound" tabindex="-1">Effects and final sound<a class="heading-anchor" href="#doc-using_shr_daw--effects-and-final-sound" aria-label="Link to Effects and final sound">#</a></h4>
+<p>Effects contains bounded source, aux, drums, and master processing. The
+Project owns rack order, parameters, routing, the fixed DRUMS
+Reverb-then-Delay rack, and the fixed MASTER STRIP.</p>
+<p>With the optional graph disabled, ordinary source, aux, and master rack edits
+change Project data but do not process direct audio. The DRUMS rack still
+processes in-process drums on their direct path. With the graph active, stop
+transport and recording before changing graph structure. MASTER STRIP value
+changes can be auditioned during playback but are refused during final
+recording.</p>
+<p>The exact placement and safety rules live in <a href="#doc-how_it_works">How SHR-DAW
+works</a>, <a href="#doc-audio_graph">Audio graph and DSP contract</a>, and
 <a href="#doc-master_strip_measurement">Fixed stereo MASTER STRIP</a>.</p>
-<h4 id="doc-using_shr_daw--synchronized-audio-stems" tabindex="-1">Synchronized audio stems<a class="heading-anchor" href="#doc-using_shr_daw--synchronized-audio-stems" aria-label="Link to Synchronized audio stems">#</a></h4>
-<p>The Audio Recorder writes every armed exact source as a separate mono 24-bit
-WAV with one shared timeline and manifest. Select a musician-friendly track,
-assign a discovered source deliberately, name it, and arm it. A missing exact
-preference remains <code>missing</code> and blocks start until assigned or disarmed.
-The setup screen shows elapsed time, armed count, selected-track level, writer
-high-water, drops, overflows, xruns, saved path, and errors.</p>
-<p>Open <strong>LEVELS</strong> from Audio Recorder to see the dedicated 18-channel Levels
-overview. At exactly 40×13 it always shows 18 one-column, nine-LED vertical
-meters as three groups of six. Their thresholds are −48, −36, −30, −24, −18,
-−12, −6, −3, and −1 dBFS: green through −18, yellow from −12 through −3, and
-red at −1. Smoothed RMS fills the meter; a brighter LED of the same threshold
-colour holds sample peak, then decays predictably. A held red <code>C</code> marks a real
-clip without making ordinary near-peak yellow or red activity look broken.</p>
-<p>The encoder, Left/Right, or <code>j</code>/<code>k</code> selects a channel without hiding or changing
-any meter. Click/Enter or Space toggles its arm state. The right-hand command
-area has visible TAKE, CHANNEL, and SYS pages for setup, record, literal Stop,
-reset, channel selection/arm/refresh, Panic, Help, and Exit. PageUp/PageDown
-changes that visible page. <code>r</code>, <code>s</code>, <code>x</code>, <code>u</code>, and uppercase <code>S</code> provide Record,
-Stop, Reset, Setup, and Panic. Selection and page survive ordinary navigation;
-a new or loaded Project resets both.</p>
-<p>The native Levels screen alone omits the two usual controller rows so rows
-2–10 can hold all nine LEDs and rows 11–12 can label all channels. Row 13
-remains the normal shared status renderer and command pages remain visible at
-the right. Smaller terminals get an ordinary compact screen with the shared
-controller/status layout instead of a cropped or banked meter.</p>
-<p>Silence is nine dark-gray LEDs with a normal channel number. <code>M</code> on the label
-means the configured source is missing, <code>F</code> means a monitor/callback fault, and
-the shared row gives the useful recovery. The meter client and recording client
-are recorder-owned and mutually exclusive, so the overview adds no duplicate
-route while a take is running. It is visual metering, not audible software
-monitoring, a selected-channel inspector, a route browser, or a full mixer.
-Stop closes the owned take; Panic also stops recorder monitoring and preserves
-normal All Notes Off cleanup. Application shutdown closes whichever recorder
-client it owns.</p>
-<p>If recording is interrupted, the temporary <code>*.take.part</code> session remains. On
-the next start, recognized mono stems recover only their common complete frames
-and publish as <code>recovered-incomplete</code>; unknown or unsafe data is reported and
-not silently deleted.</p>
-<p>Each mono file has its own RIFF limit. Any overflow, callback violation, source
-loss, xrun, writer/storage error, or mismatched finalization prevents the take
-from appearing complete.</p>
-<p>This raw-stem workflow is separate from MTR's final-mix recorder. The latter
-writes one 24-bit interleaved stereo WAV containing the exact limited playback
-samples. See <a href="#doc-final_performance_bus">Final performance bus</a>.
-See <a href="#doc-multitrack_recording">Synchronized multitrack recording</a> for exact
-configuration, session layout, recovery, and hardware-free stress validation.</p>
-<h4 id="doc-using_shr_daw--performance-meters" tabindex="-1">Performance meters<a class="heading-anchor" href="#doc-using_shr_daw--performance-meters" aria-label="Link to Performance meters">#</a></h4>
-<p>Open Performance from Home, or press <code>m</code> on Presets. With the graph inactive,
-MTR shows passive whole-core CPU and legacy meter information. With it active,
-MTR controls Synth/Loop/Input/Drums levels, master level, the fixed strip's
-linked true-peak boundary, <code>FINAL OUT</code>, and final stereo recording. Synth,
-Loop, and Drums use MUTE. Input uses that same single position for MON ON or
-MON OFF, never a duplicate mute. Input monitoring starts off; MON ON can
-activate the bus without starting or requiring any optional source.</p>
-<p><code>FINAL OUT</code> is the post-strip buffer shared by recording and playback. Input
-is present in both only while MON is on. The
-Loop Mix's separate <code>LOOP OUT</code> measures the complete four-slot sum. RESET clears
-presentation holds, not audio state. MTR does not report callback timing or
-xruns; see <a href="#doc-final_performance_bus">Final performance bus</a> for the exact
-meter, limiter, monitoring, recording, and control contract.</p>
-<p>All horizontal meters use circular <code>●</code> LEDs. Dark gray means unlit; one green
-marks safe active level; yellow and red appear only at their active thresholds;
-and a held peak is a brighter circle of the same threshold colour.</p>
+<h4 id="doc-using_shr_daw--recording-and-meters" tabindex="-1">Recording and meters<a class="heading-anchor" href="#doc-using_shr_daw--recording-and-meters" aria-label="Link to Recording and meters">#</a></h4>
+<p>Recorder writes armed exact JACK sources as synchronized mono 24-bit WAV stems
+with one timeline and manifest. <strong>LEVELS</strong> opens the fixed 18-channel overview.
+A missing assigned source blocks take start until it is reassigned or disarmed.
+Interrupted recognized takes remain available for bounded recovery.</p>
+<p>Performance owns the optional final bus and one 24-bit stereo recording of the
+same post-strip samples sent to playback. Input software monitoring starts off
+and uses one <code>MON ON</code> or <code>MON OFF</code> action. Enable it only after checking for
+direct hardware monitoring, or the input may be heard twice.</p>
+<p>All horizontal meters use circular <code>●</code> LEDs. Green is the safe range; yellow
+and red appear only at their active thresholds. A brighter circle holds the
+peak.</p>
+<p>Read <a href="#doc-multitrack_recording">Synchronized multitrack recording</a> and
+<a href="#doc-final_performance_bus">Final stereo performance bus</a> before relying on a
+recording or monitoring setup.</p>
 <h4 id="doc-using_shr_daw--command-line" tabindex="-1">Command line<a class="heading-anchor" href="#doc-using_shr_daw--command-line" aria-label="Link to Command line">#</a></h4>
-<p>The main program also provides these commands:</p>
+<p>Common inspection and setup commands are:</p>
 <pre><code class="language-sh">shr menu
 shr list
 shr status
 shr doctor
 shr start &quot;synthv1:Velvet Tines&quot;
-shr start &quot;Yoshimi:Fat Bass&quot;
 shr stop
 shr log 80
 shr ideas list
-shr ideas inspect &quot;idea-name&quot;
-shr ideas play &quot;idea-name&quot;
-shr ideas delete &quot;idea-name&quot; --yes
-shr pads list
-shr pads ports
-shr pads profiles
 shr pads auto [PORT_MATCH]
 shr pads learn [PORT_MATCH]
-shr pads update
-shr clock ports
-shr casio diagnostic
 shr config paths
 shr config init [--force]
-shr effects-checkpoint ENGINE:PRESET [PROFILE] [SECONDS]
 </code></pre>
-<p><code>shr config init</code> preserves existing configuration; <code>--force</code> deliberately
-replaces both runtime and controller files with current defaults. The complete
-CLI inventory, including maintenance stress and screenshot commands, is in
-<code>shr --help</code>; their safety contracts are in the focused recording, final-bus,
-and maintainer-helper documents.</p>
-<p><code>shr casio diagnostic</code> keeps an old name from the first hardware test. It does
-not send MIDI. It lists output ports and shows the messages that would be used.
-The tracker itself is device-neutral. Command-line idea playback restores the
-saved instrument and can be stopped with Ctrl+C; deletion always requires the
-explicit <code>--yes</code> argument.</p>
-<p><code>config init</code> creates missing configuration from templates without replacing
-existing files. <code>effects-checkpoint</code> is a maintainer-only, bounded, low-gain
-measurement workflow; it requires explicit authorization and a prepared JACK
-session, and normal use should not run it. See
+<p><code>shr config init</code> preserves existing files unless <code>--force</code> is given.
+<code>shr casio diagnostic</code> is a legacy-named, non-transmitting route report.
+Command-line Idea playback restores the Idea's instrument and stops on Ctrl+C.</p>
+<p>The complete command inventory is in <code>shr --help</code>. Maintenance stress commands
+belong to <a href="#doc-maintainer_helpers">Maintainer helper scripts</a>.
+<code>effects-checkpoint</code> is different: it starts a prepared JACK graph and synth,
+sends a low-gain note, and measures a bounded run. Run it only with
+explicit authorization. Its setup contract is in
 <a href="#doc-configuration--owned-audio-graph">Configuration and routing</a>.</p>
-<p>For pattern editing, continue with the <a href="#doc-tracker">Tracker guide</a>.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-menu_manual" data-source="docs/MENU_MANUAL.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Screen and menu manual</span><span class="document-summary">Deterministic images covering every populated 40×13 screen, contextual editor, visible Levels command page, and controller menu page, with explanations.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/MENU_MANUAL.md" target="_blank" rel="noopener noreferrer external">View docs/MENU_MANUAL.md source</a></div><p>This is the visual guide to SHR-DAW's current 40×13 workspaces, contextual
 screens, editors, and master overlays. The current controller map is
@@ -775,8 +630,10 @@ final row remains the shared status row. That same menu
 item closes it; there is no fourth-button Back item. The rotary and Up/Down
 browse, click/Enter selects or confirms, and Back/Esc cancels the current field
 before cancelling and closing the overlay. Unconfirmed drafts never save on
-close. On the native 40×13 display the outer rectangle is 38×11 at <code>(1,1)</code> and
-the usable inner area is 36×9 at <code>(2,2)</code>.</p>
+close. FT2 ROUTE is the deliberate live-audition exception: valid active-field
+choices change the Project and live route at once, Apply keeps them, and Cancel
+restores the opening route snapshot. On the native 40×13 display the outer
+rectangle is 38×11 at <code>(1,1)</code> and the usable inner area is 36×9 at <code>(2,2)</code>.</p>
 <p>The yellow page name at the bottom is the page currently selected. The yellow
 bracketed numbers below the actions are the physical item positions. The shared
 status row is always the final row on working screens.</p>
@@ -1051,9 +908,10 @@ the current Pattern's pages, preserves the selected column, and can open the
 full Tracks manager. PATTERN selects an existing Pattern or opens Pattern/Project tools.
 SONG selects an Arrangement step and can open detailed Arrangement or Loop/
 page tools. ROUTE shows the active page destination and all four columns'
-channel, bank, program, profile name, and availability. ROUTE changes remain a
-draft until <code>APPLY ROUTING</code>; closing it with its highlighted launcher or Back
-cancels the draft safely.</p>
+channel, bank, program, profile name, and availability. Turning an active field
+validates and applies the choice to the Project and live route. <code>APPLY ROUTING</code>
+keeps the result. <code>CANCEL</code> or Back from the main list restores the route from
+when ROUTE opened; Back during field editing restores that field first.</p>
 <p>With controller clock enabled, SHR sends the current/default tempo at 24 PPQN
 to one exact controller MIDI port while the app is open; tracker transport adds
 Start/Stop. An empty Pattern may run for a live external-sync arpeggiator;
@@ -1098,9 +956,12 @@ resolve; they never substitute another output or the Pattern's software synth.
 Portable AUTO pages resolve the current machine default instead. Reconnect an
 exact target and play again without rewriting the Project.</p>
 <p>The quick FT2 ROUTE overlay keeps <code>APPLY</code> and <code>CANCEL</code> visible in its bottom
-border. APPLY validates and saves the whole routing draft; CANCEL discards it.
-Back during a field edit cancels that field first, while Back from the main
-list cancels the whole draft. Keyboard <code>A</code> and <code>C</code> match the visible actions.</p>
+border. Every encoder change updates the live Project route immediately, so
+the selected instrument or SHR Drums kit can be heard without leaving ROUTE.
+APPLY keeps the live result; CANCEL restores the complete route from when the
+overlay opened. Back during a field edit restores that field first, while Back
+from the main list restores the whole route. Keyboard <code>A</code> and <code>C</code> match the
+visible actions.</p>
 <p>FILES NEW PRJ requires a second press, clears the current unsaved Project, and
 starts the next <code>project-001</code> style name. SAVE AS writes and switches to the
 next non-overwriting <code>&lt;name&gt;-copy-001</code> file. Pattern Repeat/Remove operations
@@ -1174,6 +1035,9 @@ buttons appear to do nothing.</p>
 <details class="document" id="doc-tracker" data-source="docs/TRACKER.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Tracker guide</span><span class="document-summary">FT2 editing, pages, routing, Arrangement, drums, loops, and Project files.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/TRACKER.md" target="_blank" rel="noopener noreferrer external">View docs/TRACKER.md source</a></div><p>The FT2 screen is a vertical MIDI pattern sequencer. Its quick, top-to-bottom
 editing style is inspired by FastTracker II, but SHR-DAW is not an FT2 clone.
 It does not use FT2 code or read XM files.</p>
+<p>This guide owns FT2 behavior and Project editing. Use the <a href="#doc-menu_manual">screen and menu
+manual</a> for button-by-button screenshots and <a href="#doc-configuration">Configuration
+and routing</a> for stored fields and machine defaults.</p>
 <p>On the native 40×13 display, the FT2 body and its own compact page/lane footer
 end above the two controller rows. Row 13 is the shared working-screen status
 row: steady green <code>&gt;</code> for play, steady white <code>■</code> for stop, steady white <code>‖</code> for
@@ -1319,18 +1183,25 @@ while retaining unrelated draft edits.</p>
 FT2. It shows target type, software engine/instrument or MIDI output, optional
 device profile, plus all four columns' channel, bank, program/instrument name,
 and interface availability. With an SHR Drums target, the <strong>KIT</strong> field cycles
-the installed drum sets and stores the chosen kit with the Project. Applying a
-different kit resets the old kit's tuning overrides; the Project key and drum
-effects remain unchanged. Turn and click/Enter to activate a
-field; Back/Esc cancels that field first. Only <strong>APPLY ROUTING</strong> changes the
-Project. The window ends above the normal two controller rows. The contextual
+the installed drum sets; there is no redundant engine field. Big Rock is the
+fresh-Project default when installed, while other kits remain explicit
+choices. Applying a different kit must start it before the
+route change completes and resets the old kit's tuning overrides; the Project
+key and drum effects remain unchanged. A failed load restores the previous kit
+and keeps the editor open with the failure visible.</p>
+<p>Turn and click/Enter to activate a field. Turning the active field validates
+and applies each choice to the Project and live route at once, so an available
+instrument or kit can be auditioned without leaving the overlay. A failed
+choice restores the previous field value and route. Click/Enter keeps the
+current field value; Back/Esc restores the value from before that field was
+opened.</p>
+<p><strong>APPLY ROUTING</strong> keeps the live result. <strong>CANCEL</strong> or Back from the main list
+restores the complete route snapshot from when ROUTE opened. The contextual
 <strong>ROUTE</strong> page puts <strong>APPLY</strong> at physical position 5 and <strong>CANCEL</strong> at position
-8; those controller buttons, mouse targets, and keyboard <code>A</code>/<code>C</code> invoke the
-same direct actions even while the longer field list scrolls. Back from an
-active field cancels only that field first, then Back or <strong>CANCEL</strong> discards the
-whole draft. At 40×13 the bordered outer window is 38×9 at <code>(1,1)</code>, its usable
-inner area is 36×7 at <code>(2,2)</code>, rows 11–12 are the controller rows, and row 13
-remains the shared status row.</p>
+8; those controller buttons, mouse targets, and keyboard <code>A</code>/<code>C</code> share the same
+actions even while the field list scrolls. At 40×13 the bordered outer window
+is 38×9 at <code>(1,1)</code>, its usable inner area is 36×7 at <code>(2,2)</code>, rows 11 and 12 are
+the controller rows, and row 13 remains the shared status row.</p>
 <h4 id="doc-tracker--step-editing" tabindex="-1">Step editing<a class="heading-anchor" href="#doc-tracker--step-editing" aria-label="Link to Step editing">#</a></h4>
 <p>Step entry accepts notes and chords from any configured musical input.
 <strong>TRACKS</strong> → <strong>SYS</strong> → <strong>ENTRY</strong> selects one persisted layout for each page:</p>
@@ -1423,7 +1294,7 @@ keeps the cell override without changing the column master; cancel restores
 the previous value and selection.</p>
 <p>In the ROUTE overlay, confirming an external column's PROGRAM sends that
 column's bank/program selection immediately, so a connected hardware
-instrument changes sound for stopped FT2 free play before the Project route is
+instrument changes sound for stopped FT2 free play as the field choice is
 applied. APPLY ROUTING keeps the route in the Pattern and sends the selected
 column's program again. The Tracks screen's DONE action follows the same
 selected-column rule. These actions do not wait for Play or for the next note.</p>
@@ -1974,10 +1845,10 @@ make check-demos
 deterministic match, then installs only paths emitted from the cleared manifest.
 An altered, missing, malformed, or extra file therefore stops the package.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-controller_interface" data-source="docs/CONTROLLER_INTERFACE.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Controller action inventory and paging design</span><span class="document-summary">Complete four-page action inventory and hardware navigation contract.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/CONTROLLER_INTERFACE.md" target="_blank" rel="noopener noreferrer external">View docs/CONTROLLER_INTERFACE.md source</a></div><p>This document is the implementation checklist used for the paged controller
-interface. The authoritative inventory was taken from <code>ui.rs</code> keyboard, mouse,
-encoder, command-pad, screen, and contextual dispatch paths before paging was
-implemented.</p>
+<details class="document" id="doc-controller_interface" data-source="docs/CONTROLLER_INTERFACE.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Controller action inventory and paging design</span><span class="document-summary">Complete four-page action inventory and hardware navigation contract.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/CONTROLLER_INTERFACE.md" target="_blank" rel="noopener noreferrer external">View docs/CONTROLLER_INTERFACE.md source</a></div><p>This document owns the controller action inventory and paging contract. Use the
+<a href="#doc-menu_manual">screen and menu manual</a> for screenshots and the musician
+guides for task order. The inventory follows the current keyboard, mouse,
+encoder, command-pad, screen, and contextual dispatch paths.</p>
 <h4 id="doc-controller_interface--startup-splash" tabindex="-1">Startup splash<a class="heading-anchor" href="#doc-controller_interface--startup-splash" aria-label="Link to Startup splash">#</a></h4>
 <p>Startup first shows a 40×13 old-school stereo LED animation using all thirteen
 top-origin terminal rows. Row 0 contains the indicator strip; rows 1–3 are
@@ -2035,7 +1906,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 normal</td>
-<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE reserves the standard two controller rows below its window; its canonical ROUTE page exposes whole-draft <code>APPLY</code> and <code>CANCEL</code> through the physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code>. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; applying a different kit resets old kit-specific tuning while preserving the Project key and drum effects. Back still cancels an active field before the whole draft. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template.</td>
+<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. In ROUTE, turning an active field validates and applies the choice to the Project and live route. <code>APPLY</code> keeps the result; <code>CANCEL</code> restores the route snapshot from when the overlay opened. Back restores the active field first. The physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code> share those actions. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; a successful kit change resets old kit-specific tuning while preserving the Project key and drum effects. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template.</td>
 </tr>
 <tr>
 <td>FT2 record</td>
@@ -2180,8 +2051,8 @@ previous page are restored deterministically.</p>
 musician-facing pages, preserves the selected column, and links to Tracks;
 PATTERN navigates the Project's existing Pattern
 owners and links to Pattern/Project tools; SONG navigates Arrangement steps and
-links to its detailed editors; ROUTE edits a detached copy of the active page
-and applies it only through the existing Project/route synchronization path;
+links to its detailed editors; ROUTE applies valid active-field choices to the
+Project and live route, while Cancel restores the opening route snapshot;
 Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
 Tracks ENTRY chooses Manual, One column C1–C4, Drum auto, and the per-page
 automatic Note Off setting; Pattern Setup
@@ -3212,6 +3083,9 @@ control surface when you want to operate SHR-DAW without a computer keyboard or
 mouse.</p>
 <h4 id="doc-connections--expanded-setup" tabindex="-1">Expanded setup<a class="heading-anchor" href="#doc-connections--expanded-setup" aria-label="Link to Expanded setup">#</a></h4>
 <p><img src="images/shr-daw-physical-connections.jpg" alt="Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones" width="1200" height="675" loading="lazy" decoding="async" data-source-sha256="844ecdb765b7703787b885792b1491ad4a4740bf41d5edcc7da46258e62bdda2" id="shot-844ecdb765b7" /></p>
+<p>For a full-width browser view of the same approved specification, open the
+<a href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/images/preview.html" class="external" target="_blank" rel="noopener noreferrer external">standalone connection diagram</a>. It uses the tracked
+image directly and does not redraw devices, ports, or cables.</p>
 <p>The main paths are:</p>
 <ul>
 <li>controller or computer keyboard → SHR-DAW;</li>
@@ -3731,6 +3605,7 @@ return level. <code>HELP</code> opens the local reference. <code>EXIT</code> ret
 <h5 id="doc-menu-loops_and_effects--empty-rack-context" tabindex="-1">Empty rack context<a class="heading-anchor" href="#doc-menu-loops_and_effects--empty-rack-context" aria-label="Link to Empty rack context">#</a></h5>
 <p><img src="images/menu/fx-rack-empty-ops.png" alt="Empty FX rack with its OPS context" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="c69bd352861d483564ab9d89d04749495a5796fc8bd528afcb26046f5eab760d" class="tui-shot" id="shot-c69bd352861d" /></p>
 <p>OPS exposes only <code>ADD</code>; unavailable edit and delete actions stay hidden.</p>
+<p><img src="images/menu/fx-rack-empty-order.png" alt="Empty FX rack with its ORDER context" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="4097d86c69807356eb652b3cab2e78a678a16644d4b6b0026349efcc11c00a1d" class="tui-shot" id="shot-4097d86c6980" /></p>
 <p>The empty MASTER rack's ORDER page still exposes <code>STRIP</code>; other targets ask
 for MASTER rather than opening a misleading per-source mastering path.</p>
 <p><img src="images/menu/fx-rack-empty-route.png" alt="Empty FX rack with its ROUTE context" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="1678681aa3620ea57a2bff981314bc1c99e1517ea362debb75b76acc2f658c67" class="tui-shot" id="shot-1678681aa362" /></p>
@@ -3758,12 +3633,20 @@ cannot be bypassed.</p>
 limiter. <code>RESET I</code> clears only integrated loudness. Edited settings stay
 intact. Numerical and bypass updates are smoothed during playback; final
 recording rejects them.</p>
+<p><img src="images/menu/master-strip-sys.png" alt="MASTER STRIP front page with the SYS commands" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="9c92474b3412897d2e886e954d19f462daf0a2a25b2823547df5506834d7d7b2" class="tui-shot" id="shot-9c92474b3412" /></p>
+<p>The front-page SYS commands keep <code>PANIC</code>, <code>HELP</code>, and <code>EXIT</code> available without
+changing the selected section or caller.</p>
 <p><img src="images/menu/master-strip-detail-param.png" alt="MASTER STRIP GLUE detail" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7701e313eb7f0cb680dfe0540318d9f35850638f4f770a0ff2c3c572a1a190dd" class="tui-shot" id="shot-7701e313eb7f" /></p>
 <p>The detail page lists only the selected section's parameters. The ordinary
 rotary browses its parameters; Shift-rotary selects the previous or next
 section through the front-page order and starts at that section's first
-parameter. <code>VALUE-</code> and <code>VALUE+</code> change the selected value; the next page
-retains bypass, A/B, and integrated reset.</p>
+parameter. <code>VALUE-</code> and <code>VALUE+</code> change the selected value.</p>
+<p><img src="images/menu/master-strip-detail-state.png" alt="MASTER STRIP detail with STATE commands" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="86be1acc36e88b1d6df253c4bc99862b931deb3b9ba46a1f7e1e9a46963520b5" class="tui-shot" id="shot-86be1acc36e8" /></p>
+<p>STATE retains section bypass, A/B comparison, and integrated loudness reset
+while the detail values stay visible.</p>
+<p><img src="images/menu/master-strip-detail-sys.png" alt="MASTER STRIP detail with SYS commands" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="f496cfb422145248561d08408a1061d9277044b49d1b4525ee3c6581d3f4d57b" class="tui-shot" id="shot-f496cfb42214" /></p>
+<p>SYS keeps global Panic, contextual Help, and one-level Exit available from the
+detail view.</p>
 <p><img src="images/menu/master-strip-compact.png" alt="Compact MASTER STRIP fallback" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0168edcb578cb9563fbc9edd7410d84d6a350c1ab4d53e8a41b72cf6ba223172" class="tui-shot" id="shot-0168edcb578c" /></p>
 <p>Below native geometry the screen compacts without drawing over the shared
 status row. The exact DSP ranges, latency, true-peak tolerance, and provenance
@@ -3850,11 +3733,8 @@ content. ROUTE reserves the two controller rows, so its border is 38×9 with
 <p>PATTERN selects an existing Pattern and links to Pattern tools or Project Files.</p>
 <p><img src="images/menu/overlay-ft2-song.png" alt="SONG overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="33c4e8dbcdc02718a124fba36912ad599c73a84cc45e6919e098668e4fceda07" class="tui-shot" id="shot-33c4e8dbcdc0" /></p>
 <p>SONG selects an Arrangement step and links to Arrangement or page tools.</p>
-<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE overlay over the unchanged FT2 Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7a13d292582c0ff51f7146609f5bf5ed941df50ee5bc27ad9a291c4d315ea16d" class="tui-shot" id="shot-7a13d292582c" /></p>
-<p>ROUTE edits a detached page-routing draft that changes the Project only on
-Apply. For an SHR Drums target, choose <code>KIT</code>, click, and turn the encoder to
-select any installed drum set. Applying a different kit resets old kit-specific
-tuning overrides while preserving the Project key and drum effects.</p>
+<p>ROUTE opens the quick live route editor. Its complete field and rollback
+contract appears in <a href="#doc-menu-tracker_and_projects--route-master-overlay">ROUTE master overlay</a>.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" tabindex="-1">SYS — safety, filter, help, and exit<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-filter-help-and-exit" aria-label="Link to SYS — safety, filter, help, and exit">#</a></h5>
 <p><img src="images/menu/ft2-play-sys.png" alt="Populated FT2 Pattern in Play mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0b077d999bd6987102baf869a7a74dee102380598ded91c47b3edaf187135f5f" class="tui-shot" id="shot-0b077d999bd6" /></p>
 <p><code>PANIC</code> stops all owned notes and transports. <code>N00B</code> immediately toggles the
@@ -4022,6 +3902,11 @@ position.</p>
 <code>.midi</code> format 0/1 PPQN files only. It never previews, transmits, or overwrites
 the source file or an existing Project. Saved-Project <code>PREVIEW</code> remains on the
 separate PREVIEW command page.</p>
+<h5 id="doc-menu-tracker_and_projects--preview-hear-the-selected-saved-project" tabindex="-1">PREVIEW: hear the selected saved Project<a class="heading-anchor" href="#doc-menu-tracker_and_projects--preview-hear-the-selected-saved-project" aria-label="Link to PREVIEW: hear the selected saved Project">#</a></h5>
+<p><img src="images/menu/files-preview.png" alt="Project Files with the PREVIEW command page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="babbc4ed3496adb0839d3db90f124df6d99963f89cd104a821982f8346726c39" class="tui-shot" id="shot-babbc4ed3496" /></p>
+<p><code>PREVIEW</code> starts or stops a bounded preview of the selected saved Project. It
+does not replace the Project being edited. Using the same command again,
+leaving the screen, or using Panic stops the preview.</p>
 <h5 id="doc-menu-tracker_and_projects--project-lifecycle-and-pattern-child" tabindex="-1">PROJECT — lifecycle and Pattern child<a class="heading-anchor" href="#doc-menu-tracker_and_projects--project-lifecycle-and-pattern-child" aria-label="Link to PROJECT — lifecycle and Pattern child">#</a></h5>
 <p><img src="images/menu/files-project.png" alt="Populated Project Files screen with the PROJECT page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0652491132dc15fcab9b5308e2a089db16b55d98593d692f55da5d7533430ed7" class="tui-shot" id="shot-0652491132dc" /></p>
 <p><code>NEW</code> creates a confirmed blank Project. <code>SAVE AS</code> writes a numbered
@@ -4130,7 +4015,7 @@ the reference. <code>REMOVE</code> removes only this step, not the underlying Pa
 <p><img src="images/menu/arrange-sys.png" alt="Populated Arrangement screen with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7faa26f6c68053887808db4a532b9dc81c1714d54f68b281a9882688bbd7657b" class="tui-shot" id="shot-7faa26f6c680" /></p>
 <p><code>PANIC</code> and <code>HELP</code> remain available. <code>EXIT</code> returns to the tracker.</p>
 <h4 id="doc-menu-tracker_and_projects--route-master-overlay" tabindex="-1">ROUTE master overlay<a class="heading-anchor" href="#doc-menu-tracker_and_projects--route-master-overlay" aria-label="Link to ROUTE master overlay">#</a></h4>
-<p><a class="repeated-image-link" href="#shot-7a13d292582c">ROUTE master overlay over the active Pattern (shown earlier)</a></p>
+<p><img src="images/menu/overlay-ft2-route.png" alt="ROUTE master overlay over the active Pattern" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="7a13d292582c0ff51f7146609f5bf5ed941df50ee5bc27ad9a291c4d315ea16d" class="tui-shot" id="shot-7a13d292582c" /></p>
 <p>ROUTE is the quick transactional editor for the active Pattern page. The top
 rows show the page/master destination and its current resolved state, the
 software engine/instrument, SHR Drums kit, or external MIDI output, and the
@@ -4139,19 +4024,17 @@ bank LSB, and program/instrument for each of the page's four columns;
 profile-provided instrument names appear when available. Long names are
 deliberately shortened inside the border.</p>
 <p>Turn to a row and click/Enter to make that field active. Only then does rotary
-movement change the detached draft. Click/Enter keeps the field in the draft;
-Back/Esc restores that field's prior value. <code>APPLY ROUTING</code> validates and
-copies the page through the existing Project owner, releases old auditions,
-and runs the existing route synchronization. Confirming an external PROGRAM
-field also sends that column's bank/program selection immediately for hardware
-free play; <code>APPLY ROUTING</code> sends the selected column's program again. Until
-Apply, the Project, runtime route, engine, transport, and recorder are otherwise
-untouched.</p>
+movement validate and apply the choice to the Project and live route. This
+allows immediate software instrument, drum kit, and external program audition.
+A failed engine, kit, or route change restores the previous field value and
+live route. Click/Enter keeps the current field value; Back/Esc restores the
+value from before that field was opened.</p>
 <p>The standard bottom controller action row always shows <code>APPLY</code> and <code>CANCEL</code>, so
-neither whole-draft action depends on scrolling to the final list row.
+neither whole-route action depends on scrolling to the final list row.
 Positions 5 and 8 activate those exact actions on the controller; mouse and
-keyboard <code>A</code>/<code>C</code> share them. Back/Esc from the main list cancels the draft,
-while Back/Esc during a field edit cancels only that field.
+keyboard <code>A</code>/<code>C</code> share them. Apply keeps the current live result. Cancel or
+Back/Esc from the main list restores the complete route snapshot from when the
+overlay opened. Back/Esc during a field edit restores only that field.
 Missing preferred hardware remains visible and saved as preferred; an exact
 external target stays offline or ambiguous and never uses either the
 configured hardware default or the Pattern's software synth. <code>AUTO</code> alone
@@ -4277,8 +4160,9 @@ the locked tests, and builds the locked release version; newer stable
 releases are adopted deliberately by changing the repository pin;</li>
 <li>installs commands, templates, the 21 allowlisted presets, four allowlisted
 CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
-device/controller profiles, drum data, documentation, and
-all 97 menu-manual images below the selected prefix (normally <code>/usr/local</code>);</li>
+device/controller profiles, drum data, documentation, and the complete
+generated menu-manual image set below the selected prefix (normally
+<code>/usr/local</code>);</li>
 <li>opens the routing wizard.</li>
 </ul>
 <p>On stock Raspberry Pi OS, the routing wizard asks for a stable ALSA card name
@@ -5002,10 +4886,13 @@ behavior, or 18-channel recording/playback. Follow the focused measurement and
 MR18 plans after explicit hardware authorization. Do not convert a synthetic
 or read-only pass into a physical-support claim.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-configuration" data-source="docs/CONFIGURATION.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Configuration and tracker routing</span><span class="document-summary">Every runtime setting and persisted route.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer external">View docs/CONFIGURATION.md source</a></div><p>SHR-DAW is a Raspberry Pi mini DAW and MIDI routing hub. Machine defaults and
-hardware fallbacks belong in <code>shsynth.conf</code> or <code>controller.conf</code>; only a page
-deliberately bound to exact hardware stores that preferred target in a Project.
-Names are not compiled into the program.</p>
+<details class="document" id="doc-configuration" data-source="docs/CONFIGURATION.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Configuration and tracker routing</span><span class="document-summary">Every runtime setting and persisted route.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer external">View docs/CONFIGURATION.md source</a></div><p>This guide owns configuration keys, persisted route fields, and machine
+fallbacks. The <a href="#doc-tracker">Tracker guide</a> owns the musical workflow, while the
+<a href="#doc-controller_interface">Controller interface</a> owns visible actions.</p>
+<p>Machine defaults and hardware fallbacks belong in <code>shsynth.conf</code> or
+<code>controller.conf</code>. Only a page deliberately bound to exact hardware stores
+that preferred target in a Project. Hardware names are never compiled into the
+program.</p>
 <p>Both configuration files use one <code>KEY=VALUE</code> entry per line. A comment must
 start with <code>#</code> after optional leading whitespace; <code>#</code> inside a value is kept as
 part of a hardware name or path rather than treated as an inline comment.</p>
@@ -5493,7 +5380,7 @@ opened. On the
 <strong>COLUMN</strong> and <strong>BANK</strong> pages, <strong>COL−/COL+</strong>, <strong>PROG−/PROG+</strong>, and the bank
 controls edit the selected column. In a target/channel chooser, <strong>CONFIRM</strong>
 keeps that field and <strong>EXIT</strong> cancels it.</p>
-<p>FT2 <strong>SELECT</strong> → <strong>ROUTE</strong> is the passive quick editor. Its 38×9 bordered overlay
+<p>FT2 <strong>SELECT</strong> → <strong>ROUTE</strong> is the quick route editor. Its 38×9 bordered overlay
 shows <code>TARGET</code>, <code>ENGINE</code>, <code>INSTR</code> or the SHR Drums <code>KIT</code>, <code>MIDI OUT</code>, optional
 <code>PROFILE</code>, and the 16 per-column channel/bank/program rows in a scrolling 36×7
 content area. The overlay begins at <code>(1,1)</code>, its content begins at <code>(2,2)</code>, and
@@ -5501,10 +5388,13 @@ the standard controller page/action rows remain immediately above the shared
 status row. Opening and browsing use cached discovery information;
 they do not create a MIDI discovery client, send MIDI, synchronize routes, or
 start an engine. A field changes only after click/Enter activates it. Back/Esc
-cancels that field first. <strong>APPLY ROUTING</strong> validates and copies the detached
-page draft through the same Project and route-synchronization owner used by
-Tracks. The controller action row's direct <strong>CANCEL</strong> action or Back cancels a
-dirty draft and never saves silently.</p>
+cancels that field first.</p>
+<p>Turning an active field validates and applies each choice to the Project and
+live route. A failed choice restores the previous field value and route.
+Click/Enter keeps the current field value; Back/Esc restores the value from
+before that field was opened. <strong>APPLY ROUTING</strong> keeps the resulting route.
+The controller action row's direct <strong>CANCEL</strong> action, or Back from the main
+list, restores the complete route snapshot from when ROUTE opened.</p>
 <p>An internal melodic route stores the engine identity together with that
 engine's stable instrument identity. An SHR Drums route instead stores the
 stable kit ID and remains independent of the melodic engine choice. Applying a
@@ -5935,49 +5825,55 @@ DAW script for these ordinary MIDI note commands. Arturia mode has the same
 captured channel-10 pad notes, so use DAW mode only if another ordinary mapping
 has been verified to be useful.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-codex_assisted_setup" data-source="docs/CODEX_ASSISTED_SETUP.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Codex-assisted SHR-DAW setup</span><span class="document-summary">Optional assistance for unusual hardware and recovery.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/CODEX_ASSISTED_SETUP.md" target="_blank" rel="noopener noreferrer external">View docs/CODEX_ASSISTED_SETUP.md source</a></div><p>Help me install, recover, or customize SHR-DAW on this Raspberry Pi. First read
-<code>AGENTS.md</code>, <code>docs/WORKSPACE_HANDOFF.md</code>, the README, and the existing user
-configuration. Treat <code>install.sh</code> and <code>shr-setup</code> as the primary supported path;
-this session is an optional diagnostic and customization layer around them.</p>
-<p>Work interactively and explain any physical action I need to take. Diagnose the
-OS, dependencies, terminal/display geometry, ALSA MIDI ports, JACK ports, audio
-interface, controller, and current SHR-DAW configuration. Run the normal setup
-and checks where safe. If a generic project defect prevents setup, patch the
-project, add or update validation, and keep the normal installer usable for the
-next person rather than making an undocumented local workaround.</p>
-<p>When controller discovery is needed, listen to MIDI without forwarding it to a
-synth and ask me to move or press exactly one control at a time. Identify and
-verify the 12 continuous synth controls, main relative encoder, encoder press,
-lock control, and available command pads. Detect relative-encoder direction and
-value convention. Reject duplicate or conflicting assignments, preserve pickup
-behavior, back up <code>controller.conf</code>, write the mapping, and show me a concise
-summary before treating it as complete.</p>
-<p>Help with complex JACK, ALSA, external-instrument, tracker-page, and SoundFont
-configuration when requested. Keep machine-specific routes and hardware names
-in configuration, not Rust constants. Put private downloads and user-specific
-sound data outside the public repository, retain source and licence details,
-and do not present unlicensed material as redistributable.</p>
-<p>Preserve existing configuration, presets, ideas, songs, recordings, unrelated
-processes, and repository changes. Never start or restart JACK, launch an
-audible synth test, overwrite user data, publish, or make destructive/system-wide
-changes without explaining the action and receiving my explicit permission.
-Never kill a synth process SHR-DAW does not own. Back up files before changing
-them and clearly separate project fixes from this machine's private settings.</p>
-<p>Finish by running proportionate non-audible validation, including <code>shr doctor</code>
-when JACK is already available, and report what was detected, changed, backed
-up, verified, left untested, and what I should do next.</p>
+<details class="document" id="doc-codex_assisted_setup" data-source="docs/CODEX_ASSISTED_SETUP.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Codex-assisted SHR-DAW setup</span><span class="document-summary">Optional assistance for unusual hardware and recovery.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/CODEX_ASSISTED_SETUP.md" target="_blank" rel="noopener noreferrer external">View docs/CODEX_ASSISTED_SETUP.md source</a></div><p>Help me install, recover, or customize SHR-DAW on this Raspberry Pi.</p>
+<p>Before acting, read <code>AGENTS.md</code>, <code>docs/WORKSPACE_HANDOFF.md</code>, <code>README.md</code>, and
+the existing user configuration. Treat <code>install.sh</code> and <code>shr-setup</code> as the
+supported path. This session should diagnose or customize that path, not
+replace it with an undocumented machine-only workaround.</p>
+<p>Inspect the operating system, dependencies, terminal geometry, ALSA MIDI
+ports, JACK ports, audio interface, controller, and current SHR-DAW
+configuration. Run the normal setup and checks where safe. If a repository
+defect blocks setup, repair the project and add proportionate validation so the
+normal installer works for the next person.</p>
+<p>Give me one physical action at a time. Explain what it checks before asking me
+to do it.</p>
+<p>For controller discovery, listen without forwarding MIDI to a synth. Ask me to
+move or press one control at a time. Identify the 12 continuous synth controls,
+main relative encoder, encoder press, lock control, and command pads. Verify
+the relative-encoder direction and value convention. Reject duplicate or
+conflicting assignments, preserve pickup, back up <code>controller.conf</code>, and show
+me the proposed map before calling it complete.</p>
+<p>Help with JACK, ALSA, external-instrument, tracker-page, and SoundFont routing
+when requested. Keep hardware names and routes in configuration, never in Rust
+constants. Keep private downloads and user sound data outside the public
+repository. Preserve source and licence notes, and never describe uncleared
+material as redistributable.</p>
+<p>Preserve existing configuration, presets, Ideas, Projects, recordings,
+unrelated processes, and repository changes. Do not start or restart JACK,
+launch an audible synth test, overwrite user data, publish, or make destructive
+or system-wide changes without explaining the exact action and receiving my
+permission. Never stop a synth process that SHR-DAW does not own. Back up files
+before changing them, and keep repository repairs separate from private machine
+settings.</p>
+<p>Finish with proportionate non-audible validation. Run <code>shr doctor</code> only when
+JACK is already available. Report what you found, changed, backed up, verified,
+left untested, and what I should do next.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 </section>
 <section class="library-group" aria-labelledby="group-architecture-and-safety"><header class="group-header"><p class="eyebrow">Current contracts</p><h3 id="group-architecture-and-safety">Architecture and safety</h3><p>Implementation boundaries, ownership, recording, routing, and operational safety.</p></header>
 <details class="document" id="doc-how_it_works" data-source="docs/HOW_IT_WORKS.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">How SHR-DAW works</span><span class="document-summary">End-to-end MIDI/audio routing, instrument ownership, Ideas, FT2 Projects, loops, recording, the full effect palette, graph safety, persistence, and honest current limits.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/HOW_IT_WORKS.md" target="_blank" rel="noopener noreferrer external">View docs/HOW_IT_WORKS.md source</a></div><p>SHR-DAW is a small music workstation built from several deliberately separate
 parts: role-separated controller/performance inputs, one managed software
-engine, in-process SHR Drums, an FT2-style MIDI sequencer, a private WAV loop
-player, a synchronized raw multitrack recorder, and an optional owned final
-performance bus. This guide connects those parts and explains what the musician
-can do with them.
+engine, in-process SHR Drums, a FastTracker II (FT2)-style MIDI sequencer, a
+private WAV loop player, a synchronized raw multitrack recorder, and an
+optional owned final performance bus. This guide connects those parts and
+explains what the musician can do with them.
 For exact configuration keys use
 <a href="#doc-configuration">Configuration and routing</a>; for the DSP and real-time
 contract use <a href="#doc-audio_graph">Audio graph and DSP contract</a>.</p>
+<p>In architecture pages, <strong>owned</strong> means started or created by SHR-DAW and
+therefore safe for it to change or stop. An <strong>exact route</strong> is a saved endpoint
+that is never guessed. To <strong>publish</strong> a graph plan means making a validated,
+bounded plan active for the audio callback.</p>
 <h4 id="doc-how_it_works--the-whole-signal-model" tabindex="-1">The whole signal model<a class="heading-anchor" href="#doc-how_it_works--the-whole-signal-model" aria-label="Link to The whole signal model">#</a></h4>
 <p>The shortest useful picture is:</p>
 <pre><code class="language-text">controller / MIDI keyboard
@@ -6237,79 +6133,24 @@ the column and cell program browsers. They remain JSON data, can be privately
 overridden for writable user memories, and never remove raw channels 1–16 or
 the musician-facing 1–128 numeric fallback. They describe rather than detect
 downstream DIN hardware. See <a href="#doc-midi_device_profiles">MIDI device profiles</a>.</p>
-<h4 id="doc-how_it_works--ft2-play-record-and-edit-modes-with-n00b" tabindex="-1">FT2 Play, Record, and Edit modes with N00B<a class="heading-anchor" href="#doc-how_it_works--ft2-play-record-and-edit-modes-with-n00b" aria-label="Link to FT2 Play, Record, and Edit modes with N00B">#</a></h4>
-<p>The FT2 screen has three explicit modes:</p>
-<ul>
-<li><strong>Play</strong> navigates rows, pages, lanes, and Arrangement steps and starts
-transport from the cursor or Project beginning.</li>
-<li><strong>Record</strong> performs quantized capture into the selected online Pattern page,
-whether its exact target is the Pattern-owned software instrument or hardware.</li>
-<li><strong>Edit</strong> writes notes or chords from MIDI/computer-keyboard input. Blank,
-erase, and note-off are explicit operations, and the persistent 0–32-row
-advance determines the next cursor position. Its independent 1/1–1/128
-length selector writes the existing gate/note-off representation. Edit has
-only contextual EDIT, SET, SELECT, and SYS command pages; SYS Exit returns
-one level to normal FT2 without changing Pattern, page, column, or row.</li>
-</ul>
-<p>Every Pattern page separately persists a note-entry layout. Manual starts at
-the musician's selected column. One column redirects every future note and
-recorded release to its persisted C1–C4 anchor, making it intentionally
-monophonic without changing that column's route. Drum auto performs a
-deterministic, atomic four-lane allocation when notes are inserted. Alternating
-core hits reuse a compact primary lane, simultaneous/quantized groups claim
-distinct empty cells, and fills spill without overwriting the target row.
-Automatic writes never move the visible lane cursor.</p>
-<p>Each page also persists whether future Edit/Record entry writes automatic OFF
-cells. Melodic pages default on and one-shot percussion pages default off.
-Turning it off leaves explicit OFF/CUT cells and all transport cleanup intact;
-same-lane retrigger still interrupts the previous lane note.</p>
-<p>Drum auto classifies notes as core, long-tail, or other percussion, with an
-optional choke group. General MIDI cymbals and hi-hats provide defaults;
-unknown notes are ordinary short percussion, and a page may persist non-GM
-overrides. Unrelated active cymbal lanes are excluded during placement.
-Same-note retriggers and matching choke groups may reuse the relevant lane.
-This is not a scheduler rule: once a cell is stored, the existing lane
-scheduler interrupts the previous same-lane note for every sound.</p>
-<p><strong>N00B is an independent filter switch, not a fourth mode.</strong> It can remain on
-through Play, Record, and Edit. The chosen root plus major or natural-minor
-scale gates input on the selected melodic page: accepted notes retain their
-exact pitch, rejected notes stay silent, and Record/Edit write only accepted
-notes. Player shows the scale as a compact in-place rotary while the filter is
-enabled. FT2 reuses that selection and toggles it without opening another
-screen. Switching N00B never changes the underlying mode. It turns off on
-percussion pages.</p>
-<p>The selected Pattern page owns live audition. A software page loads its saved
-engine/instrument pair; MIDI pages keep independent destination/channel/program routes;
-and percussion pages use their channel and drum mapping. Route changes cancel
-the old destination/channel before the new one is armed. An explicit FT2 route
-is authoritative. Only a genuinely new, empty, unsaved default Project may
-replace its factory page 1 route with the currently loaded Player instrument;
-ownership of the already-running managed engine then moves to FT2 without a
-restart. With no Player engine, that fresh Project loads the first available
-synthv1 preset. Saved and otherwise changed Projects are never inferred from an
-empty note grid and keep their routes.</p>
-<p>Cell Edit is transactional: changes are made to a draft, <code>CONFIRM</code> publishes
-the whole cell, and <code>EXIT</code> restores the original. A cell can hold a note or
-note-off, inherited/explicit velocity and gate, a per-note program override,
-and one command: cut, delay, retrigger, tempo, or none. Program audition uses
-the selected page destination and column channel without inserting a note or
-duplicating generic live thru.</p>
-<p>Pattern Setup initially offers musically convenient meter-specific shapes:
-4/4 Patterns of 8/16/32/64/128 rows and corresponding 3/4 Patterns of
-6/12/24/48/96 rows.
-<code>CONFIRM</code> performs NEW or CLEAR with the newly selected shape. <code>KEEP</code> performs
-the same requested operation while retaining the current Pattern's shape:
-NEW creates a blank Pattern with that meter/length, and CLEAR removes content
-without reshaping. The interactive length chooser exposes every size from 1 through
-32 rows, plus 48, 64, 96, 128, 192, and 256 rows. Groove timing remains planned
-work rather than a current menu promise.</p>
-<p>The reusable drum library contains 72 authored four-lane starting points in ten
-creative genre groups. Filters choose 3/4 or 4/4 and a 2/4/8-bar phrase. Loading
-changes the first percussion page's cells without replacing its MIDI target,
-channels, bank, program, tempo, or Arrangement. User saves are separate
-<code>.shdrum</code> files; bundled patterns are read-only. Melody-only transpose leaves
-percussion pages and note-offs unchanged and refuses the whole edit if a note
-would leave MIDI range.</p>
+<h4 id="doc-how_it_works--ft2-ownership" tabindex="-1">FT2 ownership<a class="heading-anchor" href="#doc-how_it_works--ft2-ownership" aria-label="Link to FT2 ownership">#</a></h4>
+<p>Play, Record, and Edit are separate modes over the same Pattern data. Each
+Pattern page owns four lanes, its route, entry layout, automatic Note Off
+choice, and live-audition destination. Record quantizes performance input.
+Edit writes deliberate cells with independent note length and row advance.
+N00B is a scale filter layered over those modes, not another mode.</p>
+<p>Manual, One column, and Drum auto change only future entry. They do not rewrite
+existing cells or move the visible cursor. Cell Edit remains transactional:
+Confirm publishes the complete cell and Exit restores the original.</p>
+<p>An explicit page route is authoritative. A genuinely new, empty, unsaved
+Project may adopt the current Player instrument for page 1 without restarting
+it; saved or otherwise changed Projects keep their own routes. Route changes
+release the old destination before the new one is armed.</p>
+<p>Pattern setup, drum-library loading, transpose, and Arrangement operations
+change Project records without changing private source libraries. The exact
+musician workflow and field behavior belong to the <a href="#doc-tracker">Tracker
+guide</a>. The <a href="#doc-configuration--tracker-pages">Project storage sections</a>
+define what is persisted.</p>
 <h4 id="doc-how_it_works--the-managed-audio-graph" tabindex="-1">The managed audio graph<a class="heading-anchor" href="#doc-how_it_works--the-managed-audio-graph" aria-label="Link to The managed audio graph">#</a></h4>
 <p>Without the owned graph, the managed instrument, SHR Drums, and owned loop use
 their exact configured direct playback routes. <code>audio.graph.enabled=true</code>
@@ -6435,63 +6276,22 @@ live-input pair. It deliberately has no general strips, pan, solo, hardware inse
 per-input effect chain, or arbitrary wiring.</p>
 <h4 id="doc-how_it_works--live-patterns-loop-mix-and-the-final-bus" tabindex="-1">Live Patterns, Loop Mix, and the final bus<a class="heading-anchor" href="#doc-how_it_works--live-patterns-loop-mix-and-the-final-bus" aria-label="Link to Live Patterns, Loop Mix, and the final bus">#</a></h4>
 <p>Live Patterns is a sequencer-owned performance view over existing Pattern
-records. Browsing is UI state only. A successful activation is scheduled at a
-Pattern/bar boundary, validated against its exact targets, and published to
-capture only after it actually starts. Quantized transitions retain held lanes
-whose destination/channel/note remains valid; changed owners release before
-new events. A different managed instrument is prepared at the boundary after
-old notes release, never layered in advance.</p>
-<p>Transient lane mute/velocity/gate/transpose shapes a runtime Pattern copy.
-Stored cells and persisted lane settings remain unchanged. The state belongs
-to the open Project and is dropped on Project replacement.</p>
-<p>Every Pattern owns four optional references to privately imported mono or stereo
-WAVs. This keeps its MIDI pages and Loop Mix material together without making
-decoded audio into MIDI lanes. Repeated Arrangement steps share the Pattern
-record; a clone copies references/settings into an independent Pattern but
-never copies the WAV. The import inbox is only a browser source; each selected
-file is validated and copied without replacement below the private SHR data
-directory. Every populated slot saves filename, interpreted source BPM,
-half/normal/double mode, non-destructive cut, whole-bar placement offset, level,
-and bipolar filter.</p>
-<p>Loop analysis is offline, outside the JACK callback. <code>AUTO</code> uses bounded pulse
-and duration analysis when useful and proposes a whole-bar interpretation.
-Playback remains native-speed and requires every active slot's interpreted BPM
-to equal its Pattern tempo and its sample rate to match JACK. Incompatible
-slots are refused rather than drifting. Each decoded WAV is bounded to
-6,000,000 frames, about 125 seconds at 48 kHz.</p>
-<p>The four fixed renderers share one owned JACK client and sum internally after
-region/phase, smoothed level, and the neutral/low-pass/high-pass filter. The
-callback allocates and locks nothing. In direct mode its one output pair
-connects to playback. An active performance-bus transaction moves that exact
-pair into the sum and removes the direct links, so there is never a parallel
-doubled path. <code>LOOP OUT</code> means the complete four-slot Loop source; <code>FINAL OUT</code>
-includes all three logical bus sources.</p>
-<p>Only the active and incoming Pattern are prepared; saved Patterns add no JACK
-clients, callback renderers, mixer sources, or eager decoding. Each Pattern
-activation invalidates old runtime queues and publishes one fixed four-slot
-renderer set through a single bounded atomic handoff. The callback swaps only
-pointers; the owner thread reclaims the retired set. Outgoing audio becomes
-silent at the MIDI boundary even if incoming preparation is late. Healthy
-prepared slots start at the same boundary; failed ones remain silent and
-faulted.</p>
-<p>The slots share the owning Pattern's local transport origin, meter, tempo, and
-bar scheduler but launch/stop independently. Every Arrangement step and Live
-retrigger restarts local phase. Starting at a middle row seeks from that local
-beat; preceding Arrangement steps never contribute phase. Different whole-bar
-lengths retain phase. The summed Loop source
-receives only its final-bus level/mute, then shares the
-master, limiter, final meter, recorder, and playback with the other sources.
-<code>REMOVE</code> detaches only the selected Pattern slot while keeping the private WAV.
-<code>LIBRARY</code> opens the shared overlay for that slot and browses inbox and private
-files without auto-preview.
-Controller PLAY explicitly previews the selection. Changing selection, STOP,
-Back, closing/leaving the browser, or leaving Loop Mix stops preview.
-Activating an inbox entry imports and loads it; activating a
-private/current/saved entry attaches and loads it. Failed preview/import keeps
-the caller and selection for retry, and import failure rolls back its private
-copy and Project attachment. It does not delete existing library files. The
-screen shows only active, queued, muted, missing, and fault states. One bad slot
-does not stop healthy slots. See <a href="#doc-live_performance">Live performance</a>.</p>
+records. Browsing is UI state. Successful activations occur at validated
+Pattern or bar boundaries. Temporary lane shaping changes a runtime copy and
+is dropped when the Project is replaced.</p>
+<p>Each Pattern owns four optional references to private WAVs. The fixed renderers
+share one owned JACK client and sum to one logical Loop source. Only the active
+and incoming Pattern are prepared. The callback publishes a fixed renderer set
+without allocation, locks, decoding, or file access. A failed slot stays silent
+without stopping healthy slots or MIDI.</p>
+<p>Arrangement steps and Live retriggers restart Pattern-local phase for MIDI and
+loops together. In direct mode the Loop output connects to playback. An active
+final-bus transaction moves that same output into the sum and removes the
+direct links, so the path is never doubled. Removing a slot detaches its
+Project reference and keeps the private WAV.</p>
+<p>See <a href="#doc-live_performance">Live performance</a> for launch, preview, capture, and
+boundary controls. See <a href="#doc-audio_graph">Audio graph and DSP contract</a> for the
+callback and routing limits.</p>
 <h4 id="doc-how_it_works--note-ownership-and-failure-behavior" tabindex="-1">Note ownership and failure behavior<a class="heading-anchor" href="#doc-how_it_works--note-ownership-and-failure-behavior" aria-label="Link to Note ownership and failure behavior">#</a></h4>
 <p>MIDI notes are owned by physical destination, software route, channel, note,
 column/lane, and playback source. Owners are global across Pattern pages, not
@@ -6578,6 +6378,9 @@ but remains opt-in and disabled by default. Direct JACK routing is both the
 default and the conservative fallback. The current product compiler instantiates
 four bounded stereo sources: the managed software instrument, SHR Drums, the
 owned WAV loop, and one exact configured JACK capture pair.</p>
+<p>This page owns DSP topology, bounds, and callback safety. The <a href="#doc-menu_manual">menu
+manual</a> owns screen actions, while the <a href="#doc-final_performance_bus">final performance
+bus</a> owns monitoring and final recording.</p>
 <p>The active signal flow is:</p>
 <pre><code class="language-text">managed instrument -&gt; SOURCE inserts -------------------------------\
        |                    |                                            ^
@@ -7093,8 +6896,12 @@ clean fallback/ownership behavior. The exact Pi evidence is recorded in
 does not imply that an unmeasured creative effect or later graph phase is safe.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-final_performance_bus" data-source="docs/FINAL_PERFORMANCE_BUS.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">Final stereo performance bus</span><span class="document-summary">Input-only activation, optional-source ownership, fixed mastering boundary, monitoring safety, final WAV capture, and hardware acceptance.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FINAL_PERFORMANCE_BUS.md" target="_blank" rel="noopener noreferrer external">View docs/FINAL_PERFORMANCE_BUS.md source</a></div><p>The owned audio graph has one deliberately small final bus. It is not a
-free-wiring view or a general-purpose mixer. Input is the only required source;
-the managed synth, Loop Mix, and SHR Drums attach when present:</p>
+free-wiring view or a general-purpose mixer. This page owns source
+availability, software-monitor safety, and final stereo recording. DSP
+algorithms and rack schemas belong to <a href="#doc-audio_graph">Audio graph and DSP
+contract</a>.</p>
+<p>Input is the only required source; the managed synth, Loop Mix, and SHR Drums
+attach when present:</p>
 <pre><code class="language-text">managed software instrument -&gt; source inserts/optional aux sends --\
 owned four-slot native-rate Loop Mix sum ---------------------------+-&gt; stereo sum
 configured JACK capture L/R ---------------------------------------/
@@ -7230,6 +7037,9 @@ these inputs; its Levels screen does meter the first 18 configured sources. It
 remains distinct from the owned performance bus and its one-file
 post-strip <a href="#doc-final_performance_bus--final-recording">final stereo recording</a>.
 Use the interface or mixer for safe low-latency audible raw-input monitoring.</p>
+<p>This page owns source mapping, callback guarantees, take storage, recovery, and
+the hardware-free stress path. The <a href="#doc-menu_manual">menu manual</a> owns the
+visible Recorder and Levels controls.</p>
 <h4 id="doc-multitrack_recording--what-one-take-guarantees" tabindex="-1">What one take guarantees<a class="heading-anchor" href="#doc-multitrack_recording--what-one-take-guarantees" aria-label="Link to What one take guarantees">#</a></h4>
 <p>All armed tracks enter and leave capture on the same JACK callback boundary.
 One callback copies every channel into one preallocated interleaved SPSC ring,
@@ -8109,7 +7919,9 @@ latency, JACK xruns/timing, and playback/file equality. Record exact observed
 names, period count, converter latency, and results here. Synthetic tests do not
 count as this physical acceptance.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-multitrack_presentation" data-source="docs/MULTITRACK_PRESENTATION.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">Three-minute multitrack presentation</span><span class="document-summary">Truthful hardware and synthetic versions with exact on-screen evidence.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/MULTITRACK_PRESENTATION.md" target="_blank" rel="noopener noreferrer external">View docs/MULTITRACK_PRESENTATION.md source</a></div><p>This script is truthful before and after the MR18 test. Replace the bracketed
+<details class="document" id="doc-multitrack_presentation" data-source="docs/MULTITRACK_PRESENTATION.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">Three-minute multitrack presentation</span><span class="document-summary">Truthful hardware and synthetic versions with exact on-screen evidence.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/MULTITRACK_PRESENTATION.md" target="_blank" rel="noopener noreferrer external">View docs/MULTITRACK_PRESENTATION.md source</a></div><p>Created: 2026-07-19</p>
+<p>Status: presentation aid with a still-gated physical MR18 result</p>
+<p>This script is truthful before and after the MR18 test. Replace the bracketed
 hardware result only when the signed test sheet supports it.</p>
 <h4 id="doc-multitrack_presentation--script-and-shot-list" tabindex="-1">Script and shot list<a class="heading-anchor" href="#doc-multitrack_presentation--script-and-shot-list" aria-label="Link to Script and shot list">#</a></h4>
 <p><strong>0:00–0:25 — old limitation.</strong> Show the previous stereo-recorder image or a
@@ -8273,6 +8085,19 @@ Genre names are creative navigation hints rather than claims of an
 authoritative cultural transcription. The structural and naming audit is in
 <code>docs/DRUM_PATTERN_AUDIT.md</code>; groove, feel, and final curation still require
 human listening.</p>
+<h4 id="doc-third-party--shr-drums-engine-and-kit-sources" tabindex="-1">SHR Drums engine and kit sources<a class="heading-anchor" href="#doc-third-party--shr-drums-engine-and-kit-sources" aria-label="Link to SHR Drums engine and kit sources">#</a></h4>
+<p>The in-process drum engine is the separate MIT-licensed
+<a href="https://github.com/PaolaShultz/shr-drums" class="external" target="_blank" rel="noopener noreferrer external">SHR Drums repository</a>. Version 0.2
+keeps the strict format 1 package boundary and adds an optional advanced
+modeled-voice graph. The public
+<a href="https://github.com/PaolaShultz/shr-drums/blob/main/FORMAT.md" class="external" target="_blank" rel="noopener noreferrer external">format contract</a>
+defines validation and compatibility. Its
+<a href="https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md" class="external" target="_blank" rel="noopener noreferrer external">source record</a>
+owns sample provenance.</p>
+<p>Compiled <code>.shrkit</code> packages, source archives, and private review renders are
+not bundled by this repository. Their presence on a developer machine does not
+grant redistribution rights. Package or appliance distributors must review
+the kit's own manifest, source record, asset licence, and required notices.</p>
 <h4 id="doc-third-party--public-domain-demo-compositions" tabindex="-1">Public-domain demo compositions<a class="heading-anchor" href="#doc-third-party--public-domain-demo-compositions" aria-label="Link to Public-domain demo compositions">#</a></h4>
 <p>The ten demo arrangements in <code>demos/</code> are newly programmed for SHR-DAW and are
 released under MIT. The underlying compositions are traditional or old enough
@@ -12546,9 +12371,12 @@ title strip so link-preview crawlers do not receive a reduced or lossy copy.</p>
 <p>The visible page is a product presentation, not an expanded repository dump.
 It uses one introduction and one screenshot tour. Detailed guides are closed
 by default, and measurements, maintainer records, handoffs, and proposals sit
-inside a separately labelled technical archive. When the same image bytes are
-referenced more than once, the first occurrence owns the image and later
-references link back to it.</p>
+inside a separately labelled technical archive. Search covers current guides
+by default. A visible checkbox includes the archive, and every result states
+its classification and source. The navigation also links the public SHR Drums
+repository and labels the Croatian essay as <code>Hrvatski</code>. When the same image
+bytes are referenced more than once, the first occurrence owns the image and
+later references link back to it.</p>
 <h5 id="doc-maintainer_helpers--social-card-image-qa" tabindex="-1">Social-card image QA<a class="heading-anchor" href="#doc-maintainer_helpers--social-card-image-qa" aria-label="Link to Social-card image QA">#</a></h5>
 <p>The connection diagram is functional documentation. Never use an image
 generator to recreate its hardware or routing: a plausible-looking cable,
@@ -12972,6 +12800,9 @@ immediate musical mirror; FT2 turns discoveries into repeatable Patterns. This
 does not replace theory or claim measured educational results. It explains why
 beginner readability, visible names, compact feedback, and fast experimentation
 are central product requirements rather than incidental extras.</p>
+<p>The creator develops this idea further in the Croatian essay
+<a href="#doc-ucenje_kroz_istrazivanje">Učenje kroz istraživanje</a>. It is a personal
+reflection, not a measured educational claim.</p>
 <p>The creator first learned about the challenge from an OpenAI Build Week email
 received at 22:14 on Friday, July 17, 2026, as shown by the inbox timestamp:
 only four calendar days before submission day. SHR-DAW was not started for the
@@ -13225,6 +13056,53 @@ as especially light.</p>
 <p>This record should grow only when there is a meaningful development event to
 preserve; feature manuals, benchmark tables, and speculative implementation
 detail belong in their dedicated documents.</p>
+<p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
+<details class="document" id="doc-ucenje_kroz_istrazivanje" data-source="docs/UCENJE_KROZ_ISTRAZIVANJE.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">SHR-DAW: teorija kao odgovor na pitanje koje već postoji</span><span class="document-summary">SHR-DAW nije nastao iz plana da napravim cijeli DAW. Htio sam samo svirati nekoliko softverskih instrumenata na Raspberry Piju, bez pretvaranja malog računala u još jedno desktop računalo. Kad je to proradilo, pojavilo se pitanje: može li ista kutija pružiti pratnju? To pitanje vodilo je prema ritmovima, melodijama, vanjskim MIDI uređajima, aranžmanima, petljama, efektima i snimanju.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external">View docs/UCENJE_KROZ_ISTRAZIVANJE.md source</a></div><p>SHR-DAW nije nastao iz plana da napravim cijeli DAW. Htio sam samo svirati
+nekoliko softverskih instrumenata na Raspberry Piju, bez pretvaranja malog
+računala u još jedno desktop računalo. Kad je to proradilo, pojavilo se pitanje:
+može li ista kutija pružiti pratnju? To pitanje vodilo je prema ritmovima,
+melodijama, vanjskim MIDI uređajima, aranžmanima, petljama, efektima i snimanju.</p>
+<p>Danas SHR-DAW kroz zaslon od 40×13 znakova i mali fizički kontroler svira
+softverske instrumente, upravlja s do 128 vanjskih MIDI uređaja, pamti MIDI
+ideje, gradi cijele skladbe te snima zasebne kanale i završni stereo miks.
+<a href="https://github.com/PaolaShultz/shr-daw/blob/main/README.md" class="external" target="_blank" rel="noopener noreferrer external">Trenutačno stanje projekta opisano je u README dokumentu na engleskom
+jeziku</a>.</p>
+<p>Usput se pojavila još osobnija ideja. I sam se kao starija osoba vraćam učenju,
+pa mi je bliska pomisao da teorija ne mora uvijek biti prva prepreka. Neka djeca
+i početnici ne žele da njihov prvi susret s glazbom bude knjiga. Žele nešto
+pritisnuti, čuti što se dogodilo, promijeniti jednu stvar i iz toga izvući
+vlastiti zaključak.</p>
+<p>U Playeru početnik odabere instrument, uključi <strong>N00B</strong> te izabere početni ton
+i dur ili prirodni mol. Od tada reagiraju samo tipke koje pripadaju toj
+ljestvici. Ostale ostaju tihe: program ih ne premješta na „ispravan” ton i ne
+pretvara ih u nešto što nije odsvirano.</p>
+<p>Dok početnik istražuje, zaslon pokazuje stvarne tonove koji zvuče, njihove
+položaje na klavijaturi, jačinu svakog udarca i naziv prepoznatog akorda.
+Program ne govori „točno” ili „pogrešno”; on onome što je upravo čuto daje
+vidljiv oblik i ime.</p>
+<p>Zamislimo nekoga tko je odabrao cis-mol. Među dopuštenim tipkama pronalazi
+<code>C#m</code>, zatim pomakne ili doda jedan ton i vidi novo ime. Možda slučajno otkrije
+<code>E maj</code> ili <code>A maj</code> i primijeti da ti akordi i dalje zvuče kao da pripadaju
+istom svijetu. Najvažnije nije to što je već naučio njihovo teorijsko
+objašnjenje, nego to što je sada stvorio vlastito pitanje: zašto su povezani?</p>
+<p>Kad poželi sačuvati takvo otkriće, prelazi u FT2, gdje se glazba vidi kao četiri
+stupca koja napreduju red po red: isti N00B filtar ostaje uključen dok svira
+preko ponavljajuće fraze, snima dopuštene tonove ili bez žurbe unosi ton i akord
+do četiri tona s odabranim trajanjem, dok pritisci izvan ljestvice ostaju tihi i
+nezapisani.</p>
+<p>Tako put ne počinje definicijom, nego iskustvom:</p>
+<p><code>pritisni → čuj → vidi → promijeni → usporedi → pitaj zašto</code></p>
+<p>Cilj nije ukloniti teoriju, zamijeniti učitelja ili tvrditi da svi uče jednako.
+Cilj je teoriji dati razlog da nekome postane važna — da stigne kao odgovor na
+pitanje koje je učenik već sam postavio.</p>
+<p>Naziv N00B odnosi se na opcionalni filtar, ne na osobu koja ga koristi. On može
+biti privremena ograda za dijete, potpunog početnika, Raspberry Pi entuzijasta
+ili stariju osobu koja se, poput mene, vraća učenju.</p>
+<p>Zato me zanima iskreno mišljenje obrazovanih glazbenika i pedagoga: može li
+ovakav početak potaknuti stvarnu znatiželju? Pomaže li povezivanje zvuka,
+položaja tonova i naziva akorda? Kada bi tu privremenu ogradu trebalo ukloniti i
+otvoriti cijelu kromatsku klavijaturu? Što biste u ovom pristupu zadržali, a što
+promijenili?</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-build_week_feature_matrix" data-source="docs/BUILD_WEEK_FEATURE_MATRIX.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Feature and quirk matrix</span><span class="document-summary">Subsystem-level access, persistence, failure, safety, architecture, and test inventory.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/BUILD_WEEK_FEATURE_MATRIX.md" target="_blank" rel="noopener noreferrer external">View docs/BUILD_WEEK_FEATURE_MATRIX.md source</a></div><p>This matrix is maintained as a current subsystem inventory. Historical counts
 remain in <a href="#doc-build_week">the Build Week record</a>; future plans do not count as
@@ -13934,7 +13812,8 @@ physically or aurally validated.</p>
 </tr>
 </tbody>
 </table>
-<p>The repository has 105 generated PNG frames, two JPGs, and the HTML tour.
+<p>At this checkpoint, the repository had 105 generated PNG frames, two JPGs, and
+the HTML tour.
 Representative Home, FT2, overlay, Files, Playback, Routing, FX, Recorder, and
 Meter frames were visually inspected and reconciled with their source fixtures.
 This was not an exhaustive pixel-by-pixel review of every PNG.</p>
@@ -14592,8 +14471,9 @@ remaining physical or owner observation.</p>
 </tr>
 </tbody>
 </table>
-<p>The screenshot count is not contradictory: 97 menu-manual images are a subset
-of the 107 generated PNG frames.</p>
+<p>At the 2026-07-23 checkpoint, the 97 menu-manual images were a subset of the
+107 generated PNG frames. Those are dated counts, not the current image
+inventory.</p>
 <h4 id="doc-workflow_audit_handoff--isolated-defects-kept-separate-from-workflow-redesign" tabindex="-1">Isolated defects kept separate from workflow redesign<a class="heading-anchor" href="#doc-workflow_audit_handoff--isolated-defects-kept-separate-from-workflow-redesign" aria-label="Link to Isolated defects kept separate from workflow redesign">#</a></h4>
 <ol>
 <li><strong>Routing-default partial commit:</strong> defaults are written before Project save
@@ -14763,9 +14643,11 @@ cycles to its bounded strict <code>.mojsint</code> catalog without launching sou
 alone starts <code>moj-sint --client-name ... --preset ...</code>. Playback renders the
 eight Model D controls plus ADSR in the existing three-by-four geometry, with
 Moj-specific CCs, defaults, RESET, pickup, Project/Idea/FT2 identity, and no
-synthv1 XML or parameter-index reuse. SHR Drums remains unchanged at 0.1.1 and
-continues as the in-process fourth final-bus source beside the one managed
-melodic engine.</p>
+synthv1 XML or parameter-index reuse. The live SHR Drums sibling is now 0.2.0
+and continues as the in-process fourth final-bus source beside the one managed
+melodic engine. Its public format keeps legacy packages readable and adds the
+optional advanced modeled-voice graph used by the public Acid recipe. This
+states the source capability, not that any private compiled kit is installed.</p>
 <p>Version <code>0.4.5</code> pairs with Moj Sint 0.2.1 and exposes all seven authored Model D
 starts instead of only the idealized reference. Strict schema 3 carries bass,
 lead, or filter-articulation patch identity; schemas 1 and 2 remain strict
@@ -14813,12 +14695,19 @@ audition renderers. Their exact scope and opt-in command live in
 the harness took 49.32 seconds and total wall time including 21.05 seconds of
 test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.</p>
-<p>FT2's quick ROUTE overlay keeps whole-draft <code>APPLY</code> and <code>CANCEL</code> commands in
+<p>One source-level help contradiction remains open. <code>shr --help</code> classifies
+<code>effects-checkpoint</code> as non-audible maintenance, but the command starts the
+prepared JACK graph and synth, sends a low-gain note, and takes a bounded
+measurement. Public guides keep the stricter explicit-authorization warning.
+Do not treat the current CLI category label as permission to run it.</p>
+<p>FT2's quick ROUTE overlay keeps whole-route <code>APPLY</code> and <code>CANCEL</code> commands in
 the standard controller action row at native 40×13 instead of hiding Apply
 below the scrolling fields or drawing custom controls into the overlay border.
 Its canonical ROUTE controller page, mouse targets, and keyboard <code>A</code>/<code>C</code> share
-those direct actions; Back remains field-first. An SHR Drums target now exposes
-the installed drum sets through the route draft's <code>KIT</code> field and persists the
+those direct actions. Turning an active field applies valid Project and live
+route changes immediately. Apply keeps the result, Cancel restores the opening
+route snapshot, and Back remains field-first. An SHR Drums target now exposes
+the installed drum sets through the route session's <code>KIT</code> field and persists the
 applied selection with the Project, resetting only prior-kit tuning overrides
 while preserving the Project key and drum effects.
 FT2 Exit and computer-keyboard quit now bypass the save guard whenever the
@@ -15182,20 +15071,21 @@ Branch tips, commit messages, and clean/dirty snapshots are intentionally not
 recorded here. Inspect live Git state, preserve concurrent work, commit only
 your own scope, and do not wait for unrelated workers to finish; follow the
 canonical collaboration rule in <code>AGENTS.md</code>.</p>
-<p>Plain <code>shr</code> resolves to this checkout's <code>scripts/local.sh</code> through both
-<code>$HOME/.bash_aliases</code> and <code>$HOME/.local/bin/shr</code>. The launcher uses
-<code>target/debug/shr</code> unless <code>SHSYNTH_BIN</code> is explicitly set; the debug TUI shows
-<code>DEV</code>. Do not restore the obsolete release-binary alias.</p>
-<h4 id="doc-workspace_handoff--active-dspjack-continuation-2026-07-22" tabindex="-1">Active DSP/JACK continuation (2026-07-22)<a class="heading-anchor" href="#doc-workspace_handoff--active-dspjack-continuation-2026-07-22" aria-label="Link to Active DSP/JACK continuation (2026-07-22)">#</a></h4>
-<p>The current DSP closure pass must be continued, not recreated. It
-adds validated FFT/alias analyzers; centered four-point Lagrange interpolation
-for delay, chorus, and flanger; first-order ADAA on the filter cubic pre-drive;
-short reverb input all-pass diffusion; comprehensive nonlinear/interpolation/
-reverb tests; and private level-matched audition renders. Distortion retains
+<p>Plain <code>shr</code> resolves to this checkout's <code>scripts/local.sh</code> through
+<code>/usr/local/bin/shr</code>; <code>$HOME/.bash_aliases</code> names the same launcher. The stale
+<code>$HOME/.local/bin/shr</code> link still points to the removed former checkout and
+must not be used. The launcher uses <code>target/debug/shr</code> unless <code>SHSYNTH_BIN</code> is
+explicitly set; the debug TUI shows <code>DEV</code>. Do not restore the obsolete
+release-binary alias.</p>
+<h4 id="doc-workspace_handoff--dated-dspjack-closure-record-2026-07-22" tabindex="-1">Dated DSP/JACK closure record (2026-07-22)<a class="heading-anchor" href="#doc-workspace_handoff--dated-dspjack-closure-record-2026-07-22" aria-label="Link to Dated DSP/JACK closure record (2026-07-22)">#</a></h4>
+<p>This section records the completed DSP closure pass. It added validated
+FFT/alias analyzers; centered four-point Lagrange interpolation for delay,
+chorus, and flanger; first-order ADAA on the filter cubic pre-drive; short
+reverb input all-pass diffusion; focused nonlinear, interpolation, and reverb
+tests; and private level-matched audition renders. Distortion retained
 first-order ADAA after multi-bin characterization. The implementation and
 focused provenance are in <code>src/dsp/</code>, <code>src/effects/</code>, <code>src/effect_schema.rs</code>,
-<code>src/main.rs</code>, <code>docs/AUDIO_GRAPH.md</code>, and <code>docs/CONFIGURATION.md</code>. Do not edit
-the roadmap or historical Phase 2/3/4 measurements for this work.</p>
+<code>src/main.rs</code>, <code>docs/AUDIO_GRAPH.md</code>, and <code>docs/CONFIGURATION.md</code>.</p>
 <p>The earlier DSP-focused offline validation was coherent: its complete suite
 passed 648 tests with zero failures and four intentionally ignored private
 renderers; the later checkpoint-only diagnostic/panic change passed its focused
@@ -15370,10 +15260,11 @@ Keep transport/recording stopped and do not attach routes. On the physical
 40×13 TTY, verify the shared 38×11 overlay at <code>(1,1)</code>, its one-cell reveal,
 launcher inside the bottom border, and uninterrupted final status row;
 encoder/keyboard parity and wrap behavior; silent hidden launchers; two-step
-Back behavior; ROUTE draft cancellation without Project mutation; the Loop
-Library's explicit PLAY preview, stop/rollback, and return behavior; and every entered screen,
-including an MTR FX caller return, starting on controller-menu page 1. Record
-observed failures before changing behavior.</p>
+Back behavior; live ROUTE field changes followed by whole-route Cancel restoring
+the opening Project and route snapshot; the Loop Library's explicit PLAY
+preview, stop/rollback, and return behavior; and every entered screen, including
+an MTR FX caller return, starting on controller-menu page 1. Record observed
+failures before changing behavior.</p>
 <p>A later user-authorized musical/hardware pass should exercise the
 standalone/FT2 synth ownership split, N00B versus Play/REC/Edit, independent
 Edit length/ADD values, routing-default confirmation, and percussion smart
@@ -15415,8 +15306,10 @@ available only for an explicit historical comparison; it is not the
 development or validation default.
 The system JavaScript tools use Node.js 24.18.0 LTS from the root-owned
 NodeSource <code>node_24.x</code> repository, npm 12.0.1, and the root-owned Codex CLI
-0.146.0. Codex startup update checks are disabled in the private user
-configuration because an unprivileged updater cannot replace that system
+0.146.0. Documentation layout checks use Chromium and ChromeDriver
+150.0.7871.181 with Selenium 4.31.1. Codex startup update checks are disabled
+in the private user configuration because an unprivileged updater cannot
+replace that system
 installation; update it deliberately with
 <code>sudo npm install -g npm@latest @openai/codex@latest</code>. The restored broken
 <code>~/.local/bin/codex</code> link to the former <code>$HOME</code> checkout is retained only
@@ -15550,12 +15443,16 @@ and</li>
 <a href="#doc-mr18_test_plan">MR18 acceptance plan</a>. The release is not marked checked
 until that physical gate passes.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-future_improvements" data-source="docs/FUTURE_IMPROVEMENTS.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Future improvements</span><span class="document-summary">Unscheduled smart musical assistance, deferred routing and product ideas, and the deliberately unreasonable challenges.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FUTURE_IMPROVEMENTS.md" target="_blank" rel="noopener noreferrer external">View docs/FUTURE_IMPROVEMENTS.md source</a></div><p>This file records useful extensions that are deliberately not part of the
+<details class="document" id="doc-future_improvements" data-source="docs/FUTURE_IMPROVEMENTS.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Future improvements</span><span class="document-summary">Unscheduled smart musical assistance, deferred routing and product ideas, and the deliberately unreasonable challenges.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FUTURE_IMPROVEMENTS.md" target="_blank" rel="noopener noreferrer external">View docs/FUTURE_IMPROVEMENTS.md source</a></div><p>Started: 2026-07-18</p>
+<p>Status: unscheduled proposal archive</p>
+<p>This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.</p>
 <p>These entries do not enter the current 0.4, 0.5, or 0.6 scope automatically.
 The <a href="#doc-release_roadmap">release roadmap</a> owns development order; an item here
-becomes a milestone requirement only when the owner explicitly moves it there.</p>
+becomes a milestone requirement only when the owner explicitly moves it there.
+Use the musician guides and architecture documents in <a href="#documentation">the documentation
+index</a> for current behavior. This page is a proposal archive.</p>
 <h4 id="doc-future_improvements--future-smart-musical-assistance-unscheduled" tabindex="-1">Future smart musical assistance — unscheduled<a class="heading-anchor" href="#doc-future_improvements--future-smart-musical-assistance-unscheduled" aria-label="Link to Future smart musical assistance — unscheduled">#</a></h4>
 <p>Smart assistance should remove repetitive musical work while leaving the
 musician in control of the musical decision.</p>
@@ -15843,7 +15740,9 @@ and <code>D-50 OUT</code> to stable USB/ALSA card and port identity, preserve th
 across reconnects, while preserving the current refusal to guess. It should
 remain configuration data rather than adding hardware names to Rust constants.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-pi5_headroom_plan" data-source="docs/PI5_HEADROOM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Raspberry Pi 5 headroom and footprint plan</span><span class="document-summary">Completed platform baseline followed by the later dependency/footprint, real-time-core, and PRESTO experiments.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/PI5_HEADROOM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/PI5_HEADROOM_PLAN.md source</a></div><blockquote>
+<details class="document" id="doc-pi5_headroom_plan" data-source="docs/PI5_HEADROOM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Raspberry Pi 5 headroom and footprint plan</span><span class="document-summary">Completed platform baseline followed by the later dependency/footprint, real-time-core, and PRESTO experiments.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/PI5_HEADROOM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/PI5_HEADROOM_PLAN.md source</a></div><p>Created: 2026-07-20</p>
+<p>Status: completed platform baseline with unscheduled follow-up experiments</p>
+<blockquote>
 <p>The clean Raspberry Pi OS Lite installation and setup acceptance is a release
 0.4 gate. The Raspberry Pi 5 baseline was measured on 2026-07-28 at version
 0.4.2; see the dated
@@ -16055,7 +15954,9 @@ runtime, helper, installer, or behavior change still requires the full locked
 Rust validation and relevant real-time acceptance. Documentation-only planning
 changes use the repository's targeted documentation checks.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-post_competition_mixer_aux_plan" data-source="docs/POST_COMPETITION_MIXER_AUX_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition mixer and shared-aux plan</span><span class="document-summary">Multi-strip mixer and shared-aux migration.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_MIXER_AUX_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_MIXER_AUX_PLAN.md source</a></div><blockquote>
+<details class="document" id="doc-post_competition_mixer_aux_plan" data-source="docs/POST_COMPETITION_MIXER_AUX_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition mixer and shared-aux plan</span><span class="document-summary">Multi-strip mixer and shared-aux migration.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_MIXER_AUX_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_MIXER_AUX_PLAN.md source</a></div><p>Created: 2026-07-19</p>
+<p>Status: historical proposal archive</p>
+<blockquote>
 <p><strong>Historical proposal boundary:</strong> SHR-DAW now has a deliberately narrow
 four-source final performance bus and Project format 13. The general
 multi-strip/shared-aux, pan/solo, hardware-insert, and free-routing work below
@@ -16262,7 +16163,9 @@ mix, and the displayed/recorded post-master signal agrees with playback. MIDI
 lanes without isolated audio must remain honestly identified rather than
 receiving controls that cannot work.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-post_competition_rhythm_plan" data-source="docs/POST_COMPETITION_RHYTHM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition rhythm plan</span><span class="document-summary">Arbitrary Pattern length, microtiming, swing, groove tools, and optional formal meter.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_RHYTHM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_RHYTHM_PLAN.md source</a></div><p>This document is an execution plan for work <strong>after the competition</strong>. None of
+<details class="document" id="doc-post_competition_rhythm_plan" data-source="docs/POST_COMPETITION_RHYTHM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition rhythm plan</span><span class="document-summary">Arbitrary Pattern length, microtiming, swing, groove tools, and optional formal meter.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_RHYTHM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_RHYTHM_PLAN.md source</a></div><p>Created: 2026-07-19</p>
+<p>Status: proposal archive, not current behavior or scheduled release scope</p>
+<p>This document is an execution plan for work <strong>after the competition</strong>. None of
 the behavior below is part of the competition build, and the submission should
 not be destabilized to begin it early. The work is deliberately split into
 independently testable releases so SHR-DAW gains useful rhythm features before
@@ -16730,55 +16633,6 @@ Static tests can prove boundaries and ownership, but only the user can approve
 whether a swing amount or groove feels musically right.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 </section>
-<section class="library-group" aria-labelledby="group-technical-archive"><header class="group-header"><p class="eyebrow">Supporting record</p><h3 id="group-technical-archive">Technical archive</h3><p>Public supporting material not listed as a primary route in the documentation index.</p></header>
-<details class="document" id="doc-ucenje_kroz_istrazivanje" data-source="docs/UCENJE_KROZ_ISTRAZIVANJE.md" data-kind="Supporting record"><summary><span class="document-title" role="heading" aria-level="4">SHR-DAW: teorija kao odgovor na pitanje koje već postoji</span><span class="document-summary">SHR-DAW nije nastao iz plana da napravim cijeli DAW. Htio sam samo svirati nekoliko softverskih instrumenata na Raspberry Piju, bez pretvaranja malog računala u još jedno desktop računalo. Kad je to proradilo, pojavilo se pitanje: može li ista kutija pružiti pratnju? To pitanje vodilo je prema ritmovima, melodijama, vanjskim MIDI uređajima, aranžmanima, petljama, efektima i snimanju.</span></summary><div class="document-body"><div class="document-meta"><span>Supporting record</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external">View docs/UCENJE_KROZ_ISTRAZIVANJE.md source</a></div><p>SHR-DAW nije nastao iz plana da napravim cijeli DAW. Htio sam samo svirati
-nekoliko softverskih instrumenata na Raspberry Piju, bez pretvaranja malog
-računala u još jedno desktop računalo. Kad je to proradilo, pojavilo se pitanje:
-može li ista kutija pružiti pratnju? To pitanje vodilo je prema ritmovima,
-melodijama, vanjskim MIDI uređajima, aranžmanima, petljama, efektima i snimanju.</p>
-<p>Danas SHR-DAW kroz zaslon od 40×13 znakova i mali fizički kontroler svira
-softverske instrumente, upravlja s do 128 vanjskih MIDI uređaja, pamti MIDI
-ideje, gradi cijele skladbe te snima zasebne kanale i završni stereo miks.
-<a href="https://github.com/PaolaShultz/shr-daw/blob/main/README.md" class="external" target="_blank" rel="noopener noreferrer external">Trenutačno stanje projekta opisano je u README dokumentu na engleskom
-jeziku</a>.</p>
-<p>Usput se pojavila još osobnija ideja. I sam se kao starija osoba vraćam učenju,
-pa mi je bliska pomisao da teorija ne mora uvijek biti prva prepreka. Neka djeca
-i početnici ne žele da njihov prvi susret s glazbom bude knjiga. Žele nešto
-pritisnuti, čuti što se dogodilo, promijeniti jednu stvar i iz toga izvući
-vlastiti zaključak.</p>
-<p>U Playeru početnik odabere instrument, uključi <strong>N00B</strong> te izabere početni ton
-i dur ili prirodni mol. Od tada reagiraju samo tipke koje pripadaju toj
-ljestvici. Ostale ostaju tihe: program ih ne premješta na „ispravan” ton i ne
-pretvara ih u nešto što nije odsvirano.</p>
-<p>Dok početnik istražuje, zaslon pokazuje stvarne tonove koji zvuče, njihove
-položaje na klavijaturi, jačinu svakog udarca i naziv prepoznatog akorda.
-Program ne govori „točno” ili „pogrešno”; on onome što je upravo čuto daje
-vidljiv oblik i ime.</p>
-<p>Zamislimo nekoga tko je odabrao cis-mol. Među dopuštenim tipkama pronalazi
-<code>C#m</code>, zatim pomakne ili doda jedan ton i vidi novo ime. Možda slučajno otkrije
-<code>E maj</code> ili <code>A maj</code> i primijeti da ti akordi i dalje zvuče kao da pripadaju
-istom svijetu. Najvažnije nije to što je već naučio njihovo teorijsko
-objašnjenje, nego to što je sada stvorio vlastito pitanje: zašto su povezani?</p>
-<p>Kad poželi sačuvati takvo otkriće, prelazi u FT2, gdje se glazba vidi kao četiri
-stupca koja napreduju red po red: isti N00B filtar ostaje uključen dok svira
-preko ponavljajuće fraze, snima dopuštene tonove ili bez žurbe unosi ton i akord
-do četiri tona s odabranim trajanjem, dok pritisci izvan ljestvice ostaju tihi i
-nezapisani.</p>
-<p>Tako put ne počinje definicijom, nego iskustvom:</p>
-<p><code>pritisni → čuj → vidi → promijeni → usporedi → pitaj zašto</code></p>
-<p>Cilj nije ukloniti teoriju, zamijeniti učitelja ili tvrditi da svi uče jednako.
-Cilj je teoriji dati razlog da nekome postane važna — da stigne kao odgovor na
-pitanje koje je učenik već sam postavio.</p>
-<p>Naziv N00B odnosi se na opcionalni filtar, ne na osobu koja ga koristi. On može
-biti privremena ograda za dijete, potpunog početnika, Raspberry Pi entuzijasta
-ili stariju osobu koja se, poput mene, vraća učenju.</p>
-<p>Zato me zanima iskreno mišljenje obrazovanih glazbenika i pedagoga: može li
-ovakav početak potaknuti stvarnu znatiželju? Pomaže li povezivanje zvuka,
-položaja tonova i naziva akorda? Kada bi tu privremenu ogradu trebalo ukloniti i
-otvoriti cijelu kromatsku klavijaturu? Što biste u ovom pristupu zadržali, a što
-promijenili?</p>
-<p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-</section>
 </div></details></section><footer class="page-footer"><p>The page is generated from public SHR-DAW sources. <a href="#doc-license">MIT licence</a> · <a href="#doc-third-party">Third-party provenance</a> · <a class="external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">Repository source</a></p></footer></main>
 </div>
 <script>
@@ -16788,6 +16642,7 @@ promijenili?</p>
   const toggle = document.querySelector(".nav-toggle");
   const nav = document.getElementById("site-nav");
   const search = document.getElementById("doc-search");
+  const includeArchive = document.getElementById("search-archive");
   const results = document.getElementById("search-results");
   const status = document.getElementById("search-status");
 
@@ -16821,6 +16676,7 @@ promijenili?</p>
         href: `#${article.id}`,
         source: article.dataset.source,
         kind: article.dataset.kind,
+        archive: article.closest(".archive-collection") !== null,
         text: normalize(article.textContent)
       };
     });
@@ -16832,6 +16688,7 @@ promijenili?</p>
         href: `#${heading.id}`,
         source: article.dataset.source,
         kind: article.dataset.kind,
+        archive: article.closest(".archive-collection") !== null,
         text: normalize(title)
       };
     });
@@ -16843,11 +16700,16 @@ promijenili?</p>
     const query = normalize(search.value.trim());
     results.replaceChildren();
     if (query.length < 2) {
-      status.textContent = query ? "Type at least two characters." : "Search all headings and document text.";
+      status.textContent = query
+        ? "Type at least two characters."
+        : includeArchive.checked
+          ? "Search current guides and the technical archive."
+          : "Search current guides. The technical archive is off.";
       return;
     }
     const terms = query.split(/\s+/).filter(Boolean);
     const matches = buildSearchIndex()
+      .filter((entry) => includeArchive.checked || !entry.archive)
       .filter((entry) => terms.every((term) => entry.text.includes(term)))
       .slice(0, 30);
     for (const entry of matches) {
@@ -16865,6 +16727,7 @@ promijenili?</p>
       : "No matching documentation.";
   };
   search.addEventListener("input", renderSearch);
+  includeArchive.addEventListener("change", renderSearch);
 
   const revealTarget = () => {
     if (!location.hash) return;

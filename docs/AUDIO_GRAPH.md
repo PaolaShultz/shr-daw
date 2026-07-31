@@ -7,6 +7,10 @@ default and the conservative fallback. The current product compiler instantiates
 four bounded stereo sources: the managed software instrument, SHR Drums, the
 owned WAV loop, and one exact configured JACK capture pair.
 
+This page owns DSP topology, bounds, and callback safety. The [menu
+manual](MENU_MANUAL.md) owns screen actions, while the [final performance
+bus](FINAL_PERFORMANCE_BUS.md) owns monitoring and final recording.
+
 The active signal flow is:
 
 ```text

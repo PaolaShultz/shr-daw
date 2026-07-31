@@ -4,6 +4,10 @@ The FT2 screen is a vertical MIDI pattern sequencer. Its quick, top-to-bottom
 editing style is inspired by FastTracker II, but SHR-DAW is not an FT2 clone.
 It does not use FT2 code or read XM files.
 
+This guide owns FT2 behavior and Project editing. Use the [screen and menu
+manual](MENU_MANUAL.md) for button-by-button screenshots and [Configuration
+and routing](CONFIGURATION.md) for stored fields and machine defaults.
+
 On the native 40×13 display, the FT2 body and its own compact page/lane footer
 end above the two controller rows. Row 13 is the shared working-screen status
 row: steady green `>` for play, steady white `■` for stop, steady white `‖` for
@@ -174,16 +178,22 @@ fresh-Project default when installed, while other kits remain explicit
 choices. Applying a different kit must start it before the
 route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
-and keeps the draft open with the failure visible. Turn and click/Enter to activate a
-field; Back/Esc cancels that field first. Only **APPLY ROUTING** changes the
-Project. The window ends above the normal two controller rows. The contextual
+and keeps the editor open with the failure visible.
+
+Turn and click/Enter to activate a field. Turning the active field validates
+and applies each choice to the Project and live route at once, so an available
+instrument or kit can be auditioned without leaving the overlay. A failed
+choice restores the previous field value and route. Click/Enter keeps the
+current field value; Back/Esc restores the value from before that field was
+opened.
+
+**APPLY ROUTING** keeps the live result. **CANCEL** or Back from the main list
+restores the complete route snapshot from when ROUTE opened. The contextual
 **ROUTE** page puts **APPLY** at physical position 5 and **CANCEL** at position
-8; those controller buttons, mouse targets, and keyboard `A`/`C` invoke the
-same direct actions even while the longer field list scrolls. Back from an
-active field cancels only that field first, then Back or **CANCEL** discards the
-whole draft. At 40×13 the bordered outer window is 38×9 at `(1,1)`, its usable
-inner area is 36×7 at `(2,2)`, rows 11–12 are the controller rows, and row 13
-remains the shared status row.
+8; those controller buttons, mouse targets, and keyboard `A`/`C` share the same
+actions even while the field list scrolls. At 40×13 the bordered outer window
+is 38×9 at `(1,1)`, its usable inner area is 36×7 at `(2,2)`, rows 11 and 12 are
+the controller rows, and row 13 remains the shared status row.
 
 ## Step editing
 
@@ -291,7 +301,7 @@ the previous value and selection.
 
 In the ROUTE overlay, confirming an external column's PROGRAM sends that
 column's bank/program selection immediately, so a connected hardware
-instrument changes sound for stopped FT2 free play before the Project route is
+instrument changes sound for stopped FT2 free play as the field choice is
 applied. APPLY ROUTING keeps the route in the Pattern and sends the selected
 column's program again. The Tracks screen's DONE action follows the same
 selected-column rule. These actions do not wait for Play or for the next note.

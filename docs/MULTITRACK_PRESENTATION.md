@@ -1,5 +1,9 @@
 # Three-minute multitrack presentation
 
+Created: 2026-07-19
+
+Status: presentation aid with a still-gated physical MR18 result
+
 This script is truthful before and after the MR18 test. Replace the bracketed
 hardware result only when the signed test sheet supports it.
 

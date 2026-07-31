@@ -1,5 +1,9 @@
 # Future improvements
 
+Started: 2026-07-18
+
+Status: unscheduled proposal archive
+
 This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.
@@ -7,6 +11,8 @@ multiple hardware instruments simultaneously.
 These entries do not enter the current 0.4, 0.5, or 0.6 scope automatically.
 The [release roadmap](RELEASE_ROADMAP.md) owns development order; an item here
 becomes a milestone requirement only when the owner explicitly moves it there.
+Use the musician guides and architecture documents in [the documentation
+index](README.md) for current behavior. This page is a proposal archive.
 
 ## Future smart musical assistance — unscheduled
 

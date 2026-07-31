@@ -1,13 +1,11 @@
 # First run
 
-You do not need a full hardware studio to start. SHR-DAW is designed around a
-small paged MIDI control surface, and the computer keyboard remains a complete
-input option. External synths, an audio interface, mixer, and dedicated display
-are optional.
+You can start with a Raspberry Pi and a terminal. A MIDI keyboard, control
+surface, audio interface, mixer, and dedicated display are optional.
 
 ## Configure and start
 
-Run these commands after installation:
+After installation, run:
 
 ```sh
 shr-setup
@@ -15,80 +13,63 @@ shr doctor
 shr
 ```
 
-The setup wizard selects the control surface and performance keyboard inputs
-separately, selects English or German note spelling, installs four starter
-loops and ten cleared demo Projects, and finds ALSA MIDI and JACK audio ports. It can also
-download four private MusicRadar drum loops after showing the redistribution
-restriction. You can enter an exact port name if automatic detection is not
-enough. Run `shr-setup` again after changing a controller, MIDI interface,
-sound card, or JACK port layout.
+`shr-setup` keeps controller input and musical keyboard input as separate
+choices. It also asks about note spelling, MIDI output, JACK Audio Connection
+Kit (JACK) playback, audio capture, and optional CPU tuning. The wizard seeds
+four starter loops and ten cleared demo Projects. You may also choose a private
+MusicRadar loop download after reading its redistribution limit.
 
-The preferred playback pair is followed by optional named internal-device and
-analogue-headphone fallbacks. The headphone pair is always tried last. These
-are remembered machine choices: disconnecting hardware never replaces them,
-and the fallback banner names both the active substitute and missing preference.
+Run setup again when a controller, interface, sound card, or port layout
+changes. Remembered hardware choices are not replaced just because a device is
+temporarily disconnected. If the preferred playback pair is missing, SHR tries
+the configured fallbacks in order and reports which one it used.
 
-`shr doctor` checks the complete audio/MIDI setup, so it reports missing JACK
-as a problem and keeps a strict failing exit status. Its final grouped
-`CORE / EDITOR`, `MIDI`, `JACK AUDIO`, and `AUDIO TUNING` summaries distinguish
-which capabilities are ready. Audio tuning reports configured intent separately
-from live state: for example, reboot required, stale kernel tokens, an inactive
-but enabled JACK service, duplicate JACK processes, an administrator-owned
-setting left untouched, or an available rollback. Each non-ready state names
-the precise safe inspection or repair command; doctor does not change system
-policy or service state. The preset browser and external-MIDI tracker can still
-open without JACK; loading a software instrument, playing a WAV loop, and
-recording audio require it. SHR-DAW does not start or restart JACK.
+`shr doctor` is a strict check of the complete setup. Missing JACK therefore
+produces a failing result even though the preset browser and external MIDI
+tracker can still open. Software instruments, WAV loops, effects, and audio
+recording require JACK. SHR-DAW never starts or restarts JACK.
 
-Setup first retains a working distribution policy and JACK owner. A clean
-64-bit Raspberry Pi OS Lite login can opt into missing real-time permissions;
-Patchbox keeps its existing policy and shared JACK service. All system-changing
-setup questions default to no, and the final summary identifies logout/login,
-reboot, or next explicit JACK-start actions. Preview the optional CPU policy
-with `shr-audio-tune plan 3`, and inspect or retry it with
-`shr-audio-tune status`, `shr-audio-tune doctor 3`, or
-`sudo shr-audio-tune recover`. Details and rollback are in
-[Raspberry Pi audio-system optimization](AUDIO_SYSTEM_OPTIMIZATION.md).
+Doctor groups its report into `CORE / EDITOR`, `MIDI`, `JACK AUDIO`, and
+`AUDIO TUNING`. It does not change policy or services. Each problem includes
+the relevant inspection or recovery command. The optional CPU policy and its
+rollback are documented in [Raspberry Pi audio-system
+optimization](AUDIO_SYSTEM_OPTIMIZATION.md).
 
-The effects graph is disabled by default, so synth, SHR Drums, and loop audio
-initially use their configured direct routes. Read [How SHR-DAW
-works](HOW_IT_WORKS.md) before enabling the fixed final bus or Input software
+The effects graph starts disabled. Software instruments, SHR Drums, and loops
+first use their configured direct routes. Read [How SHR-DAW
+works](HOW_IT_WORKS.md) before enabling the final bus or Input software
 monitoring.
 
-## Choose how to play
+## Play something
 
-- Use the configured control surface for the primary four-page/four-button
-  menus and synth controls.
-- Add one or more performance MIDI keyboards to play velocity, chords, and live
-  recordings. They bypass controller mappings even when note or CC numbers
-  overlap.
-- The terminal keyboard is a fully qualified input device alongside configured
-  controller and performance inputs. Use it to navigate and enter tracker
-  notes with `Z S X D C V G B H N J M` whenever convenient.
-- Open **FILES** in FT2 to load one of the seeded demo Projects; its `AUTO`
-  pages use whatever MIDI destination and channels this machine currently has.
-- Open **LIVE** from FT2 tools to queue existing tracker Patterns without
-  changing the saved Arrangement, or open **LOOP** to perform up to four
-  tempo-compatible private WAV slots.
-- Add external MIDI instruments and audio hardware only when useful.
+- Use the computer keyboard to navigate and enter notes. The tracker note keys
+  are `Z S X D C V G B H N J M`.
+- A configured MIDI keyboard adds velocity, chords, and live recording. Its
+  musical messages bypass controller commands.
+- A configured control surface provides the four-page menus, main encoder,
+  pads, and mapped synth controls.
+- In the FastTracker II (FT2)-style tracker, open **FILES** to load a seeded
+  demo Project. Its portable `AUTO` routes use the destinations and channels
+  configured on this machine.
+- Open **LIVE** to perform existing Patterns without changing the saved
+  Arrangement. Open **LOOP** for the selected Pattern's four WAV slots.
 
-Computer-keyboard step entry is available, while free live performance of a
-software synth, a wider keyboard range, and more performance bindings remain
-future features. `?` and F1 already open Help.
+`?` and F1 open contextual Help. The [Using SHR-DAW](USING_SHR_DAW.md) guide
+continues from here without repeating every screen action.
 
 ## Terminal size
 
-SHR-DAW is designed for a 40×13 terminal. It adapts to the terminal cell size
-and reports when the window is too small. The installer does not change the
-font, desktop, display resolution, or fullscreen settings.
+The native layout is 40 columns by 13 rows. SHR adapts to the terminal cell
+size and reports when the window is too small. The installer does not change
+the console font, display resolution, desktop, window borders, scaling, or
+fullscreen mode.
 
-Pixel resolution does not determine the number of terminal cells by itself.
-The terminal program, font, scaling, window borders, and fullscreen state all
-matter. Change those settings yourself if fewer than 40 columns or 13 rows fit.
+Pixel resolution alone does not determine the available row and column count.
+Adjust your terminal settings if fewer than 40 columns or 13 rows fit.
 
-## Run from a development checkout
+## Run a development checkout
 
-For a self-contained local setup, use:
+For a repository-local setup:
 
 ```sh
 cargo build --locked
@@ -96,38 +77,29 @@ cargo build --locked
 ./scripts/local.sh
 ```
 
-This keeps configuration, logs, ideas, songs, recordings, downloads, and local
-presets below the ignored `user/` directory. Existing private files are not
-replaced. Set `SHSYNTH_USER_DIR` to use a different private directory. These
-helpers neither install packages nor start JACK; `setup-local.sh` only runs the
-routing wizard, and `local.sh` launches this checkout's `target/debug/shr`,
-identified as `DEV` in the TUI.
+The local helpers keep configuration, logs, Projects, Ideas, recordings,
+downloads, loops, and private presets below ignored `user/`. They preserve
+existing private files and do not install packages or start JACK.
+`setup-local.sh` configures the checkout. `local.sh` launches its
+`target/debug/shr`, identified as `DEV` in the TUI. Set `SHSYNTH_USER_DIR` to
+use another private root.
 
-## If setup is unusual
+## Unusual hardware or recovery
 
-The installer and setup wizard are the normal path. For uncommon controllers,
-complex routing, or recovery, Codex CLI can use the project's assisted-setup
-brief. Follow the official
-[Codex CLI installation and sign-in guide](https://developers.openai.com/codex/cli/),
-then run:
+The installer and setup wizard are the normal path. For an uncommon controller,
+complex route, or recovery problem, follow the
+[Codex-assisted setup brief](CODEX_ASSISTED_SETUP.md). It keeps hardware
+inspection, audible tests, and system changes behind explicit permission.
+
+After installing and signing in to Codex CLI, start that brief from the
+checkout:
 
 ```sh
-cd /path/to/shr-daw
 codex -C . "$(cat docs/CODEX_ASSISTED_SETUP.md)"
 ```
 
-This optional path can identify controller messages one physical control at a
-time, inspect ALSA MIDI and JACK routes, repair setup problems, and help with
-SoundFonts or complex external-instrument routing. Read the
-[assisted-setup brief](CODEX_ASSISTED_SETUP.md) for its safety rules. Audible
-tests and system-wide changes still require the user's permission.
+Known USB controllers are matched during setup. Unknown devices can use the
+non-audible MIDI learner; learned mappings remain private. See
+[Automatic controller setup and MIDI learn](CONTROLLER_PROFILES.md).
 
-Known USB controllers are matched during `shr-setup`; unknown devices can be
-mapped immediately with the non-audible MIDI learner. Profiles remain ordinary
-data and learned mappings remain private. See
-[Automatic controller setup and MIDI learn](CONTROLLER_PROFILES.md). Assisted
-discovery remains useful for proprietary modes, displays, LED feedback, or
-deeply customized hardware.
-
-Next, read [Using SHR-DAW](USING_SHR_DAW.md). For a larger hardware rig, see
-[Physical connections](CONNECTIONS.md).
+For a larger rig, continue with [Physical connections](CONNECTIONS.md).

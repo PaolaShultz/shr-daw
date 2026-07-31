@@ -1,5 +1,9 @@
 # Raspberry Pi 5 headroom and footprint plan
 
+Created: 2026-07-20
+
+Status: completed platform baseline with unscheduled follow-up experiments
+
 > The clean Raspberry Pi OS Lite installation and setup acceptance is a release
 > 0.4 gate. The Raspberry Pi 5 baseline was measured on 2026-07-28 at version
 > 0.4.2; see the dated

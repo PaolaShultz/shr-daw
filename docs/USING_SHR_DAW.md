@@ -1,299 +1,180 @@
 # Using SHR-DAW
 
-SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching
-workstation, not a desktop production DAW. It is designed to feel like a small
-hardware music appliance around a 40×13 TUI. Physical MIDI controls can carry
-the main workflow after setup, while MIDI keyboards, the computer keyboard,
-and terminal mouse/pointer input remain supported.
+SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation built
+around a 40×13 terminal. It supports a control surface, MIDI keyboards, the
+computer keyboard, and terminal pointer input. It is meant for quick musical
+work, not as a desktop production DAW.
 
-## What it is for
+## From an idea to a sketch
 
-SHR-DAW began with a personal need: play synths and capture ideas quickly while
-on the move or jamming with friends. It helps keep an idea before it disappears,
-then turn drums, bass, chords, melodies, loops, or tracker Patterns into a short
-musical sketch.
+1. Start a Project or load one from **FILES**.
+2. Choose a software instrument or a routed external MIDI instrument.
+3. Play freely, record a MIDI Idea, enter tracker notes, add drums, or attach
+   Pattern-owned WAV loops.
+4. Build an Arrangement or perform the existing Patterns through **LIVE**.
+5. Add only the effects and final processing the sketch needs.
+6. Record the final stereo performance or synchronized raw stems.
+7. Share the resulting files with tools outside SHR-DAW.
 
-Going from the first idea to a shareable sketch in roughly 10–15 minutes is an
-intended workflow and design goal. It is not a measured completion time,
-guarantee, or promise of a finished production. SHR can record the rough result
-as a final stereo WAV, but sending that file to someone uses ordinary tools
-outside SHR-DAW.
+The intended idea-to-sketch target is roughly 10 to 15 minutes. That is a
+design goal, not a measured guarantee or a promise of a finished production.
 
-## From idea to rough sketch
+## Boundaries
 
-1. Start a new Project or load one you already have.
-2. Choose a software instrument or a routed external MIDI instrument. Browsing
-   remains silent; `LOAD` is the only managed preset-start transaction.
-3. Create drums, melodic parts, free-timed MIDI Ideas, or Pattern-owned loops.
-4. Build Patterns and order them in the Arrangement, or perform them through
-   Live Patterns.
-5. Use the source, aux, DRUMS, master, and fixed-strip processing where it helps.
-6. Record the final stereo performance WAV or synchronized raw stems.
-7. Share the resulting file outside SHR-DAW.
+SHR-DAW has no desktop timeline, plugin windows, waveform editor, free-wiring
+matrix, unlimited mixer, offline song renderer, upload service, or messaging
+system. It does not replace Ardour, Ableton Live, Reaper, Bitwig, or another
+full production workstation.
 
-## What SHR-DAW is not
+The program helps you play, sequence, arrange, shape, and record your own
+choices. Proposed musical assistants remain in
+[Future improvements](FUTURE_IMPROVEMENTS.md); they are not current features.
 
-SHR-DAW has no desktop GUI. It supports terminal pointer input, but it is not
-designed around large mouse-driven windows, timelines, plugin panels, or mixer
-screens. It is not a replacement for Ardour, Ableton Live, Reaper, Bitwig, or a
-comparable full-scale production workstation.
+## Terms used in the guides
 
-It is not a general plugin-format host, free-wiring system, unlimited-track
-mixer, waveform editor, or full mastering environment. It does not provide an
-offline whole-song renderer, an integrated export command, file upload,
-messaging, or collaborator-sharing service. The music can leave SHR as a
-recorded WAV; delivery happens elsewhere.
+- **FT2** means the vertical Pattern editor inspired by FastTracker II. SHR-DAW
+  is not an FT2 clone and does not read XM files.
+- **MTR** is the on-screen performance meter and final-bus control surface.
+- **JACK** is the JACK Audio Connection Kit, the low-latency audio server and
+  connection graph. **ALSA** is the Advanced Linux Sound Architecture layer
+  used for Linux MIDI and audio devices.
+- A MIDI **CC** is a Control Change message. **PPQN** means pulses per quarter
+  note and describes MIDI clock resolution.
+- **LUFS** measures perceived loudness relative to full scale. **dBTP** means
+  decibels true peak.
+- **XDG directories** are the standard Linux locations used for private
+  configuration and data.
+- **Owned** means SHR-DAW started or created something and may safely change or
+  stop it. An **exact route** is one saved endpoint that SHR never guesses.
 
-SHR also does not try to automate every musical choice. The current tools help
-you play, filter, sequence, arrange, shape, and record the choices you make.
-Possible future assistance remains optional, reviewable proposal work, not a
-current capability.
+## Instruments and Playback
 
-## Instruments
-
-The Presets screen browses four kinds of software instruments:
+Presets browses four software backends:
 
 - synthv1 presets;
 - Yoshimi `.xiz` banks;
-- FluidSynth `.sf2` and `.sf3` SoundFonts.
+- FluidSynth `.sf2` and `.sf3` SoundFonts;
 - Moj Sint `.mojsint` Model D presets.
 
-The ordinary rotary browses the current catalog. Hold its configured Shift
-while turning to change catalogs in either direction; keyboard `[`/`]` and the
-clickable heading halves remain available. Catalog browsing stays silent, and
-`LOAD` is the only preset-start or replacement transaction. Moj Sint reuses
-the owned-process, direct playback, optional graph, panic, replacement, and
-shutdown paths while keeping its own preset and control semantics. Its seven
-ordered starts are Full Bass, Full Lead, Full Filter Articulation, Matched
-Idealized, Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
-Feedback. They preserve the authored Model D audition coordinates and all
-remain editable through the same twelve Playback controls.
+Browsing is silent. `LOAD` is the only managed start or replacement action.
+Only one SHR-managed melodic engine runs at a time. The loaded instrument
+continues when you leave Presets or Playback and stops on replacement, Panic,
+shutdown, or an FT2 route that needs a different backend.
 
-Changing engine does not mix their files or control rules. The Playback screen
-shows held note names with each note's decimal MIDI velocity directly beneath
-it, chord names, a continuous keyboard-state strip, MIDI idea recording, and
-the selected backend's 12 mapped controls. This is a practical way to practise soft/loud
-key control, even chord attacks, and bass-plus-chord balance. It reports the
-controller's MIDI strike velocity (1–127), not measured audio loudness; the
-instrument and its settings decide how strongly that velocity changes sound.
-`display.note_names` in
-`shsynth.conf` selects German `B`/`H` spelling or English `A#`/`B` spelling.
-Recognized major triads use the explicit `maj` label, such as `C maj`, so the
-display does not rely on an omitted suffix to teach the chord quality.
-`IDEA+` stores a captured MIDI take with the current sound; it is not a
-preset-save command. `SOUNDS` returns to Presets and its visible `LOAD`.
+Playback shows held notes, decimal MIDI strike velocity, chord names, a
+keyboard-state strip when space permits, and 12 controls for the active
+backend. `IDEA+` saves the captured MIDI take and its sound identity; it does
+not save an instrument preset. `SOUNDS` returns to Presets and its visible
+`LOAD`.
 
-The loaded standalone instrument stays running when you leave Presets or
-Playback, so it remains available for effects and other screens. Global panic,
-application shutdown, loading a replacement, or entering FT2 with a different
-explicit software route still ends it safely. Entering a genuinely new, empty,
-unsaved default FT2 Project assigns the current Player engine/instrument to page
-1 without restarting it. With no Player instrument loaded, FT2 loads the first
-available synthv1 preset itself. Saved or explicitly changed Projects keep their
-own routes, including saved Projects with empty note grids.
+Moj Sint keeps its own preset format and controls. Its seven authored starts
+remain one editable Model D instrument family. SHR Drums is separate from the
+managed melodic engine and runs in process. Its public source, format, and
+provenance are linked from [the documentation index](README.md).
 
-## Learning by exploration
+## Explore with N00B
 
-Playback N00B toggles a root plus major or natural-minor scale filter without
-leaving Player. While it is on, the same screen adds one compact `SCALE` rotary;
-turning the master encoder cycles the scale while every normal Player control,
-chord, note, velocity, and keyboard display remains visible. Allowed notes keep
-their pitch, other notes stay silent, and pressing N00B again restores chromatic
-play.
+Playback N00B filters live melodic input to a selected root plus major or
+natural-minor scale. Allowed notes keep their pitch; other notes stay silent.
+The screen still shows the normal notes, chords, velocities, keyboard, and
+controls.
 
-FT2 toggles the same selected scale directly in Play, Record, and Edit on
-melodic pages; it never opens another workspace or changes the current mode.
-Record and Edit write only allowed notes; Edit note length remains
-independent from its row advance. Moving to Drums turns the filter off.
+FT2 uses the same scale on melodic pages in Play, Record, and Edit. Record and
+Edit write only accepted notes. Moving to a percussion page turns the filter
+off. The Project stores its tonic and scale mode; SHR does not infer a key from
+audio or a finished Arrangement.
 
-The musician selects and stores the Project tonic and major or natural-minor
-mode. N00B filters live melodic input against that selected scale. SHR Drums
-already offers `OFF`, `FOLLOW KEY`, and `MANUAL` tuning per piece; `FOLLOW KEY`
-uses the stored Project key. SHR does not detect a song key from audio or infer
-one from a finished Arrangement.
+The practical loop is simple:
 
 ```text
-press -> hear -> see notes -> read a chord name -> change -> compare -> ask why
+press -> hear -> see -> change -> compare -> ask why
 ```
 
-## Screens
+## Workspaces
 
 Home opens Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing,
-Effects, Ideas, or Help. Recorder's Audio screen owns setup, naming, assignment,
-and take routing; its Levels screen keeps all 18 recording inputs visible at
-once. The master rotary browses the current content; press
-it to select or confirm. Back returns one level, and controller MIDI never
-quits the application.
+Effects, Ideas, and Help. The main encoder browses; press it to select. Back
+returns one level. Controller MIDI never quits the application.
 
-On screens that already have a second reversible browse axis, holding the
-configured encoder Shift gives the rotary that axis: Presets engine, FT2
-column, Tracks column, Live Pattern lane, Loop Mix slot, drum genre, FX target,
-or MASTER STRIP detail section. Other screens leave Shift-turn inert rather
-than assigning it to a destructive, transport, or confirmation action.
+Shift plus the main rotary changes a second reversible browse axis only where
+one exists, such as Preset engine, FT2 column, Live lane, Loop slot, drum
+genre, FX target, or MASTER STRIP section. It stays inert where an accidental
+turn could trigger transport, confirmation, or a destructive action.
 
-Software Synths leads from Presets to Playback and MIDI Ideas. FT2 owns
-Patterns, pages, Arrangement, Projects, drums, Live Patterns, and the fourth
-musician-facing Loop Mix page. Recorder captures raw synchronized stems; Performance owns
-the optional final bus and stereo recording. Routing edits machine choices,
-while MIDI Learn configures the controller without forwarding learned input.
-Its optional encoder-Shift step learns the whole held gesture—left turn, right
-turn, then release—so controllers that change the rotary CC while Shift is held
-do not require a hand-edited mapping.
+Ordinary overlays preserve their caller and discard unconfirmed drafts. FT2
+ROUTE is the live-audition exception: valid active-field choices change the
+Project and live route at once, Apply keeps them, and Cancel restores the route
+snapshot from when the overlay opened.
 
-Temporary master overlays keep their caller visible and cancel unconfirmed
-drafts on close. For every screen, controller page, shortcut, and exact loop
-workflow, use the [visual menu manual](MENU_MANUAL.md), [tracker
-guide](TRACKER.md), and [controller interface](CONTROLLER_INTERFACE.md).
-Controller-clock setup belongs in [Configuration and
-routing](CONFIGURATION.md#dedicated-controller-clock-and-transport).
+Use these focused guides for exact actions:
 
-## Live performance
+- [Screen and menu manual](MENU_MANUAL.md) for every screen and controller
+  page;
+- [Tracker guide](TRACKER.md) for FT2 editing, routing, Patterns, Arrangement,
+  drums, loops, and files;
+- [Controller interface](CONTROLLER_INTERFACE.md) for the complete physical
+  action contract;
+- [Configuration and routing](CONFIGURATION.md) for machine settings and
+  persisted route fields.
 
-**Live Patterns** browses four existing tracker Patterns at a time without
-launching them. A launch queues for the selected Pattern or bar boundary;
-retrigger, queue replacement/cancel, deliberate immediate launch, and literal
-Stop remain visible. Optional capture records only successful activations and
-requires Append/Replace confirmation before the Arrangement changes.
+## Live Patterns, Loop Mix, and Ideas
 
-The same screen gives the selected page's four MIDI lanes transient mute,
-velocity, gate, and transpose controls. They leave cell data unchanged, survive
-navigation, and reset safely when another Project loads. Shift-rotary changes
-the lane through the same path as Left/Right while preserving Pattern browse.
+Live Patterns lets you browse without launching, then queue activation at a
+Pattern or bar boundary. It can also capture successful activations for an
+explicit Append or Replace confirmation. Its lane mute, velocity, gate, and
+transpose controls are temporary and do not rewrite note cells.
 
-**Loop Mix** is decoded audio, not fake MIDI lanes, but its four private WAV
-slots belong to the selected FT2 Pattern. Browsing another Pattern changes the
-editor without changing the sound. Arrangement and Live Pattern boundaries
-switch MIDI and loops together and restart Pattern-local phase; repeated
-references share settings but each step restarts. All active WAVs must match
-their owning Pattern's tempo and JACK sample rate. One bad slot does not stop
-healthy loops or MIDI, and SHR-DAW does not time-stretch them.
-The ordinary rotary browses inbox files; Shift-rotary changes the selected loop
-slot without launching it.
+Each FT2 Pattern owns up to four private WAV loop references. Loop Mix browsing
+does not launch audio. Arrangement and Live boundaries switch the MIDI and WAV
+owners together. A bad slot is isolated, and SHR does not time-stretch files.
 
-See [Live performance](LIVE_PERFORMANCE.md) for exact controls, capture,
-ownership, routing, realtime limits, and unsupported DJ features.
+Ideas preserve free-timed MIDI. A synthv1 or Moj Sint Idea includes its private
+preset snapshot; other backends keep their instrument reference. Loading an
+Idea restores its sound before playback.
 
-## MIDI ideas
+See [Live performance](LIVE_PERFORMANCE.md) for boundary timing, capture,
+failure behavior, and realtime limits.
 
-Ideas capture free playing as MIDI. Each saved idea keeps its timing and
-instrument identity. A synthv1 or Moj Sint idea includes its own private preset snapshot;
-other engines retain the external instrument reference. Mapped synthv1 control
-values are saved too. Loading an idea can replace the current managed engine,
-then PLAY runs through the restored idea instrument rather than an arbitrary
-active engine.
+## Effects and final sound
 
-## Effects and routing
+Effects contains bounded source, aux, drums, and master processing. The
+Project owns rack order, parameters, routing, the fixed DRUMS
+Reverb-then-Delay rack, and the fixed MASTER STRIP.
 
-SHR's effects are bounded real-time processors designed and measured for
-Raspberry Pi constraints. The 13 implemented effect types, source and master
-racks, two aux paths, fixed DRUMS rack, meters, LUFS readout, true-peak limiter,
-and fixed final master strip can shape, characterise, and give a sketch a quick
-final polish. They are not a commercial plugin suite or a promise of
-professional mastering.
+With the optional graph disabled, ordinary source, aux, and master rack edits
+change Project data but do not process direct audio. The DRUMS rack still
+processes in-process drums on their direct path. With the graph active, stop
+transport and recording before changing graph structure. MASTER STRIP value
+changes can be auditioned during playback but are refused during final
+recording.
 
-Open Effects from Home, Playback **SYS** → **FX**, or FT2's page tools; Back
-returns to the caller. `TARGET` selects SOURCE, AUX 1, AUX 2, DRUMS, or MASTER.
-
-Source effects process the managed instrument in series. Aux sends make
-parallel wet-only copies, and the master rack processes the complete final-bus
-sum. DRUMS is a fixed Reverb-then-Delay rack whose bypass states are shown as
-`OFF`, `REVERB`, `REVERB + DELAY`, or `DELAY`; it processes internal drums even
-on direct routing. Other Project rack edits remain available with the graph
-disabled, but direct audio does not process or meter them. Stop transport
-before changing the drum rack, and with the graph active stop transport and all
-recording before changing graph FX. See [How SHR-DAW
-works](HOW_IT_WORKS.md#the-managed-audio-graph) for placement, effect choices,
-bypass, and routing.
-
-On the MASTER target choose **STRIP**, or use MTR **NAV** → **STRIP**, for the
-fixed Project-global MASTER STRIP after the rack and live master fader. Browse
-INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL; **DETAIL** opens only the
-selected section's parameters. Optional sections have smoothed bypass.
-**A/B** keeps the same latency and true-peak protection while comparing the
-optional processing; **RESET I** clears integrated loudness. Numerical edits
-are safe during playback but are refused during final recording. See
+The exact placement and safety rules live in [How SHR-DAW
+works](HOW_IT_WORKS.md), [Audio graph and DSP contract](AUDIO_GRAPH.md), and
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
 
-## Synchronized audio stems
+## Recording and meters
 
-The Audio Recorder writes every armed exact source as a separate mono 24-bit
-WAV with one shared timeline and manifest. Select a musician-friendly track,
-assign a discovered source deliberately, name it, and arm it. A missing exact
-preference remains `missing` and blocks start until assigned or disarmed.
-The setup screen shows elapsed time, armed count, selected-track level, writer
-high-water, drops, overflows, xruns, saved path, and errors.
+Recorder writes armed exact JACK sources as synchronized mono 24-bit WAV stems
+with one timeline and manifest. **LEVELS** opens the fixed 18-channel overview.
+A missing assigned source blocks take start until it is reassigned or disarmed.
+Interrupted recognized takes remain available for bounded recovery.
 
-Open **LEVELS** from Audio Recorder to see the dedicated 18-channel Levels
-overview. At exactly 40×13 it always shows 18 one-column, nine-LED vertical
-meters as three groups of six. Their thresholds are −48, −36, −30, −24, −18,
-−12, −6, −3, and −1 dBFS: green through −18, yellow from −12 through −3, and
-red at −1. Smoothed RMS fills the meter; a brighter LED of the same threshold
-colour holds sample peak, then decays predictably. A held red `C` marks a real
-clip without making ordinary near-peak yellow or red activity look broken.
+Performance owns the optional final bus and one 24-bit stereo recording of the
+same post-strip samples sent to playback. Input software monitoring starts off
+and uses one `MON ON` or `MON OFF` action. Enable it only after checking for
+direct hardware monitoring, or the input may be heard twice.
 
-The encoder, Left/Right, or `j`/`k` selects a channel without hiding or changing
-any meter. Click/Enter or Space toggles its arm state. The right-hand command
-area has visible TAKE, CHANNEL, and SYS pages for setup, record, literal Stop,
-reset, channel selection/arm/refresh, Panic, Help, and Exit. PageUp/PageDown
-changes that visible page. `r`, `s`, `x`, `u`, and uppercase `S` provide Record,
-Stop, Reset, Setup, and Panic. Selection and page survive ordinary navigation;
-a new or loaded Project resets both.
+All horizontal meters use circular `●` LEDs. Green is the safe range; yellow
+and red appear only at their active thresholds. A brighter circle holds the
+peak.
 
-The native Levels screen alone omits the two usual controller rows so rows
-2–10 can hold all nine LEDs and rows 11–12 can label all channels. Row 13
-remains the normal shared status renderer and command pages remain visible at
-the right. Smaller terminals get an ordinary compact screen with the shared
-controller/status layout instead of a cropped or banked meter.
-
-Silence is nine dark-gray LEDs with a normal channel number. `M` on the label
-means the configured source is missing, `F` means a monitor/callback fault, and
-the shared row gives the useful recovery. The meter client and recording client
-are recorder-owned and mutually exclusive, so the overview adds no duplicate
-route while a take is running. It is visual metering, not audible software
-monitoring, a selected-channel inspector, a route browser, or a full mixer.
-Stop closes the owned take; Panic also stops recorder monitoring and preserves
-normal All Notes Off cleanup. Application shutdown closes whichever recorder
-client it owns.
-
-If recording is interrupted, the temporary `*.take.part` session remains. On
-the next start, recognized mono stems recover only their common complete frames
-and publish as `recovered-incomplete`; unknown or unsafe data is reported and
-not silently deleted.
-
-Each mono file has its own RIFF limit. Any overflow, callback violation, source
-loss, xrun, writer/storage error, or mismatched finalization prevents the take
-from appearing complete.
-
-This raw-stem workflow is separate from MTR's final-mix recorder. The latter
-writes one 24-bit interleaved stereo WAV containing the exact limited playback
-samples. See [Final performance bus](FINAL_PERFORMANCE_BUS.md).
-See [Synchronized multitrack recording](MULTITRACK_RECORDING.md) for exact
-configuration, session layout, recovery, and hardware-free stress validation.
-
-## Performance meters
-
-Open Performance from Home, or press `m` on Presets. With the graph inactive,
-MTR shows passive whole-core CPU and legacy meter information. With it active,
-MTR controls Synth/Loop/Input/Drums levels, master level, the fixed strip's
-linked true-peak boundary, `FINAL OUT`, and final stereo recording. Synth,
-Loop, and Drums use MUTE. Input uses that same single position for MON ON or
-MON OFF, never a duplicate mute. Input monitoring starts off; MON ON can
-activate the bus without starting or requiring any optional source.
-
-`FINAL OUT` is the post-strip buffer shared by recording and playback. Input
-is present in both only while MON is on. The
-Loop Mix's separate `LOOP OUT` measures the complete four-slot sum. RESET clears
-presentation holds, not audio state. MTR does not report callback timing or
-xruns; see [Final performance bus](FINAL_PERFORMANCE_BUS.md) for the exact
-meter, limiter, monitoring, recording, and control contract.
-
-All horizontal meters use circular `●` LEDs. Dark gray means unlit; one green
-marks safe active level; yellow and red appear only at their active thresholds;
-and a held peak is a brighter circle of the same threshold colour.
+Read [Synchronized multitrack recording](MULTITRACK_RECORDING.md) and
+[Final stereo performance bus](FINAL_PERFORMANCE_BUS.md) before relying on a
+recording or monitoring setup.
 
 ## Command line
 
-The main program also provides these commands:
+Common inspection and setup commands are:
 
 ```sh
 shr menu
@@ -301,42 +182,22 @@ shr list
 shr status
 shr doctor
 shr start "synthv1:Velvet Tines"
-shr start "Yoshimi:Fat Bass"
 shr stop
 shr log 80
 shr ideas list
-shr ideas inspect "idea-name"
-shr ideas play "idea-name"
-shr ideas delete "idea-name" --yes
-shr pads list
-shr pads ports
-shr pads profiles
 shr pads auto [PORT_MATCH]
 shr pads learn [PORT_MATCH]
-shr pads update
-shr clock ports
-shr casio diagnostic
 shr config paths
 shr config init [--force]
-shr effects-checkpoint ENGINE:PRESET [PROFILE] [SECONDS]
 ```
 
-`shr config init` preserves existing configuration; `--force` deliberately
-replaces both runtime and controller files with current defaults. The complete
-CLI inventory, including maintenance stress and screenshot commands, is in
-`shr --help`; their safety contracts are in the focused recording, final-bus,
-and maintainer-helper documents.
+`shr config init` preserves existing files unless `--force` is given.
+`shr casio diagnostic` is a legacy-named, non-transmitting route report.
+Command-line Idea playback restores the Idea's instrument and stops on Ctrl+C.
 
-`shr casio diagnostic` keeps an old name from the first hardware test. It does
-not send MIDI. It lists output ports and shows the messages that would be used.
-The tracker itself is device-neutral. Command-line idea playback restores the
-saved instrument and can be stopped with Ctrl+C; deletion always requires the
-explicit `--yes` argument.
-
-`config init` creates missing configuration from templates without replacing
-existing files. `effects-checkpoint` is a maintainer-only, bounded, low-gain
-measurement workflow; it requires explicit authorization and a prepared JACK
-session, and normal use should not run it. See
+The complete command inventory is in `shr --help`. Maintenance stress commands
+belong to [Maintainer helper scripts](MAINTAINER_HELPERS.md).
+`effects-checkpoint` is different: it starts a prepared JACK graph and synth,
+sends a low-gain note, and measures a bounded run. Run it only with
+explicit authorization. Its setup contract is in
 [Configuration and routing](CONFIGURATION.md#owned-audio-graph).
-
-For pattern editing, continue with the [Tracker guide](TRACKER.md).

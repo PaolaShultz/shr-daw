@@ -1,5 +1,9 @@
 # Post-competition mixer and shared-aux plan
 
+Created: 2026-07-19
+
+Status: historical proposal archive
+
 > **Historical proposal boundary:** SHR-DAW now has a deliberately narrow
 > four-source final performance bus and Project format 13. The general
 > multi-strip/shared-aux, pan/solo, hardware-insert, and free-routing work below

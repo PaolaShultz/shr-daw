@@ -205,7 +205,8 @@ physically or aurally validated.
 | Diagnosis and recovery | `doctor`, status/log, setup rerun, recording recovery, fallback reports | Full `doctor` fails without optional JACK; setup rerun starts from partial state | `observed`: CLI/source/docs plus grouped live `doctor`, setup recovery, source-loss, xrun, JACK-loss, low-space, and interruption drills |
 | Operation-affecting maintainer helpers | Screenshot/demo validation and non-audible recording stress | Written boundaries are strong; output remains synthetic evidence | `observed`: helper docs and authorized helper executions, including isolated setup/install and 60-second recorder stress runs |
 
-The repository has 105 generated PNG frames, two JPGs, and the HTML tour.
+At this checkpoint, the repository had 105 generated PNG frames, two JPGs, and
+the HTML tour.
 Representative Home, FT2, overlay, Files, Playback, Routing, FX, Recorder, and
 Meter frames were visually inspected and reconciled with their source fixtures.
 This was not an exhaustive pixel-by-pixel review of every PNG.
@@ -559,8 +560,9 @@ remaining physical or owner observation.
 | X05 | Tracker docs say header does not repeat transport; source/test/screenshot require PAUSE/PLAY/REC | R13 DONE |
 | X06 | Current loop overlay has no deletion, but legacy menu/state/delete code remains | R15 DONE |
 
-The screenshot count is not contradictory: 97 menu-manual images are a subset
-of the 107 generated PNG frames.
+At the 2026-07-23 checkpoint, the 97 menu-manual images were a subset of the
+107 generated PNG frames. Those are dated counts, not the current image
+inventory.
 
 ## Isolated defects kept separate from workflow redesign
 

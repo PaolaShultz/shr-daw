@@ -516,9 +516,12 @@ title strip so link-preview crawlers do not receive a reduced or lossy copy.
 The visible page is a product presentation, not an expanded repository dump.
 It uses one introduction and one screenshot tour. Detailed guides are closed
 by default, and measurements, maintainer records, handoffs, and proposals sit
-inside a separately labelled technical archive. When the same image bytes are
-referenced more than once, the first occurrence owns the image and later
-references link back to it.
+inside a separately labelled technical archive. Search covers current guides
+by default. A visible checkbox includes the archive, and every result states
+its classification and source. The navigation also links the public SHR Drums
+repository and labels the Croatian essay as `Hrvatski`. When the same image
+bytes are referenced more than once, the first occurrence owns the image and
+later references link back to it.
 
 ### Social-card image QA
 

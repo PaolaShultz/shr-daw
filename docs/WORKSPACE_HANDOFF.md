@@ -25,9 +25,11 @@ cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD
 alone starts `moj-sint --client-name ... --preset ...`. Playback renders the
 eight Model D controls plus ADSR in the existing three-by-four geometry, with
 Moj-specific CCs, defaults, RESET, pickup, Project/Idea/FT2 identity, and no
-synthv1 XML or parameter-index reuse. SHR Drums remains unchanged at 0.1.1 and
-continues as the in-process fourth final-bus source beside the one managed
-melodic engine.
+synthv1 XML or parameter-index reuse. The live SHR Drums sibling is now 0.2.0
+and continues as the in-process fourth final-bus source beside the one managed
+melodic engine. Its public format keeps legacy packages readable and adds the
+optional advanced modeled-voice graph used by the public Acid recipe. This
+states the source capability, not that any private compiled kit is installed.
 
 Version `0.4.5` pairs with Moj Sint 0.2.1 and exposes all seven authored Model D
 starts instead of only the idealized reference. Strict schema 3 carries bass,
@@ -80,12 +82,20 @@ the harness took 49.32 seconds and total wall time including 21.05 seconds of
 test-target compilation was 70.48 seconds. No JACK, synth, MIDI, playback,
 recording, audible, or physical-hardware test was involved.
 
-FT2's quick ROUTE overlay keeps whole-draft `APPLY` and `CANCEL` commands in
+One source-level help contradiction remains open. `shr --help` classifies
+`effects-checkpoint` as non-audible maintenance, but the command starts the
+prepared JACK graph and synth, sends a low-gain note, and takes a bounded
+measurement. Public guides keep the stricter explicit-authorization warning.
+Do not treat the current CLI category label as permission to run it.
+
+FT2's quick ROUTE overlay keeps whole-route `APPLY` and `CANCEL` commands in
 the standard controller action row at native 40×13 instead of hiding Apply
 below the scrolling fields or drawing custom controls into the overlay border.
 Its canonical ROUTE controller page, mouse targets, and keyboard `A`/`C` share
-those direct actions; Back remains field-first. An SHR Drums target now exposes
-the installed drum sets through the route draft's `KIT` field and persists the
+those direct actions. Turning an active field applies valid Project and live
+route changes immediately. Apply keeps the result, Cancel restores the opening
+route snapshot, and Back remains field-first. An SHR Drums target now exposes
+the installed drum sets through the route session's `KIT` field and persists the
 applied selection with the Project, resetting only prior-kit tuning overrides
 while preserving the Project key and drum effects.
 FT2 Exit and computer-keyboard quit now bypass the save guard whenever the
@@ -486,22 +496,23 @@ recorded here. Inspect live Git state, preserve concurrent work, commit only
 your own scope, and do not wait for unrelated workers to finish; follow the
 canonical collaboration rule in `AGENTS.md`.
 
-Plain `shr` resolves to this checkout's `scripts/local.sh` through both
-`/home/patch/.bash_aliases` and `/home/patch/.local/bin/shr`. The launcher uses
-`target/debug/shr` unless `SHSYNTH_BIN` is explicitly set; the debug TUI shows
-`DEV`. Do not restore the obsolete release-binary alias.
+Plain `shr` resolves to this checkout's `scripts/local.sh` through
+`/usr/local/bin/shr`; `$HOME/.bash_aliases` names the same launcher. The stale
+`$HOME/.local/bin/shr` link still points to the removed former checkout and
+must not be used. The launcher uses `target/debug/shr` unless `SHSYNTH_BIN` is
+explicitly set; the debug TUI shows `DEV`. Do not restore the obsolete
+release-binary alias.
 
-## Active DSP/JACK continuation (2026-07-22)
+## Dated DSP/JACK closure record (2026-07-22)
 
-The current DSP closure pass must be continued, not recreated. It
-adds validated FFT/alias analyzers; centered four-point Lagrange interpolation
-for delay, chorus, and flanger; first-order ADAA on the filter cubic pre-drive;
-short reverb input all-pass diffusion; comprehensive nonlinear/interpolation/
-reverb tests; and private level-matched audition renders. Distortion retains
+This section records the completed DSP closure pass. It added validated
+FFT/alias analyzers; centered four-point Lagrange interpolation for delay,
+chorus, and flanger; first-order ADAA on the filter cubic pre-drive; short
+reverb input all-pass diffusion; focused nonlinear, interpolation, and reverb
+tests; and private level-matched audition renders. Distortion retained
 first-order ADAA after multi-bin characterization. The implementation and
 focused provenance are in `src/dsp/`, `src/effects/`, `src/effect_schema.rs`,
-`src/main.rs`, `docs/AUDIO_GRAPH.md`, and `docs/CONFIGURATION.md`. Do not edit
-the roadmap or historical Phase 2/3/4 measurements for this work.
+`src/main.rs`, `docs/AUDIO_GRAPH.md`, and `docs/CONFIGURATION.md`.
 
 The earlier DSP-focused offline validation was coherent: its complete suite
 passed 648 tests with zero failures and four intentionally ignored private
@@ -687,10 +698,11 @@ Keep transport/recording stopped and do not attach routes. On the physical
 40×13 TTY, verify the shared 38×11 overlay at `(1,1)`, its one-cell reveal,
 launcher inside the bottom border, and uninterrupted final status row;
 encoder/keyboard parity and wrap behavior; silent hidden launchers; two-step
-Back behavior; ROUTE draft cancellation without Project mutation; the Loop
-Library's explicit PLAY preview, stop/rollback, and return behavior; and every entered screen,
-including an MTR FX caller return, starting on controller-menu page 1. Record
-observed failures before changing behavior.
+Back behavior; live ROUTE field changes followed by whole-route Cancel restoring
+the opening Project and route snapshot; the Loop Library's explicit PLAY
+preview, stop/rollback, and return behavior; and every entered screen, including
+an MTR FX caller return, starting on controller-menu page 1. Record observed
+failures before changing behavior.
 
 A later user-authorized musical/hardware pass should exercise the
 standalone/FT2 synth ownership split, N00B versus Play/REC/Edit, independent
@@ -743,8 +755,10 @@ available only for an explicit historical comparison; it is not the
 development or validation default.
 The system JavaScript tools use Node.js 24.18.0 LTS from the root-owned
 NodeSource `node_24.x` repository, npm 12.0.1, and the root-owned Codex CLI
-0.146.0. Codex startup update checks are disabled in the private user
-configuration because an unprivileged updater cannot replace that system
+0.146.0. Documentation layout checks use Chromium and ChromeDriver
+150.0.7871.181 with Selenium 4.31.1. Codex startup update checks are disabled
+in the private user configuration because an unprivileged updater cannot
+replace that system
 installation; update it deliberately with
 `sudo npm install -g npm@latest @openai/codex@latest`. The restored broken
 `~/.local/bin/codex` link to the former `/home/patch` checkout is retained only

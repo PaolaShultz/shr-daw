@@ -1,8 +1,13 @@
 # Final stereo performance bus
 
 The owned audio graph has one deliberately small final bus. It is not a
-free-wiring view or a general-purpose mixer. Input is the only required source;
-the managed synth, Loop Mix, and SHR Drums attach when present:
+free-wiring view or a general-purpose mixer. This page owns source
+availability, software-monitor safety, and final stereo recording. DSP
+algorithms and rack schemas belong to [Audio graph and DSP
+contract](AUDIO_GRAPH.md).
+
+Input is the only required source; the managed synth, Loop Mix, and SHR Drums
+attach when present:
 
 ```text
 managed software instrument -> source inserts/optional aux sends --\

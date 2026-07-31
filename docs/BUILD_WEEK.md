@@ -69,6 +69,10 @@ does not replace theory or claim measured educational results. It explains why
 beginner readability, visible names, compact feedback, and fast experimentation
 are central product requirements rather than incidental extras.
 
+The creator develops this idea further in the Croatian essay
+[Učenje kroz istraživanje](UCENJE_KROZ_ISTRAZIVANJE.md). It is a personal
+reflection, not a measured educational claim.
+
 The creator first learned about the challenge from an OpenAI Build Week email
 received at 22:14 on Friday, July 17, 2026, as shown by the inbox timestamp:
 only four calendar days before submission day. SHR-DAW was not started for the

@@ -1,9 +1,9 @@
 # Controller action inventory and paging design
 
-This document is the implementation checklist used for the paged controller
-interface. The authoritative inventory was taken from `ui.rs` keyboard, mouse,
-encoder, command-pad, screen, and contextual dispatch paths before paging was
-implemented.
+This document owns the controller action inventory and paging contract. Use the
+[screen and menu manual](MENU_MANUAL.md) for screenshots and the musician
+guides for task order. The inventory follows the current keyboard, mouse,
+encoder, command-pad, screen, and contextual dispatch paths.
 
 ## Startup splash
 
@@ -44,7 +44,7 @@ or `q` can still exit from the splash.
 | MTR | With the final bus active: choose Synth/Loop/Input/Drums, adjust its bounded smoothed level, use MUTE for optional sources or the one MON ON/MON OFF Input action, inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. Input monitoring defaults off and MON ON can activate the bus without launching an optional source. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus inactive, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP. |
 | Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play and use the explicit `IDEA+` command to save a new Idea; use `SOUNDS` to return directly to the Presets catalog and its visible `LOAD`; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint each render their own 12-control three-by-four layout and use the same physical pickup crossing path without sharing parameter identity. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
-| FT2 normal | The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. The redundant Page−/Page+/Track−/Track+ buttons are gone: PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. ROUTE reserves the standard two controller rows below its window; its canonical ROUTE page exposes whole-draft `APPLY` and `CANCEL` through the physical item buttons, mouse, and keyboard `A`/`C`. Its `KIT` field selects an installed SHR Drums kit when the target is SHR Drums; applying a different kit resets old kit-specific tuning while preserving the Project key and drum effects. Back still cancels an active field before the whole draft. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template. |
+| FT2 normal | The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. In ROUTE, turning an active field validates and applies the choice to the Project and live route. `APPLY` keeps the result; `CANCEL` restores the route snapshot from when the overlay opened. Back restores the active field first. The physical item buttons, mouse, and keyboard `A`/`C` share those actions. Its `KIT` field selects an installed SHR Drums kit when the target is SHR Drums; a successful kit change resets old kit-specific tuning while preserving the Project key and drum effects. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template. |
 | FT2 record | Record quantized note-ons and, when enabled for the page, release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. Stopped REC loops the selected Pattern; REC during Play punches into the Arrangement. Exact page/lane owners survive cursor moves and boundaries. Shift-rotary column turns are ignored while recorded notes are held; Edit note length does not affect REC. |
 | FT2 edit | A contextual four-page command set only: EDIT has cell edit, blank/skip, erase, and note off; SET has independent 1/1–1/128 LENGTH and 0–32 ADD selectors plus column movement; SELECT has page and route selection; SYS has panic, N00B, help, and a one-level Exit back to normal FT2. It contains no Play/Record/Edit mode duplicates. Manual writes from the selected column, One column uses its C1–C4 anchor, and Drum auto allocates simultaneous hits without moving the cursor. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
@@ -133,8 +133,8 @@ FT2 demonstrates eight caller-specific adapters: PAGE lists only the Pattern's
 musician-facing pages, preserves the selected column, and links to Tracks;
 PATTERN navigates the Project's existing Pattern
 owners and links to Pattern/Project tools; SONG navigates Arrangement steps and
-links to its detailed editors; ROUTE edits a detached copy of the active page
-and applies it only through the existing Project/route synchronization path;
+links to its detailed editors; ROUTE applies valid active-field choices to the
+Project and live route, while Cancel restores the opening route snapshot;
 Edit LENGTH chooses 1/1 through 1/128 and ADD chooses 0 through 32 rows;
 Tracks ENTRY chooses Manual, One column C1–C4, Drum auto, and the per-page
 automatic Note Off setting; Pattern Setup

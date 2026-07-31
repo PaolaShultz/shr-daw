@@ -22,7 +22,8 @@ Read the complete public documentation at
 ## Features
 
 - Play synthv1, Yoshimi, FluidSynth, or seven editable Moj Sint Model D starts
-  through one safely managed melodic engine, alongside in-process SHR Drums.
+  through one managed melodic engine, alongside in-process
+  [SHR Drums](https://github.com/PaolaShultz/shr-drums).
 - Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum,
   and loop parts as multi-page Patterns and Arrangements; or perform them with
   Live Patterns and the four-slot Loop Mix.
@@ -67,11 +68,12 @@ shr doctor
 shr
 ```
 
-JACK is optional for browsing and external-MIDI sequencing, but required for
-software-instrument audio, WAV loops, effects, and audio recording. SHR-DAW
-does not start or restart JACK. Continue with [First run](docs/FIRST_RUN.md) or
-the full [installation guide](docs/INSTALLATION.md), which keeps clean Lite
-installation evidence distinct from connected physical audio/MIDI evidence.
+The JACK Audio Connection Kit (JACK) is optional for browsing and external-MIDI
+sequencing, but required for software-instrument audio, WAV loops, effects, and
+audio recording. SHR-DAW does not start or restart JACK. Continue with [First
+run](docs/FIRST_RUN.md) or the full [installation guide](docs/INSTALLATION.md),
+which keeps clean Lite installation evidence distinct from connected physical
+audio/MIDI evidence.
 
 For a repository-local development checkout:
 
