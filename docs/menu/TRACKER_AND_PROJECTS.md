@@ -64,13 +64,14 @@ SONG selects an Arrangement step and links to Arrangement or page tools.
 
 ![ROUTE overlay over the unchanged FT2 Pattern](../images/menu/overlay-ft2-route.png)
 
-ROUTE edits a detached page-routing draft that changes the Project only on
-Apply. For an SHR Drums target, choose `KIT`, click, and turn the encoder to
-select any installed drum set; the redundant engine row is omitted. Applying a
-different kit must start it before completing the route change. Failure keeps
-the draft open and restores the previous kit. A successful change resets old
-kit-specific tuning overrides while preserving the Project key and drum
-effects.
+ROUTE applies each encoder change to the live page route immediately. For an
+SHR Drums target, choose `KIT`, click, and turn the encoder to hear any
+installed drum set; the redundant engine row is omitted. APPLY keeps the live
+result. CANCEL restores the complete route from when ROUTE opened, and Back
+while editing restores that field. A different kit must start before the live
+change succeeds; failure restores the previous route and kit. A successful
+change resets old kit-specific tuning overrides while preserving the Project
+key and drum effects.
 
 ### SYS — safety, filter, help, and exit
 

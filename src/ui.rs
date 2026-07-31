@@ -22,7 +22,7 @@ use crate::multichannel_meter::{self, MultichannelMeter};
 use crate::navigation::{self, Action, MenuContext, Screen, SlotState};
 use crate::overlay::{
     self, CloseBehavior, OverlayDraft, OverlayKind, OverlayLauncher, OverlayState, RouteDraft,
-    RouteField,
+    RouteField, RouteSnapshot,
 };
 use crate::pads::{ControllerLayout, MenuInput, TapTempo};
 use crate::performance_meter::{
@@ -2879,6 +2879,8 @@ impl App {
                 self.tracker_pattern_number(),
                 self.tracker_page,
                 page,
+                self.song.drum_kit.clone(),
+                self.song.drum_tuning.clone(),
             )))
         } else {
             OverlayDraft::None
@@ -2909,20 +2911,33 @@ impl App {
         let Some(overlay) = self.overlay.take() else {
             return;
         };
+        let route_restore = if cancelled {
+            overlay
+                .route()
+                .filter(|route| route.dirty())
+                .map(|route| (route.pattern, route.page_index, route.original.clone()))
+        } else {
+            None
+        };
         match overlay.close_behavior {
             CloseBehavior::CancelDraft => {
-                // The detached draft is dropped with `overlay`. Only the
-                // overlay's explicit APPLY path may update the Project owner.
+                // Route edits are live; their snapshots remain overlay-owned
+                // until APPLY keeps them or CANCEL restores them.
             }
         }
         if self.screen == overlay.caller {
             self.menu_page_by_screen[self.screen.index()] = overlay.caller_menu_page.min(3);
             self.page_select_mode = overlay.caller_page_select_mode;
         }
-        self.status = if cancelled && overlay.route().is_some_and(RouteDraft::dirty) {
-            "Cancelled · routing draft discarded".into()
-        } else {
-            String::new()
+        self.status = match route_restore {
+            Some((pattern, page_index, snapshot)) => {
+                if self.restore_live_route_snapshot(pattern, page_index, &snapshot) {
+                    "CANCEL · previous routing restored".into()
+                } else {
+                    "CANCEL · ROUTE RESTORE FAILED".into()
+                }
+            }
+            None => String::new(),
         };
     }
 
@@ -2936,15 +2951,55 @@ impl App {
             self.cancel_mixed_engine_remap("REMAP CANCELLED · Project routing restored");
             return;
         }
-        if self
-            .overlay
-            .as_mut()
-            .is_some_and(OverlayState::cancel_route_field)
-        {
-            self.status = "Cancelled · routing draft kept".into();
+        let field_restore = self.overlay.as_mut().and_then(|overlay| {
+            let pattern = overlay.route()?.pattern;
+            let page_index = overlay.route()?.page_index;
+            overlay
+                .cancel_route_field()
+                .map(|snapshot| (pattern, page_index, snapshot))
+        });
+        if let Some((pattern, page_index, snapshot)) = field_restore {
+            self.status = if self.restore_live_route_snapshot(pattern, page_index, &snapshot) {
+                "BACK · previous field value restored".into()
+            } else {
+                "BACK · ROUTE RESTORE FAILED".into()
+            };
         } else {
             self.close_overlay(true);
         }
+    }
+
+    fn restore_live_route_snapshot(
+        &mut self,
+        pattern: u16,
+        page_index: usize,
+        snapshot: &RouteSnapshot,
+    ) -> bool {
+        if !self.assign_route_snapshot(pattern, page_index, snapshot) {
+            return false;
+        }
+        self.release_tracker_audition();
+        self.sync_tracker_route()
+    }
+
+    fn assign_route_snapshot(
+        &mut self,
+        pattern: u16,
+        page_index: usize,
+        snapshot: &RouteSnapshot,
+    ) -> bool {
+        let Some(page) = self
+            .song
+            .patterns
+            .get_mut(&pattern)
+            .and_then(|pattern| pattern.pages.get_mut(page_index))
+        else {
+            return false;
+        };
+        *page = snapshot.page.clone();
+        self.song.drum_kit.clone_from(&snapshot.drum_kit);
+        self.song.drum_tuning.clone_from(&snapshot.drum_tuning);
+        true
     }
 
     fn move_overlay(&mut self, direction: i8) {
@@ -3220,12 +3275,132 @@ impl App {
                 };
             }
         }
+        self.apply_live_route_adjustment(field);
+    }
+
+    fn apply_live_route_adjustment(&mut self, field: RouteField) {
+        let Some((pattern, page_index, draft_page)) = self
+            .overlay
+            .as_ref()
+            .and_then(OverlayState::route)
+            .map(|route| (route.pattern, route.page_index, route.page.clone()))
+        else {
+            return;
+        };
+        let Some(previous_page) = self
+            .song
+            .patterns
+            .get(&pattern)
+            .and_then(|pattern| pattern.pages.get(page_index))
+            .cloned()
+        else {
+            self.status = "ROUTE CHANGED · reopen overlay".into();
+            return;
+        };
+        if draft_page == previous_page {
+            return;
+        }
+
+        let previous = RouteSnapshot {
+            page: previous_page,
+            drum_kit: self.song.drum_kit.clone(),
+            drum_tuning: self.song.drum_tuning.clone(),
+        };
+        let Some(page) = self
+            .song
+            .patterns
+            .get_mut(&pattern)
+            .and_then(|pattern| pattern.pages.get_mut(page_index))
+        else {
+            self.status = "ROUTE CHANGED · reopen overlay".into();
+            return;
+        };
+        *page = draft_page;
+        let selected_kit = match &page.target {
+            PageTarget::InternalDrums(kit) => Some(kit.clone()),
+            _ => None,
+        };
+        let kit_changed = selected_kit
+            .as_ref()
+            .is_some_and(|kit| self.song.drum_kit.as_str() != kit.as_str());
+        if let Some(kit) = selected_kit {
+            self.song.drum_kit = kit;
+            if kit_changed {
+                self.song.drum_tuning = shr_drums::KitTuning::default();
+            }
+        }
+        if self.song.validate().is_err() {
+            self.assign_route_snapshot(pattern, page_index, &previous);
+            if let Some(route) = self.overlay.as_mut().and_then(OverlayState::route_mut) {
+                route.page = previous.page.clone();
+            }
+            self.status = "ROUTE CONFLICT · previous value kept".into();
+            return;
+        }
+
+        self.release_tracker_audition();
+        let route_ready = self.sync_tracker_route();
+        if !route_ready {
+            let failure = self.status.clone();
+            if let Some(route) = self.overlay.as_mut().and_then(OverlayState::route_mut) {
+                route.page = previous.page.clone();
+                route.drum_kit.clone_from(&previous.drum_kit);
+                route.drum_tuning.clone_from(&previous.drum_tuning);
+            }
+            let restored = self.restore_live_route_snapshot(pattern, page_index, &previous);
+            self.status = if restored {
+                let reason = failure
+                    .strip_prefix("DRUM KIT FAILED · ")
+                    .unwrap_or(&failure);
+                format!(
+                    "ROUTE FAILED · OLD RESTORED · {}",
+                    crate::ui_text::fit_middle(reason, 8)
+                )
+            } else {
+                "ROUTE FAILED · PREVIOUS ROUTE OFFLINE".into()
+            };
+            return;
+        }
+
+        if let Some(route) = self.overlay.as_mut().and_then(OverlayState::route_mut) {
+            route.drum_kit.clone_from(&self.song.drum_kit);
+            route.drum_tuning.clone_from(&self.song.drum_tuning);
+        }
+        let column = match field {
+            RouteField::Channel(column)
+            | RouteField::BankMsb(column)
+            | RouteField::BankLsb(column)
+            | RouteField::Program(column) => column,
+            _ => self.tracker_track,
+        };
+        let program_sent = self
+            .current_page()
+            .cloned()
+            .is_some_and(|page| self.send_tracker_program_selection(&page, column));
+        self.status = if program_sent {
+            "PROGRAM SENT · route is live".into()
+        } else if kit_changed {
+            "SHR DRUMS KIT LIVE · APPLY/CANCEL".into()
+        } else {
+            "ROUTE LIVE · APPLY keeps · CANCEL restores".into()
+        };
     }
 
     fn confirm_route_overlay(&mut self) {
         let Some(route) = self.overlay.as_ref().and_then(OverlayState::route).cloned() else {
             return;
         };
+        if self.mixed_engine_remap.is_none() {
+            let changed = route.dirty();
+            self.close_overlay(false);
+            self.clamp_tracker_cursor();
+            self.status = if changed {
+                "ROUTING APPLIED".into()
+            } else {
+                String::new()
+            };
+            return;
+        }
         let mut candidate = self.song.clone();
         let Some(page) = candidate
             .patterns
@@ -3305,12 +3480,6 @@ impl App {
             .as_ref()
             .is_some_and(|overlay| overlay.active_field.is_some())
         {
-            let confirmed_program = self.overlay.as_ref().and_then(|overlay| {
-                let RouteField::Program(column) = overlay.active_field? else {
-                    return None;
-                };
-                overlay.route().map(|route| (route.page.clone(), column))
-            });
             if let Some(overlay) = self.overlay.as_mut() {
                 overlay.confirm_route_field();
             }
@@ -3318,13 +3487,7 @@ impl App {
                 self.confirm_route_overlay();
                 return;
             }
-            let program_sent = confirmed_program
-                .is_some_and(|(page, column)| self.send_tracker_program_selection(&page, column));
-            self.status = if program_sent {
-                "PROGRAM SENT · draft kept · APPLY saves route".into()
-            } else {
-                "Draft kept · APPLY saves Project route".into()
-            };
+            self.status = "FIELD SET · route remains live".into();
             return;
         }
         let Some((kind, selection)) = self
@@ -3408,11 +3571,17 @@ impl App {
                     .as_ref()
                     .and_then(|page| RouteField::from_page_row(page, selection))
                 {
+                    let snapshot = route_page.map(|page| RouteSnapshot {
+                        page,
+                        drum_kit: self.song.drum_kit.clone(),
+                        drum_tuning: self.song.drum_tuning.clone(),
+                    });
                     if let Some(overlay) = self.overlay.as_mut() {
-                        overlay.begin_route_field(field);
+                        if let Some(snapshot) = snapshot {
+                            overlay.begin_route_field(field, snapshot);
+                        }
                     }
-                    self.status =
-                        "route field active · turn changes draft · Back cancels field".into();
+                    self.status = "turn applies live · Back restores field".into();
                 }
             }
             OverlayKind::TrackerPatternLength => {
@@ -17237,7 +17406,7 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                     .collect();
             }
             let Some(route) = overlay.route() else {
-                return vec!["routing draft unavailable".into()];
+                return vec!["routing state unavailable".into()];
             };
             let page = &route.page;
             let target_kind = match page.target {
@@ -21583,22 +21752,18 @@ mod tests {
     }
 
     #[test]
-    fn route_overlay_visible_apply_and_cancel_own_the_whole_draft() {
+    fn route_overlay_live_changes_apply_or_cancel_as_one_transaction() {
         let p = presets();
         let (tx, _rx) = mpsc::channel();
         let mut cancelled = app(&p);
         cancelled.screen = Screen::Tracker;
+        cancelled.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
         let original = cancelled.song.clone();
         cancelled.open_overlay(Action::OpenRouteOverlay);
-        cancelled
-            .overlay
-            .as_mut()
-            .unwrap()
-            .route_mut()
-            .unwrap()
-            .page
-            .columns[0]
-            .channel = 7;
+        cancelled.overlay.as_mut().unwrap().selection = 5;
+        cancelled.activate_overlay();
+        cancelled.move_overlay(1);
+        assert_eq!(cancelled.current_page().unwrap().columns[0].channel, 1);
         dispatch_pad(
             crate::pads::PadAction::TapTempo,
             true,
@@ -21608,20 +21773,16 @@ mod tests {
         );
         assert!(cancelled.overlay.is_none());
         assert_eq!(cancelled.song, original);
-        assert_eq!(cancelled.status, "Cancelled · routing draft discarded");
+        assert_eq!(cancelled.status, "CANCEL · previous routing restored");
 
         let mut applied = app(&p);
         applied.screen = Screen::Tracker;
+        applied.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
         applied.open_overlay(Action::OpenRouteOverlay);
-        applied
-            .overlay
-            .as_mut()
-            .unwrap()
-            .route_mut()
-            .unwrap()
-            .page
-            .columns[0]
-            .channel = 7;
+        applied.overlay.as_mut().unwrap().selection = 5;
+        applied.activate_overlay();
+        applied.move_overlay(1);
+        assert_eq!(applied.current_page().unwrap().columns[0].channel, 1);
         dispatch_pad(
             crate::pads::PadAction::Stop,
             true,
@@ -21630,11 +21791,42 @@ mod tests {
             &tx,
         );
         assert!(applied.overlay.is_none());
-        assert_eq!(applied.current_page().unwrap().columns[0].channel, 7);
+        assert_eq!(applied.current_page().unwrap().columns[0].channel, 1);
+        assert_eq!(applied.status, "ROUTING APPLIED");
     }
 
     #[test]
-    fn route_overlay_cycles_and_applies_the_shr_drums_kit() {
+    fn route_overlay_back_restores_only_the_active_live_field() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.open_overlay(Action::OpenRouteOverlay);
+        a.overlay.as_mut().unwrap().selection = 5;
+        a.activate_overlay();
+        a.move_overlay(1);
+        assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
+
+        a.overlay_back();
+
+        assert!(a.overlay.is_some());
+        assert_eq!(a.overlay.as_ref().unwrap().active_field, None);
+        assert_eq!(a.current_page().unwrap().columns[0].channel, 0);
+        assert_eq!(
+            a.overlay
+                .as_ref()
+                .and_then(OverlayState::route)
+                .unwrap()
+                .page
+                .columns[0]
+                .channel,
+            0
+        );
+        assert_eq!(a.status, "BACK · previous field value restored");
+    }
+
+    #[test]
+    fn route_overlay_switches_the_live_shr_drums_kit_before_apply() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
@@ -21653,10 +21845,12 @@ mod tests {
         a.current_page_mut().unwrap().target = PageTarget::InternalDrums("electronic-house".into());
         a.song.drum_kit = "electronic-house".into();
         a.song.drum_tuning.mode = shr_drums::TuningMode::FollowKey;
+        a.test_drum_kit = Some("electronic-house".into());
 
         a.open_overlay(Action::OpenRouteOverlay);
         a.overlay.as_mut().unwrap().selection = 1;
         a.activate_overlay();
+        a.drum_start_script.push_back(Ok(()));
         a.move_overlay(1);
 
         assert_eq!(
@@ -21666,13 +21860,20 @@ mod tests {
                 .map(|route| route.page.target.clone()),
             Some(PageTarget::InternalDrums("big-rock-muldjord".into()))
         );
+        assert_eq!(
+            a.current_page().unwrap().target,
+            PageTarget::InternalDrums("big-rock-muldjord".into())
+        );
+        assert_eq!(a.song.drum_kit, "big-rock-muldjord");
+        assert_eq!(a.song.drum_tuning, shr_drums::KitTuning::default());
+        assert_eq!(a.test_drum_kit.as_deref(), Some("big-rock-muldjord"));
+        assert_eq!(a.status, "SHR DRUMS KIT LIVE · APPLY/CANCEL");
         let rendered = buffer_text(&render_app(&mut a, 40, 13));
         assert!(rendered.contains("KIT"));
         assert!(rendered.contains("Big Rock"));
         assert!(!rendered.contains("ENGINE"));
 
         a.activate_overlay();
-        a.drum_start_script.push_back(Ok(()));
         perform(Action::ApplyRouteOverlay, &mut a, Path::new("/none"), None);
         assert_eq!(
             a.current_page().unwrap().target,
@@ -21681,11 +21882,11 @@ mod tests {
         assert_eq!(a.song.drum_kit, "big-rock-muldjord");
         assert_eq!(a.song.drum_tuning, shr_drums::KitTuning::default());
         assert_eq!(a.test_drum_kit.as_deref(), Some("big-rock-muldjord"));
-        assert_eq!(a.status, "SHR DRUMS KIT APPLIED · tuning reset");
+        assert_eq!(a.status, "ROUTING APPLIED");
     }
 
     #[test]
-    fn failed_drum_kit_apply_restores_the_previous_kit_and_keeps_the_draft() {
+    fn failed_live_drum_kit_change_restores_the_previous_kit_and_field() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
@@ -21707,12 +21908,9 @@ mod tests {
         a.open_overlay(Action::OpenRouteOverlay);
         a.overlay.as_mut().unwrap().selection = 1;
         a.activate_overlay();
-        a.move_overlay(1);
-        a.activate_overlay();
         a.drum_start_script
             .push_back(Err("sample decode failed".into()));
-
-        perform(Action::ApplyRouteOverlay, &mut a, Path::new("/none"), None);
+        a.move_overlay(1);
 
         assert!(a.overlay.is_some());
         assert_eq!(
@@ -21721,7 +21919,54 @@ mod tests {
         );
         assert_eq!(a.song.drum_kit, "electronic-house");
         assert_eq!(a.test_drum_kit.as_deref(), Some("electronic-house"));
-        assert!(a.status.starts_with("KIT FAILED · OLD RESTORED · "));
+        assert_eq!(
+            a.overlay
+                .as_ref()
+                .and_then(OverlayState::route)
+                .map(|route| route.page.target.clone()),
+            Some(PageTarget::InternalDrums("electronic-house".into()))
+        );
+        assert!(a.status.starts_with("ROUTE FAILED · OLD RESTORED · "));
+    }
+
+    #[test]
+    fn route_overlay_cancel_restores_live_kit_and_tuning() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.drum_kits = vec![
+            crate::drums_host::KitEntry {
+                id: "electronic-house".into(),
+                name: "Electronic House".into(),
+                path: PathBuf::from("/kits/electronic-house"),
+            },
+            crate::drums_host::KitEntry {
+                id: "big-rock-muldjord".into(),
+                name: "Big Rock".into(),
+                path: PathBuf::from("/kits/big-rock-muldjord"),
+            },
+        ];
+        a.current_page_mut().unwrap().target = PageTarget::InternalDrums("electronic-house".into());
+        a.song.drum_kit = "electronic-house".into();
+        a.song.drum_tuning.mode = shr_drums::TuningMode::FollowKey;
+        let original = a.song.clone();
+        a.test_drum_kit = Some("electronic-house".into());
+
+        a.open_overlay(Action::OpenRouteOverlay);
+        a.overlay.as_mut().unwrap().selection = 1;
+        a.activate_overlay();
+        a.drum_start_script.push_back(Ok(()));
+        a.move_overlay(1);
+        assert_eq!(a.song.drum_kit, "big-rock-muldjord");
+        assert_eq!(a.song.drum_tuning, shr_drums::KitTuning::default());
+
+        a.drum_start_script.push_back(Ok(()));
+        a.close_overlay(true);
+
+        assert!(a.overlay.is_none());
+        assert_eq!(a.song, original);
+        assert_eq!(a.test_drum_kit.as_deref(), Some("electronic-house"));
+        assert_eq!(a.status, "CANCEL · previous routing restored");
     }
 
     #[test]
@@ -22321,7 +22566,7 @@ mod tests {
     }
 
     #[test]
-    fn route_overlay_is_transactional_except_for_explicit_program_audition() {
+    fn route_overlay_changes_are_live_and_apply_keeps_them() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
@@ -22339,8 +22584,10 @@ mod tests {
         a.overlay.as_mut().unwrap().selection = 5;
         a.activate_overlay();
         a.move_overlay(1);
+        assert_ne!(a.song, original, "encoder turn updates the live Project");
+        assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
         a.activate_overlay();
-        assert_eq!(a.song, original, "confirmed field is still only a draft");
+        assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
         a.overlay.as_mut().unwrap().selection = RouteField::ROWS - 1;
         a.activate_overlay();
         assert!(a.overlay.is_none());
@@ -22350,32 +22597,45 @@ mod tests {
     }
 
     #[test]
-    fn route_overlay_confirm_sends_external_program_before_project_apply() {
+    fn route_overlay_program_turn_sends_and_updates_the_live_project() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.config.external_midi.program_changes = true;
-        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.current_page_mut().unwrap().target = PageTarget::Midi("test-output".into());
         a.current_page_mut().unwrap().device_profile = Some("roland-d-50".into());
-        let original = a.song.clone();
+        for (channel, column) in a.current_page_mut().unwrap().columns.iter_mut().enumerate() {
+            column.channel = channel as u8;
+        }
         a.open_overlay(Action::OpenRouteOverlay);
 
         a.overlay.as_mut().unwrap().selection = 8;
         a.activate_overlay();
+        assert_eq!(
+            a.overlay.as_ref().unwrap().active_field,
+            Some(RouteField::Program(0))
+        );
         a.move_overlay(1);
         let draft_page = a.overlay.as_ref().unwrap().route().unwrap().page.clone();
         assert_eq!(
             a.tracker_program_messages_for(&draft_page, 0, 1),
             vec![vec![0xc0, 1]]
         );
+        assert_eq!(draft_page.columns[0].program, 1);
+        assert_eq!(
+            a.current_page().unwrap().columns[0].program,
+            1,
+            "{}",
+            a.status
+        );
+        assert_eq!(a.status, "PROGRAM SENT · route is live");
         a.activate_overlay();
 
-        assert_eq!(a.song, original, "program confirmation remains a draft");
         assert_eq!(
             a.overlay.as_ref().unwrap().route().unwrap().page.columns[0].program,
             1
         );
-        assert_eq!(a.status, "PROGRAM SENT · draft kept · APPLY saves route");
+        assert_eq!(a.status, "FIELD SET · route remains live");
     }
 
     #[test]

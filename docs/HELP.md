@@ -300,9 +300,12 @@ Portable AUTO pages resolve the current machine default instead. Reconnect an
 exact target and play again without rewriting the Project.
 
 The quick FT2 ROUTE overlay keeps `APPLY` and `CANCEL` visible in its bottom
-border. APPLY validates and saves the whole routing draft; CANCEL discards it.
-Back during a field edit cancels that field first, while Back from the main
-list cancels the whole draft. Keyboard `A` and `C` match the visible actions.
+border. Every encoder change updates the live Project route immediately, so
+the selected instrument or SHR Drums kit can be heard without leaving ROUTE.
+APPLY keeps the live result; CANCEL restores the complete route from when the
+overlay opened. Back during a field edit restores that field first, while Back
+from the main list restores the whole route. Keyboard `A` and `C` match the
+visible actions.
 
 FILES NEW PRJ requires a second press, clears the current unsaved Project, and
 starts the next `project-001` style name. SAVE AS writes and switches to the

@@ -2,8 +2,8 @@
 //!
 //! The overlay owns transient navigation and edit state only. Project, engine,
 //! transport, recorder, and persistence ownership remains with the caller.
-//! A workflow may explicitly audition a detached choice without transferring
-//! that ownership; FT2 ROUTE uses this for external MIDI program selection.
+//! FT2 ROUTE applies changes through that owner as the encoder turns and keeps
+//! snapshots here so field Back and whole-overlay CANCEL can restore them.
 
 use crate::navigation::{self, Action, MenuContext, Screen};
 use crate::sequencer::{Page, PageTarget};
@@ -166,25 +166,48 @@ impl RouteField {
 pub struct RouteDraft {
     pub pattern: u16,
     pub page_index: usize,
-    pub original: Page,
+    pub original: RouteSnapshot,
     pub page: Page,
-    /// Restores only the current field when Back is pressed during editing.
-    pub field_original: Option<Page>,
+    pub drum_kit: String,
+    pub drum_tuning: shr_drums::KitTuning,
+    /// Restores the live route from before the current field was edited.
+    pub field_original: Option<RouteSnapshot>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RouteSnapshot {
+    pub page: Page,
+    pub drum_kit: String,
+    pub drum_tuning: shr_drums::KitTuning,
 }
 
 impl RouteDraft {
-    pub fn new(pattern: u16, page_index: usize, page: Page) -> Self {
+    pub fn new(
+        pattern: u16,
+        page_index: usize,
+        page: Page,
+        drum_kit: String,
+        drum_tuning: shr_drums::KitTuning,
+    ) -> Self {
         Self {
             pattern,
             page_index,
-            original: page.clone(),
+            original: RouteSnapshot {
+                page: page.clone(),
+                drum_kit: drum_kit.clone(),
+                drum_tuning: drum_tuning.clone(),
+            },
             page,
+            drum_kit,
+            drum_tuning,
             field_original: None,
         }
     }
 
     pub fn dirty(&self) -> bool {
-        self.page != self.original
+        self.page != self.original.page
+            || self.drum_kit != self.original.drum_kit
+            || self.drum_tuning != self.original.drum_tuning
     }
 }
 
@@ -268,12 +291,12 @@ impl OverlayState {
         }
     }
 
-    pub fn begin_route_field(&mut self, field: RouteField) {
+    pub fn begin_route_field(&mut self, field: RouteField, snapshot: RouteSnapshot) {
         if self.active_field.is_some() {
             return;
         }
         if let Some(route) = self.route_mut() {
-            route.field_original = Some(route.page.clone());
+            route.field_original = Some(snapshot);
             self.active_field = Some(field);
         }
     }
@@ -285,18 +308,20 @@ impl OverlayState {
         self.active_field = None;
     }
 
-    pub fn cancel_route_field(&mut self) -> bool {
+    pub fn cancel_route_field(&mut self) -> Option<RouteSnapshot> {
         let Some(original) = self
             .route_mut()
             .and_then(|route| route.field_original.take())
         else {
-            return false;
+            return None;
         };
         if let Some(route) = self.route_mut() {
-            route.page = original;
+            route.page = original.page.clone();
+            route.drum_kit.clone_from(&original.drum_kit);
+            route.drum_tuning.clone_from(&original.drum_tuning);
         }
         self.active_field = None;
-        true
+        Some(original)
     }
 
     pub fn move_selection(&mut self, direction: i8, rows: usize) {
@@ -535,13 +560,24 @@ mod tests {
             Screen::Tracker,
             launcher,
             1,
-            OverlayDraft::Route(Box::new(RouteDraft::new(0, 0, page))),
+            OverlayDraft::Route(Box::new(RouteDraft::new(
+                0,
+                0,
+                page,
+                "kit".into(),
+                shr_drums::KitTuning::default(),
+            ))),
             2,
             false,
         );
-        state.begin_route_field(RouteField::Channel(0));
+        let field_original = RouteSnapshot {
+            page: state.route().unwrap().page.clone(),
+            drum_kit: "kit".into(),
+            drum_tuning: shr_drums::KitTuning::default(),
+        };
+        state.begin_route_field(RouteField::Channel(0), field_original);
         state.route_mut().unwrap().page.columns[0].channel = 7;
-        assert!(state.cancel_route_field());
+        assert!(state.cancel_route_field().is_some());
         assert_eq!(state.route().unwrap().page.columns[0].channel, 0);
         assert_eq!(state.active_field, None);
     }
