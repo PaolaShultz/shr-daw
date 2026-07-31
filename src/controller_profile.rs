@@ -42,6 +42,8 @@ pub struct ControllerProfile {
     #[serde(default)]
     pub encoder_modifier_channel: Option<u8>,
     #[serde(default)]
+    pub shifted_encoder_compatibility: Vec<ShiftedEncoderCompatibility>,
+    #[serde(default)]
     pub lock_cc: Option<u8>,
     #[serde(default)]
     pub note_buttons: HashMap<u8, String>,
@@ -55,6 +57,23 @@ pub struct ControllerProfile {
     pub cc_button_channels: HashMap<u8, u8>,
     #[serde(default)]
     pub source: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct ShiftedEncoderCompatibility {
+    pub encoder_relative_cc: u8,
+    #[serde(default)]
+    pub encoder_relative_reverse: bool,
+    pub encoder_modified_relative_cc: u8,
+    #[serde(default)]
+    pub encoder_modified_relative_reverse: bool,
+    pub encoder_modifier_cc: u8,
+    #[serde(default = "default_midi_channel")]
+    pub encoder_modifier_channel: u8,
+}
+
+const fn default_midi_channel() -> u8 {
+    1
 }
 
 impl ControllerProfile {
@@ -187,6 +206,39 @@ impl ControllerProfile {
                 self.id
             );
         }
+        for compatibility in &self.shifted_encoder_compatibility {
+            for (number, description) in [
+                (
+                    compatibility.encoder_relative_cc,
+                    "controller compatibility encoder CC",
+                ),
+                (
+                    compatibility.encoder_modified_relative_cc,
+                    "controller compatibility modified encoder CC",
+                ),
+                (
+                    compatibility.encoder_modifier_cc,
+                    "controller compatibility encoder modifier CC",
+                ),
+            ] {
+                crate::pads::ensure_midi_number(number, description)?;
+            }
+            if !(1..=16).contains(&compatibility.encoder_modifier_channel) {
+                bail!(
+                    "controller profile {} has an invalid compatibility modifier channel",
+                    self.id
+                );
+            }
+            if compatibility.encoder_relative_cc == compatibility.encoder_modified_relative_cc
+                || compatibility.encoder_relative_cc == compatibility.encoder_modifier_cc
+                || compatibility.encoder_modified_relative_cc == compatibility.encoder_modifier_cc
+            {
+                bail!(
+                    "controller profile {} reuses a compatibility encoder CC",
+                    self.id
+                );
+            }
+        }
         if self
             .encoder_press_note
             .is_some_and(|note| self.note_buttons.contains_key(&note))
@@ -271,21 +323,39 @@ pub fn augment_shifted_encoder_for_connected(
     let Some(profile) = catalog.matching(connected_name) else {
         return false;
     };
-    let profile_modifier = profile.encoder_modifier_cc.map(|cc| ControllerButton::Cc {
-        channel: profile.encoder_modifier_channel.unwrap_or(1) - 1,
-        cc,
-    });
-    if current.encoder_relative_cc != profile.encoder_relative_cc
-        || current.encoder_relative_reverse != profile.encoder_relative_reverse
-        || current.encoder_modifier != profile_modifier
-    {
-        return false;
-    }
-    let Some(modified_cc) = profile.encoder_modified_relative_cc else {
+    let primary = profile
+        .encoder_relative_cc
+        .zip(profile.encoder_modified_relative_cc)
+        .zip(profile.encoder_modifier_cc)
+        .map(
+            |((encoder_relative_cc, encoder_modified_relative_cc), encoder_modifier_cc)| {
+                ShiftedEncoderCompatibility {
+                    encoder_relative_cc,
+                    encoder_relative_reverse: profile.encoder_relative_reverse,
+                    encoder_modified_relative_cc,
+                    encoder_modified_relative_reverse: profile.encoder_modified_relative_reverse,
+                    encoder_modifier_cc,
+                    encoder_modifier_channel: profile.encoder_modifier_channel.unwrap_or(1),
+                }
+            },
+        );
+    let Some(variant) = primary
+        .into_iter()
+        .chain(profile.shifted_encoder_compatibility.iter().copied())
+        .find(|variant| {
+            current.encoder_relative_cc == Some(variant.encoder_relative_cc)
+                && current.encoder_relative_reverse == variant.encoder_relative_reverse
+                && current.encoder_modifier
+                    == Some(ControllerButton::Cc {
+                        channel: variant.encoder_modifier_channel - 1,
+                        cc: variant.encoder_modifier_cc,
+                    })
+        })
+    else {
         return false;
     };
-    current.encoder_modified_relative_cc = Some(modified_cc);
-    current.encoder_modified_relative_reverse = profile.encoder_modified_relative_reverse;
+    current.encoder_modified_relative_cc = Some(variant.encoder_modified_relative_cc);
+    current.encoder_modified_relative_reverse = variant.encoder_modified_relative_reverse;
     if current.validate().is_ok() {
         true
     } else {
@@ -494,12 +564,12 @@ mod tests {
         assert_eq!(config.pad_channels.len(), 8);
         assert!(config.pad_channels.values().all(|channel| *channel == 9));
         assert_eq!(config.encoder_relative_cc, Some(114));
-        assert_eq!(config.encoder_modified_relative_cc, Some(29));
+        assert_eq!(config.encoder_modified_relative_cc, Some(112));
         assert_eq!(config.encoder_press_cc, Some(115));
         assert_eq!(config.encoder_press_channel, Some(0));
         assert_eq!(
             config.encoder_modifier,
-            Some(ControllerButton::Cc { channel: 0, cc: 27 })
+            Some(ControllerButton::Cc { channel: 0, cc: 9 })
         );
         assert_eq!(config.lock_cc, None);
         for (offset, action) in [
@@ -517,7 +587,7 @@ mod tests {
         {
             assert_eq!(config.pads.get(&(36 + offset as u8)), Some(&action));
         }
-        assert_eq!(config.lock_action(&[0xb0, 27, 127]), (false, false));
+        assert_eq!(config.lock_action(&[0xb0, 9, 127]), (false, false));
     }
 
     #[test]
@@ -527,7 +597,7 @@ mod tests {
             input_match: Some("Minilab3 MIDI".into()),
             profile: Some("learned".into()),
             encoder_relative_cc: Some(114),
-            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 27 }),
+            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 9 }),
             pads: HashMap::from([(99, PadAction::Item1)]),
             ..PadConfig::default()
         };
@@ -538,7 +608,7 @@ mod tests {
             "20:0 Arturia MiniLab3 MIDI 1",
             &catalog,
         ));
-        assert_eq!(learned.encoder_modified_relative_cc, Some(29));
+        assert_eq!(learned.encoder_modified_relative_cc, Some(112));
         assert_eq!(learned.pads, original_pads);
         assert_eq!(learned.profile.as_deref(), Some("learned"));
 
@@ -550,7 +620,7 @@ mod tests {
 
         let mut custom = PadConfig {
             encoder_relative_cc: Some(114),
-            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 9 }),
+            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 8 }),
             ..PadConfig::default()
         };
         assert!(!augment_shifted_encoder_for_connected(
@@ -559,6 +629,18 @@ mod tests {
             &catalog,
         ));
         assert_eq!(custom.encoder_modified_relative_cc, None);
+
+        let mut legacy = PadConfig {
+            encoder_relative_cc: Some(114),
+            encoder_modifier: Some(ControllerButton::Cc { channel: 0, cc: 27 }),
+            ..PadConfig::default()
+        };
+        assert!(augment_shifted_encoder_for_connected(
+            &mut legacy,
+            "20:0 Arturia MiniLab3 MIDI 1",
+            &catalog,
+        ));
+        assert_eq!(legacy.encoder_modified_relative_cc, Some(29));
     }
 
     fn minimal_profile() -> ControllerProfile {
@@ -577,6 +659,7 @@ mod tests {
             encoder_press_channel: None,
             encoder_modifier_cc: None,
             encoder_modifier_channel: None,
+            shifted_encoder_compatibility: Vec::new(),
             lock_cc: None,
             note_buttons: HashMap::new(),
             note_button_channels: HashMap::new(),

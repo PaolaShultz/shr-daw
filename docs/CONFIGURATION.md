@@ -217,7 +217,9 @@ Stop, and Song Position Pointer. These are protocol facts; the channel-10 pad
 mapping below is direct evidence from this Raspberry Pi/controller pair.
 Arturia's current [MiniLab 3 support page](https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions)
 documents the four separate ports, identifies `MiniLab 3 MIDI` as the standard
-port, and lists DAW Shift as CC27. Its
+port, and lists DAW Shift as CC27. The current directly learned default instead
+uses the connected unit's Shift CC9 and shifted encoder CC112; the earlier
+DAW-mode CC27/CC29 pair remains compatible. Its
 [download page](https://www.arturia.com/support/downloads-manuals/product/minilab-3)
 currently lists firmware 1.2.0. SHR does not infer the installed firmware or
 claim that a controller-side setting persists: the no-clock behavior and
@@ -463,10 +465,11 @@ encoder.modified_relative_reverse=false
 Use `note.1.27` instead when the button sends a note. Omit
 `encoder.modified_relative_cc` when held turns keep using the ordinary
 `encoder.relative_cc`; otherwise the shifted CC is consumed but navigates only
-while the configured modifier is down. The reviewed MiniLab 3 profile maps
-DAW Shift CC27 and shifted rotary CC29 automatically. MIDI Learn's optional
+while the configured modifier is down. The reviewed MiniLab 3 profile maps the
+currently learned Shift CC9 and shifted rotary CC112 automatically. The earlier
+DAW-mode CC27/CC29 pair remains compatible. MIDI Learn's optional
 **ENCODER SHIFT** step captures the complete held gesture: hold Shift, turn
-left, turn right, then release. It stores a separate shifted relative CC when
+left once, then release. It stores a separate shifted relative CC when
 the controller emits one, or leaves the ordinary encoder CC active when held
 turns keep using it. The explicit keys remain available for manual profiles.
 

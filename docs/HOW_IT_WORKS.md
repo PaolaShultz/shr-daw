@@ -75,7 +75,8 @@ or route change cannot release an identical note still owned by another.
 
 The reviewed MiniLab factory mapping uses channel 10 for notes 36–43. Its
 captured User 1 program uses the keyboard's channel 1 and is therefore not used
-for commands. CC27 is DAW Shift, not an SHR pad-lock control.
+for commands. The current learned Shift CC9 is not an SHR pad-lock control;
+the earlier compatible DAW-mode Shift is CC27.
 
 On a combined input, the captured 12-byte Arturia program notification SysEx is
 still forwarded by the generic musical route when an instrument is active. A

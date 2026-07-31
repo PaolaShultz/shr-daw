@@ -106,7 +106,11 @@ instrument save, and `SOUNDS` returns directly to Presets and its visible
 `LOAD`. In-app and terminal MIDI Learn now capture the complete optional
 encoder-Shift gesture. Holding Shift, turning left once, then releasing records
 both the modifier and either the ordinary rotary CC or its separate
-shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
+shifted CC. The bundled MiniLab 3 default now mirrors the owner's current
+learned map: ordinary encoder CC114, click CC115, Shift CC9, shifted encoder
+CC112, the twelve mapped controls, and eight channel-10 command pads. The
+earlier reviewed DAW-mode CC27/CC29 pair remains a catalog-declared in-memory
+compatibility variant rather than the fresh-profile default. The locked
 combined repair used Rust 1.97.1 and passed the complete normal suite with 880
 passing, zero failing, and 12 intentionally ignored in 51.15 seconds. The
 optimized DEV artifact built successfully and its deterministic offline

@@ -5216,7 +5216,9 @@ Stop, and Song Position Pointer. These are protocol facts; the channel-10 pad
 mapping below is direct evidence from this Raspberry Pi/controller pair.
 Arturia's current <a href="https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions" class="external" target="_blank" rel="noopener noreferrer external">MiniLab 3 support page</a>
 documents the four separate ports, identifies <code>MiniLab 3 MIDI</code> as the standard
-port, and lists DAW Shift as CC27. Its
+port, and lists DAW Shift as CC27. The current directly learned default instead
+uses the connected unit's Shift CC9 and shifted encoder CC112; the earlier
+DAW-mode CC27/CC29 pair remains compatible. Its
 <a href="https://www.arturia.com/support/downloads-manuals/product/minilab-3" class="external" target="_blank" rel="noopener noreferrer external">download page</a>
 currently lists firmware 1.2.0. SHR does not infer the installed firmware or
 claim that a controller-side setting persists: the no-clock behavior and
@@ -5419,10 +5421,11 @@ encoder.modified_relative_reverse=false
 <p>Use <code>note.1.27</code> instead when the button sends a note. Omit
 <code>encoder.modified_relative_cc</code> when held turns keep using the ordinary
 <code>encoder.relative_cc</code>; otherwise the shifted CC is consumed but navigates only
-while the configured modifier is down. The reviewed MiniLab 3 profile maps
-DAW Shift CC27 and shifted rotary CC29 automatically. MIDI Learn's optional
+while the configured modifier is down. The reviewed MiniLab 3 profile maps the
+currently learned Shift CC9 and shifted rotary CC112 automatically. The earlier
+DAW-mode CC27/CC29 pair remains compatible. MIDI Learn's optional
 <strong>ENCODER SHIFT</strong> step captures the complete held gesture: hold Shift, turn
-left, turn right, then release. It stores a separate shifted relative CC when
+left once, then release. It stores a separate shifted relative CC when
 the controller emits one, or leaves the ordinary encoder CC active when held
 turns keep using it. The explicit keys remain available for manual profiles.</p>
 <p>Four-button layout:</p>
@@ -5855,14 +5858,15 @@ The setup helper uses <code>SHSYNTH_STATE_DIR</code> internally when an explicit
 configured controller input to select one unique reviewed profile before the
 MIDI router opens. The bundled MiniLab 3 default mirrors the verified learned
 mapping: encoder turn CC 114 and press CC 115 on channel 1, plus the eight
-Arturia/DAW factory pads on channel 10. DAW Shift CC 27 on channel 1 is the
-held encoder modifier, and the reviewed DAW shifted turn is relative CC 29.
+Arturia/DAW factory pads on channel 10. The currently learned Shift CC 9 on
+channel 1 is the held encoder modifier, and its shifted turn is relative CC
+112.
 Ordinary turns therefore stay on the directly learned CC114 while held Shift
-turns are classified on the documented DAW CC29. An older learned MiniLab
-mapping with the same ordinary encoder and modifier receives only that reviewed
-shifted CC in memory; SHR does not rewrite the private file. Unknown or
-ambiguous controllers remain unmapped rather than inheriting this
-device-specific default.</p>
+turns are classified on CC112. The earlier reviewed DAW-mode CC27 modifier and
+CC29 shifted turn remain a catalog-declared compatibility variant, so an older
+learned MiniLab mapping receives only its missing shifted CC in memory; SHR
+does not rewrite the private file. Unknown or ambiguous controllers remain
+unmapped rather than inheriting this device-specific default.</p>
 <h4 id="doc-controller_profiles--upstream-mapping-sources" tabindex="-1">Upstream mapping sources<a class="heading-anchor" href="#doc-controller_profiles--upstream-mapping-sources" aria-label="Link to Upstream mapping sources">#</a></h4>
 <p>There is no universal controller-description standard. These projects provide
 useful input-controller knowledge:</p>
@@ -5902,6 +5906,10 @@ held also stores <code>encoder.modified_relative_cc</code>; its direction conven
 <code>encoder.modified_relative_reverse</code>. All physical note and CC numbers must be
 valid MIDI data bytes (0–127), and an encoder press cannot reuse a
 command-button note.
+An optional <code>shifted_encoder_compatibility</code> array retains previously reviewed
+ordinary CC, modifier, shifted CC, direction, and channel tuples. These entries
+never change a fresh profile; they only complete an older learned map in memory
+when every identifying field matches.
 Learned page-cycle chords are stored as <code>page_cycle.modifier</code> and
 <code>page_cycle.trigger</code> values such as <code>cc.1.27</code>; the modifier and trigger must be
 different messages, while the trigger may deliberately reuse a normal mapping.</p>
@@ -5916,11 +5924,12 @@ those positions to contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
 actions. Legacy <code>item-1</code> through <code>item-4</code> profile values remain compatible.
 Direct capture on this unit found User 1 pads on channel 1, the same
 channel as its keyboard, so User 1 pads are not safe command buttons: their
-messages are indistinguishable from keyboard notes. DAW Shift emits CC27 and
-is bound only as the held encoder modifier; the shifted rotary's DAW CC29 is
-accepted only while that configured modifier is down. Neither is a persistent
-pad lock, so normal arpeggiator, program, and bank gestures cannot toggle SHR
-lock state.
+messages are indistinguishable from keyboard notes. The current learned Shift
+emits CC9 and is bound only as the held encoder modifier; its shifted rotary
+CC112 is accepted only while that configured modifier is down. Neither is a
+persistent pad lock, so normal arpeggiator, program, and bank gestures cannot
+toggle SHR lock state. The earlier reviewed DAW-mode CC27/CC29 pair remains
+compatible but is not the fresh-profile default.
 Selecting the controller's DAW program does not itself require a proprietary
 DAW script for these ordinary MIDI note commands. Arturia mode has the same
 captured channel-10 pad notes, so use DAW mode only if another ordinary mapping
@@ -6027,7 +6036,8 @@ source, channel, and note, so one device's release, All Notes Off, disconnect,
 or route change cannot release an identical note still owned by another.</p>
 <p>The reviewed MiniLab factory mapping uses channel 10 for notes 36–43. Its
 captured User 1 program uses the keyboard's channel 1 and is therefore not used
-for commands. CC27 is DAW Shift, not an SHR pad-lock control.</p>
+for commands. The current learned Shift CC9 is not an SHR pad-lock control;
+the earlier compatible DAW-mode Shift is CC27.</p>
 <p>On a combined input, the captured 12-byte Arturia program notification SysEx is
 still forwarded by the generic musical route when an instrument is active. A
 control-only input suppresses it with other unmatched traffic. It is device metadata,
@@ -14829,7 +14839,11 @@ instrument save, and <code>SOUNDS</code> returns directly to Presets and its vis
 <code>LOAD</code>. In-app and terminal MIDI Learn now capture the complete optional
 encoder-Shift gesture. Holding Shift, turning left once, then releasing records
 both the modifier and either the ordinary rotary CC or its separate
-shifted CC; the reviewed MiniLab 3 remains CC27 plus shifted CC29. The locked
+shifted CC. The bundled MiniLab 3 default now mirrors the owner's current
+learned map: ordinary encoder CC114, click CC115, Shift CC9, shifted encoder
+CC112, the twelve mapped controls, and eight channel-10 command pads. The
+earlier reviewed DAW-mode CC27/CC29 pair remains a catalog-declared in-memory
+compatibility variant rather than the fresh-profile default. The locked
 combined repair used Rust 1.97.1 and passed the complete normal suite with 880
 passing, zero failing, and 12 intentionally ignored in 51.15 seconds. The
 optimized DEV artifact built successfully and its deterministic offline

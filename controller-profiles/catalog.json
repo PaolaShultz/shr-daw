@@ -20,12 +20,22 @@
     },
     "encoder_relative_cc": 114,
     "encoder_relative_reverse": false,
-    "encoder_modified_relative_cc": 29,
+    "encoder_modified_relative_cc": 112,
     "encoder_modified_relative_reverse": false,
     "encoder_press_cc": 115,
     "encoder_press_channel": 1,
-    "encoder_modifier_cc": 27,
+    "encoder_modifier_cc": 9,
     "encoder_modifier_channel": 1,
+    "shifted_encoder_compatibility": [
+      {
+        "encoder_relative_cc": 114,
+        "encoder_relative_reverse": false,
+        "encoder_modified_relative_cc": 29,
+        "encoder_modified_relative_reverse": false,
+        "encoder_modifier_cc": 27,
+        "encoder_modifier_channel": 1
+      }
+    ],
     "note_buttons": {
       "36": "page-1",
       "37": "page-2",
@@ -46,6 +56,6 @@
       "42": 10,
       "43": 10
     },
-    "source": "SHR-DAW direct MIDI learn: ordinary encoder CC 114 and click CC 115 on channel 1, factory pads on channel 10; Arturia MiniLab 3 MIDI implementation: DAW Shift CC 27 and DAW Shift+main-encoder CC 29; https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions"
+    "source": "SHR-DAW direct MIDI learn on the connected MiniLab 3: ordinary encoder CC 114, Shift CC 9, Shift+main-encoder CC 112, and click CC 115 on channel 1, with factory pads on channel 10; the earlier directly reviewed DAW-mode Shift CC 27 and shifted encoder CC 29 remain a compatibility variant; https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions"
   }
 ]
