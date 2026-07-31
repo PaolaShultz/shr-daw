@@ -18,7 +18,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.4.6`.
+corrected starting point; the current checked-progress version is `0.4.7`.
 
 Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD
@@ -55,6 +55,13 @@ AudioBox direct monitor active, so MON ON remains refused until the owner
 physically disables that monitor and deliberately updates the declaration.
 This release has deterministic software verification only; it does not claim
 new JACK, audible, or hardware validation.
+
+Version `0.4.7` pairs with Moj Sint 0.2.2 and separates the Moj Sint engine
+from its synthesis model. Strict Moj schema 4 names `model_d`; schemas 1–3
+migrate to it in memory. Discovery and Ideas retain typed model identity,
+Project/FT2 routes use model-qualified stable instrument IDs with legacy
+unqualified Model D lookup, and Playback selects its twelve labels from the
+loaded model while controller configuration remains only POT1–12 positions.
 
 The locked 0.4.6 combined gate used Rust 1.97.1
 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`). Focused graph ownership,

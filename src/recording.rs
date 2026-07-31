@@ -1,4 +1,6 @@
-use crate::control::{CONTROLS, MOJ_CONTROLS};
+#[cfg(test)]
+use crate::control::MOJ_CONTROLS;
+use crate::control::{moj_controls, CONTROLS};
 use crate::preset::{BackendKind, Preset, PresetId};
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
@@ -154,7 +156,7 @@ pub fn load_with_parameters(
     name: &str,
 ) -> Result<(Preset, HashMap<u8, f32>, Vec<TimedEvent>)> {
     let (dir, preset, events) = load_core(base, name)?;
-    let parameters = read_saved_parameters(&dir.join("metadata.json"), preset.backend)?;
+    let parameters = read_saved_parameters(&dir.join("metadata.json"), &preset)?;
     Ok((preset, parameters, events))
 }
 
@@ -174,8 +176,8 @@ fn load_core(base: &Path, name: &str) -> Result<(PathBuf, Preset, Vec<TimedEvent
     Ok((dir, preset, events))
 }
 
-fn read_saved_parameters(path: &Path, backend: BackendKind) -> Result<HashMap<u8, f32>> {
-    if !matches!(backend, BackendKind::Synthv1 | BackendKind::MojSint) || !path.is_file() {
+fn read_saved_parameters(path: &Path, preset: &Preset) -> Result<HashMap<u8, f32>> {
+    if !matches!(preset.backend, BackendKind::Synthv1 | BackendKind::MojSint) || !path.is_file() {
         return Ok(HashMap::new());
     }
     let metadata: serde_json::Value = serde_json::from_slice(&read_owned_file(
@@ -191,15 +193,19 @@ fn read_saved_parameters(path: &Path, backend: BackendKind) -> Result<HashMap<u8
         return Ok(HashMap::new());
     };
     let mut values = HashMap::new();
-    let controls = match backend {
+    let controls = match preset.backend {
         BackendKind::Synthv1 => CONTROLS
             .iter()
             .map(|control| (control.cc, control.xml_name, control.min, control.max))
             .collect::<Vec<_>>(),
-        BackendKind::MojSint => MOJ_CONTROLS
-            .iter()
-            .map(|control| (control.cc, control.macro_id, 0.0, 1.0))
-            .collect(),
+        BackendKind::MojSint => moj_controls(
+            preset
+                .moj_model()
+                .context("Moj Sint idea preset has no model")?,
+        )
+        .iter()
+        .map(|control| (control.cc, control.macro_id, 0.0, 1.0))
+        .collect(),
         _ => Vec::new(),
     };
     for (cc, name, minimum, maximum) in controls {
@@ -258,7 +264,7 @@ pub fn save(
         write_preset_ref(&tmp.join("preset.ref"), preset)?;
         if let PresetId::Synthv1 { path } = &preset.id {
             fs::copy(path, tmp.join("preset.synthv1"))?;
-        } else if let PresetId::MojSint { path } = &preset.id {
+        } else if let PresetId::MojSint { path, .. } = &preset.id {
             fs::copy(path, tmp.join("preset.mojsint"))?;
         }
         fs::write(tmp.join("recording.mid"), encode_smf(events))?;
@@ -278,7 +284,10 @@ pub fn save(
                 parameters.insert(control.xml_name.into(), serde_json::json!(value));
             }
         } else if preset.backend == BackendKind::MojSint {
-            for control in MOJ_CONTROLS {
+            let model = preset
+                .moj_model()
+                .context("Moj Sint idea preset has no model")?;
+            for control in moj_controls(model) {
                 let value = values.get(&control.cc).copied().unwrap_or(0.0);
                 if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                     bail!("idea parameter {} must be 0..=1", control.macro_id);
@@ -384,7 +393,7 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
         .context("preset reference has no backend")?
         .parse()?;
     let name = field("name=").context("preset reference has no name")?;
-    let category = field("category=").filter(|value| !value.is_empty());
+    let mut category = field("category=").filter(|value| !value.is_empty());
     let source = field("path=").context("preset reference has no path")?;
     let source = if matches!(backend, BackendKind::Synthv1 | BackendKind::MojSint) {
         let expected = if backend == BackendKind::Synthv1 {
@@ -420,7 +429,14 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
                 .context("FluidSynth reference has no program")?
                 .parse()?,
         },
-        BackendKind::MojSint => PresetId::MojSint { path: source },
+        BackendKind::MojSint => {
+            let model = crate::preset::moj_model(&source)?;
+            category = Some(model.label().into());
+            PresetId::MojSint {
+                model,
+                path: source,
+            }
+        }
     };
     Ok(Preset {
         backend,
@@ -972,12 +988,38 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
         let preset_path = base.join("source.mojsint");
-        fs::write(&preset_path, "strict preset snapshot fixture").unwrap();
+        fs::write(
+            &preset_path,
+            r#"schema_version = 4
+name = "Model D"
+voices = 8
+output_gain = 0.2
+model = "model_d"
+model_d_patch = "bass"
+[macros]
+evolve = 0.5
+shape = 0.5
+color = 0.5
+edge = 0.5
+couple = 0.5
+motion = 0.5
+depth = 0.5
+space = 0.5
+attack = 0.2
+decay = 0.6
+sustain = 0.7
+release = 0.6
+"#,
+        )
+        .unwrap();
         let preset = Preset {
             backend: BackendKind::MojSint,
             name: "Model D".into(),
-            category: None,
-            id: PresetId::MojSint { path: preset_path },
+            category: Some("Model D".into()),
+            id: PresetId::MojSint {
+                model: crate::preset::MojModel::ModelD,
+                path: preset_path,
+            },
         };
         let values = MOJ_CONTROLS
             .iter()
@@ -989,6 +1031,7 @@ mod tests {
         assert!(!saved.join("preset.synthv1").exists());
         let (loaded, restored, events) = load_with_parameters(&base, "moj").unwrap();
         assert_eq!(loaded.backend, BackendKind::MojSint);
+        assert_eq!(loaded.moj_model(), Some(crate::preset::MojModel::ModelD));
         assert!(matches!(loaded.id, PresetId::MojSint { .. }));
         assert_eq!(restored, values);
         assert!(events.is_empty());

@@ -81,8 +81,29 @@ pub enum PresetId {
         program: u8,
     },
     MojSint {
+        model: MojModel,
         path: PathBuf,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MojModel {
+    ModelD,
+}
+
+impl MojModel {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::ModelD => "model_d",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ModelD => "Model D",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -137,25 +158,36 @@ impl Preset {
                     .unwrap_or("soundfont");
                 format!("sf{soundfont_index}:{soundfont}:{bank}:{program}")
             }
-            PresetId::MojSint { .. } => self.name.clone(),
+            PresetId::MojSint { model, .. } => {
+                format!("{}/{}", model.stable_id(), self.name)
+            }
         }
     }
 
     pub fn legacy_route_id(&self) -> Option<String> {
-        let PresetId::FluidSynth {
-            soundfont,
-            bank,
-            program,
-            ..
-        } = &self.id
-        else {
-            return None;
-        };
-        let soundfont = soundfont
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("soundfont");
-        Some(format!("{soundfont}:{bank}:{program}"))
+        match &self.id {
+            PresetId::FluidSynth {
+                soundfont,
+                bank,
+                program,
+                ..
+            } => {
+                let soundfont = soundfont
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("soundfont");
+                Some(format!("{soundfont}:{bank}:{program}"))
+            }
+            PresetId::MojSint { .. } => Some(self.name.clone()),
+            _ => None,
+        }
+    }
+
+    pub const fn moj_model(&self) -> Option<MojModel> {
+        match &self.id {
+            PresetId::MojSint { model, .. } => Some(*model),
+            _ => None,
+        }
     }
 
     /// General MIDI percussion uses bank 128, with program 0 selecting the
@@ -236,12 +268,12 @@ pub fn discover_moj_sint(roots: &[PathBuf]) -> Result<Vec<Preset>> {
                 if presets.len() == MAX_MOJ_PRESETS {
                     bail!("Moj Sint catalog exceeds {MAX_MOJ_PRESETS} regular files");
                 }
-                let (name, _) = read_moj_sint(&path)?;
+                let (name, model, _) = read_moj_sint(&path)?;
                 presets.push(Preset {
                     backend: BackendKind::MojSint,
                     name,
-                    category: None,
-                    id: PresetId::MojSint { path },
+                    category: Some(model.label().into()),
+                    id: PresetId::MojSint { model, path },
                 });
             }
         }
@@ -257,6 +289,18 @@ struct MojPresetV3 {
     name: String,
     voices: usize,
     output_gain: f32,
+    model_d_patch: MojModelDPatch,
+    macros: MojMacrosV2,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV4 {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    model: MojModel,
     model_d_patch: MojModelDPatch,
     macros: MojMacrosV2,
 }
@@ -353,7 +397,7 @@ impl MojMacrosV2 {
     }
 }
 
-fn read_moj_sint(path: &Path) -> Result<(String, HashMap<u8, f32>)> {
+fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
     let file = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)
@@ -379,13 +423,26 @@ fn read_moj_sint(path: &Path) -> Result<(String, HashMap<u8, f32>)> {
         .get("schema_version")
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
-    let (name, voices, output_gain, values) = match version {
+    let (name, model, voices, output_gain, values) = match version {
+        4 => {
+            let document: MojPresetV4 = toml::from_str(&source)?;
+            debug_assert_eq!(document.schema_version, 4);
+            let _validated_patch = document.model_d_patch;
+            (
+                document.name,
+                document.model,
+                document.voices,
+                document.output_gain,
+                document.macros.values(),
+            )
+        }
         3 => {
             let document: MojPresetV3 = toml::from_str(&source)?;
             debug_assert_eq!(document.schema_version, 3);
             let _validated_patch = document.model_d_patch;
             (
                 document.name,
+                MojModel::ModelD,
                 document.voices,
                 document.output_gain,
                 document.macros.values(),
@@ -396,6 +453,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, HashMap<u8, f32>)> {
             debug_assert_eq!(document.schema_version, 2);
             (
                 document.name,
+                MojModel::ModelD,
                 document.voices,
                 document.output_gain,
                 document.macros.values(),
@@ -424,6 +482,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, HashMap<u8, f32>)> {
             );
             (
                 document.name,
+                MojModel::ModelD,
                 document.voices,
                 document.output_gain,
                 MojMacrosV2 {
@@ -458,7 +517,8 @@ fn read_moj_sint(path: &Path) -> Result<(String, HashMap<u8, f32>)> {
     }
     Ok((
         name,
-        crate::control::MOJ_CONTROLS
+        model,
+        crate::control::moj_controls(model)
             .iter()
             .zip(values)
             .map(|(control, value)| (control.cc, value))
@@ -822,8 +882,8 @@ fn sort_presets(presets: &mut [Preset]) {
 }
 
 pub fn values(preset: &Preset) -> Result<HashMap<u8, f32>> {
-    if let PresetId::MojSint { path } = &preset.id {
-        return read_moj_sint(path).map(|(_, values)| values);
+    if let PresetId::MojSint { path, .. } = &preset.id {
+        return read_moj_sint(path).map(|(_, _, values)| values);
     }
     let PresetId::Synthv1 { path } = &preset.id else {
         return Ok(HashMap::new());
@@ -876,6 +936,10 @@ pub fn values(preset: &Preset) -> Result<HashMap<u8, f32>> {
         buf.clear();
     }
     Ok(out)
+}
+
+pub fn moj_model(path: &Path) -> Result<MojModel> {
+    read_moj_sint(path).map(|(_, model, _)| model)
 }
 
 pub fn resolve<'a>(presets: &'a [Preset], arg: &str) -> Option<&'a Preset> {
@@ -1025,10 +1089,11 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
         let source = r#"
-schema_version = 3
+schema_version = 4
 name = "01 Full Bass"
 voices = 8
 output_gain = 0.2
+model = "model_d"
 model_d_patch = "bass"
 [macros]
 evolve = 1.0
@@ -1073,6 +1138,9 @@ release = 0.6
         let presets = discover_moj_sint(std::slice::from_ref(&base)).unwrap();
         assert_eq!(presets.len(), 7);
         assert_eq!(presets[0].backend, BackendKind::MojSint);
+        assert_eq!(presets[0].moj_model(), Some(MojModel::ModelD));
+        assert_eq!(presets[0].category.as_deref(), Some("Model D"));
+        assert_eq!(presets[0].route_id(), "model_d/01 Full Bass");
         assert_eq!(
             presets
                 .iter()
@@ -1085,12 +1153,25 @@ release = 0.6
         fs::write(
             &version_two,
             source
-                .replace("schema_version = 3", "schema_version = 2")
+                .replace("schema_version = 4", "schema_version = 2")
+                .replace("model = \"model_d\"\n", "")
                 .replace("model_d_patch = \"bass\"\n", ""),
         )
         .unwrap();
-        assert_eq!(read_moj_sint(&version_two).unwrap().1.len(), 12);
+        let (_, model, values) = read_moj_sint(&version_two).unwrap();
+        assert_eq!(model, MojModel::ModelD);
+        assert_eq!(values.len(), 12);
         fs::remove_file(version_two).unwrap();
+        let version_three = base.join("legacy-v3.mojsint");
+        fs::write(
+            &version_three,
+            source
+                .replace("schema_version = 4", "schema_version = 3")
+                .replace("model = \"model_d\"\n", ""),
+        )
+        .unwrap();
+        assert_eq!(read_moj_sint(&version_three).unwrap().1, MojModel::ModelD);
+        fs::remove_file(version_three).unwrap();
         fs::write(
             base.join("bad.mojsint"),
             source.replace("model_d_patch = \"bass\"", "model_d_patch = \"unknown\""),

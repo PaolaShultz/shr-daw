@@ -7,7 +7,7 @@ product, installation, FT2, and hardware documents linked below.
 ## Version numbering
 
 The package uses `major.minor.patch` numbering. Version `0.3.92` corrected the
-unintended `0.392.0`; the current checked-progress version is `0.4.6`.
+unintended `0.392.0`; the current checked-progress version is `0.4.7`.
 
 - Meaningful checked progress before the next milestone increments the patch:
   `0.3.99`, `0.3.100`, `0.3.101`, and so on.
@@ -16,7 +16,7 @@ unintended `0.392.0`; the current checked-progress version is `0.4.6`.
   Pi 5 installation milestone is accepted; the current repair release is
   `0.4.3`. Moj Sint's working fourth-backend integration is `0.4.4`; it does
   not reuse the earlier SHR Drums/effects bump. Version `0.4.5` makes all seven
-  authored Moj Sint starts selectable and accepts strict schema 3 patch
+  authored Moj Sint starts selectable and accepts strict schema 4 model/patch
   identity. Version `0.4.6` makes Input monitoring a deliberate MTR action,
   moves final-bus ownership out of the optional managed synth, reconnects
   optional sources without duplicate playback, and records the same

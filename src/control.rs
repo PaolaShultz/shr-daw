@@ -126,7 +126,7 @@ pub struct MojControl {
     pub macro_id: &'static str,
 }
 
-pub const MOJ_CONTROLS: [MojControl; 12] = [
+pub const MOJ_MODEL_D_CONTROLS: [MojControl; 12] = [
     MojControl {
         cc: 20,
         name: "Evolve",
@@ -188,6 +188,16 @@ pub const MOJ_CONTROLS: [MojControl; 12] = [
         macro_id: "release",
     },
 ];
+
+// CC 20-31 are Moj Sint's stable twelve physical positions. Their displayed
+// meaning comes from the selected synthesis model, not controller.conf.
+pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
+
+pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojControl; 12] {
+    match model {
+        crate::preset::MojModel::ModelD => &MOJ_MODEL_D_CONTROLS,
+    }
+}
 
 pub fn moj_by_cc(cc: u8) -> Option<MojControl> {
     MOJ_CONTROLS

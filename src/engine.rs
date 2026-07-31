@@ -39,6 +39,7 @@ pub enum MidiEvent {
 /// lifecycle operations are kept behind this API so callers cannot layer them.
 pub struct Engine {
     backend: BackendKind,
+    moj_model: Option<preset::MojModel>,
     managed_client_name: Option<String>,
     child: Child,
     stdin: Option<ChildStdin>,
@@ -678,6 +679,7 @@ impl Engine {
         }
         let mut engine = Self {
             backend,
+            moj_model: (backend == BackendKind::MojSint).then_some(preset::MojModel::ModelD),
             managed_client_name: None,
             child,
             stdin: None,
@@ -856,6 +858,7 @@ impl Engine {
 
         let mut engine = Self {
             backend: preset.backend,
+            moj_model: preset.moj_model(),
             managed_client_name: Some(backend_config.client_name.clone()),
             stdin: child.stdin.take(),
             child,
@@ -871,12 +874,15 @@ impl Engine {
                     })
                     .collect()
             } else if preset.backend == BackendKind::MojSint {
+                let controls = control::moj_controls(
+                    preset.moj_model().context("Moj Sint preset has no model")?,
+                );
                 controller
                     .controls
                     .iter()
                     .filter_map(|(&incoming, &position)| {
                         let index = usize::from(position.checked_sub(1)?);
-                        Some((incoming, control::MOJ_CONTROLS.get(index)?.cc))
+                        Some((incoming, controls.get(index)?.cc))
                     })
                     .collect()
             } else {
@@ -992,7 +998,8 @@ impl Engine {
             );
         }
         if self.backend == BackendKind::MojSint {
-            for control in control::MOJ_CONTROLS {
+            let model = self.moj_model.context("Moj Sint engine has no model")?;
+            for control in control::moj_controls(model) {
                 if let Some(value) = values.get(&control.cc) {
                     self.send(&[
                         0xb0,
@@ -1289,7 +1296,7 @@ fn backend_command(preset: &Preset, state: &Path, config: &RuntimeConfig) -> Res
                 .arg("--load-config")
                 .arg(state.join("fluidsynth.conf"));
         }
-        PresetId::MojSint { path } => {
+        PresetId::MojSint { path, .. } => {
             command
                 .args(["--client-name", &backend.client_name, "--preset"])
                 .arg(safe_command_path(path)?);
@@ -3681,6 +3688,7 @@ mod tests {
             name: "Model D".into(),
             category: None,
             id: PresetId::MojSint {
+                model: preset::MojModel::ModelD,
                 path: PathBuf::from("/sounds/model-d.mojsint"),
             },
         };

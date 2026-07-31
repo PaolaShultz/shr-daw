@@ -100,7 +100,7 @@ fn real_main() -> Result<()> {
                     println!("[{} unavailable: {reason}]", catalog.backend.label());
                 }
                 for p in &catalog.presets {
-                    println!("{}:{}", catalog.backend.label(), p.name);
+                    println!("{}:{}", catalog.backend.label(), p.display_name());
                 }
             }
             Ok(())

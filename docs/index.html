@@ -322,7 +322,7 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <details><summary>Related public documentation</summary><ul><li><a class="external" href="https://github.com/PaolaShultz/shr-drums" target="_blank" rel="noopener noreferrer external">SHR Drums engine, kit format, and sources</a></li><li><a class="external" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external" lang="hr">Učenje kroz istraživanje (Hrvatski)</a></li></ul></details>
 <ul class="page-links archive-link"><li><a href="#technical-records">Technical records and future plans</a></li></ul></aside>
 <main id="main-content">
-<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.6</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
+<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.7</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
 <section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, or seven editable Moj Sint Model D starts through one managed melodic engine, alongside in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum, and loop parts as multi-page Patterns and Arrangements; or perform them with Live Patterns and the four-slot Loop Mix.</div><div class="feature-card">Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.</div><div class="feature-card">Record synchronized raw mono stems or a real-time final 24-bit stereo WAV after the fixed master strip and protected true-peak path.</div><div class="feature-card">Play and navigate with physical MIDI controls, MIDI keyboards, the computer keyboard, or terminal mouse/pointer input.</div></div></section>
 <section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="ce56af5771a347d8b738c107d6e60511647f685cb06955d59f85142e27d128fa" decoding="async" height="624" id="shot-ce56af5771a3" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="889a405e74bbeb38078e626f9d6ad5313d15938a14f55da06a15fdabe7c8cb5d" decoding="async" height="624" id="shot-889a405e74bb" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="dccca5c68ac49005acf541ccbe9f54b46044d42098cea5e3d49a649c7d89b484" decoding="async" height="624" id="shot-dccca5c68ac4" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="3e12ff768e9d441b7b52e19106d96262872152d881deb66e9f9b89fcfbccabfa" decoding="async" height="624" id="shot-3e12ff768e9d" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
 <section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
@@ -1109,7 +1109,8 @@ Every musician-facing screen shows channels 1–16 and programs 1–128.</p>
 <p>Each page keeps one MIDI target plus four independent column channel, bank, and
 master-program setups. It also keeps velocity, mute, percussion, optional
 device-profile metadata, and lane settings. A software target stores its engine
-and that engine's stable instrument identity in the Pattern. When page 1 is
+and that engine's stable instrument identity in the Pattern. Moj Sint stable
+identities are model-qualified. When page 1 is
 part of a genuinely new, empty, unsaved default Project, entering FT2 may
 replace its factory route with the currently loaded Player engine/instrument.
 A loaded/saved Project or an unsaved Project with any explicit change is never
@@ -1870,7 +1871,7 @@ its mode colour and every completed startup phase is green, so an inactive
 build mode does not leave a false red warning. These are loader phases, not
 claims that JACK or all synth engines are running.</p>
 <p>A terminal computer keyboard remains an optional fallback for controller
-navigation and text editing; the main rotary and command buttons complete the
+navigation and text editing; the main rotary and numbered pads complete the
 core workflows without it. Only when none of those inputs is available does the splash
 remain open, show <code>CONNECT KEYBOARD OR MIDI INPUT</code> and the expected input in
 the normally empty recovery rows, and rescan the configured MIDI inputs. <code>Esc</code>
@@ -1890,7 +1891,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>Presets</td>
-<td>Select previous/next, keyboard page up/down, first/last, Shift-rotary previous/next engine, and load the selected sound. Its physical pages contain only sound browsing, load, panic, contextual help, and Exit to Home; engine browsing remains available from Shift-rotary, <code>[</code>/<code>]</code>, and the two header halves.</td>
+<td>Select previous/next, keyboard page up/down, first/last, Shift-rotary previous/next engine, and load the selected sound. Moj Sint sounds show their synthesis model separately from the Moj Sint engine. Its physical pages contain only sound browsing, load, panic, contextual help, and Exit to Home; engine browsing remains available from Shift-rotary, <code>[</code>/<code>]</code>, and the two header halves.</td>
 </tr>
 <tr>
 <td>MTR</td>
@@ -1898,7 +1899,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>Playback</td>
-<td>Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact <code>SCALE</code> control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play and use the explicit <code>IDEA+</code> command to save a new Idea; use <code>SOUNDS</code> to return directly to the Presets catalog and its visible <code>LOAD</code>; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint each render their own 12-control three-by-four layout and use the same physical pickup crossing path without sharing parameter identity.</td>
+<td>Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact <code>SCALE</code> control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play and use the explicit <code>IDEA+</code> command to save a new Idea; use <code>SOUNDS</code> to return directly to the Presets catalog and its visible <code>LOAD</code>; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint models each render their own 12-control three-by-four layout and use the same physical pickup crossing path without storing parameter names in the controller map.</td>
 </tr>
 <tr>
 <td>Ideas</td>
@@ -2170,7 +2171,7 @@ absent.</li>
 <li>When a configured controller is offline, lacks a matching reviewed profile,
 or has an incomplete learned encoder, Home initially selects MIDI Learn and
 gives the reason. A learned master encoder with turn and click is usable even
-without optional command buttons. Home itself neither learns nor transmits.</li>
+without optional pads. Home itself neither learns nor transmits.</li>
 <li>Help is a child screen. It tries to show the same help at
 <code>http://&lt;LAN-IP&gt;/help</code> while open. The master encoder moves one help row at a
 time. Encoder press follows a highlighted internal section link on eight-
@@ -3051,15 +3052,15 @@ format stores all of these fields directly inside each FT2 Pattern.</p>
 per cell. Gate is 1–100% of a row or inherited; delayed notes and retrigger
 pulses are bounded by the row. Program is a per-note override of the page
 program, routed before the note on the same exact target/channel.</p>
-<p>Physical MIDI notes and CCs remain configuration. The canonical command roles
-for physical positions 5–8 are <code>stop</code>, <code>play</code>, <code>rec</code>, and <code>tap-tempo</code>; the
-active screen gives them their contextual STOP/PANIC, PLAY/LOAD/PREVIEW,
-capture, and TAP meanings. Older <code>item-1</code> through <code>item-4</code> mappings and other
-legacy role aliases still decode to the same physical positions without
-changing note numbers.</p>
+<p>Physical MIDI notes and CCs remain configuration. Profiles name only <code>PAD 1</code>
+through <code>PAD 8</code>; the active screen gives pads 1–4 their page positions and
+pads 5–8 their contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
+meanings. Older semantic mappings still decode to those physical positions
+without changing note numbers.</p>
 <h4 id="doc-controller_interface--parameters-pickup-and-extension-points" tabindex="-1">Parameters, pickup, and extension points<a class="heading-anchor" href="#doc-controller_interface--parameters-pickup-and-extension-points" aria-label="Link to Parameters, pickup, and extension points">#</a></h4>
-<p>Menu navigation is discrete. The 12 synthv1 controls are continuous and remain
-on configured CCs. Preset load, idea load, and in-place reset re-arm pickup;
+<p>Menu navigation is discrete. <code>POT 1</code> through <code>POT 12</code> are continuous physical
+positions; each backend or editor supplies its own parameter table for those
+positions. Preset load, idea load, and in-place reset re-arm pickup;
 the verified synthv1 0.9.29 indices/ranges and green/yellow/red ±0.03 indicators
 are unchanged. <code>MAPPED_CONTROL_CAPACITY</code> reserves 16 entries while only the 12
 schema-verified controls are populated.</p>
@@ -4131,7 +4132,7 @@ but required for software-instrument audio, WAV-loop playback, and multitrack
 recording.
 synthv1, Yoshimi, FluidSynth/TimGM, and Moj Sint are separate optional sound
 engines at runtime. The default installer includes the first three. Install the
-Moj Sint 0.2.1 sibling repository separately so <code>moj-sint</code> is on <code>PATH</code>, then
+Moj Sint 0.2.2 sibling repository separately so <code>moj-sint</code> is on <code>PATH</code>, then
 install all seven strict factory <code>.mojsint</code> presets under one configured
 <code>moj_sint.preset_root</code>; SHR never copies private presets from that repository.
 MIDI controllers, external instruments, audio interfaces, and a
@@ -4948,9 +4949,9 @@ accepts:</p>
 <p>Moj Sint defaults to command <code>moj-sint</code>, client/MIDI identity
 <code>shs-moj-sint</code>, and output short names <code>out_l</code> then <code>out_r</code>. Discovery indexes
 at most 512 regular, non-symlink <code>.mojsint</code> files of at most 1 MiB and strictly
-validates schema 1–3 before showing them. Schema 3 requires one authored
-<code>bass</code>, <code>lead</code>, or <code>filter_articulation</code> Model D patch; older versions migrate
-to bass in memory. The host is invoked only by <code>LOAD</code> as
+validates schema 1–4 before showing them. Schema 4 explicitly separates the
+Moj Sint host from <code>model_d</code>; schemas 1–3 migrate to that model in memory.
+Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by <code>LOAD</code> as
 <code>moj-sint --client-name NAME --preset FILE</code>.
 | Managed MIDI/audio | <code>midi.autoconnect</code>; legacy ordered controller fallbacks in repeated <code>midi.input</code>; <code>midi.controller_musical_input</code>; simultaneous repeated <code>midi.performance_input</code>; <code>audio.autoconnect</code>, exactly two preferred <code>audio.output</code> entries, ordered <code>audio.internal_output=NAME|LEFT|RIGHT</code> fallbacks, final optional <code>audio.headphone_output=NAME|LEFT|RIGHT</code>; optional <code>audio.engine_cpu</code> |
 | Owned final bus | <code>audio.graph.enabled</code>, <code>.client</code>, <code>.maximum_callback_frames</code> (1–4096), <code>.input</code>, monitoring confirmations |
@@ -5250,44 +5251,38 @@ external output or the Pattern's software synth. Portable <code>AUTO</code> page
 resolve the current machine default. Transport resolves every target again on
 the next play so reconnected hardware is used without rewriting the Project.</p>
 <h4 id="doc-configuration--controller-menu-layouts" tabindex="-1">Controller menu layouts<a class="heading-anchor" href="#doc-configuration--controller-menu-layouts" aria-label="Link to Controller menu layouts">#</a></h4>
-<p><code>controller.conf</code> maps physical notes to controller roles, not screen actions.
-The current screen and context install the four visible menu pages described in
-the <a href="#doc-controller_interface--complete-controller-map">complete controller map</a>.</p>
+<p><code>controller.conf</code> records physical identity only. <code>pot.1</code> through <code>pot.12</code> name
+the twelve continuous positions; <code>pad.1</code> through <code>pad.8</code> name physical pads.
+Instrument and screen tables—not the controller profile—give those positions
+their current parameter or action. The current context is described in the
+<a href="#doc-controller_interface--complete-controller-map">complete controller map</a>.</p>
+<p>Each POT value is the absolute CC emitted by that position:</p>
+<pre><code class="language-text">pot.1=74
+pot.2=71
+</code></pre>
 <p>Eight-button layout:</p>
 <pre><code class="language-text">menu.layout=8
-pad.36=page-1
-pad.37=page-2
-pad.38=page-3
-pad.39=page-4
-pad.40=stop
-pad.41=play
-pad.42=rec
-pad.43=tap-tempo
-</code></pre>
-<p>Add an optional 1-based MIDI channel between <code>pad</code> and the note number when a
-keyboard and command pads share note numbers. The verified MiniLab factory
-mapping is:</p>
-<pre><code class="language-text">pad.10.36=page-1
-pad.10.37=page-2
-pad.10.38=page-3
-pad.10.39=page-4
-pad.10.40=stop
-pad.10.41=play
-pad.10.42=rec
-pad.10.43=tap-tempo
+pad.1=note.10.36
+pad.2=note.10.37
+pad.3=note.10.38
+pad.4=note.10.39
+pad.5=note.10.40
+pad.6=note.10.41
+pad.7=note.10.42
+pad.8=note.10.43
 </code></pre>
 <p>Only channel-10 presses, releases, velocity-zero Note On releases, and
 polyphonic pressure for those notes are consumed. Notes 36–43 on channel 1 or
-any other channel remain musical input. CC buttons use the parallel
-<code>button.cc.CHANNEL.NUMBER=ROLE</code> form. Old <code>pad.NUMBER</code> and
-<code>button.cc.NUMBER</code> entries remain intentionally channel-agnostic.</p>
+any other channel remain musical input. A pad that emits a CC instead uses, for
+example, <code>pad.1=cc.10.44</code>. Use <code>any</code> in place of the channel only for a device
+whose message must remain channel-agnostic.</p>
 <p>Five-button layout:</p>
 <pre><code class="language-text">menu.layout=5
-pad.36=page-cycle
-pad.40=stop
-pad.41=play
-pad.42=rec
-pad.43=tap-tempo
+pad.1=note.10.36
+pad.2=note.10.40
+pad.3=note.10.41
+pad.4=note.10.42
+pad.5=note.10.43
 </code></pre>
 <p>The page-cycle action may instead be a held chord. This example holds CC27 and
 uses CC93 on the same MIDI channel; the trigger may also be a normally mapped
@@ -5317,21 +5312,22 @@ the controller emits one, or leaves the ordinary encoder CC active when held
 turns keep using it. The explicit keys remain available for manual profiles.</p>
 <p>Four-button layout:</p>
 <pre><code class="language-text">menu.layout=4
-pad.40=stop
-pad.41=play
-pad.42=rec
-pad.43=tap-tempo
+pad.1=note.10.40
+pad.2=note.10.41
+pad.3=note.10.42
+pad.4=note.10.43
 </code></pre>
 <p>The note numbers above are examples only. Use the notes sent by the configured
 controller. In four-button mode, press the configured encoder to enter visible
 page-selection mode, turn it to choose page 1–4, and press it again to restore
-normal list/row/choice operation. The main setup wizard loads a matching known
-profile or offers MIDI learn; compact profiles can also be edited directly or
-with <code>shr pads set NOTE ROLE</code>.</p>
-<p>Older physical role aliases are accepted in physical order. New profiles should
-use <code>page-1</code> through <code>page-4</code>, <code>page-cycle</code>, and the semantic command roles
-<code>stop</code>, <code>play</code>, <code>rec</code>, and <code>tap-tempo</code>. Legacy <code>item-1</code> through <code>item-4</code>
-values remain accepted for existing local configurations.
+normal list/row/choice operation. Eight-pad screens interpret pads 1–4 as the
+four page positions and pads 5–8 as the four visible action positions. The
+five-pad layout uses pad 1 for page cycle and pads 2–5 for visible actions; the
+four-pad layout uses pads 1–4 for visible actions. Those meanings are runtime
+layout rules and are not stored in the controller profile.</p>
+<p>Legacy <code>cc.INCOMING=TARGET</code>, <code>pad.NOTE=ROLE</code>, and
+<code>button.cc.NUMBER=ROLE</code> entries remain readable and migrate in memory to the
+same numbered POT/PAD positions. New saves use only positional syntax.
 Command-note on/off and matching polyphonic pressure remain consumed; unmapped
 musical notes pass through.
 Disabled (<code>-</code>) and planned (<code>~</code>) entries never dispatch actions.</p>
@@ -5339,13 +5335,10 @@ Disabled (<code>-</code>) and planned (<code>~</code>) entries never dispatch ac
 <pre><code class="language-sh">shr pads list
 shr pads input &quot;Controller port name&quot;
 shr pads layout 5
-shr pads cc 20 74
-shr pads set 51 page-cycle
-shr pads set 52 stop
-shr pads clear 51
+shr pads pot 1 74
+shr pads pad 1 note 10 36
 </code></pre>
-<p>Controller buttons may send notes (<code>pad.N=ROLE</code>) or CCs
-(<code>button.cc.N=ROLE</code>). <code>encoder.relative_reverse=true</code> supports relative
+<p><code>encoder.relative_reverse=true</code> supports relative
 encoders whose clockwise messages are below 64.
 <code>encoder.modified_relative_reverse=true</code> applies the same convention to a
 separate shifted turn CC, and <code>encoder.press_note=N</code> supports encoder presses
@@ -5396,7 +5389,9 @@ before that field was opened. <strong>APPLY ROUTING</strong> keeps the resulting
 The controller action row's direct <strong>CANCEL</strong> action, or Back from the main
 list, restores the complete route snapshot from when ROUTE opened.</p>
 <p>An internal melodic route stores the engine identity together with that
-engine's stable instrument identity. An SHR Drums route instead stores the
+engine's stable instrument identity. Moj Sint identities include their
+synthesis model, so equal instrument names in different models cannot collide.
+An SHR Drums route instead stores the
 stable kit ID and remains independent of the melodic engine choice. Applying a
 different kit resets tuning overrides owned by the prior kit while retaining
 the Project key and drum effects. Changing the standalone/current engine or
@@ -5679,9 +5674,10 @@ describes messages accepted by a synthesizer.</p>
 </code></pre>
 <p>The wizard selects an ALSA MIDI input, loads a matching known profile, or
 offers non-audible MIDI learn for the missing controls. Learning never forwards
-messages to a synth. It can identify absolute knob/fader CCs, either direction
-convention for a relative encoder, a CC or note encoder press, and command
-buttons that send either notes or CCs. An optional <strong>ENCODER SHIFT</strong> step learns
+messages to a synth. It identifies <code>POT 1</code> through <code>POT 12</code>, numbered physical
+pads, either direction convention for a relative encoder, and a CC or note
+encoder press. It never shows or stores an instrument parameter or screen
+action as a controller identity. An optional <strong>ENCODER SHIFT</strong> step learns
 the held button plus the rotary's held left/right messages used for secondary
 navigation. Each step keeps the first qualifying gesture. The in-app learner
 visibly keeps <code>OK</code> on that role until the physical gesture is finished: a
@@ -5697,23 +5693,23 @@ settle, then click and release it. At the optional encoder Shift step, hold the
 modifier, turn left once, then release it; Learn stores either the
 ordinary rotary CC or the different relative CC emitted only while Shift is
 held. Skipping remains valid. The learned encoder then browses the optional
-control and command-button roles.
+numbered POT and PAD positions.
 One rotary gesture moves by exactly one role,
-regardless of how many packets it emits. Each learned absolute control advances
-to the next control automatically after settling, and each learned command
-button advances after release. The next clean encoder click saves the mappings
+regardless of how many packets it emits. Each learned POT advances
+automatically after settling, and each learned PAD advances after release. The
+next clean encoder click saves the mappings
 learned so far, makes a backup, activates the new file, and exits after release;
 Esc cancels and keeps the previous file. Conflicting assignments from a
 different already-mapped control are rejected without replacing an accepted
 <code>OK</code> message with errors from trailing traffic. Relative encoders using either
 the center-64 convention or high/low values such as 125–127 left, 1–3 right,
 and neutral 0 are supported.</p>
-<p>SHR does not guess how many buttons the controller has. Command roles are
-optional: browse past roles that the hardware does not need. The page choices
-are mutually exclusive. If any of page 1–4 is learned, the separate page-cycle
-role is bypassed; after all four are skipped, page-cycle is offered as the
-five-button alternative before item 1–4. Item buttons alone use the four-button
-layout.</p>
+<p>SHR does not guess how many pads the controller has. The in-app path determines
+an eight-pad layout when any of the first four page-row positions is captured,
+a five-pad layout when the alternate first-pad page-cycle gesture is captured,
+and otherwise a four-pad action-row layout. The displayed identities remain
+<code>PAD 1</code> onward in every case; page and action meanings belong to the runtime
+layout and current screen.</p>
 <p>Page-cycle may be one dedicated button or a held modifier plus another control.
 For a dedicated button, press and release it once, then press it again to
 confirm; this prevents a single exploratory Shift press from becoming the
@@ -5734,6 +5730,8 @@ shr pads auto [PORT_MATCH]     # select input and apply a known profile
 shr pads learn [PORT_MATCH]    # learn only what remains unassigned
 shr pads update                # download the reviewed SHR catalog
 shr pads list                  # show the resulting mapping
+shr pads pot 1 74              # explicitly bind POT 1 to incoming CC 74
+shr pads pad 1 note 10 36      # bind PAD 1 to channel-10 note 36
 </code></pre>
 <p>The bundled catalog lives in <code>controller-profiles/catalog.json</code>. Installation
 copies it below <code>share/shsynth/controller-profiles/</code>. <code>shr pads update</code>
@@ -5781,21 +5779,20 @@ It does not describe the physical controls emitted by USB input controllers,
 so it is not used for controller autoloading.</p>
 <h4 id="doc-controller_profiles--catalog-profile-format" tabindex="-1">Catalog profile format<a class="heading-anchor" href="#doc-controller_profiles--catalog-profile-format" aria-label="Link to Catalog profile format">#</a></h4>
 <p>Each JSON entry has stable <code>id</code>, display <code>name</code>, normalized ALSA
-<code>match_names</code>, a 4/5/8-button layout, and any known mappings. <code>controls</code> maps
-incoming physical CC numbers to the twelve canonical synthv1 CCs.
-<code>note_buttons</code> and <code>cc_buttons</code> map physical messages to page/item roles.
-Optional <code>note_button_channels</code> and <code>cc_button_channels</code> objects map the same
-note/CC keys to 1-based MIDI channels. Missing qualifiers preserve legacy
-all-channel profiles. MIDI learn records the channel observed for every learned
-note or CC command, and save/load retains it.
+<code>match_names</code>, a 4/5/8-pad layout, and any known mappings. <code>pots</code> maps one-based
+physical POT positions to incoming CC numbers. <code>note_pads</code> and <code>cc_pads</code> map
+one-based physical PAD positions to incoming notes or CCs; the parallel
+<code>note_pad_channels</code> and <code>cc_pad_channels</code> objects qualify those positions with
+1-based MIDI channels. MIDI learn records the observed channel for every PAD,
+and save/load retains it. Instrument parameters and screen commands are absent
+from this schema.
 Encoder turn, optional shifted turn, press, held modifier, and optional lock
 messages are separate so they cannot collide with continuous controls. The
 held modifier is stored as <code>encoder.modifier=cc.CHANNEL.NUMBER</code> or
 <code>note.CHANNEL.NUMBER</code>. A controller that changes the rotary CC while Shift is
 held also stores <code>encoder.modified_relative_cc</code>; its direction convention uses
 <code>encoder.modified_relative_reverse</code>. All physical note and CC numbers must be
-valid MIDI data bytes (0–127), and an encoder press cannot reuse a
-command-button note.
+valid MIDI data bytes (0–127), and an encoder press cannot reuse a PAD note.
 An optional <code>shifted_encoder_compatibility</code> array retains previously reviewed
 ordinary CC, modifier, shifted CC, direction, and channel tuples. These entries
 never change a fresh profile; they only complete an older learned map in memory
@@ -5804,16 +5801,18 @@ Learned page-cycle chords are stored as <code>page_cycle.modifier</code> and
 <code>page_cycle.trigger</code> values such as <code>cc.1.27</code>; the modifier and trigger must be
 different messages, while the trigger may deliberately reuse a normal mapping.</p>
 <p>Profiles may be partial. After one is loaded, <code>shr pads learn</code> asks only for
-continuous controls and encoder functions that are still empty; command-button
-learning is optional and replaces the chosen button layout as one verified
-set.</p>
-<p>The reviewed MiniLab 3 profile uses factory Arturia/DAW pad notes 36–43 on
-channel 10. Notes 36–39 select pages 1–4. Notes 40–43 are the semantic command
-positions 5–8 (<code>stop</code>, <code>play</code>, <code>rec</code>, <code>tap-tempo</code>); the current screen maps
-those positions to contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
-actions. Legacy <code>item-1</code> through <code>item-4</code> profile values remain compatible.
+POT, PAD, and encoder positions that are still empty.</p>
+<p>Version-7 private files and older downloaded catalogs remain readable. Their
+synthv1 target CCs and semantic button roles are converted in memory to the
+equivalent one-based positions. SHR does not inspect or rewrite an existing
+private file merely to migrate it; its next explicit save writes positional
+version-8 syntax.</p>
+<p>The reviewed MiniLab 3 profile maps <code>PAD 1</code> through <code>PAD 8</code> to factory
+Arturia/DAW notes 36–43 on channel 10. At runtime the eight-pad layout uses
+positions 1–4 for pages and positions 5–8 for the current screen's contextual
+actions. The profile itself contains none of those action names.
 Direct capture on this unit found User 1 pads on channel 1, the same
-channel as its keyboard, so User 1 pads are not safe command buttons: their
+channel as its keyboard, so User 1 pads are not safe command pads: their
 messages are indistinguishable from keyboard notes. The current learned Shift
 emits CC9 and is bound only as the held encoder modifier; its shifted rotary
 CC112 is accepted only while that configured modifier is down. Neither is a
@@ -14637,7 +14636,7 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version <code>0.3.92</code> is the
-corrected starting point; the current checked-progress version is <code>0.4.6</code>.</p>
+corrected starting point; the current checked-progress version is <code>0.4.7</code>.</p>
 <p>Version <code>0.4.4</code> added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict <code>.mojsint</code> catalog without launching sound; LOAD
 alone starts <code>moj-sint --client-name ... --preset ...</code>. Playback renders the
@@ -14671,6 +14670,12 @@ AudioBox direct monitor active, so MON ON remains refused until the owner
 physically disables that monitor and deliberately updates the declaration.
 This release has deterministic software verification only; it does not claim
 new JACK, audible, or hardware validation.</p>
+<p>Version <code>0.4.7</code> pairs with Moj Sint 0.2.2 and separates the Moj Sint engine
+from its synthesis model. Strict Moj schema 4 names <code>model_d</code>; schemas 1–3
+migrate to it in memory. Discovery and Ideas retain typed model identity,
+Project/FT2 routes use model-qualified stable instrument IDs with legacy
+unqualified Model D lookup, and Playback selects its twelve labels from the
+loaded model while controller configuration remains only POT1–12 positions.</p>
 <p>The locked 0.4.6 combined gate used Rust 1.97.1
 (<code>8bab26f4f68e0e26f0bb7960be334d5b520ea452</code>). Focused graph ownership,
 monitor/UI, Recorder LEVELS, and four observed regression tests passed. The
@@ -15329,7 +15334,7 @@ acceptance gates pass, not on dates. Detailed behavior remains in the focused
 product, installation, FT2, and hardware documents linked below.</p>
 <h4 id="doc-release_roadmap--version-numbering" tabindex="-1">Version numbering<a class="heading-anchor" href="#doc-release_roadmap--version-numbering" aria-label="Link to Version numbering">#</a></h4>
 <p>The package uses <code>major.minor.patch</code> numbering. Version <code>0.3.92</code> corrected the
-unintended <code>0.392.0</code>; the current checked-progress version is <code>0.4.6</code>.</p>
+unintended <code>0.392.0</code>; the current checked-progress version is <code>0.4.7</code>.</p>
 <ul>
 <li>Meaningful checked progress before the next milestone increments the patch:
 <code>0.3.99</code>, <code>0.3.100</code>, <code>0.3.101</code>, and so on.</li>
@@ -15338,7 +15343,7 @@ checked progress toward 0.5 use <code>0.4.1</code>, <code>0.4.2</code>, and so o
 Pi 5 installation milestone is accepted; the current repair release is
 <code>0.4.3</code>. Moj Sint's working fourth-backend integration is <code>0.4.4</code>; it does
 not reuse the earlier SHR Drums/effects bump. Version <code>0.4.5</code> makes all seven
-authored Moj Sint starts selectable and accepts strict schema 3 patch
+authored Moj Sint starts selectable and accepts strict schema 4 model/patch
 identity. Version <code>0.4.6</code> makes Input monitoring a deliberate MTR action,
 moves final-bus ownership out of the optional managed synth, reconnects
 optional sources without duplicate playback, and records the same

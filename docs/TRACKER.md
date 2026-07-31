@@ -90,7 +90,8 @@ Every musician-facing screen shows channels 1–16 and programs 1–128.
 Each page keeps one MIDI target plus four independent column channel, bank, and
 master-program setups. It also keeps velocity, mute, percussion, optional
 device-profile metadata, and lane settings. A software target stores its engine
-and that engine's stable instrument identity in the Pattern. When page 1 is
+and that engine's stable instrument identity in the Pattern. Moj Sint stable
+identities are model-qualified. When page 1 is
 part of a genuinely new, empty, unsaved default Project, entering FT2 may
 replace its factory route with the currently loaded Player engine/instrument.
 A loaded/saved Project or an unsaved Project with any explicit change is never

@@ -5,7 +5,7 @@ use crate::audio_graph_client::FinalBusOwner;
 use crate::audio_recorder::{AudioRecorder, RecorderStatus, RecorderTrackStatus};
 use crate::chord::HeldNotes;
 use crate::config::{ExternalMidiConfig, RuntimeConfig};
-use crate::control::{parameter_color, CONTROLS, MOJ_CONTROLS, VOLUME_CC};
+use crate::control::{moj_controls, parameter_color, CONTROLS, MOJ_CONTROLS, VOLUME_CC};
 use crate::device_profile::{DeviceProfile, Registry as DeviceProfiles};
 use crate::drum_pattern::{self, DrumPattern};
 use crate::engine::{self, Engine, MidiEvent};
@@ -18257,7 +18257,13 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             );
         }
     } else if playing_backend == Some(BackendKind::MojSint) {
-        for (i, control) in MOJ_CONTROLS.iter().enumerate() {
+        let controls = a
+            .playing
+            .as_ref()
+            .and_then(Preset::moj_model)
+            .map(moj_controls)
+            .unwrap_or(&MOJ_CONTROLS);
+        for (i, control) in controls.iter().enumerate() {
             let col = (i % 4) as u16;
             let control_row = (i / 4) as u16;
             let label_y = inner.y + control_row * 2;
@@ -22906,6 +22912,7 @@ mod tests {
             name: "Model D".into(),
             category: None,
             id: PresetId::MojSint {
+                model: crate::preset::MojModel::ModelD,
                 path: PathBuf::from("model-d.mojsint"),
             },
         });
@@ -22923,6 +22930,33 @@ mod tests {
         }
         assert!(!text.contains("Width"));
         assert!(!text.contains("No synthv1"));
+    }
+
+    #[test]
+    fn moj_sint_legacy_instrument_route_resolves_to_model_qualified_identity() {
+        let presets = presets();
+        let mut app = app(&presets);
+        let preset = Preset {
+            backend: BackendKind::MojSint,
+            name: "Model D Bass".into(),
+            category: Some("Model D".into()),
+            id: PresetId::MojSint {
+                model: crate::preset::MojModel::ModelD,
+                path: PathBuf::from("model-d-bass.mojsint"),
+            },
+        };
+        app.catalogs.push(Catalog {
+            backend: BackendKind::MojSint,
+            presets: vec![preset],
+            unavailable: None,
+        });
+        let resolved = app
+            .preset_for_route(&SoftwareRoute {
+                engine: BackendKind::MojSint,
+                instrument: "Model D Bass".into(),
+            })
+            .expect("legacy Moj Sint route");
+        assert_eq!(resolved.route_id(), "model_d/Model D Bass");
     }
 
     #[test]
