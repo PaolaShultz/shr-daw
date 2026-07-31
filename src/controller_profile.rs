@@ -19,6 +19,10 @@ pub struct ControllerProfile {
     pub name: String,
     pub match_names: Vec<String>,
     pub layout: u8,
+    /// One-based physical POT position -> incoming controller CC.
+    #[serde(default)]
+    pub pots: HashMap<u8, u8>,
+    /// Legacy incoming CC -> synthv1 CC. Read only and normalized on apply.
     #[serde(default)]
     pub controls: HashMap<u8, u8>,
     #[serde(default)]
@@ -55,6 +59,15 @@ pub struct ControllerProfile {
     /// Optional 1-based channel qualifiers keyed by command CC.
     #[serde(default)]
     pub cc_button_channels: HashMap<u8, u8>,
+    /// One-based physical PAD position -> incoming note/CC.
+    #[serde(default)]
+    pub note_pads: HashMap<u8, u8>,
+    #[serde(default)]
+    pub note_pad_channels: HashMap<u8, u8>,
+    #[serde(default)]
+    pub cc_pads: HashMap<u8, u8>,
+    #[serde(default)]
+    pub cc_pad_channels: HashMap<u8, u8>,
     #[serde(default)]
     pub source: String,
 }
@@ -91,6 +104,22 @@ impl ControllerProfile {
         if !matches!(self.layout, 4 | 5 | 8) {
             bail!("controller profile {} layout must be 4, 5, or 8", self.id);
         }
+        if !self.pots.is_empty() && !self.controls.is_empty() {
+            bail!(
+                "controller profile {} mixes positional and legacy POT mappings",
+                self.id
+            );
+        }
+        let mut pot_ccs = HashSet::new();
+        for (&position, &incoming) in &self.pots {
+            if !(1..=12).contains(&position) {
+                bail!("controller profile {} POT position must be 1..12", self.id);
+            }
+            crate::pads::ensure_midi_number(incoming, "controller profile POT CC")?;
+            if !pot_ccs.insert(incoming) {
+                bail!("controller profile {} reuses POT CC {incoming}", self.id);
+            }
+        }
         for (&incoming, &target) in &self.controls {
             crate::pads::ensure_midi_number(incoming, "controller profile CC")?;
             if crate::control::by_cc(target).is_none() {
@@ -104,6 +133,43 @@ impl ControllerProfile {
             action.parse::<PadAction>().with_context(|| {
                 format!("controller profile {} has invalid action {action}", self.id)
             })?;
+        }
+        if (!self.note_pads.is_empty() || !self.cc_pads.is_empty())
+            && (!self.note_buttons.is_empty() || !self.cc_buttons.is_empty())
+        {
+            bail!(
+                "controller profile {} mixes positional and legacy PAD mappings",
+                self.id
+            );
+        }
+        let mut pad_positions = HashSet::new();
+        for (&position, &note) in &self.note_pads {
+            if !(1..=self.layout).contains(&position) || !pad_positions.insert(position) {
+                bail!(
+                    "controller profile {} has an invalid or duplicate PAD position",
+                    self.id
+                );
+            }
+            crate::pads::ensure_midi_number(note, "controller profile PAD note")?;
+        }
+        for (&position, &cc) in &self.cc_pads {
+            if !(1..=self.layout).contains(&position) || !pad_positions.insert(position) {
+                bail!(
+                    "controller profile {} has an invalid or duplicate PAD position",
+                    self.id
+                );
+            }
+            crate::pads::ensure_midi_number(cc, "controller profile PAD CC")?;
+        }
+        if self.note_pad_channels.iter().any(|(position, channel)| {
+            !self.note_pads.contains_key(position) || !(1..=16).contains(channel)
+        }) || self.cc_pad_channels.iter().any(|(position, channel)| {
+            !self.cc_pads.contains_key(position) || !(1..=16).contains(channel)
+        }) {
+            bail!(
+                "controller profile {} has an invalid PAD channel qualifier",
+                self.id
+            );
         }
         for &note in self.note_buttons.keys() {
             crate::pads::ensure_midi_number(note, "controller profile button note")?;
@@ -150,18 +216,29 @@ impl ControllerProfile {
                 crate::pads::ensure_midi_number(number, description)?;
             }
         }
-        let mut used_cc = self.controls.keys().copied().collect::<HashSet<_>>();
-        for cc in self.cc_buttons.keys().copied().chain(
-            [
-                self.encoder_relative_cc,
-                self.encoder_modified_relative_cc,
-                self.encoder_press_cc,
-                self.encoder_modifier_cc,
-                self.lock_cc,
-            ]
-            .into_iter()
-            .flatten(),
-        ) {
+        let mut used_cc = self
+            .pots
+            .values()
+            .copied()
+            .chain(self.controls.keys().copied())
+            .collect::<HashSet<_>>();
+        for cc in self
+            .cc_pads
+            .values()
+            .copied()
+            .chain(self.cc_buttons.keys().copied())
+            .chain(
+                [
+                    self.encoder_relative_cc,
+                    self.encoder_modified_relative_cc,
+                    self.encoder_press_cc,
+                    self.encoder_modifier_cc,
+                    self.lock_cc,
+                ]
+                .into_iter()
+                .flatten(),
+            )
+        {
             if !used_cc.insert(cc) {
                 bail!("controller profile {} reuses CC {cc}", self.id);
             }
@@ -239,12 +316,21 @@ impl ControllerProfile {
                 );
             }
         }
+        let used_notes = self
+            .note_pads
+            .values()
+            .copied()
+            .chain(self.note_buttons.keys().copied())
+            .collect::<HashSet<_>>();
+        if used_notes.len() != self.note_pads.len() + self.note_buttons.len() {
+            bail!("controller profile {} reuses a PAD note", self.id);
+        }
         if self
             .encoder_press_note
-            .is_some_and(|note| self.note_buttons.contains_key(&note))
+            .is_some_and(|note| used_notes.contains(&note))
         {
             bail!(
-                "controller profile {} reuses encoder press note as a button",
+                "controller profile {} reuses encoder press note as a PAD",
                 self.id
             );
         }
@@ -269,7 +355,24 @@ impl ControllerProfile {
             4 => ControllerLayout::Four,
             _ => unreachable!(),
         };
-        config.controls.clone_from(&self.controls);
+        config.controls = if self.pots.is_empty() {
+            self.controls
+                .iter()
+                .filter_map(|(&incoming, &target)| {
+                    let position = crate::control::CONTROLS
+                        .iter()
+                        .position(|control| control.cc == target)?
+                        as u8
+                        + 1;
+                    Some((incoming, position))
+                })
+                .collect()
+        } else {
+            self.pots
+                .iter()
+                .map(|(&position, &incoming)| (incoming, position))
+                .collect()
+        };
         config.encoder_relative_cc = self.encoder_relative_cc;
         config.encoder_relative_reverse = self.encoder_relative_reverse;
         config.encoder_modified_relative_cc = self.encoder_modified_relative_cc;
@@ -284,26 +387,71 @@ impl ControllerProfile {
         config.page_cycle_modifier = None;
         config.page_cycle_trigger = None;
         config.lock_cc = self.lock_cc;
-        config.pads = self
-            .note_buttons
-            .iter()
-            .map(|(&number, action)| Ok((number, action.parse()?)))
-            .collect::<Result<_>>()?;
-        config.pad_channels = self
-            .note_button_channels
-            .iter()
-            .map(|(&number, &channel)| (number, channel - 1))
-            .collect();
-        config.cc_buttons = self
-            .cc_buttons
-            .iter()
-            .map(|(&number, action)| Ok((number, action.parse()?)))
-            .collect::<Result<_>>()?;
-        config.cc_button_channels = self
-            .cc_button_channels
-            .iter()
-            .map(|(&number, &channel)| (number, channel - 1))
-            .collect();
+        if self.note_pads.is_empty() && self.cc_pads.is_empty() {
+            config.pads = self
+                .note_buttons
+                .iter()
+                .map(|(&number, action)| {
+                    let action: PadAction = action.parse()?;
+                    Ok((number, action.normalized(config.layout)))
+                })
+                .collect::<Result<_>>()?;
+            config.pad_channels = self
+                .note_button_channels
+                .iter()
+                .map(|(&number, &channel)| (number, channel - 1))
+                .collect();
+            config.cc_buttons = self
+                .cc_buttons
+                .iter()
+                .map(|(&number, action)| {
+                    let action: PadAction = action.parse()?;
+                    Ok((number, action.normalized(config.layout)))
+                })
+                .collect::<Result<_>>()?;
+            config.cc_button_channels = self
+                .cc_button_channels
+                .iter()
+                .map(|(&number, &channel)| (number, channel - 1))
+                .collect();
+        } else {
+            config.pads = self
+                .note_pads
+                .iter()
+                .map(|(&position, &note)| {
+                    (
+                        note,
+                        PadAction::physical(position).expect("validated PAD position"),
+                    )
+                })
+                .collect();
+            config.pad_channels = self
+                .note_pad_channels
+                .iter()
+                .filter_map(|(&position, &channel)| {
+                    self.note_pads
+                        .get(&position)
+                        .map(|&note| (note, channel - 1))
+                })
+                .collect();
+            config.cc_buttons = self
+                .cc_pads
+                .iter()
+                .map(|(&position, &cc)| {
+                    (
+                        cc,
+                        PadAction::physical(position).expect("validated PAD position"),
+                    )
+                })
+                .collect();
+            config.cc_button_channels = self
+                .cc_pad_channels
+                .iter()
+                .filter_map(|(&position, &channel)| {
+                    self.cc_pads.get(&position).map(|&cc| (cc, channel - 1))
+                })
+                .collect();
+        }
         config.validate()
     }
 }
@@ -557,6 +705,10 @@ mod tests {
         let catalog = Catalog::discover_bundled();
         let profile = catalog.matching("20:0 Arturia MiniLab3 MIDI 1").unwrap();
         assert_eq!(profile.id, "arturia-minilab-3");
+        assert_eq!(profile.pots.len(), 12);
+        assert!(profile.controls.is_empty());
+        assert_eq!(profile.note_pads.len(), 8);
+        assert!(profile.note_buttons.is_empty());
         let mut config = PadConfig::default();
         profile.apply(&mut config, "MiniLab3 MIDI").unwrap();
         assert_eq!(config.controls.len(), 12);
@@ -573,14 +725,14 @@ mod tests {
         );
         assert_eq!(config.lock_cc, None);
         for (offset, action) in [
-            PadAction::Page1,
-            PadAction::Page2,
-            PadAction::Page3,
-            PadAction::Page4,
-            PadAction::Stop,
-            PadAction::Play,
-            PadAction::Rec,
-            PadAction::TapTempo,
+            PadAction::Pad1,
+            PadAction::Pad2,
+            PadAction::Pad3,
+            PadAction::Pad4,
+            PadAction::Pad5,
+            PadAction::Pad6,
+            PadAction::Pad7,
+            PadAction::Pad8,
         ]
         .into_iter()
         .enumerate()
@@ -649,6 +801,7 @@ mod tests {
             name: "Test Controller".into(),
             match_names: vec!["test controller".into()],
             layout: 4,
+            pots: HashMap::new(),
             controls: HashMap::new(),
             encoder_relative_cc: None,
             encoder_relative_reverse: false,
@@ -665,6 +818,10 @@ mod tests {
             note_button_channels: HashMap::new(),
             cc_buttons: HashMap::new(),
             cc_button_channels: HashMap::new(),
+            note_pads: HashMap::new(),
+            note_pad_channels: HashMap::new(),
+            cc_pads: HashMap::new(),
+            cc_pad_channels: HashMap::new(),
             source: "hardware verification".into(),
         }
     }

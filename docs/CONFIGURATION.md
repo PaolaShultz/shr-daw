@@ -393,54 +393,48 @@ the next play so reconnected hardware is used without rewriting the Project.
 
 ## Controller menu layouts
 
-`controller.conf` maps physical notes to controller roles, not screen actions.
-The current screen and context install the four visible menu pages described in
-the [complete controller map](CONTROLLER_INTERFACE.md#complete-controller-map).
+`controller.conf` records physical identity only. `pot.1` through `pot.12` name
+the twelve continuous positions; `pad.1` through `pad.8` name physical pads.
+Instrument and screen tables—not the controller profile—give those positions
+their current parameter or action. The current context is described in the
+[complete controller map](CONTROLLER_INTERFACE.md#complete-controller-map).
+
+Each POT value is the absolute CC emitted by that position:
+
+```text
+pot.1=74
+pot.2=71
+```
 
 Eight-button layout:
 
 ```text
 menu.layout=8
-pad.36=page-1
-pad.37=page-2
-pad.38=page-3
-pad.39=page-4
-pad.40=stop
-pad.41=play
-pad.42=rec
-pad.43=tap-tempo
-```
-
-Add an optional 1-based MIDI channel between `pad` and the note number when a
-keyboard and command pads share note numbers. The verified MiniLab factory
-mapping is:
-
-```text
-pad.10.36=page-1
-pad.10.37=page-2
-pad.10.38=page-3
-pad.10.39=page-4
-pad.10.40=stop
-pad.10.41=play
-pad.10.42=rec
-pad.10.43=tap-tempo
+pad.1=note.10.36
+pad.2=note.10.37
+pad.3=note.10.38
+pad.4=note.10.39
+pad.5=note.10.40
+pad.6=note.10.41
+pad.7=note.10.42
+pad.8=note.10.43
 ```
 
 Only channel-10 presses, releases, velocity-zero Note On releases, and
 polyphonic pressure for those notes are consumed. Notes 36–43 on channel 1 or
-any other channel remain musical input. CC buttons use the parallel
-`button.cc.CHANNEL.NUMBER=ROLE` form. Old `pad.NUMBER` and
-`button.cc.NUMBER` entries remain intentionally channel-agnostic.
+any other channel remain musical input. A pad that emits a CC instead uses, for
+example, `pad.1=cc.10.44`. Use `any` in place of the channel only for a device
+whose message must remain channel-agnostic.
 
 Five-button layout:
 
 ```text
 menu.layout=5
-pad.36=page-cycle
-pad.40=stop
-pad.41=play
-pad.42=rec
-pad.43=tap-tempo
+pad.1=note.10.36
+pad.2=note.10.40
+pad.3=note.10.41
+pad.4=note.10.42
+pad.5=note.10.43
 ```
 
 The page-cycle action may instead be a held chord. This example holds CC27 and
@@ -481,23 +475,24 @@ Four-button layout:
 
 ```text
 menu.layout=4
-pad.40=stop
-pad.41=play
-pad.42=rec
-pad.43=tap-tempo
+pad.1=note.10.40
+pad.2=note.10.41
+pad.3=note.10.42
+pad.4=note.10.43
 ```
 
 The note numbers above are examples only. Use the notes sent by the configured
 controller. In four-button mode, press the configured encoder to enter visible
 page-selection mode, turn it to choose page 1–4, and press it again to restore
-normal list/row/choice operation. The main setup wizard loads a matching known
-profile or offers MIDI learn; compact profiles can also be edited directly or
-with `shr pads set NOTE ROLE`.
+normal list/row/choice operation. Eight-pad screens interpret pads 1–4 as the
+four page positions and pads 5–8 as the four visible action positions. The
+five-pad layout uses pad 1 for page cycle and pads 2–5 for visible actions; the
+four-pad layout uses pads 1–4 for visible actions. Those meanings are runtime
+layout rules and are not stored in the controller profile.
 
-Older physical role aliases are accepted in physical order. New profiles should
-use `page-1` through `page-4`, `page-cycle`, and the semantic command roles
-`stop`, `play`, `rec`, and `tap-tempo`. Legacy `item-1` through `item-4`
-values remain accepted for existing local configurations.
+Legacy `cc.INCOMING=TARGET`, `pad.NOTE=ROLE`, and
+`button.cc.NUMBER=ROLE` entries remain readable and migrate in memory to the
+same numbered POT/PAD positions. New saves use only positional syntax.
 Command-note on/off and matching polyphonic pressure remain consumed; unmapped
 musical notes pass through.
 Disabled (`-`) and planned (`~`) entries never dispatch actions.
@@ -508,14 +503,11 @@ List or change controller mappings with:
 shr pads list
 shr pads input "Controller port name"
 shr pads layout 5
-shr pads cc 20 74
-shr pads set 51 page-cycle
-shr pads set 52 stop
-shr pads clear 51
+shr pads pot 1 74
+shr pads pad 1 note 10 36
 ```
 
-Controller buttons may send notes (`pad.N=ROLE`) or CCs
-(`button.cc.N=ROLE`). `encoder.relative_reverse=true` supports relative
+`encoder.relative_reverse=true` supports relative
 encoders whose clockwise messages are below 64.
 `encoder.modified_relative_reverse=true` applies the same convention to a
 separate shifted turn CC, and `encoder.press_note=N` supports encoder presses

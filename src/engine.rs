@@ -865,15 +865,18 @@ impl Engine {
                 controller
                     .controls
                     .iter()
-                    .map(|(&incoming, &target)| (incoming, target))
+                    .filter_map(|(&incoming, &position)| {
+                        let control = CONTROLS.get(usize::from(position.checked_sub(1)?))?;
+                        Some((incoming, control.cc))
+                    })
                     .collect()
             } else if preset.backend == BackendKind::MojSint {
                 controller
                     .controls
                     .iter()
-                    .filter_map(|(&incoming, &target)| {
-                        let index = CONTROLS.iter().position(|control| control.cc == target)?;
-                        Some((incoming, control::MOJ_CONTROLS[index].cc))
+                    .filter_map(|(&incoming, &position)| {
+                        let index = usize::from(position.checked_sub(1)?);
+                        Some((incoming, control::MOJ_CONTROLS.get(index)?.cc))
                     })
                     .collect()
             } else {
@@ -1371,8 +1374,11 @@ fn write_synthv1_config(home: &Path, controller: &PadConfig) -> Result<()> {
     fs::create_dir_all(&dir)?;
     let mut file = File::create(dir.join("synthv1.conf"))?;
     writeln!(file, "[Default]\nControlsEnabled=true\n\n[Controllers]")?;
-    for (incoming, target) in &controller.controls {
-        let Some(control) = CONTROLS.iter().find(|control| control.cc == *target) else {
+    for (incoming, position) in &controller.controls {
+        let Some(control) = position
+            .checked_sub(1)
+            .and_then(|position| CONTROLS.get(usize::from(position)))
+        else {
             continue;
         };
         writeln!(file, "Control_0_CC_{incoming}={}, 4", control.index)?;
@@ -1926,9 +1932,9 @@ fn connect_midi_input(
                     let fx_value = (fx_control_mode.load(Ordering::Relaxed)
                         && message.len() >= 3
                         && message[0] & 0xf0 == 0xb0)
-                        .then(|| pads.target_cc(message[1]))
+                        .then(|| pads.pot_position(message[1]))
                         .flatten()
-                        .and_then(control::by_cc)
+                        .and_then(|position| CONTROLS.get(position).copied())
                         .map(|control| (control.cc, control::value_from_cc(control, message[2])));
                     if let Some((cc, value)) = fx_value {
                         let _ = tx.send(MidiEvent::MappedControl(cc, value));

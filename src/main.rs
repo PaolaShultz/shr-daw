@@ -701,8 +701,9 @@ fn usage() {
          \n\
          Controller and routing:\n\
            pads list|ports|profiles|auto [PORT]|learn [PORT]|update\n\
-           pads set NOTE ACTION|clear NOTE|input PORT_MATCH|layout 8|5|4\n\
-           pads cc INCOMING TARGET\n\
+           pads input PORT_MATCH|layout 8|5|4\n\
+           pads pot POSITION INCOMING_CC\n\
+           pads pad POSITION note|cc CHANNEL|any NUMBER\n\
            clock ports\n\
            casio diagnostic\n\
          \n\
@@ -1475,26 +1476,39 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
                 println!("page-cycle chord: hold {modifier}, trigger {trigger}");
             }
             let mut controls = config.controls.iter().collect::<Vec<_>>();
-            controls.sort_by_key(|x| x.0);
-            for (incoming, target) in controls {
-                println!("cc {incoming} -> mapped CC {target}");
+            controls.sort_by_key(|x| x.1);
+            for (incoming, position) in controls {
+                println!("POT {position}: CC {incoming}");
             }
-            let mut v = config.pads.iter().collect::<Vec<_>>();
-            v.sort_by_key(|x| x.0);
-            for (n, a) in v {
-                if let Some(channel) = config.pad_channels.get(n) {
-                    println!("note {n}, channel {}: {a}", channel + 1);
+            let mut pads = config
+                .pads
+                .iter()
+                .map(|(note, pad)| (pad.normalized(config.layout), "note", *note))
+                .chain(
+                    config
+                        .cc_buttons
+                        .iter()
+                        .map(|(cc, pad)| (pad.normalized(config.layout), "CC", *cc)),
+                )
+                .collect::<Vec<_>>();
+            pads.sort_by_key(|(pad, _, _)| pad.number());
+            for (pad, kind, number) in pads {
+                let channel = if kind == "note" {
+                    config.pad_channels.get(&number)
                 } else {
-                    println!("note {n}, any channel: {a}");
-                }
-            }
-            let mut v = config.cc_buttons.iter().collect::<Vec<_>>();
-            v.sort_by_key(|x| x.0);
-            for (cc, action) in v {
-                if let Some(channel) = config.cc_button_channels.get(cc) {
-                    println!("button CC {cc}, channel {}: {action}", channel + 1);
+                    config.cc_button_channels.get(&number)
+                };
+                if let Some(channel) = channel {
+                    println!(
+                        "PAD {}: {kind} {number}, channel {}",
+                        pad.number().unwrap(),
+                        channel + 1
+                    );
                 } else {
-                    println!("button CC {cc}, any channel: {action}");
+                    println!(
+                        "PAD {}: {kind} {number}, any channel",
+                        pad.number().unwrap()
+                    );
                 }
             }
             Ok(())
@@ -1547,7 +1561,108 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
             if control::by_cc(target).is_none() {
                 bail!("TARGET must be one of the 12 mapped CC numbers");
             }
-            config.controls.insert(incoming, target);
+            let position = control::CONTROLS
+                .iter()
+                .position(|control| control.cc == target)
+                .expect("validated legacy target CC") as u8
+                + 1;
+            config.controls.insert(incoming, position);
+            config.save(&path)
+        }
+        "pot" => {
+            let position: u8 = args
+                .get(1)
+                .context("usage: shr pads pot POSITION INCOMING_CC")?
+                .parse()
+                .context("POT position must be 1..12")?;
+            if !(1..=12).contains(&position) {
+                bail!("POT position must be 1..12");
+            }
+            let incoming = pads::midi_number(
+                args.get(2)
+                    .context("usage: shr pads pot POSITION INCOMING_CC")?,
+                "controller CC",
+            )?;
+            config.controls.retain(|_, mapped| *mapped != position);
+            config.controls.insert(incoming, position);
+            config.save(&path)
+        }
+        "pad" => {
+            let position: u8 = args
+                .get(1)
+                .context("usage: shr pads pad POSITION note|cc CHANNEL|any NUMBER")?
+                .parse()
+                .context("PAD position must be numeric")?;
+            let maximum = match config.layout {
+                pads::ControllerLayout::Eight => 8,
+                pads::ControllerLayout::Five => 5,
+                pads::ControllerLayout::Four => 4,
+            };
+            if !(1..=maximum).contains(&position) {
+                bail!("PAD position must be 1..{maximum} for this layout");
+            }
+            let kind = args
+                .get(2)
+                .context("usage: shr pads pad POSITION note|cc CHANNEL|any NUMBER")?;
+            let channel = match args
+                .get(3)
+                .context("usage: shr pads pad POSITION note|cc CHANNEL|any NUMBER")?
+                .as_str()
+            {
+                "any" => None,
+                value => {
+                    let channel: u8 = value.parse().context("PAD channel must be 1..16 or any")?;
+                    if !(1..=16).contains(&channel) {
+                        bail!("PAD channel must be 1..16 or any");
+                    }
+                    Some(channel - 1)
+                }
+            };
+            let number = pads::midi_number(
+                args.get(4)
+                    .context("usage: shr pads pad POSITION note|cc CHANNEL|any NUMBER")?,
+                "PAD MIDI number",
+            )?;
+            let pad = pads::PadAction::physical(position).expect("validated PAD position");
+            config
+                .pads
+                .retain(|_, mapped| mapped.normalized(config.layout) != pad);
+            config
+                .cc_buttons
+                .retain(|_, mapped| mapped.normalized(config.layout) != pad);
+            let mapped_notes = config.pads.keys().copied().collect::<Vec<_>>();
+            let mapped_ccs = config.cc_buttons.keys().copied().collect::<Vec<_>>();
+            config
+                .pad_channels
+                .retain(|note, _| mapped_notes.contains(note));
+            config
+                .cc_button_channels
+                .retain(|cc, _| mapped_ccs.contains(cc));
+            match kind.as_str() {
+                "note" => {
+                    config.pads.insert(number, pad);
+                    match channel {
+                        Some(channel) => {
+                            config.pad_channels.insert(number, channel);
+                        }
+                        None => {
+                            config.pad_channels.remove(&number);
+                        }
+                    }
+                }
+                "cc" => {
+                    config.cc_buttons.insert(number, pad);
+                    match channel {
+                        Some(channel) => {
+                            config.cc_button_channels.insert(number, channel);
+                        }
+                        None => {
+                            config.cc_button_channels.remove(&number);
+                        }
+                    }
+                }
+                _ => bail!("PAD message kind must be note or cc"),
+            }
             config.save(&path)
         }
         other => bail!("unknown pads command: {other}"),

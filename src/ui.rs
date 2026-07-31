@@ -12698,7 +12698,7 @@ fn dispatch_pad(
         return;
     }
     if app.mixed_engine_prompt_active() {
-        if let MenuInput::ActivateItem(item) = pad.menu_input() {
+        if let MenuInput::ActivateItem(item) = pad.menu_input_for(app.controller_layout) {
             match item {
                 0 => {
                     if let Some(remap) = app.mixed_engine_remap.as_mut() {
@@ -12718,14 +12718,14 @@ fn dispatch_pad(
         return;
     }
     if app.overlay.is_some() {
-        if let MenuInput::ActivateItem(item) = pad.menu_input() {
+        if let MenuInput::ActivateItem(item) = pad.menu_input_for(app.controller_layout) {
             if let Some((_, action)) = app.overlay_controller_action(item) {
                 perform(action, app, state, Some(tx));
             }
         }
         return;
     }
-    match pad.menu_input() {
+    match pad.menu_input_for(app.controller_layout) {
         MenuInput::SelectPage(page) => app.select_menu_page(page),
         MenuInput::CyclePage => app.cycle_menu_page(1),
         MenuInput::ActivateItem(item) => {
@@ -12942,14 +12942,14 @@ fn dispatch_encoder_input(
 fn function_key_pad(code: KeyCode) -> Option<crate::pads::PadAction> {
     use crate::pads::PadAction;
     match code {
-        KeyCode::F(5) => Some(PadAction::Page1),
-        KeyCode::F(6) => Some(PadAction::Page2),
-        KeyCode::F(7) => Some(PadAction::Page3),
-        KeyCode::F(8) => Some(PadAction::Page4),
-        KeyCode::F(9) => Some(PadAction::Stop),
-        KeyCode::F(10) => Some(PadAction::Play),
-        KeyCode::F(11) => Some(PadAction::Rec),
-        KeyCode::F(12) => Some(PadAction::TapTempo),
+        KeyCode::F(5) => Some(PadAction::Pad1),
+        KeyCode::F(6) => Some(PadAction::Pad2),
+        KeyCode::F(7) => Some(PadAction::Pad3),
+        KeyCode::F(8) => Some(PadAction::Pad4),
+        KeyCode::F(9) => Some(PadAction::Pad5),
+        KeyCode::F(10) => Some(PadAction::Pad6),
+        KeyCode::F(11) => Some(PadAction::Pad7),
+        KeyCode::F(12) => Some(PadAction::Pad8),
         _ => None,
     }
 }
@@ -15419,7 +15419,10 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
         )),
         Spans::from("Controller isolated · synth protected"),
         Spans::from(Span::styled(
-            crate::ui_text::fit_line(&role.label(), usize::from(area.width.saturating_sub(2))),
+            crate::ui_text::fit_line(
+                &session.role_label(),
+                usize::from(area.width.saturating_sub(2)),
+            ),
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Yellow)
@@ -15440,7 +15443,7 @@ fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
             ),
         )),
         Spans::from(format!(
-            "Mapped · {} controls · {} buttons",
+            "Mapped · {} POTs · {} PADs",
             draft.controls.len(),
             draft.pads.len() + draft.cc_buttons.len()
         )),
@@ -25901,14 +25904,14 @@ mod tests {
     fn function_keys_are_exact_physical_pad_equivalents() {
         use crate::pads::PadAction;
         let expected = [
-            PadAction::Page1,
-            PadAction::Page2,
-            PadAction::Page3,
-            PadAction::Page4,
-            PadAction::Stop,
-            PadAction::Play,
-            PadAction::Rec,
-            PadAction::TapTempo,
+            PadAction::Pad1,
+            PadAction::Pad2,
+            PadAction::Pad3,
+            PadAction::Pad4,
+            PadAction::Pad5,
+            PadAction::Pad6,
+            PadAction::Pad7,
+            PadAction::Pad8,
         ];
         for (offset, action) in expected.into_iter().enumerate() {
             assert_eq!(function_key_pad(KeyCode::F(5 + offset as u8)), Some(action));

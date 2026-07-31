@@ -29,7 +29,7 @@ build mode does not leave a false red warning. These are loader phases, not
 claims that JACK or all synth engines are running.
 
 A terminal computer keyboard remains an optional fallback for controller
-navigation and text editing; the main rotary and command buttons complete the
+navigation and text editing; the main rotary and numbered pads complete the
 core workflows without it. Only when none of those inputs is available does the splash
 remain open, show `CONNECT KEYBOARD OR MIDI INPUT` and the expected input in
 the normally empty recovery rows, and rescan the configured MIDI inputs. `Esc`
@@ -206,7 +206,7 @@ to select controller pages while Shift is held.
 - When a configured controller is offline, lacks a matching reviewed profile,
   or has an incomplete learned encoder, Home initially selects MIDI Learn and
   gives the reason. A learned master encoder with turn and click is usable even
-  without optional command buttons. Home itself neither learns nor transmits.
+  without optional pads. Home itself neither learns nor transmits.
 - Help is a child screen. It tries to show the same help at
   `http://<LAN-IP>/help` while open. The master encoder moves one help row at a
   time. Encoder press follows a highlighted internal section link on eight-
@@ -411,17 +411,17 @@ per cell. Gate is 1–100% of a row or inherited; delayed notes and retrigger
 pulses are bounded by the row. Program is a per-note override of the page
 program, routed before the note on the same exact target/channel.
 
-Physical MIDI notes and CCs remain configuration. The canonical command roles
-for physical positions 5–8 are `stop`, `play`, `rec`, and `tap-tempo`; the
-active screen gives them their contextual STOP/PANIC, PLAY/LOAD/PREVIEW,
-capture, and TAP meanings. Older `item-1` through `item-4` mappings and other
-legacy role aliases still decode to the same physical positions without
-changing note numbers.
+Physical MIDI notes and CCs remain configuration. Profiles name only `PAD 1`
+through `PAD 8`; the active screen gives pads 1–4 their page positions and
+pads 5–8 their contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
+meanings. Older semantic mappings still decode to those physical positions
+without changing note numbers.
 
 ## Parameters, pickup, and extension points
 
-Menu navigation is discrete. The 12 synthv1 controls are continuous and remain
-on configured CCs. Preset load, idea load, and in-place reset re-arm pickup;
+Menu navigation is discrete. `POT 1` through `POT 12` are continuous physical
+positions; each backend or editor supplies its own parameter table for those
+positions. Preset load, idea load, and in-place reset re-arm pickup;
 the verified synthv1 0.9.29 indices/ranges and green/yellow/red ±0.03 indicators
 are unchanged. `MAPPED_CONTROL_CAPACITY` reserves 16 entries while only the 12
 schema-verified controls are populated.

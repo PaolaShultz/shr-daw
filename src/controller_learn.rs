@@ -73,32 +73,28 @@ pub enum LearnRole {
 const FIRST_OPTIONAL_STEP: usize = 3;
 const CONTROL_STEP_START: usize = FIRST_OPTIONAL_STEP + 1;
 const BUTTON_STEP_START: usize = CONTROL_STEP_START + CONTROLS.len();
-const CONFIRM_STEP: usize = BUTTON_STEP_START + COMMAND_ACTIONS.len();
+const PAD_LEARN_STEPS: usize = 9;
+const CONFIRM_STEP: usize = BUTTON_STEP_START + PAD_LEARN_STEPS;
 const TOTAL_STEPS: usize = CONFIRM_STEP + 1;
-const COMMAND_ACTIONS: [PadAction; 9] = [
-    PadAction::Page1,
-    PadAction::Page2,
-    PadAction::Page3,
-    PadAction::Page4,
-    PadAction::CyclePage,
-    PadAction::Stop,
-    PadAction::Play,
-    PadAction::Rec,
-    PadAction::TapTempo,
-];
 
 impl LearnRole {
-    pub fn label(self) -> String {
+    fn label(self) -> String {
         match self {
-            Self::AbsoluteControl(index) => {
-                format!("CONTROL {} · {}", index + 1, CONTROLS[index].name)
-            }
+            Self::AbsoluteControl(index) => format!("POT {}", index + 1),
             Self::EncoderClockwise => "MASTER ENCODER · TURN RIGHT".into(),
             Self::EncoderCounterClockwise => "MASTER ENCODER · TURN LEFT".into(),
             Self::EncoderClick => "MASTER ENCODER · CLICK".into(),
             Self::EncoderModifier => "ENCODER SHIFT · HOLD + TURN LEFT".into(),
-            Self::Pad(4) => "PAGE SWITCH · BUTTON OR MODIFIER + CONTROL".into(),
-            Self::Pad(index) => format!("COMMAND BUTTON · {}", COMMAND_ACTIONS[index]),
+            Self::Pad(index) => format!(
+                "PAD {}",
+                if index < 4 {
+                    index + 1
+                } else if index == 4 {
+                    1
+                } else {
+                    index - 4
+                }
+            ),
             Self::Confirm => "REVIEW AND SAVE".into(),
         }
     }
@@ -240,6 +236,30 @@ impl LearnSession {
         }
     }
 
+    pub fn role_label(&self) -> String {
+        match self.role() {
+            LearnRole::Pad(index) => format!("PAD {}", self.pad_for_step(index).number().unwrap()),
+            role => role.label(),
+        }
+    }
+
+    fn pad_for_step(&self, index: usize) -> PadAction {
+        let number = match index {
+            0..=3 => index as u8 + 1,
+            4 => 1,
+            5..=8 => {
+                let action = index as u8 - 5;
+                match self.draft.layout {
+                    ControllerLayout::Eight => action + 5,
+                    ControllerLayout::Five => action + 2,
+                    ControllerLayout::Four => action + 1,
+                }
+            }
+            _ => unreachable!("PAD learn step is bounded"),
+        };
+        PadAction::physical(number).expect("bounded physical PAD")
+    }
+
     pub fn progress(&self) -> (usize, usize) {
         (self.step.min(CONFIRM_STEP) + 1, TOTAL_STEPS)
     }
@@ -256,7 +276,7 @@ impl LearnSession {
         match self.state {
             LearnState::EntryQuiet { deadline } if now >= deadline => {
                 self.state = LearnState::Armed;
-                self.feedback = format!("Ready · {}", self.role().label());
+                self.feedback = format!("Ready · {}", self.role_label());
             }
             LearnState::Settling { deadline, .. } if now >= deadline => {
                 self.advance_after_capture();
@@ -289,7 +309,7 @@ impl LearnSession {
         };
         self.feedback = format!(
             "Retry · release control, then wait for {}",
-            self.role().label()
+            self.role_label()
         );
     }
 
@@ -302,7 +322,7 @@ impl LearnSession {
             return false;
         }
         self.step_backward();
-        self.feedback = format!("Selected {}", self.role().label());
+        self.feedback = format!("Selected {}", self.role_label());
         true
     }
 
@@ -318,7 +338,7 @@ impl LearnSession {
             };
             return false;
         }
-        let skipped = self.role().label();
+        let skipped = self.role_label();
         self.step_forward();
         self.feedback = format!("Skipped {skipped}");
         true
@@ -614,7 +634,7 @@ impl LearnSession {
         self.feedback = if self.role() == LearnRole::Confirm {
             "Learning complete · click the encoder or press Enter to save".into()
         } else {
-            format!("Ready · {}", self.role().label())
+            format!("Ready · {}", self.role_label())
         };
     }
 
@@ -633,17 +653,7 @@ impl LearnSession {
     }
 
     fn cycle_page_role_needed(&self) -> bool {
-        !self
-            .draft
-            .pads
-            .values()
-            .chain(self.draft.cc_buttons.values())
-            .any(|action| {
-                matches!(
-                    action,
-                    PadAction::Page1 | PadAction::Page2 | PadAction::Page3 | PadAction::Page4
-                )
-            })
+        self.draft.layout != ControllerLayout::Eight
     }
 
     fn learn_absolute(&mut self, index: usize, message: &[u8]) -> Result<String, String> {
@@ -654,8 +664,8 @@ impl LearnSession {
         if used_ccs(&self.draft).contains(&cc) {
             return Err(format!("Conflict · CC {cc} is already assigned · retry"));
         }
-        self.draft.controls.insert(cc, CONTROLS[index].cc);
-        Ok(format!("CC {cc} = {}", CONTROLS[index].name))
+        self.draft.controls.insert(cc, index as u8 + 1);
+        Ok(format!("CC {cc} = POT {}", index + 1))
     }
 
     fn learn_encoder_clockwise(&mut self, message: &[u8]) -> Result<String, String> {
@@ -723,13 +733,18 @@ impl LearnSession {
     }
 
     fn learn_pad_input(&mut self, index: usize, input: LearnInput) -> Result<String, String> {
-        let action = COMMAND_ACTIONS[index];
+        self.draft.layout = match index {
+            0..=3 => ControllerLayout::Eight,
+            4 => ControllerLayout::Five,
+            _ => self.draft.layout,
+        };
+        let pad = self.pad_for_step(index);
         match input {
             LearnInput::Cc { cc, channel } => {
                 if used_ccs(&self.draft).contains(&cc) {
                     return Err(format!("Conflict · CC {cc} is already assigned · retry"));
                 }
-                self.draft.cc_buttons.insert(cc, action);
+                self.draft.cc_buttons.insert(cc, pad);
                 self.draft.cc_button_channels.insert(cc, channel);
             }
             LearnInput::Note { note, channel } => {
@@ -738,12 +753,15 @@ impl LearnSession {
                         "Conflict · note {note} is already assigned · retry"
                     ));
                 }
-                self.draft.pads.insert(note, action);
+                self.draft.pads.insert(note, pad);
                 self.draft.pad_channels.insert(note, channel);
             }
         }
-        self.draft.layout = inferred_layout(&self.draft);
-        Ok(format!("{} = {action}", learn_input_description(input)))
+        Ok(format!(
+            "{} = PAD {}",
+            learn_input_description(input),
+            pad.number().unwrap()
+        ))
     }
 
     pub fn validated_config(&self) -> Result<PadConfig> {
@@ -766,13 +784,13 @@ impl LearnSession {
                 .draft
                 .controls
                 .values()
-                .any(|target| *target == CONTROLS[index].cc),
+                .any(|position| *position == index as u8 + 1),
             LearnRole::Pad(index) => {
                 self.draft
                     .pads
                     .values()
                     .chain(self.draft.cc_buttons.values())
-                    .any(|action| *action == COMMAND_ACTIONS[index])
+                    .any(|pad| *pad == self.pad_for_step(index))
                     || (index == 4
                         && self.draft.page_cycle_modifier.is_some()
                         && self.draft.page_cycle_trigger.is_some())
@@ -798,11 +816,11 @@ impl LearnSession {
                 self.draft.encoder_modified_relative_reverse = false;
             }
             LearnRole::AbsoluteControl(index) => {
-                let target = CONTROLS[index].cc;
-                self.draft.controls.retain(|_, mapped| *mapped != target);
+                let position = index as u8 + 1;
+                self.draft.controls.retain(|_, mapped| *mapped != position);
             }
             LearnRole::Pad(index) => {
-                let action = COMMAND_ACTIONS[index];
+                let pad = self.pad_for_step(index);
                 if index == 4 {
                     self.draft.page_cycle_modifier = None;
                     self.draft.page_cycle_trigger = None;
@@ -811,7 +829,7 @@ impl LearnSession {
                     .draft
                     .pads
                     .iter()
-                    .filter_map(|(note, mapped)| (*mapped == action).then_some(*note))
+                    .filter_map(|(note, mapped)| (*mapped == pad).then_some(*note))
                     .collect::<Vec<_>>();
                 for note in notes {
                     self.draft.pads.remove(&note);
@@ -821,13 +839,12 @@ impl LearnSession {
                     .draft
                     .cc_buttons
                     .iter()
-                    .filter_map(|(cc, mapped)| (*mapped == action).then_some(*cc))
+                    .filter_map(|(cc, mapped)| (*mapped == pad).then_some(*cc))
                     .collect::<Vec<_>>();
                 for cc in ccs {
                     self.draft.cc_buttons.remove(&cc);
                     self.draft.cc_button_channels.remove(&cc);
                 }
-                self.draft.layout = inferred_layout(&self.draft);
             }
             LearnRole::EncoderClockwise | LearnRole::Confirm => {}
         }
@@ -860,26 +877,6 @@ fn learn_input_description(input: LearnInput) -> String {
     }
 }
 
-fn inferred_layout(config: &PadConfig) -> ControllerLayout {
-    let actions = config.pads.values().chain(config.cc_buttons.values());
-    if actions.clone().any(|action| {
-        matches!(
-            action,
-            PadAction::Page1 | PadAction::Page2 | PadAction::Page3 | PadAction::Page4
-        )
-    }) {
-        ControllerLayout::Eight
-    } else if actions
-        .clone()
-        .any(|action| *action == PadAction::CyclePage)
-        || (config.page_cycle_modifier.is_some() && config.page_cycle_trigger.is_some())
-    {
-        ControllerLayout::Five
-    } else {
-        ControllerLayout::Four
-    }
-}
-
 fn message_is_relevant(role: LearnRole, message: &[u8]) -> bool {
     if message.len() < 3 {
         return false;
@@ -905,30 +902,37 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
     config.input_match = Some(stable_input_match(input_name));
     println!("Listening to {input_name}. MIDI is not being forwarded to an instrument.");
 
-    let missing = CONTROLS
-        .iter()
-        .filter(|control| !config.controls.values().any(|target| *target == control.cc))
+    let missing = (1..=CONTROLS.len())
+        .filter(|position| {
+            !config
+                .controls
+                .values()
+                .any(|mapped| usize::from(*mapped) == *position)
+        })
         .count();
     if missing > 0 {
         let count = ask_number(
-            &format!("Additional knobs/faders to learn (0-{missing}) [0]: "),
+            &format!("Additional POT positions to learn (0-{missing}) [0]: "),
             0,
             missing,
         )?;
-        let targets = CONTROLS
-            .iter()
-            .filter(|control| !config.controls.values().any(|target| *target == control.cc))
+        let positions = (1..=CONTROLS.len())
+            .filter(|position| {
+                !config
+                    .controls
+                    .values()
+                    .any(|mapped| usize::from(*mapped) == *position)
+            })
             .take(count)
-            .copied()
             .collect::<Vec<_>>();
-        for control in targets {
+        for position in positions {
             let cc = capture_cc(
                 &receiver,
-                &format!("Move the control for {}", control.name),
+                &format!("Move POT {position}"),
                 &used_ccs(config),
             )?;
-            config.controls.insert(cc, control.cc);
-            println!("  CC {cc} -> {}", control.name);
+            config.controls.insert(cc, position as u8);
+            println!("  POT {position} -> CC {cc}");
         }
     }
 
@@ -1000,9 +1004,9 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
         println!("  release encoder Shift");
     }
 
-    let layout = ask_number("Command buttons available (0, 4, 5, or 8) [0]: ", 0, 8)?;
+    let layout = ask_number("Physical pads available (0, 4, 5, or 8) [0]: ", 0, 8)?;
     if !matches!(layout, 0 | 4 | 5 | 8) {
-        bail!("command-button count must be 0, 4, 5, or 8");
+        bail!("physical PAD count must be 0, 4, 5, or 8");
     }
     if layout == 0 {
         config.layout = ControllerLayout::Four;
@@ -1027,54 +1031,28 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
         config.cc_button_channels.clear();
         config.page_cycle_modifier = None;
         config.page_cycle_trigger = None;
-        let actions: &[PadAction] = match layout {
-            4 => &[
-                PadAction::Stop,
-                PadAction::Play,
-                PadAction::Rec,
-                PadAction::TapTempo,
-            ],
-            5 => &[
-                PadAction::CyclePage,
-                PadAction::Stop,
-                PadAction::Play,
-                PadAction::Rec,
-                PadAction::TapTempo,
-            ],
-            8 => &[
-                PadAction::Page1,
-                PadAction::Page2,
-                PadAction::Page3,
-                PadAction::Page4,
-                PadAction::Stop,
-                PadAction::Play,
-                PadAction::Rec,
-                PadAction::TapTempo,
-            ],
-            _ => unreachable!(),
-        };
-        for &action in actions {
+        for position in 1..=layout {
+            let pad = PadAction::physical(position as u8).expect("validated physical PAD count");
             let binding = capture_button(
                 &receiver,
-                &format!("Press the button for {action}"),
+                &format!("Press PAD {position}"),
                 &used_ccs(config),
                 &used_notes(config),
             )?;
             match binding {
                 Button::Cc { cc, channel } => {
-                    config.cc_buttons.insert(cc, action);
+                    config.cc_buttons.insert(cc, pad);
                     config.cc_button_channels.insert(cc, channel);
                 }
                 Button::Note { note, channel } => {
-                    config.pads.insert(note, action);
+                    config.pads.insert(note, pad);
                     config.pad_channels.insert(note, channel);
                 }
             }
         }
     }
 
-    if config.lock_cc.is_none() && ask_yes_no("Learn an optional command-button lock CC? [y/N]: ")?
-    {
+    if config.lock_cc.is_none() && ask_yes_no("Learn an optional PAD lock CC? [y/N]: ")? {
         config.lock_cc = Some(capture_cc(
             &receiver,
             "Press the lock control",
@@ -1295,6 +1273,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn learn_labels_expose_only_physical_pot_and_pad_identity() {
+        assert_eq!(LearnRole::AbsoluteControl(0).label(), "POT 1");
+        assert_eq!(LearnRole::AbsoluteControl(11).label(), "POT 12");
+        assert_eq!(LearnRole::Pad(0).label(), "PAD 1");
+        for forbidden in ["Flt", "Volume", "Dly", "STOP", "PLAY", "REC", "TAP"] {
+            assert!(!LearnRole::AbsoluteControl(0).label().contains(forbidden));
+            assert!(!LearnRole::Pad(0).label().contains(forbidden));
+        }
+    }
+
+    #[test]
     fn unstable_alsa_address_is_removed_from_saved_match() {
         assert_eq!(
             stable_input_match("MiniLab3 MIDI:MiniLab3 MIDI 1 24:0"),
@@ -1508,7 +1497,7 @@ mod tests {
         assert_eq!(h.learn.draft().controls.len(), 1);
         h.send(&[0xb0, 11, 31]);
         assert_eq!(h.learn.draft().controls.len(), 2);
-        assert_eq!(h.learn.draft().controls[&11], CONTROLS[1].cc);
+        assert_eq!(h.learn.draft().controls[&11], 2);
     }
 
     #[test]
@@ -1577,7 +1566,7 @@ mod tests {
         h.now += ENTRY_QUIET;
         h.learn.tick(h.now);
         h.send(&[0xb0, 11, 30]);
-        assert_eq!(h.learn.draft().controls[&11], CONTROLS[0].cc);
+        assert_eq!(h.learn.draft().controls[&11], 1);
 
         let mut reentered = LearnSession::new_at("Controller", h.now);
         reentered.receive(&[0xb0, 118, 0], h.now + Duration::from_millis(1));
@@ -1636,7 +1625,7 @@ mod tests {
         assert!(h.learn.draft().pads.is_empty());
         h.send(&[0x89, 40, 0]);
         assert_eq!(h.learn.draft().layout, ControllerLayout::Five);
-        assert_eq!(h.learn.draft().pads[&40], PadAction::CyclePage);
+        assert_eq!(h.learn.draft().pads[&40], PadAction::Pad1);
     }
 
     #[test]
@@ -1676,7 +1665,7 @@ mod tests {
         h.send(&[0xb0, 44, 0]);
         h.settle();
         assert_eq!(h.learn.role(), LearnRole::Pad(5));
-        assert_eq!(h.learn.draft().cc_buttons[&44], PadAction::CyclePage);
+        assert_eq!(h.learn.draft().cc_buttons[&44], PadAction::Pad1);
     }
 
     #[test]

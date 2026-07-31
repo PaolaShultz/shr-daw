@@ -117,16 +117,15 @@ pub fn route_with_pad_lock_and_modifier<'a>(
     let encoder_consumed = cc_encoder_consumed || note_encoder_consumed;
     let consumed = lock_consumed || pad_consumed || encoder_consumed;
     let mapped_position = (!consumed && message.len() >= 3 && message[0] & 0xf0 == 0xb0)
-        .then(|| pads.target_cc(message[1]))
-        .flatten()
-        .and_then(|target| CONTROLS.iter().position(|control| control.cc == target));
+        .then(|| pads.pot_position(message[1]))
+        .flatten();
     let value = if backend == BackendKind::Synthv1
         && !consumed
         && message.len() >= 3
         && message[0] & 0xf0 == 0xb0
     {
-        pads.target_cc(message[1])
-            .and_then(by_cc)
+        pads.pot_position(message[1])
+            .and_then(|position| CONTROLS.get(position).copied())
             .map(|c| (c.cc, value_from_cc(c, message[2])))
     } else if backend == BackendKind::MojSint {
         mapped_position.map(|index| {
@@ -145,7 +144,10 @@ pub fn route_with_pad_lock_and_modifier<'a>(
             && !consumed
             && message.len() >= 3
             && message[0] & 0xf0 == 0xb0
-            && pads.target_cc(message[1]) == Some(crate::control::VOLUME_CC))
+            && pads.pot_position(message[1])
+                == CONTROLS
+                    .iter()
+                    .position(|control| control.cc == crate::control::VOLUME_CC))
         .then(|| [message[0], 7, message[2]])
     };
     Routed {
@@ -347,7 +349,7 @@ mod tests {
     #[test]
     fn synthv1_mapping_is_not_imposed_on_other_backends() {
         let pads = PadConfig {
-            controls: HashMap::from([(86, 74)]),
+            controls: HashMap::from([(86, 1)]),
             ..PadConfig::default()
         };
         let synthv1 = route(&pads, BackendKind::Synthv1, &[0xb0, 86, 64]);
@@ -360,7 +362,7 @@ mod tests {
     #[test]
     fn physical_volume_becomes_channel_volume_on_optional_backends() {
         let pads = PadConfig {
-            controls: HashMap::from([(110, crate::control::VOLUME_CC)]),
+            controls: HashMap::from([(110, 5)]),
             ..PadConfig::default()
         };
         for backend in [BackendKind::Yoshimi, BackendKind::FluidSynth] {
@@ -401,7 +403,7 @@ mod tests {
     #[test]
     fn moj_sint_uses_position_matched_ccs_and_normalized_pickup() {
         let pads = PadConfig {
-            controls: HashMap::from([(86, 74), (87, 82)]),
+            controls: HashMap::from([(86, 1), (87, 9)]),
             ..PadConfig::default()
         };
         let color = route(&pads, BackendKind::MojSint, &[0xb0, 86, 64]);

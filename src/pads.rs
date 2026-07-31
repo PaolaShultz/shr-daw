@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs;
 use std::path::Path;
@@ -10,6 +10,16 @@ const DEFAULT_CONTROLLER_CONFIG: &str = include_str!("../config/controller.conf"
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PadAction {
+    Pad1,
+    Pad2,
+    Pad3,
+    Pad4,
+    Pad5,
+    Pad6,
+    Pad7,
+    Pad8,
+    // Legacy persisted meanings. Loading normalizes these to physical pads;
+    // they remain readable so existing private profiles keep working.
     Page1,
     Page2,
     Page3,
@@ -19,8 +29,8 @@ pub enum PadAction {
     Item2,
     Item3,
     Item4,
-    // Legacy v1 names retain the physical eight-pad order.  They are
-    // normalized into the new page/item model by `menu_input`.
+    // Legacy v1 names retain the physical eight-pad order and normalize to
+    // numbered PAD positions before routing or persistence.
     Arp,
     Pad,
     Prog,
@@ -52,8 +62,117 @@ pub enum MenuInput {
 }
 
 impl PadAction {
+    pub const fn physical(number: u8) -> Option<Self> {
+        match number {
+            1 => Some(Self::Pad1),
+            2 => Some(Self::Pad2),
+            3 => Some(Self::Pad3),
+            4 => Some(Self::Pad4),
+            5 => Some(Self::Pad5),
+            6 => Some(Self::Pad6),
+            7 => Some(Self::Pad7),
+            8 => Some(Self::Pad8),
+            _ => None,
+        }
+    }
+
+    pub const fn number(self) -> Option<u8> {
+        match self {
+            Self::Pad1 => Some(1),
+            Self::Pad2 => Some(2),
+            Self::Pad3 => Some(3),
+            Self::Pad4 => Some(4),
+            Self::Pad5 => Some(5),
+            Self::Pad6 => Some(6),
+            Self::Pad7 => Some(7),
+            Self::Pad8 => Some(8),
+            _ => None,
+        }
+    }
+
+    pub const fn normalized(self, layout: ControllerLayout) -> Self {
+        if self.number().is_some() {
+            return self;
+        }
+        match self {
+            Self::Page1 | Self::Arp => Self::Pad1,
+            Self::Page2 | Self::Pad => Self::Pad2,
+            Self::Page3 | Self::Prog => Self::Pad3,
+            Self::Page4 | Self::Loop => Self::Pad4,
+            Self::CyclePage => Self::Pad1,
+            Self::Item1 | Self::Stop => match layout {
+                ControllerLayout::Eight => Self::Pad5,
+                ControllerLayout::Five => Self::Pad2,
+                ControllerLayout::Four => Self::Pad1,
+            },
+            Self::Item2 | Self::Play => match layout {
+                ControllerLayout::Eight => Self::Pad6,
+                ControllerLayout::Five => Self::Pad3,
+                ControllerLayout::Four => Self::Pad2,
+            },
+            Self::Item3 | Self::Rec => match layout {
+                ControllerLayout::Eight => Self::Pad7,
+                ControllerLayout::Five => Self::Pad4,
+                ControllerLayout::Four => Self::Pad3,
+            },
+            Self::Item4 | Self::TapTempo => match layout {
+                ControllerLayout::Eight => Self::Pad8,
+                ControllerLayout::Five => Self::Pad5,
+                ControllerLayout::Four => Self::Pad4,
+            },
+            Self::Pad1
+            | Self::Pad2
+            | Self::Pad3
+            | Self::Pad4
+            | Self::Pad5
+            | Self::Pad6
+            | Self::Pad7
+            | Self::Pad8 => self,
+        }
+    }
+
+    pub const fn menu_input_for(self, layout: ControllerLayout) -> MenuInput {
+        let physical = self.normalized(layout);
+        match layout {
+            ControllerLayout::Eight => match physical {
+                Self::Pad1 => MenuInput::SelectPage(0),
+                Self::Pad2 => MenuInput::SelectPage(1),
+                Self::Pad3 => MenuInput::SelectPage(2),
+                Self::Pad4 => MenuInput::SelectPage(3),
+                Self::Pad5 => MenuInput::ActivateItem(0),
+                Self::Pad6 => MenuInput::ActivateItem(1),
+                Self::Pad7 => MenuInput::ActivateItem(2),
+                Self::Pad8 => MenuInput::ActivateItem(3),
+                _ => unreachable!(),
+            },
+            ControllerLayout::Five => match physical {
+                Self::Pad1 => MenuInput::CyclePage,
+                Self::Pad2 => MenuInput::ActivateItem(0),
+                Self::Pad3 => MenuInput::ActivateItem(1),
+                Self::Pad4 => MenuInput::ActivateItem(2),
+                Self::Pad5 => MenuInput::ActivateItem(3),
+                _ => unreachable!(),
+            },
+            ControllerLayout::Four => match physical {
+                Self::Pad1 => MenuInput::ActivateItem(0),
+                Self::Pad2 => MenuInput::ActivateItem(1),
+                Self::Pad3 => MenuInput::ActivateItem(2),
+                Self::Pad4 => MenuInput::ActivateItem(3),
+                _ => unreachable!(),
+            },
+        }
+    }
+
     pub const fn menu_input(self) -> MenuInput {
         match self {
+            Self::Pad1 => MenuInput::SelectPage(0),
+            Self::Pad2 => MenuInput::SelectPage(1),
+            Self::Pad3 => MenuInput::SelectPage(2),
+            Self::Pad4 => MenuInput::SelectPage(3),
+            Self::Pad5 => MenuInput::ActivateItem(0),
+            Self::Pad6 => MenuInput::ActivateItem(1),
+            Self::Pad7 => MenuInput::ActivateItem(2),
+            Self::Pad8 => MenuInput::ActivateItem(3),
             Self::Page1 | Self::Arp => MenuInput::SelectPage(0),
             Self::Page2 | Self::Pad => MenuInput::SelectPage(1),
             Self::Page3 | Self::Prog => MenuInput::SelectPage(2),
@@ -128,6 +247,14 @@ pub struct PageCycleChordState {
 impl fmt::Display for PadAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Pad1 => "pad-1",
+            Self::Pad2 => "pad-2",
+            Self::Pad3 => "pad-3",
+            Self::Pad4 => "pad-4",
+            Self::Pad5 => "pad-5",
+            Self::Pad6 => "pad-6",
+            Self::Pad7 => "pad-7",
+            Self::Pad8 => "pad-8",
             Self::Page1 => "page-1",
             Self::Page2 => "page-2",
             Self::Page3 => "page-3",
@@ -153,6 +280,14 @@ impl FromStr for PadAction {
     type Err = anyhow::Error;
     fn from_str(value: &str) -> Result<Self> {
         match value.to_ascii_lowercase().as_str() {
+            "pad-1" | "pad1" => Ok(Self::Pad1),
+            "pad-2" | "pad2" => Ok(Self::Pad2),
+            "pad-3" | "pad3" => Ok(Self::Pad3),
+            "pad-4" | "pad4" => Ok(Self::Pad4),
+            "pad-5" | "pad5" => Ok(Self::Pad5),
+            "pad-6" | "pad6" => Ok(Self::Pad6),
+            "pad-7" | "pad7" => Ok(Self::Pad7),
+            "pad-8" | "pad8" => Ok(Self::Pad8),
             "page-1" | "page1" => Ok(Self::Page1),
             "page-2" | "page2" => Ok(Self::Page2),
             "page-3" | "page3" => Ok(Self::Page3),
@@ -189,7 +324,7 @@ pub struct PadConfig {
     pub cc_buttons: HashMap<u8, PadAction>,
     /// Optional zero-based MIDI channel for each CC command.
     pub cc_button_channels: HashMap<u8, u8>,
-    /// Incoming controller CC -> synthv1 mapped CC from control::CONTROLS.
+    /// Incoming controller CC -> one-based physical POT position.
     pub controls: HashMap<u8, u8>,
     pub encoder_relative_cc: Option<u8>,
     pub encoder_relative_reverse: bool,
@@ -271,6 +406,10 @@ impl PadConfig {
         let mut saw_pads = false;
         let mut saw_cc_buttons = false;
         let mut saw_controls = false;
+        let mut saw_physical_pads = false;
+        let mut saw_positional_pots = false;
+        let mut saw_legacy_controls = false;
+        let mut saw_legacy_pads = false;
         for (line_no, line) in text.lines().enumerate() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -350,7 +489,81 @@ impl PadConfig {
                 self.lock_cc = optional_midi_number(value, "pad lock CC")?;
                 continue;
             }
+            if let Some(position) = key.trim().strip_prefix("pot.") {
+                if saw_legacy_controls {
+                    bail!(
+                        "{}:{}: cannot mix positional and legacy POT mappings",
+                        path.display(),
+                        line_no + 1
+                    );
+                }
+                saw_positional_pots = true;
+                if !saw_controls {
+                    self.controls.clear();
+                    saw_controls = true;
+                }
+                let position = physical_position(position, 12, "POT position")?;
+                let incoming = midi_number(value, "controller CC")?;
+                self.controls.insert(incoming, position);
+                continue;
+            }
+            if let Some(position) = key.trim().strip_prefix("pad.") {
+                if !position.contains('.')
+                    && (value.trim().starts_with("cc.") || value.trim().starts_with("note."))
+                {
+                    if saw_legacy_pads {
+                        bail!(
+                            "{}:{}: cannot mix positional and legacy PAD mappings",
+                            path.display(),
+                            line_no + 1
+                        );
+                    }
+                    if !saw_physical_pads {
+                        self.pads.clear();
+                        self.pad_channels.clear();
+                        self.cc_buttons.clear();
+                        self.cc_button_channels.clear();
+                        saw_physical_pads = true;
+                    }
+                    let position = physical_position(position, 8, "PAD position")?;
+                    let binding = physical_pad_binding(value)?;
+                    let pad = PadAction::physical(position).expect("validated PAD position");
+                    match binding {
+                        PhysicalPadBinding::Cc { channel, cc } => {
+                            self.cc_buttons.insert(cc, pad);
+                            match channel {
+                                Some(channel) => {
+                                    self.cc_button_channels.insert(cc, channel);
+                                }
+                                None => {
+                                    self.cc_button_channels.remove(&cc);
+                                }
+                            }
+                        }
+                        PhysicalPadBinding::Note { channel, note } => {
+                            self.pads.insert(note, pad);
+                            match channel {
+                                Some(channel) => {
+                                    self.pad_channels.insert(note, channel);
+                                }
+                                None => {
+                                    self.pad_channels.remove(&note);
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
             if let Some(raw) = key.trim().strip_prefix("cc.") {
+                if saw_positional_pots {
+                    bail!(
+                        "{}:{}: cannot mix positional and legacy POT mappings",
+                        path.display(),
+                        line_no + 1
+                    );
+                }
+                saw_legacy_controls = true;
                 if !saw_controls {
                     self.controls.clear();
                     saw_controls = true;
@@ -363,10 +576,23 @@ impl PadConfig {
                 if crate::control::by_cc(target).is_none() {
                     bail!("target CC {target} is not one of the 12 mapped controls");
                 }
-                self.controls.insert(raw, target);
+                let position = crate::control::CONTROLS
+                    .iter()
+                    .position(|control| control.cc == target)
+                    .expect("validated legacy target CC") as u8
+                    + 1;
+                self.controls.insert(raw, position);
                 continue;
             }
             if let Some(raw) = key.trim().strip_prefix("button.cc.") {
+                if saw_physical_pads {
+                    bail!(
+                        "{}:{}: cannot mix positional and legacy PAD mappings",
+                        path.display(),
+                        line_no + 1
+                    );
+                }
+                saw_legacy_pads = true;
                 if !saw_cc_buttons {
                     self.cc_buttons.clear();
                     self.cc_button_channels.clear();
@@ -384,6 +610,14 @@ impl PadConfig {
                 }
                 continue;
             }
+            if saw_physical_pads {
+                bail!(
+                    "{}:{}: cannot mix positional and legacy PAD mappings",
+                    path.display(),
+                    line_no + 1
+                );
+            }
+            saw_legacy_pads = true;
             if !saw_pads {
                 self.pads.clear();
                 self.pad_channels.clear();
@@ -400,6 +634,9 @@ impl PadConfig {
                     self.pad_channels.remove(&note);
                 }
             }
+        }
+        for pad in self.pads.values_mut().chain(self.cc_buttons.values_mut()) {
+            *pad = pad.normalized(self.layout);
         }
         self.validate()
     }
@@ -420,9 +657,13 @@ impl PadConfig {
         for &cc in self.controls.keys() {
             ensure_midi_number(cc, "controller CC")?;
         }
-        for &target in self.controls.values() {
-            if crate::control::by_cc(target).is_none() {
-                bail!("target CC {target} is not one of the 12 mapped controls");
+        let mut positions = HashSet::new();
+        for &position in self.controls.values() {
+            if !(1..=12).contains(&position) {
+                bail!("POT position must be 1..12");
+            }
+            if !positions.insert(position) {
+                bail!("POT {position} is mapped more than once");
             }
         }
         for &cc in self.cc_buttons.keys() {
@@ -430,6 +671,24 @@ impl PadConfig {
         }
         for &note in self.pads.keys() {
             ensure_midi_number(note, "pad note")?;
+        }
+        let maximum_pad = match self.layout {
+            ControllerLayout::Eight => 8,
+            ControllerLayout::Five => 5,
+            ControllerLayout::Four => 4,
+        };
+        let mut physical_pads = HashSet::new();
+        for pad in self.pads.values().chain(self.cc_buttons.values()) {
+            let position = pad
+                .normalized(self.layout)
+                .number()
+                .expect("normalization produces a physical PAD");
+            if position > maximum_pad {
+                bail!("PAD {position} exceeds the configured {maximum_pad}-pad layout");
+            }
+            if !physical_pads.insert(position) {
+                bail!("PAD {position} is mapped more than once");
+            }
         }
         if self
             .pad_channels
@@ -469,10 +728,10 @@ impl PadConfig {
         .flatten()
         {
             if self.controls.contains_key(&encoder_cc) {
-                bail!("encoder CC {encoder_cc} is also mapped as a synth control");
+                bail!("encoder CC {encoder_cc} is also mapped as a POT");
             }
             if self.cc_buttons.contains_key(&encoder_cc) {
-                bail!("encoder CC {encoder_cc} is also mapped as a command button");
+                bail!("encoder CC {encoder_cc} is also mapped as a PAD");
             }
         }
         if self
@@ -480,7 +739,7 @@ impl PadConfig {
             .keys()
             .any(|cc| self.cc_buttons.contains_key(cc))
         {
-            bail!("a controller CC cannot be both continuous and a command button");
+            bail!("a controller CC cannot be both a POT and a PAD");
         }
         if (self.encoder_relative_cc == self.encoder_press_cc && self.encoder_relative_cc.is_some())
             || (self.encoder_modified_relative_cc == self.encoder_press_cc
@@ -598,7 +857,7 @@ impl PadConfig {
             .encoder_press_note
             .is_some_and(|note| self.pads.contains_key(&note))
         {
-            bail!("encoder press note is also mapped as a command button");
+            bail!("encoder press note is also mapped as a PAD");
         }
         Ok(())
     }
@@ -610,7 +869,7 @@ impl PadConfig {
         }
         let mut entries: Vec<_> = self.pads.iter().collect();
         entries.sort_by_key(|(note, _)| **note);
-        let mut text = String::from("# SHR-DAW controller profile v7\n");
+        let mut text = String::from("# SHR-DAW controller profile v8\n");
         if let Some(input) = &self.input_match {
             text.push_str(&format!("input={input}\n"));
         }
@@ -654,25 +913,34 @@ impl PadConfig {
             self.lock_cc.map(|cc| cc.to_string()).unwrap_or_default(),
         ));
         let mut controls: Vec<_> = self.controls.iter().collect();
-        controls.sort_by_key(|(cc, _)| **cc);
-        for (incoming, target) in controls {
-            text.push_str(&format!("cc.{incoming}={target}\n"));
+        controls.sort_by_key(|(_, position)| **position);
+        for (incoming, position) in controls {
+            text.push_str(&format!("pot.{position}={incoming}\n"));
         }
-        let mut cc_buttons: Vec<_> = self.cc_buttons.iter().collect();
-        cc_buttons.sort_by_key(|(cc, _)| **cc);
-        for (cc, action) in cc_buttons {
-            if let Some(channel) = self.cc_button_channels.get(cc) {
-                text.push_str(&format!("button.cc.{}.{cc}={action}\n", channel + 1));
-            } else {
-                text.push_str(&format!("button.cc.{cc}={action}\n"));
-            }
-        }
-        for (note, action) in entries {
-            if let Some(channel) = self.pad_channels.get(note) {
-                text.push_str(&format!("pad.{}.{note}={action}\n", channel + 1));
-            } else {
-                text.push_str(&format!("pad.{note}={action}\n"));
-            }
+        let mut pads = entries
+            .into_iter()
+            .map(|(note, pad)| {
+                let binding = self.pad_channels.get(note).map_or_else(
+                    || format!("note.any.{note}"),
+                    |channel| format!("note.{}.{note}", channel + 1),
+                );
+                (pad.normalized(self.layout), binding)
+            })
+            .chain(self.cc_buttons.iter().map(|(cc, pad)| {
+                let binding = self.cc_button_channels.get(cc).map_or_else(
+                    || format!("cc.any.{cc}"),
+                    |channel| format!("cc.{}.{cc}", channel + 1),
+                );
+                (pad.normalized(self.layout), binding)
+            }))
+            .collect::<Vec<_>>();
+        pads.sort_by_key(|(pad, _)| pad.number());
+        for (pad, binding) in pads {
+            text.push_str(&format!(
+                "pad.{}={}\n",
+                pad.number().expect("validated physical PAD"),
+                binding
+            ));
         }
         crate::fsutil::atomic_write(path, text.as_bytes())
     }
@@ -728,8 +996,12 @@ impl PadConfig {
         })
     }
 
-    pub fn target_cc(&self, incoming: u8) -> Option<u8> {
-        self.controls.get(&incoming).copied()
+    pub fn pot_position(&self, incoming: u8) -> Option<usize> {
+        self.controls
+            .get(&incoming)
+            .copied()
+            .filter(|position| (1..=12).contains(position))
+            .map(|position| usize::from(position - 1))
     }
 
     /// Centered relative mode uses 64 as stationary. Reversed/high-low mode
@@ -895,6 +1167,52 @@ pub(crate) fn ensure_midi_number(number: u8, description: &str) -> Result<()> {
         bail!("{description} must be 0..127");
     }
     Ok(())
+}
+
+fn physical_position(value: &str, maximum: u8, description: &str) -> Result<u8> {
+    let position = value
+        .trim()
+        .parse::<u8>()
+        .with_context(|| format!("{description} must be 1..{maximum}"))?;
+    if !(1..=maximum).contains(&position) {
+        bail!("{description} must be 1..{maximum}");
+    }
+    Ok(position)
+}
+
+enum PhysicalPadBinding {
+    Cc { channel: Option<u8>, cc: u8 },
+    Note { channel: Option<u8>, note: u8 },
+}
+
+fn physical_pad_binding(value: &str) -> Result<PhysicalPadBinding> {
+    let parts = value.trim().split('.').collect::<Vec<_>>();
+    if parts.len() != 3 {
+        bail!("physical PAD binding must be cc.CHANNEL.NUMBER or note.CHANNEL.NUMBER");
+    }
+    let channel = if parts[1] == "any" {
+        None
+    } else {
+        let channel = parts[1]
+            .parse::<u8>()
+            .context("physical PAD channel must be 1..16 or any")?;
+        if !(1..=16).contains(&channel) {
+            bail!("physical PAD channel must be 1..16 or any");
+        }
+        Some(channel - 1)
+    };
+    let number = midi_number(parts[2], "physical PAD MIDI number")?;
+    match parts[0] {
+        "cc" => Ok(PhysicalPadBinding::Cc {
+            channel,
+            cc: number,
+        }),
+        "note" => Ok(PhysicalPadBinding::Note {
+            channel,
+            note: number,
+        }),
+        _ => bail!("physical PAD binding must start with cc or note"),
+    }
 }
 
 fn optional_midi_number(value: &str, description: &str) -> Result<Option<u8>> {
@@ -1135,7 +1453,7 @@ mod tests {
     #[test]
     fn page_cycle_chord_latches_once_and_reuses_an_absolute_control() {
         let c = PadConfig {
-            controls: HashMap::from([(10, crate::control::CONTROLS[0].cc)]),
+            controls: HashMap::from([(10, 1)]),
             page_cycle_modifier: Some(ControllerButton::Cc { channel: 0, cc: 27 }),
             page_cycle_trigger: Some(ControllerButton::Cc { channel: 0, cc: 10 }),
             ..PadConfig::default()
@@ -1175,7 +1493,7 @@ mod tests {
         fs::write(&path, "input=AudioBox USB 96\ncc.86=74\npad.36=arp\n").unwrap();
         let config = PadConfig::load(&path).unwrap();
         assert_eq!(config.input_match.as_deref(), Some("AudioBox USB 96"));
-        assert_eq!(config.controls, HashMap::from([(86, 74)]));
+        assert_eq!(config.controls, HashMap::from([(86, 1)]));
         assert_eq!(config.encoder_relative_cc, None);
         assert_eq!(config.encoder_press_cc, None);
         assert_eq!(config.layout, ControllerLayout::Eight);
@@ -1203,8 +1521,14 @@ mod tests {
         .unwrap();
         let config = PadConfig::load(&path).unwrap();
         assert_eq!(config.layout, ControllerLayout::Five);
-        assert_eq!(config.pads[&60].menu_input(), MenuInput::CyclePage);
-        assert_eq!(config.pads[&64].menu_input(), MenuInput::ActivateItem(3));
+        assert_eq!(
+            config.pads[&60].menu_input_for(config.layout),
+            MenuInput::CyclePage
+        );
+        assert_eq!(
+            config.pads[&64].menu_input_for(config.layout),
+            MenuInput::ActivateItem(3)
+        );
         let _ = fs::remove_file(path);
     }
     #[test]
@@ -1222,6 +1546,11 @@ mod tests {
         assert_eq!(config.pad_channels, HashMap::from([(36, 9)]));
         assert_eq!(config.cc_button_channels, HashMap::from([(44, 9)]));
         config.save(&path).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("pad.1=note.10.36"));
+        assert!(saved.contains("pad.5=cc.10.44"));
+        assert!(!saved.contains("page-1"));
+        assert!(!saved.contains("item-1"));
         let loaded = PadConfig::load(&path).unwrap();
         assert_eq!(loaded.pad_channels, config.pad_channels);
         assert_eq!(loaded.cc_button_channels, config.cc_button_channels);
@@ -1229,6 +1558,29 @@ mod tests {
         assert_eq!(loaded.page_cycle_trigger, config.page_cycle_trigger);
         assert!(loaded.route(&[0x90, 37, 100]).0);
         assert!(loaded.route(&[0x9f, 37, 100]).0);
+        let _ = fs::remove_file(path);
+    }
+    #[test]
+    fn positional_pots_and_pads_round_trip_without_parameter_or_action_names() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-controller-positional-{}.conf",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            "menu.layout=8\npot.1=74\npot.12=17\npad.1=note.10.36\npad.8=cc.10.43\n",
+        )
+        .unwrap();
+        let config = PadConfig::load(&path).unwrap();
+        assert_eq!(config.controls, HashMap::from([(74, 1), (17, 12)]));
+        assert_eq!(config.pads[&36], PadAction::Pad1);
+        assert_eq!(config.cc_buttons[&43], PadAction::Pad8);
+        config.save(&path).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("pot.1=74"));
+        assert!(saved.contains("pot.12=17"));
+        assert!(saved.contains("pad.1=note.10.36"));
+        assert!(saved.contains("pad.8=cc.10.43"));
         let _ = fs::remove_file(path);
     }
     #[test]
@@ -1290,6 +1642,8 @@ mod tests {
             "pad.0.36=item-1\n",
             "pad.17.36=item-1\n",
             "button.cc.17.44=item-1\n",
+            "pot.1=74\ncc.71=71\n",
+            "pad.1=note.10.36\npad.37=page-2\n",
         ] {
             fs::write(&path, text).unwrap();
             assert!(PadConfig::load(&path).is_err(), "accepted {text:?}");
@@ -1313,7 +1667,7 @@ mod tests {
 
         config = PadConfig {
             encoder_relative_cc: Some(28),
-            controls: HashMap::from([(28, 74)]),
+            controls: HashMap::from([(28, 1)]),
             ..PadConfig::default()
         };
         assert!(config.save(&path).is_err());
@@ -1364,7 +1718,7 @@ mod tests {
         let old = PadConfig {
             input_match: Some("Old controller".into()),
             pads: HashMap::from([(36, PadAction::Page1)]),
-            controls: HashMap::from([(74, 74)]),
+            controls: HashMap::from([(74, 1)]),
             encoder_relative_cc: Some(28),
             ..PadConfig::default()
         };

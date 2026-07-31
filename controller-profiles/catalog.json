@@ -4,19 +4,19 @@
     "name": "Arturia MiniLab 3",
     "match_names": ["minilab3", "minilab 3", "minilab mk3"],
     "layout": 8,
-    "controls": {
-      "74": 74,
-      "71": 71,
-      "76": 76,
-      "77": 77,
-      "93": 93,
-      "18": 18,
-      "19": 19,
-      "16": 16,
-      "82": 82,
-      "83": 83,
-      "85": 85,
-      "17": 17
+    "pots": {
+      "1": 74,
+      "2": 71,
+      "3": 76,
+      "4": 77,
+      "5": 93,
+      "6": 18,
+      "7": 19,
+      "8": 16,
+      "9": 82,
+      "10": 83,
+      "11": 85,
+      "12": 17
     },
     "encoder_relative_cc": 114,
     "encoder_relative_reverse": false,
@@ -36,25 +36,25 @@
         "encoder_modifier_channel": 1
       }
     ],
-    "note_buttons": {
-      "36": "page-1",
-      "37": "page-2",
-      "38": "page-3",
-      "39": "page-4",
-      "40": "stop",
-      "41": "play",
-      "42": "rec",
-      "43": "tap-tempo"
+    "note_pads": {
+      "1": 36,
+      "2": 37,
+      "3": 38,
+      "4": 39,
+      "5": 40,
+      "6": 41,
+      "7": 42,
+      "8": 43
     },
-    "note_button_channels": {
-      "36": 10,
-      "37": 10,
-      "38": 10,
-      "39": 10,
-      "40": 10,
-      "41": 10,
-      "42": 10,
-      "43": 10
+    "note_pad_channels": {
+      "1": 10,
+      "2": 10,
+      "3": 10,
+      "4": 10,
+      "5": 10,
+      "6": 10,
+      "7": 10,
+      "8": 10
     },
     "source": "SHR-DAW direct MIDI learn on the connected MiniLab 3: ordinary encoder CC 114, Shift CC 9, Shift+main-encoder CC 112, and click CC 115 on channel 1, with factory pads on channel 10; the earlier directly reviewed DAW-mode Shift CC 27 and shifted encoder CC 29 remain a compatibility variant; https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions"
   }
