@@ -25,10 +25,10 @@ pub enum BackendKind {
 
 impl BackendKind {
     pub const ALL: [Self; 4] = [
+        Self::MojSint,
         Self::Synthv1,
         Self::Yoshimi,
         Self::FluidSynth,
-        Self::MojSint,
     ];
 
     pub fn label(self) -> &'static str {
@@ -129,6 +129,9 @@ impl Preset {
     }
 
     pub fn display_name(&self) -> String {
+        if let PresetId::MojSint { model, .. } = &self.id {
+            return compact_moj_sint_name(*model, &self.name);
+        }
         if self.backend == BackendKind::FluidSynth {
             return self.name.clone();
         }
@@ -213,6 +216,38 @@ impl Preset {
     }
 }
 
+fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
+    let (number, mut sound) = name.split_once(' ').map_or((None, name), |(first, rest)| {
+        if !first.is_empty() && first.chars().all(|character| character.is_ascii_digit()) {
+            (Some(first), rest)
+        } else {
+            (None, name)
+        }
+    });
+    let (code, redundant_prefixes): (&str, &[&str]) = match model {
+        MojModel::ModelD => ("M-D", &["Model D", "M-D"]),
+        MojModel::SixOpPm => ("6-OP", &["Six-Op PM", "Six-Op", "6-OP"]),
+    };
+    for prefix in redundant_prefixes {
+        if sound
+            .get(..prefix.len())
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+            && sound
+                .get(prefix.len()..)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+        {
+            sound = sound[prefix.len()..].trim_start();
+            break;
+        }
+    }
+    match (number, sound.is_empty()) {
+        (Some(number), false) => format!("{number} {code} {sound}"),
+        (Some(number), true) => format!("{number} {code}"),
+        (None, false) => format!("{code} {sound}"),
+        (None, true) => code.into(),
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Catalog {
     pub backend: BackendKind,
@@ -264,6 +299,12 @@ pub fn discover_all(
     }
     vec![
         catalog(
+            BackendKind::MojSint,
+            command_exists(&config.moj_sint.backend.command),
+            discover_moj_sint(&moj_roots),
+            &config.moj_sint.backend.command,
+        ),
+        catalog(
             BackendKind::Synthv1,
             command_exists(&config.synth_command),
             discover_synthv1_roots(&[synthv1_dir.to_path_buf(), user_storage.synthv1.clone()]),
@@ -284,12 +325,6 @@ pub fn discover_all(
             command_exists(&config.fluidsynth.backend.command),
             discover_fluidsynth(&config.fluidsynth.soundfonts),
             &config.fluidsynth.backend.command,
-        ),
-        catalog(
-            BackendKind::MojSint,
-            command_exists(&config.moj_sint.backend.command),
-            discover_moj_sint(&moj_roots),
-            &config.moj_sint.backend.command,
         ),
     ]
 }
@@ -1723,11 +1758,38 @@ mod tests {
 
     #[test]
     fn engine_cycle_wraps_in_both_directions() {
-        assert_eq!(BackendKind::Synthv1.next(-1), BackendKind::MojSint);
+        assert_eq!(BackendKind::ALL[0], BackendKind::MojSint);
+        assert_eq!(BackendKind::MojSint.next(-1), BackendKind::FluidSynth);
+        assert_eq!(BackendKind::MojSint.next(1), BackendKind::Synthv1);
         assert_eq!(BackendKind::Synthv1.next(1), BackendKind::Yoshimi);
         assert_eq!(BackendKind::Yoshimi.next(1), BackendKind::FluidSynth);
         assert_eq!(BackendKind::FluidSynth.next(1), BackendKind::MojSint);
-        assert_eq!(BackendKind::MojSint.next(1), BackendKind::Synthv1);
+    }
+
+    #[test]
+    fn moj_sint_display_uses_short_model_codes_without_repeating_the_model() {
+        let preset = |model: MojModel, name: &str| Preset {
+            backend: BackendKind::MojSint,
+            name: name.into(),
+            category: Some(model.label().into()),
+            id: PresetId::MojSint {
+                model,
+                path: PathBuf::from("sound.mojsint"),
+            },
+        };
+
+        assert_eq!(
+            preset(MojModel::ModelD, "01 Full Bass").display_name(),
+            "01 M-D Full Bass"
+        );
+        assert_eq!(
+            preset(MojModel::SixOpPm, "08 Six-Op Bell Metal").display_name(),
+            "08 6-OP Bell Metal"
+        );
+        assert_eq!(
+            preset(MojModel::SixOpPm, "Six-Op PM User 001").display_name(),
+            "6-OP User 001"
+        );
     }
 
     #[test]

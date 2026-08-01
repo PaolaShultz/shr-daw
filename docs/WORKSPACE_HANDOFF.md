@@ -69,8 +69,28 @@ macro fields; schema 4 and older remain Model D migrations. Discovery contains
 seven Model D and six Six-Op PM starts. FT2 ROUTE presents `ENGINE → MODEL →
 PATCH` for Moj Sint, constrains patch browsing to the selected model, and keeps
 the existing whole-route Apply/Cancel transaction. Playback renders the
-selected model's twelve labels. This is software integration only: connected
-JACK, audible, physical-control, and native callback acceptance remain open.
+selected model's twelve labels. The first connected audition found
+note-count-dependent artifacts because the private runtime launched an
+unoptimized Moj Sint binary. Native smoke evidence and bounded chord renders
+identified callback starvation rather than clipping; the runtime now launches
+`target/release/moj-sint`, and the user confirmed that the reported two-note
+Model D and four-note Six-Op failures are gone. This is acceptance of that
+repair only; broader physical-control, routing, polyphony, and sound acceptance
+remain open.
+
+The catalog presentation repair places the in-house Moj Sint first in
+Presets and software-engine selection. Moj factory names retain their stable
+preset and Project route identities but display one compact number/model/name:
+for example, `01 M-D Full Bass` and `08 6-OP Bell Metal`, without bracketed
+model labels or repeated `Six-Op` text. The generated 40x13 Presets reference
+now records that exact first-engine view. Source, focused regressions, the
+complete normal suite, debug/release builds, and all 142 deterministic
+screenshots passed on the native Pi. A warning-denied Clippy run still reports
+38 pre-existing repository-wide lints outside this repair, and `cargo deny`
+has no repository policy file so its default configuration rejects every
+dependency license; those broader release-gate debts were not folded into the
+catalog change. Live visual confirmation remains open until the user next
+relaunches SHR.
 
 The 2026-08-01 locked software gate used Rust 1.97.1 on AArch64. Focused Moj
 schema/control/engine and Route hierarchy tests passed, then the complete
@@ -553,9 +573,9 @@ Plain `shr` resolves to this checkout's `scripts/local.sh` through
 must not be used. The launcher uses `target/debug/shr` unless `SHSYNTH_BIN` is
 explicitly set; the debug TUI shows `DEV`. Do not restore the obsolete
 release-binary alias. Repository-local runtime metadata selects the companion
-Moj Sint checkout's fresh debug binary and public preset catalog; Playback user
-sounds remain in the separate ignored private data root and were not inspected
-during this configuration check.
+Moj Sint checkout's fresh release binary and public preset catalog; Playback
+user sounds remain in the separate ignored private data root and were not
+inspected during this configuration check.
 
 ## Dated DSP/JACK closure record (2026-07-22)
 

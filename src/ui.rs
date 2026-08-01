@@ -1630,10 +1630,7 @@ impl App {
         engine_state: PathBuf,
         routing_defaults_path: PathBuf,
     ) -> Self {
-        let backend_index = catalogs
-            .iter()
-            .position(|catalog| catalog.backend == BackendKind::Synthv1)
-            .unwrap_or(0);
+        let backend_index = 0;
         let presets = catalogs
             .get(backend_index)
             .map(|catalog| catalog.presets.clone())
@@ -18494,7 +18491,7 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .as_ref()
         .map(|preset| {
             crate::ui_text::fit_middle(
-                &format!("Playing · {}", preset.name),
+                &format!("Playing · {}", preset.display_name()),
                 usize::from(head.width),
             )
         })
@@ -18518,11 +18515,13 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let lines = (a.offset..(a.offset + rows).min(a.presets.len()))
         .map(|i| {
             let mark = if i == a.selected { "▶" } else { " " };
+            let name = if a.presets[i].backend == BackendKind::MojSint {
+                a.presets[i].display_name()
+            } else {
+                format!("{:02} {}", i + 1, a.presets[i].display_name())
+            };
             Spans::from(Span::styled(
-                crate::ui_text::fit_line(
-                    &format!("{mark} {:02} {}", i + 1, a.presets[i].display_name()),
-                    usize::from(inner.width),
-                ),
+                crate::ui_text::fit_line(&format!("{mark} {name}"), usize::from(inner.width)),
                 if i == a.selected {
                     Style::default()
                         .fg(Color::Black)
@@ -18579,7 +18578,7 @@ fn draw_synth_parameters<B: Backend>(
     let sound_name = a
         .playing
         .as_ref()
-        .map(|p| format!("{} · {}", p.backend.label(), p.name))
+        .map(|p| format!("{} · {}", p.backend.label(), p.display_name()))
         .unwrap_or_else(|| "none".into());
     let name = if context == SynthParameterContext::Tracker {
         format!("FT2 · {sound_name}")
@@ -20683,22 +20682,65 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
             preferred_source: format!("interface:capture_{}", index + 1),
         })
         .collect();
-    let catalogs = [Catalog {
-        backend: BackendKind::Synthv1,
-        presets: [
-            "Velvet Tines",
-            "Hollow Brass",
-            "Soft Fifths",
-            "Juniper Lead",
-            "Dust Pad",
-            "Square Bass",
-        ]
+    let synthv1_presets = [
+        "Velvet Tines",
+        "Hollow Brass",
+        "Soft Fifths",
+        "Juniper Lead",
+        "Dust Pad",
+        "Square Bass",
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, name)| Preset::synthv1(name, format!("demo-{index}.synthv1").into()))
+    .collect::<Vec<_>>();
+    let moj_names = [
+        "01 Full Bass",
+        "02 Full Lead",
+        "03 Full Filter Articulation",
+        "04 Matched Idealized",
+        "05 Matched Linear Mixer",
+        "06 Matched Linear Ladder",
+        "07 Matched No Drift or Feedback",
+        "08 Six-Op Bell Metal",
+        "09 Six-Op Fractured Metal",
+        "10 Six-Op Electric Piano Mallet",
+        "11 Six-Op Glass Wood",
+        "12 Six-Op Brass Bass",
+        "13 Six-Op Mechanical Stab",
+    ];
+    let moj_presets = moj_names
         .into_iter()
         .enumerate()
-        .map(|(index, name)| Preset::synthv1(name, format!("demo-{index}.synthv1").into()))
-        .collect(),
-        unavailable: None,
-    }];
+        .map(|(index, name)| {
+            let model = if index < 7 {
+                preset::MojModel::ModelD
+            } else {
+                preset::MojModel::SixOpPm
+            };
+            Preset {
+                backend: BackendKind::MojSint,
+                name: name.into(),
+                category: Some(model.label().into()),
+                id: preset::PresetId::MojSint {
+                    model,
+                    path: format!("demo-{index}.mojsint").into(),
+                },
+            }
+        })
+        .collect();
+    let catalogs = [
+        Catalog {
+            backend: BackendKind::MojSint,
+            presets: moj_presets,
+            unavailable: None,
+        },
+        Catalog {
+            backend: BackendKind::Synthv1,
+            presets: synthv1_presets,
+            unavailable: None,
+        },
+    ];
     let available_audio_ports = config.audio_outputs.clone();
     let capture_sources = config
         .capture
@@ -20729,7 +20771,7 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         PathBuf::from("/none"),
     );
     app.web_help_enabled = false;
-    app.playing = app.presets.first().cloned();
+    app.playing = catalogs[1].presets.first().cloned();
     app.status = "Ready".into();
     app.song.name = "dusk-project".into();
     app
@@ -24264,6 +24306,34 @@ release = 0.4
     }
 
     #[test]
+    fn moj_sint_preset_list_shows_one_number_and_one_short_model_code() {
+        let moj_presets = vec![
+            moj_preset(preset::MojModel::ModelD, "01 Full Bass"),
+            moj_preset(preset::MojModel::SixOpPm, "08 Six-Op Bell Metal"),
+        ];
+        let mut app = app(&presets());
+        app.catalogs.insert(
+            0,
+            Catalog {
+                backend: BackendKind::MojSint,
+                presets: moj_presets.clone(),
+                unavailable: None,
+            },
+        );
+        app.backend_index = 0;
+        app.presets = moj_presets;
+        app.screen = Screen::Presets;
+
+        let text = buffer_text(&render_app(&mut app, 40, 13));
+        assert!(text.contains("01 M-D Full Bass"), "{text}");
+        assert!(text.contains("08 6-OP Bell Metal"), "{text}");
+        assert!(!text.contains("[Model D]"), "{text}");
+        assert!(!text.contains("[Six-Op PM]"), "{text}");
+        assert!(!text.contains("01 01"), "{text}");
+        assert!(!text.contains("08 08"), "{text}");
+    }
+
+    #[test]
     fn moj_sint_legacy_instrument_route_resolves_to_model_qualified_identity() {
         let presets = presets();
         let mut app = app(&presets);
@@ -25556,6 +25626,18 @@ release = 0.4
                 .collect::<String>();
             assert!(text.contains(BUILD_BADGE), "missing {BUILD_BADGE}: {text}");
         }
+    }
+
+    #[test]
+    fn canonical_presets_screenshot_starts_with_compact_moj_sint_names() {
+        let mut app = screenshot_app(RuntimeConfig::default());
+        configure_screenshot_scenario(&mut app, ScreenshotScenario::Presets);
+
+        let text = buffer_text(&render_app(&mut app, 40, 13));
+        assert!(text.contains("PRESETS · Moj Sint"), "{text}");
+        assert!(text.contains("01 M-D Full Bass"), "{text}");
+        assert!(!text.contains("[Model D]"), "{text}");
+        assert!(!text.contains("01 01"), "{text}");
     }
 
     #[test]
