@@ -108,9 +108,16 @@ scale keep their pitch and sound normally; notes outside it stay silent.
 Pressing N00B again restores all chromatic notes. Changing or leaving the
 filter releases held notes first.
 
-Playback `IDEA+` stores the captured MIDI take with its current sound; it
-does not save a synth preset. `SOUNDS` returns directly to Presets, where
-`LOAD` starts the highlighted instrument.
+Playback `SAVE` offers OVERWRITE, SAVE NEW, and CANCEL for synthv1 and Moj
+Sint. Factory or system sounds are read-only, so Overwrite clearly redirects
+to a new private `User NNN` sound. A saved sound becomes the current RESET
+baseline without restarting the engine or changing its values. Use the overlay
+with the controller, encoder/Enter, or mouse; keyboard `O`, `N`, and `C` select
+its three actions while `S` remains Panic. Unsupported backends show SAVE
+UNAVAILABLE. A storage or format failure leaves the overlay open and preserves
+the current sound, controls, held notes, and existing file. Save MIDI takes from
+Ideas. `SOUNDS` returns directly to Presets, where `LOAD` starts the highlighted
+instrument.
 
 ## Effects graph
 

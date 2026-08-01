@@ -175,7 +175,8 @@ sudo make uninstall
 This removes the installed commands, public presets, profiles, rhythms, and
 documentation. It deliberately preserves user data under
 `${XDG_STATE_HOME:-~/.local/state}/shsynth/` and
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/`, repository-local `user/`, system
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/`, Moj Sint user sounds under
+`${XDG_DATA_HOME:-~/.local/share}/moj-sint/`, repository-local `user/`, system
 packages, JACK policy, and setup backups. Optional CPU/audio tuning is also a
 separate explicit system change; inspect/remove it with `shr-audio-tune` before
 uninstalling the command if desired. Never delete those retained directories

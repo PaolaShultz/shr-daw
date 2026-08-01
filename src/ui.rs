@@ -704,6 +704,7 @@ impl ControllerLearnReason {
 
 struct App {
     catalogs: Vec<Catalog>,
+    user_preset_storage: preset::UserPresetStorage,
     backend_index: usize,
     presets: Vec<Preset>,
     selected: usize,
@@ -1617,6 +1618,7 @@ impl App {
     #[allow(clippy::too_many_arguments)]
     fn new(
         catalogs: &[Catalog],
+        user_preset_storage: preset::UserPresetStorage,
         midi_output: engine::SharedOutput,
         pickup: engine::SharedPickup,
         midi_backend: engine::SharedBackend,
@@ -1715,6 +1717,7 @@ impl App {
         let project_clean_baseline = song.clone();
         Self {
             catalogs: catalogs.to_vec(),
+            user_preset_storage,
             backend_index,
             presets,
             selected: 0,
@@ -2846,6 +2849,7 @@ impl App {
             OverlayKind::TrackerNoteLength => NoteLength::ALL.len(),
             OverlayKind::TrackerAdvance => 33,
             OverlayKind::TrackerEntryLayout => 8,
+            OverlayKind::PresetSave => 3,
             OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
             OverlayKind::MixEffects => FX_TARGET_COUNT,
         }
@@ -2876,6 +2880,7 @@ impl App {
                 caller == Screen::Tracker && self.tracker_mode == TrackerMode::Edit
             }
             OverlayKind::TrackerEntryLayout => caller == Screen::TrackerPages,
+            OverlayKind::PresetSave => caller == Screen::Playback,
             OverlayKind::TrackerPatternLength => {
                 caller == Screen::TrackerFiles && self.confirm_pattern_clear
             }
@@ -2883,6 +2888,15 @@ impl App {
             OverlayKind::MixEffects => caller == Screen::Meter,
         };
         if !allowed {
+            return;
+        }
+        if kind == OverlayKind::PresetSave
+            && (self.engine.is_none()
+                || self.playing.as_ref().is_none_or(|preset| {
+                    !matches!(preset.backend, BackendKind::Synthv1 | BackendKind::MojSint)
+                }))
+        {
+            self.status = "SAVE UNAVAILABLE · this sound format is read-only".into();
             return;
         }
         if kind == OverlayKind::LoopLibrary {
@@ -2925,6 +2939,7 @@ impl App {
                     sequencer::NoteEntryMode::DrumAuto => 5,
                 })
             }
+            OverlayKind::PresetSave => 0,
             OverlayKind::LoopLibrary if action == Action::LoopImport => self
                 .loop_selected
                 .min(self.loop_imports.len().saturating_sub(1)),
@@ -3715,6 +3730,11 @@ impl App {
                     self.status = format!("PAGE ENTRY · {label}");
                 }
             }
+            OverlayKind::PresetSave => match selection {
+                0 => self.save_current_user_preset(true),
+                1 => self.save_current_user_preset(false),
+                _ => self.close_overlay(true),
+            },
             OverlayKind::LoopLibrary => {
                 self.stop_loop_preview(false);
                 if selection < self.loop_imports.len() {
@@ -11816,6 +11836,125 @@ impl App {
         self.arm_pickup();
         self.status = "RESET · controls waiting for pickup".into();
     }
+
+    fn save_current_user_preset(&mut self, overwrite_requested: bool) {
+        let Some(source) = self.playing.clone() else {
+            self.status = "SAVE UNAVAILABLE · load an editable sound".into();
+            return;
+        };
+        if self.engine.is_none() {
+            self.status = "SAVE UNAVAILABLE · reload this sound".into();
+            return;
+        }
+        if !matches!(source.backend, BackendKind::Synthv1 | BackendKind::MojSint) {
+            self.status = "SAVE UNAVAILABLE · this sound format is read-only".into();
+            return;
+        }
+        let catalog = self
+            .catalogs
+            .iter()
+            .find(|catalog| catalog.backend == source.backend)
+            .map(|catalog| catalog.presets.clone())
+            .unwrap_or_default();
+        let can_overwrite = preset::user_preset_can_overwrite(&self.user_preset_storage, &source);
+        let result = if overwrite_requested && can_overwrite {
+            preset::overwrite_user_preset(&self.user_preset_storage, &source, &self.values)
+        } else {
+            preset::save_new_user_preset(&self.user_preset_storage, &source, &self.values, &catalog)
+        };
+        let saved = match result {
+            Ok(saved) => saved,
+            Err(_error) => {
+                self.status = "SAVE FAILED · check private storage · retry".into();
+                return;
+            }
+        };
+        let saved_name = saved.name.clone();
+        self.adopt_saved_user_preset(&source, saved);
+        self.close_overlay(false);
+        self.status = if overwrite_requested && can_overwrite {
+            format!("OVERWROTE · {saved_name} · new RESET baseline")
+        } else if overwrite_requested {
+            format!("READ-ONLY · SAVED NEW · {saved_name}")
+        } else {
+            format!("SAVED NEW · {saved_name} · new RESET baseline")
+        };
+    }
+
+    fn adopt_saved_user_preset(&mut self, source: &Preset, saved: Preset) {
+        let active_tracker_route = match self.engine_owner.as_ref() {
+            Some(EngineOwner::Tracker(route))
+                if self
+                    .preset_for_route(route)
+                    .is_some_and(|preset| preset.id == source.id) =>
+            {
+                Some(route.clone())
+            }
+            _ => None,
+        };
+        let new_route = SoftwareRoute {
+            engine: saved.backend,
+            instrument: saved.route_id(),
+        };
+        if let Some(catalog) = self
+            .catalogs
+            .iter_mut()
+            .find(|catalog| catalog.backend == saved.backend)
+        {
+            catalog.presets.retain(|preset| preset.id != saved.id);
+            catalog.presets.push(saved.clone());
+            preset::sort_presets(&mut catalog.presets);
+            catalog.unavailable = None;
+        }
+        if let Some(index) = self
+            .catalogs
+            .iter()
+            .position(|catalog| catalog.backend == saved.backend)
+        {
+            self.backend_index = index;
+            self.presets.clone_from(&self.catalogs[index].presets);
+            self.selected = self
+                .presets
+                .iter()
+                .position(|preset| preset.id == saved.id)
+                .unwrap_or(0);
+            self.offset = self.offset.min(self.selected);
+        }
+
+        if let Some(old_route) = active_tracker_route {
+            self.engine_owner = Some(EngineOwner::Tracker(new_route.clone()));
+            if let Some(plan) = self.tracker_engine_plan.as_mut() {
+                plan.parts = plan
+                    .parts
+                    .iter()
+                    .cloned()
+                    .map(|mut part| {
+                        if part.route == old_route {
+                            part.route = new_route.clone();
+                        }
+                        part
+                    })
+                    .collect();
+            }
+            if let Some(page) = self.current_page_mut() {
+                let owns_old_route = matches!(
+                    &page.target,
+                    PageTarget::Software(route) if route == &old_route
+                ) || matches!(
+                    &page.target,
+                    PageTarget::Synthv1(name)
+                        if old_route.engine == BackendKind::Synthv1
+                            && name == &old_route.instrument
+                );
+                if owns_old_route {
+                    page.target = PageTarget::Software(new_route);
+                }
+            }
+        }
+        self.playing = Some(saved);
+        self.original_values = self.values.clone();
+        self.arm_pickup();
+    }
     fn toggle_idea_recording(&mut self) {
         self.idea_mode = IdeaMode::Record;
         if self.recorder.is_recording() {
@@ -12415,7 +12554,12 @@ impl Drop for Restore {
     }
 }
 
-pub fn run(catalogs: &[Catalog], state: &Path, config: &RuntimeConfig) -> Result<()> {
+pub fn run(
+    catalogs: &[Catalog],
+    state: &Path,
+    config: &RuntimeConfig,
+    user_preset_storage: preset::UserPresetStorage,
+) -> Result<()> {
     enable_raw_mode()?;
     let _restore = Restore;
     execute!(io::stdout(), EnterAlternateScreen, crossterm::cursor::Hide)?;
@@ -12426,6 +12570,7 @@ pub fn run(catalogs: &[Catalog], state: &Path, config: &RuntimeConfig) -> Result
         catalogs,
         state,
         config,
+        user_preset_storage,
         io::stdin().is_terminal(),
     )
 }
@@ -12461,6 +12606,7 @@ fn app_loop(
     catalogs: &[Catalog],
     state: &Path,
     config: &RuntimeConfig,
+    user_preset_storage: preset::UserPresetStorage,
     mut terminal_keyboard: bool,
 ) -> Result<()> {
     let stopping = Arc::new(AtomicBool::new(false));
@@ -12577,6 +12723,7 @@ fn app_loop(
         sequencer::available_midi_outputs(&config.external_midi.client_name).unwrap_or_default();
     let mut app = App::new(
         catalogs,
+        user_preset_storage,
         output,
         pickup,
         midi_backend,
@@ -13117,6 +13264,12 @@ fn perform(
             } else {
                 a.close_overlay(true);
             }
+        } else if overlay_kind == OverlayKind::PresetSave && action == Action::OverwritePreset {
+            a.save_current_user_preset(true);
+        } else if overlay_kind == OverlayKind::PresetSave && action == Action::SaveNewPreset {
+            a.save_current_user_preset(false);
+        } else if overlay_kind == OverlayKind::PresetSave && action == Action::CancelPresetSave {
+            a.close_overlay(true);
         } else if action == Action::PreviewRouteDraft {
             a.preview_route_draft();
         } else if action == Action::TapTempo {
@@ -13606,9 +13759,13 @@ fn perform(
         | Action::OpenNoteLengthOverlay
         | Action::OpenTrackerAdvanceOverlay
         | Action::OpenEntryLayoutOverlay
+        | Action::OpenPresetSaveOverlay
         | Action::OpenEffectsOverlay => a.open_overlay(action),
         Action::ApplyRouteOverlay | Action::CancelRouteOverlay => {
             unreachable!("route overlay actions are handled before contextual dispatch")
+        }
+        Action::OverwritePreset | Action::SaveNewPreset | Action::CancelPresetSave => {
+            unreachable!("preset save actions are handled inside their overlay")
         }
         Action::PreviewRouteDraft => a.preview_route_draft(),
         Action::OpenAudioRecorder => {
@@ -14162,6 +14319,27 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                     .is_some_and(|overlay| overlay.kind == OverlayKind::TrackerRoute) =>
             {
                 a.preview_route_draft()
+            }
+            KeyCode::Char('o') | KeyCode::Char('O')
+                if a.overlay
+                    .as_ref()
+                    .is_some_and(|overlay| overlay.kind == OverlayKind::PresetSave) =>
+            {
+                perform(Action::OverwritePreset, a, state, Some(tx));
+            }
+            KeyCode::Char('n') | KeyCode::Char('N')
+                if a.overlay
+                    .as_ref()
+                    .is_some_and(|overlay| overlay.kind == OverlayKind::PresetSave) =>
+            {
+                perform(Action::SaveNewPreset, a, state, Some(tx));
+            }
+            KeyCode::Char('c') | KeyCode::Char('C')
+                if a.overlay
+                    .as_ref()
+                    .is_some_and(|overlay| overlay.kind == OverlayKind::PresetSave) =>
+            {
+                perform(Action::CancelPresetSave, a, state, Some(tx));
             }
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.overlay_back(),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
@@ -17700,6 +17878,33 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 }
             ),
         ],
+        OverlayKind::PresetSave => {
+            let Some(source) = a.playing.as_ref() else {
+                return vec![
+                    "OVERWRITE · UNAVAILABLE".into(),
+                    "SAVE NEW · UNAVAILABLE".into(),
+                    "CANCEL · keep current sound".into(),
+                ];
+            };
+            let catalog = a
+                .catalogs
+                .iter()
+                .find(|catalog| catalog.backend == source.backend)
+                .map(|catalog| catalog.presets.as_slice())
+                .unwrap_or_default();
+            let next = preset::next_user_preset_name(&a.user_preset_storage, source, catalog)
+                .unwrap_or_else(|_| "unavailable".into());
+            let overwrite = if preset::user_preset_can_overwrite(&a.user_preset_storage, source) {
+                format!("OVERWRITE · replace {}", source.name)
+            } else {
+                "OVERWRITE · READ-ONLY → SAVE NEW".into()
+            };
+            vec![
+                overwrite,
+                format!("SAVE NEW · create {next}"),
+                "CANCEL · keep current sound".into(),
+            ]
+        }
         OverlayKind::LoopLibrary => a
             .loop_imports
             .iter()
@@ -20430,6 +20635,7 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         .collect();
     let mut app = App::new(
         &catalogs,
+        preset::UserPresetStorage::from_environment(),
         Arc::new(std::sync::Mutex::new(None)),
         Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
         Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),
@@ -21571,6 +21777,7 @@ mod tests {
             .collect();
         let mut app = App::new(
             &catalogs,
+            preset::UserPresetStorage::from_environment(),
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
             Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),
@@ -21590,6 +21797,25 @@ mod tests {
             defaults,
         );
         app.web_help_enabled = false;
+        app
+    }
+    fn editable_synth_app(base: &Path) -> App {
+        let source_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("presets/synthv1/Velvet Tines.synthv1");
+        let source = Preset::synthv1("Velvet Tines", source_path);
+        let mut app = app(std::slice::from_ref(&source));
+        app.user_preset_storage = preset::UserPresetStorage {
+            synthv1: base.join("synthv1"),
+            moj_sint: base.join("moj-sint"),
+        };
+        app.values = preset::values(&source).unwrap();
+        app.original_values = app.values.clone();
+        app.playing = Some(source);
+        app.engine_owner = Some(EngineOwner::SoftwareSynth);
+        app.engine = Some(
+            Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&app.midi_output)).unwrap(),
+        );
+        app.screen = Screen::Playback;
         app
     }
     fn monitor_app() -> App {
@@ -21619,6 +21845,446 @@ mod tests {
     ) -> crate::controller_learn::LearnAction {
         *now += Duration::from_millis(1);
         a.receive_controller_learn(*now, message)
+    }
+
+    #[test]
+    fn playback_save_overlay_uses_controller_keyboard_and_mouse_without_restarting_sound() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-ui-user-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let mut app = editable_synth_app(&base);
+        let (tx, _rx) = mpsc::channel();
+        app.values.insert(74, 0.77);
+        app.held_notes.observe(&[0x90, 60, 100]);
+        app.tracker_order = 0;
+        app.tracker_row = 7;
+        app.tracker_page = 0;
+        app.tracker_track = 2;
+        let selection_before_cancel = (
+            app.selected,
+            app.offset,
+            app.tracker_order,
+            app.tracker_row,
+            app.tracker_page,
+            app.tracker_track,
+        );
+        let values_before_cancel = app.values.clone();
+
+        dispatch_pad(
+            crate::pads::PadAction::Pad2,
+            true,
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_pad(
+            crate::pads::PadAction::Pad6,
+            true,
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(
+            app.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::PresetSave)
+        );
+        let read_only_overlay = render_app(&mut app, 40, 13);
+        let read_only_text = buffer_text(&read_only_overlay);
+        assert!(read_only_text.contains("OVERWRITE · READ-ONLY"));
+        assert!(read_only_text.contains("SAVE NEW · create User 001"));
+        assert!(read_only_text.contains("CANCEL · keep current sound"));
+        assert!(row_text(&read_only_overlay, 12).starts_with('■'));
+        dispatch_pad(
+            crate::pads::PadAction::Pad8,
+            true,
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(app.overlay.is_none());
+        assert!(!base.join("synthv1/User 001.synthv1").exists());
+        assert_eq!(app.values, values_before_cancel);
+        assert!(app.held_notes.is_held(60));
+        assert_eq!(
+            (
+                app.selected,
+                app.offset,
+                app.tracker_order,
+                app.tracker_row,
+                app.tracker_page,
+                app.tracker_track,
+            ),
+            selection_before_cancel
+        );
+
+        let source_route = SoftwareRoute {
+            engine: BackendKind::Synthv1,
+            instrument: app.playing.as_ref().unwrap().route_id(),
+        };
+        app.current_page_mut().unwrap().target = PageTarget::Software(source_route.clone());
+
+        key(KeyCode::F(10), &mut app, Path::new("/none"), &tx);
+        assert!(app.overlay.is_some());
+        key(KeyCode::Char('o'), &mut app, Path::new("/none"), &tx);
+        assert!(app.overlay.is_none());
+        assert!(app.status.starts_with("READ-ONLY · SAVED NEW"));
+        assert_eq!(app.playing.as_ref().unwrap().name, "User 001");
+        assert_eq!(app.original_values, app.values);
+        assert!(app.held_notes.is_held(60));
+        assert!(app.engine.as_mut().unwrap().alive());
+        assert_eq!(app.presets[app.selected].name, "User 001");
+        assert!(app
+            .catalogs
+            .iter()
+            .find(|catalog| catalog.backend == BackendKind::Synthv1)
+            .unwrap()
+            .presets
+            .iter()
+            .any(|preset| preset.name == "User 001"));
+        assert_eq!(
+            app.catalogs
+                .iter()
+                .find(|catalog| catalog.backend == BackendKind::Synthv1)
+                .unwrap()
+                .presets
+                .iter()
+                .map(|preset| preset.name.as_str())
+                .collect::<Vec<_>>(),
+            ["User 001", "Velvet Tines"]
+        );
+        assert_eq!(
+            app.current_page().unwrap().target,
+            PageTarget::Software(source_route)
+        );
+        assert!(!app.pickup.lock().unwrap().accept(74, CONTROLS[0].min));
+
+        render_app(&mut app, 40, 13);
+        let save_area = app
+            .hits
+            .actions
+            .iter()
+            .find(|(_, action)| *action == Action::OpenPresetSaveOverlay)
+            .map(|(area, _)| *area)
+            .unwrap();
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: save_area.x,
+                row: save_area.y,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+        let overlay_frame = render_app(&mut app, 40, 13);
+        assert_eq!(
+            app.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::PresetSave)
+        );
+        let overlay_text = buffer_text(&overlay_frame);
+        assert!(overlay_text.contains("OVERWRITE · replace User 001"));
+        assert!(overlay_text.contains("SAVE NEW · create User 002"));
+        assert!(row_text(&overlay_frame, 12).starts_with('■'));
+        assert!(app.hits.actions.iter().all(|(area, _)| area.y < 12));
+        let overwrite_area = app
+            .hits
+            .actions
+            .iter()
+            .find(|(_, action)| *action == Action::OverwritePreset)
+            .map(|(area, _)| *area)
+            .unwrap();
+        app.values.insert(74, 0.66);
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: overwrite_area.x,
+                row: overwrite_area.y,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(app.status.starts_with("OVERWROTE"));
+        assert_eq!(app.original_values.get(&74), Some(&0.66));
+        assert!(app.held_notes.is_held(60));
+        app.values.insert(74, 0.2);
+        app.reset_parameters();
+        assert_eq!(app.values.get(&74), Some(&0.66));
+        assert!(app.held_notes.is_held(60));
+
+        key(KeyCode::F(10), &mut app, Path::new("/none"), &tx);
+        key(KeyCode::Char('n'), &mut app, Path::new("/none"), &tx);
+        assert_eq!(app.playing.as_ref().unwrap().name, "User 002");
+        assert!(base.join("synthv1/User 002.synthv1").is_file());
+        assert!(app.held_notes.is_held(60));
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn saving_retargets_only_the_active_tracker_route_owner() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-ui-route-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let mut app = editable_synth_app(&base);
+        let source = app.playing.clone().unwrap();
+        let old_route = SoftwareRoute {
+            engine: source.backend,
+            instrument: source.route_id(),
+        };
+        let pattern = app.song.patterns.get_mut(&0).unwrap();
+        pattern.pages.truncate(1);
+        pattern.pages[0].target = PageTarget::Software(old_route.clone());
+        pattern.pages.push(pattern.pages[0].clone());
+        for row in &mut pattern.rows {
+            row.truncate(LANES_PER_PAGE);
+            row.extend(std::iter::repeat(Cell::default()).take(LANES_PER_PAGE));
+        }
+        app.engine_owner = Some(EngineOwner::Tracker(old_route.clone()));
+        app.tracker_engine_plan = Some(app.software_plan_for_route(old_route.clone(), [0]));
+        app.values.insert(74, 0.71);
+        app.open_overlay(Action::OpenPresetSaveOverlay);
+        app.save_current_user_preset(false);
+
+        let saved = app.playing.as_ref().unwrap();
+        let new_route = SoftwareRoute {
+            engine: saved.backend,
+            instrument: saved.route_id(),
+        };
+        let pages = &app.song.patterns[&0].pages;
+        assert_eq!(pages[0].target, PageTarget::Software(new_route.clone()));
+        assert_eq!(pages[1].target, PageTarget::Software(old_route));
+        assert_eq!(
+            app.engine_owner,
+            Some(EngineOwner::Tracker(new_route.clone()))
+        );
+        assert!(app
+            .tracker_engine_plan
+            .as_ref()
+            .unwrap()
+            .contains_route(&new_route));
+        assert_eq!(app.original_values, app.values);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn saved_six_op_sound_refreshes_under_the_six_op_route_hierarchy() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-ui-six-op-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let model_d_path = base.join("model-d.mojsint");
+        fs::write(
+            &model_d_path,
+            r#"schema_version = 5
+name = "Bass"
+voices = 8
+output_gain = 0.2
+model = "model_d"
+model_d_patch = "bass"
+[macros]
+evolve = 0.5
+shape = 0.5
+color = 0.5
+edge = 0.5
+couple = 0.5
+motion = 0.5
+depth = 0.5
+space = 0.5
+attack = 0.2
+decay = 0.3
+sustain = 0.7
+release = 0.4
+"#,
+        )
+        .unwrap();
+        let six_op_path = base.join("six-op.mojsint");
+        fs::write(
+            &six_op_path,
+            r#"schema_version = 5
+name = "Bell"
+voices = 4
+output_gain = 0.8
+model = "six_op_pm"
+six_op_patch = "bell_metal"
+[macros]
+index = 0.5
+ratio = 0.5
+feedback = 0.5
+operator_decay = 0.5
+balance = 0.5
+key_scale = 0.5
+velocity = 0.5
+motion = 0.5
+attack = 0.2
+decay = 0.3
+sustain = 0.7
+release = 0.4
+"#,
+        )
+        .unwrap();
+        let model_d = Preset {
+            backend: BackendKind::MojSint,
+            name: "Bass".into(),
+            category: Some("Model D".into()),
+            id: PresetId::MojSint {
+                model: preset::MojModel::ModelD,
+                path: model_d_path,
+            },
+        };
+        let six_op = Preset {
+            backend: BackendKind::MojSint,
+            name: "Bell".into(),
+            category: Some("Six-Op PM".into()),
+            id: PresetId::MojSint {
+                model: preset::MojModel::SixOpPm,
+                path: six_op_path,
+            },
+        };
+        let mut app = app(&[]);
+        app.user_preset_storage = preset::UserPresetStorage {
+            synthv1: base.join("private/synthv1"),
+            moj_sint: base.join("private/moj-sint"),
+        };
+        app.catalogs = vec![Catalog {
+            backend: BackendKind::MojSint,
+            presets: vec![model_d, six_op.clone()],
+            unavailable: None,
+        }];
+        app.backend_index = 0;
+        app.presets = app.catalogs[0].presets.clone();
+        app.values = preset::values(&six_op).unwrap();
+        app.original_values = app.values.clone();
+        app.playing = Some(six_op);
+        app.engine_owner = Some(EngineOwner::SoftwareSynth);
+        app.engine = Some(
+            Engine::start_test_process(BackendKind::MojSint, Arc::clone(&app.midi_output)).unwrap(),
+        );
+        app.screen = Screen::Playback;
+        app.open_overlay(Action::OpenPresetSaveOverlay);
+        app.save_current_user_preset(false);
+
+        let saved = app.playing.as_ref().unwrap();
+        assert_eq!(saved.moj_model(), Some(preset::MojModel::SixOpPm));
+        assert_eq!(saved.route_id(), "six_op_pm/User 001");
+        let PresetId::MojSint { path, .. } = &saved.id else {
+            panic!("expected Moj Sint preset");
+        };
+        assert_eq!(
+            path.parent().unwrap(),
+            app.user_preset_storage.moj_sint.join("six_op_pm")
+        );
+        let route = SoftwareRoute {
+            engine: BackendKind::MojSint,
+            instrument: saved.route_id(),
+        };
+        let patches = &app.catalogs[0].presets;
+        assert_eq!(
+            patches
+                .iter()
+                .map(|preset| (preset.moj_model().unwrap(), preset.name.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (preset::MojModel::ModelD, "Bass"),
+                (preset::MojModel::SixOpPm, "Bell"),
+                (preset::MojModel::SixOpPm, "User 001"),
+            ]
+        );
+        assert_eq!(
+            moj_model_for_route(patches, &route),
+            Some(preset::MojModel::SixOpPm)
+        );
+        assert_eq!(
+            moj_model_for_route(patches, &adjusted_patch_route(patches, &route, 1).unwrap()),
+            Some(preset::MojModel::SixOpPm)
+        );
+        assert_eq!(
+            adjusted_moj_model_route(patches, &route, -1)
+                .and_then(|route| moj_model_for_route(patches, &route)),
+            Some(preset::MojModel::ModelD)
+        );
+
+        app.current_page_mut().unwrap().target = PageTarget::Software(route);
+        app.screen = Screen::Tracker;
+        app.open_overlay(Action::OpenRouteOverlay);
+        let route_rows = overlay_rows(&app, app.overlay.as_ref().unwrap());
+        assert!(
+            route_rows
+                .iter()
+                .any(|row| row.starts_with("MODEL ·") && row.ends_with("Six-Op PM")),
+            "missing saved model hierarchy: {route_rows:?}"
+        );
+        assert!(
+            route_rows
+                .iter()
+                .any(|row| row.starts_with("PATCH ·") && row.ends_with("User 001")),
+            "missing saved patch hierarchy: {route_rows:?}"
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn preset_save_failure_keeps_live_state_and_read_only_backends_show_unavailable() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-ui-save-failure-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let mut app = editable_synth_app(&base);
+        let source = app.playing.clone().unwrap();
+        let values_before = app.values.clone();
+        let owner_before = app.engine_owner.clone();
+        app.held_notes.observe(&[0x90, 64, 96]);
+        app.tracker_order = 0;
+        app.tracker_row = 11;
+        app.tracker_page = 0;
+        app.tracker_track = 3;
+        let selection_before = (
+            app.selected,
+            app.offset,
+            app.tracker_order,
+            app.tracker_row,
+            app.tracker_page,
+            app.tracker_track,
+        );
+        app.values.remove(&74);
+        let invalid_values = app.values.clone();
+        app.open_overlay(Action::OpenPresetSaveOverlay);
+        app.save_current_user_preset(false);
+        assert!(app.status.starts_with("SAVE FAILED"));
+        assert_eq!(
+            app.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::PresetSave)
+        );
+        assert_eq!(app.playing.as_ref(), Some(&source));
+        assert_eq!(app.values, invalid_values);
+        assert_eq!(app.engine_owner, owner_before);
+        assert!(app.held_notes.is_held(64));
+        assert_eq!(
+            (
+                app.selected,
+                app.offset,
+                app.tracker_order,
+                app.tracker_row,
+                app.tracker_page,
+                app.tracker_track,
+            ),
+            selection_before
+        );
+        assert!(app.engine.as_mut().unwrap().alive());
+        assert!(!base.join("synthv1/User 001.synthv1").exists());
+        app.close_overlay(true);
+        app.values = values_before;
+
+        let fluid = gm_bass_preset();
+        app.playing = Some(fluid);
+        app.engine = Some(
+            Engine::start_test_process(BackendKind::FluidSynth, Arc::clone(&app.midi_output))
+                .unwrap(),
+        );
+        app.open_overlay(Action::OpenPresetSaveOverlay);
+        assert!(app.overlay.is_none());
+        assert!(app.status.starts_with("SAVE UNAVAILABLE"));
+        let _ = fs::remove_dir_all(base);
     }
     fn learn_settle(a: &mut App, now: &mut Instant) {
         *now += Duration::from_millis(200);
@@ -26609,7 +27275,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for label in ["PLAY", "SOUND", "SYS", "RESET", "IDEA+", "N00B", "SOUNDS"] {
+        for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE", "N00B", "SOUNDS"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
         for removed in ["NAV", "IDEAS", "PRESETS", "FT2", "AUDIO"] {
@@ -27839,6 +28505,7 @@ mod tests {
             .collect();
         let mut a = App::new(
             &catalogs,
+            preset::UserPresetStorage::from_environment(),
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
             Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),

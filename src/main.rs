@@ -87,13 +87,14 @@ fn real_main() -> Result<()> {
     }
     let runtime = config::RuntimeConfig::load(&state.join("shsynth.conf"))?;
     let preset_dir = preset_dir(&runtime)?;
-    let catalogs = preset::discover_all(&runtime, &preset_dir);
+    let user_preset_storage = preset::UserPresetStorage::from_environment();
+    let catalogs = preset::discover_all(&runtime, &preset_dir, &user_preset_storage);
     let presets = catalogs
         .iter()
         .flat_map(|catalog| catalog.presets.iter().cloned())
         .collect::<Vec<_>>();
     match args.first().map(String::as_str).unwrap_or("menu") {
-        "menu" => ui::run(&catalogs, &state, &runtime),
+        "menu" => ui::run(&catalogs, &state, &runtime, user_preset_storage),
         "list" => {
             for catalog in &catalogs {
                 if let Some(reason) = &catalog.unavailable {

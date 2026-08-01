@@ -106,6 +106,11 @@ The wrapper exports:
 - `SHSYNTH_PRESET_DIR=$SHSYNTH_USER_DIR/presets/synthv1`;
 - `SHSYNTH_LOOP_INBOX=$SHSYNTH_USER_DIR/data/shsynth/loop-inbox`.
 
+Playback Moj Sint user saves derive their private root from the same isolated
+`XDG_DATA_HOME` as `$XDG_DATA_HOME/moj-sint/presets` unless
+`SHSYNTH_MOJ_PRESET_DIR` explicitly selects another private absolute path. The
+launcher does not seed that user-sound tree from the public Moj Sint catalog.
+
 It requires an executable SHR-DAW binary, creates the private preset directory,
 copies only missing public presets into it, and then replaces itself with
 `setup.sh --state-dir "$XDG_STATE_HOME/shsynth"`. The shared wizard seeds only

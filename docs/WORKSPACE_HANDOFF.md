@@ -83,6 +83,30 @@ debug build passed; the build completed in 1 minute 51 seconds at
 validated all 13 tracked presets. No JACK, synth process, MIDI, playback,
 recording, audible, or hardware action was run.
 
+Playback `SAVE` now owns instrument-preset persistence for synthv1 and Moj
+Sint. Its canonical overlay exposes explicit Overwrite, Save New, and Cancel
+through controller, keyboard, encoder, and mouse dispatch. Factory, system,
+public-checkout, unsupported-backend, and symlink-backed sounds remain
+read-only; Overwrite on a read-only supported sound visibly redirects to the
+next private `User NNN` name. Moj saves use strict schema 5 and separate Model D
+and Six-Op PM directories. Synthv1 saves preserve the complete source XML while
+replacing only the preset name and twelve mapped values. A successful save
+refreshes Presets and FT2 ROUTE immediately, becomes the RESET baseline,
+re-arms pickup, and neither restarts the engine nor releases notes. Only an
+active Tracker route owner is retargeted; standalone Player saves and unrelated
+Project routes are untouched. Cancel and failure preserve cursor/list state,
+values, held notes, and the live session; failure keeps the overlay and prior
+file intact.
+
+The user-save acceptance gate used exact Rust 1.97.1. Two final locked SHR
+default-suite runs each passed 902 tests with zero failures and 12 intentionally
+ignored development/audition tests. Moj Sint's locked all-target/all-feature
+suite passed 276 tests with zero failures and 34 historical render, research,
+publication, and native-benchmark tests ignored. Formatting, locked checks,
+fresh debug builds, and diff checks passed in both repositories. No release
+build, screenshot batch, JACK, synth, MIDI, playback, recording, audible, or
+physical-hardware test ran during that gate.
+
 The locked 0.4.6 combined gate used Rust 1.97.1
 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`). Focused graph ownership,
 monitor/UI, Recorder LEVELS, and four observed regression tests passed. The
@@ -138,13 +162,13 @@ Drums averaged 15.16–27.66% of the 2.667 ms deadline and its worst measured
 callback was 0.903 ms. The prior unoptimized DEV artifact held about 89% of one
 CPU and produced thousands of `shr-drums` JACK deadline errors per minute,
 while temperature, throttle, memory, swap, and I/O were healthy.
-Playback labels MIDI-take persistence as `IDEA+`, not an
-instrument save, and `SOUNDS` returns directly to Presets and its visible
-`LOAD`. In-app and terminal MIDI Learn now capture the complete optional
-encoder-Shift gesture. Holding Shift, turning left once, then releasing records
-both the modifier and either the ordinary rotary CC or its separate
-shifted CC. The bundled MiniLab 3 default now mirrors the owner's current
-learned map: ordinary encoder CC114, click CC115, Shift CC9, shifted encoder
+Playback keeps MIDI-take persistence on Ideas; its SOUND page uses `SAVE` for
+the current synthv1 or Moj Sint instrument, and `SOUNDS` returns directly to
+Presets and its visible `LOAD`. In-app and terminal MIDI Learn now capture the
+complete optional encoder-Shift gesture. Holding Shift, turning left once, then
+releasing records both the modifier and either the ordinary rotary CC or its
+separate shifted CC. The bundled MiniLab 3 default now mirrors the owner's
+current learned map: ordinary encoder CC114, click CC115, Shift CC9, shifted encoder
 CC112, the twelve mapped controls, and eight channel-10 command pads. The
 earlier reviewed DAW-mode CC27/CC29 pair remains a catalog-declared in-memory
 compatibility variant rather than the fresh-profile default. The locked
@@ -528,7 +552,10 @@ Plain `shr` resolves to this checkout's `scripts/local.sh` through
 `$HOME/.local/bin/shr` link still points to the removed former checkout and
 must not be used. The launcher uses `target/debug/shr` unless `SHSYNTH_BIN` is
 explicitly set; the debug TUI shows `DEV`. Do not restore the obsolete
-release-binary alias.
+release-binary alias. Repository-local runtime metadata selects the companion
+Moj Sint checkout's fresh debug binary and public preset catalog; Playback user
+sounds remain in the separate ignored private data root and were not inspected
+during this configuration check.
 
 ## Dated DSP/JACK closure record (2026-07-22)
 

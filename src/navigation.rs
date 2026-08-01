@@ -179,6 +179,10 @@ pub enum Action {
     FxSendPoint,
     FxReturnCycle,
     ResetParameters,
+    OpenPresetSaveOverlay,
+    OverwritePreset,
+    SaveNewPreset,
+    CancelPresetSave,
     IdeaRecordToggle,
     SaveNew,
     InspectIdea,
@@ -440,7 +444,7 @@ const PLAYBACK: [MenuPage; 4] = [
         "SOUND",
         [
             on("RESET", Action::ResetParameters),
-            on("IDEA+", Action::SaveNew),
+            on("SAVE", Action::OpenPresetSaveOverlay),
             on("N00B", Action::PlaybackNoobToggle),
             on("SOUNDS", Action::OpenPresets),
         ],
@@ -524,6 +528,16 @@ pub const ROUTE_OVERLAY_PAGE: MenuPage = page(
         off(""),
         off(""),
         on("CANCEL", Action::CancelRouteOverlay),
+    ],
+);
+
+pub const PRESET_SAVE_OVERLAY_PAGE: MenuPage = page(
+    "SAVE",
+    [
+        on("OVER", Action::OverwritePreset),
+        on("NEW", Action::SaveNewPreset),
+        off(""),
+        on("CANCEL", Action::CancelPresetSave),
     ],
 );
 const TRACKER_TOOLS: [MenuPage; 4] = [
@@ -1444,6 +1458,23 @@ mod tests {
     }
 
     #[test]
+    fn playback_save_uses_the_canonical_sound_page_and_overlay_actions() {
+        assert_eq!(
+            slot(Screen::Playback, MenuContext::Normal, 1, 1).and_then(MenuSlot::dispatch),
+            Some(Action::OpenPresetSaveOverlay)
+        );
+        assert_eq!(
+            PRESET_SAVE_OVERLAY_PAGE.slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::OverwritePreset),
+                Some(Action::SaveNewPreset),
+                None,
+                Some(Action::CancelPresetSave),
+            ]
+        );
+    }
+
+    #[test]
     fn forty_column_controller_labels_fit_without_truncation() {
         const MAX_BUTTON_TEXT: usize = 7;
         for screen in Screen::ALL {
@@ -1874,6 +1905,7 @@ mod tests {
             .flat_map(|(screen, context)| pages(screen, context))
             .flat_map(|page| page.slots)
             .chain(ROUTE_OVERLAY_PAGE.slots)
+            .chain(PRESET_SAVE_OVERLAY_PAGE.slots)
             .filter_map(MenuSlot::dispatch)
             .collect::<HashSet<_>>();
         let inventory = [
@@ -1904,6 +1936,10 @@ mod tests {
             Action::BusMute,
             Action::FinalRecordToggle,
             Action::ResetParameters,
+            Action::OpenPresetSaveOverlay,
+            Action::OverwritePreset,
+            Action::SaveNewPreset,
+            Action::CancelPresetSave,
             Action::IdeaRecordToggle,
             Action::SaveNew,
             Action::InspectIdea,

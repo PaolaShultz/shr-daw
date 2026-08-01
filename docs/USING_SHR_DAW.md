@@ -63,9 +63,16 @@ shutdown, or an FT2 route that needs a different backend.
 
 Playback shows held notes, decimal MIDI strike velocity, chord names, a
 keyboard-state strip when space permits, and 12 controls for the active
-backend. `IDEA+` saves the captured MIDI take and its sound identity; it does
-not save an instrument preset. `SOUNDS` returns to Presets and its visible
-`LOAD`.
+backend. `SAVE` offers Overwrite, Save New, and Cancel for synthv1 and Moj Sint.
+Factory and system sounds stay read-only; saving them creates the next private
+`User NNN` sound for that engine and Moj model. The saved values become the
+current RESET baseline without restarting the engine. The new sound appears
+immediately in Presets and under its Moj model in FT2 ROUTE. When the running
+sound belongs to an FT2 route, only that active owner is retargeted; saving a
+standalone Player sound never rewrites unrelated Project routes. Cancel or a
+failed save preserves list/cursor state, values, held notes, and the live
+session. Unsupported engines remain visibly read-only. Idea capture and saving
+remain on the Ideas screen. `SOUNDS` returns to Presets and its visible `LOAD`.
 
 Moj Sint keeps its own preset format and controls. Its seven authored starts
 remain one editable Model D instrument family. SHR Drums is separate from the

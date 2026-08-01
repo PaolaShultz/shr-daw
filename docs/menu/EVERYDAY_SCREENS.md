@@ -105,14 +105,23 @@ not restart the synth.
 `PLAY` plays or stops the captured take. `RECORD` starts or stops free-time MIDI
 capture.
 
-### SOUND — reset, Idea save, scale filter, and sounds
+### SOUND — reset, save sound, scale filter, and sounds
 
 ![Populated Playback screen with the SOUND controller page](../images/menu/playback-sound.png)
 
 `RESET` restores the 12 mapped parameters in place and re-arms hardware pickup.
-`IDEA+` publishes the captured MIDI take plus its sound as a new
-non-overwriting Idea; it does not save a synth preset. `N00B` toggles the
-optional scale filter without leaving Playback or hiding any normal content.
+`SAVE` opens `OVERWRITE`, `SAVE NEW`, and `CANCEL`. Factory and system sounds
+are read-only, so their Overwrite row clearly saves a new private `User NNN`
+sound instead. Save New numbers sounds independently for synthv1, Moj Sint
+Model D, and Moj Sint Six-Op PM. A successful save becomes the current sound
+and the new RESET baseline immediately; it does not restart the engine, release
+held notes, or change the controls. Presets refreshes immediately, and a Moj
+sound remains inside its Model D or Six-Op PM hierarchy in FT2 ROUTE. Cancel
+closes only the overlay and preserves cursor/list state, live values, and held
+notes. A failed save preserves that state and any prior user file while keeping
+the overlay open for retry. Other backends show SAVE UNAVAILABLE. `N00B`
+toggles the optional scale filter without leaving Playback or hiding any normal
+content.
 `SOUNDS` returns directly to Presets, where `LOAD` starts the highlighted
 sound. While N00B is on, a single compact `SCALE` rotary appears below the 12
 controls; turning the master encoder cycles every chromatic root in major and

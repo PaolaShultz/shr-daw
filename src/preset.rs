@@ -1,18 +1,19 @@
 use crate::config::RuntimeConfig;
 use crate::control::{defaults, CONTROLS};
 use anyhow::{bail, Context, Result};
-use quick_xml::events::Event;
-use quick_xml::Reader;
+use quick_xml::events::{BytesStart, BytesText, Event};
 use quick_xml::XmlVersion;
-use serde::Deserialize;
+use quick_xml::{Reader, Writer};
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::collections::{BTreeMap, HashMap};
+use std::env;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BackendKind {
@@ -66,7 +67,7 @@ impl std::str::FromStr for BackendKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum PresetId {
     Synthv1 {
         path: PathBuf,
@@ -86,7 +87,7 @@ pub enum PresetId {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MojModel {
     ModelD,
@@ -219,12 +220,53 @@ pub struct Catalog {
     pub unavailable: Option<String>,
 }
 
-pub fn discover_all(config: &RuntimeConfig, synthv1_dir: &Path) -> Vec<Catalog> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserPresetStorage {
+    pub synthv1: PathBuf,
+    pub moj_sint: PathBuf,
+}
+
+impl UserPresetStorage {
+    pub fn from_environment() -> Self {
+        let data_home = env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(env::var_os("HOME").unwrap_or_else(|| ".".into()))
+                    .join(".local/share")
+            });
+        Self {
+            synthv1: env::var_os("SHSYNTH_PRESET_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| data_home.join("shsynth/presets/synthv1")),
+            moj_sint: env::var_os("SHSYNTH_MOJ_PRESET_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| data_home.join("moj-sint/presets")),
+        }
+    }
+
+    pub fn root_for(&self, backend: BackendKind) -> Option<&Path> {
+        match backend {
+            BackendKind::Synthv1 => Some(&self.synthv1),
+            BackendKind::MojSint => Some(&self.moj_sint),
+            BackendKind::Yoshimi | BackendKind::FluidSynth => None,
+        }
+    }
+}
+
+pub fn discover_all(
+    config: &RuntimeConfig,
+    synthv1_dir: &Path,
+    user_storage: &UserPresetStorage,
+) -> Vec<Catalog> {
+    let mut moj_roots = config.moj_sint.backend.preset_roots.clone();
+    if !moj_roots.contains(&user_storage.moj_sint) {
+        moj_roots.push(user_storage.moj_sint.clone());
+    }
     vec![
         catalog(
             BackendKind::Synthv1,
             command_exists(&config.synth_command),
-            discover_synthv1(synthv1_dir),
+            discover_synthv1_roots(&[synthv1_dir.to_path_buf(), user_storage.synthv1.clone()]),
             &config.synth_command,
         ),
         catalog(
@@ -246,7 +288,7 @@ pub fn discover_all(config: &RuntimeConfig, synthv1_dir: &Path) -> Vec<Catalog> 
         catalog(
             BackendKind::MojSint,
             command_exists(&config.moj_sint.backend.command),
-            discover_moj_sint(&config.moj_sint.backend.preset_roots),
+            discover_moj_sint(&moj_roots),
             &config.moj_sint.backend.command,
         ),
     ]
@@ -312,7 +354,7 @@ struct MojPresetV4 {
     macros: MojMacrosV2,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MojPresetV5ModelD {
     schema_version: u32,
@@ -324,7 +366,7 @@ struct MojPresetV5ModelD {
     macros: MojMacrosV2,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MojPresetV5SixOp {
     schema_version: u32,
@@ -336,7 +378,7 @@ struct MojPresetV5SixOp {
     macros: MojMacrosSixOp,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum MojModelDPatch {
     Bass,
@@ -344,7 +386,7 @@ enum MojModelDPatch {
     FilterArticulation,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum MojSixOpPatch {
     BellMetal,
@@ -385,7 +427,7 @@ struct MojLegacyEnvelope {
     release_seconds: f32,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MojMacrosV2 {
     evolve: f32,
@@ -402,7 +444,7 @@ struct MojMacrosV2 {
     release: f32,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MojMacrosSixOp {
     index: f32,
@@ -475,7 +517,23 @@ impl MojMacrosSixOp {
     }
 }
 
-fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
+#[derive(Clone, Copy, Debug)]
+enum MojPatch {
+    ModelD(MojModelDPatch),
+    SixOpPm(MojSixOpPatch),
+}
+
+#[derive(Debug)]
+struct MojDocument {
+    name: String,
+    model: MojModel,
+    voices: usize,
+    output_gain: f32,
+    patch: MojPatch,
+    values: [f32; 12],
+}
+
+fn read_moj_document(path: &Path) -> Result<MojDocument> {
     let file = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)
@@ -501,7 +559,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
         .get("schema_version")
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
-    let (name, model, voices, output_gain, values) = match version {
+    let (name, model, voices, output_gain, patch, values) = match version {
         5 => {
             let model = value
                 .get("model")
@@ -519,6 +577,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
                         document.model,
                         document.voices,
                         document.output_gain,
+                        MojPatch::ModelD(document.model_d_patch),
                         document.macros.values(),
                     )
                 }
@@ -533,6 +592,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
                         document.model,
                         document.voices,
                         document.output_gain,
+                        MojPatch::SixOpPm(document.six_op_patch),
                         document.macros.values(),
                     )
                 }
@@ -550,6 +610,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
                 document.model,
                 document.voices,
                 document.output_gain,
+                MojPatch::ModelD(document.model_d_patch),
                 document.macros.values(),
             )
         }
@@ -562,6 +623,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
                 MojModel::ModelD,
                 document.voices,
                 document.output_gain,
+                MojPatch::ModelD(document.model_d_patch),
                 document.macros.values(),
             )
         }
@@ -573,6 +635,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
                 MojModel::ModelD,
                 document.voices,
                 document.output_gain,
+                MojPatch::ModelD(MojModelDPatch::Bass),
                 document.macros.values(),
             )
         }
@@ -602,6 +665,7 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
                 MojModel::ModelD,
                 document.voices,
                 document.output_gain,
+                MojPatch::ModelD(MojModelDPatch::Bass),
                 MojMacrosV2 {
                     evolve: document.macros.evolve,
                     shape: document.macros.shape,
@@ -632,12 +696,24 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
     {
         bail!("invalid bounded Moj Sint preset {}", path.display());
     }
-    Ok((
+    Ok(MojDocument {
         name,
         model,
-        crate::control::moj_controls(model)
+        voices,
+        output_gain,
+        patch,
+        values,
+    })
+}
+
+fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
+    let document = read_moj_document(path)?;
+    Ok((
+        document.name,
+        document.model,
+        crate::control::moj_controls(document.model)
             .iter()
-            .zip(values)
+            .zip(document.values)
             .map(|(control, value)| (control.cc, value))
             .collect(),
     ))
@@ -675,13 +751,25 @@ fn command_exists(program: &str) -> bool {
     crate::fsutil::command_exists(program)
 }
 
-pub fn discover_synthv1(dir: &Path) -> Result<Vec<Preset>> {
+fn discover_synthv1_roots(roots: &[PathBuf]) -> Result<Vec<Preset>> {
     let mut presets = Vec::new();
-    for entry in fs::read_dir(dir).with_context(|| format!("read {}", dir.display()))? {
-        let path = entry?.path();
-        if extension_is(&path, "synthv1") {
-            let name = file_stem(&path);
-            presets.push(Preset::synthv1(name, path));
+    let mut seen_paths = std::collections::HashSet::new();
+    for dir in roots {
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error).with_context(|| format!("read {}", dir.display())),
+        };
+        for entry in entries {
+            let entry = entry?;
+            if !entry.file_type()?.is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if extension_is(&path, "synthv1") && seen_paths.insert(path.clone()) {
+                let name = file_stem(&path);
+                presets.push(Preset::synthv1(name, path));
+            }
         }
     }
     sort_presets(&mut presets);
@@ -987,14 +1075,17 @@ fn title_case(value: &str) -> String {
         .unwrap_or_default()
 }
 
-fn sort_presets(presets: &mut [Preset]) {
+pub(crate) fn sort_presets(presets: &mut [Preset]) {
     presets.sort_by_key(|preset| {
-        format!(
-            "{} {}",
-            preset.category.as_deref().unwrap_or_default(),
-            preset.name
+        (
+            preset
+                .category
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
+            preset.name.to_ascii_lowercase(),
+            preset.id.clone(),
         )
-        .to_ascii_lowercase()
     });
 }
 
@@ -1057,6 +1148,513 @@ pub fn values(preset: &Preset) -> Result<HashMap<u8, f32>> {
 
 pub fn moj_model(path: &Path) -> Result<MojModel> {
     read_moj_sint(path).map(|(_, model, _)| model)
+}
+
+const MAX_SYNTHV1_PRESET_BYTES: u64 = 4 * 1_048_576;
+
+pub fn user_preset_can_overwrite(storage: &UserPresetStorage, preset: &Preset) -> bool {
+    user_owned_preset_path(storage, preset).is_ok()
+}
+
+pub fn next_user_preset_name(
+    storage: &UserPresetStorage,
+    source: &Preset,
+    catalog: &[Preset],
+) -> Result<String> {
+    let directory = user_destination_directory(storage, source)?;
+    let extension = user_preset_extension(source.backend)?;
+    for number in 1..=999_999_u32 {
+        let name = format!("User {number:03}");
+        let route_used = catalog.iter().any(|preset| {
+            preset.backend == source.backend
+                && preset.moj_model() == source.moj_model()
+                && preset.name == name
+        });
+        let path_used = fs::symlink_metadata(directory.join(format!("{name}.{extension}"))).is_ok();
+        if !route_used && !path_used {
+            return Ok(name);
+        }
+    }
+    bail!("user preset numbering is exhausted")
+}
+
+pub fn save_new_user_preset(
+    storage: &UserPresetStorage,
+    source: &Preset,
+    current_values: &HashMap<u8, f32>,
+    catalog: &[Preset],
+) -> Result<Preset> {
+    if source.backend == BackendKind::MojSint && catalog.len() >= MAX_MOJ_PRESETS {
+        bail!("Moj Sint private catalog is full")
+    }
+    let directory = user_destination_directory(storage, source)?;
+    let root = storage
+        .root_for(source.backend)
+        .context("this preset backend has no private storage")?;
+    prepare_private_directory(root, &directory)?;
+    let extension = user_preset_extension(source.backend)?;
+    for _ in 0..1_024 {
+        let name = next_user_preset_name(storage, source, catalog)?;
+        let path = directory.join(format!("{name}.{extension}"));
+        let encoded = serialize_user_preset(source, &name, current_values)?;
+        match crate::fsutil::atomic_write_noreplace(&path, &encoded) {
+            Ok(()) => return saved_preset_from_path(source.backend, source.moj_model(), path),
+            Err(_error) if fs::symlink_metadata(&path).is_ok() => continue,
+            Err(error) => return Err(error).context("publish new private preset"),
+        }
+    }
+    bail!("could not allocate a collision-free user preset")
+}
+
+pub fn overwrite_user_preset(
+    storage: &UserPresetStorage,
+    source: &Preset,
+    current_values: &HashMap<u8, f32>,
+) -> Result<Preset> {
+    let path = user_owned_preset_path(storage, source)?;
+    let encoded = serialize_user_preset(source, &source.name, current_values)?;
+    // Serialization and strict validation finish before the atomic replacement,
+    // so the prior valid file remains intact on every earlier failure.
+    crate::fsutil::atomic_write(&path, &encoded).context("replace private preset")?;
+    saved_preset_from_path(source.backend, source.moj_model(), path)
+}
+
+fn user_preset_extension(backend: BackendKind) -> Result<&'static str> {
+    match backend {
+        BackendKind::Synthv1 => Ok("synthv1"),
+        BackendKind::MojSint => Ok("mojsint"),
+        BackendKind::Yoshimi | BackendKind::FluidSynth => {
+            bail!("{} presets are not editable", backend.label())
+        }
+    }
+}
+
+fn user_destination_directory(storage: &UserPresetStorage, source: &Preset) -> Result<PathBuf> {
+    let root = storage
+        .root_for(source.backend)
+        .context("this preset backend has no private storage")?;
+    validate_private_root(root)?;
+    let directory = match source.moj_model() {
+        Some(model) => root.join(model.stable_id()),
+        None => root.to_path_buf(),
+    };
+    match fs::symlink_metadata(&directory) {
+        Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
+            bail!("private preset destination is not a regular directory")
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("inspect private preset destination"),
+    }
+    Ok(directory)
+}
+
+fn validate_private_root(root: &Path) -> Result<()> {
+    if !root.is_absolute()
+        || root
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
+    {
+        bail!("private preset root must be an absolute normalized path");
+    }
+    let mut candidate = PathBuf::new();
+    for component in root.components() {
+        candidate.push(component.as_os_str());
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                bail!("private preset root path must not contain symlinks")
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error).context("inspect private preset root"),
+        }
+    }
+    if let Some(worktree) = root
+        .ancestors()
+        .find(|ancestor| ancestor.join(".git").exists())
+    {
+        let relative = root.strip_prefix(worktree)?;
+        if relative.components().next().map(Component::as_os_str) != Some("user".as_ref()) {
+            bail!("refusing to write presets into a public source checkout");
+        }
+    }
+    Ok(())
+}
+
+fn prepare_private_directory(root: &Path, directory: &Path) -> Result<()> {
+    validate_private_root(root)?;
+    fs::create_dir_all(directory)
+        .with_context(|| format!("create private preset directory {}", directory.display()))?;
+    for path in [root, directory] {
+        let metadata = fs::symlink_metadata(path)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            bail!("private preset destination is not a regular directory");
+        }
+    }
+    Ok(())
+}
+
+fn user_owned_preset_path(storage: &UserPresetStorage, preset: &Preset) -> Result<PathBuf> {
+    if !is_numbered_user_name(&preset.name) {
+        bail!("only private numbered user presets may be overwritten")
+    }
+    let root = storage
+        .root_for(preset.backend)
+        .context("this preset backend has no private storage")?;
+    validate_private_root(root)?;
+    let path = match &preset.id {
+        PresetId::Synthv1 { path } | PresetId::MojSint { path, .. } => path,
+        PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } => {
+            bail!("this preset backend is not editable")
+        }
+    };
+    let metadata = fs::symlink_metadata(path).context("inspect private preset")?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        bail!("private preset must be a regular non-symlink file");
+    }
+    let canonical_root = root.canonicalize().context("resolve private preset root")?;
+    let canonical_path = path.canonicalize().context("resolve private preset")?;
+    let relative = path
+        .strip_prefix(root)
+        .context("preset is outside private user storage")?;
+    let mut candidate = root.to_path_buf();
+    for component in relative.components() {
+        candidate.push(component.as_os_str());
+        if fs::symlink_metadata(&candidate).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        {
+            bail!("private preset path must not contain symlinks")
+        }
+    }
+    if !canonical_path.starts_with(&canonical_root)
+        || canonical_path.extension().and_then(|value| value.to_str())
+            != Some(user_preset_extension(preset.backend)?)
+        || path.file_stem().and_then(|value| value.to_str()) != Some(preset.name.as_str())
+    {
+        bail!("preset is outside private user storage")
+    }
+    Ok(path.clone())
+}
+
+fn is_numbered_user_name(name: &str) -> bool {
+    name.strip_prefix("User ").is_some_and(|number| {
+        number.len() >= 3
+            && number.bytes().all(|byte| byte.is_ascii_digit())
+            && number.bytes().any(|byte| byte != b'0')
+    })
+}
+
+fn saved_preset_from_path(
+    backend: BackendKind,
+    expected_model: Option<MojModel>,
+    path: PathBuf,
+) -> Result<Preset> {
+    match backend {
+        BackendKind::Synthv1 => {
+            let preset = Preset::synthv1(file_stem(&path), path);
+            values(&preset)?;
+            Ok(preset)
+        }
+        BackendKind::MojSint => {
+            let (name, model, _) = read_moj_sint(&path)?;
+            if Some(model) != expected_model {
+                bail!("saved Moj Sint model identity changed")
+            }
+            Ok(Preset {
+                backend,
+                name,
+                category: Some(model.label().into()),
+                id: PresetId::MojSint { model, path },
+            })
+        }
+        BackendKind::Yoshimi | BackendKind::FluidSynth => {
+            bail!("{} presets are not editable", backend.label())
+        }
+    }
+}
+
+fn serialize_user_preset(
+    source: &Preset,
+    name: &str,
+    current_values: &HashMap<u8, f32>,
+) -> Result<Vec<u8>> {
+    match &source.id {
+        PresetId::Synthv1 { path } => serialize_synthv1(path, name, current_values),
+        PresetId::MojSint { model, path } => serialize_moj_sint(path, *model, name, current_values),
+        PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } => {
+            bail!("{} presets are not editable", source.backend.label())
+        }
+    }
+}
+
+fn serialize_synthv1(
+    path: &Path,
+    name: &str,
+    current_values: &HashMap<u8, f32>,
+) -> Result<Vec<u8>> {
+    let source = read_regular_bounded(path, MAX_SYNTHV1_PRESET_BYTES, "synthv1 preset")?;
+    let mut replacement = HashMap::new();
+    for control in CONTROLS {
+        let value = current_values
+            .get(&control.cc)
+            .copied()
+            .with_context(|| format!("missing mapped synthv1 CC {}", control.cc))?;
+        if !value.is_finite() || !(control.min..=control.max).contains(&value) {
+            bail!("mapped synthv1 CC {} is outside its safe range", control.cc)
+        }
+        replacement.insert(control.xml_name, value);
+    }
+
+    let mut reader = Reader::from_reader(source.as_slice());
+    reader.config_mut().trim_text(false);
+    let mut writer = Writer::new(Vec::with_capacity(source.len()));
+    let mut buffer = Vec::new();
+    let mut active_parameter = None;
+    let mut found = std::collections::HashSet::new();
+    let mut written = std::collections::HashSet::new();
+    let mut saw_preset = false;
+    loop {
+        match reader.read_event_into(&mut buffer)? {
+            Event::Start(element) => {
+                let is_preset = element.name().as_ref() == b"preset";
+                let is_parameter = element.name().as_ref() == b"param";
+                if is_parameter {
+                    let mut parameter_name = None;
+                    for attribute in element.attributes() {
+                        let attribute = attribute?;
+                        if attribute.key.as_ref() == b"name" {
+                            if parameter_name.is_some() {
+                                bail!("synthv1 parameter has duplicate name attributes")
+                            }
+                            parameter_name = Some(
+                                attribute
+                                    .normalized_value(XmlVersion::Implicit1_0)?
+                                    .into_owned(),
+                            );
+                        }
+                    }
+                    active_parameter = parameter_name
+                        .as_deref()
+                        .and_then(|value| replacement.get_key_value(value))
+                        .map(|(key, value)| (*key, *value));
+                    if let Some((key, _)) = active_parameter {
+                        if !found.insert(key) {
+                            bail!("synthv1 preset repeats mapped parameter {key}")
+                        }
+                    }
+                }
+                let mut element = element.into_owned();
+                if is_preset {
+                    if saw_preset {
+                        bail!("synthv1 document has multiple preset roots")
+                    }
+                    saw_preset = true;
+                    element = replace_xml_name_attribute(element, name)?;
+                }
+                writer.write_event(Event::Start(element))?;
+            }
+            Event::Text(_text) if active_parameter.is_some() => {
+                let (key, value) = active_parameter.take().expect("checked mapped parameter");
+                written.insert(key);
+                writer.write_event(Event::Text(BytesText::new(&value.to_string())))?;
+            }
+            Event::End(element) => {
+                if element.name().as_ref() == b"param" {
+                    active_parameter = None;
+                }
+                writer.write_event(Event::End(element.into_owned()))?;
+            }
+            Event::Eof => break,
+            event => writer.write_event(event.into_owned())?,
+        }
+        buffer.clear();
+    }
+    if !saw_preset || found.len() != CONTROLS.len() || written.len() != CONTROLS.len() {
+        bail!("synthv1 preset is missing required mapped parameters")
+    }
+    let encoded = writer.into_inner();
+    validate_xml_document(&encoded)?;
+    Ok(encoded)
+}
+
+fn replace_xml_name_attribute(
+    mut element: BytesStart<'static>,
+    name: &str,
+) -> Result<BytesStart<'static>> {
+    let attributes = element
+        .attributes()
+        .map(|attribute| {
+            let attribute = attribute?;
+            Ok((
+                attribute.key.as_ref().to_vec(),
+                attribute.value.into_owned(),
+            ))
+        })
+        .collect::<std::result::Result<Vec<_>, quick_xml::events::attributes::AttrError>>()?;
+    element.clear_attributes();
+    let escaped_name = quick_xml::escape::escape(name);
+    let mut saw_name = false;
+    for (key, value) in &attributes {
+        if key == b"name" {
+            if saw_name {
+                bail!("synthv1 preset has duplicate name attributes")
+            }
+            saw_name = true;
+            element.push_attribute((key.as_slice(), escaped_name.as_bytes()));
+        } else {
+            element.push_attribute((key.as_slice(), value.as_slice()));
+        }
+    }
+    if !saw_name {
+        element.push_attribute(("name", escaped_name.as_ref()));
+    }
+    Ok(element)
+}
+
+fn validate_xml_document(source: &[u8]) -> Result<()> {
+    let mut reader = Reader::from_reader(source);
+    let mut buffer = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buffer)? {
+            Event::Eof => return Ok(()),
+            _ => buffer.clear(),
+        }
+    }
+}
+
+fn serialize_moj_sint(
+    path: &Path,
+    expected_model: MojModel,
+    name: &str,
+    current_values: &HashMap<u8, f32>,
+) -> Result<Vec<u8>> {
+    let document = read_moj_document(path)?;
+    if document.model != expected_model {
+        bail!("Moj Sint route model does not match its preset")
+    }
+    let mut values = [0.0; 12];
+    for (index, control) in crate::control::moj_controls(expected_model)
+        .iter()
+        .enumerate()
+    {
+        let value = current_values
+            .get(&control.cc)
+            .copied()
+            .with_context(|| format!("missing mapped Moj Sint CC {}", control.cc))?;
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            bail!("mapped Moj Sint CC {} is outside 0..=1", control.cc)
+        }
+        values[index] = value;
+    }
+    let encoded = match (expected_model, document.patch) {
+        (MojModel::ModelD, MojPatch::ModelD(model_d_patch)) => {
+            toml::to_string_pretty(&MojPresetV5ModelD {
+                schema_version: 5,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                model: MojModel::ModelD,
+                model_d_patch,
+                macros: MojMacrosV2::from_values(values),
+            })?
+        }
+        (MojModel::SixOpPm, MojPatch::SixOpPm(six_op_patch)) => {
+            toml::to_string_pretty(&MojPresetV5SixOp {
+                schema_version: 5,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                model: MojModel::SixOpPm,
+                six_op_patch,
+                macros: MojMacrosSixOp::from_values(values),
+            })?
+        }
+        _ => bail!("Moj Sint model and patch identity do not match"),
+    };
+    // Round-trip through the same strict schema before publication.
+    validate_moj_source(&encoded, expected_model)?;
+    Ok(encoded.into_bytes())
+}
+
+impl MojMacrosV2 {
+    fn from_values(values: [f32; 12]) -> Self {
+        Self {
+            evolve: values[0],
+            shape: values[1],
+            color: values[2],
+            edge: values[3],
+            couple: values[4],
+            motion: values[5],
+            depth: values[6],
+            space: values[7],
+            attack: values[8],
+            decay: values[9],
+            sustain: values[10],
+            release: values[11],
+        }
+    }
+}
+
+impl MojMacrosSixOp {
+    fn from_values(values: [f32; 12]) -> Self {
+        Self {
+            index: values[0],
+            ratio: values[1],
+            feedback: values[2],
+            operator_decay: values[3],
+            balance: values[4],
+            key_scale: values[5],
+            velocity: values[6],
+            motion: values[7],
+            attack: values[8],
+            decay: values[9],
+            sustain: values[10],
+            release: values[11],
+        }
+    }
+}
+
+fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
+    let value: toml::Value = toml::from_str(source)?;
+    if value
+        .get("schema_version")
+        .and_then(toml::Value::as_integer)
+        != Some(5)
+    {
+        bail!("saved Moj Sint preset is not schema 5")
+    }
+    match expected_model {
+        MojModel::ModelD => {
+            let document: MojPresetV5ModelD = toml::from_str(source)?;
+            if document.model != MojModel::ModelD {
+                bail!("saved Moj Sint Model D identity is invalid")
+            }
+        }
+        MojModel::SixOpPm => {
+            let document: MojPresetV5SixOp = toml::from_str(source)?;
+            if document.model != MojModel::SixOpPm {
+                bail!("saved Moj Sint Six-Op identity is invalid")
+            }
+        }
+    }
+    Ok(())
+}
+
+fn read_regular_bounded(path: &Path, maximum: u64, label: &str) -> Result<Vec<u8>> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .with_context(|| format!("open {label}"))?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > maximum {
+        bail!("{label} must be a regular file within its size limit")
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(maximum + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > maximum {
+        bail!("{label} exceeds its size limit")
+    }
+    Ok(bytes)
 }
 
 pub fn resolve<'a>(presets: &'a [Preset], arg: &str) -> Option<&'a Preset> {
@@ -1333,6 +1931,298 @@ release = 0.25
         fs::write(&path, format!("{source}\nmodel_d_patch = \"bass\"\n")).unwrap();
         assert!(read_moj_sint(&path).is_err());
         let _ = fs::remove_file(path);
+    }
+
+    fn test_storage(base: &Path) -> UserPresetStorage {
+        UserPresetStorage {
+            synthv1: base.join("synthv1"),
+            moj_sint: base.join("moj-sint"),
+        }
+    }
+
+    fn moj_source(model: MojModel) -> String {
+        match model {
+            MojModel::ModelD => r#"
+schema_version = 4
+name = "Factory Bass"
+voices = 8
+output_gain = 0.2
+model = "model_d"
+model_d_patch = "bass"
+[macros]
+evolve = 0.1
+shape = 0.2
+color = 0.3
+edge = 0.4
+couple = 0.5
+motion = 0.6
+depth = 0.7
+space = 0.8
+attack = 0.2
+decay = 0.3
+sustain = 0.7
+release = 0.4
+"#
+            .into(),
+            MojModel::SixOpPm => r#"
+schema_version = 5
+name = "Factory Bell"
+voices = 4
+output_gain = 0.8
+model = "six_op_pm"
+six_op_patch = "bell_metal"
+[macros]
+index = 0.1
+ratio = 0.2
+feedback = 0.3
+operator_decay = 0.4
+balance = 0.5
+key_scale = 0.6
+velocity = 0.7
+motion = 0.8
+attack = 0.2
+decay = 0.3
+sustain = 0.7
+release = 0.4
+"#
+            .into(),
+        }
+    }
+
+    #[test]
+    fn model_d_and_six_op_user_saves_are_strict_schema_five_and_model_scoped() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-user-moj-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let storage = test_storage(&base.join("private"));
+
+        for model in [MojModel::ModelD, MojModel::SixOpPm] {
+            let path = base.join(format!("factory-{}.mojsint", model.stable_id()));
+            fs::write(&path, moj_source(model)).unwrap();
+            let (name, parsed_model, mut current) = read_moj_sint(&path).unwrap();
+            assert_eq!(parsed_model, model);
+            current.insert(20, 0.91);
+            let source = Preset {
+                backend: BackendKind::MojSint,
+                name,
+                category: Some(model.label().into()),
+                id: PresetId::MojSint { model, path },
+            };
+
+            let saved = save_new_user_preset(&storage, &source, &current, &[]).unwrap();
+            let PresetId::MojSint { path, .. } = &saved.id else {
+                panic!("expected Moj Sint user preset");
+            };
+            assert_eq!(saved.name, "User 001");
+            assert_eq!(
+                path.parent().unwrap(),
+                storage.moj_sint.join(model.stable_id())
+            );
+            let encoded = fs::read_to_string(path).unwrap();
+            assert!(encoded.contains("schema_version = 5"));
+            assert!(encoded.contains(&format!("model = {:?}", model.stable_id())));
+            match model {
+                MojModel::ModelD => {
+                    assert!(encoded.contains("model_d_patch = \"bass\""));
+                    assert!(encoded.contains("evolve = 0.91"));
+                    assert!(!encoded.contains("six_op_patch"));
+                }
+                MojModel::SixOpPm => {
+                    assert!(encoded.contains("six_op_patch = \"bell_metal\""));
+                    assert!(encoded.contains("index = 0.91"));
+                    assert!(!encoded.contains("model_d_patch"));
+                    assert!(!encoded.contains("evolve ="));
+                }
+            }
+            assert_eq!(read_moj_sint(path).unwrap().1, model);
+        }
+        let discovered = discover_moj_sint(std::slice::from_ref(&storage.moj_sint)).unwrap();
+        assert_eq!(discovered.len(), 2);
+        assert!(discovered.iter().any(|preset| {
+            preset.name == "User 001" && preset.moj_model() == Some(MojModel::ModelD)
+        }));
+        assert!(discovered.iter().any(|preset| {
+            preset.name == "User 001" && preset.moj_model() == Some(MojModel::SixOpPm)
+        }));
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn synthv1_user_save_preserves_complete_document_and_updates_mapped_values() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-user-synth-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let storage = test_storage(&base.join("private"));
+        let source_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("presets/synthv1/Velvet Tines.synthv1");
+        let source = Preset::synthv1("Velvet Tines", source_path.clone());
+        let mut current = values(&source).unwrap();
+        current.insert(74, 0.12345);
+
+        let saved = save_new_user_preset(&storage, &source, &current, &[]).unwrap();
+        let PresetId::Synthv1 { path } = &saved.id else {
+            panic!("expected synthv1 user preset");
+        };
+        assert_eq!(saved.name, "User 001");
+        assert_eq!(schema(path), schema(&source_path));
+        assert!((values(&saved).unwrap()[&74] - 0.12345).abs() < 0.00001);
+        let encoded = fs::read_to_string(path).unwrap();
+        assert!(encoded.contains("name=\"User 001\""));
+        assert_eq!(
+            discover_synthv1_roots(std::slice::from_ref(&storage.synthv1))
+                .unwrap()
+                .iter()
+                .map(|preset| preset.name.as_str())
+                .collect::<Vec<_>>(),
+            ["User 001"]
+        );
+        let alternate_root = base.join("alternate-synthv1");
+        fs::create_dir_all(&alternate_root).unwrap();
+        fs::copy(path, alternate_root.join("User 001.synthv1")).unwrap();
+        let forward =
+            discover_synthv1_roots(&[storage.synthv1.clone(), alternate_root.clone()]).unwrap();
+        let reverse = discover_synthv1_roots(&[alternate_root, storage.synthv1.clone()]).unwrap();
+        assert_eq!(
+            forward
+                .iter()
+                .map(|preset| preset.id.clone())
+                .collect::<Vec<_>>(),
+            reverse
+                .iter()
+                .map(|preset| preset.id.clone())
+                .collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn user_save_autonumbers_collisions_and_failed_overwrite_keeps_prior_file() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-user-collision-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let storage = test_storage(&base.join("private"));
+        let source_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("presets/synthv1/Velvet Tines.synthv1");
+        let source = Preset::synthv1("Velvet Tines", source_path);
+        let current = values(&source).unwrap();
+        let first = save_new_user_preset(&storage, &source, &current, &[]).unwrap();
+        let second =
+            save_new_user_preset(&storage, &source, &current, std::slice::from_ref(&first))
+                .unwrap();
+        assert_eq!(
+            (first.name.as_str(), second.name.as_str()),
+            ("User 001", "User 002")
+        );
+        let PresetId::Synthv1 { path } = &first.id else {
+            panic!("expected synthv1 user preset");
+        };
+        let before = fs::read(path).unwrap();
+        let mut incomplete = current;
+        incomplete.remove(&74);
+        assert!(overwrite_user_preset(&storage, &first, &incomplete).is_err());
+        assert_eq!(fs::read(path).unwrap(), before);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn factory_public_and_symlink_presets_are_never_overwrite_targets() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-user-boundary-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let storage = test_storage(&base.join("private"));
+        fs::create_dir_all(&storage.synthv1).unwrap();
+        let factory_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("presets/synthv1/Velvet Tines.synthv1");
+        let factory = Preset::synthv1("Velvet Tines", factory_path.clone());
+        assert!(!user_preset_can_overwrite(&storage, &factory));
+        let seeded_factory_path = storage.synthv1.join("Velvet Tines.synthv1");
+        fs::copy(&factory_path, &seeded_factory_path).unwrap();
+        let seeded_factory = Preset::synthv1("Velvet Tines", seeded_factory_path);
+        assert!(!user_preset_can_overwrite(&storage, &seeded_factory));
+
+        let outside_numbered = Preset::synthv1("User 900", factory_path.clone());
+        assert!(!user_preset_can_overwrite(&storage, &outside_numbered));
+        assert!(
+            overwrite_user_preset(&storage, &outside_numbered, &values(&factory).unwrap()).is_err()
+        );
+
+        let linked_path = storage.synthv1.join("User 007.synthv1");
+        std::os::unix::fs::symlink(&factory_path, &linked_path).unwrap();
+        let linked = Preset::synthv1("User 007", linked_path);
+        assert!(!user_preset_can_overwrite(&storage, &linked));
+        assert!(overwrite_user_preset(&storage, &linked, &values(&factory).unwrap()).is_err());
+        assert!(save_new_user_preset(&storage, &linked, &values(&factory).unwrap(), &[]).is_err());
+
+        let malformed_path = base.join("malformed.synthv1");
+        fs::write(&malformed_path, "<preset name=\"bad\"><params/></preset>").unwrap();
+        let malformed = Preset::synthv1("malformed", malformed_path);
+        assert!(
+            save_new_user_preset(&storage, &malformed, &values(&factory).unwrap(), &[]).is_err()
+        );
+
+        let oversized_path = base.join("oversized.synthv1");
+        let oversized = fs::File::create(&oversized_path).unwrap();
+        oversized.set_len(MAX_SYNTHV1_PRESET_BYTES + 1).unwrap();
+        let oversized = Preset::synthv1("oversized", oversized_path);
+        assert!(
+            save_new_user_preset(&storage, &oversized, &values(&factory).unwrap(), &[]).is_err()
+        );
+        assert!(!storage.synthv1.join("User 001.synthv1").exists());
+
+        let public_storage = UserPresetStorage {
+            synthv1: Path::new(env!("CARGO_MANIFEST_DIR")).join("presets/synthv1"),
+            moj_sint: storage.moj_sint.clone(),
+        };
+        assert!(next_user_preset_name(&public_storage, &factory, &[]).is_err());
+
+        let linked_root = base.join("linked-root");
+        fs::create_dir_all(base.join("real-root")).unwrap();
+        std::os::unix::fs::symlink(base.join("real-root"), &linked_root).unwrap();
+        let linked_storage = UserPresetStorage {
+            synthv1: linked_root,
+            moj_sint: storage.moj_sint.clone(),
+        };
+        assert!(next_user_preset_name(&linked_storage, &factory, &[]).is_err());
+
+        let linked_parent = base.join("linked-parent");
+        std::os::unix::fs::symlink(base.join("real-root"), &linked_parent).unwrap();
+        let linked_parent_storage = UserPresetStorage {
+            synthv1: linked_parent.join("presets"),
+            moj_sint: storage.moj_sint.clone(),
+        };
+        assert!(next_user_preset_name(&linked_parent_storage, &factory, &[]).is_err());
+
+        let relative_storage = UserPresetStorage {
+            synthv1: PathBuf::from("user/presets/synthv1"),
+            moj_sint: storage.moj_sint.clone(),
+        };
+        assert!(next_user_preset_name(&relative_storage, &factory, &[]).is_err());
+
+        fs::create_dir_all(&storage.moj_sint).unwrap();
+        let outside_moj = base.join("outside-moj");
+        fs::create_dir_all(&outside_moj).unwrap();
+        std::os::unix::fs::symlink(
+            &outside_moj,
+            storage.moj_sint.join(MojModel::ModelD.stable_id()),
+        )
+        .unwrap();
+        let moj_path = base.join("factory.mojsint");
+        fs::write(&moj_path, moj_source(MojModel::ModelD)).unwrap();
+        let (_, _, moj_values) = read_moj_sint(&moj_path).unwrap();
+        let moj = Preset {
+            backend: BackendKind::MojSint,
+            name: "Factory Bass".into(),
+            category: Some(MojModel::ModelD.label().into()),
+            id: PresetId::MojSint {
+                model: MojModel::ModelD,
+                path: moj_path,
+            },
+        };
+        assert!(next_user_preset_name(&storage, &moj, &[]).is_err());
+        assert!(save_new_user_preset(&storage, &moj, &moj_values, &[]).is_err());
+        assert_eq!(fs::read_dir(&outside_moj).unwrap().count(), 0);
+        let _ = fs::remove_dir_all(base);
     }
 
     #[test]

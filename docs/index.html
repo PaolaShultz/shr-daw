@@ -467,9 +467,16 @@ continues when you leave Presets or Playback and stops on replacement, Panic,
 shutdown, or an FT2 route that needs a different backend.</p>
 <p>Playback shows held notes, decimal MIDI strike velocity, chord names, a
 keyboard-state strip when space permits, and 12 controls for the active
-backend. <code>IDEA+</code> saves the captured MIDI take and its sound identity; it does
-not save an instrument preset. <code>SOUNDS</code> returns to Presets and its visible
-<code>LOAD</code>.</p>
+backend. <code>SAVE</code> offers Overwrite, Save New, and Cancel for synthv1 and Moj Sint.
+Factory and system sounds stay read-only; saving them creates the next private
+<code>User NNN</code> sound for that engine and Moj model. The saved values become the
+current RESET baseline without restarting the engine. The new sound appears
+immediately in Presets and under its Moj model in FT2 ROUTE. When the running
+sound belongs to an FT2 route, only that active owner is retargeted; saving a
+standalone Player sound never rewrites unrelated Project routes. Cancel or a
+failed save preserves list/cursor state, values, held notes, and the live
+session. Unsupported engines remain visibly read-only. Idea capture and saving
+remain on the Ideas screen. <code>SOUNDS</code> returns to Presets and its visible <code>LOAD</code>.</p>
 <p>Moj Sint keeps its own preset format and controls. Its seven authored starts
 remain one editable Model D instrument family. SHR Drums is separate from the
 managed melodic engine and runs in process. Its public source, format, and
@@ -796,9 +803,16 @@ to cycle every root plus MAJOR or natural MINOR choice. Notes in the chosen
 scale keep their pitch and sound normally; notes outside it stay silent.
 Pressing N00B again restores all chromatic notes. Changing or leaving the
 filter releases held notes first.</p>
-<p>Playback <code>IDEA+</code> stores the captured MIDI take with its current sound; it
-does not save a synth preset. <code>SOUNDS</code> returns directly to Presets, where
-<code>LOAD</code> starts the highlighted instrument.</p>
+<p>Playback <code>SAVE</code> offers OVERWRITE, SAVE NEW, and CANCEL for synthv1 and Moj
+Sint. Factory or system sounds are read-only, so Overwrite clearly redirects
+to a new private <code>User NNN</code> sound. A saved sound becomes the current RESET
+baseline without restarting the engine or changing its values. Use the overlay
+with the controller, encoder/Enter, or mouse; keyboard <code>O</code>, <code>N</code>, and <code>C</code> select
+its three actions while <code>S</code> remains Panic. Unsupported backends show SAVE
+UNAVAILABLE. A storage or format failure leaves the overlay open and preserves
+the current sound, controls, held notes, and existing file. Save MIDI takes from
+Ideas. <code>SOUNDS</code> returns directly to Presets, where <code>LOAD</code> starts the highlighted
+instrument.</p>
 <h4 id="doc-help--effects-graph" tabindex="-1">Effects graph<a class="heading-anchor" href="#doc-help--effects-graph" aria-label="Link to Effects graph">#</a></h4>
 <p>Playback SYS FX or FT2 Tools OPS FX opens the current Project's FX rack. In
 FT2, uppercase F opens it directly. Back returns to the calling Player or FT2
@@ -1173,7 +1187,7 @@ or changing its selected column. Its final row opens the full <strong>TRACKS</st
 select a page, choose a column, set its target, channel, bank, and program, and
 open <strong>SYS</strong> → <strong>ENTRY</strong> to choose that page's note-entry layout.
 <strong>DONE</strong> validates shared-channel compatibility and keeps the changes. Internal
-routes use <code>TARGET → ENGINE → INSTR</code>; external routes use
+routes use <code>TARGET → ENGINE → INSTR</code>; Moj Sint inserts its explicit <code>MODEL → PATCH</code> hierarchy after <code>ENGINE</code>; external routes use
 <code>TARGET → MIDI OUT → CH → INSTR/PROG</code>. <strong>SYS</strong>
 → <strong>EXIT</strong> restores the Project as it was before TRACKS opened. A disconnected
 saved target is marked <code>OFFLINE</code> (or <code>AMBIG</code> for duplicate stable identities);
@@ -1190,6 +1204,11 @@ choices. Applying a different kit must start it before the
 route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.</p>
+<p>For Moj Sint, <strong>ENGINE</strong> stays <code>Moj Sint</code>, <strong>MODEL</strong> cycles Model D and Six-Op
+PM, and <strong>PATCH</strong> cycles only the installed starts belonging to that model.
+Changing the model selects its first available patch; changing patches never
+crosses the model boundary. These live field changes remain inside the same
+Route Apply/Cancel transaction.</p>
 <p>Turn and click/Enter to activate a field. Turning the active field validates
 and applies each choice to the Project and live route at once, so an available
 instrument or kit can be auditioned without leaving the overlay. A failed
@@ -1899,7 +1918,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>Playback</td>
-<td>Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact <code>SCALE</code> control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play and use the explicit <code>IDEA+</code> command to save a new Idea; use <code>SOUNDS</code> to return directly to the Presets catalog and its visible <code>LOAD</code>; stop/panic; contextual help; return to Presets. N00B never replaces the Player body. Synthv1 and Moj Sint models each render their own 12-control three-by-four layout and use the same physical pickup crossing path without storing parameter names in the controller map.</td>
+<td>Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the master rotary through all root plus major/natural-minor choices shown by a compact <code>SCALE</code> control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; record/play a free-time take; save the current synthv1 or Moj Sint sound through the explicit Overwrite/Save New/Cancel overlay; use <code>SOUNDS</code> to return directly to the Presets catalog and its visible <code>LOAD</code>; stop/panic; contextual help; return to Presets. Factory/system sounds are read-only and redirect Overwrite to a private numbered sound. Saving changes neither the running engine nor held notes and makes the values the new RESET baseline. N00B never replaces the Player body. Synthv1 and Moj Sint models each render their own 12-control three-by-four layout and use the same physical pickup crossing path without storing parameter names in the controller map.</td>
 </tr>
 <tr>
 <td>Ideas</td>
@@ -1907,7 +1926,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 normal</td>
-<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. In ROUTE, turning an active field validates and applies the choice to the Project and live route. <code>APPLY</code> keeps the result; <code>CANCEL</code> restores the route snapshot from when the overlay opened. Back restores the active field first. The physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code> share those actions. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; a successful kit change resets old kit-specific tuning while preserving the Project key and drum effects. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template.</td>
+<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries. Keyboard Up/Down also moves rows. PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, and SYS holds panic/N00B/help/Exit. In ROUTE, turning an active field validates and applies the choice to the Project and live route. Moj Sint exposes <code>ENGINE → MODEL → PATCH</code>; patch browsing stays within its selected model. <code>APPLY</code> keeps the result; <code>CANCEL</code> restores the route snapshot from when the overlay opened. Back restores the active field first. The physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code> share those actions. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; a successful kit change resets old kit-specific tuning while preserving the Project key and drum effects. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template.</td>
 </tr>
 <tr>
 <td>FT2 record</td>
@@ -2282,9 +2301,17 @@ channel-1 pads cannot safely be commands because they collide with the keys.</li
 <td>Playback</td>
 <td>Sound</td>
 <td>Reset controls</td>
-<td>Idea+</td>
+<td>Save sound</td>
 <td>N00B on/off</td>
 <td>Sounds</td>
+</tr>
+<tr>
+<td>Playback SAVE</td>
+<td>Save</td>
+<td>Overwrite</td>
+<td>Save new</td>
+<td>—</td>
+<td>Cancel</td>
 </tr>
 <tr>
 <td>Playback</td>
@@ -3299,12 +3326,21 @@ not restart the synth.</p>
 <p><a class="repeated-image-link" href="#shot-889a405e74bb">Populated Playback screen with the PLAY controller page (shown earlier)</a></p>
 <p><code>PLAY</code> plays or stops the captured take. <code>RECORD</code> starts or stops free-time MIDI
 capture.</p>
-<h5 id="doc-menu-everyday_screens--sound-reset-idea-save-scale-filter-and-sounds" tabindex="-1">SOUND — reset, Idea save, scale filter, and sounds<a class="heading-anchor" href="#doc-menu-everyday_screens--sound-reset-idea-save-scale-filter-and-sounds" aria-label="Link to SOUND — reset, Idea save, scale filter, and sounds">#</a></h5>
-<p><img src="images/menu/playback-sound.png" alt="Populated Playback screen with the SOUND controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="63db611b9d5d1a12260f2e87eeb5e20fc62c818030648c495072ce9dabf25470" class="tui-shot" id="shot-63db611b9d5d" /></p>
+<h5 id="doc-menu-everyday_screens--sound-reset-save-sound-scale-filter-and-sounds" tabindex="-1">SOUND — reset, save sound, scale filter, and sounds<a class="heading-anchor" href="#doc-menu-everyday_screens--sound-reset-save-sound-scale-filter-and-sounds" aria-label="Link to SOUND — reset, save sound, scale filter, and sounds">#</a></h5>
+<p><img src="images/menu/playback-sound.png" alt="Populated Playback screen with the SOUND controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="17846054f7638c75767cb9eb302ab46b38cae033639fa034ea004c1406d6cfff" class="tui-shot" id="shot-17846054f763" /></p>
 <p><code>RESET</code> restores the 12 mapped parameters in place and re-arms hardware pickup.
-<code>IDEA+</code> publishes the captured MIDI take plus its sound as a new
-non-overwriting Idea; it does not save a synth preset. <code>N00B</code> toggles the
-optional scale filter without leaving Playback or hiding any normal content.
+<code>SAVE</code> opens <code>OVERWRITE</code>, <code>SAVE NEW</code>, and <code>CANCEL</code>. Factory and system sounds
+are read-only, so their Overwrite row clearly saves a new private <code>User NNN</code>
+sound instead. Save New numbers sounds independently for synthv1, Moj Sint
+Model D, and Moj Sint Six-Op PM. A successful save becomes the current sound
+and the new RESET baseline immediately; it does not restart the engine, release
+held notes, or change the controls. Presets refreshes immediately, and a Moj
+sound remains inside its Model D or Six-Op PM hierarchy in FT2 ROUTE. Cancel
+closes only the overlay and preserves cursor/list state, live values, and held
+notes. A failed save preserves that state and any prior user file while keeping
+the overlay open for retry. Other backends show SAVE UNAVAILABLE. <code>N00B</code>
+toggles the optional scale filter without leaving Playback or hiding any normal
+content.
 <code>SOUNDS</code> returns directly to Presets, where <code>LOAD</code> starts the highlighted
 sound. While N00B is on, a single compact <code>SCALE</code> rotary appears below the 12
 controls; turning the master encoder cycles every chromatic root in major and
@@ -4244,7 +4280,8 @@ from this checkout with:</p>
 <p>This removes the installed commands, public presets, profiles, rhythms, and
 documentation. It deliberately preserves user data under
 <code>${XDG_STATE_HOME:-~/.local/state}/shsynth/</code> and
-<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/</code>, repository-local <code>$SHSYNTH_USER_DIR/</code>, system
+<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/</code>, Moj Sint user sounds under
+<code>${XDG_DATA_HOME:-~/.local/share}/moj-sint/</code>, repository-local <code>$SHSYNTH_USER_DIR/</code>, system
 packages, JACK policy, and setup backups. Optional CPU/audio tuning is also a
 separate explicit system change; inspect/remove it with <code>shr-audio-tune</code> before
 uninstalling the command if desired. Never delete those retained directories
@@ -4949,11 +4986,24 @@ accepts:</p>
 <p>Moj Sint defaults to command <code>moj-sint</code>, client/MIDI identity
 <code>shs-moj-sint</code>, and output short names <code>out_l</code> then <code>out_r</code>. Discovery indexes
 at most 512 regular, non-symlink <code>.mojsint</code> files of at most 1 MiB and strictly
-validates schema 1–4 before showing them. Schema 4 explicitly separates the
-Moj Sint host from <code>model_d</code>; schemas 1–3 migrate to that model in memory.
+validates schema 1–5 before showing them. Schema 5 selects <code>model_d</code> or
+<code>six_op_pm</code> and requires that model's exact patch and macro fields; schemas 1–4
+migrate to Model D in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by <code>LOAD</code> as
 <code>moj-sint --client-name NAME --preset FILE</code>.
-| Managed MIDI/audio | <code>midi.autoconnect</code>; legacy ordered controller fallbacks in repeated <code>midi.input</code>; <code>midi.controller_musical_input</code>; simultaneous repeated <code>midi.performance_input</code>; <code>audio.autoconnect</code>, exactly two preferred <code>audio.output</code> entries, ordered <code>audio.internal_output=NAME|LEFT|RIGHT</code> fallbacks, final optional <code>audio.headphone_output=NAME|LEFT|RIGHT</code>; optional <code>audio.engine_cpu</code> |
+Playback user saves add the private XDG Moj Sint preset root to discovery and
+store Model D and Six-Op PM beneath separate model directories. Repository-local
+launches keep that root below ignored <code>$SHSYNTH_USER_DIR/</code>. <code>SHSYNTH_MOJ_PRESET_DIR</code> may
+select another explicitly private root; public checkout, factory, system, and
+symlink paths remain read-only. The destination must be an absolute normalized
+path; symlinked roots, parents, model directories, and preset files are refused.
+Synthv1 uses the existing private <code>SHSYNTH_PRESET_DIR</code> override or its XDG user
+preset directory. Save New allocates the first unused <code>User NNN</code> name without
+replacement. Overwrite is available only for a regular numbered file in that
+private root. Serialization and strict format validation finish before atomic
+publication, so a failed save leaves the prior file, live values, held notes,
+and engine session unchanged.</p>
+<p>| Managed MIDI/audio | <code>midi.autoconnect</code>; legacy ordered controller fallbacks in repeated <code>midi.input</code>; <code>midi.controller_musical_input</code>; simultaneous repeated <code>midi.performance_input</code>; <code>audio.autoconnect</code>, exactly two preferred <code>audio.output</code> entries, ordered <code>audio.internal_output=NAME|LEFT|RIGHT</code> fallbacks, final optional <code>audio.headphone_output=NAME|LEFT|RIGHT</code>; optional <code>audio.engine_cpu</code> |
 | Owned final bus | <code>audio.graph.enabled</code>, <code>.client</code>, <code>.maximum_callback_frames</code> (1–4096), <code>.input</code>, monitoring confirmations |
 | External tracker MIDI | <code>external_midi.enabled</code>, <code>.client</code>, <code>.output</code>, <code>.max_tracks</code>, repeated <code>.channel</code>, <code>.melody_channel</code>, optional <code>.percussion_channel</code> and <code>.percussion_program</code>, <code>.percussion_input_base</code>, repeated <code>.percussion_note</code>, <code>.bank_select</code> (<code>off</code>, <code>cc0</code>, or <code>cc0+cc32</code>), <code>.program_changes</code>, <code>.send_transport</code>, <code>.default_tempo</code> (decimal 20.00–300.00), private <code>.import_directory</code>, <code>.pattern_rows</code> (1–256), <code>.steps_per_beat</code> (1–16), <code>.live_thru</code>, <code>.profile</code>, <code>.gate_percent</code> (1–100), <code>.gesture_settle_ms</code> |
 | Controller clock | <code>controller_clock.enabled</code>, <code>.client</code>, <code>.output</code>; disabled by default, with one exact stable ALSA MIDI output name required when enabled |
@@ -5362,7 +5412,8 @@ resulting <strong>TRACKS</strong> screen edits pages and columns. Use the main e
 select a page. <strong>ADD</strong> creates
 another four-lane page in that Pattern. <strong>TARGET</strong> chooses <code>AUTO</code> (portable
 machine default), an internal software route, or external MIDI. An internal
-route then chooses <strong>ENGINE</strong> before <strong>INSTR</strong>; an external route chooses
+route then chooses <strong>ENGINE</strong> before <strong>INSTR</strong>. Moj Sint additionally chooses
+<strong>MODEL</strong> before <strong>PATCH</strong>; an external route chooses
 <strong>MIDI OUT</strong> before its per-column channel/bank/program values. <code>AUTO</code> displays an
 <code>AUTO</code> channel and does not permit channel/bank/program editing because those
 values would bind the Project to one machine. <strong>CHANNEL</strong>
@@ -5374,7 +5425,8 @@ opened. On the
 controls edit the selected column. In a target/channel chooser, <strong>CONFIRM</strong>
 keeps that field and <strong>EXIT</strong> cancels it.</p>
 <p>FT2 <strong>SELECT</strong> → <strong>ROUTE</strong> is the quick route editor. Its 38×9 bordered overlay
-shows <code>TARGET</code>, <code>ENGINE</code>, <code>INSTR</code> or the SHR Drums <code>KIT</code>, <code>MIDI OUT</code>, optional
+shows <code>TARGET</code>, <code>ENGINE</code>, Moj Sint <code>MODEL</code> and <code>PATCH</code>, ordinary <code>INSTR</code>, or the
+SHR Drums <code>KIT</code>, plus <code>MIDI OUT</code>, optional
 <code>PROFILE</code>, and the 16 per-column channel/bank/program rows in a scrolling 36×7
 content area. The overlay begins at <code>(1,1)</code>, its content begins at <code>(2,2)</code>, and
 the standard controller page/action rows remain immediately above the shared
@@ -5390,7 +5442,7 @@ The controller action row's direct <strong>CANCEL</strong> action, or Back from 
 list, restores the complete route snapshot from when ROUTE opened.</p>
 <p>An internal melodic route stores the engine identity together with that
 engine's stable instrument identity. Moj Sint identities include their
-synthesis model, so equal instrument names in different models cannot collide.
+synthesis model, so equal patch names in different models cannot collide.
 An SHR Drums route instead stores the
 stable kit ID and remains independent of the melodic engine choice. Applying a
 different kit resets tuning overrides owned by the prior kit while retaining
@@ -12009,6 +12061,10 @@ JACK callback deadlines as a release build.</p>
 <li><code>SHSYNTH_PRESET_DIR=$SHSYNTH_USER_DIR/presets/synthv1</code>;</li>
 <li><code>SHSYNTH_LOOP_INBOX=$SHSYNTH_USER_DIR/data/shsynth/loop-inbox</code>.</li>
 </ul>
+<p>Playback Moj Sint user saves derive their private root from the same isolated
+<code>XDG_DATA_HOME</code> as <code>$XDG_DATA_HOME/moj-sint/presets</code> unless
+<code>SHSYNTH_MOJ_PRESET_DIR</code> explicitly selects another private absolute path. The
+launcher does not seed that user-sound tree from the public Moj Sint catalog.</p>
 <p>It requires an executable SHR-DAW binary, creates the private preset directory,
 copies only missing public presets into it, and then replaces itself with
 <code>setup.sh --state-dir &quot;$XDG_STATE_HOME/shsynth&quot;</code>. The shared wizard seeds only
@@ -14676,6 +14732,45 @@ migrate to it in memory. Discovery and Ideas retain typed model identity,
 Project/FT2 routes use model-qualified stable instrument IDs with legacy
 unqualified Model D lookup, and Playback selects its twelve labels from the
 loaded model while controller configuration remains only POT1–12 positions.</p>
+<p>The next Moj Sint integration keeps that one managed engine and adds Six-Op PM
+as its second selectable model. Strict schema 5 has model-specific patch and
+macro fields; schema 4 and older remain Model D migrations. Discovery contains
+seven Model D and six Six-Op PM starts. FT2 ROUTE presents <code>ENGINE → MODEL → PATCH</code> for Moj Sint, constrains patch browsing to the selected model, and keeps
+the existing whole-route Apply/Cancel transaction. Playback renders the
+selected model's twelve labels. This is software integration only: connected
+JACK, audible, physical-control, and native callback acceptance remain open.</p>
+<p>The 2026-08-01 locked software gate used Rust 1.97.1 on AArch64. Focused Moj
+schema/control/engine and Route hierarchy tests passed, then the complete
+normal SHR suite passed 892 tests with zero failures and 12 existing ignored
+development/audition tests in 49.07 seconds. Locked check and the explicit
+debug build passed; the build completed in 1 minute 51 seconds at
+<code>target/debug/shr</code>, then a final legacy-route regression refresh completed in
+1 minute 19 seconds. Moj Sint's own all-target/all-feature normal suite passed
+273 tests with 34 explicitly ignored historical classes, and its debug binary
+validated all 13 tracked presets. No JACK, synth process, MIDI, playback,
+recording, audible, or hardware action was run.</p>
+<p>Playback <code>SAVE</code> now owns instrument-preset persistence for synthv1 and Moj
+Sint. Its canonical overlay exposes explicit Overwrite, Save New, and Cancel
+through controller, keyboard, encoder, and mouse dispatch. Factory, system,
+public-checkout, unsupported-backend, and symlink-backed sounds remain
+read-only; Overwrite on a read-only supported sound visibly redirects to the
+next private <code>User NNN</code> name. Moj saves use strict schema 5 and separate Model D
+and Six-Op PM directories. Synthv1 saves preserve the complete source XML while
+replacing only the preset name and twelve mapped values. A successful save
+refreshes Presets and FT2 ROUTE immediately, becomes the RESET baseline,
+re-arms pickup, and neither restarts the engine nor releases notes. Only an
+active Tracker route owner is retargeted; standalone Player saves and unrelated
+Project routes are untouched. Cancel and failure preserve cursor/list state,
+values, held notes, and the live session; failure keeps the overlay and prior
+file intact.</p>
+<p>The user-save acceptance gate used exact Rust 1.97.1. Two final locked SHR
+default-suite runs each passed 902 tests with zero failures and 12 intentionally
+ignored development/audition tests. Moj Sint's locked all-target/all-feature
+suite passed 276 tests with zero failures and 34 historical render, research,
+publication, and native-benchmark tests ignored. Formatting, locked checks,
+fresh debug builds, and diff checks passed in both repositories. No release
+build, screenshot batch, JACK, synth, MIDI, playback, recording, audible, or
+physical-hardware test ran during that gate.</p>
 <p>The locked 0.4.6 combined gate used Rust 1.97.1
 (<code>8bab26f4f68e0e26f0bb7960be334d5b520ea452</code>). Focused graph ownership,
 monitor/UI, Recorder LEVELS, and four observed regression tests passed. The
@@ -14728,13 +14823,13 @@ Drums averaged 15.16–27.66% of the 2.667 ms deadline and its worst measured
 callback was 0.903 ms. The prior unoptimized DEV artifact held about 89% of one
 CPU and produced thousands of <code>shr-drums</code> JACK deadline errors per minute,
 while temperature, throttle, memory, swap, and I/O were healthy.
-Playback labels MIDI-take persistence as <code>IDEA+</code>, not an
-instrument save, and <code>SOUNDS</code> returns directly to Presets and its visible
-<code>LOAD</code>. In-app and terminal MIDI Learn now capture the complete optional
-encoder-Shift gesture. Holding Shift, turning left once, then releasing records
-both the modifier and either the ordinary rotary CC or its separate
-shifted CC. The bundled MiniLab 3 default now mirrors the owner's current
-learned map: ordinary encoder CC114, click CC115, Shift CC9, shifted encoder
+Playback keeps MIDI-take persistence on Ideas; its SOUND page uses <code>SAVE</code> for
+the current synthv1 or Moj Sint instrument, and <code>SOUNDS</code> returns directly to
+Presets and its visible <code>LOAD</code>. In-app and terminal MIDI Learn now capture the
+complete optional encoder-Shift gesture. Holding Shift, turning left once, then
+releasing records both the modifier and either the ordinary rotary CC or its
+separate shifted CC. The bundled MiniLab 3 default now mirrors the owner's
+current learned map: ordinary encoder CC114, click CC115, Shift CC9, shifted encoder
 CC112, the twelve mapped controls, and eight channel-10 command pads. The
 earlier reviewed DAW-mode CC27/CC29 pair remains a catalog-declared in-memory
 compatibility variant rather than the fresh-profile default. The locked
@@ -15081,7 +15176,10 @@ canonical collaboration rule in <code>AGENTS.md</code>.</p>
 <code>$HOME/.local/bin/shr</code> link still points to the removed former checkout and
 must not be used. The launcher uses <code>target/debug/shr</code> unless <code>SHSYNTH_BIN</code> is
 explicitly set; the debug TUI shows <code>DEV</code>. Do not restore the obsolete
-release-binary alias.</p>
+release-binary alias. Repository-local runtime metadata selects the companion
+Moj Sint checkout's fresh debug binary and public preset catalog; Playback user
+sounds remain in the separate ignored private data root and were not inspected
+during this configuration check.</p>
 <h4 id="doc-workspace_handoff--dated-dspjack-closure-record-2026-07-22" tabindex="-1">Dated DSP/JACK closure record (2026-07-22)<a class="heading-anchor" href="#doc-workspace_handoff--dated-dspjack-closure-record-2026-07-22" aria-label="Link to Dated DSP/JACK closure record (2026-07-22)">#</a></h4>
 <p>This section records the completed DSP closure pass. It added validated
 FFT/alias analyzers; centered four-point Lagrange interpolation for delay,

@@ -49,6 +49,19 @@ validates schema 1–5 before showing them. Schema 5 selects `model_d` or
 migrate to Model D in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by `LOAD` as
 `moj-sint --client-name NAME --preset FILE`.
+Playback user saves add the private XDG Moj Sint preset root to discovery and
+store Model D and Six-Op PM beneath separate model directories. Repository-local
+launches keep that root below ignored `user/`. `SHSYNTH_MOJ_PRESET_DIR` may
+select another explicitly private root; public checkout, factory, system, and
+symlink paths remain read-only. The destination must be an absolute normalized
+path; symlinked roots, parents, model directories, and preset files are refused.
+Synthv1 uses the existing private `SHSYNTH_PRESET_DIR` override or its XDG user
+preset directory. Save New allocates the first unused `User NNN` name without
+replacement. Overwrite is available only for a regular numbered file in that
+private root. Serialization and strict format validation finish before atomic
+publication, so a failed save leaves the prior file, live values, held notes,
+and engine session unchanged.
+
 | Managed MIDI/audio | `midi.autoconnect`; legacy ordered controller fallbacks in repeated `midi.input`; `midi.controller_musical_input`; simultaneous repeated `midi.performance_input`; `audio.autoconnect`, exactly two preferred `audio.output` entries, ordered `audio.internal_output=NAME|LEFT|RIGHT` fallbacks, final optional `audio.headphone_output=NAME|LEFT|RIGHT`; optional `audio.engine_cpu` |
 | Owned final bus | `audio.graph.enabled`, `.client`, `.maximum_callback_frames` (1–4096), `.input`, monitoring confirmations |
 | External tracker MIDI | `external_midi.enabled`, `.client`, `.output`, `.max_tracks`, repeated `.channel`, `.melody_channel`, optional `.percussion_channel` and `.percussion_program`, `.percussion_input_base`, repeated `.percussion_note`, `.bank_select` (`off`, `cc0`, or `cc0+cc32`), `.program_changes`, `.send_transport`, `.default_tempo` (decimal 20.00–300.00), private `.import_directory`, `.pattern_rows` (1–256), `.steps_per_beat` (1–16), `.live_thru`, `.profile`, `.gate_percent` (1–100), `.gesture_settle_ms` |

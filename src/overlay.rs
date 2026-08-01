@@ -19,6 +19,7 @@ pub enum OverlayKind {
     TrackerNoteLength,
     TrackerAdvance,
     TrackerEntryLayout,
+    PresetSave,
     LoopLibrary,
     MixEffects,
 }
@@ -41,6 +42,7 @@ impl OverlayKind {
             Action::OpenNoteLengthOverlay => Some(Self::TrackerNoteLength),
             Action::OpenTrackerAdvanceOverlay => Some(Self::TrackerAdvance),
             Action::OpenEntryLayoutOverlay => Some(Self::TrackerEntryLayout),
+            Action::OpenPresetSaveOverlay => Some(Self::PresetSave),
             Action::LoopImport | Action::OpenLoopLibrary => Some(Self::LoopLibrary),
             Action::OpenEffectsOverlay => Some(Self::MixEffects),
             _ => None,
@@ -57,6 +59,7 @@ impl OverlayKind {
             Self::TrackerNoteLength => "NOTE LENGTH",
             Self::TrackerAdvance => "EDIT ADD",
             Self::TrackerEntryLayout => "PAGE NOTE ENTRY",
+            Self::PresetSave => "SAVE USER SOUND",
             Self::LoopLibrary => "LOOP BROWSER",
             Self::MixEffects => "EFFECTS ROUTING",
         }
@@ -260,6 +263,13 @@ impl OverlayState {
             let slot = navigation::ROUTE_OVERLAY_PAGE.slots.get(item).copied()?;
             return slot.dispatch().map(|action| (slot.label, action));
         }
+        if self.kind == OverlayKind::PresetSave {
+            let slot = navigation::PRESET_SAVE_OVERLAY_PAGE
+                .slots
+                .get(item)
+                .copied()?;
+            return slot.dispatch().map(|action| (slot.label, action));
+        }
         if self.launcher.item == item {
             return Some((self.launcher.label, self.launcher.action));
         }
@@ -412,6 +422,32 @@ mod controller_tests {
         assert_eq!(
             state.controller_action(3),
             Some(("CANCEL", Action::CancelRouteOverlay))
+        );
+    }
+
+    #[test]
+    fn preset_save_overlay_exposes_overwrite_new_and_cancel_actions() {
+        let state = overlay(
+            OverlayKind::PresetSave,
+            OverlayLauncher {
+                action: Action::OpenPresetSaveOverlay,
+                label: "SAVE",
+                page: 1,
+                item: 1,
+            },
+        );
+        assert_eq!(
+            state.controller_action(0),
+            Some(("OVER", Action::OverwritePreset))
+        );
+        assert_eq!(
+            state.controller_action(1),
+            Some(("NEW", Action::SaveNewPreset))
+        );
+        assert_eq!(state.controller_action(2), None);
+        assert_eq!(
+            state.controller_action(3),
+            Some(("CANCEL", Action::CancelPresetSave))
         );
     }
 }
