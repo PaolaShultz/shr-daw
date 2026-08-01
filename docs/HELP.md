@@ -108,10 +108,10 @@ scale keep their pitch and sound normally; notes outside it stay silent.
 Pressing N00B again restores all chromatic notes. Changing or leaving the
 filter releases held notes first.
 
-Playback `SAVE` offers OVERWRITE, SAVE NEW, and CANCEL for synthv1 and Moj
-Sint. Factory or system sounds are read-only, so Overwrite clearly redirects
-to a new private `User NNN` sound. A saved sound becomes the current RESET
-baseline without restarting the engine or changing its values. Use the overlay
+Playback and FT2 PARAM `SAVE` offer OVERWRITE, SAVE NEW, and CANCEL for
+synthv1 and Moj Sint. Factory or system sounds are read-only, so Overwrite
+clearly redirects to a new private `User NNN` sound. A saved sound becomes the
+current RESET baseline without restarting the engine or changing its values. Use the overlay
 with the controller, encoder/Enter, or mouse; keyboard `O`, `N`, and `C` select
 its three actions while `S` remains Panic. Unsupported backends show SAVE
 UNAVAILABLE. A storage or format failure leaves the overlay open and preserves
@@ -253,6 +253,21 @@ channel, bank, program, profile name, and availability. Turning an active field
 validates and applies the choice to the Project and live route. `APPLY ROUTING`
 keeps the result. `CANCEL` or Back from the main list restores the route from
 when ROUTE opened; Back during field editing restores that field first.
+
+Normal FT2 page 3 is `SOUND`, with `PARAM` as its only launcher. PARAM opens a
+tracker-owned view of the current software instrument without entering Player
+or replacing the tracker engine. It uses the same 12 mapped labels, values,
+relative-to-preset colours, held-note display, and POT pickup behavior as
+Playback. Instrument choice stays in ROUTE; there is no second sound browser.
+
+PARAM SOUND provides RESET, SAVE, N00B, and one empty position. RESET restores
+the existing baseline in place and re-arms pickup without restarting the engine
+or releasing notes. SAVE uses the normal preset-save overlay; successful save
+becomes the new RESET baseline and changes only the matching active FT2 route.
+PARAM SYS provides PANIC, an empty position, HELP, and EXIT. Unsupported
+backends visibly have no editable or saveable parameters. Back/Esc or EXIT
+returns to the exact Pattern/order/page/lane/column/row, FT2 mode, transport,
+route, N00B state, live values, and launching SOUND page.
 
 With controller clock enabled, SHR sends the current/default tempo at 24 PPQN
 to one exact controller MIDI port while the app is open; tracker transport adds

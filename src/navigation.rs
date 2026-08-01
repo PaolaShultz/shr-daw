@@ -26,12 +26,13 @@ pub enum Screen {
     MasterStripAdvanced,
     Meter,
     Routing,
+    TrackerParameters,
 }
 
 impl Screen {
-    pub const COUNT: usize = 21;
+    pub const COUNT: usize = 22;
     #[cfg(test)]
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 22] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -53,6 +54,7 @@ impl Screen {
         Self::MasterStripAdvanced,
         Self::Meter,
         Self::Routing,
+        Self::TrackerParameters,
     ];
 
     pub const fn index(self) -> usize {
@@ -78,6 +80,7 @@ impl Screen {
             Self::MasterStripAdvanced => 18,
             Self::Meter => 19,
             Self::Routing => 20,
+            Self::TrackerParameters => 21,
         }
     }
 
@@ -105,6 +108,7 @@ impl Screen {
             Self::MasterStripAdvanced => "STRIP DETAIL",
             Self::Meter => "MIX",
             Self::Routing => "ROUTING",
+            Self::TrackerParameters => "FT2 PARAM",
         }
     }
 }
@@ -129,6 +133,7 @@ pub enum Action {
     OpenHelp,
     OpenControllerLearn,
     OpenTracker,
+    OpenTrackerParameters,
     OpenTrackerFiles,
     OpenTrackerArrange,
     OpenLivePatterns,
@@ -430,6 +435,29 @@ const PRESETS: [MenuPage; 4] = [
         ],
     ),
 ];
+
+const TRACKER_PARAMETERS: [MenuPage; 4] = [
+    page(
+        "SOUND",
+        [
+            on("RESET", Action::ResetParameters),
+            on("SAVE", Action::OpenPresetSaveOverlay),
+            on("N00B", Action::TrackerNoobToggle),
+            off(""),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
 const PLAYBACK: [MenuPage; 4] = [
     page(
         "PLAY",
@@ -509,7 +537,15 @@ const TRACKER: [MenuPage; 4] = [
             on("ROUTE", Action::OpenRouteOverlay),
         ],
     ),
-    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SOUND",
+        [
+            on("PARAM", Action::OpenTrackerParameters),
+            off(""),
+            off(""),
+            off(""),
+        ],
+    ),
     page(
         "SYS",
         [
@@ -1355,6 +1391,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::Tracker, MenuContext::TrackerRecord) => &TRACKER_RECORD,
         (Screen::Tracker, MenuContext::TrackerEdit) => &TRACKER_EDIT,
         (Screen::Tracker, _) => &TRACKER,
+        (Screen::TrackerParameters, _) => &TRACKER_PARAMETERS,
         (Screen::TrackerFiles, MenuContext::PatternClear) => &PATTERN_CLEAR,
         (Screen::TrackerFiles, MenuContext::PatternTools) => &PATTERN_TOOLS,
         (Screen::TrackerFiles, MenuContext::DrumPatterns) => &DRUM_PATTERNS,
@@ -1475,6 +1512,37 @@ mod tests {
     }
 
     #[test]
+    fn normal_ft2_sound_page_launches_the_tracker_parameter_view() {
+        let sound = pages(Screen::Tracker, MenuContext::Normal)[2];
+        assert_eq!(sound.label, "SOUND");
+        assert_eq!(
+            sound.slots.map(MenuSlot::dispatch),
+            [Some(Action::OpenTrackerParameters), None, None, None]
+        );
+
+        let parameters = pages(Screen::TrackerParameters, MenuContext::Normal);
+        assert_eq!(parameters[0].label, "SOUND");
+        assert_eq!(
+            parameters[0].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::ResetParameters),
+                Some(Action::OpenPresetSaveOverlay),
+                Some(Action::TrackerNoobToggle),
+                None,
+            ]
+        );
+        assert_eq!(
+            parameters[3].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::StopAll),
+                None,
+                Some(Action::OpenHelp),
+                Some(Action::Back),
+            ]
+        );
+    }
+
+    #[test]
     fn forty_column_controller_labels_fit_without_truncation() {
         const MAX_BUTTON_TEXT: usize = 7;
         for screen in Screen::ALL {
@@ -1517,6 +1585,7 @@ mod tests {
             (Screen::Tracker, MenuContext::TrackerEdit),
             (Screen::Tracker, MenuContext::TrackerRecord),
             (Screen::Tracker, MenuContext::TrackerNoteEdit),
+            (Screen::TrackerParameters, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::PatternClear),
             (Screen::TrackerFiles, MenuContext::PatternTools),

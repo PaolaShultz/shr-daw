@@ -794,6 +794,7 @@ struct App {
     tracker_track: usize,
     tracker_advance: usize,
     tracker_mode: TrackerMode,
+    tracker_parameter_parent_menu_page: usize,
     tracker_noob: bool,
     tracker_recording: Option<TrackerRecording>,
     note_editor: Option<NoteEditor>,
@@ -1186,6 +1187,7 @@ fn is_tracker_screen(screen: Screen) -> bool {
             | Screen::TrackerArrange
             | Screen::TrackerPages
             | Screen::TrackerTools
+            | Screen::TrackerParameters
             | Screen::LivePatterns
             | Screen::TrackerLoop
             | Screen::TrackerLoopAlign
@@ -1811,6 +1813,7 @@ impl App {
             tracker_track: 0,
             tracker_advance: 1,
             tracker_mode: TrackerMode::Play,
+            tracker_parameter_parent_menu_page: 0,
             tracker_noob: false,
             tracker_recording: None,
             note_editor: None,
@@ -2880,7 +2883,9 @@ impl App {
                 caller == Screen::Tracker && self.tracker_mode == TrackerMode::Edit
             }
             OverlayKind::TrackerEntryLayout => caller == Screen::TrackerPages,
-            OverlayKind::PresetSave => caller == Screen::Playback,
+            OverlayKind::PresetSave => {
+                matches!(caller, Screen::Playback | Screen::TrackerParameters)
+            }
             OverlayKind::TrackerPatternLength => {
                 caller == Screen::TrackerFiles && self.confirm_pattern_clear
             }
@@ -3830,6 +3835,25 @@ impl App {
         }
     }
 
+    fn open_tracker_parameters(&mut self) {
+        if self.screen != Screen::Tracker {
+            return;
+        }
+        self.tracker_parameter_parent_menu_page = self.menu_page();
+        self.set_screen(Screen::TrackerParameters);
+        self.status.clear();
+    }
+
+    fn close_tracker_parameters(&mut self) {
+        if self.screen != Screen::TrackerParameters {
+            return;
+        }
+        let parent_menu_page = self.tracker_parameter_parent_menu_page;
+        self.set_screen(Screen::Tracker);
+        self.menu_page_by_screen[Screen::Tracker.index()] = parent_menu_page.min(3);
+        self.status.clear();
+    }
+
     fn screen_keeps_playback_workspace_active(&self, screen: Screen) -> bool {
         screen == Screen::Playback
             || (is_fx_screen(screen) && self.fx_rack_parent == Screen::Playback)
@@ -4166,6 +4190,7 @@ impl App {
             return true;
         }
         let preset = resolved.primary.clone();
+        let initial_values = engine::initial_values(&preset).ok();
         let owner = EngineOwner::Tracker(plan.primary_route().unwrap().clone());
         let tracker_plan = resolved.plan.clone();
         let fluid_parts = resolved.fluid_parts.clone();
@@ -4189,7 +4214,14 @@ impl App {
             &fluid_parts,
             &state,
         ) {
-            Ok(_) => true,
+            Ok(_) => {
+                if let Some(initial_values) = initial_values {
+                    self.original_values = initial_values.clone();
+                    self.values = initial_values;
+                    self.arm_pickup();
+                }
+                true
+            }
             Err(_error) => {
                 self.status = if gm_drums {
                     "GM DRUMS START FAILED · route silent · retry".into()
@@ -10272,7 +10304,9 @@ impl App {
             || self.song_previewing
         {
             TransportIndicator::Play
-        } else if self.screen == Screen::Tracker && self.tracker_mode == TrackerMode::Play {
+        } else if matches!(self.screen, Screen::Tracker | Screen::TrackerParameters)
+            && self.tracker_mode == TrackerMode::Play
+        {
             TransportIndicator::Pause
         } else {
             TransportIndicator::Stop
@@ -13654,6 +13688,7 @@ fn perform(
             Screen::TrackerArrange => a.arrangement_jump_to_pattern(),
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::TrackerTools => {}
+            Screen::TrackerParameters => {}
             Screen::LivePatterns => {
                 if a.live_shape_focus.take().is_some() {
                     a.status = "Live Pattern browse".into();
@@ -13729,6 +13764,7 @@ fn perform(
                 }
             }
         }
+        Action::OpenTrackerParameters => a.open_tracker_parameters(),
         Action::OpenTrackerFiles => {
             if a.screen == Screen::TrackerPages {
                 a.confirm_page_manager();
@@ -13843,6 +13879,10 @@ fn perform(
         Action::BusMute => a.toggle_bus_mute(),
         Action::FinalRecordToggle => a.toggle_final_recording(),
         Action::Back => {
+            if a.screen == Screen::TrackerParameters {
+                a.close_tracker_parameters();
+                return false;
+            }
             if a.screen == Screen::Tracker && a.tracker_mode == TrackerMode::Edit {
                 a.set_tracker_edit(false);
                 a.status = "EDIT off".into();
@@ -13924,6 +13964,7 @@ fn perform(
                 | Screen::TrackerArrange
                 | Screen::TrackerPages
                 | Screen::TrackerTools
+                | Screen::TrackerParameters
                 | Screen::LivePatterns
                 | Screen::TrackerLoop => Screen::Tracker,
                 Screen::TrackerLoopAlign => Screen::TrackerLoop,
@@ -15184,6 +15225,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerTools => {
             draw_tracker_child(f, "FT2 TOOLS", "Arrange · Live Patterns · Loop Mix · FX")
         }
+        Screen::TrackerParameters => draw_tracker_parameters(f, a),
         Screen::LivePatterns => draw_live_patterns(f, a),
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
@@ -18511,16 +18553,39 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         list,
     );
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SynthParameterContext {
+    Playback,
+    Tracker,
+}
+
 fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    draw_synth_parameters(f, a, SynthParameterContext::Playback);
+}
+
+fn draw_tracker_parameters<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    draw_synth_parameters(f, a, SynthParameterContext::Tracker);
+}
+
+fn draw_synth_parameters<B: Backend>(
+    f: &mut Frame<B>,
+    a: &mut App,
+    context: SynthParameterContext,
+) {
     let z = f.size();
     let header = rect(z.x, z.y, z.width, 1);
     let actions = rect(z.x, z.y + z.height - 3, z.width, 2);
     let params = rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4));
-    let name = a
+    let sound_name = a
         .playing
         .as_ref()
         .map(|p| format!("{} · {}", p.backend.label(), p.name))
         .unwrap_or_else(|| "none".into());
+    let name = if context == SynthParameterContext::Tracker {
+        format!("FT2 · {sound_name}")
+    } else {
+        sound_name
+    };
     f.render_widget(
         Paragraph::new(BUILD_BADGE).style(
             Style::default()
@@ -18543,11 +18608,20 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             ),
         rect(header.x + 4, header.y, header.width.saturating_sub(8), 1),
     );
+    let tracker_noob = a.tracker_noob && a.current_page().is_some_and(|page| !page.percussion);
+    let noob = match context {
+        SynthParameterContext::Playback => a.playback_noob,
+        SynthParameterContext::Tracker => tracker_noob,
+    };
     let (mode, color) = if a.pad_locked {
         ("LCK", Color::Red)
-    } else if a.idea_mode == IdeaMode::Record {
+    } else if context == SynthParameterContext::Tracker && a.tracker_mode == TrackerMode::Rec {
+        ("REC", Color::Yellow)
+    } else if context == SynthParameterContext::Tracker && a.tracker_mode == TrackerMode::Edit {
+        ("EDT", Color::Yellow)
+    } else if context == SynthParameterContext::Playback && a.idea_mode == IdeaMode::Record {
         ("R-M", Color::Yellow)
-    } else if a.playback_noob {
+    } else if noob {
         ("N0B", Color::Yellow)
     } else {
         ("", Color::White)
@@ -18630,14 +18704,14 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         }
     } else {
         f.render_widget(
-            Paragraph::new("SoundFont/instrument engine\n\nMusical MIDI is routed normally.\nNo synthv1 parameter mapping is imposed.")
+            Paragraph::new("No editable mapped parameters\n\nMusical MIDI is routed normally.\nSAVE is unavailable for this backend.")
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(Color::DarkGray)),
             inner,
         );
     }
-    let scale_rows = if a.playback_noob { 1 } else { 0 };
-    if a.playback_noob {
+    let scale_rows = if noob { 1 } else { 0 };
+    if noob {
         f.render_widget(
             Paragraph::new(Spans::from(vec![
                 Span::styled("SCALE ", Style::default().fg(Color::DarkGray)),
@@ -21818,6 +21892,20 @@ mod tests {
         app.screen = Screen::Playback;
         app
     }
+    fn editable_tracker_parameter_app(base: &Path) -> App {
+        let mut app = editable_synth_app(base);
+        let source = app.playing.as_ref().unwrap();
+        let route = SoftwareRoute {
+            engine: source.backend,
+            instrument: source.route_id(),
+        };
+        app.current_page_mut().unwrap().target = PageTarget::Software(route.clone());
+        app.engine_owner = Some(EngineOwner::Tracker(route.clone()));
+        app.tracker_engine_plan = Some(app.software_plan_for_route(route, [0]));
+        app.screen = Screen::Tracker;
+        app.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        app
+    }
     fn monitor_app() -> App {
         let mut app = screenshot_app(RuntimeConfig::default());
         configure_screenshot_scenario(&mut app, ScreenshotScenario::MultichannelMonitor);
@@ -21845,6 +21933,235 @@ mod tests {
     ) -> crate::controller_learn::LearnAction {
         *now += Duration::from_millis(1);
         a.receive_controller_learn(*now, message)
+    }
+
+    #[test]
+    fn tracker_parameter_view_preserves_owner_route_transport_cursor_and_mode_on_return() {
+        let base = std::env::temp_dir().join(format!(
+            "shsynth-ui-tracker-param-state-{}",
+            std::process::id()
+        ));
+        let mut app = editable_tracker_parameter_app(&base);
+        app.tracker_order = 0;
+        app.tracker_row = 7;
+        app.tracker_page = 0;
+        app.tracker_track = 2;
+        app.tracker_noob = true;
+        app.noob_scale = Scale {
+            root: 9,
+            kind: ScaleKind::NaturalMinor,
+        };
+        app.song.project_key = app.noob_scale;
+        app.held_notes.observe(&[0x90, 60, 101]);
+        app.sequencer
+            .play(&app.song, app.tracker_order, app.tracker_row);
+        app.values.insert(74, 0.5);
+        app.arm_pickup();
+        assert!(!app.pickup.lock().unwrap().accept(74, 0.2));
+
+        let owner = app.engine_owner.clone();
+        let route = app.current_page().unwrap().target.clone();
+        let process = app.engine.as_ref().unwrap().process_id();
+        let transport = app.sequencer.status();
+        let cursor = (
+            app.tracker_order,
+            app.tracker_row,
+            app.tracker_page,
+            app.tracker_track,
+        );
+        let values = app.values.clone();
+
+        let (tx, _rx) = mpsc::channel();
+        dispatch_pad(
+            crate::pads::PadAction::Pad3,
+            true,
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+        dispatch_pad(
+            crate::pads::PadAction::Pad5,
+            true,
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(app.screen, Screen::TrackerParameters);
+        assert_eq!(app.engine_owner, owner);
+        assert_eq!(app.current_page().unwrap().target, route);
+        assert_eq!(app.engine.as_ref().unwrap().process_id(), process);
+        assert!(app.engine.as_mut().unwrap().alive());
+        assert_eq!(app.values, values);
+        assert!(app.held_notes.is_held(60));
+        assert!(app.tracker_noob);
+        assert_eq!(app.noob_scale, app.song.project_key);
+        assert_eq!(app.sequencer.status().playing, transport.playing);
+        assert_eq!(app.sequencer.status().generation, transport.generation);
+        assert_eq!(
+            (
+                app.tracker_order,
+                app.tracker_row,
+                app.tracker_page,
+                app.tracker_track,
+            ),
+            cursor
+        );
+        assert!(app.pickup.lock().unwrap().accept(74, 0.8));
+
+        perform(Action::Back, &mut app, Path::new("/none"), None);
+        assert_eq!(app.screen, Screen::Tracker);
+        assert_eq!(app.menu_page(), 2);
+        assert_eq!(app.engine_owner, owner);
+        assert_eq!(app.engine.as_ref().unwrap().process_id(), process);
+        assert_eq!(app.current_page().unwrap().target, route);
+        assert_eq!(app.sequencer.status().generation, transport.generation);
+        assert_eq!(
+            (
+                app.tracker_order,
+                app.tracker_row,
+                app.tracker_page,
+                app.tracker_track,
+            ),
+            cursor
+        );
+
+        for mode in [TrackerMode::Rec, TrackerMode::Edit] {
+            app.tracker_mode = mode;
+            app.open_tracker_parameters();
+            assert_eq!(app.tracker_mode, mode);
+            app.close_tracker_parameters();
+            assert_eq!(app.tracker_mode, mode);
+            assert_eq!(app.menu_page(), 2);
+        }
+    }
+
+    #[test]
+    fn fresh_tracker_engine_session_populates_parameter_values_and_reset_baseline() {
+        let base = std::env::temp_dir().join(format!(
+            "shsynth-ui-tracker-param-baseline-{}",
+            std::process::id()
+        ));
+        let mut app = editable_synth_app(&base);
+        let source = app.playing.clone().unwrap();
+        let expected = preset::values(&source).unwrap();
+        let route = SoftwareRoute {
+            engine: source.backend,
+            instrument: source.route_id(),
+        };
+        drop(app.engine.take());
+        app.engine_owner = None;
+        app.playing = None;
+        app.values.clear();
+        app.original_values.clear();
+        app.screen = Screen::Tracker;
+        app.current_page_mut().unwrap().target = PageTarget::Software(route.clone());
+        let plan = app.software_plan_for_route(route.clone(), [0]);
+
+        assert!(app.ensure_tracker_engine_plan(&plan));
+        assert_eq!(app.values, expected);
+        assert_eq!(app.original_values, expected);
+        assert_eq!(app.playing.as_ref(), Some(&source));
+        assert_eq!(app.engine_owner, Some(EngineOwner::Tracker(route)));
+        let target = expected[&74];
+        let far_position = if target < 0.5 { 1.0 } else { 0.0 };
+        assert!(!app.pickup.lock().unwrap().accept(74, far_position));
+        assert!(app.engine.as_mut().unwrap().alive());
+    }
+
+    #[test]
+    fn tracker_parameter_view_uses_existing_pot_pickup_and_renders_the_accepted_value() {
+        let base = std::env::temp_dir().join(format!(
+            "shsynth-ui-tracker-param-pot-{}",
+            std::process::id()
+        ));
+        let mut app = editable_tracker_parameter_app(&base);
+        app.values.insert(74, 0.5);
+        app.original_values.insert(74, 0.5);
+        app.arm_pickup();
+        app.open_tracker_parameters();
+        let owner = app.engine_owner.clone();
+        let process = app.engine.as_ref().unwrap().process_id();
+        let (tx, rx) = mpsc::channel();
+
+        for value in [0.1, 0.4] {
+            tx.send(MidiEvent::MappedControl(74, value)).unwrap();
+            if app.pickup.lock().unwrap().accept(74, value) {
+                tx.send(MidiEvent::Value(74, value)).unwrap();
+            }
+            drain(&rx, &mut app, Path::new("/none"), &tx);
+            assert_eq!(app.values.get(&74), Some(&0.5));
+        }
+
+        let value = 0.6;
+        tx.send(MidiEvent::MappedControl(74, value)).unwrap();
+        if app.pickup.lock().unwrap().accept(74, value) {
+            tx.send(MidiEvent::Value(74, value)).unwrap();
+        }
+        drain(&rx, &mut app, Path::new("/none"), &tx);
+        assert_eq!(app.values.get(&74), Some(&value));
+        assert!(buffer_text(&render_app(&mut app, 40, 13)).contains("0.60"));
+        assert_eq!(app.engine_owner, owner);
+        assert_eq!(app.engine.as_ref().unwrap().process_id(), process);
+        assert!(app.engine.as_mut().unwrap().alive());
+    }
+
+    #[test]
+    fn tracker_parameter_reset_is_in_place_keeps_notes_and_rearms_pickup() {
+        let base = std::env::temp_dir().join(format!(
+            "shsynth-ui-tracker-param-reset-{}",
+            std::process::id()
+        ));
+        let mut app = editable_tracker_parameter_app(&base);
+        app.original_values.insert(74, 0.5);
+        app.values.insert(74, 0.9);
+        app.held_notes.observe(&[0x90, 67, 99]);
+        app.arm_pickup();
+        assert!(app.pickup.lock().unwrap().accept(74, 0.9));
+        app.open_tracker_parameters();
+        let owner = app.engine_owner.clone();
+        let process = app.engine.as_ref().unwrap().process_id();
+
+        perform(Action::ResetParameters, &mut app, Path::new("/none"), None);
+
+        assert_eq!(app.values.get(&74), Some(&0.5));
+        assert!(!app.pickup.lock().unwrap().accept(74, 0.9));
+        assert!(app.held_notes.is_held(67));
+        assert_eq!(app.engine_owner, owner);
+        assert_eq!(app.engine.as_ref().unwrap().process_id(), process);
+        assert!(app.engine.as_mut().unwrap().alive());
+    }
+
+    #[test]
+    fn preset_save_cancel_restores_the_tracker_parameter_caller() {
+        let base = std::env::temp_dir().join(format!(
+            "shsynth-ui-tracker-param-save-cancel-{}",
+            std::process::id()
+        ));
+        let mut app = editable_tracker_parameter_app(&base);
+        app.tracker_row = 9;
+        app.tracker_track = 3;
+        app.held_notes.observe(&[0x90, 64, 88]);
+        app.open_tracker_parameters();
+        let owner = app.engine_owner.clone();
+        let values = app.values.clone();
+        let process = app.engine.as_ref().unwrap().process_id();
+
+        app.open_overlay(Action::OpenPresetSaveOverlay);
+        assert_eq!(
+            app.overlay.as_ref().map(|overlay| overlay.caller),
+            Some(Screen::TrackerParameters)
+        );
+        perform(Action::CancelPresetSave, &mut app, Path::new("/none"), None);
+
+        assert!(app.overlay.is_none());
+        assert_eq!(app.screen, Screen::TrackerParameters);
+        assert_eq!(app.menu_page(), 0);
+        assert_eq!(app.engine_owner, owner);
+        assert_eq!(app.values, values);
+        assert_eq!((app.tracker_row, app.tracker_track), (9, 3));
+        assert!(app.held_notes.is_held(64));
+        assert_eq!(app.engine.as_ref().unwrap().process_id(), process);
+        assert!(app.engine.as_mut().unwrap().alive());
     }
 
     #[test]
@@ -22044,7 +22361,14 @@ mod tests {
         app.engine_owner = Some(EngineOwner::Tracker(old_route.clone()));
         app.tracker_engine_plan = Some(app.software_plan_for_route(old_route.clone(), [0]));
         app.values.insert(74, 0.71);
+        app.screen = Screen::Tracker;
+        app.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        app.open_tracker_parameters();
         app.open_overlay(Action::OpenPresetSaveOverlay);
+        assert_eq!(
+            app.overlay.as_ref().map(|overlay| overlay.caller),
+            Some(Screen::TrackerParameters)
+        );
         app.save_current_user_preset(false);
 
         let saved = app.playing.as_ref().unwrap();
@@ -22059,6 +22383,8 @@ mod tests {
             app.engine_owner,
             Some(EngineOwner::Tracker(new_route.clone()))
         );
+        assert_eq!(app.screen, Screen::TrackerParameters);
+        assert!(app.engine.as_mut().unwrap().alive());
         assert!(app
             .tracker_engine_plan
             .as_ref()
@@ -23699,6 +24025,7 @@ release = 0.4
         render(40, 13, Screen::TrackerArrange);
         render(40, 13, Screen::TrackerPages);
         render(40, 13, Screen::TrackerTools);
+        render(40, 13, Screen::TrackerParameters);
         render(40, 13, Screen::TrackerLoop);
         render(40, 13, Screen::TrackerLoopAlign);
         render(40, 13, Screen::AudioRecorder);
@@ -23770,6 +24097,117 @@ release = 0.4
             assert!(text.contains(label), "missing {label} in\n{text}");
         }
         assert!(!text.contains("Evolve"));
+    }
+
+    #[test]
+    fn tracker_parameter_native_render_reuses_synthv1_and_each_moj_model_labels() {
+        let synthv1_presets = presets();
+        let mut synthv1 = app(&synthv1_presets);
+        synthv1.screen = Screen::TrackerParameters;
+        synthv1.playing = Some(synthv1_presets[0].clone());
+        synthv1.tracker_noob = true;
+        synthv1.values = CONTROLS
+            .iter()
+            .map(|control| (control.cc, control.min))
+            .collect();
+        synthv1.original_values = synthv1.values.clone();
+        synthv1.held_notes.observe(&[0x90, 60, 96]);
+        let synthv1_frame = render_app(&mut synthv1, 40, 13);
+        let synthv1_text = buffer_text(&synthv1_frame);
+        for control in CONTROLS {
+            assert!(
+                synthv1_text.contains(control.name),
+                "tracker parameter view omitted {}: {synthv1_text}",
+                control.name
+            );
+        }
+        let scale_label = format!(
+            "{} {}",
+            synthv1
+                .config
+                .note_naming
+                .pitch_name(synthv1.song.project_key.root),
+            synthv1.song.project_key.kind.label()
+        );
+        assert!(synthv1_text.contains(&scale_label));
+        assert!(synthv1_text.contains("FT2"));
+        assert!(row_text(&synthv1_frame, 12).starts_with('‖'));
+        assert!(CONTROLS
+            .iter()
+            .all(|control| !row_text(&synthv1_frame, 12).contains(control.name)));
+
+        let mut sentinel = BufferCell::default();
+        sentinel.set_symbol("~");
+        let mut backend = TestBackend::new(40, 13);
+        backend
+            .draw((0..40).map(|column| (column, 12, &sentinel)))
+            .unwrap();
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| draw_tracker_parameters(frame, &mut synthv1))
+            .unwrap();
+        assert!((0..40).all(|column| terminal.backend().buffer().get(column, 12).symbol == "~"));
+
+        synthv1.tracker_noob = false;
+        let held_notes = render_app(&mut synthv1, 40, 13);
+        assert!(buffer_text(&held_notes).contains("96"));
+
+        for model in [preset::MojModel::ModelD, preset::MojModel::SixOpPm] {
+            let mut moj = app(&presets());
+            moj.screen = Screen::TrackerParameters;
+            moj.playing = Some(moj_preset(model, model.label()));
+            moj.values = moj_controls(model)
+                .iter()
+                .map(|control| (control.cc, 0.5))
+                .collect();
+            moj.original_values = moj.values.clone();
+            let frame = render_app(&mut moj, 40, 13);
+            let text = buffer_text(&frame);
+            for control in moj_controls(model) {
+                assert!(
+                    text.contains(control.name),
+                    "{model:?} tracker parameter view omitted {}: {text}",
+                    control.name
+                );
+            }
+            assert!(row_text(&frame, 12).starts_with('‖'));
+            assert!(moj_controls(model)
+                .iter()
+                .all(|control| !row_text(&frame, 12).contains(control.name)));
+        }
+    }
+
+    #[test]
+    fn tracker_parameter_view_marks_unsupported_backends_uneditable_and_unsaveable() {
+        let fluid = gm_bass_preset();
+        let route = SoftwareRoute {
+            engine: fluid.backend,
+            instrument: fluid.route_id(),
+        };
+        let mut app = app(&presets());
+        app.playing = Some(fluid);
+        app.engine = Some(
+            Engine::start_test_process(BackendKind::FluidSynth, Arc::clone(&app.midi_output))
+                .unwrap(),
+        );
+        app.engine_owner = Some(EngineOwner::Tracker(route));
+        app.screen = Screen::TrackerParameters;
+
+        let frame = render_app(&mut app, 40, 13);
+        let body = (0..10).map(|row| row_text(&frame, row)).collect::<String>();
+        assert!(body.contains("No editable mapped parameters"));
+        assert!(body.contains("SAVE is unavailable"));
+        assert!(!body.contains("Flt cut"));
+        assert!(!body.contains("Evolve"));
+        assert!(!body.contains("Index"));
+
+        perform(Action::ResetParameters, &mut app, Path::new("/none"), None);
+        assert!(app.status.contains("no mapped-parameter reset"));
+        app.open_overlay(Action::OpenPresetSaveOverlay);
+        assert!(app.overlay.is_none());
+        assert!(app.status.starts_with("SAVE UNAVAILABLE"));
+        assert!(matches!(app.engine_owner, Some(EngineOwner::Tracker(_))));
+        assert!(app.engine.as_mut().unwrap().alive());
     }
 
     #[test]
@@ -24134,7 +24572,7 @@ release = 0.4
             let mut a = app(&p);
             a.screen = screen;
             let buffer = render_app(&mut a, 40, 13);
-            let expected = if screen == Screen::Tracker {
+            let expected = if matches!(screen, Screen::Tracker | Screen::TrackerParameters) {
                 '‖'
             } else {
                 '■'
@@ -25103,7 +25541,7 @@ release = 0.4
     #[test]
     fn debug_build_badge_is_visible_on_normal_and_playback_screens() {
         let p = presets();
-        for screen in [Screen::Presets, Screen::Playback] {
+        for screen in [Screen::Presets, Screen::Playback, Screen::TrackerParameters] {
             let mut a = app(&p);
             a.screen = screen;
             let backend = TestBackend::new(40, 20);
@@ -27723,6 +28161,7 @@ release = 0.4
             ),
             (Screen::Meter, None),
             (Screen::Routing, None),
+            (Screen::TrackerParameters, None),
         ];
         assert_eq!(expected.len(), Screen::ALL.len());
         for (screen, target) in expected {

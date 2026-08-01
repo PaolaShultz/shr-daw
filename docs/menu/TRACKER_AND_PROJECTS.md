@@ -65,6 +65,25 @@ SONG selects an Arrangement step and links to Arrangement or page tools.
 ROUTE opens the quick live route editor. Its complete field and rollback
 contract appears in [ROUTE master overlay](#route-master-overlay).
 
+### SOUND — current software instrument
+
+Normal FT2 page 3 is `SOUND`; `PARAM` is its only action. It opens an FT2-owned
+parameter child without changing the selected Pattern, Arrangement step, page,
+lane, column, cursor row, mode, transport, route, or managed-engine ownership.
+Back/Esc or SYS `EXIT` returns to that exact location and the launching SOUND
+page. Instrument selection remains in `ROUTE`.
+
+The child reuses Playback's current 12-control view, including the active
+synthv1 or Moj Sint model labels, live values, relative-to-preset colours,
+pickup, held notes, and native three-by-four layout. Its SOUND page contains
+`RESET`, `SAVE`, `N00B`, and one empty position. RESET restores the existing
+baseline in place and re-arms pickup without restarting the engine or releasing
+notes. SAVE uses the same Overwrite/Save New/Cancel overlay and private preset
+storage as Playback; a successful save becomes the new RESET baseline and
+retargets only the active matching FT2 route. Its SYS page contains `PANIC`, an
+empty position, `HELP`, and `EXIT`. Backends without mapped editable controls
+show parameters and SAVE as unavailable.
+
 ### SYS — safety, filter, help, and exit
 
 ![Populated FT2 Pattern in Play mode with the SYS page](../images/menu/ft2-play-sys.png)
