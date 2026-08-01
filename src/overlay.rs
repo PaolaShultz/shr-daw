@@ -95,6 +95,7 @@ impl OverlayLauncher {
 pub enum RouteField {
     Target,
     Engine,
+    Model,
     Instrument,
     MidiOutput,
     DeviceProfile,
@@ -105,13 +106,20 @@ pub enum RouteField {
 }
 
 impl RouteField {
-    pub const ROWS: usize = 22;
+    pub const ROWS: usize = 23;
 
     pub fn rows(page: &Page) -> Vec<Self> {
         let mut rows = Vec::with_capacity(Self::ROWS - 1);
         rows.push(Self::Target);
         if !matches!(page.target, PageTarget::InternalDrums(_)) {
             rows.push(Self::Engine);
+            if matches!(
+                page.target,
+                PageTarget::Software(ref route)
+                    if route.engine == crate::preset::BackendKind::MojSint
+            ) {
+                rows.push(Self::Model);
+            }
         }
         rows.extend([Self::Instrument, Self::MidiOutput, Self::DeviceProfile]);
         for column in 0..4 {
@@ -502,7 +510,23 @@ mod tests {
         assert_eq!(rows[0], RouteField::Target);
         assert_eq!(rows[1], RouteField::Instrument);
         assert!(!rows.contains(&RouteField::Engine));
-        assert_eq!(RouteField::row_count(&page), RouteField::ROWS - 1);
+        assert_eq!(RouteField::row_count(&page), RouteField::ROWS - 2);
+    }
+
+    #[test]
+    fn moj_sint_route_exposes_engine_model_and_patch_rows() {
+        let mut page = Page::new("MIDI", 0, false, 0);
+        page.target = PageTarget::Software(crate::sequencer::SoftwareRoute {
+            engine: crate::preset::BackendKind::MojSint,
+            instrument: "model_d/01 Full Bass".into(),
+        });
+
+        let rows = RouteField::rows(&page);
+
+        assert_eq!(rows[0], RouteField::Target);
+        assert_eq!(rows[1], RouteField::Engine);
+        assert_eq!(rows[2], RouteField::Model);
+        assert_eq!(rows[3], RouteField::Instrument);
     }
 
     #[test]

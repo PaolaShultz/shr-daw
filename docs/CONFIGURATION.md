@@ -44,8 +44,9 @@ accepts:
 Moj Sint defaults to command `moj-sint`, client/MIDI identity
 `shs-moj-sint`, and output short names `out_l` then `out_r`. Discovery indexes
 at most 512 regular, non-symlink `.mojsint` files of at most 1 MiB and strictly
-validates schema 1–4 before showing them. Schema 4 explicitly separates the
-Moj Sint host from `model_d`; schemas 1–3 migrate to that model in memory.
+validates schema 1–5 before showing them. Schema 5 selects `model_d` or
+`six_op_pm` and requires that model's exact patch and macro fields; schemas 1–4
+migrate to Model D in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by `LOAD` as
 `moj-sint --client-name NAME --preset FILE`.
 | Managed MIDI/audio | `midi.autoconnect`; legacy ordered controller fallbacks in repeated `midi.input`; `midi.controller_musical_input`; simultaneous repeated `midi.performance_input`; `audio.autoconnect`, exactly two preferred `audio.output` entries, ordered `audio.internal_output=NAME|LEFT|RIGHT` fallbacks, final optional `audio.headphone_output=NAME|LEFT|RIGHT`; optional `audio.engine_cpu` |
@@ -533,7 +534,8 @@ resulting **TRACKS** screen edits pages and columns. Use the main encoder to
 select a page. **ADD** creates
 another four-lane page in that Pattern. **TARGET** chooses `AUTO` (portable
 machine default), an internal software route, or external MIDI. An internal
-route then chooses **ENGINE** before **INSTR**; an external route chooses
+route then chooses **ENGINE** before **INSTR**. Moj Sint additionally chooses
+**MODEL** before **PATCH**; an external route chooses
 **MIDI OUT** before its per-column channel/bank/program values. `AUTO` displays an
 `AUTO` channel and does not permit channel/bank/program editing because those
 values would bind the Project to one machine. **CHANNEL**
@@ -546,7 +548,8 @@ controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
 
 FT2 **SELECT** → **ROUTE** is the quick route editor. Its 38×9 bordered overlay
-shows `TARGET`, `ENGINE`, `INSTR` or the SHR Drums `KIT`, `MIDI OUT`, optional
+shows `TARGET`, `ENGINE`, Moj Sint `MODEL` and `PATCH`, ordinary `INSTR`, or the
+SHR Drums `KIT`, plus `MIDI OUT`, optional
 `PROFILE`, and the 16 per-column channel/bank/program rows in a scrolling 36×7
 content area. The overlay begins at `(1,1)`, its content begins at `(2,2)`, and
 the standard controller page/action rows remain immediately above the shared
@@ -564,7 +567,7 @@ list, restores the complete route snapshot from when ROUTE opened.
 
 An internal melodic route stores the engine identity together with that
 engine's stable instrument identity. Moj Sint identities include their
-synthesis model, so equal instrument names in different models cannot collide.
+synthesis model, so equal patch names in different models cannot collide.
 An SHR Drums route instead stores the
 stable kit ID and remains independent of the melodic engine choice. Applying a
 different kit resets tuning overrides owned by the prior kit while retaining

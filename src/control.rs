@@ -189,6 +189,69 @@ pub const MOJ_MODEL_D_CONTROLS: [MojControl; 12] = [
     },
 ];
 
+pub const MOJ_SIX_OP_PM_CONTROLS: [MojControl; 12] = [
+    MojControl {
+        cc: 20,
+        name: "Index",
+        macro_id: "index",
+    },
+    MojControl {
+        cc: 21,
+        name: "Ratio",
+        macro_id: "ratio",
+    },
+    MojControl {
+        cc: 22,
+        name: "Feedback",
+        macro_id: "feedback",
+    },
+    MojControl {
+        cc: 23,
+        name: "Op Decay",
+        macro_id: "operator_decay",
+    },
+    MojControl {
+        cc: 24,
+        name: "Balance",
+        macro_id: "balance",
+    },
+    MojControl {
+        cc: 25,
+        name: "Key Scale",
+        macro_id: "key_scale",
+    },
+    MojControl {
+        cc: 26,
+        name: "Velocity",
+        macro_id: "velocity",
+    },
+    MojControl {
+        cc: 27,
+        name: "Motion",
+        macro_id: "motion",
+    },
+    MojControl {
+        cc: 28,
+        name: "Attack",
+        macro_id: "attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Decay",
+        macro_id: "decay",
+    },
+    MojControl {
+        cc: 30,
+        name: "Sustain",
+        macro_id: "sustain",
+    },
+    MojControl {
+        cc: 31,
+        name: "Release",
+        macro_id: "release",
+    },
+];
+
 // CC 20-31 are Moj Sint's stable twelve physical positions. Their displayed
 // meaning comes from the selected synthesis model, not controller.conf.
 pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
@@ -196,6 +259,7 @@ pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
 pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojControl; 12] {
     match model {
         crate::preset::MojModel::ModelD => &MOJ_MODEL_D_CONTROLS,
+        crate::preset::MojModel::SixOpPm => &MOJ_SIX_OP_PM_CONTROLS,
     }
 }
 
@@ -278,5 +342,32 @@ mod tests {
             ratatui::style::Color::LightYellow
         );
         assert_eq!(parameter_color(0.54, 0.5), ratatui::style::Color::Red);
+    }
+
+    #[test]
+    fn moj_models_share_positions_but_expose_model_specific_controls() {
+        let model_d = moj_controls(crate::preset::MojModel::ModelD);
+        let six_op = moj_controls(crate::preset::MojModel::SixOpPm);
+        assert_eq!(
+            model_d.map(|control| control.cc),
+            six_op.map(|control| control.cc)
+        );
+        assert_eq!(
+            six_op.map(|control| control.macro_id),
+            [
+                "index",
+                "ratio",
+                "feedback",
+                "operator_decay",
+                "balance",
+                "key_scale",
+                "velocity",
+                "motion",
+                "attack",
+                "decay",
+                "sustain",
+                "release",
+            ]
+        );
     }
 }

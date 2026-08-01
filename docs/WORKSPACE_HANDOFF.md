@@ -63,6 +63,26 @@ Project/FT2 routes use model-qualified stable instrument IDs with legacy
 unqualified Model D lookup, and Playback selects its twelve labels from the
 loaded model while controller configuration remains only POT1–12 positions.
 
+The next Moj Sint integration keeps that one managed engine and adds Six-Op PM
+as its second selectable model. Strict schema 5 has model-specific patch and
+macro fields; schema 4 and older remain Model D migrations. Discovery contains
+seven Model D and six Six-Op PM starts. FT2 ROUTE presents `ENGINE → MODEL →
+PATCH` for Moj Sint, constrains patch browsing to the selected model, and keeps
+the existing whole-route Apply/Cancel transaction. Playback renders the
+selected model's twelve labels. This is software integration only: connected
+JACK, audible, physical-control, and native callback acceptance remain open.
+
+The 2026-08-01 locked software gate used Rust 1.97.1 on AArch64. Focused Moj
+schema/control/engine and Route hierarchy tests passed, then the complete
+normal SHR suite passed 892 tests with zero failures and 12 existing ignored
+development/audition tests in 49.07 seconds. Locked check and the explicit
+debug build passed; the build completed in 1 minute 51 seconds at
+`target/debug/shr`, then a final legacy-route regression refresh completed in
+1 minute 19 seconds. Moj Sint's own all-target/all-feature normal suite passed
+273 tests with 34 explicitly ignored historical classes, and its debug binary
+validated all 13 tracked presets. No JACK, synth process, MIDI, playback,
+recording, audible, or hardware action was run.
+
 The locked 0.4.6 combined gate used Rust 1.97.1
 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`). Focused graph ownership,
 monitor/UI, Recorder LEVELS, and four observed regression tests passed. The

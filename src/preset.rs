@@ -90,18 +90,21 @@ pub enum PresetId {
 #[serde(rename_all = "snake_case")]
 pub enum MojModel {
     ModelD,
+    SixOpPm,
 }
 
 impl MojModel {
     pub const fn stable_id(self) -> &'static str {
         match self {
             Self::ModelD => "model_d",
+            Self::SixOpPm => "six_op_pm",
         }
     }
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::ModelD => "Model D",
+            Self::SixOpPm => "Six-Op PM",
         }
     }
 }
@@ -178,7 +181,11 @@ impl Preset {
                     .unwrap_or("soundfont");
                 Some(format!("{soundfont}:{bank}:{program}"))
             }
-            PresetId::MojSint { .. } => Some(self.name.clone()),
+            PresetId::MojSint {
+                model: MojModel::ModelD,
+                ..
+            } => Some(self.name.clone()),
+            PresetId::MojSint { .. } => None,
             _ => None,
         }
     }
@@ -306,11 +313,46 @@ struct MojPresetV4 {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV5ModelD {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    model: MojModel,
+    model_d_patch: MojModelDPatch,
+    macros: MojMacrosV2,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV5SixOp {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    model: MojModel,
+    six_op_patch: MojSixOpPatch,
+    macros: MojMacrosSixOp,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum MojModelDPatch {
     Bass,
     Lead,
     FilterArticulation,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MojSixOpPatch {
+    BellMetal,
+    FracturedMetal,
+    ElectricPianoMallet,
+    GlassWood,
+    BrassBass,
+    MechanicalStab,
 }
 
 #[derive(Deserialize)]
@@ -362,6 +404,23 @@ struct MojMacrosV2 {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct MojMacrosSixOp {
+    index: f32,
+    ratio: f32,
+    feedback: f32,
+    operator_decay: f32,
+    balance: f32,
+    key_scale: f32,
+    velocity: f32,
+    motion: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MojMacrosV1 {
     evolve: f32,
     shape: f32,
@@ -397,6 +456,25 @@ impl MojMacrosV2 {
     }
 }
 
+impl MojMacrosSixOp {
+    fn values(self) -> [f32; 12] {
+        [
+            self.index,
+            self.ratio,
+            self.feedback,
+            self.operator_decay,
+            self.balance,
+            self.key_scale,
+            self.velocity,
+            self.motion,
+            self.attack,
+            self.decay,
+            self.sustain,
+            self.release,
+        ]
+    }
+}
+
 fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
     let file = fs::OpenOptions::new()
         .read(true)
@@ -424,9 +502,48 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
     let (name, model, voices, output_gain, values) = match version {
+        5 => {
+            let model = value
+                .get("model")
+                .and_then(toml::Value::as_str)
+                .context("schema-5 Moj Sint preset has no model")?;
+            match model {
+                "model_d" => {
+                    let document: MojPresetV5ModelD = toml::from_str(&source)?;
+                    if document.schema_version != 5 || document.model != MojModel::ModelD {
+                        bail!("invalid schema-5 Model D identity");
+                    }
+                    let _validated_patch = document.model_d_patch;
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.macros.values(),
+                    )
+                }
+                "six_op_pm" => {
+                    let document: MojPresetV5SixOp = toml::from_str(&source)?;
+                    if document.schema_version != 5 || document.model != MojModel::SixOpPm {
+                        bail!("invalid schema-5 Six-Op PM identity");
+                    }
+                    let _validated_patch = document.six_op_patch;
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.macros.values(),
+                    )
+                }
+                _ => bail!("unknown schema-5 Moj Sint model"),
+            }
+        }
         4 => {
             let document: MojPresetV4 = toml::from_str(&source)?;
-            debug_assert_eq!(document.schema_version, 4);
+            if document.schema_version != 4 || document.model != MojModel::ModelD {
+                bail!("invalid schema-4 Moj Sint model identity");
+            }
             let _validated_patch = document.model_d_patch;
             (
                 document.name,
@@ -1179,6 +1296,43 @@ release = 0.6
         .unwrap();
         assert!(discover_moj_sint(std::slice::from_ref(&base)).is_err());
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn moj_sint_schema_five_discovers_six_op_model_and_strict_macros() {
+        let path =
+            std::env::temp_dir().join(format!("shsynth-six-op-{}.mojsint", std::process::id()));
+        let source = r#"
+schema_version = 5
+name = "08 Six-Op Bell Metal"
+voices = 4
+output_gain = 0.8
+model = "six_op_pm"
+six_op_patch = "bell_metal"
+[macros]
+index = 0.5
+ratio = 0.5
+feedback = 0.5
+operator_decay = 0.5
+balance = 0.5
+key_scale = 0.5
+velocity = 0.5
+motion = 0.5
+attack = 0.05
+decay = 0.35
+sustain = 0.8
+release = 0.25
+"#;
+        fs::write(&path, source).unwrap();
+        let (name, model, values) = read_moj_sint(&path).unwrap();
+        assert_eq!(name, "08 Six-Op Bell Metal");
+        assert_eq!(model, MojModel::SixOpPm);
+        assert_eq!(values.len(), 12);
+        assert_eq!(values.get(&20), Some(&0.5));
+
+        fs::write(&path, format!("{source}\nmodel_d_patch = \"bass\"\n")).unwrap();
+        assert!(read_moj_sint(&path).is_err());
+        let _ = fs::remove_file(path);
     }
 
     #[test]

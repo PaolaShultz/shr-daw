@@ -162,7 +162,8 @@ or changing its selected column. Its final row opens the full **TRACKS** screen.
 select a page, choose a column, set its target, channel, bank, and program, and
 open **SYS** → **ENTRY** to choose that page's note-entry layout.
 **DONE** validates shared-channel compatibility and keeps the changes. Internal
-routes use `TARGET → ENGINE → INSTR`; external routes use
+routes use `TARGET → ENGINE → INSTR`; Moj Sint inserts its explicit `MODEL →
+PATCH` hierarchy after `ENGINE`; external routes use
 `TARGET → MIDI OUT → CH → INSTR/PROG`. **SYS**
 → **EXIT** restores the Project as it was before TRACKS opened. A disconnected
 saved target is marked `OFFLINE` (or `AMBIG` for duplicate stable identities);
@@ -180,6 +181,12 @@ choices. Applying a different kit must start it before the
 route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.
+
+For Moj Sint, **ENGINE** stays `Moj Sint`, **MODEL** cycles Model D and Six-Op
+PM, and **PATCH** cycles only the installed starts belonging to that model.
+Changing the model selects its first available patch; changing patches never
+crosses the model boundary. These live field changes remain inside the same
+Route Apply/Cancel transaction.
 
 Turn and click/Enter to activate a field. Turning the active field validates
 and applies each choice to the Project and live route at once, so an available

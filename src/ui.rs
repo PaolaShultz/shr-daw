@@ -29,7 +29,7 @@ use crate::performance_meter::{
     self, AudioAvailability, AudioLevel, BarCell, LedState, MeterColor, PerformanceMeter,
     VISIBLE_CPU_CORES,
 };
-use crate::preset::{BackendKind, Catalog, Preset};
+use crate::preset::{self, BackendKind, Catalog, Preset};
 use crate::recording::{self, Recorder, TimedEvent};
 use crate::scale::{Scale, ScaleKind};
 use crate::sequencer::{
@@ -1357,6 +1357,73 @@ fn wrapped_index(current: usize, len: usize, direction: i8) -> usize {
         std::cmp::Ordering::Greater => (current + 1) % len,
         std::cmp::Ordering::Equal => current,
     }
+}
+
+fn moj_model_for_route(presets: &[Preset], route: &SoftwareRoute) -> Option<preset::MojModel> {
+    if route.engine != BackendKind::MojSint {
+        return None;
+    }
+    presets
+        .iter()
+        .find(|preset| {
+            preset.route_id() == route.instrument
+                || preset.legacy_route_id().as_deref() == Some(route.instrument.as_str())
+        })
+        .and_then(Preset::moj_model)
+        .or_else(|| {
+            [preset::MojModel::ModelD, preset::MojModel::SixOpPm]
+                .into_iter()
+                .find(|model| {
+                    route
+                        .instrument
+                        .starts_with(&format!("{}/", model.stable_id()))
+                })
+        })
+}
+
+fn adjusted_moj_model_route(
+    presets: &[Preset],
+    route: &SoftwareRoute,
+    direction: i8,
+) -> Option<SoftwareRoute> {
+    let mut models = presets
+        .iter()
+        .filter_map(Preset::moj_model)
+        .collect::<Vec<_>>();
+    models.sort_unstable();
+    models.dedup();
+    let current = moj_model_for_route(presets, route)
+        .and_then(|model| models.iter().position(|candidate| *candidate == model))
+        .unwrap_or(0);
+    let model = *models.get(wrapped_index(current, models.len(), direction))?;
+    presets
+        .iter()
+        .find(|preset| preset.moj_model() == Some(model))
+        .map(|preset| SoftwareRoute {
+            engine: BackendKind::MojSint,
+            instrument: preset.route_id(),
+        })
+}
+
+fn adjusted_patch_route(
+    presets: &[Preset],
+    route: &SoftwareRoute,
+    direction: i8,
+) -> Option<SoftwareRoute> {
+    let moj_model = moj_model_for_route(presets, route);
+    let choices = presets
+        .iter()
+        .filter(|preset| moj_model.is_none() || preset.moj_model() == moj_model)
+        .collect::<Vec<_>>();
+    let current = choices
+        .iter()
+        .position(|preset| preset.route_id() == route.instrument)
+        .unwrap_or(0);
+    let preset = choices.get(wrapped_index(current, choices.len(), direction))?;
+    Some(SoftwareRoute {
+        engine: route.engine,
+        instrument: preset.route_id(),
+    })
 }
 
 fn cycle_copy<T: Copy + PartialEq>(values: &[T], current: T, direction: i8) -> T {
@@ -3061,7 +3128,10 @@ impl App {
         if auto_route
             && !matches!(
                 field,
-                RouteField::Target | RouteField::Engine | RouteField::MidiOutput
+                RouteField::Target
+                    | RouteField::Engine
+                    | RouteField::Model
+                    | RouteField::MidiOutput
             )
         {
             self.status = "AUTO OWNS CH/BANK/PROG · select target".into();
@@ -3086,6 +3156,17 @@ impl App {
         });
         if field == RouteField::Engine && !software {
             self.status = "Select INTERNAL before engine/sound".into();
+            return;
+        }
+        let moj_software = current_page.as_ref().is_some_and(|page| {
+            matches!(
+                page.target,
+                PageTarget::Software(ref route)
+                    if route.engine == preset::BackendKind::MojSint
+            )
+        });
+        if field == RouteField::Model && !moj_software {
+            self.status = "Select Moj Sint before model".into();
             return;
         }
         if field == RouteField::Instrument && !software && !internal_drums {
@@ -3146,6 +3227,20 @@ impl App {
                         })
                     })
             }
+            RouteField::Model => {
+                let route = match &page.target {
+                    PageTarget::Software(route) if route.engine == preset::BackendKind::MojSint => {
+                        route
+                    }
+                    _ => return None,
+                };
+                let presets = &self
+                    .catalogs
+                    .iter()
+                    .find(|catalog| catalog.backend == preset::BackendKind::MojSint)?
+                    .presets;
+                adjusted_moj_model_route(presets, route, direction).map(PageTarget::Software)
+            }
             RouteField::Instrument => match &page.target {
                 PageTarget::Software(route) => {
                     let presets = &self
@@ -3153,15 +3248,7 @@ impl App {
                         .iter()
                         .find(|catalog| catalog.backend == route.engine)?
                         .presets;
-                    let current = presets
-                        .iter()
-                        .position(|preset| preset.route_id() == route.instrument)
-                        .unwrap_or(0);
-                    let preset = presets.get(wrapped_index(current, presets.len(), direction))?;
-                    Some(PageTarget::Software(SoftwareRoute {
-                        engine: route.engine,
-                        instrument: preset.route_id(),
-                    }))
+                    adjusted_patch_route(presets, route, direction).map(PageTarget::Software)
                 }
                 PageTarget::InternalDrums(kit) => {
                     let current = self
@@ -3231,6 +3318,7 @@ impl App {
         match field {
             RouteField::Target
             | RouteField::Engine
+            | RouteField::Model
             | RouteField::Instrument
             | RouteField::MidiOutput => {
                 if let Some(target) = selected_target {
@@ -17424,6 +17512,32 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 PageTarget::Software(route) => Some(route),
                 _ => None,
             };
+            let moj_preset = software
+                .filter(|route| route.engine == preset::BackendKind::MojSint)
+                .and_then(|route| {
+                    a.catalogs
+                        .iter()
+                        .find(|catalog| catalog.backend == preset::BackendKind::MojSint)
+                        .and_then(|catalog| {
+                            catalog
+                                .presets
+                                .iter()
+                                .find(|preset| preset.route_id() == route.instrument)
+                        })
+                });
+            let moj_model = moj_preset.and_then(preset::Preset::moj_model).or_else(|| {
+                software
+                    .filter(|route| route.engine == preset::BackendKind::MojSint)
+                    .and_then(|route| {
+                        [preset::MojModel::ModelD, preset::MojModel::SixOpPm]
+                            .into_iter()
+                            .find(|model| {
+                                route
+                                    .instrument
+                                    .starts_with(&format!("{}/", model.stable_id()))
+                            })
+                    })
+            });
             let drum_kit = match &page.target {
                 PageTarget::InternalDrums(id) => Some(
                     a.drum_kits
@@ -17444,8 +17558,12 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 || format!("TARGET · {target_kind}"),
                 |issue| crate::ui_text::label_value(&format!("TARGET · {target_kind}"), issue, 35),
             );
-            let instrument_label = drum_kit
-                .unwrap_or_else(|| software.map_or("—", |route| route.instrument.as_str()));
+            let instrument_label = drum_kit.unwrap_or_else(|| {
+                moj_preset.map_or_else(
+                    || software.map_or("—", |route| route.instrument.as_str()),
+                    |preset| preset.name.as_str(),
+                )
+            });
             let mut rows = vec![target];
             if drum_kit.is_none() {
                 rows.push(crate::ui_text::fixed_label_value(
@@ -17454,11 +17572,23 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                     software.map_or("—", |route| route.engine.label()),
                     35,
                 ));
+                if let Some(model) = moj_model {
+                    rows.push(crate::ui_text::fixed_label_value(
+                        "MODEL · ",
+                        9,
+                        model.label(),
+                        35,
+                    ));
+                }
             }
             rows.extend([
                 crate::ui_text::fixed_label_value(
                     if drum_kit.is_some() {
                         "KIT · "
+                    } else if software
+                        .is_some_and(|route| route.engine == preset::BackendKind::MojSint)
+                    {
+                        "PATCH · "
                     } else {
                         "INSTR · "
                     },
@@ -21385,6 +21515,17 @@ mod tests {
             },
         }
     }
+    fn moj_preset(model: preset::MojModel, name: &str) -> Preset {
+        Preset {
+            backend: BackendKind::MojSint,
+            name: name.into(),
+            category: Some(model.label().into()),
+            id: PresetId::MojSint {
+                model,
+                path: PathBuf::from(format!("{}.mojsint", name.replace(' ', "-"))),
+            },
+        }
+    }
     fn app(presets: &[Preset]) -> App {
         app_with_routing_defaults(presets, PathBuf::from("/none"))
     }
@@ -21704,7 +21845,8 @@ mod tests {
         if let Some(route) = a.overlay.as_mut().and_then(OverlayState::route_mut) {
             route.page.target = PageTarget::Midi("LONG CONNECTION NAME ".repeat(8));
         }
-        a.overlay.as_mut().unwrap().selection = RouteField::ROWS - 1;
+        let last = a.overlay_row_count() - 1;
+        a.overlay.as_mut().unwrap().selection = last;
         let buffer = render_app(&mut a, 40, 20);
         let overlay = a.overlay.as_ref().unwrap();
         assert!(overlay.scroll > 0);
@@ -22597,7 +22739,8 @@ mod tests {
         assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
         a.activate_overlay();
         assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
-        a.overlay.as_mut().unwrap().selection = RouteField::ROWS - 1;
+        let last = a.overlay_row_count() - 1;
+        a.overlay.as_mut().unwrap().selection = last;
         a.activate_overlay();
         assert!(a.overlay.is_none());
         assert_eq!(a.current_page().unwrap().columns[0].channel, 1);
@@ -22930,6 +23073,90 @@ mod tests {
         }
         assert!(!text.contains("Width"));
         assert!(!text.contains("No synthv1"));
+    }
+
+    #[test]
+    fn six_op_playback_uses_its_model_specific_twelve_controls() {
+        let presets = presets();
+        let mut app = app(&presets);
+        app.screen = Screen::Playback;
+        app.playing = Some(moj_preset(preset::MojModel::SixOpPm, "Six-Op Bell Metal"));
+        app.values = moj_controls(preset::MojModel::SixOpPm)
+            .iter()
+            .map(|control| (control.cc, 0.5))
+            .collect();
+        app.original_values = app.values.clone();
+        let text = buffer_text(&render_app(&mut app, 40, 13));
+        for label in [
+            "Index",
+            "Ratio",
+            "Feedback",
+            "Op Decay",
+            "Balance",
+            "Key Scale",
+            "Velocity",
+            "Motion",
+            "Attack",
+            "Decay",
+            "Sustain",
+            "Release",
+        ] {
+            assert!(text.contains(label), "missing {label} in\n{text}");
+        }
+        assert!(!text.contains("Evolve"));
+    }
+
+    #[test]
+    fn moj_route_model_and_patch_selection_preserve_the_engine_hierarchy() {
+        let moj_presets = vec![
+            moj_preset(preset::MojModel::ModelD, "Bass"),
+            moj_preset(preset::MojModel::ModelD, "Lead"),
+            moj_preset(preset::MojModel::SixOpPm, "Bell Metal"),
+            moj_preset(preset::MojModel::SixOpPm, "Glass Wood"),
+        ];
+        let model_d = SoftwareRoute {
+            engine: BackendKind::MojSint,
+            instrument: moj_presets[0].route_id(),
+        };
+        let six_op = adjusted_moj_model_route(&moj_presets, &model_d, 1).unwrap();
+        assert_eq!(six_op.engine, BackendKind::MojSint);
+        assert_eq!(six_op.instrument, "six_op_pm/Bell Metal");
+        let next_patch = adjusted_patch_route(&moj_presets, &six_op, 1).unwrap();
+        assert_eq!(next_patch.instrument, "six_op_pm/Glass Wood");
+        assert_eq!(
+            adjusted_patch_route(&moj_presets, &next_patch, 1).unwrap(),
+            six_op
+        );
+        let legacy_model_d = SoftwareRoute {
+            engine: BackendKind::MojSint,
+            instrument: "Bass".into(),
+        };
+        assert_eq!(
+            adjusted_patch_route(&moj_presets, &legacy_model_d, -1)
+                .unwrap()
+                .instrument,
+            "model_d/Lead"
+        );
+
+        let mut app = app(&presets());
+        app.catalogs.push(Catalog {
+            backend: BackendKind::MojSint,
+            presets: moj_presets,
+            unavailable: None,
+        });
+        app.screen = Screen::Tracker;
+        app.current_page_mut().unwrap().target = PageTarget::Software(six_op);
+        app.open_overlay(Action::OpenRouteOverlay);
+        let text = buffer_text(&render_app(&mut app, 40, 13));
+        assert!(text.contains("ENGINE · Moj Sint"), "{text}");
+        assert!(
+            text.contains("MODEL") && text.contains("Six-Op PM"),
+            "{text}"
+        );
+        assert!(
+            text.contains("PATCH") && text.contains("Bell Metal"),
+            "{text}"
+        );
     }
 
     #[test]
