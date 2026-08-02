@@ -739,6 +739,8 @@ struct App {
     idea_mode: IdeaMode,
     last: Vec<TimedEvent>,
     playback: Option<Playback>,
+    controller_live_transport: bool,
+    transport_clock: Arc<crate::loop_player::TransportClock>,
     tap: TapTempo,
     ideas: Vec<String>,
     idea_selected: usize,
@@ -1687,7 +1689,8 @@ impl App {
         if resolved_audio.outputs.len() == 2 {
             loop_config.outputs = resolved_audio.outputs.clone();
         }
-        let loop_player = crate::loop_player::LoopPlayer::new(&loop_config, transport_clock);
+        let loop_player =
+            crate::loop_player::LoopPlayer::new(&loop_config, Arc::clone(&transport_clock));
         let managed_outputs = [
             config.midi_output_match.to_ascii_lowercase(),
             config
@@ -1754,6 +1757,8 @@ impl App {
             idea_mode: IdeaMode::Play,
             last: vec![],
             playback: None,
+            controller_live_transport: false,
+            transport_clock,
             tap: TapTempo::default(),
             ideas: recording::list(&recording::ideas_dir()).unwrap_or_default(),
             idea_selected: 0,
@@ -3776,6 +3781,15 @@ impl App {
             self.playback_noob && self.screen_keeps_playback_workspace_active(previous);
         let playback_filter_will_be_active =
             self.playback_noob && self.screen_keeps_playback_workspace_active(screen);
+        let leaving_playback_workspace = self.screen_keeps_playback_workspace_active(previous)
+            && !self.screen_keeps_playback_workspace_active(screen);
+        if leaving_playback_workspace && self.controller_live_transport {
+            self.stop_controller_live_transport();
+            if let Some(engine) = self.engine.as_ref() {
+                engine.panic();
+            }
+            self.held_notes = HeldNotes::default();
+        }
         if playback_filter_was_active && !playback_filter_will_be_active {
             if let Some(engine) = self.engine.as_ref() {
                 engine.panic();
@@ -4553,18 +4567,53 @@ impl App {
             let captured = self.recorder.events.len();
             self.recorder.stop(Instant::now());
             self.last = self.recorder.events.clone();
+            self.stop_controller_live_transport();
             if let Some(engine) = &self.engine {
                 engine.panic();
             }
             self.status = format!("recorded {captured} MIDI events · Playback to review");
         }
     }
+
+    fn start_controller_live_transport(&mut self) -> bool {
+        if !self.config.controller_clock.enabled {
+            self.status = "CONTROLLER CLOCK OFF · enable in ROUTING".into();
+            return false;
+        }
+        let tempo = self.current_tempo();
+        self.transport_clock.play(0.0, tempo);
+        self.controller_live_transport = true;
+        self.status = format!("PLAYER ARP · {tempo} BPM · STOP to end");
+        true
+    }
+
+    fn stop_controller_live_transport(&mut self) {
+        if self.controller_live_transport {
+            self.transport_clock.stop();
+            self.controller_live_transport = false;
+        }
+    }
+
     fn stop_playback(&mut self) {
         self.playback.take();
+        self.stop_controller_live_transport();
         if let Some(e) = &self.engine {
             e.panic();
         }
         self.status = "All Notes Off · playback stopped".into();
+    }
+
+    fn stop_idea_transport(&mut self) {
+        let active = self.recorder.is_recording()
+            || self.playback.is_some()
+            || self.controller_live_transport;
+        self.stop_recording();
+        self.stop_playback();
+        self.status = if active {
+            "PLAYER STOP · All Notes Off".into()
+        } else {
+            "PLAYER already stopped".into()
+        };
     }
 
     fn active_recording_owner(&self) -> Option<RecordingOwner> {
@@ -6507,7 +6556,18 @@ impl App {
     }
     fn set_tracker_tempo(&mut self, bpm: Bpm) {
         let tempo = self.apply_tracker_tempo(bpm);
-        self.status = format!("pattern tempo {tempo} BPM");
+        self.status = if self.screen == Screen::Playback {
+            format!(
+                "PLAYER / Pattern tempo {tempo} BPM{}",
+                if self.controller_live_transport {
+                    " · clock updated"
+                } else {
+                    " · PLAY starts arp"
+                }
+            )
+        } else {
+            format!("pattern tempo {tempo} BPM")
+        };
     }
     fn apply_tracker_tempo(&mut self, tempo: Bpm) -> Bpm {
         if let Some(pattern) = self.current_pattern_mut() {
@@ -6916,6 +6976,7 @@ impl App {
             self.tracker_stop();
             return;
         }
+        self.stop_controller_live_transport();
         let mode_changed = self.tracker_mode != TrackerMode::Play;
         self.tracker_mode = TrackerMode::Play;
         if mode_changed {
@@ -7060,6 +7121,7 @@ impl App {
             self.finish_tracker_recording(return_to_play);
             return;
         }
+        self.stop_controller_live_transport();
         let transport = self.sequencer.status();
         if transport.playing {
             self.follow_tracker_transport(&transport);
@@ -10296,6 +10358,7 @@ impl App {
         {
             TransportIndicator::Record
         } else if self.playback.is_some()
+            || self.controller_live_transport
             || self.sequencer.status().playing
             || self.loop_player.status().playing
             || self.song_previewing
@@ -10323,6 +10386,8 @@ impl App {
             Some("> PLAY · FILES · Project preview")
         } else if self.playback.is_some() {
             Some("> PLAY · IDEAS · MIDI take")
+        } else if self.controller_live_transport {
+            Some("> PLAY · PLAYER · controller arp")
         } else if self.loop_player.status().playing {
             Some("> PLAY · FT2 LOOP · WAV loop")
         } else if self.sequencer.status().playing {
@@ -10339,6 +10404,7 @@ impl App {
                 || self.recorder.is_recording()
                 || self.final_bus.recording_active(),
             self.playback.is_some()
+                || self.controller_live_transport
                 || self.sequencer.status().playing
                 || self.loop_player.status().playing
                 || self.song_previewing,
@@ -12001,7 +12067,15 @@ impl App {
         }
         self.finish_competing_recordings(RecordingOwner::Idea);
         self.recorder.start(Instant::now());
-        self.status.clear();
+        if self.config.controller_clock.enabled {
+            self.start_controller_live_transport();
+            self.status = format!(
+                "IDEAS RECORD · controller clock {} BPM",
+                self.current_tempo()
+            );
+        } else {
+            self.status.clear();
+        }
     }
     fn toggle_playback(&mut self) {
         self.idea_mode = IdeaMode::Play;
@@ -12010,9 +12084,9 @@ impl App {
             .as_ref()
             .is_some_and(|playback| playback.finished.load(Ordering::Relaxed))
         {
-            self.playback.take();
+            self.stop_playback();
         }
-        if self.playback.is_some() {
+        if self.playback.is_some() || self.controller_live_transport {
             self.stop_playback();
             return;
         }
@@ -12022,10 +12096,13 @@ impl App {
         if self.engine.is_none() {
             self.status = "LOAD idea sound before PLAY".into();
         } else if self.last.is_empty() {
-            self.status = "no recording yet".into();
+            self.start_controller_live_transport();
         } else {
             if let Some(engine) = &self.engine {
                 engine.panic();
+            }
+            if self.config.controller_clock.enabled {
+                self.start_controller_live_transport();
             }
             let events = self.last.clone();
             let output = Arc::clone(&self.midi_output);
@@ -12504,6 +12581,7 @@ impl App {
         self.final_recording_last = self.final_bus.recording_status();
         if self.engine.as_mut().is_some_and(|engine| !engine.alive()) {
             self.playback.take();
+            self.stop_controller_live_transport();
             self.engine.take();
             self.performance_meter
                 .set_audio_unavailable(AudioAvailability::Stopped);
@@ -13978,6 +14056,7 @@ fn perform(
         }
         Action::ResetParameters => a.reset_parameters(),
         Action::IdeaRecordToggle => a.toggle_idea_recording(),
+        Action::IdeaStop => a.stop_idea_transport(),
         Action::SaveNew => a.save_new(),
         Action::InspectIdea => a.inspect_idea(),
         Action::DeleteIdea => a.delete_idea(),
@@ -14892,6 +14971,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         KeyCode::Char('[') if a.screen == Screen::Presets => a.cycle_engine(-1),
         KeyCode::Char(']') if a.screen == Screen::Presets => a.cycle_engine(1),
+        KeyCode::Char('s') | KeyCode::Char('S') if a.screen == Screen::Playback => {
+            a.stop_idea_transport()
+        }
         KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
         KeyCode::Char('b') => {
             perform(Action::Back, a, state, Some(tx));
@@ -29558,6 +29640,43 @@ release = 0.4
 
         assert!(a.playback.is_none());
         assert_eq!(a.status, "LOAD idea sound before PLAY");
+    }
+
+    #[test]
+    fn playback_play_stop_record_and_tap_own_live_controller_transport() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-player-controller-clock-{}",
+            std::process::id()
+        ));
+        let mut a = editable_synth_app(&base);
+        // The App's clock worker was deliberately constructed disabled, so this
+        // exercises UI ownership without opening or transmitting to ALSA.
+        a.config.controller_clock.enabled = true;
+        a.last.clear();
+
+        a.toggle_playback();
+        assert!(a.controller_live_transport);
+        assert_eq!(a.transport_indicator(), TransportIndicator::Play);
+        assert!(a.status.contains("PLAYER ARP"));
+
+        a.set_tracker_tempo(Bpm::from_hundredths_clamped(12_345));
+        assert_eq!(a.current_tempo().hundredths(), 12_345);
+        assert_eq!(
+            a.status,
+            "PLAYER / Pattern tempo 123.45 BPM · clock updated"
+        );
+
+        a.stop_idea_transport();
+        assert!(!a.controller_live_transport);
+        assert_eq!(a.transport_indicator(), TransportIndicator::Stop);
+        assert_eq!(a.status, "PLAYER STOP · All Notes Off");
+
+        a.toggle_idea_recording();
+        assert!(a.recorder.is_recording());
+        assert!(a.controller_live_transport);
+        a.stop_idea_transport();
+        assert!(!a.recorder.is_recording());
+        assert!(!a.controller_live_transport);
     }
 
     #[test]

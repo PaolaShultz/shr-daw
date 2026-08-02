@@ -101,6 +101,12 @@ red white-key area means its natural note is held; a red upper `└` means the
 following sharp is held. Major triads show `maj` explicitly, such as `C maj`.
 `display.note_names=german` uses B/H spelling; `english` uses A#/B.
 
+Playback PLAY starts a saved MIDI take or, with no take, the configured
+external-sync controller arpeggiator. RECORD starts the same controller clock
+before free-time capture. STOP ends the take/arp and sends All Notes Off without
+unloading the sound. TAP changes the current Pattern/controller tempo but never
+starts transport by itself.
+
 Playback N00B toggles the filter on the existing Player screen. While on, its
 compact SCALE rotary appears below the normal controls; turn the master encoder
 to cycle every root plus MAJOR or natural MINOR choice. Notes in the chosen

@@ -108,11 +108,14 @@ Clock runs whenever the feature is enabled and SHR is open, using the default
 tempo before the first transport run. This lets the MiniLab detect clock before
 Play; direct capture showed that Start sent before any detected clock was not
 enough to launch its External-Sync arpeggiator. With the feature enabled, an
-empty Pattern may run specifically for live arpeggiation. Every SHR play is a
-fresh launch (`FA`), not a resume; there is no `FB` Continue or `F2` Song
-Position Pointer because SHR has no pause/resume transport state. Stop and an
-active clean shutdown each produce one `FC` as appropriate, while `F8` keeps
-the stopped controller ready at the current tempo until SHR exits.
+empty Pattern may run specifically for live arpeggiation. Playback PLAY also
+starts the controller without requiring a recorded take; RECORD starts it for
+capture, STOP ends it without unloading the sound, and TAP changes tempo but
+does not imply Start. Every SHR play is a fresh launch (`FA`), not a resume;
+there is no `FB` Continue or `F2` Song Position Pointer because SHR has no
+pause/resume transport state. Stop and an active clean shutdown each produce
+one `FC` as appropriate, while `F8` keeps the stopped controller ready at the
+current tempo until SHR exits.
 
 A controller profile describes what a physical device sends. The setup wizard
 can apply a reviewed profile or learn absolute controls, either relative

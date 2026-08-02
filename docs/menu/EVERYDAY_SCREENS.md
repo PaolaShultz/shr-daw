@@ -102,8 +102,12 @@ not restart the synth.
 
 ![Populated Playback screen with the PLAY controller page](../images/menu/playback-play.png)
 
-`PLAY` plays or stops the captured take. `RECORD` starts or stops free-time MIDI
-capture.
+`PLAY` plays or stops the captured take. With no take, it still sends a fresh
+Start to the configured controller clock so the MiniLab 3 External-Sync
+arpeggiator works with live keys. `RECORD` starts the same transport before
+free-time MIDI capture. `STOP` sends controller Stop and All Notes Off without
+unloading the sound. `TAP` updates the current Pattern/controller tempo; it does
+not start transport, so PLAY remains the deliberate start gesture.
 
 ### SOUND — reset, save sound, scale filter, and sounds
 

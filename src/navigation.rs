@@ -189,6 +189,7 @@ pub enum Action {
     SaveNewPreset,
     CancelPresetSave,
     IdeaRecordToggle,
+    IdeaStop,
     SaveNew,
     InspectIdea,
     DeleteIdea,
@@ -462,10 +463,10 @@ const PLAYBACK: [MenuPage; 4] = [
     page(
         "PLAY",
         [
-            off(""),
+            on("STOP", Action::IdeaStop),
             on("PLAY", Action::IdeaPlayToggle),
             on("RECORD", Action::IdeaRecordToggle),
-            off(""),
+            on("TAP", Action::TapTempo),
         ],
     ),
     page(
@@ -1497,6 +1498,17 @@ mod tests {
     #[test]
     fn playback_save_uses_the_canonical_sound_page_and_overlay_actions() {
         assert_eq!(
+            pages(Screen::Playback, MenuContext::Normal)[0]
+                .slots
+                .map(MenuSlot::dispatch),
+            [
+                Some(Action::IdeaStop),
+                Some(Action::IdeaPlayToggle),
+                Some(Action::IdeaRecordToggle),
+                Some(Action::TapTempo),
+            ]
+        );
+        assert_eq!(
             slot(Screen::Playback, MenuContext::Normal, 1, 1).and_then(MenuSlot::dispatch),
             Some(Action::OpenPresetSaveOverlay)
         );
@@ -1867,6 +1879,7 @@ mod tests {
                     slot.dispatch(),
                     Some(
                         Action::IdeaPlayToggle
+                            | Action::IdeaStop
                             | Action::TrackerPlayToggle
                             | Action::ArrangementPlayFromStep
                             | Action::IdeaRecordToggle
@@ -2010,6 +2023,7 @@ mod tests {
             Action::SaveNewPreset,
             Action::CancelPresetSave,
             Action::IdeaRecordToggle,
+            Action::IdeaStop,
             Action::SaveNew,
             Action::InspectIdea,
             Action::DeleteIdea,

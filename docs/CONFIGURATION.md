@@ -179,23 +179,28 @@ If zero or multiple ports have that stable exact name, SHR leaves controller
 clock offline rather than guessing. For the MiniLab 3 choose its standard
 `Minilab3 MIDI` endpoint, never `DIN THRU`, `MCU/HUI`, or `ALV`.
 
-SHR's tracker transport is the authority. Every accepted Play, Play from start,
-or Record transport launch is a fresh run, so it sends one `FA`; SHR has no
-paused position that could truthfully use `FB` Continue. Stop sends one `FC`.
-Clean shutdown sends `FC` if transport is still running. Pattern repeats remain
-one continuous transport and do not emit another Start. `F2` Song Position
-Pointer is not used: the MiniLab arpeggiator needs tempo and run state, while
-SHR does not expose pause/continue or remote song-location semantics.
+SHR's transport is the authority. Every accepted FT2 Play, Play from start, or
+Record launch is a fresh run, so it sends one `FA`. Playback `PLAY` does the
+same for the live controller arpeggiator even when no MIDI take exists, and
+Playback `RECORD` starts that transport while capturing the generated notes.
+Playback `STOP`, FT2 Stop, and clean shutdown send `FC` when appropriate. SHR
+has no paused position that could truthfully use `FB` Continue. Pattern repeats
+remain one continuous transport and do not emit another Start. `F2` Song
+Position Pointer is not used: the MiniLab arpeggiator needs tempo and run
+state, while SHR does not expose pause/continue or remote song-location
+semantics.
 
 Timing Clock runs whenever the feature is enabled and SHR is open; Start and
-Stop still follow only tracker transport. This is the explicit clock-run state:
-there is no second hidden switch. Direct hardware validation found that the
+Stop follow the visible FT2 or Playback transport. Playback `TAP` changes the
+current Pattern/controller tempo but deliberately does not start transport;
+`PLAY` is the explicit start. Direct hardware validation found that the
 MiniLab must detect clock before it receives Start; sending Start before the
 first pulse left its External-Sync arpeggiator waiting. Continuous stopped-state
 clock is therefore the least surprising live-safe behavior. It lets the
 controller know the tempo before Play, while `FC` still stops its arpeggiator.
 When controller clock is enabled, SHR permits an otherwise empty Pattern to run
-so a player can launch the live arpeggiator with ordinary tracker transport.
+with FT2 transport; Playback can launch the live arpeggiator directly without a
+recorded take.
 Clock stays at 24 PPQN from the current transport tempo (or configured default
 tempo before the first run); cell timing, number of pages/destinations, and
 swing/event placement do not create or move pulses. A live tempo change
@@ -219,8 +224,9 @@ controller memory.
 4. Run `shr doctor`. Start SHR and confirm `aconnect -l` shows the
    `shs-controller-clock` source as non-exportable with no subscriptions; its
    events are directly addressed rather than represented by an ALSA
-   subscription. Start tracker transport, enable the MiniLab arpeggiator, and
-   play keys; no tracker page should target the controller.
+   subscription. In Playback, press `PLAY`, enable the MiniLab arpeggiator, and
+   play keys; `STOP` should end it without unloading the sound. Repeat with FT2
+   transport; no tracker page should target the controller.
 5. To disable without losing the remembered endpoint, set
    `controller_clock.enabled=false` and restart SHR. Confirm the
    `shs-controller-clock` client is gone. To roll back completely, stop

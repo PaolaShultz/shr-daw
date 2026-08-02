@@ -74,6 +74,11 @@ failed save preserves list/cursor state, values, held notes, and the live
 session. Unsupported engines remain visibly read-only. Idea capture and saving
 remain on the Ideas screen. `SOUNDS` returns to Presets and its visible `LOAD`.
 
+Playback's PLAY page also owns the optional external-sync controller
+arpeggiator. `PLAY` sends Start even when no MIDI take exists, `RECORD` starts
+the same clock before capture, `STOP` ends it without unloading the instrument,
+and `TAP` changes tempo without silently starting transport.
+
 Moj Sint keeps its own preset format and controls. Its seven authored starts
 remain one editable Model D instrument family. SHR Drums is separate from the
 managed melodic engine and runs in process. Its public source, format, and
