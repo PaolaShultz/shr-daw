@@ -4,6 +4,11 @@ Created: 2026-07-19
 
 Status: proposal archive, not current behavior or scheduled release scope
 
+The owner-directed FT2 Edit `SIZE` page in
+[Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md) supersedes Part 1's
+older standalone `LENGTH` interaction. Parts 2–5 remain the timing, swing,
+groove, and optional-meter plan.
+
 This document is an execution plan for work **after the competition**. None of
 the behavior below is part of the competition build, and the submission should
 not be destabilized to begin it early. The work is deliberately split into

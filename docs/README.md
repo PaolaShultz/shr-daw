@@ -126,6 +126,9 @@ setup guide.
 - [Future improvements](FUTURE_IMPROVEMENTS.md) — unscheduled smart musical
   assistance, deferred routing and product ideas, and the deliberately
   unreasonable challenges.
+- [Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md) — FT2 SIZE,
+  circle-of-fifths notes, arpeggio algorithms, drum fills/rolls, and staged
+  Arrangement assistance.
 - [Raspberry Pi 5 headroom and footprint plan](PI5_HEADROOM_PLAN.md) —
   completed platform baseline followed by the later dependency/footprint,
   real-time-core, and PRESTO experiments.

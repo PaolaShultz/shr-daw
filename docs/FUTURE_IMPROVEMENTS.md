@@ -35,6 +35,10 @@ must not act without clear review and confirmation. An idea enters milestone
 scope only when the owner moves it into the release roadmap with an action,
 result, state boundary, and acceptance path.
 
+The owner-directed interaction, theory/algorithm research, FT2 `SIZE` design,
+circle of fifths, arpeggio families, drum fills/rolls, and staged Arrangement
+assistant are developed in [Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md).
+
 Current key and tuning behavior is narrower and already useful. The musician
 selects the Project tonic and major or natural-minor mode, and N00B filters
 live melodic input against that scale. SHR Drums already supports `OFF`,
@@ -78,9 +82,10 @@ The post-competition plan for arbitrary Pattern shortening/growing, individual
 early/late hits, Pattern-wide swing, groove tools, expressive tracker capture,
 and optional formal odd-meter metadata is in [Post-competition rhythm
 plan](POST_COMPETITION_RHYTHM_PLAN.md). The first planned release uses the
-existing arbitrary row-count scheduler and a transactional Length editor, so a
-loaded drum groove can be cropped freely and committed once without repetitive
-confirmation dialogs.
+existing arbitrary row-count scheduler. Its earlier transactional Length
+surface is superseded by the owner-directed FT2 Edit `SIZE` page in
+[Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md); the later timing,
+swing, groove, and meter phases remain applicable.
 
 ## Unreasonable but useful challenges
 
