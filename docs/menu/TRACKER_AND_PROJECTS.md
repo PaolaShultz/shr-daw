@@ -152,13 +152,18 @@ edit cursor between the page's four note columns.
 
 ![Edit note-length overlay](../images/menu/overlay-note-length.png)
 
-### SELECT — page and route
+### SIZE — Pattern rows
 
-![Populated FT2 Pattern in Edit mode with the SELECT page](../images/menu/ft2-step-edit-select.png)
+`HALF` keeps the top or bottom half of an even-length Pattern. `ROW-` removes
+the cursor row, `ROW+` inserts an empty row after it, and `DOUBLE` appends an
+empty or copied second half. Every operation covers every page and lane.
+Populated destructive choices report the exact affected-cell count before
+confirmation; Cancel leaves the Pattern unchanged. SIZE stops active FT2
+Play/REC only when committing, preserves the page, column, and safely mapped
+cursor, and supports the existing 1–256-row range.
 
-`PAGE` opens the normal page/column selector. `ROUTE` opens the selected
-column's route editor. Both preserve Edit mode and use rotary turn, click, and
-Back in the same way as their normal-FT2 counterparts.
+Normal FT2 `SELECT` remains available after leaving Edit and still owns PAGE,
+PATTERN, SONG, and ROUTE.
 
 ### SYS — safety, help, and leave edit
 

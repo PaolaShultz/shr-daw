@@ -197,6 +197,13 @@ pub enum Action {
     IdeaPlayToggle,
     TrackerEdit,
     ExitTrackerEdit,
+    PatternHalf,
+    PatternRowRemove,
+    PatternRowInsert,
+    PatternDouble,
+    PatternResizeFirst,
+    PatternResizeSecond,
+    PatternResizeCancel,
     TrackerSkip,
     TrackerErase,
     TrackerNoteOff,
@@ -402,6 +409,7 @@ pub enum MenuContext {
     #[default]
     Normal,
     TrackerEdit,
+    TrackerSizeConfirm,
     RoutingDefaults,
     TrackerRecord,
     TrackerNoteEdit,
@@ -807,12 +815,12 @@ const TRACKER_EDIT: [MenuPage; 4] = [
         ],
     ),
     page(
-        "SELECT",
+        "SIZE",
         [
-            on("PAGE", Action::OpenPageOverlay),
-            on("ROUTE", Action::OpenRouteOverlay),
-            off(""),
-            off(""),
+            on("HALF", Action::PatternHalf),
+            on("ROW-", Action::PatternRowRemove),
+            on("ROW+", Action::PatternRowInsert),
+            on("DOUBLE", Action::PatternDouble),
         ],
     ),
     page(
@@ -822,6 +830,28 @@ const TRACKER_EDIT: [MenuPage; 4] = [
             on("N00B", Action::TrackerNoobToggle),
             on("HELP", Action::OpenHelp),
             on("EXIT", Action::ExitTrackerEdit),
+        ],
+    ),
+];
+const TRACKER_SIZE_CONFIRM: [MenuPage; 4] = [
+    page(
+        "CHOOSE",
+        [
+            on("FIRST", Action::PatternResizeFirst),
+            on("SECOND", Action::PatternResizeSecond),
+            on("CANCEL", Action::PatternResizeCancel),
+            off(""),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            off(""),
+            on("EXIT", Action::PatternResizeCancel),
         ],
     ),
 ];
@@ -1390,6 +1420,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::Help, _) => &HELP,
         (Screen::Tracker, MenuContext::TrackerNoteEdit) => &TRACKER_NOTE_EDIT,
         (Screen::Tracker, MenuContext::TrackerRecord) => &TRACKER_RECORD,
+        (Screen::Tracker, MenuContext::TrackerSizeConfirm) => &TRACKER_SIZE_CONFIRM,
         (Screen::Tracker, MenuContext::TrackerEdit) => &TRACKER_EDIT,
         (Screen::Tracker, _) => &TRACKER,
         (Screen::TrackerParameters, _) => &TRACKER_PARAMETERS,
@@ -1432,6 +1463,7 @@ mod tests {
             for context in [
                 MenuContext::Normal,
                 MenuContext::TrackerEdit,
+                MenuContext::TrackerSizeConfirm,
                 MenuContext::TrackerRecord,
                 MenuContext::TrackerNoteEdit,
                 MenuContext::PageTarget,
@@ -1485,6 +1517,36 @@ mod tests {
                 .any(|slot| slot.dispatch() == Some(duplicate)));
         }
         assert_eq!(edit[3].slots[3].dispatch(), Some(Action::ExitTrackerEdit));
+    }
+
+    #[test]
+    fn tracker_edit_size_replaces_only_the_inner_select_page() {
+        let normal = pages(Screen::Tracker, MenuContext::Normal);
+        assert_eq!(
+            normal.map(|page| page.label),
+            ["PLAY", "SELECT", "SOUND", "SYS"]
+        );
+        assert_eq!(
+            normal[1].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::OpenPageOverlay),
+                Some(Action::OpenPatternOverlay),
+                Some(Action::OpenSongOverlay),
+                Some(Action::OpenRouteOverlay),
+            ]
+        );
+
+        let edit = pages(Screen::Tracker, MenuContext::TrackerEdit);
+        assert_eq!(edit.map(|page| page.label), ["EDIT", "SET", "SIZE", "SYS"]);
+        assert_eq!(
+            edit[2].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::PatternHalf),
+                Some(Action::PatternRowRemove),
+                Some(Action::PatternRowInsert),
+                Some(Action::PatternDouble),
+            ]
+        );
     }
 
     #[test]
@@ -1595,6 +1657,7 @@ mod tests {
             (Screen::Help, MenuContext::Normal),
             (Screen::Tracker, MenuContext::Normal),
             (Screen::Tracker, MenuContext::TrackerEdit),
+            (Screen::Tracker, MenuContext::TrackerSizeConfirm),
             (Screen::Tracker, MenuContext::TrackerRecord),
             (Screen::Tracker, MenuContext::TrackerNoteEdit),
             (Screen::TrackerParameters, MenuContext::Normal),
@@ -1791,6 +1854,7 @@ mod tests {
             for context in [
                 MenuContext::Normal,
                 MenuContext::TrackerEdit,
+                MenuContext::TrackerSizeConfirm,
                 MenuContext::RoutingDefaults,
                 MenuContext::TrackerRecord,
                 MenuContext::TrackerNoteEdit,
@@ -1837,6 +1901,7 @@ mod tests {
             for context in [
                 MenuContext::Normal,
                 MenuContext::TrackerEdit,
+                MenuContext::TrackerSizeConfirm,
                 MenuContext::RoutingDefaults,
                 MenuContext::TrackerRecord,
                 MenuContext::TrackerNoteEdit,
@@ -1959,6 +2024,7 @@ mod tests {
             (Screen::Help, MenuContext::Normal),
             (Screen::Tracker, MenuContext::Normal),
             (Screen::Tracker, MenuContext::TrackerEdit),
+            (Screen::Tracker, MenuContext::TrackerSizeConfirm),
             (Screen::Tracker, MenuContext::TrackerRecord),
             (Screen::Tracker, MenuContext::TrackerNoteEdit),
             (Screen::TrackerFiles, MenuContext::Normal),
@@ -2031,6 +2097,13 @@ mod tests {
             Action::IdeaPlayToggle,
             Action::TrackerEdit,
             Action::ExitTrackerEdit,
+            Action::PatternHalf,
+            Action::PatternRowRemove,
+            Action::PatternRowInsert,
+            Action::PatternDouble,
+            Action::PatternResizeFirst,
+            Action::PatternResizeSecond,
+            Action::PatternResizeCancel,
             Action::TrackerSkip,
             Action::TrackerErase,
             Action::TrackerNoteOff,

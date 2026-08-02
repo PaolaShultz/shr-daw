@@ -456,6 +456,60 @@ enum TrackerMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PatternResizePromptKind {
+    Half {
+        old_rows: usize,
+        top_discarded: usize,
+        bottom_discarded: usize,
+    },
+    RemoveRow {
+        old_rows: usize,
+        row: usize,
+        discarded: usize,
+    },
+    Double {
+        old_rows: usize,
+        copied: usize,
+    },
+}
+
+impl PatternResizePromptKind {
+    const fn choice_count(self) -> usize {
+        match self {
+            Self::RemoveRow { .. } => 2,
+            Self::Half { .. } | Self::Double { .. } => 3,
+        }
+    }
+
+    const fn button_label(self, choice: usize) -> Option<&'static str> {
+        match (self, choice) {
+            (Self::Half { .. }, 0) => Some("TOP"),
+            (Self::Half { .. }, 1) => Some("BOTTOM"),
+            (Self::Double { .. }, 0) => Some("COPY"),
+            (Self::Double { .. }, 1) => Some("EMPTY"),
+            (Self::RemoveRow { .. }, 0) => Some("CONFIRM"),
+            (_, 2) | (Self::RemoveRow { .. }, 1) => Some("CANCEL"),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PatternResizePrompt {
+    pattern: u16,
+    kind: PatternResizePromptKind,
+    selected: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PatternResizeOperation {
+    Half(sequencer::PatternHalf),
+    RemoveRow(usize),
+    InsertRowAfter(usize),
+    Double(sequencer::PatternDouble),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NoteLength {
     Whole,
     Half,
@@ -796,6 +850,7 @@ struct App {
     tracker_track: usize,
     tracker_advance: usize,
     tracker_mode: TrackerMode,
+    pattern_resize_prompt: Option<PatternResizePrompt>,
     tracker_parameter_parent_menu_page: usize,
     tracker_noob: bool,
     tracker_recording: Option<TrackerRecording>,
@@ -1815,6 +1870,7 @@ impl App {
             tracker_track: 0,
             tracker_advance: 1,
             tracker_mode: TrackerMode::Play,
+            pattern_resize_prompt: None,
             tracker_parameter_parent_menu_page: 0,
             tracker_noob: false,
             tracker_recording: None,
@@ -2054,6 +2110,7 @@ impl App {
             || self.controller_learn.is_some()
             || self.note_editor.is_some()
             || self.tracker_recording.is_some()
+            || self.pattern_resize_prompt.is_some()
             || self.fx_type_edit.is_some()
             || self.fx_numeric_input.is_some()
             || self.fx_value_editing
@@ -2780,6 +2837,8 @@ impl App {
     fn menu_context(&self) -> MenuContext {
         if self.confirm_routing_defaults {
             MenuContext::RoutingDefaults
+        } else if self.screen == Screen::Tracker && self.pattern_resize_prompt.is_some() {
+            MenuContext::TrackerSizeConfirm
         } else if self.screen == Screen::FxRack && self.fx_type_edit.is_some() {
             MenuContext::FxType
         } else if self.screen == Screen::FxRack && self.selected_effect_id().is_none() {
@@ -5341,6 +5400,251 @@ impl App {
         self.tracker_advance = rows;
         self.status = format!("ADD {rows} · note entry and delete advance {rows} row(s)");
     }
+
+    fn open_pattern_resize_prompt(&mut self, kind: PatternResizePromptKind) {
+        self.pattern_resize_prompt = Some(PatternResizePrompt {
+            pattern: self.tracker_pattern_number(),
+            kind,
+            selected: 0,
+        });
+        self.menu_page_by_screen[Screen::Tracker.index()] = 0;
+        self.page_select_mode = false;
+    }
+
+    fn begin_pattern_half(&mut self) {
+        let Some(pattern) = self.current_pattern() else {
+            self.status = "HALF FAILED · Pattern missing".into();
+            return;
+        };
+        let old_rows = pattern.rows.len();
+        if old_rows < 2 || old_rows % 2 != 0 {
+            self.status = "HALF NEEDS EVEN ROWS".into();
+            return;
+        }
+        let half = old_rows / 2;
+        let top_discarded = pattern
+            .non_default_cells_in_rows(half..old_rows)
+            .unwrap_or(0);
+        let bottom_discarded = pattern.non_default_cells_in_rows(0..half).unwrap_or(0);
+        if top_discarded == 0 && bottom_discarded == 0 {
+            self.apply_pattern_resize(
+                self.tracker_pattern_number(),
+                PatternResizeOperation::Half(sequencer::PatternHalf::Top),
+            );
+        } else {
+            self.open_pattern_resize_prompt(PatternResizePromptKind::Half {
+                old_rows,
+                top_discarded,
+                bottom_discarded,
+            });
+            self.status = "HALF · choose retained half".into();
+        }
+    }
+
+    fn begin_pattern_row_remove(&mut self) {
+        let Some(pattern) = self.current_pattern() else {
+            self.status = "ROW- FAILED · Pattern missing".into();
+            return;
+        };
+        if pattern.rows.len() <= 1 {
+            self.status = "ROW- NEEDS 2+ ROWS".into();
+            return;
+        }
+        let row = self.tracker_row;
+        let discarded = pattern
+            .non_default_cells_in_rows(row..row.saturating_add(1))
+            .unwrap_or(0);
+        if discarded == 0 {
+            self.apply_pattern_resize(
+                self.tracker_pattern_number(),
+                PatternResizeOperation::RemoveRow(row),
+            );
+        } else {
+            self.open_pattern_resize_prompt(PatternResizePromptKind::RemoveRow {
+                old_rows: pattern.rows.len(),
+                row,
+                discarded,
+            });
+            self.status = format!("ROW- · discard {discarded} cell(s)?");
+        }
+    }
+
+    fn insert_pattern_row(&mut self) {
+        if self.tracker_rows() >= 256 {
+            self.status = "ROW+ MAX 256 ROWS".into();
+            return;
+        }
+        self.apply_pattern_resize(
+            self.tracker_pattern_number(),
+            PatternResizeOperation::InsertRowAfter(self.tracker_row),
+        );
+    }
+
+    fn begin_pattern_double(&mut self) {
+        let Some(pattern) = self.current_pattern() else {
+            self.status = "DOUBLE FAILED · Pattern missing".into();
+            return;
+        };
+        let old_rows = pattern.rows.len();
+        if old_rows > 128 {
+            self.status = "DOUBLE MAX 128 ROWS".into();
+            return;
+        }
+        let copied = pattern.non_default_cells_in_rows(0..old_rows).unwrap_or(0);
+        if copied == 0 {
+            self.apply_pattern_resize(
+                self.tracker_pattern_number(),
+                PatternResizeOperation::Double(sequencer::PatternDouble::Empty),
+            );
+        } else {
+            self.open_pattern_resize_prompt(PatternResizePromptKind::Double { old_rows, copied });
+            self.status = "DOUBLE · choose second half".into();
+        }
+    }
+
+    fn move_pattern_resize_choice(&mut self, direction: i8) {
+        let Some(prompt) = self.pattern_resize_prompt.as_mut() else {
+            return;
+        };
+        prompt.selected = wrapped_index(prompt.selected, prompt.kind.choice_count(), direction);
+    }
+
+    fn activate_pattern_resize_choice(&mut self, choice: usize) {
+        let Some(prompt) = self.pattern_resize_prompt else {
+            return;
+        };
+        let operation = match (prompt.kind, choice) {
+            (PatternResizePromptKind::Half { .. }, 0) => {
+                Some(PatternResizeOperation::Half(sequencer::PatternHalf::Top))
+            }
+            (PatternResizePromptKind::Half { .. }, 1) => {
+                Some(PatternResizeOperation::Half(sequencer::PatternHalf::Bottom))
+            }
+            (PatternResizePromptKind::RemoveRow { row, .. }, 0) => {
+                Some(PatternResizeOperation::RemoveRow(row))
+            }
+            (PatternResizePromptKind::Double { .. }, 0) => Some(PatternResizeOperation::Double(
+                sequencer::PatternDouble::Copy,
+            )),
+            (PatternResizePromptKind::Double { .. }, 1) => Some(PatternResizeOperation::Double(
+                sequencer::PatternDouble::Empty,
+            )),
+            _ => None,
+        };
+        if let Some(operation) = operation {
+            self.apply_pattern_resize(prompt.pattern, operation);
+        } else {
+            self.cancel_pattern_resize();
+        }
+    }
+
+    fn activate_selected_pattern_resize_choice(&mut self) {
+        if let Some(selected) = self
+            .pattern_resize_prompt
+            .as_ref()
+            .map(|prompt| prompt.selected)
+        {
+            self.activate_pattern_resize_choice(selected);
+        }
+    }
+
+    fn cancel_pattern_resize(&mut self) {
+        if self.pattern_resize_prompt.take().is_some() {
+            self.menu_page_by_screen[Screen::Tracker.index()] = 2;
+            self.page_select_mode = false;
+            self.status = "SIZE CANCELLED · Pattern unchanged".into();
+        }
+    }
+
+    fn apply_pattern_resize(&mut self, pattern_number: u16, operation: PatternResizeOperation) {
+        if pattern_number != self.tracker_pattern_number() {
+            self.pattern_resize_prompt = None;
+            self.status = "SIZE FAILED · Pattern changed".into();
+            return;
+        }
+        if self.tracker_recording.is_some()
+            || self.sequencer.status().playing
+            || self.loop_player.status().playing
+        {
+            self.tracker_stop();
+        } else {
+            self.cancel_tracker_gesture();
+        }
+        self.set_tracker_mode(TrackerMode::Edit);
+
+        let old_cursor = self.tracker_row;
+        let Some(pattern) = self.song.patterns.get(&pattern_number) else {
+            self.pattern_resize_prompt = None;
+            self.status = "SIZE FAILED · Pattern missing".into();
+            return;
+        };
+        let old_rows = pattern.rows.len();
+        let resized = match operation {
+            PatternResizeOperation::Half(keep) => pattern.halve_rows(keep),
+            PatternResizeOperation::RemoveRow(row) => pattern.remove_row(row),
+            PatternResizeOperation::InsertRowAfter(row) => pattern.insert_row_after(row),
+            PatternResizeOperation::Double(mode) => pattern.double_rows(mode),
+        };
+        let Ok(resized) = resized else {
+            self.pattern_resize_prompt = None;
+            self.menu_page_by_screen[Screen::Tracker.index()] = 2;
+            self.status = "SIZE FAILED · Pattern unchanged".into();
+            return;
+        };
+        let new_rows = resized.pattern.rows.len();
+        let mut candidate = self.song.clone();
+        candidate.patterns.insert(pattern_number, resized.pattern);
+        if candidate.validate().is_err() {
+            self.pattern_resize_prompt = None;
+            self.menu_page_by_screen[Screen::Tracker.index()] = 2;
+            self.status = "SIZE FAILED · Pattern unchanged".into();
+            return;
+        }
+        self.song = candidate;
+        self.tracker_row = match operation {
+            PatternResizeOperation::Half(sequencer::PatternHalf::Bottom) => {
+                old_cursor.saturating_sub(old_rows / 2)
+            }
+            _ => old_cursor,
+        }
+        .min(new_rows.saturating_sub(1));
+        self.pattern_resize_prompt = None;
+        self.menu_page_by_screen[Screen::Tracker.index()] = 2;
+        self.page_select_mode = false;
+        self.status = match operation {
+            PatternResizeOperation::Half(sequencer::PatternHalf::Top) => format!(
+                "HALF TOP · {new_rows} rows · {} cell(s) discarded",
+                resized.discarded_cells
+            ),
+            PatternResizeOperation::Half(sequencer::PatternHalf::Bottom) => format!(
+                "HALF BOTTOM · {new_rows} rows · {} cell(s) discarded",
+                resized.discarded_cells
+            ),
+            PatternResizeOperation::RemoveRow(_) => format!(
+                "ROW- · {new_rows} rows · {} cell(s) discarded",
+                resized.discarded_cells
+            ),
+            PatternResizeOperation::InsertRowAfter(_) => format!("ROW+ · {new_rows} rows"),
+            PatternResizeOperation::Double(sequencer::PatternDouble::Copy) => format!(
+                "DOUBLE COPY · {new_rows} rows · {} cell(s) copied",
+                resized.copied_cells
+            ),
+            PatternResizeOperation::Double(sequencer::PatternDouble::Empty) => {
+                format!("DOUBLE EMPTY · {new_rows} rows")
+            }
+        };
+    }
+
+    fn pattern_resize_button_label(&self, action: Action) -> Option<&'static str> {
+        let prompt = self.pattern_resize_prompt?;
+        match action {
+            Action::PatternResizeFirst => prompt.kind.button_label(0),
+            Action::PatternResizeSecond => prompt.kind.button_label(1),
+            Action::PatternResizeCancel => Some("CANCEL"),
+            _ => None,
+        }
+    }
+
     fn tracker_skip(&mut self) {
         if self.tracker_mode == TrackerMode::Edit {
             self.cancel_tracker_gesture();
@@ -5432,6 +5736,7 @@ impl App {
         let changed = self.tracker_mode != next;
         if next != TrackerMode::Edit {
             self.cancel_tracker_gesture();
+            self.pattern_resize_prompt = None;
         }
         self.tracker_mode = next;
         if changed {
@@ -13249,6 +13554,7 @@ fn dispatch_encoder_input(
     }
     let value_editor_owns_encoder = app.note_editor.is_some()
         || app.project_name_input.is_some()
+        || app.pattern_resize_prompt.is_some()
         || (app.screen == Screen::TrackerPages && app.page_manager_mode != PageManagerMode::Pages)
         || app.screen == Screen::FxEditor
         || app.screen == Screen::Routing
@@ -13312,6 +13618,18 @@ fn perform(
     // modal confirmation owns the rest of the input dispatch.
     if action == Action::StopAll {
         a.stop_all(state);
+        return false;
+    }
+    if a.pattern_resize_prompt.is_some() {
+        match action {
+            Action::Up => a.move_pattern_resize_choice(-1),
+            Action::Down => a.move_pattern_resize_choice(1),
+            Action::Activate => a.activate_selected_pattern_resize_choice(),
+            Action::PatternResizeFirst => a.activate_pattern_resize_choice(0),
+            Action::PatternResizeSecond => a.activate_pattern_resize_choice(1),
+            Action::PatternResizeCancel | Action::Back => a.cancel_pattern_resize(),
+            _ => {}
+        }
         return false;
     }
     if a.mixed_engine_prompt_active() {
@@ -14191,6 +14509,13 @@ fn perform(
             a.set_tracker_edit(false);
             a.status = "EDIT off".into();
         }
+        Action::PatternHalf => a.begin_pattern_half(),
+        Action::PatternRowRemove => a.begin_pattern_row_remove(),
+        Action::PatternRowInsert => a.insert_pattern_row(),
+        Action::PatternDouble => a.begin_pattern_double(),
+        Action::PatternResizeFirst | Action::PatternResizeSecond | Action::PatternResizeCancel => {
+            unreachable!("SIZE confirmation actions are handled by their modal")
+        }
         Action::TrackerSkip => a.tracker_skip(),
         Action::TrackerErase => a.tracker_erase(),
         Action::TrackerNoteOff => a.tracker_note_off(),
@@ -14326,6 +14651,21 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             _ => {}
         }
         return a.quit_requested;
+    }
+    if a.pattern_resize_prompt.is_some() {
+        if let Some(pad) = function_key_pad(code) {
+            dispatch_pad(pad, true, a, state, tx);
+            return false;
+        }
+        match code {
+            KeyCode::Up | KeyCode::Left => a.move_pattern_resize_choice(-1),
+            KeyCode::Down | KeyCode::Right => a.move_pattern_resize_choice(1),
+            KeyCode::Enter => a.activate_selected_pattern_resize_choice(),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.cancel_pattern_resize(),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+            _ => {}
+        }
+        return false;
     }
     if a.audio_track_name_input.is_some() {
         match code {
@@ -15333,6 +15673,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     draw_pad_lock(f, a);
     draw_fallback_badge(f, a);
     draw_pad_buttons(f, a);
+    draw_pattern_resize_prompt(f, a);
     if a.confirm_routing_defaults {
         let z = f.size();
         let area = rect(z.x + 2, z.y + 3, z.width.saturating_sub(4), 7);
@@ -15368,6 +15709,98 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     draw_mixed_engine_prompt(f, a);
     draw_project_guard(f, a);
     draw_master_status(f, a);
+}
+
+fn pattern_resize_choice_line(
+    prompt: PatternResizePrompt,
+    index: usize,
+    label: &'static str,
+) -> Spans<'static> {
+    Spans::from(Span::styled(
+        format!(
+            "{} {label}",
+            if prompt.selected == index { ">" } else { " " }
+        ),
+        Style::default()
+            .fg(if prompt.selected == index {
+                Color::Black
+            } else {
+                Color::Yellow
+            })
+            .bg(if prompt.selected == index {
+                Color::Yellow
+            } else {
+                Color::Black
+            })
+            .add_modifier(if prompt.selected == index {
+                Modifier::BOLD
+            } else {
+                Modifier::empty()
+            }),
+    ))
+}
+
+fn draw_pattern_resize_prompt<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let Some(prompt) = a.pattern_resize_prompt else {
+        return;
+    };
+    let mut lines = match prompt.kind {
+        PatternResizePromptKind::Half {
+            old_rows,
+            top_discarded,
+            bottom_discarded,
+        } => vec![
+            Spans::from(format!("HALF {old_rows} → {} ROWS", old_rows / 2)),
+            Spans::from(format!(
+                "TOP discards {top_discarded} · BOTTOM discards {bottom_discarded}"
+            )),
+            pattern_resize_choice_line(prompt, 0, "KEEP TOP"),
+            pattern_resize_choice_line(prompt, 1, "KEEP BOTTOM"),
+            pattern_resize_choice_line(prompt, 2, "CANCEL"),
+        ],
+        PatternResizePromptKind::RemoveRow {
+            old_rows,
+            row,
+            discarded,
+        } => vec![
+            Spans::from(format!(
+                "ROW- {:02X} · {old_rows} → {} ROWS",
+                row,
+                old_rows - 1
+            )),
+            Spans::from(format!("DISCARD {discarded} NON-DEFAULT CELL(S)")),
+            pattern_resize_choice_line(prompt, 0, "CONFIRM"),
+            pattern_resize_choice_line(prompt, 1, "CANCEL"),
+        ],
+        PatternResizePromptKind::Double { old_rows, copied } => vec![
+            Spans::from(format!("DOUBLE {old_rows} → {} ROWS", old_rows * 2)),
+            Spans::from(format!("COPY NOTES copies {copied} populated cell(s)")),
+            pattern_resize_choice_line(prompt, 0, "COPY NOTES"),
+            pattern_resize_choice_line(prompt, 1, "EMPTY HALF"),
+            pattern_resize_choice_line(prompt, 2, "CANCEL"),
+        ],
+    };
+    for line in &mut lines[..2] {
+        for span in &mut line.0 {
+            span.style = Style::default().fg(Color::Yellow);
+        }
+    }
+    let z = f.size();
+    let height = z.height.saturating_sub(4).min(7).max(4);
+    let body_height = z.height.saturating_sub(3);
+    let area = rect(
+        z.x + 2,
+        z.y + body_height.saturating_sub(height) / 2,
+        z.width.saturating_sub(4),
+        height,
+    );
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL)),
+        area,
+    );
 }
 
 fn draw_project_name_input<B: Backend>(f: &mut Frame<B>, a: &App) {
@@ -18525,7 +18958,22 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             continue;
         }
         let color = Color::Yellow;
-        let label = if slot.dispatch() == Some(Action::BusMute)
+        let label = if matches!(
+            slot.dispatch(),
+            Some(
+                Action::PatternResizeFirst
+                    | Action::PatternResizeSecond
+                    | Action::PatternResizeCancel
+            )
+        ) {
+            let Some(label) = slot
+                .dispatch()
+                .and_then(|action| a.pattern_resize_button_label(action))
+            else {
+                continue;
+            };
+            label
+        } else if slot.dispatch() == Some(Action::BusMute)
             && a.bus_selected < crate::final_bus::SOURCE_COUNT
             && BusSource::ALL[a.bus_selected] == BusSource::Input
         {
@@ -31838,6 +32286,344 @@ release = 0.4
     }
 
     #[test]
+    fn tracker_size_half_prompts_and_maps_top_and_bottom_cursors() {
+        let p = presets();
+        let mut base = app(&p);
+        base.screen = Screen::Tracker;
+        base.set_tracker_edit(true);
+        base.current_pattern_mut().unwrap().resize_rows(8).unwrap();
+        base.current_pattern_mut().unwrap().rows[1][0] = Cell {
+            note: Note::On(60),
+            ..Cell::default()
+        };
+        base.current_pattern_mut().unwrap().rows[6][5] = Cell {
+            note: Note::On(38),
+            velocity: Some(99),
+            command: Command::Retrigger(4),
+            ..Cell::default()
+        };
+        base.tracker_page = 1;
+        base.tracker_track = 2;
+        base.mark_project_clean();
+
+        let mut top = base;
+        top.tracker_row = 6;
+        let before = top.song.patterns[&0].clone();
+        perform(Action::PatternHalf, &mut top, Path::new("/none"), None);
+        assert!(matches!(
+            top.pattern_resize_prompt.map(|prompt| prompt.kind),
+            Some(PatternResizePromptKind::Half { .. })
+        ));
+        assert_eq!(top.menu_context(), MenuContext::TrackerSizeConfirm);
+        perform(
+            Action::PatternResizeCancel,
+            &mut top,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(top.song.patterns[&0], before);
+        assert!(!top.project_is_dirty());
+
+        perform(Action::PatternHalf, &mut top, Path::new("/none"), None);
+        perform(
+            Action::PatternResizeFirst,
+            &mut top,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(top.song.patterns[&0].rows, before.rows[..4]);
+        assert_eq!(
+            (top.tracker_row, top.tracker_page, top.tracker_track),
+            (3, 1, 2)
+        );
+        assert!(top.project_is_dirty());
+
+        let mut bottom = app(&p);
+        bottom.screen = Screen::Tracker;
+        bottom.set_tracker_edit(true);
+        bottom
+            .current_pattern_mut()
+            .unwrap()
+            .resize_rows(8)
+            .unwrap();
+        bottom.current_pattern_mut().unwrap().rows[1][0].note = Note::On(60);
+        bottom.current_pattern_mut().unwrap().rows[6][5] = Cell {
+            note: Note::On(38),
+            velocity: Some(99),
+            command: Command::Retrigger(4),
+            ..Cell::default()
+        };
+        bottom.tracker_row = 6;
+        bottom.tracker_page = 1;
+        bottom.tracker_track = 2;
+        let lower_half = bottom.song.patterns[&0].rows[4..].to_vec();
+        perform(Action::PatternHalf, &mut bottom, Path::new("/none"), None);
+        perform(
+            Action::PatternResizeSecond,
+            &mut bottom,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(bottom.song.patterns[&0].rows, lower_half);
+        assert_eq!(
+            (
+                bottom.tracker_row,
+                bottom.tracker_page,
+                bottom.tracker_track
+            ),
+            (2, 1, 2)
+        );
+    }
+
+    #[test]
+    fn tracker_size_refuses_invalid_half_and_uses_top_for_empty_patterns() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+
+        a.current_pattern_mut().unwrap().resize_rows(1).unwrap();
+        perform(Action::PatternHalf, &mut a, Path::new("/none"), None);
+        assert_eq!(a.tracker_rows(), 1);
+        assert_eq!(a.status, "HALF NEEDS EVEN ROWS");
+
+        a.current_pattern_mut().unwrap().resize_rows(3).unwrap();
+        perform(Action::PatternHalf, &mut a, Path::new("/none"), None);
+        assert_eq!(a.tracker_rows(), 3);
+        assert_eq!(a.status, "HALF NEEDS EVEN ROWS");
+
+        a.current_pattern_mut().unwrap().resize_rows(8).unwrap();
+        a.tracker_row = 7;
+        perform(Action::PatternHalf, &mut a, Path::new("/none"), None);
+        assert!(a.pattern_resize_prompt.is_none());
+        assert_eq!(a.tracker_rows(), 4);
+        assert_eq!(a.tracker_row, 3);
+        assert!(a
+            .current_pattern()
+            .unwrap()
+            .rows
+            .iter()
+            .flatten()
+            .all(|cell| *cell == Cell::default()));
+    }
+
+    #[test]
+    fn tracker_size_row_remove_confirms_data_and_row_insert_preserves_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.current_pattern_mut().unwrap().resize_rows(4).unwrap();
+        a.current_pattern_mut().unwrap().rows[2][0].note = Note::On(60);
+        a.current_pattern_mut().unwrap().rows[2][6] = Cell {
+            note: Note::Off,
+            command: Command::Cut(3),
+            ..Cell::default()
+        };
+        a.current_pattern_mut().unwrap().rows[3][1].note = Note::On(62);
+        a.tracker_row = 2;
+        let old_last = a.song.patterns[&0].rows[3].clone();
+
+        perform(Action::PatternRowRemove, &mut a, Path::new("/none"), None);
+        assert!(matches!(
+            a.pattern_resize_prompt.map(|prompt| prompt.kind),
+            Some(PatternResizePromptKind::RemoveRow { discarded: 2, .. })
+        ));
+        perform(Action::PatternResizeFirst, &mut a, Path::new("/none"), None);
+        assert_eq!(a.tracker_rows(), 3);
+        assert_eq!(a.current_pattern().unwrap().rows[2], old_last);
+        assert_eq!(a.tracker_row, 2);
+
+        perform(Action::PatternRowInsert, &mut a, Path::new("/none"), None);
+        assert_eq!(a.tracker_rows(), 4);
+        assert_eq!(a.tracker_row, 2);
+        assert!(a.current_pattern().unwrap().rows[3]
+            .iter()
+            .all(|cell| *cell == Cell::default()));
+
+        a.current_pattern_mut().unwrap().resize_rows(1).unwrap();
+        a.tracker_row = 0;
+        perform(Action::PatternRowRemove, &mut a, Path::new("/none"), None);
+        assert_eq!(a.tracker_rows(), 1);
+        assert_eq!(a.status, "ROW- NEEDS 2+ ROWS");
+
+        a.current_pattern_mut().unwrap().resize_rows(256).unwrap();
+        perform(Action::PatternRowInsert, &mut a, Path::new("/none"), None);
+        assert_eq!(a.tracker_rows(), 256);
+        assert_eq!(a.status, "ROW+ MAX 256 ROWS");
+    }
+
+    #[test]
+    fn tracker_size_double_copies_or_empties_the_second_half_at_128_only() {
+        let p = presets();
+        let mut copied = app(&p);
+        copied.screen = Screen::Tracker;
+        copied.set_tracker_edit(true);
+        copied
+            .current_pattern_mut()
+            .unwrap()
+            .resize_rows(2)
+            .unwrap();
+        let complete = Cell {
+            note: Note::On(77),
+            velocity: Some(123),
+            program: Some(12),
+            gate: Some(67),
+            command: Command::Delay(9),
+        };
+        copied.current_pattern_mut().unwrap().rows[1][5] = complete;
+        copied.tracker_row = 1;
+        perform(Action::PatternDouble, &mut copied, Path::new("/none"), None);
+        perform(
+            Action::PatternResizeFirst,
+            &mut copied,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(copied.tracker_rows(), 4);
+        assert_eq!(copied.current_pattern().unwrap().rows[3][5], complete);
+        assert_eq!(copied.tracker_row, 1);
+
+        let mut empty = app(&p);
+        empty.screen = Screen::Tracker;
+        empty.set_tracker_edit(true);
+        empty.current_pattern_mut().unwrap().resize_rows(2).unwrap();
+        empty.current_pattern_mut().unwrap().rows[0][0] = complete;
+        perform(Action::PatternDouble, &mut empty, Path::new("/none"), None);
+        perform(
+            Action::PatternResizeSecond,
+            &mut empty,
+            Path::new("/none"),
+            None,
+        );
+        assert_eq!(empty.tracker_rows(), 4);
+        assert!(empty.current_pattern().unwrap().rows[2..]
+            .iter()
+            .flatten()
+            .all(|cell| *cell == Cell::default()));
+
+        empty
+            .current_pattern_mut()
+            .unwrap()
+            .resize_rows(128)
+            .unwrap();
+        for row in &mut empty.current_pattern_mut().unwrap().rows {
+            row.fill(Cell::default());
+        }
+        perform(Action::PatternDouble, &mut empty, Path::new("/none"), None);
+        assert_eq!(empty.tracker_rows(), 256);
+        empty
+            .current_pattern_mut()
+            .unwrap()
+            .resize_rows(129)
+            .unwrap();
+        perform(Action::PatternDouble, &mut empty, Path::new("/none"), None);
+        assert_eq!(empty.tracker_rows(), 129);
+        assert_eq!(empty.status, "DOUBLE MAX 128 ROWS");
+    }
+
+    #[test]
+    fn tracker_size_success_stops_playback_and_recording_before_resize() {
+        let p = presets();
+        let mut playing = app(&p);
+        playing.screen = Screen::Tracker;
+        playing.set_tracker_edit(true);
+        let playing_rows = playing.tracker_rows();
+        playing.sequencer.play(&playing.song, 0, 0);
+        assert!(playing.sequencer.status().playing);
+        perform(
+            Action::PatternRowInsert,
+            &mut playing,
+            Path::new("/none"),
+            None,
+        );
+        assert!(!playing.sequencer.status().playing);
+        assert_eq!(playing.tracker_rows(), playing_rows + 1);
+        assert_eq!(playing.tracker_mode, TrackerMode::Edit);
+
+        let mut recording = app(&p);
+        recording.screen = Screen::Tracker;
+        recording.set_tracker_edit(true);
+        recording
+            .current_pattern_mut()
+            .unwrap()
+            .resize_rows(8)
+            .unwrap();
+        recording.current_pattern_mut().unwrap().rows[0][0].note = Note::On(60);
+        let recording_rows = recording.tracker_rows();
+        perform(
+            Action::PatternHalf,
+            &mut recording,
+            Path::new("/none"),
+            None,
+        );
+        assert!(recording.pattern_resize_prompt.is_some());
+        recording.tracker_recording = Some(TrackerRecording {
+            pattern: 0,
+            order: 0,
+            page: 0,
+            return_to_play: false,
+            last_row: 0,
+            next_lane: 0,
+            active_lanes: HashMap::new(),
+            lane_owners: HashMap::new(),
+            next_token: 1,
+            notes: 0,
+        });
+        recording.sequencer.play(&recording.song, 0, 0);
+        perform(
+            Action::PatternResizeFirst,
+            &mut recording,
+            Path::new("/none"),
+            None,
+        );
+        assert!(recording.tracker_recording.is_none());
+        assert!(!recording.sequencer.status().playing);
+        assert_eq!(recording.tracker_rows(), recording_rows / 2);
+        assert_eq!(recording.tracker_mode, TrackerMode::Edit);
+    }
+
+    #[test]
+    fn tracker_size_controller_dispatch_and_prompt_leave_shared_status_row_owned() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        a.screen = Screen::Tracker;
+        a.set_tracker_edit(true);
+        a.current_pattern_mut().unwrap().resize_rows(8).unwrap();
+        a.current_pattern_mut().unwrap().rows[0][0].note = Note::On(60);
+        controller_select_page(&mut a, ControllerLayout::Four, 2, &tx);
+        assert_eq!(a.menu_context(), MenuContext::TrackerEdit);
+        dispatch_pad(
+            crate::pads::PadAction::Item1,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.menu_context(), MenuContext::TrackerSizeConfirm);
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("KEEP TOP"));
+        assert!(text.contains("KEEP BOTTOM"));
+        assert!(text.contains("CANCEL"));
+        assert!(row_text(&buffer, 12).starts_with('■'));
+        assert!(!row_text(&buffer, 12).contains("KEEP"));
+
+        dispatch_pad(
+            crate::pads::PadAction::Item1,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.tracker_rows(), 4);
+        assert_eq!(a.menu_context(), MenuContext::TrackerEdit);
+        assert_eq!(a.menu_page(), 2);
+    }
+
+    #[test]
     fn edit_sys_exit_is_one_controller_level_on_every_layout() {
         let p = presets();
         for layout in [
@@ -32389,10 +33175,9 @@ release = 0.4
             None
         );
 
-        a.set_tracker_edit(true);
-        controller_select_page(&mut a, ControllerLayout::Eight, 2, &tx);
+        controller_select_page(&mut a, ControllerLayout::Eight, 1, &tx);
         dispatch_pad(
-            crate::pads::PadAction::Item2,
+            crate::pads::PadAction::Item4,
             true,
             &mut a,
             Path::new("/none"),

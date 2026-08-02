@@ -249,6 +249,25 @@ selected duration writes the existing gate/explicit note-off representation;
 it does not change the independent **ADD** cursor advance or create a second
 timing system.
 
+Edit has four controller pages: **EDIT**, **SET**, **SIZE**, and **SYS**.
+Normal FT2 **SELECT** remains one Exit away and still owns PAGE, PATTERN, SONG,
+and ROUTE. **SIZE** changes the current Pattern across every page and lane:
+
+- **HALF** accepts an even length of at least two rows. A populated Pattern asks
+  **KEEP TOP**, **KEEP BOTTOM**, or **CANCEL** and reports the cells each half
+  would discard. An empty Pattern keeps the top half directly.
+- **ROW-** removes the cursor row and shifts later rows up. A populated row
+  requires one confirmation with its exact discarded-cell count; a one-row
+  Pattern is unchanged.
+- **ROW+** inserts one empty row after the cursor and shifts later rows down,
+  up to the 256-row limit.
+- **DOUBLE** works through 128 rows. A populated Pattern asks **COPY NOTES**,
+  **EMPTY HALF**, or **CANCEL**; an empty Pattern appends empty rows directly.
+
+Successful SIZE changes stop FT2 Play/REC, keep the selected page, lane, and
+column, preserve Pattern setup and Arrangement references, and then mark the
+Project dirty. Refusal, failure, and Cancel leave the Pattern unchanged.
+
 Drum auto also checks sounding lane state. An unrelated long-tail cymbal makes
 its lane unavailable, so later kick, snare, tom, clap, hat, or ornament hits
 spill elsewhere. Another cymbal does the same when capacity permits. A

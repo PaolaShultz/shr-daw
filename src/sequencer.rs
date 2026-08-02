@@ -294,6 +294,25 @@ pub struct Pattern {
     pub rows: Vec<Vec<Cell>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PatternHalf {
+    Top,
+    Bottom,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PatternDouble {
+    Copy,
+    Empty,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PatternResize {
+    pub pattern: Pattern,
+    pub discarded_cells: usize,
+    pub copied_cells: usize,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Cell {
     pub note: Note,
@@ -910,6 +929,97 @@ impl Pattern {
 
     pub fn total_lanes(&self) -> usize {
         self.pages.len() * LANES_PER_PAGE
+    }
+
+    pub fn non_default_cells_in_rows(&self, rows: std::ops::Range<usize>) -> Result<usize> {
+        if rows.start > rows.end || rows.end > self.rows.len() {
+            bail!("pattern row range is out of bounds");
+        }
+        Ok(self.rows[rows]
+            .iter()
+            .flatten()
+            .filter(|cell| **cell != Cell::default())
+            .count())
+    }
+
+    pub fn halve_rows(&self, keep: PatternHalf) -> Result<PatternResize> {
+        let old_rows = self.rows.len();
+        if old_rows < 2 || old_rows % 2 != 0 {
+            bail!("HALF needs an even Pattern of at least two rows");
+        }
+        let half = old_rows / 2;
+        let (kept, discarded) = match keep {
+            PatternHalf::Top => (0..half, half..old_rows),
+            PatternHalf::Bottom => (half..old_rows, 0..half),
+        };
+        let discarded_cells = self.non_default_cells_in_rows(discarded)?;
+        let mut pattern = self.clone();
+        pattern.rows = self.rows[kept].to_vec();
+        pattern.validate()?;
+        Ok(PatternResize {
+            pattern,
+            discarded_cells,
+            copied_cells: 0,
+        })
+    }
+
+    pub fn remove_row(&self, row: usize) -> Result<PatternResize> {
+        if self.rows.len() <= 1 {
+            bail!("ROW- needs at least two Pattern rows");
+        }
+        let discarded_cells = self.non_default_cells_in_rows(row..row.saturating_add(1))?;
+        let mut pattern = self.clone();
+        pattern.rows.remove(row);
+        pattern.validate()?;
+        Ok(PatternResize {
+            pattern,
+            discarded_cells,
+            copied_cells: 0,
+        })
+    }
+
+    pub fn insert_row_after(&self, row: usize) -> Result<PatternResize> {
+        if self.rows.len() >= 256 {
+            bail!("ROW+ cannot exceed 256 Pattern rows");
+        }
+        if row >= self.rows.len() {
+            bail!("ROW+ cursor row is out of bounds");
+        }
+        let mut pattern = self.clone();
+        pattern
+            .rows
+            .insert(row + 1, vec![Cell::default(); self.total_lanes()]);
+        pattern.validate()?;
+        Ok(PatternResize {
+            pattern,
+            discarded_cells: 0,
+            copied_cells: 0,
+        })
+    }
+
+    pub fn double_rows(&self, mode: PatternDouble) -> Result<PatternResize> {
+        let old_rows = self.rows.len();
+        if old_rows > 128 {
+            bail!("DOUBLE cannot exceed 256 Pattern rows");
+        }
+        let copied_cells = if mode == PatternDouble::Copy {
+            self.non_default_cells_in_rows(0..old_rows)?
+        } else {
+            0
+        };
+        let mut pattern = self.clone();
+        match mode {
+            PatternDouble::Copy => pattern.rows.extend(self.rows.iter().cloned()),
+            PatternDouble::Empty => pattern.rows.extend(
+                std::iter::repeat_with(|| vec![Cell::default(); self.total_lanes()]).take(old_rows),
+            ),
+        }
+        pattern.validate()?;
+        Ok(PatternResize {
+            pattern,
+            discarded_cells: 0,
+            copied_cells,
+        })
     }
 
     /// Transpose note-ons on melodic pages as one atomic edit. Percussion
@@ -4493,6 +4603,140 @@ mod tests {
     }
     fn pages_mut(song: &mut Song) -> &mut [Page] {
         &mut song.patterns.get_mut(&0).unwrap().pages
+    }
+    fn pattern_resize_fixture(rows: usize) -> Pattern {
+        Pattern::new(
+            rows,
+            Bpm::from_hundredths(12_345).unwrap(),
+            3,
+            vec![
+                Page::new("MELODY", 0, false, 4),
+                Page::new("DRUMS", 9, true, 0),
+            ],
+        )
+    }
+
+    #[test]
+    fn pattern_resize_half_keeps_top_or_bottom_across_every_page_and_lane() {
+        let mut pattern = pattern_resize_fixture(4);
+        pattern.rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(111),
+            program: Some(7),
+            gate: Some(73),
+            command: Command::Delay(5),
+        };
+        pattern.rows[1][5] = Cell {
+            note: Note::Off,
+            command: Command::Cut(2),
+            ..Cell::default()
+        };
+        pattern.rows[2][1] = Cell {
+            note: Note::On(64),
+            velocity: Some(87),
+            gate: Some(100),
+            command: Command::Retrigger(3),
+            ..Cell::default()
+        };
+        pattern.rows[3][7] = Cell {
+            note: Note::On(38),
+            program: Some(9),
+            command: Command::Tempo(Bpm::from_hundredths(9_876).unwrap()),
+            ..Cell::default()
+        };
+
+        let top = pattern.halve_rows(PatternHalf::Top).unwrap();
+        assert_eq!(top.pattern.rows, pattern.rows[..2]);
+        assert_eq!(top.discarded_cells, 2);
+        let bottom = pattern.halve_rows(PatternHalf::Bottom).unwrap();
+        assert_eq!(bottom.pattern.rows, pattern.rows[2..]);
+        assert_eq!(bottom.discarded_cells, 2);
+        assert_eq!(bottom.pattern.tempo, pattern.tempo);
+        assert_eq!(bottom.pattern.meter, pattern.meter);
+        assert_eq!(bottom.pattern.pages, pattern.pages);
+        assert_eq!(bottom.pattern.audio_loops, pattern.audio_loops);
+    }
+
+    #[test]
+    fn pattern_resize_row_remove_and_insert_shift_complete_rows_atomically() {
+        let mut pattern = pattern_resize_fixture(3);
+        let complete = Cell {
+            note: Note::On(72),
+            velocity: Some(127),
+            program: Some(126),
+            gate: Some(1),
+            command: Command::Retrigger(8),
+        };
+        pattern.rows[1][6] = complete;
+        pattern.rows[2][0].note = Note::On(48);
+
+        let removed = pattern.remove_row(1).unwrap();
+        assert_eq!(removed.discarded_cells, 1);
+        assert_eq!(removed.pattern.rows.len(), 2);
+        assert_eq!(removed.pattern.rows[1], pattern.rows[2]);
+        assert_eq!(pattern.rows[1][6], complete);
+
+        let inserted = pattern.insert_row_after(0).unwrap();
+        assert_eq!(inserted.pattern.rows.len(), 4);
+        assert!(inserted.pattern.rows[1]
+            .iter()
+            .all(|cell| *cell == Cell::default()));
+        assert_eq!(inserted.pattern.rows[2], pattern.rows[1]);
+        assert_eq!(inserted.pattern.rows[3], pattern.rows[2]);
+    }
+
+    #[test]
+    fn pattern_resize_double_copies_complete_cells_or_appends_empty_rows() {
+        let mut pattern = pattern_resize_fixture(2);
+        pattern.rows[0][4] = Cell {
+            note: Note::On(36),
+            velocity: Some(99),
+            program: Some(42),
+            gate: Some(88),
+            command: Command::Delay(15),
+        };
+
+        let copied = pattern.double_rows(PatternDouble::Copy).unwrap();
+        assert_eq!(copied.copied_cells, 1);
+        assert_eq!(copied.pattern.rows[..2], pattern.rows);
+        assert_eq!(copied.pattern.rows[2..], pattern.rows);
+        assert_eq!(copied.pattern.rows[2][4], pattern.rows[0][4]);
+
+        let empty = pattern.double_rows(PatternDouble::Empty).unwrap();
+        assert_eq!(empty.copied_cells, 0);
+        assert_eq!(empty.pattern.rows[..2], pattern.rows);
+        assert!(empty.pattern.rows[2..]
+            .iter()
+            .flatten()
+            .all(|cell| *cell == Cell::default()));
+    }
+
+    #[test]
+    fn pattern_resize_enforces_one_to_256_row_boundaries() {
+        let one = pattern_resize_fixture(1);
+        assert!(one.halve_rows(PatternHalf::Top).is_err());
+        assert!(one.remove_row(0).is_err());
+
+        let odd = pattern_resize_fixture(3);
+        assert!(odd.halve_rows(PatternHalf::Top).is_err());
+
+        let at_double_limit = pattern_resize_fixture(128);
+        assert_eq!(
+            at_double_limit
+                .double_rows(PatternDouble::Empty)
+                .unwrap()
+                .pattern
+                .rows
+                .len(),
+            256
+        );
+        let above_double_limit = pattern_resize_fixture(129);
+        assert!(above_double_limit
+            .double_rows(PatternDouble::Empty)
+            .is_err());
+
+        let maximum = pattern_resize_fixture(256);
+        assert!(maximum.insert_row_after(0).is_err());
     }
     fn without_v12_fields(text: &str) -> String {
         text.lines()

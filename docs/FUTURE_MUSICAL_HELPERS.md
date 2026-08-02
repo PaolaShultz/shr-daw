@@ -2,8 +2,8 @@
 
 Created: 2026-08-02
 
-Status: owner-directed proposal and implementation preparation; not current
-behavior or a release promise
+Status: FT2 Edit SIZE implemented; remaining helpers are owner-directed
+proposals, not release promises
 
 This plan covers small, inspectable helpers that turn a short musical idea into
 editable FT2 material. The helpers should remove repetitive work, not decide
@@ -48,8 +48,8 @@ Observed in current source:
 - Arrangement steps reference a Pattern record, so changing that Pattern
   changes every reference without rewriting the order;
 - Pattern-owned Loop Mix settings survive the existing resize path; and
-- current setup overlays already offer row counts through 256, but Edit has no
-  quick structural operations.
+- current setup overlays already offer row counts through 256, and Edit now
+  owns the quick structural SIZE operations below.
 
 The existing post-competition `LENGTH` proposal used a separate transactional
 editor. The owner-supplied `SIZE` motion below supersedes that Part 1 surface;
@@ -321,7 +321,7 @@ page/lane/column/cursor.
 
 | Phase | Work | Why first/next |
 |---|---|---|
-| 1 | FT2 Edit SIZE model helpers and page | Immediate manual sketch speed; storage already supports it |
+| 1 (implemented) | FT2 Edit SIZE model helpers and page | Immediate manual sketch speed; storage already supports it |
 | 2 | Shared generated-draft, collision summary, seed, preview, Apply/Clone/Cancel | Prevent every musical helper inventing unsafe replacement behavior |
 | 3 | Read-only circle-of-fifths/HARMONY browser | Useful theory support with no generated-data risk |
 | 4 | Offline arpeggio generator | Small deterministic algorithms over existing cells |
@@ -332,11 +332,8 @@ Each phase is independently shippable. None should change the audio callback,
 start hardware, or require a Project-format bump unless a later retrigger
 velocity contour or new harmony metadata is deliberately adopted.
 
-## Open owner decisions before implementation
+## Remaining open owner decisions
 
-- For `HALF`, should a completely empty Pattern default to top as proposed?
-- Should populated `ROW-` use one immediate confirmation, or should SIZE become
-  a larger draft editor with Apply/Cancel at the cost of the four-item page?
 - Should generated arp/fill material default to a new Pattern clone or only a
   temporary preview until the musician chooses a destination?
 - Which two or three Arrangement templates match the musician's actual sketch
