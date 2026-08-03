@@ -26,8 +26,9 @@ Dual mono independently equal-power pans ports 1 and 2, initially at hard left
 and hard right so its first output matches stereo; mode and matrix changes use
 the existing 10 ms smoothing boundary. MTR NAV exposes mode and a
 LEVEL/PAN 1/PAN 2 focus whose normal minus/plus controls follow the selected
-field. These controls do not alter raw multitrack stems, machine JACK mapping,
-or Project data. The user-authorized combined pass on 2026-08-03 used exact
+field. Mode and focus deliberately add no dedicated computer-keyboard
+shortcuts. These controls do not alter raw multitrack stems, machine JACK
+mapping, or Project data. The user-authorized combined pass on 2026-08-03 used exact
 Rust 1.97.1: formatting and locked check passed, SHR's complete normal suite
 passed 941 tests with 13 documented research/audition/performance tests
 ignored, and locked debug and release builds passed. The focused MTR NAV

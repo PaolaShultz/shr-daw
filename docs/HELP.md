@@ -212,9 +212,10 @@ With Input selected, MTR NAV **DUAL/STEREO** changes the input interpretation.
 **IN CTRL** cycles `LEVEL`, `PAN 1`, and `PAN 2`; on either pan, the ordinary
 LEVEL-/LEVEL+ positions become PAN1-/PAN1+ or PAN2-/PAN2+. Dual mono starts at
 `1L100 2R100`, matching the original stereo image, then pans each configured
-capture port independently with an equal-power law. Keyboard `i` changes mode
-and `c` changes the selected Input control. These are live session controls,
-not Project data, and a fresh launch starts in stereo.
+capture port independently with an equal-power law. Mode and focus use the
+visible MTR controller actions; they add no dedicated computer-keyboard
+shortcuts. These are live session controls, not Project data, and a fresh
+launch starts in stereo.
 
 ## 18-channel input levels
 

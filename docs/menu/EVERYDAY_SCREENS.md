@@ -374,8 +374,9 @@ With Input selected, `DUAL` changes the exact configured pair from its original
 stereo mapping to two independently panned mono signals; it then reads
 `STEREO` for the reverse action. Dual mono begins at `1L100 2R100`, so the
 first switch preserves the stereo image. `IN CTRL` cycles LEVEL, PAN 1, and
-PAN 2; the OPS minus/plus pair follows that focus. Keyboard `i` changes mode
-and `c` cycles the focus. These live values are not saved in the Project.
+PAN 2; the OPS minus/plus pair follows that focus. Mode and focus use these
+visible controller actions and add no dedicated computer-keyboard shortcuts.
+These live values are not saved in the Project.
 
 ![Effects-routing overlay over the performance meter](../images/menu/overlay-performance-fx.png)
 

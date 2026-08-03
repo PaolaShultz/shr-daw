@@ -15570,8 +15570,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Char('-') => Some(Action::BusLevelDecrease),
             KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::BusLevelIncrease),
             KeyCode::Char('m') => Some(Action::BusMute),
-            KeyCode::Char('i') => Some(Action::BusInputMode),
-            KeyCode::Char('c') => Some(Action::BusInputControl),
             KeyCode::Char('r') => Some(Action::FinalRecordToggle),
             KeyCode::Char('x') => Some(Action::ResetMeter),
             _ => None,
@@ -27362,7 +27360,7 @@ release = 0.4
     }
 
     #[test]
-    fn input_dual_mono_mode_and_each_pan_share_the_mtr_controls() {
+    fn input_dual_mono_mode_and_each_pan_stay_on_the_mtr_controls() {
         let p = presets();
         let (tx, _rx) = mpsc::channel();
         let mut a = app(&p);
@@ -27398,9 +27396,9 @@ release = 0.4
         assert!(row_text(&pan_two, 11).contains("[PAN2-]"));
         assert!(row_text(&pan_two, 11).contains("[PAN2+]"));
         key(KeyCode::Char('i'), &mut a, Path::new("/none"), &tx);
-        assert_eq!(controls.input_mix_mode(), InputMixMode::Stereo);
         key(KeyCode::Char('c'), &mut a, Path::new("/none"), &tx);
-        assert_eq!(a.input_mix_control, InputMixControl::Level);
+        assert_eq!(controls.input_mix_mode(), InputMixMode::DualMono);
+        assert_eq!(a.input_mix_control, InputMixControl::PanTwo);
     }
 
     #[test]
