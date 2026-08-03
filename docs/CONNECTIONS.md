@@ -75,12 +75,15 @@ own configured FluidSynth when selected.
 
 ## Software instruments
 
-SHR-DAW supports synthv1, Yoshimi, FluidSynth, and Moj Sint as separately installed
-programs. Only one SHR-DAW-managed software-engine process runs at a time.
+SHR-DAW supports synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler as
+separately installed programs. Only one SHR-DAW-managed software-engine process
+runs at a time.
 synthv1 and Yoshimi provide one current preset; one FluidSynth process may play
 several SoundFont presets on different MIDI channels while retaining one
 stereo JACK source. Moj Sint contributes exactly `out_l` and `out_r` plus one
 ALSA Sequencer input; it creates no JACK connections itself. The standalone
+SHR Sampler likewise contributes the configured `out_l` and `out_r` plus one
+ALSA Sequencer input and creates no JACK connections itself. The standalone
 Software Synth workspace keeps its sound
 after leaving Presets or Playback. FT2 uses the engine/instrument pair saved by
 its current Pattern; if the Project is genuinely new, empty, unsaved, and

@@ -35,22 +35,41 @@ set the project's compiler direction; the installer uses the official per-user
 rustup toolchain. A running JACK server is optional for browsing and editing
 but required for software-instrument audio, WAV-loop playback, and multitrack
 recording.
-synthv1, Yoshimi, FluidSynth/TimGM, and Moj Sint are separate optional sound
-engines at runtime. The default installer includes the first three. Install the
-Moj Sint 0.2.2 sibling repository separately so `moj-sint` is on `PATH`, then
-use its 13 tracked strict factory `.mojsint` presets under one configured
-`moj_sint.preset_root`; SHR never copies private presets from that repository.
+synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
+optional melodic engines at runtime. The supported installer installs all five
+from distribution packages or the exact public revisions in
+`install/compatibility.json`. It installs Moj Sint's 13 allowlisted factory
+presets and SHR Sampler's allowlisted project-authored factory package; it
+never copies private presets, samples, packages, or user data from a checkout.
+SHR Drums remains an exact pinned in-process Rust dependency, so there is no
+separate `shr-drums` executable or layered drum service.
 MIDI controllers, external instruments, audio interfaces, and a
 480×320 display are optional hardware. On that display the current fixed TTY
 layout is 40×13 cells; installation does not change its font.
 
 ## Install
 
-From the project directory, run:
+For a new public installation, clone the immutable release and run its
+installer in one command:
 
 ```sh
-./scripts/install.sh
+git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git && cd shr-daw && ./scripts/install.sh
 ```
+
+From an already checked-out matching release, run `./scripts/install.sh`.
+
+The 0.4.8 compatibility set is:
+
+| Component | Required version | Installation form |
+| --- | --- | --- |
+| SHR-DAW | 0.4.8 | tagged source checkout and `shr` binary |
+| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 13 cleared presets |
+| SHR Sampler | 0.1.2 (accepted runtime `>=0.1.2,<0.2.0`) | exact public commit, `shr-sampler`, one cleared package |
+| SHR Drums | 0.2.0 (accepted library `>=0.2.0,<0.3.0`) | exact public Cargo dependency compiled into `shr` |
+
+The machine-readable source commits and runtime bounds live only in
+`install/compatibility.json`; documentation summarizes rather than duplicates
+their hashes.
 
 The installer:
 
@@ -66,15 +85,25 @@ The installer:
 - detects the current login's `rtprio` and `memlock`; if they are inadequate,
   a separate default-no prompt can add the user to `audio` and create a
   helper-owned limits file only when no distribution policy already suffices;
-- installs the exact official Rust toolchain selected by the repository, runs
-  the locked tests, and builds the locked release version; newer stable
-  releases are adopted deliberately by changing the repository pin;
-- installs commands, templates, the 21 allowlisted presets, four allowlisted
-  SHR Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
-  Projects plus MIDI files, device/controller profiles, drum data,
-  documentation, and the complete generated menu-manual image set below the
-  selected prefix (normally `/usr/local`);
+- installs the exact official Rust toolchains selected by each repository,
+  fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
+  declared versions, and creates locked release builds;
+- builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;
+- stages commands, templates, 21 allowlisted synthv1 presets, 13 allowlisted
+  Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
+  Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
+  Projects plus MIDI files, profiles, drum data, and documentation;
+- preflights the complete payload, refuses a differing unowned destination,
+  and transactionally installs it below `/usr/local` with hashes, modes, and
+  symlink targets recorded in `/usr/local/share/shr-daw-install/manifest.json`;
 - opens the routing wizard.
+
+The payload manifest owns the installed binaries, compatibility aliases,
+configuration templates, public presets/instruments/kits/loops/demos, profiles,
+and documentation. The distribution package manager owns synthv1, Yoshimi,
+FluidSynth, TimGM, and their libraries. The musician owns every generated XDG
+configuration, Project, Idea, recording, imported loop, controller map, and
+private preset/package; those paths are never adopted into the system manifest.
 
 On stock Raspberry Pi OS, the routing wizard asks for a stable ALSA card name
 such as `A96`, never a numeric card order. After showing the exact JACK command,
@@ -131,6 +160,8 @@ grouped prompts with:
 - `shr` opens SHR-DAW and provides its command-line tools.
 - `shr-setup` opens the routing wizard.
 - `shr-audio-tune` manages optional Raspberry Pi audio CPU tuning.
+- `moj-sint` is the pinned managed synthesis host.
+- `shr-sampler` is the pinned managed sample-package host and offline validator.
 - `shs` and `synth-player` are compatibility names for `shr`. They use the same
   Rust engine ownership, routing, and shutdown path as the main command.
 
@@ -160,21 +191,30 @@ carries the visible `DEV` badge.
 
 ## Upgrade and uninstall boundaries
 
-Rerunning `./scripts/install.sh` builds the locked current checkout and replaces
-installed program/shared documentation files. Existing XDG configuration,
-controller learning, Projects, Ideas, loops, and recordings are not removed or
-reset. Package installation, service masking, real-time policy, and CPU tuning
-are idempotent. Run `shr-setup` only when routes or hardware need to change.
+Rerunning the same release is idempotent. A newer tagged release first verifies
+that every previously owned file still matches its recorded hash, then replaces
+only changed managed files and removes only obsolete unchanged managed files.
+An identical pre-existing file can be adopted; a differing unowned file or a
+locally modified managed file stops the update before mutation. An interrupted
+file transaction retains private backups and a pending journal; the next apply
+rolls it back before preflight and retry. Package installation, service masking,
+real-time policy, and CPU tuning are separately idempotent. Existing XDG
+configuration, controller learning, Projects, Ideas, loops, recordings, and
+private presets/packages are never payload members and are not reset.
 
-For a default `/usr/local` source installation, remove installed SHR-DAW files
-from this checkout with:
+For a default `/usr/local` installation, run the installed manifest owner:
 
 ```sh
-sudo make uninstall
+sudo /usr/local/libexec/shr-daw/managed_install.py uninstall
 ```
 
-This removes the installed commands, public presets, kits, profiles, rhythms,
-and documentation. It deliberately preserves user data under
+`sudo make uninstall` from the matching source checkout invokes the same
+operation.
+
+This manifest-driven command removes only unchanged files owned by the last
+successful payload. It refuses to delete a managed file changed afterward,
+removes owned directories only when empty, and preserves unrelated files in a
+shared directory. It deliberately preserves user data under
 `${XDG_STATE_HOME:-~/.local/state}/shsynth/` and
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/`, Moj Sint user sounds under
 `${XDG_DATA_HOME:-~/.local/share}/moj-sint/`, repository-local `user/`, system
@@ -184,10 +224,11 @@ uninstalling the command if desired. Never delete those retained directories
 unless their Projects, Ideas, recordings, loops, and private presets have been
 reviewed and backed up.
 
-The Makefile install/uninstall file boundary can be validated in an isolated
-`DESTDIR`: it installs 21 allowlisted public presets, four allowlisted public
-kits, and only manifest-cleared demos, includes no `user/` path, and staged
-uninstall removes only staged product files.
+`make install-files` is a staging-only target and refuses an empty `DESTDIR`;
+live installation goes through the transactional helper. The complete
+hardware-free validation builds a disposable payload and applies, reapplies,
+updates, recovers, and uninstalls it under a disposable root. No nested Git
+repository is copied into the runtime tree.
 
 ## JACK
 

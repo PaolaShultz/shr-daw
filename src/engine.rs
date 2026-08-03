@@ -9,7 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -797,7 +797,10 @@ impl Engine {
         set_command_affinity(&mut command, config.audio_engine_cpu);
         let mut child = command
             .stdin(
-                if matches!(preset.backend, BackendKind::Synthv1 | BackendKind::MojSint) {
+                if matches!(
+                    preset.backend,
+                    BackendKind::Synthv1 | BackendKind::MojSint | BackendKind::ShrSampler
+                ) {
                     Stdio::null()
                 } else {
                     Stdio::piped()
@@ -815,7 +818,11 @@ impl Engine {
                 &mut child,
                 preset.backend,
                 &backend_config.client_name,
-                (preset.backend == BackendKind::MojSint).then_some(&config.moj_sint.output_ports),
+                match preset.backend {
+                    BackendKind::MojSint => Some(&config.moj_sint.output_ports),
+                    BackendKind::ShrSampler => Some(&config.shr_sampler.output_ports),
+                    _ => None,
+                },
                 startup_deadline,
                 &log_path,
             )?;
@@ -1136,6 +1143,9 @@ fn preflight_start(
             backend_config.command
         );
     }
+    if let PresetId::ShrSampler { path, .. } = &preset.id {
+        validate_shr_sampler_host(&backend_config.command, path, config)?;
+    }
     let command = backend_command(preset, state, config)?;
     Ok(EnginePreflight {
         controller,
@@ -1227,6 +1237,7 @@ impl Drop for Engine {
                 BackendKind::FluidSynth => writeln!(stdin, "quit"),
                 BackendKind::Synthv1 => Ok(()),
                 BackendKind::MojSint => Ok(()),
+                BackendKind::ShrSampler => Ok(()),
             };
             let _ = stdin.flush();
         }
@@ -1259,6 +1270,7 @@ fn backend_config(config: &RuntimeConfig, backend: BackendKind) -> BackendConfig
         BackendKind::Yoshimi => config.yoshimi.backend.clone(),
         BackendKind::FluidSynth => config.fluidsynth.backend.clone(),
         BackendKind::MojSint => config.moj_sint.backend.clone(),
+        BackendKind::ShrSampler => config.shr_sampler.backend.clone(),
     }
 }
 
@@ -1301,8 +1313,88 @@ fn backend_command(preset: &Preset, state: &Path, config: &RuntimeConfig) -> Res
                 .args(["--client-name", &backend.client_name, "--preset"])
                 .arg(safe_command_path(path)?);
         }
+        PresetId::ShrSampler { path, .. } => {
+            command
+                .args(["--client-name", &backend.client_name, "--instrument"])
+                .arg(safe_command_path(path)?);
+        }
     }
     Ok(command)
+}
+
+fn validate_shr_sampler_host(command: &str, path: &Path, config: &RuntimeConfig) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("inspect SHR Sampler package {}", path.display()))?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        bail!("SHR Sampler instrument must be a regular package directory");
+    }
+    let mut version_query = Command::new(command)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("query SHR Sampler version")?;
+    let version_deadline = Instant::now() + config.shr_sampler.validation_timeout;
+    let version_text = loop {
+        if let Some(status) = version_query.try_wait()? {
+            if !status.success() {
+                bail!("SHR Sampler executable did not report a compatible version");
+            }
+            let mut output = Vec::new();
+            version_query
+                .stdout
+                .take()
+                .context("SHR Sampler version output is unavailable")?
+                .take(4_097)
+                .read_to_end(&mut output)?;
+            if output.len() > 4_096 {
+                bail!("SHR Sampler version output exceeds 4096 bytes");
+            }
+            break String::from_utf8(output).context("SHR Sampler version output is not UTF-8")?;
+        }
+        if Instant::now() >= version_deadline {
+            terminate(&mut version_query);
+            bail!(
+                "SHR Sampler version query timed out after {} ms",
+                config.shr_sampler.validation_timeout.as_millis()
+            );
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    let version = version_text
+        .trim()
+        .strip_prefix("shr-sampler ")
+        .context("SHR Sampler version output has an unexpected format")?;
+    if !crate::installer_contract::shr_sampler_version_supported(version)? {
+        bail!("SHR Sampler {version} is incompatible with this SHR-DAW release");
+    }
+
+    let mut validation = Command::new(command)
+        .arg("validate")
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("start SHR Sampler package validation")?;
+    let deadline = Instant::now() + config.shr_sampler.validation_timeout;
+    loop {
+        if let Some(status) = validation.try_wait()? {
+            if status.success() {
+                return Ok(());
+            }
+            bail!("SHR Sampler rejected instrument package {}", path.display());
+        }
+        if Instant::now() >= deadline {
+            terminate(&mut validation);
+            bail!(
+                "SHR Sampler package validation timed out after {} ms",
+                config.shr_sampler.validation_timeout.as_millis()
+            );
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
 }
 
 fn safe_command_path(path: &Path) -> Result<String> {
@@ -3707,6 +3799,113 @@ mod tests {
                 "/sounds/model-d.mojsint"
             ]
         );
+    }
+
+    #[test]
+    fn managed_shr_sampler_uses_only_its_public_host_contract() {
+        let preset = Preset {
+            backend: BackendKind::ShrSampler,
+            name: "SHR Clear Tone".into(),
+            category: None,
+            id: PresetId::ShrSampler {
+                instrument_id: "shr-clear-tone".into(),
+                path: PathBuf::from("/sounds/shr-clear-tone.shrinst"),
+            },
+        };
+        let config = RuntimeConfig::default();
+        let command = backend_command(&preset, Path::new("/tmp/shr-state"), &config).unwrap();
+        assert_eq!(command.get_program(), "shr-sampler");
+        assert_eq!(
+            command
+                .get_args()
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            [
+                "--client-name",
+                "shs-shr-sampler",
+                "--instrument",
+                "/sounds/shr-clear-tone.shrinst"
+            ]
+        );
+    }
+
+    #[test]
+    fn shr_sampler_preflight_checks_executable_package_version_and_strict_validation() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let base =
+            std::env::temp_dir().join(format!("shsynth-sampler-preflight-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let package = base.join("instrument.shrinst");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(package.join("manifest.json"), "{}").unwrap();
+        let preset = Preset {
+            backend: BackendKind::ShrSampler,
+            name: "Fixture".into(),
+            category: None,
+            id: PresetId::ShrSampler {
+                instrument_id: "fixture".into(),
+                path: package.clone(),
+            },
+        };
+        let write_host = |name: &str, version: &str, validation_status: i32| {
+            let path = base.join(name);
+            fs::write(
+                &path,
+                format!(
+                    "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'shr-sampler {version}'; exit 0; fi\nif [ \"$1\" = validate ]; then exit {validation_status}; fi\nexit 2\n"
+                ),
+            )
+            .unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            path
+        };
+        let good = write_host("good-host", "0.1.2", 0);
+        let bad_version = write_host("old-host", "0.1.1", 0);
+        let rejecting = write_host("rejecting-host", "0.1.2", 1);
+        let hanging = base.join("hanging-host");
+        fs::write(&hanging, "#!/bin/sh\nwhile :; do :; done\n").unwrap();
+        fs::set_permissions(&hanging, fs::Permissions::from_mode(0o755)).unwrap();
+        let hanging_validation = base.join("hanging-validation-host");
+        fs::write(
+            &hanging_validation,
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'shr-sampler 0.1.2'; exit 0; fi\nwhile :; do :; done\n",
+        )
+        .unwrap();
+        fs::set_permissions(&hanging_validation, fs::Permissions::from_mode(0o755)).unwrap();
+        let configured = |command: &Path| {
+            let mut config = RuntimeConfig::default();
+            config.shr_sampler.backend.command = command.to_string_lossy().into_owned();
+            config
+        };
+        assert!(validate_start(&preset, &base, &configured(&good)).is_ok());
+        assert!(validate_start(&preset, &base, &configured(&bad_version)).is_err());
+        assert!(validate_start(&preset, &base, &configured(&rejecting)).is_err());
+        let mut hanging_config = configured(&hanging);
+        hanging_config.shr_sampler.validation_timeout = Duration::from_millis(50);
+        assert!(validate_start(&preset, &base, &hanging_config)
+            .unwrap_err()
+            .to_string()
+            .contains("timed out"));
+        let mut validation_timeout_config = configured(&hanging_validation);
+        validation_timeout_config.shr_sampler.validation_timeout = Duration::from_millis(50);
+        assert!(validate_start(&preset, &base, &validation_timeout_config)
+            .unwrap_err()
+            .to_string()
+            .contains("timed out"));
+        let missing = configured(&base.join("missing-host"));
+        assert!(validate_start(&preset, &base, &missing).is_err());
+        let missing_package = Preset {
+            id: PresetId::ShrSampler {
+                instrument_id: "missing".into(),
+                path: base.join("missing.shrinst"),
+            },
+            ..preset
+        };
+        assert!(validate_start(&missing_package, &base, &configured(&good)).is_err());
+        assert!(!base.join("engine.pid").exists());
+        assert!(!base.join("current").exists());
+        let _ = fs::remove_dir_all(base);
     }
 
     #[test]

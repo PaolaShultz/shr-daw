@@ -143,6 +143,9 @@ pub struct DrumHost {
 }
 
 impl DrumHost {
+    // Callers supply each real-time ownership input explicitly so the host
+    // cannot invent routes, tuning, effects, tempo, or shared publication.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         config: &DrumEngineConfig,
         kit: &KitEntry,
@@ -558,16 +561,16 @@ mod tests {
 
         fn groove_hits(row: usize) -> Vec<(u8, u8)> {
             let mut hits = Vec::with_capacity(5);
-            if row % 16 == 0 {
+            if row.is_multiple_of(16) {
                 hits.push((49, if row == 0 { 112 } else { 92 }));
             }
             if matches!(row % 16, 0 | 7 | 10) {
-                hits.push((36, if row % 16 == 0 { 116 } else { 98 }));
+                hits.push((36, if row.is_multiple_of(16) { 116 } else { 98 }));
             }
             if matches!(row % 16, 4 | 12) {
                 hits.push((38, if row % 16 == 12 { 112 } else { 104 }));
             }
-            if row % 2 == 0 {
+            if row.is_multiple_of(2) {
                 hits.push((42, 62 + ((row * 11) % 24) as u8));
             }
             if row % 16 == 14 {
@@ -575,7 +578,7 @@ mod tests {
             }
             if row >= 56 {
                 let tom = [50, 47, 45, 43][(row - 56) / 2 % 4];
-                if row % 2 == 0 {
+                if row.is_multiple_of(2) {
                     hits.push((tom, 96 + ((row - 56) * 3) as u8));
                 }
             } else if row % 8 == 6 {
@@ -600,7 +603,7 @@ mod tests {
                  effects: &mut DrumEffectStack,
                  output: &mut Vec<EffectFrame>| {
                     for block_frames in std::iter::repeat_n(256, count / 256)
-                        .chain((count % 256 != 0).then_some(count % 256))
+                        .chain((!count.is_multiple_of(256)).then_some(count % 256))
                     {
                         rendered[..block_frames].fill(StereoFrame::SILENCE);
                         engine.process(&mut rendered[..block_frames]);
@@ -843,9 +846,9 @@ mod tests {
 
         fn groove_hits(row: usize) -> [(u8, u8); 4] {
             [
-                (36, if row % 8 == 0 { 116 } else { 0 }),
+                (36, if row.is_multiple_of(8) { 116 } else { 0 }),
                 (38, if matches!(row % 8, 4) { 108 } else { 0 }),
-                (42, if row % 2 == 0 { 78 } else { 0 }),
+                (42, if row.is_multiple_of(2) { 78 } else { 0 }),
                 (49, if row == 0 { 104 } else { 0 }),
             ]
         }
@@ -875,7 +878,7 @@ mod tests {
         let mut render_frames =
             |count: usize, engine: &mut DrumEngine, dry: &mut Vec<EffectFrame>| {
                 for block_frames in std::iter::repeat_n(256, count / 256)
-                    .chain((count % 256 != 0).then_some(count % 256))
+                    .chain((!count.is_multiple_of(256)).then_some(count % 256))
                 {
                     rendered[..block_frames].fill(StereoFrame::SILENCE);
                     engine.process(&mut rendered[..block_frames]);

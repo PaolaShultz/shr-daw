@@ -3,7 +3,7 @@ use crate::tempo::Bpm;
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 const DEFAULT_CONFIG: &str = include_str!("../config/shsynth.conf");
@@ -34,6 +34,13 @@ pub struct FluidSynthConfig {
 pub struct MojSintConfig {
     pub backend: BackendConfig,
     pub output_ports: [String; 2],
+}
+
+#[derive(Clone, Debug)]
+pub struct ShrSamplerConfig {
+    pub backend: BackendConfig,
+    pub output_ports: [String; 2],
+    pub validation_timeout: Duration,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -205,6 +212,7 @@ pub struct RuntimeConfig {
     pub yoshimi: YoshimiConfig,
     pub fluidsynth: FluidSynthConfig,
     pub moj_sint: MojSintConfig,
+    pub shr_sampler: ShrSamplerConfig,
     pub startup_timeout: Duration,
     pub note_naming: NoteNaming,
     pub midi_autoconnect: bool,
@@ -343,6 +351,11 @@ impl Default for RuntimeConfig {
                 backend: BackendConfig::default(),
                 output_ports: ["out_l".into(), "out_r".into()],
             },
+            shr_sampler: ShrSamplerConfig {
+                backend: BackendConfig::default(),
+                output_ports: ["out_l".into(), "out_r".into()],
+                validation_timeout: Duration::from_secs(60),
+            },
             startup_timeout: Duration::ZERO,
             note_naming: NoteNaming::German,
             midi_autoconnect: false,
@@ -442,6 +455,8 @@ impl RuntimeConfig {
         let mut saw_soundfonts = false;
         let mut saw_moj_roots = false;
         let mut saw_moj_outputs = false;
+        let mut saw_sampler_roots = false;
+        let mut saw_sampler_outputs = false;
         let mut saw_external_channels = false;
         let mut saw_percussion_notes = false;
         let mut saw_capture_inputs = false;
@@ -563,6 +578,44 @@ impl RuntimeConfig {
                     } else {
                         bail!("moj_sint.output accepts exactly two entries");
                     }
+                }
+                "shr_sampler.command" => {
+                    self.shr_sampler.backend.command = required(key, value)?.into()
+                }
+                "shr_sampler.client" => {
+                    self.shr_sampler.backend.client_name = required(key, value)?.into()
+                }
+                "shr_sampler.midi_output" => {
+                    self.shr_sampler.backend.midi_output_match = required(key, value)?.into()
+                }
+                "shr_sampler.instrument_root" => {
+                    replace_list_once(
+                        &mut self.shr_sampler.backend.preset_roots,
+                        &mut saw_sampler_roots,
+                    );
+                    if !value.is_empty() {
+                        self.shr_sampler
+                            .backend
+                            .preset_roots
+                            .push(expand_home(value));
+                    }
+                }
+                "shr_sampler.output" => {
+                    if !saw_sampler_outputs {
+                        self.shr_sampler.output_ports = [String::new(), String::new()];
+                        saw_sampler_outputs = true;
+                    }
+                    if self.shr_sampler.output_ports[0].is_empty() {
+                        self.shr_sampler.output_ports[0] = required(key, value)?.into();
+                    } else if self.shr_sampler.output_ports[1].is_empty() {
+                        self.shr_sampler.output_ports[1] = required(key, value)?.into();
+                    } else {
+                        bail!("shr_sampler.output accepts exactly two entries");
+                    }
+                }
+                "shr_sampler.validation_timeout_ms" => {
+                    let millis = bounded_usize(key, value, 1_000, 600_000)?;
+                    self.shr_sampler.validation_timeout = Duration::from_millis(millis as u64);
                 }
                 "midi.autoconnect" => self.midi_autoconnect = boolean(key, value)?,
                 "midi.input" => {
@@ -825,6 +878,20 @@ impl RuntimeConfig {
         {
             bail!("Moj Sint requires exactly two distinct moj_sint.output entries");
         }
+        if self.shr_sampler.output_ports.iter().any(String::is_empty)
+            || self.shr_sampler.output_ports[0] == self.shr_sampler.output_ports[1]
+        {
+            bail!("SHR Sampler requires exactly two distinct shr_sampler.output entries");
+        }
+        for root in &self.shr_sampler.backend.preset_roots {
+            if !root.is_absolute()
+                || root
+                    .components()
+                    .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+            {
+                bail!("shr_sampler.instrument_root must be an absolute normalized path");
+            }
+        }
         if self
             .audio_graph
             .input
@@ -967,6 +1034,25 @@ impl RuntimeConfig {
         for output in &self.moj_sint.output_ports {
             text.push_str(&format!("moj_sint.output={output}\n"));
         }
+        text.push_str(&format!(
+            "shr_sampler.command={}\nshr_sampler.client={}\nshr_sampler.midi_output={}\n",
+            self.shr_sampler.backend.command,
+            self.shr_sampler.backend.client_name,
+            self.shr_sampler.backend.midi_output_match
+        ));
+        for root in &self.shr_sampler.backend.preset_roots {
+            text.push_str(&format!("shr_sampler.instrument_root={}\n", root.display()));
+        }
+        if self.shr_sampler.backend.preset_roots.is_empty() {
+            text.push_str("shr_sampler.instrument_root=\n");
+        }
+        for output in &self.shr_sampler.output_ports {
+            text.push_str(&format!("shr_sampler.output={output}\n"));
+        }
+        text.push_str(&format!(
+            "shr_sampler.validation_timeout_ms={}\n",
+            self.shr_sampler.validation_timeout.as_millis()
+        ));
         text.push_str(&format!("midi.autoconnect={}\n", self.midi_autoconnect));
         for input in &self.midi_input_matches {
             text.push_str(&format!("midi.input={input}\n"));
@@ -1736,6 +1822,55 @@ mod tests {
         );
         assert_eq!(loaded.moj_sint.output_ports, ["out_l", "out_r"]);
         fs::write(&path, "moj_sint.output=only_one\n").unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn shr_sampler_configuration_round_trips_and_rejects_invalid_routes_and_timeouts() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-sampler-config-{}.conf",
+            std::process::id()
+        ));
+        let mut config = RuntimeConfig::default();
+        config.shr_sampler.backend.command = "/opt/shr/bin/shr-sampler".into();
+        config.shr_sampler.backend.client_name = "owned-sampler".into();
+        config.shr_sampler.backend.midi_output_match = "owned-sampler".into();
+        config.shr_sampler.backend.preset_roots = vec![PathBuf::from("/sounds/instruments")];
+        config.shr_sampler.output_ports = ["out_l".into(), "out_r".into()];
+        config.shr_sampler.validation_timeout = Duration::from_millis(2_500);
+        config.save(&path).unwrap();
+        let loaded = RuntimeConfig::load(&path).unwrap();
+        assert_eq!(
+            loaded.shr_sampler.backend.command,
+            config.shr_sampler.backend.command
+        );
+        assert_eq!(
+            loaded.shr_sampler.backend.client_name,
+            config.shr_sampler.backend.client_name
+        );
+        assert_eq!(
+            loaded.shr_sampler.backend.midi_output_match,
+            config.shr_sampler.backend.midi_output_match
+        );
+        assert_eq!(
+            loaded.shr_sampler.backend.preset_roots,
+            config.shr_sampler.backend.preset_roots
+        );
+        assert_eq!(loaded.shr_sampler.output_ports, ["out_l", "out_r"]);
+        assert_eq!(
+            loaded.shr_sampler.validation_timeout,
+            Duration::from_millis(2_500)
+        );
+        fs::write(
+            &path,
+            "shr_sampler.output=out_l\nshr_sampler.output=out_l\n",
+        )
+        .unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        fs::write(&path, "shr_sampler.validation_timeout_ms=999\n").unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        fs::write(&path, "shr_sampler.instrument_root=relative/instrument\n").unwrap();
         assert!(RuntimeConfig::load(&path).is_err());
         let _ = fs::remove_file(path);
     }

@@ -259,7 +259,7 @@ fn drum_benchmark(
     .map_err(anyhow::Error::msg)?;
     let mut callback_index = 0usize;
     let mut run_callback = |evidence: Option<&mut OutputEvidence>| {
-        if callback_index % 16 == 0 {
+        if callback_index.is_multiple_of(16) {
             sender
                 .push(DrumEvent::NoteOn {
                     note: 36,
@@ -275,7 +275,7 @@ fn drum_benchmark(
                 })
                 .expect("bounded benchmark event queue");
         }
-        if callback_index % 4 == 0 {
+        if callback_index.is_multiple_of(4) {
             sender
                 .push(DrumEvent::NoteOn {
                     note: 42,

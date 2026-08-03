@@ -2079,7 +2079,7 @@ pub fn run_final_mix_stress(
 }
 
 fn final_stress_source(source: usize, frame: u64) -> StereoFrame {
-    if frame % 8192 == 0 {
+    if frame.is_multiple_of(8192) {
         return StereoFrame::new(0.8, 0.72);
     }
     let (left_prime, right_prime, scale) = match source {

@@ -364,6 +364,13 @@ fn write_preset_ref(path: &Path, preset: &Preset) -> Result<()> {
             format!("soundfont_index={soundfont_index}\nbank={bank}\nprogram={program}\n"),
         ),
         PresetId::MojSint { .. } => ("preset.mojsint".to_owned(), String::new()),
+        PresetId::ShrSampler {
+            instrument_id,
+            path,
+        } => (
+            safe_ref_value(&path.to_string_lossy())?,
+            format!("instrument_id={}\n", safe_ref_value(instrument_id)?),
+        ),
     };
     fs::write(
         path,
@@ -411,7 +418,12 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
     } else {
         PathBuf::from(source)
     };
-    if !source.is_file() {
+    let source_exists = if backend == BackendKind::ShrSampler {
+        source.is_dir()
+    } else {
+        source.is_file()
+    };
+    if !source_exists {
         bail!("idea preset source is missing: {}", source.display());
     }
     let id = match backend {
@@ -437,6 +449,11 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
                 path: source,
             }
         }
+        BackendKind::ShrSampler => PresetId::ShrSampler {
+            instrument_id: field("instrument_id=")
+                .context("SHR Sampler reference has no instrument ID")?,
+            path: source,
+        },
     };
     Ok(Preset {
         backend,
@@ -955,6 +972,34 @@ mod tests {
         assert!(!saved.join("preset.synthv1").exists());
         let (loaded, _) = load(&base, "idea").unwrap();
         assert_eq!(loaded, preset);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn shr_sampler_idea_restores_stable_identity_without_copying_the_package() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-idea-sampler-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let package = base.join("public/shr-clear-tone.shrinst");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(package.join("manifest.json"), "{}").unwrap();
+        let preset = Preset {
+            backend: BackendKind::ShrSampler,
+            name: "SHR Clear Tone".into(),
+            category: None,
+            id: PresetId::ShrSampler {
+                instrument_id: "shr-clear-tone".into(),
+                path: package.clone(),
+            },
+        };
+        let saved = save(&base, "sampler", &preset, &HashMap::new(), &[]).unwrap();
+        assert!(!saved.join("shr-clear-tone.shrinst").exists());
+        let (loaded, _) = load(&base, "sampler").unwrap();
+        assert_eq!(loaded, preset);
+        assert_eq!(
+            fs::read_to_string(package.join("manifest.json")).unwrap(),
+            "{}"
+        );
         let _ = fs::remove_dir_all(base);
     }
 

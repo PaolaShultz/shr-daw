@@ -286,8 +286,8 @@ impl Reverb {
 
     fn update_lengths_and_feedback(&mut self) {
         let size = 0.7 + self.size_percent * 0.006;
-        for index in 0..4 {
-            let milliseconds = VOICING_LENGTHS_MS[self.voicing][index] * size;
+        for (index, milliseconds) in VOICING_LENGTHS_MS[self.voicing].iter().enumerate() {
+            let milliseconds = milliseconds * size;
             let samples = milliseconds * self.sample_rate / 1_000.0;
             self.lengths[index] = samples.clamp(1.0, self.lines[index].maximum_delay() as f32);
             let delay_seconds = self.lengths[index] / self.sample_rate;

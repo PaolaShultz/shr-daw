@@ -1,6 +1,7 @@
 PREFIX ?= /usr/local
 DESTDIR ?=
 CARGO ?= cargo
+BUILD_PROFILE ?= release
 
 .PHONY: build test install install-files uninstall check-demos docs-site check-docs-site
 
@@ -19,16 +20,18 @@ docs-site:
 check-docs-site:
 	python3 scripts/generate-docs-site.py --check
 
-install: build install-files
+install:
+	./scripts/install.sh --no-deps --no-config
 
 install-files: check-demos
-	install -Dm755 target/release/shr $(DESTDIR)$(PREFIX)/bin/shr
-	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth
+	test -n "$(DESTDIR)" || { echo 'install-files only stages a payload; use make install for a managed live installation' >&2; exit 1; }
+	install -Dm755 target/$(BUILD_PROFILE)/shr $(DESTDIR)$(PREFIX)/bin/shr
 	ln -sfn shr $(DESTDIR)$(PREFIX)/bin/synth-player
 	ln -sfn shr $(DESTDIR)$(PREFIX)/bin/shs
 	install -Dm755 scripts/setup.sh $(DESTDIR)$(PREFIX)/bin/shr-setup
 	install -Dm755 scripts/audio-performance.sh $(DESTDIR)$(PREFIX)/bin/shr-audio-tune
-	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth-setup
+	install -Dm755 scripts/managed_install.py $(DESTDIR)$(PREFIX)/libexec/shr-daw/managed_install.py
+	install -Dm644 install/compatibility.json $(DESTDIR)$(PREFIX)/share/shr-daw-install/compatibility.json
 	install -d $(DESTDIR)$(PREFIX)/share/shsynth/presets/synthv1
 	set -e; while IFS= read -r preset; do \
 	  install -m644 "presets/synthv1/$$preset" $(DESTDIR)$(PREFIX)/share/shsynth/presets/synthv1/; \
@@ -75,9 +78,4 @@ install-files: check-demos
 	install -m644 docs/images/menu/*.png $(DESTDIR)$(PREFIX)/share/doc/shsynth/images/menu/
 
 uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth $(DESTDIR)$(PREFIX)/bin/shr
-	rm -f $(DESTDIR)$(PREFIX)/bin/synth-player $(DESTDIR)$(PREFIX)/bin/shs
-	rm -f $(DESTDIR)$(PREFIX)/bin/shsynth-setup $(DESTDIR)$(PREFIX)/bin/shr-setup
-	rm -f $(DESTDIR)$(PREFIX)/bin/shr-audio-tune
-	rm -rf $(DESTDIR)$(PREFIX)/share/shsynth
-	rm -rf $(DESTDIR)$(PREFIX)/share/doc/shsynth
+	python3 scripts/managed_install.py uninstall --root "$(if $(DESTDIR),$(DESTDIR),/)" --prefix "$(PREFIX)"

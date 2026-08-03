@@ -65,7 +65,7 @@ impl Default for Bpm {
 
 impl fmt::Display for Bpm {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0 % 100 == 0 {
+        if self.0.is_multiple_of(100) {
             write!(formatter, "{}", self.0 / 100)
         } else {
             write!(formatter, "{}.{:02}", self.0 / 100, self.0 % 100)

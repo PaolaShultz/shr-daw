@@ -18,7 +18,20 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.4.7`.
+corrected starting point; the current checked-progress version is `0.4.8`.
+
+Version `0.4.8` adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
+melodic backend. Its package and executable compatibility are preflighted
+offline before the current owned engine is disturbed; startup, exact stereo
+readiness, routing, failure publication, one-attempt restoration, All Notes
+Off, unexpected exit, and shutdown remain in the shared backend lifecycle.
+The complete public installer now fetches exact Moj Sint and SHR Sampler
+commits, compiles SHR Drums 0.2.0 in process from its exact public commit, and
+installs one allowlisted manifest-owned payload. The transactional file layer
+refuses foreign collisions or locally modified managed files, rolls an
+interrupted change back before retry, and preserves all private/XDG data on
+update or uninstall. `scripts/validate_public_install.py` is the opt-in
+hardware-free exact-source disposable validation; it never opens JACK or ALSA.
 
 The current Input-mix work adds a live stereo/dual-mono choice to the exact
 configured two-port final-bus Input. Stereo remains the fresh-runtime default.

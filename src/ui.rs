@@ -122,7 +122,7 @@ const fn transport_glyph(state: TransportIndicator) -> (&'static str, Color) {
 
 fn transport_color(state: TransportIndicator, elapsed: Duration) -> Color {
     let (_, base) = transport_glyph(state);
-    if state == TransportIndicator::Record && elapsed.as_millis() / 400 % 2 == 0 {
+    if state == TransportIndicator::Record && (elapsed.as_millis() / 400).is_multiple_of(2) {
         Color::LightRed
     } else {
         base
@@ -520,22 +520,17 @@ enum PatternResizeOperation {
     Double(sequencer::PatternDouble),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum NoteLength {
     Whole,
     Half,
     Quarter,
     Eighth,
+    #[default]
     Sixteenth,
     ThirtySecond,
     SixtyFourth,
     HundredTwentyEighth,
-}
-
-impl Default for NoteLength {
-    fn default() -> Self {
-        Self::Sixteenth
-    }
 }
 
 impl NoteLength {
@@ -4930,11 +4925,9 @@ impl App {
         if starting != RecordingOwner::Idea {
             self.stop_recording();
         }
-        if starting != RecordingOwner::Final {
-            if self.final_bus.recording_active() {
-                let _ = self.final_bus.stop_recording();
-                self.final_recording_last = self.final_bus.recording_status();
-            }
+        if starting != RecordingOwner::Final && self.final_bus.recording_active() {
+            let _ = self.final_bus.stop_recording();
+            self.final_recording_last = self.final_bus.recording_status();
         }
     }
 
@@ -6046,7 +6039,7 @@ impl App {
         let next = wrapped_index(current, 24, direction);
         self.song.project_key = Scale {
             root: (next / 2) as u8,
-            kind: if next % 2 == 0 {
+            kind: if next.is_multiple_of(2) {
                 ScaleKind::Major
             } else {
                 ScaleKind::NaturalMinor
@@ -7119,7 +7112,7 @@ impl App {
     }
     fn loop_pattern_tempo(settings: &sequencer::LoopSettings) -> Bpm {
         let hundredths = match settings.interpretation {
-            sequencer::BpmInterpretation::Half => (settings.source_bpm_x100 + 1) / 2,
+            sequencer::BpmInterpretation::Half => settings.source_bpm_x100.div_ceil(2),
             sequencer::BpmInterpretation::Normal => settings.source_bpm_x100,
             sequencer::BpmInterpretation::Double => settings.source_bpm_x100.saturating_mul(2),
         }
@@ -7216,7 +7209,7 @@ impl App {
         let kit = self
             .drum_kits
             .iter()
-            .find(|candidate| &candidate.id == kit_id)
+            .find(|candidate| candidate.id == *kit_id)
             .cloned()
             .ok_or_else(|| format!("SHR Drums kit {kit_id:?} is not installed"))?;
         if let Some(host) = self.drum_host.take() {
@@ -9971,7 +9964,7 @@ impl App {
                 entry.meter == self.drum_meter
                     && (genre == "ALL" || entry.genre == genre)
                     && entry.rows <= self.drum_target_rows
-                    && self.drum_target_rows % entry.rows == 0
+                    && self.drum_target_rows.is_multiple_of(entry.rows)
             })
             .map(|(index, _)| index)
             .collect()
@@ -16137,7 +16130,7 @@ fn draw_pattern_resize_prompt<B: Backend>(f: &mut Frame<B>, a: &App) {
         }
     }
     let z = f.size();
-    let height = z.height.saturating_sub(4).min(7).max(4);
+    let height = z.height.saturating_sub(4).clamp(4, 7);
     let body_height = z.height.saturating_sub(3);
     let area = rect(
         z.x + 2,
@@ -22849,7 +22842,7 @@ fn fill_demo_song(app: &mut App) {
         d50.target = PageTarget::Midi("Roland D-50".into());
         pattern.pages.push(d50);
         for row in &mut pattern.rows {
-            row.extend(std::iter::repeat(Cell::default()).take(LANES_PER_PAGE));
+            row.extend(std::iter::repeat_n(Cell::default(), LANES_PER_PAGE));
         }
     }
     if let Some(setup) = song.patterns.get(&0).cloned() {
@@ -23001,6 +22994,40 @@ mod tests {
             },
         }
     }
+    fn backend_fixture(backend: BackendKind, name: &str) -> Preset {
+        match backend {
+            BackendKind::Synthv1 => Preset::synthv1(name, PathBuf::from(format!("{name}.synthv1"))),
+            BackendKind::Yoshimi => Preset {
+                backend,
+                name: name.into(),
+                category: None,
+                id: PresetId::Yoshimi {
+                    path: PathBuf::from(format!("{name}.xiz")),
+                },
+            },
+            BackendKind::FluidSynth => Preset {
+                backend,
+                name: name.into(),
+                category: None,
+                id: PresetId::FluidSynth {
+                    soundfont: PathBuf::from(format!("{name}.sf2")),
+                    soundfont_index: 0,
+                    bank: 0,
+                    program: 0,
+                },
+            },
+            BackendKind::MojSint => moj_preset(preset::MojModel::ModelD, name),
+            BackendKind::ShrSampler => Preset {
+                backend,
+                name: name.into(),
+                category: None,
+                id: PresetId::ShrSampler {
+                    instrument_id: name.to_ascii_lowercase().replace(' ', "-"),
+                    path: PathBuf::from(format!("{name}.shrinst")),
+                },
+            },
+        }
+    }
     fn app(presets: &[Preset]) -> App {
         app_with_routing_defaults(presets, PathBuf::from("/none"))
     }
@@ -23009,9 +23036,11 @@ mod tests {
             .into_iter()
             .map(|backend| Catalog {
                 backend,
-                presets: (backend == BackendKind::Synthv1)
-                    .then(|| presets.to_vec())
-                    .unwrap_or_default(),
+                presets: if backend == BackendKind::Synthv1 {
+                    presets.to_vec()
+                } else {
+                    Vec::new()
+                },
                 unavailable: None,
             })
             .collect();
@@ -23551,7 +23580,7 @@ mod tests {
         pattern.pages.push(pattern.pages[0].clone());
         for row in &mut pattern.rows {
             row.truncate(LANES_PER_PAGE);
-            row.extend(std::iter::repeat(Cell::default()).take(LANES_PER_PAGE));
+            row.extend(std::iter::repeat_n(Cell::default(), LANES_PER_PAGE));
         }
         app.engine_owner = Some(EngineOwner::Tracker(old_route.clone()));
         app.tracker_engine_plan = Some(app.software_plan_for_route(old_route.clone(), [0]));
@@ -33745,74 +33774,66 @@ release = 0.4
     #[test]
     fn engine_replacement_restores_previous_session_on_same_or_cross_engine_failure() {
         let p = presets();
-        for replacement in [
-            p[1].clone(),
-            Preset {
-                backend: BackendKind::Yoshimi,
-                name: "Cross engine".into(),
-                category: None,
-                id: crate::preset::PresetId::Yoshimi {
-                    path: PathBuf::from("cross.xiz"),
-                },
-            },
-        ] {
-            let mut a = app(&p);
-            a.engine = Some(
-                Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output))
-                    .unwrap(),
-            );
-            a.engine_owner = Some(EngineOwner::SoftwareSynth);
-            a.playing = Some(p[0].clone());
-            a.values.insert(7, 0.42);
-            a.original_values.insert(7, 0.25);
-            a.engine_start_script
-                .push_back(Err("replacement failed".into()));
-            a.engine_start_script.push_back(Ok(()));
+        for initial_backend in BackendKind::ALL {
+            for replacement_backend in BackendKind::ALL {
+                let initial = backend_fixture(initial_backend, "Initial");
+                let replacement = backend_fixture(replacement_backend, "Replacement");
+                let mut a = app(&p);
+                a.engine = Some(
+                    Engine::start_test_process(initial_backend, Arc::clone(&a.midi_output))
+                        .unwrap(),
+                );
+                a.engine_owner = Some(EngineOwner::SoftwareSynth);
+                a.playing = Some(initial.clone());
+                a.values.insert(7, 0.42);
+                a.original_values.insert(7, 0.25);
+                a.engine_start_script
+                    .push_back(Err("replacement failed".into()));
+                a.engine_start_script.push_back(Ok(()));
 
-            let result = a.replace_engine_process(
-                &replacement,
-                EngineOwner::SoftwareSynth,
-                Path::new("/none"),
-            );
+                let result = a.replace_engine_process(
+                    &replacement,
+                    EngineOwner::SoftwareSynth,
+                    Path::new("/none"),
+                );
 
-            assert!(result.unwrap_err().contains("previous engine restored"));
-            assert_eq!(a.playing.as_ref(), Some(&p[0]));
-            assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
-            assert!(a.engine.as_mut().unwrap().alive());
-            assert_eq!(a.values.get(&7), Some(&0.42));
-            assert_eq!(a.original_values.get(&7), Some(&0.25));
+                assert!(result.unwrap_err().contains("previous engine restored"));
+                assert_eq!(a.playing.as_ref(), Some(&initial));
+                assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
+                assert!(a.engine.as_mut().unwrap().alive());
+                assert_eq!(a.values.get(&7), Some(&0.42));
+                assert_eq!(a.original_values.get(&7), Some(&0.25));
+            }
         }
     }
 
     #[test]
     fn engine_replacement_commits_same_or_cross_engine_only_after_success() {
         let p = presets();
-        for replacement in [
-            p[1].clone(),
-            Preset {
-                backend: BackendKind::Yoshimi,
-                name: "Cross engine".into(),
-                category: None,
-                id: crate::preset::PresetId::Yoshimi {
-                    path: PathBuf::from("cross.xiz"),
-                },
-            },
-        ] {
-            let mut a = app(&p);
-            a.engine = Some(
-                Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output))
-                    .unwrap(),
-            );
-            a.engine_owner = Some(EngineOwner::SoftwareSynth);
-            a.playing = Some(p[0].clone());
-            a.engine_start_script.push_back(Ok(()));
+        for initial_backend in BackendKind::ALL {
+            for replacement_backend in BackendKind::ALL {
+                let initial = backend_fixture(initial_backend, "Initial");
+                let replacement = backend_fixture(replacement_backend, "Replacement");
+                let mut a = app(&p);
+                a.engine = Some(
+                    Engine::start_test_process(initial_backend, Arc::clone(&a.midi_output))
+                        .unwrap(),
+                );
+                a.engine_owner = Some(EngineOwner::SoftwareSynth);
+                a.playing = Some(initial);
+                a.engine_start_script.push_back(Ok(()));
 
-            a.replace_engine_process(&replacement, EngineOwner::SoftwareSynth, Path::new("/none"))
+                a.replace_engine_process(
+                    &replacement,
+                    EngineOwner::SoftwareSynth,
+                    Path::new("/none"),
+                )
                 .unwrap();
 
-            assert_eq!(a.playing.as_ref(), Some(&replacement));
-            assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
-            assert_eq!(a.engine.as_ref().unwrap().backend(), replacement.backend);
+                assert_eq!(a.playing.as_ref(), Some(&replacement));
+                assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
+                assert_eq!(a.engine.as_ref().unwrap().backend(), replacement.backend);
+            }
         }
     }
 

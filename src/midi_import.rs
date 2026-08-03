@@ -932,7 +932,7 @@ fn pair_parts(
                     .max()
                     .unwrap_or(0),
             );
-            for hanging in active.into_values().flatten().chain(sustained.into_iter()) {
+            for hanging in active.into_values().flatten().chain(sustained) {
                 *hanging_notes += 1;
                 finish_note(track_index, channel, hanging, final_tick, &mut notes);
             }
@@ -1031,7 +1031,7 @@ fn infer_steps_per_beat(notes: &[&NoteSpan], ppqn: u16) -> u8 {
     let exact = (1..=16).find(|steps| {
         notes
             .iter()
-            .all(|note| note.start * *steps as u64 % u64::from(ppqn) == 0)
+            .all(|note| (note.start * *steps as u64).is_multiple_of(u64::from(ppqn)))
     });
     match exact {
         Some(2) => 4,

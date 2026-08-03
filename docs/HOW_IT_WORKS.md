@@ -142,13 +142,14 @@ display, never the MIDI notes.
 
 ## Software instruments and ownership
 
-SHR-DAW browses four separately installed instrument hosts:
+SHR-DAW browses five separately installed instrument hosts:
 
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks; and
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
   and
-- Moj Sint for strict `.mojsint` Model D presets and its dedicated live host.
+- Moj Sint for strict `.mojsint` Model D and Six-Op PM presets; and
+- SHR Sampler for strict preloaded `.shrinst` sample packages.
 
 Only one SHR-managed software engine process runs at a time. synthv1 and
 Yoshimi retain one current preset. FluidSynth is the exception at the
@@ -158,13 +159,22 @@ stereo source. Loading another standalone sound may reuse or replace the owned
 process; replacement sends All Notes Off, performs a clean shutdown, and
 starts the next configured host. SHR-DAW records enough process identity to
 stop only the engine it started. It neither layers managed backends nor kills
-an unrelated synthv1, Yoshimi, FluidSynth, or Moj Sint process opened by the
-user.
+an unrelated synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler process
+opened by the user.
 
 Moj Sint is started with `--client-name` and `--preset`, publishes exactly
 `out_l`/`out_r`, and accepts its twelve macros on CC 20–31. SHR verifies the
 configured port names and owns only the child it started. The browser never
 launches it; LOAD is the transaction boundary.
+
+SHR Sampler is preflighted with its machine-readable version and strict
+offline package validator before the current engine is disturbed. It is then
+started with `--client-name` and `--instrument`, publishes exactly the two
+configured outputs, and exposes one configured ALSA input. It does not connect
+itself. A missing executable/package, malformed package, incompatible version,
+validation timeout, startup failure, or unexpected exit becomes a visible
+managed-backend fault. Failed replacement gets one attempt to restore the
+previous owned session; no second melodic child remains layered.
 
 A managed host becomes ready only after SHR resolves one unambiguous stereo
 JACK output pair for it; a MIDI JACK/ALSA port alone is not readiness. Exact
@@ -207,9 +217,9 @@ route while leaving all three engines available on demand.
 
 Commands, client names, preset roots, SoundFonts, MIDI ports, and JACK ports
 are configuration. The engine code does not assume the development hardware.
-The four catalogs also remain separate: synthv1 XML, Yoshimi instruments,
-SoundFont programs, and `.mojsint` files never borrow one another's parsers or
-controls.
+The five catalogs also remain separate: synthv1 XML, Yoshimi instruments,
+SoundFont programs, `.mojsint` files, and `.shrinst` packages never borrow one
+another's parsers or controls.
 
 ## Three different kinds of recording
 
@@ -217,7 +227,9 @@ SHR-DAW uses “record” for three intentionally different jobs:
 
 1. An **Idea** captures free-time MIDI while playing a managed sound. It keeps
    event timing and instrument identity; synthv1 and Moj Sint Ideas also keep
-   a private preset snapshot and backend-specific mapped control values. `PLAY`
+   a private preset snapshot and backend-specific mapped control values, while
+   SHR Sampler Ideas keep only the stable package ID and configured public path
+   without copying sample content. `PLAY`
    plays that MIDI back
    through the restored instrument. An Idea is not audio.
 2. FT2 **REC** quantizes notes into the selected Pattern page using that

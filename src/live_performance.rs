@@ -95,17 +95,12 @@ pub struct ActivatedPattern {
     pub retrigger: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum CaptureState {
+    #[default]
     Off,
     Recording(Vec<u16>),
     Confirm(Vec<u16>),
-}
-
-impl Default for CaptureState {
-    fn default() -> Self {
-        Self::Off
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -350,7 +345,7 @@ pub fn is_launch_boundary(
         LaunchQuantization::Pattern => false,
         LaunchQuantization::Bar => {
             let bar_rows = usize::from(steps_per_beat.max(1)) * usize::from(meter.max(1));
-            next_row > 0 && next_row % bar_rows == 0
+            next_row > 0 && next_row.is_multiple_of(bar_rows)
         }
     }
 }

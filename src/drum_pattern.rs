@@ -424,7 +424,7 @@ fn catalog_hit(lane: usize, kind: &str) -> Result<(u8, u8)> {
 /// gain a restrained variation, while phrase ends get a genre-aware fill.
 pub fn arrange(pattern: &DrumPattern, target_rows: usize) -> Result<DrumPattern> {
     validate(pattern)?;
-    if target_rows < pattern.rows.len() || target_rows % pattern.rows.len() != 0 {
+    if target_rows < pattern.rows.len() || !target_rows.is_multiple_of(pattern.rows.len()) {
         bail!(
             "{} rows do not expand evenly into {target_rows}",
             pattern.rows.len()

@@ -108,20 +108,22 @@ eight simultaneous tracker lanes, and further pages extend that pool within
 the Project and synth voice limits. The same route may also be used on several
 channels.
 
-SHR still owns one synth host at a time. synthv1, Yoshimi, and Moj Sint expose
-one current preset, while one owned FluidSynth process is multitimbral: each distinct
+SHR still owns one synth host at a time. synthv1, Yoshimi, Moj Sint, and SHR
+Sampler expose one current instrument, while one owned FluidSynth process is multitimbral: each distinct
 SoundFont preset/channel pair is selected once without changing other
 channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
 on 10 play together through the existing stereo synth output. Channel 10 is
 the normal percussion-page default, not a reservation; an explicit Project may
-route it differently.
+route it differently. SHR Sampler packages are preloaded before its JACK/ALSA
+host starts; it does not auto-connect or share a process with another backend.
 
 Drums pages can explicitly store an SHR Drums kit, a configured/exact external
 MIDI output, or a FluidSynth General MIDI compatibility route. An unavailable
 saved target remains visibly offline and silent; it never falls back to another
 route. SHR Drums is an in-process stereo source and does not consume the one
 managed melodic-synth slot, so it can play beside synthv1, Yoshimi, FluidSynth,
-or Moj Sint. Switching targets sends All Notes Off and immediate drum chokes.
+Moj Sint, or SHR Sampler. Switching targets sends All Notes Off and immediate
+drum chokes.
 Loaded Projects keep their saved routes and channels, and loading a reusable
 drum pattern copies cells only.
 
@@ -379,8 +381,8 @@ Back, or SYS `EXIT` returns to that exact editing location.
 
 The panel shows at most twelve current-Pattern strips in one 4×3 grid. A strip
 is not a MIDI velocity or CC-volume control: it points directly to one existing
-final-bus audio owner. synthv1, Yoshimi, FluidSynth, and Moj Sint pages use
-`SYN`; SHR Drums pages use `DRM`; attached Pattern Loop Mix appears as `LOP`
+final-bus audio owner. synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler
+pages use `SYN`; SHR Drums pages use `DRM`; attached Pattern Loop Mix appears as `LOP`
 when the twelve-strip cap has room; and an external-MIDI page uses `INP` only
 when an exact two-port SHR input return is configured. Otherwise it says `NO
 RETURN` and has no gain or VU. MTR owns whether that pair is stereo or dual

@@ -132,6 +132,10 @@ defines validation and compatibility. Its
 owns sample provenance. `kits/cleared-kits.txt` is this repository's single
 public kit allowlist.
 
+SHR-DAW pins the public SHR Drums 0.2.0 source revision in both `Cargo.toml`
+and `install/compatibility.json`. Cargo compiles it into `shr`; the installer
+does not create a separate executable, service, or runtime source checkout.
+
 The bundled Acid package is an original fully modeled 27-voice kit. Electronic
 House has its original 27 modeled voices plus deterministic House Impact and
 Long Pressure synthetic one-shot exports authored by the CC0 Moj Sint project;
@@ -154,6 +158,16 @@ No other compiled `.shrkit`, source archive, or private review render is
 bundled. A local package's presence does not grant redistribution rights; add
 one to `cleared-kits.txt` only after reviewing its complete contents, manifest,
 source record, asset licence, and required notices.
+
+## Moj Sint and SHR Sampler
+
+The whole-system installer fetches the exact public Moj Sint 0.2.3 and SHR
+Sampler 0.1.2 revisions recorded in `install/compatibility.json`. Each
+repository's `THIRD_PARTY.md` owns its dependency and content provenance. Only
+Moj Sint files named by `presets/cleared-presets.txt` and SHR Sampler packages
+named by `instruments/cleared-instruments.txt` enter the payload. The initial
+SHR Sampler package is a project-authored deterministic waveform released as
+CC0-1.0; no private or third-party sample library is copied or converted.
 
 ## Public-domain demo compositions
 

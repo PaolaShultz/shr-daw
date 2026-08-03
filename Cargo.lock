@@ -481,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "shr-daw"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "alsa",
  "anyhow",
@@ -502,6 +502,7 @@ dependencies = [
 [[package]]
 name = "shr-drums"
 version = "0.2.0"
+source = "git+https://github.com/PaolaShultz/shr-drums.git?rev=0199297b3efd160a67e3f47df64a6bf418c20df2#0199297b3efd160a67e3f47df64a6bf418c20df2"
 dependencies = [
  "hound",
  "serde",

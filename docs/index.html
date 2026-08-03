@@ -322,14 +322,11 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <details><summary>Related public documentation</summary><ul><li><a class="external" href="https://github.com/PaolaShultz/shr-drums" target="_blank" rel="noopener noreferrer external">SHR Drums engine, kit format, and sources</a></li><li><a class="external" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external" lang="hr">Učenje kroz istraživanje (Hrvatski)</a></li></ul></details>
 <ul class="page-links archive-link"><li><a href="#technical-records">Technical records and future plans</a></li></ul></aside>
 <main id="main-content">
-<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.7</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, or 13 editable Moj Sint factory starts through one managed melodic engine, alongside four bundled kits rendered by in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum, and loop parts as multi-page Patterns and Arrangements; or perform them with Live Patterns and the four-slot Loop Mix.</div><div class="feature-card">Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.</div><div class="feature-card">Record synchronized raw mono stems or a real-time final 24-bit stereo WAV after the fixed master strip and protected true-peak path.</div><div class="feature-card">Play and navigate with physical MIDI controls, MIDI keyboards, the computer keyboard, or terminal mouse/pointer input.</div></div></section>
-<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="fa8550471167f42fda625c57f686e7bc224eba5323dda82884cc2a2047beef59" decoding="async" height="624" id="shot-fa8550471167" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="889a405e74bbeb38078e626f9d6ad5313d15938a14f55da06a15fdabe7c8cb5d" decoding="async" height="624" id="shot-889a405e74bb" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="dccca5c68ac49005acf541ccbe9f54b46044d42098cea5e3d49a649c7d89b484" decoding="async" height="624" id="shot-dccca5c68ac4" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="3e12ff768e9d441b7b52e19106d96262872152d881deb66e9f9b89fcfbccabfa" decoding="async" height="624" id="shot-3e12ff768e9d" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
+<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint factory starts, or the cleared SHR Sampler factory instrument through one managed melodic engine, alongside four bundled kits rendered by in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum, and loop parts as multi-page Patterns and Arrangements; or perform them with Live Patterns and the four-slot Loop Mix.</div><div class="feature-card">Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.</div><div class="feature-card">Record synchronized raw mono stems or a real-time final 24-bit stereo WAV after the fixed master strip and protected true-peak path.</div><div class="feature-card">Play and navigate with physical MIDI controls, MIDI keyboards, the computer keyboard, or terminal mouse/pointer input.</div></div></section>
+<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="fa8550471167f42fda625c57f686e7bc224eba5323dda82884cc2a2047beef59" decoding="async" height="624" id="shot-fa8550471167" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="c00350015b1f62cacc191ff7268b849365ce40324e9e86321d09e84e3faa1e54" decoding="async" height="624" id="shot-c00350015b1f" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="2880f9a6a28f8eeb835f8420d2a9865b586021eddb4d695038eaa8f19012f792" decoding="async" height="624" id="shot-2880f9a6a28f" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="3e12ff768e9d441b7b52e19106d96262872152d881deb66e9f9b89fcfbccabfa" decoding="async" height="624" id="shot-3e12ff768e9d" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
 <section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
-<section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>./scripts/install.sh
-shr-setup
-shr doctor
-shr</code></pre><p>The JACK Audio Connection Kit (JACK) is optional for browsing and external-MIDI sequencing, but required for software-instrument audio, WAV loops, effects, and audio recording. SHR-DAW does not start or restart JACK. Continue with First run or the full installation guide, which keeps clean Lite installation evidence distinct from connected physical audio/MIDI evidence.</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
+<section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After installation and its setup wizard:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
 <section class="documentation-library" id="documentation" aria-labelledby="documentation-title"><header class="library-header"><p class="eyebrow">Detailed guides</p><h2 id="documentation-title">The manual, when you need it</h2><p>Choose a subject and open only that guide. Measurements, maintainer records, and future plans stay in a separate archive below.</p></header>
 <section class="library-group" aria-labelledby="group-start-and-use"><header class="group-header"><p class="eyebrow">Current behaviour</p><h3 id="group-start-and-use">Start and use</h3><p>Musician-facing workflows, screens, performance tools, and physical connections.</p></header>
 <details class="document" id="doc-first_run" data-source="docs/FIRST_RUN.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">First run</span><span class="document-summary">Configure hardware and open SHR-DAW.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FIRST_RUN.md" target="_blank" rel="noopener noreferrer external">View docs/FIRST_RUN.md source</a></div><p>You can start with a Raspberry Pi and a terminal. A MIDI keyboard, control
@@ -454,12 +451,13 @@ configuration and data.</li>
 stop it. An <strong>exact route</strong> is one saved endpoint that SHR never guesses.</li>
 </ul>
 <h4 id="doc-using_shr_daw--instruments-and-playback" tabindex="-1">Instruments and Playback<a class="heading-anchor" href="#doc-using_shr_daw--instruments-and-playback" aria-label="Link to Instruments and Playback">#</a></h4>
-<p>Presets browses four software backends:</p>
+<p>Presets browses five software backends:</p>
 <ul>
 <li>synthv1 presets;</li>
 <li>Yoshimi <code>.xiz</code> banks;</li>
 <li>FluidSynth <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
-<li>Moj Sint <code>.mojsint</code> Model D presets.</li>
+<li>Moj Sint <code>.mojsint</code> Model D and Six-Op PM presets;</li>
+<li>SHR Sampler <code>.shrinst</code> packages.</li>
 </ul>
 <p>Browsing is silent. <code>LOAD</code> is the only managed start or replacement action.
 Only one SHR-managed melodic engine runs at a time. The loaded instrument
@@ -481,10 +479,12 @@ remain on the Ideas screen. <code>SOUNDS</code> returns to Presets and its visib
 arpeggiator. <code>PLAY</code> sends Start even when no MIDI take exists, <code>RECORD</code> starts
 the same clock before capture, <code>STOP</code> ends it without unloading the instrument,
 and <code>TAP</code> changes tempo without silently starting transport.</p>
-<p>Moj Sint keeps its own preset format and controls. Its seven authored starts
-remain one editable Model D instrument family. SHR Drums is separate from the
-managed melodic engine and runs in process. Its public source, format, and
-provenance are linked from <a href="#documentation">the documentation index</a>.</p>
+<p>Moj Sint keeps its own preset format and controls. Its 13 authored starts form
+two editable model families. SHR Sampler packages are read-only and use their
+own strict format; the installed project-authored factory package is a neutral
+first-load sound. SHR Drums is separate from the managed melodic engine and
+runs in process. Public source, formats, and provenance are linked from
+<a href="#documentation">the documentation index</a>.</p>
 <h4 id="doc-using_shr_daw--explore-with-n00b" tabindex="-1">Explore with N00B<a class="heading-anchor" href="#doc-using_shr_daw--explore-with-n00b" aria-label="Link to Explore with N00B">#</a></h4>
 <p>Playback N00B filters live melodic input to a selected root plus major or
 natural-minor scale. Allowed notes keep their pitch; other notes stay silent.
@@ -529,8 +529,9 @@ transpose controls are temporary and do not rewrite note cells.</p>
 does not launch audio. Arrangement and Live boundaries switch the MIDI and WAV
 owners together. A bad slot is isolated, and SHR does not time-stretch files.</p>
 <p>Ideas preserve free-timed MIDI. A synthv1 or Moj Sint Idea includes its private
-preset snapshot; other backends keep their instrument reference. Loading an
-Idea restores its sound before playback.</p>
+preset snapshot; other backends keep their instrument reference. SHR Sampler
+stores the package's stable ID and configured path without copying its sample
+data. Loading an Idea restores its sound before playback.</p>
 <p>See <a href="#doc-live_performance">Live performance</a> for boundary timing, capture,
 failure behavior, and realtime limits.</p>
 <h4 id="doc-using_shr_daw--effects-and-final-sound" tabindex="-1">Effects and final sound<a class="heading-anchor" href="#doc-using_shr_daw--effects-and-final-sound" aria-label="Link to Effects and final sound">#</a></h4>
@@ -867,6 +868,7 @@ section through the existing front-page order.</p>
 owned graph inactive it retains the passive CPU and legacy output view. With
 the graph active it shows Synth, Loop, Input, and Drums readiness and level;
 Synth, Loop, and Drums use MUTE while Input uses one MON ON/MON OFF action;
+Input stereo/dual-mono mode and the two independent dual-mono pans;
 master level; final sample peak and dBTP; GLUE/limiter gain reduction,
 correlation, LUFS-M/S/I; and final-record
 elapsed time, size, drop/error state, and path.</p>
@@ -894,7 +896,15 @@ activates the input-only final bus when needed; it never starts an optional
 source. REC starts/stops the final stereo WAV at callback boundaries. RESET
 clears presentation holds and, when the bus is unavailable, retries the same
 exact remembered source mapping. Source and master changes are smoothed; there
-are no pan, solo, aux, or per-input effect controls.</p>
+are no solo, aux, or per-input effect controls.</p>
+<p>With Input selected, MTR NAV <strong>DUAL/STEREO</strong> changes the input interpretation.
+<strong>IN CTRL</strong> cycles <code>LEVEL</code>, <code>PAN 1</code>, and <code>PAN 2</code>; on either pan, the ordinary
+LEVEL-/LEVEL+ positions become PAN1-/PAN1+ or PAN2-/PAN2+. Dual mono starts at
+<code>1L100 2R100</code>, matching the original stereo image, then pans each configured
+capture port independently with an equal-power law. Mode and focus use the
+visible MTR controller actions; they add no dedicated computer-keyboard
+shortcuts. These are live session controls, not Project data, and a fresh
+launch starts in stereo.</p>
 <h4 id="doc-help--18-channel-input-levels" tabindex="-1">18-channel input levels<a class="heading-anchor" href="#doc-help--18-channel-input-levels" aria-label="Link to 18-channel input levels">#</a></h4>
 <p>Audio Recorder <strong>LEVELS</strong> opens Levels. At native 40×13 all 18 inputs stay
 visible as three groups of six; selection never scrolls or banks them. Each
@@ -1173,19 +1183,21 @@ route/channel. Their four lanes remain independent: two shared pages provide
 eight simultaneous tracker lanes, and further pages extend that pool within
 the Project and synth voice limits. The same route may also be used on several
 channels.</p>
-<p>SHR still owns one synth host at a time. synthv1, Yoshimi, and Moj Sint expose
-one current preset, while one owned FluidSynth process is multitimbral: each distinct
+<p>SHR still owns one synth host at a time. synthv1, Yoshimi, Moj Sint, and SHR
+Sampler expose one current instrument, while one owned FluidSynth process is multitimbral: each distinct
 SoundFont preset/channel pair is selected once without changing other
 channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
 on 10 play together through the existing stereo synth output. Channel 10 is
 the normal percussion-page default, not a reservation; an explicit Project may
-route it differently.</p>
+route it differently. SHR Sampler packages are preloaded before its JACK/ALSA
+host starts; it does not auto-connect or share a process with another backend.</p>
 <p>Drums pages can explicitly store an SHR Drums kit, a configured/exact external
 MIDI output, or a FluidSynth General MIDI compatibility route. An unavailable
 saved target remains visibly offline and silent; it never falls back to another
 route. SHR Drums is an in-process stereo source and does not consume the one
 managed melodic-synth slot, so it can play beside synthv1, Yoshimi, FluidSynth,
-or Moj Sint. Switching targets sends All Notes Off and immediate drum chokes.
+Moj Sint, or SHR Sampler. Switching targets sends All Notes Off and immediate
+drum chokes.
 Loaded Projects keep their saved routes and channels, and loading a reusable
 drum pattern copies cells only.</p>
 <p>Two different FluidSynth presets cannot share one channel in the current
@@ -1411,10 +1423,12 @@ tracker page, lane/column, mode, and controller-menu page. Main-encoder click,
 Back, or SYS <code>EXIT</code> returns to that exact editing location.</p>
 <p>The panel shows at most twelve current-Pattern strips in one 4×3 grid. A strip
 is not a MIDI velocity or CC-volume control: it points directly to one existing
-final-bus audio owner. synthv1, Yoshimi, FluidSynth, and Moj Sint pages use
-<code>SYN</code>; SHR Drums pages use <code>DRM</code>; attached Pattern Loop Mix appears as <code>LOP</code>
+final-bus audio owner. synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler
+pages use <code>SYN</code>; SHR Drums pages use <code>DRM</code>; attached Pattern Loop Mix appears as <code>LOP</code>
 when the twelve-strip cap has room; and an external-MIDI page uses <code>INP</code> only
-when an exact stereo SHR input return is configured. Otherwise it says <code>NO RETURN</code> and has no gain or VU. The configured Input remains marked <code>M</code> while
+when an exact two-port SHR input return is configured. Otherwise it says <code>NO RETURN</code> and has no gain or VU. MTR owns whether that pair is stereo or dual
+mono and the two dual-mono pans; FT2's linked <code>INP</code> strips retain the one
+shared owner gain. The configured Input remains marked <code>M</code> while
 software monitoring is off; opening the mixer does not silently defeat the
 direct/software doubled-monitoring guard.</p>
 <p>The heading identifies the source Pattern and current POT bank. Configured
@@ -1645,7 +1659,7 @@ effect, and changing Arrangement steps does not change rack order. The two aux
 sends take their pre/post source-insert taps from the one managed software
 instrument, not from individual MIDI lanes.</p>
 <p>With the opt-in graph active, the managed source and wet returns, SHR Drums,
-private WAV loop, and exact configured stereo external-input return meet once
+private WAV loop, and exact configured two-port external-input return meet once
 before the master rack and final meter. SHR Drums has its own final-bus level
 and mute but no multi-mic live mixer. The loop, drums, and external input do
 not acquire the melodic source inserts or aux sends; the raw multitrack
@@ -2000,7 +2014,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>MTR</td>
-<td>With the final bus active: choose Synth/Loop/Input/Drums, adjust its bounded smoothed level, use MUTE for optional sources or the one MON ON/MON OFF Input action, inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. Input monitoring defaults off and MON ON can activate the bus without launching an optional source. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit <code>READY</code>/<code>ON</code>. With the bus inactive, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP.</td>
+<td>With the final bus active: choose Synth/Loop/Input/Drums, adjust its bounded smoothed level, use MUTE for optional sources or the one MON ON/MON OFF Input action, switch Input between stereo and dual mono, and pan configured Input 1 and Input 2 independently in dual mono. <code>IN CTRL</code> cycles LEVEL/PAN 1/PAN 2, and the ordinary minus/plus pair follows that focus. Both new Input choices live on the visible NAV controller page and add no dedicated computer-keyboard shortcuts. Dual mono starts at <code>1L100 2R100</code>, so its initial output matches stereo. Inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. Input monitoring defaults off and MON ON can activate the bus without launching an optional source. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit <code>READY</code>/<code>ON</code>. With the bus inactive, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP and owns the two Input controls.</td>
 </tr>
 <tr>
 <td>Playback</td>
@@ -2377,8 +2391,8 @@ channel-1 pads cannot safely be commands because they collide with the keys.</li
 <td>Nav</td>
 <td>FX overlay</td>
 <td>MASTER STRIP</td>
-<td>—</td>
-<td>—</td>
+<td>Input stereo/dual mono</td>
+<td>Input LEVEL/PAN 1/PAN 2</td>
 </tr>
 <tr>
 <td>MTR</td>
@@ -3297,12 +3311,15 @@ which connects hardware and application MIDI ports broadly. Accept the
 recommended exclusive-routing cleanup in <code>shr-setup</code>; SHR can still launch its
 own configured FluidSynth when selected.</p>
 <h4 id="doc-connections--software-instruments" tabindex="-1">Software instruments<a class="heading-anchor" href="#doc-connections--software-instruments" aria-label="Link to Software instruments">#</a></h4>
-<p>SHR-DAW supports synthv1, Yoshimi, FluidSynth, and Moj Sint as separately installed
-programs. Only one SHR-DAW-managed software-engine process runs at a time.
+<p>SHR-DAW supports synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler as
+separately installed programs. Only one SHR-DAW-managed software-engine process
+runs at a time.
 synthv1 and Yoshimi provide one current preset; one FluidSynth process may play
 several SoundFont presets on different MIDI channels while retaining one
 stereo JACK source. Moj Sint contributes exactly <code>out_l</code> and <code>out_r</code> plus one
 ALSA Sequencer input; it creates no JACK connections itself. The standalone
+SHR Sampler likewise contributes the configured <code>out_l</code> and <code>out_r</code> plus one
+ALSA Sequencer input and creates no JACK connections itself. The standalone
 Software Synth workspace keeps its sound
 after leaving Presets or Playback. FT2 uses the engine/instrument pair saved by
 its current Pattern; if the Project is genuinely new, empty, unsaved, and
@@ -3466,7 +3483,7 @@ synthv1 retains its own names and indices. The main encoder press resets only
 these mapped controls and re-arms pickup; it does
 not restart the synth.</p>
 <h5 id="doc-menu-everyday_screens--play-capture-a-midi-take" tabindex="-1">PLAY — capture a MIDI take<a class="heading-anchor" href="#doc-menu-everyday_screens--play-capture-a-midi-take" aria-label="Link to PLAY — capture a MIDI take">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-889a405e74bb">Populated Playback screen with the PLAY controller page (shown earlier)</a></p>
+<p><a class="repeated-image-link" href="#shot-c00350015b1f">Populated Playback screen with the PLAY controller page (shown earlier)</a></p>
 <p><code>PLAY</code> plays or stops the captured take. With no take, it still sends a fresh
 Start to the configured controller clock so the MiniLab 3 External-Sync
 arpeggiator works with live keys. <code>RECORD</code> starts the same transport before
@@ -3501,7 +3518,7 @@ without restarting the sound. <code>HELP</code> opens help and returns here afte
 <h5 id="doc-menu-everyday_screens--n00b-on-playback-pages" tabindex="-1">N00B-on Playback pages<a class="heading-anchor" href="#doc-menu-everyday_screens--n00b-on-playback-pages" aria-label="Link to N00B-on Playback pages">#</a></h5>
 <p>N00B changes only the scale filter and its compact rotary; the three Playback
 controller pages keep the same actions and ordering.</p>
-<p><img src="images/menu/playback-noob-play.png" alt="Playback PLAY page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="771961a5ea1bc5537ef63251d459c08367792027a8152f3ac322dead5dfe72d3" class="tui-shot" id="shot-771961a5ea1b" /></p>
+<p><img src="images/menu/playback-noob-play.png" alt="Playback PLAY page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="2fb58dcf65866d3446a36d4342fa4c9a7639f3680bda5226f13c8b167d381a30" class="tui-shot" id="shot-2fb58dcf6586" /></p>
 <p><img src="images/menu/playback-noob-sound.png" alt="Playback SOUND page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="54a1c882b645c3b3773f5076efae784b282880cdbc5f0a7461da02601e2bfa11" class="tui-shot" id="shot-54a1c882b645" /></p>
 <p><img src="images/menu/playback-noob-sys.png" alt="Playback SYS page with N00B enabled" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="a2aec82b1ac787385d0d7dd90af9541f31be89fc2ee078ed1833d8d0b1460c9f" class="tui-shot" id="shot-a2aec82b1ac7" /></p>
 <h4 id="doc-menu-everyday_screens--ideas" tabindex="-1">Ideas<a class="heading-anchor" href="#doc-menu-everyday_screens--ideas" aria-label="Link to Ideas">#</a></h4>
@@ -3623,7 +3640,8 @@ loaded Project. The right side is operational command space, not a numeric
 RMS/peak, route, or metadata detail panel.</p>
 <h4 id="doc-menu-everyday_screens--performance-meter" tabindex="-1">Performance meter<a class="heading-anchor" href="#doc-menu-everyday_screens--performance-meter" aria-label="Link to Performance meter">#</a></h4>
 <p>With the final bus active, MTR selects Synth, Loop, exact Input, or SHR Drums,
-controls its bounded level and one context-specific source action, shows
+controls its bounded level and one context-specific source action, switches
+Input between stereo and independently panned dual mono, shows
 readiness and the post-limiter
 true-peak final meter, opens the fixed MASTER STRIP, and controls final stereo
 recording. With the graph inactive it
@@ -3636,8 +3654,10 @@ thresholds; a held peak is a brighter circle in the applicable threshold
 colour. No square bar or line-marker glyph represents level or peak.</p>
 <h5 id="doc-menu-everyday_screens--ops-source-and-level" tabindex="-1">OPS — source and level<a class="heading-anchor" href="#doc-menu-everyday_screens--ops-source-and-level" aria-label="Link to OPS — source and level">#</a></h5>
 <p><img src="images/menu/performance-meter-ops.png" alt="Populated performance meter with the OPS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="8ca5f5f6cbbe07d8e0fe41dc94b64f6265d5c231ea5d2c611017ea9f6438187a" class="tui-shot" id="shot-8ca5f5f6cbbe" /></p>
-<p><code>SOURCE-</code>/<code>SOURCE+</code> choose Synth, Loop, Input, or Drums. <code>LEVEL-</code>/<code>LEVEL+</code> change only
-that source's bounded final-bus level.</p>
+<p><code>SOURCE-</code>/<code>SOURCE+</code> choose Synth, Loop, Input, or Drums. <code>LEVEL-</code>/<code>LEVEL+</code>
+change only that source's bounded final-bus level. When Input's NAV control is
+focused on PAN 1 or PAN 2, these two positions relabel to the selected pan's
+minus/plus pair instead.</p>
 <h5 id="doc-menu-everyday_screens--mix-mute-record-and-holds" tabindex="-1">MIX — mute, record, and holds<a class="heading-anchor" href="#doc-menu-everyday_screens--mix-mute-record-and-holds" aria-label="Link to MIX — mute, record, and holds">#</a></h5>
 <p><img src="images/menu/performance-meter-mix.png" alt="Populated performance meter with the MIX controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="478e074f04700d8dcfc3f7fdef8a0be8969855b0c44fbbccefe54c828a74c3d0" class="tui-shot" id="shot-478e074f0470" /></p>
 <p>The first position is <code>MUTE</code> for Synth, Loop, and Drums. For Input it is
@@ -3647,10 +3667,17 @@ this same visible action. MON ON starts the owned final bus if needed without
 starting an optional source. <code>RECORD</code> toggles the callback-boundary final
 stereo recorder. <code>RESET</code> clears presentation peak/clip holds; it does not reset
 effects, CPU state, or transport.</p>
-<h5 id="doc-menu-everyday_screens--nav-fx-master-overlay" tabindex="-1">NAV — FX master overlay<a class="heading-anchor" href="#doc-menu-everyday_screens--nav-fx-master-overlay" aria-label="Link to NAV — FX master overlay">#</a></h5>
-<p><img src="images/menu/performance-meter-nav.png" alt="Populated performance meter with the NAV controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="6fe9933c21476cbe24155238a561ed99bb415ca444def2a1669b591e643f5d1f" class="tui-shot" id="shot-6fe9933c2147" /></p>
+<h5 id="doc-menu-everyday_screens--nav-fx-master-strip-and-input-mode" tabindex="-1">NAV — FX, master strip, and Input mode<a class="heading-anchor" href="#doc-menu-everyday_screens--nav-fx-master-strip-and-input-mode" aria-label="Link to NAV — FX, master strip, and Input mode">#</a></h5>
+<p><img src="images/menu/performance-meter-nav.png" alt="Populated performance meter with the NAV controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="cc9d9adc1fb95d0c44b9b8b0a2a419d6d189512eee8c9162d9a0395f5bfeb9ee" class="tui-shot" id="shot-cc9d9adc1fb9" /></p>
 <p><code>FX</code> opens the same master-overlay layer used by FT2. Choose SOURCE, AUX 1,
 AUX 2, or MASTER, then click/Enter to open that rack.</p>
+<p>With Input selected, <code>DUAL</code> changes the exact configured pair from its original
+stereo mapping to two independently panned mono signals; it then reads
+<code>STEREO</code> for the reverse action. Dual mono begins at <code>1L100 2R100</code>, so the
+first switch preserves the stereo image. <code>IN CTRL</code> cycles LEVEL, PAN 1, and
+PAN 2; the OPS minus/plus pair follows that focus. Mode and focus use these
+visible controller actions and add no dedicated computer-keyboard shortcuts.
+These live values are not saved in the Project.</p>
 <p><img src="images/menu/overlay-performance-fx.png" alt="Effects-routing overlay over the performance meter" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="a4651d91a6b3cbfa4c257a16ebe52ab2ee5557a83d4899f060f292c73191d481" class="tui-shot" id="shot-a4651d91a6b3" /></p>
 <p>The MTR remains underneath; pressing the highlighted <code>FX</code> again closes the
 overlay without changing audio or Project state.</p>
@@ -3952,7 +3979,7 @@ from stopped transport owns its Pattern loop; REC during Play punches into the
 current Arrangement and punch-out returns to Play. Key release writes a
 quantized note-off independently of Edit note length.</p>
 <h5 id="doc-menu-tracker_and_projects--mode-transport-and-capture" tabindex="-1">MODE — transport and capture<a class="heading-anchor" href="#doc-menu-tracker_and_projects--mode-transport-and-capture" aria-label="Link to MODE — transport and capture">#</a></h5>
-<p><img src="images/menu/ft2-record-mode.png" alt="Populated FT2 Pattern recording context with the MODE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="3f1aece31dce05ef94d876054a66bae7793efe80bdaa9b82994c304d227cde87" class="tui-shot" id="shot-3f1aece31dce" /></p>
+<p><img src="images/menu/ft2-record-mode.png" alt="Populated FT2 Pattern recording context with the MODE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="8aba428313356bde6c4244499b1490efb13bf9ff00349bd7c6b46b3447b5112a" class="tui-shot" id="shot-8aba42831335" /></p>
 <p><code>MIX</code> opens the live audio-level mixer without ending capture. <code>PLAY</code> ends REC
 and starts normal transport. <code>RECORD</code> ends real-time capture while preserving
 the notes already entered. <code>EDIT</code> ends REC and enters stopped Edit mode. With
@@ -3972,12 +3999,12 @@ advance from 0 through 32 rows after entry, blank, erase, or note-off; 0 stays
 on the current row. <code>DRUM LANES FULL</code> rejects an unplaceable hit/group without
 changing the Pattern.</p>
 <h5 id="doc-menu-tracker_and_projects--edit-enter-or-remove-cells" tabindex="-1">EDIT — enter or remove cells<a class="heading-anchor" href="#doc-menu-tracker_and_projects--edit-enter-or-remove-cells" aria-label="Link to EDIT — enter or remove cells">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-dccca5c68ac4">Populated FT2 Pattern in Edit mode with the EDIT page (shown earlier)</a></p>
+<p><a class="repeated-image-link" href="#shot-2880f9a6a28f">Populated FT2 Pattern in Edit mode with the EDIT page (shown earlier)</a></p>
 <p><code>CELL</code> opens contextual cell editing. <code>BLANK</code> advances without writing a note.
 <code>ERASE</code> clears the selected cell. <code>N-OFF</code> writes a note-off. Edit contains no
 duplicated Play, Record, or Edit mode buttons.</p>
 <h5 id="doc-menu-tracker_and_projects--set-rotary-selectors" tabindex="-1">SET — rotary selectors<a class="heading-anchor" href="#doc-menu-tracker_and_projects--set-rotary-selectors" aria-label="Link to SET — rotary selectors">#</a></h5>
-<p><img src="images/menu/ft2-step-edit-set.png" alt="Populated FT2 Pattern in Edit mode with the SET page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="747f080848cdf5bb0a44bbe0520cbe601e9bf2a4977c3fd0d09f2ae7a8e975fe" class="tui-shot" id="shot-747f080848cd" /></p>
+<p><img src="images/menu/ft2-step-edit-set.png" alt="Populated FT2 Pattern in Edit mode with the SET page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="d9a1cea03063a560944f837188ce24d5516e7648752df75e1cdc112b3306fbd2" class="tui-shot" id="shot-d9a1cea03063" /></p>
 <p><code>LENGTH</code> opens every note duration from 1/1 through 1/128. <code>ADD</code> opens every
 advance from 0 through 32 rows. Each selector opens on its current value;
 turning changes the draft, clicking commits, and Back cancels without changing
@@ -3998,7 +4025,7 @@ PATTERN, SONG, and ROUTE.</p>
 <p>Shift-click the main encoder to open the live audio-level mixer from Edit. This
 keeps the four Edit command pages intact.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-help-and-leave-edit" tabindex="-1">SYS — safety, help, and leave edit<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-help-and-leave-edit" aria-label="Link to SYS — safety, help, and leave edit">#</a></h5>
-<p><img src="images/menu/ft2-step-edit-sys.png" alt="Populated FT2 Pattern in Edit mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="1721dcc6dfcf1a7b0605230441e1d602dfe1d5a3b8c17b8a5d811f99cf47d559" class="tui-shot" id="shot-1721dcc6dfcf" /></p>
+<p><img src="images/menu/ft2-step-edit-sys.png" alt="Populated FT2 Pattern in Edit mode with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="6a804936c5408498b49812a2678e23dd3f5f42eee7cc852d5a7bcd57ec280eb8" class="tui-shot" id="shot-6a804936c540" /></p>
 <p><code>PANIC</code> performs the owned stop. <code>N00B</code> toggles the same independent filter.
 <code>HELP</code> opens contextual help. <code>EXIT</code> leaves Edit exactly one level and returns
 to normal FT2 while preserving Pattern, page, column, and cursor row.</p>
@@ -4358,18 +4385,58 @@ set the project's compiler direction; the installer uses the official per-user
 rustup toolchain. A running JACK server is optional for browsing and editing
 but required for software-instrument audio, WAV-loop playback, and multitrack
 recording.
-synthv1, Yoshimi, FluidSynth/TimGM, and Moj Sint are separate optional sound
-engines at runtime. The default installer includes the first three. Install the
-Moj Sint 0.2.2 sibling repository separately so <code>moj-sint</code> is on <code>PATH</code>, then
-use its 13 tracked strict factory <code>.mojsint</code> presets under one configured
-<code>moj_sint.preset_root</code>; SHR never copies private presets from that repository.
+synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
+optional melodic engines at runtime. The supported installer installs all five
+from distribution packages or the exact public revisions in
+<code>install/compatibility.json</code>. It installs Moj Sint's 13 allowlisted factory
+presets and SHR Sampler's allowlisted project-authored factory package; it
+never copies private presets, samples, packages, or user data from a checkout.
+SHR Drums remains an exact pinned in-process Rust dependency, so there is no
+separate <code>shr-drums</code> executable or layered drum service.
 MIDI controllers, external instruments, audio interfaces, and a
 480×320 display are optional hardware. On that display the current fixed TTY
 layout is 40×13 cells; installation does not change its font.</p>
 <h4 id="doc-installation--install" tabindex="-1">Install<a class="heading-anchor" href="#doc-installation--install" aria-label="Link to Install">#</a></h4>
-<p>From the project directory, run:</p>
-<pre><code class="language-sh">./scripts/install.sh
+<p>For a new public installation, clone the immutable release and run its
+installer in one command:</p>
+<pre><code class="language-sh">git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh
 </code></pre>
+<p>From an already checked-out matching release, run <code>./scripts/install.sh</code>.</p>
+<p>The 0.4.8 compatibility set is:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Required version</th>
+<th>Installation form</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SHR-DAW</td>
+<td>0.4.8</td>
+<td>tagged source checkout and <code>shr</code> binary</td>
+</tr>
+<tr>
+<td>Moj Sint</td>
+<td>0.2.3</td>
+<td>exact public commit, <code>moj-sint</code>, 13 cleared presets</td>
+</tr>
+<tr>
+<td>SHR Sampler</td>
+<td>0.1.2 (accepted runtime <code>&gt;=0.1.2,&lt;0.2.0</code>)</td>
+<td>exact public commit, <code>shr-sampler</code>, one cleared package</td>
+</tr>
+<tr>
+<td>SHR Drums</td>
+<td>0.2.0 (accepted library <code>&gt;=0.2.0,&lt;0.3.0</code>)</td>
+<td>exact public Cargo dependency compiled into <code>shr</code></td>
+</tr>
+</tbody>
+</table>
+<p>The machine-readable source commits and runtime bounds live only in
+<code>install/compatibility.json</code>; documentation summarizes rather than duplicates
+their hashes.</p>
 <p>The installer:</p>
 <ul>
 <li>previews its phases, refuses root invocation, and verifies <code>apt-get</code> and
@@ -4384,16 +4451,25 @@ the FluidSynth executable available to SHR;</li>
 <li>detects the current login's <code>rtprio</code> and <code>memlock</code>; if they are inadequate,
 a separate default-no prompt can add the user to <code>audio</code> and create a
 helper-owned limits file only when no distribution policy already suffices;</li>
-<li>installs the exact official Rust toolchain selected by the repository, runs
-the locked tests, and builds the locked release version; newer stable
-releases are adopted deliberately by changing the repository pin;</li>
-<li>installs commands, templates, the 21 allowlisted presets, four allowlisted
-SHR Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
-Projects plus MIDI files, device/controller profiles, drum data,
-documentation, and the complete generated menu-manual image set below the
-selected prefix (normally <code>/usr/local</code>);</li>
+<li>installs the exact official Rust toolchains selected by each repository,
+fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
+declared versions, and creates locked release builds;</li>
+<li>builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;</li>
+<li>stages commands, templates, 21 allowlisted synthv1 presets, 13 allowlisted
+Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
+Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
+Projects plus MIDI files, profiles, drum data, and documentation;</li>
+<li>preflights the complete payload, refuses a differing unowned destination,
+and transactionally installs it below <code>/usr/local</code> with hashes, modes, and
+symlink targets recorded in <code>/usr/local/share/shr-daw-install/manifest.json</code>;</li>
 <li>opens the routing wizard.</li>
 </ul>
+<p>The payload manifest owns the installed binaries, compatibility aliases,
+configuration templates, public presets/instruments/kits/loops/demos, profiles,
+and documentation. The distribution package manager owns synthv1, Yoshimi,
+FluidSynth, TimGM, and their libraries. The musician owns every generated XDG
+configuration, Project, Idea, recording, imported loop, controller map, and
+private preset/package; those paths are never adopted into the system manifest.</p>
 <p>On stock Raspberry Pi OS, the routing wizard asks for a stable ALSA card name
 such as <code>A96</code>, never a numeric card order. After showing the exact JACK command,
 it offers one SHR-managed boot service by default. The service is enabled but
@@ -4439,6 +4515,8 @@ grouped prompts with:</p>
 <li><code>shr</code> opens SHR-DAW and provides its command-line tools.</li>
 <li><code>shr-setup</code> opens the routing wizard.</li>
 <li><code>shr-audio-tune</code> manages optional Raspberry Pi audio CPU tuning.</li>
+<li><code>moj-sint</code> is the pinned managed synthesis host.</li>
+<li><code>shr-sampler</code> is the pinned managed sample-package host and offline validator.</li>
 <li><code>shs</code> and <code>synth-player</code> are compatibility names for <code>shr</code>. They use the same
 Rust engine ownership, routing, and shutdown path as the main command.</li>
 </ul>
@@ -4461,17 +4539,25 @@ files. Build the debug binary first; neither helper installs packages or builds
 the program. <code>local.sh</code> launches this checkout's <code>target/debug/shr</code>, which
 carries the visible <code>DEV</code> badge.</p>
 <h4 id="doc-installation--upgrade-and-uninstall-boundaries" tabindex="-1">Upgrade and uninstall boundaries<a class="heading-anchor" href="#doc-installation--upgrade-and-uninstall-boundaries" aria-label="Link to Upgrade and uninstall boundaries">#</a></h4>
-<p>Rerunning <code>./scripts/install.sh</code> builds the locked current checkout and replaces
-installed program/shared documentation files. Existing XDG configuration,
-controller learning, Projects, Ideas, loops, and recordings are not removed or
-reset. Package installation, service masking, real-time policy, and CPU tuning
-are idempotent. Run <code>shr-setup</code> only when routes or hardware need to change.</p>
-<p>For a default <code>/usr/local</code> source installation, remove installed SHR-DAW files
-from this checkout with:</p>
-<pre><code class="language-sh">sudo make uninstall
+<p>Rerunning the same release is idempotent. A newer tagged release first verifies
+that every previously owned file still matches its recorded hash, then replaces
+only changed managed files and removes only obsolete unchanged managed files.
+An identical pre-existing file can be adopted; a differing unowned file or a
+locally modified managed file stops the update before mutation. An interrupted
+file transaction retains private backups and a pending journal; the next apply
+rolls it back before preflight and retry. Package installation, service masking,
+real-time policy, and CPU tuning are separately idempotent. Existing XDG
+configuration, controller learning, Projects, Ideas, loops, recordings, and
+private presets/packages are never payload members and are not reset.</p>
+<p>For a default <code>/usr/local</code> installation, run the installed manifest owner:</p>
+<pre><code class="language-sh">sudo /usr/local/libexec/shr-daw/managed_install.py uninstall
 </code></pre>
-<p>This removes the installed commands, public presets, kits, profiles, rhythms,
-and documentation. It deliberately preserves user data under
+<p><code>sudo make uninstall</code> from the matching source checkout invokes the same
+operation.</p>
+<p>This manifest-driven command removes only unchanged files owned by the last
+successful payload. It refuses to delete a managed file changed afterward,
+removes owned directories only when empty, and preserves unrelated files in a
+shared directory. It deliberately preserves user data under
 <code>${XDG_STATE_HOME:-~/.local/state}/shsynth/</code> and
 <code>${XDG_DATA_HOME:-~/.local/share}/shsynth/</code>, Moj Sint user sounds under
 <code>${XDG_DATA_HOME:-~/.local/share}/moj-sint/</code>, repository-local <code>$SHSYNTH_USER_DIR/</code>, system
@@ -4480,10 +4566,11 @@ separate explicit system change; inspect/remove it with <code>shr-audio-tune</co
 uninstalling the command if desired. Never delete those retained directories
 unless their Projects, Ideas, recordings, loops, and private presets have been
 reviewed and backed up.</p>
-<p>The Makefile install/uninstall file boundary can be validated in an isolated
-<code>DESTDIR</code>: it installs 21 allowlisted public presets, four allowlisted public
-kits, and only manifest-cleared demos, includes no <code>$SHSYNTH_USER_DIR/</code> path, and staged
-uninstall removes only staged product files.</p>
+<p><code>make install-files</code> is a staging-only target and refuses an empty <code>DESTDIR</code>;
+live installation goes through the transactional helper. The complete
+hardware-free validation builds a disposable payload and applies, reapplies,
+updates, recovers, and uninstalls it under a disposable root. No nested Git
+repository is copied into the runtime tree.</p>
 <h4 id="doc-installation--jack" tabindex="-1">JACK<a class="heading-anchor" href="#doc-installation--jack" aria-label="Link to JACK">#</a></h4>
 <p>JACK must be running before loading a software synth, playing WAV loops, or
 recording audio. The browser and external-MIDI tracker can start without JACK.</p>
@@ -5138,7 +5225,7 @@ writing into the caller's normal desktop configuration; a caller-supplied
 <code>XDG_CONFIG_HOME</code> is not used for that child process.</p>
 <h4 id="doc-configuration--runtime-key-reference" tabindex="-1">Runtime key reference<a class="heading-anchor" href="#doc-configuration--runtime-key-reference" aria-label="Link to Runtime key reference">#</a></h4>
 <p>Repeated <code>midi.performance_input</code>, <code>audio.output</code>, <code>audio.internal_output</code>, <code>yoshimi.preset_root</code>,
-<code>yoshimi.category</code>, <code>fluidsynth.soundfont</code>, <code>external_midi.channel</code>,
+<code>yoshimi.category</code>, <code>fluidsynth.soundfont</code>, <code>shr_sampler.instrument_root</code>, <code>external_midi.channel</code>,
 <code>external_midi.percussion_note</code>, <code>capture.input</code>, <code>capture.track</code>, and <code>loop.output</code> keys build
 ordered lists. Empty optional values disable that choice. The current parser
 accepts:</p>
@@ -5175,6 +5262,10 @@ accepts:</p>
 <td><code>moj_sint.command</code>, <code>.client</code>, <code>.midi_output</code>, repeated <code>.preset_root</code>, and exactly two <code>.output</code> short names</td>
 </tr>
 <tr>
+<td>SHR Sampler</td>
+<td><code>shr_sampler.command</code>, <code>.client</code>, <code>.midi_output</code>, repeated <code>.instrument_root</code>, exactly two <code>.output</code> short names, and <code>.validation_timeout_ms</code> (1000–600000)</td>
+</tr>
+<tr>
 <td>SHR Drums</td>
 <td><code>drums.client</code>, <code>.kit_directory</code>, and <code>.maximum_callback_frames</code></td>
 </tr>
@@ -5200,6 +5291,17 @@ replacement. Overwrite is available only for a regular numbered file in that
 private root. Serialization and strict format validation finish before atomic
 publication, so a failed save leaves the prior file, live values, held notes,
 and engine session unchanged.</p>
+<p>SHR Sampler defaults to command <code>shr-sampler</code>, client/MIDI identity
+<code>shs-shr-sampler</code>, and exact outputs <code>out_l</code> then <code>out_r</code>. Discovery indexes at
+most 512 regular non-symlink <code>.shrinst</code> directories and reads a bounded
+top-level manifest for stable ID and display name. <code>LOAD</code> first checks the
+executable's <code>shr-sampler VERSION</code> response against the central compatibility
+contract and runs its strict offline <code>validate PACKAGE</code> command within the
+configured timeout. Only then may the exclusive owned-host replacement begin.
+The live invocation is <code>shr-sampler --client-name NAME --instrument PACKAGE</code>;
+SHR Sampler never auto-connects itself. Packages are read-only catalog entries,
+while Ideas persist their stable ID and configured path without copying sample
+content into private Project storage.</p>
 <p>| Managed MIDI/audio | <code>midi.autoconnect</code>; legacy ordered controller fallbacks in repeated <code>midi.input</code>; <code>midi.controller_musical_input</code>; simultaneous repeated <code>midi.performance_input</code>; <code>audio.autoconnect</code>, exactly two preferred <code>audio.output</code> entries, ordered <code>audio.internal_output=NAME|LEFT|RIGHT</code> fallbacks, final optional <code>audio.headphone_output=NAME|LEFT|RIGHT</code>; optional <code>audio.engine_cpu</code> |
 | Owned final bus | <code>audio.graph.enabled</code>, <code>.client</code>, <code>.maximum_callback_frames</code> (1–4096), <code>.input</code>, monitoring confirmations |
 | External tracker MIDI | <code>external_midi.enabled</code>, <code>.client</code>, <code>.output</code>, <code>.max_tracks</code>, repeated <code>.channel</code>, <code>.melody_channel</code>, optional <code>.percussion_channel</code> and <code>.percussion_program</code>, <code>.percussion_input_base</code>, repeated <code>.percussion_note</code>, <code>.bank_select</code> (<code>off</code>, <code>cc0</code>, or <code>cc0+cc32</code>), <code>.program_changes</code>, <code>.send_transport</code>, <code>.default_tempo</code> (decimal 20.00–300.00), private <code>.import_directory</code>, <code>.pattern_rows</code> (1–256), <code>.steps_per_beat</code> (1–16), <code>.live_thru</code>, <code>.profile</code>, <code>.gate_percent</code> (1–100), <code>.gesture_settle_ms</code> |
@@ -5415,9 +5517,11 @@ graph's main destinations. <code>audio.graph.input</code> is <code>LABEL|LEFT|RI
 capture names are resolved exactly. If it is absent, the first legacy
 <code>capture.input</code> supplies a backward-compatible preference. Missing, ambiguous,
 or identical ports keep the bus visibly unavailable—SHR-DAW never picks a
-nearby name. The callback frame bound may be 1–4096 and must cover the active
-JACK period; an unexpectedly larger callback faults final recording and writes
-safe silence rather than overrunning fixed memory.</p>
+nearby name. This key assigns the two ports only: MTR's live Input control
+chooses stereo or dual mono and the two dual-mono pans without rewriting
+configuration or raw recorder tracks. The callback frame bound may be 1–4096
+and must cover the active JACK period; an unexpectedly larger callback faults
+final recording and writes safe silence rather than overrunning fixed memory.</p>
 <p>Input software monitoring starts OFF every time. <strong>MON ON</strong> requires only the
 exact input and playback pairs; no synth, Loop, or drum source is launched or
 required. Present optional sources are connected to their fixed graph inputs
@@ -6156,13 +6260,13 @@ private WAV loop  --&gt; direct JACK playback (graph disabled)
 managed synth SOURCE/AUX --+
 private WAV loop -----------+-&gt; MASTER rack -&gt; live fader -&gt; MASTER STRIP
 SHR Drums ------------------+
-configured stereo input ----+                        +-&gt; FINAL OUT + final WAV + playback
+configured input 1/2 -------+-&gt; stereo or dual-mono pan -&gt; FINAL OUT + final WAV + playback
 configured JACK sources -&gt; fixed 18-channel meter snapshot
                         \-&gt; shared callback timeline -&gt; mono stems + manifest
 </code></pre>
 <p>The raw-stem recorder remains separate. The application owns the final bus
 independently of its optional synth, SHR Drums, and Loop sources. Input MON ON
-can therefore activate only the exact stereo-input pair and playback pair; it
+can therefore activate only the exact two-port Input and playback pair; it
 does not launch missing sound sources. Present optional direct routes move into
 the bus transactionally and reconcile when sources disappear or return.
 <code>FINAL OUT</code>, final WAV, and playback then share the same post-strip samples.
@@ -6246,13 +6350,14 @@ held velocity. German B/H spelling is the default;
 <code>display.note_names=english</code> uses A#/B spelling. Naming changes only the
 display, never the MIDI notes.</p>
 <h4 id="doc-how_it_works--software-instruments-and-ownership" tabindex="-1">Software instruments and ownership<a class="heading-anchor" href="#doc-how_it_works--software-instruments-and-ownership" aria-label="Link to Software instruments and ownership">#</a></h4>
-<p>SHR-DAW browses four separately installed instrument hosts:</p>
+<p>SHR-DAW browses five separately installed instrument hosts:</p>
 <ul>
 <li><a href="https://synthv1.sourceforge.io/" class="external" target="_blank" rel="noopener noreferrer external">synthv1</a> for subtractive synth presets;</li>
 <li><a href="https://yoshimi.github.io/" class="external" target="_blank" rel="noopener noreferrer external">Yoshimi</a> for <code>.xiz</code> instruments and banks; and</li>
 <li><a href="https://www.fluidsynth.org/" class="external" target="_blank" rel="noopener noreferrer external">FluidSynth</a> for <code>.sf2</code> and <code>.sf3</code> SoundFonts;
 and</li>
-<li>Moj Sint for strict <code>.mojsint</code> Model D presets and its dedicated live host.</li>
+<li>Moj Sint for strict <code>.mojsint</code> Model D and Six-Op PM presets; and</li>
+<li>SHR Sampler for strict preloaded <code>.shrinst</code> sample packages.</li>
 </ul>
 <p>Only one SHR-managed software engine process runs at a time. synthv1 and
 Yoshimi retain one current preset. FluidSynth is the exception at the
@@ -6262,12 +6367,20 @@ stereo source. Loading another standalone sound may reuse or replace the owned
 process; replacement sends All Notes Off, performs a clean shutdown, and
 starts the next configured host. SHR-DAW records enough process identity to
 stop only the engine it started. It neither layers managed backends nor kills
-an unrelated synthv1, Yoshimi, FluidSynth, or Moj Sint process opened by the
-user.</p>
+an unrelated synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler process
+opened by the user.</p>
 <p>Moj Sint is started with <code>--client-name</code> and <code>--preset</code>, publishes exactly
 <code>out_l</code>/<code>out_r</code>, and accepts its twelve macros on CC 20–31. SHR verifies the
 configured port names and owns only the child it started. The browser never
 launches it; LOAD is the transaction boundary.</p>
+<p>SHR Sampler is preflighted with its machine-readable version and strict
+offline package validator before the current engine is disturbed. It is then
+started with <code>--client-name</code> and <code>--instrument</code>, publishes exactly the two
+configured outputs, and exposes one configured ALSA input. It does not connect
+itself. A missing executable/package, malformed package, incompatible version,
+validation timeout, startup failure, or unexpected exit becomes a visible
+managed-backend fault. Failed replacement gets one attempt to restore the
+previous owned session; no second melodic child remains layered.</p>
 <p>A managed host becomes ready only after SHR resolves one unambiguous stereo
 JACK output pair for it; a MIDI JACK/ALSA port alone is not readiness. Exact
 configured client names are preferred. A single uniquely prefixed client is
@@ -6306,15 +6419,17 @@ reaching the same synth or hardware destination through an unowned background
 route while leaving all three engines available on demand.</p>
 <p>Commands, client names, preset roots, SoundFonts, MIDI ports, and JACK ports
 are configuration. The engine code does not assume the development hardware.
-The four catalogs also remain separate: synthv1 XML, Yoshimi instruments,
-SoundFont programs, and <code>.mojsint</code> files never borrow one another's parsers or
-controls.</p>
+The five catalogs also remain separate: synthv1 XML, Yoshimi instruments,
+SoundFont programs, <code>.mojsint</code> files, and <code>.shrinst</code> packages never borrow one
+another's parsers or controls.</p>
 <h4 id="doc-how_it_works--three-different-kinds-of-recording" tabindex="-1">Three different kinds of recording<a class="heading-anchor" href="#doc-how_it_works--three-different-kinds-of-recording" aria-label="Link to Three different kinds of recording">#</a></h4>
 <p>SHR-DAW uses “record” for three intentionally different jobs:</p>
 <ol>
 <li>An <strong>Idea</strong> captures free-time MIDI while playing a managed sound. It keeps
 event timing and instrument identity; synthv1 and Moj Sint Ideas also keep
-a private preset snapshot and backend-specific mapped control values. <code>PLAY</code>
+a private preset snapshot and backend-specific mapped control values, while
+SHR Sampler Ideas keep only the stable package ID and configured public path
+without copying sample content. <code>PLAY</code>
 plays that MIDI back
 through the restored instrument. An Idea is not audio.</li>
 <li>FT2 <strong>REC</strong> quantizes notes into the selected Pattern page using that
@@ -6535,9 +6650,11 @@ failure leaves or restores the exact prior direct links. Shutdown deactivates
 the callback before restoring them, avoiding a doubled final block.</p>
 <p>FX state is saved in the Project while the graph is disabled, but direct
 playback cannot process or meter it. The graph instantiates exactly four
-source kinds: managed instrument, SHR Drums, owned loop player, and one stereo
-live-input pair. It deliberately has no general strips, pan, solo, hardware insert,
-per-input effect chain, or arbitrary wiring.</p>
+source kinds: managed instrument, SHR Drums, owned loop player, and one
+two-port live Input. That Input can preserve stereo or independently pan its
+two ports in dual mono. The graph deliberately has no general strips, pan for
+other sources, solo, hardware insert, per-input effect chain, or arbitrary
+wiring.</p>
 <h4 id="doc-how_it_works--live-patterns-loop-mix-and-the-final-bus" tabindex="-1">Live Patterns, Loop Mix, and the final bus<a class="heading-anchor" href="#doc-how_it_works--live-patterns-loop-mix-and-the-final-bus" aria-label="Link to Live Patterns, Loop Mix, and the final bus">#</a></h4>
 <p>Live Patterns is a sequencer-owned performance view over existing Pattern
 records. Browsing is UI state. Successful activations occur at validated
@@ -6640,8 +6757,10 @@ future hardware test and is not implied by synthetic validation.</p>
 graph and effects racks. The graph is implemented and Raspberry Pi measured,
 but remains opt-in and disabled by default. Direct JACK routing is both the
 default and the conservative fallback. The current product compiler instantiates
-four bounded stereo sources: the managed software instrument, SHR Drums, the
-owned WAV loop, and one exact configured JACK capture pair.</p>
+four bounded stereo boundaries: the managed software instrument, SHR Drums,
+the owned WAV loop, and one exact configured JACK capture pair. The capture
+boundary can preserve stereo or explicitly matrix its two ports as separately
+panned mono inputs before the dry sum.</p>
 <p>This page owns DSP topology, bounds, and callback safety. The <a href="#doc-menu_manual">menu
 manual</a> owns screen actions, while the <a href="#doc-final_performance_bus">final performance
 bus</a> owns monitoring and final recording.</p>
@@ -6651,7 +6770,7 @@ bus</a> owns monitoring and final recording.</p>
        |                    +-&gt; POST send gain -&gt; wet AUX 1/2 -&gt; return -+
        +----------------------&gt; PRE send gain  -&gt; wet AUX 1/2 -&gt; return -+
 owned WAV loop ------------------------------------------------------+-&gt; dry sum
-configured stereo JACK input --------------------------------------/
+configured JACK input 1/2 -&gt; stereo or dual-mono pan matrix -------/
 in-process SHR Drums -&gt; Project DRUMS Reverb -&gt; Delay --------------/
 
 dry sum -&gt; MASTER inserts -&gt; live master level
@@ -6696,8 +6815,10 @@ playback, so drum effects remain correct when the owned graph is disabled. The
 loop remains its own rendering client; when the final bus is active its output
 is moved off direct playback and into the owned sum. The raw synchronized
 multitrack recorder remains a separate capture client. External instruments
-return only through the configured stereo mix. There is no hardware insert or
-per-interface-channel processing.</p>
+return only through the configured two-port Input owner. That owner alone may
+preserve the pair as stereo or treat its ports as two independently panned
+mono signals. There is no hardware insert, per-input effect rack, or separate
+JACK client per interface channel.</p>
 <p>The graph may connect and disconnect only SHR-owned endpoints. It must not
 alter unrelated JACK connections or terminate a client/process it does not
 own. Until the graph is activated successfully, the managed engine and loop use
@@ -6767,9 +6888,10 @@ rejected.</p>
 <code>Filter</code>, <code>Gate</code>, and <code>Crusher</code>. Bus kinds are <code>StereoMixer</code>, <code>SendTap</code>, and
 <code>AuxReturn</code>. Sink/tap kinds are <code>MainPlayback</code>, <code>HardwareSend</code>, <code>RecordPreFx</code>,
 <code>RecordPostFx</code>, and <code>RecordMaster</code>.</p>
-<p>Edges carry stereo audio. A mono source requires an explicit adapter node; it
-is never silently duplicated. A hardware send and its own return may not form
-a path, and a master/sink may not feed a source.</p>
+<p>Edges carry stereo audio. A mono source requires an explicit adapter and is
+never silently duplicated; Input dual mono is the deliberate boundary matrix
+for its two named capture ports. A hardware send and its own return may not
+form a path, and a master/sink may not feed a source.</p>
 <h4 id="doc-audio_graph--validation-before-publication" tabindex="-1">Validation before publication<a class="heading-anchor" href="#doc-audio_graph--validation-before-publication" aria-label="Link to Validation before publication">#</a></h4>
 <p>A complete proposed graph is built and validated away from the JACK callback.
 Validation checks:</p>
@@ -7168,7 +7290,7 @@ contract</a>.</p>
 attach when present:</p>
 <pre><code class="language-text">managed software instrument -&gt; owner gain -&gt; source inserts/aux ---\
 owned four-slot native-rate Loop Mix sum -&gt; owner gain -------------+-&gt; stereo sum
-configured JACK capture L/R -&gt; owner gain --------------------------/
+configured JACK capture 1/2 -&gt; stereo or dual-mono pan -&gt; owner gain/
 SHR Drums rack/stereo bus -&gt; owner gain -----------------------------/
     -&gt; optional aux returns, where routed from the managed source
     -&gt; master insert rack
@@ -7186,11 +7308,17 @@ musician deliberately enables the safe software-monitor path. Failure to
 activate leaves the prior direct routes unchanged and the FT2 editing location
 intact.</p>
 <p>The logical Loop and external-input bus strips do not gain individual insert
-racks, aux sends, pan, solo, automation, or waveform editing. Drums has only
+racks, aux sends, solo, automation, or waveform editing. Drums has only
 its fixed Reverb-then-Delay rack before this bus; it does not become a general
 mixer strip. Synth, Loop, and Drums retain a smoothed level and mute. Input
 instead has one unambiguous <strong>MON ON</strong>/<strong>MON OFF</strong> control in the same MTR
 source-control position; it is never shown beside a duplicate Input mute.
+Input also switches between the original stereo mapping and <strong>DUAL</strong> mono.
+Dual mono treats configured port 1 and port 2 as independent mono signals with
+an equal-power pan for each. Its initial <code>1L100 2R100</code> positions reproduce the
+stereo mapping exactly; changing either pan routes only that input across the
+final stereo mix. Mode and pan transitions use the same 10 ms ramp as source
+levels.
 Loop Mix applies its four
 slot-local level/filter/mute controls before this one logical source. The
 managed source keeps its existing Project-owned
@@ -7201,8 +7329,9 @@ basic summing headroom. Input monitoring always starts OFF. These live
 performance controls are not
 Project data; current Project format 13 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
-Pattern, but not these final-bus levels or mutes. JACK assignments remain
-machine configuration.</p>
+Pattern, but not these final-bus levels, mutes, Input mode, or Input pans. JACK
+assignments remain machine configuration. A fresh runtime always starts in
+stereo mode; dual-mono choices do not reinterpret raw multitrack recording.</p>
 <p>Each source publishes one lightweight post-owner-gain stereo peak for the FT2
 mixer before the graph performs Project processing and summing. The existing
 fader loop accumulates those peaks, so callback work remains one bounded pass:
@@ -8374,9 +8503,15 @@ defines validation and compatibility. Its
 <a href="https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md" class="external" target="_blank" rel="noopener noreferrer external">source record</a>
 owns sample provenance. <code>kits/cleared-kits.txt</code> is this repository's single
 public kit allowlist.</p>
-<p>The bundled Acid and Electronic House packages are original, fully modeled
-27-voice kits with no recordings or downloaded audio. Their manifests release
-the package content under CC0 1.0.</p>
+<p>SHR-DAW pins the public SHR Drums 0.2.0 source revision in both <code>Cargo.toml</code>
+and <code>install/compatibility.json</code>. Cargo compiles it into <code>shr</code>; the installer
+does not create a separate executable, service, or runtime source checkout.</p>
+<p>The bundled Acid package is an original fully modeled 27-voice kit. Electronic
+House has its original 27 modeled voices plus deterministic House Impact and
+Long Pressure synthetic one-shot exports authored by the CC0 Moj Sint project;
+they occupy notes 27 and 28 without replacing its existing note-33 through
+note-36 kicks. Neither package contains recordings or downloaded audio. Their
+manifests release the package content under CC0 1.0.</p>
 <p>The bundled Big Rock (Muldjord) and Experimental Noise (Muldjord) packages use
 selected recordings from MuldjordKit SFZ+WAV 2020-10-18 under Creative Commons
 Attribution 4.0 International. Lars Muldjord made the original recordings;
@@ -8391,6 +8526,14 @@ and <a href="https://drumgizmo.org/wiki/doku.php?id=kits:muldjordkit" class="ext
 bundled. A local package's presence does not grant redistribution rights; add
 one to <code>cleared-kits.txt</code> only after reviewing its complete contents, manifest,
 source record, asset licence, and required notices.</p>
+<h4 id="doc-third-party--moj-sint-and-shr-sampler" tabindex="-1">Moj Sint and SHR Sampler<a class="heading-anchor" href="#doc-third-party--moj-sint-and-shr-sampler" aria-label="Link to Moj Sint and SHR Sampler">#</a></h4>
+<p>The whole-system installer fetches the exact public Moj Sint 0.2.3 and SHR
+Sampler 0.1.2 revisions recorded in <code>install/compatibility.json</code>. Each
+repository's <code>THIRD_PARTY.md</code> owns its dependency and content provenance. Only
+Moj Sint files named by <code>presets/cleared-presets.txt</code> and SHR Sampler packages
+named by <code>instruments/cleared-instruments.txt</code> enter the payload. The initial
+SHR Sampler package is a project-authored deterministic waveform released as
+CC0-1.0; no private or third-party sample library is copied or converted.</p>
 <h4 id="doc-third-party--public-domain-demo-compositions" tabindex="-1">Public-domain demo compositions<a class="heading-anchor" href="#doc-third-party--public-domain-demo-compositions" aria-label="Link to Public-domain demo compositions">#</a></h4>
 <p>The ten demo arrangements in <code>demos/</code> are newly programmed for SHR-DAW and are
 released under MIT. The underlying compositions are traditional or old enough
@@ -12187,8 +12330,8 @@ assumptions.</p>
 </tr>
 <tr>
 <td><code>install.sh</code></td>
-<td>Install dependencies and SHR-DAW on Debian/Raspberry Pi OS</td>
-<td>With grouped consent, may use <code>sudo apt-get --no-install-recommends</code>, mask one user service, install owned RT policy, run rustup, <code>sudo make install-files</code>, and open setup</td>
+<td>Install the complete public SHR system on Debian/Raspberry Pi OS</td>
+<td>With grouped consent, may use <code>sudo apt-get --no-install-recommends</code>, mask one user service, install owned RT policy, fetch exact public component commits, run rustup, apply one manifest-owned payload, and open setup</td>
 </tr>
 <tr>
 <td><code>audio-performance.sh</code> / installed <code>shr-audio-tune</code></td>
@@ -12516,8 +12659,31 @@ current user with the repository-required rustfmt and Clippy components, and
 runs Cargo through <code>rustup run CHANNEL cargo</code>. A newer stable release is
 adopted by changing the reviewed repository pin; an older distribution
 compiler never redirects development.</p>
-<p>It then runs locked tests, creates a locked release build, installs the files
-with <code>sudo make install-files</code>, and normally opens <code>shr-setup</code>.</p>
+<p>It validates <code>install/compatibility.json</code>, fetches Moj Sint and SHR Sampler from
+their exact public commits without GitHub authentication, verifies their
+declared versions and exact toolchain pins, and creates locked release builds.
+SHR-DAW's Cargo manifest fetches SHR Drums at the separate exact public source
+revision and compiles it in process. No source checkout or nested <code>.git</code>
+directory enters the runtime tree.</p>
+<p><code>prepare_install.py</code> stages the three executables plus only allowlisted public
+presets, instruments, kits, loops, demos, and documentation. It rejects unsafe,
+missing, linked, duplicated, moving, non-public, or version-mismatched inputs.
+<code>managed_install.py</code> then preflights and applies the payload with <code>sudo</code>. It
+records file hashes/modes and symlink targets, refuses differing unowned or
+modified owned resources, backs up every changed path, and leaves a recovery
+journal before its first mutation. Apply recovers an interrupted transaction
+before retry. The planner never performs that recovery or any other mutation.
+The installer normally opens <code>shr-setup</code> after a successful apply.</p>
+<p>The opt-in whole-system hardware-free validation is:</p>
+<pre><code class="language-sh">python3 scripts/validate_public_install.py
+</code></pre>
+<p>It fetches the exact public revisions, makes debug builds, stages the complete
+payload, and exercises plan, fresh apply, identical reapply, offline sampler
+validation, installed-content boundaries, and safe uninstall under a unique
+temporary directory below ignored <code>artifacts/</code>. It neither invokes setup nor
+opens JACK or ALSA. Update, collision, injected interruption, recovery, and
+modified-file refusal are covered by <code>scripts/test_managed_install.py</code> without
+network access.</p>
 <p>Before its first package or service mutation, the installer prints the enabled
 package, per-user FluidSynth mask, Rust, test/build, install, and setup phases,
 then gathers grouped consent. After packages, it separately offers missing
@@ -12867,15 +13033,15 @@ modern recording. Any new title needs its own public-domain analysis and source
 record before <code>--write</code>; changing the source requires rerunning validation and
 reviewing the regenerated hashes. No JACK client or MIDI output is opened.</p>
 <h4 id="doc-maintainer_helpers--related-make-targets" tabindex="-1">Related Make targets<a class="heading-anchor" href="#doc-maintainer_helpers--related-make-targets" aria-label="Link to Related Make targets">#</a></h4>
-<p>The Makefile is not a script, but the installer delegates its final file layout
-to it:</p>
+<p>The Makefile is not a script, but the payload builder delegates SHR-DAW's
+staged file layout to it:</p>
 <pre><code class="language-sh">make build
 make test
 make check-demos
 make docs-site
 make check-docs-site
-sudo make install
-sudo make install-files
+make install
+make install-files DESTDIR=&quot;$fixture&quot;
 sudo make uninstall
 </code></pre>
 <p><code>make test</code> runs the deterministic product regression gate. DSP audition
@@ -12909,23 +13075,30 @@ physical/audio acceptance.</p>
 <li><code>CARGO</code> selects Cargo;</li>
 <li><code>PREFIX</code> defaults to <code>/usr/local</code>;</li>
 <li><code>DESTDIR</code> prefixes the install tree for packaging or a non-root fixture.</li>
+<li><code>BUILD_PROFILE</code> selects the already-built <code>debug</code> or <code>release</code> binary staged
+by <code>install-files</code> and defaults to <code>release</code>.</li>
 </ul>
-<p><code>install-files</code> first runs <code>check-demos</code>, then installs only presets, kits, and
+<p><code>install-files</code> requires a nonempty <code>DESTDIR</code>, first runs <code>check-demos</code>, then installs only presets, kits, and
 demos named by their cleared manifests, plus the configuration and
 device/profile data, drum patterns, documentation, nested menu chapters, and
 nested menu images. Kit packaging rejects unsafe allowlist names, missing
 package directories, and symlinks. The public <code>shr</code> binary receives the
 compatibility aliases <code>shs</code> and <code>synth-player</code>; no separate process binary is
 installed for those names.</p>
-<p>Use <code>DESTDIR</code> to inspect installation without touching the host:</p>
+<p>It also stages the compatibility contract and transactional installer. It is
+never a live installation path and refuses an empty <code>DESTDIR</code>. <code>make install</code>
+invokes the supported managed installer. <code>make uninstall</code> runs the manifest
+uninstaller, removes only unchanged owned files, retains modified or unrelated
+resources, and removes managed directories only when empty.</p>
+<p>Use <code>DESTDIR</code> to inspect SHR-DAW's portion without touching the host:</p>
 <pre><code class="language-sh">fixture=$(mktemp -d)
 make install-files DESTDIR=&quot;$fixture&quot; PREFIX=/usr/local
 find &quot;$fixture/usr/local&quot; -type f -o -type l
 </code></pre>
 <p>Choose a dedicated temporary directory and remove it only after confirming the
-expanded path. <code>uninstall</code> is intentionally broad within the exact selected
-<code>PREFIX</code>/<code>DESTDIR</code> application paths; never point those variables at an
-unresolved or unintended root.</p>
+expanded path. The whole-system disposable simulation is owned by
+<code>prepare_install.py</code> plus <code>managed_install.py</code>; it must use an explicit
+temporary root and must not invoke JACK, ALSA, setup, or the installed app.</p>
 <h4 id="doc-maintainer_helpers--helper-specific-validation" tabindex="-1">Helper-specific validation<a class="heading-anchor" href="#doc-maintainer_helpers--helper-specific-validation" aria-label="Link to Helper-specific validation">#</a></h4>
 <p>Match validation to the helper's effects:</p>
 <ul>
@@ -13598,18 +13771,18 @@ are in <code>CONTROLLER_INTERFACE.md</code>.</p>
 </tr>
 <tr>
 <td>Owned final performance bus and rack</td>
-<td>Process managed-source inserts/auxes; sum optional synth, active Pattern's complete four-slot Loop source, SHR Drums, and deliberately monitored exact stereo Input; master rack/fader, fixed stereo strip, 8× linked true-peak limiter, meter, stereo record, and playback</td>
+<td>Process managed-source inserts/auxes; sum optional synth, active Pattern's complete four-slot Loop source, SHR Drums, and deliberately monitored exact two-port Input in stereo or independently panned dual mono; master rack/fader, fixed stereo strip, 8× linked true-peak limiter, meter, stereo record, and playback</td>
 <td>K/M/C</td>
 <td><code>audio.graph.*</code>; Project effect/strip data; machine input assignment</td>
-<td>Project format 13 Project racks/strip, drum rack, and Pattern Loop slots; runtime bus levels/mutes/monitor intent; one no-replace 24-bit stereo WAV</td>
+<td>Project format 13 Project racks/strip, drum rack, and Pattern Loop slots; runtime bus levels/mutes/monitor intent/Input mode/pans; one no-replace 24-bit stereo WAV</td>
 <td>Only exact Input/playback are required for MON ON; optional source absence is silence; required loss faults recording; transactional failure restores prior owned routes</td>
-<td>One application-owned fixed four-node callback; Input defaults off; optional source arrival/loss reconciles without duplicate playback; fixed callback memory; +0.30 dBTP tolerance; active rack structure requires stopped transport/recording while smoothed strip values may move during playback</td>
-<td><code>audio_graph*.rs</code>, <code>final_bus.rs</code>, <code>master_strip.rs</code>, <code>audio_recorder.rs</code>, <code>ui.rs</code>; input-only activation, optional reconnection, topology, true peak, playback/WAV identity, rollback/shutdown, 40×13/controller/pointer/keyboard, synthetic stress/benchmark</td>
+<td>One application-owned fixed four-node callback; Input defaults off and stereo; dual mono uses a smoothed equal-power matrix; optional source arrival/loss reconciles without duplicate playback; fixed callback memory; +0.30 dBTP tolerance; active rack structure requires stopped transport/recording while smoothed strip values may move during playback</td>
+<td><code>audio_graph*.rs</code>, <code>final_bus.rs</code>, <code>master_strip.rs</code>, <code>audio_recorder.rs</code>, <code>ui.rs</code>; input-only activation, stereo/dual-mono pan law, optional reconnection, topology, true peak, playback/WAV identity, rollback/shutdown, 40×13/controller/pointer/keyboard, synthetic stress/benchmark</td>
 <td>MTR, FX and MASTER STRIP screens</td>
 </tr>
 <tr>
 <td>Performance meter/final-bus control</td>
-<td>Inspect four source states, bounded levels, MUTE for Synth/Loop/Drums, one MON ON/OFF Input action, master, sample peak, dBTP, LUFS-M/S/I, correlation, linked GLUE/limiter reduction, and final recording status</td>
+<td>Inspect four source states, bounded levels, MUTE for Synth/Loop/Drums, one MON ON/OFF Input action, Input stereo/dual-mono mode and two pans, master, sample peak, dBTP, LUFS-M/S/I, correlation, linked GLUE/limiter reduction, and final recording status</td>
 <td>K/C</td>
 <td>Active graph; optional legacy CPU-temperature path</td>
 <td>Runtime source controls and lock-free meters; Project strip settings</td>
@@ -13667,7 +13840,7 @@ are in <code>CONTROLLER_INTERFACE.md</code>.</p>
 <p>Known product boundaries: Debian/Linux is the supported build family; real
 audio requires an already running JACK server; actual MIDI routing requires the
 named device; loop playback does not time-stretch; the final bus is limited to
-one exact software-monitored stereo input and refuses unconfirmed doubled
+one exact software-monitored two-port Input in stereo or dual mono and refuses unconfirmed doubled
 direct monitoring; one managed software synth runs at a time; there is no
 native sampler, multitrack audio editing timeline, or XM compatibility.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
@@ -14943,7 +15116,40 @@ all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
 0.5 completes the owner-specified FT2 behavior without pulling random future
 features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version <code>0.3.92</code> is the
-corrected starting point; the current checked-progress version is <code>0.4.7</code>.</p>
+corrected starting point; the current checked-progress version is <code>0.4.8</code>.</p>
+<p>Version <code>0.4.8</code> adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
+melodic backend. Its package and executable compatibility are preflighted
+offline before the current owned engine is disturbed; startup, exact stereo
+readiness, routing, failure publication, one-attempt restoration, All Notes
+Off, unexpected exit, and shutdown remain in the shared backend lifecycle.
+The complete public installer now fetches exact Moj Sint and SHR Sampler
+commits, compiles SHR Drums 0.2.0 in process from its exact public commit, and
+installs one allowlisted manifest-owned payload. The transactional file layer
+refuses foreign collisions or locally modified managed files, rolls an
+interrupted change back before retry, and preserves all private/XDG data on
+update or uninstall. <code>scripts/validate_public_install.py</code> is the opt-in
+hardware-free exact-source disposable validation; it never opens JACK or ALSA.</p>
+<p>The current Input-mix work adds a live stereo/dual-mono choice to the exact
+configured two-port final-bus Input. Stereo remains the fresh-runtime default.
+Dual mono independently equal-power pans ports 1 and 2, initially at hard left
+and hard right so its first output matches stereo; mode and matrix changes use
+the existing 10 ms smoothing boundary. MTR NAV exposes mode and a
+LEVEL/PAN 1/PAN 2 focus whose normal minus/plus controls follow the selected
+field. Mode and focus deliberately add no dedicated computer-keyboard
+shortcuts. These controls do not alter raw multitrack stems, machine JACK
+mapping, or Project data. The user-authorized combined pass on 2026-08-03 used exact
+Rust 1.97.1: formatting and locked check passed, SHR's complete normal suite
+passed 941 tests with 13 documented research/audition/performance tests
+ignored, and locked debug and release builds passed. The focused MTR NAV
+documentation screenshot was regenerated and visually inspected at its native
+40×13 geometry. No JACK, synth, MIDI, recording, audible, or other physical
+hardware test was started.</p>
+<p>The same 2026-08-03 repository sync fast-forwarded the clean Moj Sint sibling
+by four documentation-only commits recording the completed five-kick and
+snare comparison gate; production Moj sound code did not change. Its locked
+all-target/all-feature normal suite passed 287 tests with 34 development-only
+historical/audition/benchmark tests ignored, and its debug and release
+all-target builds passed with Rust 1.97.1.</p>
 <p>The public sound-package repair adds the four approved SHR Drums packages to
 the tracked <code>kits/cleared-kits.txt</code> allowlist: Acid, Electronic House, Big Rock
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
@@ -14951,8 +15157,29 @@ that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
 longer depend on ignored <code>$SHSYNTH_USER_DIR/</code> state. Moj Sint's 13 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
-storage. This repair has source and package-layout validation only until the
-user authorizes the combined build-and-test pass.</p>
+storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
+all-target/all-feature normal suite: 19 tests passed, three opt-in quality
+matrices remained ignored, and its locked debug and release all-target builds
+passed.</p>
+<p>Electronic House now carries the selected Moj Sint House Impact and Long
+Pressure kicks as deterministic CC0 synthetic one-shots on free notes 27 and
+28. Notes 33, 34, 35, and the original House Kick on 36 remain unchanged, so
+the kit exposes six kicks without remapping existing material. The two new
+voices use the ordinary House kit bus and note-38 snare. Package validation and
+a private eight-hit rhythm render/playback passed; owner judgment of the
+in-kit presentation remains open. No SHR project compilation was run under the
+current build gate.</p>
+<p>The Experimental Noise note-38 snare no longer uses the 298 Hz, 700 ms
+acoustic hybrid that the owner rejected as cowbell-like. The first replacement
+was also rejected because stacked hard clipping, 4.3 kHz band-pass noise, FM,
+and ring modulation produced a high-pitched distant fuzz. The current revision
+uses a 158 Hz short body, low-pass broadband noise, no FM or ring modulation,
+restrained cubic drive, brief quiet modes, and no sample assignments; the six
+now-unused snare WAVs were removed from that package. A private 124 BPM
+kick/snare comparison was regenerated through the existing engine and played
+through the configured soundcard. The owner accepted this revision as a real
+snare, possibly stronger than Big Rock's, and explicitly kept its
+rock/industrial identity out of Electronic House.</p>
 <p>Version <code>0.4.4</code> added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict <code>.mojsint</code> catalog without launching sound; LOAD
 alone starts <code>moj-sint --client-name ... --preset ...</code>. Playback renders the
@@ -15716,7 +15943,7 @@ acceptance gates pass, not on dates. Detailed behavior remains in the focused
 product, installation, FT2, and hardware documents linked below.</p>
 <h4 id="doc-release_roadmap--version-numbering" tabindex="-1">Version numbering<a class="heading-anchor" href="#doc-release_roadmap--version-numbering" aria-label="Link to Version numbering">#</a></h4>
 <p>The package uses <code>major.minor.patch</code> numbering. Version <code>0.3.92</code> corrected the
-unintended <code>0.392.0</code>; the current checked-progress version is <code>0.4.7</code>.</p>
+unintended <code>0.392.0</code>; the current checked-progress version is <code>0.4.8</code>.</p>
 <ul>
 <li>Meaningful checked progress before the next milestone increments the patch:
 <code>0.3.99</code>, <code>0.3.100</code>, <code>0.3.101</code>, and so on.</li>
@@ -15729,7 +15956,9 @@ authored Moj Sint starts selectable and accepts strict schema 4 model/patch
 identity. Version <code>0.4.6</code> makes Input monitoring a deliberate MTR action,
 moves final-bus ownership out of the optional managed synth, reconnects
 optional sources without duplicate playback, and records the same
-post-master samples sent to playback.</li>
+post-master samples sent to playback. Version <code>0.4.7</code> completes the Moj Sint
+two-model path; <code>0.4.8</code> adds SHR Sampler as the fifth managed backend and the
+pinned whole-system public installer.</li>
 <li>The completed 0.5 milestone becomes <code>0.5.0</code>; later checked progress toward
 0.6 uses <code>0.5.1</code>, <code>0.5.2</code>, and so on.</li>
 <li>The completed 0.6 milestone becomes <code>0.6.0</code>.</li>
@@ -15973,7 +16202,7 @@ make something new. If the little box survives the Space Shuttle challenge,
 ordinary drum loops should feel like a pleasant afternoon.</p>
 <h4 id="doc-future_improvements--audio-effects-graph-inserts-sends-and-returns" tabindex="-1">Audio effects graph: inserts, sends, and returns<a class="heading-anchor" href="#doc-future_improvements--audio-effects-graph-inserts-sends-and-returns" aria-label="Link to Audio effects graph: inserts, sends, and returns">#</a></h4>
 <p>The current narrow performance bus now sums exactly the managed instrument,
-SHR Drums, owned loop, and one configured stereo input before the master,
+SHR Drums, owned loop, and one configured two-port Input in stereo or dual mono before the master,
 dedicated limiter, final meter, recorder, and playback. The broader proposed
 migration to a bounded multi-strip mixer with genuinely shared multi-source aux buses is in the
 <a href="#doc-post_competition_mixer_aux_plan">post-competition mixer and shared-aux plan</a>.
@@ -16026,8 +16255,8 @@ than relying on implicit JACK summing. That makes independent send/return gain,
 pre/post placement, return metering, and exactly-once mixing explicit and
 testable. The final bus adds smoothed level per source and master level, MUTE
 for Synth/Loop/Drums, and one MON ON/OFF action for Input. A fuller mixer would
-still be needed for pan, solo, per-input inserts, or shared aux sends, none of
-which is current product scope.</p>
+still be needed for pan on the other sources, solo, per-input inserts, or
+shared aux sends, none of which is current product scope.</p>
 <p>Primary source: <a href="https://github.com/jackaudio/jack2/blob/develop/common/jack/jack.h" class="external" target="_blank" rel="noopener noreferrer external">JACK 2 <code>jack_port_get_buffer</code> API
 contract</a>,
 which specifies appropriate mixing for multiple inbound connections.</p>

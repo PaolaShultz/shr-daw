@@ -604,9 +604,7 @@ pub fn expected_for_connected(
             .filter(|name| name.to_ascii_lowercase().contains(&wanted_lower))
             .collect::<Vec<_>>();
         match matches.as_slice() {
-            [name] if !resolved.iter().any(|found: &&String| *found == *name) => {
-                resolved.push(*name)
-            }
+            [name] if !resolved.contains(name) => resolved.push(*name),
             [] => {}
             [_] => {}
             _ => bail!("configured controller input is ambiguous: {wanted}"),

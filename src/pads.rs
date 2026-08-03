@@ -41,17 +41,12 @@ pub enum PadAction {
     TapTempo,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ControllerLayout {
+    #[default]
     Eight,
     Five,
     Four,
-}
-
-impl Default for ControllerLayout {
-    fn default() -> Self {
-        Self::Eight
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

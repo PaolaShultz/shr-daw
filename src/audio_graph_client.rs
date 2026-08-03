@@ -240,24 +240,13 @@ pub(crate) struct OwnedAudioGraph {
     monitoring: Monitoring,
 }
 
+#[derive(Default)]
 pub(crate) struct FinalBusOwner {
     graph: Option<OwnedAudioGraph>,
     last_recording: FinalMixRecorderStatus,
     fallback: Option<String>,
     #[cfg(test)]
     controls_override: Option<std::sync::Arc<BusControls>>,
-}
-
-impl Default for FinalBusOwner {
-    fn default() -> Self {
-        Self {
-            graph: None,
-            last_recording: FinalMixRecorderStatus::default(),
-            fallback: None,
-            #[cfg(test)]
-            controls_override: None,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -290,6 +279,9 @@ impl FinalBusOwner {
         self.fallback.as_deref()
     }
 
+    // These arguments are distinct ownership boundaries; grouping them would
+    // obscure which live state the final bus borrows versus copies.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn activate(
         &mut self,
         config: &crate::config::RuntimeConfig,
@@ -406,7 +398,7 @@ impl FinalBusOwner {
         }
         #[cfg(test)]
         {
-            return self.controls_override.as_ref().map(std::sync::Arc::clone);
+            self.controls_override.as_ref().map(std::sync::Arc::clone)
         }
         #[cfg(not(test))]
         None
@@ -536,6 +528,9 @@ impl OwnedAudioGraph {
         self.callback.sample_rate
     }
 
+    // The constructor mirrors the explicit graph transaction inputs and keeps
+    // route preflight independent from live JACK mutation.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn start_with_routing(
         config: &AudioGraphConfig,
         ports: PerformanceBusPorts,

@@ -27,7 +27,7 @@ writing into the caller's normal desktop configuration; a caller-supplied
 ## Runtime key reference
 
 Repeated `midi.performance_input`, `audio.output`, `audio.internal_output`, `yoshimi.preset_root`,
-`yoshimi.category`, `fluidsynth.soundfont`, `external_midi.channel`,
+`yoshimi.category`, `fluidsynth.soundfont`, `shr_sampler.instrument_root`, `external_midi.channel`,
 `external_midi.percussion_note`, `capture.input`, `capture.track`, and `loop.output` keys build
 ordered lists. Empty optional values disable that choice. The current parser
 accepts:
@@ -40,6 +40,7 @@ accepts:
 | Yoshimi | `yoshimi.command`, `.client`, `.midi_output`, repeated `.preset_root` and `.category`, `.presets_per_category` |
 | FluidSynth | `fluidsynth.command`, `.client`, `.midi_output`, `.gain`, repeated `.soundfont` |
 | Moj Sint | `moj_sint.command`, `.client`, `.midi_output`, repeated `.preset_root`, and exactly two `.output` short names |
+| SHR Sampler | `shr_sampler.command`, `.client`, `.midi_output`, repeated `.instrument_root`, exactly two `.output` short names, and `.validation_timeout_ms` (1000–600000) |
 | SHR Drums | `drums.client`, `.kit_directory`, and `.maximum_callback_frames` |
 
 Moj Sint defaults to command `moj-sint`, client/MIDI identity
@@ -62,6 +63,18 @@ replacement. Overwrite is available only for a regular numbered file in that
 private root. Serialization and strict format validation finish before atomic
 publication, so a failed save leaves the prior file, live values, held notes,
 and engine session unchanged.
+
+SHR Sampler defaults to command `shr-sampler`, client/MIDI identity
+`shs-shr-sampler`, and exact outputs `out_l` then `out_r`. Discovery indexes at
+most 512 regular non-symlink `.shrinst` directories and reads a bounded
+top-level manifest for stable ID and display name. `LOAD` first checks the
+executable's `shr-sampler VERSION` response against the central compatibility
+contract and runs its strict offline `validate PACKAGE` command within the
+configured timeout. Only then may the exclusive owned-host replacement begin.
+The live invocation is `shr-sampler --client-name NAME --instrument PACKAGE`;
+SHR Sampler never auto-connects itself. Packages are read-only catalog entries,
+while Ideas persist their stable ID and configured path without copying sample
+content into private Project storage.
 
 | Managed MIDI/audio | `midi.autoconnect`; legacy ordered controller fallbacks in repeated `midi.input`; `midi.controller_musical_input`; simultaneous repeated `midi.performance_input`; `audio.autoconnect`, exactly two preferred `audio.output` entries, ordered `audio.internal_output=NAME|LEFT|RIGHT` fallbacks, final optional `audio.headphone_output=NAME|LEFT|RIGHT`; optional `audio.engine_cpu` |
 | Owned final bus | `audio.graph.enabled`, `.client`, `.maximum_callback_frames` (1–4096), `.input`, monitoring confirmations |

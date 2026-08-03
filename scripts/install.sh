@@ -18,6 +18,7 @@ PLAN_ONLY=false
 PACKAGE_CHANGE_STARTED=false
 FLUID_SERVICE_MASKED=false
 PERMISSION_CHANGE_STARTED=false
+INSTALL_TEMP=''
 
 install_recovery_report() {
   local result=$1
@@ -42,7 +43,13 @@ install_recovery_report() {
   fi
 }
 
-trap 'install_recovery_report "$?"' EXIT
+cleanup_install_temp() {
+  if [[ -n "$INSTALL_TEMP" && "$INSTALL_TEMP" == /tmp/shr-install.* ]]; then
+    rm -rf -- "$INSTALL_TEMP"
+  fi
+}
+
+trap 'result=$?; cleanup_install_temp; install_recovery_report "$result"; exit "$result"' EXIT
 
 for arg in "$@"; do
   case "$arg" in
@@ -64,6 +71,16 @@ if ((EUID == 0)); then
     'Run it as the musician account; the installer uses sudo only for owned system changes.' >&2
   exit 1
 fi
+
+if ! command -v python3 >/dev/null \
+  || ! python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 11))'; then
+  printf 'The public installer requires Python 3.11 or newer.\n' >&2
+  exit 1
+fi
+command -v sudo >/dev/null || {
+  printf 'Installing the owned system payload below /usr/local requires sudo.\n' >&2
+  exit 1
+}
 
 ask_consent() {
   local prompt=$1 answer
@@ -93,23 +110,22 @@ else
 fi
 printf '%s\n' \
   "  3. Exact repository Rust ${TOOLCHAIN} is installed for the current user." \
-  '  4. locked tests and a locked release build run in this checkout.' \
-  '  5. sudo installs public application files below /usr/local.'
+  '  4. Moj Sint and SHR Sampler are fetched from exact public Git revisions.' \
+  '  5. locked release builds create one public, allowlisted system payload.' \
+  '  6. the transactional installer updates only files recorded in its manifest.'
 if $INIT_CONFIG; then
   printf '%s\n' \
-    '  6. shr-setup seeds private user data and offers explicit configuration/service/tuning changes.'
+    '  7. shr-setup seeds private user data and offers explicit configuration/service/tuning changes.'
 else
-  printf '%s\n' '  6. hardware/configuration setup is skipped.'
+  printf '%s\n' '  7. hardware/configuration setup is skipped.'
 fi
 printf '%s\n' 'JACK and synth engines are not started by this installer.'
+
+python3 "$ROOT/scripts/prepare_install.py" check --root "$ROOT" >/dev/null
 
 if $INSTALL_DEPS; then
   command -v apt-get >/dev/null || {
     printf 'Automatic dependencies require Debian/Raspberry Pi OS (apt-get).\n' >&2
-    exit 1
-  }
-  command -v sudo >/dev/null || {
-    printf 'Automatic dependency and policy changes require sudo.\n' >&2
     exit 1
   }
   if $PLAN_ONLY; then
@@ -141,7 +157,7 @@ if $INSTALL_DEPS; then
     exit 1
   }
   sudo apt-get install -y --no-install-recommends \
-    alsa-utils build-essential ca-certificates curl jackd2 libasound2-dev \
+    alsa-utils build-essential ca-certificates curl git jackd2 libasound2-dev \
     fluidsynth pkg-config python3 ripgrep sox synthv1 timgm6mb-soundfont unzip \
     yoshimi yoshimi-data
   # Debian 13 renamed jack-tools and split optional bridge libraries into
@@ -187,6 +203,15 @@ if $PLAN_ONLY; then
   exit 0
 fi
 
+if ! $INSTALL_DEPS; then
+  for required in git make rustup; do
+    command -v "$required" >/dev/null || {
+      printf 'Dependency installation was skipped but %s is unavailable.\n' "$required" >&2
+      exit 1
+    }
+  done
+fi
+
 if ! command -v rustup >/dev/null; then
   printf 'Installing rustup with repository toolchain %s for the current user.\n' "$TOOLCHAIN"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
@@ -194,16 +219,28 @@ if ! command -v rustup >/dev/null; then
   export PATH="$HOME/.cargo/bin:$PATH"
 fi
 rustup toolchain install "$TOOLCHAIN" --profile minimal --component rustfmt,clippy
-CARGO=(rustup run "$TOOLCHAIN" cargo)
 
 cd "$ROOT"
-"${CARGO[@]}" test --locked
-"${CARGO[@]}" build --release --locked
-sudo make install-files
+INSTALL_TEMP="$(mktemp -d -t shr-install.XXXXXXXX)"
+python3 scripts/prepare_install.py prepare \
+  --root "$ROOT" \
+  --output "$INSTALL_TEMP/payload" \
+  --profile release
+SYSTEM_VERSION="$(
+  python3 -c \
+    'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["system_version"])' \
+    "$ROOT/install/compatibility.json"
+)"
+sudo python3 scripts/managed_install.py apply \
+  --payload "$INSTALL_TEMP/payload" \
+  --root / \
+  --prefix /usr/local \
+  --system-version "$SYSTEM_VERSION"
 
 if $INIT_CONFIG; then
   shr-setup
 fi
 
-printf '\nInstalled: shr (Rust app), shs and synth-player (compatibility aliases)\n'
+printf '\nInstalled: SHR-DAW, Moj Sint, SHR Sampler, public factory content, and SHR Drums integration/data.\n'
+printf 'External managed engines installed: synthv1, Yoshimi, FluidSynth, and TimGM.\n'
 printf 'Run shr doctor, then run shr. Reconfigure hardware with shr-setup.\n'

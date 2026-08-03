@@ -862,7 +862,7 @@ impl Song {
         };
         pattern.pages.push(page);
         for row in &mut pattern.rows {
-            row.extend(std::iter::repeat(Cell::default()).take(LANES_PER_PAGE));
+            row.extend(std::iter::repeat_n(Cell::default(), LANES_PER_PAGE));
         }
         let index = pattern.pages.len() - 1;
         Ok(index)
@@ -944,7 +944,7 @@ impl Pattern {
 
     pub fn halve_rows(&self, keep: PatternHalf) -> Result<PatternResize> {
         let old_rows = self.rows.len();
-        if old_rows < 2 || old_rows % 2 != 0 {
+        if old_rows < 2 || !old_rows.is_multiple_of(2) {
             bail!("HALF needs an even Pattern of at least two rows");
         }
         let half = old_rows / 2;
@@ -7105,16 +7105,21 @@ mod tests {
 
     #[test]
     fn software_route_round_trips_engine_and_instrument_as_stable_identities() {
-        let mut song = Song::new(&config());
-        let route = SoftwareRoute {
-            engine: BackendKind::Yoshimi,
-            instrument: "Pads/Glass Horizon".into(),
-        };
-        pages_mut(&mut song)[0].target = PageTarget::Software(route.clone());
-        let encoded = encode(&song).unwrap();
-        assert!(encoded.contains("software:yoshimi:Pads/Glass Horizon"));
-        let decoded = decode(&encoded).unwrap();
-        assert_eq!(pages(&decoded)[0].target, PageTarget::Software(route));
+        for backend in BackendKind::ALL {
+            let mut song = Song::new(&config());
+            let route = SoftwareRoute {
+                engine: backend,
+                instrument: "Pads/Glass Horizon".into(),
+            };
+            pages_mut(&mut song)[0].target = PageTarget::Software(route.clone());
+            let encoded = encode(&song).unwrap();
+            assert!(encoded.contains(&format!(
+                "software:{}:Pads/Glass Horizon",
+                backend.label().to_ascii_lowercase()
+            )));
+            let decoded = decode(&encoded).unwrap();
+            assert_eq!(pages(&decoded)[0].target, PageTarget::Software(route));
+        }
     }
 
     #[test]

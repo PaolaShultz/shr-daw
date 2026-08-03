@@ -5,9 +5,7 @@ use quick_xml::events::{BytesStart, BytesText, Event};
 use quick_xml::XmlVersion;
 use quick_xml::{Reader, Writer};
 use serde::{Deserialize, Serialize};
-#[cfg(test)]
-use std::collections::BTreeSet;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
 use std::fmt;
 use std::fs::{self, File};
@@ -21,11 +19,13 @@ pub enum BackendKind {
     Yoshimi,
     FluidSynth,
     MojSint,
+    ShrSampler,
 }
 
 impl BackendKind {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::MojSint,
+        Self::ShrSampler,
         Self::Synthv1,
         Self::Yoshimi,
         Self::FluidSynth,
@@ -37,6 +37,7 @@ impl BackendKind {
             Self::Yoshimi => "Yoshimi",
             Self::FluidSynth => "FluidSynth",
             Self::MojSint => "Moj Sint",
+            Self::ShrSampler => "SHR Sampler",
         }
     }
 
@@ -62,6 +63,7 @@ impl std::str::FromStr for BackendKind {
             "yoshimi" => Ok(Self::Yoshimi),
             "fluidsynth" | "fluid" => Ok(Self::FluidSynth),
             "moj sint" | "moj-sint" | "moj_sint" | "mojsint" => Ok(Self::MojSint),
+            "shr sampler" | "shr-sampler" | "shr_sampler" | "sampler" => Ok(Self::ShrSampler),
             _ => bail!("unknown sound engine {value:?}"),
         }
     }
@@ -83,6 +85,10 @@ pub enum PresetId {
     },
     MojSint {
         model: MojModel,
+        path: PathBuf,
+    },
+    ShrSampler {
+        instrument_id: String,
         path: PathBuf,
     },
 }
@@ -168,6 +174,7 @@ impl Preset {
             PresetId::MojSint { model, .. } => {
                 format!("{}/{}", model.stable_id(), self.name)
             }
+            PresetId::ShrSampler { instrument_id, .. } => instrument_id.clone(),
         }
     }
 
@@ -283,7 +290,7 @@ impl UserPresetStorage {
         match backend {
             BackendKind::Synthv1 => Some(&self.synthv1),
             BackendKind::MojSint => Some(&self.moj_sint),
-            BackendKind::Yoshimi | BackendKind::FluidSynth => None,
+            BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => None,
         }
     }
 }
@@ -303,6 +310,12 @@ pub fn discover_all(
             command_exists(&config.moj_sint.backend.command),
             discover_moj_sint(&moj_roots),
             &config.moj_sint.backend.command,
+        ),
+        catalog(
+            BackendKind::ShrSampler,
+            command_exists(&config.shr_sampler.backend.command),
+            discover_shr_sampler(&config.shr_sampler.backend.preset_roots),
+            &config.shr_sampler.backend.command,
         ),
         catalog(
             BackendKind::Synthv1,
@@ -327,6 +340,99 @@ pub fn discover_all(
             &config.fluidsynth.backend.command,
         ),
     ]
+}
+
+const MAX_SHR_SAMPLER_INSTRUMENTS: usize = 512;
+const MAX_SHR_SAMPLER_MANIFEST_BYTES: u64 = 1_048_576;
+
+pub fn discover_shr_sampler(roots: &[PathBuf]) -> Result<Vec<Preset>> {
+    let mut presets = Vec::new();
+    let mut ids = BTreeSet::new();
+    let mut pending = Vec::new();
+    for root in roots {
+        match fs::symlink_metadata(root) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                bail!(
+                    "SHR Sampler instrument root is not a regular directory: {}",
+                    root.display()
+                )
+            }
+            Ok(_) => pending.push(root.clone()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("inspect SHR Sampler instrument root"),
+        }
+    }
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)
+            .with_context(|| format!("read SHR Sampler root {}", directory.display()))?
+        {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            let path = entry.path();
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() && extension_is(&path, "shrinst") {
+                if presets.len() == MAX_SHR_SAMPLER_INSTRUMENTS {
+                    bail!("SHR Sampler catalog exceeds {MAX_SHR_SAMPLER_INSTRUMENTS} packages");
+                }
+                let manifest_path = path.join("manifest.json");
+                let bytes = read_regular_bounded(
+                    &manifest_path,
+                    MAX_SHR_SAMPLER_MANIFEST_BYTES,
+                    "SHR Sampler manifest",
+                )?;
+                let document: serde_json::Value = serde_json::from_slice(&bytes)
+                    .with_context(|| format!("parse {}", manifest_path.display()))?;
+                let object = document
+                    .as_object()
+                    .context("SHR Sampler manifest must be a JSON object")?;
+                if object
+                    .get("format_version")
+                    .and_then(serde_json::Value::as_u64)
+                    != Some(1)
+                {
+                    bail!("unsupported SHR Sampler package format");
+                }
+                let instrument_id = object
+                    .get("instrument_id")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| valid_package_id(value))
+                    .context("invalid SHR Sampler instrument_id")?
+                    .to_owned();
+                let name = object
+                    .get("display_name")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty() && value.len() <= 128)
+                    .context("invalid SHR Sampler display_name")?
+                    .to_owned();
+                if !ids.insert(instrument_id.clone()) {
+                    bail!("duplicate SHR Sampler instrument ID {instrument_id:?}");
+                }
+                presets.push(Preset {
+                    backend: BackendKind::ShrSampler,
+                    name,
+                    category: None,
+                    id: PresetId::ShrSampler {
+                        instrument_id,
+                        path,
+                    },
+                });
+            } else if file_type.is_dir() {
+                pending.push(path);
+            }
+        }
+    }
+    sort_presets(&mut presets);
+    Ok(presets)
+}
+
+fn valid_package_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 const MAX_MOJ_PRESETS: usize = 512;
@@ -1258,7 +1364,7 @@ fn user_preset_extension(backend: BackendKind) -> Result<&'static str> {
     match backend {
         BackendKind::Synthv1 => Ok("synthv1"),
         BackendKind::MojSint => Ok("mojsint"),
-        BackendKind::Yoshimi | BackendKind::FluidSynth => {
+        BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
             bail!("{} presets are not editable", backend.label())
         }
     }
@@ -1339,7 +1445,7 @@ fn user_owned_preset_path(storage: &UserPresetStorage, preset: &Preset) -> Resul
     validate_private_root(root)?;
     let path = match &preset.id {
         PresetId::Synthv1 { path } | PresetId::MojSint { path, .. } => path,
-        PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } => {
+        PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } | PresetId::ShrSampler { .. } => {
             bail!("this preset backend is not editable")
         }
     };
@@ -1401,7 +1507,7 @@ fn saved_preset_from_path(
                 id: PresetId::MojSint { model, path },
             })
         }
-        BackendKind::Yoshimi | BackendKind::FluidSynth => {
+        BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
             bail!("{} presets are not editable", backend.label())
         }
     }
@@ -1415,7 +1521,7 @@ fn serialize_user_preset(
     match &source.id {
         PresetId::Synthv1 { path } => serialize_synthv1(path, name, current_values),
         PresetId::MojSint { model, path } => serialize_moj_sint(path, *model, name, current_values),
-        PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } => {
+        PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } | PresetId::ShrSampler { .. } => {
             bail!("{} presets are not editable", source.backend.label())
         }
     }
@@ -1760,10 +1866,55 @@ mod tests {
     fn engine_cycle_wraps_in_both_directions() {
         assert_eq!(BackendKind::ALL[0], BackendKind::MojSint);
         assert_eq!(BackendKind::MojSint.next(-1), BackendKind::FluidSynth);
-        assert_eq!(BackendKind::MojSint.next(1), BackendKind::Synthv1);
+        assert_eq!(BackendKind::MojSint.next(1), BackendKind::ShrSampler);
+        assert_eq!(BackendKind::ShrSampler.next(1), BackendKind::Synthv1);
         assert_eq!(BackendKind::Synthv1.next(1), BackendKind::Yoshimi);
         assert_eq!(BackendKind::Yoshimi.next(1), BackendKind::FluidSynth);
         assert_eq!(BackendKind::FluidSynth.next(1), BackendKind::MojSint);
+    }
+
+    #[test]
+    fn shr_sampler_discovery_is_bounded_strict_and_uses_stable_package_identity() {
+        let base =
+            std::env::temp_dir().join(format!("shsynth-sampler-catalog-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let package = base.join("nested/shr-clear-tone.shrinst");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("manifest.json"),
+            r#"{"format_version":1,"instrument_id":"shr-clear-tone","display_name":"SHR Clear Tone"}"#,
+        )
+        .unwrap();
+        let discovered = discover_shr_sampler(std::slice::from_ref(&base)).unwrap();
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].backend, BackendKind::ShrSampler);
+        assert_eq!(discovered[0].name, "SHR Clear Tone");
+        assert_eq!(discovered[0].route_id(), "shr-clear-tone");
+        assert_eq!(
+            discovered[0].id,
+            PresetId::ShrSampler {
+                instrument_id: "shr-clear-tone".into(),
+                path: package.clone(),
+            }
+        );
+
+        let duplicate = base.join("duplicate.shrinst");
+        fs::create_dir(&duplicate).unwrap();
+        fs::copy(
+            package.join("manifest.json"),
+            duplicate.join("manifest.json"),
+        )
+        .unwrap();
+        assert!(discover_shr_sampler(std::slice::from_ref(&base)).is_err());
+        fs::remove_dir_all(duplicate).unwrap();
+        fs::write(package.join("manifest.json"), b"not json").unwrap();
+        assert!(discover_shr_sampler(std::slice::from_ref(&base)).is_err());
+        let linked_root = base.with_extension("linked-root");
+        let _ = fs::remove_file(&linked_root);
+        std::os::unix::fs::symlink(&base, &linked_root).unwrap();
+        assert!(discover_shr_sampler(std::slice::from_ref(&linked_root)).is_err());
+        fs::remove_file(linked_root).unwrap();
+        let _ = fs::remove_dir_all(base);
     }
 
     #[test]
@@ -1838,7 +1989,7 @@ mod tests {
         ] {
             fs::write(base.join("bank").join(name), "x").unwrap();
         }
-        let presets = discover_yoshimi(&[base.clone()], &["bass".into()], 1).unwrap();
+        let presets = discover_yoshimi(std::slice::from_ref(&base), &["bass".into()], 1).unwrap();
         assert_eq!(presets.len(), 1);
         assert_eq!(presets[0].backend, BackendKind::Yoshimi);
         assert_eq!(presets[0].category.as_deref(), Some("Bass"));
@@ -1853,8 +2004,12 @@ mod tests {
         fs::write(base.join("bank/0001-Bright_Lead.xiz"), "x").unwrap();
         std::os::unix::fs::symlink(&base, base.join("bank/loop")).unwrap();
 
-        let presets =
-            discover_yoshimi(&[base.clone()], &["bass".into(), "lead".into()], 8).unwrap();
+        let presets = discover_yoshimi(
+            std::slice::from_ref(&base),
+            &["bass".into(), "lead".into()],
+            8,
+        )
+        .unwrap();
         assert_eq!(presets.len(), 1);
         assert_eq!(presets[0].category.as_deref(), Some("Lead"));
         let _ = fs::remove_dir_all(base);

@@ -299,12 +299,9 @@ impl OverlayState {
     }
 
     pub fn cancel_route_field(&mut self) -> Option<RouteSnapshot> {
-        let Some(original) = self
+        let original = self
             .route_mut()
-            .and_then(|route| route.field_original.take())
-        else {
-            return None;
-        };
+            .and_then(|route| route.field_original.take())?;
         if let Some(route) = self.route_mut() {
             route.page = original.page.clone();
             route.drum_kit.clone_from(&original.drum_kit);

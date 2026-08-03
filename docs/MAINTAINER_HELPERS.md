@@ -18,7 +18,7 @@ assumptions.
 | `setup-local.sh` | Configure this checkout inside ignored private storage | Writes below `user/` by default; may run the interactive hardware wizard |
 | `local.sh` | Run the checkout without using normal home-directory state | Writes runtime data below `user/` by default |
 | `setup.sh` / installed `shr-setup` | Seed loops/demos and configure display/MIDI/JACK choices | Backs up and rewrites owned configuration; optionally masks two conflicting auto-services, downloads private loops, installs one marked JACK boot service or writes `~/.jackdrc`, and installs CPU tuning after confirmation |
-| `install.sh` | Install dependencies and SHR-DAW on Debian/Raspberry Pi OS | With grouped consent, may use `sudo apt-get --no-install-recommends`, mask one user service, install owned RT policy, run rustup, `sudo make install-files`, and open setup |
+| `install.sh` | Install the complete public SHR system on Debian/Raspberry Pi OS | With grouped consent, may use `sudo apt-get --no-install-recommends`, mask one user service, install owned RT policy, fetch exact public component commits, run rustup, apply one manifest-owned payload, and open setup |
 | `audio-performance.sh` / installed `shr-audio-tune` | Diagnose audio policy and reversibly manage RT permissions or one audio CPU | Read-only plan/status/doctor plus owned limits/group, boot, systemd, governor, and JACK-affinity settings; CPU isolation requires reboot |
 | `generate-docs-site.py` | Regenerate or drift-check the public GitHub Pages documentation | `--write` atomically replaces only `docs/index.html`; `--check` is read-only |
 | `render-readme-screenshots.py` | Regenerate or validate real TUI documentation images | Writes tracked PNGs below `docs/images/` only |
@@ -346,8 +346,36 @@ runs Cargo through `rustup run CHANNEL cargo`. A newer stable release is
 adopted by changing the reviewed repository pin; an older distribution
 compiler never redirects development.
 
-It then runs locked tests, creates a locked release build, installs the files
-with `sudo make install-files`, and normally opens `shr-setup`.
+It validates `install/compatibility.json`, fetches Moj Sint and SHR Sampler from
+their exact public commits without GitHub authentication, verifies their
+declared versions and exact toolchain pins, and creates locked release builds.
+SHR-DAW's Cargo manifest fetches SHR Drums at the separate exact public source
+revision and compiles it in process. No source checkout or nested `.git`
+directory enters the runtime tree.
+
+`prepare_install.py` stages the three executables plus only allowlisted public
+presets, instruments, kits, loops, demos, and documentation. It rejects unsafe,
+missing, linked, duplicated, moving, non-public, or version-mismatched inputs.
+`managed_install.py` then preflights and applies the payload with `sudo`. It
+records file hashes/modes and symlink targets, refuses differing unowned or
+modified owned resources, backs up every changed path, and leaves a recovery
+journal before its first mutation. Apply recovers an interrupted transaction
+before retry. The planner never performs that recovery or any other mutation.
+The installer normally opens `shr-setup` after a successful apply.
+
+The opt-in whole-system hardware-free validation is:
+
+```sh
+python3 scripts/validate_public_install.py
+```
+
+It fetches the exact public revisions, makes debug builds, stages the complete
+payload, and exercises plan, fresh apply, identical reapply, offline sampler
+validation, installed-content boundaries, and safe uninstall under a unique
+temporary directory below ignored `artifacts/`. It neither invokes setup nor
+opens JACK or ALSA. Update, collision, injected interruption, recovery, and
+modified-file refusal are covered by `scripts/test_managed_install.py` without
+network access.
 
 Before its first package or service mutation, the installer prints the enabled
 package, per-user FluidSynth mask, Rust, test/build, install, and setup phases,
@@ -759,8 +787,8 @@ reviewing the regenerated hashes. No JACK client or MIDI output is opened.
 
 ## Related Make targets
 
-The Makefile is not a script, but the installer delegates its final file layout
-to it:
+The Makefile is not a script, but the payload builder delegates SHR-DAW's
+staged file layout to it:
 
 ```sh
 make build
@@ -768,8 +796,8 @@ make test
 make check-demos
 make docs-site
 make check-docs-site
-sudo make install
-sudo make install-files
+make install
+make install-files DESTDIR="$fixture"
 sudo make uninstall
 ```
 
@@ -813,8 +841,10 @@ Variables:
 - `CARGO` selects Cargo;
 - `PREFIX` defaults to `/usr/local`;
 - `DESTDIR` prefixes the install tree for packaging or a non-root fixture.
+- `BUILD_PROFILE` selects the already-built `debug` or `release` binary staged
+  by `install-files` and defaults to `release`.
 
-`install-files` first runs `check-demos`, then installs only presets, kits, and
+`install-files` requires a nonempty `DESTDIR`, first runs `check-demos`, then installs only presets, kits, and
 demos named by their cleared manifests, plus the configuration and
 device/profile data, drum patterns, documentation, nested menu chapters, and
 nested menu images. Kit packaging rejects unsafe allowlist names, missing
@@ -822,7 +852,13 @@ package directories, and symlinks. The public `shr` binary receives the
 compatibility aliases `shs` and `synth-player`; no separate process binary is
 installed for those names.
 
-Use `DESTDIR` to inspect installation without touching the host:
+It also stages the compatibility contract and transactional installer. It is
+never a live installation path and refuses an empty `DESTDIR`. `make install`
+invokes the supported managed installer. `make uninstall` runs the manifest
+uninstaller, removes only unchanged owned files, retains modified or unrelated
+resources, and removes managed directories only when empty.
+
+Use `DESTDIR` to inspect SHR-DAW's portion without touching the host:
 
 ```sh
 fixture=$(mktemp -d)
@@ -831,9 +867,9 @@ find "$fixture/usr/local" -type f -o -type l
 ```
 
 Choose a dedicated temporary directory and remove it only after confirming the
-expanded path. `uninstall` is intentionally broad within the exact selected
-`PREFIX`/`DESTDIR` application paths; never point those variables at an
-unresolved or unintended root.
+expanded path. The whole-system disposable simulation is owned by
+`prepare_install.py` plus `managed_install.py`; it must use an explicit
+temporary root and must not invoke JACK, ALSA, setup, or the installed app.
 
 ## Helper-specific validation
 

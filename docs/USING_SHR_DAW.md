@@ -49,12 +49,13 @@ choices. Proposed musical assistants remain in
 
 ## Instruments and Playback
 
-Presets browses four software backends:
+Presets browses five software backends:
 
 - synthv1 presets;
 - Yoshimi `.xiz` banks;
 - FluidSynth `.sf2` and `.sf3` SoundFonts;
-- Moj Sint `.mojsint` Model D presets.
+- Moj Sint `.mojsint` Model D and Six-Op PM presets;
+- SHR Sampler `.shrinst` packages.
 
 Browsing is silent. `LOAD` is the only managed start or replacement action.
 Only one SHR-managed melodic engine runs at a time. The loaded instrument
@@ -79,10 +80,12 @@ arpeggiator. `PLAY` sends Start even when no MIDI take exists, `RECORD` starts
 the same clock before capture, `STOP` ends it without unloading the instrument,
 and `TAP` changes tempo without silently starting transport.
 
-Moj Sint keeps its own preset format and controls. Its seven authored starts
-remain one editable Model D instrument family. SHR Drums is separate from the
-managed melodic engine and runs in process. Its public source, format, and
-provenance are linked from [the documentation index](README.md).
+Moj Sint keeps its own preset format and controls. Its 13 authored starts form
+two editable model families. SHR Sampler packages are read-only and use their
+own strict format; the installed project-authored factory package is a neutral
+first-load sound. SHR Drums is separate from the managed melodic engine and
+runs in process. Public source, formats, and provenance are linked from
+[the documentation index](README.md).
 
 ## Explore with N00B
 
@@ -141,8 +144,9 @@ does not launch audio. Arrangement and Live boundaries switch the MIDI and WAV
 owners together. A bad slot is isolated, and SHR does not time-stretch files.
 
 Ideas preserve free-timed MIDI. A synthv1 or Moj Sint Idea includes its private
-preset snapshot; other backends keep their instrument reference. Loading an
-Idea restores its sound before playback.
+preset snapshot; other backends keep their instrument reference. SHR Sampler
+stores the package's stable ID and configured path without copying its sample
+data. Loading an Idea restores its sound before playback.
 
 See [Live performance](LIVE_PERFORMANCE.md) for boundary timing, capture,
 failure behavior, and realtime limits.

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "system_version": "0.4.8",
+  "components": [
+    {
+      "name": "shr-daw",
+      "version": "0.4.8",
+      "repository": null,
+      "revision": null,
+      "runtime_minimum": null,
+      "runtime_maximum_exclusive": null
+    },
+    {
+      "name": "moj-sint",
+      "version": "0.2.3",
+      "repository": "https://github.com/PaolaShultz/moj-sint.git",
+      "revision": "594309a2ee9fb9ea2a055c7f7b15079be8b653cc",
+      "runtime_minimum": null,
+      "runtime_maximum_exclusive": null
+    },
+    {
+      "name": "shr-sampler",
+      "version": "0.1.2",
+      "repository": "https://github.com/PaolaShultz/shr-sampler.git",
+      "revision": "9f2115f5fcc25d6ffa82a7106ee069cad47ce592",
+      "runtime_minimum": "0.1.2",
+      "runtime_maximum_exclusive": "0.2.0"
+    },
+    {
+      "name": "shr-drums",
+      "version": "0.2.0",
+      "repository": "https://github.com/PaolaShultz/shr-drums.git",
+      "revision": "0199297b3efd160a67e3f47df64a6bf418c20df2",
+      "runtime_minimum": "0.2.0",
+      "runtime_maximum_exclusive": "0.3.0"
+    }
+  ]
+}

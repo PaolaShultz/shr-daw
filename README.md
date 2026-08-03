@@ -12,8 +12,7 @@ roughly 10–15 minutes is an intended workflow and design goal, not a benchmark
 or guarantee. The useful result is a rough demo or coherent sketch; sharing the
 recorded WAV happens outside SHR-DAW.
 
-Read the complete public documentation at
-[paolashultz.github.io/shr-daw](https://paolashultz.github.io/shr-daw/).
+Read the [complete public documentation](https://paolashultz.github.io/shr-daw/).
 
 > [!WARNING]
 > SHR-DAW is experimental. Back up Projects and user data, and begin audio
@@ -21,9 +20,10 @@ Read the complete public documentation at
 
 ## Features
 
-- Play synthv1, Yoshimi, FluidSynth, or 13 editable Moj Sint factory starts
-  through one managed melodic engine, alongside four bundled kits rendered by
-  in-process [SHR Drums](https://github.com/PaolaShultz/shr-drums).
+- Play synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint factory starts, or
+  the cleared SHR Sampler factory instrument through one managed melodic
+  engine, alongside four bundled kits rendered by in-process
+  [SHR Drums](https://github.com/PaolaShultz/shr-drums).
 - Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum,
   and loop parts as multi-page Patterns and Arrangements; or perform them with
   Live Patterns and the four-slot Loop Mix.
@@ -58,12 +58,16 @@ failure boundaries.
 
 ## Install and run
 
-The clean target is 64-bit Raspberry Pi OS Lite. Patchbox OS and the broader
-Debian-based path remain supported installation routes:
+The clean target is 64-bit Raspberry Pi OS Lite; Patchbox OS and broader
+Debian-based systems remain supported. This installs the immutable 0.4.8 release:
 
 ```sh
-./scripts/install.sh
-shr-setup
+git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git && cd shr-daw && ./scripts/install.sh
+```
+
+After installation and its setup wizard:
+
+```sh
 shr doctor
 shr
 ```

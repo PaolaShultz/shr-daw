@@ -22,6 +22,7 @@ mod fsutil;
 mod geometry;
 mod gm;
 mod help;
+mod installer_contract;
 mod jack;
 mod live_performance;
 mod loop_player;
@@ -69,6 +70,10 @@ fn real_main() -> Result<()> {
         Some("help" | "-h" | "--help")
     ) {
         usage();
+        return Ok(());
+    }
+    if matches!(args.as_slice(), [argument] if argument == "--version" || argument == "-V") {
+        println!("shr {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
     if args.first().map(String::as_str) == Some("config") {
@@ -725,6 +730,7 @@ fn usage() {
            effects-checkpoint PRESET [PROFILE] [SECONDS]\n\
            phase2-checkpoint PRESET [PROFILE] [SECONDS] (compatibility alias)\n\
          \n\
+         Version: -V, --version\n\
          Help: help, -h, --help\n\
          Compatibility aliases: logs; pads detect; casio status|dry-run.\n\
          Internal process command: daemon PRESET."
