@@ -55,6 +55,14 @@ all-target/all-feature normal suite: 19 tests passed, three opt-in quality
 matrices remained ignored, and its locked debug and release all-target builds
 passed.
 
+The Experimental Noise note-38 snare no longer uses the 298 Hz, 700 ms
+acoustic hybrid that the owner rejected as cowbell-like. It is now a short,
+noise-dominant modeled snare with hard-clipped body/noise/master stages, brief
+inharmonic modes, and no sample assignments; the six now-unused snare WAVs were
+removed from that package. A private 124 BPM kick/snare comparison was rendered
+through the existing engine and played through the configured soundcard; final
+owner acceptance of the replacement remains open.
+
 Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD
 alone starts `moj-sint --client-name ... --preset ...`. Playback renders the

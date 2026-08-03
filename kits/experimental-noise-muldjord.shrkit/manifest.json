@@ -7,7 +7,7 @@
     "source": "https://freepats.zenvoid.org/Percussion/acoustic-drum-kit.html · MuldjordKit SFZ+WAV 2020-10-18",
     "licence": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
     "attribution": "Drum samples provided by DrumGizmo.org; original recordings by Lars Muldjord; FreePats stereo assembly by roberto@zenvoid.org",
-    "modification_notes": "Selected three velocity bands with two deterministic round robins per piece; remapped triggers to GM percussion notes; preserved stereo attacks and tails; stored reviewed offline body/ring candidates from representative mid-layer tail scans; added independently tunable modeled bodies and bounded bus processing. Audible owner review remains pending.",
+    "modification_notes": "Selected three velocity bands with two deterministic round robins per acoustic piece; remapped triggers to GM percussion notes; preserved stereo attacks and tails; stored reviewed offline body/ring candidates from representative mid-layer tail scans; added independently tunable modeled bodies and bounded bus processing. Replaced the note-38 cowbell-like acoustic hybrid with an authored short, distorted metallic-noise snare. Audible owner review remains pending.",
     "source_hashes": {
       "LICENSE.txt": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
       "MuldjordKit 20201018.sfz": "410e17d984b52ab9323b103324ea99e8021cc7631469d81b772ff6d1c4c0f93b",
@@ -153,117 +153,154 @@
       "trigger_note": 38,
       "articulation": "hit",
       "family": "snare",
-      "kind": "hybrid",
+      "kind": "modeled",
       "choke_group": null,
-      "gain_db": -6.0,
+      "gain_db": -9.0,
       "pan": 0.0,
       "envelope": {
-        "attack_ms": 0.1,
-        "hold_ms": 4.0,
-        "decay_ms": 900.0,
-        "release_ms": 30.0
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 440.0,
+        "release_ms": 24.0
       },
-      "samples": [
-        {
-          "path": "samples/snare-4-Snare.wav",
-          "velocity_min": 1,
-          "velocity_max": 42,
-          "round_robin": 1,
-          "articulation": "hit",
-          "gain_db": 0.0,
-          "metadata": {
-            "sample_rate": 44100,
-            "channels": 2,
-            "frames": 77041
-          },
-          "sha256": "b4c1f8d55040363e5a6e95563971020e09b91781ea5b7c465a284df393c94020"
-        },
-        {
-          "path": "samples/snare-5-Snare.wav",
-          "velocity_min": 1,
-          "velocity_max": 42,
-          "round_robin": 2,
-          "articulation": "hit",
-          "gain_db": 0.0,
-          "metadata": {
-            "sample_rate": 44100,
-            "channels": 2,
-            "frames": 80506
-          },
-          "sha256": "44d99fa9ab05c97fe00ccbf60ab55fc1865f0925b2105f37a56468ca9acaf6d5"
-        },
-        {
-          "path": "samples/snare-25-Snare.wav",
-          "velocity_min": 43,
-          "velocity_max": 84,
-          "round_robin": 1,
-          "articulation": "hit",
-          "gain_db": 0.0,
-          "metadata": {
-            "sample_rate": 44100,
-            "channels": 2,
-            "frames": 115445
-          },
-          "sha256": "6cf733117debc4387012d05f0d8ea761f9a8e591a406a620ca9c07374ca9820b"
-        },
-        {
-          "path": "samples/snare-26-Snare.wav",
-          "velocity_min": 43,
-          "velocity_max": 84,
-          "round_robin": 2,
-          "articulation": "hit",
-          "gain_db": 0.0,
-          "metadata": {
-            "sample_rate": 44100,
-            "channels": 2,
-            "frames": 91983
-          },
-          "sha256": "a18c1910a6f61f5c98ada12783a02f0705699612e63166c68ee31b5ce8e13a0a"
-        },
-        {
-          "path": "samples/snare-45-Snare.wav",
-          "velocity_min": 85,
-          "velocity_max": 127,
-          "round_robin": 1,
-          "articulation": "hit",
-          "gain_db": 0.0,
-          "metadata": {
-            "sample_rate": 44100,
-            "channels": 2,
-            "frames": 124015
-          },
-          "sha256": "b9a94eb5d6cca34da236f91661407a9f5f99f2d82c8587d331a3cdf7d1910138"
-        },
-        {
-          "path": "samples/snare-46-Snare.wav",
-          "velocity_min": 85,
-          "velocity_max": 127,
-          "round_robin": 2,
-          "articulation": "hit",
-          "gain_db": 0.0,
-          "metadata": {
-            "sample_rate": 44100,
-            "channels": 2,
-            "frames": 99653
-          },
-          "sha256": "bf0983c986f1310dfc52b141216a1f0bf0fdb6f93345babb2a5cb8043aaedeea"
-        }
-      ],
-      "base_pitch_hz": 298.0,
+      "samples": [],
+      "base_pitch_hz": null,
       "tuning_limits": {
-        "down_cents": -400,
-        "up_cents": 400
+        "down_cents": 0,
+        "up_cents": 0
       },
       "follow_key": {
-        "type": "tonic"
+        "type": "excluded"
       },
-      "modeled": {
-        "body_hz": 298.0,
-        "body_decay_ms": 700.0,
-        "pitch_drop_cents": 0.0,
-        "noise_amount": 0.5,
-        "noise_decay_ms": 120.0,
-        "metallic_amount": 0.5
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "snare",
+        "oscillator": "shaped",
+        "base_hz": 172.0,
+        "pitch": {
+          "start_cents": 900.0,
+          "mid_cents": -80.0,
+          "attack_ms": 0.3,
+          "decay_ms": 28.0
+        },
+        "body": {
+          "level": 0.44,
+          "decay_ms": 155.0,
+          "pulse_width": 0.43,
+          "shape": 0.72,
+          "overtone_level": 0.28,
+          "overtone_ratio": 1.78,
+          "drive": {
+            "pre_gain_db": 16.0,
+            "amount": 0.8,
+            "curve": "hard-clip",
+            "post_gain_db": -5.0
+          }
+        },
+        "click": {
+          "level": 0.92,
+          "decay_ms": 2.5,
+          "tone_hz": 3200.0,
+          "noise_mix": 0.72,
+          "high_pass_hz": 1200.0,
+          "drive": {
+            "pre_gain_db": 8.0,
+            "amount": 0.48,
+            "curve": "cubic",
+            "post_gain_db": -2.0
+          }
+        },
+        "noise": {
+          "level": 1.16,
+          "attack_ms": 0.0,
+          "decay_ms": 275.0,
+          "tail_level": 0.08,
+          "tail_decay_ms": 330.0,
+          "filter": "band-pass",
+          "cutoff_hz": 4300.0,
+          "resonance": 0.2,
+          "colour": -0.02,
+          "drive": {
+            "pre_gain_db": 14.0,
+            "amount": 0.68,
+            "curve": "hard-clip",
+            "post_gain_db": -4.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.2,
+            "decay_ms": 130.0,
+            "pan": -0.2,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 10.0,
+              "amount": 0.55,
+              "curve": "cubic",
+              "post_gain_db": -4.0
+            }
+          },
+          {
+            "ratio": 1.73,
+            "level": 0.18,
+            "decay_ms": 100.0,
+            "pan": 0.18,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 11.0,
+              "amount": 0.6,
+              "curve": "cubic",
+              "post_gain_db": -4.0
+            }
+          },
+          {
+            "ratio": 2.91,
+            "level": 0.12,
+            "decay_ms": 72.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 12.0,
+              "amount": 0.65,
+              "curve": "hard-clip",
+              "post_gain_db": -5.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.93,
+          "fm_index": 0.35,
+          "phase_amount": 0.08,
+          "ring_ratio": 3.27,
+          "ring_amount": 0.32,
+          "feedback": 0.12
+        },
+        "master_drive": {
+          "pre_gain_db": 16.0,
+          "amount": 0.82,
+          "curve": "hard-clip",
+          "post_gain_db": -6.0
+        },
+        "stereo": {
+          "width": 0.36,
+          "micro_delay_ms": 0.18
+        },
+        "velocity": {
+          "click": 0.42,
+          "noise": 0.78,
+          "drive": 0.7,
+          "decay": 0.15,
+          "brightness": 0.38,
+          "pitch": 0.1
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
       }
     },
     {
