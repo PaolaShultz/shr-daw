@@ -367,6 +367,47 @@ input owner and release auditioned notes. A Drum-auto capacity fault keeps
 recording and transport responsive, reports `DRUM LANES FULL`, and leaves
 existing cells unchanged.
 
+## Live audio-level mixer
+
+The FT2 mixer is available without leaving Play, REC, or Edit. In normal Play,
+open `SOUND` → `MIX`; REC keeps the same `MIX` action in its MODE page. In any
+of the three modes, Shift plus main-encoder click opens the same panel, which
+is the controller path from Edit without displacing its four contextual command
+pages. The panel snapshots the current Arrangement step/Pattern, cursor row,
+tracker page, lane/column, mode, and controller-menu page. Main-encoder click,
+Back, or SYS `EXIT` returns to that exact editing location.
+
+The panel shows at most twelve current-Pattern strips in one 4×3 grid. A strip
+is not a MIDI velocity or CC-volume control: it points directly to one existing
+final-bus audio owner. synthv1, Yoshimi, FluidSynth, and Moj Sint pages use
+`SYN`; SHR Drums pages use `DRM`; attached Pattern Loop Mix appears as `LOP`
+when the twelve-strip cap has room; and an external-MIDI page uses `INP` only
+when an exact stereo SHR input return is configured. Otherwise it says `NO
+RETURN` and has no gain or VU. The configured Input remains marked `M` while
+software monitoring is off; opening the mixer does not silently defeat the
+direct/software doubled-monitoring guard.
+
+The heading identifies the source Pattern and current POT bank. Configured
+physical POT positions are ranked in order, so one through twelve pots are
+usable. Twelve map directly to strips 1–12. Fewer pots map to the current bank;
+turn the main encoder or use `BANK-`/`BANK+` to change banks. Each strip shows
+its Pattern page/name, owner, signed dB gain, pickup `↑`/`↓`/`↕`/`✓`, five-LED
+VU, and `L2` or higher when multiple strips share that owner. The VU uses the
+same circular LED language as the rest of SHR-DAW.
+
+Linked strips read and write one canonical owner gain and one post-gain owner
+meter. Moving either is audible immediately through the existing 10 ms final-
+bus ramp. A linked change re-arms the other assigned non-motorized pots, so a
+physical position can never jump the shared gain. Changing banks also re-arms
+pickup.
+
+In Play and REC, the mixer follows the Pattern that the sequencer is actually
+sounding, including Arrangement and Live Pattern changes, even while another
+Pattern remains the saved editor location. In Edit, it follows the Pattern
+being edited. Opening activates the owned final bus and keeps live Edit
+audition on the same route: owner gain, Project processing/master strip,
+master volume, limiter/final meter, recorder tap, and output.
+
 ## Live Patterns
 
 Open **TOOLS** → **LIVE** to browse four launchable Patterns at a time without

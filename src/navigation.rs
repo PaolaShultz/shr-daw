@@ -27,12 +27,13 @@ pub enum Screen {
     Meter,
     Routing,
     TrackerParameters,
+    TrackerMixer,
 }
 
 impl Screen {
-    pub const COUNT: usize = 22;
+    pub const COUNT: usize = 23;
     #[cfg(test)]
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -55,6 +56,7 @@ impl Screen {
         Self::Meter,
         Self::Routing,
         Self::TrackerParameters,
+        Self::TrackerMixer,
     ];
 
     pub const fn index(self) -> usize {
@@ -81,6 +83,7 @@ impl Screen {
             Self::Meter => 19,
             Self::Routing => 20,
             Self::TrackerParameters => 21,
+            Self::TrackerMixer => 22,
         }
     }
 
@@ -109,6 +112,7 @@ impl Screen {
             Self::Meter => "MIX",
             Self::Routing => "ROUTING",
             Self::TrackerParameters => "FT2 PARAM",
+            Self::TrackerMixer => "FT2 MIXER",
         }
     }
 }
@@ -134,6 +138,7 @@ pub enum Action {
     OpenControllerLearn,
     OpenTracker,
     OpenTrackerParameters,
+    OpenTrackerMixer,
     OpenTrackerFiles,
     OpenTrackerArrange,
     OpenLivePatterns,
@@ -170,6 +175,8 @@ pub enum Action {
     BusLevelIncrease,
     BusMute,
     FinalRecordToggle,
+    MixerBankPrevious,
+    MixerBankNext,
     FxAdd,
     FxEditType,
     FxRemove,
@@ -467,6 +474,28 @@ const TRACKER_PARAMETERS: [MenuPage; 4] = [
         ],
     ),
 ];
+const TRACKER_MIXER: [MenuPage; 4] = [
+    page(
+        "BANK",
+        [
+            on("BANK-", Action::MixerBankPrevious),
+            on("BANK+", Action::MixerBankNext),
+            off(""),
+            off(""),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
 const PLAYBACK: [MenuPage; 4] = [
     page(
         "PLAY",
@@ -550,7 +579,7 @@ const TRACKER: [MenuPage; 4] = [
         "SOUND",
         [
             on("PARAM", Action::OpenTrackerParameters),
-            off(""),
+            on("MIX", Action::OpenTrackerMixer),
             off(""),
             off(""),
         ],
@@ -777,7 +806,7 @@ const TRACKER_RECORD: [MenuPage; 4] = [
     page(
         "MODE",
         [
-            off(""),
+            on("MIX", Action::OpenTrackerMixer),
             on("PLAY", Action::TrackerPlayToggle),
             on("RECORD", Action::TrackerRecordToggle),
             on("EDIT", Action::TrackerEdit),
@@ -1424,6 +1453,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::Tracker, MenuContext::TrackerEdit) => &TRACKER_EDIT,
         (Screen::Tracker, _) => &TRACKER,
         (Screen::TrackerParameters, _) => &TRACKER_PARAMETERS,
+        (Screen::TrackerMixer, _) => &TRACKER_MIXER,
         (Screen::TrackerFiles, MenuContext::PatternClear) => &PATTERN_CLEAR,
         (Screen::TrackerFiles, MenuContext::PatternTools) => &PATTERN_TOOLS,
         (Screen::TrackerFiles, MenuContext::DrumPatterns) => &DRUM_PATTERNS,
@@ -1591,7 +1621,12 @@ mod tests {
         assert_eq!(sound.label, "SOUND");
         assert_eq!(
             sound.slots.map(MenuSlot::dispatch),
-            [Some(Action::OpenTrackerParameters), None, None, None]
+            [
+                Some(Action::OpenTrackerParameters),
+                Some(Action::OpenTrackerMixer),
+                None,
+                None,
+            ]
         );
 
         let parameters = pages(Screen::TrackerParameters, MenuContext::Normal);
@@ -1661,6 +1696,7 @@ mod tests {
             (Screen::Tracker, MenuContext::TrackerRecord),
             (Screen::Tracker, MenuContext::TrackerNoteEdit),
             (Screen::TrackerParameters, MenuContext::Normal),
+            (Screen::TrackerMixer, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::PatternClear),
             (Screen::TrackerFiles, MenuContext::PatternTools),

@@ -10,7 +10,8 @@ use crate::device_profile::{DeviceProfile, Registry as DeviceProfiles};
 use crate::drum_pattern::{self, DrumPattern};
 use crate::engine::{self, Engine, MidiEvent};
 use crate::final_bus::{
-    BusSource, MASTER_GAIN_MAX_DB, MASTER_GAIN_MIN_DB, SOURCE_GAIN_MAX_DB, SOURCE_GAIN_MIN_DB,
+    BusSource, DEFAULT_SOURCE_GAIN_DB, MASTER_GAIN_MAX_DB, MASTER_GAIN_MIN_DB, SOURCE_GAIN_MAX_DB,
+    SOURCE_GAIN_MIN_DB,
 };
 use crate::geometry::{contains, rect, visible_index};
 use crate::help::{self, HelpKind};
@@ -36,6 +37,7 @@ use crate::sequencer::{
     self, Cell, Command, GestureCapture, Note, PageTarget, SoftwareRoute, Song, LANES_PER_PAGE,
 };
 use crate::tempo::Bpm;
+use crate::tracker_mixer::{MixerState, MixerStrip, PickupDirection};
 use anyhow::{bail, Context, Result};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEvent, MouseEventKind},
@@ -456,6 +458,15 @@ enum TrackerMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TrackerMixerReturn {
+    order: usize,
+    row: usize,
+    page: usize,
+    track: usize,
+    menu_page: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PatternResizePromptKind {
     Half {
         old_rows: usize,
@@ -779,6 +790,8 @@ struct App {
     engine_start_script: std::collections::VecDeque<std::result::Result<(), String>>,
     #[cfg(test)]
     final_bus_activation_override: Option<std::result::Result<(), String>>,
+    #[cfg(test)]
+    final_bus_activation_attempts: usize,
     playing: Option<Preset>,
     values: HashMap<u8, f32>,
     original_values: HashMap<u8, f32>,
@@ -852,6 +865,10 @@ struct App {
     tracker_mode: TrackerMode,
     pattern_resize_prompt: Option<PatternResizePrompt>,
     tracker_parameter_parent_menu_page: usize,
+    tracker_mixer_return: Option<TrackerMixerReturn>,
+    tracker_mixer_pattern: Option<u16>,
+    tracker_mixer_strips: Vec<MixerStrip>,
+    tracker_mixer: MixerState,
     tracker_noob: bool,
     tracker_recording: Option<TrackerRecording>,
     note_editor: Option<NoteEditor>,
@@ -1230,6 +1247,18 @@ impl FxPickup {
     }
 }
 
+fn normalized_physical_control(cc: u8, value: f32) -> Option<(usize, f32)> {
+    let position = CONTROLS.iter().position(|control| control.cc == cc)?;
+    let control = CONTROLS[position];
+    let span = control.max - control.min;
+    let normalized = if span > f32::EPSILON {
+        (value - control.min) / span
+    } else {
+        0.0
+    };
+    Some((position, normalized.clamp(0.0, 1.0)))
+}
+
 struct AvailablePorts {
     playback: Vec<String>,
     capture_sources: Vec<String>,
@@ -1245,6 +1274,7 @@ fn is_tracker_screen(screen: Screen) -> bool {
             | Screen::TrackerPages
             | Screen::TrackerTools
             | Screen::TrackerParameters
+            | Screen::TrackerMixer
             | Screen::LivePatterns
             | Screen::TrackerLoop
             | Screen::TrackerLoopAlign
@@ -1795,6 +1825,8 @@ impl App {
             engine_start_script: std::collections::VecDeque::new(),
             #[cfg(test)]
             final_bus_activation_override: Some(Ok(())),
+            #[cfg(test)]
+            final_bus_activation_attempts: 0,
             playing: None,
             values: HashMap::new(),
             original_values: HashMap::new(),
@@ -1872,6 +1904,10 @@ impl App {
             tracker_mode: TrackerMode::Play,
             pattern_resize_prompt: None,
             tracker_parameter_parent_menu_page: 0,
+            tracker_mixer_return: None,
+            tracker_mixer_pattern: None,
+            tracker_mixer_strips: Vec::new(),
+            tracker_mixer: MixerState::default(),
             tracker_noob: false,
             tracker_recording: None,
             note_editor: None,
@@ -3889,8 +3925,10 @@ impl App {
         }
         self.screen = screen;
         self.sync_playback_noob();
-        self.fx_control_mode
-            .store(screen == Screen::FxEditor, Ordering::Relaxed);
+        self.fx_control_mode.store(
+            matches!(screen, Screen::FxEditor | Screen::TrackerMixer),
+            Ordering::Relaxed,
+        );
         if screen == Screen::FxEditor {
             self.arm_fx_pickup();
         }
@@ -3922,6 +3960,171 @@ impl App {
         self.set_screen(Screen::Tracker);
         self.menu_page_by_screen[Screen::Tracker.index()] = parent_menu_page.min(3);
         self.status.clear();
+    }
+
+    fn tracker_mixer_pattern_number(&self, status: &sequencer::SequencerStatus) -> Option<u16> {
+        let edited = self.song.order.get(self.tracker_order).copied();
+        if self.tracker_mode == TrackerMode::Edit {
+            return edited;
+        }
+        status
+            .live_pattern
+            .or(status.loop_pattern)
+            .or_else(|| {
+                status
+                    .playing
+                    .then(|| self.song.order.get(status.order).copied())
+                    .flatten()
+            })
+            .or(edited)
+    }
+
+    fn refresh_tracker_mixer(&mut self, status: &sequencer::SequencerStatus) {
+        let pattern_number = self.tracker_mixer_pattern_number(status);
+        let strips = pattern_number
+            .and_then(|number| self.song.patterns.get(&number))
+            .map(|pattern| crate::tracker_mixer::strips(pattern, &self.config))
+            .unwrap_or_default();
+        if self.tracker_mixer_pattern == pattern_number && self.tracker_mixer_strips == strips {
+            return;
+        }
+        self.tracker_mixer_pattern = pattern_number;
+        self.tracker_mixer_strips = strips;
+        self.tracker_mixer
+            .clamp_bank(self.tracker_mixer_strips.len());
+        self.arm_tracker_mixer_pickup();
+    }
+
+    fn arm_tracker_mixer_pickup(&mut self) {
+        let controls = self.final_bus.controls();
+        self.tracker_mixer
+            .arm_all(&self.tracker_mixer_strips, |source| {
+                controls
+                    .as_ref()
+                    .map_or(DEFAULT_SOURCE_GAIN_DB, |controls| {
+                        controls.source_gain_db(source)
+                    })
+            });
+    }
+
+    fn open_tracker_mixer(&mut self) {
+        if self.screen != Screen::Tracker {
+            return;
+        }
+        self.tracker_mixer_return = Some(TrackerMixerReturn {
+            order: self.tracker_order,
+            row: self.tracker_row,
+            page: self.tracker_page,
+            track: self.tracker_track,
+            menu_page: self.menu_page(),
+        });
+        let positions = self
+            .controller_config
+            .read()
+            .map(|config| {
+                config
+                    .controls
+                    .values()
+                    .copied()
+                    .map(|position| usize::from(position.saturating_sub(1)))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        self.tracker_mixer.configure_pots(positions);
+        let status = self.sequencer.status();
+        self.tracker_mixer_pattern = None;
+        self.refresh_tracker_mixer(&status);
+        let active = self.retry_final_bus_for_mixer();
+        self.arm_tracker_mixer_pickup();
+        self.set_screen(Screen::TrackerMixer);
+        self.status = if active {
+            String::new()
+        } else {
+            "FINAL BUS UNAVAILABLE · routes unchanged · retry MIX".into()
+        };
+    }
+
+    fn close_tracker_mixer(&mut self) {
+        if self.screen != Screen::TrackerMixer {
+            return;
+        }
+        let Some(return_to) = self.tracker_mixer_return.take() else {
+            self.set_screen(Screen::Tracker);
+            return;
+        };
+        self.set_screen(Screen::Tracker);
+        self.tracker_order = return_to.order;
+        self.tracker_row = return_to.row;
+        self.tracker_page = return_to.page;
+        self.tracker_track = return_to.track;
+        self.menu_page_by_screen[Screen::Tracker.index()] = return_to.menu_page.min(3);
+        self.status.clear();
+    }
+
+    fn move_tracker_mixer_bank(&mut self, direction: i8) {
+        if self
+            .tracker_mixer
+            .move_bank(direction, self.tracker_mixer_strips.len())
+        {
+            self.arm_tracker_mixer_pickup();
+        }
+        let count = self
+            .tracker_mixer
+            .bank_count(self.tracker_mixer_strips.len());
+        self.status = format!(
+            "FT2 MIX · BANK {}/{} · pickup re-armed",
+            self.tracker_mixer.bank() + 1,
+            count
+        );
+    }
+
+    fn apply_tracker_mixer_control(&mut self, cc: u8, value: f32) {
+        let Some((physical_position, normalized)) = normalized_physical_control(cc, value) else {
+            return;
+        };
+        let Some(strip_index) = self
+            .tracker_mixer
+            .assigned_strip(physical_position, self.tracker_mixer_strips.len())
+        else {
+            self.tracker_mixer
+                .observe_physical(physical_position, normalized);
+            return;
+        };
+        let Some(owner) = self
+            .tracker_mixer_strips
+            .get(strip_index)
+            .and_then(|strip| strip.owner)
+        else {
+            self.tracker_mixer
+                .observe_physical(physical_position, normalized);
+            self.status = "NO AUDIO RETURN · POT inactive".into();
+            return;
+        };
+        if !self.tracker_mixer.accept(physical_position, normalized) {
+            let direction = self
+                .tracker_mixer
+                .pickup_direction(physical_position)
+                .unwrap_or(PickupDirection::Either)
+                .glyph();
+            self.status = format!("POT {} {direction} · pickup", physical_position + 1);
+            return;
+        }
+        let Some(controls) = self.final_bus.controls() else {
+            self.status = "FINAL BUS UNAVAILABLE · gain unchanged".into();
+            return;
+        };
+        let gain_db = crate::tracker_mixer::normalized_to_gain_db(normalized);
+        if !controls.set_source_gain_db(owner, gain_db) {
+            self.status = "FT2 MIX gain rejected".into();
+            return;
+        }
+        self.tracker_mixer.rearm_linked(
+            &self.tracker_mixer_strips,
+            owner,
+            gain_db,
+            physical_position,
+        );
+        self.status = format!("{} {gain_db:+.1} dB", owner.label());
     }
 
     fn screen_keeps_playback_workspace_active(&self, screen: Screen) -> bool {
@@ -8474,8 +8677,20 @@ impl App {
     }
 
     fn retry_final_bus(&mut self) -> bool {
-        if !self.config.audio_graph.enabled && !self.input_monitoring {
+        self.retry_final_bus_with_force(false)
+    }
+
+    fn retry_final_bus_for_mixer(&mut self) -> bool {
+        self.retry_final_bus_with_force(true)
+    }
+
+    fn retry_final_bus_with_force(&mut self, force: bool) -> bool {
+        if !force && !self.config.audio_graph.enabled && !self.input_monitoring {
             return false;
+        }
+        #[cfg(test)]
+        {
+            self.final_bus_activation_attempts += 1;
         }
         #[cfg(test)]
         if let Some(result) = self.final_bus_activation_override.as_ref() {
@@ -10631,6 +10846,9 @@ impl App {
     }
 
     fn observe_mapped_control(&mut self, cc: u8, value: f32) {
+        if let Some((position, normalized)) = normalized_physical_control(cc, value) {
+            self.tracker_mixer.observe_physical(position, normalized);
+        }
         if cc != VOLUME_CC {
             return;
         }
@@ -10669,8 +10887,10 @@ impl App {
             || self.song_previewing
         {
             TransportIndicator::Play
-        } else if matches!(self.screen, Screen::Tracker | Screen::TrackerParameters)
-            && self.tracker_mode == TrackerMode::Play
+        } else if matches!(
+            self.screen,
+            Screen::Tracker | Screen::TrackerParameters | Screen::TrackerMixer
+        ) && self.tracker_mode == TrackerMode::Play
         {
             TransportIndicator::Pause
         } else {
@@ -12795,6 +13015,9 @@ impl App {
                 .flatten();
         }
         let tracker = self.sequencer.status();
+        if self.screen == Screen::TrackerMixer {
+            self.refresh_tracker_mixer(&tracker);
+        }
         if !self.song_previewing
             && !self.loop_previewing
             && tracker.loop_activation_serial != self.loop_activation_seen
@@ -13264,6 +13487,8 @@ fn drain(
             MidiEvent::MappedControl(cc, v) => {
                 if app.screen == Screen::FxEditor {
                     app.apply_fx_control(cc, v);
+                } else if app.screen == Screen::TrackerMixer {
+                    app.apply_tracker_mixer_control(cc, v);
                 } else {
                     app.observe_mapped_control(cc, v);
                 }
@@ -13401,6 +13626,16 @@ fn dispatch_modified_encoder(
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
 ) {
+    if action == crate::pads::EncoderAction::Select
+        && app.screen == Screen::Tracker
+        && app.overlay.is_none()
+        && app.pending_project_action.is_none()
+        && app.note_editor.is_none()
+        && app.pattern_resize_prompt.is_none()
+    {
+        perform(Action::OpenTrackerMixer, app, state, Some(tx));
+        return;
+    }
     if action == crate::pads::EncoderAction::Select
         || (app.controller_layout == ControllerLayout::Four && app.page_select_mode)
     {
@@ -13557,6 +13792,7 @@ fn dispatch_encoder_input(
         || app.pattern_resize_prompt.is_some()
         || (app.screen == Screen::TrackerPages && app.page_manager_mode != PageManagerMode::Pages)
         || app.screen == Screen::FxEditor
+        || app.screen == Screen::TrackerMixer
         || app.screen == Screen::Routing
         || app.confirm_routing_defaults;
     if app.controller_layout == ControllerLayout::Four && !value_editor_owns_encoder {
@@ -13807,8 +14043,12 @@ fn perform(
         }
         return false;
     }
-    if a.tracker_recording.is_some() {
+    if a.tracker_recording.is_some() && a.screen == Screen::Tracker {
         match action {
+            Action::OpenTrackerMixer => {
+                a.open_tracker_mixer();
+                return false;
+            }
             Action::TrackerRecordToggle => {
                 a.toggle_tracker_recording();
                 return false;
@@ -13899,6 +14139,8 @@ fn perform(
             } else if a.screen == Screen::Tracker {
                 a.cancel_tracker_gesture();
                 a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), -1);
+            } else if a.screen == Screen::TrackerMixer {
+                a.move_tracker_mixer_bank(-1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(-1);
             } else if a.screen == Screen::MultichannelMonitor {
@@ -13959,6 +14201,8 @@ fn perform(
             } else if a.screen == Screen::Tracker {
                 a.cancel_tracker_gesture();
                 a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), 1);
+            } else if a.screen == Screen::TrackerMixer {
+                a.move_tracker_mixer_bank(1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(1);
             } else if a.screen == Screen::MultichannelMonitor {
@@ -14082,6 +14326,7 @@ fn perform(
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::TrackerTools => {}
             Screen::TrackerParameters => {}
+            Screen::TrackerMixer => a.close_tracker_mixer(),
             Screen::LivePatterns => {
                 if a.live_shape_focus.take().is_some() {
                     a.status = "Live Pattern browse".into();
@@ -14158,6 +14403,7 @@ fn perform(
             }
         }
         Action::OpenTrackerParameters => a.open_tracker_parameters(),
+        Action::OpenTrackerMixer => a.open_tracker_mixer(),
         Action::OpenTrackerFiles => {
             if a.screen == Screen::TrackerPages {
                 a.confirm_page_manager();
@@ -14271,7 +14517,13 @@ fn perform(
         Action::BusLevelIncrease => a.adjust_bus_level(1),
         Action::BusMute => a.toggle_bus_mute(),
         Action::FinalRecordToggle => a.toggle_final_recording(),
+        Action::MixerBankPrevious => a.move_tracker_mixer_bank(-1),
+        Action::MixerBankNext => a.move_tracker_mixer_bank(1),
         Action::Back => {
+            if a.screen == Screen::TrackerMixer {
+                a.close_tracker_mixer();
+                return false;
+            }
             if a.screen == Screen::TrackerParameters {
                 a.close_tracker_parameters();
                 return false;
@@ -14360,6 +14612,7 @@ fn perform(
                 | Screen::TrackerParameters
                 | Screen::LivePatterns
                 | Screen::TrackerLoop => Screen::Tracker,
+                Screen::TrackerMixer => Screen::Tracker,
                 Screen::TrackerLoopAlign => Screen::TrackerLoop,
                 Screen::FxRack => a.fx_rack_parent,
                 Screen::FxEditor => Screen::FxRack,
@@ -15213,6 +15466,17 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             _ => {}
         }
     }
+    if a.screen == Screen::TrackerMixer {
+        let action = match code {
+            KeyCode::Left | KeyCode::Up | KeyCode::Char('[') => Some(Action::MixerBankPrevious),
+            KeyCode::Right | KeyCode::Down | KeyCode::Char(']') => Some(Action::MixerBankNext),
+            KeyCode::Enter | KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
+            _ => None,
+        };
+        if let Some(action) = action {
+            return perform(action, a, state, Some(tx));
+        }
+    }
     if a.screen == Screen::Meter {
         let action = match code {
             KeyCode::Left => Some(Action::BusSelectPrevious),
@@ -15645,6 +15909,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             draw_tracker_child(f, "FT2 TOOLS", "Arrange · Live Patterns · Loop Mix · FX")
         }
         Screen::TrackerParameters => draw_tracker_parameters(f, a),
+        Screen::TrackerMixer => draw_tracker_mixer(f, a),
         Screen::LivePatterns => draw_live_patterns(f, a),
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
@@ -17795,6 +18060,247 @@ fn draw_tracker_child<B: Backend>(f: &mut Frame<B>, title: &str, details: &str) 
             ),
         rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
     );
+}
+
+fn draw_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let strip_count = a.tracker_mixer_strips.len();
+    let bank_count = a.tracker_mixer.bank_count(strip_count);
+    let pattern = a
+        .tracker_mixer_pattern
+        .map_or_else(|| "--".into(), |number| format!("{number:02}"));
+    let heading = format!(
+        "FT2 MIX · PAT {pattern} · BANK {}/{} · {} POT",
+        a.tracker_mixer.bank() + 1,
+        bank_count,
+        a.tracker_mixer.pot_count()
+    );
+    f.render_widget(
+        Paragraph::new(crate::ui_text::fit_middle(
+            &heading,
+            usize::from(body.width),
+        ))
+        .style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        rect(body.x, body.y, body.width, 1),
+    );
+
+    if body.width < 40 || body.height < 10 {
+        draw_compact_tracker_mixer(f, a, body);
+        return;
+    }
+    let controls = a.final_bus.controls();
+    let cell_width = body.width / 4;
+    for (index, strip) in a.tracker_mixer_strips.iter().take(12).enumerate() {
+        let column = index % 4;
+        let group = index / 4;
+        let x = body.x + u16::try_from(column).unwrap_or(0) * cell_width;
+        let y = body.y + 1 + u16::try_from(group).unwrap_or(0) * 3;
+        let pot = a.tracker_mixer.pot_number_for_strip(index, strip_count);
+        let prefix = pot.map_or_else(|| "  ".into(), |number| format!("{number}>"));
+        let number = strip.display_number();
+        let label_width = usize::from(cell_width).saturating_sub(prefix.len() + number.len() + 1);
+        let first = format!(
+            "{prefix}{number} {}",
+            crate::ui_text::fit_middle(&strip.name, label_width)
+        );
+        f.render_widget(
+            Paragraph::new(first).style(Style::default().fg(if pot.is_some() {
+                Color::LightYellow
+            } else {
+                Color::White
+            })),
+            rect(x, y, cell_width, 1),
+        );
+
+        let Some(owner) = strip.owner else {
+            f.render_widget(
+                Paragraph::new("MIDI · --").style(Style::default().fg(Color::DarkGray)),
+                rect(x, y + 1, cell_width, 1),
+            );
+            f.render_widget(
+                Paragraph::new(strip.unavailable.unwrap_or("NO AUDIO"))
+                    .style(Style::default().fg(Color::LightYellow)),
+                rect(x, y + 2, cell_width, 1),
+            );
+            continue;
+        };
+        let gain = controls
+            .as_ref()
+            .map_or(DEFAULT_SOURCE_GAIN_DB, |controls| {
+                controls.source_gain_db(owner)
+            });
+        let direction = pot
+            .and_then(|number| a.tracker_mixer.pickup_direction(number - 1))
+            .map_or('·', PickupDirection::glyph);
+        let second = format!("{} {gain:+.1}{direction}", mixer_owner_label(owner));
+        f.render_widget(
+            Paragraph::new(second).style(Style::default().fg(if mixer_owner_ready(a, owner) {
+                Color::White
+            } else {
+                Color::DarkGray
+            })),
+            rect(x, y + 1, cell_width, 1),
+        );
+
+        let peak = controls
+            .as_ref()
+            .map_or(crate::dsp::StereoFrame::SILENCE, |controls| {
+                controls.source_peak(owner)
+            });
+        let link_count = a
+            .tracker_mixer_strips
+            .iter()
+            .filter(|candidate| candidate.owner == Some(owner))
+            .count();
+        let state = if owner == BusSource::Input && !a.input_monitoring {
+            'M'
+        } else if mixer_owner_ready(a, owner) {
+            ' '
+        } else {
+            '!'
+        };
+        let mut meter = mixer_vu_spans(peak.left.max(peak.right));
+        meter.push(Span::raw(" "));
+        meter.push(Span::styled(
+            if link_count > 1 {
+                format!("L{link_count}")
+            } else {
+                "--".into()
+            },
+            Style::default().fg(if link_count > 1 {
+                Color::LightYellow
+            } else {
+                Color::DarkGray
+            }),
+        ));
+        meter.push(Span::styled(
+            state.to_string(),
+            Style::default().fg(if state == ' ' {
+                Color::DarkGray
+            } else {
+                Color::LightYellow
+            }),
+        ));
+        f.render_widget(
+            Paragraph::new(Spans::from(meter)),
+            rect(x, y + 2, cell_width, 1),
+        );
+    }
+}
+
+fn draw_compact_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App, body: Rect) {
+    let start = a.tracker_mixer.bank() * a.tracker_mixer.pot_count();
+    let count = a.tracker_mixer.pot_count().max(1);
+    let controls = a.final_bus.controls();
+    let lines = a
+        .tracker_mixer_strips
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(count)
+        .map(|(index, strip)| {
+            let number = strip.display_number();
+            strip.owner.map_or_else(
+                || {
+                    Spans::from(Span::styled(
+                        format!("{number} {:<8} NO RETURN", strip.name),
+                        Style::default().fg(Color::LightYellow),
+                    ))
+                },
+                |owner| {
+                    let gain = controls
+                        .as_ref()
+                        .map_or(DEFAULT_SOURCE_GAIN_DB, |controls| {
+                            controls.source_gain_db(owner)
+                        });
+                    let pot = a
+                        .tracker_mixer
+                        .pot_number_for_strip(index, a.tracker_mixer_strips.len());
+                    let direction = pot
+                        .and_then(|number| a.tracker_mixer.pickup_direction(number - 1))
+                        .map_or('·', PickupDirection::glyph);
+                    Spans::from(format!(
+                        "{number} {:<8} {} {gain:+.1}{direction}",
+                        strip.name,
+                        mixer_owner_label(owner)
+                    ))
+                },
+            )
+        })
+        .take(usize::from(body.height.saturating_sub(1)))
+        .collect::<Vec<_>>();
+    f.render_widget(
+        Paragraph::new(lines),
+        rect(
+            body.x,
+            body.y + 1,
+            body.width,
+            body.height.saturating_sub(1),
+        ),
+    );
+}
+
+const fn mixer_owner_label(owner: BusSource) -> &'static str {
+    match owner {
+        BusSource::Synth => "SYN",
+        BusSource::Loop => "LOP",
+        BusSource::Input => "INP",
+        BusSource::Drums => "DRM",
+    }
+}
+
+fn mixer_owner_ready(a: &App, owner: BusSource) -> bool {
+    if a.final_bus.controls().is_none() {
+        return false;
+    }
+    match owner {
+        BusSource::Synth => a.engine.is_some(),
+        BusSource::Loop => a.loop_player.status().loaded,
+        BusSource::Input => {
+            let input = a
+                .config
+                .audio_graph
+                .input
+                .as_ref()
+                .or_else(|| a.config.capture.inputs.first());
+            a.input_monitoring
+                && input.is_some_and(|input| {
+                    a.capture_sources
+                        .iter()
+                        .any(|port| port == &input.left_port)
+                        && a.capture_sources
+                            .iter()
+                            .any(|port| port == &input.right_port)
+                })
+        }
+        BusSource::Drums => a.drum_host.as_ref().is_some_and(|host| !host.lost()),
+    }
+}
+
+fn mixer_vu_spans(peak: f32) -> Vec<Span<'static>> {
+    let db = meter_db(peak);
+    [-48.0, -24.0, -12.0, -6.0, -1.0]
+        .into_iter()
+        .enumerate()
+        .map(|(index, threshold)| {
+            let lit = db >= threshold;
+            let color = if !lit {
+                Color::DarkGray
+            } else if index == 4 {
+                Color::Red
+            } else if index == 3 {
+                Color::LightYellow
+            } else {
+                Color::Green
+            };
+            Span::styled(COMPRESSOR_LED_GLYPH, Style::default().fg(color))
+        })
+        .collect()
 }
 
 fn draw_live_patterns<B: Backend>(f: &mut Frame<B>, a: &App) {
@@ -24578,6 +25084,7 @@ release = 0.4
         render(40, 13, Screen::TrackerPages);
         render(40, 13, Screen::TrackerTools);
         render(40, 13, Screen::TrackerParameters);
+        render(40, 13, Screen::TrackerMixer);
         render(40, 13, Screen::TrackerLoop);
         render(40, 13, Screen::TrackerLoopAlign);
         render(40, 13, Screen::AudioRecorder);
@@ -24588,6 +25095,170 @@ release = 0.4
         render(40, 13, Screen::MasterStripAdvanced);
         render(40, 13, Screen::Meter);
         render(40, 13, Screen::Routing);
+    }
+
+    #[test]
+    fn ft2_mixer_opens_in_play_record_and_edit_without_moving_tracker_context() {
+        let presets = presets();
+        for mode in [TrackerMode::Play, TrackerMode::Rec, TrackerMode::Edit] {
+            let mut app = app(&presets);
+            app.screen = Screen::Tracker;
+            app.tracker_mode = mode;
+            if mode == TrackerMode::Rec {
+                app.tracker_recording = Some(TrackerRecording {
+                    pattern: 0,
+                    order: 0,
+                    page: 0,
+                    return_to_play: false,
+                    last_row: 19,
+                    next_lane: 3,
+                    active_lanes: HashMap::new(),
+                    lane_owners: HashMap::new(),
+                    next_token: 1,
+                    notes: 0,
+                });
+            }
+            app.tracker_order = 0;
+            app.tracker_row = 19;
+            app.tracker_page = 0;
+            app.tracker_track = 3;
+            app.menu_page_by_screen[Screen::Tracker.index()] = 2;
+            let before = (
+                app.tracker_order,
+                app.tracker_row,
+                app.tracker_page,
+                app.tracker_track,
+                app.tracker_mode,
+                app.menu_page(),
+            );
+
+            perform(Action::OpenTrackerMixer, &mut app, Path::new("/none"), None);
+            assert_eq!(app.screen, Screen::TrackerMixer);
+            assert_eq!(app.final_bus_activation_attempts, 1);
+            assert_eq!(
+                (
+                    app.tracker_order,
+                    app.tracker_row,
+                    app.tracker_page,
+                    app.tracker_track,
+                    app.tracker_mode,
+                ),
+                (before.0, before.1, before.2, before.3, before.4)
+            );
+
+            perform(Action::Back, &mut app, Path::new("/none"), None);
+            assert_eq!(app.screen, Screen::Tracker);
+            assert_eq!(app.tracker_recording.is_some(), mode == TrackerMode::Rec);
+            assert_eq!(
+                (
+                    app.tracker_order,
+                    app.tracker_row,
+                    app.tracker_page,
+                    app.tracker_track,
+                    app.tracker_mode,
+                    app.menu_page(),
+                ),
+                before
+            );
+        }
+    }
+
+    #[test]
+    fn edit_shift_encoder_opens_mixer_and_keeps_tracker_audition_owner() {
+        let presets = presets();
+        let mut app = app(&presets);
+        let route = SoftwareRoute::synthv1("Edit sound");
+        app.screen = Screen::Tracker;
+        app.tracker_mode = TrackerMode::Edit;
+        app.current_page_mut().unwrap().target = PageTarget::Software(route.clone());
+        app.engine_owner = Some(EngineOwner::Tracker(route));
+        let (tx, _rx) = mpsc::channel();
+
+        dispatch_modified_encoder(
+            crate::pads::EncoderAction::Select,
+            &mut app,
+            Path::new("/none"),
+            &tx,
+        );
+
+        assert_eq!(app.screen, Screen::TrackerMixer);
+        assert_eq!(app.tracker_mode, TrackerMode::Edit);
+        assert!(matches!(app.engine_owner, Some(EngineOwner::Tracker(_))));
+        assert!(app.tracker_workspace_active());
+        assert!(app.fx_control_mode.load(Ordering::Relaxed));
+        assert_eq!(app.final_bus_activation_attempts, 1);
+    }
+
+    #[test]
+    fn mixer_pattern_follows_sounding_transport_except_in_edit() {
+        let presets = presets();
+        let mut app = app(&presets);
+        let mut second = app.song.patterns[&0].clone();
+        second.pages[0].name = "Sounding".into();
+        let second_number = app.song.append_pattern(second).unwrap();
+        app.tracker_order = 0;
+        let status = sequencer::SequencerStatus {
+            playing: true,
+            order: 1,
+            ..sequencer::SequencerStatus::default()
+        };
+
+        app.tracker_mode = TrackerMode::Play;
+        assert_eq!(
+            app.tracker_mixer_pattern_number(&status),
+            Some(second_number)
+        );
+        app.tracker_mode = TrackerMode::Rec;
+        assert_eq!(
+            app.tracker_mixer_pattern_number(&status),
+            Some(second_number)
+        );
+        app.tracker_mode = TrackerMode::Edit;
+        assert_eq!(app.tracker_mixer_pattern_number(&status), Some(0));
+
+        app.tracker_mode = TrackerMode::Play;
+        let live = sequencer::SequencerStatus {
+            live_pattern: Some(0),
+            ..status
+        };
+        assert_eq!(app.tracker_mixer_pattern_number(&live), Some(0));
+    }
+
+    #[test]
+    fn native_ft2_mixer_keeps_gain_vu_link_pickup_and_unavailable_return_in_body() {
+        let presets = presets();
+        let mut app = app(&presets);
+        app.config.audio_graph.input = None;
+        app.config.capture.inputs.clear();
+        let pattern = app.song.patterns.get_mut(&0).unwrap();
+        pattern.pages = vec![
+            sequencer::Page::new_portable("Bass", false),
+            sequencer::Page::new_portable("Lead", false),
+            sequencer::Page::new("Drums", 9, true, 0),
+            sequencer::Page::new("MIDI", 0, false, 0),
+        ];
+        pattern.pages[0].target = PageTarget::ActiveInstrument;
+        pattern.pages[1].target = PageTarget::ActiveInstrument;
+        pattern.pages[2].target = PageTarget::InternalDrums("kit".into());
+        pattern.pages[3].target = PageTarget::ConfiguredExternal;
+        if let Ok(mut controller) = app.controller_config.write() {
+            controller.controls = CONTROLS
+                .iter()
+                .take(4)
+                .enumerate()
+                .map(|(index, control)| (control.cc, index as u8 + 1))
+                .collect();
+        }
+        app.screen = Screen::Tracker;
+        app.open_tracker_mixer();
+
+        let frame = render_app(&mut app, 40, 13);
+        let text = buffer_text(&frame);
+        for expected in ["FT2 MIX", "BANK 1/1", "SYN", "DRM", "L2", "NO RETURN", "●"] {
+            assert!(text.contains(expected), "missing {expected:?} in {text:?}");
+        }
+        assert!(row_text(&frame, 12).starts_with('‖'));
+        assert!(app.hits.actions.iter().all(|(area, _)| area.bottom() <= 12));
     }
 
     #[test]
@@ -25152,7 +25823,10 @@ release = 0.4
             let mut a = app(&p);
             a.screen = screen;
             let buffer = render_app(&mut a, 40, 13);
-            let expected = if matches!(screen, Screen::Tracker | Screen::TrackerParameters) {
+            let expected = if matches!(
+                screen,
+                Screen::Tracker | Screen::TrackerParameters | Screen::TrackerMixer
+            ) {
                 '‖'
             } else {
                 '■'
@@ -28786,6 +29460,7 @@ release = 0.4
             (Screen::Meter, None),
             (Screen::Routing, None),
             (Screen::TrackerParameters, None),
+            (Screen::TrackerMixer, None),
         ];
         assert_eq!(expected.len(), Screen::ALL.len());
         for (screen, target) in expected {

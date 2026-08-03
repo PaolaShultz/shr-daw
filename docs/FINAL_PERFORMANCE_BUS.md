@@ -10,10 +10,10 @@ Input is the only required source; the managed synth, Loop Mix, and SHR Drums
 attach when present:
 
 ```text
-managed software instrument -> source inserts/optional aux sends --\
-owned four-slot native-rate Loop Mix sum ---------------------------+-> stereo sum
-configured JACK capture L/R ---------------------------------------/
-SHR Drums in-process stereo bus ------------------------------------/
+managed software instrument -> owner gain -> source inserts/aux ---\
+owned four-slot native-rate Loop Mix sum -> owner gain -------------+-> stereo sum
+configured JACK capture L/R -> owner gain --------------------------/
+SHR Drums rack/stereo bus -> owner gain -----------------------------/
     -> optional aux returns, where routed from the managed source
     -> master insert rack
     -> master level
@@ -23,6 +23,13 @@ SHR Drums in-process stereo bus ------------------------------------/
     -> final 24-bit stereo WAV tap
     -> configured JACK playback L/R
 ```
+
+FT2's live mixer activates this owned bus even when the passive Performance
+screen was not enabled in runtime configuration. Activation does not enable
+Input monitoring: an external-return strip remains visibly marked until the
+musician deliberately enables the safe software-monitor path. Failure to
+activate leaves the prior direct routes unchanged and the FT2 editing location
+intact.
 
 The logical Loop and external-input bus strips do not gain individual insert
 racks, aux sends, pan, solo, automation, or waveform editing. Drums has only
@@ -42,6 +49,18 @@ Project data; current Project format 13 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
 Pattern, but not these final-bus levels or mutes. JACK assignments remain
 machine configuration.
+
+Each source publishes one lightweight post-owner-gain stereo peak for the FT2
+mixer before the graph performs Project processing and summing. The existing
+fader loop accumulates those peaks, so callback work remains one bounded pass:
+two absolute-value/maximum updates per frame and two atomic stores per owner per
+block, with no allocation, locking, formatting, or file access. Pages linked
+to the same owner reuse this snapshot instead of adding another meter.
+The opt-in callback cost measurement remains available with:
+
+```sh
+cargo test --locked source_meter_callback_cost_has_realtime_headroom -- --ignored --nocapture
+```
 
 ## Exact routing and availability
 

@@ -261,7 +261,7 @@ validates and applies the choice to the Project and live route. `APPLY ROUTING`
 keeps the result. `CANCEL` or Back from the main list restores the route from
 when ROUTE opened; Back during field editing restores that field first.
 
-Normal FT2 page 3 is `SOUND`, with `PARAM` as its only launcher. PARAM opens a
+Normal FT2 page 3 is `SOUND`, with `PARAM` and `MIX`. PARAM opens a
 tracker-owned view of the current software instrument without entering Player
 or replacing the tracker engine. It uses the same 12 mapped labels, values,
 relative-to-preset colours, held-note display, and POT pickup behavior as
@@ -275,6 +275,16 @@ PARAM SYS provides PANIC, an empty position, HELP, and EXIT. Unsupported
 backends visibly have no editable or saveable parameters. Back/Esc or EXIT
 returns to the exact Pattern/order/page/lane/column/row, FT2 mode, transport,
 route, N00B state, live values, and launching SOUND page.
+
+MIX opens the live audio-level mixer in Play, REC, or Edit; Shift-clicking the
+main encoder is the direct shortcut in every mode. It controls canonical final-
+bus Synth, Drums, Loop, or configured Input owner gain, never MIDI velocity or
+CC volume. Linked pages share gain/VU and re-arm pickup after either pot moves.
+With fewer than twelve configured pots, turn the main encoder to choose the
+active page bank. External MIDI without a configured stereo SHR return says
+`NO RETURN`; Input monitoring remains an explicit safety choice. Back, click,
+or SYS EXIT restores the exact tracker location and mode. Play/REC follow the
+sounding Pattern; Edit follows the Pattern being edited.
 
 With controller clock enabled, SHR sends the current/default tempo at 24 PPQN
 to one exact controller MIDI port while the app is open; tracker transport adds

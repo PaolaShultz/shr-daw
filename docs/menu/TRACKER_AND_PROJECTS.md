@@ -65,9 +65,9 @@ SONG selects an Arrangement step and links to Arrangement or page tools.
 ROUTE opens the quick live route editor. Its complete field and rollback
 contract appears in [ROUTE master overlay](#route-master-overlay).
 
-### SOUND — current software instrument
+### SOUND — current software instrument and mixer
 
-Normal FT2 page 3 is `SOUND`; `PARAM` is its only action. It opens an FT2-owned
+Normal FT2 page 3 is `SOUND`. `PARAM` opens an FT2-owned
 parameter child without changing the selected Pattern, Arrangement step, page,
 lane, column, cursor row, mode, transport, route, or managed-engine ownership.
 Back/Esc or SYS `EXIT` returns to that exact location and the launching SOUND
@@ -83,6 +83,9 @@ storage as Playback; a successful save becomes the new RESET baseline and
 retargets only the active matching FT2 route. Its SYS page contains `PANIC`, an
 empty position, `HELP`, and `EXIT`. Backends without mapped editable controls
 show parameters and SAVE as unavailable.
+
+`MIX` opens the live audio-level mixer described below. Shift-clicking the main
+encoder is the direct controller shortcut in Play, REC, and Edit.
 
 ### SYS — safety, filter, help, and exit
 
@@ -107,9 +110,10 @@ quantized note-off independently of Edit note length.
 
 ![Populated FT2 Pattern recording context with the MODE page](../images/menu/ft2-record-mode.png)
 
-`PLAY` ends REC and starts normal transport. `RECORD` ends real-time capture
-while preserving the notes already entered. `EDIT` ends REC and enters stopped
-Edit mode. With N00B on, only allowed notes are heard and written.
+`MIX` opens the live audio-level mixer without ending capture. `PLAY` ends REC
+and starts normal transport. `RECORD` ends real-time capture while preserving
+the notes already entered. `EDIT` ends REC and enters stopped Edit mode. With
+N00B on, only allowed notes are heard and written.
 
 ### SYS — emergency and normal exits
 
@@ -165,6 +169,9 @@ cursor, and supports the existing 1–256-row range.
 Normal FT2 `SELECT` remains available after leaving Edit and still owns PAGE,
 PATTERN, SONG, and ROUTE.
 
+Shift-click the main encoder to open the live audio-level mixer from Edit. This
+keeps the four Edit command pages intact.
+
 ### SYS — safety, help, and leave edit
 
 ![Populated FT2 Pattern in Edit mode with the SYS page](../images/menu/ft2-step-edit-sys.png)
@@ -172,6 +179,30 @@ PATTERN, SONG, and ROUTE.
 `PANIC` performs the owned stop. `N00B` toggles the same independent filter.
 `HELP` opens contextual help. `EXIT` leaves Edit exactly one level and returns
 to normal FT2 while preserving Pattern, page, column, and cursor row.
+
+## FT2 live audio-level mixer
+
+The mixer keeps the current Play, REC, or Edit mode and restores the exact
+Arrangement step, Pattern, row, page, lane/column, and controller-menu page on
+exit. In Play and REC it follows the Pattern the sequencer is sounding; in Edit
+it follows the Pattern being edited.
+
+At native 40×13 it uses one 4×3 panel for up to twelve strips. Every strip shows
+its page/name, canonical `SYN`, `DRM`, `LOP`, or `INP` owner, signed gain, five
+circular VU LEDs, shared-owner link count, and pickup direction. External MIDI
+without an exact configured stereo SHR return says `NO RETURN` and exposes no
+working fader or VU. A configured Input marked `M` is still monitor-off; opening
+the mixer never silently changes that safety choice.
+
+With twelve configured pots, pages 1–12 map directly. With fewer pots, the
+ordered available POT positions control the visible bank. Turn the main encoder
+or use `BANK-` and `BANK+` to change banks; bank changes re-arm pickup. Pages
+with the same owner share one gain and VU. Moving either linked control re-arms
+the other assigned non-motorized pot before it can change that owner again.
+
+Opening the panel activates the final bus so live audition and transport use
+owner gain → Project processing/master strip → master volume → limiter/output.
+SYS retains `PANIC`, `HELP`, and `EXIT`; main-encoder click and Back also exit.
 
 ## FT2 Cell Edit
 

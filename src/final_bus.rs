@@ -50,6 +50,35 @@ struct AtomicFader {
     muted: AtomicBool,
 }
 
+struct AtomicSourceMeter {
+    peak_left: AtomicU32,
+    peak_right: AtomicU32,
+}
+
+impl AtomicSourceMeter {
+    fn new() -> Self {
+        Self {
+            peak_left: AtomicU32::new(0.0_f32.to_bits()),
+            peak_right: AtomicU32::new(0.0_f32.to_bits()),
+        }
+    }
+
+    #[inline]
+    fn publish(&self, peak: StereoFrame) {
+        self.peak_left.store(peak.left.to_bits(), Ordering::Release);
+        self.peak_right
+            .store(peak.right.to_bits(), Ordering::Release);
+    }
+
+    fn snapshot(&self) -> StereoFrame {
+        StereoFrame::new(
+            f32::from_bits(self.peak_left.load(Ordering::Acquire)),
+            f32::from_bits(self.peak_right.load(Ordering::Acquire)),
+        )
+        .finite_or_silence()
+    }
+}
+
 impl AtomicFader {
     fn new(gain_db: f32) -> Self {
         Self {
@@ -70,6 +99,7 @@ impl AtomicFader {
 
 pub struct BusControls {
     sources: [AtomicFader; SOURCE_COUNT],
+    source_meters: [AtomicSourceMeter; SOURCE_COUNT],
     master: AtomicFader,
 }
 
@@ -77,6 +107,7 @@ impl Default for BusControls {
     fn default() -> Self {
         Self {
             sources: std::array::from_fn(|_| AtomicFader::new(DEFAULT_SOURCE_GAIN_DB)),
+            source_meters: std::array::from_fn(|_| AtomicSourceMeter::new()),
             master: AtomicFader::new(0.0),
         }
     }
@@ -105,6 +136,17 @@ impl BusControls {
         self.sources[source.index()]
             .muted
             .store(muted, Ordering::Release);
+    }
+
+    /// Latest callback-block peak after this owner's smoothed gain and mute.
+    /// Pages that share an owner intentionally read this same canonical value.
+    pub fn source_peak(&self, source: BusSource) -> StereoFrame {
+        self.source_meters[source.index()].snapshot()
+    }
+
+    #[inline]
+    fn publish_source_peak(&self, source: BusSource, peak: StereoFrame) {
+        self.source_meters[source.index()].publish(peak);
     }
 
     pub fn master_gain_db(&self) -> f32 {
@@ -248,10 +290,14 @@ impl FinalBusProcessor {
             self.controls.source_gain_db(source),
             self.controls.source_muted(source),
         );
+        let mut peak = StereoFrame::SILENCE;
         for frame in frames {
             let gain = self.source_faders[index].next();
             *frame = StereoFrame::new(frame.left * gain, frame.right * gain).finite_or_silence();
+            peak.left = peak.left.max(frame.left.abs());
+            peak.right = peak.right.max(frame.right.abs());
         }
+        self.controls.publish_source_peak(source, peak);
     }
 
     #[inline]
@@ -331,6 +377,49 @@ mod tests {
         assert!(output
             .iter()
             .all(|frame| frame.left.is_finite() && frame.right.is_finite()));
+        assert_eq!(controls.source_peak(BusSource::Synth), StereoFrame::SILENCE);
+    }
+
+    #[test]
+    fn source_meter_is_post_smoothed_owner_gain_and_shared_with_canonical_controls() {
+        let (mut bus, controls) = processor(48_000, 1024);
+        assert!(controls.set_source_gain_db(BusSource::Loop, -6.0));
+        let mut source = [StereoFrame::new(0.5, -0.25); 1024];
+        bus.process_source(BusSource::Loop, &mut source);
+        let peak = controls.source_peak(BusSource::Loop);
+        assert!(peak.left > 0.24 && peak.left < 0.5);
+        assert!(peak.right > 0.12 && peak.right < 0.25);
+        assert_eq!(controls.source_peak(BusSource::Synth), StereoFrame::SILENCE);
+    }
+
+    #[test]
+    #[ignore = "on-demand callback cost measurement"]
+    fn source_meter_callback_cost_has_realtime_headroom() {
+        const SAMPLE_RATE: u32 = 48_000;
+        const FRAMES: usize = 256;
+        const CALLBACKS: u128 = 20_000;
+        let (mut bus, controls) = processor(SAMPLE_RATE, FRAMES);
+        let mut source = [StereoFrame::new(0.25, -0.125); FRAMES];
+
+        for _ in 0..128 {
+            bus.process_source(BusSource::Synth, &mut source);
+        }
+        let started = std::time::Instant::now();
+        for _ in 0..CALLBACKS {
+            bus.process_source(BusSource::Synth, &mut source);
+            std::hint::black_box(controls.source_peak(BusSource::Synth));
+        }
+        let average_ns = started.elapsed().as_nanos() / CALLBACKS;
+        let callback_deadline_ns = FRAMES as u128 * 1_000_000_000 / u128::from(SAMPLE_RATE);
+        let budget_ns = callback_deadline_ns / 10;
+        eprintln!(
+            "metered owner source: {average_ns} ns per {FRAMES}-frame callback ({:.3}% of deadline)",
+            average_ns as f64 * 100.0 / callback_deadline_ns as f64
+        );
+        assert!(
+            average_ns < budget_ns,
+            "metered owner source used {average_ns} ns; 10% callback budget is {budget_ns} ns"
+        );
     }
 
     #[test]

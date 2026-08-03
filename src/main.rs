@@ -41,6 +41,7 @@ mod scale;
 mod sequencer;
 mod startup_splash;
 mod tempo;
+mod tracker_mixer;
 mod ui;
 mod ui_text;
 
