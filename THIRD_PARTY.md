@@ -132,9 +132,12 @@ defines validation and compatibility. Its
 owns sample provenance. `kits/cleared-kits.txt` is this repository's single
 public kit allowlist.
 
-The bundled Acid and Electronic House packages are original, fully modeled
-27-voice kits with no recordings or downloaded audio. Their manifests release
-the package content under CC0 1.0.
+The bundled Acid package is an original fully modeled 27-voice kit. Electronic
+House has its original 27 modeled voices plus deterministic House Impact and
+Long Pressure synthetic one-shot exports authored by the CC0 Moj Sint project;
+they occupy notes 27 and 28 without replacing its existing note-33 through
+note-36 kicks. Neither package contains recordings or downloaded audio. Their
+manifests release the package content under CC0 1.0.
 
 The bundled Big Rock (Muldjord) and Experimental Noise (Muldjord) packages use
 selected recordings from MuldjordKit SFZ+WAV 2020-10-18 under Creative Commons

@@ -7,7 +7,7 @@
     "source": "https://freepats.zenvoid.org/Percussion/acoustic-drum-kit.html · MuldjordKit SFZ+WAV 2020-10-18",
     "licence": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
     "attribution": "Drum samples provided by DrumGizmo.org; original recordings by Lars Muldjord; FreePats stereo assembly by roberto@zenvoid.org",
-    "modification_notes": "Selected three velocity bands with two deterministic round robins per acoustic piece; remapped triggers to GM percussion notes; preserved stereo attacks and tails; stored reviewed offline body/ring candidates from representative mid-layer tail scans; added independently tunable modeled bodies and bounded bus processing. Replaced the note-38 cowbell-like acoustic hybrid with an authored short, low-bodied noise snare using controlled cubic drive. Audible owner review remains pending.",
+    "modification_notes": "Selected three velocity bands with two deterministic round robins per acoustic piece; remapped triggers to GM percussion notes; preserved stereo attacks and tails; stored reviewed offline body/ring candidates from representative mid-layer tail scans; added independently tunable modeled bodies and bounded bus processing. Replaced the note-38 cowbell-like acoustic hybrid with an authored short, low-bodied noise snare using controlled cubic drive. The owner accepted this revision as a convincing snare suited to the rock/experimental kit rather than Electronic House.",
     "source_hashes": {
       "LICENSE.txt": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
       "MuldjordKit 20201018.sfz": "410e17d984b52ab9323b103324ea99e8021cc7631469d81b772ff6d1c4c0f93b",

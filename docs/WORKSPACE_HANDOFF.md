@@ -55,6 +55,15 @@ all-target/all-feature normal suite: 19 tests passed, three opt-in quality
 matrices remained ignored, and its locked debug and release all-target builds
 passed.
 
+Electronic House now carries the selected Moj Sint House Impact and Long
+Pressure kicks as deterministic CC0 synthetic one-shots on free notes 27 and
+28. Notes 33, 34, 35, and the original House Kick on 36 remain unchanged, so
+the kit exposes six kicks without remapping existing material. The two new
+voices use the ordinary House kit bus and note-38 snare. Package validation and
+a private eight-hit rhythm render/playback passed; owner judgment of the
+in-kit presentation remains open. No SHR project compilation was run under the
+current build gate.
+
 The Experimental Noise note-38 snare no longer uses the 298 Hz, 700 ms
 acoustic hybrid that the owner rejected as cowbell-like. The first replacement
 was also rejected because stacked hard clipping, 4.3 kHz band-pass noise, FM,
@@ -63,7 +72,9 @@ uses a 158 Hz short body, low-pass broadband noise, no FM or ring modulation,
 restrained cubic drive, brief quiet modes, and no sample assignments; the six
 now-unused snare WAVs were removed from that package. A private 124 BPM
 kick/snare comparison was regenerated through the existing engine and played
-through the configured soundcard; final owner acceptance remains open.
+through the configured soundcard. The owner accepted this revision as a real
+snare, possibly stronger than Big Rock's, and explicitly kept its
+rock/industrial identity out of Electronic House.
 
 Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD

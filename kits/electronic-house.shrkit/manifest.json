@@ -4,11 +4,14 @@
   "display_name": "Electronic House",
   "metadata": {
     "author": "SHR Drums contributors",
-    "source": "Deterministic SHR Drums modeled synthesis; no recorded or downloaded audio",
+    "source": "Deterministic SHR Drums modeled synthesis plus deterministic CC0 Moj Sint House Impact and Long Pressure one-shot exports; no recorded or downloaded audio",
     "licence": "CC0-1.0",
     "attribution": "No attribution required; all voices are synthesized in process",
-    "modification_notes": "Rebuilt as 27 distinct modeled voices. Existing notes and voice IDs remain compatible. Voice-local click/body/noise/mode layers use deliberate bounded drive, clipping, modulation, deterministic variation, and stereo shaping before the protected kit ceiling.",
-    "source_hashes": {}
+    "modification_notes": "Rebuilt as 27 distinct modeled voices, then extended with the authored House Impact and Long Pressure kicks on free notes 27 and 28. Existing notes and voice IDs remain compatible. Voice-local click/body/noise/mode layers use deliberate bounded drive, clipping, modulation, deterministic variation, and stereo shaping before the protected kit ceiling.",
+    "source_hashes": {
+      "samples/house-impact.wav": "8b16a6e69ca092c2067c3f4a7637faca405bca1ed1e5e6dc69da9a22d281290c",
+      "samples/long-pressure.wav": "01b6cefc52c05f64d6e92caaad083b25b7aba9c68506a4a9335bad86f6b2e631"
+    }
   },
   "engine": {
     "minimum": "0.2.0",
@@ -25,9 +28,11 @@
     "cowbell": 56,
     "crash": 49,
     "gated-hat": 22,
+    "house-impact": 27,
     "hit": 50,
     "house-clap": 39,
     "laser": 25,
+    "long-pressure": 28,
     "noise-snare": 31,
     "open": 46,
     "pedal-hat": 44,
@@ -694,6 +699,94 @@
           "stereo": 0.35
         }
       }
+    },
+    {
+      "id": "house-impact",
+      "display_name": "House Impact",
+      "trigger_note": 27,
+      "articulation": "house-impact",
+      "family": "kick",
+      "kind": "sampled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": 0.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.0,
+        "hold_ms": 1010.0,
+        "decay_ms": 10.0,
+        "release_ms": 20.0
+      },
+      "samples": [
+        {
+          "path": "samples/house-impact.wav",
+          "velocity_min": 1,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "house-impact",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 48000,
+            "channels": 2,
+            "frames": 48480
+          },
+          "sha256": "8b16a6e69ca092c2067c3f4a7637faca405bca1ed1e5e6dc69da9a22d281290c"
+        }
+      ],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": null
+    },
+    {
+      "id": "long-pressure",
+      "display_name": "Long Pressure",
+      "trigger_note": 28,
+      "articulation": "long-pressure",
+      "family": "kick",
+      "kind": "sampled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": 0.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.0,
+        "hold_ms": 1510.0,
+        "decay_ms": 10.0,
+        "release_ms": 20.0
+      },
+      "samples": [
+        {
+          "path": "samples/long-pressure.wav",
+          "velocity_min": 1,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "long-pressure",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 48000,
+            "channels": 2,
+            "frames": 72480
+          },
+          "sha256": "01b6cefc52c05f64d6e92caaad083b25b7aba9c68506a4a9335bad86f6b2e631"
+        }
+      ],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": null
     },
     {
       "id": "wide-clap",
