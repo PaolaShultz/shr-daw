@@ -43,6 +43,18 @@ install-files: check-demos
 	install -d $(DESTDIR)$(PREFIX)/share/shsynth/drum-patterns
 	install -m644 drum-patterns/*.shdrum $(DESTDIR)$(PREFIX)/share/shsynth/drum-patterns/
 	install -m644 drum-patterns/*.shrdrums $(DESTDIR)$(PREFIX)/share/shsynth/drum-patterns/
+	install -d $(DESTDIR)$(PREFIX)/share/shsynth/kits
+	set -e; while IFS= read -r kit; do \
+		case "$$kit" in ''|'#'*) continue ;; */*|.*|*[!a-z0-9.-]*|*.shrkit.*) \
+			echo "Unsafe public-kit manifest entry: $$kit" >&2; exit 1 ;; *.shrkit) ;; *) \
+			echo "Unsafe public-kit manifest entry: $$kit" >&2; exit 1 ;; esac; \
+		source="kits/$$kit"; destination="$(DESTDIR)$(PREFIX)/share/shsynth/kits/$$kit"; \
+		[ -d "$$source" ] || { echo "Public kit not found: $$source" >&2; exit 1; }; \
+		[ -z "$$(find "$$source" -type l -print -quit)" ] || \
+			{ echo "Public kit contains a symlink: $$source" >&2; exit 1; }; \
+		install -d "$$destination"; cp -R "$$source/." "$$destination/"; \
+	done < kits/cleared-kits.txt
+	install -m644 kits/cleared-kits.txt kits/README.md $(DESTDIR)$(PREFIX)/share/shsynth/kits/
 	install -d $(DESTDIR)$(PREFIX)/share/shsynth/loops
 	set -e; while IFS= read -r loop; do \
 	  case "$$loop" in ''|'#'*) continue ;; esac; \

@@ -1,0 +1,4 @@
+acid.shrkit
+big-rock-muldjord.shrkit
+electronic-house.shrkit
+experimental-noise-muldjord.shrkit

@@ -28,7 +28,7 @@ assumptions.
 | `shr recorder-stress` | Non-audibly exercise the production multistem buffer/writer without JACK | Creates one unique synthetic take below an explicit destination |
 | `shr final-mix-stress` | Non-audibly exercise the four-source final DSP and stereo writer without JACK | Creates one unique 24-bit stereo stress WAV below an explicit destination |
 | `shr master-strip-bench` | Compare neutral/active production strip callback cost and isolated 4×/8× interpolation without JACK | Read-only deterministic CPU work; creates no files |
-| `shr compiler-ab-bench` | Compare compiler-built production graph, drum, effects, and final-bus callback work without JACK | Reads one explicit private kit directory; creates no files |
+| `shr compiler-ab-bench` | Compare compiler-built production graph, drum, effects, and final-bus callback work without JACK | Reads one explicit kit directory; creates no files |
 
 None of the setup, tuning, preset, or screenshot helpers starts JACK, a synth
 engine, MIDI playback, or an audible test. `local.sh` is the exception only in
@@ -104,12 +104,15 @@ The wrapper exports:
 - `XDG_STATE_HOME=$SHSYNTH_USER_DIR/state`;
 - `XDG_DATA_HOME=$SHSYNTH_USER_DIR/data`;
 - `SHSYNTH_PRESET_DIR=$SHSYNTH_USER_DIR/presets/synthv1`;
-- `SHSYNTH_LOOP_INBOX=$SHSYNTH_USER_DIR/data/shsynth/loop-inbox`.
+- `SHSYNTH_LOOP_INBOX=$SHSYNTH_USER_DIR/data/shsynth/loop-inbox`;
+- `SHSYNTH_KIT_DIR=$ROOT/kits`, unless explicitly overridden.
 
 Playback Moj Sint user saves derive their private root from the same isolated
 `XDG_DATA_HOME` as `$XDG_DATA_HOME/moj-sint/presets` unless
 `SHSYNTH_MOJ_PRESET_DIR` explicitly selects another private absolute path. The
 launcher does not seed that user-sound tree from the public Moj Sint catalog.
+It reads official SHR Drums packages directly from the tracked public kit tree
+instead of copying them below `user/`.
 
 It requires an executable SHR-DAW binary, creates the private preset directory,
 copies only missing public presets into it, and then replaces itself with
@@ -186,16 +189,21 @@ Environment:
   directory.
 - `SHSYNTH_LOOP_INBOX`, when present, becomes the configured and seeded loop
   import inbox.
+- `SHSYNTH_KIT_DIR`, when present, becomes the public SHR Drums package root.
+  Otherwise source setup uses `kits/` and installed setup uses
+  `share/shsynth/kits`.
 
 The source-tree form reads templates from `config/`, MIDI-device profiles from
-`midi-devices/`, allowlisted starter WAVs from `loops/`, and the cleared demo
-manifest/files from `demos/`. The installed form resolves all four beneath
-`share/shsynth/`. If configuration is missing in the
+`midi-devices/`, allowlisted kits from `kits/`, starter WAVs from `loops/`, and
+the cleared demo manifest/files from `demos/`. The installed form resolves all
+five beneath `share/shsynth/`. If configuration is missing in the
 normal state directory it uses `shr config init`; for an explicit state
 directory it copies only missing template files.
 
-Setup always creates or preserves configuration, selects the active XDG/private
-loop inbox for new configuration, copies missing allowlisted starter loops,
+Setup always creates or preserves configuration, selects the public kit root
+for a missing, empty, or legacy-default kit setting while preserving an
+explicit custom root, selects the active XDG/private loop inbox for new
+configuration, copies missing allowlisted starter loops,
 copies missing demo Projects to `songs/`, and mirrors the cleared demo corpus
 under `demos/`. The manifest itself may be refreshed; user Projects are never
 replaced.
@@ -806,10 +814,11 @@ Variables:
 - `PREFIX` defaults to `/usr/local`;
 - `DESTDIR` prefixes the install tree for packaging or a non-root fixture.
 
-`install-files` first runs `check-demos`, then installs only presets and demos
-named by their cleared manifests, the
-configuration and device/profile data, drum patterns, documentation, nested
-menu chapters, and nested menu images. The public `shr` binary receives the
+`install-files` first runs `check-demos`, then installs only presets, kits, and
+demos named by their cleared manifests, plus the configuration and
+device/profile data, drum patterns, documentation, nested menu chapters, and
+nested menu images. Kit packaging rejects unsafe allowlist names, missing
+package directories, and symlinks. The public `shr` binary receives the
 compatibility aliases `shs` and `synth-player`; no separate process binary is
 installed for those names.
 
@@ -955,8 +964,8 @@ result. The owning evidence and algorithm choices are in
 shr compiler-ab-bench KIT_DIR [CALLBACKS]
 ```
 
-`KIT_DIR` is an explicit directory containing the installed private SHR Drums
-kits. The benchmark requires the `electronic-house` kit. The default is 2,000
+`KIT_DIR` is an explicit directory containing SHR Drums kits. The benchmark
+requires the `electronic-house` kit. The default is 2,000
 measured callbacks per workload and the minimum is 1,000. Each workload first
 warms 500 callbacks.
 

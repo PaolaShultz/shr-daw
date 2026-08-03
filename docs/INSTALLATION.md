@@ -38,7 +38,7 @@ recording.
 synthv1, Yoshimi, FluidSynth/TimGM, and Moj Sint are separate optional sound
 engines at runtime. The default installer includes the first three. Install the
 Moj Sint 0.2.2 sibling repository separately so `moj-sint` is on `PATH`, then
-install all seven strict factory `.mojsint` presets under one configured
+use its 13 tracked strict factory `.mojsint` presets under one configured
 `moj_sint.preset_root`; SHR never copies private presets from that repository.
 MIDI controllers, external instruments, audio interfaces, and a
 480×320 display are optional hardware. On that display the current fixed TTY
@@ -70,10 +70,10 @@ The installer:
   the locked tests, and builds the locked release version; newer stable
   releases are adopted deliberately by changing the repository pin;
 - installs commands, templates, the 21 allowlisted presets, four allowlisted
-  CC0 48 kHz loops, ten manifest-cleared demo Projects plus MIDI files,
-  device/controller profiles, drum data, documentation, and the complete
-  generated menu-manual image set below the selected prefix (normally
-  `/usr/local`);
+  SHR Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
+  Projects plus MIDI files, device/controller profiles, drum data,
+  documentation, and the complete generated menu-manual image set below the
+  selected prefix (normally `/usr/local`);
 - opens the routing wizard.
 
 On stock Raspberry Pi OS, the routing wizard asks for a stable ALSA card name
@@ -152,10 +152,11 @@ This path does not start JACK or transmit MIDI. Delete the explicit temporary
 state directory afterward. For a persistent private development checkout,
 `./scripts/setup-local.sh` and `./scripts/local.sh` redirect configuration,
 Projects, Ideas, recordings, loops, and private presets below ignored `user/`.
-They copy missing public presets, starter loops, and demo Projects without
-replacing private files. Build the debug binary first; neither helper installs
-packages or builds the program. `local.sh` launches this checkout's
-`target/debug/shr`, which carries the visible `DEV` badge.
+They read the public kits directly from tracked `kits/`, and copy missing
+public presets, starter loops, and demo Projects without replacing private
+files. Build the debug binary first; neither helper installs packages or builds
+the program. `local.sh` launches this checkout's `target/debug/shr`, which
+carries the visible `DEV` badge.
 
 ## Upgrade and uninstall boundaries
 
@@ -172,8 +173,8 @@ from this checkout with:
 sudo make uninstall
 ```
 
-This removes the installed commands, public presets, profiles, rhythms, and
-documentation. It deliberately preserves user data under
+This removes the installed commands, public presets, kits, profiles, rhythms,
+and documentation. It deliberately preserves user data under
 `${XDG_STATE_HOME:-~/.local/state}/shsynth/` and
 `${XDG_DATA_HOME:-~/.local/share}/shsynth/`, Moj Sint user sounds under
 `${XDG_DATA_HOME:-~/.local/share}/moj-sint/`, repository-local `user/`, system
@@ -183,10 +184,10 @@ uninstalling the command if desired. Never delete those retained directories
 unless their Projects, Ideas, recordings, loops, and private presets have been
 reviewed and backed up.
 
-The Makefile install/uninstall file boundary was validated in an isolated
-`DESTDIR`: 21 allowlisted public presets and only manifest-cleared demos were
-installed, no `user/` path was included, and staged uninstall removed only
-staged product files.
+The Makefile install/uninstall file boundary can be validated in an isolated
+`DESTDIR`: it installs 21 allowlisted public presets, four allowlisted public
+kits, and only manifest-cleared demos, includes no `user/` path, and staged
+uninstall removes only staged product files.
 
 ## JACK
 

@@ -21,9 +21,9 @@ Read the complete public documentation at
 
 ## Features
 
-- Play synthv1, Yoshimi, FluidSynth, or seven editable Moj Sint Model D starts
-  through one managed melodic engine, alongside in-process
-  [SHR Drums](https://github.com/PaolaShultz/shr-drums).
+- Play synthv1, Yoshimi, FluidSynth, or 13 editable Moj Sint factory starts
+  through one managed melodic engine, alongside four bundled kits rendered by
+  in-process [SHR Drums](https://github.com/PaolaShultz/shr-drums).
 - Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum,
   and loop parts as multi-page Patterns and Arrangements; or perform them with
   Live Patterns and the four-slot Loop Mix.

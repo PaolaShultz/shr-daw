@@ -5,11 +5,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -d "$ROOT/config" ]]; then
   CONFIG_SOURCE="$ROOT/config"
   PROFILE_SOURCE="$ROOT/midi-devices"
+  KIT_SOURCE="$ROOT/kits"
   LOOP_SOURCE="$ROOT/loops"
   DEMO_SOURCE="$ROOT/demos"
 else
   CONFIG_SOURCE="$ROOT/share/shsynth/config"
   PROFILE_SOURCE="$ROOT/share/shsynth/midi-devices"
+  KIT_SOURCE="$ROOT/share/shsynth/kits"
   LOOP_SOURCE="$ROOT/share/shsynth/loops"
   DEMO_SOURCE="$ROOT/share/shsynth/demos"
 fi
@@ -17,6 +19,7 @@ STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}"
 DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}"
 STATE_DIR="$STATE_ROOT/shsynth"
 SHSYNTH_BIN="${SHSYNTH_BIN:-}"
+export SHSYNTH_KIT_DIR="${SHSYNTH_KIT_DIR:-$KIT_SOURCE}"
 SETUP_ORIGINAL_ARGS=("$@")
 TUNE_TOOL=''
 
@@ -252,6 +255,13 @@ expand_home_path() {
     *) printf '%s\n' "$value" ;;
   esac
 }
+
+configured_kit_directory="$(config_value "$RUNTIME_CONFIG" drums.kit_directory)"
+legacy_kit_directory="$DATA_ROOT/shsynth/kits"
+if [[ -z "$configured_kit_directory" || \
+      "$(expand_home_path "$configured_kit_directory")" == "$legacy_kit_directory" ]]; then
+  replace_values "$RUNTIME_CONFIG" drums.kit_directory "$SHSYNTH_KIT_DIR"
+fi
 
 seed_public_loops() {
   local destination=$1 manifest="$LOOP_SOURCE/cleared-loops.txt" loop_name source

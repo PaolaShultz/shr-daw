@@ -129,12 +129,28 @@ modeled-voice graph. The public
 [format contract](https://github.com/PaolaShultz/shr-drums/blob/main/FORMAT.md)
 defines validation and compatibility. Its
 [source record](https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md)
-owns sample provenance.
+owns sample provenance. `kits/cleared-kits.txt` is this repository's single
+public kit allowlist.
 
-Compiled `.shrkit` packages, source archives, and private review renders are
-not bundled by this repository. Their presence on a developer machine does not
-grant redistribution rights. Package or appliance distributors must review
-the kit's own manifest, source record, asset licence, and required notices.
+The bundled Acid and Electronic House packages are original, fully modeled
+27-voice kits with no recordings or downloaded audio. Their manifests release
+the package content under CC0 1.0.
+
+The bundled Big Rock (Muldjord) and Experimental Noise (Muldjord) packages use
+selected recordings from MuldjordKit SFZ+WAV 2020-10-18 under Creative Commons
+Attribution 4.0 International. Lars Muldjord made the original recordings;
+roberto@zenvoid.org assembled the stereo SFZ/WAV release for FreePats. Each
+package retains the upstream licence and README, while its manifest records the
+source release, selected-file hashes, modifications, and required attribution.
+Upstream sources are the
+[FreePats release](https://github.com/freepats/muldjordkit/releases/tag/2020-10-18),
+[FreePats kit page](https://freepats.zenvoid.org/Percussion/acoustic-drum-kit.html),
+and [DrumGizmo kit page](https://drumgizmo.org/wiki/doku.php?id=kits:muldjordkit).
+
+No other compiled `.shrkit`, source archive, or private review render is
+bundled. A local package's presence does not grant redistribution rights; add
+one to `cleared-kits.txt` only after reviewing its complete contents, manifest,
+source record, asset licence, and required notices.
 
 ## Public-domain demo compositions
 

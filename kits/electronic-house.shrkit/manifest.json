@@ -1,0 +1,4391 @@
+{
+  "format_version": 1,
+  "kit_id": "electronic-house",
+  "display_name": "Electronic House",
+  "metadata": {
+    "author": "SHR Drums contributors",
+    "source": "Deterministic SHR Drums modeled synthesis; no recorded or downloaded audio",
+    "licence": "CC0-1.0",
+    "attribution": "No attribution required; all voices are synthesized in process",
+    "modification_notes": "Rebuilt as 27 distinct modeled voices. Existing notes and voice IDs remain compatible. Voice-local click/body/noise/mode layers use deliberate bounded drive, clipping, modulation, deterministic variation, and stereo shaping before the protected kit ceiling.",
+    "source_hashes": {}
+  },
+  "engine": {
+    "minimum": "0.2.0",
+    "maximum_exclusive": "1.0.0"
+  },
+  "max_polyphony": 40,
+  "max_tail_seconds": 7.0,
+  "articulations": {
+    "body-snare": 40,
+    "china": 52,
+    "clipped-kick": 34,
+    "clipped-snare": 30,
+    "closed": 42,
+    "cowbell": 56,
+    "crash": 49,
+    "gated-hat": 22,
+    "hit": 50,
+    "house-clap": 39,
+    "laser": 25,
+    "noise-snare": 31,
+    "open": 46,
+    "pedal-hat": 44,
+    "ride": 51,
+    "rim": 37,
+    "shaker": 54,
+    "sub-kick": 35,
+    "tight-kick": 33,
+    "trash-open-hat": 26,
+    "wide-clap": 29,
+    "zap": 24,
+    "zap-tom": 48
+  },
+  "voices": [
+    {
+      "id": "gated-hat",
+      "display_name": "Gated Hat",
+      "trigger_note": 22,
+      "articulation": "gated-hat",
+      "family": "hat",
+      "kind": "modeled",
+      "choke_group": 1,
+      "choke_release_ms": 4.0,
+      "gain_db": -13.0,
+      "pan": -0.18,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 150.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "hat",
+        "oscillator": "sine",
+        "base_hz": 7900.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.05,
+          "decay_ms": 55.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.35,
+          "decay_ms": 2.8,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.44,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 980.0,
+          "filter": "high-pass",
+          "cutoff_hz": 6300.0,
+          "resonance": 0.25,
+          "colour": -0.22,
+          "drive": {
+            "pre_gain_db": 5.0,
+            "amount": 0.24,
+            "curve": "soft-clip",
+            "post_gain_db": -2.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.42,
+            "decay_ms": 120.0,
+            "pan": -0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.447,
+            "level": 0.375,
+            "decay_ms": 111.0,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.93,
+            "level": 0.32999998,
+            "decay_ms": 102.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.617,
+            "level": 0.28499997,
+            "decay_ms": 93.0,
+            "pan": 0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.371,
+            "level": 0.23999998,
+            "decay_ms": 84.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 4.79,
+            "level": 0.19499998,
+            "decay_ms": 75.0,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.414,
+          "fm_index": 1.8,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.71,
+          "ring_amount": 0.48,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 6.0,
+          "amount": 0.28,
+          "curve": "cubic",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.32,
+          "micro_delay_ms": 0.12
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.55,
+          "drive": 0.25,
+          "decay": 0.2,
+          "brightness": 0.9,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 13.0,
+          "timing_ms": 0.0,
+          "level": 0.05,
+          "stereo": 0.35
+        }
+      }
+    },
+    {
+      "id": "zap",
+      "display_name": "Zap",
+      "trigger_note": 24,
+      "articulation": "zap",
+      "family": "fx",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": -0.18,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 420.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "percussion",
+        "oscillator": "shaped",
+        "base_hz": 210.0,
+        "pitch": {
+          "start_cents": 3600.0,
+          "mid_cents": 1900.0,
+          "attack_ms": 0.8,
+          "decay_ms": 95.0
+        },
+        "body": {
+          "level": 0.75,
+          "decay_ms": 280.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.2,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.04,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 2.61,
+          "fm_index": 5.4,
+          "phase_amount": 0.8,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.3
+        },
+        "master_drive": {
+          "pre_gain_db": 12.0,
+          "amount": 0.62,
+          "curve": "fold",
+          "post_gain_db": -3.0
+        },
+        "stereo": {
+          "width": 0.0,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "laser",
+      "display_name": "Laser",
+      "trigger_note": 25,
+      "articulation": "laser",
+      "family": "fx",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": 0.18,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 620.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "percussion",
+        "oscillator": "triangle",
+        "base_hz": 160.0,
+        "pitch": {
+          "start_cents": -1600.0,
+          "mid_cents": -2800.0,
+          "attack_ms": 8.0,
+          "decay_ms": 170.0
+        },
+        "body": {
+          "level": 0.75,
+          "decay_ms": 410.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.18,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.08,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.7,
+            "level": 0.32,
+            "decay_ms": 260.0,
+            "pan": -0.3,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 3.4,
+            "level": 0.2,
+            "decay_ms": 190.0,
+            "pan": 0.3,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 3.13,
+          "fm_index": 3.2,
+          "phase_amount": 1.2,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 3.0,
+          "amount": 0.18,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.55,
+          "micro_delay_ms": 0.45
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "trash-open-hat",
+      "display_name": "Trash Open Hat",
+      "trigger_note": 26,
+      "articulation": "trash-open-hat",
+      "family": "hat",
+      "kind": "modeled",
+      "choke_group": 1,
+      "choke_release_ms": 11.0,
+      "gain_db": -13.0,
+      "pan": 0.28,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 2250.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "hat",
+        "oscillator": "sine",
+        "base_hz": 6100.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.05,
+          "decay_ms": 420.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.44,
+          "decay_ms": 2.4,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.38,
+          "attack_ms": 0.0,
+          "decay_ms": 1180.0,
+          "tail_level": 0.18,
+          "tail_decay_ms": 1650.0,
+          "filter": "high-pass",
+          "cutoff_hz": 4900.0,
+          "resonance": 0.25,
+          "colour": -0.5,
+          "drive": {
+            "pre_gain_db": 11.0,
+            "amount": 0.55,
+            "curve": "fold",
+            "post_gain_db": -2.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.42,
+            "decay_ms": 1250.0,
+            "pan": -0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.447,
+            "level": 0.375,
+            "decay_ms": 1156.25,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.93,
+            "level": 0.32999998,
+            "decay_ms": 1062.5,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.617,
+            "level": 0.28499997,
+            "decay_ms": 968.75,
+            "pan": 0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.371,
+            "level": 0.23999998,
+            "decay_ms": 875.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 4.79,
+            "level": 0.19499998,
+            "decay_ms": 781.25,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.414,
+          "fm_index": 3.8,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.71,
+          "ring_amount": 0.72,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 6.0,
+          "amount": 0.28,
+          "curve": "cubic",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.88,
+          "micro_delay_ms": 0.9
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.55,
+          "drive": 0.25,
+          "decay": 0.45,
+          "brightness": 0.9,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 13.0,
+          "timing_ms": 0.0,
+          "level": 0.05,
+          "stereo": 0.35
+        }
+      }
+    },
+    {
+      "id": "wide-clap",
+      "display_name": "Wide Clap",
+      "trigger_note": 29,
+      "articulation": "wide-clap",
+      "family": "clap",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -7.5,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.35,
+        "hold_ms": 1.5,
+        "decay_ms": 980.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "clap",
+        "oscillator": "sine",
+        "base_hz": 930.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.0,
+          "decay_ms": 380.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.18,
+          "decay_ms": 2.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.16,
+          "attack_ms": 0.0,
+          "decay_ms": 440.0,
+          "tail_level": 0.31,
+          "tail_decay_ms": 720.0,
+          "filter": "band-pass",
+          "cutoff_hz": 2250.0,
+          "resonance": 0.5,
+          "colour": 0.3,
+          "drive": {
+            "pre_gain_db": 8.0,
+            "amount": 0.42,
+            "curve": "cubic",
+            "post_gain_db": -2.0
+          }
+        },
+        "modes": [],
+        "bursts": [
+          {
+            "time_ms": 0.0,
+            "decay_ms": 16.0,
+            "level": 0.8,
+            "pan": -0.75
+          },
+          {
+            "time_ms": 19.0,
+            "decay_ms": 18.0,
+            "level": 1.0,
+            "pan": 0.65
+          },
+          {
+            "time_ms": 43.0,
+            "decay_ms": 20.0,
+            "level": 0.82,
+            "pan": -0.35
+          },
+          {
+            "time_ms": 76.0,
+            "decay_ms": 24.0,
+            "level": 0.62,
+            "pan": 0.8
+          },
+          {
+            "time_ms": 111.0,
+            "decay_ms": 28.0,
+            "level": 0.45,
+            "pan": -0.6
+          }
+        ],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 7.0,
+          "amount": 0.35,
+          "curve": "soft-clip",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.95,
+          "micro_delay_ms": 1.1
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.8,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.65,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 2.8,
+          "level": 0.08,
+          "stereo": 0.8
+        }
+      }
+    },
+    {
+      "id": "clipped-snare",
+      "display_name": "Clipped Snare",
+      "trigger_note": 30,
+      "articulation": "clipped-snare",
+      "family": "snare",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 420.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "snare",
+        "oscillator": "shaped",
+        "base_hz": 184.0,
+        "pitch": {
+          "start_cents": 520.0,
+          "mid_cents": 120.0,
+          "attack_ms": 1.0,
+          "decay_ms": 42.0
+        },
+        "body": {
+          "level": 0.66,
+          "decay_ms": 260.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.4,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 14.0,
+            "amount": 0.72,
+            "curve": "hard-clip",
+            "post_gain_db": -3.0
+          }
+        },
+        "click": {
+          "level": 0.82,
+          "decay_ms": 4.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.78,
+          "attack_ms": 0.0,
+          "decay_ms": 235.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3700.0,
+          "resonance": 0.42,
+          "colour": -0.12,
+          "drive": {
+            "pre_gain_db": 10.0,
+            "amount": 0.58,
+            "curve": "cubic",
+            "post_gain_db": -2.5
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.45,
+            "decay_ms": 210.0,
+            "pan": -0.18,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 1.57,
+            "level": 0.31,
+            "decay_ms": 155.0,
+            "pan": 0.16,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.43,
+            "level": 0.18,
+            "decay_ms": 95.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.28
+        },
+        "master_drive": {
+          "pre_gain_db": 15.0,
+          "amount": 0.78,
+          "curve": "hard-clip",
+          "post_gain_db": -4.0
+        },
+        "stereo": {
+          "width": 0.25,
+          "micro_delay_ms": 0.12
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.72,
+          "drive": 0.65,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "noise-snare",
+      "display_name": "Noise Snare",
+      "trigger_note": 31,
+      "articulation": "noise-snare",
+      "family": "snare",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": 0.08,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 620.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "snare",
+        "oscillator": "shaped",
+        "base_hz": 205.0,
+        "pitch": {
+          "start_cents": 520.0,
+          "mid_cents": 120.0,
+          "attack_ms": 1.0,
+          "decay_ms": 42.0
+        },
+        "body": {
+          "level": 0.34,
+          "decay_ms": 230.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.14,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.74,
+          "decay_ms": 2.2,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 1.05,
+          "attack_ms": 0.0,
+          "decay_ms": 410.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "high-pass",
+          "cutoff_hz": 6100.0,
+          "resonance": 0.18,
+          "colour": -0.38,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.45,
+            "decay_ms": 210.0,
+            "pan": -0.18,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 1.57,
+            "level": 0.31,
+            "decay_ms": 155.0,
+            "pan": 0.16,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.43,
+            "level": 0.18,
+            "decay_ms": 95.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 7.0,
+          "amount": 0.35,
+          "curve": "soft-clip",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.52,
+          "micro_delay_ms": 0.38
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.72,
+          "drive": 0.65,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "tight-kick",
+      "display_name": "Tight Kick",
+      "trigger_note": 33,
+      "articulation": "tight-kick",
+      "family": "kick",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -7.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 240.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 68.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "kick",
+        "oscillator": "triangle",
+        "base_hz": 68.0,
+        "pitch": {
+          "start_cents": 1350.0,
+          "mid_cents": 430.0,
+          "attack_ms": 1.0,
+          "decay_ms": 38.0
+        },
+        "body": {
+          "level": 0.75,
+          "decay_ms": 175.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.24,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.7,
+          "decay_ms": 3.2,
+          "tone_hz": 5100.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.035,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 4.0,
+          "amount": 0.2,
+          "curve": "hard-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.0,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.75,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "clipped-kick",
+      "display_name": "Clipped Kick",
+      "trigger_note": 34,
+      "articulation": "clipped-kick",
+      "family": "kick",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -7.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 650.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 47.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "kick",
+        "oscillator": "pulse",
+        "base_hz": 47.0,
+        "pitch": {
+          "start_cents": 2900.0,
+          "mid_cents": 900.0,
+          "attack_ms": 1.2,
+          "decay_ms": 95.0
+        },
+        "body": {
+          "level": 1.25,
+          "decay_ms": 430.0,
+          "pulse_width": 0.42,
+          "shape": 0.55,
+          "overtone_level": 0.34,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 18.0,
+            "amount": 0.82,
+            "curve": "hard-clip",
+            "post_gain_db": -3.0
+          }
+        },
+        "click": {
+          "level": 0.42,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.08,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.42
+        },
+        "master_drive": {
+          "pre_gain_db": 13.0,
+          "amount": 0.78,
+          "curve": "fold",
+          "post_gain_db": -3.5
+        },
+        "stereo": {
+          "width": 0.0,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.9,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "sub-kick",
+      "display_name": "Sub Kick",
+      "trigger_note": 35,
+      "articulation": "sub-kick",
+      "family": "kick",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -6.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 1250.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 41.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "kick",
+        "oscillator": "sine",
+        "base_hz": 41.0,
+        "pitch": {
+          "start_cents": 1650.0,
+          "mid_cents": 320.0,
+          "attack_ms": 2.5,
+          "decay_ms": 110.0
+        },
+        "body": {
+          "level": 1.1,
+          "decay_ms": 1100.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.04,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.08,
+          "decay_ms": 12.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.015,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 5.0,
+          "amount": 0.28,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.0,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.35,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "kick",
+      "display_name": "House Kick",
+      "trigger_note": 36,
+      "articulation": "hit",
+      "family": "kick",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -7.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 650.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 52.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "kick",
+        "oscillator": "shaped",
+        "base_hz": 52.0,
+        "pitch": {
+          "start_cents": 2450.0,
+          "mid_cents": 720.0,
+          "attack_ms": 2.0,
+          "decay_ms": 72.0
+        },
+        "body": {
+          "level": 1.0,
+          "decay_ms": 520.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.2,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 9.0,
+            "amount": 0.42,
+            "curve": "cubic",
+            "post_gain_db": -1.5
+          }
+        },
+        "click": {
+          "level": 0.52,
+          "decay_ms": 7.0,
+          "tone_hz": 3900.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.05,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 7.0,
+          "amount": 0.38,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.0,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.58,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "rim",
+      "display_name": "Rim",
+      "trigger_note": 37,
+      "articulation": "rim",
+      "family": "percussion",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": -0.12,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 150.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "percussion",
+        "oscillator": "triangle",
+        "base_hz": 510.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.24,
+          "decay_ms": 45.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.8,
+          "decay_ms": 2.0,
+          "tone_hz": 7200.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.08,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.7,
+            "decay_ms": 55.0,
+            "pan": -0.15,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.71,
+            "level": 0.42,
+            "decay_ms": 31.0,
+            "pan": 0.18,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 5.18,
+            "level": 0.21,
+            "decay_ms": 18.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 8.0,
+          "amount": 0.42,
+          "curve": "hard-clip",
+          "post_gain_db": -2.0
+        },
+        "stereo": {
+          "width": 0.0,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "snare",
+      "display_name": "Tight Snare",
+      "trigger_note": 38,
+      "articulation": "hit",
+      "family": "snare",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 280.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 196.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "snare",
+        "oscillator": "shaped",
+        "base_hz": 196.0,
+        "pitch": {
+          "start_cents": 520.0,
+          "mid_cents": 120.0,
+          "attack_ms": 1.0,
+          "decay_ms": 42.0
+        },
+        "body": {
+          "level": 0.52,
+          "decay_ms": 180.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.2,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.68,
+          "decay_ms": 3.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.58,
+          "attack_ms": 0.0,
+          "decay_ms": 145.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 4200.0,
+          "resonance": 0.32,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.45,
+            "decay_ms": 210.0,
+            "pan": -0.18,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 1.57,
+            "level": 0.31,
+            "decay_ms": 155.0,
+            "pan": 0.16,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.43,
+            "level": 0.18,
+            "decay_ms": 95.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 7.0,
+          "amount": 0.35,
+          "curve": "soft-clip",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.25,
+          "micro_delay_ms": 0.12
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.72,
+          "drive": 0.65,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "house-clap",
+      "display_name": "House Clap",
+      "trigger_note": 39,
+      "articulation": "house-clap",
+      "family": "clap",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -7.5,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 580.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "clap",
+        "oscillator": "sine",
+        "base_hz": 1150.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.0,
+          "decay_ms": 380.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.3,
+          "decay_ms": 2.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.24,
+          "attack_ms": 0.0,
+          "decay_ms": 260.0,
+          "tail_level": 0.2,
+          "tail_decay_ms": 380.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3300.0,
+          "resonance": 0.35,
+          "colour": -0.08,
+          "drive": {
+            "pre_gain_db": 8.0,
+            "amount": 0.42,
+            "curve": "cubic",
+            "post_gain_db": -2.0
+          }
+        },
+        "modes": [],
+        "bursts": [
+          {
+            "time_ms": 0.0,
+            "decay_ms": 10.0,
+            "level": 1.0,
+            "pan": -0.25
+          },
+          {
+            "time_ms": 12.0,
+            "decay_ms": 11.0,
+            "level": 0.9,
+            "pan": 0.2
+          },
+          {
+            "time_ms": 26.0,
+            "decay_ms": 13.0,
+            "level": 0.75,
+            "pan": -0.1
+          },
+          {
+            "time_ms": 43.0,
+            "decay_ms": 17.0,
+            "level": 0.55,
+            "pan": 0.25
+          }
+        ],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 7.0,
+          "amount": 0.35,
+          "curve": "soft-clip",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.42,
+          "micro_delay_ms": 0.25
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.8,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.65,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 1.1,
+          "level": 0.08,
+          "stereo": 0.3
+        }
+      }
+    },
+    {
+      "id": "body-snare",
+      "display_name": "Body Snare",
+      "trigger_note": 40,
+      "articulation": "body-snare",
+      "family": "snare",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": -0.06,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 520.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 158.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "snare",
+        "oscillator": "triangle",
+        "base_hz": 158.0,
+        "pitch": {
+          "start_cents": 520.0,
+          "mid_cents": 120.0,
+          "attack_ms": 1.0,
+          "decay_ms": 42.0
+        },
+        "body": {
+          "level": 0.92,
+          "decay_ms": 390.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.32,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.42,
+          "decay_ms": 7.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.38,
+          "attack_ms": 0.0,
+          "decay_ms": 260.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 2400.0,
+          "resonance": 0.5,
+          "colour": 0.25,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.45,
+            "decay_ms": 210.0,
+            "pan": -0.18,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 1.57,
+            "level": 0.31,
+            "decay_ms": 155.0,
+            "pan": 0.16,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.43,
+            "level": 0.18,
+            "decay_ms": 95.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 7.0,
+          "amount": 0.35,
+          "curve": "soft-clip",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.25,
+          "micro_delay_ms": 0.12
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.72,
+          "drive": 0.65,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "closed-hat",
+      "display_name": "Closed Hat",
+      "trigger_note": 42,
+      "articulation": "closed",
+      "family": "hat",
+      "kind": "modeled",
+      "choke_group": 1,
+      "choke_release_ms": 4.0,
+      "gain_db": -13.0,
+      "pan": -0.12,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 180.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "hat",
+        "oscillator": "sine",
+        "base_hz": 8600.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.05,
+          "decay_ms": 55.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.62,
+          "decay_ms": 1.4,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.33,
+          "attack_ms": 0.0,
+          "decay_ms": 95.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 980.0,
+          "filter": "high-pass",
+          "cutoff_hz": 7600.0,
+          "resonance": 0.25,
+          "colour": -0.22,
+          "drive": {
+            "pre_gain_db": 5.0,
+            "amount": 0.24,
+            "curve": "soft-clip",
+            "post_gain_db": -2.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.42,
+            "decay_ms": 120.0,
+            "pan": -0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.447,
+            "level": 0.375,
+            "decay_ms": 111.0,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.93,
+            "level": 0.32999998,
+            "decay_ms": 102.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.617,
+            "level": 0.28499997,
+            "decay_ms": 93.0,
+            "pan": 0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.371,
+            "level": 0.23999998,
+            "decay_ms": 84.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 4.79,
+            "level": 0.19499998,
+            "decay_ms": 75.0,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.414,
+          "fm_index": 1.8,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.71,
+          "ring_amount": 0.48,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 6.0,
+          "amount": 0.28,
+          "curve": "cubic",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.24,
+          "micro_delay_ms": 0.08
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.55,
+          "drive": 0.25,
+          "decay": 0.2,
+          "brightness": 0.9,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 13.0,
+          "timing_ms": 0.0,
+          "level": 0.05,
+          "stereo": 0.35
+        }
+      }
+    },
+    {
+      "id": "pedal-hat",
+      "display_name": "Pedal Hat",
+      "trigger_note": 44,
+      "articulation": "pedal-hat",
+      "family": "hat",
+      "kind": "modeled",
+      "choke_group": 1,
+      "choke_release_ms": 4.0,
+      "gain_db": -13.0,
+      "pan": 0.1,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 110.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "hat",
+        "oscillator": "sine",
+        "base_hz": 7200.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.05,
+          "decay_ms": 55.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.5,
+          "decay_ms": 1.1,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.22,
+          "attack_ms": 0.0,
+          "decay_ms": 42.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 980.0,
+          "filter": "high-pass",
+          "cutoff_hz": 5700.0,
+          "resonance": 0.25,
+          "colour": -0.22,
+          "drive": {
+            "pre_gain_db": 5.0,
+            "amount": 0.24,
+            "curve": "soft-clip",
+            "post_gain_db": -2.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.42,
+            "decay_ms": 120.0,
+            "pan": -0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.447,
+            "level": 0.375,
+            "decay_ms": 111.0,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.93,
+            "level": 0.32999998,
+            "decay_ms": 102.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.617,
+            "level": 0.28499997,
+            "decay_ms": 93.0,
+            "pan": 0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.371,
+            "level": 0.144,
+            "decay_ms": 84.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 4.79,
+            "level": 0.11699999,
+            "decay_ms": 75.0,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.414,
+          "fm_index": 1.8,
+          "phase_amount": 0.0,
+          "ring_ratio": 3.73,
+          "ring_amount": 0.48,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 6.0,
+          "amount": 0.28,
+          "curve": "cubic",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.16,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.55,
+          "drive": 0.25,
+          "decay": 0.2,
+          "brightness": 0.9,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 13.0,
+          "timing_ms": 0.0,
+          "level": 0.05,
+          "stereo": 0.35
+        }
+      }
+    },
+    {
+      "id": "low-tom",
+      "display_name": "Low Tom",
+      "trigger_note": 45,
+      "articulation": "hit",
+      "family": "tom",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": -0.28,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 850.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 74.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "scale-degree",
+        "degree": 1,
+        "octave": 0
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "tom",
+        "oscillator": "sine",
+        "base_hz": 74.0,
+        "pitch": {
+          "start_cents": 920.0,
+          "mid_cents": 310.0,
+          "attack_ms": 2.0,
+          "decay_ms": 105.0
+        },
+        "body": {
+          "level": 1.0,
+          "decay_ms": 690.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.28,
+          "overtone_ratio": 1.97,
+          "drive": {
+            "pre_gain_db": 5.0,
+            "amount": 0.22,
+            "curve": "soft-clip",
+            "post_gain_db": -1.5
+          }
+        },
+        "click": {
+          "level": 0.22,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.05,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.47,
+            "level": 0.32,
+            "decay_ms": 380.0,
+            "pan": -0.2,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.18,
+            "level": 0.18,
+            "decay_ms": 220.0,
+            "pan": 0.18,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 3.71,
+            "level": 0.09,
+            "decay_ms": 110.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 3.0,
+          "amount": 0.18,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.32,
+          "micro_delay_ms": 0.16
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.52,
+          "decay": 0.32,
+          "brightness": 0.3,
+          "pitch": 0.3
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "open-hat",
+      "display_name": "Open Hat",
+      "trigger_note": 46,
+      "articulation": "open",
+      "family": "hat",
+      "kind": "modeled",
+      "choke_group": 1,
+      "choke_release_ms": 11.0,
+      "gain_db": -13.0,
+      "pan": 0.16,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 1650.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "hat",
+        "oscillator": "sine",
+        "base_hz": 6800.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.05,
+          "decay_ms": 420.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.34,
+          "decay_ms": 3.2,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.28,
+          "attack_ms": 0.0,
+          "decay_ms": 780.0,
+          "tail_level": 0.18,
+          "tail_decay_ms": 980.0,
+          "filter": "high-pass",
+          "cutoff_hz": 6800.0,
+          "resonance": 0.25,
+          "colour": -0.22,
+          "drive": {
+            "pre_gain_db": 5.0,
+            "amount": 0.24,
+            "curve": "soft-clip",
+            "post_gain_db": -2.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.42,
+            "decay_ms": 1250.0,
+            "pan": -0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.447,
+            "level": 0.375,
+            "decay_ms": 1156.25,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.93,
+            "level": 0.32999998,
+            "decay_ms": 1062.5,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.617,
+            "level": 0.28499997,
+            "decay_ms": 968.75,
+            "pan": 0.72,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.371,
+            "level": 0.23999998,
+            "decay_ms": 875.0,
+            "pan": -0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 4.79,
+            "level": 0.19499998,
+            "decay_ms": 781.25,
+            "pan": 0.72,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 3.0,
+              "amount": 0.12,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.414,
+          "fm_index": 1.8,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.71,
+          "ring_amount": 0.48,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 6.0,
+          "amount": 0.28,
+          "curve": "cubic",
+          "post_gain_db": -1.5
+        },
+        "stereo": {
+          "width": 0.56,
+          "micro_delay_ms": 0.35
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.55,
+          "drive": 0.25,
+          "decay": 0.45,
+          "brightness": 0.9,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 13.0,
+          "timing_ms": 0.0,
+          "level": 0.05,
+          "stereo": 0.35
+        }
+      }
+    },
+    {
+      "id": "mid-tom",
+      "display_name": "Mid Tom",
+      "trigger_note": 47,
+      "articulation": "hit",
+      "family": "tom",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": -0.05,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 680.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 103.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "scale-degree",
+        "degree": 3,
+        "octave": 0
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "tom",
+        "oscillator": "triangle",
+        "base_hz": 103.0,
+        "pitch": {
+          "start_cents": 760.0,
+          "mid_cents": 240.0,
+          "attack_ms": 1.5,
+          "decay_ms": 78.0
+        },
+        "body": {
+          "level": 0.9,
+          "decay_ms": 530.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.36,
+          "overtone_ratio": 2.04,
+          "drive": {
+            "pre_gain_db": 8.0,
+            "amount": 0.38,
+            "curve": "soft-clip",
+            "post_gain_db": -1.5
+          }
+        },
+        "click": {
+          "level": 0.3,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.07,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.47,
+            "level": 0.32,
+            "decay_ms": 380.0,
+            "pan": -0.2,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.18,
+            "level": 0.18,
+            "decay_ms": 220.0,
+            "pan": 0.18,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 3.71,
+            "level": 0.09,
+            "decay_ms": 110.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 3.0,
+          "amount": 0.18,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.32,
+          "micro_delay_ms": 0.16
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.52,
+          "decay": 0.32,
+          "brightness": 0.3,
+          "pitch": 0.3
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "zap-tom",
+      "display_name": "Zap Tom",
+      "trigger_note": 48,
+      "articulation": "zap-tom",
+      "family": "tom",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": 0.14,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 620.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 148.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "scale-degree",
+        "degree": 3,
+        "octave": 0
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "tom",
+        "oscillator": "shaped",
+        "base_hz": 148.0,
+        "pitch": {
+          "start_cents": 2100.0,
+          "mid_cents": 760.0,
+          "attack_ms": 1.0,
+          "decay_ms": 145.0
+        },
+        "body": {
+          "level": 0.7,
+          "decay_ms": 420.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.55,
+          "overtone_ratio": 2.61,
+          "drive": {
+            "pre_gain_db": 10.0,
+            "amount": 0.5,
+            "curve": "fold",
+            "post_gain_db": -1.5
+          }
+        },
+        "click": {
+          "level": 0.34,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.12,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.47,
+            "level": 0.32,
+            "decay_ms": 380.0,
+            "pan": -0.2,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.18,
+            "level": 0.18,
+            "decay_ms": 220.0,
+            "pan": 0.18,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 3.71,
+            "level": 0.09,
+            "decay_ms": 110.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 2.73,
+          "fm_index": 4.2,
+          "phase_amount": 0.9,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.22
+        },
+        "master_drive": {
+          "pre_gain_db": 3.0,
+          "amount": 0.18,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.32,
+          "micro_delay_ms": 0.16
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.52,
+          "decay": 0.32,
+          "brightness": 0.3,
+          "pitch": 0.3
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "crash",
+      "display_name": "Crash",
+      "trigger_note": 49,
+      "articulation": "crash",
+      "family": "cymbal",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -13.0,
+      "pan": -0.1,
+      "envelope": {
+        "attack_ms": 0.35,
+        "hold_ms": 8.0,
+        "decay_ms": 7000.0,
+        "release_ms": 90.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "cymbal",
+        "oscillator": "sine",
+        "base_hz": 620.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.06,
+          "decay_ms": 900.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.72,
+          "decay_ms": 12.0,
+          "tone_hz": 2200.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.46,
+          "attack_ms": 0.0,
+          "decay_ms": 1450.0,
+          "tail_level": 0.28,
+          "tail_decay_ms": 7000.0,
+          "filter": "high-pass",
+          "cutoff_hz": 3700.0,
+          "resonance": 0.18,
+          "colour": -0.1,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.46,
+            "decay_ms": 6500.0,
+            "pan": -0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.37,
+            "level": 0.42200002,
+            "decay_ms": 6142.5,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.79,
+            "level": 0.384,
+            "decay_ms": 5785.0,
+            "pan": -0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.44,
+            "level": 0.34600002,
+            "decay_ms": 5427.5005,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.11,
+            "level": 0.30800003,
+            "decay_ms": 5070.0,
+            "pan": -0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 4.07,
+            "level": 0.27,
+            "decay_ms": 4712.5,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 5.63,
+            "level": 0.23200002,
+            "decay_ms": 4355.0,
+            "pan": -0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 7.18,
+            "level": 0.194,
+            "decay_ms": 3997.5,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.73,
+          "fm_index": 1.4,
+          "phase_amount": 0.35,
+          "ring_ratio": 2.71,
+          "ring_amount": 0.32,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 6.0,
+          "amount": 0.26,
+          "curve": "soft-clip",
+          "post_gain_db": -2.0
+        },
+        "stereo": {
+          "width": 0.92,
+          "micro_delay_ms": 1.25
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.34,
+          "brightness": 0.78,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 22.0,
+          "timing_ms": 0.0,
+          "level": 0.04,
+          "stereo": 0.45
+        }
+      }
+    },
+    {
+      "id": "high-tom",
+      "display_name": "High Tom",
+      "trigger_note": 50,
+      "articulation": "hit",
+      "family": "tom",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": 0.25,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 480.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": 151.0,
+      "tuning_limits": {
+        "down_cents": -1200,
+        "up_cents": 1200
+      },
+      "follow_key": {
+        "type": "scale-degree",
+        "degree": 5,
+        "octave": 0
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "tom",
+        "oscillator": "sine",
+        "base_hz": 151.0,
+        "pitch": {
+          "start_cents": 610.0,
+          "mid_cents": 180.0,
+          "attack_ms": 1.0,
+          "decay_ms": 58.0
+        },
+        "body": {
+          "level": 0.78,
+          "decay_ms": 360.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.44,
+          "overtone_ratio": 2.13,
+          "drive": {
+            "pre_gain_db": 4.0,
+            "amount": 0.18,
+            "curve": "soft-clip",
+            "post_gain_db": -1.5
+          }
+        },
+        "click": {
+          "level": 0.4,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.08,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.47,
+            "level": 0.32,
+            "decay_ms": 380.0,
+            "pan": -0.2,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 2.18,
+            "level": 0.18,
+            "decay_ms": 220.0,
+            "pan": 0.18,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 3.71,
+            "level": 0.09,
+            "decay_ms": 110.0,
+            "pan": 0.0,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 3.0,
+          "amount": 0.18,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.32,
+          "micro_delay_ms": 0.16
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.52,
+          "decay": 0.32,
+          "brightness": 0.3,
+          "pitch": 0.3
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    },
+    {
+      "id": "ride",
+      "display_name": "Ride",
+      "trigger_note": 51,
+      "articulation": "ride",
+      "family": "cymbal",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -13.0,
+      "pan": 0.12,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 8.0,
+        "decay_ms": 6500.0,
+        "release_ms": 90.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "cymbal",
+        "oscillator": "sine",
+        "base_hz": 870.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.18,
+          "decay_ms": 2300.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.88,
+          "decay_ms": 4.0,
+          "tone_hz": 5900.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.14,
+          "attack_ms": 0.0,
+          "decay_ms": 720.0,
+          "tail_level": 0.12,
+          "tail_decay_ms": 6500.0,
+          "filter": "band-pass",
+          "cutoff_hz": 6200.0,
+          "resonance": 0.62,
+          "colour": 0.1,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.46,
+            "decay_ms": 5500.0,
+            "pan": -0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.51,
+            "level": 0.42200002,
+            "decay_ms": 5197.5,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.05,
+            "level": 0.384,
+            "decay_ms": 4895.0,
+            "pan": -0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.88,
+            "level": 0.34600002,
+            "decay_ms": 4592.5,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.94,
+            "level": 0.30800003,
+            "decay_ms": 4290.0,
+            "pan": -0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 5.27,
+            "level": 0.27,
+            "decay_ms": 3987.5002,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 2.0,
+              "amount": 0.08,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 2.31,
+          "fm_index": 0.45,
+          "phase_amount": 0.12,
+          "ring_ratio": 3.97,
+          "ring_amount": 0.18,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 4.0,
+          "amount": 0.14,
+          "curve": "soft-clip",
+          "post_gain_db": -2.0
+        },
+        "stereo": {
+          "width": 0.56,
+          "micro_delay_ms": 0.28
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.34,
+          "brightness": 0.78,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 8.0,
+          "timing_ms": 0.0,
+          "level": 0.04,
+          "stereo": 0.45
+        }
+      }
+    },
+    {
+      "id": "china",
+      "display_name": "China",
+      "trigger_note": 52,
+      "articulation": "china",
+      "family": "cymbal",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -13.0,
+      "pan": 0.28,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 8.0,
+        "decay_ms": 3500.0,
+        "release_ms": 90.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "cymbal",
+        "oscillator": "sine",
+        "base_hz": 730.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.06,
+          "decay_ms": 520.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.62,
+          "decay_ms": 7.0,
+          "tone_hz": 3100.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.34,
+          "attack_ms": 0.0,
+          "decay_ms": 620.0,
+          "tail_level": 0.16,
+          "tail_decay_ms": 3200.0,
+          "filter": "high-pass",
+          "cutoff_hz": 2800.0,
+          "resonance": 0.38,
+          "colour": -0.42,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.46,
+            "decay_ms": 2800.0,
+            "pan": -0.82,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 6.0,
+              "amount": 0.28,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.21,
+            "level": 0.42200002,
+            "decay_ms": 2646.0,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 6.0,
+              "amount": 0.28,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 1.83,
+            "level": 0.384,
+            "decay_ms": 2492.0,
+            "pan": -0.82,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 6.0,
+              "amount": 0.28,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 2.17,
+            "level": 0.34600002,
+            "decay_ms": 2338.0,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 6.0,
+              "amount": 0.28,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 3.46,
+            "level": 0.30800003,
+            "decay_ms": 2184.0,
+            "pan": -0.82,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 6.0,
+              "amount": 0.28,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 4.31,
+            "level": 0.27,
+            "decay_ms": 2030.0001,
+            "pan": 0.82,
+            "shape": "sine",
+            "drive": {
+              "pre_gain_db": 6.0,
+              "amount": 0.28,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          },
+          {
+            "ratio": 6.72,
+            "level": 0.23200002,
+            "decay_ms": 1876.0,
+            "pan": -0.82,
+            "shape": "triangle",
+            "drive": {
+              "pre_gain_db": 6.0,
+              "amount": 0.28,
+              "curve": "cubic",
+              "post_gain_db": -1.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.41,
+          "fm_index": 3.1,
+          "phase_amount": 0.7,
+          "ring_ratio": 1.91,
+          "ring_amount": 0.65,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 10.0,
+          "amount": 0.48,
+          "curve": "fold",
+          "post_gain_db": -2.0
+        },
+        "stereo": {
+          "width": 0.82,
+          "micro_delay_ms": 0.72
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.34,
+          "brightness": 0.78,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 28.0,
+          "timing_ms": 0.0,
+          "level": 0.04,
+          "stereo": 0.45
+        }
+      }
+    },
+    {
+      "id": "shaker",
+      "display_name": "Shaker",
+      "trigger_note": 54,
+      "articulation": "shaker",
+      "family": "percussion",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -11.0,
+      "pan": -0.2,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 260.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "percussion",
+        "oscillator": "sine",
+        "base_hz": 4900.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.0,
+          "decay_ms": 380.0,
+          "pulse_width": 0.48,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.0,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.12,
+          "attack_ms": 0.0,
+          "decay_ms": 150.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "high-pass",
+          "cutoff_hz": 5800.0,
+          "resonance": 0.25,
+          "colour": -0.55,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [],
+        "bursts": [
+          {
+            "time_ms": 0.0,
+            "decay_ms": 12.0,
+            "level": 1.0,
+            "pan": -0.6
+          },
+          {
+            "time_ms": 18.0,
+            "decay_ms": 9.0,
+            "level": 0.7,
+            "pan": 0.5
+          },
+          {
+            "time_ms": 39.0,
+            "decay_ms": 11.0,
+            "level": 0.62,
+            "pan": -0.2
+          },
+          {
+            "time_ms": 67.0,
+            "decay_ms": 15.0,
+            "level": 0.48,
+            "pan": 0.6
+          }
+        ],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 2.3,
+          "ring_amount": 0.0,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 3.0,
+          "amount": 0.18,
+          "curve": "soft-clip",
+          "post_gain_db": -1.0
+        },
+        "stereo": {
+          "width": 0.85,
+          "micro_delay_ms": 0.7
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 2.2,
+          "level": 0.12,
+          "stereo": 0.7
+        }
+      }
+    },
+    {
+      "id": "cowbell",
+      "display_name": "Cowbell",
+      "trigger_note": 56,
+      "articulation": "cowbell",
+      "family": "percussion",
+      "kind": "modeled",
+      "choke_group": null,
+      "choke_release_ms": 0.0,
+      "gain_db": -9.0,
+      "pan": 0.16,
+      "envelope": {
+        "attack_ms": 0.05,
+        "hold_ms": 1.5,
+        "decay_ms": 520.0,
+        "release_ms": 24.0
+      },
+      "samples": [],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": null,
+      "advanced_model": {
+        "algorithm": "percussion",
+        "oscillator": "pulse",
+        "base_hz": 540.0,
+        "pitch": {
+          "start_cents": 0.0,
+          "mid_cents": 0.0,
+          "attack_ms": 0.0,
+          "decay_ms": 80.0
+        },
+        "body": {
+          "level": 0.42,
+          "decay_ms": 310.0,
+          "pulse_width": 0.37,
+          "shape": 0.55,
+          "overtone_level": 0.12,
+          "overtone_ratio": 2.0,
+          "drive": {
+            "pre_gain_db": 3.0,
+            "amount": 0.2,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "click": {
+          "level": 0.18,
+          "decay_ms": 8.0,
+          "tone_hz": 2500.0,
+          "noise_mix": 0.5,
+          "high_pass_hz": 900.0,
+          "drive": {
+            "pre_gain_db": 2.0,
+            "amount": 0.15,
+            "curve": "cubic",
+            "post_gain_db": 0.0
+          }
+        },
+        "noise": {
+          "level": 0.025,
+          "attack_ms": 0.0,
+          "decay_ms": 90.0,
+          "tail_level": 0.0,
+          "tail_decay_ms": 200.0,
+          "filter": "band-pass",
+          "cutoff_hz": 3500.0,
+          "resonance": 0.25,
+          "colour": 0.0,
+          "drive": {
+            "pre_gain_db": 0.0,
+            "amount": 0.0,
+            "curve": "soft-clip",
+            "post_gain_db": 0.0
+          }
+        },
+        "modes": [
+          {
+            "ratio": 1.0,
+            "level": 0.7,
+            "decay_ms": 360.0,
+            "pan": -0.22,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          },
+          {
+            "ratio": 1.49,
+            "level": 0.68,
+            "decay_ms": 270.0,
+            "pan": 0.22,
+            "shape": "pulse",
+            "drive": {
+              "pre_gain_db": 0.0,
+              "amount": 0.0,
+              "curve": "soft-clip",
+              "post_gain_db": 0.0
+            }
+          }
+        ],
+        "bursts": [],
+        "modulation": {
+          "fm_ratio": 1.7,
+          "fm_index": 0.0,
+          "phase_amount": 0.0,
+          "ring_ratio": 1.49,
+          "ring_amount": 0.42,
+          "feedback": 0.0
+        },
+        "master_drive": {
+          "pre_gain_db": 8.0,
+          "amount": 0.38,
+          "curve": "cubic",
+          "post_gain_db": -2.0
+        },
+        "stereo": {
+          "width": 0.0,
+          "micro_delay_ms": 0.0
+        },
+        "velocity": {
+          "click": 0.35,
+          "noise": 0.25,
+          "drive": 0.25,
+          "decay": 0.18,
+          "brightness": 0.3,
+          "pitch": 0.12
+        },
+        "variation": {
+          "pitch_cents": 0.0,
+          "timing_ms": 0.0,
+          "level": 0.0,
+          "stereo": 0.0
+        }
+      }
+    }
+  ],
+  "processing": {
+    "high_pass_hz": 12.0,
+    "low_pass_hz": 19500.0,
+    "saturation": 0.12,
+    "transient": 0.38,
+    "body": 0.28,
+    "parallel_compression": 0.28,
+    "room_amount": 0.0,
+    "room_decay": 0.2,
+    "output_gain_db": 1.0,
+    "ceiling_dbfs": -1.0
+  }
+}

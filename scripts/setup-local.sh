@@ -8,6 +8,7 @@ export XDG_STATE_HOME="$USER_DIR/state"
 export XDG_DATA_HOME="$USER_DIR/data"
 export SHSYNTH_PRESET_DIR="$USER_DIR/presets/synthv1"
 export SHSYNTH_LOOP_INBOX="$USER_DIR/data/shsynth/loop-inbox"
+export SHSYNTH_KIT_DIR="${SHSYNTH_KIT_DIR:-$ROOT/kits}"
 export SHSYNTH_BIN="${SHSYNTH_BIN:-$ROOT/target/debug/shr}"
 
 if [[ ! -x "$SHSYNTH_BIN" ]]; then

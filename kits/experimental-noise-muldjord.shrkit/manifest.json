@@ -1,0 +1,1121 @@
+{
+  "format_version": 1,
+  "kit_id": "experimental-noise-muldjord",
+  "display_name": "Experimental Noise (Muldjord)",
+  "metadata": {
+    "author": "Lars Muldjord; FreePats stereo assembly by roberto@zenvoid.org; SHR package conversion by SHR Drums contributors",
+    "source": "https://freepats.zenvoid.org/Percussion/acoustic-drum-kit.html · MuldjordKit SFZ+WAV 2020-10-18",
+    "licence": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+    "attribution": "Drum samples provided by DrumGizmo.org; original recordings by Lars Muldjord; FreePats stereo assembly by roberto@zenvoid.org",
+    "modification_notes": "Selected three velocity bands with two deterministic round robins per piece; remapped triggers to GM percussion notes; preserved stereo attacks and tails; stored reviewed offline body/ring candidates from representative mid-layer tail scans; added independently tunable modeled bodies and bounded bus processing. Audible owner review remains pending.",
+    "source_hashes": {
+      "LICENSE.txt": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+      "MuldjordKit 20201018.sfz": "410e17d984b52ab9323b103324ea99e8021cc7631469d81b772ff6d1c4c0f93b",
+      "MuldjordKit-SFZ+WAV-20201018.7z": "b18dd10d8eab2b812a6624f25d4e05d5ecbf9d44114557b77ba62323472bddfe",
+      "README.txt": "d3d69df4db7bd93b568af9cbc901a9ac00bf17a8f98b9229787bd6023cc4d665"
+    }
+  },
+  "engine": {
+    "minimum": "0.1.0",
+    "maximum_exclusive": "1.0.0"
+  },
+  "max_polyphony": 32,
+  "max_tail_seconds": 12.0,
+  "articulations": {
+    "closed": 42,
+    "crash": 49,
+    "open": 46,
+    "ride": 51
+  },
+  "voices": [
+    {
+      "id": "kick",
+      "display_name": "Kick",
+      "trigger_note": 36,
+      "articulation": "hit",
+      "family": "kick",
+      "kind": "hybrid",
+      "choke_group": null,
+      "gain_db": -6.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 900.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/kick-4-KdrumL.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 56523
+          },
+          "sha256": "98c81d1d4b9756114dd76a1a2167c4394df14009d3b6fd51ac414ea796d2d36b"
+        },
+        {
+          "path": "samples/kick-6-KdrumL.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 62223
+          },
+          "sha256": "195a64ef352c0e675229b617bd4e2a38157b1500a8924793ec3882bb2be11032"
+        },
+        {
+          "path": "samples/kick-15-KdrumL.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 91174
+          },
+          "sha256": "180e33c9d62f8679831df3759a4a78b5dd3292a71cc4ae324f259436292a5ad3"
+        },
+        {
+          "path": "samples/kick-16-KdrumL.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 68934
+          },
+          "sha256": "14c098f08f9e1f03da92058e605647e83cefa2dd6a6ac78c6f56ac820c5c5aa9"
+        },
+        {
+          "path": "samples/kick-23-KdrumL.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 72583
+          },
+          "sha256": "d67956983d2238bcdae183f25bacc9a70f97df95aed9e130b309340eb34bed63"
+        },
+        {
+          "path": "samples/kick-24-KdrumL.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 86564
+          },
+          "sha256": "7cc6b16bd4ec7d55c52be7e010d0eb1784e9ed8d70e0217400fa2df814e5b58b"
+        }
+      ],
+      "base_pitch_hz": 36.0,
+      "tuning_limits": {
+        "down_cents": -400,
+        "up_cents": 400
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": {
+        "body_hz": 36.0,
+        "body_decay_ms": 700.0,
+        "pitch_drop_cents": 500.0,
+        "noise_amount": 0.03,
+        "noise_decay_ms": 120.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "snare",
+      "display_name": "Snare",
+      "trigger_note": 38,
+      "articulation": "hit",
+      "family": "snare",
+      "kind": "hybrid",
+      "choke_group": null,
+      "gain_db": -6.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 900.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/snare-4-Snare.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 77041
+          },
+          "sha256": "b4c1f8d55040363e5a6e95563971020e09b91781ea5b7c465a284df393c94020"
+        },
+        {
+          "path": "samples/snare-5-Snare.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 80506
+          },
+          "sha256": "44d99fa9ab05c97fe00ccbf60ab55fc1865f0925b2105f37a56468ca9acaf6d5"
+        },
+        {
+          "path": "samples/snare-25-Snare.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 115445
+          },
+          "sha256": "6cf733117debc4387012d05f0d8ea761f9a8e591a406a620ca9c07374ca9820b"
+        },
+        {
+          "path": "samples/snare-26-Snare.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 91983
+          },
+          "sha256": "a18c1910a6f61f5c98ada12783a02f0705699612e63166c68ee31b5ce8e13a0a"
+        },
+        {
+          "path": "samples/snare-45-Snare.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 124015
+          },
+          "sha256": "b9a94eb5d6cca34da236f91661407a9f5f99f2d82c8587d331a3cdf7d1910138"
+        },
+        {
+          "path": "samples/snare-46-Snare.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 99653
+          },
+          "sha256": "bf0983c986f1310dfc52b141216a1f0bf0fdb6f93345babb2a5cb8043aaedeea"
+        }
+      ],
+      "base_pitch_hz": 298.0,
+      "tuning_limits": {
+        "down_cents": -400,
+        "up_cents": 400
+      },
+      "follow_key": {
+        "type": "tonic"
+      },
+      "modeled": {
+        "body_hz": 298.0,
+        "body_decay_ms": 700.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.5,
+        "noise_decay_ms": 120.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "low-tom",
+      "display_name": "Low Tom",
+      "trigger_note": 45,
+      "articulation": "hit",
+      "family": "tom",
+      "kind": "hybrid",
+      "choke_group": null,
+      "gain_db": -6.0,
+      "pan": -0.25,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 900.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/low-tom-2-Tom4.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 252311
+          },
+          "sha256": "e865d6c2ae931a9ae1565ca08bdb8a9681a5e762b5ecda47375ebd27b74e1dc6"
+        },
+        {
+          "path": "samples/low-tom-3-Tom4.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 257846
+          },
+          "sha256": "585564b6517461379943717eb1160c308d3d10258a6509aaa5ddde6c3161a379"
+        },
+        {
+          "path": "samples/low-tom-10-Tom4.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 220858
+          },
+          "sha256": "ff7c9889e17a433398cedd63ec5ba55ee9b72828203f452bb7200359284c0da1"
+        },
+        {
+          "path": "samples/low-tom-11-Tom4.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 234365
+          },
+          "sha256": "68405b0ca3941838b46498c8ac04b5a6636def5602769b8c42bf427367bb727d"
+        },
+        {
+          "path": "samples/low-tom-19-Tom4.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 210992
+          },
+          "sha256": "916ed91ad507a39b4b3227c2274702ef8854049feef06e815a8d5e8857589b6e"
+        },
+        {
+          "path": "samples/low-tom-20-Tom4.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 209987
+          },
+          "sha256": "f0eff5c69018038f0d15bdf2a7927324afe4c6e814b94b11ae6f8af9e34aaed2"
+        }
+      ],
+      "base_pitch_hz": 66.0,
+      "tuning_limits": {
+        "down_cents": -400,
+        "up_cents": 400
+      },
+      "follow_key": {
+        "type": "scale-degree",
+        "degree": 1,
+        "octave": 0
+      },
+      "modeled": {
+        "body_hz": 66.0,
+        "body_decay_ms": 700.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.03,
+        "noise_decay_ms": 120.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "mid-tom",
+      "display_name": "Mid Tom",
+      "trigger_note": 47,
+      "articulation": "hit",
+      "family": "tom",
+      "kind": "hybrid",
+      "choke_group": null,
+      "gain_db": -6.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 900.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/mid-tom-2-Tom3.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 216214
+          },
+          "sha256": "72366894e1225994269499d9b21cbd08078edc7c3a9a86ae9df50bd5c16cabac"
+        },
+        {
+          "path": "samples/mid-tom-3-Tom3.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 168787
+          },
+          "sha256": "55c1d97889dca4452ed257349166e0da5e767e70cc7965549bd36b71235f90ce"
+        },
+        {
+          "path": "samples/mid-tom-7-Tom3.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 213185
+          },
+          "sha256": "b66c675aadad91ad89fff685945df1c2e2cc7e32ef6129a745285d535f4e52aa"
+        },
+        {
+          "path": "samples/mid-tom-8-Tom3.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 185054
+          },
+          "sha256": "09aa817fdcc441ce2e0ba013027e0e4bb04599caf8b58d1effde6a77a3c0e2d7"
+        },
+        {
+          "path": "samples/mid-tom-14-Tom3.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 181033
+          },
+          "sha256": "22de5a0da11ccc7372464161ad9df14d2bd006084765b40ea48dbf5c6a56cd77"
+        },
+        {
+          "path": "samples/mid-tom-15-Tom3.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 167789
+          },
+          "sha256": "d98ece471f45f857c1f1459aa344a70f5e122636be9044541e9551f780ad0387"
+        }
+      ],
+      "base_pitch_hz": 87.0,
+      "tuning_limits": {
+        "down_cents": -400,
+        "up_cents": 400
+      },
+      "follow_key": {
+        "type": "scale-degree",
+        "degree": 3,
+        "octave": 0
+      },
+      "modeled": {
+        "body_hz": 87.0,
+        "body_decay_ms": 700.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.03,
+        "noise_decay_ms": 120.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "high-tom",
+      "display_name": "High Tom",
+      "trigger_note": 50,
+      "articulation": "hit",
+      "family": "tom",
+      "kind": "hybrid",
+      "choke_group": null,
+      "gain_db": -6.0,
+      "pan": 0.25,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 900.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/high-tom-2-Tom1.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 194322
+          },
+          "sha256": "9a0eaba994fa1d98d70992f66cce086a737b6bfb3f951b3caad57375a27f5b9d"
+        },
+        {
+          "path": "samples/high-tom-3-Tom1.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 205145
+          },
+          "sha256": "a6aa76306fd9a07e78602a52650de0633910ee7ee9899abd482ddbc887803709"
+        },
+        {
+          "path": "samples/high-tom-6-Tom1.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 204408
+          },
+          "sha256": "7623e78bda2fb25abe7736bf01230244d32fb038603299a947c17fee34a95b19"
+        },
+        {
+          "path": "samples/high-tom-7-Tom1.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 199569
+          },
+          "sha256": "d8511d00c1faa3123f515f7d68a458337880b68ea5fc2eb22c645e216e12797c"
+        },
+        {
+          "path": "samples/high-tom-10-Tom1.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 200084
+          },
+          "sha256": "dbac838d65a99edd9fc2f9ae1b466fa5f8f1f3d1011990a9f5d4c8f36e7a5ddc"
+        },
+        {
+          "path": "samples/high-tom-11-Tom1.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "hit",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 187274
+          },
+          "sha256": "c988d653bceefc65ec0f64ce0ccd57b6d6e2dbe333cba04ce9256706b96c6721"
+        }
+      ],
+      "base_pitch_hz": 118.0,
+      "tuning_limits": {
+        "down_cents": -400,
+        "up_cents": 400
+      },
+      "follow_key": {
+        "type": "scale-degree",
+        "degree": 5,
+        "octave": 0
+      },
+      "modeled": {
+        "body_hz": 118.0,
+        "body_decay_ms": 700.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.03,
+        "noise_decay_ms": 120.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "closed-hat",
+      "display_name": "Closed Hat",
+      "trigger_note": 42,
+      "articulation": "closed",
+      "family": "cymbal",
+      "kind": "hybrid",
+      "choke_group": 1,
+      "gain_db": -9.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 900.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/closed-hat-2-HihatClosed.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "closed",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 20017
+          },
+          "sha256": "ce183e213271d1c47d912c3edefa63dacf5d6e8dd974f4dca591ef796cc04c3f"
+        },
+        {
+          "path": "samples/closed-hat-3-HihatClosed.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "closed",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 36177
+          },
+          "sha256": "5c2a9c69def8ca14f1ce65f3c98a5c41f3a28fd5315ada7be52696d11aa96000"
+        },
+        {
+          "path": "samples/closed-hat-14-HihatClosed.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "closed",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 22922
+          },
+          "sha256": "0609fcfa8a13e28d1784597b4d69a5cad663669361cf702e663a49105ca6e73a"
+        },
+        {
+          "path": "samples/closed-hat-15-HihatClosed.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "closed",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 25091
+          },
+          "sha256": "b44e297d8f710f79de350fc0993ee83efd9cbbcc4fe6aeb27a31248746e69a55"
+        },
+        {
+          "path": "samples/closed-hat-28-HihatClosed.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "closed",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 29826
+          },
+          "sha256": "1c62df0d42abfa65e48f65f8b7bd3dc6296ac0c6be66f872c40005f6a98e912f"
+        },
+        {
+          "path": "samples/closed-hat-29-HihatClosed.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "closed",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 25240
+          },
+          "sha256": "7fee0b8d4b09a8c999eb78cb5a487be7e49d1d353fa0e2a218edd62ef055c313"
+        }
+      ],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": {
+        "body_hz": 8000.0,
+        "body_decay_ms": 180.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.5,
+        "noise_decay_ms": 900.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "open-hat",
+      "display_name": "Open Hat",
+      "trigger_note": 46,
+      "articulation": "open",
+      "family": "cymbal",
+      "kind": "hybrid",
+      "choke_group": 1,
+      "gain_db": -9.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 2000.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/open-hat-2-HihatOpen.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "open",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 47884
+          },
+          "sha256": "c3c0ca2d4885d65bda82121ed6b0defd87ff7ac4e431cefc2aaef03f273dd875"
+        },
+        {
+          "path": "samples/open-hat-3-HihatOpen.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "open",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 38666
+          },
+          "sha256": "70f88e084eab313c4cc43900cd433414df1ee0ad538a3662e547e2c98daa369a"
+        },
+        {
+          "path": "samples/open-hat-14-HihatOpen.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "open",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 65804
+          },
+          "sha256": "fff66ee82832b1cc2a858e298ad74157f9f83adea78763e2e8ac4571c68a9f81"
+        },
+        {
+          "path": "samples/open-hat-15-HihatOpen.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "open",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 58226
+          },
+          "sha256": "a25a63f4afe58f137b0f4f620184e0eeda2b00eb393602ba9bb516e657af96b4"
+        },
+        {
+          "path": "samples/open-hat-28-HihatOpen.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "open",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 81214
+          },
+          "sha256": "17c418103fb7c40545068847561229f6209405e1222ed26d0fd362fe4215f116"
+        },
+        {
+          "path": "samples/open-hat-29-HihatOpen.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "open",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 70440
+          },
+          "sha256": "c18956c279396ea92c647dfb86f7e9bab16de3dfbd2eddce30e5968af293d8ae"
+        }
+      ],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": {
+        "body_hz": 7000.0,
+        "body_decay_ms": 180.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.5,
+        "noise_decay_ms": 900.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "crash",
+      "display_name": "Crash",
+      "trigger_note": 49,
+      "articulation": "crash",
+      "family": "cymbal",
+      "kind": "hybrid",
+      "choke_group": null,
+      "gain_db": -9.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 7000.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/crash-1-CrashL.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "crash",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 380529
+          },
+          "sha256": "99bcc4294579e07563d02a3e2f4c909d4d11d4c62b11e619f0d0797e0d29dda0"
+        },
+        {
+          "path": "samples/crash-2-CrashL.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "crash",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 400980
+          },
+          "sha256": "e23f9a90073b43d34ecd4ec617f195110154dd0d0db90e32a179c009e936eb95"
+        },
+        {
+          "path": "samples/crash-4-CrashL.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "crash",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 413137
+          },
+          "sha256": "de14606d85dfa3a7c614ec779506d4bac0fc26782f398b1e054a74f1811e9c96"
+        },
+        {
+          "path": "samples/crash-5-CrashL.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "crash",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 417921
+          },
+          "sha256": "4fa6e580bd343bc851d69c2c9529f90da411f251c1c1168cf1a61bc40f48d62d"
+        },
+        {
+          "path": "samples/crash-8-CrashL.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "crash",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 392721
+          },
+          "sha256": "fa94d72fec19b9469e847db01b0f2f21dbdeb7a3b586337f9ea1c79bc20cf5a6"
+        },
+        {
+          "path": "samples/crash-9-CrashL.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "crash",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 408809
+          },
+          "sha256": "5a9a3f59812a64daa02ff33a71ebbfba387d5d1d1ac70a2a8d44e262580b37a1"
+        }
+      ],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": {
+        "body_hz": 4500.0,
+        "body_decay_ms": 180.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.5,
+        "noise_decay_ms": 900.0,
+        "metallic_amount": 0.5
+      }
+    },
+    {
+      "id": "ride",
+      "display_name": "Ride",
+      "trigger_note": 51,
+      "articulation": "ride",
+      "family": "cymbal",
+      "kind": "hybrid",
+      "choke_group": null,
+      "gain_db": -9.0,
+      "pan": 0.0,
+      "envelope": {
+        "attack_ms": 0.1,
+        "hold_ms": 4.0,
+        "decay_ms": 7000.0,
+        "release_ms": 30.0
+      },
+      "samples": [
+        {
+          "path": "samples/ride-1-RideL.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 1,
+          "articulation": "ride",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 574798
+          },
+          "sha256": "c11fc3430f3c6ac2c488cd7c0972b8849aed530cc438504db110b532de70337b"
+        },
+        {
+          "path": "samples/ride-2-RideL.wav",
+          "velocity_min": 1,
+          "velocity_max": 42,
+          "round_robin": 2,
+          "articulation": "ride",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 654283
+          },
+          "sha256": "e99c85db965af0e2318b9e9fb296a0a7833487dc19ec1bc8dc7ee155794f163f"
+        },
+        {
+          "path": "samples/ride-5-RideL.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 1,
+          "articulation": "ride",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 753834
+          },
+          "sha256": "10d2dc8fdda9ded2b98b3633417617d9690f9e16c9521fb3a79ae81c8bc2f7ed"
+        },
+        {
+          "path": "samples/ride-6-RideL.wav",
+          "velocity_min": 43,
+          "velocity_max": 84,
+          "round_robin": 2,
+          "articulation": "ride",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 785231
+          },
+          "sha256": "af1e27407c3082d257f1f799f7f966b5a14d5f6921b03751028f99f7d6ab67c2"
+        },
+        {
+          "path": "samples/ride-9-RideL.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 1,
+          "articulation": "ride",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 883294
+          },
+          "sha256": "d47997a220c243f54f23ee509b5c6981d3bcb6abbf92674ee22b68976b03a0a2"
+        },
+        {
+          "path": "samples/ride-10-RideL.wav",
+          "velocity_min": 85,
+          "velocity_max": 127,
+          "round_robin": 2,
+          "articulation": "ride",
+          "gain_db": 0.0,
+          "metadata": {
+            "sample_rate": 44100,
+            "channels": 2,
+            "frames": 950881
+          },
+          "sha256": "2ffec9fdf6b26e9a3a7caac78d8a07eeb5572f45f9f6d30b74713b67b8493774"
+        }
+      ],
+      "base_pitch_hz": null,
+      "tuning_limits": {
+        "down_cents": 0,
+        "up_cents": 0
+      },
+      "follow_key": {
+        "type": "excluded"
+      },
+      "modeled": {
+        "body_hz": 3000.0,
+        "body_decay_ms": 180.0,
+        "pitch_drop_cents": 0.0,
+        "noise_amount": 0.5,
+        "noise_decay_ms": 900.0,
+        "metallic_amount": 0.5
+      }
+    }
+  ],
+  "processing": {
+    "high_pass_hz": 22.0,
+    "low_pass_hz": 14000.0,
+    "saturation": 0.32,
+    "transient": 0.25,
+    "body": 0.1,
+    "parallel_compression": 0.28,
+    "room_amount": 0.0,
+    "room_decay": 0.2,
+    "output_gain_db": -7.0,
+    "ceiling_dbfs": -1.5
+  }
+}

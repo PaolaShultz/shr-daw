@@ -40,6 +40,7 @@ accepts:
 | Yoshimi | `yoshimi.command`, `.client`, `.midi_output`, repeated `.preset_root` and `.category`, `.presets_per_category` |
 | FluidSynth | `fluidsynth.command`, `.client`, `.midi_output`, `.gain`, repeated `.soundfont` |
 | Moj Sint | `moj_sint.command`, `.client`, `.midi_output`, repeated `.preset_root`, and exactly two `.output` short names |
+| SHR Drums | `drums.client`, `.kit_directory`, and `.maximum_callback_frames` |
 
 Moj Sint defaults to command `moj-sint`, client/MIDI identity
 `shs-moj-sint`, and output short names `out_l` then `out_r`. Discovery indexes
@@ -294,6 +295,14 @@ drums.kit_directory=
 drums.maximum_callback_frames=4096
 audio.graph.confirm_doubled_monitoring=false
 ```
+
+The distributed setup fills an empty or legacy default `drums.kit_directory`
+with the installed public kit root, normally `/usr/local/share/shsynth/kits`.
+Repository-local helpers instead select the checkout's tracked `kits/` tree.
+An explicitly configured non-default directory is preserved, and
+`SHSYNTH_KIT_DIR` can deliberately select another root before setup or launch.
+The four public package directories are governed by `kits/cleared-kits.txt`;
+factory kits are never copied into private `user/` storage.
 
 Exactly two `audio.output` entries are the preferred direct route and the
 graph's main destinations. `audio.graph.input` is `LABEL|LEFT|RIGHT`; both JACK
