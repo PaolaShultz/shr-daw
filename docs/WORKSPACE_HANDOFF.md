@@ -56,12 +56,14 @@ matrices remained ignored, and its locked debug and release all-target builds
 passed.
 
 The Experimental Noise note-38 snare no longer uses the 298 Hz, 700 ms
-acoustic hybrid that the owner rejected as cowbell-like. It is now a short,
-noise-dominant modeled snare with hard-clipped body/noise/master stages, brief
-inharmonic modes, and no sample assignments; the six now-unused snare WAVs were
-removed from that package. A private 124 BPM kick/snare comparison was rendered
-through the existing engine and played through the configured soundcard; final
-owner acceptance of the replacement remains open.
+acoustic hybrid that the owner rejected as cowbell-like. The first replacement
+was also rejected because stacked hard clipping, 4.3 kHz band-pass noise, FM,
+and ring modulation produced a high-pitched distant fuzz. The current revision
+uses a 158 Hz short body, low-pass broadband noise, no FM or ring modulation,
+restrained cubic drive, brief quiet modes, and no sample assignments; the six
+now-unused snare WAVs were removed from that package. A private 124 BPM
+kick/snare comparison was regenerated through the existing engine and played
+through the configured soundcard; final owner acceptance remains open.
 
 Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD
