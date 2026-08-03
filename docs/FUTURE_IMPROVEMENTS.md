@@ -14,6 +14,40 @@ becomes a milestone requirement only when the owner explicitly moves it there.
 Use the musician guides and architecture documents in [the documentation
 index](README.md) for current behavior. This page is a proposal archive.
 
+## Six-button touch performance console
+
+Provide an optional touchscreen performance surface for situations where the
+musician wants to play live while SHR handles accompaniment, recording, or
+mixing and the MIDI controller should remain available for the instrument.
+The surface is a master overlay over the current TUI: opening it preserves the
+underlying screen and Project context, and closing it returns to that exact
+place.
+
+The interaction is built around six large, reachable buttons. Three positions
+remain stable—`BACK`, literal `STOP`, and `MORE`—while the other three expose
+the most important actions for the current procedure. `MORE` moves between
+small action pages without changing the underlying procedure. Each button
+shows its current action and immediate state clearly enough for stage use;
+advanced preparation, routing, naming, and detailed editing remain in the
+ordinary TUI.
+
+Candidate procedures include:
+
+- start, pause, resume, and stop accompaniment while playing live;
+- launch and capture Live Patterns or control Pattern-owned Loop Mix;
+- arm, start, stop, and review synchronized multitrack recording;
+- run soundcheck and inspect levels before a performance;
+- control the final mix, recording, and a small set of performance-safe
+  effects; and
+- recover directly from a missing source, stopped owner, or recording fault
+  without losing the current Project context.
+
+The six positions are a physical interaction contract, not six fixed global
+commands. A procedure may change the three contextual labels, but stopping and
+leaving must remain predictable. The design still needs touchscreen musician
+testing for reach, accidental activation, feedback visibility, interruption,
+and recovery while the other hand is occupied by an instrument.
+
 ## Future smart musical assistance — unscheduled
 
 Smart assistance should remove repetitive musical work while leaving the
