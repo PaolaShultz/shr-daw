@@ -11,7 +11,11 @@ while the images were made.
 
 Home is the navigation root. Its nine labels are centered inside equal 36-cell
 bars spanning zero-based columns 2–37 on the 40-column display. The block is
-centered vertically and scrolls safely on compact supported terminals.
+centered vertically, always leaving the first terminal row empty at the native
+40×13 size, and scrolls safely on compact supported terminals. Home's own final
+line is shown only for active owned playback/recording, a current fault, or the
+reason MIDI Learn was recommended; routine selection and confirmation messages
+stay off the menu.
 
 ![Home screen with FT2 selected](../images/menu/home.png)
 

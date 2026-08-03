@@ -47,7 +47,9 @@ positions:
 - `PANIC` stops owned playback and sends All Notes Off. It does not kill an
   unrelated synth or JACK client.
 
-Home has no shared status row. The native fullscreen EQ owns all thirteen
+Home has no shared status row. Its own last line appears only for active owned
+playback/recording, a current fault, or a controller-setup reason; routine
+result messages remain hidden. The native fullscreen EQ owns all thirteen
 rows. The native 18-channel Levels overview is the third layout exception: it
 omits the controller strip so all meters fit, but keeps the unchanged shared
 status renderer on row 13. Its visible command pages occupy only the right half.

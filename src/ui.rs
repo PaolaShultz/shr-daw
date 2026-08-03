@@ -15969,12 +15969,11 @@ fn draw_home<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     f.render_widget(Block::default().style(Style::default().bg(Color::Black)), z);
     let recommendation = a.controller_learn_reason();
-    let bottom_rows = if recommendation.is_some() { 3 } else { 1 };
     let available = rect(
         z.x + 2,
         z.y,
         z.width.saturating_sub(4),
-        z.height.saturating_sub(bottom_rows),
+        z.height.saturating_sub(1),
     );
     let rows = usize::from(available.height).min(HOME_ENTRIES.len());
     a.ensure_home_visible(rows);
@@ -16011,32 +16010,13 @@ fn draw_home<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Paragraph::new(lines).style(Style::default().bg(Color::Black)),
         list,
     );
-    if let Some(reason) = recommendation {
-        f.render_widget(
-            Paragraph::new(vec![
-                Spans::from(Span::styled(
-                    "CONTROLLER NEEDS SETUP · MIDI LEARN",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .bg(Color::Black)
-                        .add_modifier(Modifier::BOLD),
-                )),
-                Spans::from(Span::styled(
-                    reason.detail(),
-                    Style::default().fg(Color::DarkGray).bg(Color::Black),
-                )),
-            ])
-            .alignment(Alignment::Center),
-            rect(z.x, z.y + z.height.saturating_sub(3), z.width, 2),
-        );
-    }
-    let status = a.home_activity().or_else(|| {
-        (!status_is_silent(&a.status)
-            && (status_is_fault(&a.status)
-                || status_is_consequential(&a.status)
-                || confirmation_status_active(a)))
-        .then_some(a.status.as_str())
-    });
+    let status = a
+        .home_activity()
+        .or_else(|| {
+            (!status_is_silent(&a.status) && status_is_fault(&a.status))
+                .then_some(a.status.as_str())
+        })
+        .or_else(|| recommendation.map(ControllerLearnReason::detail));
     f.render_widget(
         Paragraph::new(truncate(status.unwrap_or(""), z.width as usize))
             .alignment(Alignment::Center)
@@ -25364,6 +25344,38 @@ release = 0.4
             .unwrap();
         *app.controller_config.write().unwrap() = reviewed;
         assert_eq!(app.controller_learn_reason(), None);
+    }
+
+    #[test]
+    fn home_keeps_its_first_row_empty_when_controller_needs_setup() {
+        let p = presets();
+        let mut app = app(&p);
+        *app.controller_config.write().unwrap() =
+            crate::pads::PadConfig::unmapped("Unknown Controller MIDI");
+        app.controller_online = false;
+        app.recommend_controller_learn_on_home();
+
+        let frame = render_app(&mut app, 40, 13);
+
+        assert!(row_text(&frame, 0).trim().is_empty());
+        assert_eq!(app.hits.list.y, 1);
+        assert!(row_text(&frame, 12).contains("Configured controller is offline"));
+        assert!(!buffer_text(&frame).contains("CONTROLLER NEEDS SETUP"));
+    }
+
+    #[test]
+    fn home_footer_keeps_faults_but_omits_stale_result_messages() {
+        let p = presets();
+        let mut app = app(&p);
+        app.screen = Screen::Home;
+        app.status = "Cancelled · Project/position kept".into();
+
+        let routine = render_app(&mut app, 40, 13);
+        assert!(row_text(&routine, 12).trim().is_empty());
+
+        app.status = "MIDI output unavailable".into();
+        let fault = render_app(&mut app, 40, 13);
+        assert!(row_text(&fault, 12).contains("MIDI output unavailable"));
     }
 
     #[test]
