@@ -382,8 +382,10 @@ is not a MIDI velocity or CC-volume control: it points directly to one existing
 final-bus audio owner. synthv1, Yoshimi, FluidSynth, and Moj Sint pages use
 `SYN`; SHR Drums pages use `DRM`; attached Pattern Loop Mix appears as `LOP`
 when the twelve-strip cap has room; and an external-MIDI page uses `INP` only
-when an exact stereo SHR input return is configured. Otherwise it says `NO
-RETURN` and has no gain or VU. The configured Input remains marked `M` while
+when an exact two-port SHR input return is configured. Otherwise it says `NO
+RETURN` and has no gain or VU. MTR owns whether that pair is stereo or dual
+mono and the two dual-mono pans; FT2's linked `INP` strips retain the one
+shared owner gain. The configured Input remains marked `M` while
 software monitoring is off; opening the mixer does not silently defeat the
 direct/software doubled-monitoring guard.
 
@@ -654,7 +656,7 @@ sends take their pre/post source-insert taps from the one managed software
 instrument, not from individual MIDI lanes.
 
 With the opt-in graph active, the managed source and wet returns, SHR Drums,
-private WAV loop, and exact configured stereo external-input return meet once
+private WAV loop, and exact configured two-port external-input return meet once
 before the master rack and final meter. SHR Drums has its own final-bus level
 and mute but no multi-mic live mixer. The loop, drums, and external input do
 not acquire the melodic source inserts or aux sends; the raw multitrack

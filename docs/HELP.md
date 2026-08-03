@@ -174,6 +174,7 @@ Home PERFORMANCE, or keyboard m, opens the meter/mix surface. With the
 owned graph inactive it retains the passive CPU and legacy output view. With
 the graph active it shows Synth, Loop, Input, and Drums readiness and level;
 Synth, Loop, and Drums use MUTE while Input uses one MON ON/MON OFF action;
+Input stereo/dual-mono mode and the two independent dual-mono pans;
 master level; final sample peak and dBTP; GLUE/limiter gain reduction,
 correlation, LUFS-M/S/I; and final-record
 elapsed time, size, drop/error state, and path.
@@ -205,7 +206,15 @@ activates the input-only final bus when needed; it never starts an optional
 source. REC starts/stops the final stereo WAV at callback boundaries. RESET
 clears presentation holds and, when the bus is unavailable, retries the same
 exact remembered source mapping. Source and master changes are smoothed; there
-are no pan, solo, aux, or per-input effect controls.
+are no solo, aux, or per-input effect controls.
+
+With Input selected, MTR NAV **DUAL/STEREO** changes the input interpretation.
+**IN CTRL** cycles `LEVEL`, `PAN 1`, and `PAN 2`; on either pan, the ordinary
+LEVEL-/LEVEL+ positions become PAN1-/PAN1+ or PAN2-/PAN2+. Dual mono starts at
+`1L100 2R100`, matching the original stereo image, then pans each configured
+capture port independently with an equal-power law. Keyboard `i` changes mode
+and `c` changes the selected Input control. These are live session controls,
+not Project data, and a fresh launch starts in stereo.
 
 ## 18-channel input levels
 

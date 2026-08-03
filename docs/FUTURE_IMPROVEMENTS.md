@@ -172,7 +172,7 @@ ordinary drum loops should feel like a pleasant afternoon.
 ## Audio effects graph: inserts, sends, and returns
 
 The current narrow performance bus now sums exactly the managed instrument,
-SHR Drums, owned loop, and one configured stereo input before the master,
+SHR Drums, owned loop, and one configured two-port Input in stereo or dual mono before the master,
 dedicated limiter, final meter, recorder, and playback. The broader proposed
 migration to a bounded multi-strip mixer with genuinely shared multi-source aux buses is in the
 [post-competition mixer and shared-aux plan](POST_COMPETITION_MIXER_AUX_PLAN.md).
@@ -232,8 +232,8 @@ than relying on implicit JACK summing. That makes independent send/return gain,
 pre/post placement, return metering, and exactly-once mixing explicit and
 testable. The final bus adds smoothed level per source and master level, MUTE
 for Synth/Loop/Drums, and one MON ON/OFF action for Input. A fuller mixer would
-still be needed for pan, solo, per-input inserts, or shared aux sends, none of
-which is current product scope.
+still be needed for pan on the other sources, solo, per-input inserts, or
+shared aux sends, none of which is current product scope.
 
 Primary source: [JACK 2 `jack_port_get_buffer` API
 contract](https://github.com/jackaudio/jack2/blob/develop/common/jack/jack.h),

@@ -39,14 +39,14 @@ private WAV loop  --> direct JACK playback (graph disabled)
 managed synth SOURCE/AUX --+
 private WAV loop -----------+-> MASTER rack -> live fader -> MASTER STRIP
 SHR Drums ------------------+
-configured stereo input ----+                        +-> FINAL OUT + final WAV + playback
+configured input 1/2 -------+-> stereo or dual-mono pan -> FINAL OUT + final WAV + playback
 configured JACK sources -> fixed 18-channel meter snapshot
                         \-> shared callback timeline -> mono stems + manifest
 ```
 
 The raw-stem recorder remains separate. The application owns the final bus
 independently of its optional synth, SHR Drums, and Loop sources. Input MON ON
-can therefore activate only the exact stereo-input pair and playback pair; it
+can therefore activate only the exact two-port Input and playback pair; it
 does not launch missing sound sources. Present optional direct routes move into
 the bus transactionally and reconcile when sources disappear or return.
 `FINAL OUT`, final WAV, and playback then share the same post-strip samples.
@@ -466,9 +466,11 @@ the callback before restoring them, avoiding a doubled final block.
 
 FX state is saved in the Project while the graph is disabled, but direct
 playback cannot process or meter it. The graph instantiates exactly four
-source kinds: managed instrument, SHR Drums, owned loop player, and one stereo
-live-input pair. It deliberately has no general strips, pan, solo, hardware insert,
-per-input effect chain, or arbitrary wiring.
+source kinds: managed instrument, SHR Drums, owned loop player, and one
+two-port live Input. That Input can preserve stereo or independently pan its
+two ports in dual mono. The graph deliberately has no general strips, pan for
+other sources, solo, hardware insert, per-input effect chain, or arbitrary
+wiring.
 
 ## Live Patterns, Loop Mix, and the final bus
 

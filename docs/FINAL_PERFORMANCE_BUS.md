@@ -12,7 +12,7 @@ attach when present:
 ```text
 managed software instrument -> owner gain -> source inserts/aux ---\
 owned four-slot native-rate Loop Mix sum -> owner gain -------------+-> stereo sum
-configured JACK capture L/R -> owner gain --------------------------/
+configured JACK capture 1/2 -> stereo or dual-mono pan -> owner gain/
 SHR Drums rack/stereo bus -> owner gain -----------------------------/
     -> optional aux returns, where routed from the managed source
     -> master insert rack
@@ -32,11 +32,17 @@ activate leaves the prior direct routes unchanged and the FT2 editing location
 intact.
 
 The logical Loop and external-input bus strips do not gain individual insert
-racks, aux sends, pan, solo, automation, or waveform editing. Drums has only
+racks, aux sends, solo, automation, or waveform editing. Drums has only
 its fixed Reverb-then-Delay rack before this bus; it does not become a general
 mixer strip. Synth, Loop, and Drums retain a smoothed level and mute. Input
 instead has one unambiguous **MON ON**/**MON OFF** control in the same MTR
 source-control position; it is never shown beside a duplicate Input mute.
+Input also switches between the original stereo mapping and **DUAL** mono.
+Dual mono treats configured port 1 and port 2 as independent mono signals with
+an equal-power pan for each. Its initial `1L100 2R100` positions reproduce the
+stereo mapping exactly; changing either pan routes only that input across the
+final stereo mix. Mode and pan transitions use the same 10 ms ramp as source
+levels.
 Loop Mix applies its four
 slot-local level/filter/mute controls before this one logical source. The
 managed source keeps its existing Project-owned
@@ -47,8 +53,9 @@ basic summing headroom. Input monitoring always starts OFF. These live
 performance controls are not
 Project data; current Project format 13 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
-Pattern, but not these final-bus levels or mutes. JACK assignments remain
-machine configuration.
+Pattern, but not these final-bus levels, mutes, Input mode, or Input pans. JACK
+assignments remain machine configuration. A fresh runtime always starts in
+stereo mode; dual-mono choices do not reinterpret raw multitrack recording.
 
 Each source publishes one lightweight post-owner-gain stereo peak for the FT2
 mixer before the graph performs Project processing and summing. The existing

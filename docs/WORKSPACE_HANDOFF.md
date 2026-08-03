@@ -20,6 +20,28 @@ features into scope; 0.6 implements and physically accepts simultaneous
 18-channel playback and 18-channel recording. Package version `0.3.92` is the
 corrected starting point; the current checked-progress version is `0.4.7`.
 
+The current Input-mix work adds a live stereo/dual-mono choice to the exact
+configured two-port final-bus Input. Stereo remains the fresh-runtime default.
+Dual mono independently equal-power pans ports 1 and 2, initially at hard left
+and hard right so its first output matches stereo; mode and matrix changes use
+the existing 10 ms smoothing boundary. MTR NAV exposes mode and a
+LEVEL/PAN 1/PAN 2 focus whose normal minus/plus controls follow the selected
+field. These controls do not alter raw multitrack stems, machine JACK mapping,
+or Project data. The user-authorized combined pass on 2026-08-03 used exact
+Rust 1.97.1: formatting and locked check passed, SHR's complete normal suite
+passed 941 tests with 13 documented research/audition/performance tests
+ignored, and locked debug and release builds passed. The focused MTR NAV
+documentation screenshot was regenerated and visually inspected at its native
+40×13 geometry. No JACK, synth, MIDI, recording, audible, or other physical
+hardware test was started.
+
+The same 2026-08-03 repository sync fast-forwarded the clean Moj Sint sibling
+by four documentation-only commits recording the completed five-kick and
+snare comparison gate; production Moj sound code did not change. Its locked
+all-target/all-feature normal suite passed 287 tests with 34 development-only
+historical/audition/benchmark tests ignored, and its debug and release
+all-target builds passed with Rust 1.97.1.
+
 The public sound-package repair adds the four approved SHR Drums packages to
 the tracked `kits/cleared-kits.txt` allowlist: Acid, Electronic House, Big Rock
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
@@ -27,8 +49,10 @@ that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
 longer depend on ignored `user/` state. Moj Sint's 13 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
-storage. This repair has source and package-layout validation only until the
-user authorizes the combined build-and-test pass.
+storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
+all-target/all-feature normal suite: 19 tests passed, three opt-in quality
+matrices remained ignored, and its locked debug and release all-target builds
+passed.
 
 Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD

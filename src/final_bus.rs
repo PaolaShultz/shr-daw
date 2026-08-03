@@ -18,7 +18,22 @@ pub const SOURCE_GAIN_MAX_DB: f32 = 6.0;
 pub const MASTER_GAIN_MIN_DB: f32 = -60.0;
 pub const MASTER_GAIN_MAX_DB: f32 = 0.0;
 pub const DEFAULT_SOURCE_GAIN_DB: f32 = -6.0;
+pub const INPUT_PAN_MIN: f32 = -1.0;
+pub const INPUT_PAN_MAX: f32 = 1.0;
 const GAIN_SMOOTH_SECONDS: f32 = 0.010;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum InputMixMode {
+    #[default]
+    Stereo,
+    DualMono,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputChannel {
+    One,
+    Two,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BusSource {
@@ -100,6 +115,13 @@ impl AtomicFader {
 pub struct BusControls {
     sources: [AtomicFader; SOURCE_COUNT],
     source_meters: [AtomicSourceMeter; SOURCE_COUNT],
+    input_dual_mono: AtomicBool,
+    input_one_pan: AtomicU32,
+    input_two_pan: AtomicU32,
+    input_one_left: AtomicU32,
+    input_one_right: AtomicU32,
+    input_two_left: AtomicU32,
+    input_two_right: AtomicU32,
     master: AtomicFader,
 }
 
@@ -108,6 +130,13 @@ impl Default for BusControls {
         Self {
             sources: std::array::from_fn(|_| AtomicFader::new(DEFAULT_SOURCE_GAIN_DB)),
             source_meters: std::array::from_fn(|_| AtomicSourceMeter::new()),
+            input_dual_mono: AtomicBool::new(false),
+            input_one_pan: AtomicU32::new(INPUT_PAN_MIN.to_bits()),
+            input_two_pan: AtomicU32::new(INPUT_PAN_MAX.to_bits()),
+            input_one_left: AtomicU32::new(1.0_f32.to_bits()),
+            input_one_right: AtomicU32::new(0.0_f32.to_bits()),
+            input_two_left: AtomicU32::new(0.0_f32.to_bits()),
+            input_two_right: AtomicU32::new(1.0_f32.to_bits()),
             master: AtomicFader::new(0.0),
         }
     }
@@ -149,6 +178,76 @@ impl BusControls {
         self.source_meters[source.index()].publish(peak);
     }
 
+    pub fn input_mix_mode(&self) -> InputMixMode {
+        if self.input_dual_mono.load(Ordering::Acquire) {
+            InputMixMode::DualMono
+        } else {
+            InputMixMode::Stereo
+        }
+    }
+
+    pub fn set_input_mix_mode(&self, mode: InputMixMode) {
+        self.input_dual_mono
+            .store(mode == InputMixMode::DualMono, Ordering::Release);
+    }
+
+    pub fn input_pan(&self, channel: InputChannel) -> f32 {
+        let bits = match channel {
+            InputChannel::One => self.input_one_pan.load(Ordering::Acquire),
+            InputChannel::Two => self.input_two_pan.load(Ordering::Acquire),
+        };
+        let pan = f32::from_bits(bits);
+        if pan.is_finite() && (INPUT_PAN_MIN..=INPUT_PAN_MAX).contains(&pan) {
+            pan
+        } else {
+            match channel {
+                InputChannel::One => INPUT_PAN_MIN,
+                InputChannel::Two => INPUT_PAN_MAX,
+            }
+        }
+    }
+
+    pub fn set_input_pan(&self, channel: InputChannel, pan: f32) -> bool {
+        if !pan.is_finite() || !(INPUT_PAN_MIN..=INPUT_PAN_MAX).contains(&pan) {
+            return false;
+        }
+        let [left, right] = mono_pan_gains(pan);
+        match channel {
+            InputChannel::One => {
+                self.input_one_left.store(left.to_bits(), Ordering::Release);
+                self.input_one_right
+                    .store(right.to_bits(), Ordering::Release);
+                self.input_one_pan.store(pan.to_bits(), Ordering::Release);
+            }
+            InputChannel::Two => {
+                self.input_two_left.store(left.to_bits(), Ordering::Release);
+                self.input_two_right
+                    .store(right.to_bits(), Ordering::Release);
+                self.input_two_pan.store(pan.to_bits(), Ordering::Release);
+            }
+        }
+        true
+    }
+
+    fn input_pan_gains(&self, channel: InputChannel) -> [f32; 2] {
+        let (left, right, fallback) = match channel {
+            InputChannel::One => (&self.input_one_left, &self.input_one_right, [1.0, 0.0]),
+            InputChannel::Two => (&self.input_two_left, &self.input_two_right, [0.0, 1.0]),
+        };
+        let gains = [
+            f32::from_bits(left.load(Ordering::Acquire)),
+            f32::from_bits(right.load(Ordering::Acquire)),
+        ];
+        if gains
+            .iter()
+            .all(|gain| gain.is_finite() && (0.0..=1.0).contains(gain))
+        {
+            gains
+        } else {
+            fallback
+        }
+    }
+
     pub fn master_gain_db(&self) -> f32 {
         self.master.gain_db()
     }
@@ -180,6 +279,13 @@ impl RuntimeFader {
         } else {
             db_to_gain(gain_db).map_err(|error| error.to_string())?
         };
+        Self::new_linear(gain, sample_rate)
+    }
+
+    fn new_linear(gain: f32, sample_rate: u32) -> Result<Self, String> {
+        if !gain.is_finite() || gain < 0.0 {
+            return Err("linear gain must be finite and non-negative".into());
+        }
         Ok(Self {
             value: SmoothedValue::new(gain).map_err(|error| error.to_string())?,
             last_target: gain,
@@ -193,6 +299,16 @@ impl RuntimeFader {
             0.0
         } else {
             db_to_gain(gain_db).unwrap_or(0.0)
+        };
+        self.refresh_linear(target);
+    }
+
+    #[inline]
+    fn refresh_linear(&mut self, target: f32) {
+        let target = if target.is_finite() && target >= 0.0 {
+            target
+        } else {
+            0.0
         };
         if target != self.last_target {
             if self
@@ -215,6 +331,7 @@ impl RuntimeFader {
 pub struct FinalBusProcessor {
     controls: Arc<BusControls>,
     source_faders: [RuntimeFader; SOURCE_COUNT],
+    input_matrix: [RuntimeFader; 4],
     master_fader: RuntimeFader,
     strip: MasterStripProcessor,
 }
@@ -234,12 +351,19 @@ impl FinalBusProcessor {
                 sample_rate,
             )
         };
+        let matrix = input_matrix_targets(&controls);
         Ok(Self {
             source_faders: [
                 source_fader(BusSource::Synth)?,
                 source_fader(BusSource::Loop)?,
                 source_fader(BusSource::Input)?,
                 source_fader(BusSource::Drums)?,
+            ],
+            input_matrix: [
+                RuntimeFader::new_linear(matrix[0], sample_rate)?,
+                RuntimeFader::new_linear(matrix[1], sample_rate)?,
+                RuntimeFader::new_linear(matrix[2], sample_rate)?,
+                RuntimeFader::new_linear(matrix[3], sample_rate)?,
             ],
             master_fader: RuntimeFader::new(controls.master_gain_db(), false, sample_rate)?,
             strip: MasterStripProcessor::new(sample_rate, maximum_frames, strip_controls, meters)?,
@@ -291,11 +415,39 @@ impl FinalBusProcessor {
             self.controls.source_muted(source),
         );
         let mut peak = StereoFrame::SILENCE;
-        for frame in frames {
-            let gain = self.source_faders[index].next();
-            *frame = StereoFrame::new(frame.left * gain, frame.right * gain).finite_or_silence();
-            peak.left = peak.left.max(frame.left.abs());
-            peak.right = peak.right.max(frame.right.abs());
+        if source == BusSource::Input {
+            for (smoother, target) in self
+                .input_matrix
+                .iter_mut()
+                .zip(input_matrix_targets(&self.controls))
+            {
+                smoother.refresh_linear(target);
+            }
+            for frame in frames {
+                let gain = self.source_faders[index].next();
+                let source_frame = *frame;
+                let input_one_left = self.input_matrix[0].next();
+                let input_one_right = self.input_matrix[1].next();
+                let input_two_left = self.input_matrix[2].next();
+                let input_two_right = self.input_matrix[3].next();
+                *frame = StereoFrame::new(
+                    (source_frame.left * input_one_left + source_frame.right * input_two_left)
+                        * gain,
+                    (source_frame.left * input_one_right + source_frame.right * input_two_right)
+                        * gain,
+                )
+                .finite_or_silence();
+                peak.left = peak.left.max(frame.left.abs());
+                peak.right = peak.right.max(frame.right.abs());
+            }
+        } else {
+            for frame in frames {
+                let gain = self.source_faders[index].next();
+                *frame =
+                    StereoFrame::new(frame.left * gain, frame.right * gain).finite_or_silence();
+                peak.left = peak.left.max(frame.left.abs());
+                peak.right = peak.right.max(frame.right.abs());
+            }
         }
         self.controls.publish_source_peak(source, peak);
     }
@@ -314,6 +466,29 @@ impl FinalBusProcessor {
 
     pub fn reset(&mut self) {
         self.strip.reset();
+    }
+}
+
+fn input_matrix_targets(controls: &BusControls) -> [f32; 4] {
+    match controls.input_mix_mode() {
+        InputMixMode::Stereo => [1.0, 0.0, 0.0, 1.0],
+        InputMixMode::DualMono => {
+            let [one_left, one_right] = controls.input_pan_gains(InputChannel::One);
+            let [two_left, two_right] = controls.input_pan_gains(InputChannel::Two);
+            [one_left, one_right, two_left, two_right]
+        }
+    }
+}
+
+fn mono_pan_gains(pan: f32) -> [f32; 2] {
+    let pan = pan.clamp(INPUT_PAN_MIN, INPUT_PAN_MAX);
+    if pan == INPUT_PAN_MIN {
+        [1.0, 0.0]
+    } else if pan == INPUT_PAN_MAX {
+        [0.0, 1.0]
+    } else {
+        let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
+        [angle.cos(), angle.sin()]
     }
 }
 
@@ -358,6 +533,59 @@ mod tests {
         assert!((sum[133].left - 0.09).abs() < 1e-6);
         assert!((sum[133].right - 0.12).abs() < 1e-6);
         assert_eq!(bus.safety_clamp_count(), 0);
+    }
+
+    #[test]
+    fn input_defaults_to_stereo_and_dual_mono_starts_with_identical_hard_pans() {
+        let (mut bus, controls) = processor(48_000, 4);
+        assert_eq!(controls.input_mix_mode(), InputMixMode::Stereo);
+        assert_eq!(controls.input_pan(InputChannel::One), -1.0);
+        assert_eq!(controls.input_pan(InputChannel::Two), 1.0);
+
+        controls.set_input_mix_mode(InputMixMode::DualMono);
+        let mut input = [StereoFrame::new(0.25, -0.5); 4];
+        bus.process_source(BusSource::Input, &mut input);
+        assert_eq!(input, [StereoFrame::new(0.25, -0.5); 4]);
+    }
+
+    #[test]
+    fn dual_mono_inputs_have_independent_equal_power_pan() {
+        let controls = Arc::new(BusControls::default());
+        assert!(controls.set_source_gain_db(BusSource::Input, 0.0));
+        controls.set_input_mix_mode(InputMixMode::DualMono);
+        assert!(controls.set_input_pan(InputChannel::One, 0.0));
+        assert!(controls.set_input_pan(InputChannel::Two, 0.0));
+        assert!(!controls.set_input_pan(InputChannel::One, -1.01));
+        assert!(!controls.set_input_pan(InputChannel::Two, f32::NAN));
+        let (mut bus, _) = FinalBusProcessor::with_neutral_strip(
+            48_000,
+            1,
+            Arc::clone(&controls),
+            Arc::new(FinalBusMeters::default()),
+        )
+        .unwrap();
+
+        let mut input = [StereoFrame::new(0.5, 0.25)];
+        assert_no_allocations(|| bus.process_source(BusSource::Input, &mut input));
+        let expected = 0.75 * std::f32::consts::FRAC_1_SQRT_2;
+        assert!((input[0].left - expected).abs() < 1.0e-6);
+        assert!((input[0].right - expected).abs() < 1.0e-6);
+        assert_eq!(controls.source_peak(BusSource::Input), input[0]);
+    }
+
+    #[test]
+    fn live_input_pan_change_is_smoothed_to_its_equal_power_target() {
+        let (mut bus, controls) = processor(48_000, 480);
+        controls.set_input_mix_mode(InputMixMode::DualMono);
+        assert!(controls.set_input_pan(InputChannel::One, 0.0));
+        let mut input = [StereoFrame::new(1.0, 0.0); 480];
+
+        bus.process_source(BusSource::Input, &mut input);
+
+        assert!(input[0].left < 1.0 && input[0].left > std::f32::consts::FRAC_1_SQRT_2);
+        assert!(input[0].right > 0.0 && input[0].right < std::f32::consts::FRAC_1_SQRT_2);
+        assert!((input[479].left - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6);
+        assert!((input[479].right - std::f32::consts::FRAC_1_SQRT_2).abs() < 1.0e-6);
     }
 
     #[test]

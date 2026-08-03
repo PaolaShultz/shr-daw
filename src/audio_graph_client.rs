@@ -244,6 +244,8 @@ pub(crate) struct FinalBusOwner {
     graph: Option<OwnedAudioGraph>,
     last_recording: FinalMixRecorderStatus,
     fallback: Option<String>,
+    #[cfg(test)]
+    controls_override: Option<std::sync::Arc<BusControls>>,
 }
 
 impl Default for FinalBusOwner {
@@ -252,6 +254,8 @@ impl Default for FinalBusOwner {
             graph: None,
             last_recording: FinalMixRecorderStatus::default(),
             fallback: None,
+            #[cfg(test)]
+            controls_override: None,
         }
     }
 }
@@ -397,7 +401,20 @@ impl FinalBusOwner {
     }
 
     pub(crate) fn controls(&self) -> Option<std::sync::Arc<BusControls>> {
-        Some(self.graph.as_ref()?.bus_controls())
+        if let Some(graph) = self.graph.as_ref() {
+            return Some(graph.bus_controls());
+        }
+        #[cfg(test)]
+        {
+            return self.controls_override.as_ref().map(std::sync::Arc::clone);
+        }
+        #[cfg(not(test))]
+        None
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_controls_override(&mut self, controls: std::sync::Arc<BusControls>) {
+        self.controls_override = Some(controls);
     }
 
     pub(crate) fn apply_master_strip(&self, settings: &MasterStripSettings) -> Result<bool> {

@@ -4,8 +4,10 @@ This document is the current implementation contract for SHR-DAW's owned audio
 graph and effects racks. The graph is implemented and Raspberry Pi measured,
 but remains opt-in and disabled by default. Direct JACK routing is both the
 default and the conservative fallback. The current product compiler instantiates
-four bounded stereo sources: the managed software instrument, SHR Drums, the
-owned WAV loop, and one exact configured JACK capture pair.
+four bounded stereo boundaries: the managed software instrument, SHR Drums,
+the owned WAV loop, and one exact configured JACK capture pair. The capture
+boundary can preserve stereo or explicitly matrix its two ports as separately
+panned mono inputs before the dry sum.
 
 This page owns DSP topology, bounds, and callback safety. The [menu
 manual](MENU_MANUAL.md) owns screen actions, while the [final performance
@@ -19,7 +21,7 @@ managed instrument -> SOURCE inserts -------------------------------\
        |                    +-> POST send gain -> wet AUX 1/2 -> return -+
        +----------------------> PRE send gain  -> wet AUX 1/2 -> return -+
 owned WAV loop ------------------------------------------------------+-> dry sum
-configured stereo JACK input --------------------------------------/
+configured JACK input 1/2 -> stereo or dual-mono pan matrix -------/
 in-process SHR Drums -> Project DRUMS Reverb -> Delay --------------/
 
 dry sum -> MASTER inserts -> live master level
@@ -69,8 +71,10 @@ playback, so drum effects remain correct when the owned graph is disabled. The
 loop remains its own rendering client; when the final bus is active its output
 is moved off direct playback and into the owned sum. The raw synchronized
 multitrack recorder remains a separate capture client. External instruments
-return only through the configured stereo mix. There is no hardware insert or
-per-interface-channel processing.
+return only through the configured two-port Input owner. That owner alone may
+preserve the pair as stereo or treat its ports as two independently panned
+mono signals. There is no hardware insert, per-input effect rack, or separate
+JACK client per interface channel.
 
 The graph may connect and disconnect only SHR-owned endpoints. It must not
 alter unrelated JACK connections or terminate a client/process it does not
@@ -155,9 +159,10 @@ Source node kinds are `ManagedEngine`, `InternalDrums`, `LoopPlayer`,
 `AuxReturn`. Sink/tap kinds are `MainPlayback`, `HardwareSend`, `RecordPreFx`,
 `RecordPostFx`, and `RecordMaster`.
 
-Edges carry stereo audio. A mono source requires an explicit adapter node; it
-is never silently duplicated. A hardware send and its own return may not form
-a path, and a master/sink may not feed a source.
+Edges carry stereo audio. A mono source requires an explicit adapter and is
+never silently duplicated; Input dual mono is the deliberate boundary matrix
+for its two named capture ports. A hardware send and its own return may not
+form a path, and a master/sink may not feed a source.
 
 ## Validation before publication
 

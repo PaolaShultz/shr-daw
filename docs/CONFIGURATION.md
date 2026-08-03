@@ -309,9 +309,11 @@ graph's main destinations. `audio.graph.input` is `LABEL|LEFT|RIGHT`; both JACK
 capture names are resolved exactly. If it is absent, the first legacy
 `capture.input` supplies a backward-compatible preference. Missing, ambiguous,
 or identical ports keep the bus visibly unavailable—SHR-DAW never picks a
-nearby name. The callback frame bound may be 1–4096 and must cover the active
-JACK period; an unexpectedly larger callback faults final recording and writes
-safe silence rather than overrunning fixed memory.
+nearby name. This key assigns the two ports only: MTR's live Input control
+chooses stereo or dual mono and the two dual-mono pans without rewriting
+configuration or raw recorder tracks. The callback frame bound may be 1–4096
+and must cover the active JACK period; an unexpectedly larger callback faults
+final recording and writes safe silence rather than overrunning fixed memory.
 
 Input software monitoring starts OFF every time. **MON ON** requires only the
 exact input and playback pairs; no synth, Loop, or drum source is launched or

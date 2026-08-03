@@ -328,7 +328,8 @@ RMS/peak, route, or metadata detail panel.
 ## Performance meter
 
 With the final bus active, MTR selects Synth, Loop, exact Input, or SHR Drums,
-controls its bounded level and one context-specific source action, shows
+controls its bounded level and one context-specific source action, switches
+Input between stereo and independently panned dual mono, shows
 readiness and the post-limiter
 true-peak final meter, opens the fixed MASTER STRIP, and controls final stereo
 recording. With the graph inactive it
@@ -345,8 +346,10 @@ colour. No square bar or line-marker glyph represents level or peak.
 
 ![Populated performance meter with the OPS controller page](../images/menu/performance-meter-ops.png)
 
-`SOURCE-`/`SOURCE+` choose Synth, Loop, Input, or Drums. `LEVEL-`/`LEVEL+` change only
-that source's bounded final-bus level.
+`SOURCE-`/`SOURCE+` choose Synth, Loop, Input, or Drums. `LEVEL-`/`LEVEL+`
+change only that source's bounded final-bus level. When Input's NAV control is
+focused on PAN 1 or PAN 2, these two positions relabel to the selected pan's
+minus/plus pair instead.
 
 ### MIX — mute, record, and holds
 
@@ -360,12 +363,19 @@ starting an optional source. `RECORD` toggles the callback-boundary final
 stereo recorder. `RESET` clears presentation peak/clip holds; it does not reset
 effects, CPU state, or transport.
 
-### NAV — FX master overlay
+### NAV — FX, master strip, and Input mode
 
 ![Populated performance meter with the NAV controller page](../images/menu/performance-meter-nav.png)
 
 `FX` opens the same master-overlay layer used by FT2. Choose SOURCE, AUX 1,
 AUX 2, or MASTER, then click/Enter to open that rack.
+
+With Input selected, `DUAL` changes the exact configured pair from its original
+stereo mapping to two independently panned mono signals; it then reads
+`STEREO` for the reverse action. Dual mono begins at `1L100 2R100`, so the
+first switch preserves the stereo image. `IN CTRL` cycles LEVEL, PAN 1, and
+PAN 2; the OPS minus/plus pair follows that focus. Keyboard `i` changes mode
+and `c` cycles the focus. These live values are not saved in the Project.
 
 ![Effects-routing overlay over the performance meter](../images/menu/overlay-performance-fx.png)
 

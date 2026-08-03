@@ -10,8 +10,8 @@ use crate::device_profile::{DeviceProfile, Registry as DeviceProfiles};
 use crate::drum_pattern::{self, DrumPattern};
 use crate::engine::{self, Engine, MidiEvent};
 use crate::final_bus::{
-    BusSource, DEFAULT_SOURCE_GAIN_DB, MASTER_GAIN_MAX_DB, MASTER_GAIN_MIN_DB, SOURCE_GAIN_MAX_DB,
-    SOURCE_GAIN_MIN_DB,
+    BusSource, InputChannel, InputMixMode, DEFAULT_SOURCE_GAIN_DB, INPUT_PAN_MAX, INPUT_PAN_MIN,
+    MASTER_GAIN_MAX_DB, MASTER_GAIN_MIN_DB, SOURCE_GAIN_MAX_DB, SOURCE_GAIN_MIN_DB,
 };
 use crate::geometry::{contains, rect, visible_index};
 use crate::help::{self, HelpKind};
@@ -756,6 +756,32 @@ enum ControllerLearnReason {
     UnusableReviewedEncoder,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum InputMixControl {
+    #[default]
+    Level,
+    PanOne,
+    PanTwo,
+}
+
+impl InputMixControl {
+    const fn next(self) -> Self {
+        match self {
+            Self::Level => Self::PanOne,
+            Self::PanOne => Self::PanTwo,
+            Self::PanTwo => Self::Level,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Level => "LEVEL",
+            Self::PanOne => "PAN 1",
+            Self::PanTwo => "PAN 2",
+        }
+    }
+}
+
 impl ControllerLearnReason {
     const fn detail(self) -> &'static str {
         match self {
@@ -780,6 +806,7 @@ struct App {
     engine: Option<Engine>,
     final_bus: FinalBusOwner,
     input_monitoring: bool,
+    input_mix_control: InputMixControl,
     next_final_bus_source_scan: Instant,
     engine_owner: Option<EngineOwner>,
     tracker_engine_plan: Option<SoftwarePlaybackPlan>,
@@ -1815,6 +1842,7 @@ impl App {
             engine: None,
             final_bus: FinalBusOwner::default(),
             input_monitoring: false,
+            input_mix_control: InputMixControl::default(),
             next_final_bus_source_scan: Instant::now(),
             engine_owner: None,
             tracker_engine_plan: None,
@@ -11244,6 +11272,33 @@ impl App {
             self.status = "FINAL BUS OFFLINE · load sources".into();
             return;
         };
+        if self.bus_selected == BusSource::Input as usize
+            && self.input_mix_control != InputMixControl::Level
+        {
+            let channel = match self.input_mix_control {
+                InputMixControl::PanOne => InputChannel::One,
+                InputMixControl::PanTwo => InputChannel::Two,
+                InputMixControl::Level => unreachable!(),
+            };
+            let pan_step = (controls.input_pan(channel) * 10.0).round() as i32
+                + if direction < 0 { -1 } else { 1 };
+            let pan = pan_step.clamp(-10, 10) as f32 / 10.0;
+            controls.set_input_pan(channel, pan);
+            self.status = format!(
+                "INPUT {} PAN {}{}",
+                match channel {
+                    InputChannel::One => 1,
+                    InputChannel::Two => 2,
+                },
+                format_input_pan(pan),
+                if controls.input_mix_mode() == InputMixMode::Stereo {
+                    " · switch to DUAL"
+                } else {
+                    ""
+                }
+            );
+            return;
+        }
         let delta = if direction < 0 { -1.0 } else { 1.0 };
         let value = if self.bus_selected < crate::final_bus::SOURCE_COUNT {
             let source = BusSource::ALL[self.bus_selected];
@@ -11258,6 +11313,35 @@ impl App {
             value
         };
         self.status = format!("{} level {value:.0} dB", self.bus_selection_label());
+    }
+
+    fn toggle_input_mix_mode(&mut self) {
+        if self.bus_selected != BusSource::Input as usize {
+            self.status = "select INPUT for stereo / dual mono".into();
+            return;
+        }
+        let Some(controls) = self.final_bus.controls() else {
+            self.status = "INPUT MIX OFFLINE · use MON ON first".into();
+            return;
+        };
+        let mode = match controls.input_mix_mode() {
+            InputMixMode::Stereo => InputMixMode::DualMono,
+            InputMixMode::DualMono => InputMixMode::Stereo,
+        };
+        controls.set_input_mix_mode(mode);
+        self.status = match mode {
+            InputMixMode::Stereo => "INPUT STEREO · original L/R image".into(),
+            InputMixMode::DualMono => "INPUT DUAL MONO · independent pans".into(),
+        };
+    }
+
+    fn cycle_input_mix_control(&mut self) {
+        if self.bus_selected != BusSource::Input as usize {
+            self.status = "select INPUT for level / pan controls".into();
+            return;
+        }
+        self.input_mix_control = self.input_mix_control.next();
+        self.status = format!("INPUT {} selected", self.input_mix_control.label());
     }
 
     fn toggle_bus_mute(&mut self) {
@@ -14516,6 +14600,8 @@ fn perform(
         Action::BusLevelDecrease => a.adjust_bus_level(-1),
         Action::BusLevelIncrease => a.adjust_bus_level(1),
         Action::BusMute => a.toggle_bus_mute(),
+        Action::BusInputMode => a.toggle_input_mix_mode(),
+        Action::BusInputControl => a.cycle_input_mix_control(),
         Action::FinalRecordToggle => a.toggle_final_recording(),
         Action::MixerBankPrevious => a.move_tracker_mixer_bank(-1),
         Action::MixerBankNext => a.move_tracker_mixer_bank(1),
@@ -15484,6 +15570,8 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Char('-') => Some(Action::BusLevelDecrease),
             KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::BusLevelIncrease),
             KeyCode::Char('m') => Some(Action::BusMute),
+            KeyCode::Char('i') => Some(Action::BusInputMode),
+            KeyCode::Char('c') => Some(Action::BusInputControl),
             KeyCode::Char('r') => Some(Action::FinalRecordToggle),
             KeyCode::Char('x') => Some(Action::ResetMeter),
             _ => None,
@@ -16703,6 +16791,15 @@ fn meter_db(value: f32) -> f32 {
     }
 }
 
+fn format_input_pan(pan: f32) -> String {
+    let percent = (pan.clamp(INPUT_PAN_MIN, INPUT_PAN_MAX) * 100.0).round() as i32;
+    match percent.cmp(&0) {
+        std::cmp::Ordering::Less => format!("L{}", percent.unsigned_abs()),
+        std::cmp::Ordering::Equal => "C".into(),
+        std::cmp::Ordering::Greater => format!("R{percent}"),
+    }
+}
+
 fn master_strip_section_bypassed(
     settings: &crate::master_strip::MasterStripSettings,
     section: MasterStripSection,
@@ -17376,17 +17473,33 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         } else {
             ""
         };
+        let line = if source == BusSource::Input {
+            let input_mix = controls.as_ref().map_or("STEREO".into(), |controls| {
+                match controls.input_mix_mode() {
+                    InputMixMode::Stereo => "STEREO".into(),
+                    InputMixMode::DualMono => format!(
+                        "DUAL 1{} 2{}",
+                        format_input_pan(controls.input_pan(InputChannel::One)),
+                        format_input_pan(controls.input_pan(InputChannel::Two))
+                    ),
+                }
+            });
+            format!(
+                "{} INPUT {:>4.0}dB {input_mix}{state}",
+                if selected { ">" } else { " " },
+                gain
+            )
+        } else {
+            format!(
+                "{} {:<5} {:>4.0}dB{}",
+                if selected { ">" } else { " " },
+                source.label(),
+                gain,
+                state,
+            )
+        };
         lines.push(Spans::from(Span::styled(
-            truncate(
-                &format!(
-                    "{} {:<5} {:>4.0}dB{}",
-                    if selected { ">" } else { " " },
-                    source.label(),
-                    gain,
-                    state,
-                ),
-                width,
-            ),
+            truncate(&line, width),
             if selected {
                 Style::default().fg(Color::Black).bg(Color::Yellow)
             } else if ready {
@@ -19467,6 +19580,32 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 "MON OFF"
             } else {
                 "MON ON"
+            }
+        } else if slot.dispatch() == Some(Action::BusInputMode)
+            && a.bus_selected == BusSource::Input as usize
+        {
+            a.final_bus
+                .controls()
+                .map_or("IN MODE", |controls| match controls.input_mix_mode() {
+                    InputMixMode::Stereo => "DUAL",
+                    InputMixMode::DualMono => "STEREO",
+                })
+        } else if slot.dispatch() == Some(Action::BusInputControl)
+            && a.bus_selected == BusSource::Input as usize
+        {
+            a.input_mix_control.label()
+        } else if matches!(
+            slot.dispatch(),
+            Some(Action::BusLevelDecrease | Action::BusLevelIncrease)
+        ) && a.bus_selected == BusSource::Input as usize
+            && a.input_mix_control != InputMixControl::Level
+        {
+            match (a.input_mix_control, slot.dispatch()) {
+                (InputMixControl::PanOne, Some(Action::BusLevelDecrease)) => "PAN1-",
+                (InputMixControl::PanOne, Some(Action::BusLevelIncrease)) => "PAN1+",
+                (InputMixControl::PanTwo, Some(Action::BusLevelDecrease)) => "PAN2-",
+                (InputMixControl::PanTwo, Some(Action::BusLevelIncrease)) => "PAN2+",
+                _ => slot.label,
             }
         } else {
             slot.label
@@ -27223,6 +27362,48 @@ release = 0.4
     }
 
     #[test]
+    fn input_dual_mono_mode_and_each_pan_share_the_mtr_controls() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        let controls = Arc::new(crate::final_bus::BusControls::default());
+        a.final_bus.set_controls_override(Arc::clone(&controls));
+        a.screen = Screen::Meter;
+        a.config.audio_graph.enabled = true;
+        a.bus_selected = BusSource::Input as usize;
+        a.input_monitoring = true;
+        a.select_menu_page(2);
+
+        let stereo = render_app(&mut a, 40, 13);
+        assert!(row_text(&stereo, 11).contains("[DUAL]"));
+        assert!(row_text(&stereo, 11).contains("[LEVEL]"));
+        perform(Action::BusInputMode, &mut a, Path::new("/none"), None);
+        assert_eq!(controls.input_mix_mode(), InputMixMode::DualMono);
+
+        perform(Action::BusInputControl, &mut a, Path::new("/none"), None);
+        assert_eq!(a.input_mix_control, InputMixControl::PanOne);
+        perform(Action::BusLevelIncrease, &mut a, Path::new("/none"), None);
+        assert!((controls.input_pan(InputChannel::One) + 0.9).abs() < 1.0e-6);
+
+        perform(Action::BusInputControl, &mut a, Path::new("/none"), None);
+        assert_eq!(a.input_mix_control, InputMixControl::PanTwo);
+        perform(Action::BusLevelDecrease, &mut a, Path::new("/none"), None);
+        assert!((controls.input_pan(InputChannel::Two) - 0.9).abs() < 1.0e-6);
+        let dual = render_app(&mut a, 40, 13);
+        let dual_text = buffer_text(&dual);
+        assert!(dual_text.contains("DUAL 1L90 2R90"), "{dual_text}");
+
+        a.select_menu_page(0);
+        let pan_two = render_app(&mut a, 40, 13);
+        assert!(row_text(&pan_two, 11).contains("[PAN2-]"));
+        assert!(row_text(&pan_two, 11).contains("[PAN2+]"));
+        key(KeyCode::Char('i'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(controls.input_mix_mode(), InputMixMode::Stereo);
+        key(KeyCode::Char('c'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.input_mix_control, InputMixControl::Level);
+    }
+
+    #[test]
     fn recorder_levels_label_opens_the_unchanged_eighteen_channel_overview() {
         let p = presets();
         let mut a = app(&p);
@@ -27351,6 +27532,8 @@ release = 0.4
             Action::BusLevelDecrease,
             Action::BusLevelIncrease,
             Action::BusMute,
+            Action::BusInputMode,
+            Action::BusInputControl,
             Action::FinalRecordToggle,
         ] {
             assert!(reachable.contains(&action));

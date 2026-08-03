@@ -174,6 +174,8 @@ pub enum Action {
     BusLevelDecrease,
     BusLevelIncrease,
     BusMute,
+    BusInputMode,
+    BusInputControl,
     FinalRecordToggle,
     MixerBankPrevious,
     MixerBankNext,
@@ -1369,8 +1371,8 @@ const METER: [MenuPage; 4] = [
         [
             on("FX", Action::OpenEffectsOverlay),
             on("STRIP", Action::OpenMasterStrip),
-            off(""),
-            off(""),
+            on("IN MODE", Action::BusInputMode),
+            on("IN CTRL", Action::BusInputControl),
         ],
     ),
     page(
@@ -2118,6 +2120,8 @@ mod tests {
             Action::BusLevelDecrease,
             Action::BusLevelIncrease,
             Action::BusMute,
+            Action::BusInputMode,
+            Action::BusInputControl,
             Action::FinalRecordToggle,
             Action::ResetParameters,
             Action::OpenPresetSaveOverlay,
