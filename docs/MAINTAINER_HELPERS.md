@@ -547,22 +547,24 @@ the generated navigation and document order. The repository landing page,
 nested menu chapters, unlisted public supporting records, and licence receive
 explicit overview/current/archive/legal placement around those owned groups.
 
-The single tracked output is `docs/index.html`; `docs/.nojekyll` is a static
-GitHub Pages control file and is not generated. CSS and JavaScript are inline.
-Referenced images remain relative files below `docs/images/`. The social-card
-metadata uses the absolute production URL for the dedicated lossless 1200×630
-PNG connection diagram. It preserves the diagram at native scale and omits its
-title strip so link-preview crawlers do not receive a reduced or lossy copy.
+The single generated output is `docs/index.html`; `docs/.nojekyll` is a static
+GitHub Pages control file and `docs/favicon.svg` is the tracked browser icon.
+Neither is generated. CSS and JavaScript are inline. Referenced images remain
+relative files below `docs/images/`. The social-card metadata uses the absolute
+production URL for the dedicated lossless 1200×630 PNG connection diagram. It
+preserves the diagram at native scale and omits its title strip so link-preview
+crawlers do not receive a reduced or lossy copy.
 
 The visible page is a product presentation, not an expanded repository dump.
-It uses one introduction and one screenshot tour. Detailed guides are closed
-by default, and measurements, maintainer records, handoffs, and proposals sit
-inside a separately labelled technical archive. Search covers current guides
-by default. A visible checkbox includes the archive, and every result states
-its classification and source. The navigation also links the public SHR Drums
-repository and labels the Croatian essay as `Hrvatski`. When the same image
-bytes are referenced more than once, the first occurrence owns the image and
-later references link back to it.
+It uses one introduction, the approved full connection diagram, and one short
+screenshot tour. The alpha stage and physical-acceptance boundary appear near
+the title. Detailed guides are closed by default, and measurements, maintainer
+records, handoffs, and proposals sit inside a separately labelled technical
+archive. Search covers current guides by default. A visible checkbox includes
+the archive, and every result states its classification and source. The
+navigation also links the public SHR Drums repository and labels the Croatian
+essay as `Hrvatski`. When the same image bytes are referenced more than once,
+the first occurrence owns the image and later references link back to it.
 
 ### Social-card image QA
 
@@ -608,14 +610,14 @@ or `$HOME` labels, and the ignored `user/` root is shown as
 `$SHSYNTH_USER_DIR/`. This keeps the public copy useful without publishing a
 machine-local or private path.
 
-Generation fails for a missing source, broken local file or heading fragment,
-duplicate generated anchor, unsupported image format or URL scheme, remote
-image, query-bearing or repository-external local path, link into `user/`,
-credential-like content, or unrecognised renderer version. Included Markdown
-documents link to their same-page anchors; public repository files outside the
-page link to their GitHub source. No file below `user/` is read, copied,
-linked, or written. The helper does not build or launch SHR-DAW, JACK, a synth,
-MIDI, playback, recording, or hardware.
+Generation fails for a missing source or favicon, broken local file or heading
+fragment, duplicate generated anchor, unsupported image format or URL scheme,
+remote image, query-bearing or repository-external local path, link into
+`user/`, credential-like content, or unrecognised renderer version. Included
+Markdown documents link to their same-page anchors; public repository files
+outside the page link to their GitHub source. No file below `user/` is read,
+copied, linked, or written. The helper does not build or launch SHR-DAW, JACK,
+a synth, MIDI, playback, recording, or hardware.
 
 ## TUI screenshot renderer: `render-readme-screenshots.py`
 

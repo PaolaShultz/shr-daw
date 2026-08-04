@@ -36,7 +36,11 @@ OUTPUT = DOCS_DIR / "index.html"
 REPOSITORY_URL = "https://github.com/PaolaShultz/shr-daw"
 SHR_DRUMS_URL = "https://github.com/PaolaShultz/shr-drums"
 SITE_URL = "https://paolashultz.github.io/shr-daw/"
+ISSUES_URL = f"{REPOSITORY_URL}/issues"
+RELEASE_STAGE = "Alpha"
+CONNECTION_IMAGE = "docs/images/shr-daw-physical-connections.jpg"
 SOCIAL_IMAGE = "docs/images/shr-daw-social-card.png"
+FAVICON = "docs/favicon.svg"
 EXPECTED_MARKDOWN_IT = "3.0.0"
 EXPECTED_MDIT_PLUGINS = "0.4.2"
 
@@ -218,7 +222,13 @@ def doc_id(path: Path) -> str:
 
 
 def assign_headings(documents: dict[Path, Document]) -> set[str]:
-    anchors: set[str] = {"top", "main-content", "start-here", "screenshots"}
+    anchors: set[str] = {
+        "top",
+        "main-content",
+        "connections",
+        "start-here",
+        "screenshots",
+    }
     for doc in documents.values():
         doc.document_id = doc_id(doc.path)
         if doc.document_id in anchors:
@@ -671,6 +681,15 @@ def find_gallery(doc: Document) -> list[tuple[str, Token]]:
     return gallery
 
 
+def find_image(doc: Document, source: str) -> Token:
+    expected = Path(source).relative_to("docs").as_posix()
+    for token in doc.tokens:
+        for child in token.children or []:
+            if child.type == "image" and child.attrGet("src") == expected:
+                return child
+    fail(f"{doc.path} does not reference required image: {source}")
+
+
 def find_install_excerpt(doc: Document) -> tuple[str, str]:
     in_install = False
     commands = ""
@@ -733,6 +752,7 @@ def nav_html(groups: dict[str, list[Document]]) -> str:
     sections = [
         '<ul class="page-links">'
         '<li><a href="#features-title">What it does</a></li>'
+        '<li><a href="#connections">Connections</a></li>'
         '<li><a href="#screenshots">Screens</a></li>'
         '<li><a href="#start-here">Where to begin</a></li>'
         '<li><a href="#install">Install</a></li>'
@@ -1025,6 +1045,8 @@ main { min-width: 0; padding-bottom: 5rem; }
 .hero .intro { max-width: 48rem; color: #d7dfda; font-size: clamp(1.03rem, 2vw, 1.25rem); }
 .status-line { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; color: var(--muted); font-size: .85rem; }
 .version { padding: .25rem .55rem; border: 1px solid var(--green); border-radius: 999px; color: var(--green-bright); }
+.version.alpha { border-color: var(--yellow); color: var(--yellow); }
+.alpha-note { max-width: 48rem; margin: .8rem 0 0; color: var(--muted); font-size: .9rem; }
 .hero-image {
   display: block; width: 100%; height: auto; margin-top: 1.6rem;
   border: 1px solid var(--line); border-radius: .45rem; background: #000;
@@ -1038,6 +1060,12 @@ main { min-width: 0; padding-bottom: 5rem; }
 .button.secondary { border-color: var(--line); background: var(--panel); }
 .overview-block { padding: 2.5rem 0; border-bottom: 1px solid var(--line); }
 .overview-block h2 { margin-top: 0; font-size: clamp(1.5rem, 4vw, 2.25rem); }
+.connection-figure { margin: 0; }
+.connection-image {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--line); border-radius: .4rem; background: #fff;
+}
+.connection-figure figcaption { padding-top: .5rem; color: var(--muted); font-size: .85rem; }
 .feature-grid, .start-grid {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem;
 }
@@ -1357,6 +1385,7 @@ def build_page(
     gallery = find_gallery(readme)
     install_commands, install_note = find_install_excerpt(readme)
     warning = find_warning(readme)
+    connection_image = find_image(readme, CONNECTION_IMAGE)
     first_image = next(
         (
             child
@@ -1376,6 +1405,11 @@ def build_page(
         fail("README.md header image has no source digest")
     first_image.attrSet("id", "hero-image")
     image_anchors[hero_digest] = "hero-image"
+    connection_digest = connection_image.attrGet("data-source-sha256")
+    if not connection_digest:
+        fail("README.md connection diagram has no source digest")
+    connection_image.attrSet("id", "connection-diagram")
+    image_anchors[connection_digest] = "connection-diagram"
     selected_gallery: list[tuple[str, Token]] = []
     for title, image in gallery:
         digest = image.attrGet("data-source-sha256")
@@ -1387,7 +1421,7 @@ def build_page(
         image.attrSet("id", anchor)
         image_anchors[digest] = anchor
         selected_gallery.append((title, image))
-        if len(selected_gallery) == 6:
+        if len(selected_gallery) == 2:
             break
 
     feature_cards = "".join(
@@ -1419,6 +1453,12 @@ def build_page(
             "social preview image must remain 1200x630, found "
             f"{social_width}x{social_height}"
         )
+    social_url = SITE_URL + Path(SOCIAL_IMAGE).relative_to("docs").as_posix()
+    favicon_path = ROOT / FAVICON
+    if not favicon_path.is_file() or favicon_path.is_symlink():
+        fail(f"missing or unsafe favicon: {FAVICON}")
+    favicon_url = Path(FAVICON).relative_to("docs").as_posix()
+    connections_id = documents[Path("docs/CONNECTIONS.md")].document_id
 
     parts = [
         "<!doctype html>\n",
@@ -1429,13 +1469,15 @@ def build_page(
         '<meta name="theme-color" content="#090c0b">\n',
         "<title>SHR-DAW | Raspberry Pi terminal groovebox</title>\n",
         f'<meta name="description" content="{html.escape(intro, quote=True)}">\n',
+        f'<link rel="icon" href="{favicon_url}" type="image/svg+xml">\n',
         f'<link rel="canonical" href="{SITE_URL}">\n',
         '<meta property="og:type" content="website">\n',
         '<meta property="og:site_name" content="SHR-DAW">\n',
         '<meta property="og:title" content="SHR-DAW | Raspberry Pi terminal groovebox">\n',
         f'<meta property="og:description" content="{html.escape(intro, quote=True)}">\n',
         f'<meta property="og:url" content="{SITE_URL}">\n',
-        f'<meta property="og:image" content="{SITE_URL}images/shr-daw-social-card.png">\n',
+        f'<meta property="og:image" content="{social_url}">\n',
+        f'<meta property="og:image:secure_url" content="{social_url}">\n',
         '<meta property="og:image:type" content="image/png">\n',
         f'<meta property="og:image:width" content="{social_width}">\n',
         f'<meta property="og:image:height" content="{social_height}">\n',
@@ -1443,7 +1485,8 @@ def build_page(
         '<meta name="twitter:card" content="summary_large_image">\n',
         '<meta name="twitter:title" content="SHR-DAW | Raspberry Pi terminal groovebox">\n',
         f'<meta name="twitter:description" content="{html.escape(intro, quote=True)}">\n',
-        f'<meta name="twitter:image" content="{SITE_URL}images/shr-daw-social-card.png">\n',
+        f'<meta name="twitter:image" content="{social_url}">\n',
+        '<meta name="twitter:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">\n',
         "<style>\n",
         CSS.strip(),
         "\n</style>\n",
@@ -1481,8 +1524,11 @@ def build_page(
         "<h1>SHR-DAW</h1>"
         f'<p class="intro">{html.escape(intro)}</p>'
         '<p class="status-line"><span class="led" aria-hidden="true"></span>'
-        f'<span class="version">Version {html.escape(version)}</span>'
+        f'<span class="version alpha">{RELEASE_STAGE} · version {html.escape(version)}</span>'
         "<span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p>"
+        '<p class="alpha-note">Hands-on physical acceptance is still in progress. '
+        f'<a class="external" href="{ISSUES_URL}" target="_blank" '
+        'rel="noopener noreferrer external">Try the alpha and report what you find</a>.</p>'
         '<div class="button-row"><a class="button" href="#start-here">Start here</a>'
         f'<a class="button secondary external" href="{REPOSITORY_URL}" '
         'target="_blank" rel="noopener noreferrer external">View source</a></div>'
@@ -1491,6 +1537,17 @@ def build_page(
         if first_image.attrGet("class")
         else image_html(first_image, eager=True).replace("<img ", '<img class="hero-image" ', 1),
         "</section>\n",
+        '<section class="overview-block" id="connections" aria-labelledby="connections-title">'
+        '<p class="eyebrow">How it connects</p>'
+        '<h2 id="connections-title">One small centre for the whole setup</h2>'
+        '<figure class="connection-figure">',
+        image_html(connection_image).replace('class="', 'class="connection-image ', 1)
+        if connection_image.attrGet("class")
+        else image_html(connection_image).replace("<img ", '<img class="connection-image" ', 1),
+        '<figcaption>An example setup, not a shopping list. Every device is optional.</figcaption>'
+        '</figure>'
+        f'<p><a href="#{connections_id}">Open the physical connection guide</a> '
+        'for exact paths and smaller setups.</p></section>\n',
         '<section class="overview-block" aria-labelledby="features-title">'
         '<p class="eyebrow">What it does</p>'
         '<h2 id="features-title">Make a rough sketch on a small terminal screen</h2>'

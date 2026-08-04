@@ -6,22 +6,25 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#090c0b">
 <title>SHR-DAW | Raspberry Pi terminal groovebox</title>
-<meta name="description" content="SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.">
+<meta name="description" content="SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://paolashultz.github.io/shr-daw/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="SHR-DAW">
 <meta property="og:title" content="SHR-DAW | Raspberry Pi terminal groovebox">
-<meta property="og:description" content="SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.">
+<meta property="og:description" content="SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
 <meta property="og:url" content="https://paolashultz.github.io/shr-daw/">
 <meta property="og:image" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
+<meta property="og:image:secure_url" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="SHR-DAW | Raspberry Pi terminal groovebox">
-<meta name="twitter:description" content="SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.">
+<meta name="twitter:description" content="SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
 <meta name="twitter:image" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
+<meta name="twitter:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">
 <style>
 :root {
   color-scheme: dark;
@@ -129,6 +132,8 @@ main { min-width: 0; padding-bottom: 5rem; }
 .hero .intro { max-width: 48rem; color: #d7dfda; font-size: clamp(1.03rem, 2vw, 1.25rem); }
 .status-line { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; color: var(--muted); font-size: .85rem; }
 .version { padding: .25rem .55rem; border: 1px solid var(--green); border-radius: 999px; color: var(--green-bright); }
+.version.alpha { border-color: var(--yellow); color: var(--yellow); }
+.alpha-note { max-width: 48rem; margin: .8rem 0 0; color: var(--muted); font-size: .9rem; }
 .hero-image {
   display: block; width: 100%; height: auto; margin-top: 1.6rem;
   border: 1px solid var(--line); border-radius: .45rem; background: #000;
@@ -142,6 +147,12 @@ main { min-width: 0; padding-bottom: 5rem; }
 .button.secondary { border-color: var(--line); background: var(--panel); }
 .overview-block { padding: 2.5rem 0; border-bottom: 1px solid var(--line); }
 .overview-block h2 { margin-top: 0; font-size: clamp(1.5rem, 4vw, 2.25rem); }
+.connection-figure { margin: 0; }
+.connection-image {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--line); border-radius: .4rem; background: #fff;
+}
+.connection-figure figcaption { padding-top: .5rem; color: var(--muted); font-size: .85rem; }
 .feature-grid, .start-grid {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem;
 }
@@ -314,7 +325,7 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <a class="skip-link" href="#main-content">Skip to documentation</a>
 <header class="site-header"><a class="brand" href="#top"><span class="leds" aria-hidden="true"><span class="led"></span><span class="led yellow"></span><span class="led red"></span></span><span>SHR-DAW</span></a><div class="header-links"><a href="#features-title">About</a><a href="#screenshots">Screens</a><a href="#install">Install</a><a class="external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">Source</a><button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Documentation</button></div></header>
 <div class="site-shell">
-<aside class="site-nav" id="site-nav" aria-label="Documentation navigation"><h2>Documentation</h2><div class="search-box"><label for="doc-search">Search this page</label><input id="doc-search" type="search" autocomplete="off" placeholder="Try “loops” or “JACK”"><span class="search-scope"><input id="search-archive" type="checkbox"><label for="search-archive">Include technical archive</label></span><p class="search-help">Press / to search</p><p class="sr-only" id="search-status" aria-live="polite">Search current guides. The technical archive is off.</p><ul id="search-results"></ul></div><noscript><p>Search needs JavaScript; all navigation and documentation remain available below.</p></noscript><ul class="page-links"><li><a href="#features-title">What it does</a></li><li><a href="#screenshots">Screens</a></li><li><a href="#start-here">Where to begin</a></li><li><a href="#install">Install</a></li><li><a href="#documentation">Detailed guides</a></li></ul>
+<aside class="site-nav" id="site-nav" aria-label="Documentation navigation"><h2>Documentation</h2><div class="search-box"><label for="doc-search">Search this page</label><input id="doc-search" type="search" autocomplete="off" placeholder="Try “loops” or “JACK”"><span class="search-scope"><input id="search-archive" type="checkbox"><label for="search-archive">Include technical archive</label></span><p class="search-help">Press / to search</p><p class="sr-only" id="search-status" aria-live="polite">Search current guides. The technical archive is off.</p><ul id="search-results"></ul></div><noscript><p>Search needs JavaScript; all navigation and documentation remain available below.</p></noscript><ul class="page-links"><li><a href="#features-title">What it does</a></li><li><a href="#connections">Connections</a></li><li><a href="#screenshots">Screens</a></li><li><a href="#start-here">Where to begin</a></li><li><a href="#install">Install</a></li><li><a href="#documentation">Detailed guides</a></li></ul>
 <details open><summary>Start and use</summary><ul><li><a href="#doc-first_run">First run</a></li><li><a href="#doc-using_shr_daw">Using SHR-DAW</a></li><li><a href="#doc-menu_manual">Screen and menu manual</a></li><li><a href="#doc-help">SHR-DAW Help</a></li><li><a href="#doc-tracker">Tracker guide</a></li><li><a href="#doc-live_performance">Live performance</a></li><li><a href="#doc-demo_songs">Public-domain demo songs</a></li><li><a href="#doc-controller_interface">Controller action inventory and paging design</a></li><li><a href="#doc-connections">Physical connections</a></li><li><a href="#doc-menu-everyday_screens">Everyday screens</a></li><li><a href="#doc-menu-loops_and_effects">Loops and effects</a></li><li><a href="#doc-menu-tracker_and_projects">FT2, Projects, and Patterns</a></li></ul></details>
 <details><summary>Install and configure</summary><ul><li><a href="#doc-installation">Installation</a></li><li><a href="#doc-pi5_nvme_install">Raspberry Pi 5 NVMe installation</a></li><li><a href="#doc-audio_system_optimization">Raspberry Pi audio-system policy</a></li><li><a href="#doc-configuration">Configuration and tracker routing</a></li><li><a href="#doc-midi_device_profiles">MIDI device profiles</a></li><li><a href="#doc-controller_profiles">Automatic controller setup and MIDI learn</a></li><li><a href="#doc-codex_assisted_setup">Codex-assisted SHR-DAW setup</a></li></ul></details>
 <details><summary>Architecture and safety</summary><ul><li><a href="#doc-how_it_works">How SHR-DAW works</a></li><li><a href="#doc-audio_graph">Audio graph and DSP contract</a></li><li><a href="#doc-final_performance_bus">Final stereo performance bus</a></li><li><a href="#doc-multitrack_recording">Synchronized multitrack recording</a></li><li><a href="#doc-mr18_test_plan">Midas M AIR MR18 acceptance plan</a></li><li><a href="#doc-multitrack_presentation">Three-minute multitrack presentation</a></li><li><a href="#doc-third-party">Licensing and redistribution</a></li><li><a href="#doc-new_patches">New patches and sounds</a></li></ul></details>
@@ -322,11 +333,12 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <details><summary>Related public documentation</summary><ul><li><a class="external" href="https://github.com/PaolaShultz/shr-drums" target="_blank" rel="noopener noreferrer external">SHR Drums engine, kit format, and sources</a></li><li><a class="external" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external" lang="hr">Učenje kroz istraživanje (Hrvatski)</a></li></ul></details>
 <ul class="page-links archive-link"><li><a href="#technical-records">Technical records and future plans</a></li></ul></aside>
 <main id="main-content">
-<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a terminal-based Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 TUI for 64-bit Raspberry Pi OS Lite, not a desktop GUI. It is built to turn a musical idea into a shareable rough sketch, not to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version">Version 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint factory starts, or the cleared SHR Sampler factory instrument through one managed melodic engine, alongside four bundled kits rendered by in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas; build routed software, external-MIDI, drum, and loop parts as multi-page Patterns and Arrangements; or perform them with Live Patterns and the four-slot Loop Mix.</div><div class="feature-card">Keep loops, routes, 13 bounded effect types, the fixed Reverb-then-Delay DRUMS rack, master-strip state, song key, drum kit, and tuning in the Project.</div><div class="feature-card">Record synchronized raw mono stems or a real-time final 24-bit stereo WAV after the fixed master strip and protected true-peak path.</div><div class="feature-card">Play and navigate with physical MIDI controls, MIDI keyboards, the computer keyboard, or terminal mouse/pointer input.</div></div></section>
-<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="Preset browser showing synthv1 sounds" class="tui-shot" data-source-sha256="fa8550471167f42fda625c57f686e7bc224eba5323dda82884cc2a2047beef59" decoding="async" height="624" id="shot-fa8550471167" loading="lazy" src="images/shr-daw-presets.png" width="960"><figcaption>Software instruments</figcaption></figure><figure><img alt="Playback screen with held notes, velocities, and mapped controls" class="tui-shot" data-source-sha256="c00350015b1f62cacc191ff7268b849365ce40324e9e86321d09e84e3faa1e54" decoding="async" height="624" id="shot-c00350015b1f" loading="lazy" src="images/shr-daw-playback.png" width="960"><figcaption>Playback</figcaption></figure><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="2880f9a6a28f8eeb835f8420d2a9865b586021eddb4d695038eaa8f19012f792" decoding="async" height="624" id="shot-2880f9a6a28f" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Live Patterns screen with selected, playing, queued, and lane-shaping states" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure><figure><img alt="Four-slot Loop Mix with playing, queued, muted, and fault states" class="tui-shot" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" decoding="async" height="624" id="shot-3d91ae382d17" loading="lazy" src="images/shr-daw-ft2-loop.png" width="960"><figcaption>Loop Mix</figcaption></figure><figure><img alt="Synchronized multitrack recorder with armed and missing inputs" class="tui-shot" data-source-sha256="3e12ff768e9d441b7b52e19106d96262872152d881deb66e9f9b89fcfbccabfa" decoding="async" height="624" id="shot-3e12ff768e9d" loading="lazy" src="images/shr-daw-audio-recorder.png" width="960"><figcaption>Audio recorder</figcaption></figure></div></section>
+<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version alpha">Alpha · version 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><p class="alpha-note">Hands-on physical acceptance is still in progress. <a class="external" href="https://github.com/PaolaShultz/shr-daw/issues" target="_blank" rel="noopener noreferrer external">Try the alpha and report what you find</a>.</p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
+<section class="overview-block" id="connections" aria-labelledby="connections-title"><p class="eyebrow">How it connects</p><h2 id="connections-title">One small centre for the whole setup</h2><figure class="connection-figure"><img class="connection-image" alt="Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones" data-source-sha256="844ecdb765b7703787b885792b1491ad4a4740bf41d5edcc7da46258e62bdda2" decoding="async" height="675" id="connection-diagram" loading="lazy" src="images/shr-daw-physical-connections.jpg" width="1200"><figcaption>An example setup, not a shopping list. Every device is optional.</figcaption></figure><p><a href="#doc-connections">Open the physical connection guide</a> for exact paths and smaller setups.</p></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint factory starts, or the cleared SHR Sampler factory instrument through one managed melodic engine, alongside four bundled kits rendered by in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas, or build software-instrument, external-MIDI, drum, and loop parts in the FT2-style Pattern and Arrangement workflow.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Keep routes, effects, drum settings, tuning, and master-strip state in the Project, then record synchronized raw mono stems or the final 24-bit stereo performance.</div><div class="feature-card">Navigate with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
+<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="2880f9a6a28f8eeb835f8420d2a9865b586021eddb4d695038eaa8f19012f792" decoding="async" height="624" id="shot-2880f9a6a28f" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Fixed stereo MASTER STRIP with six sections and mastering meters" class="tui-shot" data-source-sha256="e495bfa08c9fb02e0aeaee6a72a5fd88b36061b8ba21be79670202e212e56164" decoding="async" height="624" id="shot-e495bfa08c9f" loading="lazy" src="images/shr-daw-master-strip.png" width="960"><figcaption>MASTER STRIP</figcaption></figure></div></section>
 <section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
-<section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After installation and its setup wizard:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
+<section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After the setup wizard finishes:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is alpha software. Not every feature has completed hands-on physical testing. It becomes beta after every feature has been tried on real hardware. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
 <section class="documentation-library" id="documentation" aria-labelledby="documentation-title"><header class="library-header"><p class="eyebrow">Detailed guides</p><h2 id="documentation-title">The manual, when you need it</h2><p>Choose a subject and open only that guide. Measurements, maintainer records, and future plans stay in a separate archive below.</p></header>
 <section class="library-group" aria-labelledby="group-start-and-use"><header class="group-header"><p class="eyebrow">Current behaviour</p><h3 id="group-start-and-use">Start and use</h3><p>Musician-facing workflows, screens, performance tools, and physical connections.</p></header>
 <details class="document" id="doc-first_run" data-source="docs/FIRST_RUN.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">First run</span><span class="document-summary">Configure hardware and open SHR-DAW.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FIRST_RUN.md" target="_blank" rel="noopener noreferrer external">View docs/FIRST_RUN.md source</a></div><p>You can start with a Raspberry Pi and a terminal. A MIDI keyboard, control
@@ -3263,7 +3275,7 @@ over SSH. Audio can use any Pi, HDMI, or USB output exposed through JACK.</p>
 control surface when you want to operate SHR-DAW without a computer keyboard or
 mouse.</p>
 <h4 id="doc-connections--expanded-setup" tabindex="-1">Expanded setup<a class="heading-anchor" href="#doc-connections--expanded-setup" aria-label="Link to Expanded setup">#</a></h4>
-<p><img src="images/shr-daw-physical-connections.jpg" alt="Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones" width="1200" height="675" loading="lazy" decoding="async" data-source-sha256="844ecdb765b7703787b885792b1491ad4a4740bf41d5edcc7da46258e62bdda2" id="shot-844ecdb765b7" /></p>
+<p><a class="repeated-image-link" href="#connection-diagram">Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones (shown earlier)</a></p>
 <p>For a full-width browser view of the same approved specification, open the
 <a href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/images/preview.html" class="external" target="_blank" rel="noopener noreferrer external">standalone connection diagram</a>. It uses the tracked
 image directly and does not redraw devices, ports, or cables.</p>
@@ -3445,7 +3457,7 @@ on page 1 without restarting it; with no Player instrument, FT2 loads the first
 available synthv1 preset. Saved or explicitly changed Projects keep their own
 routes.</p>
 <h5 id="doc-menu-everyday_screens--ops-browse-and-load" tabindex="-1">OPS — browse and load<a class="heading-anchor" href="#doc-menu-everyday_screens--ops-browse-and-load" aria-label="Link to OPS — browse and load">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-fa8550471167">Populated Presets screen with the OPS controller page (shown earlier)</a></p>
+<p><img src="images/menu/presets-ops.png" alt="Populated Presets screen with the OPS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="fa8550471167f42fda625c57f686e7bc224eba5323dda82884cc2a2047beef59" class="tui-shot" id="shot-fa8550471167" /></p>
 <p><code>LOAD</code> starts the highlighted sound. <code>FIRST</code> and <code>LAST</code> jump to the ends of the
 current engine's catalog. Keyboard PageUp/PageDown still move by ten sounds;
 physical command pads deliberately do not duplicate that coarse scrolling.
@@ -3483,7 +3495,7 @@ synthv1 retains its own names and indices. The main encoder press resets only
 these mapped controls and re-arms pickup; it does
 not restart the synth.</p>
 <h5 id="doc-menu-everyday_screens--play-capture-a-midi-take" tabindex="-1">PLAY — capture a MIDI take<a class="heading-anchor" href="#doc-menu-everyday_screens--play-capture-a-midi-take" aria-label="Link to PLAY — capture a MIDI take">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-c00350015b1f">Populated Playback screen with the PLAY controller page (shown earlier)</a></p>
+<p><img src="images/menu/playback-play.png" alt="Populated Playback screen with the PLAY controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="c00350015b1f62cacc191ff7268b849365ce40324e9e86321d09e84e3faa1e54" class="tui-shot" id="shot-c00350015b1f" /></p>
 <p><code>PLAY</code> plays or stops the captured take. With no take, it still sends a fresh
 Start to the configured controller clock so the MiniLab 3 External-Sync
 arpeggiator works with live keys. <code>RECORD</code> starts the same transport before
@@ -3574,7 +3586,7 @@ count, elapsed time, sample rate, writer high-water mark, drop/xrun counts,
 final path, or the failure reason; the one shared final status row remains
 separate below the two controller rows. It never starts or restarts JACK.</p>
 <h5 id="doc-menu-everyday_screens--record-arm-and-record" tabindex="-1">RECORD — arm and record<a class="heading-anchor" href="#doc-menu-everyday_screens--record-arm-and-record" aria-label="Link to RECORD — arm and record">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-3e12ff768e9d">Populated Audio recorder screen with the RECORD controller page (shown earlier)</a></p>
+<p><img src="images/menu/audio-recorder-record.png" alt="Populated Audio recorder screen with the RECORD controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="3e12ff768e9d441b7b52e19106d96262872152d881deb66e9f9b89fcfbccabfa" class="tui-shot" id="shot-3e12ff768e9d" /></p>
 <p><code>RECORD</code> starts all armed tracks at one callback boundary. <code>ARM</code> toggles the
 selected track. <code>LEVELS</code> opens the separate 18-channel Levels overview. An
 armed missing source prevents a take from starting.</p>
@@ -3732,7 +3744,7 @@ audio:</p>
 without taking the shared status row:</p>
 <p><img src="images/menu/loop-compact.png" alt="Compact Loop Mix fallback" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="3d94b75b676307222b0859b729f84fa7b491cc0d31c22d19527719d2a61ff41d" class="tui-shot" id="shot-3d94b75b6763" /></p>
 <h5 id="doc-menu-loops_and_effects--play-bar-quantized-slot-transport" tabindex="-1">PLAY — bar-quantized slot transport<a class="heading-anchor" href="#doc-menu-loops_and_effects--play-bar-quantized-slot-transport" aria-label="Link to PLAY — bar-quantized slot transport">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-3d91ae382d17">Populated Loop Mix with the PLAY page (shown earlier)</a></p>
+<p><img src="images/menu/ft2-loop-play.png" alt="Populated Loop Mix with the PLAY page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="3d91ae382d177cb41776eb28d3433a13b0d43dd2d19bf93ce21df1dbd61503d2" class="tui-shot" id="shot-3d91ae382d17" /></p>
 <p><code>STOP</code> and <code>LAUNCH</code> queue the selected slot for the next Pattern-local bar.
 <code>SLOT-</code>/<code>SLOT+</code> change selection without playback. A later command replaces
 the earlier queue.</p>
@@ -3835,7 +3847,7 @@ effect slot and cannot be reordered. Its front page shows the owning Project
 and saved/dirty state, INPUT, TONE, GLUE, COLOR, IMAGE, LOUD/CEIL, the selected
 value, sample/true peak, LUFS, linked reduction, and correlation warning.
 Browsing preserves the calling MTR/FX context and unrelated FT2 cursor.</p>
-<p><img src="images/menu/master-strip-section.png" alt="Fixed MASTER STRIP front page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="e495bfa08c9fb02e0aeaee6a72a5fd88b36061b8ba21be79670202e212e56164" class="tui-shot" id="shot-e495bfa08c9f" /></p>
+<p><a class="repeated-image-link" href="#shot-e495bfa08c9f">Fixed MASTER STRIP front page (shown earlier)</a></p>
 <p><code>PREV</code>/<code>NEXT</code> select one section, <code>DETAIL</code> opens its advanced values, and
 <code>BYPASS</code> fades INPUT, TONE, GLUE, COLOR, or IMAGE. LOUD/true-peak protection
 cannot be bypassed.</p>
@@ -4104,7 +4116,7 @@ launch and retrigger switch/restart its MIDI and Loop Mix together.
 The ordinary rotary browses Patterns or adjusts the selected shape control;
 Shift-rotary changes lane through the existing Left/Right action.</p>
 <h5 id="doc-menu-tracker_and_projects--launch-select-queue-cancel-retrigger" tabindex="-1">LAUNCH — select, queue, cancel, retrigger<a class="heading-anchor" href="#doc-menu-tracker_and_projects--launch-select-queue-cancel-retrigger" aria-label="Link to LAUNCH — select, queue, cancel, retrigger">#</a></h5>
-<p><a class="repeated-image-link" href="#shot-0e176304a09f">Populated Live Patterns with the LAUNCH page (shown earlier)</a></p>
+<p><img src="images/menu/live-patterns-launch.png" alt="Populated Live Patterns with the LAUNCH page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" class="tui-shot" id="shot-0e176304a09f" /></p>
 <p><code>LAUNCH</code> queues the selected Pattern. <code>CANCEL</code> removes the queue. <code>RETRIG</code>
 queues the current Pattern deliberately. <code>NOW</code> is the distinct immediate
 action.</p>
@@ -12833,21 +12845,23 @@ every local image those Markdown sources reference below <code>docs/images/</cod
 the generated navigation and document order. The repository landing page,
 nested menu chapters, unlisted public supporting records, and licence receive
 explicit overview/current/archive/legal placement around those owned groups.</p>
-<p>The single tracked output is <code>docs/index.html</code>; <code>docs/.nojekyll</code> is a static
-GitHub Pages control file and is not generated. CSS and JavaScript are inline.
-Referenced images remain relative files below <code>docs/images/</code>. The social-card
-metadata uses the absolute production URL for the dedicated lossless 1200×630
-PNG connection diagram. It preserves the diagram at native scale and omits its
-title strip so link-preview crawlers do not receive a reduced or lossy copy.</p>
+<p>The single generated output is <code>docs/index.html</code>; <code>docs/.nojekyll</code> is a static
+GitHub Pages control file and <code>docs/favicon.svg</code> is the tracked browser icon.
+Neither is generated. CSS and JavaScript are inline. Referenced images remain
+relative files below <code>docs/images/</code>. The social-card metadata uses the absolute
+production URL for the dedicated lossless 1200×630 PNG connection diagram. It
+preserves the diagram at native scale and omits its title strip so link-preview
+crawlers do not receive a reduced or lossy copy.</p>
 <p>The visible page is a product presentation, not an expanded repository dump.
-It uses one introduction and one screenshot tour. Detailed guides are closed
-by default, and measurements, maintainer records, handoffs, and proposals sit
-inside a separately labelled technical archive. Search covers current guides
-by default. A visible checkbox includes the archive, and every result states
-its classification and source. The navigation also links the public SHR Drums
-repository and labels the Croatian essay as <code>Hrvatski</code>. When the same image
-bytes are referenced more than once, the first occurrence owns the image and
-later references link back to it.</p>
+It uses one introduction, the approved full connection diagram, and one short
+screenshot tour. The alpha stage and physical-acceptance boundary appear near
+the title. Detailed guides are closed by default, and measurements, maintainer
+records, handoffs, and proposals sit inside a separately labelled technical
+archive. Search covers current guides by default. A visible checkbox includes
+the archive, and every result states its classification and source. The
+navigation also links the public SHR Drums repository and labels the Croatian
+essay as <code>Hrvatski</code>. When the same image bytes are referenced more than once,
+the first occurrence owns the image and later references link back to it.</p>
 <h5 id="doc-maintainer_helpers--social-card-image-qa" tabindex="-1">Social-card image QA<a class="heading-anchor" href="#doc-maintainer_helpers--social-card-image-qa" aria-label="Link to Social-card image QA">#</a></h5>
 <p>The connection diagram is functional documentation. Never use an image
 generator to recreate its hardware or routing: a plausible-looking cable,
@@ -12885,14 +12899,14 @@ Machine-specific <code>$HOME</code> names are shown as neutral checkout, workspa
 or <code>$HOME</code> labels, and the ignored <code>$SHSYNTH_USER_DIR/</code> root is shown as
 <code>$SHSYNTH_USER_DIR/</code>. This keeps the public copy useful without publishing a
 machine-local or private path.</p>
-<p>Generation fails for a missing source, broken local file or heading fragment,
-duplicate generated anchor, unsupported image format or URL scheme, remote
-image, query-bearing or repository-external local path, link into <code>$SHSYNTH_USER_DIR/</code>,
-credential-like content, or unrecognised renderer version. Included Markdown
-documents link to their same-page anchors; public repository files outside the
-page link to their GitHub source. No file below <code>$SHSYNTH_USER_DIR/</code> is read, copied,
-linked, or written. The helper does not build or launch SHR-DAW, JACK, a synth,
-MIDI, playback, recording, or hardware.</p>
+<p>Generation fails for a missing source or favicon, broken local file or heading
+fragment, duplicate generated anchor, unsupported image format or URL scheme,
+remote image, query-bearing or repository-external local path, link into
+<code>$SHSYNTH_USER_DIR/</code>, credential-like content, or unrecognised renderer version. Included
+Markdown documents link to their same-page anchors; public repository files
+outside the page link to their GitHub source. No file below <code>$SHSYNTH_USER_DIR/</code> is read,
+copied, linked, or written. The helper does not build or launch SHR-DAW, JACK,
+a synth, MIDI, playback, recording, or hardware.</p>
 <h4 id="doc-maintainer_helpers--tui-screenshot-renderer-render-readme-screenshotspy" tabindex="-1">TUI screenshot renderer: <code>render-readme-screenshots.py</code><a class="heading-anchor" href="#doc-maintainer_helpers--tui-screenshot-renderer-render-readme-screenshotspy" aria-label="Link to TUI screenshot renderer: render-readme-screenshots.py">#</a></h4>
 <h5 id="doc-maintainer_helpers--invocation-5" tabindex="-1">Invocation<a class="heading-anchor" href="#doc-maintainer_helpers--invocation-5" aria-label="Link to Invocation">#</a></h5>
 <pre><code class="language-sh"># Render every README and menu-manual image.
