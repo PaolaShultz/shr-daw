@@ -142,12 +142,16 @@ display, never the MIDI notes.
 
 ## Software instruments and ownership
 
+The musician-facing behavior of all five melodic backends and the independent
+SHR Drums engine is collected in
+[Instruments and drums](INSTRUMENTS_AND_DRUMS.md). This section owns the
+lower-level process and route boundaries.
+
 SHR-DAW browses five separately installed instrument hosts:
 
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
-- [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks; and
+- [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks;
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
-  and
 - Moj Sint for strict `.mojsint` Model D and Six-Op PM presets; and
 - SHR Sampler for strict preloaded `.shrinst` sample packages.
 

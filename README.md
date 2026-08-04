@@ -44,9 +44,10 @@ ways to start small.
 - Navigate with a MIDI controller, MIDI keyboard, computer keyboard, or
   terminal mouse input.
 
-See [Using SHR-DAW](docs/USING_SHR_DAW.md) for the musician workflow and
-[How it works](docs/HOW_IT_WORKS.md) for routing, ownership, storage, and
-failure boundaries.
+See [Using SHR-DAW](docs/USING_SHR_DAW.md) for the musician workflow,
+[Instruments and drums](docs/INSTRUMENTS_AND_DRUMS.md) for the integrated sound
+sources, and [How it works](docs/HOW_IT_WORKS.md) for routing, ownership,
+storage, and failure boundaries.
 
 ## Screenshot tour
 

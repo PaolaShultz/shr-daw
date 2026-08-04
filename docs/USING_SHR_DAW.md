@@ -84,8 +84,9 @@ Moj Sint keeps its own preset format and controls. Its 13 authored starts form
 two editable model families. SHR Sampler packages are read-only and use their
 own strict format; the installed project-authored factory package is a neutral
 first-load sound. SHR Drums is separate from the managed melodic engine and
-runs in process. Public source, formats, and provenance are linked from
-[the documentation index](README.md).
+runs in process. See [Instruments and drums](INSTRUMENTS_AND_DRUMS.md) for the
+complete backend comparison, Moj controls and saves, Sampler validation,
+Drums kits, routing, ownership, recovery, and public provenance.
 
 ## Explore with N00B
 

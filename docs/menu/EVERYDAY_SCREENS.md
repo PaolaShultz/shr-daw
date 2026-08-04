@@ -28,9 +28,10 @@ invoke that page's items wherever a controller strip is present.
 
 **Software Synths** opens Presets. Turn the main encoder, use the arrow keys,
 or use the mouse wheel to choose a sound. Hold the configured encoder Shift
-while turning to move between the synthv1, Yoshimi, FluidSynth, and Moj Sint
-catalogs. Loading replaces the one managed software instrument; it never
-layers engines.
+while turning to move between the synthv1, Yoshimi, FluidSynth, Moj Sint, and
+SHR Sampler catalogs. Loading replaces the one managed software instrument; it
+never layers engines. SHR Drums remains an independent in-process FT2 Drums
+target rather than a Presets catalog.
 
 Home keeps **MIDI Learn**, **Routing**, and **Effects** separate. Routing is the
 rotary browse/edit/confirm/cancel editor; Effects is the existing Project rack.
@@ -65,16 +66,23 @@ for STOP/PANIC where that direct safety action exists.
 
 ### Change instrument host
 
-Shift-turn the main rotary to move among synthv1, Yoshimi, FluidSynth, and Moj
-Sint in either direction. Keyboard `[`/`]` and clicking the left/right half of
-the Presets heading remain equivalent. Catalog changes are silent: they only
-change the list and reset its selection according to the existing catalog
-contract. `LOAD` is the sole managed preset start or replacement action.
+Shift-turn the main rotary to move among synthv1, Yoshimi, FluidSynth, Moj
+Sint, and SHR Sampler in either direction. Keyboard `[`/`]` and clicking the
+left/right half of the Presets heading remain equivalent. Catalog changes are
+silent: they only change the list and reset its selection according to the
+existing catalog contract. `LOAD` is the sole managed preset start or
+replacement action.
 
-The Moj Sint catalog has seven ordered starts: Full Bass, Full Lead, Full
-Filter Articulation, Matched Idealized, Matched Linear Mixer, Matched Linear
-Ladder, and Matched No Drift or Feedback. Selecting one only browses; `LOAD`
-starts it.
+The Moj Sint catalog has 13 ordered starts: seven Model D sounds from Full Bass
+through Matched No Drift or Feedback, then six Six-Op PM sounds from Bell Metal
+through Mechanical Stab. The list marks their model as `M-D` or `6-OP`.
+Selecting one only browses; `LOAD` starts it.
+
+SHR Sampler lists strict read-only `.shrinst` packages. `LOAD` validates the
+installed host version and complete package before replacing the current
+engine. Its missing, incompatible, malformed, timed-out, or failed states stay
+visible and cannot leave two melodic hosts layered. The public installation's
+cleared factory package is a neutral starting sound.
 
 ### SYS — safety and help
 
@@ -143,6 +151,9 @@ chromatic play.
 `PANIC` performs the global owned stop. `FX` opens the current Project rack
 without restarting the sound. `HELP` opens help and returns here afterward.
 `EXIT` returns to Presets, then Presets `EXIT` returns Home.
+
+See [Instruments and drums](../INSTRUMENTS_AND_DRUMS.md) for the complete Moj
+Sint, SHR Sampler, and SHR Drums workflows and their ownership boundaries.
 
 ### N00B-on Playback pages
 

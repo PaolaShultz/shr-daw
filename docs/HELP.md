@@ -86,8 +86,18 @@ Moj Sint uses the same pickup behavior with its own CC 20–31 macro identity:
 EVOLVE, SHAPE, COLOR, EDGE, COUPLE, MOTION, DEPTH, SPACE, then ADSR. RESET
 restores the loaded `.mojsint` values in place without restarting the host.
 Those controls never use synthv1 XML names or parameter indices.
-Its seven numbered factory starts preserve the three full authored patches and
-four matched diagnostic configurations; every start keeps all twelve controls.
+Its 13 numbered factory starts contain seven Model D and six Six-Op PM sounds.
+The same twelve physical positions show model-specific labels, keep pickup,
+and remain inside their selected model in FT2 ROUTE.
+
+SHR Sampler packages are read-only instruments. LOAD validates the host version
+and complete `.shrinst` package before replacing the current sound. A failure
+keeps or restores the previous owned session; SAVE stays unavailable. Ideas and
+FT2 routes retain the package identity without copying its samples.
+
+SHR Drums is selected from an FT2 Drums-page route, not Presets. It runs in
+process beside the one managed melodic engine. KIT changes use the live
+Apply/Cancel route transaction and preserve the prior kit on failure.
 
 The dots beside synthv1 values compare the current sound to the loaded preset:
 green is lower, yellow is near original, red is higher.
