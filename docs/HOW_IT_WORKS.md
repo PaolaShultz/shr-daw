@@ -142,12 +142,13 @@ display, never the MIDI notes.
 
 ## Software instruments and ownership
 
-The musician-facing behavior of all five melodic backends and the independent
-SHR Drums engine is collected in
-[Instruments and drums](INSTRUMENTS_AND_DRUMS.md). This section owns the
+The musician-facing behavior of the complete SHR-DAW instrument system is
+collected in
+[SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md). This section owns the
 lower-level process and route boundaries.
 
-SHR-DAW browses five separately installed instrument hosts:
+The whole-system installation presents five melodic instrument families
+through one SHR-DAW workflow. Their runtime hosts are:
 
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks;

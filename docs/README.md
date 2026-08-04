@@ -17,9 +17,9 @@ configuration, or the architecture contracts.
 - [Using SHR-DAW](USING_SHR_DAW.md) — musical purpose, the realistic
   idea-to-sketch workflow, non-goals, instruments, effects, recording, and
   commands.
-- [Instruments and drums](INSTRUMENTS_AND_DRUMS.md) — the five melodic
-  backends, Moj Sint models and saves, SHR Sampler packages, SHR Drums kits,
-  ownership, routing, and recovery.
+- [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md) — one installed
+  sound system with melodic instruments, Moj models and saves, Sampler, Drums
+  kits, routing, ownership, and recovery.
 - [Complete screen and menu manual](MENU_MANUAL.md) — deterministic images
   covering every populated 40×13 screen, contextual editor, visible Levels
   command page, and controller menu page, with explanations.

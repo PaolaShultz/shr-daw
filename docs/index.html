@@ -6,13 +6,13 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#090c0b">
 <title>SHR-DAW | Raspberry Pi terminal groovebox</title>
-<meta name="description" content="SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
+<meta name="description" content="SHR-DAW is a compact Raspberry Pi music workstation written in Rust. It brings instruments, drums, MIDI sequencing, live performance, loops, effects, mixing, and recording into a controller-first 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://paolashultz.github.io/shr-daw/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="SHR-DAW">
 <meta property="og:title" content="SHR-DAW | Raspberry Pi terminal groovebox">
-<meta property="og:description" content="SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
+<meta property="og:description" content="SHR-DAW is a compact Raspberry Pi music workstation written in Rust. It brings instruments, drums, MIDI sequencing, live performance, loops, effects, mixing, and recording into a controller-first 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
 <meta property="og:url" content="https://paolashultz.github.io/shr-daw/">
 <meta property="og:image" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
 <meta property="og:image:secure_url" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
@@ -22,7 +22,7 @@
 <meta property="og:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="SHR-DAW | Raspberry Pi terminal groovebox">
-<meta name="twitter:description" content="SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
+<meta name="twitter:description" content="SHR-DAW is a compact Raspberry Pi music workstation written in Rust. It brings instruments, drums, MIDI sequencing, live performance, loops, effects, mixing, and recording into a controller-first 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.">
 <meta name="twitter:image" content="https://paolashultz.github.io/shr-daw/images/shr-daw-social-card.png">
 <meta name="twitter:image:alt" content="SHR-DAW Raspberry Pi mini DAW physical connection diagram">
 <style>
@@ -326,18 +326,18 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <header class="site-header"><a class="brand" href="#top"><span class="leds" aria-hidden="true"><span class="led"></span><span class="led yellow"></span><span class="led red"></span></span><span>SHR-DAW</span></a><div class="header-links"><a href="#features-title">About</a><a href="#screenshots">Screens</a><a href="#install">Install</a><a class="external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">Source</a><button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Documentation</button></div></header>
 <div class="site-shell">
 <aside class="site-nav" id="site-nav" aria-label="Documentation navigation"><h2>Documentation</h2><div class="search-box"><label for="doc-search">Search this page</label><input id="doc-search" type="search" autocomplete="off" placeholder="Try “loops” or “JACK”"><span class="search-scope"><input id="search-archive" type="checkbox"><label for="search-archive">Include technical archive</label></span><p class="search-help">Press / to search</p><p class="sr-only" id="search-status" aria-live="polite">Search current guides. The technical archive is off.</p><ul id="search-results"></ul></div><noscript><p>Search needs JavaScript; all navigation and documentation remain available below.</p></noscript><ul class="page-links"><li><a href="#features-title">What it does</a></li><li><a href="#connections">Connections</a></li><li><a href="#screenshots">Screens</a></li><li><a href="#start-here">Where to begin</a></li><li><a href="#install">Install</a></li><li><a href="#documentation">Detailed guides</a></li></ul>
-<details open><summary>Start and use</summary><ul><li><a href="#doc-first_run">First run</a></li><li><a href="#doc-using_shr_daw">Using SHR-DAW</a></li><li><a href="#doc-instruments_and_drums">Instruments and drums</a></li><li><a href="#doc-menu_manual">Screen and menu manual</a></li><li><a href="#doc-help">SHR-DAW Help</a></li><li><a href="#doc-tracker">Tracker guide</a></li><li><a href="#doc-live_performance">Live performance</a></li><li><a href="#doc-demo_songs">Public-domain demo songs</a></li><li><a href="#doc-controller_interface">Controller action inventory and paging design</a></li><li><a href="#doc-connections">Physical connections</a></li><li><a href="#doc-menu-everyday_screens">Everyday screens</a></li><li><a href="#doc-menu-loops_and_effects">Loops and effects</a></li><li><a href="#doc-menu-tracker_and_projects">FT2, Projects, and Patterns</a></li></ul></details>
+<details open><summary>Start and use</summary><ul><li><a href="#doc-first_run">First run</a></li><li><a href="#doc-using_shr_daw">Using SHR-DAW</a></li><li><a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a></li><li><a href="#doc-menu_manual">Screen and menu manual</a></li><li><a href="#doc-help">SHR-DAW Help</a></li><li><a href="#doc-tracker">Tracker guide</a></li><li><a href="#doc-live_performance">Live performance</a></li><li><a href="#doc-demo_songs">Public-domain demo songs</a></li><li><a href="#doc-controller_interface">Controller action inventory and paging design</a></li><li><a href="#doc-connections">Physical connections</a></li><li><a href="#doc-menu-everyday_screens">Everyday screens</a></li><li><a href="#doc-menu-loops_and_effects">Loops and effects</a></li><li><a href="#doc-menu-tracker_and_projects">FT2, Projects, and Patterns</a></li></ul></details>
 <details><summary>Install and configure</summary><ul><li><a href="#doc-installation">Installation</a></li><li><a href="#doc-pi5_nvme_install">Raspberry Pi 5 NVMe installation</a></li><li><a href="#doc-audio_system_optimization">Raspberry Pi audio-system policy</a></li><li><a href="#doc-configuration">Configuration and tracker routing</a></li><li><a href="#doc-midi_device_profiles">MIDI device profiles</a></li><li><a href="#doc-controller_profiles">Automatic controller setup and MIDI learn</a></li><li><a href="#doc-codex_assisted_setup">Codex-assisted SHR-DAW setup</a></li></ul></details>
 <details><summary>Architecture and safety</summary><ul><li><a href="#doc-how_it_works">How SHR-DAW works</a></li><li><a href="#doc-audio_graph">Audio graph and DSP contract</a></li><li><a href="#doc-final_performance_bus">Final stereo performance bus</a></li><li><a href="#doc-multitrack_recording">Synchronized multitrack recording</a></li><li><a href="#doc-mr18_test_plan">Midas M AIR MR18 acceptance plan</a></li><li><a href="#doc-multitrack_presentation">Three-minute multitrack presentation</a></li><li><a href="#doc-third-party">Licensing and redistribution</a></li><li><a href="#doc-new_patches">New patches and sounds</a></li></ul></details>
 <details><summary>Licence</summary><ul><li><a href="#doc-license">MIT licence</a></li></ul></details>
 <details><summary>Related public documentation</summary><ul><li><a class="external" href="https://github.com/PaolaShultz/shr-drums" target="_blank" rel="noopener noreferrer external">SHR Drums engine, kit format, and sources</a></li><li><a class="external" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external" lang="hr">Učenje kroz istraživanje (Hrvatski)</a></li></ul></details>
 <ul class="page-links archive-link"><li><a href="#technical-records">Technical records and future plans</a></li></ul></aside>
 <main id="main-content">
-<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version alpha">Alpha · version 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><p class="alpha-note">Hands-on physical acceptance is still in progress. <a class="external" href="https://github.com/PaolaShultz/shr-daw/issues" target="_blank" rel="noopener noreferrer external">Try the alpha and report what you find</a>.</p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
+<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">SHR-DAW is a compact Raspberry Pi music workstation written in Rust. It brings instruments, drums, MIDI sequencing, live performance, loops, effects, mixing, and recording into a controller-first 40×13 terminal TUI for 64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo while travelling or jamming, without pretending to replace a desktop production DAW.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version alpha">Alpha · version 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><p class="alpha-note">Hands-on physical acceptance is still in progress. <a class="external" href="https://github.com/PaolaShultz/shr-daw/issues" target="_blank" rel="noopener noreferrer external">Try the alpha and report what you find</a>.</p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
 <section class="overview-block" id="connections" aria-labelledby="connections-title"><p class="eyebrow">How it connects</p><h2 id="connections-title">One small centre for the whole setup</h2><figure class="connection-figure"><img class="connection-image" alt="Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones" data-source-sha256="844ecdb765b7703787b885792b1491ad4a4740bf41d5edcc7da46258e62bdda2" decoding="async" height="675" id="connection-diagram" loading="lazy" src="images/shr-daw-physical-connections.jpg" width="1200"><figcaption>An example setup, not a shopping list. Every device is optional.</figcaption></figure><p><a href="#doc-connections">Open the physical connection guide</a> for exact paths and smaller setups.</p></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make a rough sketch on a small terminal screen</h2><div class="feature-grid"><div class="feature-card">Play synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint factory starts, or the cleared SHR Sampler factory instrument through one managed melodic engine, alongside four bundled kits rendered by in-process SHR Drums.</div><div class="feature-card">Capture free-timed MIDI Ideas, or build and export FT2-style Arrangements with sparse control automation, an internal click/count-in, software and external MIDI, drums, and loops.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Keep routes, effects, drum settings, tuning, and master-strip state in the Project, then record synchronized raw mono stems or the final 24-bit stereo performance.</div><div class="feature-card">Navigate with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make, arrange, perform, and record on a small screen</h2><div class="feature-grid"><div class="feature-card">Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint starts, the cleared SHR Sampler instrument, and four bundled SHR Drums kits.</div><div class="feature-card">Play from a controller or keyboard with pickup-protected sound controls, scale filtering, held-note/chord feedback, private sound saves, free-timed MIDI Ideas, and external-sync controller clock.</div><div class="feature-card">Build FT2-style Patterns and Arrangements with software instruments, external MIDI, drums, Pattern-owned loops, note recording/editing, sparse automation, a metronome/count-in, and format-1 MIDI export.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Shape and mix the complete performance through source, aux, drum, and master effects, a fixed mastering strip, final-bus meters, and safe source controls.</div><div class="feature-card">Record the final 24-bit stereo performance or synchronized raw mono stems with manifests and recovery, including the native 18-channel input overview.</div><div class="feature-card">Configure exact MIDI/audio routes and controller profiles with MIDI Learn, startup diagnosis, safe rollback, and owned-process cleanup.</div><div class="feature-card">Navigate every compact workflow with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
 <section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="2880f9a6a28f8eeb835f8420d2a9865b586021eddb4d695038eaa8f19012f792" decoding="async" height="624" id="shot-2880f9a6a28f" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Fixed stereo MASTER STRIP with six sections and mastering meters" class="tui-shot" data-source-sha256="e495bfa08c9fb02e0aeaee6a72a5fd88b36061b8ba21be79670202e212e56164" decoding="async" height="624" id="shot-e495bfa08c9f" loading="lazy" src="images/shr-daw-master-strip.png" width="960"><figcaption>MASTER STRIP</figcaption></figure></div></section>
-<section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover the first launch, everyday music making, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
+<section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover first launch, everyday music making, the complete instrument system, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-instruments_and_drums"><strong>SHR-DAW instruments and drums</strong><span>One installed sound system with melodic instruments, Moj models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
 <section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After the setup wizard finishes:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is alpha software. Not every feature has completed hands-on physical testing. It becomes beta after every feature has been tried on real hardware. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
 <section class="documentation-library" id="documentation" aria-labelledby="documentation-title"><header class="library-header"><p class="eyebrow">Detailed guides</p><h2 id="documentation-title">The manual, when you need it</h2><p>Choose a subject and open only that guide. Measurements, maintainer records, and future plans stay in a separate archive below.</p></header>
 <section class="library-group" aria-labelledby="group-start-and-use"><header class="group-header"><p class="eyebrow">Current behaviour</p><h3 id="group-start-and-use">Start and use</h3><p>Musician-facing workflows, screens, performance tools, and physical connections.</p></header>
@@ -463,7 +463,8 @@ configuration and data.</li>
 stop it. An <strong>exact route</strong> is one saved endpoint that SHR never guesses.</li>
 </ul>
 <h4 id="doc-using_shr_daw--instruments-and-playback" tabindex="-1">Instruments and Playback<a class="heading-anchor" href="#doc-using_shr_daw--instruments-and-playback" aria-label="Link to Instruments and Playback">#</a></h4>
-<p>Presets browses five software backends:</p>
+<p>The installed SHR-DAW sound system presents five melodic instrument families
+in Presets:</p>
 <ul>
 <li>synthv1 presets;</li>
 <li>Yoshimi <code>.xiz</code> banks;</li>
@@ -495,9 +496,9 @@ and <code>TAP</code> changes tempo without silently starting transport.</p>
 two editable model families. SHR Sampler packages are read-only and use their
 own strict format; the installed project-authored factory package is a neutral
 first-load sound. SHR Drums is separate from the managed melodic engine and
-runs in process. See <a href="#doc-instruments_and_drums">Instruments and drums</a> for the
-complete backend comparison, Moj controls and saves, Sampler validation,
-Drums kits, routing, ownership, recovery, and public provenance.</p>
+runs in process. See <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>
+for the complete sound-system guide: Moj controls and saves, Sampler
+validation, Drums kits, routing, ownership, recovery, and public provenance.</p>
 <h4 id="doc-using_shr_daw--explore-with-n00b" tabindex="-1">Explore with N00B<a class="heading-anchor" href="#doc-using_shr_daw--explore-with-n00b" aria-label="Link to Explore with N00B">#</a></h4>
 <p>Playback N00B filters live melodic input to a selected root plus major or
 natural-minor scale. Allowed notes keep their pitch; other notes stay silent.
@@ -615,73 +616,81 @@ sends a low-gain note, and measures a bounded run. Run it only with
 explicit authorization. Its setup contract is in
 <a href="#doc-configuration--owned-audio-graph">Configuration and routing</a>.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-instruments_and_drums" data-source="docs/INSTRUMENTS_AND_DRUMS.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Instruments and drums</span><span class="document-summary">The five melodic backends, Moj Sint models and saves, SHR Sampler packages, SHR Drums kits, ownership, routing, and recovery.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/INSTRUMENTS_AND_DRUMS.md" target="_blank" rel="noopener noreferrer external">View docs/INSTRUMENTS_AND_DRUMS.md source</a></div><p>SHR-DAW integrates five melodic instrument hosts and one independent drum
-engine. This guide is the musician-facing home for choosing, loading, playing,
-saving, routing, and recovering those sound sources. Machine paths and version
+<details class="document" id="doc-instruments_and_drums" data-source="docs/INSTRUMENTS_AND_DRUMS.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">SHR-DAW instruments and drums</span><span class="document-summary">One installed sound system with melodic instruments, Moj models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/INSTRUMENTS_AND_DRUMS.md" target="_blank" rel="noopener noreferrer external">View docs/INSTRUMENTS_AND_DRUMS.md source</a></div><p>The installed SHR-DAW package is one music workstation with a complete sound
+system: five melodic instrument families, the SHR Drums instrument and kits,
+one controller workflow, one tracker, one effects graph, and one final audio
+bus. Moj Sint, SHR Sampler, and SHR Drums arrive and work together as parts of
+SHR-DAW. Their names identify kinds of sound available inside the workstation.</p>
+<p>This guide is the musician-facing home for choosing, loading, playing, saving,
+routing, and recovering SHR-DAW sounds. Machine paths and component version
 checks remain in <a href="#doc-configuration">Configuration and routing</a>; process and
 audio ownership remain in <a href="#doc-how_it_works">How SHR-DAW works</a>.</p>
-<h4 id="doc-instruments_and_drums--what-is-integrated" tabindex="-1">What is integrated<a class="heading-anchor" href="#doc-instruments_and_drums--what-is-integrated" aria-label="Link to What is integrated">#</a></h4>
+<h4 id="doc-instruments_and_drums--the-shr-daw-sound-system" tabindex="-1">The SHR-DAW sound system<a class="heading-anchor" href="#doc-instruments_and_drums--the-shr-daw-sound-system" aria-label="Link to The SHR-DAW sound system">#</a></h4>
 <table>
 <thead>
 <tr>
-<th>Sound source</th>
-<th>Public format</th>
-<th>SHR role</th>
-<th>Sound editing and saving</th>
+<th>Instrument family</th>
+<th>Sounds inside SHR-DAW</th>
+<th>Musical role</th>
+<th>Editing and saving</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>synthv1</td>
-<td><code>.synthv1</code></td>
-<td>One managed melodic host</td>
+<td><code>.synthv1</code> sounds</td>
+<td>Melodic synth</td>
 <td>Twelve mapped controls; private Overwrite or Save New</td>
 </tr>
 <tr>
 <td>Yoshimi</td>
-<td><code>.xiz</code></td>
-<td>One managed melodic host</td>
-<td>Catalog and playback are read-only in SHR</td>
+<td><code>.xiz</code> sounds and banks</td>
+<td>Melodic synth</td>
+<td>Read-only catalog and playback</td>
 </tr>
 <tr>
 <td>FluidSynth</td>
-<td><code>.sf2</code> / <code>.sf3</code></td>
-<td>One managed, multitimbral melodic host</td>
+<td><code>.sf2</code> / <code>.sf3</code> SoundFonts</td>
+<td>Multitimbral melodic or General MIDI drums</td>
 <td>Bank/program selection; SoundFonts remain read-only</td>
 </tr>
 <tr>
 <td>Moj Sint</td>
-<td><code>.mojsint</code></td>
-<td>One managed melodic host with Model D and Six-Op PM</td>
+<td><code>.mojsint</code> Model D and Six-Op PM sounds</td>
+<td>Melodic synth</td>
 <td>Twelve model-specific mapped controls; private Overwrite or Save New</td>
 </tr>
 <tr>
 <td>SHR Sampler</td>
-<td><code>.shrinst</code></td>
-<td>One managed melodic sample-package host</td>
-<td>Strict preloaded packages; read-only in SHR</td>
+<td><code>.shrinst</code> instruments</td>
+<td>Melodic sample instrument</td>
+<td>Strict preloaded instruments; read-only in SHR</td>
 </tr>
 <tr>
 <td>SHR Drums</td>
-<td><code>.shrkit</code></td>
-<td>Independent in-process drum engine</td>
-<td>Project kit, tuning, drum rack, and four tracker lanes</td>
+<td><code>.shrkit</code> kits</td>
+<td>Four-lane drum instrument</td>
+<td>Project kit, tuning, drum rack, and tracker notes</td>
 </tr>
 </tbody>
 </table>
-<p>Only one SHR-managed <strong>melodic host process</strong> runs at a time. Loading a new
+<p>All six families participate in the same Project, routes, effects, transport,
+recording, controller, and final-bus workflows. At the implementation boundary,
+only one SHR-managed <strong>melodic host process</strong> runs at a time. Loading a new
 synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler sound safely replaces or
 reuses that owner. FluidSynth may hold several compatible channel parts inside
-its one process. SHR Drums is not part of that exclusive slot: it renders in
-process and can play beside any managed melodic host.</p>
+its one process. SHR Drums renders in process and can play beside the selected
+melodic instrument. This arrangement keeps drum audio independent inside the
+same installation and workflow.</p>
 <h4 id="doc-instruments_and_drums--browse-load-and-switch-safely" tabindex="-1">Browse, load, and switch safely<a class="heading-anchor" href="#doc-instruments_and_drums--browse-load-and-switch-safely" aria-label="Link to Browse, load, and switch safely">#</a></h4>
 <p>Open <strong>Software Synths</strong> from Home. Turn to browse sounds in the selected
 catalog. Shift-turn the main encoder, use <code>[</code>/<code>]</code>, or click the two halves of
-the Presets heading to move through all five melodic backends. Browsing is
-silent. <strong>LOAD</strong> is the deliberate start or replacement boundary.</p>
+the Presets heading to move through all five melodic instrument families.
+Browsing is silent. <strong>LOAD</strong> is the deliberate start or replacement boundary.</p>
 <p>Loading follows one ownership transaction:</p>
 <ol>
-<li>validate the selected sound and backend before disturbing the current one;</li>
+<li>validate the selected sound and its engine before disturbing the current
+one;</li>
 <li>send All Notes Off and stop only the melodic process SHR owns when a
 replacement is required;</li>
 <li>start or reuse the selected backend;</li>
@@ -697,9 +706,9 @@ musician.</p>
 stop it. A new, empty, unsaved FT2 Project can adopt that exact Player sound on
 its first software page without restarting the host. A saved or already edited
 Project keeps its stored routes.</p>
-<h4 id="doc-instruments_and_drums--moj-sint" tabindex="-1">Moj Sint<a class="heading-anchor" href="#doc-instruments_and_drums--moj-sint" aria-label="Link to Moj Sint">#</a></h4>
-<p><a href="https://github.com/PaolaShultz/moj-sint" class="external" target="_blank" rel="noopener noreferrer external">Moj Sint</a> is SHR's editable in-house
-synth host. Its 13 cleared factory starts are grouped by synthesis model:</p>
+<h4 id="doc-instruments_and_drums--moj-sint-sounds" tabindex="-1">Moj Sint sounds<a class="heading-anchor" href="#doc-instruments_and_drums--moj-sint-sounds" aria-label="Link to Moj Sint sounds">#</a></h4>
+<p>Moj Sint is SHR-DAW's editable in-house synthesis family. Its 13 cleared
+factory starts are grouped by synthesis model:</p>
 <ul>
 <li>Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
 Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
@@ -724,23 +733,23 @@ labels chosen by the loaded model:</p>
 </thead>
 <tbody>
 <tr>
-<td>1–4</td>
+<td>1-4</td>
 <td>Evolve, Shape, Color, Edge</td>
 <td>Index, Ratio, Feedback, Op Decay</td>
 </tr>
 <tr>
-<td>5–8</td>
+<td>5-8</td>
 <td>Couple, Motion, Depth, Space</td>
 <td>Balance, Key Scale, Velocity, Motion</td>
 </tr>
 <tr>
-<td>9–12</td>
+<td>9-12</td>
 <td>Attack, Decay, Sustain, Release</td>
 <td>Attack, Decay, Sustain, Release</td>
 </tr>
 </tbody>
 </table>
-<p>The stable CC 20–31 identity belongs to Moj Sint, not to synthv1 parameter
+<p>The stable CC 20-31 identity belongs to Moj Sint, not to synthv1 parameter
 indices. After Load, Reset, Project/Idea restore, automation ownership changes,
 or another value-setting transition, physical knobs must reach or cross the
 effective value before they take control. This pickup rule prevents jumps.</p>
@@ -752,12 +761,11 @@ current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable
 sound identity.</p>
-<h4 id="doc-instruments_and_drums--shr-sampler" tabindex="-1">SHR Sampler<a class="heading-anchor" href="#doc-instruments_and_drums--shr-sampler" aria-label="Link to SHR Sampler">#</a></h4>
-<p><a href="https://github.com/PaolaShultz/shr-sampler" class="external" target="_blank" rel="noopener noreferrer external">SHR Sampler</a> plays strict
-<code>.shrinst</code> sample packages as a managed melodic host. The public installation
-includes one cleared, project-authored neutral factory instrument. Packages
-are read-only catalog entries: SHR does not rewrite a package or pretend it is
-an editable synth preset.</p>
+<h4 id="doc-instruments_and_drums--shr-sampler-instruments" tabindex="-1">SHR Sampler instruments<a class="heading-anchor" href="#doc-instruments_and_drums--shr-sampler-instruments" aria-label="Link to SHR Sampler instruments">#</a></h4>
+<p>SHR Sampler is the sample-instrument family inside SHR-DAW. It plays strict
+<code>.shrinst</code> packages, and the installation includes one cleared,
+project-authored neutral factory instrument. Packages are read-only catalog
+entries. SHR treats each package as a complete instrument.</p>
 <p><strong>LOAD</strong> first checks the installed host version and runs the package's bounded
 offline validation. Only a compatible, valid package may replace the current
 melodic owner. The live host must then publish its exact configured MIDI input
@@ -771,12 +779,12 @@ capture, effects access, and transport without inventing unsupported Sampler
 macros. Sound saving is visibly unavailable. FT2 stores the package's stable
 identity in its software route. Ideas store that identity and configured
 public path; they do not copy sample content into the private Idea directory.</p>
-<h4 id="doc-instruments_and_drums--shr-drums" tabindex="-1">SHR Drums<a class="heading-anchor" href="#doc-instruments_and_drums--shr-drums" aria-label="Link to SHR Drums">#</a></h4>
-<p><a href="https://github.com/PaolaShultz/shr-drums" class="external" target="_blank" rel="noopener noreferrer external">SHR Drums</a> is a bounded in-process
-engine, not a sixth managed melodic process and not an external MIDI device.
-It does not borrow synth or sampler voices. A new Project's four-lane <strong>Drums</strong>
-page uses the installed Big Rock kit when available; an explicit external or
-FluidSynth General MIDI drum route remains possible.</p>
+<h4 id="doc-instruments_and_drums--shr-drums-kits" tabindex="-1">SHR Drums kits<a class="heading-anchor" href="#doc-instruments_and_drums--shr-drums-kits" aria-label="Link to SHR Drums kits">#</a></h4>
+<p>SHR Drums is SHR-DAW's kit-based drum instrument. Its bounded engine runs
+inside SHR-DAW, with its own voices alongside the current melodic instrument.
+A new Project's four-lane <strong>Drums</strong> page uses the installed Big Rock kit when
+available; an explicit external or FluidSynth General MIDI drum route remains
+possible.</p>
 <p>The public installation contains four cleared kits:</p>
 <ul>
 <li>Acid, an original fully modelled CC0 kit;</li>
@@ -816,7 +824,7 @@ borrows a drum voice.</p>
 <td>Player</td>
 <td>Load, edit, reset, save</td>
 <td>Load and play read-only package</td>
-<td>Not a Presets backend</td>
+<td>FT2 Drums page</td>
 </tr>
 <tr>
 <td>Idea</td>
@@ -833,7 +841,7 @@ borrows a drum voice.</p>
 <tr>
 <td>Automation</td>
 <td>Twelve stable mapped controls</td>
-<td>No invented mapped macros</td>
+<td>Note performance; mapped synthesis controls unavailable</td>
 <td>Notes use drum lanes; Project drum effects use stable effect automation</td>
 </tr>
 <tr>
@@ -851,10 +859,17 @@ switching, and reload retain the same note-cleanup and ownership boundaries.</p>
 <h4 id="doc-instruments_and_drums--where-files-and-provenance-live" tabindex="-1">Where files and provenance live<a class="heading-anchor" href="#doc-instruments_and_drums--where-files-and-provenance-live" aria-label="Link to Where files and provenance live">#</a></h4>
 <p>Private user sounds, Projects, Ideas, and runtime state stay below the normal
 XDG data roots or ignored <code>$SHSYNTH_USER_DIR/</code>. Public factory material is restricted to
-the repository allowlists. Exact installed versions and commands are in
-<a href="#doc-installation">Installation</a>, machine settings are in
-<a href="#doc-configuration">Configuration and routing</a>, and redistribution evidence is
-in <a href="#doc-third-party">Third-party software and sounds</a>.</p>
+the repository allowlists. SHR-DAW installs and operates the system as one
+workstation, while its component source and sound formats remain public:</p>
+<ul>
+<li><a href="https://github.com/PaolaShultz/moj-sint" class="external" target="_blank" rel="noopener noreferrer external">Moj Sint source and preset format</a>;</li>
+<li><a href="https://github.com/PaolaShultz/shr-sampler" class="external" target="_blank" rel="noopener noreferrer external">SHR Sampler source and instrument format</a>;</li>
+<li><a href="https://github.com/PaolaShultz/shr-drums" class="external" target="_blank" rel="noopener noreferrer external">SHR Drums source, kit format, and provenance</a>.</li>
+</ul>
+<p>Exact installed versions and commands are in <a href="#doc-installation">Installation</a>,
+machine settings are in <a href="#doc-configuration">Configuration and routing</a>, and
+redistribution evidence is in
+<a href="#doc-third-party">Third-party software and sounds</a>.</p>
 <p>For step-by-step screens, continue with the
 <a href="#doc-menu_manual">screen and menu manual</a>. For Pattern pages, route fields,
 recording, and Arrangement behavior, use the <a href="#doc-tracker">tracker guide</a>.</p>
@@ -1482,7 +1497,8 @@ Loaded Projects keep their saved routes and channels, and loading a reusable
 drum pattern copies cells only.</p>
 <p>The complete musician-facing comparison, including Moj model controls and
 saves, Sampler package validation, installed drum kits, ownership, and failure
-recovery, is in <a href="#doc-instruments_and_drums">Instruments and drums</a>.</p>
+recovery, is in
+<a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>.</p>
 <p>Two different FluidSynth presets cannot share one channel in the current
 playback loop. SHR selects stable channel parts before scheduling, and note
 tails plus Pattern/Arrangement loop boundaries are not treated as safe dynamic
@@ -3775,8 +3791,9 @@ invoke that page's items wherever a controller strip is present.</p>
 or use the mouse wheel to choose a sound. Hold the configured encoder Shift
 while turning to move between the synthv1, Yoshimi, FluidSynth, Moj Sint, and
 SHR Sampler catalogs. Loading replaces the one managed software instrument; it
-never layers engines. SHR Drums remains an independent in-process FT2 Drums
-target rather than a Presets catalog.</p>
+never layers engines. Within the same SHR-DAW sound system, the Drums
+instrument belongs to its FT2 page and kit route rather than the melodic
+Presets catalog.</p>
 <p>Home keeps <strong>MIDI Learn</strong>, <strong>Routing</strong>, and <strong>Effects</strong> separate. Routing is the
 rotary browse/edit/confirm/cancel editor; Effects is the existing Project rack.
 Routing selections wrap, and merely browsing never writes configuration or
@@ -3873,8 +3890,9 @@ chromatic play.</p>
 <p><code>PANIC</code> performs the global owned stop. <code>FX</code> opens the current Project rack
 without restarting the sound. <code>HELP</code> opens help and returns here afterward.
 <code>EXIT</code> returns to Presets, then Presets <code>EXIT</code> returns Home.</p>
-<p>See <a href="#doc-instruments_and_drums">Instruments and drums</a> for the complete Moj
-Sint, SHR Sampler, and SHR Drums workflows and their ownership boundaries.</p>
+<p>See <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a> for the
+complete Moj Sint, SHR Sampler, and SHR Drums workflows and their ownership
+boundaries.</p>
 <h5 id="doc-menu-everyday_screens--n00b-on-playback-pages" tabindex="-1">N00B-on Playback pages<a class="heading-anchor" href="#doc-menu-everyday_screens--n00b-on-playback-pages" aria-label="Link to N00B-on Playback pages">#</a></h5>
 <p>N00B changes only the scale filter and its compact rotary; the three Playback
 controller pages keep the same actions and ordering.</p>
@@ -6710,11 +6728,12 @@ held velocity. German B/H spelling is the default;
 <code>display.note_names=english</code> uses A#/B spelling. Naming changes only the
 display, never the MIDI notes.</p>
 <h4 id="doc-how_it_works--software-instruments-and-ownership" tabindex="-1">Software instruments and ownership<a class="heading-anchor" href="#doc-how_it_works--software-instruments-and-ownership" aria-label="Link to Software instruments and ownership">#</a></h4>
-<p>The musician-facing behavior of all five melodic backends and the independent
-SHR Drums engine is collected in
-<a href="#doc-instruments_and_drums">Instruments and drums</a>. This section owns the
+<p>The musician-facing behavior of the complete SHR-DAW instrument system is
+collected in
+<a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>. This section owns the
 lower-level process and route boundaries.</p>
-<p>SHR-DAW browses five separately installed instrument hosts:</p>
+<p>The whole-system installation presents five melodic instrument families
+through one SHR-DAW workflow. Their runtime hosts are:</p>
 <ul>
 <li><a href="https://synthv1.sourceforge.io/" class="external" target="_blank" rel="noopener noreferrer external">synthv1</a> for subtractive synth presets;</li>
 <li><a href="https://yoshimi.github.io/" class="external" target="_blank" rel="noopener noreferrer external">Yoshimi</a> for <code>.xiz</code> instruments and banks;</li>

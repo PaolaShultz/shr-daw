@@ -1,7 +1,8 @@
 ![SHR-DAW](docs/images/shr-daw-header.jpg)
 
-SHR-DAW is a Raspberry Pi groovebox and song-sketching workstation written in
-Rust. Its main interface is a compact 40×13 terminal TUI for 64-bit Raspberry
+SHR-DAW is a compact Raspberry Pi music workstation written in Rust. It brings
+instruments, drums, MIDI sequencing, live performance, loops, effects, mixing,
+and recording into a controller-first 40×13 terminal TUI for 64-bit Raspberry
 Pi OS Lite. It is meant for turning an idea into a rough demo while travelling
 or jamming, without pretending to replace a desktop production DAW.
 
@@ -29,24 +30,29 @@ ways to start small.
 
 ## Features
 
-- Play synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint factory starts, or
-  the cleared SHR Sampler factory instrument through one managed melodic
-  engine, alongside four bundled kits rendered by in-process
-  [SHR Drums](https://github.com/PaolaShultz/shr-drums).
-- Capture free-timed MIDI Ideas, or build and export FT2-style Arrangements
-  with sparse control automation, an internal click/count-in, software and
-  external MIDI, drums, and loops.
+- Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 13
+  editable Moj Sint starts, the cleared SHR Sampler instrument, and four
+  bundled SHR Drums kits.
+- Play from a controller or keyboard with pickup-protected sound controls,
+  scale filtering, held-note/chord feedback, private sound saves, free-timed
+  MIDI Ideas, and external-sync controller clock.
+- Build FT2-style Patterns and Arrangements with software instruments,
+  external MIDI, drums, Pattern-owned loops, note recording/editing, sparse
+  automation, a metronome/count-in, and format-1 MIDI export.
 - Perform with quantized Live Patterns and a four-slot Loop Mix whose loops
   belong to each Pattern.
-- Keep routes, effects, drum settings, tuning, and master-strip state in the
-  Project, then record synchronized raw mono stems or the final 24-bit stereo
-  performance.
-- Navigate with a MIDI controller, MIDI keyboard, computer keyboard, or
-  terminal mouse input.
+- Shape and mix the complete performance through source, aux, drum, and master
+  effects, a fixed mastering strip, final-bus meters, and safe source controls.
+- Record the final 24-bit stereo performance or synchronized raw mono stems
+  with manifests and recovery, including the native 18-channel input overview.
+- Configure exact MIDI/audio routes and controller profiles with MIDI Learn,
+  startup diagnosis, safe rollback, and owned-process cleanup.
+- Navigate every compact workflow with a MIDI controller, MIDI keyboard,
+  computer keyboard, or terminal mouse input.
 
 See [Using SHR-DAW](docs/USING_SHR_DAW.md) for the musician workflow,
-[Instruments and drums](docs/INSTRUMENTS_AND_DRUMS.md) for the integrated sound
-sources, and [How it works](docs/HOW_IT_WORKS.md) for routing, ownership,
+[Instruments and drums](docs/INSTRUMENTS_AND_DRUMS.md) for the SHR-DAW sound
+system, and [How it works](docs/HOW_IT_WORKS.md) for routing, ownership,
 storage, and failure boundaries.
 
 ## Screenshot tour

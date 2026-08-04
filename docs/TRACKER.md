@@ -129,7 +129,8 @@ drum pattern copies cells only.
 
 The complete musician-facing comparison, including Moj model controls and
 saves, Sampler package validation, installed drum kits, ownership, and failure
-recovery, is in [Instruments and drums](INSTRUMENTS_AND_DRUMS.md).
+recovery, is in
+[SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md).
 
 Two different FluidSynth presets cannot share one channel in the current
 playback loop. SHR selects stable channel parts before scheduling, and note

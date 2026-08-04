@@ -49,7 +49,8 @@ choices. Proposed musical assistants remain in
 
 ## Instruments and Playback
 
-Presets browses five software backends:
+The installed SHR-DAW sound system presents five melodic instrument families
+in Presets:
 
 - synthv1 presets;
 - Yoshimi `.xiz` banks;
@@ -84,9 +85,9 @@ Moj Sint keeps its own preset format and controls. Its 13 authored starts form
 two editable model families. SHR Sampler packages are read-only and use their
 own strict format; the installed project-authored factory package is a neutral
 first-load sound. SHR Drums is separate from the managed melodic engine and
-runs in process. See [Instruments and drums](INSTRUMENTS_AND_DRUMS.md) for the
-complete backend comparison, Moj controls and saves, Sampler validation,
-Drums kits, routing, ownership, recovery, and public provenance.
+runs in process. See [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md)
+for the complete sound-system guide: Moj controls and saves, Sampler
+validation, Drums kits, routing, ownership, recovery, and public provenance.
 
 ## Explore with N00B
 

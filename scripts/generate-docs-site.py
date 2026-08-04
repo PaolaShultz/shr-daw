@@ -1435,6 +1435,7 @@ def build_page(
     start_docs = [
         documents[Path("docs/FIRST_RUN.md")],
         documents[Path("docs/USING_SHR_DAW.md")],
+        documents[Path("docs/INSTRUMENTS_AND_DRUMS.md")],
         documents[Path("docs/INSTALLATION.md")],
         documents[Path("docs/CONFIGURATION.md")],
     ]
@@ -1550,7 +1551,7 @@ def build_page(
         'for exact paths and smaller setups.</p></section>\n',
         '<section class="overview-block" aria-labelledby="features-title">'
         '<p class="eyebrow">What it does</p>'
-        '<h2 id="features-title">Make a rough sketch on a small terminal screen</h2>'
+        '<h2 id="features-title">Make, arrange, perform, and record on a small screen</h2>'
         f'<div class="feature-grid">{feature_cards}</div></section>\n',
         '<section class="overview-block" id="screenshots" aria-labelledby="screenshots-title">'
         '<p class="eyebrow">The 40×13 interface</p>'
@@ -1558,8 +1559,8 @@ def build_page(
         f'<div class="screenshot-grid">{screenshot_cards}</div></section>\n',
         '<section class="overview-block" id="start-here" aria-labelledby="start-title">'
         '<p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2>'
-        '<p>These guides cover the first launch, everyday music making, installation, '
-        "and detailed routing.</p>"
+        '<p>These guides cover first launch, everyday music making, the complete '
+        'instrument system, installation, and detailed routing.</p>'
         f'<div class="start-grid">{start_cards}</div></section>\n',
         '<section class="overview-block install-block" id="install" '
         'aria-labelledby="install-title"><p class="eyebrow">Install and run</p>'

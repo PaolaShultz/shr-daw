@@ -1,38 +1,47 @@
-# Instruments and drums
+# SHR-DAW instruments and drums
 
-SHR-DAW integrates five melodic instrument hosts and one independent drum
-engine. This guide is the musician-facing home for choosing, loading, playing,
-saving, routing, and recovering those sound sources. Machine paths and version
+The installed SHR-DAW package is one music workstation with a complete sound
+system: five melodic instrument families, the SHR Drums instrument and kits,
+one controller workflow, one tracker, one effects graph, and one final audio
+bus. Moj Sint, SHR Sampler, and SHR Drums arrive and work together as parts of
+SHR-DAW. Their names identify kinds of sound available inside the workstation.
+
+This guide is the musician-facing home for choosing, loading, playing, saving,
+routing, and recovering SHR-DAW sounds. Machine paths and component version
 checks remain in [Configuration and routing](CONFIGURATION.md); process and
 audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 
-## What is integrated
+## The SHR-DAW sound system
 
-| Sound source | Public format | SHR role | Sound editing and saving |
+| Instrument family | Sounds inside SHR-DAW | Musical role | Editing and saving |
 | --- | --- | --- | --- |
-| synthv1 | `.synthv1` | One managed melodic host | Twelve mapped controls; private Overwrite or Save New |
-| Yoshimi | `.xiz` | One managed melodic host | Catalog and playback are read-only in SHR |
-| FluidSynth | `.sf2` / `.sf3` | One managed, multitimbral melodic host | Bank/program selection; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` | One managed melodic host with Model D and Six-Op PM | Twelve model-specific mapped controls; private Overwrite or Save New |
-| SHR Sampler | `.shrinst` | One managed melodic sample-package host | Strict preloaded packages; read-only in SHR |
-| SHR Drums | `.shrkit` | Independent in-process drum engine | Project kit, tuning, drum rack, and four tracker lanes |
+| synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
+| Yoshimi | `.xiz` sounds and banks | Melodic synth | Read-only catalog and playback |
+| FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection; SoundFonts remain read-only |
+| Moj Sint | `.mojsint` Model D and Six-Op PM sounds | Melodic synth | Twelve model-specific mapped controls; private Overwrite or Save New |
+| SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments; read-only in SHR |
+| SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
-Only one SHR-managed **melodic host process** runs at a time. Loading a new
+All six families participate in the same Project, routes, effects, transport,
+recording, controller, and final-bus workflows. At the implementation boundary,
+only one SHR-managed **melodic host process** runs at a time. Loading a new
 synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler sound safely replaces or
 reuses that owner. FluidSynth may hold several compatible channel parts inside
-its one process. SHR Drums is not part of that exclusive slot: it renders in
-process and can play beside any managed melodic host.
+its one process. SHR Drums renders in process and can play beside the selected
+melodic instrument. This arrangement keeps drum audio independent inside the
+same installation and workflow.
 
 ## Browse, load, and switch safely
 
 Open **Software Synths** from Home. Turn to browse sounds in the selected
 catalog. Shift-turn the main encoder, use `[`/`]`, or click the two halves of
-the Presets heading to move through all five melodic backends. Browsing is
-silent. **LOAD** is the deliberate start or replacement boundary.
+the Presets heading to move through all five melodic instrument families.
+Browsing is silent. **LOAD** is the deliberate start or replacement boundary.
 
 Loading follows one ownership transaction:
 
-1. validate the selected sound and backend before disturbing the current one;
+1. validate the selected sound and its engine before disturbing the current
+   one;
 2. send All Notes Off and stop only the melodic process SHR owns when a
    replacement is required;
 3. start or reuse the selected backend;
@@ -50,10 +59,10 @@ stop it. A new, empty, unsaved FT2 Project can adopt that exact Player sound on
 its first software page without restarting the host. A saved or already edited
 Project keeps its stored routes.
 
-## Moj Sint
+## Moj Sint sounds
 
-[Moj Sint](https://github.com/PaolaShultz/moj-sint) is SHR's editable in-house
-synth host. Its 13 cleared factory starts are grouped by synthesis model:
+Moj Sint is SHR-DAW's editable in-house synthesis family. Its 13 cleared
+factory starts are grouped by synthesis model:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
   Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
@@ -72,11 +81,11 @@ labels chosen by the loaded model:
 
 | Positions | Model D | Six-Op PM |
 | --- | --- | --- |
-| 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay |
-| 5–8 | Couple, Motion, Depth, Space | Balance, Key Scale, Velocity, Motion |
-| 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
+| 1-4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay |
+| 5-8 | Couple, Motion, Depth, Space | Balance, Key Scale, Velocity, Motion |
+| 9-12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
 
-The stable CC 20–31 identity belongs to Moj Sint, not to synthv1 parameter
+The stable CC 20-31 identity belongs to Moj Sint, not to synthv1 parameter
 indices. After Load, Reset, Project/Idea restore, automation ownership changes,
 or another value-setting transition, physical knobs must reach or cross the
 effective value before they take control. This pickup rule prevents jumps.
@@ -90,13 +99,12 @@ the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable
 sound identity.
 
-## SHR Sampler
+## SHR Sampler instruments
 
-[SHR Sampler](https://github.com/PaolaShultz/shr-sampler) plays strict
-`.shrinst` sample packages as a managed melodic host. The public installation
-includes one cleared, project-authored neutral factory instrument. Packages
-are read-only catalog entries: SHR does not rewrite a package or pretend it is
-an editable synth preset.
+SHR Sampler is the sample-instrument family inside SHR-DAW. It plays strict
+`.shrinst` packages, and the installation includes one cleared,
+project-authored neutral factory instrument. Packages are read-only catalog
+entries. SHR treats each package as a complete instrument.
 
 **LOAD** first checks the installed host version and runs the package's bounded
 offline validation. Only a compatible, valid package may replace the current
@@ -113,13 +121,13 @@ macros. Sound saving is visibly unavailable. FT2 stores the package's stable
 identity in its software route. Ideas store that identity and configured
 public path; they do not copy sample content into the private Idea directory.
 
-## SHR Drums
+## SHR Drums kits
 
-[SHR Drums](https://github.com/PaolaShultz/shr-drums) is a bounded in-process
-engine, not a sixth managed melodic process and not an external MIDI device.
-It does not borrow synth or sampler voices. A new Project's four-lane **Drums**
-page uses the installed Big Rock kit when available; an explicit external or
-FluidSynth General MIDI drum route remains possible.
+SHR Drums is SHR-DAW's kit-based drum instrument. Its bounded engine runs
+inside SHR-DAW, with its own voices alongside the current melodic instrument.
+A new Project's four-lane **Drums** page uses the installed Big Rock kit when
+available; an explicit external or FluidSynth General MIDI drum route remains
+possible.
 
 The public installation contains four cleared kits:
 
@@ -152,10 +160,10 @@ borrows a drum voice.
 
 | Context | Moj Sint | SHR Sampler | SHR Drums |
 | --- | --- | --- | --- |
-| Player | Load, edit, reset, save | Load and play read-only package | Not a Presets backend |
+| Player | Load, edit, reset, save | Load and play read-only package | FT2 Drums page |
 | Idea | MIDI plus private preset snapshot | MIDI plus stable package reference | Tracker workflow, not an Idea sound |
 | FT2 route | Stable model and patch | Stable package identity | Stable kit or explicit MIDI/FluidSynth drum target |
-| Automation | Twelve stable mapped controls | No invented mapped macros | Notes use drum lanes; Project drum effects use stable effect automation |
+| Automation | Twelve stable mapped controls | Note performance; mapped synthesis controls unavailable | Notes use drum lanes; Project drum effects use stable effect automation |
 | Project audio | Managed stereo source | Managed stereo source | Independent in-process stereo source |
 
 Project loading refuses unknown newer schemas rather than rewriting them.
@@ -167,10 +175,17 @@ switching, and reload retain the same note-cleanup and ownership boundaries.
 
 Private user sounds, Projects, Ideas, and runtime state stay below the normal
 XDG data roots or ignored `user/`. Public factory material is restricted to
-the repository allowlists. Exact installed versions and commands are in
-[Installation](INSTALLATION.md), machine settings are in
-[Configuration and routing](CONFIGURATION.md), and redistribution evidence is
-in [Third-party software and sounds](../THIRD_PARTY.md).
+the repository allowlists. SHR-DAW installs and operates the system as one
+workstation, while its component source and sound formats remain public:
+
+- [Moj Sint source and preset format](https://github.com/PaolaShultz/moj-sint);
+- [SHR Sampler source and instrument format](https://github.com/PaolaShultz/shr-sampler);
+- [SHR Drums source, kit format, and provenance](https://github.com/PaolaShultz/shr-drums).
+
+Exact installed versions and commands are in [Installation](INSTALLATION.md),
+machine settings are in [Configuration and routing](CONFIGURATION.md), and
+redistribution evidence is in
+[Third-party software and sounds](../THIRD_PARTY.md).
 
 For step-by-step screens, continue with the
 [screen and menu manual](MENU_MANUAL.md). For Pattern pages, route fields,

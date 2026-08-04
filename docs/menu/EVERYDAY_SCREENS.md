@@ -30,8 +30,9 @@ invoke that page's items wherever a controller strip is present.
 or use the mouse wheel to choose a sound. Hold the configured encoder Shift
 while turning to move between the synthv1, Yoshimi, FluidSynth, Moj Sint, and
 SHR Sampler catalogs. Loading replaces the one managed software instrument; it
-never layers engines. SHR Drums remains an independent in-process FT2 Drums
-target rather than a Presets catalog.
+never layers engines. Within the same SHR-DAW sound system, the Drums
+instrument belongs to its FT2 page and kit route rather than the melodic
+Presets catalog.
 
 Home keeps **MIDI Learn**, **Routing**, and **Effects** separate. Routing is the
 rotary browse/edit/confirm/cancel editor; Effects is the existing Project rack.
@@ -152,8 +153,9 @@ chromatic play.
 without restarting the sound. `HELP` opens help and returns here afterward.
 `EXIT` returns to Presets, then Presets `EXIT` returns Home.
 
-See [Instruments and drums](../INSTRUMENTS_AND_DRUMS.md) for the complete Moj
-Sint, SHR Sampler, and SHR Drums workflows and their ownership boundaries.
+See [SHR-DAW instruments and drums](../INSTRUMENTS_AND_DRUMS.md) for the
+complete Moj Sint, SHR Sampler, and SHR Drums workflows and their ownership
+boundaries.
 
 ### N00B-on Playback pages
 
