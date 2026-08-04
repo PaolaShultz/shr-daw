@@ -24,14 +24,24 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub enum MidiEvent {
-    MappedControl(u8, f32),
+    MappedControl {
+        received: Instant,
+        cc: u8,
+        value: f32,
+    },
     Value(u8, f32),
-    Raw { received: Instant, bytes: Vec<u8> },
+    Raw {
+        received: Instant,
+        bytes: Vec<u8>,
+    },
     Pad(PadAction, bool),
     Encoder(EncoderAction),
     EncoderModified(EncoderAction),
     PadLock(bool),
-    Learn { received: Instant, bytes: Vec<u8> },
+    Learn {
+        received: Instant,
+        bytes: Vec<u8>,
+    },
     Error(String),
 }
 
@@ -2036,7 +2046,11 @@ fn connect_midi_input(
                         .and_then(|position| CONTROLS.get(position).copied())
                         .map(|control| (control.cc, control::value_from_cc(control, message[2])));
                     if let Some((cc, value)) = fx_value {
-                        let _ = tx.send(MidiEvent::MappedControl(cc, value));
+                        let _ = tx.send(MidiEvent::MappedControl {
+                            received,
+                            cc,
+                            value,
+                        });
                         return;
                     }
                     let routed = crate::midi::route_with_pad_lock_and_modifier(
@@ -2047,7 +2061,11 @@ fn connect_midi_input(
                         encoder_modifier_down,
                     );
                     if let Some((cc, value)) = routed.value {
-                        let _ = tx.send(MidiEvent::MappedControl(cc, value));
+                        let _ = tx.send(MidiEvent::MappedControl {
+                            received,
+                            cc,
+                            value,
+                        });
                     }
                     let accepted = routed
                         .value

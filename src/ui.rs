@@ -879,6 +879,7 @@ struct App {
     midi_imports: Vec<PathBuf>,
     midi_import_selected: usize,
     midi_import_candidate: Option<(PathBuf, crate::midi_import::ImportedProject)>,
+    midi_export_candidate: Option<(Song, crate::midi_export::AnalyzedExport)>,
     tracker_order: usize,
     tracker_row: usize,
     tracker_page: usize,
@@ -893,6 +894,11 @@ struct App {
     tracker_mixer: MixerState,
     tracker_noob: bool,
     tracker_recording: Option<TrackerRecording>,
+    automation_lane: usize,
+    automation_point: usize,
+    automation_armed: bool,
+    confirm_automation_clear: bool,
+    metronome_enabled: bool,
     note_editor: Option<NoteEditor>,
     audition_release_revision: u64,
     tracker_octave: u8,
@@ -1297,10 +1303,65 @@ fn is_tracker_screen(screen: Screen) -> bool {
             | Screen::TrackerTools
             | Screen::TrackerParameters
             | Screen::TrackerMixer
+            | Screen::Automation
             | Screen::LivePatterns
             | Screen::TrackerLoop
             | Screen::TrackerLoopAlign
     )
+}
+
+fn automation_target_label(target: &sequencer::AutomationTarget) -> String {
+    match target {
+        sequencer::AutomationTarget::Instrument { control, .. } => control.clone(),
+        sequencer::AutomationTarget::MidiCc {
+            channel,
+            controller,
+            ..
+        } => format!("MIDI CH{} CC{}", channel + 1, controller),
+        sequencer::AutomationTarget::Effect {
+            effect_id,
+            parameter,
+            ..
+        } => format!("FX#{effect_id} {parameter}"),
+        sequencer::AutomationTarget::EffectBypass { effect_id, .. } => {
+            format!("FX#{effect_id} BYPASS")
+        }
+    }
+}
+
+fn automation_discrete_value(
+    target: &sequencer::AutomationTarget,
+    current: u16,
+    direction: i8,
+) -> u16 {
+    let steps = match target {
+        sequencer::AutomationTarget::EffectBypass { .. } => 1,
+        sequencer::AutomationTarget::Effect {
+            effect_kind,
+            parameter,
+            ..
+        } => crate::effect_schema::schema(*effect_kind)
+            .iter()
+            .find(|spec| spec.name == parameter)
+            .map_or(1, |spec| match spec.value_type {
+                crate::effect_schema::ParameterType::Toggle => 1,
+                crate::effect_schema::ParameterType::Choices(choices) => {
+                    choices.len().saturating_sub(1).max(1) as u32
+                }
+                crate::effect_schema::ParameterType::Integer => {
+                    (spec.maximum - spec.minimum).round().max(1.0) as u32
+                }
+                crate::effect_schema::ParameterType::Continuous => 127,
+            }),
+        _ => 127,
+    };
+    let index = (u32::from(current) * steps + 32_767) / 65_535;
+    let next = if direction < 0 {
+        index.saturating_sub(1)
+    } else {
+        index.saturating_add(1).min(steps)
+    };
+    ((next * 65_535 + steps / 2) / steps) as u16
 }
 
 fn is_fx_screen(screen: Screen) -> bool {
@@ -1777,11 +1838,13 @@ impl App {
             config.external_midi.default_tempo,
         ));
         let drum_output = Arc::new(Mutex::new(None));
+        let final_bus = FinalBusOwner::default();
         let sequencer = sequencer::Sequencer::start_with_clock(
             &config.external_midi,
             Arc::clone(&midi_output),
             Arc::clone(&drum_output),
             Arc::clone(&transport_clock),
+            final_bus.effect_hub(),
         );
         let tracker_live_input = sequencer.live_input();
         if let Ok(mut input) = tracker_io.input.lock() {
@@ -1835,7 +1898,7 @@ impl App {
             home_offset: 0,
             screen: Screen::Home,
             engine: None,
-            final_bus: FinalBusOwner::default(),
+            final_bus,
             input_monitoring: false,
             input_mix_control: InputMixControl::default(),
             next_final_bus_source_scan: Instant::now(),
@@ -1919,6 +1982,7 @@ impl App {
             midi_imports,
             midi_import_selected: 0,
             midi_import_candidate: None,
+            midi_export_candidate: None,
             tracker_order: 0,
             tracker_row: 0,
             tracker_page: 0,
@@ -1933,6 +1997,11 @@ impl App {
             tracker_mixer: MixerState::default(),
             tracker_noob: false,
             tracker_recording: None,
+            automation_lane: 0,
+            automation_point: 0,
+            automation_armed: false,
+            confirm_automation_clear: false,
+            metronome_enabled: true,
             note_editor: None,
             audition_release_revision: 0,
             tracker_octave: 4,
@@ -3917,6 +3986,11 @@ impl App {
         let previous_tracker = self.screen_keeps_tracker_workspace_active(previous);
         let next_tracker = self.screen_keeps_tracker_workspace_active(screen);
         let leaving_tracker_workspace = previous_tracker && !next_tracker;
+        if previous == Screen::Automation && screen != Screen::Automation {
+            self.automation_armed = false;
+            self.confirm_automation_clear = false;
+            self.rearm_automation_pickup();
+        }
         let leaving_loop_player = previous == Screen::TrackerLoop
             && !matches!(screen, Screen::TrackerLoop | Screen::Help);
         if leaving_loop_player && !leaving_tracker_workspace {
@@ -3949,7 +4023,10 @@ impl App {
         self.screen = screen;
         self.sync_playback_noob();
         self.fx_control_mode.store(
-            matches!(screen, Screen::FxEditor | Screen::TrackerMixer),
+            matches!(
+                screen,
+                Screen::FxEditor | Screen::TrackerMixer | Screen::Automation
+            ),
             Ordering::Relaxed,
         );
         if screen == Screen::FxEditor {
@@ -4082,6 +4159,366 @@ impl App {
         self.tracker_track = return_to.track;
         self.menu_page_by_screen[Screen::Tracker.index()] = return_to.menu_page.min(3);
         self.status.clear();
+    }
+
+    fn automation_targets(&self) -> Vec<(sequencer::AutomationTarget, sequencer::AutomationCurve)> {
+        let mut targets = Vec::new();
+        let Some(pattern) = self.current_pattern() else {
+            return targets;
+        };
+        if let Some(page) = pattern.pages.get(self.tracker_page) {
+            match &page.target {
+                PageTarget::Software(route) => match route.engine {
+                    BackendKind::Synthv1 => targets.extend(CONTROLS.iter().map(|control| {
+                        (
+                            sequencer::AutomationTarget::Instrument {
+                                page: self.tracker_page as u8,
+                                engine: route.engine.to_string(),
+                                control: control.xml_name.into(),
+                            },
+                            sequencer::AutomationCurve::Linear,
+                        )
+                    })),
+                    BackendKind::MojSint => {
+                        targets.extend(crate::control::MOJ_MODEL_D_CONTROLS.iter().map(|control| {
+                            (
+                                sequencer::AutomationTarget::Instrument {
+                                    page: self.tracker_page as u8,
+                                    engine: route.engine.to_string(),
+                                    control: control.macro_id.into(),
+                                },
+                                sequencer::AutomationCurve::Linear,
+                            )
+                        }))
+                    }
+                    _ => {}
+                },
+                PageTarget::Synthv1(_) => targets.extend(CONTROLS.iter().map(|control| {
+                    (
+                        sequencer::AutomationTarget::Instrument {
+                            page: self.tracker_page as u8,
+                            engine: BackendKind::Synthv1.to_string(),
+                            control: control.xml_name.into(),
+                        },
+                        sequencer::AutomationCurve::Linear,
+                    )
+                })),
+                PageTarget::Default | PageTarget::ConfiguredExternal | PageTarget::Midi(_) => {
+                    let channel = page.columns[self.tracker_track.min(LANES_PER_PAGE - 1)].channel;
+                    targets.extend((0..=127).map(|controller| {
+                        (
+                            sequencer::AutomationTarget::MidiCc {
+                                page: self.tracker_page as u8,
+                                channel,
+                                controller,
+                            },
+                            sequencer::AutomationCurve::Linear,
+                        )
+                    }));
+                }
+                PageTarget::ActiveInstrument | PageTarget::InternalDrums(_) => {}
+            }
+        }
+        let mut append_rack =
+            |rack: sequencer::EffectRackTarget, effects: &[crate::audio_graph::EffectInstance]| {
+                for effect in effects {
+                    for parameter in crate::effect_schema::schema(effect.kind) {
+                        let curve = if matches!(
+                            parameter.value_type,
+                            crate::effect_schema::ParameterType::Continuous
+                        ) {
+                            sequencer::AutomationCurve::Linear
+                        } else {
+                            sequencer::AutomationCurve::Step
+                        };
+                        targets.push((
+                            sequencer::AutomationTarget::Effect {
+                                rack,
+                                effect_id: effect.id,
+                                effect_kind: effect.kind,
+                                effect_version: effect.version,
+                                parameter: parameter.name.into(),
+                            },
+                            curve,
+                        ));
+                    }
+                    targets.push((
+                        sequencer::AutomationTarget::EffectBypass {
+                            rack,
+                            effect_id: effect.id,
+                            effect_kind: effect.kind,
+                            effect_version: effect.version,
+                        },
+                        sequencer::AutomationCurve::Step,
+                    ));
+                }
+            };
+        append_rack(
+            sequencer::EffectRackTarget::Source,
+            &self.song.insert_rack.effects,
+        );
+        append_rack(
+            sequencer::EffectRackTarget::Master,
+            &self.song.aux_routing.master_rack.effects,
+        );
+        for bus in &self.song.aux_routing.buses {
+            append_rack(sequencer::EffectRackTarget::Aux(bus.id), &bus.rack.effects);
+        }
+        append_rack(
+            sequencer::EffectRackTarget::Drums,
+            &self.song.drum_rack.effects,
+        );
+        targets
+    }
+
+    fn open_automation(&mut self) {
+        if self.screen != Screen::Tracker {
+            return;
+        }
+        let targets = self.automation_targets();
+        let Some((target, curve)) = targets.first().cloned() else {
+            self.status =
+                "NO AUTOMATION TARGETS · assign an external or SHR instrument page".into();
+            return;
+        };
+        let pattern_number = self.tracker_pattern_number();
+        let pattern = self
+            .song
+            .patterns
+            .get_mut(&pattern_number)
+            .expect("tracker Pattern");
+        if pattern.automation.is_empty() {
+            pattern.automation.push(sequencer::AutomationLane {
+                id: 1,
+                target,
+                curve,
+                points: Vec::new(),
+            });
+        }
+        self.automation_lane = self.automation_lane.min(pattern.automation.len() - 1);
+        self.automation_point = 0;
+        self.automation_armed = false;
+        self.rearm_automation_pickup();
+        self.set_screen(Screen::Automation);
+        self.status.clear();
+    }
+
+    fn move_automation_lane(&mut self, direction: i8) {
+        let len = self
+            .current_pattern()
+            .map_or(0, |pattern| pattern.automation.len());
+        self.automation_lane = wrapped_index(self.automation_lane, len, direction);
+        self.automation_point = 0;
+        self.automation_armed = false;
+        self.rearm_automation_pickup();
+    }
+
+    fn new_automation_lane(&mut self) {
+        let targets = self.automation_targets();
+        let pattern_number = self.tracker_pattern_number();
+        let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
+            return;
+        };
+        if pattern.automation.len() >= sequencer::MAX_AUTOMATION_LANES_PER_PATTERN {
+            self.status = "AUTOMATION LIMIT · clear an existing lane".into();
+            return;
+        }
+        let Some((target, curve)) = targets
+            .iter()
+            .find(|(target, _)| !pattern.automation.iter().any(|lane| lane.target == *target))
+            .or_else(|| targets.first())
+            .cloned()
+        else {
+            self.status = "NO AUTOMATION TARGETS".into();
+            return;
+        };
+        let Some(id) = pattern
+            .automation
+            .iter()
+            .map(|lane| lane.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+        else {
+            self.status = "AUTOMATION LANE IDS EXHAUSTED".into();
+            return;
+        };
+        pattern.automation.push(sequencer::AutomationLane {
+            id,
+            target,
+            curve,
+            points: Vec::new(),
+        });
+        self.automation_lane = pattern.automation.len() - 1;
+        self.automation_point = 0;
+        self.automation_armed = false;
+        self.rearm_automation_pickup();
+        self.status = "NEW AUTOMATION LANE · choose target, then ARM".into();
+    }
+
+    fn cycle_automation_target(&mut self, direction: i8) {
+        let targets = self.automation_targets();
+        if targets.is_empty() {
+            return;
+        }
+        let current = self.current_pattern().and_then(|pattern| {
+            pattern
+                .automation
+                .get(self.automation_lane)
+                .map(|lane| &lane.target)
+        });
+        let index = current
+            .and_then(|current| targets.iter().position(|(target, _)| target == current))
+            .unwrap_or(0);
+        let next = wrapped_index(index, targets.len(), direction);
+        let pattern_number = self.tracker_pattern_number();
+        if let Some(lane) = self
+            .song
+            .patterns
+            .get_mut(&pattern_number)
+            .and_then(|pattern| pattern.automation.get_mut(self.automation_lane))
+        {
+            lane.target = targets[next].0.clone();
+            lane.curve = targets[next].1;
+            lane.points.clear();
+        }
+        self.automation_point = 0;
+        self.automation_armed = false;
+        self.rearm_automation_pickup();
+        self.status = format!(
+            "TARGET {} · lane cleared",
+            automation_target_label(&targets[next].0)
+        );
+    }
+
+    fn toggle_automation_arm(&mut self) {
+        self.automation_armed = !self.automation_armed;
+        self.rearm_automation_pickup();
+        self.status = if self.automation_armed {
+            "AUTO ARMED · touch selected control · notes may record too".into()
+        } else {
+            "AUTO SAFE · pickup re-armed".into()
+        };
+    }
+
+    fn add_automation_point(&mut self) {
+        let pattern_ticks = self.tracker_rows() as u32 * sequencer::AUTOMATION_TICKS_PER_ROW;
+        let tick = self.sequencer.position_at(Instant::now()).map_or_else(
+            || {
+                u32::try_from(self.tracker_row)
+                    .unwrap_or_default()
+                    .saturating_mul(sequencer::AUTOMATION_TICKS_PER_ROW)
+            },
+            |position| position.pattern_tick,
+        );
+        let pattern_number = self.tracker_pattern_number();
+        let Some(lane) = self
+            .song
+            .patterns
+            .get_mut(&pattern_number)
+            .and_then(|pattern| pattern.automation.get_mut(self.automation_lane))
+        else {
+            return;
+        };
+        let value = lane.value_at(tick, pattern_ticks).unwrap_or_else(|| {
+            if lane.curve == sequencer::AutomationCurve::Step {
+                0
+            } else {
+                u16::MAX / 2
+            }
+        });
+        crate::automation::capture_thinned(
+            &mut lane.points,
+            sequencer::AutomationPoint { tick, value },
+            0,
+        );
+        self.automation_point = lane
+            .points
+            .binary_search_by_key(&tick, |point| point.tick)
+            .unwrap_or_default();
+        self.sequencer.refresh_loop(&self.song);
+    }
+
+    fn move_automation_point(&mut self, direction: i8) {
+        let len = self
+            .current_pattern()
+            .and_then(|pattern| {
+                pattern
+                    .automation
+                    .get(self.automation_lane)
+                    .map(|lane| lane.points.len())
+            })
+            .unwrap_or(0);
+        self.automation_point = wrapped_index(self.automation_point, len, direction);
+    }
+
+    fn adjust_automation_value(&mut self, direction: i8) {
+        let pattern_number = self.tracker_pattern_number();
+        let Some(lane) = self
+            .song
+            .patterns
+            .get_mut(&pattern_number)
+            .and_then(|pattern| pattern.automation.get_mut(self.automation_lane))
+        else {
+            return;
+        };
+        let Some(point) = lane.points.get_mut(self.automation_point) else {
+            return;
+        };
+        point.value = if lane.curve == sequencer::AutomationCurve::Step {
+            automation_discrete_value(&lane.target, point.value, direction)
+        } else if direction < 0 {
+            point.value.saturating_sub(512)
+        } else {
+            point.value.saturating_add(512)
+        };
+        self.sequencer.refresh_loop(&self.song);
+    }
+
+    fn delete_automation_point(&mut self) {
+        let pattern_number = self.tracker_pattern_number();
+        let Some(lane) = self
+            .song
+            .patterns
+            .get_mut(&pattern_number)
+            .and_then(|pattern| pattern.automation.get_mut(self.automation_lane))
+        else {
+            return;
+        };
+        if self.automation_point < lane.points.len() {
+            lane.points.remove(self.automation_point);
+            self.automation_point = self
+                .automation_point
+                .min(lane.points.len().saturating_sub(1));
+            self.sequencer.refresh_loop(&self.song);
+        }
+    }
+
+    fn toggle_automation_curve(&mut self) {
+        self.status = "CURVE follows target · continuous RAMP · discrete STEP".into();
+    }
+
+    fn clear_automation_lane(&mut self) {
+        if !self.confirm_automation_clear {
+            self.confirm_automation_clear = true;
+            self.status = "CLEAR LANE? · press CLEAR again".into();
+            return;
+        }
+        self.confirm_automation_clear = false;
+        let pattern_number = self.tracker_pattern_number();
+        if let Some(lane) = self
+            .song
+            .patterns
+            .get_mut(&pattern_number)
+            .and_then(|pattern| pattern.automation.get_mut(self.automation_lane))
+        {
+            lane.points.clear();
+        }
+        self.automation_point = 0;
+        self.automation_armed = false;
+        self.rearm_automation_pickup();
+        self.sequencer.refresh_loop(&self.song);
+        self.status = "automation lane cleared · pickup re-armed".into();
     }
 
     fn move_tracker_mixer_bank(&mut self, direction: i8) {
@@ -4767,6 +5204,10 @@ impl App {
             cleared |= self.confirm_loop_remove;
             self.confirm_loop_remove = false;
         }
+        if action != Action::AutomationClear {
+            cleared |= self.confirm_automation_clear;
+            self.confirm_automation_clear = false;
+        }
         if cleared {
             self.status.clear();
         }
@@ -4936,7 +5377,14 @@ impl App {
             RecordingOwner::Idea => Some("IDEAS · MIDI take".into()),
             RecordingOwner::Tracker => {
                 let tracker = self.sequencer.status();
-                if !tracker.available {
+                if let Some(remaining) = tracker.count_in {
+                    Some(match remaining {
+                        4.. => "4 3 2 1 → REC".into(),
+                        3 => "3 2 1 → REC".into(),
+                        2 => "2 1 → REC".into(),
+                        _ => "1 → REC".into(),
+                    })
+                } else if !tracker.available {
                     Some("FT2 · TARGET OFFLINE · STOP".into())
                 } else {
                     Some("FT2 · pattern capture".into())
@@ -7145,6 +7593,9 @@ impl App {
             self.sequencer.stop();
         }
         self.loop_player.stop();
+        if let Some(controls) = self.final_bus.controls() {
+            controls.stop_metronome();
+        }
         self.prepared_pattern_loops = None;
         self.loop_runtime_pattern = None;
         self.loop_meter
@@ -7152,7 +7603,34 @@ impl App {
         if let Some(drums) = self.drum_host.as_ref() {
             drums.drain();
         }
+        self.automation_armed = false;
+        self.rearm_automation_pickup();
         self.status = "tracker stopped".into();
+    }
+
+    fn start_tracker_metronome(&mut self) {
+        if !self.metronome_enabled {
+            return;
+        }
+        let _ = self.retry_final_bus_for_mixer();
+        let tempo = self.current_tempo().as_f64() as f32;
+        let meter = self.current_pattern().map_or(4, |pattern| pattern.meter);
+        if let Some(controls) = self.final_bus.controls() {
+            let _ = controls.start_metronome(tempo, meter);
+        }
+    }
+
+    fn toggle_metronome(&mut self) {
+        self.metronome_enabled = !self.metronome_enabled;
+        if self.metronome_enabled && self.sequencer.status().playing {
+            self.start_tracker_metronome();
+        } else if let Some(controls) = self.final_bus.controls() {
+            controls.stop_metronome();
+        }
+        self.status = format!(
+            "METRONOME {}",
+            if self.metronome_enabled { "ON" } else { "OFF" }
+        );
     }
 
     fn ensure_internal_drums(
@@ -7230,6 +7708,7 @@ impl App {
             tempo,
             &resolved.outputs,
             Arc::clone(&self.drum_output),
+            self.final_bus.effect_hub(),
         )
         .map_err(|error| format!("{error:#}"))?;
         self.config.drums.output_ports = Some(host.output_ports());
@@ -7526,6 +8005,12 @@ impl App {
                 return;
             }
         };
+        if messages.iter().any(|message| message.effect.is_some())
+            && !self.retry_final_bus_for_mixer()
+        {
+            self.status = "EFFECT AUTOMATION OFFLINE · final bus unchanged".into();
+            return;
+        }
         let notes = messages
             .iter()
             .filter(|message| {
@@ -7569,7 +8054,9 @@ impl App {
             }
         }
         self.configure_tracker_route(false);
+        self.rearm_automation_pickup();
         self.sequencer.play(&self.song, order, row);
+        self.start_tracker_metronome();
         if loops_ready {
             for slot in 0..crate::loop_player::LOOP_SLOTS {
                 if self.loop_player.slot_status(slot).loaded {
@@ -7667,6 +8154,19 @@ impl App {
             self.status = "REC OFFLINE · page target offline".into();
             return;
         }
+        if self.current_pattern().is_some_and(|pattern| {
+            pattern.automation.iter().any(|lane| {
+                matches!(
+                    lane.target,
+                    sequencer::AutomationTarget::Effect { .. }
+                        | sequencer::AutomationTarget::EffectBypass { .. }
+                )
+            })
+        }) && !self.retry_final_bus_for_mixer()
+        {
+            self.status = "EFFECT AUTOMATION OFFLINE · recording not started".into();
+            return;
+        }
         self.finish_competing_recordings(RecordingOwner::Tracker);
         self.cancel_note_editor();
         self.set_tracker_mode(TrackerMode::Play);
@@ -7698,8 +8198,14 @@ impl App {
             // Play replaces the current schedule and performs its own note cleanup.
             // Avoid a queued Stop between the old and recording schedules: that
             // transiently reports a stopped transport while REC is already active.
+            self.start_tracker_metronome();
+            let beats = self
+                .song
+                .patterns
+                .get(&pattern)
+                .map_or(4, |pattern| pattern.meter);
             self.sequencer
-                .play(&self.tracker_record_song(pattern, page_index), 0, 0);
+                .count_in(&self.tracker_record_song(pattern, page_index), 0, 0, beats);
         }
         self.status = format!(
             "REC pattern {pattern} · {} · selected target",
@@ -7745,6 +8251,9 @@ impl App {
         }
         if !return_to_play {
             self.sequencer.stop();
+            if let Some(controls) = self.final_bus.controls() {
+                controls.stop_metronome();
+            }
         }
         self.tracker_mode = TrackerMode::Play;
         self.sync_tracker_route();
@@ -7766,8 +8275,220 @@ impl App {
     }
 
     fn record_tracker_midi(&mut self, bytes: &[u8]) {
-        let row = self.sequencer.status().row;
+        let transport = self.sequencer.status();
+        if !transport.playing {
+            return;
+        }
+        let row = transport.row;
         self.record_tracker_midi_at(row, bytes);
+    }
+
+    fn capture_automation_control(&mut self, received: Instant, cc: u8, value: f32) {
+        if !self.automation_armed {
+            return;
+        }
+        let Some(position) = self.sequencer.position_at(received) else {
+            return;
+        };
+        let Some(pattern_number) = self.song.order.get(position.order).copied() else {
+            return;
+        };
+        let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
+            return;
+        };
+        let Some(lane) = pattern.automation.get_mut(self.automation_lane) else {
+            return;
+        };
+        let page_index = match &lane.target {
+            sequencer::AutomationTarget::Instrument { page, .. } => Some(usize::from(*page)),
+            _ => None,
+        };
+        let normalized = match &lane.target {
+            sequencer::AutomationTarget::Instrument {
+                engine, control, ..
+            } => {
+                if crate::timeline::mapped_control_cc(engine, control) != Some(cc) {
+                    return;
+                }
+                engine
+                    .parse::<BackendKind>()
+                    .ok()
+                    .and_then(|engine| match engine {
+                        BackendKind::Synthv1 => crate::control::by_cc(cc)
+                            .map(|control| crate::control::normalize(control, value)),
+                        BackendKind::MojSint => Some(value.clamp(0.0, 1.0)),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| value.clamp(0.0, 1.0))
+            }
+            sequencer::AutomationTarget::EffectBypass { .. } => {
+                return;
+            }
+            sequencer::AutomationTarget::Effect {
+                effect_kind,
+                parameter,
+                ..
+            } => {
+                let expected_cc = (0..CONTROLS.len()).find_map(|index| {
+                    (crate::effect_schema::controlled_parameter(*effect_kind, index)?.name
+                        == parameter)
+                        .then_some(CONTROLS[index].cc)
+                });
+                if expected_cc != Some(cc) {
+                    return;
+                }
+                normalized_physical_control(cc, value)
+                    .map_or(value.clamp(0.0, 1.0), |(_, value)| value)
+            }
+            sequencer::AutomationTarget::MidiCc { .. } => return,
+        };
+        crate::automation::capture_thinned(
+            &mut lane.points,
+            sequencer::AutomationPoint {
+                tick: position.pattern_tick,
+                value: (normalized * 65_535.0).round() as u16,
+            },
+            128,
+        );
+        self.automation_point = lane.points.len().saturating_sub(1);
+        let effect_target = lane.target.clone();
+        let monitor = page_index
+            .and_then(|page_index| pattern.pages.get(page_index))
+            .map(|page| {
+                (
+                    page.target.clone(),
+                    page.columns.first().map_or(0, |column| column.channel),
+                    (normalized * 127.0).round() as u8,
+                )
+            });
+        if let Some((target, channel, raw)) = monitor {
+            self.tracker_live_input
+                .send(&target, &[0xb0 | channel, cc, raw]);
+        }
+        match &effect_target {
+            sequencer::AutomationTarget::Effect {
+                effect_id,
+                effect_kind,
+                effect_version,
+                parameter,
+                ..
+            } => {
+                if let Err(error) = self.final_bus.effect_hub().publish_normalized(
+                    *effect_id,
+                    *effect_kind,
+                    *effect_version,
+                    Some(parameter),
+                    (normalized * 65_535.0).round() as u16,
+                ) {
+                    self.status = format!("EFFECT AUTOMATION REJECTED · {error}");
+                }
+            }
+            sequencer::AutomationTarget::EffectBypass {
+                effect_id,
+                effect_kind,
+                effect_version,
+                ..
+            } => {
+                if let Err(error) = self.final_bus.effect_hub().publish_normalized(
+                    *effect_id,
+                    *effect_kind,
+                    *effect_version,
+                    None,
+                    (normalized * 65_535.0).round() as u16,
+                ) {
+                    self.status = format!("EFFECT AUTOMATION REJECTED · {error}");
+                }
+            }
+            _ => {}
+        }
+        if self.sequencer.status().playing {
+            self.sequencer.refresh_loop(&self.song);
+        }
+    }
+
+    fn capture_external_automation(&mut self, received: Instant, bytes: &[u8]) {
+        if !self.automation_armed || bytes.len() < 3 || bytes[0] & 0xf0 != 0xb0 {
+            return;
+        }
+        let Some(position) = self.sequencer.position_at(received) else {
+            return;
+        };
+        let Some(pattern_number) = self.song.order.get(position.order).copied() else {
+            return;
+        };
+        let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
+            return;
+        };
+        let Some(lane) = pattern.automation.get_mut(self.automation_lane) else {
+            return;
+        };
+        let sequencer::AutomationTarget::MidiCc {
+            channel,
+            controller,
+            ..
+        } = &lane.target
+        else {
+            return;
+        };
+        if *channel != bytes[0] & 0x0f || *controller != bytes[1] {
+            return;
+        }
+        crate::automation::capture_thinned(
+            &mut lane.points,
+            sequencer::AutomationPoint {
+                tick: position.pattern_tick,
+                value: u16::from(bytes[2].min(127)) * 65_535 / 127,
+            },
+            128,
+        );
+        self.automation_point = lane.points.len().saturating_sub(1);
+        self.sequencer.refresh_loop(&self.song);
+    }
+
+    fn rearm_automation_pickup(&self) {
+        let status = self.sequencer.status();
+        let pattern_number = self
+            .song
+            .order
+            .get(status.order.min(self.song.order.len().saturating_sub(1)))
+            .copied();
+        let Some(pattern) = pattern_number.and_then(|number| self.song.patterns.get(&number))
+        else {
+            return;
+        };
+        let tick = if status.playing {
+            self.sequencer
+                .position_at(Instant::now())
+                .map_or(0, |position| position.pattern_tick)
+        } else {
+            0
+        };
+        let pattern_ticks = u32::try_from(pattern.rows.len())
+            .unwrap_or_default()
+            .saturating_mul(sequencer::AUTOMATION_TICKS_PER_ROW);
+        let mut values = HashMap::new();
+        for lane in &pattern.automation {
+            let sequencer::AutomationTarget::Instrument {
+                engine, control, ..
+            } = &lane.target
+            else {
+                continue;
+            };
+            let Some(cc) = crate::timeline::mapped_control_cc(engine, control) else {
+                continue;
+            };
+            let Some(value) = lane.value_at(tick, pattern_ticks) else {
+                continue;
+            };
+            let normalized = f32::from(value) / 65_535.0;
+            let physical_value = crate::control::by_cc(cc).map_or(normalized, |control| {
+                control.min + normalized * (control.max - control.min)
+            });
+            values.insert(cc, physical_value);
+        }
+        if let Ok(mut pickup) = self.pickup.lock() {
+            pickup.arm(&values);
+        }
     }
 
     fn record_tracker_midi_at(&mut self, transport_row: usize, bytes: &[u8]) {
@@ -9553,6 +10274,48 @@ impl App {
         }
     }
 
+    fn midi_export_action(&mut self) {
+        if let Some((source, analyzed)) = self.midi_export_candidate.take() {
+            if source != self.song {
+                self.status = "MIDI EXPORT CHANGED · press EXPORT to analyse again".into();
+                return;
+            }
+            match crate::midi_export::save(&crate::midi_export::exports_dir(), &analyzed) {
+                Ok(path) => {
+                    self.status = format!(
+                        "MIDI SAVED · {} · loops/SHR FX omitted",
+                        path.file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("export.mid")
+                    );
+                }
+                Err(error) => {
+                    self.status = format!(
+                        "MIDI SAVE FAILED · {}",
+                        crate::ui_text::fit_middle(&error.to_string(), 20)
+                    );
+                }
+            }
+            return;
+        }
+        match crate::midi_export::analyze(&self.song, &self.config.external_midi) {
+            Ok(analyzed) => {
+                let report = &analyzed.report;
+                self.status = format!(
+                    "ANALYSED · {} tracks · omit {} loops/{} FX · EXPORT confirms",
+                    report.tracks, report.omitted_loop_slots, report.omitted_effect_lanes
+                );
+                self.midi_export_candidate = Some((self.song.clone(), analyzed));
+            }
+            Err(error) => {
+                self.status = format!(
+                    "MIDI EXPORT FAILED · {}",
+                    crate::ui_text::fit_middle(&error.to_string(), 20)
+                );
+            }
+        }
+    }
+
     fn commit_midi_import(&mut self) {
         let Some((path, imported)) = self.midi_import_candidate.take() else {
             self.status = "MIDI ANALYSIS EXPIRED · retry LOAD".into();
@@ -10895,7 +11658,7 @@ impl App {
     }
 
     fn transport_indicator(&self) -> TransportIndicator {
-        if self.tracker_recording.is_some()
+        if (self.tracker_recording.is_some() && self.sequencer.status().playing)
             || self.audio_recorder.status().recording
             || self.recorder.is_recording()
             || self.final_bus.recording_active()
@@ -10910,7 +11673,7 @@ impl App {
             TransportIndicator::Play
         } else if matches!(
             self.screen,
-            Screen::Tracker | Screen::TrackerParameters | Screen::TrackerMixer
+            Screen::Tracker | Screen::TrackerParameters | Screen::TrackerMixer | Screen::Automation
         ) && self.tracker_mode == TrackerMode::Play
         {
             TransportIndicator::Pause
@@ -13561,7 +14324,12 @@ fn drain(
 ) {
     while let Ok(ev) = rx.try_recv() {
         match ev {
-            MidiEvent::MappedControl(cc, v) => {
+            MidiEvent::MappedControl {
+                received,
+                cc,
+                value: v,
+            } => {
+                app.capture_automation_control(received, cc, v);
                 if app.screen == Screen::FxEditor {
                     app.apply_fx_control(cc, v);
                 } else if app.screen == Screen::TrackerMixer {
@@ -13576,6 +14344,7 @@ fn drain(
             MidiEvent::Raw { received, bytes } => {
                 app.held_notes.observe(&bytes);
                 app.recorder.capture(received, &bytes);
+                app.capture_external_automation(received, &bytes);
                 let tracker_preview = app.tracker_workspace_active();
                 if !tracker_preview {
                     app.sequencer.thru(&bytes);
@@ -14126,6 +14895,10 @@ fn perform(
                 a.open_tracker_mixer();
                 return false;
             }
+            Action::OpenAutomation => {
+                a.open_automation();
+                return false;
+            }
             Action::TrackerRecordToggle => {
                 a.toggle_tracker_recording();
                 return false;
@@ -14218,6 +14991,8 @@ fn perform(
                 a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), -1);
             } else if a.screen == Screen::TrackerMixer {
                 a.move_tracker_mixer_bank(-1);
+            } else if a.screen == Screen::Automation {
+                a.move_automation_lane(-1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(-1);
             } else if a.screen == Screen::MultichannelMonitor {
@@ -14280,6 +15055,8 @@ fn perform(
                 a.tracker_row = wrapped_index(a.tracker_row, a.tracker_rows(), 1);
             } else if a.screen == Screen::TrackerMixer {
                 a.move_tracker_mixer_bank(1);
+            } else if a.screen == Screen::Automation {
+                a.move_automation_lane(1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(1);
             } else if a.screen == Screen::MultichannelMonitor {
@@ -14404,6 +15181,7 @@ fn perform(
             Screen::TrackerTools => {}
             Screen::TrackerParameters => {}
             Screen::TrackerMixer => a.close_tracker_mixer(),
+            Screen::Automation => a.add_automation_point(),
             Screen::LivePatterns => {
                 if a.live_shape_focus.take().is_some() {
                     a.status = "Live Pattern browse".into();
@@ -14689,6 +15467,7 @@ fn perform(
                 | Screen::TrackerPages
                 | Screen::TrackerTools
                 | Screen::TrackerParameters
+                | Screen::Automation
                 | Screen::LivePatterns
                 | Screen::TrackerLoop => Screen::Tracker,
                 Screen::TrackerMixer => Screen::Tracker,
@@ -14705,6 +15484,20 @@ fn perform(
             }
         }
         Action::ResetParameters => a.reset_parameters(),
+        Action::OpenAutomation => a.open_automation(),
+        Action::AutomationArm => a.toggle_automation_arm(),
+        Action::AutomationNewLane => a.new_automation_lane(),
+        Action::AutomationAddPoint => a.add_automation_point(),
+        Action::AutomationDeletePoint => a.delete_automation_point(),
+        Action::AutomationPreviousPoint => a.move_automation_point(-1),
+        Action::AutomationNextPoint => a.move_automation_point(1),
+        Action::AutomationValueDecrease => a.adjust_automation_value(-1),
+        Action::AutomationValueIncrease => a.adjust_automation_value(1),
+        Action::AutomationTargetPrevious => a.cycle_automation_target(-1),
+        Action::AutomationTargetNext => a.cycle_automation_target(1),
+        Action::AutomationCurve => a.toggle_automation_curve(),
+        Action::AutomationClear => a.clear_automation_lane(),
+        Action::MetronomeToggle => a.toggle_metronome(),
         Action::IdeaRecordToggle => a.toggle_idea_recording(),
         Action::IdeaStop => a.stop_idea_transport(),
         Action::SaveNew => a.save_new(),
@@ -14794,6 +15587,7 @@ fn perform(
         Action::NextTrackerPage => a.move_tracker_page(1),
         Action::PreviewSong => a.preview_song(),
         Action::MidiImport => a.midi_import_action(),
+        Action::MidiExport => a.midi_export_action(),
         Action::DeleteSong => a.delete_song(),
         Action::RenameProject => a.begin_project_rename(),
         Action::OpenPatternTools => a.open_pattern_tools(),
@@ -15989,6 +16783,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         }
         Screen::TrackerParameters => draw_tracker_parameters(f, a),
         Screen::TrackerMixer => draw_tracker_mixer(f, a),
+        Screen::Automation => draw_automation(f, a),
         Screen::LivePatterns => draw_live_patterns(f, a),
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
@@ -18297,6 +19092,97 @@ fn draw_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App) {
     }
 }
 
+fn draw_automation<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let Some(pattern) = a.current_pattern() else {
+        return;
+    };
+    let lane = pattern.automation.get(a.automation_lane);
+    let heading = format!(
+        "AUTO · PAT {:02} · LANE {}/{} · {}",
+        a.tracker_pattern_number(),
+        a.automation_lane + 1,
+        pattern.automation.len(),
+        if a.automation_armed { "ARMED" } else { "SAFE" }
+    );
+    f.render_widget(
+        Paragraph::new(crate::ui_text::fit_middle(&heading, body.width as usize)).style(
+            Style::default()
+                .fg(if a.automation_armed {
+                    Color::Red
+                } else {
+                    Color::Green
+                })
+                .add_modifier(Modifier::BOLD),
+        ),
+        rect(body.x, body.y, body.width, 1),
+    );
+    let Some(lane) = lane else {
+        return;
+    };
+    let meaning = match lane.curve {
+        sequencer::AutomationCurve::Linear => "RAMP · reaches the next point exactly",
+        sequencer::AutomationCurve::Step => "STEP · changes exactly at each point",
+    };
+    let target = automation_target_label(&lane.target);
+    f.render_widget(
+        Paragraph::new(format!("TARGET {target}\n{meaning}"))
+            .style(Style::default().fg(Color::White)),
+        rect(body.x, body.y + 1, body.width, 2),
+    );
+    let available = body.height.saturating_sub(3) as usize;
+    let offset = a
+        .automation_point
+        .saturating_sub(available.saturating_sub(1));
+    let lines = lane
+        .points
+        .iter()
+        .enumerate()
+        .skip(offset)
+        .take(available)
+        .map(|(index, point)| {
+            let row = point.tick / sequencer::AUTOMATION_TICKS_PER_ROW;
+            let sub = point.tick % sequencer::AUTOMATION_TICKS_PER_ROW;
+            let percent = f32::from(point.value) * 100.0 / 65_535.0;
+            Spans::from(Span::styled(
+                format!(
+                    "{} {:03}+{:04}  {:6.2}%",
+                    if index == a.automation_point {
+                        ">"
+                    } else {
+                        " "
+                    },
+                    row,
+                    sub,
+                    percent
+                ),
+                Style::default().fg(if index == a.automation_point {
+                    Color::LightYellow
+                } else {
+                    Color::Gray
+                }),
+            ))
+        })
+        .collect::<Vec<_>>();
+    f.render_widget(
+        Paragraph::new(if lines.is_empty() {
+            vec![Spans::from(Span::styled(
+                "No points · ADD or ARM and touch",
+                Style::default().fg(Color::DarkGray),
+            ))]
+        } else {
+            lines
+        }),
+        rect(
+            body.x,
+            body.y + 3,
+            body.width,
+            body.height.saturating_sub(3),
+        ),
+    );
+}
+
 fn draw_compact_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App, body: Rect) {
     let start = a.tracker_mixer.bank() * a.tracker_mixer.pot_count();
     let count = a.tracker_mixer.pot_count().max(1);
@@ -19346,6 +20232,7 @@ fn confirmation_status_active(a: &App) -> bool {
         || a.confirm_song_save.is_some()
         || a.confirm_new_project
         || a.confirm_loop_remove
+        || a.confirm_automation_clear
         || a.confirm_song_delete.is_some()
         || a.confirm_pattern_clear
         || a.confirm_pattern_paste_over.is_some()
@@ -23308,7 +24195,12 @@ mod tests {
         let (tx, rx) = mpsc::channel();
 
         for value in [0.1, 0.4] {
-            tx.send(MidiEvent::MappedControl(74, value)).unwrap();
+            tx.send(MidiEvent::MappedControl {
+                received: Instant::now(),
+                cc: 74,
+                value,
+            })
+            .unwrap();
             if app.pickup.lock().unwrap().accept(74, value) {
                 tx.send(MidiEvent::Value(74, value)).unwrap();
             }
@@ -23317,7 +24209,12 @@ mod tests {
         }
 
         let value = 0.6;
-        tx.send(MidiEvent::MappedControl(74, value)).unwrap();
+        tx.send(MidiEvent::MappedControl {
+            received: Instant::now(),
+            cc: 74,
+            value,
+        })
+        .unwrap();
         if app.pickup.lock().unwrap().accept(74, value) {
             tx.send(MidiEvent::Value(74, value)).unwrap();
         }
@@ -25991,7 +26888,10 @@ release = 0.4
             let buffer = render_app(&mut a, 40, 13);
             let expected = if matches!(
                 screen,
-                Screen::Tracker | Screen::TrackerParameters | Screen::TrackerMixer
+                Screen::Tracker
+                    | Screen::TrackerParameters
+                    | Screen::TrackerMixer
+                    | Screen::Automation
             ) {
                 '‖'
             } else {
@@ -27760,8 +28660,18 @@ release = 0.4
         a.values.insert(VOLUME_CC, 0.5);
         seed_numeric_meter_peaks(&mut a);
         let (tx, rx) = mpsc::channel();
-        tx.send(MidiEvent::MappedControl(VOLUME_CC, 0.8)).unwrap();
-        tx.send(MidiEvent::MappedControl(VOLUME_CC, 0.7)).unwrap();
+        tx.send(MidiEvent::MappedControl {
+            received: Instant::now(),
+            cc: VOLUME_CC,
+            value: 0.8,
+        })
+        .unwrap();
+        tx.send(MidiEvent::MappedControl {
+            received: Instant::now(),
+            cc: VOLUME_CC,
+            value: 0.7,
+        })
+        .unwrap();
 
         drain(&rx, &mut a, Path::new("/none"), &tx);
 
@@ -29463,7 +30373,7 @@ release = 0.4
         assert_eq!((a.tracker_page, a.tracker_track), (0, LANES_PER_PAGE - 1));
         assert_eq!(a.tracker_row, 7);
 
-        a.record_tracker_midi(&[0x80, 60, 0]);
+        a.record_tracker_midi_at(7, &[0x80, 60, 0]);
         dispatch_modified_encoder(
             crate::pads::EncoderAction::Down,
             &mut a,
@@ -29671,6 +30581,7 @@ release = 0.4
             (Screen::Routing, None),
             (Screen::TrackerParameters, None),
             (Screen::TrackerMixer, None),
+            (Screen::Automation, None),
         ];
         assert_eq!(expected.len(), Screen::ALL.len());
         for (screen, target) in expected {
@@ -29904,7 +30815,7 @@ release = 0.4
         assert!(a
             .recording_status_message()
             .as_deref()
-            .is_some_and(|message| message.starts_with("FT2 ·")));
+            .is_some_and(|message| message == "4 3 2 1 → REC"));
 
         a.toggle_idea_recording();
         assert_eq!(
@@ -32673,8 +33584,9 @@ release = 0.4
         a.record_tracker_midi(&[0x90, 61, 110]);
         assert_eq!(a.song.patterns[&1].rows[0][0].note, Note::Empty);
         assert_eq!(a.tracker_mode, TrackerMode::Rec);
+        assert_eq!(a.sequencer.status().count_in, Some(4));
 
-        a.record_tracker_midi(&[0x90, 60, 111]);
+        a.record_tracker_midi_at(0, &[0x90, 60, 111]);
         assert_eq!(a.song.patterns[&1].rows[0][0].note, Note::On(60));
         assert_eq!(a.song.patterns[&1].rows[0][0].velocity, Some(111));
         assert!(a.song.patterns[&0]
@@ -32715,9 +33627,9 @@ release = 0.4
         a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
         a.toggle_tracker_recording();
 
-        a.record_tracker_midi(&[0x90, 60, 100]);
-        a.record_tracker_midi(&[0x90, 60, 101]);
-        a.record_tracker_midi(&[0x91, 60, 102]);
+        a.record_tracker_midi_at(0, &[0x90, 60, 100]);
+        a.record_tracker_midi_at(0, &[0x90, 60, 101]);
+        a.record_tracker_midi_at(0, &[0x91, 60, 102]);
         assert_eq!(a.tracker_track, 0);
         let recording = a.tracker_recording.as_ref().unwrap();
         assert_eq!(
@@ -32729,16 +33641,16 @@ release = 0.4
         );
         assert_eq!(recording.active_lanes[&(1, 60)][0].lane, 2);
 
-        a.record_tracker_midi(&[0x80, 60, 0]);
+        a.record_tracker_midi_at(0, &[0x80, 60, 0]);
         assert_eq!(
             a.tracker_recording.as_ref().unwrap().active_lanes[&(0, 60)][0].lane,
             0
         );
-        a.record_tracker_midi(&[0x90, 62, 103]);
+        a.record_tracker_midi_at(0, &[0x90, 62, 103]);
         assert_eq!(a.song.patterns[&0].rows[0][3].note, Note::On(62));
 
-        a.record_tracker_midi(&[0x90, 60, 0]);
-        a.record_tracker_midi(&[0x81, 60, 0]);
+        a.record_tracker_midi_at(0, &[0x90, 60, 0]);
+        a.record_tracker_midi_at(0, &[0x81, 60, 0]);
         assert!(!a
             .tracker_recording
             .as_ref()
@@ -34243,6 +35155,8 @@ release = 0.4
             row: 0,
             lane: Some(lane),
             target: Some(PageTarget::Software(route)),
+            automation: false,
+            effect: None,
         }
     }
 
@@ -34942,5 +35856,27 @@ release = 0.4
             );
             assert!((37..40).all(|x| b.get(x, 0).fg == Color::Red));
         }
+    }
+
+    #[test]
+    fn automation_step_editor_reaches_exact_toggle_and_bypass_values() {
+        let bypass = sequencer::AutomationTarget::EffectBypass {
+            rack: sequencer::EffectRackTarget::Source,
+            effect_id: 1,
+            effect_kind: EffectKind::Utility,
+            effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+        };
+        assert_eq!(automation_discrete_value(&bypass, 0, 1), u16::MAX);
+        assert_eq!(automation_discrete_value(&bypass, u16::MAX, -1), 0);
+
+        let toggle = sequencer::AutomationTarget::Effect {
+            rack: sequencer::EffectRackTarget::Source,
+            effect_id: 1,
+            effect_kind: EffectKind::Utility,
+            effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+            parameter: "mute".into(),
+        };
+        assert_eq!(automation_discrete_value(&toggle, 0, 1), u16::MAX);
+        assert_eq!(automation_discrete_value(&toggle, u16::MAX, -1), 0);
     }
 }

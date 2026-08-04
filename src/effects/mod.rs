@@ -15,8 +15,10 @@ mod tremolo_pan;
 use crate::audio_graph::{EffectId, EffectInstance, EffectKind};
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
 use crate::effect_schema;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 pub use compressor::AtomicGainReduction;
 use compressor::Compressor;
@@ -33,6 +35,207 @@ use tremolo_pan::TremoloPan;
 
 const PARAMETER_SMOOTH_SAMPLES: u32 = 64;
 const BYPASS_FADE_MILLISECONDS: f32 = 5.0;
+const MAX_RUNTIME_PARAMETERS: usize = 32;
+const BYPASS_DIRTY_BIT: u64 = 1 << 63;
+
+/// Validated control-thread publisher for one running effect identity. The
+/// callback reads a fixed atomic array and never allocates or locks.
+pub struct EffectControl {
+    id: EffectId,
+    kind: EffectKind,
+    version: u32,
+    active: AtomicBool,
+    values: [AtomicU32; MAX_RUNTIME_PARAMETERS],
+    bypass: AtomicBool,
+    dirty: AtomicU64,
+}
+
+impl EffectControl {
+    fn new(effect: &EffectInstance) -> Arc<Self> {
+        Arc::new(Self {
+            id: effect.id,
+            kind: effect.kind,
+            version: effect.version,
+            active: AtomicBool::new(true),
+            values: std::array::from_fn(|index| {
+                let value = effect_schema::schema(effect.kind)
+                    .get(index)
+                    .map(|spec| {
+                        effect
+                            .parameters
+                            .get(spec.name)
+                            .copied()
+                            .unwrap_or(spec.default)
+                    })
+                    .unwrap_or_default();
+                AtomicU32::new(value.to_bits())
+            }),
+            bypass: AtomicBool::new(effect.bypass),
+            dirty: AtomicU64::new(0),
+        })
+    }
+
+    pub const fn id(&self) -> EffectId {
+        self.id
+    }
+
+    pub const fn kind(&self) -> EffectKind {
+        self.kind
+    }
+
+    pub const fn version(&self) -> u32 {
+        self.version
+    }
+
+    pub fn publish_normalized(&self, name: &str, normalized: u16) -> Result<(), EffectError> {
+        if !self.active.load(Ordering::Acquire) {
+            return Err(EffectError::new("effect control target is stale"));
+        }
+        let (index, spec) = effect_schema::schema(self.kind)
+            .iter()
+            .enumerate()
+            .find(|(_, spec)| spec.name == name)
+            .ok_or_else(|| EffectError::new(format!("unknown {:?} parameter {name}", self.kind)))?;
+        if index >= MAX_RUNTIME_PARAMETERS {
+            return Err(EffectError::new(
+                "effect parameter exceeds runtime control bound",
+            ));
+        }
+        let unit = f32::from(normalized) / 65_535.0;
+        let value = match spec.value_type {
+            effect_schema::ParameterType::Continuous
+                if self.kind == EffectKind::Eq && spec.unit == "Hz" =>
+            {
+                spec.minimum * (spec.maximum / spec.minimum).powf(unit)
+            }
+            effect_schema::ParameterType::Continuous => {
+                spec.minimum + unit * (spec.maximum - spec.minimum)
+            }
+            effect_schema::ParameterType::Integer => {
+                (spec.minimum + unit * (spec.maximum - spec.minimum)).round()
+            }
+            effect_schema::ParameterType::Toggle => (normalized >= 32_768) as u8 as f32,
+            effect_schema::ParameterType::Choices(choices) => {
+                let choice = usize::from(normalized) * choices.len() / 65_536;
+                f32::from(choices[choice.min(choices.len().saturating_sub(1))])
+            }
+        };
+        if !spec.accepts(value) {
+            return Err(EffectError::new("prepared effect value is incompatible"));
+        }
+        self.values[index].store(value.to_bits(), Ordering::Release);
+        self.dirty.fetch_or(1u64 << index, Ordering::AcqRel);
+        Ok(())
+    }
+
+    pub fn publish_bypass(&self, bypass: bool) -> Result<(), EffectError> {
+        if !self.active.load(Ordering::Acquire) {
+            return Err(EffectError::new("effect control target is stale"));
+        }
+        self.bypass.store(bypass, Ordering::Release);
+        self.dirty.fetch_or(BYPASS_DIRTY_BIT, Ordering::AcqRel);
+        Ok(())
+    }
+
+    fn deactivate(&self) {
+        self.active.store(false, Ordering::Release);
+        self.dirty.store(0, Ordering::Release);
+    }
+}
+
+#[derive(Default)]
+struct EffectControlRegistry {
+    controls: BTreeMap<EffectId, Arc<EffectControl>>,
+    graph_ids: BTreeSet<EffectId>,
+    drum_ids: BTreeSet<EffectId>,
+}
+
+#[derive(Default)]
+pub struct EffectControlHub {
+    controls: RwLock<EffectControlRegistry>,
+}
+
+impl EffectControlHub {
+    pub fn replace_graph(
+        &self,
+        controls: impl IntoIterator<Item = (EffectId, Arc<EffectControl>)>,
+    ) {
+        if let Ok(mut active) = self.controls.write() {
+            let controls = controls.into_iter().collect::<BTreeMap<_, _>>();
+            let ids = controls.keys().copied().collect::<BTreeSet<_>>();
+            for id in std::mem::take(&mut active.graph_ids) {
+                if !active.drum_ids.contains(&id) {
+                    active.controls.remove(&id);
+                }
+            }
+            active.controls.extend(controls);
+            active.graph_ids = ids;
+        }
+    }
+
+    pub fn replace_drums(
+        &self,
+        controls: impl IntoIterator<Item = (EffectId, Arc<EffectControl>)>,
+    ) {
+        if let Ok(mut active) = self.controls.write() {
+            let controls = controls.into_iter().collect::<BTreeMap<_, _>>();
+            let ids = controls.keys().copied().collect::<BTreeSet<_>>();
+            for id in std::mem::take(&mut active.drum_ids) {
+                if !active.graph_ids.contains(&id) {
+                    active.controls.remove(&id);
+                }
+            }
+            active.controls.extend(controls);
+            active.drum_ids = ids;
+        }
+    }
+
+    pub fn clear_graph(&self) {
+        if let Ok(mut active) = self.controls.write() {
+            for id in std::mem::take(&mut active.graph_ids) {
+                if !active.drum_ids.contains(&id) {
+                    active.controls.remove(&id);
+                }
+            }
+        }
+    }
+
+    pub fn clear_drums(&self) {
+        if let Ok(mut active) = self.controls.write() {
+            for id in std::mem::take(&mut active.drum_ids) {
+                if !active.graph_ids.contains(&id) {
+                    active.controls.remove(&id);
+                }
+            }
+        }
+    }
+
+    pub fn publish_normalized(
+        &self,
+        id: EffectId,
+        kind: EffectKind,
+        version: u32,
+        parameter: Option<&str>,
+        value: u16,
+    ) -> Result<(), EffectError> {
+        let control = self
+            .controls
+            .read()
+            .map_err(|_| EffectError::new("effect control registry is unavailable"))?
+            .controls
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| EffectError::new("effect automation target is stale or missing"))?;
+        if control.kind() != kind || control.version() != version {
+            return Err(EffectError::new("effect automation schema is incompatible"));
+        }
+        if let Some(parameter) = parameter {
+            control.publish_normalized(parameter, value)
+        } else {
+            control.publish_bypass(value >= 32_768)
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BypassMode {
@@ -236,6 +439,7 @@ pub struct EffectSlot {
     output_meter: MeterAccumulator,
     published_input: Arc<AtomicMeter>,
     published_output: Arc<AtomicMeter>,
+    control: Arc<EffectControl>,
 }
 
 impl EffectSlot {
@@ -287,6 +491,7 @@ impl EffectSlot {
                 .map_err(|error| EffectError::new(error.to_string()))?,
             published_input: Arc::new(AtomicMeter::default()),
             published_output: Arc::new(AtomicMeter::default()),
+            control: EffectControl::new(effect),
         };
         slot.processor.set_bypass(
             effect.bypass,
@@ -346,6 +551,10 @@ impl EffectSlot {
         }
     }
 
+    pub fn control(&self) -> Arc<EffectControl> {
+        Arc::clone(&self.control)
+    }
+
     pub fn set_bypass(&mut self, bypass: bool) -> Result<(), EffectError> {
         self.set_bypass_with_mode(bypass, BypassMode::DryPassthrough)
     }
@@ -384,8 +593,9 @@ impl EffectSlot {
     }
 
     /// Process an in-place stereo block without allocation, locks, logging,
-    /// I/O, or coefficient calculation.
+    /// I/O, blocking, or unbounded coefficient work.
     pub fn process(&mut self, frames: &mut [StereoFrame]) {
+        self.consume_control();
         for frame in frames.iter_mut() {
             let dry = self.input_meter.process(*frame);
             let processed = self.processor.process(dry);
@@ -424,12 +634,34 @@ impl EffectSlot {
         self.processor.publish();
     }
 
+    #[inline]
+    fn consume_control(&mut self) {
+        let dirty = self.control.dirty.swap(0, Ordering::AcqRel);
+        for (index, spec) in effect_schema::schema(self.kind).iter().enumerate() {
+            if dirty & (1u64 << index) == 0 {
+                continue;
+            }
+            let value = f32::from_bits(self.control.values[index].load(Ordering::Acquire));
+            let _ = self.processor.set_parameter(spec.name, value);
+        }
+        if dirty & BYPASS_DIRTY_BIT != 0 {
+            let bypass = self.control.bypass.load(Ordering::Acquire);
+            let _ = self.set_bypass_with_mode(bypass, self.bypass_mode);
+        }
+    }
+
     pub fn reset(&mut self) {
         self.processor.reset();
         self.input_meter.reset();
         self.output_meter.reset();
         self.published_input.publish(Default::default());
         self.published_output.publish(Default::default());
+    }
+}
+
+impl Drop for EffectSlot {
+    fn drop(&mut self) {
+        self.control.deactivate();
     }
 }
 
@@ -677,5 +909,85 @@ mod tests {
         }
         assert!(slot.set_parameter("trim_db", f32::NAN).is_err());
         assert!(slot.set_parameter("future", 0.0).is_err());
+    }
+
+    #[test]
+    fn published_runtime_control_is_lock_free_bounded_and_stale_safe() {
+        let effect = utility(BTreeMap::new(), false);
+        let mut slot = EffectSlot::compile(&effect, 48_000, 64).unwrap();
+        let control = slot.control();
+        control.publish_normalized("trim_db", u16::MAX).unwrap();
+        control.publish_bypass(false).unwrap();
+        let mut block = [StereoFrame::new(0.1, -0.1); 64];
+        assert_no_allocations(|| slot.process(&mut block));
+        assert!(block
+            .iter()
+            .all(|frame| frame.left.is_finite() && frame.right.is_finite()));
+        drop(slot);
+        assert!(control.publish_normalized("trim_db", 0).is_err());
+        assert!(control.publish_normalized("missing", 0).is_err());
+    }
+
+    #[test]
+    fn graph_and_drum_control_owners_clear_independently() {
+        let graph = EffectSlot::compile(&utility(BTreeMap::new(), false), 48_000, 64).unwrap();
+        let mut drum_effect = utility(BTreeMap::new(), false);
+        drum_effect.id = 8;
+        let drums = EffectSlot::compile(&drum_effect, 48_000, 64).unwrap();
+        let graph_control = graph.control();
+        let drum_control = drums.control();
+        let hub = EffectControlHub::default();
+        hub.replace_graph([(graph.id(), graph_control)]);
+        hub.replace_drums([(drums.id(), drum_control)]);
+        hub.clear_graph();
+        assert!(hub
+            .publish_normalized(
+                8,
+                EffectKind::Utility,
+                EFFECT_FORMAT_VERSION,
+                Some("mute"),
+                0
+            )
+            .is_ok());
+        assert!(hub
+            .publish_normalized(
+                7,
+                EffectKind::Utility,
+                EFFECT_FORMAT_VERSION,
+                Some("mute"),
+                0
+            )
+            .is_err());
+        hub.clear_drums();
+        assert!(hub
+            .publish_normalized(
+                8,
+                EffectKind::Utility,
+                EFFECT_FORMAT_VERSION,
+                Some("mute"),
+                0
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn normalized_eq_frequency_uses_the_editor_logarithmic_control_space() {
+        let mut effect = utility(BTreeMap::new(), false);
+        effect.id = 9;
+        effect.kind = EffectKind::Eq;
+        effect.parameters.clear();
+        let slot = EffectSlot::compile(&effect, 48_000, 64).unwrap();
+        let control = slot.control();
+        control
+            .publish_normalized("low_cut_hz", u16::MAX / 2)
+            .unwrap();
+        let (index, spec) = effect_schema::schema(EffectKind::Eq)
+            .iter()
+            .enumerate()
+            .find(|(_, spec)| spec.name == "low_cut_hz")
+            .unwrap();
+        let published = f32::from_bits(control.values[index].load(Ordering::Acquire));
+        let expected = (spec.minimum * spec.maximum).sqrt();
+        assert!((published - expected).abs() < expected * 0.001);
     }
 }

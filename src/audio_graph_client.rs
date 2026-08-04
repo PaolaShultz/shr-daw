@@ -238,6 +238,7 @@ pub(crate) struct OwnedAudioGraph {
     meters: std::sync::Arc<FinalBusMeters>,
     final_recorder: FinalMixRecorder,
     monitoring: Monitoring,
+    effect_controls: std::collections::BTreeMap<u32, std::sync::Arc<crate::effects::EffectControl>>,
 }
 
 #[derive(Default)]
@@ -245,6 +246,7 @@ pub(crate) struct FinalBusOwner {
     graph: Option<OwnedAudioGraph>,
     last_recording: FinalMixRecorderStatus,
     fallback: Option<String>,
+    effect_hub: std::sync::Arc<crate::effects::EffectControlHub>,
     #[cfg(test)]
     controls_override: Option<std::sync::Arc<BusControls>>,
 }
@@ -271,6 +273,9 @@ pub(crate) struct PerformanceBusPorts {
 }
 
 impl FinalBusOwner {
+    pub(crate) fn effect_hub(&self) -> std::sync::Arc<crate::effects::EffectControlHub> {
+        std::sync::Arc::clone(&self.effect_hub)
+    }
     pub(crate) fn active(&self) -> bool {
         self.graph.is_some()
     }
@@ -349,6 +354,12 @@ impl FinalBusOwner {
             input_monitoring,
             &available,
         )?;
+        self.effect_hub.replace_graph(
+            graph
+                .effect_controls
+                .iter()
+                .map(|(&id, control)| (id, std::sync::Arc::clone(control))),
+        );
         self.graph = Some(graph);
         self.fallback = resolved_audio.notice;
         Ok(true)
@@ -437,6 +448,12 @@ impl FinalBusOwner {
             return Ok(false);
         };
         graph.publish_routing(rack, aux_routing)?;
+        self.effect_hub.replace_graph(
+            graph
+                .effect_controls
+                .iter()
+                .map(|(&id, control)| (id, std::sync::Arc::clone(control))),
+        );
         Ok(true)
     }
 
@@ -514,6 +531,7 @@ impl FinalBusOwner {
     }
 
     pub(crate) fn deactivate(&mut self) -> Option<(CallbackTimingSnapshot, Result<()>)> {
+        self.effect_hub.clear_graph();
         let mut graph = self.graph.take()?;
         let restored = graph.restore_direct();
         self.last_recording = graph.final_recording_status();
@@ -586,6 +604,14 @@ impl OwnedAudioGraph {
             aux_routing,
         );
         let plan = GraphPlan::compile(&definition).context("compile managed audio graph")?;
+        let effect_controls = definition
+            .effects
+            .iter()
+            .filter_map(|effect| {
+                plan.effect_control_by_id(effect.id)
+                    .map(|control| (effect.id, control))
+            })
+            .collect();
 
         let inputs = [
             jack.register_audio_port("managed_in_l", PortDirection::Input)?,
@@ -735,6 +761,7 @@ impl OwnedAudioGraph {
             meters,
             final_recorder,
             monitoring,
+            effect_controls,
         })
     }
 
@@ -898,6 +925,16 @@ impl OwnedAudioGraph {
             }
             return Err(anyhow!(error.to_string()).context("compile replacement audio rack"));
         }
+        self.effect_controls = definition
+            .effects
+            .iter()
+            .filter_map(|effect| {
+                self.callback
+                    .plan
+                    .effect_control_by_id(effect.id)
+                    .map(|control| (effect.id, control))
+            })
+            .collect();
         self.callback.final_bus.reset();
         if let Err(error) = self.jack.activate() {
             let _ = self.restore_direct();

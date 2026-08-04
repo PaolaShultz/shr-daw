@@ -123,6 +123,10 @@ pub struct BusControls {
     input_two_left: AtomicU32,
     input_two_right: AtomicU32,
     master: AtomicFader,
+    metronome_enabled: AtomicBool,
+    metronome_bpm: AtomicU32,
+    metronome_meter: AtomicU32,
+    metronome_generation: AtomicU32,
 }
 
 impl Default for BusControls {
@@ -138,6 +142,10 @@ impl Default for BusControls {
             input_two_left: AtomicU32::new(0.0_f32.to_bits()),
             input_two_right: AtomicU32::new(1.0_f32.to_bits()),
             master: AtomicFader::new(0.0),
+            metronome_enabled: AtomicBool::new(false),
+            metronome_bpm: AtomicU32::new(120.0_f32.to_bits()),
+            metronome_meter: AtomicU32::new(4),
+            metronome_generation: AtomicU32::new(0),
         }
     }
 }
@@ -261,6 +269,23 @@ impl BusControls {
             .store(gain_db.to_bits(), Ordering::Release);
         true
     }
+
+    pub fn start_metronome(&self, bpm: f32, meter: u8) -> bool {
+        if !bpm.is_finite() || !(20.0..=300.0).contains(&bpm) || !(1..=32).contains(&meter) {
+            return false;
+        }
+        self.metronome_bpm.store(bpm.to_bits(), Ordering::Release);
+        self.metronome_meter
+            .store(u32::from(meter), Ordering::Release);
+        self.metronome_enabled.store(true, Ordering::Release);
+        self.metronome_generation.fetch_add(1, Ordering::AcqRel);
+        true
+    }
+
+    pub fn stop_metronome(&self) {
+        self.metronome_enabled.store(false, Ordering::Release);
+        self.metronome_generation.fetch_add(1, Ordering::AcqRel);
+    }
 }
 
 pub type FinalBusMeterSnapshot = MasterStripMeterSnapshot;
@@ -334,6 +359,16 @@ pub struct FinalBusProcessor {
     input_matrix: [RuntimeFader; 4],
     master_fader: RuntimeFader,
     strip: MasterStripProcessor,
+    sample_rate: u32,
+    metronome_generation: u32,
+    metronome_until_beat: u32,
+    metronome_click_left: u32,
+    metronome_y1: f32,
+    metronome_y2: f32,
+    metronome_coefficient: f32,
+    metronome_accent_recurrence: [f32; 2],
+    metronome_regular_recurrence: [f32; 2],
+    metronome_beat: u32,
 }
 
 impl FinalBusProcessor {
@@ -367,6 +402,16 @@ impl FinalBusProcessor {
             ],
             master_fader: RuntimeFader::new(controls.master_gain_db(), false, sample_rate)?,
             strip: MasterStripProcessor::new(sample_rate, maximum_frames, strip_controls, meters)?,
+            sample_rate,
+            metronome_generation: controls.metronome_generation.load(Ordering::Acquire),
+            metronome_until_beat: 0,
+            metronome_click_left: 0,
+            metronome_y1: 0.0,
+            metronome_y2: 0.0,
+            metronome_coefficient: 0.0,
+            metronome_accent_recurrence: oscillator_recurrence(1_760.0, sample_rate),
+            metronome_regular_recurrence: oscillator_recurrence(1_320.0, sample_rate),
+            metronome_beat: 0,
             controls,
         })
     }
@@ -454,6 +499,7 @@ impl FinalBusProcessor {
 
     #[inline]
     pub fn process_final(&mut self, frames: &mut [StereoFrame]) {
+        self.mix_metronome(frames);
         self.master_fader
             .refresh(self.controls.master_gain_db(), false);
         for frame in frames.iter_mut() {
@@ -464,9 +510,74 @@ impl FinalBusProcessor {
         self.strip.process(frames);
     }
 
+    #[inline]
+    fn mix_metronome(&mut self, frames: &mut [StereoFrame]) {
+        let generation = self.controls.metronome_generation.load(Ordering::Acquire);
+        if generation != self.metronome_generation {
+            self.metronome_generation = generation;
+            self.metronome_until_beat = 0;
+            self.metronome_click_left = 0;
+            self.metronome_y1 = 0.0;
+            self.metronome_y2 = 0.0;
+            self.metronome_beat = 0;
+        }
+        if !self.controls.metronome_enabled.load(Ordering::Acquire) {
+            return;
+        }
+        let bpm = f32::from_bits(self.controls.metronome_bpm.load(Ordering::Acquire));
+        let bpm = if bpm.is_finite() {
+            bpm.clamp(20.0, 300.0)
+        } else {
+            120.0
+        };
+        let meter = self
+            .controls
+            .metronome_meter
+            .load(Ordering::Acquire)
+            .clamp(1, 32);
+        let beat_samples = ((self.sample_rate as f32 * 60.0 / bpm).round() as u32).max(1);
+        let click_samples = (self.sample_rate / 80).max(1);
+        for frame in frames {
+            if self.metronome_until_beat == 0 {
+                self.metronome_click_left = click_samples;
+                self.metronome_until_beat = beat_samples;
+                let recurrence = if self.metronome_beat % meter == 0 {
+                    self.metronome_accent_recurrence
+                } else {
+                    self.metronome_regular_recurrence
+                };
+                self.metronome_coefficient = recurrence[0];
+                self.metronome_y1 = 0.0;
+                self.metronome_y2 = recurrence[1];
+            }
+            if self.metronome_click_left > 0 {
+                let accent = self.metronome_beat % meter == 0;
+                let level = if accent { 0.18 } else { 0.11 };
+                let envelope = self.metronome_click_left as f32 / click_samples as f32;
+                let oscillator = self.metronome_coefficient * self.metronome_y1 - self.metronome_y2;
+                self.metronome_y2 = self.metronome_y1;
+                self.metronome_y1 = oscillator;
+                let sample = oscillator * level * envelope;
+                frame.left += sample;
+                frame.right += sample;
+                self.metronome_click_left -= 1;
+            }
+            self.metronome_until_beat -= 1;
+            if self.metronome_until_beat == 0 {
+                self.metronome_beat = self.metronome_beat.wrapping_add(1);
+            }
+            *frame = frame.finite_or_silence();
+        }
+    }
+
     pub fn reset(&mut self) {
         self.strip.reset();
     }
+}
+
+fn oscillator_recurrence(frequency: f32, sample_rate: u32) -> [f32; 2] {
+    let radians = std::f32::consts::TAU * frequency / sample_rate as f32;
+    [2.0 * radians.cos(), -radians.sin()]
 }
 
 fn input_matrix_targets(controls: &BusControls) -> [f32; 4] {
@@ -618,6 +729,34 @@ mod tests {
         assert!(peak.left > 0.24 && peak.left < 0.5);
         assert!(peak.right > 0.12 && peak.right < 0.25);
         assert_eq!(controls.source_peak(BusSource::Synth), StereoFrame::SILENCE);
+    }
+
+    #[test]
+    fn metronome_is_internal_accented_finite_and_callback_bounded() {
+        let (mut bus, controls) = processor(48_000, 256);
+        assert!(controls.start_metronome(240.0, 4));
+        let mut frames = vec![StereoFrame::SILENCE; 24_000];
+        assert_no_allocations(|| {
+            for block in frames.chunks_mut(256) {
+                bus.mix_metronome(block);
+            }
+        });
+        let first = frames[..600]
+            .iter()
+            .map(|frame| frame.left.abs())
+            .fold(0.0_f32, f32::max);
+        let second = frames[12_000..12_600]
+            .iter()
+            .map(|frame| frame.left.abs())
+            .fold(0.0_f32, f32::max);
+        assert!(first > second && second > 0.0);
+        assert!(frames
+            .iter()
+            .all(|frame| frame.left.is_finite() && frame.right.is_finite()));
+        controls.stop_metronome();
+        let mut silence = [StereoFrame::SILENCE; 64];
+        bus.mix_metronome(&mut silence);
+        assert_eq!(silence, [StereoFrame::SILENCE; 64]);
     }
 
     #[test]

@@ -28,12 +28,13 @@ pub enum Screen {
     Routing,
     TrackerParameters,
     TrackerMixer,
+    Automation,
 }
 
 impl Screen {
-    pub const COUNT: usize = 23;
+    pub const COUNT: usize = 24;
     #[cfg(test)]
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -57,6 +58,7 @@ impl Screen {
         Self::Routing,
         Self::TrackerParameters,
         Self::TrackerMixer,
+        Self::Automation,
     ];
 
     pub const fn index(self) -> usize {
@@ -84,6 +86,7 @@ impl Screen {
             Self::Routing => 20,
             Self::TrackerParameters => 21,
             Self::TrackerMixer => 22,
+            Self::Automation => 23,
         }
     }
 
@@ -113,6 +116,7 @@ impl Screen {
             Self::Routing => "ROUTING",
             Self::TrackerParameters => "FT2 PARAM",
             Self::TrackerMixer => "FT2 MIXER",
+            Self::Automation => "AUTOMATION",
         }
     }
 }
@@ -139,6 +143,20 @@ pub enum Action {
     OpenTracker,
     OpenTrackerParameters,
     OpenTrackerMixer,
+    OpenAutomation,
+    AutomationArm,
+    AutomationNewLane,
+    AutomationAddPoint,
+    AutomationDeletePoint,
+    AutomationPreviousPoint,
+    AutomationNextPoint,
+    AutomationValueDecrease,
+    AutomationValueIncrease,
+    AutomationTargetPrevious,
+    AutomationTargetNext,
+    AutomationCurve,
+    AutomationClear,
+    MetronomeToggle,
     OpenTrackerFiles,
     OpenTrackerArrange,
     OpenLivePatterns,
@@ -299,6 +317,7 @@ pub enum Action {
     SaveSongAs,
     LoadSong,
     MidiImport,
+    MidiExport,
     PreviewSong,
     DeleteSong,
     RenameProject,
@@ -498,6 +517,44 @@ const TRACKER_MIXER: [MenuPage; 4] = [
         ],
     ),
 ];
+const AUTOMATION: [MenuPage; 4] = [
+    page(
+        "REC",
+        [
+            on("ARM", Action::AutomationArm),
+            on("ADD", Action::AutomationAddPoint),
+            on("DELETE", Action::AutomationDeletePoint),
+            on("NEW", Action::AutomationNewLane),
+        ],
+    ),
+    page(
+        "POINT",
+        [
+            on("PREV", Action::AutomationPreviousPoint),
+            on("NEXT", Action::AutomationNextPoint),
+            on("VALUE-", Action::AutomationValueDecrease),
+            on("VALUE+", Action::AutomationValueIncrease),
+        ],
+    ),
+    page(
+        "LANE",
+        [
+            on("TARGET-", Action::AutomationTargetPrevious),
+            on("TARGET+", Action::AutomationTargetNext),
+            on("CURVE", Action::AutomationCurve),
+            on("CLEAR", Action::AutomationClear),
+        ],
+    ),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
 const PLAYBACK: [MenuPage; 4] = [
     page(
         "PLAY",
@@ -582,8 +639,8 @@ const TRACKER: [MenuPage; 4] = [
         [
             on("PARAM", Action::OpenTrackerParameters),
             on("MIX", Action::OpenTrackerMixer),
-            off(""),
-            off(""),
+            on("AUTO", Action::OpenAutomation),
+            on("CLICK", Action::MetronomeToggle),
         ],
     ),
     page(
@@ -946,7 +1003,7 @@ const FILES: [MenuPage; 4] = [
     page(
         "PREVIEW",
         [
-            off(""),
+            on("EXPORT", Action::MidiExport),
             on("PREVIEW", Action::PreviewSong),
             off(""),
             off(""),
@@ -1456,6 +1513,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::Tracker, _) => &TRACKER,
         (Screen::TrackerParameters, _) => &TRACKER_PARAMETERS,
         (Screen::TrackerMixer, _) => &TRACKER_MIXER,
+        (Screen::Automation, _) => &AUTOMATION,
         (Screen::TrackerFiles, MenuContext::PatternClear) => &PATTERN_CLEAR,
         (Screen::TrackerFiles, MenuContext::PatternTools) => &PATTERN_TOOLS,
         (Screen::TrackerFiles, MenuContext::DrumPatterns) => &DRUM_PATTERNS,
@@ -1626,8 +1684,8 @@ mod tests {
             [
                 Some(Action::OpenTrackerParameters),
                 Some(Action::OpenTrackerMixer),
-                None,
-                None,
+                Some(Action::OpenAutomation),
+                Some(Action::MetronomeToggle),
             ]
         );
 

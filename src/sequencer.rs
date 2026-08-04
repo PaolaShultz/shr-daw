@@ -17,14 +17,18 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 13;
+pub const SONG_VERSION: u8 = 14;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
+pub const AUTOMATION_TICKS_PER_ROW: u32 = 1_680;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_PATTERNS: usize = 256;
 const MAX_ARRANGEMENT_STEPS: usize = 4096;
 const MAX_PROJECT_CELLS: usize = 1_048_576;
 const MAX_SETUP_MESSAGES_PER_PAGE: usize = 256;
+pub const MAX_AUTOMATION_LANES_PER_PATTERN: usize = 128;
+pub const MAX_AUTOMATION_POINTS_PER_LANE: usize = 4_096;
+pub const MAX_PROJECT_AUTOMATION_POINTS: usize = 262_144;
 #[cfg(test)]
 const DEFAULT_GESTURE_SETTLE: Duration = Duration::from_millis(45);
 
@@ -290,8 +294,113 @@ pub struct Pattern {
     pub tempo: Bpm,
     pub meter: u8,
     pub audio_loops: [Option<LoopSettings>; LOOP_SLOT_COUNT],
+    pub automation: Vec<AutomationLane>,
     pub pages: Vec<Page>,
     pub rows: Vec<Vec<Cell>>,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationCurve {
+    Linear,
+    Step,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AutomationTarget {
+    Instrument {
+        page: u8,
+        engine: String,
+        control: String,
+    },
+    MidiCc {
+        page: u8,
+        channel: u8,
+        controller: u8,
+    },
+    Effect {
+        rack: EffectRackTarget,
+        effect_id: crate::audio_graph::EffectId,
+        effect_kind: crate::audio_graph::EffectKind,
+        effect_version: u32,
+        parameter: String,
+    },
+    EffectBypass {
+        rack: EffectRackTarget,
+        effect_id: crate::audio_graph::EffectId,
+        effect_kind: crate::audio_graph::EffectKind,
+        effect_version: u32,
+    },
+}
+
+#[derive(
+    Clone, Copy, Debug, serde::Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize,
+)]
+#[serde(tag = "scope", content = "id", rename_all = "snake_case")]
+pub enum EffectRackTarget {
+    Source,
+    Master,
+    Aux(u8),
+    Drums,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutomationPoint {
+    pub tick: u32,
+    /// Normalized 0..=65535. MIDI CC targets map this deterministically to
+    /// 0..=127; effect and mapped-control targets resolve through their schema.
+    pub value: u16,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutomationLane {
+    pub id: u32,
+    pub target: AutomationTarget,
+    pub curve: AutomationCurve,
+    pub points: Vec<AutomationPoint>,
+}
+
+impl AutomationLane {
+    pub fn value_at(&self, tick: u32, pattern_ticks: u32) -> Option<u16> {
+        let first = *self.points.first()?;
+        if self.points.len() == 1 || pattern_ticks == 0 {
+            return Some(first.value);
+        }
+        let index = self.points.partition_point(|point| point.tick <= tick);
+        let (a, b, position, span) = if index == 0 {
+            let a = *self.points.last()?;
+            (
+                a,
+                first,
+                tick.saturating_add(pattern_ticks - a.tick),
+                pattern_ticks - a.tick + first.tick,
+            )
+        } else if index == self.points.len() {
+            let a = self.points[index - 1];
+            (a, first, tick - a.tick, pattern_ticks - a.tick + first.tick)
+        } else {
+            let a = self.points[index - 1];
+            let b = self.points[index];
+            (a, b, tick - a.tick, b.tick - a.tick)
+        };
+        if self.curve == AutomationCurve::Step || span == 0 {
+            return Some(a.value);
+        }
+        let start = i64::from(a.value);
+        let delta = i64::from(b.value) - start;
+        let numerator = delta * i64::from(position);
+        let half = i64::from(span) / 2;
+        let rounded_delta = if numerator < 0 {
+            (numerator - half) / i64::from(span)
+        } else {
+            (numerator + half) / i64::from(span)
+        };
+        let rounded = start + rounded_delta;
+        Some(rounded.clamp(0, i64::from(u16::MAX)) as u16)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -527,6 +636,22 @@ impl Song {
         let total_cells = self.total_cell_count()?;
         if total_cells > MAX_PROJECT_CELLS {
             bail!("project exceeds {MAX_PROJECT_CELLS} cells");
+        }
+        let total_automation_points =
+            self.patterns.values().try_fold(0usize, |total, pattern| {
+                pattern.automation.iter().try_fold(total, |total, lane| {
+                    total
+                        .checked_add(lane.points.len())
+                        .context("Project automation point count overflow")
+                })
+            })?;
+        if total_automation_points > MAX_PROJECT_AUTOMATION_POINTS {
+            bail!("Project exceeds {MAX_PROJECT_AUTOMATION_POINTS} automation points");
+        }
+        for pattern in self.patterns.values() {
+            for lane in &pattern.automation {
+                validate_effect_automation_target(self, lane)?;
+            }
         }
         Ok(())
     }
@@ -883,6 +1008,7 @@ impl Pattern {
             tempo,
             meter,
             audio_loops: std::array::from_fn(|_| None),
+            automation: Vec::new(),
             pages,
             rows: Vec::new(),
         };
@@ -916,6 +1042,13 @@ impl Pattern {
         }
         self.rows
             .resize(rows, vec![Cell::default(); self.total_lanes()]);
+        let end = u32::try_from(rows)
+            .unwrap_or(u32::MAX)
+            .saturating_mul(AUTOMATION_TICKS_PER_ROW);
+        for lane in &mut self.automation {
+            lane.points.retain(|point| point.tick < end);
+        }
+        self.automation.retain(|lane| !lane.points.is_empty());
         Ok(())
     }
 
@@ -955,6 +1088,29 @@ impl Pattern {
         let discarded_cells = self.non_default_cells_in_rows(discarded)?;
         let mut pattern = self.clone();
         pattern.rows = self.rows[kept].to_vec();
+        let shift = if keep == PatternHalf::Bottom {
+            u32::try_from(half).unwrap_or_default() * AUTOMATION_TICKS_PER_ROW
+        } else {
+            0
+        };
+        let end = u32::try_from(half).unwrap_or_default() * AUTOMATION_TICKS_PER_ROW;
+        for lane in &mut pattern.automation {
+            lane.points = lane
+                .points
+                .iter()
+                .filter_map(|point| {
+                    point
+                        .tick
+                        .checked_sub(shift)
+                        .filter(|tick| *tick < end)
+                        .map(|tick| AutomationPoint {
+                            tick,
+                            value: point.value,
+                        })
+                })
+                .collect();
+        }
+        pattern.automation.retain(|lane| !lane.points.is_empty());
         pattern.validate()?;
         Ok(PatternResize {
             pattern,
@@ -970,6 +1126,19 @@ impl Pattern {
         let discarded_cells = self.non_default_cells_in_rows(row..row.saturating_add(1))?;
         let mut pattern = self.clone();
         pattern.rows.remove(row);
+        let removed = u32::try_from(row).unwrap_or_default() * AUTOMATION_TICKS_PER_ROW;
+        let after = removed + AUTOMATION_TICKS_PER_ROW;
+        for lane in &mut pattern.automation {
+            lane.points.retain_mut(|point| {
+                if point.tick >= after {
+                    point.tick -= AUTOMATION_TICKS_PER_ROW;
+                    true
+                } else {
+                    point.tick < removed
+                }
+            });
+        }
+        pattern.automation.retain(|lane| !lane.points.is_empty());
         pattern.validate()?;
         Ok(PatternResize {
             pattern,
@@ -989,6 +1158,14 @@ impl Pattern {
         pattern
             .rows
             .insert(row + 1, vec![Cell::default(); self.total_lanes()]);
+        let insertion = u32::try_from(row + 1).unwrap_or_default() * AUTOMATION_TICKS_PER_ROW;
+        for lane in &mut pattern.automation {
+            for point in &mut lane.points {
+                if point.tick >= insertion {
+                    point.tick += AUTOMATION_TICKS_PER_ROW;
+                }
+            }
+        }
         pattern.validate()?;
         Ok(PatternResize {
             pattern,
@@ -1009,7 +1186,22 @@ impl Pattern {
         };
         let mut pattern = self.clone();
         match mode {
-            PatternDouble::Copy => pattern.rows.extend(self.rows.iter().cloned()),
+            PatternDouble::Copy => {
+                pattern.rows.extend(self.rows.iter().cloned());
+                let offset = u32::try_from(old_rows).unwrap_or_default() * AUTOMATION_TICKS_PER_ROW;
+                for lane in &mut pattern.automation {
+                    let copied = lane
+                        .points
+                        .iter()
+                        .filter(|point| point.tick < offset)
+                        .map(|point| AutomationPoint {
+                            tick: point.tick + offset,
+                            value: point.value,
+                        })
+                        .collect::<Vec<_>>();
+                    lane.points.extend(copied);
+                }
+            }
             PatternDouble::Empty => pattern.rows.extend(
                 std::iter::repeat_with(|| vec![Cell::default(); self.total_lanes()]).take(old_rows),
             ),
@@ -1066,6 +1258,20 @@ impl Pattern {
         }
         for audio_loop in self.audio_loops.iter().flatten() {
             validate_loop_settings(audio_loop)?;
+        }
+        if self.automation.len() > MAX_AUTOMATION_LANES_PER_PATTERN {
+            bail!("Pattern exceeds {MAX_AUTOMATION_LANES_PER_PATTERN} automation lanes");
+        }
+        let pattern_ticks = u32::try_from(self.rows.len())
+            .ok()
+            .and_then(|rows| rows.checked_mul(AUTOMATION_TICKS_PER_ROW))
+            .context("Pattern automation position overflow")?;
+        let mut lane_ids = BTreeSet::new();
+        for lane in &self.automation {
+            if lane.id == 0 || !lane_ids.insert(lane.id) {
+                bail!("automation lane IDs must be unique and non-zero");
+            }
+            validate_automation_lane(lane, self, pattern_ticks)?;
         }
         if self
             .pages
@@ -1203,6 +1409,169 @@ impl Pattern {
         }
         Ok(())
     }
+}
+
+fn validate_automation_lane(
+    lane: &AutomationLane,
+    pattern: &Pattern,
+    pattern_ticks: u32,
+) -> Result<()> {
+    if lane.points.len() > MAX_AUTOMATION_POINTS_PER_LANE {
+        bail!("automation lane exceeds {MAX_AUTOMATION_POINTS_PER_LANE} points");
+    }
+    if lane.points.iter().any(|point| point.tick >= pattern_ticks)
+        || lane
+            .points
+            .windows(2)
+            .any(|pair| pair[0].tick >= pair[1].tick)
+    {
+        bail!("automation points must be strictly ordered inside the Pattern");
+    }
+    match &lane.target {
+        AutomationTarget::Instrument {
+            page,
+            engine,
+            control,
+        } => {
+            let page = pattern
+                .pages
+                .get(usize::from(*page))
+                .context("instrument automation page is missing")?;
+            let route_engine = match &page.target {
+                PageTarget::Software(route) => route.engine,
+                PageTarget::Synthv1(_) | PageTarget::ActiveInstrument => BackendKind::Synthv1,
+                _ => bail!("instrument automation needs an SHR-owned instrument page"),
+            };
+            let target_engine: BackendKind = engine.parse().context("unknown automation engine")?;
+            if route_engine != target_engine {
+                bail!("instrument automation engine does not match its page");
+            }
+            validate_label(control, "automation control", 64)?;
+            let supported = match target_engine {
+                BackendKind::Synthv1 => crate::control::CONTROLS
+                    .iter()
+                    .any(|candidate| candidate.xml_name == control),
+                BackendKind::MojSint => crate::control::MOJ_MODEL_D_CONTROLS
+                    .iter()
+                    .chain(crate::control::MOJ_SIX_OP_PM_CONTROLS.iter())
+                    .any(|candidate| candidate.macro_id == control),
+                _ => false,
+            };
+            if !supported {
+                bail!("instrument automation control is not supported by its engine");
+            }
+            if lane.curve != AutomationCurve::Linear {
+                bail!("mapped instrument controls use linear automation");
+            }
+        }
+        AutomationTarget::MidiCc {
+            page,
+            channel,
+            controller,
+        } => {
+            let page = pattern
+                .pages
+                .get(usize::from(*page))
+                .context("MIDI automation page is missing")?;
+            if *channel > 15 || *controller > 127 {
+                bail!("MIDI automation channel/CC is out of range");
+            }
+            if matches!(
+                page.target,
+                PageTarget::ActiveInstrument
+                    | PageTarget::Synthv1(_)
+                    | PageTarget::Software(_)
+                    | PageTarget::InternalDrums(_)
+            ) {
+                bail!("ordinary MIDI CC automation needs an external page");
+            }
+            if lane.curve != AutomationCurve::Linear {
+                bail!("MIDI CC automation uses linear interpolation");
+            }
+        }
+        AutomationTarget::Effect { parameter, .. } => {
+            validate_label(parameter, "effect automation parameter", 64)?;
+        }
+        AutomationTarget::EffectBypass { .. } => {
+            if lane.curve != AutomationCurve::Step {
+                bail!("effect bypass automation must step");
+            }
+            if lane
+                .points
+                .iter()
+                .any(|point| !matches!(point.value, 0 | u16::MAX))
+            {
+                bail!("effect bypass automation values must be off or on");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn effect_for_target<'a>(
+    song: &'a Song,
+    rack: EffectRackTarget,
+    id: crate::audio_graph::EffectId,
+) -> Option<&'a crate::audio_graph::EffectInstance> {
+    match rack {
+        EffectRackTarget::Source => song.insert_rack.effect(id),
+        EffectRackTarget::Master => song.aux_routing.master_rack.effect(id),
+        EffectRackTarget::Aux(aux_id) => song
+            .aux_routing
+            .buses
+            .iter()
+            .find(|bus| bus.id == aux_id)?
+            .rack
+            .effect(id),
+        EffectRackTarget::Drums => song.drum_rack.effect(id),
+    }
+}
+
+fn validate_effect_automation_target(song: &Song, lane: &AutomationLane) -> Result<()> {
+    let (rack, id, kind, version, parameter) = match &lane.target {
+        AutomationTarget::Effect {
+            rack,
+            effect_id,
+            effect_kind,
+            effect_version,
+            parameter,
+        } => (
+            *rack,
+            *effect_id,
+            *effect_kind,
+            *effect_version,
+            Some(parameter.as_str()),
+        ),
+        AutomationTarget::EffectBypass {
+            rack,
+            effect_id,
+            effect_kind,
+            effect_version,
+        } => (*rack, *effect_id, *effect_kind, *effect_version, None),
+        _ => return Ok(()),
+    };
+    let effect = effect_for_target(song, rack, id).context("automation effect target is stale")?;
+    if effect.kind != kind || effect.version != version {
+        bail!("automation effect target schema is incompatible");
+    }
+    if let Some(parameter) = parameter {
+        let spec = crate::effect_schema::schema(kind)
+            .iter()
+            .find(|spec| spec.name == parameter)
+            .context("automation effect parameter is missing")?;
+        let expected = if matches!(
+            spec.value_type,
+            crate::effect_schema::ParameterType::Continuous
+        ) {
+            AutomationCurve::Linear
+        } else {
+            AutomationCurve::Step
+        };
+        if lane.curve != expected {
+            bail!("automation curve does not match the effect parameter type");
+        }
+    }
+    Ok(())
 }
 
 fn previous_drum_lane(
@@ -1498,6 +1867,12 @@ pub fn encode(song: &Song) -> Result<String> {
                 audio_loop.filter_x1000
             ));
         }
+        for lane in &pattern.automation {
+            out.push_str(&format!(
+                "pattern_automation={number}|{}\n",
+                escape(&serde_json::to_string(lane)?)
+            ));
+        }
         for (page_index, page) in pattern.pages.iter().enumerate() {
             out.push_str(&format!(
                 "pattern_page={number}|{page_index}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
@@ -1578,6 +1953,9 @@ pub fn encode(song: &Song) -> Result<String> {
             }
         }
     }
+    if out.len() > MAX_PROJECT_BYTES {
+        bail!("song file exceeds {MAX_PROJECT_BYTES} bytes");
+    }
     Ok(out)
 }
 
@@ -1614,6 +1992,7 @@ pub fn decode(text: &str) -> Result<Song> {
     let mut pattern_setup = Vec::new();
     let mut pattern_drum_classes = Vec::new();
     let mut pattern_loops = Vec::new();
+    let mut pattern_automation = Vec::new();
     let mut cells = Vec::new();
     for line in lines.filter(|line| !line.trim().is_empty() && !line.starts_with('#')) {
         let (key, value) = line.split_once('=').context("invalid song line")?;
@@ -1741,6 +2120,7 @@ pub fn decode(text: &str) -> Result<Song> {
                                     },
                                     meter: meter.parse()?,
                                     audio_loops: std::array::from_fn(|_| None),
+                                    automation: Vec::new(),
                                     pages: Vec::new(),
                                     rows: vec![Vec::new(); rows],
                                 },
@@ -1856,7 +2236,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        11..=13,
+                        11..=14,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor, note_off_enabled],
                     ) => (
                         Page {
@@ -1898,6 +2278,7 @@ pub fn decode(text: &str) -> Result<Song> {
             "pattern_setup" => pattern_setup.push(value.to_owned()),
             "pattern_drum_class" if version >= 6 => pattern_drum_classes.push(value.to_owned()),
             "pattern_loop" if version >= 8 => pattern_loops.push(value.to_owned()),
+            "pattern_automation" if version >= 14 => pattern_automation.push(value.to_owned()),
             "cell" => cells.push(value.to_owned()),
             _ => bail!("unknown song field {key}; file was not changed"),
         }
@@ -1922,6 +2303,7 @@ pub fn decode(text: &str) -> Result<Song> {
             pattern.audio_loops = legacy_audio_loops.clone();
         }
     }
+    attach_pattern_automation(&mut patterns, pattern_automation)?;
     let total_cells = patterns.values().try_fold(0usize, |total, pattern| {
         total
             .checked_add(
@@ -2100,6 +2482,34 @@ fn attach_pattern_loops(patterns: &mut BTreeMap<u16, Pattern>, loops: Vec<String
             .get_mut(&pattern_number)
             .context("Pattern Loop Mix owner is missing")?
             .audio_loops[slot] = Some(settings);
+    }
+    Ok(())
+}
+
+fn attach_pattern_automation(
+    patterns: &mut BTreeMap<u16, Pattern>,
+    lanes: Vec<String>,
+) -> Result<()> {
+    let mut count = 0usize;
+    for value in lanes {
+        let (pattern_number, encoded) = value
+            .split_once('|')
+            .context("invalid Pattern automation lane")?;
+        let pattern = patterns
+            .get_mut(&pattern_number.parse::<u16>()?)
+            .context("Pattern automation owner is missing")?;
+        if pattern.automation.len() >= MAX_AUTOMATION_LANES_PER_PATTERN {
+            bail!("Pattern exceeds {MAX_AUTOMATION_LANES_PER_PATTERN} automation lanes");
+        }
+        let lane = serde_json::from_str::<AutomationLane>(&unescape(encoded)?)
+            .context("invalid Pattern automation lane")?;
+        count = count
+            .checked_add(lane.points.len())
+            .context("Project automation point count overflow")?;
+        if count > MAX_PROJECT_AUTOMATION_POINTS {
+            bail!("Project exceeds {MAX_PROJECT_AUTOMATION_POINTS} automation points");
+        }
+        pattern.automation.push(lane);
     }
     Ok(())
 }
@@ -2312,9 +2722,31 @@ pub struct ScheduledMessage {
     pub row: usize,
     pub lane: Option<usize>,
     pub target: Option<PageTarget>,
+    /// Generated from a sparse automation lane. Transport applies changed-value
+    /// suppression and bounded publication only to these messages.
+    pub automation: bool,
+    pub effect: Option<ScheduledEffectAutomation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScheduledEffectAutomation {
+    pub effect_id: crate::audio_graph::EffectId,
+    pub effect_kind: crate::audio_graph::EffectKind,
+    pub effect_version: u32,
+    pub parameter: Option<String>,
+    pub value: u16,
 }
 
 pub fn schedule(
+    song: &Song,
+    config: &ExternalMidiConfig,
+    start_order: usize,
+    start_row: usize,
+) -> Result<Vec<ScheduledMessage>> {
+    Ok(crate::timeline::compile(song, config, start_order, start_row)?.scheduled_messages())
+}
+
+pub(crate) fn schedule_elapsed(
     song: &Song,
     config: &ExternalMidiConfig,
     start_order: usize,
@@ -2739,6 +3171,8 @@ fn push(
         row,
         lane: None,
         target,
+        automation: false,
+        effect: None,
     });
 }
 
@@ -2758,6 +3192,8 @@ fn push_lane(
         row,
         lane: Some(lane),
         target: Some(target.clone()),
+        automation: false,
+        effect: None,
     });
 }
 
@@ -2804,6 +3240,17 @@ pub struct SequencerStatus {
     pub loop_order: Option<usize>,
     pub loop_row: usize,
     pub loop_activation_serial: u64,
+    pub row_started_at: Option<Instant>,
+    pub row_duration: Duration,
+    pub pattern_tick: u32,
+    pub count_in: Option<u8>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TransportPosition {
+    pub order: usize,
+    pub row: usize,
+    pub pattern_tick: u32,
 }
 enum Transport {
     Play(u64, Song, usize, usize),
@@ -2819,6 +3266,29 @@ enum Transport {
     LiveCancel,
     LiveImmediate(Song, u16, bool),
     Shutdown,
+}
+
+enum CountInCommand {
+    Start {
+        generation: u64,
+        song: Song,
+        order: usize,
+        row: usize,
+        beats: u8,
+        beat: Duration,
+    },
+    Cancel,
+    Shutdown,
+}
+
+struct ActiveCountIn {
+    generation: u64,
+    song: Song,
+    order: usize,
+    row: usize,
+    remaining: u8,
+    beat: Duration,
+    deadline: Instant,
 }
 
 #[derive(Clone)]
@@ -2840,8 +3310,10 @@ impl LiveInput {
 
 pub struct Sequencer {
     tx: mpsc::Sender<Transport>,
+    count_in_tx: mpsc::Sender<CountInCommand>,
     status: Arc<Mutex<SequencerStatus>>,
     thread: Option<thread::JoinHandle<()>>,
+    count_in_thread: Option<thread::JoinHandle<()>>,
     config: ExternalMidiConfig,
 }
 impl Sequencer {
@@ -2850,6 +3322,7 @@ impl Sequencer {
         instrument: crate::engine::SharedOutput,
         drums: crate::drums_host::SharedDrumOutput,
         clock: Arc<crate::loop_player::TransportClock>,
+        effect_hub: Arc<crate::effects::EffectControlHub>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
         let status = Arc::new(Mutex::new(SequencerStatus::default()));
@@ -2857,16 +3330,28 @@ impl Sequencer {
         let cfg = config.clone();
         let handle = thread::Builder::new()
             .name("shsynth-sequencer".into())
-            .spawn(move || run_transport(rx, thread_status, cfg, instrument, drums, clock))
+            .spawn(move || {
+                run_transport(rx, thread_status, cfg, instrument, drums, clock, effect_hub)
+            })
+            .ok();
+        let (count_in_tx, count_in_rx) = mpsc::channel();
+        let count_in_status = Arc::clone(&status);
+        let count_in_transport = tx.clone();
+        let count_in_thread = thread::Builder::new()
+            .name("shsynth-count-in".into())
+            .spawn(move || run_count_in(count_in_rx, count_in_transport, count_in_status))
             .ok();
         Self {
             tx,
+            count_in_tx,
             status,
             thread: handle,
+            count_in_thread,
             config: config.clone(),
         }
     }
     pub fn play(&self, song: &Song, order: usize, row: usize) {
+        let _ = self.count_in_tx.send(CountInCommand::Cancel);
         let generation = if let Ok(mut status) = self.status.lock() {
             status.playing = true;
             status.order = order;
@@ -2880,6 +3365,35 @@ impl Sequencer {
             .tx
             .send(Transport::Play(generation, song.clone(), order, row));
     }
+    pub fn count_in(&self, song: &Song, order: usize, row: usize, beats: u8) {
+        let tempo = song
+            .order
+            .get(order)
+            .and_then(|number| song.patterns.get(number))
+            .map_or(self.config.default_tempo, |pattern| pattern.tempo);
+        let generation = if let Ok(mut status) = self.status.lock() {
+            status.playing = false;
+            status.order = order;
+            status.row = row;
+            status.count_in = Some(beats);
+            status.row_started_at = None;
+            status.pattern_tick = u32::try_from(row)
+                .unwrap_or_default()
+                .saturating_mul(AUTOMATION_TICKS_PER_ROW);
+            status.generation = status.generation.wrapping_add(1);
+            status.generation
+        } else {
+            return;
+        };
+        let _ = self.count_in_tx.send(CountInCommand::Start {
+            generation,
+            song: song.clone(),
+            order,
+            row,
+            beats,
+            beat: Duration::from_secs_f64(60.0 / tempo.as_f64()),
+        });
+    }
     /// Replace the material used at the next loop boundary without disturbing
     /// the cycle that is currently sounding.
     pub fn refresh_loop(&self, song: &Song) {
@@ -2891,8 +3405,10 @@ impl Sequencer {
         }
     }
     pub fn stop(&self) {
+        let _ = self.count_in_tx.send(CountInCommand::Cancel);
         let generation = if let Ok(mut status) = self.status.lock() {
             status.playing = false;
+            status.count_in = None;
             status.generation = status.generation.wrapping_add(1);
             status.generation
         } else {
@@ -2954,10 +3470,38 @@ impl Sequencer {
     pub fn status(&self) -> SequencerStatus {
         self.status.lock().map(|s| s.clone()).unwrap_or_default()
     }
+
+    pub fn position_at(&self, received: Instant) -> Option<TransportPosition> {
+        let status = self.status.lock().ok()?;
+        if !status.playing {
+            return None;
+        }
+        let row_started = status.row_started_at?;
+        let elapsed = received.saturating_duration_since(row_started);
+        let within = if status.row_duration.is_zero() {
+            0
+        } else {
+            elapsed
+                .as_nanos()
+                .saturating_mul(u128::from(AUTOMATION_TICKS_PER_ROW))
+                .checked_div(status.row_duration.as_nanos())
+                .unwrap_or_default()
+                .min(u128::from(AUTOMATION_TICKS_PER_ROW.saturating_sub(1))) as u32
+        };
+        Some(TransportPosition {
+            order: status.order,
+            row: status.row,
+            pattern_tick: status.pattern_tick.saturating_add(within),
+        })
+    }
 }
 impl Drop for Sequencer {
     fn drop(&mut self) {
+        let _ = self.count_in_tx.send(CountInCommand::Shutdown);
         let _ = self.tx.send(Transport::Shutdown);
+        if let Some(handle) = self.count_in_thread.take() {
+            let _ = handle.join();
+        }
         if let Some(handle) = self.thread.take() {
             let _ = handle.join();
         }
@@ -2972,6 +3516,69 @@ enum NoteOwner {
 
 type NoteOwners = BTreeMap<(PageTarget, u8, u8), BTreeSet<NoteOwner>>;
 
+fn run_count_in(
+    rx: mpsc::Receiver<CountInCommand>,
+    transport: mpsc::Sender<Transport>,
+    status: Arc<Mutex<SequencerStatus>>,
+) {
+    let mut active: Option<ActiveCountIn> = None;
+    loop {
+        let timeout = active.as_ref().map_or(Duration::from_secs(60), |count| {
+            count.deadline.saturating_duration_since(Instant::now())
+        });
+        match rx.recv_timeout(timeout) {
+            Ok(CountInCommand::Start {
+                generation,
+                song,
+                order,
+                row,
+                beats,
+                beat,
+            }) => {
+                active = Some(ActiveCountIn {
+                    generation,
+                    song,
+                    order,
+                    row,
+                    remaining: beats,
+                    beat,
+                    deadline: Instant::now() + beat,
+                });
+            }
+            Ok(CountInCommand::Cancel) => active = None,
+            Ok(CountInCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let Some(mut count) = active.take() else {
+                    continue;
+                };
+                if count.remaining > 1 {
+                    count.remaining -= 1;
+                    count.deadline += count.beat;
+                    if let Ok(mut current) = status.lock() {
+                        if current.generation != count.generation || current.count_in.is_none() {
+                            continue;
+                        }
+                        current.count_in = Some(count.remaining);
+                    }
+                    active = Some(count);
+                } else {
+                    let valid = status.lock().is_ok_and(|current| {
+                        current.generation == count.generation && current.count_in.is_some()
+                    });
+                    if valid {
+                        let _ = transport.send(Transport::Play(
+                            count.generation,
+                            count.song,
+                            count.order,
+                            count.row,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn run_transport(
     rx: mpsc::Receiver<Transport>,
     status: Arc<Mutex<SequencerStatus>>,
@@ -2979,6 +3586,7 @@ fn run_transport(
     instrument: crate::engine::SharedOutput,
     drums: crate::drums_host::SharedDrumOutput,
     clock: Arc<crate::loop_player::TransportClock>,
+    effect_hub: Arc<crate::effects::EffectControlHub>,
 ) {
     let mut outputs = DestinationPool::new(config.clone(), instrument, drums);
     let mut messages = Vec::new();
@@ -2995,7 +3603,17 @@ fn run_transport(
     let mut playback_song: Option<Song> = None;
     let mut sounding_loop_order: Option<usize> = None;
     let mut live: Option<LiveRuntime> = None;
+    let mut automation_cc = crate::automation::CcPublisher::new(Instant::now());
     loop {
+        while let Some((target, bytes)) = automation_cc.flush(Instant::now()) {
+            if let Err(error) = outputs.send(&target, &bytes) {
+                if let Ok(mut s) = status.lock() {
+                    s.targets.insert(target, Some(error.clone()));
+                    s.error = Some(error);
+                }
+                break;
+            }
+        }
         let timeout = messages
             .get(index)
             .map(|m: &ScheduledMessage| (started + m.at).saturating_duration_since(Instant::now()))
@@ -3003,6 +3621,7 @@ fn run_transport(
             .min(Duration::from_millis(50));
         match rx.recv_timeout(timeout) {
             Ok(Transport::Play(generation, song, order, row)) => {
+                automation_cc.clear(Instant::now());
                 live = None;
                 cleanup_owned_notes(&mut outputs, &mut note_owners);
                 active_notes.clear();
@@ -3044,6 +3663,7 @@ fn run_transport(
                     .get(order)
                     .and_then(|number| song.patterns.get(number))
                     .map_or(config.default_tempo, |pattern| pattern.tempo);
+                let playback_steps = song.steps_per_beat;
                 let first_origin_beat = row as f64 / f64::from(song.steps_per_beat);
                 loop_origin_beat = 0.0;
                 clock.play(first_origin_beat, transport_tempo);
@@ -3064,12 +3684,20 @@ fn run_transport(
                         continue;
                     }
                     s.playing = true;
+                    s.count_in = None;
                     s.order = order;
                     s.row = row;
                     s.loop_pattern = loop_pattern;
                     s.loop_order = Some(order);
                     s.loop_row = row;
                     s.loop_activation_serial = s.loop_activation_serial.wrapping_add(1);
+                    s.row_started_at = Some(started);
+                    s.row_duration = Duration::from_secs_f64(
+                        60.0 / transport_tempo.as_f64() / f64::from(playback_steps),
+                    );
+                    s.pattern_tick = u32::try_from(row)
+                        .unwrap_or_default()
+                        .saturating_mul(AUTOMATION_TICKS_PER_ROW);
                 }
             }
             Ok(Transport::RefreshLoop(song)) => match schedule(&song, &config, 0, 0) {
@@ -3092,6 +3720,7 @@ fn run_transport(
                 }
             },
             Ok(Transport::Stop(generation)) => {
+                automation_cc.clear(Instant::now());
                 clock.stop();
                 messages.clear();
                 repeat_messages.clear();
@@ -3107,12 +3736,14 @@ fn run_transport(
                 if let Ok(mut s) = status.lock() {
                     if s.generation == generation {
                         s.playing = false;
+                        s.count_in = None;
                     }
                     s.live_pattern = None;
                     s.queued_pattern = None;
                     s.live_prepare = None;
                     s.loop_pattern = None;
                     s.loop_order = None;
+                    s.row_started_at = None;
                 }
                 live = None;
                 playback_song = None;
@@ -3208,6 +3839,7 @@ fn run_transport(
                 clock.tempo(bpm);
             }
             Ok(Transport::PrepareLiveSwitch(reply)) => {
+                automation_cc.clear(Instant::now());
                 clock.stop();
                 messages.clear();
                 repeat_messages.clear();
@@ -3374,6 +4006,7 @@ fn run_transport(
                 queued.requested.quantization == crate::live_performance::LaunchQuantization::Bar
                     && messages.get(index).is_some_and(|message| {
                         message.bytes.is_empty()
+                            && message.effect.is_none()
                             && started + message.at <= Instant::now()
                             && crate::live_performance::is_launch_boundary(
                                 queued.requested.quantization,
@@ -3435,7 +4068,7 @@ fn run_transport(
             .get(index)
             .filter(|m| started + m.at <= Instant::now())
         {
-            if message.bytes.is_empty() {
+            if message.bytes.is_empty() && message.effect.is_none() {
                 if live.is_none() && sounding_loop_order != Some(message.order) {
                     if let Some(song) = playback_song.as_ref() {
                         if let Some(pattern_number) = song.order.get(message.order).copied() {
@@ -3455,10 +4088,11 @@ fn run_transport(
                         }
                     }
                 }
-                if let Some(next) = messages[index + 1..]
-                    .iter()
-                    .find(|candidate| candidate.bytes.is_empty() && candidate.at > message.at)
-                {
+                if let Some(next) = messages[index + 1..].iter().find(|candidate| {
+                    candidate.bytes.is_empty()
+                        && candidate.effect.is_none()
+                        && candidate.at > message.at
+                }) {
                     let seconds = (next.at - message.at).as_secs_f64();
                     if seconds > 0.0 {
                         if let Ok(tapped) =
@@ -3469,6 +4103,21 @@ fn run_transport(
                         }
                     }
                 }
+            }
+            if let Some(effect) = message.effect.as_ref() {
+                if let Err(error) = effect_hub.publish_normalized(
+                    effect.effect_id,
+                    effect.effect_kind,
+                    effect.effect_version,
+                    effect.parameter.as_deref(),
+                    effect.value,
+                ) {
+                    if let Ok(mut s) = status.lock() {
+                        s.error = Some(format!("EFFECT AUTOMATION REJECTED · {error}"));
+                    }
+                }
+                index += 1;
+                continue;
             }
             let muted_message = message.lane.is_some_and(|lane| muted.contains(&lane));
             let mut owned_note_suppressed = false;
@@ -3502,13 +4151,25 @@ fn run_transport(
                     }
                 }
             }
-            let send_error = if message.bytes.is_empty() || muted_message || owned_note_suppressed {
+            let automation_bytes = if message.automation {
+                message
+                    .target
+                    .as_ref()
+                    .and_then(|target| automation_cc.offer(target, &message.bytes, Instant::now()))
+            } else {
+                Some(message.bytes.clone())
+            };
+            let send_error = if message.bytes.is_empty()
+                || muted_message
+                || owned_note_suppressed
+                || automation_bytes.is_none()
+            {
                 None
             } else {
                 message
                     .target
                     .as_ref()
-                    .and_then(|target| outputs.send(target, &message.bytes).err())
+                    .and_then(|target| outputs.send(target, automation_bytes.as_ref()?).err())
             };
             if !muted_message {
                 update_active_notes(
@@ -3535,9 +4196,20 @@ fn run_transport(
                     s.error = Some(error);
                 }
             }
-            if let Ok(mut s) = status.lock() {
-                s.order = message.order;
-                s.row = message.row;
+            if message.bytes.is_empty() && message.effect.is_none() {
+                if let Ok(mut s) = status.lock() {
+                    s.order = message.order;
+                    s.row = message.row;
+                    s.row_started_at = Some(started + message.at);
+                    let steps = playback_song
+                        .as_ref()
+                        .map_or(config.steps_per_beat, |song| song.steps_per_beat);
+                    s.row_duration =
+                        Duration::from_secs_f64(60.0 / transport_tempo.as_f64() / f64::from(steps));
+                    s.pattern_tick = u32::try_from(message.row)
+                        .unwrap_or_default()
+                        .saturating_mul(AUTOMATION_TICKS_PER_ROW);
+                }
             }
             index += 1;
         }
@@ -3725,7 +4397,7 @@ fn activate_live_pattern(
 fn strip_live_boundary_releases(pattern: &Pattern, messages: &mut Vec<ScheduledMessage>) {
     let boundary = messages
         .iter()
-        .filter(|message| message.bytes.is_empty())
+        .filter(|message| message.bytes.is_empty() && message.effect.is_none())
         .map(|message| message.at)
         .max()
         .unwrap_or_default();
@@ -3773,7 +4445,9 @@ fn transfer_held_lanes(
         let page = &pattern.pages[lane / LANES_PER_PAGE];
         let at = messages
             .iter()
-            .find(|message| message.bytes.is_empty() && message.row == row)
+            .find(|message| {
+                message.bytes.is_empty() && message.effect.is_none() && message.row == row
+            })
             .map_or(Duration::ZERO, |message| message.at);
         for &old_note in notes {
             let same = next_note.is_some_and(|note| {
@@ -3789,6 +4463,8 @@ fn transfer_held_lanes(
                     row,
                     lane: Some(lane),
                     target: Some(old_target.clone()),
+                    automation: false,
+                    effect: None,
                 };
                 let insert_at = messages
                     .iter()
@@ -4617,6 +5293,76 @@ mod tests {
     }
 
     #[test]
+    fn transport_position_uses_the_received_subrow_timestamp() {
+        let (tx, _rx) = mpsc::channel();
+        let (count_in_tx, _count_in_rx) = mpsc::channel();
+        let started = Instant::now();
+        let status = Arc::new(Mutex::new(SequencerStatus {
+            playing: true,
+            order: 2,
+            row: 7,
+            row_started_at: Some(started),
+            row_duration: Duration::from_millis(200),
+            pattern_tick: 7 * AUTOMATION_TICKS_PER_ROW,
+            ..SequencerStatus::default()
+        }));
+        let sequencer = Sequencer {
+            tx,
+            count_in_tx,
+            status,
+            thread: None,
+            count_in_thread: None,
+            config: config(),
+        };
+        assert_eq!(
+            sequencer.position_at(started + Duration::from_millis(150)),
+            Some(TransportPosition {
+                order: 2,
+                row: 7,
+                pattern_tick: 7 * AUTOMATION_TICKS_PER_ROW + AUTOMATION_TICKS_PER_ROW * 3 / 4,
+            })
+        );
+    }
+
+    #[test]
+    fn one_beat_count_in_crosses_to_recording_at_row_zero() {
+        let mut c = config();
+        c.send_transport = false;
+        let mut song = Song::new(&c);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.tempo = Bpm::from_whole(300).unwrap();
+        let clock = Arc::new(crate::loop_player::TransportClock::new(
+            &crate::config::RuntimeConfig::default().controller_clock,
+            pattern.tempo,
+        ));
+        let sequencer = Sequencer::start_with_clock(
+            &c,
+            Arc::new(Mutex::new(None)),
+            Arc::new(Mutex::new(None)),
+            clock,
+            Arc::new(crate::effects::EffectControlHub::default()),
+        );
+        sequencer.count_in(&song, 0, 0, 1);
+        assert_eq!(sequencer.status().count_in, Some(1));
+        assert!(!sequencer.status().playing);
+        let deadline = Instant::now() + Duration::from_millis(500);
+        while !sequencer.status().playing && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        let status = sequencer.status();
+        assert!(status.playing, "count-in did not reach the record boundary");
+        assert_eq!((status.order, status.row, status.count_in), (0, 0, None));
+        assert_eq!(status.pattern_tick, 0);
+        sequencer.stop();
+        sequencer.count_in(&song, 0, 0, 1);
+        assert_eq!(sequencer.status().count_in, Some(1));
+        sequencer.stop();
+        thread::sleep(Duration::from_millis(250));
+        assert!(!sequencer.status().playing);
+        assert_eq!(sequencer.status().count_in, None);
+    }
+
+    #[test]
     fn pattern_resize_half_keeps_top_or_bottom_across_every_page_and_lane() {
         let mut pattern = pattern_resize_fixture(4);
         pattern.rows[0][0] = Cell {
@@ -4803,7 +5549,7 @@ mod tests {
                 !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
             })
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 13") {
+                if line.starts_with("SHSYNTH-SONG 14") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -5026,7 +5772,7 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 13\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 14\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
@@ -5055,11 +5801,108 @@ mod tests {
         pages_mut(&mut song)[2].target = PageTarget::InternalDrums(drum_kit);
 
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 14\n"));
         assert!(encoded.contains("project_key=1|minor\n"));
         assert!(encoded.contains("drum_rack="));
         assert!(encoded.contains("|shr-drums:experimental-noise|"));
         assert_eq!(decode(&encoded).unwrap(), song);
+    }
+
+    #[test]
+    fn format_fourteen_round_trips_sparse_automation_and_thirteen_migrates_empty() {
+        let cfg = config();
+        let mut song = Song::new(&cfg);
+        let page = &mut song.patterns.get_mut(&0).unwrap().pages[0];
+        page.target = PageTarget::ConfiguredExternal;
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.automation.push(AutomationLane {
+            id: 9,
+            target: AutomationTarget::MidiCc {
+                page: 0,
+                channel: 2,
+                controller: 74,
+            },
+            curve: AutomationCurve::Linear,
+            points: vec![
+                AutomationPoint {
+                    tick: 0,
+                    value: 61_920,
+                },
+                AutomationPoint {
+                    tick: AUTOMATION_TICKS_PER_ROW * 3,
+                    value: 57_792,
+                },
+            ],
+        });
+        let encoded = encode(&song).unwrap();
+        assert!(encoded.contains("pattern_automation=0|"));
+        assert_eq!(decode(&encoded).unwrap(), song);
+
+        let legacy = encoded
+            .lines()
+            .filter(|line| !line.starts_with("pattern_automation="))
+            .map(|line| {
+                if line == "SHSYNTH-SONG 14" {
+                    "SHSYNTH-SONG 13"
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let migrated = decode(&legacy).unwrap();
+        assert!(migrated
+            .patterns
+            .values()
+            .all(|pattern| pattern.automation.is_empty()));
+    }
+
+    #[test]
+    fn automation_validation_rejects_bounds_order_curve_and_stale_effects() {
+        let cfg = config();
+        let mut song = Song::new(&cfg);
+        song.patterns.get_mut(&0).unwrap().pages[0].target = PageTarget::ConfiguredExternal;
+        let lane = AutomationLane {
+            id: 1,
+            target: AutomationTarget::MidiCc {
+                page: 0,
+                channel: 0,
+                controller: 1,
+            },
+            curve: AutomationCurve::Linear,
+            points: vec![AutomationPoint { tick: 0, value: 1 }],
+        };
+        song.patterns.get_mut(&0).unwrap().automation.push(lane);
+        assert!(song.validate().is_ok());
+
+        song.patterns.get_mut(&0).unwrap().automation[0]
+            .points
+            .push(AutomationPoint { tick: 0, value: 2 });
+        assert!(song
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("strictly ordered"));
+        song.patterns.get_mut(&0).unwrap().automation[0]
+            .points
+            .pop();
+        song.patterns.get_mut(&0).unwrap().automation[0].curve = AutomationCurve::Step;
+        assert!(song.validate().unwrap_err().to_string().contains("linear"));
+
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.automation[0] = AutomationLane {
+            id: 2,
+            target: AutomationTarget::Effect {
+                rack: EffectRackTarget::Source,
+                effect_id: 99_999,
+                effect_kind: crate::audio_graph::EffectKind::Utility,
+                effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+                parameter: "trim_db".into(),
+            },
+            curve: AutomationCurve::Linear,
+            points: Vec::new(),
+        };
+        assert!(song.validate().unwrap_err().to_string().contains("stale"));
     }
 
     #[test]
@@ -5074,7 +5917,7 @@ mod tests {
             .lines()
             .filter(|line| !line.starts_with("drum_rack="))
             .map(|line| {
-                if line == "SHSYNTH-SONG 13" {
+                if line == "SHSYNTH-SONG 14" {
                     "SHSYNTH-SONG 12"
                 } else {
                     line
@@ -5098,7 +5941,7 @@ mod tests {
         assert_eq!(reverb.parameters["predelay_ms"], 14.0);
         assert_eq!(
             encode(&migrated).unwrap().lines().next(),
-            Some("SHSYNTH-SONG 13")
+            Some("SHSYNTH-SONG 14")
         );
     }
 
@@ -5109,7 +5952,7 @@ mod tests {
             Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
         pages_mut(&mut original)[2].target = PageTarget::ConfiguredExternal;
         let legacy = without_v12_fields(&encode(&original).unwrap()).replacen(
-            "SHSYNTH-SONG 13",
+            "SHSYNTH-SONG 14",
             "SHSYNTH-SONG 11",
             1,
         );
@@ -5163,7 +6006,7 @@ mod tests {
         pattern.pages[0].note_off_enabled = false;
         pattern.rows[3][0].command = Command::Tempo("99.75".parse().unwrap());
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 14\n"));
         assert!(encoded.contains("pattern=0|64|10050|4\n"));
         assert!(encoded.contains("|manual|1|0\n"));
         assert!(encoded.contains("|T9975\n"));
@@ -5176,7 +6019,7 @@ mod tests {
         let legacy = current
             .lines()
             .map(|line| {
-                if line == "SHSYNTH-SONG 13" {
+                if line == "SHSYNTH-SONG 14" {
                     "SHSYNTH-SONG 10".to_owned()
                 } else if line.starts_with("project_key=")
                     || line.starts_with("drum_kit=")
@@ -5202,7 +6045,7 @@ mod tests {
     fn format_nine_whole_tempos_migrate_in_memory_without_rewriting() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy =
-            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 9", 1);
+            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 9", 1);
         let base = env::temp_dir().join(format!("shr-tempo-v9-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -5211,7 +6054,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.patterns[&0].tempo, Bpm::DEFAULT);
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 14\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -5223,7 +6066,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 8", 1);
+            .replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 8", 1);
         let base = env::temp_dir().join(format!("shr-strip-v8-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -5233,7 +6076,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.master_strip, MasterStripSettings::default());
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 14\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -5253,7 +6096,7 @@ mod tests {
                 .is_err()
         );
         assert!(decode(&encoded.replacen("\"version\":1", "\"version\":2", 1)).is_err());
-        assert!(decode(&encoded.replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 14", 1)).is_err());
+        assert!(decode(&encoded.replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 15", 1)).is_err());
     }
 
     #[test]
@@ -5425,7 +6268,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 7", 1)
+            .replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 7", 1)
             .replacen(
                 "insert_rack=",
                 "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
@@ -5457,7 +6300,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 6", 1)
+            .replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -5602,7 +6445,7 @@ mod tests {
             command: Command::Delay(6),
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 14\n"));
         assert!(encoded.contains("|64|111|17|37|D6\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -6904,14 +7747,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 14\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6920,14 +7763,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 14\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -6944,7 +7787,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 13\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 14\n"));
         assert!(encoded.contains("|default|-|manual|1|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -6960,7 +7803,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 13", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 14", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -6981,7 +7824,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 13",
+            "SHSYNTH-SONG 14",
             "SHSYNTH-SONG 4",
             1,
         );

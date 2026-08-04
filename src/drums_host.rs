@@ -6,7 +6,7 @@
 
 use crate::config::DrumEngineConfig;
 use crate::dsp::StereoFrame as EffectFrame;
-use crate::effects::EffectSlot;
+use crate::effects::{EffectControl, EffectControlHub, EffectSlot};
 use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
 use crate::tempo::Bpm;
 use anyhow::{bail, Context, Result};
@@ -126,6 +126,13 @@ impl DrumEffectStack {
     fn memory_bytes(&self) -> usize {
         self.slots.iter().map(EffectSlot::memory_bytes).sum()
     }
+
+    fn controls(&self) -> Vec<(crate::audio_graph::EffectId, Arc<EffectControl>)> {
+        self.slots
+            .iter()
+            .map(|slot| (slot.id(), slot.control()))
+            .collect()
+    }
 }
 
 unsafe impl Send for CallbackData {}
@@ -140,6 +147,7 @@ pub struct DrumHost {
     tuning: KitTuning,
     drum_rack: crate::audio_graph::InsertRack,
     tempo_bpm: Arc<AtomicU32>,
+    effect_hub: Arc<EffectControlHub>,
 }
 
 impl DrumHost {
@@ -155,6 +163,7 @@ impl DrumHost {
         tempo: Bpm,
         destinations: &[String],
         shared: SharedDrumOutput,
+        effect_hub: Arc<EffectControlHub>,
     ) -> Result<Self> {
         if destinations.len() != 2 {
             bail!("SHR Drums requires exactly two resolved playback destinations");
@@ -215,6 +224,7 @@ impl DrumHost {
         *shared
             .lock()
             .map_err(|_| anyhow::anyhow!("SHR Drums output lock failed"))? = Some(sender.clone());
+        effect_hub.replace_drums(callback.effects.controls());
         Ok(Self {
             jack,
             callback,
@@ -225,6 +235,7 @@ impl DrumHost {
             tuning: tuning.clone(),
             drum_rack: drum_rack.clone(),
             tempo_bpm,
+            effect_hub,
         })
     }
 
@@ -273,6 +284,7 @@ impl Drop for DrumHost {
         self.jack.deactivate();
         self.callback.engine.all_notes_off();
         self.callback.effects.reset();
+        self.effect_hub.clear_drums();
         if let Ok(mut shared) = self.shared.lock() {
             *shared = None;
         }

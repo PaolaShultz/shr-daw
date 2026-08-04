@@ -4,7 +4,7 @@ use crate::audio_graph::{
     AuxId, EffectKind, GraphDefinition, NodeId, NodeKind, SourceKind, MAX_CALLBACK_FRAMES,
 };
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
-use crate::effects::{BypassMode, EffectSlot, MeterHandles};
+use crate::effects::{BypassMode, EffectControl, EffectSlot, MeterHandles};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -557,6 +557,13 @@ impl GraphPlan {
     pub fn effect_meters_by_id(&self, effect_id: u32) -> Option<MeterHandles> {
         self.nodes.iter().find_map(|node| match &node.operation {
             Operation::Effect(slot) if slot.id() == effect_id => Some(slot.meters()),
+            _ => None,
+        })
+    }
+
+    pub fn effect_control_by_id(&self, effect_id: u32) -> Option<Arc<EffectControl>> {
+        self.nodes.iter().find_map(|node| match &node.operation {
+            Operation::Effect(slot) if slot.id() == effect_id => Some(slot.control()),
             _ => None,
         })
     }
