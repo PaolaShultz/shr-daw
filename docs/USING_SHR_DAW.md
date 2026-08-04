@@ -151,6 +151,25 @@ data. Loading an Idea restores its sound before playback.
 See [Live performance](LIVE_PERFORMANCE.md) for boundary timing, capture,
 failure behavior, and realtime limits.
 
+## Automation, click, and MIDI export
+
+FT2 **AUTO** records compact Pattern-owned control curves independently from
+notes and cell commands. Arm only the lane you mean to write. Continuous
+controls ramp to the next point; switches, choices, modes, divisions, and
+bypass step at their point. Play Here and loops chase the effective value, and
+physical knobs keep pickup protection when automation takes or releases
+ownership.
+
+Keep **CLICK** on when recording from stop: SHR-DAW accents beat one, displays
+one bar of `4 3 2 1 → REC`, and begins capture at row zero. Punching into a
+playing Arrangement starts immediately. The click is internal audio and never
+reaches an instrument or external MIDI output.
+
+FILES **EXPORT** analyses, then confirms, a non-overwriting format-1 MIDI file
+for the whole Arrangement. Tempo, meter, parts, setup, notes/gates, and portable
+CC automation use the same musical-tick interpretation as playback. Loop audio
+and SHR-only effect automation are counted as omissions.
+
 ## Effects and final sound
 
 Effects contains bounded source, aux, drums, and master processing. The

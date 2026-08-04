@@ -33,8 +33,9 @@ ways to start small.
   the cleared SHR Sampler factory instrument through one managed melodic
   engine, alongside four bundled kits rendered by in-process
   [SHR Drums](https://github.com/PaolaShultz/shr-drums).
-- Capture free-timed MIDI Ideas, or build software-instrument, external-MIDI,
-  drum, and loop parts in the FT2-style Pattern and Arrangement workflow.
+- Capture free-timed MIDI Ideas, or build and export FT2-style Arrangements
+  with sparse control automation, an internal click/count-in, software and
+  external MIDI, drums, and loops.
 - Perform with quantized Live Patterns and a four-slot Loop Mix whose loops
   belong to each Pattern.
 - Keep routes, effects, drum settings, tuning, and master-strip state in the

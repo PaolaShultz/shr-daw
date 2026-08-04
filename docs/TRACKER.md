@@ -520,6 +520,32 @@ or insert the current pattern, duplicate or remove a step, move a step earlier
 or later, jump to the referenced pattern for editing, and play from the selected
 step.
 
+## Automation, metronome, and count-in
+
+Each Pattern owns independent sparse automation lanes; automation never uses
+the cell command character. Open **AUTO** from FT2's SOUND page. Up/Down picks
+a lane without moving the tracker cursor. The controller pages arm capture,
+add/delete and browse points, adjust a point, choose a stable target, inspect
+the target-owned curve type, and confirm **CLEAR**. Continuous instrument,
+external CC, and effect parameters show `RAMP`: the value reaches the next
+automation point exactly. Integer, choice, toggle, bypass, mode, and division
+targets show `STEP` and change at their point. One point holds.
+
+Arm is explicit and applies only to the selected lane. Touching its control
+records at the real transport position and monitors the value while tracker
+notes may be recorded at the same time. Unarmed controls do not replace an
+automated value. Start, stop, Project replacement, reset, arm changes, and
+leaving AUTO re-arm physical pickup against the effective automated value.
+Playback chases the current point and active ramp when started with Play Here;
+Pattern/Arrangement loops continue without restoring a preset value. Recorded
+knob streams are thinned into a bounded curve.
+
+**CLICK** toggles SHR-DAW's final-bus metronome. It accents beat one and never
+sends click notes to a page. REC from stop shows one Pattern-meter bar as
+`4 3 2 1 → REC` (or the matching meter), then transport and capture begin at
+row zero. REC while already playing punches in without restarting transport.
+Count-in clicks are neither Pattern events nor borrowed instrument/drum voices.
+
 ## Pattern and Project files
 
 Pattern setup starts with the convenient 4/4 sizes 8, 16, 32, 64, and 128 or
@@ -585,13 +611,23 @@ changes are stripped and counted. Imported system or SysEx data is never
 transmitted. Timing stays in musical ticks; non-representable positions are
 quantized and reported rather than flattened to elapsed microseconds.
 
+**EXPORT** on FILES' PREVIEW page writes the whole Arrangement as genuine
+tick-domain SMF format 1. The first press analyses and reports track count plus
+omitted Loop Mix slots and SHR effect lanes; a second press saves below
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/exports/`. Existing files are never
+overwritten. The conductor carries exact tempo and meter changes. Named
+page/channel tracks carry bank, program, CC, velocity, notes, and exact gates
+in deterministic setup/CC/note order. Instrument and external-CC automation
+are exported. Audio loops and internal effect automation are omitted and
+counted rather than disguised as portable MIDI.
+
 The FX rack, editor, and fixed MASTER STRIP always show the owning Project plus
 `NEW`, `SAVED`, or `DIRTY`; source, AUX, master racks, and strip are all
 Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 13
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 14
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
 overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
@@ -601,12 +637,13 @@ pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
 external-device profiles are stored separately from raw output/channel/bank/
 program data. Each Pattern also stores exactly four optional Loop Mix slot
-records. Format 7's four Project-global slots migrate in memory into every
+records and bounded sparse automation lanes. Format 13 and older Projects gain
+empty automation in memory. Format 7's four Project-global slots migrate in memory into every
 distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 13. Formats 0–9 migrate
+not rewrite an old file; explicit save writes format 14. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.

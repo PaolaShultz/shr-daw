@@ -246,6 +246,23 @@ fallback; no old and new callback plan can run together. Live two-plan
 crossfading remains future work and is not implied by the current stopped-only
 workflow.
 
+Live automation parameter publication is separate from structural
+publication. Each compatible running slot exposes a stable effect ID, kind,
+version, and named schema through a validated control-thread handle. Valid
+normalized values are converted to physical or discrete values before a fixed
+atomic publication. At a block boundary the callback consumes at most the
+schema's bounded parameter count; it allocates nothing, takes no lock, logs
+nothing, performs no I/O, and retains the same DSP instance, recursive history,
+meters, delay memory, bypass fade, and smoothing. Removing or retyping a slot
+deactivates its old handle. Missing IDs, stale handles, unknown names, invalid
+values, and kind/version mismatches are rejected visibly without changing the
+graph or another effect.
+
+The final bus also owns the metronome oscillator. Its beat-one accent uses
+precomputed recurrence coefficients and fixed callback state. Clicks are mixed
+inside the final boundary; they have no MIDI destination, synth voice, drum
+voice, allocation, or extra JACK client.
+
 ## Shared DSP foundation
 
 `src/dsp/mod.rs` provides finite/denormal guards, stereo frames, smoothed

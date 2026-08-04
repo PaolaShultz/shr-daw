@@ -430,8 +430,8 @@ audible test, or physical hardware test was started.
 
 Version `0.4.3` removes SHR Drums' mislabeled 333 ms
 cross-feedback “room” line and keeps ambience in a Project-owned fixed
-Reverb-then-Delay rack hosted in-process by SHR-DAW. Project format 13 persists
-that rack; format 12 and older preserve their page routing and migrate
+Reverb-then-Delay rack hosted in-process by SHR-DAW. Project format 14 persists
+that rack; format 13 and older preserve their page routing and migrate
 restrained family defaults in memory. DRUMS exposes `OFF`, `REVERB`, `REVERB +
 DELAY`, and `DELAY`; ordinary tracker Stop drains naturally, while Panic,
 Project/effect-host replacement, and shutdown clear state. Reverb is the
