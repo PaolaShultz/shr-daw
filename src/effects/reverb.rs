@@ -81,6 +81,8 @@ pub(super) struct Reverb {
     tail_remaining: u64,
     maximum_tail_samples: u64,
     clear_after: u32,
+    #[cfg(test)]
+    recursive_reset_count: u64,
 }
 
 impl Reverb {
@@ -136,6 +138,8 @@ impl Reverb {
             tail_remaining: 0,
             maximum_tail_samples: 1,
             clear_after: 0,
+            #[cfg(test)]
+            recursive_reset_count: 0,
         };
         reverb.update_lengths_and_feedback();
         reverb.update_maximum_tail();
@@ -156,9 +160,9 @@ impl Reverb {
             self.tail_remaining = self.maximum_tail_samples;
         } else if self.tail_remaining > 0 {
             self.tail_remaining -= 1;
-        }
-        if self.tail_remaining == 0 {
-            self.reset_recursive_state();
+            if self.tail_remaining == 0 {
+                self.reset_recursive_state();
+            }
         }
         let predelay = self.predelay_samples.next_value();
         let (predelayed_left, predelayed_right) = if predelay < 1.0 {
@@ -311,6 +315,10 @@ impl Reverb {
     }
 
     fn reset_recursive_state(&mut self) {
+        #[cfg(test)]
+        {
+            self.recursive_reset_count += 1;
+        }
         self.predelay_left.reset();
         self.predelay_right.reset();
         self.input_low_cut_left.reset();
@@ -846,6 +854,34 @@ mod tests {
             slot.process(&mut dry);
             assert_eq!(dry[2_047], StereoFrame::new(0.25, -0.5));
         }
+    }
+
+    #[test]
+    fn idle_silence_clears_recursive_state_only_when_an_existing_tail_expires() {
+        let mut reverb = Reverb::compile(&effect([]), 48_000).unwrap();
+
+        for _ in 0..512 {
+            assert_eq!(reverb.process(StereoFrame::SILENCE), StereoFrame::SILENCE);
+        }
+        assert_eq!(reverb.recursive_reset_count, 0);
+
+        reverb.maximum_tail_samples = 2;
+        let _ = reverb.process(StereoFrame::new(0.25, -0.125));
+        assert_eq!(reverb.tail_remaining, 2);
+        assert_eq!(reverb.recursive_reset_count, 0);
+
+        let _ = reverb.process(StereoFrame::SILENCE);
+        assert_eq!(reverb.tail_remaining, 1);
+        assert_eq!(reverb.recursive_reset_count, 0);
+
+        let _ = reverb.process(StereoFrame::SILENCE);
+        assert_eq!(reverb.tail_remaining, 0);
+        assert_eq!(reverb.recursive_reset_count, 1);
+
+        for _ in 0..512 {
+            assert_eq!(reverb.process(StereoFrame::SILENCE), StereoFrame::SILENCE);
+        }
+        assert_eq!(reverb.recursive_reset_count, 1);
     }
 
     #[test]
