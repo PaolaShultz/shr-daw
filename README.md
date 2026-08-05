@@ -1,12 +1,22 @@
-![SHR-DAW](docs/images/shr-daw-header.jpg)
+<div align="center">
 
-SHR-DAW is a compact Raspberry Pi music workstation written in Rust. It brings
-instruments, drums, MIDI sequencing, live performance, loops, effects, mixing,
-and recording into a controller-first 40×13 terminal TUI for 64-bit Raspberry
-Pi OS Lite. It is meant for turning an idea into a rough demo while travelling
-or jamming, without pretending to replace a desktop production DAW.
+<img src="docs/images/shr-daw-header.jpg" alt="SHR-DAW Raspberry Pi music workstation">
 
-Read the [complete public documentation](https://paolashultz.github.io/shr-daw/).
+<h1>SHR-DAW</h1>
+
+<p><strong>A compact Raspberry Pi music workstation written in Rust.</strong></p>
+
+[![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](docs/RELEASE_ROADMAP.md) [![Latest tag](https://img.shields.io/github/v/tag/PaolaShultz/shr-daw?sort=semver&label=release)](https://github.com/PaolaShultz/shr-daw/tags) [![Documentation](https://img.shields.io/badge/docs-online-brightgreen)](https://paolashultz.github.io/shr-daw/) [![Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-c51a4a?logo=raspberrypi&logoColor=white)](docs/INSTALLATION.md) [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584?logo=rust&logoColor=black)](Cargo.toml) [![MIT licence](https://img.shields.io/github/license/PaolaShultz/shr-daw)](LICENSE)
+
+[Documentation](https://paolashultz.github.io/shr-daw/) · [First run](docs/FIRST_RUN.md) · [Screen tour](docs/MENU_MANUAL.md) · [Report a bug](https://github.com/PaolaShultz/shr-daw/issues)
+
+</div>
+
+SHR-DAW brings instruments, drums, MIDI sequencing, live performance, loops,
+effects, mixing, and recording into a controller-first 40×13 terminal TUI for
+64-bit Raspberry Pi OS Lite. It is meant for turning an idea into a rough demo
+while travelling or jamming, without pretending to replace a desktop
+production DAW.
 
 > [!WARNING]
 > SHR-DAW is alpha software. Not every feature has completed hands-on physical
@@ -61,9 +71,17 @@ storage, and failure boundaries.
 
 ![FT2 Pattern editor with four lanes of note data](docs/images/shr-daw-ft2-pattern.png)
 
+### Live Patterns
+
+![Quantized Live Patterns launcher for performance](docs/images/shr-daw-live-patterns.png)
+
 ### MASTER STRIP
 
 ![Fixed stereo MASTER STRIP with six sections and mastering meters](docs/images/shr-daw-master-strip.png)
+
+### Audio recorder
+
+![Multichannel audio recorder with armed tracks and input levels](docs/images/shr-daw-audio-recorder.png)
 
 The [screen and menu manual](docs/MENU_MANUAL.md) contains the complete visual
 tour.
