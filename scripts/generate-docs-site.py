@@ -38,6 +38,7 @@ SHR_DRUMS_URL = "https://github.com/PaolaShultz/shr-drums"
 SITE_URL = "https://paolashultz.github.io/shr-daw/"
 ISSUES_URL = f"{REPOSITORY_URL}/issues"
 RELEASE_STAGE = "Alpha"
+HEADER_IMAGE = "docs/images/shr-daw-header.jpg"
 CONNECTION_IMAGE = "docs/images/shr-daw-physical-connections.jpg"
 SOCIAL_IMAGE = "docs/images/shr-daw-social-card.png"
 FAVICON = "docs/favicon.svg"
@@ -86,6 +87,7 @@ GROUP_META = {
 GROUP_ORDER = tuple(GROUP_META)
 PUBLIC_SCHEMES = {"http", "https", "mailto"}
 FORBIDDEN_SCHEMES = {"javascript", "data", "file", "vbscript"}
+README_BADGE_HOST = "img.shields.io"
 SECRET_PATTERNS = (
     re.compile(r"\bgh[opurs]_[A-Za-z0-9]{20,}\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -387,6 +389,13 @@ def rewrite_url(
         fail(f"unsafe URL scheme in {doc.path}: {raw}")
     if scheme or parsed.netloc:
         if image:
+            if (
+                doc.path == Path("README.md")
+                and scheme == "https"
+                and parsed.netloc.casefold() == README_BADGE_HOST
+                and parsed.path not in {"", "/"}
+            ):
+                return raw, True, None
             fail(f"remote image is unsupported in {doc.path}: {raw}")
         if scheme not in PUBLIC_SCHEMES:
             fail(f"unsupported URL scheme in {doc.path}: {raw}")
@@ -477,9 +486,14 @@ def rewrite_tokens(
                     src = child.attrGet("src")
                     if src is None:
                         fail(f"image without source in {doc.path}")
-                    rewritten, _, image_path = rewrite_url(
+                    rewritten, external, image_path = rewrite_url(
                         doc, src, documents, image=True
                     )
+                    if external:
+                        if image_path is not None:
+                            fail(f"remote image unexpectedly resolved locally in {doc.path}")
+                        child.attrSet("src", rewritten)
+                        continue
                     assert image_path is not None
                     width, height = image_size(ROOT / image_path)
                     digest = hashlib.sha256((ROOT / image_path).read_bytes()).hexdigest()
@@ -1386,18 +1400,7 @@ def build_page(
     install_commands, install_note = find_install_excerpt(readme)
     warning = find_warning(readme)
     connection_image = find_image(readme, CONNECTION_IMAGE)
-    first_image = next(
-        (
-            child
-            for token in readme.tokens
-            if token.type == "inline"
-            for child in (token.children or [])
-            if child.type == "image"
-        ),
-        None,
-    )
-    if first_image is None:
-        fail("README.md has no header image")
+    first_image = find_image(readme, HEADER_IMAGE)
 
     image_anchors: dict[str, str] = {}
     hero_digest = first_image.attrGet("data-source-sha256")

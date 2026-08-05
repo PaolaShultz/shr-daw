@@ -18,6 +18,7 @@ docs-site:
 	python3 scripts/generate-docs-site.py --write
 
 check-docs-site:
+	python3 -m unittest scripts/test_generate_docs_site.py
 	python3 scripts/generate-docs-site.py --check
 
 install:

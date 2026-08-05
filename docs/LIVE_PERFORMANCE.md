@@ -208,9 +208,11 @@ decoding, or unbounded work. There is still exactly one stereo Loop source.
 
 ## Deliberate limits
 
-There are no playlists, companion mode, cue/headphone buses, crossfader,
-scratching or jog-wheel emulation, beat-grid editor, automatic beat matching,
-time-stretching, pitch-preserving tempo change, waveform editor, standalone
-Pattern library, additional audio buses, or new general-purpose mixer strips.
+There are currently no
+[Playlists](FUTURE_IMPROVEMENTS.md#playlist-above-song), companion mode,
+cue/headphone buses, crossfader, scratching or jog-wheel emulation, beat-grid
+editor, automatic beat matching, time-stretching, pitch-preserving tempo
+change, waveform editor, standalone Pattern library, additional audio buses,
+or new general-purpose mixer strips.
 Project effects, final-bus routing, recording configuration, and unrelated
 Project state remain Project-owned.

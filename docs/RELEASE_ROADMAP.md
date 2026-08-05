@@ -88,9 +88,10 @@ current short-wired or partial flows and without unrelated future ideas
 obstructing that work.
 
 The current base already stores Loop Mix under its owning Pattern and switches
-MIDI/loops together. This milestone must preserve that boundary; playlists,
-companion mode, a standalone Pattern library, cue routing, time-stretching,
-extra mixer strips, and additional buses are not implied by it.
+MIDI/loops together. This milestone must preserve that boundary; the future
+[Playlist above Song](FUTURE_IMPROVEMENTS.md#playlist-above-song), companion
+mode, a standalone Pattern library, cue routing, time-stretching, extra mixer
+strips, and additional buses are not implied by it.
 
 The exact functionality inventory is still owner input. Until it is stated and
 captured, this roadmap deliberately does not invent it. For each supplied item:

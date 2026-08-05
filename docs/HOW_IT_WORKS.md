@@ -283,6 +283,14 @@ contains:
 - the optional private WAV-loop reference and placement; and
 - the source, aux, and master effects state.
 
+The current saved hierarchy stops at Project. SHR loads one Project at a time,
+and the FT2 `SONG` control navigates that Project's Arrangement steps. There is
+no Playlist object above it. The proposed higher layer is documented in
+[Playlist above Song](FUTURE_IMPROVEMENTS.md#playlist-above-song); it adds no
+current screen, file, or runtime behavior. Patterns already own tracker Pages,
+and the missing whole-Page edit operations are recorded separately under
+[Future Page operations](FUTURE_IMPROVEMENTS.md#future-page-operations).
+
 A Pattern is reusable musical data, while an Arrangement step is a place that
 plays a Pattern. `REPEAT` adds another reference to the same Pattern, so later
 edits affect every repeated use. `CLONE` or paste-new creates a separate

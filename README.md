@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/shr-daw-header.jpg" alt="SHR-DAW Raspberry Pi music workstation">
+![SHR-DAW Raspberry Pi music workstation](docs/images/shr-daw-header.jpg)
 
 <h1>SHR-DAW</h1>
 

@@ -264,6 +264,9 @@ Project effects rack. `LOOP` opens the four-slot Loop Mix.
 
 `COPY L`, `PASTE L`, `COPY PG`, and `PSTE PG` copy or paste the current lane or full
 four-lane page. These are in-memory editing clipboards, not saved Projects.
+`COPY PG` carries cells only; it does not duplicate the Page route, setup,
+name, mute, or automation. Complete Page operations remain a
+[future Page-manager task](../FUTURE_IMPROVEMENTS.md#future-page-operations).
 
 ### PAGE — page mute
 

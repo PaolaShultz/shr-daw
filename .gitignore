@@ -2,6 +2,7 @@
 /.cargo-home/
 /.cargo2/
 /.cargo3/
+__pycache__/
 
 # Private runtime state, saves, recordings, and uncleared/local sounds.
 /user/

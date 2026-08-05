@@ -80,6 +80,141 @@ live melodic input against that scale. SHR Drums already supports `OFF`,
 Project key. Only automatic key inference and higher-level tuning suggestions
 belong to this future section.
 
+## Playlist above Song
+
+SHR-DAW currently loads one saved `.shsong` Project at a time. That Project is
+the musician's song: it owns one Arrangement, its Patterns, routes, sounds,
+loops, automation, effects, and recording state. The current `SONG` control in
+FT2 navigates Arrangement steps inside that Project. It does not navigate
+separate song files.
+
+The intended hierarchy is:
+
+```text
+Playlist                                          future
+└── Song / Project (.shsong)                        current
+    ├── Arrangement ──── references Pattern IDs          current
+    └── Patterns
+        └── Pattern
+            ├── tracker Pages
+            │   └── four columns / lanes and their cells
+            ├── four-slot Loop Mix workspace
+            └── automation lanes
+```
+
+The Arrangement orders references to Patterns; it does not own or copy them.
+Each tracker Page belongs to one Pattern. A note Page owns one destination,
+four column setups, four lanes of cells, entry behavior, mute state, and Page
+metadata. Loop Mix is shown as a musician-facing Page in FT2, but its four WAV
+slots are stored directly under the Pattern. Automation lanes are also
+Pattern-owned and may target controls associated with a Page.
+
+A future Playlist should be a small ordered list of saved Projects. Each song
+must remain a complete, independently loadable `.shsong` file. The Playlist
+must not merge song data, move Pattern ownership above the Project, or rewrite
+a song merely because its order changes.
+
+What exists now:
+
+- Project files can be created, named, saved, copied, loaded, and protected
+  from accidental loss;
+- each Project has an Arrangement that orders reusable Pattern references;
+- stop, panic, route replacement, Project load, and shutdown clean up owned
+  notes and audio; and
+- Projects retain their own routes, instruments, loops, effects, automation,
+  tempo changes, and recording configuration.
+
+What does not exist:
+
+- a Playlist file format, storage location, or migration contract;
+- an ordered list of Project references with previous/next song movement;
+- a Playlist screen, controller page, or performance status;
+- missing-song locate, skip, remove, and retry behavior;
+- dirty-song protection when moving to another Playlist entry;
+- next-song route and instrument preflight;
+- automatic, timed, gapless, or overlapping song transitions; or
+- Playlist import, export, copying, or portability rules.
+
+Do not add Playlist controls to the current FT2 `SONG` overlay, tracker body,
+or controller rows. Those screens are already responsible for editing and
+performing one Project. A later design should use a separate child screen and
+return to the same Playlist row after a song is opened, edited, played, or
+cancelled. The entry point for that child is still undecided.
+
+The safe first version should treat song changes as explicit transactions. It
+must protect unsaved work, stop the outgoing transport, release notes and
+owned routes, validate the next Project, and either complete the load or keep
+the previous song and Playlist position recoverable. A missing or incompatible
+song should remain visible in the list rather than causing another file to be
+loaded by guesswork.
+
+The main product choice is still open: whether Playlist is only a set list for
+manual song selection or may also advance automatically during performance.
+Automatic advance, per-entry repeats or notes, preloading, and gapless audio
+belong to later decisions. None is implied by recording the hierarchy now.
+
+Acceptance must cover create, reorder, save, reload, open, return, cancel,
+dirty-song handling, missing and incompatible files, route failure, stop,
+panic, repeated song changes, and shutdown. Existing Project files and all
+current 40×13 Song/Arrangement controls must behave exactly as they do today.
+
+## Future Page operations
+
+Pages are already real Pattern-owned objects. Today the musician can select a
+Page, add one in the full-screen Tracks manager, change its destination and
+four column setups, choose its entry behavior, mute it, and edit its cells.
+The FT2 clipboard can copy or paste a lane or a four-lane Page block, but that
+clipboard carries cells only. It does not copy the Page name, route, column
+setup, entry behavior, drum classification, setup messages, mute state, or
+automation targets.
+
+The future Page manager should add operations for:
+
+- renaming a Page;
+- duplicating a complete Page inside the current Pattern;
+- reordering Pages without changing their musical content;
+- removing a Page with an explicit data count and confirmation;
+- clearing Page cells while retaining its route and setup; and
+- copying or moving a complete Page between Patterns.
+
+Cross-Project Page transfer is still an open choice. It would need explicit
+handling for sounds, MIDI destinations, device profiles, drum kits, and any
+other reference that may not exist in the receiving Project.
+
+A complete Page operation must carry or deliberately remap the Page name,
+target, four channel/bank/program setups, velocity, percussion and entry
+settings, drum classification overrides, setup messages, enabled state, lanes,
+and cells. Automation lanes that target the Page must follow it during reorder
+or duplication. Removal must show how many automation points would also be
+removed or detached. Pattern-level Loop Mix slots and unrelated automation
+must stay untouched.
+
+Patterns may have different row counts, meters, and tempos. Copy or move to a
+different Pattern must preflight cell rows and automation positions. If data
+would fall outside the destination, the screen must show exact affected counts
+and offer an explicit supported result or Cancel. It must not truncate cells
+or automation silently.
+
+Structural Page changes must be transactional. If the Page is sounding, the
+operation must release its notes and route owners before publication. Reorder
+must keep the cursor on the same logical Page. Duplicate should select the new
+copy. Remove should choose a nearby surviving Page, and a Pattern must retain
+at least one tracker Page. Cancel, validation failure, route failure, or an
+incompatible destination must leave the Pattern and cursor unchanged.
+
+Do not add these operations to the quick `PAGE` overlay or the normal FT2
+controller rows. The existing full-screen Tracks manager is the owner because
+it already handles Page creation, routing drafts, Done, and Exit rollback. A
+later design can add a focused operations child there while preserving the
+selected Page, column, row, transport, and return location. Exact button
+placement and whether sounding structural edits require Stop or a safe Pattern
+boundary remain open design decisions.
+
+Acceptance must cover empty and populated Pages, first/middle/last positions,
+the last surviving Page, copied routes that are online or offline, shared
+software routes, external MIDI setup, drum Pages, Page-targeted automation,
+playback interruption, cancellation, save/reload, and old Projects.
+
 ## Safe fallback for unknown USB MIDI devices
 
 When a USB MIDI input is connected without a saved or reviewed controller
@@ -222,10 +357,11 @@ multitrack recorder remains a separate workflow.
 
 Loop Mix settings now belong to each FT2 Pattern, while one fixed four-renderer
 client serves only the active Pattern and one bounded incoming preparation.
-That ownership correction does not imply playlists, companion mode, a
-standalone Pattern library, cue/headphone routing, time-stretching, more mixer
-strips, or additional audio buses. Those remain separate future product
-decisions, not architectural follow-ons.
+That ownership correction does not imply the proposed
+[Playlist above Song](#playlist-above-song), companion mode, a standalone
+Pattern library, cue/headphone routing, time-stretching, more mixer strips, or
+additional audio buses. Those remain separate future product decisions, not
+architectural follow-ons.
 
 The graph uses internal preallocated mixer, send-tap, and return nodes rather
 than relying on implicit JACK summing. That makes independent send/return gain,

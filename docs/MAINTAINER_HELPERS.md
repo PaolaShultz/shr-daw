@@ -523,6 +523,9 @@ python3 scripts/generate-docs-site.py --write
 python3 scripts/generate-docs-site.py --check
 ```
 
+`make check-docs-site` first runs the focused URL-policy regression tests and
+then performs the same deterministic drift check.
+
 Exactly one argument is required. `--write` atomically replaces
 `docs/index.html`. `--check` regenerates the complete page into a temporary
 directory, compares its bytes with the tracked file, and fails on drift without
@@ -613,11 +616,14 @@ machine-local or private path.
 Generation fails for a missing source or favicon, broken local file or heading
 fragment, duplicate generated anchor, unsupported image format or URL scheme,
 remote image, query-bearing or repository-external local path, link into
-`user/`, credential-like content, or unrecognised renderer version. Included
-Markdown documents link to their same-page anchors; public repository files
-outside the page link to their GitHub source. No file below `user/` is read,
-copied, linked, or written. The helper does not build or launch SHR-DAW, JACK,
-a synth, MIDI, playback, recording, or hardware.
+`user/`, credential-like content, or unrecognised renderer version. The only
+remote-image exception is an HTTPS `img.shields.io` badge in `README.md`: it is
+accepted as repository landing-page metadata but omitted from the generated
+site, which remains network-independent and contains only validated local
+images. Included Markdown documents link to their same-page anchors; public
+repository files outside the page link to their GitHub source. No file below
+`user/` is read, copied, linked, or written. The helper does not build or
+launch SHR-DAW, JACK, a synth, MIDI, playback, recording, or hardware.
 
 ## TUI screenshot renderer: `render-readme-screenshots.py`
 

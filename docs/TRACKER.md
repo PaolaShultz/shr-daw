@@ -488,6 +488,12 @@ cells. When source and destination row counts differ, only overlapping rows are
 pasted and the status line reports truncation. Page paste targets the selected
 destination page; missing destinations are not created implicitly.
 
+This is a cell-block clipboard, not a complete Page operation. It does not
+copy the Page name, destination, column setup, entry behavior, mute state, or
+Page-targeted automation. Rename, complete duplicate, reorder, remove, clear,
+and cross-Pattern Page operations are recorded under
+[Future Page operations](FUTURE_IMPROVEMENTS.md#future-page-operations).
+
 ## Drum pattern library and transpose
 
 Open **FILES** → **PATTERN** → **DRUMS** for reusable rhythms stored separately
