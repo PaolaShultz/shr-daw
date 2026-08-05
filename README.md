@@ -1,16 +1,12 @@
-<div align="center">
-
 ![SHR-DAW Raspberry Pi music workstation](docs/images/shr-daw-header.jpg)
 
-<h1>SHR-DAW</h1>
+# SHR-DAW
 
-<p><strong>A compact Raspberry Pi music workstation written in Rust.</strong></p>
+**A compact Raspberry Pi music workstation written in Rust.**
 
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](docs/RELEASE_ROADMAP.md) [![Latest tag](https://img.shields.io/github/v/tag/PaolaShultz/shr-daw?sort=semver&label=release)](https://github.com/PaolaShultz/shr-daw/tags) [![Documentation](https://img.shields.io/badge/docs-online-brightgreen)](https://paolashultz.github.io/shr-daw/) [![Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-c51a4a?logo=raspberrypi&logoColor=white)](docs/INSTALLATION.md) [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584?logo=rust&logoColor=black)](Cargo.toml) [![MIT licence](https://img.shields.io/github/license/PaolaShultz/shr-daw)](LICENSE)
 
 [Documentation](https://paolashultz.github.io/shr-daw/) · [First run](docs/FIRST_RUN.md) · [Screen tour](docs/MENU_MANUAL.md) · [Report a bug](https://github.com/PaolaShultz/shr-daw/issues)
-
-</div>
 
 SHR-DAW brings instruments, drums, MIDI sequencing, live performance, loops,
 effects, mixing, and recording into a controller-first 40×13 terminal TUI for
