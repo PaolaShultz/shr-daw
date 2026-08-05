@@ -8,9 +8,10 @@ This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.
 
-These entries do not enter the current 0.4, 0.5, or 0.6 scope automatically.
-The [release roadmap](RELEASE_ROADMAP.md) owns development order; an item here
-becomes a milestone requirement only when the owner explicitly moves it there.
+These entries do not enter active work automatically. The
+[experimental roadmap](EXPERIMENTAL_ROADMAP.md) owns development order; an
+item here becomes a current requirement only when the owner explicitly moves
+it there.
 Use the musician guides and architecture documents in [the documentation
 index](README.md) for current behavior. This page is a proposal archive.
 
@@ -64,9 +65,9 @@ Possible helpers include:
 - arrangement suggestions that help complete a short sketch; and
 - other explicitly reviewable helpers for repetitive musical work.
 
-None of these helpers exists or belongs to a release milestone today. They
-must not act without clear review and confirmation. An idea enters milestone
-scope only when the owner moves it into the release roadmap with an action,
+None of these helpers exists or belongs to the current work track today. They
+must not act without clear review and confirmation. An idea enters active
+scope only when the owner moves it into the experimental roadmap with an action,
 result, state boundary, and acceptance path.
 
 The owner-directed interaction, theory/algorithm research, FT2 `SIZE` design,
@@ -241,7 +242,7 @@ new optimization claim.
 The proposal keeps one effects rack. Effects that later pass fixed low-state
 and low-callback-cost gates may receive the compact `» PRESTO` mark; unmarked
 effects remain normal first-class choices. No hardware result, marker, library
-change, or release date is implied today. The complete boundaries and planned
+change, or schedule is implied today. The complete boundaries and planned
 experiment matrix are in the [Raspberry Pi 5 headroom and footprint
 plan](PI5_HEADROOM_PLAN.md).
 
@@ -249,8 +250,8 @@ plan](PI5_HEADROOM_PLAN.md).
 
 The post-competition plan for arbitrary Pattern shortening/growing, individual
 early/late hits, Pattern-wide swing, groove tools, expressive tracker capture,
-and optional formal odd-meter metadata is in [Post-competition rhythm
-plan](POST_COMPETITION_RHYTHM_PLAN.md). The first planned release uses the
+and optional formal odd-meter metadata is in the [legacy rhythm
+proposal](POST_COMPETITION_RHYTHM_PLAN.md). Its first planned phase uses the
 existing arbitrary row-count scheduler. Its earlier transactional Length
 surface is superseded by the owner-directed FT2 Edit `SIZE` page in
 [Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md); the later timing,

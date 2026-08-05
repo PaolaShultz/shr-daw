@@ -34,8 +34,8 @@ class RemoteBadgePolicyTests(unittest.TestCase):
     def test_other_remote_images_remain_rejected(self) -> None:
         cases = (
             ("README.md", "https://example.com/image.svg"),
-            ("README.md", "http://img.shields.io/badge/status-alpha-orange"),
-            ("docs/README.md", "https://img.shields.io/badge/status-alpha-orange"),
+            ("README.md", "http://img.shields.io/badge/status-experimental-purple"),
+            ("docs/README.md", "https://img.shields.io/badge/status-experimental-purple"),
         )
         for document, source in cases:
             with self.subTest(document=document, source=source):

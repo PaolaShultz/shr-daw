@@ -74,10 +74,11 @@ mixed commit without the user's direction. Documentation and tests required to
 describe or verify a repair belong with that repair. A review or audit that
 makes no repository changes has nothing to commit.
 
-Use `main` for ordinary development. The Build Week submission is preserved by
-its tag; do not keep or recreate a standing `dev` branch before the repository
-owner opens the planned 0.6 milestone. A short-lived branch or worktree for an
-explicitly requested isolated experiment is not a standing integration branch.
+Use `main` for ordinary development. The early sprint snapshot is preserved by
+its historical tag; no hackathon application or submission was made. Do not
+keep or recreate a standing `dev` branch during the current experimental work.
+A short-lived branch or worktree for an explicitly requested isolated
+experiment is not a standing integration branch.
 
 Do not alter private user data unless explicitly requested. Physical equipment
 is borrowed; do not start JACK, a synth, MIDI transmission/playback, recording,

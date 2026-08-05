@@ -1454,6 +1454,7 @@ fn validate_automation_lane(
                 BackendKind::MojSint => crate::control::MOJ_MODEL_D_CONTROLS
                     .iter()
                     .chain(crate::control::MOJ_SIX_OP_PM_CONTROLS.iter())
+                    .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
                     .any(|candidate| candidate.macro_id == control),
                 _ => false,
             };

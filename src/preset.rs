@@ -98,13 +98,17 @@ pub enum PresetId {
 pub enum MojModel {
     ModelD,
     SixOpPm,
+    StrangeOscillator,
 }
 
 impl MojModel {
+    pub const ALL: [Self; 3] = [Self::ModelD, Self::SixOpPm, Self::StrangeOscillator];
+
     pub const fn stable_id(self) -> &'static str {
         match self {
             Self::ModelD => "model_d",
             Self::SixOpPm => "six_op_pm",
+            Self::StrangeOscillator => "strange_oscillator",
         }
     }
 
@@ -112,6 +116,7 @@ impl MojModel {
         match self {
             Self::ModelD => "Model D",
             Self::SixOpPm => "Six-Op PM",
+            Self::StrangeOscillator => "Strange Osc",
         }
     }
 }
@@ -234,6 +239,7 @@ fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
     let (code, redundant_prefixes): (&str, &[&str]) = match model {
         MojModel::ModelD => ("M-D", &["Model D", "M-D"]),
         MojModel::SixOpPm => ("6-OP", &["Six-Op PM", "Six-Op", "6-OP"]),
+        MojModel::StrangeOscillator => ("S-OSC", &["Strange Oscillator", "Strange Osc", "S-OSC"]),
     };
     for prefix in redundant_prefixes {
         if sound
@@ -519,6 +525,18 @@ struct MojPresetV5SixOp {
     macros: MojMacrosSixOp,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV6Strange {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    model: MojModel,
+    strange_patch: MojStrangePatch,
+    macros: MojMacrosStrange,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum MojModelDPatch {
@@ -536,6 +554,12 @@ enum MojSixOpPatch {
     GlassWood,
     BrassBass,
     MechanicalStab,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MojStrangePatch {
+    Unified,
 }
 
 #[derive(Deserialize)]
@@ -602,6 +626,24 @@ struct MojMacrosSixOp {
     release: f32,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosStrange {
+    #[serde(rename = "type")]
+    type_: f32,
+    form: f32,
+    warp: f32,
+    couple: f32,
+    motion: f32,
+    chaos: f32,
+    color: f32,
+    space: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MojMacrosV1 {
@@ -658,10 +700,30 @@ impl MojMacrosSixOp {
     }
 }
 
+impl MojMacrosStrange {
+    fn values(self) -> [f32; 12] {
+        [
+            self.type_,
+            self.form,
+            self.warp,
+            self.couple,
+            self.motion,
+            self.chaos,
+            self.color,
+            self.space,
+            self.attack,
+            self.decay,
+            self.sustain,
+            self.release,
+        ]
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 enum MojPatch {
     ModelD(MojModelDPatch),
     SixOpPm(MojSixOpPatch),
+    StrangeOscillator(MojStrangePatch),
 }
 
 #[derive(Debug)]
@@ -701,6 +763,58 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
     let (name, model, voices, output_gain, patch, values) = match version {
+        6 => {
+            let model = value
+                .get("model")
+                .and_then(toml::Value::as_str)
+                .context("schema-6 Moj Sint preset has no model")?;
+            match model {
+                "model_d" => {
+                    let document: MojPresetV5ModelD = toml::from_str(&source)?;
+                    if document.schema_version != 6 || document.model != MojModel::ModelD {
+                        bail!("invalid schema-6 Model D identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        MojPatch::ModelD(document.model_d_patch),
+                        document.macros.values(),
+                    )
+                }
+                "six_op_pm" => {
+                    let document: MojPresetV5SixOp = toml::from_str(&source)?;
+                    if document.schema_version != 6 || document.model != MojModel::SixOpPm {
+                        bail!("invalid schema-6 Six-Op PM identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        MojPatch::SixOpPm(document.six_op_patch),
+                        document.macros.values(),
+                    )
+                }
+                "strange_oscillator" => {
+                    let document: MojPresetV6Strange = toml::from_str(&source)?;
+                    if document.schema_version != 6 || document.model != MojModel::StrangeOscillator
+                    {
+                        bail!("invalid schema-6 Strange Oscillator identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        MojPatch::StrangeOscillator(document.strange_patch),
+                        document.macros.values(),
+                    )
+                }
+                _ => bail!("unknown schema-6 Moj Sint model"),
+            }
+        }
         5 => {
             let model = value
                 .get("model")
@@ -1689,7 +1803,7 @@ fn serialize_moj_sint(
     let encoded = match (expected_model, document.patch) {
         (MojModel::ModelD, MojPatch::ModelD(model_d_patch)) => {
             toml::to_string_pretty(&MojPresetV5ModelD {
-                schema_version: 5,
+                schema_version: 6,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
@@ -1700,13 +1814,24 @@ fn serialize_moj_sint(
         }
         (MojModel::SixOpPm, MojPatch::SixOpPm(six_op_patch)) => {
             toml::to_string_pretty(&MojPresetV5SixOp {
-                schema_version: 5,
+                schema_version: 6,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
                 model: MojModel::SixOpPm,
                 six_op_patch,
                 macros: MojMacrosSixOp::from_values(values),
+            })?
+        }
+        (MojModel::StrangeOscillator, MojPatch::StrangeOscillator(strange_patch)) => {
+            toml::to_string_pretty(&MojPresetV6Strange {
+                schema_version: 6,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                model: MojModel::StrangeOscillator,
+                strange_patch,
+                macros: MojMacrosStrange::from_values(values),
             })?
         }
         _ => bail!("Moj Sint model and patch identity do not match"),
@@ -1754,14 +1879,33 @@ impl MojMacrosSixOp {
     }
 }
 
+impl MojMacrosStrange {
+    fn from_values(values: [f32; 12]) -> Self {
+        Self {
+            type_: values[0],
+            form: values[1],
+            warp: values[2],
+            couple: values[3],
+            motion: values[4],
+            chaos: values[5],
+            color: values[6],
+            space: values[7],
+            attack: values[8],
+            decay: values[9],
+            sustain: values[10],
+            release: values[11],
+        }
+    }
+}
+
 fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
     let value: toml::Value = toml::from_str(source)?;
     if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        != Some(5)
+        != Some(6)
     {
-        bail!("saved Moj Sint preset is not schema 5")
+        bail!("saved Moj Sint preset is not schema 6")
     }
     match expected_model {
         MojModel::ModelD => {
@@ -1774,6 +1918,12 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
             let document: MojPresetV5SixOp = toml::from_str(source)?;
             if document.model != MojModel::SixOpPm {
                 bail!("saved Moj Sint Six-Op identity is invalid")
+            }
+        }
+        MojModel::StrangeOscillator => {
+            let document: MojPresetV6Strange = toml::from_str(source)?;
+            if document.model != MojModel::StrangeOscillator {
+                bail!("saved Moj Sint Strange Oscillator identity is invalid")
             }
         }
     }
@@ -2203,18 +2353,40 @@ sustain = 0.7
 release = 0.4
 "#
             .into(),
+            MojModel::StrangeOscillator => r#"
+schema_version = 6
+name = "Factory Strange"
+voices = 4
+output_gain = 0.35
+model = "strange_oscillator"
+strange_patch = "unified"
+[macros]
+type = 0.14285715
+form = 0.2
+warp = 0.3
+couple = 0.4
+motion = 0.5
+chaos = 0.6
+color = 0.7
+space = 0.8
+attack = 0.2
+decay = 0.3
+sustain = 0.7
+release = 0.4
+"#
+            .into(),
         }
     }
 
     #[test]
-    fn model_d_and_six_op_user_saves_are_strict_schema_five_and_model_scoped() {
+    fn all_moj_models_save_as_strict_schema_six_and_remain_model_scoped() {
         let base =
             std::env::temp_dir().join(format!("shsynth-user-moj-save-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
         let storage = test_storage(&base.join("private"));
 
-        for model in [MojModel::ModelD, MojModel::SixOpPm] {
+        for model in MojModel::ALL {
             let path = base.join(format!("factory-{}.mojsint", model.stable_id()));
             fs::write(&path, moj_source(model)).unwrap();
             let (name, parsed_model, mut current) = read_moj_sint(&path).unwrap();
@@ -2237,7 +2409,7 @@ release = 0.4
                 storage.moj_sint.join(model.stable_id())
             );
             let encoded = fs::read_to_string(path).unwrap();
-            assert!(encoded.contains("schema_version = 5"));
+            assert!(encoded.contains("schema_version = 6"));
             assert!(encoded.contains(&format!("model = {:?}", model.stable_id())));
             match model {
                 MojModel::ModelD => {
@@ -2251,16 +2423,25 @@ release = 0.4
                     assert!(!encoded.contains("model_d_patch"));
                     assert!(!encoded.contains("evolve ="));
                 }
+                MojModel::StrangeOscillator => {
+                    assert!(encoded.contains("strange_patch = \"unified\""));
+                    assert!(encoded.contains("type = 0.91"));
+                    assert!(!encoded.contains("model_d_patch"));
+                    assert!(!encoded.contains("six_op_patch"));
+                }
             }
             assert_eq!(read_moj_sint(path).unwrap().1, model);
         }
         let discovered = discover_moj_sint(std::slice::from_ref(&storage.moj_sint)).unwrap();
-        assert_eq!(discovered.len(), 2);
+        assert_eq!(discovered.len(), 3);
         assert!(discovered.iter().any(|preset| {
             preset.name == "User 001" && preset.moj_model() == Some(MojModel::ModelD)
         }));
         assert!(discovered.iter().any(|preset| {
             preset.name == "User 001" && preset.moj_model() == Some(MojModel::SixOpPm)
+        }));
+        assert!(discovered.iter().any(|preset| {
+            preset.name == "User 001" && preset.moj_model() == Some(MojModel::StrangeOscillator)
         }));
         let _ = fs::remove_dir_all(base);
     }

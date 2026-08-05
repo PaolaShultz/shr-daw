@@ -252,6 +252,69 @@ pub const MOJ_SIX_OP_PM_CONTROLS: [MojControl; 12] = [
     },
 ];
 
+pub const MOJ_STRANGE_CONTROLS: [MojControl; 12] = [
+    MojControl {
+        cc: 20,
+        name: "Type",
+        macro_id: "type",
+    },
+    MojControl {
+        cc: 21,
+        name: "Form",
+        macro_id: "form",
+    },
+    MojControl {
+        cc: 22,
+        name: "Warp",
+        macro_id: "warp",
+    },
+    MojControl {
+        cc: 23,
+        name: "Couple",
+        macro_id: "couple",
+    },
+    MojControl {
+        cc: 24,
+        name: "Motion",
+        macro_id: "motion",
+    },
+    MojControl {
+        cc: 25,
+        name: "Chaos",
+        macro_id: "chaos",
+    },
+    MojControl {
+        cc: 26,
+        name: "Color",
+        macro_id: "color",
+    },
+    MojControl {
+        cc: 27,
+        name: "Space",
+        macro_id: "space",
+    },
+    MojControl {
+        cc: 28,
+        name: "Attack",
+        macro_id: "attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Decay",
+        macro_id: "decay",
+    },
+    MojControl {
+        cc: 30,
+        name: "Sustain",
+        macro_id: "sustain",
+    },
+    MojControl {
+        cc: 31,
+        name: "Release",
+        macro_id: "release",
+    },
+];
+
 // CC 20-31 are Moj Sint's stable twelve physical positions. Their displayed
 // meaning comes from the selected synthesis model, not controller.conf.
 pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
@@ -260,6 +323,7 @@ pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojContro
     match model {
         crate::preset::MojModel::ModelD => &MOJ_MODEL_D_CONTROLS,
         crate::preset::MojModel::SixOpPm => &MOJ_SIX_OP_PM_CONTROLS,
+        crate::preset::MojModel::StrangeOscillator => &MOJ_STRANGE_CONTROLS,
     }
 }
 

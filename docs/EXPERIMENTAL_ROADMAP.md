@@ -1,57 +1,48 @@
-# Release roadmap
+# Experimental development roadmap
 
-This roadmap owns the current development order. Releases advance when their
-acceptance gates pass, not on dates. Detailed behavior remains in the focused
-product, installation, FT2, and hardware documents linked below.
+Status: working order for an experimental project, not a production-release
+schedule.
 
-## Version numbering
+This roadmap owns the current development order. Detailed behavior remains in
+the focused product, installation, FT2, and hardware documents linked below.
 
-The package uses `major.minor.patch` numbering. Version `0.3.92` corrected the
-unintended `0.392.0`; the current checked-progress version is `0.4.8`.
+## Lifecycle and compatibility identifiers
 
-- Meaningful checked progress before the next milestone increments the patch:
-  `0.3.99`, `0.3.100`, `0.3.101`, and so on.
-- The completed 0.4 milestone becomes package version `0.4.0`. Later fixes or
-  checked progress toward 0.5 use `0.4.1`, `0.4.2`, and so on. The Raspberry
-  Pi 5 installation milestone is accepted; the current repair release is
-  `0.4.3`. Moj Sint's working fourth-backend integration is `0.4.4`; it does
-  not reuse the earlier SHR Drums/effects bump. Version `0.4.5` makes all seven
-  authored Moj Sint starts selectable and accepts strict schema 4 model/patch
-  identity. Version `0.4.6` makes Input monitoring a deliberate MTR action,
-  moves final-bus ownership out of the optional managed synth, reconnects
-  optional sources without duplicate playback, and records the same
-  post-master samples sent to playback. Version `0.4.7` completes the Moj Sint
-  two-model path; `0.4.8` adds SHR Sampler as the fifth managed backend and the
-  pinned whole-system public installer.
-- The completed 0.5 milestone becomes `0.5.0`; later checked progress toward
-  0.6 uses `0.5.1`, `0.5.2`, and so on.
-- The completed 0.6 milestone becomes `0.6.0`.
+All current SHR-DAW source, `0.x` package versions, and tags are experimental.
+The package version and the component versions in
+`install/compatibility.json` identify compatible source and installed files;
+they do not declare a production release, product tier, or completion level.
+Public documentation follows the current source and does not hard-pin one
+experimental tag as “the release.” Historical tags remain reproducible
+snapshots.
 
-Do not assign a milestone version merely because its code exists. Its complete
-gate, documentation, and required physical evidence must pass first.
+A production release will be an explicit future decision with its own version,
+support boundary, installation target, evidence, and announcement. Until then,
+progress is described by behavior and evidence rather than release ceremony.
 
 ## Scope rule
 
-Work on the current milestone before pulling from later or speculative plans.
-An observed defect or missing recovery path that blocks the current gate is in
+Work on the current track before pulling from later or speculative plans.
+An observed defect or missing recovery path that blocks the current work is in
 scope. A new feature, redesign, optimization, or interesting experiment is not
-in scope unless the owner explicitly moves it into the milestone.
+in scope unless the owner explicitly moves it into the current track.
 
 The owner supplies product intent that has not yet been written down. Do not
 infer missing FT2 requirements from nearby ideas or implement random entries
 from [Future improvements](FUTURE_IMPROVEMENTS.md). Record an intended action,
 result, state boundary, and acceptance path before implementing it.
 
-## 0.4.0 — trust the existing product
+## Established foundation — trust the existing product
 
 Outcome: every existing menu entry is in the intended place and every current
 workflow works as intended on the supported compact UI and a clean normal
 Raspberry Pi OS Lite installation.
 
-Status: accepted after the Raspberry Pi 5 installation, doctor, managed-JACK,
-silent engine, and repository validation pass. Subsequent fixes use `0.4.x`.
+Status: the Raspberry Pi 5 installation, doctor, managed-JACK, silent-engine,
+and repository validation evidence passed. This is an experimental foundation,
+not a production release.
 
-The release gate requires:
+The evidence boundary requires:
 
 - every reachable menu entry and controller-menu item checked for its intended
   screen, page, order, label, and return location, using keyboard/controller
@@ -81,14 +72,14 @@ The platform procedure and comparison fields live in the
 [Pi 5 plan](PI5_HEADROOM_PLAN.md). Passing installation does not itself prove
 audio hardware, musical quality, or 18×18 full duplex.
 
-## 0.5.0 — complete the intended FT2 workflow
+## Current focus — complete the intended FT2 workflow
 
 Outcome: FT2 has the complete functionality the owner intends, without the
 current short-wired or partial flows and without unrelated future ideas
 obstructing that work.
 
 The current base already stores Loop Mix under its owning Pattern and switches
-MIDI/loops together. This milestone must preserve that boundary; the future
+MIDI/loops together. This track must preserve that boundary; the future
 [Playlist above Song](FUTURE_IMPROVEMENTS.md#playlist-above-song), companion
 mode, a standalone Pattern library, cue routing, time-stretching, extra mixer
 strips, and additional buses are not implied by it.
@@ -105,12 +96,12 @@ captured, this roadmap deliberately does not invent it. For each supplied item:
 5. verify normal, repeated, interrupted, saved/reloaded, and existing-state
    paths that apply.
 
-The release gate is the completed owner-approved FT2 inventory, its focused
+Completion means the owner-approved FT2 inventory, its focused
 tests and hands-on checks, and matching current documentation. Planned rhythm,
-mixer, analysis, or other ideas are not 0.5 blockers unless the owner adds them
-to that inventory.
+mixer, analysis, or other ideas are not blockers unless the owner adds them to
+that inventory.
 
-## 0.6.0 — 18×18 full-duplex multichannel audio
+## Later track — 18×18 full-duplex multichannel audio
 
 Outcome: SHR can play 18 independent output channels while synchronously
 recording 18 input channels through one multichannel interface, and that path
@@ -118,10 +109,10 @@ is physically proven rather than inferred from synthetic tests.
 
 The native 18-channel Levels overview is already implemented as capture
 preparation: all inputs remain visible with fixed RMS/held-peak meters and
-missing/fault distinction. It does not complete this milestone because there
+missing/fault distinction. It does not complete this track because there
 is still no 18-output path or physical 18×18 acceptance evidence.
 
-The release gate requires:
+The evidence boundary requires:
 
 - the 18-output path implemented with exact configured JACK destinations and
   bounded live-audio behavior;
@@ -137,5 +128,5 @@ The release gate requires:
 - the borrowed mixer scene and physical safety state restored after testing.
 
 The authoritative physical procedure and result sheets are in the
-[MR18 acceptance plan](MR18_TEST_PLAN.md). The release is not marked checked
-until that physical gate passes.
+[MR18 acceptance plan](MR18_TEST_PLAN.md). The track is not marked checked
+until that physical evidence passes.

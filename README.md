@@ -4,7 +4,7 @@
 
 **A compact Raspberry Pi music workstation written in Rust.**
 
-[![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](docs/RELEASE_ROADMAP.md) [![Latest tag](https://img.shields.io/github/v/tag/PaolaShultz/shr-daw?sort=semver&label=release)](https://github.com/PaolaShultz/shr-daw/tags) [![Documentation](https://img.shields.io/badge/docs-online-brightgreen)](https://paolashultz.github.io/shr-daw/) [![Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-c51a4a?logo=raspberrypi&logoColor=white)](docs/INSTALLATION.md) [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584?logo=rust&logoColor=black)](Cargo.toml) [![MIT licence](https://img.shields.io/github/license/PaolaShultz/shr-daw)](LICENSE)
+[![Status: experimental](https://img.shields.io/badge/status-experimental-purple)](docs/EXPERIMENTAL_ROADMAP.md) [![Latest snapshot](https://img.shields.io/github/v/tag/PaolaShultz/shr-daw?sort=semver&label=snapshot)](https://github.com/PaolaShultz/shr-daw/tags) [![Documentation](https://img.shields.io/badge/docs-online-brightgreen)](https://paolashultz.github.io/shr-daw/) [![Raspberry Pi](https://img.shields.io/badge/platform-Raspberry%20Pi-c51a4a?logo=raspberrypi&logoColor=white)](docs/INSTALLATION.md) [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584?logo=rust&logoColor=black)](Cargo.toml) [![MIT licence](https://img.shields.io/github/license/PaolaShultz/shr-daw)](LICENSE)
 
 [Documentation](https://paolashultz.github.io/shr-daw/) · [First run](docs/FIRST_RUN.md) · [Screen tour](docs/MENU_MANUAL.md) · [Report a bug](https://github.com/PaolaShultz/shr-daw/issues)
 
@@ -15,15 +15,14 @@ while travelling or jamming, without pretending to replace a desktop
 production DAW.
 
 > [!WARNING]
-> SHR-DAW is alpha software. Not every feature has completed hands-on physical
-> testing. It becomes beta after every feature has been tried on real hardware.
-> Back up Projects and user data, and begin audio testing at a low monitoring
-> level.
+> SHR-DAW is experimental software, not a production release. Not every
+> feature has completed hands-on physical testing. Back up Projects and user
+> data, and begin audio testing at a low monitoring level.
 
-Alpha testers are welcome. If anything breaks, feels confusing, or behaves
+Experimenters are welcome. If anything breaks, feels confusing, or behaves
 differently with your equipment, please
 [open an issue](https://github.com/PaolaShultz/shr-daw/issues). That feedback
-will help get SHR-DAW to beta.
+will help the experiment improve.
 
 ## How it connects
 
@@ -36,7 +35,7 @@ ways to start small.
 
 ## Features
 
-- Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 13
+- Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 14
   editable Moj Sint starts, the cleared SHR Sampler instrument, and four
   bundled SHR Drums kits.
 - Play from a controller or keyboard with pickup-protected sound controls,
@@ -85,11 +84,11 @@ tour.
 ## Install and run
 
 The clean target is 64-bit Raspberry Pi OS Lite; Patchbox OS and broader
-Debian-based systems remain supported. This installs the immutable 0.4.8
-release:
+Debian-based systems remain supported. This installs the current experimental
+source and its exact component compatibility set:
 
 ```sh
-git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git && cd shr-daw && ./scripts/install.sh
+git clone --depth 1 https://github.com/PaolaShultz/shr-daw.git && cd shr-daw && ./scripts/install.sh
 ```
 
 After the setup wizard finishes:
@@ -130,7 +129,7 @@ launch this checkout's visibly marked `DEV` binary.
 
 SHR-DAW is a personal music project developed on its Raspberry Pi target with
 Codex CLI as a coding collaborator. The creator owns the musical direction,
-hardware, listening decisions, and releases. Generated code is reviewed and
+hardware, listening decisions, and publication. Generated code is reviewed and
 tested; DSP and hardware claims need their own measurements and hands-on checks.
 The [development story](docs/BUILD_WEEK.md) records that collaboration.
 

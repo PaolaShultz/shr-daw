@@ -5,22 +5,46 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-05 Strange Oscillator experimental integration
+
+The sibling Moj Sint repository now exposes Strange Oscillator as its third
+live experimental model and cleared start 14. This SHR working tree recognizes Moj
+preset schema 6, shows the model as `S-OSC`, routes it through the existing
+`ENGINE → MODEL → PATCH` hierarchy, maps CC 20–27 to TYPE, FORM, WARP, COUPLE,
+MOTION, CHAOS, COLOR, and SPACE, and preserves ADSR at CC 28–31. Model-specific
+private saves, tracker parameters, automation names, and model-qualified route
+identity all include the third model. Schema 1–5 Moj presets remain readable.
+The local Moj command already points to the sibling optimized binary. Use the
+private `shr-release` launcher for the optimized SHR binary; plain `shr`
+deliberately remains DEV. The owner explicitly authorized committing and
+publishing both repositories for continued experimentation before the open
+musical and native-load verdicts. Publication is not production acceptance.
+
 ## Current priority and shared checkout
 
-The Build Week snapshot is preserved by its tag; the repository itself is
-unfrozen and ordinary development continues on `main`. Do not keep or recreate
-a standing `dev` branch before the owner opens the planned 0.6 milestone. The
-temporary combined build-and-test gate in `AGENTS.md` still applies; an
-unfrozen repository is not implicit permission to compile.
+The early Build Week-style sprint snapshot is preserved by its historical tag,
+but no hackathon application or submission was made and it does not govern the
+project. Ordinary experimental development continues on `main`; do not keep or
+recreate a standing `dev` branch. The temporary combined build-and-test gate in
+`AGENTS.md` still applies; an active repository is not implicit permission to
+compile.
 
-The current ordered targets are owned by `docs/RELEASE_ROADMAP.md`: 0.4 checks
-all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
-0.5 completes the owner-specified FT2 behavior without pulling random future
-features into scope; 0.6 implements and physically accepts simultaneous
-18-channel playback and 18-channel recording. Package version `0.3.92` is the
-corrected starting point; the current checked-progress version is `0.4.8`.
+The current ordered tracks are owned by `docs/EXPERIMENTAL_ROADMAP.md`: retain
+the accepted workflow/install foundation, complete the owner-specified FT2
+behavior without pulling random future features into scope, then implement and
+physically accept simultaneous 18-channel playback and recording. Current
+`0.x` package numbers are compatibility identifiers for experimental source,
+not production-release milestones; public installation docs do not pin 0.4.8.
 
-Version `0.4.8` adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
+`docs/EXPERIMENTAL_DIRECTION.md` records the unscheduled product direction:
+beginner- and curiosity-first music making, FT2 as the main composition and
+automation workspace, Player as a deliberately simple player, optional theory
+and smart assistance after play, and Moj Sint as an open experimental
+instrument laboratory. The favored Moj authoring direction is a typed low-code
+micro-machine format usable with or without AI. A swarm/supersaw-like model is
+only a possible first isolated experiment, not a promised feature.
+
+The current compatibility checkpoint adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
 melodic backend. Its package and executable compatibility are preflighted
 offline before the current owned engine is disturbed; startup, exact stereo
 readiness, routing, failure publication, one-attempt restoration, All Notes
@@ -61,7 +85,7 @@ the tracked `kits/cleared-kits.txt` allowlist: Acid, Electronic House, Big Rock
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
 that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
-longer depend on ignored `user/` state. Moj Sint's 13 factory starts remain
+longer depend on ignored `user/` state. Moj Sint's 14 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
 storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
 all-target/all-feature normal suite: 19 tests passed, three opt-in quality

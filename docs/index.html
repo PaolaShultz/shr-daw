@@ -132,8 +132,8 @@ main { min-width: 0; padding-bottom: 5rem; }
 .hero .intro { max-width: 48rem; color: #d7dfda; font-size: clamp(1.03rem, 2vw, 1.25rem); }
 .status-line { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; color: var(--muted); font-size: .85rem; }
 .version { padding: .25rem .55rem; border: 1px solid var(--green); border-radius: 999px; color: var(--green-bright); }
-.version.alpha { border-color: var(--yellow); color: var(--yellow); }
-.alpha-note { max-width: 48rem; margin: .8rem 0 0; color: var(--muted); font-size: .9rem; }
+.version.experimental { border-color: var(--yellow); color: var(--yellow); }
+.experimental-note { max-width: 48rem; margin: .8rem 0 0; color: var(--muted); font-size: .9rem; }
 .hero-image {
   display: block; width: 100%; height: auto; margin-top: 1.6rem;
   border: 1px solid var(--line); border-radius: .45rem; background: #000;
@@ -333,12 +333,12 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <details><summary>Related public documentation</summary><ul><li><a class="external" href="https://github.com/PaolaShultz/shr-drums" target="_blank" rel="noopener noreferrer external">SHR Drums engine, kit format, and sources</a></li><li><a class="external" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/UCENJE_KROZ_ISTRAZIVANJE.md" target="_blank" rel="noopener noreferrer external" lang="hr">Učenje kroz istraživanje (Hrvatski)</a></li></ul></details>
 <ul class="page-links archive-link"><li><a href="#technical-records">Technical records and future plans</a></li></ul></aside>
 <main id="main-content">
-<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">A compact Raspberry Pi music workstation written in Rust.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version alpha">Alpha · version 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><p class="alpha-note">Hands-on physical acceptance is still in progress. <a class="external" href="https://github.com/PaolaShultz/shr-daw/issues" target="_blank" rel="noopener noreferrer external">Try the alpha and report what you find</a>.</p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW Raspberry Pi music workstation" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
+<section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">A compact Raspberry Pi music workstation written in Rust.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version experimental">Experimental · compatibility 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><p class="experimental-note">This is experimental software; hands-on physical acceptance is still in progress. <a class="external" href="https://github.com/PaolaShultz/shr-daw/issues" target="_blank" rel="noopener noreferrer external">Try it and report what you find</a>.</p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW Raspberry Pi music workstation" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
 <section class="overview-block" id="connections" aria-labelledby="connections-title"><p class="eyebrow">How it connects</p><h2 id="connections-title">One small centre for the whole setup</h2><figure class="connection-figure"><img class="connection-image" alt="Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones" data-source-sha256="844ecdb765b7703787b885792b1491ad4a4740bf41d5edcc7da46258e62bdda2" decoding="async" height="675" id="connection-diagram" loading="lazy" src="images/shr-daw-physical-connections.jpg" width="1200"><figcaption>An example setup, not a shopping list. Every device is optional.</figcaption></figure><p><a href="#doc-connections">Open the physical connection guide</a> for exact paths and smaller setups.</p></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make, arrange, perform, and record on a small screen</h2><div class="feature-grid"><div class="feature-card">Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 13 editable Moj Sint starts, the cleared SHR Sampler instrument, and four bundled SHR Drums kits.</div><div class="feature-card">Play from a controller or keyboard with pickup-protected sound controls, scale filtering, held-note/chord feedback, private sound saves, free-timed MIDI Ideas, and external-sync controller clock.</div><div class="feature-card">Build FT2-style Patterns and Arrangements with software instruments, external MIDI, drums, Pattern-owned loops, note recording/editing, sparse automation, a metronome/count-in, and format-1 MIDI export.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Shape and mix the complete performance through source, aux, drum, and master effects, a fixed mastering strip, final-bus meters, and safe source controls.</div><div class="feature-card">Record the final 24-bit stereo performance or synchronized raw mono stems with manifests and recovery, including the native 18-channel input overview.</div><div class="feature-card">Configure exact MIDI/audio routes and controller profiles with MIDI Learn, startup diagnosis, safe rollback, and owned-process cleanup.</div><div class="feature-card">Navigate every compact workflow with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make, arrange, perform, and record on a small screen</h2><div class="feature-grid"><div class="feature-card">Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 14 editable Moj Sint starts, the cleared SHR Sampler instrument, and four bundled SHR Drums kits.</div><div class="feature-card">Play from a controller or keyboard with pickup-protected sound controls, scale filtering, held-note/chord feedback, private sound saves, free-timed MIDI Ideas, and external-sync controller clock.</div><div class="feature-card">Build FT2-style Patterns and Arrangements with software instruments, external MIDI, drums, Pattern-owned loops, note recording/editing, sparse automation, a metronome/count-in, and format-1 MIDI export.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Shape and mix the complete performance through source, aux, drum, and master effects, a fixed mastering strip, final-bus meters, and safe source controls.</div><div class="feature-card">Record the final 24-bit stereo performance or synchronized raw mono stems with manifests and recovery, including the native 18-channel input overview.</div><div class="feature-card">Configure exact MIDI/audio routes and controller profiles with MIDI Learn, startup diagnosis, safe rollback, and owned-process cleanup.</div><div class="feature-card">Navigate every compact workflow with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
 <section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="2880f9a6a28f8eeb835f8420d2a9865b586021eddb4d695038eaa8f19012f792" decoding="async" height="624" id="shot-2880f9a6a28f" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Quantized Live Patterns launcher for performance" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure></div></section>
 <section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover first launch, everyday music making, the complete instrument system, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-instruments_and_drums"><strong>SHR-DAW instruments and drums</strong><span>One installed sound system with melodic instruments, Moj models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
-<section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After the setup wizard finishes:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is alpha software. Not every feature has completed hands-on physical testing. It becomes beta after every feature has been tried on real hardware. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
+<section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After the setup wizard finishes:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental software, not a production release. Not every feature has completed hands-on physical testing. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
 <section class="documentation-library" id="documentation" aria-labelledby="documentation-title"><header class="library-header"><p class="eyebrow">Detailed guides</p><h2 id="documentation-title">The manual, when you need it</h2><p>Choose a subject and open only that guide. Measurements, maintainer records, and future plans stay in a separate archive below.</p></header>
 <section class="library-group" aria-labelledby="group-start-and-use"><header class="group-header"><p class="eyebrow">Current behaviour</p><h3 id="group-start-and-use">Start and use</h3><p>Musician-facing workflows, screens, performance tools, and physical connections.</p></header>
 <details class="document" id="doc-first_run" data-source="docs/FIRST_RUN.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">First run</span><span class="document-summary">Configure hardware and open SHR-DAW.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FIRST_RUN.md" target="_blank" rel="noopener noreferrer external">View docs/FIRST_RUN.md source</a></div><p>You can start with a Raspberry Pi and a terminal. A MIDI keyboard, control
@@ -469,7 +469,7 @@ in Presets:</p>
 <li>synthv1 presets;</li>
 <li>Yoshimi <code>.xiz</code> banks;</li>
 <li>FluidSynth <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
-<li>Moj Sint <code>.mojsint</code> Model D and Six-Op PM presets;</li>
+<li>Moj Sint <code>.mojsint</code> Model D, Six-Op PM, and Strange Oscillator presets;</li>
 <li>SHR Sampler <code>.shrinst</code> packages.</li>
 </ul>
 <p>Browsing is silent. <code>LOAD</code> is the only managed start or replacement action.
@@ -492,8 +492,8 @@ remain on the Ideas screen. <code>SOUNDS</code> returns to Presets and its visib
 arpeggiator. <code>PLAY</code> sends Start even when no MIDI take exists, <code>RECORD</code> starts
 the same clock before capture, <code>STOP</code> ends it without unloading the instrument,
 and <code>TAP</code> changes tempo without silently starting transport.</p>
-<p>Moj Sint keeps its own preset format and controls. Its 13 authored starts form
-two editable model families. SHR Sampler packages are read-only and use their
+<p>Moj Sint keeps its own preset format and controls. Its 14 authored starts form
+three editable model families. SHR Sampler packages are read-only and use their
 own strict format; the installed project-authored factory package is a neutral
 first-load sound. SHR Drums is separate from the managed melodic engine and
 runs in process. See <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>
@@ -656,7 +656,7 @@ audio ownership remain in <a href="#doc-how_it_works">How SHR-DAW works</a>.</p>
 </tr>
 <tr>
 <td>Moj Sint</td>
-<td><code>.mojsint</code> Model D and Six-Op PM sounds</td>
+<td><code>.mojsint</code> Model D, Six-Op PM, and Strange Oscillator sounds</td>
 <td>Melodic synth</td>
 <td>Twelve model-specific mapped controls; private Overwrite or Save New</td>
 </tr>
@@ -707,56 +707,38 @@ stop it. A new, empty, unsaved FT2 Project can adopt that exact Player sound on
 its first software page without restarting the host. A saved or already edited
 Project keeps its stored routes.</p>
 <h4 id="doc-instruments_and_drums--moj-sint-sounds" tabindex="-1">Moj Sint sounds<a class="heading-anchor" href="#doc-instruments_and_drums--moj-sint-sounds" aria-label="Link to Moj Sint sounds">#</a></h4>
-<p>Moj Sint is SHR-DAW's editable in-house synthesis family. Its 13 cleared
+<p>Moj Sint is SHR-DAW's editable in-house synthesis family. Its 14 cleared
 factory starts are grouped by synthesis model:</p>
 <ul>
 <li>Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
 Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
 Feedback;</li>
 <li>Six-Op PM: Bell Metal, Fractured Metal, Electric Piano Mallet, Glass Wood,
-Brass Bass, and Mechanical Stab.</li>
+Brass Bass, and Mechanical Stab;</li>
+<li>Strange Oscillator: one unified sound whose TYPE control selects triangle,
+saw, pulse, modulated resonator, deformed loop, stochastic breakpoints,
+scanned string, or register machine.</li>
 </ul>
-<p>Presets shows compact <code>M-D</code> and <code>6-OP</code> identities. In FT2 <strong>ROUTE</strong>, choosing
+<p>Presets shows compact <code>M-D</code>, <code>6-OP</code>, and <code>S-OSC</code> identities. In FT2 <strong>ROUTE</strong>, choosing
 Moj Sint adds an explicit <code>ENGINE → MODEL → PATCH</code> hierarchy. Changing the
 model selects that model's first available patch, and patch browsing never
 crosses the selected model boundary. Apply keeps the complete live-auditioned
 route; Cancel restores its opening snapshot.</p>
 <p>Playback and FT2 <strong>PARAM</strong> use the same 12 physical control positions, with
 labels chosen by the loaded model:</p>
-<table>
-<thead>
-<tr>
-<th>Positions</th>
-<th>Model D</th>
-<th>Six-Op PM</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1-4</td>
-<td>Evolve, Shape, Color, Edge</td>
-<td>Index, Ratio, Feedback, Op Decay</td>
-</tr>
-<tr>
-<td>5-8</td>
-<td>Couple, Motion, Depth, Space</td>
-<td>Balance, Key Scale, Velocity, Motion</td>
-</tr>
-<tr>
-<td>9-12</td>
-<td>Attack, Decay, Sustain, Release</td>
-<td>Attack, Decay, Sustain, Release</td>
-</tr>
-</tbody>
-</table>
+<p>| Positions | Model D | Six-Op PM | Strange Oscillator |
+| --- | --- | --- |
+| 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay | Type, Form, Warp, Couple |
+| 5–8 | Couple, Motion, Depth, Space | Balance, Key Scale, Velocity, Motion | Motion, Chaos, Color, Space |
+| 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |</p>
 <p>The stable CC 20-31 identity belongs to Moj Sint, not to synthv1 parameter
 indices. After Load, Reset, Project/Idea restore, automation ownership changes,
 or another value-setting transition, physical knobs must reach or cross the
 effective value before they take control. This pickup rule prevents jumps.</p>
 <p><strong>RESET</strong> restores the loaded twelve values without restarting the synth.
 <strong>SAVE</strong> offers Overwrite, Save New, and Cancel. Factory/system sounds are
-read-only, so Overwrite redirects to the next private <code>User NNN</code> sound. Model D
-and Six-Op PM keep separate private namespaces. A successful save becomes the
+read-only, so Overwrite redirects to the next private <code>User NNN</code> sound. Model D,
+Six-Op PM, and Strange Oscillator keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable
@@ -1079,7 +1061,9 @@ jumps during live audio.</p>
 EVOLVE, SHAPE, COLOR, EDGE, COUPLE, MOTION, DEPTH, SPACE, then ADSR. RESET
 restores the loaded <code>.mojsint</code> values in place without restarting the host.
 Those controls never use synthv1 XML names or parameter indices.
-Its 13 numbered factory starts contain seven Model D and six Six-Op PM sounds.
+Its 14 numbered factory starts contain seven Model D, six Six-Op PM, and one
+Strange Oscillator sound. Strange Oscillator maps TYPE, FORM, WARP, COUPLE,
+MOTION, CHAOS, COLOR, and SPACE before the shared ADSR controls.
 The same twelve physical positions show model-specific labels, keep pickup,
 and remain inside their selected model in FT2 ROUTE.</p>
 <p>SHR Sampler packages are read-only instruments. LOAD validates the host version
@@ -1549,8 +1533,8 @@ choices. Applying a different kit must start it before the
 route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.</p>
-<p>For Moj Sint, <strong>ENGINE</strong> stays <code>Moj Sint</code>, <strong>MODEL</strong> cycles Model D and Six-Op
-PM, and <strong>PATCH</strong> cycles only the installed starts belonging to that model.
+<p>For Moj Sint, <strong>ENGINE</strong> stays <code>Moj Sint</code>, <strong>MODEL</strong> cycles Model D, Six-Op PM,
+and Strange Oscillator, and <strong>PATCH</strong> stays inside the selected model.
 Changing the model selects its first available patch; changing patches never
 crosses the model boundary. These live field changes remain inside the same
 Route Apply/Cancel transaction.</p>
@@ -3834,9 +3818,10 @@ left/right half of the Presets heading remain equivalent. Catalog changes are
 silent: they only change the list and reset its selection according to the
 existing catalog contract. <code>LOAD</code> is the sole managed preset start or
 replacement action.</p>
-<p>The Moj Sint catalog has 13 ordered starts: seven Model D sounds from Full Bass
-through Matched No Drift or Feedback, then six Six-Op PM sounds from Bell Metal
-through Mechanical Stab. The list marks their model as <code>M-D</code> or <code>6-OP</code>.
+<p>The Moj Sint catalog has 14 ordered starts: seven Model D sounds from Full Bass
+through Matched No Drift or Feedback, six Six-Op PM sounds from Bell Metal
+through Mechanical Stab, and Strange Oscillator. The list marks their model as
+<code>M-D</code>, <code>6-OP</code>, or <code>S-OSC</code>.
 Selecting one only browses; <code>LOAD</code> starts it.</p>
 <p>SHR Sampler lists strict read-only <code>.shrinst</code> packages. <code>LOAD</code> validates the
 installed host version and complete package before replacing the current
@@ -4756,7 +4741,8 @@ doctor, and silent-engine path was accepted separately on the Raspberry Pi 5.
 Those are different evidence: neither proves that every hardware and audio path
 has been physically accepted on every supported image. Record the exact image
 and version used rather than treating “Lite” as a reproducible version
-identifier. The <a href="#doc-release_roadmap">release roadmap</a> owns the gate; the
+identifier. The <a href="#doc-experimental_roadmap">experimental roadmap</a> owns the work
+order; the
 <a href="#doc-pi5_headroom_plan">Pi 5 plan</a> owns the state comparison.</p>
 <p>For the planned native-NVMe Pi 5, first follow
 <a href="#doc-pi5_nvme_install">Raspberry Pi 5 NVMe installation</a>. It covers safe drive
@@ -4776,7 +4762,7 @@ recording.
 synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
 optional melodic engines at runtime. The supported installer installs all five
 from distribution packages or the exact public revisions in
-<code>install/compatibility.json</code>. It installs Moj Sint's 13 allowlisted factory
+<code>install/compatibility.json</code>. It installs Moj Sint's 14 allowlisted factory
 presets and SHR Sampler's allowlisted project-authored factory package; it
 never copies private presets, samples, packages, or user data from a checkout.
 SHR Drums remains an exact pinned in-process Rust dependency, so there is no
@@ -4785,12 +4771,14 @@ MIDI controllers, external instruments, audio interfaces, and a
 480×320 display are optional hardware. On that display the current fixed TTY
 layout is 40×13 cells; installation does not change its font.</p>
 <h4 id="doc-installation--install" tabindex="-1">Install<a class="heading-anchor" href="#doc-installation--install" aria-label="Link to Install">#</a></h4>
-<p>For a new public installation, clone the immutable release and run its
-installer in one command:</p>
-<pre><code class="language-sh">git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh
+<p>For a new public installation, clone the current experimental source and run
+its installer in one command:</p>
+<pre><code class="language-sh">git clone --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh
 </code></pre>
-<p>From an already checked-out matching release, run <code>./scripts/install.sh</code>.</p>
-<p>The 0.4.8 compatibility set is:</p>
+<p>From an existing checkout, run <code>./scripts/install.sh</code>. A historical tag may be
+checked out for reproducibility, but tags are experimental snapshots rather
+than production releases.</p>
+<p>The current source compatibility set is:</p>
 <table>
 <thead>
 <tr>
@@ -4801,14 +4789,9 @@ installer in one command:</p>
 </thead>
 <tbody>
 <tr>
-<td>SHR-DAW</td>
-<td>0.4.8</td>
-<td>tagged source checkout and <code>shr</code> binary</td>
-</tr>
-<tr>
 <td>Moj Sint</td>
 <td>0.2.3</td>
-<td>exact public commit, <code>moj-sint</code>, 13 cleared presets</td>
+<td>exact public commit, <code>moj-sint</code>, 14 cleared presets</td>
 </tr>
 <tr>
 <td>SHR Sampler</td>
@@ -4843,7 +4826,7 @@ helper-owned limits file only when no distribution policy already suffices;</li>
 fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
 declared versions, and creates locked release builds;</li>
 <li>builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;</li>
-<li>stages commands, templates, 21 allowlisted synthv1 presets, 13 allowlisted
+<li>stages commands, templates, 21 allowlisted synthv1 presets, 14 allowlisted
 Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
 Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
 Projects plus MIDI files, profiles, drum data, and documentation;</li>
@@ -4927,8 +4910,8 @@ files. Build the debug binary first; neither helper installs packages or builds
 the program. <code>local.sh</code> launches this checkout's <code>target/debug/shr</code>, which
 carries the visible <code>DEV</code> badge.</p>
 <h4 id="doc-installation--upgrade-and-uninstall-boundaries" tabindex="-1">Upgrade and uninstall boundaries<a class="heading-anchor" href="#doc-installation--upgrade-and-uninstall-boundaries" aria-label="Link to Upgrade and uninstall boundaries">#</a></h4>
-<p>Rerunning the same release is idempotent. A newer tagged release first verifies
-that every previously owned file still matches its recorded hash, then replaces
+<p>Rerunning the same source snapshot is idempotent. A newer checkout or tag first
+verifies that every previously owned file still matches its recorded hash, then replaces
 only changed managed files and removes only obsolete unchanged managed files.
 An identical pre-existing file can be adopted; a differing unowned file or a
 locally modified managed file stops the update before mutation. An interrupted
@@ -5668,7 +5651,7 @@ migrate to Model D in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by <code>LOAD</code> as
 <code>moj-sint --client-name NAME --preset FILE</code>.
 Playback user saves add the private XDG Moj Sint preset root to discovery and
-store Model D and Six-Op PM beneath separate model directories. Repository-local
+store Model D, Six-Op PM, and Strange Oscillator beneath separate model directories. Repository-local
 launches keep that root below ignored <code>$SHSYNTH_USER_DIR/</code>. <code>SHSYNTH_MOJ_PRESET_DIR</code> may
 select another explicitly private root; public checkout, factory, system, and
 symlink paths remain read-only. The destination must be an absolute normalized
@@ -6748,7 +6731,7 @@ through one SHR-DAW workflow. Their runtime hosts are:</p>
 <li><a href="https://synthv1.sourceforge.io/" class="external" target="_blank" rel="noopener noreferrer external">synthv1</a> for subtractive synth presets;</li>
 <li><a href="https://yoshimi.github.io/" class="external" target="_blank" rel="noopener noreferrer external">Yoshimi</a> for <code>.xiz</code> instruments and banks;</li>
 <li><a href="https://www.fluidsynth.org/" class="external" target="_blank" rel="noopener noreferrer external">FluidSynth</a> for <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
-<li>Moj Sint for strict <code>.mojsint</code> Model D and Six-Op PM presets; and</li>
+<li>Moj Sint for strict <code>.mojsint</code> Model D, Six-Op PM, and Strange Oscillator presets; and</li>
 <li>SHR Sampler for strict preloaded <code>.shrinst</code> sample packages.</li>
 </ul>
 <p>Only one SHR-managed software engine process runs at a time. synthv1 and
@@ -8049,11 +8032,11 @@ the <a href="https://www.kernel.org/doc/html/latest/sound/alsa-configuration.htm
 unit is a Midas M AIR MR18; the recorder itself remains generic JACK capture.
 The complete target is simultaneous independent 18-channel playback and
 18-channel recording through the same 18×18 interface. Do not claim MR18
-success or mark a release checked until every applicable row below passes on
+success or mark this experimental track checked until every applicable row below passes on
 the attached unit.</p>
-<p>This physical pass is the release 0.6 gate. Complete the 0.4 platform/workflow
-acceptance and the owner-defined 0.5 FT2 work first; see the
-<a href="#doc-release_roadmap">release roadmap</a>.</p>
+<p>This physical pass is the later multichannel evidence boundary. Complete the
+platform/workflow foundation and the owner-defined FT2 work first; see the
+<a href="#doc-experimental_roadmap">experimental roadmap</a>.</p>
 <h4 id="doc-mr18_test_plan--current-status-and-next-borrowing-gate" tabindex="-1">Current status and next borrowing gate<a class="heading-anchor" href="#doc-mr18_test_plan--current-status-and-next-borrowing-gate" aria-label="Link to Current status and next borrowing gate">#</a></h4>
 <p>On 2026-07-22, the first borrowed MR18 was still packed in its bag. It was not
 unpacked, inspected, powered, connected, configured, or tested. No mixer scene,
@@ -13260,7 +13243,7 @@ preserves the diagram at native scale and omits its title strip so link-preview
 crawlers do not receive a reduced or lossy copy.</p>
 <p>The visible page is a product presentation, not an expanded repository dump.
 It uses one introduction, the approved full connection diagram, and one short
-screenshot tour. The alpha stage and physical-acceptance boundary appear near
+screenshot tour. The experimental stage and physical-acceptance boundary appear near
 the title. Detailed guides are closed by default, and measurements, maintainer
 records, handoffs, and proposals sit inside a separately labelled technical
 archive. Search covers current guides by default. A visible checkbox includes
@@ -13640,17 +13623,19 @@ compiler artifacts; it is not a physical-interface, scheduler, listening, or
 JACK-xrun test. The owning result is
 <a href="#doc-rust_compiler_ab_2026-07-29">Rust compiler A/B on Raspberry Pi 5</a>.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-build_week" data-source="docs/BUILD_WEEK.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Development story and OpenAI Build Week record</span><span class="document-summary">Chronology, model provenance, division of work, target-native workflow, and evaluation.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/BUILD_WEEK.md" target="_blank" rel="noopener noreferrer external">View docs/BUILD_WEEK.md source</a></div><blockquote>
-<p>Historical record: dates, counts, submission language, and measured state in
-this document are frozen to the stated Build Week snapshot. They are not the
-current repository inventory; use the documentation index and source for
-current behavior.</p>
+<details class="document" id="doc-build_week" data-source="docs/BUILD_WEEK.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Development story and OpenAI Build Week record</span><span class="document-summary">Chronology, model provenance, division of work, target-native workflow, and evaluation; no hackathon application or submission was made.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/BUILD_WEEK.md" target="_blank" rel="noopener noreferrer external">View docs/BUILD_WEEK.md source</a></div><blockquote>
+<p>Historical record: SHR-DAW was developed during a Build Week-oriented sprint,
+but no hackathon application or submission was made. Dates, counts,
+submission-oriented language, and measured state below are frozen to that
+snapshot. They are not the current repository inventory or product identity;
+use the documentation index and source for current behavior.</p>
 </blockquote>
-<p>SHR-DAW is being prepared for the OpenAI Build Week Challenge. The official
+<p>SHR-DAW was prepared with the OpenAI Build Week Challenge in mind. The official
 <a href="https://openai.com/build-week/" class="external" target="_blank" rel="noopener noreferrer external">Build Week page</a>,
 <a href="https://openai.devpost.com/" class="external" target="_blank" rel="noopener noreferrer external">Devpost overview</a>, and
 <a href="https://openai.devpost.com/rules" class="external" target="_blank" rel="noopener noreferrer external">rules</a> were checked on 2026-07-18. The
-submission deadline is July 21, 2026 at 5:00 PM Pacific Time. This is the
+submission deadline was July 21, 2026 at 5:00 PM Pacific Time; the project was
+not entered. This is the
 project's development story: it preserves the truthful timeline, working
 method, human/AI boundary, and a reproducible snapshot without turning the main
 README into a development journal. It is not an implementation specification.</p>
@@ -14028,14 +14013,14 @@ are in <code>CONTROLLER_INTERFACE.md</code>.</p>
 </thead>
 <tbody>
 <tr>
-<td>Preset browser and three engine catalogs</td>
-<td>Browse synthv1 files, Yoshimi banks, or FluidSynth SoundFont programs; load one sound</td>
+<td>Preset browser and five melodic engine catalogs</td>
+<td>Browse synthv1 files, Yoshimi banks, FluidSynth SoundFont programs, Moj Sint models, or SHR Sampler packages; load one sound</td>
 <td>K/M/C</td>
 <td>Engine commands, clients, output matches, roots, categories, SoundFonts</td>
-<td>Public synthv1 presets; external banks stay in place</td>
+<td>Cleared project sounds plus external banks/packages in place</td>
 <td>Unavailable engines remain visible with a reason; browser opens without JACK</td>
-<td>Only one managed engine; engine-specific preset/control rules never mix</td>
-<td><code>preset.rs</code>, <code>engine.rs</code>; schema, discovery, SoundFont, preflight tests</td>
+<td>Only one managed melodic engine; engine-specific preset/control rules never mix</td>
+<td><code>preset.rs</code>, <code>engine.rs</code>; schema, discovery, package, SoundFont, preflight tests</td>
 <td><code>shr-daw-presets.png</code></td>
 </tr>
 <tr>
@@ -15528,19 +15513,40 @@ tracking section.</p>
 new thread in <code>$HOME/p/shsynth</code>. Durable repository policy is in
 <code>AGENTS.md</code>; detailed helper behavior is in <code>docs/MAINTAINER_HELPERS.md</code>. Never
 record credentials, GitHub device codes, or private file contents here.</p>
+<h4 id="doc-workspace_handoff--2026-08-05-strange-oscillator-experimental-integration" tabindex="-1">2026-08-05 Strange Oscillator experimental integration<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-05-strange-oscillator-experimental-integration" aria-label="Link to 2026-08-05 Strange Oscillator experimental integration">#</a></h4>
+<p>The sibling Moj Sint repository now exposes Strange Oscillator as its third
+live experimental model and cleared start 14. This SHR working tree recognizes Moj
+preset schema 6, shows the model as <code>S-OSC</code>, routes it through the existing
+<code>ENGINE → MODEL → PATCH</code> hierarchy, maps CC 20–27 to TYPE, FORM, WARP, COUPLE,
+MOTION, CHAOS, COLOR, and SPACE, and preserves ADSR at CC 28–31. Model-specific
+private saves, tracker parameters, automation names, and model-qualified route
+identity all include the third model. Schema 1–5 Moj presets remain readable.
+The local Moj command already points to the sibling optimized binary. Use the
+private <code>shr-release</code> launcher for the optimized SHR binary; plain <code>shr</code>
+deliberately remains DEV. The owner explicitly authorized committing and
+publishing both repositories for continued experimentation before the open
+musical and native-load verdicts. Publication is not production acceptance.</p>
 <h4 id="doc-workspace_handoff--current-priority-and-shared-checkout" tabindex="-1">Current priority and shared checkout<a class="heading-anchor" href="#doc-workspace_handoff--current-priority-and-shared-checkout" aria-label="Link to Current priority and shared checkout">#</a></h4>
-<p>The Build Week snapshot is preserved by its tag; the repository itself is
-unfrozen and ordinary development continues on <code>main</code>. Do not keep or recreate
-a standing <code>dev</code> branch before the owner opens the planned 0.6 milestone. The
-temporary combined build-and-test gate in <code>AGENTS.md</code> still applies; an
-unfrozen repository is not implicit permission to compile.</p>
-<p>The current ordered targets are owned by <code>docs/RELEASE_ROADMAP.md</code>: 0.4 checks
-all existing menus/workflows plus clean install/setup on Raspberry Pi OS Lite;
-0.5 completes the owner-specified FT2 behavior without pulling random future
-features into scope; 0.6 implements and physically accepts simultaneous
-18-channel playback and 18-channel recording. Package version <code>0.3.92</code> is the
-corrected starting point; the current checked-progress version is <code>0.4.8</code>.</p>
-<p>Version <code>0.4.8</code> adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
+<p>The early Build Week-style sprint snapshot is preserved by its historical tag,
+but no hackathon application or submission was made and it does not govern the
+project. Ordinary experimental development continues on <code>main</code>; do not keep or
+recreate a standing <code>dev</code> branch. The temporary combined build-and-test gate in
+<code>AGENTS.md</code> still applies; an active repository is not implicit permission to
+compile.</p>
+<p>The current ordered tracks are owned by <code>docs/EXPERIMENTAL_ROADMAP.md</code>: retain
+the accepted workflow/install foundation, complete the owner-specified FT2
+behavior without pulling random future features into scope, then implement and
+physically accept simultaneous 18-channel playback and recording. Current
+<code>0.x</code> package numbers are compatibility identifiers for experimental source,
+not production-release milestones; public installation docs do not pin 0.4.8.</p>
+<p><code>docs/EXPERIMENTAL_DIRECTION.md</code> records the unscheduled product direction:
+beginner- and curiosity-first music making, FT2 as the main composition and
+automation workspace, Player as a deliberately simple player, optional theory
+and smart assistance after play, and Moj Sint as an open experimental
+instrument laboratory. The favored Moj authoring direction is a typed low-code
+micro-machine format usable with or without AI. A swarm/supersaw-like model is
+only a possible first isolated experiment, not a promised feature.</p>
+<p>The current compatibility checkpoint adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
 melodic backend. Its package and executable compatibility are preflighted
 offline before the current owned engine is disturbed; startup, exact stereo
 readiness, routing, failure publication, one-attempt restoration, All Notes
@@ -15578,7 +15584,7 @@ the tracked <code>kits/cleared-kits.txt</code> allowlist: Acid, Electronic House
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
 that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
-longer depend on ignored <code>$SHSYNTH_USER_DIR/</code> state. Moj Sint's 13 factory starts remain
+longer depend on ignored <code>$SHSYNTH_USER_DIR/</code> state. Moj Sint's 14 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
 storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
 all-target/all-feature normal suite: 19 tests passed, three opt-in quality
@@ -16361,49 +16367,82 @@ checks.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 </section>
 <section class="library-group" aria-labelledby="group-planned-work"><header class="group-header"><p class="eyebrow">Future proposals</p><h3 id="group-planned-work">Planned work</h3><p>Roadmaps and proposals that do not override current behaviour or architecture.</p></header>
-<details class="document" id="doc-release_roadmap" data-source="docs/RELEASE_ROADMAP.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Release roadmap</span><span class="document-summary">Ordered 0.4, 0.5, and 0.6 acceptance gates and the rule that keeps unrelated ideas out of the current milestone.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/RELEASE_ROADMAP.md" target="_blank" rel="noopener noreferrer external">View docs/RELEASE_ROADMAP.md source</a></div><p>This roadmap owns the current development order. Releases advance when their
-acceptance gates pass, not on dates. Detailed behavior remains in the focused
-product, installation, FT2, and hardware documents linked below.</p>
-<h4 id="doc-release_roadmap--version-numbering" tabindex="-1">Version numbering<a class="heading-anchor" href="#doc-release_roadmap--version-numbering" aria-label="Link to Version numbering">#</a></h4>
-<p>The package uses <code>major.minor.patch</code> numbering. Version <code>0.3.92</code> corrected the
-unintended <code>0.392.0</code>; the current checked-progress version is <code>0.4.8</code>.</p>
-<ul>
-<li>Meaningful checked progress before the next milestone increments the patch:
-<code>0.3.99</code>, <code>0.3.100</code>, <code>0.3.101</code>, and so on.</li>
-<li>The completed 0.4 milestone becomes package version <code>0.4.0</code>. Later fixes or
-checked progress toward 0.5 use <code>0.4.1</code>, <code>0.4.2</code>, and so on. The Raspberry
-Pi 5 installation milestone is accepted; the current repair release is
-<code>0.4.3</code>. Moj Sint's working fourth-backend integration is <code>0.4.4</code>; it does
-not reuse the earlier SHR Drums/effects bump. Version <code>0.4.5</code> makes all seven
-authored Moj Sint starts selectable and accepts strict schema 4 model/patch
-identity. Version <code>0.4.6</code> makes Input monitoring a deliberate MTR action,
-moves final-bus ownership out of the optional managed synth, reconnects
-optional sources without duplicate playback, and records the same
-post-master samples sent to playback. Version <code>0.4.7</code> completes the Moj Sint
-two-model path; <code>0.4.8</code> adds SHR Sampler as the fifth managed backend and the
-pinned whole-system public installer.</li>
-<li>The completed 0.5 milestone becomes <code>0.5.0</code>; later checked progress toward
-0.6 uses <code>0.5.1</code>, <code>0.5.2</code>, and so on.</li>
-<li>The completed 0.6 milestone becomes <code>0.6.0</code>.</li>
-</ul>
-<p>Do not assign a milestone version merely because its code exists. Its complete
-gate, documentation, and required physical evidence must pass first.</p>
-<h4 id="doc-release_roadmap--scope-rule" tabindex="-1">Scope rule<a class="heading-anchor" href="#doc-release_roadmap--scope-rule" aria-label="Link to Scope rule">#</a></h4>
-<p>Work on the current milestone before pulling from later or speculative plans.
-An observed defect or missing recovery path that blocks the current gate is in
+<details class="document" id="doc-experimental_direction" data-source="docs/EXPERIMENTAL_DIRECTION.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Experimental product direction</span><span class="document-summary">Beginner-first music making, FT2 ownership, open Moj Sint models, low-code micro-machines, and smart help without feature promises.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/EXPERIMENTAL_DIRECTION.md" target="_blank" rel="noopener noreferrer external">View docs/EXPERIMENTAL_DIRECTION.md source</a></div><p>Status: open direction, not a feature specification, schedule, or production
+promise.</p>
+<p>SHR-DAW is a curiosity-first Raspberry Pi music workstation. Its distinctive
+path is not to compete with large desktop DAWs or hardware ecosystems. It
+should make the first useful musical result easy for beginners, non-musicians,
+and technically curious people using ordinary, affordable controls. Soldering
+or buying a particular enclosure should never be the price of entry.</p>
+<p>FT2 is the main composition, arrangement, automation, effects, and recording
+workspace. Player remains deliberately simple: load a sound, play it, use tap
+tempo or a controller arpeggiator, and optionally capture a free-time MIDI
+Idea. Player and Ideas are not alternate automation systems.</p>
+<p>Future FT2 recording should move toward the direct expectation that an actual
+parameter change made during Record can become editable FT2 automation for its
+own target. Merely opening or browsing a page should record nothing. The
+dedicated automation screen should remain the place for detailed lane and
+point editing. Existing effect structure and real-time safety boundaries must
+remain visible rather than being hidden behind convenience.</p>
+<p>Musical help should follow play rather than block it. Circle-of-fifths views,
+interval and rhythm relationships, small deterministic generators, and smart
+assistants may explain or extend material already in the Project. They should
+help someone reach a result, understand why it works, and choose what to keep;
+they should not silently compose, replace work, or turn uncertainty into a
+false rule.</p>
+<p>Moj Sint provides the complementary experimental path: learn synthesis by
+making instruments. People should eventually be able to create Moj Sint models
+with or without AI assistance. The favored direction is a low-code typed
+micro-machine format that connects bounded oscillators, counters, events,
+shapers, followers, resonators, filters, feedback, and stereo operations while
+Moj Sint retains validation and real-time safety.</p>
+<p>Every Moj Sint model should remain playable through eight meaningful timbral
+controls plus ADSR. AI can help draft a graph, explain mathematics, or propose
+control mappings, but generated work earns inclusion only through the same
+inspectable tests and human listening as hand-written work.</p>
+<p>A swarm or supersaw-like instrument is one possible first modular experiment:
+a familiar musical target that makes population, detuning, phase, coupling,
+motion, width, and normalization easy to hear. It is not a promised feature or
+a request to copy an existing synthesizer. The point is to learn whether Moj
+Sint's micro-machines can produce a recognisable sound efficiently while
+remaining editable and characteristically strange.</p>
+<p>Across these ideas, the preferred motion is consistent: play first, reveal
+theory and machinery when useful, preserve the musician's work and position,
+make failure recoverable, and keep advanced depth optional rather than
+mandatory.</p>
+<p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
+<details class="document" id="doc-experimental_roadmap" data-source="docs/EXPERIMENTAL_ROADMAP.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Experimental development roadmap</span><span class="document-summary">Current work order, evidence boundaries, and the rule that keeps unrelated ideas out of the current track without treating 0.x as production releases.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/EXPERIMENTAL_ROADMAP.md" target="_blank" rel="noopener noreferrer external">View docs/EXPERIMENTAL_ROADMAP.md source</a></div><p>Status: working order for an experimental project, not a production-release
+schedule.</p>
+<p>This roadmap owns the current development order. Detailed behavior remains in
+the focused product, installation, FT2, and hardware documents linked below.</p>
+<h4 id="doc-experimental_roadmap--lifecycle-and-compatibility-identifiers" tabindex="-1">Lifecycle and compatibility identifiers<a class="heading-anchor" href="#doc-experimental_roadmap--lifecycle-and-compatibility-identifiers" aria-label="Link to Lifecycle and compatibility identifiers">#</a></h4>
+<p>All current SHR-DAW source, <code>0.x</code> package versions, and tags are experimental.
+The package version and the component versions in
+<code>install/compatibility.json</code> identify compatible source and installed files;
+they do not declare a production release, product tier, or completion level.
+Public documentation follows the current source and does not hard-pin one
+experimental tag as “the release.” Historical tags remain reproducible
+snapshots.</p>
+<p>A production release will be an explicit future decision with its own version,
+support boundary, installation target, evidence, and announcement. Until then,
+progress is described by behavior and evidence rather than release ceremony.</p>
+<h4 id="doc-experimental_roadmap--scope-rule" tabindex="-1">Scope rule<a class="heading-anchor" href="#doc-experimental_roadmap--scope-rule" aria-label="Link to Scope rule">#</a></h4>
+<p>Work on the current track before pulling from later or speculative plans.
+An observed defect or missing recovery path that blocks the current work is in
 scope. A new feature, redesign, optimization, or interesting experiment is not
-in scope unless the owner explicitly moves it into the milestone.</p>
+in scope unless the owner explicitly moves it into the current track.</p>
 <p>The owner supplies product intent that has not yet been written down. Do not
 infer missing FT2 requirements from nearby ideas or implement random entries
 from <a href="#doc-future_improvements">Future improvements</a>. Record an intended action,
 result, state boundary, and acceptance path before implementing it.</p>
-<h4 id="doc-release_roadmap--040-trust-the-existing-product" tabindex="-1">0.4.0 — trust the existing product<a class="heading-anchor" href="#doc-release_roadmap--040-trust-the-existing-product" aria-label="Link to 0.4.0 — trust the existing product">#</a></h4>
+<h4 id="doc-experimental_roadmap--established-foundation-trust-the-existing-product" tabindex="-1">Established foundation — trust the existing product<a class="heading-anchor" href="#doc-experimental_roadmap--established-foundation-trust-the-existing-product" aria-label="Link to Established foundation — trust the existing product">#</a></h4>
 <p>Outcome: every existing menu entry is in the intended place and every current
 workflow works as intended on the supported compact UI and a clean normal
 Raspberry Pi OS Lite installation.</p>
-<p>Status: accepted after the Raspberry Pi 5 installation, doctor, managed-JACK,
-silent engine, and repository validation pass. Subsequent fixes use <code>0.4.x</code>.</p>
-<p>The release gate requires:</p>
+<p>Status: the Raspberry Pi 5 installation, doctor, managed-JACK, silent-engine,
+and repository validation evidence passed. This is an experimental foundation,
+not a production release.</p>
+<p>The evidence boundary requires:</p>
 <ul>
 <li>every reachable menu entry and controller-menu item checked for its intended
 screen, page, order, label, and return location, using keyboard/controller
@@ -16431,12 +16470,12 @@ platform and measurement facts into public documentation.</p>
 <p>The platform procedure and comparison fields live in the
 <a href="#doc-pi5_headroom_plan">Pi 5 plan</a>. Passing installation does not itself prove
 audio hardware, musical quality, or 18×18 full duplex.</p>
-<h4 id="doc-release_roadmap--050-complete-the-intended-ft2-workflow" tabindex="-1">0.5.0 — complete the intended FT2 workflow<a class="heading-anchor" href="#doc-release_roadmap--050-complete-the-intended-ft2-workflow" aria-label="Link to 0.5.0 — complete the intended FT2 workflow">#</a></h4>
+<h4 id="doc-experimental_roadmap--current-focus-complete-the-intended-ft2-workflow" tabindex="-1">Current focus — complete the intended FT2 workflow<a class="heading-anchor" href="#doc-experimental_roadmap--current-focus-complete-the-intended-ft2-workflow" aria-label="Link to Current focus — complete the intended FT2 workflow">#</a></h4>
 <p>Outcome: FT2 has the complete functionality the owner intends, without the
 current short-wired or partial flows and without unrelated future ideas
 obstructing that work.</p>
 <p>The current base already stores Loop Mix under its owning Pattern and switches
-MIDI/loops together. This milestone must preserve that boundary; the future
+MIDI/loops together. This track must preserve that boundary; the future
 <a href="#doc-future_improvements--playlist-above-song">Playlist above Song</a>, companion
 mode, a standalone Pattern library, cue routing, time-stretching, extra mixer
 strips, and additional buses are not implied by it.</p>
@@ -16452,19 +16491,19 @@ work; and</li>
 <li>verify normal, repeated, interrupted, saved/reloaded, and existing-state
 paths that apply.</li>
 </ol>
-<p>The release gate is the completed owner-approved FT2 inventory, its focused
+<p>Completion means the owner-approved FT2 inventory, its focused
 tests and hands-on checks, and matching current documentation. Planned rhythm,
-mixer, analysis, or other ideas are not 0.5 blockers unless the owner adds them
-to that inventory.</p>
-<h4 id="doc-release_roadmap--060-1818-full-duplex-multichannel-audio" tabindex="-1">0.6.0 — 18×18 full-duplex multichannel audio<a class="heading-anchor" href="#doc-release_roadmap--060-1818-full-duplex-multichannel-audio" aria-label="Link to 0.6.0 — 18×18 full-duplex multichannel audio">#</a></h4>
+mixer, analysis, or other ideas are not blockers unless the owner adds them to
+that inventory.</p>
+<h4 id="doc-experimental_roadmap--later-track-1818-full-duplex-multichannel-audio" tabindex="-1">Later track — 18×18 full-duplex multichannel audio<a class="heading-anchor" href="#doc-experimental_roadmap--later-track-1818-full-duplex-multichannel-audio" aria-label="Link to Later track — 18×18 full-duplex multichannel audio">#</a></h4>
 <p>Outcome: SHR can play 18 independent output channels while synchronously
 recording 18 input channels through one multichannel interface, and that path
 is physically proven rather than inferred from synthetic tests.</p>
 <p>The native 18-channel Levels overview is already implemented as capture
 preparation: all inputs remain visible with fixed RMS/held-peak meters and
-missing/fault distinction. It does not complete this milestone because there
+missing/fault distinction. It does not complete this track because there
 is still no 18-output path or physical 18×18 acceptance evidence.</p>
-<p>The release gate requires:</p>
+<p>The evidence boundary requires:</p>
 <ul>
 <li>the 18-output path implemented with exact configured JACK destinations and
 bounded live-audio behavior;</li>
@@ -16480,17 +16519,18 @@ and</li>
 <li>the borrowed mixer scene and physical safety state restored after testing.</li>
 </ul>
 <p>The authoritative physical procedure and result sheets are in the
-<a href="#doc-mr18_test_plan">MR18 acceptance plan</a>. The release is not marked checked
-until that physical gate passes.</p>
+<a href="#doc-mr18_test_plan">MR18 acceptance plan</a>. The track is not marked checked
+until that physical evidence passes.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-future_improvements" data-source="docs/FUTURE_IMPROVEMENTS.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Future improvements</span><span class="document-summary">Unscheduled smart musical assistance, deferred routing and product ideas, and the deliberately unreasonable challenges.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FUTURE_IMPROVEMENTS.md" target="_blank" rel="noopener noreferrer external">View docs/FUTURE_IMPROVEMENTS.md source</a></div><p>Started: 2026-07-18</p>
 <p>Status: unscheduled proposal archive</p>
 <p>This file records useful extensions that are deliberately not part of the
 current behavior. They are not required for separate FT2 pages to sequence
 multiple hardware instruments simultaneously.</p>
-<p>These entries do not enter the current 0.4, 0.5, or 0.6 scope automatically.
-The <a href="#doc-release_roadmap">release roadmap</a> owns development order; an item here
-becomes a milestone requirement only when the owner explicitly moves it there.
+<p>These entries do not enter active work automatically. The
+<a href="#doc-experimental_roadmap">experimental roadmap</a> owns development order; an
+item here becomes a current requirement only when the owner explicitly moves
+it there.
 Use the musician guides and architecture documents in <a href="#documentation">the documentation
 index</a> for current behavior. This page is a proposal archive.</p>
 <h4 id="doc-future_improvements--six-button-touch-performance-console" tabindex="-1">Six-button touch performance console<a class="heading-anchor" href="#doc-future_improvements--six-button-touch-performance-console" aria-label="Link to Six-button touch performance console">#</a></h4>
@@ -16537,9 +16577,9 @@ kick timing;</li>
 <li>arrangement suggestions that help complete a short sketch; and</li>
 <li>other explicitly reviewable helpers for repetitive musical work.</li>
 </ul>
-<p>None of these helpers exists or belongs to a release milestone today. They
-must not act without clear review and confirmation. An idea enters milestone
-scope only when the owner moves it into the release roadmap with an action,
+<p>None of these helpers exists or belongs to the current work track today. They
+must not act without clear review and confirmation. An idea enters active
+scope only when the owner moves it into the experimental roadmap with an action,
 result, state boundary, and acceptance path.</p>
 <p>The owner-directed interaction, theory/algorithm research, FT2 <code>SIZE</code> design,
 circle of fifths, arpeggio families, drum fills/rolls, and staged Arrangement
@@ -16687,14 +16727,14 @@ new optimization claim.</p>
 <p>The proposal keeps one effects rack. Effects that later pass fixed low-state
 and low-callback-cost gates may receive the compact <code>» PRESTO</code> mark; unmarked
 effects remain normal first-class choices. No hardware result, marker, library
-change, or release date is implied today. The complete boundaries and planned
+change, or schedule is implied today. The complete boundaries and planned
 experiment matrix are in the <a href="#doc-pi5_headroom_plan">Raspberry Pi 5 headroom and footprint
 plan</a>.</p>
 <h4 id="doc-future_improvements--irregular-patterns-swing-and-groove-timing" tabindex="-1">Irregular Patterns, swing, and groove timing<a class="heading-anchor" href="#doc-future_improvements--irregular-patterns-swing-and-groove-timing" aria-label="Link to Irregular Patterns, swing, and groove timing">#</a></h4>
 <p>The post-competition plan for arbitrary Pattern shortening/growing, individual
 early/late hits, Pattern-wide swing, groove tools, expressive tracker capture,
-and optional formal odd-meter metadata is in <a href="#doc-post_competition_rhythm_plan">Post-competition rhythm
-plan</a>. The first planned release uses the
+and optional formal odd-meter metadata is in the <a href="#doc-post_competition_rhythm_plan">legacy rhythm
+proposal</a>. Its first planned phase uses the
 existing arbitrary row-count scheduler. Its earlier transactional Length
 surface is superseded by the owner-directed FT2 Edit <code>SIZE</code> page in
 <a href="#doc-future_musical_helpers">Future musical sketch helpers</a>; the later timing,
@@ -16933,7 +16973,7 @@ remain configuration data rather than adding hardware names to Rust constants.</
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-future_musical_helpers" data-source="docs/FUTURE_MUSICAL_HELPERS.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Future musical sketch helpers</span><span class="document-summary">FT2 SIZE, circle-of-fifths notes, arpeggio algorithms, drum fills/rolls, and staged Arrangement assistance.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FUTURE_MUSICAL_HELPERS.md" target="_blank" rel="noopener noreferrer external">View docs/FUTURE_MUSICAL_HELPERS.md source</a></div><p>Created: 2026-08-02</p>
 <p>Status: FT2 Edit SIZE implemented; remaining helpers are owner-directed
-proposals, not release promises</p>
+proposals, not scheduled promises</p>
 <p>This plan covers small, inspectable helpers that turn a short musical idea into
 editable FT2 material. The helpers should remove repetitive work, not decide
 what the song is. Every generated result must be previewable, deterministic,
@@ -17489,7 +17529,7 @@ runtime, helper, installer, or behavior change still requires the full locked
 Rust validation and relevant real-time acceptance. Documentation-only planning
 changes use the repository's targeted documentation checks.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-post_competition_mixer_aux_plan" data-source="docs/POST_COMPETITION_MIXER_AUX_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition mixer and shared-aux plan</span><span class="document-summary">Multi-strip mixer and shared-aux migration.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_MIXER_AUX_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_MIXER_AUX_PLAN.md source</a></div><p>Created: 2026-07-19</p>
+<details class="document" id="doc-post_competition_mixer_aux_plan" data-source="docs/POST_COMPETITION_MIXER_AUX_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition mixer and shared-aux plan</span><span class="document-summary">Multi-strip mixer and shared-aux migration, retained from the early sprint.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_MIXER_AUX_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_MIXER_AUX_PLAN.md source</a></div><p>Created: 2026-07-19</p>
 <p>Status: historical proposal archive</p>
 <blockquote>
 <p><strong>Historical proposal boundary:</strong> SHR-DAW now has a deliberately narrow
@@ -17498,10 +17538,12 @@ multi-strip/shared-aux, pan/solo, hardware-insert, and free-routing work below
 remains a proposal, not current behavior. See
 <a href="#doc-final_performance_bus">Final performance bus</a>.</p>
 </blockquote>
-<p>This plan was written after the competition appliance release. Do not treat its
-historical format/topology descriptions as the current implementation.</p>
+<p>This plan was written during the early competition-oriented sprint. No
+application or submission was made, and the snapshot was not a production
+release. Do not treat its historical format/topology descriptions as the
+current implementation.</p>
 <p>Two narrow correctness issues found during the routing audit are listed under
-the release boundary below. They can be repaired independently of this plan.</p>
+the historical boundary below. They can be repaired independently of this plan.</p>
 <h4 id="doc-post_competition_mixer_aux_plan--historical-baseline-when-this-plan-was-written" tabindex="-1">Historical baseline when this plan was written<a class="heading-anchor" href="#doc-post_competition_mixer_aux_plan--historical-baseline-when-this-plan-was-written" aria-label="Link to Historical baseline when this plan was written">#</a></h4>
 <p>At the time, the owned graph had this signal flow:</p>
 <pre><code class="language-text">managed synth -&gt; SOURCE inserts ---------------------------&gt; sum
@@ -17699,15 +17741,14 @@ lanes without isolated audio must remain honestly identified rather than
 receiving controls that cannot work.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-post_competition_rhythm_plan" data-source="docs/POST_COMPETITION_RHYTHM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition rhythm plan</span><span class="document-summary">Arbitrary Pattern length, microtiming, swing, groove tools, and optional formal meter.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_RHYTHM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_RHYTHM_PLAN.md source</a></div><p>Created: 2026-07-19</p>
-<p>Status: proposal archive, not current behavior or scheduled release scope</p>
+<p>Status: proposal archive, not current behavior or scheduled scope</p>
 <p>The owner-directed FT2 Edit <code>SIZE</code> page in
 <a href="#doc-future_musical_helpers">Future musical sketch helpers</a> supersedes Part 1's
 older standalone <code>LENGTH</code> interaction. Parts 2–5 remain the timing, swing,
 groove, and optional-meter plan.</p>
-<p>This document is an execution plan for work <strong>after the competition</strong>. None of
-the behavior below is part of the competition build, and the submission should
-not be destabilized to begin it early. The work is deliberately split into
-independently testable releases so SHR-DAW gains useful rhythm features before
+<p>This document was written for work after an early competition-oriented sprint.
+No application or submission was made. The work is deliberately split into
+independently testable phases so SHR-DAW can gain useful rhythm features before
 it attempts a general notation or time-signature system.</p>
 <h4 id="doc-post_competition_rhythm_plan--product-decision" tabindex="-1">Product decision<a class="heading-anchor" href="#doc-post_competition_rhythm_plan--product-decision" aria-label="Link to Product decision">#</a></h4>
 <p>The first goal is not formal support for every written meter. It is to let a
@@ -18074,20 +18115,20 @@ grouped pulse. The display must state the tempo unit rather than silently
 changing old Projects.</p>
 <p>Estimated effort: <strong>5–10 days</strong>. This is lower priority because a 14-row loop
 already delivers the central musical result of 7/8.</p>
-<h4 id="doc-post_competition_rhythm_plan--execution-sequence-and-release-gates" tabindex="-1">Execution sequence and release gates<a class="heading-anchor" href="#doc-post_competition_rhythm_plan--execution-sequence-and-release-gates" aria-label="Link to Execution sequence and release gates">#</a></h4>
+<h4 id="doc-post_competition_rhythm_plan--execution-sequence-and-evidence-boundaries" tabindex="-1">Execution sequence and evidence boundaries<a class="heading-anchor" href="#doc-post_competition_rhythm_plan--execution-sequence-and-evidence-boundaries" aria-label="Link to Execution sequence and evidence boundaries">#</a></h4>
 <table>
 <thead>
 <tr>
 <th>Work package</th>
 <th>Dependency</th>
 <th style="text-align:right">Estimate</th>
-<th>Release value</th>
+<th>Musical value</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>1. Pattern Length</td>
-<td>Competition complete</td>
+<td>Early sprint complete</td>
 <td style="text-align:right">2–3 days</td>
 <td>Immediate irregular phrases</td>
 </tr>
@@ -18117,11 +18158,11 @@ already delivers the central musical result of 7/8.</p>
 </tr>
 </tbody>
 </table>
-<p>Parts 1–3 form the recommended polished rhythm release: approximately <strong>two to
+<p>Parts 1–3 form the recommended polished rhythm phase: approximately <strong>two to
 three focused engineering weeks</strong>, followed by at least two human listening
-and controller sessions. Part 4 may join that release if it does not weaken
+and controller sessions. Part 4 may join that phase if it does not weaken
 the simpler workflow. Part 5 should remain separately selectable.</p>
-<p>After the competition:</p>
+<p>After the early sprint:</p>
 <ol>
 <li>finish or integrate any already-active audio-graph work before modifying
 overlapping UI/runtime files;</li>

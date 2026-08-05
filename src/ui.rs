@@ -1544,13 +1544,11 @@ fn moj_model_for_route(presets: &[Preset], route: &SoftwareRoute) -> Option<pres
         })
         .and_then(Preset::moj_model)
         .or_else(|| {
-            [preset::MojModel::ModelD, preset::MojModel::SixOpPm]
-                .into_iter()
-                .find(|model| {
-                    route
-                        .instrument
-                        .starts_with(&format!("{}/", model.stable_id()))
-                })
+            preset::MojModel::ALL.into_iter().find(|model| {
+                route
+                    .instrument
+                    .starts_with(&format!("{}/", model.stable_id()))
+            })
         })
 }
 
@@ -19737,13 +19735,11 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 software
                     .filter(|route| route.engine == preset::BackendKind::MojSint)
                     .and_then(|route| {
-                        [preset::MojModel::ModelD, preset::MojModel::SixOpPm]
-                            .into_iter()
-                            .find(|model| {
-                                route
-                                    .instrument
-                                    .starts_with(&format!("{}/", model.stable_id()))
-                            })
+                        preset::MojModel::ALL.into_iter().find(|model| {
+                            route
+                                .instrument
+                                .starts_with(&format!("{}/", model.stable_id()))
+                        })
                     })
             });
             let drum_kit = match &page.target {
@@ -22741,6 +22737,7 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         "11 Six-Op Glass Wood",
         "12 Six-Op Brass Bass",
         "13 Six-Op Mechanical Stab",
+        "14 Strange Oscillator",
     ];
     let moj_presets = moj_names
         .into_iter()
@@ -22748,8 +22745,10 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         .map(|(index, name)| {
             let model = if index < 7 {
                 preset::MojModel::ModelD
-            } else {
+            } else if index < 13 {
                 preset::MojModel::SixOpPm
+            } else {
+                preset::MojModel::StrangeOscillator
             };
             Preset {
                 backend: BackendKind::MojSint,
@@ -26438,7 +26437,7 @@ release = 0.4
         let held_notes = render_app(&mut synthv1, 40, 13);
         assert!(buffer_text(&held_notes).contains("96"));
 
-        for model in [preset::MojModel::ModelD, preset::MojModel::SixOpPm] {
+        for model in preset::MojModel::ALL {
             let mut moj = app(&presets());
             moj.screen = Screen::TrackerParameters;
             moj.playing = Some(moj_preset(model, model.label()));

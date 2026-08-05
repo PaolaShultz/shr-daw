@@ -2,17 +2,16 @@
 
 Created: 2026-07-19
 
-Status: proposal archive, not current behavior or scheduled release scope
+Status: proposal archive, not current behavior or scheduled scope
 
 The owner-directed FT2 Edit `SIZE` page in
 [Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md) supersedes Part 1's
 older standalone `LENGTH` interaction. Parts 2–5 remain the timing, swing,
 groove, and optional-meter plan.
 
-This document is an execution plan for work **after the competition**. None of
-the behavior below is part of the competition build, and the submission should
-not be destabilized to begin it early. The work is deliberately split into
-independently testable releases so SHR-DAW gains useful rhythm features before
+This document was written for work after an early competition-oriented sprint.
+No application or submission was made. The work is deliberately split into
+independently testable phases so SHR-DAW can gain useful rhythm features before
 it attempts a general notation or time-signature system.
 
 ## Product decision
@@ -396,22 +395,22 @@ changing old Projects.
 Estimated effort: **5–10 days**. This is lower priority because a 14-row loop
 already delivers the central musical result of 7/8.
 
-## Execution sequence and release gates
+## Execution sequence and evidence boundaries
 
-| Work package | Dependency | Estimate | Release value |
+| Work package | Dependency | Estimate | Musical value |
 |---|---|---:|---|
-| 1. Pattern Length | Competition complete | 2–3 days | Immediate irregular phrases |
+| 1. Pattern Length | Early sprint complete | 2–3 days | Immediate irregular phrases |
 | 2. Cell microtiming | Part 1 stable | 4–7 days | Individual push and drag |
 | 3. Swing | Part 2 timing model | 4–7 days | Coherent Pattern feel |
 | 4. Groove tools/REC | Parts 2–3 stable | 3–6 days | Fast advanced workflow |
 | 5. Formal meter | Demonstrated product need | 5–10 days | Meter-aware display/library/loops |
 
-Parts 1–3 form the recommended polished rhythm release: approximately **two to
+Parts 1–3 form the recommended polished rhythm phase: approximately **two to
 three focused engineering weeks**, followed by at least two human listening
-and controller sessions. Part 4 may join that release if it does not weaken
+and controller sessions. Part 4 may join that phase if it does not weaken
 the simpler workflow. Part 5 should remain separately selectable.
 
-After the competition:
+After the early sprint:
 
 1. finish or integrate any already-active audio-graph work before modifying
    overlapping UI/runtime files;

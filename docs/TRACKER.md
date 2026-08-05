@@ -189,8 +189,8 @@ route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.
 
-For Moj Sint, **ENGINE** stays `Moj Sint`, **MODEL** cycles Model D and Six-Op
-PM, and **PATCH** cycles only the installed starts belonging to that model.
+For Moj Sint, **ENGINE** stays `Moj Sint`, **MODEL** cycles Model D, Six-Op PM,
+and Strange Oscillator, and **PATCH** stays inside the selected model.
 Changing the model selects its first available patch; changing patches never
 crosses the model boundary. These live field changes remain inside the same
 Route Apply/Cancel transaction.

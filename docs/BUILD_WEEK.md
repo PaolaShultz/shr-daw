@@ -1,15 +1,17 @@
 # Development story and OpenAI Build Week record
 
-> Historical record: dates, counts, submission language, and measured state in
-> this document are frozen to the stated Build Week snapshot. They are not the
-> current repository inventory; use the documentation index and source for
-> current behavior.
+> Historical record: SHR-DAW was developed during a Build Week-oriented sprint,
+> but no hackathon application or submission was made. Dates, counts,
+> submission-oriented language, and measured state below are frozen to that
+> snapshot. They are not the current repository inventory or product identity;
+> use the documentation index and source for current behavior.
 
-SHR-DAW is being prepared for the OpenAI Build Week Challenge. The official
+SHR-DAW was prepared with the OpenAI Build Week Challenge in mind. The official
 [Build Week page](https://openai.com/build-week/),
 [Devpost overview](https://openai.devpost.com/), and
 [rules](https://openai.devpost.com/rules) were checked on 2026-07-18. The
-submission deadline is July 21, 2026 at 5:00 PM Pacific Time. This is the
+submission deadline was July 21, 2026 at 5:00 PM Pacific Time; the project was
+not entered. This is the
 project's development story: it preserves the truthful timeline, working
 method, human/AI boundary, and a reproducible snapshot without turning the main
 README into a development journal. It is not an implementation specification.

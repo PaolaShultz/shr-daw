@@ -153,7 +153,7 @@ through one SHR-DAW workflow. Their runtime hosts are:
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks;
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
-- Moj Sint for strict `.mojsint` Model D and Six-Op PM presets; and
+- Moj Sint for strict `.mojsint` Model D, Six-Op PM, and Strange Oscillator presets; and
 - SHR Sampler for strict preloaded `.shrinst` sample packages.
 
 Only one SHR-managed software engine process runs at a time. synthv1 and

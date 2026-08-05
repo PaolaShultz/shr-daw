@@ -74,9 +74,10 @@ silent: they only change the list and reset its selection according to the
 existing catalog contract. `LOAD` is the sole managed preset start or
 replacement action.
 
-The Moj Sint catalog has 13 ordered starts: seven Model D sounds from Full Bass
-through Matched No Drift or Feedback, then six Six-Op PM sounds from Bell Metal
-through Mechanical Stab. The list marks their model as `M-D` or `6-OP`.
+The Moj Sint catalog has 14 ordered starts: seven Model D sounds from Full Bass
+through Matched No Drift or Feedback, six Six-Op PM sounds from Bell Metal
+through Mechanical Stab, and Strange Oscillator. The list marks their model as
+`M-D`, `6-OP`, or `S-OSC`.
 Selecting one only browses; `LOAD` starts it.
 
 SHR Sampler lists strict read-only `.shrinst` packages. `LOAD` validates the

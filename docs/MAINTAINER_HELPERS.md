@@ -560,7 +560,7 @@ crawlers do not receive a reduced or lossy copy.
 
 The visible page is a product presentation, not an expanded repository dump.
 It uses one introduction, the approved full connection diagram, and one short
-screenshot tour. The alpha stage and physical-acceptance boundary appear near
+screenshot tour. The experimental stage and physical-acceptance boundary appear near
 the title. Detailed guides are closed by default, and measurements, maintainer
 records, handoffs, and proposals sit inside a separately labelled technical
 archive. Search covers current guides by default. A visible checkbox includes

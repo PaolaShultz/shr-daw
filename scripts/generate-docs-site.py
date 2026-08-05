@@ -37,7 +37,7 @@ REPOSITORY_URL = "https://github.com/PaolaShultz/shr-daw"
 SHR_DRUMS_URL = "https://github.com/PaolaShultz/shr-drums"
 SITE_URL = "https://paolashultz.github.io/shr-daw/"
 ISSUES_URL = f"{REPOSITORY_URL}/issues"
-RELEASE_STAGE = "Alpha"
+PROJECT_STAGE = "Experimental"
 HEADER_IMAGE = "docs/images/shr-daw-header.jpg"
 CONNECTION_IMAGE = "docs/images/shr-daw-physical-connections.jpg"
 SOCIAL_IMAGE = "docs/images/shr-daw-social-card.png"
@@ -1059,8 +1059,8 @@ main { min-width: 0; padding-bottom: 5rem; }
 .hero .intro { max-width: 48rem; color: #d7dfda; font-size: clamp(1.03rem, 2vw, 1.25rem); }
 .status-line { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; color: var(--muted); font-size: .85rem; }
 .version { padding: .25rem .55rem; border: 1px solid var(--green); border-radius: 999px; color: var(--green-bright); }
-.version.alpha { border-color: var(--yellow); color: var(--yellow); }
-.alpha-note { max-width: 48rem; margin: .8rem 0 0; color: var(--muted); font-size: .9rem; }
+.version.experimental { border-color: var(--yellow); color: var(--yellow); }
+.experimental-note { max-width: 48rem; margin: .8rem 0 0; color: var(--muted); font-size: .9rem; }
 .hero-image {
   display: block; width: 100%; height: auto; margin-top: 1.6rem;
   border: 1px solid var(--line); border-radius: .45rem; background: #000;
@@ -1528,11 +1528,11 @@ def build_page(
         "<h1>SHR-DAW</h1>"
         f'<p class="intro">{html.escape(intro)}</p>'
         '<p class="status-line"><span class="led" aria-hidden="true"></span>'
-        f'<span class="version alpha">{RELEASE_STAGE} · version {html.escape(version)}</span>'
+        f'<span class="version experimental">{PROJECT_STAGE} · compatibility {html.escape(version)}</span>'
         "<span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p>"
-        '<p class="alpha-note">Hands-on physical acceptance is still in progress. '
+        '<p class="experimental-note">This is experimental software; hands-on physical acceptance is still in progress. '
         f'<a class="external" href="{ISSUES_URL}" target="_blank" '
-        'rel="noopener noreferrer external">Try the alpha and report what you find</a>.</p>'
+        'rel="noopener noreferrer external">Try it and report what you find</a>.</p>'
         '<div class="button-row"><a class="button" href="#start-here">Start here</a>'
         f'<a class="button secondary external" href="{REPOSITORY_URL}" '
         'target="_blank" rel="noopener noreferrer external">View source</a></div>'

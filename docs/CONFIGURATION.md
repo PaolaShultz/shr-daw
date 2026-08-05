@@ -52,7 +52,7 @@ migrate to Model D in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by `LOAD` as
 `moj-sint --client-name NAME --preset FILE`.
 Playback user saves add the private XDG Moj Sint preset root to discovery and
-store Model D and Six-Op PM beneath separate model directories. Repository-local
+store Model D, Six-Op PM, and Strange Oscillator beneath separate model directories. Repository-local
 launches keep that root below ignored `user/`. `SHSYNTH_MOJ_PRESET_DIR` may
 select another explicitly private root; public checkout, factory, system, and
 symlink paths remain read-only. The destination must be an absolute normalized

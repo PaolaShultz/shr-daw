@@ -525,6 +525,7 @@ pub fn mapped_control_cc(engine: &str, control: &str) -> Option<u8> {
         crate::preset::BackendKind::MojSint => crate::control::MOJ_MODEL_D_CONTROLS
             .iter()
             .chain(crate::control::MOJ_SIX_OP_PM_CONTROLS.iter())
+            .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
             .find(|candidate| candidate.macro_id == control)
             .map(|candidate| candidate.cc),
         _ => None,

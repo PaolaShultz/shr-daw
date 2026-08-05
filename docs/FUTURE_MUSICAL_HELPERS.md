@@ -3,7 +3,7 @@
 Created: 2026-08-02
 
 Status: FT2 Edit SIZE implemented; remaining helpers are owner-directed
-proposals, not release promises
+proposals, not scheduled promises
 
 This plan covers small, inspectable helpers that turn a short musical idea into
 editable FT2 material. The helpers should remove repetitive work, not decide

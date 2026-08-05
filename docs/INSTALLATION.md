@@ -16,7 +16,8 @@ doctor, and silent-engine path was accepted separately on the Raspberry Pi 5.
 Those are different evidence: neither proves that every hardware and audio path
 has been physically accepted on every supported image. Record the exact image
 and version used rather than treating “Lite” as a reproducible version
-identifier. The [release roadmap](RELEASE_ROADMAP.md) owns the gate; the
+identifier. The [experimental roadmap](EXPERIMENTAL_ROADMAP.md) owns the work
+order; the
 [Pi 5 plan](PI5_HEADROOM_PLAN.md) owns the state comparison.
 
 For the planned native-NVMe Pi 5, first follow
@@ -38,7 +39,7 @@ recording.
 synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
 optional melodic engines at runtime. The supported installer installs all five
 from distribution packages or the exact public revisions in
-`install/compatibility.json`. It installs Moj Sint's 13 allowlisted factory
+`install/compatibility.json`. It installs Moj Sint's 14 allowlisted factory
 presets and SHR Sampler's allowlisted project-authored factory package; it
 never copies private presets, samples, packages, or user data from a checkout.
 SHR Drums remains an exact pinned in-process Rust dependency, so there is no
@@ -49,21 +50,22 @@ layout is 40×13 cells; installation does not change its font.
 
 ## Install
 
-For a new public installation, clone the immutable release and run its
-installer in one command:
+For a new public installation, clone the current experimental source and run
+its installer in one command:
 
 ```sh
-git clone --branch v0.4.8 --depth 1 https://github.com/PaolaShultz/shr-daw.git && cd shr-daw && ./scripts/install.sh
+git clone --depth 1 https://github.com/PaolaShultz/shr-daw.git && cd shr-daw && ./scripts/install.sh
 ```
 
-From an already checked-out matching release, run `./scripts/install.sh`.
+From an existing checkout, run `./scripts/install.sh`. A historical tag may be
+checked out for reproducibility, but tags are experimental snapshots rather
+than production releases.
 
-The 0.4.8 compatibility set is:
+The current source compatibility set is:
 
 | Component | Required version | Installation form |
 | --- | --- | --- |
-| SHR-DAW | 0.4.8 | tagged source checkout and `shr` binary |
-| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 13 cleared presets |
+| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 14 cleared presets |
 | SHR Sampler | 0.1.2 (accepted runtime `>=0.1.2,<0.2.0`) | exact public commit, `shr-sampler`, one cleared package |
 | SHR Drums | 0.2.0 (accepted library `>=0.2.0,<0.3.0`) | exact public Cargo dependency compiled into `shr` |
 
@@ -89,7 +91,7 @@ The installer:
   fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
   declared versions, and creates locked release builds;
 - builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;
-- stages commands, templates, 21 allowlisted synthv1 presets, 13 allowlisted
+- stages commands, templates, 21 allowlisted synthv1 presets, 14 allowlisted
   Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
   Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
   Projects plus MIDI files, profiles, drum data, and documentation;
@@ -191,8 +193,8 @@ carries the visible `DEV` badge.
 
 ## Upgrade and uninstall boundaries
 
-Rerunning the same release is idempotent. A newer tagged release first verifies
-that every previously owned file still matches its recorded hash, then replaces
+Rerunning the same source snapshot is idempotent. A newer checkout or tag first
+verifies that every previously owned file still matches its recorded hash, then replaces
 only changed managed files and removes only obsolete unchanged managed files.
 An identical pre-existing file can be adopted; a differing unowned file or a
 locally modified managed file stops the update before mutation. An interrupted

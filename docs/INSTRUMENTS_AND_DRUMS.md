@@ -18,7 +18,7 @@ audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 | synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
 | Yoshimi | `.xiz` sounds and banks | Melodic synth | Read-only catalog and playback |
 | FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` Model D and Six-Op PM sounds | Melodic synth | Twelve model-specific mapped controls; private Overwrite or Save New |
+| Moj Sint | `.mojsint` Model D, Six-Op PM, and Strange Oscillator sounds | Melodic synth | Twelve model-specific mapped controls; private Overwrite or Save New |
 | SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments; read-only in SHR |
 | SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
@@ -61,16 +61,19 @@ Project keeps its stored routes.
 
 ## Moj Sint sounds
 
-Moj Sint is SHR-DAW's editable in-house synthesis family. Its 13 cleared
+Moj Sint is SHR-DAW's editable in-house synthesis family. Its 14 cleared
 factory starts are grouped by synthesis model:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
   Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
   Feedback;
 - Six-Op PM: Bell Metal, Fractured Metal, Electric Piano Mallet, Glass Wood,
-  Brass Bass, and Mechanical Stab.
+  Brass Bass, and Mechanical Stab;
+- Strange Oscillator: one unified sound whose TYPE control selects triangle,
+  saw, pulse, modulated resonator, deformed loop, stochastic breakpoints,
+  scanned string, or register machine.
 
-Presets shows compact `M-D` and `6-OP` identities. In FT2 **ROUTE**, choosing
+Presets shows compact `M-D`, `6-OP`, and `S-OSC` identities. In FT2 **ROUTE**, choosing
 Moj Sint adds an explicit `ENGINE → MODEL → PATCH` hierarchy. Changing the
 model selects that model's first available patch, and patch browsing never
 crosses the selected model boundary. Apply keeps the complete live-auditioned
@@ -79,11 +82,11 @@ route; Cancel restores its opening snapshot.
 Playback and FT2 **PARAM** use the same 12 physical control positions, with
 labels chosen by the loaded model:
 
-| Positions | Model D | Six-Op PM |
+| Positions | Model D | Six-Op PM | Strange Oscillator |
 | --- | --- | --- |
-| 1-4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay |
-| 5-8 | Couple, Motion, Depth, Space | Balance, Key Scale, Velocity, Motion |
-| 9-12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
+| 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay | Type, Form, Warp, Couple |
+| 5–8 | Couple, Motion, Depth, Space | Balance, Key Scale, Velocity, Motion | Motion, Chaos, Color, Space |
+| 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
 
 The stable CC 20-31 identity belongs to Moj Sint, not to synthv1 parameter
 indices. After Load, Reset, Project/Idea restore, automation ownership changes,
@@ -92,8 +95,8 @@ effective value before they take control. This pickup rule prevents jumps.
 
 **RESET** restores the loaded twelve values without restarting the synth.
 **SAVE** offers Overwrite, Save New, and Cancel. Factory/system sounds are
-read-only, so Overwrite redirects to the next private `User NNN` sound. Model D
-and Six-Op PM keep separate private namespaces. A successful save becomes the
+read-only, so Overwrite redirects to the next private `User NNN` sound. Model D,
+Six-Op PM, and Strange Oscillator keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable

@@ -4,12 +4,12 @@ This is the concrete checklist for the first full hardware test. The planned
 unit is a Midas M AIR MR18; the recorder itself remains generic JACK capture.
 The complete target is simultaneous independent 18-channel playback and
 18-channel recording through the same 18×18 interface. Do not claim MR18
-success or mark a release checked until every applicable row below passes on
+success or mark this experimental track checked until every applicable row below passes on
 the attached unit.
 
-This physical pass is the release 0.6 gate. Complete the 0.4 platform/workflow
-acceptance and the owner-defined 0.5 FT2 work first; see the
-[release roadmap](RELEASE_ROADMAP.md).
+This physical pass is the later multichannel evidence boundary. Complete the
+platform/workflow foundation and the owner-defined FT2 work first; see the
+[experimental roadmap](EXPERIMENTAL_ROADMAP.md).
 
 ## Current status and next borrowing gate
 

@@ -81,7 +81,7 @@ configuration, or the architecture contracts.
   [sample provenance](https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md)
   live with that repository.
 - [Moj Sint](https://github.com/PaolaShultz/moj-sint): public managed synth host,
-  strict preset schema, and 13 allowlisted factory starts.
+  strict preset schema, and 14 allowlisted factory starts.
 - [SHR Sampler](https://github.com/PaolaShultz/shr-sampler): public strict
   sample-package engine and project-authored cleared factory instrument.
 
@@ -111,8 +111,9 @@ configuration, or the architecture contracts.
 - [Maintainer helper scripts](MAINTAINER_HELPERS.md) — parameters, side
   effects, safety boundaries, and design decisions for every repository helper
   and the related Make targets.
-- [Development story and Build Week record](BUILD_WEEK.md) — chronology,
-  model provenance, division of work, target-native workflow, and evaluation.
+- [Early development sprint record](BUILD_WEEK.md) — chronology, model
+  provenance, division of work, target-native workflow, and evaluation; no
+  hackathon application or submission was made.
 - [Učenje kroz istraživanje](UCENJE_KROZ_ISTRAZIVANJE.md): the creator's
   Croatian essay about learning through musical exploration.
 - [Feature and quirk matrix](BUILD_WEEK_FEATURE_MATRIX.md) — subsystem-level
@@ -128,8 +129,12 @@ setup guide.
 
 ## Planned work
 
-- [Release roadmap](RELEASE_ROADMAP.md) — ordered 0.4, 0.5, and 0.6 acceptance
-  gates and the rule that keeps unrelated ideas out of the current milestone.
+- [Experimental product direction](EXPERIMENTAL_DIRECTION.md) — beginner-first
+  music making, FT2 ownership, open Moj Sint models, low-code micro-machines,
+  and smart help without feature promises.
+- [Experimental development roadmap](EXPERIMENTAL_ROADMAP.md) — current work
+  order, evidence boundaries, and the rule that keeps unrelated ideas out of
+  the current track without treating `0.x` as production releases.
 - [Future improvements](FUTURE_IMPROVEMENTS.md) — unscheduled smart musical
   assistance, deferred routing and product ideas, and the deliberately
   unreasonable challenges.
@@ -139,7 +144,7 @@ setup guide.
 - [Raspberry Pi 5 headroom and footprint plan](PI5_HEADROOM_PLAN.md) —
   completed platform baseline followed by the later dependency/footprint,
   real-time-core, and PRESTO experiments.
-- [Post-competition mixer and aux plan](POST_COMPETITION_MIXER_AUX_PLAN.md) —
-  multi-strip mixer and shared-aux migration.
-- [Post-competition rhythm plan](POST_COMPETITION_RHYTHM_PLAN.md) — arbitrary
-  Pattern length, microtiming, swing, groove tools, and optional formal meter.
+- [Legacy mixer and aux proposal](POST_COMPETITION_MIXER_AUX_PLAN.md) —
+  multi-strip mixer and shared-aux migration, retained from the early sprint.
+- [Legacy rhythm proposal](POST_COMPETITION_RHYTHM_PLAN.md) — arbitrary Pattern
+  length, microtiming, swing, groove tools, and optional formal meter.

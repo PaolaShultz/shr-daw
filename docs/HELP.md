@@ -86,7 +86,9 @@ Moj Sint uses the same pickup behavior with its own CC 20–31 macro identity:
 EVOLVE, SHAPE, COLOR, EDGE, COUPLE, MOTION, DEPTH, SPACE, then ADSR. RESET
 restores the loaded `.mojsint` values in place without restarting the host.
 Those controls never use synthv1 XML names or parameter indices.
-Its 13 numbered factory starts contain seven Model D and six Six-Op PM sounds.
+Its 14 numbered factory starts contain seven Model D, six Six-Op PM, and one
+Strange Oscillator sound. Strange Oscillator maps TYPE, FORM, WARP, COUPLE,
+MOTION, CHAOS, COLOR, and SPACE before the shared ADSR controls.
 The same twelve physical positions show model-specific labels, keep pickup,
 and remain inside their selected model in FT2 ROUTE.
 

@@ -10,11 +10,13 @@ Status: historical proposal archive
 > remains a proposal, not current behavior. See
 > [Final performance bus](FINAL_PERFORMANCE_BUS.md).
 
-This plan was written after the competition appliance release. Do not treat its
-historical format/topology descriptions as the current implementation.
+This plan was written during the early competition-oriented sprint. No
+application or submission was made, and the snapshot was not a production
+release. Do not treat its historical format/topology descriptions as the
+current implementation.
 
 Two narrow correctness issues found during the routing audit are listed under
-the release boundary below. They can be repaired independently of this plan.
+the historical boundary below. They can be repaired independently of this plan.
 
 ## Historical baseline when this plan was written
 

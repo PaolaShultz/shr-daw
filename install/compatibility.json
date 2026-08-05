@@ -14,7 +14,7 @@
       "name": "moj-sint",
       "version": "0.2.3",
       "repository": "https://github.com/PaolaShultz/moj-sint.git",
-      "revision": "594309a2ee9fb9ea2a055c7f7b15079be8b653cc",
+      "revision": "b2dcb5cbe2a2eec3a542e5643f79fe6ab08b8feb",
       "runtime_minimum": null,
       "runtime_maximum_exclusive": null
     },
