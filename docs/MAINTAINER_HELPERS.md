@@ -92,12 +92,11 @@ Environment:
 - `SHSYNTH_USER_DIR` selects the private root. It defaults to the repository's
   ignored `user/` directory.
 - `SHSYNTH_BIN` may explicitly select an already-built `shr` executable. It
-  defaults to `target/debug/shr` in this checkout.
+  defaults to `target/release/shr` in this checkout.
 
-The development artifact retains debug assertions and symbols, while the
-repository Cargo development profile optimizes its production DSP callbacks.
-This is required because the local launcher uses that artifact with the same
-JACK callback deadlines as a release build.
+An explicitly selected development artifact retains debug assertions and
+symbols, while the repository Cargo development profile still optimizes its
+production DSP callbacks.
 
 The wrapper exports:
 
@@ -147,10 +146,11 @@ SHSYNTH_USER_DIR=/absolute/private/path ./scripts/local.sh
 
 All arguments are passed unchanged to `shr`. The environment and private-preset
 copy rules match `setup-local.sh`. An explicit executable in `SHSYNTH_BIN`
-wins. Otherwise, the launcher always uses `target/debug/shr`; it never chooses
-an installed or release binary by timestamp. It resolves its own symlink before
+wins. Otherwise, the launcher always uses `target/release/shr`; it never
+chooses an installed binary or another artifact by timestamp. Developers can
+select `target/debug/shr` explicitly. It resolves its own symlink before
 finding the repository, so a user-local `shr` symlink or shell alias may safely
-target this launcher. The launcher refuses to run until both the debug binary
+target this launcher. The launcher refuses to run until both the release binary
 and local `shsynth.conf` exist.
 
 ### Why it uses `exec`

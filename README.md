@@ -103,16 +103,17 @@ instruments, WAV loops, effects, and audio recording require it. SHR-DAW does
 not start or restart JACK. Continue with [First run](docs/FIRST_RUN.md) or the
 full [installation guide](docs/INSTALLATION.md).
 
-For a repository-local development checkout:
+For a repository-local checkout:
 
 ```sh
-cargo build --locked
+cargo build --locked --release
 ./scripts/setup-local.sh
 ./scripts/local.sh
 ```
 
 The local helpers keep configuration and user data below ignored `user/` and
-launch this checkout's visibly marked `DEV` binary.
+launch this checkout's visibly marked `REL` binary. Developers can explicitly
+set `SHSYNTH_BIN=target/debug/shr` when they need a DEV launch.
 
 ## Documentation
 

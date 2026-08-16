@@ -72,7 +72,7 @@ Adjust your terminal settings if fewer than 40 columns or 13 rows fit.
 For a repository-local setup:
 
 ```sh
-cargo build --locked
+cargo build --locked --release
 ./scripts/setup-local.sh
 ./scripts/local.sh
 ```
@@ -81,8 +81,9 @@ The local helpers keep configuration, logs, Projects, Ideas, recordings,
 downloads, loops, and private presets below ignored `user/`. They preserve
 existing private files and do not install packages or start JACK.
 `setup-local.sh` configures the checkout. `local.sh` launches its
-`target/debug/shr`, identified as `DEV` in the TUI. Set `SHSYNTH_USER_DIR` to
-use another private root.
+`target/release/shr`, identified as `REL` in the TUI. Set `SHSYNTH_USER_DIR` to
+use another private root, or explicitly set `SHSYNTH_BIN=target/debug/shr` for
+a development launch.
 
 ## Unusual hardware or recovery
 

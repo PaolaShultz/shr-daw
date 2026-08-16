@@ -168,8 +168,9 @@ For documentation or image-only work, use only relevant link/reference,
 format/dimension, helper syntax, and `git diff --check` checks. Install a tool
 required for the requested validation rather than silently weakening it.
 
-Plain `shr` must launch this checkout's `target/debug/shr`; debug and release
-builds must remain visibly identified as `DEV` and `REL` in the TUI.
+Plain `shr` must launch this checkout's `target/release/shr`; debug and release
+builds must remain visibly identified as `DEV` and `REL` in the TUI. Use an
+explicit `SHSYNTH_BIN=.../target/debug/shr` override for development launches.
 
 ## Safety and ownership invariants
 

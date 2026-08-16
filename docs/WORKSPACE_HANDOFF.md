@@ -14,10 +14,11 @@ preset schema 6, shows the model as `S-OSC`, routes it through the existing
 MOTION, CHAOS, COLOR, and SPACE, and preserves ADSR at CC 28–31. Model-specific
 private saves, tracker parameters, automation names, and model-qualified route
 identity all include the third model. Schema 1–5 Moj presets remain readable.
-The local Moj command already points to the sibling optimized binary. Use the
-private `shr-release` launcher for the optimized SHR binary; plain `shr`
-deliberately remains DEV. The owner explicitly authorized committing and
-publishing both repositories for continued experimentation before the open
+The local Moj command already points to the sibling optimized binary. Plain
+`shr` and tty1 autoload use the optimized SHR release binary; an explicit
+`SHSYNTH_BIN=target/debug/shr` override remains available for development. The
+owner explicitly authorized committing and publishing both repositories for
+continued experimentation before the open
 musical and native-load verdicts. Publication is not production acceptance.
 
 ## Current priority and shared checkout
@@ -665,10 +666,11 @@ canonical collaboration rule in `AGENTS.md`.
 Plain `shr` resolves to this checkout's `scripts/local.sh` through
 `/usr/local/bin/shr`; `$HOME/.bash_aliases` names the same launcher. The stale
 `$HOME/.local/bin/shr` link still points to the removed former checkout and
-must not be used. The launcher uses `target/debug/shr` unless `SHSYNTH_BIN` is
-explicitly set; the debug TUI shows `DEV`. Do not restore the obsolete
-release-binary alias. Repository-local runtime metadata selects the companion
-Moj Sint checkout's fresh release binary and public preset catalog; Playback
+must not be used. The launcher uses `target/release/shr` unless `SHSYNTH_BIN`
+is explicitly set; the release TUI shows `REL`. The separate private
+`shr-release` launcher is now only a compatibility alias. Repository-local
+runtime metadata selects the companion Moj Sint checkout's fresh release
+binary and public preset catalog; Playback
 user sounds remain in the separate ignored private data root and were not
 inspected during this configuration check.
 

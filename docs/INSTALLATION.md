@@ -187,9 +187,10 @@ state directory afterward. For a persistent private development checkout,
 Projects, Ideas, recordings, loops, and private presets below ignored `user/`.
 They read the public kits directly from tracked `kits/`, and copy missing
 public presets, starter loops, and demo Projects without replacing private
-files. Build the debug binary first; neither helper installs packages or builds
-the program. `local.sh` launches this checkout's `target/debug/shr`, which
-carries the visible `DEV` badge.
+files. Build the release binary first; neither helper installs packages or
+builds the program. `local.sh` launches this checkout's `target/release/shr`,
+which carries the visible `REL` badge. Developers can explicitly set
+`SHSYNTH_BIN=target/debug/shr` for a DEV launch.
 
 ## Upgrade and uninstall boundaries
 

@@ -48,17 +48,17 @@ while IFS= read -r demo; do
   fi
 done < <("$ROOT/scripts/generate_demo_songs.py" --files)
 
-DEBUG_BIN="$ROOT/target/debug/shr"
+RELEASE_BIN="$ROOT/target/release/shr"
 
 if [[ -n "${SHSYNTH_BIN:-}" ]]; then
   [[ -x "$SHSYNTH_BIN" ]] || {
     printf 'SHSYNTH_BIN is not executable: %s\n' "$SHSYNTH_BIN" >&2
     exit 1
   }
-elif [[ -x "$DEBUG_BIN" ]]; then
-  SHSYNTH_BIN="$DEBUG_BIN"
+elif [[ -x "$RELEASE_BIN" ]]; then
+  SHSYNTH_BIN="$RELEASE_BIN"
 else
-  printf 'Build the SHR-DAW debug binary first.\n' >&2
+  printf 'Build the SHR-DAW release binary first.\n' >&2
   exit 1
 fi
 

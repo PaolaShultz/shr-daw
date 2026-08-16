@@ -9,10 +9,10 @@ export XDG_DATA_HOME="$USER_DIR/data"
 export SHSYNTH_PRESET_DIR="$USER_DIR/presets/synthv1"
 export SHSYNTH_LOOP_INBOX="$USER_DIR/data/shsynth/loop-inbox"
 export SHSYNTH_KIT_DIR="${SHSYNTH_KIT_DIR:-$ROOT/kits}"
-export SHSYNTH_BIN="${SHSYNTH_BIN:-$ROOT/target/debug/shr}"
+export SHSYNTH_BIN="${SHSYNTH_BIN:-$ROOT/target/release/shr}"
 
 if [[ ! -x "$SHSYNTH_BIN" ]]; then
-  printf 'Build this checkout debug binary first.\n' >&2
+  printf 'Build this checkout release binary first.\n' >&2
   exit 1
 fi
 
