@@ -674,6 +674,12 @@ binary and public preset catalog; Playback
 user sounds remain in the separate ignored private data root and were not
 inspected during this configuration check.
 
+The tty1 `.bashrc` autoload waits for systemd to leave its initial `starting`
+state, allows one final second for boot-console output, clears tty1, and only
+then invokes plain `shr`. The wait is capped at 30 seconds so a degraded or
+stalled boot cannot block autoload indefinitely; SSH and manual launches do
+not wait.
+
 ## Dated DSP/JACK closure record (2026-07-22)
 
 This section records the completed DSP closure pass. It added validated
