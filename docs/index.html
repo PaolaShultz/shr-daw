@@ -335,7 +335,7 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <main id="main-content">
 <section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">A compact Raspberry Pi music workstation written in Rust.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version experimental">Experimental · compatibility 0.4.8</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><p class="experimental-note">This is experimental software; hands-on physical acceptance is still in progress. <a class="external" href="https://github.com/PaolaShultz/shr-daw/issues" target="_blank" rel="noopener noreferrer external">Try it and report what you find</a>.</p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW Raspberry Pi music workstation" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
 <section class="overview-block" id="connections" aria-labelledby="connections-title"><p class="eyebrow">How it connects</p><h2 id="connections-title">One small centre for the whole setup</h2><figure class="connection-figure"><img class="connection-image" alt="Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones" data-source-sha256="844ecdb765b7703787b885792b1491ad4a4740bf41d5edcc7da46258e62bdda2" decoding="async" height="675" id="connection-diagram" loading="lazy" src="images/shr-daw-physical-connections.jpg" width="1200"><figcaption>An example setup, not a shopping list. Every device is optional.</figcaption></figure><p><a href="#doc-connections">Open the physical connection guide</a> for exact paths and smaller setups.</p></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make, arrange, perform, and record on a small screen</h2><div class="feature-grid"><div class="feature-card">Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 14 editable Moj Sint starts, the cleared SHR Sampler instrument, and four bundled SHR Drums kits.</div><div class="feature-card">Play from a controller or keyboard with pickup-protected sound controls, scale filtering, held-note/chord feedback, private sound saves, free-timed MIDI Ideas, and external-sync controller clock.</div><div class="feature-card">Build FT2-style Patterns and Arrangements with software instruments, external MIDI, drums, Pattern-owned loops, note recording/editing, sparse automation, a metronome/count-in, and format-1 MIDI export.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Shape and mix the complete performance through source, aux, drum, and master effects, a fixed mastering strip, final-bus meters, and safe source controls.</div><div class="feature-card">Record the final 24-bit stereo performance or synchronized raw mono stems with manifests and recovery, including the native 18-channel input overview.</div><div class="feature-card">Configure exact MIDI/audio routes and controller profiles with MIDI Learn, startup diagnosis, safe rollback, and owned-process cleanup.</div><div class="feature-card">Navigate every compact workflow with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make, arrange, perform, and record on a small screen</h2><div class="feature-grid"><div class="feature-card">Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 16 editable Moj Sint starts, the cleared SHR Sampler instrument, and four bundled SHR Drums kits.</div><div class="feature-card">Play from a controller or keyboard with pickup-protected sound controls, scale filtering, held-note/chord feedback, private sound saves, free-timed MIDI Ideas, and external-sync controller clock.</div><div class="feature-card">Build FT2-style Patterns and Arrangements with software instruments, external MIDI, drums, Pattern-owned loops, note recording/editing, sparse automation, a metronome/count-in, and format-1 MIDI export.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Shape and mix the complete performance through source, aux, drum, and master effects, a fixed mastering strip, final-bus meters, and safe source controls.</div><div class="feature-card">Record the final 24-bit stereo performance or synchronized raw mono stems with manifests and recovery, including the native 18-channel input overview.</div><div class="feature-card">Configure exact MIDI/audio routes and controller profiles with MIDI Learn, startup diagnosis, safe rollback, and owned-process cleanup.</div><div class="feature-card">Navigate every compact workflow with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
 <section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="2880f9a6a28f8eeb835f8420d2a9865b586021eddb4d695038eaa8f19012f792" decoding="async" height="624" id="shot-2880f9a6a28f" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Quantized Live Patterns launcher for performance" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure></div></section>
 <section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover first launch, everyday music making, the complete instrument system, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-instruments_and_drums"><strong>SHR-DAW instruments and drums</strong><span>One installed sound system with melodic instruments, Moj models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
 <section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After the setup wizard finishes:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental software, not a production release. Not every feature has completed hands-on physical testing. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
@@ -396,7 +396,7 @@ fullscreen mode.</p>
 Adjust your terminal settings if fewer than 40 columns or 13 rows fit.</p>
 <h4 id="doc-first_run--run-a-development-checkout" tabindex="-1">Run a development checkout<a class="heading-anchor" href="#doc-first_run--run-a-development-checkout" aria-label="Link to Run a development checkout">#</a></h4>
 <p>For a repository-local setup:</p>
-<pre><code class="language-sh">cargo build --locked
+<pre><code class="language-sh">cargo build --locked --release
 ./scripts/setup-local.sh
 ./scripts/local.sh
 </code></pre>
@@ -404,8 +404,9 @@ Adjust your terminal settings if fewer than 40 columns or 13 rows fit.</p>
 downloads, loops, and private presets below ignored <code>$SHSYNTH_USER_DIR/</code>. They preserve
 existing private files and do not install packages or start JACK.
 <code>setup-local.sh</code> configures the checkout. <code>local.sh</code> launches its
-<code>target/debug/shr</code>, identified as <code>DEV</code> in the TUI. Set <code>SHSYNTH_USER_DIR</code> to
-use another private root.</p>
+<code>target/release/shr</code>, identified as <code>REL</code> in the TUI. Set <code>SHSYNTH_USER_DIR</code> to
+use another private root, or explicitly set <code>SHSYNTH_BIN=target/debug/shr</code> for
+a development launch.</p>
 <h4 id="doc-first_run--unusual-hardware-or-recovery" tabindex="-1">Unusual hardware or recovery<a class="heading-anchor" href="#doc-first_run--unusual-hardware-or-recovery" aria-label="Link to Unusual hardware or recovery">#</a></h4>
 <p>The installer and setup wizard are the normal path. For an uncommon controller,
 complex route, or recovery problem, follow the
@@ -469,7 +470,8 @@ in Presets:</p>
 <li>synthv1 presets;</li>
 <li>Yoshimi <code>.xiz</code> banks;</li>
 <li>FluidSynth <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
-<li>Moj Sint <code>.mojsint</code> Model D, Six-Op PM, and Strange Oscillator presets;</li>
+<li>Moj Sint <code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine,
+and Bass Matrix presets;</li>
 <li>SHR Sampler <code>.shrinst</code> packages.</li>
 </ul>
 <p>Browsing is silent. <code>LOAD</code> is the only managed start or replacement action.
@@ -492,8 +494,8 @@ remain on the Ideas screen. <code>SOUNDS</code> returns to Presets and its visib
 arpeggiator. <code>PLAY</code> sends Start even when no MIDI take exists, <code>RECORD</code> starts
 the same clock before capture, <code>STOP</code> ends it without unloading the instrument,
 and <code>TAP</code> changes tempo without silently starting transport.</p>
-<p>Moj Sint keeps its own preset format and controls. Its 14 authored starts form
-three editable model families. SHR Sampler packages are read-only and use their
+<p>Moj Sint keeps its own preset format and controls. Its 16 authored starts form
+five editable model families. SHR Sampler packages are read-only and use their
 own strict format; the installed project-authored factory package is a neutral
 first-load sound. SHR Drums is separate from the managed melodic engine and
 runs in process. See <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>
@@ -656,9 +658,9 @@ audio ownership remain in <a href="#doc-how_it_works">How SHR-DAW works</a>.</p>
 </tr>
 <tr>
 <td>Moj Sint</td>
-<td><code>.mojsint</code> Model D, Six-Op PM, and Strange Oscillator sounds</td>
+<td><code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine, and Bass Matrix sounds</td>
 <td>Melodic synth</td>
-<td>Twelve model-specific mapped controls; private Overwrite or Save New</td>
+<td>Seven timbre controls, shared volume, ADSR; private Overwrite or Save New</td>
 </tr>
 <tr>
 <td>SHR Sampler</td>
@@ -707,7 +709,7 @@ stop it. A new, empty, unsaved FT2 Project can adopt that exact Player sound on
 its first software page without restarting the host. A saved or already edited
 Project keeps its stored routes.</p>
 <h4 id="doc-instruments_and_drums--moj-sint-sounds" tabindex="-1">Moj Sint sounds<a class="heading-anchor" href="#doc-instruments_and_drums--moj-sint-sounds" aria-label="Link to Moj Sint sounds">#</a></h4>
-<p>Moj Sint is SHR-DAW's editable in-house synthesis family. Its 14 cleared
+<p>Moj Sint is SHR-DAW's editable in-house synthesis family. Its 16 cleared
 factory starts are grouped by synthesis model:</p>
 <ul>
 <li>Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
@@ -717,28 +719,78 @@ Feedback;</li>
 Brass Bass, and Mechanical Stab;</li>
 <li>Strange Oscillator: one unified sound whose TYPE control selects triangle,
 saw, pulse, modulated resonator, deformed loop, stochastic breakpoints,
-scanned string, or register machine.</li>
+scanned string, or register machine;</li>
+<li>Swarm Machine: the typed modular graph's warm, wide nine-oscillator pad;</li>
+<li>Bass Matrix: one transformable start with a phase-locked sub/body and a
+separate punch, growl, metal, drive, filter, and unstable character path.</li>
 </ul>
-<p>Presets shows compact <code>M-D</code>, <code>6-OP</code>, and <code>S-OSC</code> identities. In FT2 <strong>ROUTE</strong>, choosing
+<p>Presets shows compact <code>M-D</code>, <code>6-OP</code>, <code>S-OSC</code>, <code>SWARM</code>, and <code>B-MAT</code> identities. In FT2 <strong>ROUTE</strong>, choosing
 Moj Sint adds an explicit <code>ENGINE → MODEL → PATCH</code> hierarchy. Changing the
 model selects that model's first available patch, and patch browsing never
 crosses the selected model boundary. Apply keeps the complete live-auditioned
 route; Cancel restores its opening snapshot.</p>
 <p>Playback and FT2 <strong>PARAM</strong> use the same 12 physical control positions, with
 labels chosen by the loaded model:</p>
-<p>| Positions | Model D | Six-Op PM | Strange Oscillator |
-| --- | --- | --- |
-| 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay | Type, Form, Warp, Couple |
-| 5–8 | Couple, Motion, Depth, Space | Balance, Key Scale, Velocity, Motion | Motion, Chaos, Color, Space |
-| 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |</p>
-<p>The stable CC 20-31 identity belongs to Moj Sint, not to synthv1 parameter
-indices. After Load, Reset, Project/Idea restore, automation ownership changes,
+<table>
+<thead>
+<tr>
+<th>Positions</th>
+<th>Model D</th>
+<th>Six-Op PM</th>
+<th>Strange Oscillator</th>
+<th>Swarm Machine</th>
+<th>Bass Matrix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1–4</td>
+<td>Evolve, Shape, Color, Edge</td>
+<td>Index, Ratio, Feedback, Op Decay</td>
+<td>Type, Form, Warp, Couple</td>
+<td>Mass, Detune, Spread, Shape</td>
+<td>Body, Growl, Metal, Punch</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Volume</td>
+<td>Volume</td>
+<td>Volume</td>
+<td>Volume</td>
+<td>Volume</td>
+</tr>
+<tr>
+<td>6–8</td>
+<td>Motion, Depth, Space</td>
+<td>Key Scale, Velocity, Motion</td>
+<td>Chaos, Color, Space</td>
+<td>Motion, Color, Space</td>
+<td>Drive, Filter, Unstable</td>
+</tr>
+<tr>
+<td>9–12</td>
+<td>Attack, Decay, Sustain, Release</td>
+<td>Attack, Decay, Sustain, Release</td>
+<td>Attack, Decay, Sustain, Release</td>
+<td>Attack, Decay, Sustain, Release</td>
+<td>Attack, Decay, Sustain, Release</td>
+</tr>
+</tbody>
+</table>
+<p>Moj timbre and ADSR retain their established CCs. Physical position 5 uses
+MIDI CC7 as the shared instrument-volume contract. Position 5 is a continuous
+pot in the repository-local MiniLab profile. Its smoothed gain runs from
+silence to the preset's normal maximum and does not enter timbre DSP. synthv1
+uses its smoothed DCA volume at the same position; Yoshimi, FluidSynth, and SHR
+Sampler receive standard channel volume. Those read-only optional backends do
+not gain an SHR preset-save format: FT2 automation and Project MIDI state own
+their durable volume. After Load, Reset, Project/Idea restore, automation ownership changes,
 or another value-setting transition, physical knobs must reach or cross the
 effective value before they take control. This pickup rule prevents jumps.</p>
 <p><strong>RESET</strong> restores the loaded twelve values without restarting the synth.
 <strong>SAVE</strong> offers Overwrite, Save New, and Cancel. Factory/system sounds are
-read-only, so Overwrite redirects to the next private <code>User NNN</code> sound. Model D,
-Six-Op PM, and Strange Oscillator keep separate private namespaces. A successful save becomes the
+read-only, so Overwrite redirects to the next private <code>User NNN</code> sound. All
+five Moj models keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable
@@ -822,8 +874,8 @@ borrows a drum voice.</p>
 </tr>
 <tr>
 <td>Automation</td>
-<td>Twelve stable mapped controls</td>
-<td>Note performance; mapped synthesis controls unavailable</td>
+<td>Seven timbre controls, shared volume, and ADSR</td>
+<td>Standard channel volume plus note performance</td>
 <td>Notes use drum lanes; Project drum effects use stable effect automation</td>
 </tr>
 <tr>
@@ -1057,13 +1109,12 @@ or replaces the managed preset.</p>
 <p>Synthv1 controls use pickup. After loading, idea load, or RESET, mapped CCs are
 blocked until the physical control reaches the stored value. This prevents
 jumps during live audio.</p>
-<p>Moj Sint uses the same pickup behavior with its own CC 20–31 macro identity:
-EVOLVE, SHAPE, COLOR, EDGE, COUPLE, MOTION, DEPTH, SPACE, then ADSR. RESET
-restores the loaded <code>.mojsint</code> values in place without restarting the host.
-Those controls never use synthv1 XML names or parameter indices.
-Its 14 numbered factory starts contain seven Model D, six Six-Op PM, and one
-Strange Oscillator sound. Strange Oscillator maps TYPE, FORM, WARP, COUPLE,
-MOTION, CHAOS, COLOR, and SPACE before the shared ADSR controls.
+<p>Moj Sint uses the same pickup behavior with seven model-specific timbre
+controls, Volume at physical position 5, and ADSR. RESET restores the loaded
+<code>.mojsint</code> values in place without restarting the host. Those controls never
+use synthv1 XML names or parameter indices.
+Its 16 numbered factory starts contain seven Model D, six Six-Op PM, and one
+each for Strange Oscillator, Swarm Machine, and Bass Matrix.
 The same twelve physical positions show model-specific labels, keep pickup,
 and remain inside their selected model in FT2 ROUTE.</p>
 <p>SHR Sampler packages are read-only instruments. LOAD validates the host version
@@ -1534,7 +1585,8 @@ route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.</p>
 <p>For Moj Sint, <strong>ENGINE</strong> stays <code>Moj Sint</code>, <strong>MODEL</strong> cycles Model D, Six-Op PM,
-and Strange Oscillator, and <strong>PATCH</strong> stays inside the selected model.
+Strange Oscillator, Swarm Machine, and Bass Matrix, and <strong>PATCH</strong> stays inside
+the selected model.
 Changing the model selects its first available patch; changing patches never
 crosses the model boundary. These live field changes remain inside the same
 Route Apply/Cancel transaction.</p>
@@ -3818,10 +3870,10 @@ left/right half of the Presets heading remain equivalent. Catalog changes are
 silent: they only change the list and reset its selection according to the
 existing catalog contract. <code>LOAD</code> is the sole managed preset start or
 replacement action.</p>
-<p>The Moj Sint catalog has 14 ordered starts: seven Model D sounds from Full Bass
+<p>The Moj Sint catalog has 16 ordered starts: seven Model D sounds from Full Bass
 through Matched No Drift or Feedback, six Six-Op PM sounds from Bell Metal
-through Mechanical Stab, and Strange Oscillator. The list marks their model as
-<code>M-D</code>, <code>6-OP</code>, or <code>S-OSC</code>.
+through Mechanical Stab, Strange Oscillator, Swarm Warm Pad, and Bass Matrix.
+The list marks their model as <code>M-D</code>, <code>6-OP</code>, <code>S-OSC</code>, <code>SWARM</code>, or <code>B-MAT</code>.
 Selecting one only browses; <code>LOAD</code> starts it.</p>
 <p>SHR Sampler lists strict read-only <code>.shrinst</code> packages. <code>LOAD</code> validates the
 installed host version and complete package before replacing the current
@@ -3845,9 +3897,10 @@ result.
 On the keyboard, red white-key areas are held natural notes and red upper <code>└</code>
 marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
-Moj Sint uses EVOLVE through SPACE in the first two rows and ADSR in the third;
-synthv1 retains its own names and indices. The main encoder press resets only
-these mapped controls and re-arms pickup; it does
+Moj Sint uses seven model-specific timbre controls plus Volume in the first two
+rows and ADSR in the third; synthv1 retains its own names and indices. Read-only
+managed instruments show Volume at the same physical position. The main encoder
+press resets only these mapped controls and re-arms pickup; it does
 not restart the synth.</p>
 <h5 id="doc-menu-everyday_screens--play-capture-a-midi-take" tabindex="-1">PLAY — capture a MIDI take<a class="heading-anchor" href="#doc-menu-everyday_screens--play-capture-a-midi-take" aria-label="Link to PLAY — capture a MIDI take">#</a></h5>
 <p><img src="images/menu/playback-play.png" alt="Populated Playback screen with the PLAY controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="c00350015b1f62cacc191ff7268b849365ce40324e9e86321d09e84e3faa1e54" class="tui-shot" id="shot-c00350015b1f" /></p>
@@ -4762,7 +4815,7 @@ recording.
 synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
 optional melodic engines at runtime. The supported installer installs all five
 from distribution packages or the exact public revisions in
-<code>install/compatibility.json</code>. It installs Moj Sint's 14 allowlisted factory
+<code>install/compatibility.json</code>. It installs Moj Sint's 16 allowlisted factory
 presets and SHR Sampler's allowlisted project-authored factory package; it
 never copies private presets, samples, packages, or user data from a checkout.
 SHR Drums remains an exact pinned in-process Rust dependency, so there is no
@@ -4791,7 +4844,7 @@ than production releases.</p>
 <tr>
 <td>Moj Sint</td>
 <td>0.2.3</td>
-<td>exact public commit, <code>moj-sint</code>, 14 cleared presets</td>
+<td>exact public commit, <code>moj-sint</code>, 16 cleared presets</td>
 </tr>
 <tr>
 <td>SHR Sampler</td>
@@ -4826,7 +4879,7 @@ helper-owned limits file only when no distribution policy already suffices;</li>
 fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
 declared versions, and creates locked release builds;</li>
 <li>builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;</li>
-<li>stages commands, templates, 21 allowlisted synthv1 presets, 14 allowlisted
+<li>stages commands, templates, 21 allowlisted synthv1 presets, 16 allowlisted
 Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
 Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
 Projects plus MIDI files, profiles, drum data, and documentation;</li>
@@ -4906,9 +4959,10 @@ state directory afterward. For a persistent private development checkout,
 Projects, Ideas, recordings, loops, and private presets below ignored <code>$SHSYNTH_USER_DIR/</code>.
 They read the public kits directly from tracked <code>kits/</code>, and copy missing
 public presets, starter loops, and demo Projects without replacing private
-files. Build the debug binary first; neither helper installs packages or builds
-the program. <code>local.sh</code> launches this checkout's <code>target/debug/shr</code>, which
-carries the visible <code>DEV</code> badge.</p>
+files. Build the release binary first; neither helper installs packages or
+builds the program. <code>local.sh</code> launches this checkout's <code>target/release/shr</code>,
+which carries the visible <code>REL</code> badge. Developers can explicitly set
+<code>SHSYNTH_BIN=target/debug/shr</code> for a DEV launch.</p>
 <h4 id="doc-installation--upgrade-and-uninstall-boundaries" tabindex="-1">Upgrade and uninstall boundaries<a class="heading-anchor" href="#doc-installation--upgrade-and-uninstall-boundaries" aria-label="Link to Upgrade and uninstall boundaries">#</a></h4>
 <p>Rerunning the same source snapshot is idempotent. A newer checkout or tag first
 verifies that every previously owned file still matches its recorded hash, then replaces
@@ -5645,13 +5699,13 @@ accepts:</p>
 <p>Moj Sint defaults to command <code>moj-sint</code>, client/MIDI identity
 <code>shs-moj-sint</code>, and output short names <code>out_l</code> then <code>out_r</code>. Discovery indexes
 at most 512 regular, non-symlink <code>.mojsint</code> files of at most 1 MiB and strictly
-validates schema 1–5 before showing them. Schema 5 selects <code>model_d</code> or
-<code>six_op_pm</code> and requires that model's exact patch and macro fields; schemas 1–4
-migrate to Model D in memory.
+validates schemas 1–7 before showing them. Schema 7 selects one of the five Moj
+models, requires its exact patch/macro fields, and stores independent instrument
+volume; schemas 1–6 migrate in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by <code>LOAD</code> as
 <code>moj-sint --client-name NAME --preset FILE</code>.
 Playback user saves add the private XDG Moj Sint preset root to discovery and
-store Model D, Six-Op PM, and Strange Oscillator beneath separate model directories. Repository-local
+store all five models beneath separate model directories. Repository-local
 launches keep that root below ignored <code>$SHSYNTH_USER_DIR/</code>. <code>SHSYNTH_MOJ_PRESET_DIR</code> may
 select another explicitly private root; public checkout, factory, system, and
 symlink paths remain read-only. The destination must be an absolute normalized
@@ -6731,7 +6785,7 @@ through one SHR-DAW workflow. Their runtime hosts are:</p>
 <li><a href="https://synthv1.sourceforge.io/" class="external" target="_blank" rel="noopener noreferrer external">synthv1</a> for subtractive synth presets;</li>
 <li><a href="https://yoshimi.github.io/" class="external" target="_blank" rel="noopener noreferrer external">Yoshimi</a> for <code>.xiz</code> instruments and banks;</li>
 <li><a href="https://www.fluidsynth.org/" class="external" target="_blank" rel="noopener noreferrer external">FluidSynth</a> for <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
-<li>Moj Sint for strict <code>.mojsint</code> Model D, Six-Op PM, and Strange Oscillator presets; and</li>
+<li>Moj Sint for strict <code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine, and Bass Matrix presets; and</li>
 <li>SHR Sampler for strict preloaded <code>.shrinst</code> sample packages.</li>
 </ul>
 <p>Only one SHR-managed software engine process runs at a time. synthv1 and
@@ -6745,9 +6799,10 @@ stop only the engine it started. It neither layers managed backends nor kills
 an unrelated synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler process
 opened by the user.</p>
 <p>Moj Sint is started with <code>--client-name</code> and <code>--preset</code>, publishes exactly
-<code>out_l</code>/<code>out_r</code>, and accepts its twelve macros on CC 20–31. SHR verifies the
-configured port names and owns only the child it started. The browser never
-launches it; LOAD is the transaction boundary.</p>
+<code>out_l</code>/<code>out_r</code>, accepts timbre/ADSR on its established CCs, and accepts shared
+instrument volume on CC 7. SHR verifies the configured port names and owns only
+the child it started. The browser never launches it; LOAD is the transaction
+boundary.</p>
 <p>SHR Sampler is preflighted with its machine-readable version and strict
 offline package validator before the current engine is disturbed. It is then
 started with <code>--client-name</code> and <code>--instrument</code>, publishes exactly the two
@@ -12832,12 +12887,11 @@ SHSYNTH_USER_DIR=/absolute/private/path ./scripts/setup-local.sh
 <li><code>SHSYNTH_USER_DIR</code> selects the private root. It defaults to the repository's
 ignored <code>$SHSYNTH_USER_DIR/</code> directory.</li>
 <li><code>SHSYNTH_BIN</code> may explicitly select an already-built <code>shr</code> executable. It
-defaults to <code>target/debug/shr</code> in this checkout.</li>
+defaults to <code>target/release/shr</code> in this checkout.</li>
 </ul>
-<p>The development artifact retains debug assertions and symbols, while the
-repository Cargo development profile optimizes its production DSP callbacks.
-This is required because the local launcher uses that artifact with the same
-JACK callback deadlines as a release build.</p>
+<p>An explicitly selected development artifact retains debug assertions and
+symbols, while the repository Cargo development profile still optimizes its
+production DSP callbacks.</p>
 <p>The wrapper exports:</p>
 <ul>
 <li><code>XDG_STATE_HOME=$SHSYNTH_USER_DIR/state</code>;</li>
@@ -12877,10 +12931,11 @@ SHSYNTH_USER_DIR=/absolute/private/path ./scripts/local.sh
 </code></pre>
 <p>All arguments are passed unchanged to <code>shr</code>. The environment and private-preset
 copy rules match <code>setup-local.sh</code>. An explicit executable in <code>SHSYNTH_BIN</code>
-wins. Otherwise, the launcher always uses <code>target/debug/shr</code>; it never chooses
-an installed or release binary by timestamp. It resolves its own symlink before
+wins. Otherwise, the launcher always uses <code>target/release/shr</code>; it never
+chooses an installed binary or another artifact by timestamp. Developers can
+select <code>target/debug/shr</code> explicitly. It resolves its own symlink before
 finding the repository, so a user-local <code>shr</code> symlink or shell alias may safely
-target this launcher. The launcher refuses to run until both the debug binary
+target this launcher. The launcher refuses to run until both the release binary
 and local <code>shsynth.conf</code> exist.</p>
 <h5 id="doc-maintainer_helpers--why-it-uses-exec" tabindex="-1">Why it uses <code>exec</code><a class="heading-anchor" href="#doc-maintainer_helpers--why-it-uses-exec" aria-label="Link to Why it uses exec">#</a></h5>
 <p><code>exec</code> makes SHR-DAW replace the wrapper process. Signals, exit status, terminal
@@ -14573,7 +14628,7 @@ physically or aurally validated.</p>
 </tr>
 <tr>
 <td>Local checkout launch</td>
-<td><code>setup-local.sh</code> seeds isolated state; <code>local.sh</code> verifies config and this checkout's debug binary</td>
+<td><code>setup-local.sh</code> seeds isolated state; <code>local.sh</code> verifies config and this checkout's release binary</td>
 <td>Missing binary/config fails nearby; repeated seeding preserves existing files</td>
 <td><code>observed</code>: scripts/docs. C1, C8</td>
 </tr>
@@ -15513,6 +15568,32 @@ tracking section.</p>
 new thread in <code>$HOME/p/shsynth</code>. Durable repository policy is in
 <code>AGENTS.md</code>; detailed helper behavior is in <code>docs/MAINTAINER_HELPERS.md</code>. Never
 record credentials, GitHub device codes, or private file contents here.</p>
+<h4 id="doc-workspace_handoff--2026-08-16-swarm-bass-matrix-and-shared-instrument-volume" tabindex="-1">2026-08-16 Swarm, Bass Matrix, and shared instrument volume<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-16-swarm-bass-matrix-and-shared-instrument-volume" aria-label="Link to 2026-08-16 Swarm, Bass Matrix, and shared instrument volume">#</a></h4>
+<p>The sibling Moj Sint engine now has five live models and 16 cleared starts.
+The earlier typed-graph warm pad is integrated as <code>Swarm Machine</code>; the new
+<code>Bass Matrix</code> is a different split-path bass instrument whose clean
+half-frequency body remains outside its driven PM/metal/filter/feedback branch.
+SHR recognizes strict Moj schema 7, retains schemas 1–6, and owns exact
+<code>ENGINE → MODEL → PATCH</code> routing, model-qualified private saves, Player/FT2
+labels, Projects, automation, pickup, RESET, failure restoration, panic, and
+shutdown for both additions.</p>
+<p>Physical controller position 5 is instrument volume wherever a managed melodic
+instrument is active. The actual MiniLab profile maps its continuous CC 93 pot
+to that position. synthv1 retains its verified DCA volume parameter; Moj uses
+separate MIDI CC 7 and a tone-neutral 10 ms engine gain; Yoshimi, FluidSynth,
+and SHR Sampler receive standard channel-volume CC 7. Player and FT2 show the
+same control, loading/resetting re-arms pickup, and FT2 instrument automation
+persists the route. Read-only backends cannot save this value into their source
+instrument format, and their own CC smoothing is the documented backend
+exception; their Project automation remains durable.</p>
+<p>Private local configuration already points to the sibling Moj release binary
+and preset root, so no <code>$SHSYNTH_USER_DIR/</code> mutation is required. Musical acceptance and
+native Raspberry Pi callback headroom remain open listening/hardware verdicts.</p>
+<p>The authorized combined pass used exact Rust 1.97.1
+(<code>rustc 1.97.1 (8bab26f4f 2026-07-14)</code>). Formatting, locked checking, all 969
+normal tests, and locked debug and release builds passed; 13 documented
+research, audition, and performance tests remained ignored. No JACK, synth,
+MIDI, recording, audible, or other hardware-changing test was started.</p>
 <h4 id="doc-workspace_handoff--2026-08-05-strange-oscillator-experimental-integration" tabindex="-1">2026-08-05 Strange Oscillator experimental integration<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-05-strange-oscillator-experimental-integration" aria-label="Link to 2026-08-05 Strange Oscillator experimental integration">#</a></h4>
 <p>The sibling Moj Sint repository now exposes Strange Oscillator as its third
 live experimental model and cleared start 14. This SHR working tree recognizes Moj
@@ -15521,10 +15602,11 @@ preset schema 6, shows the model as <code>S-OSC</code>, routes it through the ex
 MOTION, CHAOS, COLOR, and SPACE, and preserves ADSR at CC 28–31. Model-specific
 private saves, tracker parameters, automation names, and model-qualified route
 identity all include the third model. Schema 1–5 Moj presets remain readable.
-The local Moj command already points to the sibling optimized binary. Use the
-private <code>shr-release</code> launcher for the optimized SHR binary; plain <code>shr</code>
-deliberately remains DEV. The owner explicitly authorized committing and
-publishing both repositories for continued experimentation before the open
+The local Moj command already points to the sibling optimized binary. Plain
+<code>shr</code> and tty1 autoload use the optimized SHR release binary; an explicit
+<code>SHSYNTH_BIN=target/debug/shr</code> override remains available for development. The
+owner explicitly authorized committing and publishing both repositories for
+continued experimentation before the open
 musical and native-load verdicts. Publication is not production acceptance.</p>
 <h4 id="doc-workspace_handoff--current-priority-and-shared-checkout" tabindex="-1">Current priority and shared checkout<a class="heading-anchor" href="#doc-workspace_handoff--current-priority-and-shared-checkout" aria-label="Link to Current priority and shared checkout">#</a></h4>
 <p>The early Build Week-style sprint snapshot is preserved by its historical tag,
@@ -15544,8 +15626,8 @@ beginner- and curiosity-first music making, FT2 as the main composition and
 automation workspace, Player as a deliberately simple player, optional theory
 and smart assistance after play, and Moj Sint as an open experimental
 instrument laboratory. The favored Moj authoring direction is a typed low-code
-micro-machine format usable with or without AI. A swarm/supersaw-like model is
-only a possible first isolated experiment, not a promised feature.</p>
+micro-machine format usable with or without AI. One fixed swarm graph is now
+live; that does not promise runtime graph editing or a general modular system.</p>
 <p>The current compatibility checkpoint adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
 melodic backend. Its package and executable compatibility are preflighted
 offline before the current owned engine is disturbed; startup, exact stereo
@@ -15584,7 +15666,7 @@ the tracked <code>kits/cleared-kits.txt</code> allowlist: Acid, Electronic House
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
 that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
-longer depend on ignored <code>$SHSYNTH_USER_DIR/</code> state. Moj Sint's 14 factory starts remain
+longer depend on ignored <code>$SHSYNTH_USER_DIR/</code> state. Moj Sint's 16 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
 storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
 all-target/all-feature normal suite: 19 tests passed, three opt-in quality
@@ -16111,12 +16193,18 @@ canonical collaboration rule in <code>AGENTS.md</code>.</p>
 <p>Plain <code>shr</code> resolves to this checkout's <code>scripts/local.sh</code> through
 <code>/usr/local/bin/shr</code>; <code>$HOME/.bash_aliases</code> names the same launcher. The stale
 <code>$HOME/.local/bin/shr</code> link still points to the removed former checkout and
-must not be used. The launcher uses <code>target/debug/shr</code> unless <code>SHSYNTH_BIN</code> is
-explicitly set; the debug TUI shows <code>DEV</code>. Do not restore the obsolete
-release-binary alias. Repository-local runtime metadata selects the companion
-Moj Sint checkout's fresh release binary and public preset catalog; Playback
+must not be used. The launcher uses <code>target/release/shr</code> unless <code>SHSYNTH_BIN</code>
+is explicitly set; the release TUI shows <code>REL</code>. The separate private
+<code>shr-release</code> launcher is now only a compatibility alias. Repository-local
+runtime metadata selects the companion Moj Sint checkout's fresh release
+binary and public preset catalog; Playback
 user sounds remain in the separate ignored private data root and were not
 inspected during this configuration check.</p>
+<p>The tty1 <code>.bashrc</code> autoload waits for systemd to leave its initial <code>starting</code>
+state, allows one final second for boot-console output, clears tty1, and only
+then invokes plain <code>shr</code>. The wait is capped at 30 seconds so a degraded or
+stalled boot cannot block autoload indefinitely; SSH and manual launches do
+not wait.</p>
 <h4 id="doc-workspace_handoff--dated-dspjack-closure-record-2026-07-22" tabindex="-1">Dated DSP/JACK closure record (2026-07-22)<a class="heading-anchor" href="#doc-workspace_handoff--dated-dspjack-closure-record-2026-07-22" aria-label="Link to Dated DSP/JACK closure record (2026-07-22)">#</a></h4>
 <p>This section records the completed DSP closure pass. It added validated
 FFT/alias analyzers; centered four-point Lagrange interpolation for delay,
@@ -16396,16 +16484,17 @@ with or without AI assistance. The favored direction is a low-code typed
 micro-machine format that connects bounded oscillators, counters, events,
 shapers, followers, resonators, filters, feedback, and stereo operations while
 Moj Sint retains validation and real-time safety.</p>
-<p>Every Moj Sint model should remain playable through eight meaningful timbral
-controls plus ADSR. AI can help draft a graph, explain mathematics, or propose
-control mappings, but generated work earns inclusion only through the same
-inspectable tests and human listening as hand-written work.</p>
-<p>A swarm or supersaw-like instrument is one possible first modular experiment:
+<p>Every Moj Sint model should remain playable through seven meaningful timbre
+controls, shared instrument volume at physical position 5, and ADSR. AI can
+help draft a graph, explain mathematics, or propose control mappings, but
+generated work earns inclusion only through the same inspectable tests and
+human listening as hand-written work.</p>
+<p>A fixed swarm/supersaw-like warm pad is now the first live typed-graph model:
 a familiar musical target that makes population, detuning, phase, coupling,
-motion, width, and normalization easy to hear. It is not a promised feature or
-a request to copy an existing synthesizer. The point is to learn whether Moj
-Sint's micro-machines can produce a recognisable sound efficiently while
-remaining editable and characteristically strange.</p>
+motion, width, and normalization easy to hear. It is not a promise of arbitrary
+live graphs or a request to copy an existing synthesizer. The point is to learn
+whether Moj Sint's micro-machines can produce a recognisable sound efficiently
+while remaining editable and characteristically strange.</p>
 <p>Across these ideas, the preferred motion is consistent: play first, reveal
 theory and machinery when useful, preserve the musician's work and position,
 make failure recoverable, and keep advanced depth optional rather than

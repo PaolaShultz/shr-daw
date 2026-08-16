@@ -74,10 +74,10 @@ silent: they only change the list and reset its selection according to the
 existing catalog contract. `LOAD` is the sole managed preset start or
 replacement action.
 
-The Moj Sint catalog has 14 ordered starts: seven Model D sounds from Full Bass
+The Moj Sint catalog has 16 ordered starts: seven Model D sounds from Full Bass
 through Matched No Drift or Feedback, six Six-Op PM sounds from Bell Metal
-through Mechanical Stab, and Strange Oscillator. The list marks their model as
-`M-D`, `6-OP`, or `S-OSC`.
+through Mechanical Stab, Strange Oscillator, Swarm Warm Pad, and Bass Matrix.
+The list marks their model as `M-D`, `6-OP`, `S-OSC`, `SWARM`, or `B-MAT`.
 Selecting one only browses; `LOAD` starts it.
 
 SHR Sampler lists strict read-only `.shrinst` packages. `LOAD` validates the
@@ -107,9 +107,10 @@ result.
 On the keyboard, red white-key areas are held natural notes and red upper `└`
 marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
-Moj Sint uses EVOLVE through SPACE in the first two rows and ADSR in the third;
-synthv1 retains its own names and indices. The main encoder press resets only
-these mapped controls and re-arms pickup; it does
+Moj Sint uses seven model-specific timbre controls plus Volume in the first two
+rows and ADSR in the third; synthv1 retains its own names and indices. Read-only
+managed instruments show Volume at the same physical position. The main encoder
+press resets only these mapped controls and re-arms pickup; it does
 not restart the synth.
 
 ### PLAY — capture a MIDI take

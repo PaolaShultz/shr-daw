@@ -46,13 +46,13 @@ accepts:
 Moj Sint defaults to command `moj-sint`, client/MIDI identity
 `shs-moj-sint`, and output short names `out_l` then `out_r`. Discovery indexes
 at most 512 regular, non-symlink `.mojsint` files of at most 1 MiB and strictly
-validates schema 1–5 before showing them. Schema 5 selects `model_d` or
-`six_op_pm` and requires that model's exact patch and macro fields; schemas 1–4
-migrate to Model D in memory.
+validates schemas 1–7 before showing them. Schema 7 selects one of the five Moj
+models, requires its exact patch/macro fields, and stores independent instrument
+volume; schemas 1–6 migrate in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by `LOAD` as
 `moj-sint --client-name NAME --preset FILE`.
 Playback user saves add the private XDG Moj Sint preset root to discovery and
-store Model D, Six-Op PM, and Strange Oscillator beneath separate model directories. Repository-local
+store all five models beneath separate model directories. Repository-local
 launches keep that root below ignored `user/`. `SHSYNTH_MOJ_PRESET_DIR` may
 select another explicitly private root; public checkout, factory, system, and
 symlink paths remain read-only. The destination must be an absolute normalized

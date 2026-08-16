@@ -55,7 +55,8 @@ in Presets:
 - synthv1 presets;
 - Yoshimi `.xiz` banks;
 - FluidSynth `.sf2` and `.sf3` SoundFonts;
-- Moj Sint `.mojsint` Model D, Six-Op PM, and Strange Oscillator presets;
+- Moj Sint `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine,
+  and Bass Matrix presets;
 - SHR Sampler `.shrinst` packages.
 
 Browsing is silent. `LOAD` is the only managed start or replacement action.
@@ -81,8 +82,8 @@ arpeggiator. `PLAY` sends Start even when no MIDI take exists, `RECORD` starts
 the same clock before capture, `STOP` ends it without unloading the instrument,
 and `TAP` changes tempo without silently starting transport.
 
-Moj Sint keeps its own preset format and controls. Its 14 authored starts form
-three editable model families. SHR Sampler packages are read-only and use their
+Moj Sint keeps its own preset format and controls. Its 16 authored starts form
+five editable model families. SHR Sampler packages are read-only and use their
 own strict format; the installed project-authored factory package is a neutral
 first-load sound. SHR Drums is separate from the managed melodic engine and
 runs in process. See [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md)

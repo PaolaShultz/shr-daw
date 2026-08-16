@@ -153,7 +153,7 @@ through one SHR-DAW workflow. Their runtime hosts are:
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks;
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
-- Moj Sint for strict `.mojsint` Model D, Six-Op PM, and Strange Oscillator presets; and
+- Moj Sint for strict `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, and Bass Matrix presets; and
 - SHR Sampler for strict preloaded `.shrinst` sample packages.
 
 Only one SHR-managed software engine process runs at a time. synthv1 and
@@ -168,9 +168,10 @@ an unrelated synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler process
 opened by the user.
 
 Moj Sint is started with `--client-name` and `--preset`, publishes exactly
-`out_l`/`out_r`, and accepts its twelve macros on CC 20–31. SHR verifies the
-configured port names and owns only the child it started. The browser never
-launches it; LOAD is the transaction boundary.
+`out_l`/`out_r`, accepts timbre/ADSR on its established CCs, and accepts shared
+instrument volume on CC 7. SHR verifies the configured port names and owns only
+the child it started. The browser never launches it; LOAD is the transaction
+boundary.
 
 SHR Sampler is preflighted with its machine-readable version and strict
 offline package validator before the current engine is disturbed. It is then

@@ -1455,8 +1455,12 @@ fn validate_automation_lane(
                     .iter()
                     .chain(crate::control::MOJ_SIX_OP_PM_CONTROLS.iter())
                     .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
+                    .chain(crate::control::MOJ_SWARM_CONTROLS.iter())
+                    .chain(crate::control::MOJ_BASS_MATRIX_CONTROLS.iter())
                     .any(|candidate| candidate.macro_id == control),
-                _ => false,
+                BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
+                    control == "instrument_volume"
+                }
             };
             if !supported {
                 bail!("instrument automation control is not supported by its engine");

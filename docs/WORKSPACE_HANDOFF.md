@@ -5,6 +5,37 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-16 Swarm, Bass Matrix, and shared instrument volume
+
+The sibling Moj Sint engine now has five live models and 16 cleared starts.
+The earlier typed-graph warm pad is integrated as `Swarm Machine`; the new
+`Bass Matrix` is a different split-path bass instrument whose clean
+half-frequency body remains outside its driven PM/metal/filter/feedback branch.
+SHR recognizes strict Moj schema 7, retains schemas 1–6, and owns exact
+`ENGINE → MODEL → PATCH` routing, model-qualified private saves, Player/FT2
+labels, Projects, automation, pickup, RESET, failure restoration, panic, and
+shutdown for both additions.
+
+Physical controller position 5 is instrument volume wherever a managed melodic
+instrument is active. The actual MiniLab profile maps its continuous CC 93 pot
+to that position. synthv1 retains its verified DCA volume parameter; Moj uses
+separate MIDI CC 7 and a tone-neutral 10 ms engine gain; Yoshimi, FluidSynth,
+and SHR Sampler receive standard channel-volume CC 7. Player and FT2 show the
+same control, loading/resetting re-arms pickup, and FT2 instrument automation
+persists the route. Read-only backends cannot save this value into their source
+instrument format, and their own CC smoothing is the documented backend
+exception; their Project automation remains durable.
+
+Private local configuration already points to the sibling Moj release binary
+and preset root, so no `user/` mutation is required. Musical acceptance and
+native Raspberry Pi callback headroom remain open listening/hardware verdicts.
+
+The authorized combined pass used exact Rust 1.97.1
+(`rustc 1.97.1 (8bab26f4f 2026-07-14)`). Formatting, locked checking, all 969
+normal tests, and locked debug and release builds passed; 13 documented
+research, audition, and performance tests remained ignored. No JACK, synth,
+MIDI, recording, audible, or other hardware-changing test was started.
+
 ## 2026-08-05 Strange Oscillator experimental integration
 
 The sibling Moj Sint repository now exposes Strange Oscillator as its third
@@ -42,8 +73,8 @@ beginner- and curiosity-first music making, FT2 as the main composition and
 automation workspace, Player as a deliberately simple player, optional theory
 and smart assistance after play, and Moj Sint as an open experimental
 instrument laboratory. The favored Moj authoring direction is a typed low-code
-micro-machine format usable with or without AI. A swarm/supersaw-like model is
-only a possible first isolated experiment, not a promised feature.
+micro-machine format usable with or without AI. One fixed swarm graph is now
+live; that does not promise runtime graph editing or a general modular system.
 
 The current compatibility checkpoint adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
 melodic backend. Its package and executable compatibility are preflighted
@@ -86,7 +117,7 @@ the tracked `kits/cleared-kits.txt` allowlist: Acid, Electronic House, Big Rock
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
 that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
-longer depend on ignored `user/` state. Moj Sint's 14 factory starts remain
+longer depend on ignored `user/` state. Moj Sint's 16 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
 storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
 all-target/all-feature normal suite: 19 tests passed, three opt-in quality

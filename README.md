@@ -35,7 +35,7 @@ ways to start small.
 
 ## Features
 
-- Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 14
+- Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 16
   editable Moj Sint starts, the cleared SHR Sampler instrument, and four
   bundled SHR Drums kits.
 - Play from a controller or keyboard with pickup-protected sound controls,

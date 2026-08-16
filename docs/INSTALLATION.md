@@ -39,7 +39,7 @@ recording.
 synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
 optional melodic engines at runtime. The supported installer installs all five
 from distribution packages or the exact public revisions in
-`install/compatibility.json`. It installs Moj Sint's 14 allowlisted factory
+`install/compatibility.json`. It installs Moj Sint's 16 allowlisted factory
 presets and SHR Sampler's allowlisted project-authored factory package; it
 never copies private presets, samples, packages, or user data from a checkout.
 SHR Drums remains an exact pinned in-process Rust dependency, so there is no
@@ -65,7 +65,7 @@ The current source compatibility set is:
 
 | Component | Required version | Installation form |
 | --- | --- | --- |
-| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 14 cleared presets |
+| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 16 cleared presets |
 | SHR Sampler | 0.1.2 (accepted runtime `>=0.1.2,<0.2.0`) | exact public commit, `shr-sampler`, one cleared package |
 | SHR Drums | 0.2.0 (accepted library `>=0.2.0,<0.3.0`) | exact public Cargo dependency compiled into `shr` |
 
@@ -91,7 +91,7 @@ The installer:
   fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
   declared versions, and creates locked release builds;
 - builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;
-- stages commands, templates, 21 allowlisted synthv1 presets, 14 allowlisted
+- stages commands, templates, 21 allowlisted synthv1 presets, 16 allowlisted
   Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
   Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
   Projects plus MIDI files, profiles, drum data, and documentation;

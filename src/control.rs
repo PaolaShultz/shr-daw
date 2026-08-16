@@ -5,6 +5,9 @@
 use std::collections::HashMap;
 
 pub const VOLUME_CC: u8 = 93;
+/// Standard MIDI channel-volume controller used by managed instruments whose
+/// native parameter map is not synthv1's DCA map.
+pub const INSTRUMENT_VOLUME_CC: u8 = 7;
 /// Controller/menu architecture reserves four banks of four controls.  The
 /// synthv1 0.9.29 profile intentionally populates only the verified 12.
 pub const MAPPED_CONTROL_CAPACITY: usize = 16;
@@ -148,9 +151,9 @@ pub const MOJ_MODEL_D_CONTROLS: [MojControl; 12] = [
         macro_id: "edge",
     },
     MojControl {
-        cc: 24,
-        name: "Couple",
-        macro_id: "couple",
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
     },
     MojControl {
         cc: 25,
@@ -211,9 +214,9 @@ pub const MOJ_SIX_OP_PM_CONTROLS: [MojControl; 12] = [
         macro_id: "operator_decay",
     },
     MojControl {
-        cc: 24,
-        name: "Balance",
-        macro_id: "balance",
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
     },
     MojControl {
         cc: 25,
@@ -274,9 +277,9 @@ pub const MOJ_STRANGE_CONTROLS: [MojControl; 12] = [
         macro_id: "couple",
     },
     MojControl {
-        cc: 24,
-        name: "Motion",
-        macro_id: "motion",
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
     },
     MojControl {
         cc: 25,
@@ -315,8 +318,135 @@ pub const MOJ_STRANGE_CONTROLS: [MojControl; 12] = [
     },
 ];
 
-// CC 20-31 are Moj Sint's stable twelve physical positions. Their displayed
-// meaning comes from the selected synthesis model, not controller.conf.
+pub const MOJ_SWARM_CONTROLS: [MojControl; 12] = [
+    MojControl {
+        cc: 20,
+        name: "Mass",
+        macro_id: "mass",
+    },
+    MojControl {
+        cc: 21,
+        name: "Detune",
+        macro_id: "detune",
+    },
+    MojControl {
+        cc: 22,
+        name: "Spread",
+        macro_id: "spread",
+    },
+    MojControl {
+        cc: 23,
+        name: "Shape",
+        macro_id: "shape",
+    },
+    MojControl {
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
+    },
+    MojControl {
+        cc: 25,
+        name: "Motion",
+        macro_id: "motion",
+    },
+    MojControl {
+        cc: 26,
+        name: "Color",
+        macro_id: "color",
+    },
+    MojControl {
+        cc: 27,
+        name: "Space",
+        macro_id: "space",
+    },
+    MojControl {
+        cc: 28,
+        name: "Attack",
+        macro_id: "attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Decay",
+        macro_id: "decay",
+    },
+    MojControl {
+        cc: 30,
+        name: "Sustain",
+        macro_id: "sustain",
+    },
+    MojControl {
+        cc: 31,
+        name: "Release",
+        macro_id: "release",
+    },
+];
+
+pub const MOJ_BASS_MATRIX_CONTROLS: [MojControl; 12] = [
+    MojControl {
+        cc: 20,
+        name: "Body",
+        macro_id: "body",
+    },
+    MojControl {
+        cc: 21,
+        name: "Growl",
+        macro_id: "growl",
+    },
+    MojControl {
+        cc: 22,
+        name: "Metal",
+        macro_id: "metal",
+    },
+    MojControl {
+        cc: 23,
+        name: "Punch",
+        macro_id: "punch",
+    },
+    MojControl {
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
+    },
+    MojControl {
+        cc: 25,
+        name: "Drive",
+        macro_id: "drive",
+    },
+    MojControl {
+        cc: 26,
+        name: "Filter",
+        macro_id: "filter",
+    },
+    MojControl {
+        cc: 27,
+        name: "Unstable",
+        macro_id: "unstable",
+    },
+    MojControl {
+        cc: 28,
+        name: "Attack",
+        macro_id: "attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Decay",
+        macro_id: "decay",
+    },
+    MojControl {
+        cc: 30,
+        name: "Sustain",
+        macro_id: "sustain",
+    },
+    MojControl {
+        cc: 31,
+        name: "Release",
+        macro_id: "release",
+    },
+];
+
+// Moj Sint shares twelve physical positions. Position five is the universal
+// instrument-volume CC 7; the remaining displayed meanings come from the
+// selected synthesis model, not controller.conf.
 pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
 
 pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojControl; 12] {
@@ -324,11 +454,13 @@ pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojContro
         crate::preset::MojModel::ModelD => &MOJ_MODEL_D_CONTROLS,
         crate::preset::MojModel::SixOpPm => &MOJ_SIX_OP_PM_CONTROLS,
         crate::preset::MojModel::StrangeOscillator => &MOJ_STRANGE_CONTROLS,
+        crate::preset::MojModel::SwarmMachine => &MOJ_SWARM_CONTROLS,
+        crate::preset::MojModel::BassMatrix => &MOJ_BASS_MATRIX_CONTROLS,
     }
 }
 
 pub fn moj_by_cc(cc: u8) -> Option<MojControl> {
-    MOJ_CONTROLS
+    MOJ_MODEL_D_CONTROLS
         .iter()
         .copied()
         .find(|control| control.cc == cc)
@@ -423,7 +555,7 @@ mod tests {
                 "ratio",
                 "feedback",
                 "operator_decay",
-                "balance",
+                "instrument_volume",
                 "key_scale",
                 "velocity",
                 "motion",
@@ -433,5 +565,11 @@ mod tests {
                 "release",
             ]
         );
+        for model in crate::preset::MojModel::ALL {
+            let controls = moj_controls(model);
+            assert_eq!(controls[4].cc, 7);
+            assert_eq!(controls[4].name, "Volume");
+            assert_eq!(controls[4].macro_id, "instrument_volume");
+        }
     }
 }

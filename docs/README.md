@@ -81,7 +81,7 @@ configuration, or the architecture contracts.
   [sample provenance](https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md)
   live with that repository.
 - [Moj Sint](https://github.com/PaolaShultz/moj-sint): public managed synth host,
-  strict preset schema, and 14 allowlisted factory starts.
+  strict preset schema, and 16 allowlisted factory starts.
 - [SHR Sampler](https://github.com/PaolaShultz/shr-sampler): public strict
   sample-package engine and project-authored cleared factory instrument.
 

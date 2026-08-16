@@ -1004,7 +1004,7 @@ impl Engine {
     }
 
     pub fn supports_parameter_reset(&self) -> bool {
-        matches!(self.backend, BackendKind::Synthv1 | BackendKind::MojSint)
+        true
     }
 
     pub fn set_mapped_parameters(&self, values: &std::collections::HashMap<u8, f32>) -> Result<()> {
@@ -1025,10 +1025,16 @@ impl Engine {
                     ])?;
                 }
             }
-        } else {
+        } else if self.backend == BackendKind::Synthv1 {
             for message in mapped_parameter_messages(&self.control_routes, values) {
                 self.send(&message)?;
             }
+        } else if let Some(value) = values.get(&control::INSTRUMENT_VOLUME_CC) {
+            self.send(&[
+                0xb0,
+                control::INSTRUMENT_VOLUME_CC,
+                (value.clamp(0.0, 1.0) * 127.0).round() as u8,
+            ])?;
         }
         Ok(())
     }

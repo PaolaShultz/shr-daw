@@ -18,7 +18,7 @@ audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 | synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
 | Yoshimi | `.xiz` sounds and banks | Melodic synth | Read-only catalog and playback |
 | FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` Model D, Six-Op PM, and Strange Oscillator sounds | Melodic synth | Twelve model-specific mapped controls; private Overwrite or Save New |
+| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, and Bass Matrix sounds | Melodic synth | Seven timbre controls, shared volume, ADSR; private Overwrite or Save New |
 | SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments; read-only in SHR |
 | SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
@@ -61,7 +61,7 @@ Project keeps its stored routes.
 
 ## Moj Sint sounds
 
-Moj Sint is SHR-DAW's editable in-house synthesis family. Its 14 cleared
+Moj Sint is SHR-DAW's editable in-house synthesis family. Its 16 cleared
 factory starts are grouped by synthesis model:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
@@ -71,9 +71,12 @@ factory starts are grouped by synthesis model:
   Brass Bass, and Mechanical Stab;
 - Strange Oscillator: one unified sound whose TYPE control selects triangle,
   saw, pulse, modulated resonator, deformed loop, stochastic breakpoints,
-  scanned string, or register machine.
+  scanned string, or register machine;
+- Swarm Machine: the typed modular graph's warm, wide nine-oscillator pad;
+- Bass Matrix: one transformable start with a phase-locked sub/body and a
+  separate punch, growl, metal, drive, filter, and unstable character path.
 
-Presets shows compact `M-D`, `6-OP`, and `S-OSC` identities. In FT2 **ROUTE**, choosing
+Presets shows compact `M-D`, `6-OP`, `S-OSC`, `SWARM`, and `B-MAT` identities. In FT2 **ROUTE**, choosing
 Moj Sint adds an explicit `ENGINE → MODEL → PATCH` hierarchy. Changing the
 model selects that model's first available patch, and patch browsing never
 crosses the selected model boundary. Apply keeps the complete live-auditioned
@@ -82,21 +85,28 @@ route; Cancel restores its opening snapshot.
 Playback and FT2 **PARAM** use the same 12 physical control positions, with
 labels chosen by the loaded model:
 
-| Positions | Model D | Six-Op PM | Strange Oscillator |
-| --- | --- | --- |
-| 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay | Type, Form, Warp, Couple |
-| 5–8 | Couple, Motion, Depth, Space | Balance, Key Scale, Velocity, Motion | Motion, Chaos, Color, Space |
-| 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
+| Positions | Model D | Six-Op PM | Strange Oscillator | Swarm Machine | Bass Matrix |
+| --- | --- | --- | --- | --- | --- |
+| 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay | Type, Form, Warp, Couple | Mass, Detune, Spread, Shape | Body, Growl, Metal, Punch |
+| 5 | Volume | Volume | Volume | Volume | Volume |
+| 6–8 | Motion, Depth, Space | Key Scale, Velocity, Motion | Chaos, Color, Space | Motion, Color, Space | Drive, Filter, Unstable |
+| 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
 
-The stable CC 20-31 identity belongs to Moj Sint, not to synthv1 parameter
-indices. After Load, Reset, Project/Idea restore, automation ownership changes,
+Moj timbre and ADSR retain their established CCs. Physical position 5 uses
+MIDI CC7 as the shared instrument-volume contract. Position 5 is a continuous
+pot in the repository-local MiniLab profile. Its smoothed gain runs from
+silence to the preset's normal maximum and does not enter timbre DSP. synthv1
+uses its smoothed DCA volume at the same position; Yoshimi, FluidSynth, and SHR
+Sampler receive standard channel volume. Those read-only optional backends do
+not gain an SHR preset-save format: FT2 automation and Project MIDI state own
+their durable volume. After Load, Reset, Project/Idea restore, automation ownership changes,
 or another value-setting transition, physical knobs must reach or cross the
 effective value before they take control. This pickup rule prevents jumps.
 
 **RESET** restores the loaded twelve values without restarting the synth.
 **SAVE** offers Overwrite, Save New, and Cancel. Factory/system sounds are
-read-only, so Overwrite redirects to the next private `User NNN` sound. Model D,
-Six-Op PM, and Strange Oscillator keep separate private namespaces. A successful save becomes the
+read-only, so Overwrite redirects to the next private `User NNN` sound. All
+five Moj models keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable
@@ -166,7 +176,7 @@ borrows a drum voice.
 | Player | Load, edit, reset, save | Load and play read-only package | FT2 Drums page |
 | Idea | MIDI plus private preset snapshot | MIDI plus stable package reference | Tracker workflow, not an Idea sound |
 | FT2 route | Stable model and patch | Stable package identity | Stable kit or explicit MIDI/FluidSynth drum target |
-| Automation | Twelve stable mapped controls | Note performance; mapped synthesis controls unavailable | Notes use drum lanes; Project drum effects use stable effect automation |
+| Automation | Seven timbre controls, shared volume, and ADSR | Standard channel volume plus note performance | Notes use drum lanes; Project drum effects use stable effect automation |
 | Project audio | Managed stereo source | Managed stereo source | Independent in-process stereo source |
 
 Project loading refuses unknown newer schemas rather than rewriting them.

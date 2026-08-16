@@ -190,7 +190,8 @@ key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.
 
 For Moj Sint, **ENGINE** stays `Moj Sint`, **MODEL** cycles Model D, Six-Op PM,
-and Strange Oscillator, and **PATCH** stays inside the selected model.
+Strange Oscillator, Swarm Machine, and Bass Matrix, and **PATCH** stays inside
+the selected model.
 Changing the model selects its first available patch; changing patches never
 crosses the model boundary. These live field changes remain inside the same
 Route Apply/Cancel transaction.

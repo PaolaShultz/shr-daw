@@ -1,4 +1,6 @@
-use crate::control::{by_cc, normalize, value_from_cc, CONTROLS, MOJ_CONTROLS};
+use crate::control::{
+    by_cc, normalize, value_from_cc, CONTROLS, INSTRUMENT_VOLUME_CC, MOJ_CONTROLS,
+};
 use crate::pads::{EncoderAction, PadAction, PadConfig};
 use crate::preset::BackendKind;
 use std::collections::HashMap;
@@ -27,6 +29,7 @@ impl Pickup {
                 by_cc(cc)
                     .map(|control| normalize(control, value))
                     .or_else(|| crate::control::moj_by_cc(cc).map(|_| value.clamp(0.0, 1.0)))
+                    .or_else(|| (cc == INSTRUMENT_VOLUME_CC).then(|| value.clamp(0.0, 1.0)))
                     .map(|target| {
                         (
                             cc,
@@ -119,6 +122,10 @@ pub fn route_with_pad_lock_and_modifier<'a>(
     let mapped_position = (!consumed && message.len() >= 3 && message[0] & 0xf0 == 0xb0)
         .then(|| pads.pot_position(message[1]))
         .flatten();
+    let volume_position = CONTROLS
+        .iter()
+        .position(|control| control.cc == crate::control::VOLUME_CC);
+    let mapped_standard_volume = mapped_position == volume_position;
     let value = if backend == BackendKind::Synthv1
         && !consumed
         && message.len() >= 3
@@ -135,7 +142,8 @@ pub fn route_with_pad_lock_and_modifier<'a>(
             )
         })
     } else {
-        None
+        mapped_standard_volume
+            .then(|| (INSTRUMENT_VOLUME_CC, f32::from(message[2].min(127)) / 127.0))
     };
     let translated = if backend == BackendKind::MojSint {
         mapped_position.map(|index| [message[0], MOJ_CONTROLS[index].cc, message[2].min(127)])
@@ -144,11 +152,8 @@ pub fn route_with_pad_lock_and_modifier<'a>(
             && !consumed
             && message.len() >= 3
             && message[0] & 0xf0 == 0xb0
-            && pads.pot_position(message[1])
-                == CONTROLS
-                    .iter()
-                    .position(|control| control.cc == crate::control::VOLUME_CC))
-        .then(|| [message[0], 7, message[2]])
+            && mapped_standard_volume)
+            .then(|| [message[0], INSTRUMENT_VOLUME_CC, message[2]])
     };
     Routed {
         consumed,
@@ -365,9 +370,14 @@ mod tests {
             controls: HashMap::from([(110, 5)]),
             ..PadConfig::default()
         };
-        for backend in [BackendKind::Yoshimi, BackendKind::FluidSynth] {
+        for backend in [
+            BackendKind::Yoshimi,
+            BackendKind::FluidSynth,
+            BackendKind::ShrSampler,
+        ] {
             let routed = route(&pads, backend, &[0xb2, 110, 99]);
             assert_eq!(routed.translated, Some([0xb2, 7, 99]));
+            assert_eq!(routed.value, Some((INSTRUMENT_VOLUME_CC, 99.0 / 127.0)));
             assert!(routed.forward.is_none());
         }
         let synthv1 = route(&pads, BackendKind::Synthv1, &[0xb2, 110, 99]);
@@ -412,6 +422,14 @@ mod tests {
         let attack = route(&pads, BackendKind::MojSint, &[0xb0, 87, 32]);
         assert_eq!(attack.value, Some((28, 32.0 / 127.0)));
         assert_eq!(attack.translated, Some([0xb0, 28, 32]));
+
+        let volume_pads = PadConfig {
+            controls: HashMap::from([(93, 5)]),
+            ..PadConfig::default()
+        };
+        let volume = route(&volume_pads, BackendKind::MojSint, &[0xb0, 93, 99]);
+        assert_eq!(volume.value, Some((7, 99.0 / 127.0)));
+        assert_eq!(volume.translated, Some([0xb0, 7, 99]));
 
         let mut pickup = Pickup::default();
         pickup.arm(&HashMap::from([(20, 0.75)]));

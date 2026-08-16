@@ -35,17 +35,18 @@ micro-machine format that connects bounded oscillators, counters, events,
 shapers, followers, resonators, filters, feedback, and stereo operations while
 Moj Sint retains validation and real-time safety.
 
-Every Moj Sint model should remain playable through eight meaningful timbral
-controls plus ADSR. AI can help draft a graph, explain mathematics, or propose
-control mappings, but generated work earns inclusion only through the same
-inspectable tests and human listening as hand-written work.
+Every Moj Sint model should remain playable through seven meaningful timbre
+controls, shared instrument volume at physical position 5, and ADSR. AI can
+help draft a graph, explain mathematics, or propose control mappings, but
+generated work earns inclusion only through the same inspectable tests and
+human listening as hand-written work.
 
-A swarm or supersaw-like instrument is one possible first modular experiment:
+A fixed swarm/supersaw-like warm pad is now the first live typed-graph model:
 a familiar musical target that makes population, detuning, phase, coupling,
-motion, width, and normalization easy to hear. It is not a promised feature or
-a request to copy an existing synthesizer. The point is to learn whether Moj
-Sint's micro-machines can produce a recognisable sound efficiently while
-remaining editable and characteristically strange.
+motion, width, and normalization easy to hear. It is not a promise of arbitrary
+live graphs or a request to copy an existing synthesizer. The point is to learn
+whether Moj Sint's micro-machines can produce a recognisable sound efficiently
+while remaining editable and characteristically strange.
 
 Across these ideas, the preferred motion is consistent: play first, reveal
 theory and machinery when useful, preserve the musician's work and position,

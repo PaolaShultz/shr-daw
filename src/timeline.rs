@@ -526,9 +526,15 @@ pub fn mapped_control_cc(engine: &str, control: &str) -> Option<u8> {
             .iter()
             .chain(crate::control::MOJ_SIX_OP_PM_CONTROLS.iter())
             .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
+            .chain(crate::control::MOJ_SWARM_CONTROLS.iter())
+            .chain(crate::control::MOJ_BASS_MATRIX_CONTROLS.iter())
             .find(|candidate| candidate.macro_id == control)
             .map(|candidate| candidate.cc),
-        _ => None,
+        crate::preset::BackendKind::Yoshimi
+        | crate::preset::BackendKind::FluidSynth
+        | crate::preset::BackendKind::ShrSampler => {
+            (control == "instrument_volume").then_some(crate::control::INSTRUMENT_VOLUME_CC)
+        }
     }
 }
 
@@ -672,5 +678,24 @@ mod tests {
         let after = lane.value_at(AUTOMATION_TICKS_PER_ROW / 2, AUTOMATION_TICKS_PER_ROW * 2);
         assert_eq!(before, Some(5_000));
         assert_eq!(after, Some(10_000));
+    }
+
+    #[test]
+    fn every_managed_instrument_uses_the_same_automation_volume_cc() {
+        for engine in crate::preset::BackendKind::ALL {
+            let control = if engine == crate::preset::BackendKind::Synthv1 {
+                "DCA1_VOLUME"
+            } else {
+                "instrument_volume"
+            };
+            let expected = if engine == crate::preset::BackendKind::Synthv1 {
+                crate::control::VOLUME_CC
+            } else {
+                crate::control::INSTRUMENT_VOLUME_CC
+            };
+            assert_eq!(mapped_control_cc(engine.label(), control), Some(expected));
+        }
+        assert_eq!(mapped_control_cc("Moj Sint", "mass"), Some(20));
+        assert_eq!(mapped_control_cc("Moj Sint", "unstable"), Some(27));
     }
 }

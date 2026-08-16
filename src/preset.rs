@@ -99,16 +99,26 @@ pub enum MojModel {
     ModelD,
     SixOpPm,
     StrangeOscillator,
+    SwarmMachine,
+    BassMatrix,
 }
 
 impl MojModel {
-    pub const ALL: [Self; 3] = [Self::ModelD, Self::SixOpPm, Self::StrangeOscillator];
+    pub const ALL: [Self; 5] = [
+        Self::ModelD,
+        Self::SixOpPm,
+        Self::StrangeOscillator,
+        Self::SwarmMachine,
+        Self::BassMatrix,
+    ];
 
     pub const fn stable_id(self) -> &'static str {
         match self {
             Self::ModelD => "model_d",
             Self::SixOpPm => "six_op_pm",
             Self::StrangeOscillator => "strange_oscillator",
+            Self::SwarmMachine => "swarm_machine",
+            Self::BassMatrix => "bass_matrix",
         }
     }
 
@@ -117,6 +127,8 @@ impl MojModel {
             Self::ModelD => "Model D",
             Self::SixOpPm => "Six-Op PM",
             Self::StrangeOscillator => "Strange Osc",
+            Self::SwarmMachine => "Swarm Machine",
+            Self::BassMatrix => "Bass Matrix",
         }
     }
 }
@@ -240,6 +252,8 @@ fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
         MojModel::ModelD => ("M-D", &["Model D", "M-D"]),
         MojModel::SixOpPm => ("6-OP", &["Six-Op PM", "Six-Op", "6-OP"]),
         MojModel::StrangeOscillator => ("S-OSC", &["Strange Oscillator", "Strange Osc", "S-OSC"]),
+        MojModel::SwarmMachine => ("SWARM", &["Swarm Machine", "Swarm", "SWARM"]),
+        MojModel::BassMatrix => ("B-MAT", &["Bass Matrix", "B-MAT"]),
     };
     for prefix in redundant_prefixes {
         if sound
@@ -508,6 +522,8 @@ struct MojPresetV5ModelD {
     name: String,
     voices: usize,
     output_gain: f32,
+    #[serde(default = "full_moj_volume")]
+    instrument_volume: f32,
     model: MojModel,
     model_d_patch: MojModelDPatch,
     macros: MojMacrosV2,
@@ -520,6 +536,8 @@ struct MojPresetV5SixOp {
     name: String,
     voices: usize,
     output_gain: f32,
+    #[serde(default = "full_moj_volume")]
+    instrument_volume: f32,
     model: MojModel,
     six_op_patch: MojSixOpPatch,
     macros: MojMacrosSixOp,
@@ -532,6 +550,8 @@ struct MojPresetV6Strange {
     name: String,
     voices: usize,
     output_gain: f32,
+    #[serde(default = "full_moj_volume")]
+    instrument_volume: f32,
     model: MojModel,
     strange_patch: MojStrangePatch,
     macros: MojMacrosStrange,
@@ -560,6 +580,22 @@ enum MojSixOpPatch {
 #[serde(rename_all = "snake_case")]
 enum MojStrangePatch {
     Unified,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MojSwarmPatch {
+    WarmPad,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MojBassMatrixPatch {
+    Transformer,
+}
+
+fn full_moj_volume() -> f32 {
+    1.0
 }
 
 #[derive(Deserialize)]
@@ -644,6 +680,66 @@ struct MojMacrosStrange {
     release: f32,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosSwarm {
+    mass: f32,
+    detune: f32,
+    spread: f32,
+    shape: f32,
+    bite: f32,
+    motion: f32,
+    color: f32,
+    space: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosBassMatrix {
+    body: f32,
+    growl: f32,
+    metal: f32,
+    punch: f32,
+    character: f32,
+    drive: f32,
+    filter: f32,
+    unstable: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV7Swarm {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    instrument_volume: f32,
+    model: MojModel,
+    swarm_patch: MojSwarmPatch,
+    macros: MojMacrosSwarm,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV7BassMatrix {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    instrument_volume: f32,
+    model: MojModel,
+    bass_matrix_patch: MojBassMatrixPatch,
+    macros: MojMacrosBassMatrix,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MojMacrosV1 {
@@ -719,11 +815,51 @@ impl MojMacrosStrange {
     }
 }
 
+impl MojMacrosSwarm {
+    fn values(self) -> [f32; 12] {
+        [
+            self.mass,
+            self.detune,
+            self.spread,
+            self.shape,
+            self.bite,
+            self.motion,
+            self.color,
+            self.space,
+            self.attack,
+            self.decay,
+            self.sustain,
+            self.release,
+        ]
+    }
+}
+
+impl MojMacrosBassMatrix {
+    fn values(self) -> [f32; 12] {
+        [
+            self.body,
+            self.growl,
+            self.metal,
+            self.punch,
+            self.character,
+            self.drive,
+            self.filter,
+            self.unstable,
+            self.attack,
+            self.decay,
+            self.sustain,
+            self.release,
+        ]
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 enum MojPatch {
     ModelD(MojModelDPatch),
     SixOpPm(MojSixOpPatch),
     StrangeOscillator(MojStrangePatch),
+    SwarmMachine(MojSwarmPatch),
+    BassMatrix(MojBassMatrixPatch),
 }
 
 #[derive(Debug)]
@@ -732,6 +868,7 @@ struct MojDocument {
     model: MojModel,
     voices: usize,
     output_gain: f32,
+    instrument_volume: f32,
     patch: MojPatch,
     values: [f32; 12],
 }
@@ -762,7 +899,92 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         .get("schema_version")
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
-    let (name, model, voices, output_gain, patch, values) = match version {
+    let (name, model, voices, output_gain, instrument_volume, patch, values) = match version {
+        7 => {
+            let model = value
+                .get("model")
+                .and_then(toml::Value::as_str)
+                .context("schema-7 Moj Sint preset has no model")?;
+            match model {
+                "model_d" => {
+                    let document: MojPresetV5ModelD = toml::from_str(&source)?;
+                    if document.schema_version != 7 || document.model != MojModel::ModelD {
+                        bail!("invalid schema-7 Model D identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::ModelD(document.model_d_patch),
+                        document.macros.values(),
+                    )
+                }
+                "six_op_pm" => {
+                    let document: MojPresetV5SixOp = toml::from_str(&source)?;
+                    if document.schema_version != 7 || document.model != MojModel::SixOpPm {
+                        bail!("invalid schema-7 Six-Op PM identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::SixOpPm(document.six_op_patch),
+                        document.macros.values(),
+                    )
+                }
+                "strange_oscillator" => {
+                    let document: MojPresetV6Strange = toml::from_str(&source)?;
+                    if document.schema_version != 7 || document.model != MojModel::StrangeOscillator
+                    {
+                        bail!("invalid schema-7 Strange Oscillator identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::StrangeOscillator(document.strange_patch),
+                        document.macros.values(),
+                    )
+                }
+                "swarm_machine" => {
+                    let document: MojPresetV7Swarm = toml::from_str(&source)?;
+                    if document.schema_version != 7 || document.model != MojModel::SwarmMachine {
+                        bail!("invalid schema-7 Swarm Machine identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::SwarmMachine(document.swarm_patch),
+                        document.macros.values(),
+                    )
+                }
+                "bass_matrix" => {
+                    let document: MojPresetV7BassMatrix = toml::from_str(&source)?;
+                    if document.schema_version != 7 || document.model != MojModel::BassMatrix {
+                        bail!("invalid schema-7 Bass Matrix identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::BassMatrix(document.bass_matrix_patch),
+                        document.macros.values(),
+                    )
+                }
+                _ => bail!("unknown schema-7 Moj Sint model"),
+            }
+        }
         6 => {
             let model = value
                 .get("model")
@@ -779,6 +1001,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.model,
                         document.voices,
                         document.output_gain,
+                        document.instrument_volume,
                         MojPatch::ModelD(document.model_d_patch),
                         document.macros.values(),
                     )
@@ -793,6 +1016,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.model,
                         document.voices,
                         document.output_gain,
+                        document.instrument_volume,
                         MojPatch::SixOpPm(document.six_op_patch),
                         document.macros.values(),
                     )
@@ -808,6 +1032,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.model,
                         document.voices,
                         document.output_gain,
+                        document.instrument_volume,
                         MojPatch::StrangeOscillator(document.strange_patch),
                         document.macros.values(),
                     )
@@ -832,6 +1057,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.model,
                         document.voices,
                         document.output_gain,
+                        1.0,
                         MojPatch::ModelD(document.model_d_patch),
                         document.macros.values(),
                     )
@@ -847,6 +1073,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.model,
                         document.voices,
                         document.output_gain,
+                        1.0,
                         MojPatch::SixOpPm(document.six_op_patch),
                         document.macros.values(),
                     )
@@ -865,6 +1092,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 document.model,
                 document.voices,
                 document.output_gain,
+                1.0,
                 MojPatch::ModelD(document.model_d_patch),
                 document.macros.values(),
             )
@@ -878,6 +1106,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 MojModel::ModelD,
                 document.voices,
                 document.output_gain,
+                1.0,
                 MojPatch::ModelD(document.model_d_patch),
                 document.macros.values(),
             )
@@ -890,6 +1119,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 MojModel::ModelD,
                 document.voices,
                 document.output_gain,
+                1.0,
                 MojPatch::ModelD(MojModelDPatch::Bass),
                 document.macros.values(),
             )
@@ -920,6 +1150,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 MojModel::ModelD,
                 document.voices,
                 document.output_gain,
+                1.0,
                 MojPatch::ModelD(MojModelDPatch::Bass),
                 MojMacrosV2 {
                     evolve: document.macros.evolve,
@@ -945,6 +1176,8 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         || !(1..=64).contains(&voices)
         || !output_gain.is_finite()
         || !(0.0..=1.0).contains(&output_gain)
+        || !instrument_volume.is_finite()
+        || !(0.0..=1.0).contains(&instrument_volume)
         || values
             .iter()
             .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
@@ -956,6 +1189,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         model,
         voices,
         output_gain,
+        instrument_volume,
         patch,
         values,
     })
@@ -963,15 +1197,19 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
 
 fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
     let document = read_moj_document(path)?;
-    Ok((
-        document.name,
-        document.model,
-        crate::control::moj_controls(document.model)
-            .iter()
-            .zip(document.values)
-            .map(|(control, value)| (control.cc, value))
-            .collect(),
-    ))
+    let values = crate::control::moj_controls(document.model)
+        .iter()
+        .enumerate()
+        .map(|(index, control)| {
+            let value = if control.cc == 7 {
+                document.instrument_volume
+            } else {
+                document.values[index]
+            };
+            (control.cc, value)
+        })
+        .collect();
+    Ok((document.name, document.model, values))
 }
 
 fn catalog(
@@ -1347,6 +1585,12 @@ pub(crate) fn sort_presets(presets: &mut [Preset]) {
 pub fn values(preset: &Preset) -> Result<HashMap<u8, f32>> {
     if let PresetId::MojSint { path, .. } = &preset.id {
         return read_moj_sint(path).map(|(_, _, values)| values);
+    }
+    if matches!(
+        preset.backend,
+        BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler
+    ) {
+        return Ok(HashMap::from([(crate::control::INSTRUMENT_VOLUME_CC, 1.0)]));
     }
     let PresetId::Synthv1 { path } = &preset.id else {
         return Ok(HashMap::new());
@@ -1786,11 +2030,21 @@ fn serialize_moj_sint(
     if document.model != expected_model {
         bail!("Moj Sint route model does not match its preset")
     }
-    let mut values = [0.0; 12];
+    let mut values = document.values;
+    let instrument_volume = current_values
+        .get(&7)
+        .copied()
+        .unwrap_or(document.instrument_volume);
+    if !instrument_volume.is_finite() || !(0.0..=1.0).contains(&instrument_volume) {
+        bail!("mapped instrument volume is outside 0..=1")
+    }
     for (index, control) in crate::control::moj_controls(expected_model)
         .iter()
         .enumerate()
     {
+        if control.cc == 7 {
+            continue;
+        }
         let value = current_values
             .get(&control.cc)
             .copied()
@@ -1803,10 +2057,11 @@ fn serialize_moj_sint(
     let encoded = match (expected_model, document.patch) {
         (MojModel::ModelD, MojPatch::ModelD(model_d_patch)) => {
             toml::to_string_pretty(&MojPresetV5ModelD {
-                schema_version: 6,
+                schema_version: 7,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
+                instrument_volume,
                 model: MojModel::ModelD,
                 model_d_patch,
                 macros: MojMacrosV2::from_values(values),
@@ -1814,10 +2069,11 @@ fn serialize_moj_sint(
         }
         (MojModel::SixOpPm, MojPatch::SixOpPm(six_op_patch)) => {
             toml::to_string_pretty(&MojPresetV5SixOp {
-                schema_version: 6,
+                schema_version: 7,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
+                instrument_volume,
                 model: MojModel::SixOpPm,
                 six_op_patch,
                 macros: MojMacrosSixOp::from_values(values),
@@ -1825,13 +2081,38 @@ fn serialize_moj_sint(
         }
         (MojModel::StrangeOscillator, MojPatch::StrangeOscillator(strange_patch)) => {
             toml::to_string_pretty(&MojPresetV6Strange {
-                schema_version: 6,
+                schema_version: 7,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
+                instrument_volume,
                 model: MojModel::StrangeOscillator,
                 strange_patch,
                 macros: MojMacrosStrange::from_values(values),
+            })?
+        }
+        (MojModel::SwarmMachine, MojPatch::SwarmMachine(swarm_patch)) => {
+            toml::to_string_pretty(&MojPresetV7Swarm {
+                schema_version: 7,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                instrument_volume,
+                model: MojModel::SwarmMachine,
+                swarm_patch,
+                macros: MojMacrosSwarm::from_values(values),
+            })?
+        }
+        (MojModel::BassMatrix, MojPatch::BassMatrix(bass_matrix_patch)) => {
+            toml::to_string_pretty(&MojPresetV7BassMatrix {
+                schema_version: 7,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                instrument_volume,
+                model: MojModel::BassMatrix,
+                bass_matrix_patch,
+                macros: MojMacrosBassMatrix::from_values(values),
             })?
         }
         _ => bail!("Moj Sint model and patch identity do not match"),
@@ -1898,14 +2179,52 @@ impl MojMacrosStrange {
     }
 }
 
+impl MojMacrosSwarm {
+    fn from_values(values: [f32; 12]) -> Self {
+        Self {
+            mass: values[0],
+            detune: values[1],
+            spread: values[2],
+            shape: values[3],
+            bite: values[4],
+            motion: values[5],
+            color: values[6],
+            space: values[7],
+            attack: values[8],
+            decay: values[9],
+            sustain: values[10],
+            release: values[11],
+        }
+    }
+}
+
+impl MojMacrosBassMatrix {
+    fn from_values(values: [f32; 12]) -> Self {
+        Self {
+            body: values[0],
+            growl: values[1],
+            metal: values[2],
+            punch: values[3],
+            character: values[4],
+            drive: values[5],
+            filter: values[6],
+            unstable: values[7],
+            attack: values[8],
+            decay: values[9],
+            sustain: values[10],
+            release: values[11],
+        }
+    }
+}
+
 fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
     let value: toml::Value = toml::from_str(source)?;
     if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        != Some(6)
+        != Some(7)
     {
-        bail!("saved Moj Sint preset is not schema 6")
+        bail!("saved Moj Sint preset is not schema 7")
     }
     match expected_model {
         MojModel::ModelD => {
@@ -1924,6 +2243,18 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
             let document: MojPresetV6Strange = toml::from_str(source)?;
             if document.model != MojModel::StrangeOscillator {
                 bail!("saved Moj Sint Strange Oscillator identity is invalid")
+            }
+        }
+        MojModel::SwarmMachine => {
+            let document: MojPresetV7Swarm = toml::from_str(source)?;
+            if document.model != MojModel::SwarmMachine {
+                bail!("saved Moj Sint Swarm identity is invalid")
+            }
+        }
+        MojModel::BassMatrix => {
+            let document: MojPresetV7BassMatrix = toml::from_str(source)?;
+            if document.model != MojModel::BassMatrix {
+                bail!("saved Moj Sint Bass Matrix identity is invalid")
             }
         }
     }
@@ -2091,6 +2422,46 @@ mod tests {
             preset(MojModel::SixOpPm, "Six-Op PM User 001").display_name(),
             "6-OP User 001"
         );
+    }
+
+    #[test]
+    fn read_only_managed_instruments_start_with_visible_unity_volume() {
+        let presets = [
+            Preset {
+                backend: BackendKind::Yoshimi,
+                name: "Yoshimi".into(),
+                category: None,
+                id: PresetId::Yoshimi {
+                    path: "sound.xiz".into(),
+                },
+            },
+            Preset {
+                backend: BackendKind::FluidSynth,
+                name: "Fluid".into(),
+                category: None,
+                id: PresetId::FluidSynth {
+                    soundfont: "sound.sf2".into(),
+                    soundfont_index: 0,
+                    bank: 0,
+                    program: 0,
+                },
+            },
+            Preset {
+                backend: BackendKind::ShrSampler,
+                name: "Sampler".into(),
+                category: None,
+                id: PresetId::ShrSampler {
+                    instrument_id: "sample".into(),
+                    path: "sample.shrinst".into(),
+                },
+            },
+        ];
+        for preset in presets {
+            assert_eq!(
+                values(&preset).unwrap(),
+                HashMap::from([(crate::control::INSTRUMENT_VOLUME_CC, 1.0)])
+            );
+        }
     }
 
     #[test]
@@ -2375,11 +2746,57 @@ sustain = 0.7
 release = 0.4
 "#
             .into(),
+            MojModel::SwarmMachine => r#"
+schema_version = 7
+name = "Factory Swarm"
+voices = 4
+output_gain = 0.24
+instrument_volume = 1.0
+model = "swarm_machine"
+swarm_patch = "warm_pad"
+[macros]
+mass = 0.1
+detune = 0.2
+spread = 0.3
+shape = 0.4
+bite = 0.5
+motion = 0.6
+color = 0.7
+space = 0.8
+attack = 0.2
+decay = 0.3
+sustain = 0.7
+release = 0.4
+"#
+            .into(),
+            MojModel::BassMatrix => r#"
+schema_version = 7
+name = "Factory Bass Matrix"
+voices = 4
+output_gain = 0.46
+instrument_volume = 1.0
+model = "bass_matrix"
+bass_matrix_patch = "transformer"
+[macros]
+body = 0.1
+growl = 0.2
+metal = 0.3
+punch = 0.4
+character = 0.5
+drive = 0.6
+filter = 0.7
+unstable = 0.8
+attack = 0.2
+decay = 0.3
+sustain = 0.7
+release = 0.4
+"#
+            .into(),
         }
     }
 
     #[test]
-    fn all_moj_models_save_as_strict_schema_six_and_remain_model_scoped() {
+    fn all_moj_models_save_as_strict_schema_seven_and_remain_model_scoped() {
         let base =
             std::env::temp_dir().join(format!("shsynth-user-moj-save-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
@@ -2392,6 +2809,7 @@ release = 0.4
             let (name, parsed_model, mut current) = read_moj_sint(&path).unwrap();
             assert_eq!(parsed_model, model);
             current.insert(20, 0.91);
+            current.insert(7, 0.37);
             let source = Preset {
                 backend: BackendKind::MojSint,
                 name,
@@ -2409,7 +2827,8 @@ release = 0.4
                 storage.moj_sint.join(model.stable_id())
             );
             let encoded = fs::read_to_string(path).unwrap();
-            assert!(encoded.contains("schema_version = 6"));
+            assert!(encoded.contains("schema_version = 7"));
+            assert!(encoded.contains("instrument_volume = 0.37"));
             assert!(encoded.contains(&format!("model = {:?}", model.stable_id())));
             match model {
                 MojModel::ModelD => {
@@ -2429,11 +2848,21 @@ release = 0.4
                     assert!(!encoded.contains("model_d_patch"));
                     assert!(!encoded.contains("six_op_patch"));
                 }
+                MojModel::SwarmMachine => {
+                    assert!(encoded.contains("swarm_patch = \"warm_pad\""));
+                    assert!(encoded.contains("mass = 0.91"));
+                    assert!(encoded.contains("bite = 0.5"));
+                }
+                MojModel::BassMatrix => {
+                    assert!(encoded.contains("bass_matrix_patch = \"transformer\""));
+                    assert!(encoded.contains("body = 0.91"));
+                    assert!(encoded.contains("character = 0.5"));
+                }
             }
             assert_eq!(read_moj_sint(path).unwrap().1, model);
         }
         let discovered = discover_moj_sint(std::slice::from_ref(&storage.moj_sint)).unwrap();
-        assert_eq!(discovered.len(), 3);
+        assert_eq!(discovered.len(), 5);
         assert!(discovered.iter().any(|preset| {
             preset.name == "User 001" && preset.moj_model() == Some(MojModel::ModelD)
         }));
@@ -2443,6 +2872,12 @@ release = 0.4
         assert!(discovered.iter().any(|preset| {
             preset.name == "User 001" && preset.moj_model() == Some(MojModel::StrangeOscillator)
         }));
+        assert!(discovered.iter().any(|preset| preset.name == "User 001"
+            && preset.moj_model() == Some(MojModel::SwarmMachine)));
+        assert!(discovered
+            .iter()
+            .any(|preset| preset.name == "User 001"
+                && preset.moj_model() == Some(MojModel::BassMatrix)));
         let _ = fs::remove_dir_all(base);
     }
 

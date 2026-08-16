@@ -4178,7 +4178,12 @@ impl App {
                         )
                     })),
                     BackendKind::MojSint => {
-                        targets.extend(crate::control::MOJ_MODEL_D_CONTROLS.iter().map(|control| {
+                        let controls = self
+                            .preset_for_route(route)
+                            .and_then(|preset| preset.moj_model())
+                            .map(moj_controls)
+                            .unwrap_or(&MOJ_CONTROLS);
+                        targets.extend(controls.iter().map(|control| {
                             (
                                 sequencer::AutomationTarget::Instrument {
                                     page: self.tracker_page as u8,
@@ -4189,7 +4194,16 @@ impl App {
                             )
                         }))
                     }
-                    _ => {}
+                    BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
+                        targets.push((
+                            sequencer::AutomationTarget::Instrument {
+                                page: self.tracker_page as u8,
+                                engine: route.engine.to_string(),
+                                control: "instrument_volume".into(),
+                            },
+                            sequencer::AutomationCurve::Linear,
+                        ))
+                    }
                 },
                 PageTarget::Synthv1(_) => targets.extend(CONTROLS.iter().map(|control| {
                     (
@@ -11631,7 +11645,7 @@ impl App {
         if let Some((position, normalized)) = normalized_physical_control(cc, value) {
             self.tracker_mixer.observe_physical(position, normalized);
         }
-        if cc != VOLUME_CC {
+        if !matches!(cc, VOLUME_CC | crate::control::INSTRUMENT_VOLUME_CC) {
             return;
         }
         if self
@@ -11644,7 +11658,7 @@ impl App {
     }
 
     fn apply_control_value(&mut self, cc: u8, value: f32) {
-        if cc == VOLUME_CC
+        if matches!(cc, VOLUME_CC | crate::control::INSTRUMENT_VOLUME_CC)
             && self
                 .values
                 .get(&cc)
@@ -20730,9 +20744,40 @@ fn draw_synth_parameters<B: Backend>(
                 );
             }
         }
+    } else if playing_backend.is_some() {
+        let value = a
+            .values
+            .get(&crate::control::INSTRUMENT_VOLUME_CC)
+            .copied()
+            .unwrap_or(1.0);
+        let original = a
+            .original_values
+            .get(&crate::control::INSTRUMENT_VOLUME_CC)
+            .copied()
+            .unwrap_or(1.0);
+        let width = inner.width / 4;
+        let x = inner.x;
+        let label_y = inner.y + 2;
+        f.render_widget(
+            Paragraph::new("Volume")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::White)),
+            rect(x, label_y, width, 1),
+        );
+        if label_y + 1 < inner.y + inner.height {
+            f.render_widget(
+                Paragraph::new(Spans::from(vec![
+                    Span::styled(format!("{value:>5.2}"), Style::default().fg(Color::Yellow)),
+                    Span::raw(" "),
+                    Span::styled("●", Style::default().fg(parameter_color(value, original))),
+                ]))
+                .alignment(Alignment::Center),
+                rect(x, label_y + 1, width, 1),
+            );
+        }
     } else {
         f.render_widget(
-            Paragraph::new("No editable mapped parameters\n\nMusical MIDI is routed normally.\nSAVE is unavailable for this backend.")
+            Paragraph::new("No active instrument\n\nLoad a sound first.")
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(Color::DarkGray)),
             inner,
@@ -24722,6 +24767,8 @@ release = 0.4
         app.values = values_before;
 
         let fluid = gm_bass_preset();
+        app.values = preset::values(&fluid).unwrap();
+        app.original_values = app.values.clone();
         app.playing = Some(fluid);
         app.engine = Some(
             Engine::start_test_process(BackendKind::FluidSynth, Arc::clone(&app.midi_output))
@@ -26344,7 +26391,7 @@ release = 0.4
         app.original_values = app.values.clone();
         let text = buffer_text(&render_app(&mut app, 40, 13));
         for label in [
-            "Evolve", "Shape", "Color", "Edge", "Couple", "Motion", "Depth", "Space", "Attack",
+            "Evolve", "Shape", "Color", "Edge", "Volume", "Motion", "Depth", "Space", "Attack",
             "Decay", "Sustain", "Release",
         ] {
             assert!(text.contains(label), "missing {label} in\n{text}");
@@ -26370,7 +26417,7 @@ release = 0.4
             "Ratio",
             "Feedback",
             "Op Decay",
-            "Balance",
+            "Volume",
             "Key Scale",
             "Velocity",
             "Motion",
@@ -26463,13 +26510,15 @@ release = 0.4
     }
 
     #[test]
-    fn tracker_parameter_view_marks_unsupported_backends_uneditable_and_unsaveable() {
+    fn tracker_parameter_view_exposes_shared_volume_on_read_only_backends() {
         let fluid = gm_bass_preset();
         let route = SoftwareRoute {
             engine: fluid.backend,
             instrument: fluid.route_id(),
         };
         let mut app = app(&presets());
+        app.values = preset::values(&fluid).unwrap();
+        app.original_values = app.values.clone();
         app.playing = Some(fluid);
         app.engine = Some(
             Engine::start_test_process(BackendKind::FluidSynth, Arc::clone(&app.midi_output))
@@ -26480,14 +26529,13 @@ release = 0.4
 
         let frame = render_app(&mut app, 40, 13);
         let body = (0..10).map(|row| row_text(&frame, row)).collect::<String>();
-        assert!(body.contains("No editable mapped parameters"));
-        assert!(body.contains("SAVE is unavailable"));
+        assert!(body.contains("Volume"));
         assert!(!body.contains("Flt cut"));
         assert!(!body.contains("Evolve"));
         assert!(!body.contains("Index"));
 
         perform(Action::ResetParameters, &mut app, Path::new("/none"), None);
-        assert!(app.status.contains("no mapped-parameter reset"));
+        assert!(app.status.contains("RESET FAILED"));
         app.open_overlay(Action::OpenPresetSaveOverlay);
         assert!(app.overlay.is_none());
         assert!(app.status.starts_with("SAVE UNAVAILABLE"));

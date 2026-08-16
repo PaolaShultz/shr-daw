@@ -82,13 +82,12 @@ Synthv1 controls use pickup. After loading, idea load, or RESET, mapped CCs are
 blocked until the physical control reaches the stored value. This prevents
 jumps during live audio.
 
-Moj Sint uses the same pickup behavior with its own CC 20–31 macro identity:
-EVOLVE, SHAPE, COLOR, EDGE, COUPLE, MOTION, DEPTH, SPACE, then ADSR. RESET
-restores the loaded `.mojsint` values in place without restarting the host.
-Those controls never use synthv1 XML names or parameter indices.
-Its 14 numbered factory starts contain seven Model D, six Six-Op PM, and one
-Strange Oscillator sound. Strange Oscillator maps TYPE, FORM, WARP, COUPLE,
-MOTION, CHAOS, COLOR, and SPACE before the shared ADSR controls.
+Moj Sint uses the same pickup behavior with seven model-specific timbre
+controls, Volume at physical position 5, and ADSR. RESET restores the loaded
+`.mojsint` values in place without restarting the host. Those controls never
+use synthv1 XML names or parameter indices.
+Its 16 numbered factory starts contain seven Model D, six Six-Op PM, and one
+each for Strange Oscillator, Swarm Machine, and Bass Matrix.
 The same twelve physical positions show model-specific labels, keep pickup,
 and remain inside their selected model in FT2 ROUTE.
 
