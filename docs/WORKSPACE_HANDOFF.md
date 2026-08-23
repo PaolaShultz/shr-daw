@@ -26,9 +26,10 @@ The authorized combined pass used exact Rust 1.97.1
 focused automation/effect-lifecycle tests, and the complete normal suite passed
 with 978 tests successful and 13 documented research, audition, and performance
 tests ignored. The generated documentation site reproduced deterministically
-and its focused URL/reference checks passed. No Clippy, debug/release build,
-screenshot batch, JACK, synth, MIDI transmission, recording, audible, or
-physical-hardware action ran; none was required to verify this repair.
+and its focused URL/reference checks passed. The explicitly requested follow-up
+reran the locked check and complete normal suite, then completed locked debug
+and release builds for the `shr` binary. No Clippy, screenshot batch, JACK,
+synth, MIDI transmission, recording, audible, or physical-hardware action ran.
 
 ## 2026-08-16 Swarm, Bass Matrix, and shared instrument volume
 
