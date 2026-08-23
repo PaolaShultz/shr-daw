@@ -40,6 +40,16 @@ Each press toggles the Player-selected scale directly without opening another
 screen or changing existing cells. Command pads and their releases remain
 consumed.
 
+The same Project key also drives the read-only **HARMONY** browser. Open the
+SONG overlay's tools row, select FT2 Tools **PAGE**, then choose **HARMONY**.
+It shows the two circle-of-fifths neighbours, relative and parallel keys, and
+all seven diatonic triads for the current major or natural-minor mode. The
+browser uses the configured English or German note names and the same
+sharp-based enharmonic spelling as SHR's existing note and chord display.
+It never changes the key, creates notes, starts playback, or dirties the
+Project. **HARMONY**, **EXIT**, Back/Esc, encoder press, or right-click closes
+it and restores the exact tools page and FT2 position.
+
 On the main tracker grid, the physical main rotary always moves rows. Holding
 the configured encoder Shift button while turning selects the previous or next
 column, continuing through page boundaries from Software Synth to MIDI, Drums,

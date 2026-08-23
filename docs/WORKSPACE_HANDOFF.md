@@ -5,6 +5,32 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-23 read-only FT2 HARMONY browser
+
+The proposal-archive circle-of-fifths helper is now current implemented work.
+FT2 Tools PAGE owns one previously empty `HARMONY` position and opens an
+ordinary read-only overlay. It derives the counter-clockwise and clockwise
+fifth neighbours, relative key, parallel key, and all seven diatonic triads
+from the existing Project tonic and major/natural-minor mode. English/German
+labels reuse the repository's canonical sharp-based note-name policy.
+
+The overlay has no Project, persistence, note-generation, playback, MIDI, or
+audio mutation path. Its launcher and direct Exit, encoder press, keyboard
+H/Back/Esc/Enter, controller, and mouse paths restore the exact FT2 Tools page,
+page-select mode, Project dirty state, order/Pattern/page/lane/column/cursor,
+FT2 mode, and transport. All 24 keys/modes under both naming policies and the
+38×10 compact fallback are covered.
+
+The authorized combined pass used exact Rust 1.97.1
+(`rustc 1.97.1 (8bab26f4f 2026-07-14)`, LLVM 22.1.6). Formatting, locked
+checking, eight focused HARMONY regressions, the complete normal suite with
+986 passing tests and 13 documented historical/audition/performance tests
+ignored, and locked debug and release builds passed. The pinned-font self-test,
+complete 143-image deterministic screenshot render/check, generated
+documentation site, focused URL/reference checks, and whitespace validation
+also passed. No JACK, synth, ALSA/MIDI transmission, playback, recording,
+audible, or physical-hardware action ran.
+
 ## 2026-08-23 FT2 automation workflow audit and repair
 
 The current FT2 audit repaired automation and effect-lifecycle state integrity.

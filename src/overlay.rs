@@ -22,6 +22,7 @@ pub enum OverlayKind {
     PresetSave,
     LoopLibrary,
     MixEffects,
+    Harmony,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,6 +46,7 @@ impl OverlayKind {
             Action::OpenPresetSaveOverlay => Some(Self::PresetSave),
             Action::LoopImport | Action::OpenLoopLibrary => Some(Self::LoopLibrary),
             Action::OpenEffectsOverlay => Some(Self::MixEffects),
+            Action::OpenHarmony => Some(Self::Harmony),
             _ => None,
         }
     }
@@ -62,6 +64,7 @@ impl OverlayKind {
             Self::PresetSave => "SAVE USER SOUND",
             Self::LoopLibrary => "LOOP BROWSER",
             Self::MixEffects => "EFFECTS ROUTING",
+            Self::Harmony => "HARMONY",
         }
     }
 }
@@ -277,6 +280,7 @@ impl OverlayState {
             (OverlayKind::LoopLibrary, 0) => Some(("STOP", Action::LoopPreviewStop)),
             (OverlayKind::LoopLibrary, 1) => Some(("PLAY", Action::LoopPreview)),
             (OverlayKind::TrackerSong, 3) => Some(("TAP", Action::TapTempo)),
+            (OverlayKind::Harmony, 3) => Some(("EXIT", Action::Back)),
             _ => None,
         }
     }
@@ -446,6 +450,24 @@ mod controller_tests {
             state.controller_action(3),
             Some(("CANCEL", Action::CancelPresetSave))
         );
+    }
+
+    #[test]
+    fn harmony_overlay_keeps_its_launcher_and_adds_a_direct_exit() {
+        let state = overlay(
+            OverlayKind::Harmony,
+            OverlayLauncher {
+                action: Action::OpenHarmony,
+                label: "HARMONY",
+                page: 2,
+                item: 2,
+            },
+        );
+        assert_eq!(
+            state.controller_action(2),
+            Some(("HARMONY", Action::OpenHarmony))
+        );
+        assert_eq!(state.controller_action(3), Some(("EXIT", Action::Back)));
     }
 }
 

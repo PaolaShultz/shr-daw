@@ -510,6 +510,10 @@ controls.</p>
 Edit write only accepted notes. Moving to a percussion page turns the filter
 off. The Project stores its tonic and scale mode; SHR does not infer a key from
 audio or a finished Arrangement.</p>
+<p>For a silent theory view of that stored key, open FT2 <strong>TOOLS</strong>, select the
+<strong>PAGE</strong> controller page, and choose <strong>HARMONY</strong>. It lists the neighbouring
+fifths, relative and parallel keys, and seven diatonic triads without changing
+the Project or playing anything. Back or Exit returns to the exact FT2 context.</p>
 <p>The practical loop is simple:</p>
 <pre><code class="language-text">press -&gt; hear -&gt; see -&gt; change -&gt; compare -&gt; ask why
 </code></pre>
@@ -1453,6 +1457,15 @@ mode.</p>
 Each press toggles the Player-selected scale directly without opening another
 screen or changing existing cells. Command pads and their releases remain
 consumed.</p>
+<p>The same Project key also drives the read-only <strong>HARMONY</strong> browser. Open the
+SONG overlay's tools row, select FT2 Tools <strong>PAGE</strong>, then choose <strong>HARMONY</strong>.
+It shows the two circle-of-fifths neighbours, relative and parallel keys, and
+all seven diatonic triads for the current major or natural-minor mode. The
+browser uses the configured English or German note names and the same
+sharp-based enharmonic spelling as SHR's existing note and chord display.
+It never changes the key, creates notes, starts playback, or dirties the
+Project. <strong>HARMONY</strong>, <strong>EXIT</strong>, Back/Esc, encoder press, or right-click closes
+it and restores the exact tools page and FT2 position.</p>
 <p>On the main tracker grid, the physical main rotary always moves rows. Holding
 the configured encoder Shift button while turning selects the previous or next
 column, continuing through page boundaries from Software Synth to MIDI, Drums,
@@ -2424,6 +2437,10 @@ or <code>q</code> can still exit from the splash.</p>
 <td>Pattern-owned sparse-lane child. Opening is read-only; NEW explicitly creates an unused target lane. Up/Down changes lanes; REC arms only the selected target and adds/deletes points; POINT browses and adjusts points; LANE changes an empty lane's target, explains fixed RAMP/STEP meaning, and confirms clear. Populated lanes refuse target browsing until CLEAR is confirmed. Touch capture uses transport time, can run beside note REC, monitors the armed value, re-arms pickup at the actual cursor/playback value, and becomes safe rather than writing through a Pattern boundary. Effect removal or confirmed type replacement reports and clears only that effect's now-unresolvable lanes; Cancel retains them. Back restores exact tracker context.</td>
 </tr>
 <tr>
+<td>FT2 HARMONY</td>
+<td>Read-only FT2 Tools overlay derived from the current Project tonic and major/natural-minor mode. It shows both circle-of-fifths neighbours, relative and parallel keys, and seven diatonic triads using the configured English/German note-name policy and SHR's canonical sharp spelling. Opening, repeated opening, encoder turns, and closing cannot change or dirty the Project, generate notes, or alter transport. The launcher/Exit, keyboard <code>H</code>/Back/Esc/Enter, controller, and mouse paths restore the exact caller page, page-select mode, Pattern/order/page/lane/column/cursor, FT2 mode, and transport.</td>
+</tr>
+<tr>
 <td>FT2 record</td>
 <td>Record quantized note-ons and, when enabled for the page, release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. MODE keeps MIX and AUTO directly reachable. Stopped REC runs one visible meter-aware count-in bar and starts capture at row zero; REC during Play punches into the Arrangement without restart. Exact page/lane owners survive cursor moves and boundaries. Shift-rotary column turns are ignored while recorded notes are held; Edit note length does not affect REC.</td>
 </tr>
@@ -3098,8 +3115,16 @@ channel-1 pads cannot safely be commands because they collide with the keys.</li
 <td>Page</td>
 <td>Mute page (<code>MUTE PG</code>)</td>
 <td>Mute lane (<code>MUTE</code>)</td>
+<td>Harmony browser</td>
+<td>—</td>
+</tr>
+<tr>
+<td>FT2 HARMONY</td>
+<td>Overlay</td>
 <td>—</td>
 <td>—</td>
+<td>Harmony/close</td>
+<td>Exit</td>
 </tr>
 <tr>
 <td>FT2 tools</td>
@@ -3866,7 +3891,7 @@ on page 1 without restarting it; with no Player instrument, FT2 loads the first
 available synthv1 preset. Saved or explicitly changed Projects keep their own
 routes.</p>
 <h5 id="doc-menu-everyday_screens--ops-browse-and-load" tabindex="-1">OPS — browse and load<a class="heading-anchor" href="#doc-menu-everyday_screens--ops-browse-and-load" aria-label="Link to OPS — browse and load">#</a></h5>
-<p><img src="images/menu/presets-ops.png" alt="Populated Presets screen with the OPS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="fa8550471167f42fda625c57f686e7bc224eba5323dda82884cc2a2047beef59" class="tui-shot" id="shot-fa8550471167" /></p>
+<p><img src="images/menu/presets-ops.png" alt="Populated Presets screen with the OPS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="b37aed540589b234a38c6bf14b3cdabbf6675962ba570c3ca43a0b79b3c8cdd4" class="tui-shot" id="shot-b37aed540589" /></p>
 <p><code>LOAD</code> starts the highlighted sound. <code>FIRST</code> and <code>LAST</code> jump to the ends of the
 current engine's catalog. Keyboard PageUp/PageDown still move by ten sounds;
 physical command pads deliberately do not duplicate that coarse scrolling.
@@ -3890,7 +3915,7 @@ engine. Its missing, incompatible, malformed, timed-out, or failed states stay
 visible and cannot leave two melodic hosts layered. The public installation's
 cleared factory package is a neutral starting sound.</p>
 <h5 id="doc-menu-everyday_screens--sys-safety-and-help" tabindex="-1">SYS — safety and help<a class="heading-anchor" href="#doc-menu-everyday_screens--sys-safety-and-help" aria-label="Link to SYS — safety and help">#</a></h5>
-<p><img src="images/menu/presets-sys.png" alt="Populated Presets screen with the SYS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="51ee9ab700f4e3c697786fee5c2e87abf8c84095cb7caafe2ada7def1f445d29" class="tui-shot" id="shot-51ee9ab700f4" /></p>
+<p><img src="images/menu/presets-sys.png" alt="Populated Presets screen with the SYS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="f40008aed73130aee765dccfce50607bb9bfdb2192f253784d46fa3bf31de28d" class="tui-shot" id="shot-f40008aed731" /></p>
 <p><code>PANIC</code> stops owned playback and notes. <code>HELP</code> opens the local help reader.
 <code>EXIT</code> returns to Home. MIDI never quits the application; quitting remains
 computer-keyboard-only from Home.</p>
@@ -4411,13 +4436,13 @@ from stopped transport owns its Pattern loop; REC during Play punches into the
 current Arrangement and punch-out returns to Play. Key release writes a
 quantized note-off independently of Edit note length.</p>
 <h5 id="doc-menu-tracker_and_projects--mode-transport-and-capture" tabindex="-1">MODE — transport and capture<a class="heading-anchor" href="#doc-menu-tracker_and_projects--mode-transport-and-capture" aria-label="Link to MODE — transport and capture">#</a></h5>
-<p><img src="images/menu/ft2-record-mode.png" alt="Populated FT2 Pattern recording context with the MODE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="8aba428313356bde6c4244499b1490efb13bf9ff00349bd7c6b46b3447b5112a" class="tui-shot" id="shot-8aba42831335" /></p>
+<p><img src="images/menu/ft2-record-mode.png" alt="Populated FT2 Pattern recording context with the MODE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="32a588667e0b6367893a06f137a4cc67490a158997088fbef2e98ac9b79a4cb8" class="tui-shot" id="shot-32a588667e0b" /></p>
 <p><code>MIX</code> opens the live audio-level mixer without ending capture. <code>PLAY</code> ends REC
 and starts normal transport. <code>RECORD</code> ends real-time capture while preserving
 the notes already entered. <code>EDIT</code> ends REC and enters stopped Edit mode. With
 N00B on, only allowed notes are heard and written.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-emergency-and-normal-exits" tabindex="-1">SYS — emergency and normal exits<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-emergency-and-normal-exits" aria-label="Link to SYS — emergency and normal exits">#</a></h5>
-<p><img src="images/menu/ft2-record-sys.png" alt="Populated FT2 Pattern recording context with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="6677189c16e216319632d9068ead839af28bc6acc099f2784d1981567865b7cb" class="tui-shot" id="shot-6677189c16e2" /></p>
+<p><img src="images/menu/ft2-record-sys.png" alt="Populated FT2 Pattern recording context with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="8c41ec13ed9095cc0018dd3ed680c5c0a260437b67f4f45ab6249b45c0bb04ae" class="tui-shot" id="shot-8c41ec13ed90" /></p>
 <p><code>PANIC</code> performs the global owned stop. <code>N00B</code> toggles the same independent
 filter without ending capture. <code>HELP</code> explains the current mode. <code>EXIT</code> leaves
 the recording context safely.</p>
@@ -4508,8 +4533,8 @@ current command parameter. <code>EXIT</code> cancels and restores the original c
 half-edited draft never leaks into the Project.</p>
 <h4 id="doc-menu-tracker_and_projects--ft2-tools" tabindex="-1">FT2 Tools<a class="heading-anchor" href="#doc-menu-tracker_and_projects--ft2-tools" aria-label="Link to FT2 Tools">#</a></h4>
 <p>This detailed child screen remains for Arrangement, Live Patterns, clip
-operations, Loop Mix, effects, and muting. Open it from the SONG overlay's
-<code>OPEN LOOP / PAGE TOOLS</code> row.
+operations, Loop Mix, effects, muting, and the read-only Harmony browser. Open
+it from the SONG overlay's <code>OPEN LOOP / PAGE TOOLS</code> row.
 Quick Page, Pattern, Song, and Route selection stays in the master overlays.</p>
 <h5 id="doc-menu-tracker_and_projects--ops-open-focused-tools" tabindex="-1">OPS — open focused tools<a class="heading-anchor" href="#doc-menu-tracker_and_projects--ops-open-focused-tools" aria-label="Link to OPS — open focused tools">#</a></h5>
 <p><img src="images/menu/ft2-tools-ops.png" alt="Populated FT2 Tools screen with the OPS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="171077d53e3f8bf0522fc377eeb4cac131e81f9993b44e7692f6bed94d8d573c" class="tui-shot" id="shot-171077d53e3f" /></p>
@@ -4523,9 +4548,18 @@ four-lane page. These are in-memory editing clipboards, not saved Projects.
 name, mute, or automation. Complete Page operations remain a
 <a href="#doc-future_improvements--future-page-operations">future Page-manager task</a>.</p>
 <h5 id="doc-menu-tracker_and_projects--page-page-mute" tabindex="-1">PAGE — page mute<a class="heading-anchor" href="#doc-menu-tracker_and_projects--page-page-mute" aria-label="Link to PAGE — page mute">#</a></h5>
-<p><img src="images/menu/ft2-tools-page.png" alt="Populated FT2 Tools screen with the PAGE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="fde969996cf5048fb1212730677ed3369a2358721b3186853ae712d8f8bb08c3" class="tui-shot" id="shot-fde969996cf5" /></p>
+<p><img src="images/menu/ft2-tools-page.png" alt="Populated FT2 Tools screen with the PAGE page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="cfbc64b5a4c28c876165aa2e26c12ae9650fafaf81b6766bd550d2f40e134f73" class="tui-shot" id="shot-cfbc64b5a4c2" /></p>
 <p><code>MUTE PG</code> toggles the current four-lane page. <code>MUTE</code> toggles the selected
-stored tracker lane. Transient performance mute remains on Live Patterns.</p>
+stored tracker lane. Transient performance mute remains on Live Patterns.
+<code>HARMONY</code> opens a silent browser derived from the current Project key.</p>
+<p><img src="images/menu/overlay-harmony.png" alt="Read-only HARMONY browser" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="f7d978d61bbc96d914fe3a27e096a9b9ee79554191f32f148864ed13dfe13cb3" class="tui-shot" id="shot-f7d978d61bbc" /></p>
+<p>The browser shows the counter-clockwise and clockwise fifth neighbours around
+the current key, its relative and parallel keys, and all seven diatonic triads.
+English/German note naming follows configuration; enharmonic names use the same
+canonical sharp spelling as existing SHR note and chord labels. The view has
+no selection or Apply action: the <code>HARMONY</code> launcher, <code>EXIT</code>, encoder press,
+Back/Esc, keyboard <code>H</code>, or right-click closes it. Project data, dirty state,
+transport, FT2 mode, and the exact editor and controller positions stay intact.</p>
 <h5 id="doc-menu-tracker_and_projects--sys-safety-help-and-return" tabindex="-1">SYS — safety, help, and return<a class="heading-anchor" href="#doc-menu-tracker_and_projects--sys-safety-help-and-return" aria-label="Link to SYS — safety, help, and return">#</a></h5>
 <p><img src="images/menu/ft2-tools-sys.png" alt="Populated FT2 Tools screen with the SYS page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="d30170c1ee0907324860ed710caa628a2b3ede470898e37da557cb1b1d4f4df2" class="tui-shot" id="shot-d30170c1ee09" /></p>
 <p><code>PANIC</code> and <code>HELP</code> retain their normal meanings. <code>EXIT</code> returns to the
@@ -4594,7 +4628,7 @@ position.</p>
 the source file or an existing Project. Saved-Project <code>PREVIEW</code> remains on the
 separate PREVIEW command page.</p>
 <h5 id="doc-menu-tracker_and_projects--preview-hear-the-selected-saved-project" tabindex="-1">PREVIEW: hear the selected saved Project<a class="heading-anchor" href="#doc-menu-tracker_and_projects--preview-hear-the-selected-saved-project" aria-label="Link to PREVIEW: hear the selected saved Project">#</a></h5>
-<p><img src="images/menu/files-preview.png" alt="Project Files with the PREVIEW command page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="babbc4ed3496adb0839d3db90f124df6d99963f89cd104a821982f8346726c39" class="tui-shot" id="shot-babbc4ed3496" /></p>
+<p><img src="images/menu/files-preview.png" alt="Project Files with the PREVIEW command page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="dad928a64a39370bd5b73597b9875f9e305feb2a853e42a391e0a53d2dca135a" class="tui-shot" id="shot-dad928a64a39" /></p>
 <p><code>PREVIEW</code> starts or stops a bounded preview of the selected saved Project. It
 does not replace the Project being edited. Using the same command again,
 leaving the screen, or using Panic stops the preview.</p>
@@ -15584,6 +15618,28 @@ tracking section.</p>
 new thread in <code>$HOME/p/shsynth</code>. Durable repository policy is in
 <code>AGENTS.md</code>; detailed helper behavior is in <code>docs/MAINTAINER_HELPERS.md</code>. Never
 record credentials, GitHub device codes, or private file contents here.</p>
+<h4 id="doc-workspace_handoff--2026-08-23-read-only-ft2-harmony-browser" tabindex="-1">2026-08-23 read-only FT2 HARMONY browser<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-23-read-only-ft2-harmony-browser" aria-label="Link to 2026-08-23 read-only FT2 HARMONY browser">#</a></h4>
+<p>The proposal-archive circle-of-fifths helper is now current implemented work.
+FT2 Tools PAGE owns one previously empty <code>HARMONY</code> position and opens an
+ordinary read-only overlay. It derives the counter-clockwise and clockwise
+fifth neighbours, relative key, parallel key, and all seven diatonic triads
+from the existing Project tonic and major/natural-minor mode. English/German
+labels reuse the repository's canonical sharp-based note-name policy.</p>
+<p>The overlay has no Project, persistence, note-generation, playback, MIDI, or
+audio mutation path. Its launcher and direct Exit, encoder press, keyboard
+H/Back/Esc/Enter, controller, and mouse paths restore the exact FT2 Tools page,
+page-select mode, Project dirty state, order/Pattern/page/lane/column/cursor,
+FT2 mode, and transport. All 24 keys/modes under both naming policies and the
+38×10 compact fallback are covered.</p>
+<p>The authorized combined pass used exact Rust 1.97.1
+(<code>rustc 1.97.1 (8bab26f4f 2026-07-14)</code>, LLVM 22.1.6). Formatting, locked
+checking, eight focused HARMONY regressions, the complete normal suite with
+986 passing tests and 13 documented historical/audition/performance tests
+ignored, and locked debug and release builds passed. The pinned-font self-test,
+complete 143-image deterministic screenshot render/check, generated
+documentation site, focused URL/reference checks, and whitespace validation
+also passed. No JACK, synth, ALSA/MIDI transmission, playback, recording,
+audible, or physical-hardware action ran.</p>
 <h4 id="doc-workspace_handoff--2026-08-23-ft2-automation-workflow-audit-and-repair" tabindex="-1">2026-08-23 FT2 automation workflow audit and repair<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-23-ft2-automation-workflow-audit-and-repair" aria-label="Link to 2026-08-23 FT2 automation workflow audit and repair">#</a></h4>
 <p>The current FT2 audit repaired automation and effect-lifecycle state integrity.
 Opening AUTO is read-only and NEW explicitly creates an unused target lane.
@@ -17099,8 +17155,8 @@ across reconnects, while preserving the current refusal to guess. It should
 remain configuration data rather than adding hardware names to Rust constants.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-future_musical_helpers" data-source="docs/FUTURE_MUSICAL_HELPERS.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Future musical sketch helpers</span><span class="document-summary">FT2 SIZE, circle-of-fifths notes, arpeggio algorithms, drum fills/rolls, and staged Arrangement assistance.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/FUTURE_MUSICAL_HELPERS.md" target="_blank" rel="noopener noreferrer external">View docs/FUTURE_MUSICAL_HELPERS.md source</a></div><p>Created: 2026-08-02</p>
-<p>Status: FT2 Edit SIZE implemented; remaining helpers are owner-directed
-proposals, not scheduled promises</p>
+<p>Status: FT2 Edit SIZE and read-only HARMONY implemented; remaining helpers are
+owner-directed proposals, not scheduled promises</p>
 <p>This plan covers small, inspectable helpers that turn a short musical idea into
 editable FT2 material. The helpers should remove repetitive work, not decide
 what the song is. Every generated result must be previewable, deterministic,
@@ -17249,25 +17305,26 @@ Pattern repeat, Loop Mix restart, REC wrap, and final-row scheduling.</li>
 <li>Verify keyboard/controller/mouse parity and exact cursor preservation.</li>
 </ul>
 <h4 id="doc-future_musical_helpers--circle-of-fifths" tabindex="-1">Circle of fifths<a class="heading-anchor" href="#doc-future_musical_helpers--circle-of-fifths" aria-label="Link to Circle of fifths">#</a></h4>
+<p>Status: implemented as the read-only FT2 Tools <code>HARMONY</code> browser.</p>
 <p><code>Circle of fifths</code> is the normal English term; <code>cycle of fifths</code> is also used.
 It orders pitch classes by perfect fifth: C, G, D, A, E, B, F♯/G♭, D♭, A♭,
 E♭, B♭, F, then back to C. Clockwise major keys add sharps and
 counter-clockwise keys add flats. Each major key shares its key signature with
 a relative minor a minor third below.</p>
 <p>For SHR-DAW it is useful as a compact relationship browser, not as a promise
-that adjacent keys or chords automatically make a good song. A first helper
-can remain read-only:</p>
+that adjacent keys or chords automatically make a good song. The implemented
+first helper remains read-only:</p>
 <pre><code class="language-text">F  &lt;-  C  -&gt;  G       IV &lt;- I -&gt; V
 Dm     Am     Em       ii   vi   iii
 relative: A minor     signature: no ♯/♭
 </code></pre>
-<p>The current Project already stores a chromatic tonic plus major or natural
-minor mode. A future <code>HARMONY</code> child can derive the two fifth-neighbors,
-relative key, parallel key, and seven diatonic triads without new persistence.
-Changing the Project key remains an explicit action. Enharmonic spelling must
-follow the configured English/German note-name policy and a reviewed
-sharp/flat preference; the numeric pitch class alone cannot choose whether to
-display F♯ or G♭.</p>
+<p>The current Project stores a chromatic tonic plus major or natural-minor mode.
+<code>HARMONY</code> derives the two fifth neighbours, relative key, parallel key, and
+seven diatonic triads without new persistence. Changing the Project key
+remains an explicit N00B-scale action. English/German spelling follows runtime
+configuration. The reviewed enharmonic choice is SHR's existing canonical
+sharp-based pitch-name table, so the browser agrees with current note and
+chord labels instead of introducing a second flat/sharp policy.</p>
 <p>Reference: <a href="https://open-musictheory.github.io/docs/fundamentals/key-signatures/" class="external" target="_blank" rel="noopener noreferrer external">Open Music Theory: key signatures and the circle of fifths</a>.</p>
 <h4 id="doc-future_musical_helpers--arpeggio-pattern-helpers" tabindex="-1">Arpeggio pattern helpers<a class="heading-anchor" href="#doc-future_musical_helpers--arpeggio-pattern-helpers" aria-label="Link to Arpeggio pattern helpers">#</a></h4>
 <h5 id="doc-future_musical_helpers--deterministic-pattern-families" tabindex="-1">Deterministic pattern families<a class="heading-anchor" href="#doc-future_musical_helpers--deterministic-pattern-families" aria-label="Link to Deterministic pattern families">#</a></h5>
@@ -17410,7 +17467,7 @@ page/lane/column/cursor.</p>
 <td>Prevent every musical helper inventing unsafe replacement behavior</td>
 </tr>
 <tr>
-<td>3</td>
+<td>3 (implemented)</td>
 <td>Read-only circle-of-fifths/HARMONY browser</td>
 <td>Useful theory support with no generated-data risk</td>
 </tr>

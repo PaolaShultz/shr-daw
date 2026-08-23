@@ -2,8 +2,8 @@
 
 Created: 2026-08-02
 
-Status: FT2 Edit SIZE implemented; remaining helpers are owner-directed
-proposals, not scheduled promises
+Status: FT2 Edit SIZE and read-only HARMONY implemented; remaining helpers are
+owner-directed proposals, not scheduled promises
 
 This plan covers small, inspectable helpers that turn a short musical idea into
 editable FT2 material. The helpers should remove repetitive work, not decide
@@ -153,6 +153,8 @@ and the 1–256 bound.
 
 ## Circle of fifths
 
+Status: implemented as the read-only FT2 Tools `HARMONY` browser.
+
 `Circle of fifths` is the normal English term; `cycle of fifths` is also used.
 It orders pitch classes by perfect fifth: C, G, D, A, E, B, F♯/G♭, D♭, A♭,
 E♭, B♭, F, then back to C. Clockwise major keys add sharps and
@@ -160,8 +162,8 @@ counter-clockwise keys add flats. Each major key shares its key signature with
 a relative minor a minor third below.
 
 For SHR-DAW it is useful as a compact relationship browser, not as a promise
-that adjacent keys or chords automatically make a good song. A first helper
-can remain read-only:
+that adjacent keys or chords automatically make a good song. The implemented
+first helper remains read-only:
 
 ```text
 F  <-  C  ->  G       IV <- I -> V
@@ -169,13 +171,13 @@ Dm     Am     Em       ii   vi   iii
 relative: A minor     signature: no ♯/♭
 ```
 
-The current Project already stores a chromatic tonic plus major or natural
-minor mode. A future `HARMONY` child can derive the two fifth-neighbors,
-relative key, parallel key, and seven diatonic triads without new persistence.
-Changing the Project key remains an explicit action. Enharmonic spelling must
-follow the configured English/German note-name policy and a reviewed
-sharp/flat preference; the numeric pitch class alone cannot choose whether to
-display F♯ or G♭.
+The current Project stores a chromatic tonic plus major or natural-minor mode.
+`HARMONY` derives the two fifth neighbours, relative key, parallel key, and
+seven diatonic triads without new persistence. Changing the Project key
+remains an explicit N00B-scale action. English/German spelling follows runtime
+configuration. The reviewed enharmonic choice is SHR's existing canonical
+sharp-based pitch-name table, so the browser agrees with current note and
+chord labels instead of introducing a second flat/sharp policy.
 
 Reference: [Open Music Theory: key signatures and the circle of fifths](https://open-musictheory.github.io/docs/fundamentals/key-signatures/).
 
@@ -323,7 +325,7 @@ page/lane/column/cursor.
 |---|---|---|
 | 1 (implemented) | FT2 Edit SIZE model helpers and page | Immediate manual sketch speed; storage already supports it |
 | 2 | Shared generated-draft, collision summary, seed, preview, Apply/Clone/Cancel | Prevent every musical helper inventing unsafe replacement behavior |
-| 3 | Read-only circle-of-fifths/HARMONY browser | Useful theory support with no generated-data risk |
+| 3 (implemented) | Read-only circle-of-fifths/HARMONY browser | Useful theory support with no generated-data risk |
 | 4 | Offline arpeggio generator | Small deterministic algorithms over existing cells |
 | 5 | Fill and roll drafts | Reuses retrigger and drum-page semantics after collision UI exists |
 | 6 | Template/constraint Arrangement assistant | Builds on clone/variation operations and explicit previews |

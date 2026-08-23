@@ -247,8 +247,8 @@ half-edited draft never leaks into the Project.
 ## FT2 Tools
 
 This detailed child screen remains for Arrangement, Live Patterns, clip
-operations, Loop Mix, effects, and muting. Open it from the SONG overlay's
-`OPEN LOOP / PAGE TOOLS` row.
+operations, Loop Mix, effects, muting, and the read-only Harmony browser. Open
+it from the SONG overlay's `OPEN LOOP / PAGE TOOLS` row.
 Quick Page, Pattern, Song, and Route selection stays in the master overlays.
 
 ### OPS — open focused tools
@@ -274,6 +274,17 @@ name, mute, or automation. Complete Page operations remain a
 
 `MUTE PG` toggles the current four-lane page. `MUTE` toggles the selected
 stored tracker lane. Transient performance mute remains on Live Patterns.
+`HARMONY` opens a silent browser derived from the current Project key.
+
+![Read-only HARMONY browser](../images/menu/overlay-harmony.png)
+
+The browser shows the counter-clockwise and clockwise fifth neighbours around
+the current key, its relative and parallel keys, and all seven diatonic triads.
+English/German note naming follows configuration; enharmonic names use the same
+canonical sharp spelling as existing SHR note and chord labels. The view has
+no selection or Apply action: the `HARMONY` launcher, `EXIT`, encoder press,
+Back/Esc, keyboard `H`, or right-click closes it. Project data, dirty state,
+transport, FT2 mode, and the exact editor and controller positions stay intact.
 
 ### SYS — safety, help, and return
 

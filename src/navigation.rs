@@ -162,6 +162,7 @@ pub enum Action {
     OpenLivePatterns,
     OpenTrackerLoop,
     OpenTrackerLoopAlign,
+    OpenHarmony,
     OpenPageOverlay,
     OpenPatternOverlay,
     OpenSongOverlay,
@@ -697,7 +698,7 @@ const TRACKER_TOOLS: [MenuPage; 4] = [
         [
             on("MUTE PG", Action::TrackerPageMute),
             on("MUTE", Action::TrackerMute),
-            off(""),
+            on("HARMONY", Action::OpenHarmony),
             off(""),
         ],
     ),
@@ -2112,6 +2113,15 @@ mod tests {
     }
 
     #[test]
+    fn harmony_uses_a_free_ft2_tools_slot_without_adding_a_controller_page() {
+        let tools = pages(Screen::TrackerTools, MenuContext::Normal);
+        assert_eq!(tools.len(), 4);
+        assert_eq!(tools[2].label, "PAGE");
+        assert_eq!(tools[2].slots[2].label, "HARMONY");
+        assert_eq!(tools[2].slots[2].dispatch(), Some(Action::OpenHarmony));
+    }
+
+    #[test]
     fn inventoried_controller_workflow_actions_are_all_reachable() {
         let contexts = [
             (Screen::Presets, MenuContext::Normal),
@@ -2170,6 +2180,7 @@ mod tests {
             Action::OpenLivePatterns,
             Action::OpenTrackerLoop,
             Action::OpenTrackerLoopAlign,
+            Action::OpenHarmony,
             Action::OpenFxRack,
             Action::OpenFxEditor,
             Action::ResetMeter,

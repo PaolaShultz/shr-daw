@@ -102,6 +102,11 @@ Edit write only accepted notes. Moving to a percussion page turns the filter
 off. The Project stores its tonic and scale mode; SHR does not infer a key from
 audio or a finished Arrangement.
 
+For a silent theory view of that stored key, open FT2 **TOOLS**, select the
+**PAGE** controller page, and choose **HARMONY**. It lists the neighbouring
+fifths, relative and parallel keys, and seven diatonic triads without changing
+the Project or playing anything. Back or Exit returns to the exact FT2 context.
+
 The practical loop is simple:
 
 ```text

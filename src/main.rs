@@ -22,6 +22,7 @@ mod final_bus;
 mod fsutil;
 mod geometry;
 mod gm;
+mod harmony;
 mod help;
 mod installer_contract;
 mod jack;

@@ -14,6 +14,7 @@ use crate::final_bus::{
     MASTER_GAIN_MAX_DB, MASTER_GAIN_MIN_DB, SOURCE_GAIN_MAX_DB, SOURCE_GAIN_MIN_DB,
 };
 use crate::geometry::{contains, rect, visible_index};
+use crate::harmony::Harmony;
 use crate::help::{self, HelpKind};
 use crate::master_strip::{
     GlueAttack, GlueRatio, GlueRelease, GlueSidechainHpf, HighShelfFrequency, HpfFrequency,
@@ -3063,6 +3064,7 @@ impl App {
             OverlayKind::PresetSave => 3,
             OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
             OverlayKind::MixEffects => FX_TARGET_COUNT,
+            OverlayKind::Harmony => 0,
         }
     }
 
@@ -3099,6 +3101,7 @@ impl App {
             }
             OverlayKind::LoopLibrary => caller == Screen::TrackerLoop,
             OverlayKind::MixEffects => caller == Screen::Meter,
+            OverlayKind::Harmony => caller == Screen::TrackerTools,
         };
         if !allowed {
             return;
@@ -3163,6 +3166,7 @@ impl App {
                 .map(|index| self.loop_imports.len() + index)
                 .unwrap_or(0),
             OverlayKind::MixEffects => self.fx_target.min(MASTER_FX_TARGET),
+            OverlayKind::Harmony => 0,
         };
         let draft = if kind == OverlayKind::TrackerRoute {
             self.refresh_overlay_target_candidates();
@@ -3973,6 +3977,7 @@ impl App {
                 self.set_screen(Screen::FxRack);
                 self.status = format!("{} rack", fx_target_label(self.fx_target));
             }
+            OverlayKind::Harmony => self.close_overlay(false),
         }
     }
 
@@ -15449,7 +15454,8 @@ fn perform(
         | Action::OpenTrackerAdvanceOverlay
         | Action::OpenEntryLayoutOverlay
         | Action::OpenPresetSaveOverlay
-        | Action::OpenEffectsOverlay => a.open_overlay(action),
+        | Action::OpenEffectsOverlay
+        | Action::OpenHarmony => a.open_overlay(action),
         Action::ApplyRouteOverlay | Action::CancelRouteOverlay => {
             unreachable!("route overlay actions are handled before contextual dispatch")
         }
@@ -16083,6 +16089,13 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             {
                 perform(Action::CancelPresetSave, a, state, Some(tx));
             }
+            KeyCode::Char('h') | KeyCode::Char('H')
+                if a.overlay
+                    .as_ref()
+                    .is_some_and(|overlay| overlay.kind == OverlayKind::Harmony) =>
+            {
+                a.overlay_back();
+            }
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.overlay_back(),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
             _ => {}
@@ -16291,6 +16304,18 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             perform(action, a, state, Some(tx));
         }
         return false;
+    }
+    if a.screen == Screen::TrackerTools {
+        let action = match code {
+            KeyCode::Char('h') | KeyCode::Char('H') => Some(Action::OpenHarmony),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => Some(Action::Back),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
+            _ => None,
+        };
+        if let Some(action) = action {
+            perform(action, a, state, Some(tx));
+            return false;
+        }
     }
     if a.screen == Screen::Tracker {
         if a.tracker_recording.is_some() {
@@ -20134,6 +20159,40 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 format!("{} · {effects} effect(s)", fx_target_label(target))
             })
             .collect(),
+        OverlayKind::Harmony => {
+            let harmony = Harmony::from_scale(a.song.project_key);
+            let triad_row = |triads: &[crate::harmony::DiatonicTriad]| {
+                triads
+                    .iter()
+                    .map(|triad| triad.label(a.config.note_naming))
+                    .collect::<Vec<_>>()
+                    .join(" · ")
+            };
+            vec![
+                format!(
+                    "KEY     {}",
+                    harmony.current.long_label(a.config.note_naming)
+                ),
+                format!(
+                    "5THS   {} < {} > {}",
+                    harmony
+                        .counter_clockwise
+                        .compact_label(a.config.note_naming),
+                    harmony.current.compact_label(a.config.note_naming),
+                    harmony.clockwise.compact_label(a.config.note_naming)
+                ),
+                format!(
+                    "REL     {}",
+                    harmony.relative.long_label(a.config.note_naming)
+                ),
+                format!(
+                    "PAR     {}",
+                    harmony.parallel.long_label(a.config.note_naming)
+                ),
+                triad_row(&harmony.triads[..4]),
+                triad_row(&harmony.triads[4..]),
+            ]
+        }
     }
 }
 
@@ -20156,6 +20215,7 @@ fn draw_overlay<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let scroll = overlay.scroll;
     let selection = overlay.selection;
     let active_field = overlay.active_field;
+    let read_only = overlay.kind == OverlayKind::Harmony;
     f.render_widget(Clear, geometry.outer);
     f.render_widget(
         Block::default()
@@ -20185,7 +20245,7 @@ fn draw_overlay<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .take(visible_rows)
         .enumerate()
     {
-        let selected = index == selection;
+        let selected = !read_only && index == selection;
         let active = selected && active_field.is_some();
         let marker = if active {
             "*"
@@ -20194,7 +20254,22 @@ fn draw_overlay<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         } else {
             " "
         };
-        let style = if active {
+        let style = if read_only {
+            Style::default()
+                .fg(if screen_row == 0 {
+                    Color::LightYellow
+                } else if screen_row >= 4 {
+                    Color::Green
+                } else {
+                    Color::Gray
+                })
+                .bg(Color::Black)
+                .add_modifier(if screen_row == 0 {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                })
+        } else if active {
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Green)
@@ -20207,12 +20282,13 @@ fn draw_overlay<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         } else {
             Style::default().fg(Color::Gray).bg(Color::Black)
         };
+        let text = if read_only {
+            line.clone()
+        } else {
+            format!("{marker}{line}")
+        };
         f.render_widget(
-            Paragraph::new(truncate(
-                &format!("{marker}{line}"),
-                usize::from(geometry.inner.width),
-            ))
-            .style(style),
+            Paragraph::new(truncate(&text, usize::from(geometry.inner.width))).style(style),
             rect(
                 geometry.inner.x,
                 geometry.inner.y + screen_row as u16,
@@ -22792,6 +22868,7 @@ enum ScreenshotSpecialScenario {
     PatternLengthOverlay,
     NoteLengthOverlay,
     EditAddOverlay,
+    HarmonyOverlay,
     LoopLibraryOverlay,
     LoopPatternA,
     LoopPatternB,
@@ -22814,7 +22891,7 @@ enum ScreenshotSpecialScenario {
 }
 
 impl ScreenshotSpecialScenario {
-    const ALL: [Self; 30] = [
+    const ALL: [Self; 31] = [
         Self::Home,
         Self::MidiLearn,
         Self::ProjectGuard,
@@ -22826,6 +22903,7 @@ impl ScreenshotSpecialScenario {
         Self::PatternLengthOverlay,
         Self::NoteLengthOverlay,
         Self::EditAddOverlay,
+        Self::HarmonyOverlay,
         Self::LoopLibraryOverlay,
         Self::LoopPatternA,
         Self::LoopPatternB,
@@ -22860,6 +22938,7 @@ impl ScreenshotSpecialScenario {
             Self::PatternLengthOverlay => "overlay-pattern-length",
             Self::NoteLengthOverlay => "overlay-note-length",
             Self::EditAddOverlay => "overlay-edit-add",
+            Self::HarmonyOverlay => "overlay-harmony",
             Self::LoopLibraryOverlay => "overlay-loop-library",
             Self::LoopPatternA => "loop-pattern-a",
             Self::LoopPatternB => "loop-pattern-b",
@@ -23601,6 +23680,15 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
                     _ => 0,
                 };
             }
+        }
+        ScreenshotSpecialScenario::HarmonyOverlay => {
+            configure_screenshot_scenario(app, ScreenshotScenario::TrackerTools);
+            app.song.project_key = Scale {
+                root: 1,
+                kind: ScaleKind::NaturalMinor,
+            };
+            app.select_menu_page(2);
+            app.open_overlay(Action::OpenHarmony);
         }
         ScreenshotSpecialScenario::LoopLibraryOverlay => {
             configure_screenshot_scenario(app, ScreenshotScenario::TrackerLoop);
@@ -30946,6 +31034,240 @@ release = 0.4
 
         assert_eq!(a.hits.list.width, HELP_TEXT_WIDTH as u16);
         assert_eq!(rendered.trim_end(), expected);
+    }
+
+    #[test]
+    fn harmony_overlay_is_read_only_and_restores_the_exact_ft2_tools_caller() {
+        let p = presets();
+        let mut a = app(&p);
+        fill_demo_song(&mut a);
+        a.song.project_key = Scale {
+            root: 1,
+            kind: ScaleKind::NaturalMinor,
+        };
+        a.project_clean_baseline = a.song.clone();
+        a.song.name = "dirty harmony audit".into();
+        a.tracker_order = 2;
+        a.tracker_row = 7;
+        a.tracker_page = 1;
+        a.tracker_track = 3;
+        a.tracker_mode = TrackerMode::Rec;
+        a.tracker_noob = true;
+        a.automation_lane = 2;
+        a.sequencer.play(&a.song, a.tracker_order, a.tracker_row);
+        a.set_screen(Screen::TrackerTools);
+        a.select_menu_page(2);
+        a.page_select_mode = true;
+
+        let song = a.song.clone();
+        let clean_baseline = a.project_clean_baseline.clone();
+        let cursor = (
+            a.tracker_order,
+            a.tracker_row,
+            a.tracker_page,
+            a.tracker_track,
+            a.automation_lane,
+        );
+        let mode = a.tracker_mode;
+        let transport = a.sequencer.status();
+
+        a.open_overlay(Action::OpenHarmony);
+        let overlay = a.overlay.as_ref().unwrap();
+        assert_eq!(overlay.kind, OverlayKind::Harmony);
+        assert_eq!(overlay.caller, Screen::TrackerTools);
+        assert_eq!(overlay.caller_menu_page, 2);
+        assert!(overlay.caller_page_select_mode);
+        let rows = overlay_rows(&a, overlay);
+        assert_eq!(rows.len(), 6);
+        assert_eq!(rows[0], "KEY     C# MINOR");
+        assert_eq!(rows[1], "5THS   F#m < C#m > G#m");
+        assert_eq!(rows[2], "REL     E MAJOR");
+        assert_eq!(rows[3], "PAR     C# MAJOR");
+        assert!(rows[4].contains("i C#m"));
+        assert!(rows[5].contains("VII H"));
+
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert!(a.overlay.is_none());
+        assert_eq!(a.screen, Screen::TrackerTools);
+        assert_eq!(a.menu_page(), 2);
+        assert!(a.page_select_mode);
+        assert_eq!(a.song, song);
+        assert_eq!(a.project_clean_baseline, clean_baseline);
+        assert!(a.project_is_dirty());
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track,
+                a.automation_lane,
+            ),
+            cursor
+        );
+        assert_eq!(a.tracker_mode, mode);
+        assert!(a.tracker_noob);
+        assert_eq!(a.sequencer.status().playing, transport.playing);
+        assert_eq!(a.sequencer.status().generation, transport.generation);
+    }
+
+    #[test]
+    fn harmony_overlay_has_keyboard_controller_mouse_and_compact_parity() {
+        let p = presets();
+        let (tx, _rx) = mpsc::channel();
+        let mut a = app(&p);
+        a.set_screen(Screen::TrackerTools);
+        a.select_menu_page(2);
+        a.song.project_key = Scale {
+            root: 1,
+            kind: ScaleKind::NaturalMinor,
+        };
+
+        key(KeyCode::Char('h'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::Harmony)
+        );
+        key(KeyCode::Enter, &mut a, Path::new("/none"), &tx);
+        assert!(a.overlay.is_none());
+
+        key(KeyCode::Char('h'), &mut a, Path::new("/none"), &tx);
+        key(KeyCode::Char('H'), &mut a, Path::new("/none"), &tx);
+        assert!(a.overlay.is_none());
+
+        dispatch_pad(
+            crate::pads::PadAction::Pad7,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::Harmony)
+        );
+        dispatch_pad(
+            crate::pads::PadAction::Pad7,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(a.overlay.is_none());
+        dispatch_pad(
+            crate::pads::PadAction::Pad7,
+            true,
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::Harmony)
+        );
+        let compact = render_app(&mut a, 38, 10);
+        let compact_text = buffer_text(&compact);
+        for expected in [
+            "KEY     C# MINOR",
+            "5THS   F#m < C#m > G#m",
+            "REL     E MAJOR",
+            "PAR     C# MAJOR",
+            "i C#m · ii° D#dim · III E · iv F#m",
+            "v G#m · VI A · VII H",
+        ] {
+            assert!(
+                compact_text.contains(expected),
+                "missing compact row {expected}"
+            );
+        }
+        assert!(row_text(&compact, 9).starts_with('■'));
+
+        let exit = a
+            .hits
+            .actions
+            .iter()
+            .find(|(_, action)| *action == Action::Back)
+            .map(|(area, _)| *area)
+            .unwrap();
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: exit.x,
+                row: exit.y,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(a.overlay.is_none());
+        assert_eq!(a.screen, Screen::TrackerTools);
+        assert_eq!(a.menu_page(), 2);
+
+        render_app(&mut a, 40, 13);
+        let harmony = a
+            .hits
+            .actions
+            .iter()
+            .find(|(_, action)| *action == Action::OpenHarmony)
+            .map(|(area, _)| *area)
+            .unwrap();
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: harmony.x,
+                row: harmony.y,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(
+            a.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::Harmony)
+        );
+        mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: 0,
+                row: 0,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert!(a.overlay.is_none());
+        assert!(key(KeyCode::Char('q'), &mut a, Path::new("/none"), &tx));
+    }
+
+    #[test]
+    fn harmony_rows_fit_the_compact_overlay_for_every_key_mode_and_note_policy() {
+        let p = presets();
+        let mut a = app(&p);
+        a.set_screen(Screen::TrackerTools);
+        a.select_menu_page(2);
+        a.open_overlay(Action::OpenHarmony);
+        let overlay = a.overlay.as_ref().unwrap().clone();
+        let width = usize::from(overlay::geometry(Rect::new(0, 0, 38, 10)).inner.width);
+
+        for naming in [
+            crate::chord::NoteNaming::English,
+            crate::chord::NoteNaming::German,
+        ] {
+            a.config.note_naming = naming;
+            for root in 0..12 {
+                for kind in [ScaleKind::Major, ScaleKind::NaturalMinor] {
+                    a.song.project_key = Scale { root, kind };
+                    let rows = overlay_rows(&a, &overlay);
+                    assert_eq!(rows.len(), 6);
+                    assert!(
+                        rows.iter().all(|row| row.chars().count() <= width),
+                        "{naming:?} {root} {kind:?}: {rows:?} exceeds {width} cells"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
