@@ -5,6 +5,31 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-23 FT2 automation workflow audit and repair
+
+The current FT2 audit repaired automation and effect-lifecycle state integrity.
+Opening AUTO is read-only and NEW explicitly creates an unused target lane.
+Populated lanes refuse target browsing until their nearby double-confirmed
+CLEAR is used. Armed touch capture becomes safe when Arrangement playback
+enters another Pattern instead of applying the selected lane index to unrelated
+data, and loop-wrap capture keeps the selected point aligned. Pickup now uses
+the selected automation target and real stopped cursor or playback position.
+
+Removing an effect or confirming a replacement type also removes only that
+exact effect's now-unresolvable automation lanes and reports the affected lane
+and point counts; cancelling a type change retains both effect and automation.
+The bounded CC publisher now cancels a pending intermediate value when the
+control returns to the already-published value, preventing stale later output.
+
+The authorized combined pass used exact Rust 1.97.1
+(`rustc 1.97.1 (8bab26f4f 2026-07-14)`). Formatting, locked checking, 16
+focused automation/effect-lifecycle tests, and the complete normal suite passed
+with 978 tests successful and 13 documented research, audition, and performance
+tests ignored. The generated documentation site reproduced deterministically
+and its focused URL/reference checks passed. No Clippy, debug/release build,
+screenshot batch, JACK, synth, MIDI transmission, recording, audible, or
+physical-hardware action ran; none was required to verify this repair.
+
 ## 2026-08-16 Swarm, Bass Matrix, and shared instrument volume
 
 The sibling Moj Sint engine now has five live models and 16 cleared starts.

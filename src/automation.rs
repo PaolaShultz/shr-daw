@@ -52,7 +52,14 @@ impl CcPublisher {
             channel: status & 0x0f,
             controller: *controller,
         };
-        if self.sent.get(&key) == Some(value) || self.pending.get(&key) == Some(value) {
+        if self.pending.get(&key) == Some(value) {
+            return None;
+        }
+        if self.sent.get(&key) == Some(value) {
+            // The destination has returned to the last published value before
+            // a throttled intermediate value was flushed.  That intermediate
+            // value is now stale and must not be emitted later.
+            self.pending.remove(&key);
             return None;
         }
         if self.ready(target, now) {
@@ -192,5 +199,19 @@ mod tests {
         assert!(publisher.offer(&second, &[0xb0, 1, 1], now).is_none());
         assert!(publisher.flush(now + Duration::from_millis(3)).is_none());
         assert!(publisher.flush(now + Duration::from_millis(4)).is_some());
+    }
+
+    #[test]
+    fn publisher_cancels_a_superseded_pending_value() {
+        let now = Instant::now();
+        let target = PageTarget::ConfiguredExternal;
+        let mut publisher = CcPublisher::new(now);
+        assert_eq!(
+            publisher.offer(&target, &[0xb0, 74, 10], now),
+            Some(vec![0xb0, 74, 10])
+        );
+        assert!(publisher.offer(&target, &[0xb0, 74, 20], now).is_none());
+        assert!(publisher.offer(&target, &[0xb0, 74, 10], now).is_none());
+        assert!(publisher.flush(now + Duration::from_millis(10)).is_none());
     }
 }

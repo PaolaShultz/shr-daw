@@ -536,9 +536,12 @@ step.
 
 Each Pattern owns independent sparse automation lanes; automation never uses
 the cell command character. Open **AUTO** from FT2's SOUND page. Up/Down picks
-a lane without moving the tracker cursor. The controller pages arm capture,
-add/delete and browse points, adjust a point, choose a stable target, inspect
-the target-owned curve type, and confirm **CLEAR**. Continuous instrument,
+an existing lane without moving the tracker cursor. Merely opening AUTO does
+not add data or dirty the Project; **NEW** explicitly creates the first or next
+unused target lane. The controller pages arm capture, add/delete and browse
+points, adjust a point, choose a stable target, inspect the target-owned curve
+type, and confirm **CLEAR**. A populated lane keeps its target until CLEAR is
+confirmed, so browsing cannot silently discard points. Continuous instrument,
 external CC, and effect parameters show `RAMP`: the value reaches the next
 automation point exactly. Integer, choice, toggle, bypass, mode, and division
 targets show `STEP` and change at their point. One point holds.
@@ -548,6 +551,12 @@ records at the real transport position and monitors the value while tracker
 notes may be recorded at the same time. Unarmed controls do not replace an
 automated value. Start, stop, Project replacement, reset, arm changes, and
 leaving AUTO re-arm physical pickup against the effective automated value.
+Stopped pickup follows the selected lane at the tracker cursor. If Arrangement
+playback enters a different Pattern while capture is armed, AUTO becomes safe
+instead of applying the same lane index to unrelated Pattern data; reopen and
+arm that Pattern deliberately. Removing an effect, or confirming a different
+effect type, removes every now-unresolvable lane for that exact effect and
+reports the lane/point count. Cancelling a type change retains those lanes.
 Playback chases the current point and active ramp when started with Play Here;
 Pattern/Arrangement loops continue without restoring a preset value. Recorded
 knob streams are thinned into a bounded curve.

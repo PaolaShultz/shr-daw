@@ -302,6 +302,27 @@ fn is_drum_fx_target(target: usize) -> bool {
     target == DRUM_FX_TARGET
 }
 
+fn automation_rack_target(target: usize) -> sequencer::EffectRackTarget {
+    if target == 0 {
+        sequencer::EffectRackTarget::Source
+    } else if target <= MAX_AUX_BUSES {
+        sequencer::EffectRackTarget::Aux(target as u8)
+    } else if target == DRUM_FX_TARGET {
+        sequencer::EffectRackTarget::Drums
+    } else {
+        sequencer::EffectRackTarget::Master
+    }
+}
+
+fn automation_point_index(points: &[sequencer::AutomationPoint], tick: u32) -> usize {
+    if points.is_empty() {
+        return 0;
+    }
+    points
+        .binary_search_by_key(&tick, |point| point.tick)
+        .unwrap_or_else(|index| index.min(points.len() - 1))
+}
+
 #[derive(Clone, Debug, Default)]
 struct Hits {
     list: Rect,
@@ -4288,31 +4309,24 @@ impl App {
             return;
         }
         let targets = self.automation_targets();
-        let Some((target, curve)) = targets.first().cloned() else {
+        let lane_count = self
+            .current_pattern()
+            .map_or(0, |pattern| pattern.automation.len());
+        if targets.is_empty() && lane_count == 0 {
             self.status =
                 "NO AUTOMATION TARGETS · assign an external or SHR instrument page".into();
             return;
-        };
-        let pattern_number = self.tracker_pattern_number();
-        let pattern = self
-            .song
-            .patterns
-            .get_mut(&pattern_number)
-            .expect("tracker Pattern");
-        if pattern.automation.is_empty() {
-            pattern.automation.push(sequencer::AutomationLane {
-                id: 1,
-                target,
-                curve,
-                points: Vec::new(),
-            });
         }
-        self.automation_lane = self.automation_lane.min(pattern.automation.len() - 1);
+        self.automation_lane = self.automation_lane.min(lane_count.saturating_sub(1));
         self.automation_point = 0;
         self.automation_armed = false;
-        self.rearm_automation_pickup();
         self.set_screen(Screen::Automation);
-        self.status.clear();
+        self.rearm_automation_pickup();
+        self.status = if lane_count == 0 {
+            "NO AUTOMATION LANES · press NEW".into()
+        } else {
+            String::new()
+        };
     }
 
     fn move_automation_lane(&mut self, direction: i8) {
@@ -4327,6 +4341,10 @@ impl App {
 
     fn new_automation_lane(&mut self) {
         let targets = self.automation_targets();
+        if targets.is_empty() {
+            self.status = "NO AUTOMATION TARGETS".into();
+            return;
+        }
         let pattern_number = self.tracker_pattern_number();
         let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
             return;
@@ -4338,10 +4356,9 @@ impl App {
         let Some((target, curve)) = targets
             .iter()
             .find(|(target, _)| !pattern.automation.iter().any(|lane| lane.target == *target))
-            .or_else(|| targets.first())
             .cloned()
         else {
-            self.status = "NO AUTOMATION TARGETS".into();
+            self.status = "ALL AUTOMATION TARGETS ALREADY HAVE LANES".into();
             return;
         };
         let Some(id) = pattern
@@ -4371,18 +4388,51 @@ impl App {
     fn cycle_automation_target(&mut self, direction: i8) {
         let targets = self.automation_targets();
         if targets.is_empty() {
+            self.status = "NO AVAILABLE AUTOMATION TARGET".into();
             return;
         }
-        let current = self.current_pattern().and_then(|pattern| {
-            pattern
-                .automation
-                .get(self.automation_lane)
-                .map(|lane| &lane.target)
-        });
-        let index = current
-            .and_then(|current| targets.iter().position(|(target, _)| target == current))
-            .unwrap_or(0);
-        let next = wrapped_index(index, targets.len(), direction);
+        let Some(pattern) = self.current_pattern() else {
+            return;
+        };
+        let Some(lane) = pattern.automation.get(self.automation_lane) else {
+            self.status = "NO AUTOMATION LANE · press NEW".into();
+            return;
+        };
+        if !lane.points.is_empty() {
+            self.automation_armed = false;
+            self.rearm_automation_pickup();
+            self.status = "TARGET KEPT · CLEAR populated lane first".into();
+            return;
+        }
+        let current = lane.target.clone();
+        let used = pattern
+            .automation
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != self.automation_lane)
+            .map(|(_, lane)| lane.target.clone())
+            .collect::<Vec<_>>();
+        let candidates = targets
+            .into_iter()
+            .filter(|(target, _)| !used.iter().any(|used| used == target))
+            .collect::<Vec<_>>();
+        if candidates.is_empty() {
+            self.status = "NO UNUSED AUTOMATION TARGET".into();
+            return;
+        }
+        let next = candidates
+            .iter()
+            .position(|(target, _)| target == &current)
+            .map_or_else(
+                || {
+                    if direction < 0 {
+                        candidates.len() - 1
+                    } else {
+                        0
+                    }
+                },
+                |index| wrapped_index(index, candidates.len(), direction),
+            );
         let pattern_number = self.tracker_pattern_number();
         if let Some(lane) = self
             .song
@@ -4390,20 +4440,24 @@ impl App {
             .get_mut(&pattern_number)
             .and_then(|pattern| pattern.automation.get_mut(self.automation_lane))
         {
-            lane.target = targets[next].0.clone();
-            lane.curve = targets[next].1;
-            lane.points.clear();
+            lane.target = candidates[next].0.clone();
+            lane.curve = candidates[next].1;
         }
         self.automation_point = 0;
         self.automation_armed = false;
         self.rearm_automation_pickup();
-        self.status = format!(
-            "TARGET {} · lane cleared",
-            automation_target_label(&targets[next].0)
-        );
+        self.status = format!("TARGET {}", automation_target_label(&candidates[next].0));
     }
 
     fn toggle_automation_arm(&mut self) {
+        if self
+            .current_pattern()
+            .is_none_or(|pattern| pattern.automation.get(self.automation_lane).is_none())
+        {
+            self.automation_armed = false;
+            self.status = "NO AUTOMATION LANE · press NEW".into();
+            return;
+        }
         self.automation_armed = !self.automation_armed;
         self.rearm_automation_pickup();
         self.status = if self.automation_armed {
@@ -8295,6 +8349,17 @@ impl App {
         self.record_tracker_midi_at(row, bytes);
     }
 
+    fn automation_capture_owns_pattern(&mut self, pattern_number: u16) -> bool {
+        if pattern_number == self.tracker_pattern_number() {
+            return true;
+        }
+        self.automation_armed = false;
+        self.rearm_automation_pickup();
+        self.status =
+            format!("AUTO SAFE · transport entered PAT {pattern_number:02} · reopen/arm there");
+        false
+    }
+
     fn capture_automation_control(&mut self, received: Instant, cc: u8, value: f32) {
         if !self.automation_armed {
             return;
@@ -8305,6 +8370,9 @@ impl App {
         let Some(pattern_number) = self.song.order.get(position.order).copied() else {
             return;
         };
+        if !self.automation_capture_owns_pattern(pattern_number) {
+            return;
+        }
         let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
             return;
         };
@@ -8362,7 +8430,7 @@ impl App {
             },
             128,
         );
-        self.automation_point = lane.points.len().saturating_sub(1);
+        self.automation_point = automation_point_index(&lane.points, position.pattern_tick);
         let effect_target = lane.target.clone();
         let monitor = page_index
             .and_then(|page_index| pattern.pages.get(page_index))
@@ -8428,6 +8496,9 @@ impl App {
         let Some(pattern_number) = self.song.order.get(position.order).copied() else {
             return;
         };
+        if !self.automation_capture_owns_pattern(pattern_number) {
+            return;
+        }
         let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
             return;
         };
@@ -8453,46 +8524,84 @@ impl App {
             },
             128,
         );
-        self.automation_point = lane.points.len().saturating_sub(1);
+        self.automation_point = automation_point_index(&lane.points, position.pattern_tick);
         self.sequencer.refresh_loop(&self.song);
     }
 
     fn rearm_automation_pickup(&self) {
         let status = self.sequencer.status();
-        let pattern_number = self
-            .song
-            .order
-            .get(status.order.min(self.song.order.len().saturating_sub(1)))
+        let position = status
+            .playing
+            .then(|| self.sequencer.position_at(Instant::now()))
+            .flatten();
+        let position_pattern = position
+            .as_ref()
+            .and_then(|position| self.song.order.get(position.order))
             .copied();
+        let editor_pattern = self.song.order.get(self.tracker_order).copied();
+        let pattern_number = if self.screen == Screen::Automation {
+            editor_pattern
+        } else {
+            position_pattern.or(editor_pattern)
+        };
         let Some(pattern) = pattern_number.and_then(|number| self.song.patterns.get(&number))
         else {
             return;
         };
-        let tick = if status.playing {
-            self.sequencer
-                .position_at(Instant::now())
-                .map_or(0, |position| position.pattern_tick)
-        } else {
-            0
+        let tick = match (position, position_pattern, pattern_number) {
+            (Some(position), Some(position_pattern), Some(pattern_number))
+                if position_pattern == pattern_number =>
+            {
+                position.pattern_tick
+            }
+            _ => u32::try_from(self.tracker_row)
+                .unwrap_or_default()
+                .saturating_mul(sequencer::AUTOMATION_TICKS_PER_ROW),
         };
         let pattern_ticks = u32::try_from(pattern.rows.len())
             .unwrap_or_default()
             .saturating_mul(sequencer::AUTOMATION_TICKS_PER_ROW);
         let mut values = HashMap::new();
-        for lane in &pattern.automation {
-            let sequencer::AutomationTarget::Instrument {
-                engine, control, ..
-            } = &lane.target
-            else {
-                continue;
+        for (index, lane) in pattern.automation.iter().enumerate() {
+            let (cc, normalized) = match &lane.target {
+                sequencer::AutomationTarget::Instrument {
+                    page,
+                    engine,
+                    control,
+                } if self.screen == Screen::Automation
+                    || usize::from(*page) == self.tracker_page =>
+                {
+                    let Some(cc) = crate::timeline::mapped_control_cc(engine, control) else {
+                        continue;
+                    };
+                    let Some(value) = lane.value_at(tick, pattern_ticks) else {
+                        continue;
+                    };
+                    (cc, f32::from(value) / 65_535.0)
+                }
+                sequencer::AutomationTarget::Effect {
+                    effect_kind,
+                    parameter,
+                    ..
+                } if self.screen == Screen::Automation => {
+                    let Some(cc) = (0..CONTROLS.len()).find_map(|control_index| {
+                        (crate::effect_schema::controlled_parameter(*effect_kind, control_index)?
+                            .name
+                            == parameter)
+                            .then_some(CONTROLS[control_index].cc)
+                    }) else {
+                        continue;
+                    };
+                    let Some(value) = lane.value_at(tick, pattern_ticks) else {
+                        continue;
+                    };
+                    (cc, f32::from(value) / 65_535.0)
+                }
+                _ => continue,
             };
-            let Some(cc) = crate::timeline::mapped_control_cc(engine, control) else {
+            if self.screen == Screen::Automation && index != self.automation_lane {
                 continue;
-            };
-            let Some(value) = lane.value_at(tick, pattern_ticks) else {
-                continue;
-            };
-            let normalized = f32::from(value) / 65_535.0;
+            }
             let physical_value = crate::control::by_cc(cc).map_or(normalized, |control| {
                 control.min + normalized * (control.max - control.min)
             });
@@ -12639,13 +12748,24 @@ impl App {
         }
         match result {
             Ok(effect) => {
+                let rack_target = automation_rack_target(self.fx_target);
                 self.fx_selection = FxRackSelection::Insert;
-                self.commit_fx_routing(
+                if self.commit_fx_routing(
                     rack,
                     aux,
                     drums,
                     format!("removed {} #{id}", effect_kind_label(effect.kind)),
-                );
+                ) {
+                    let (lanes, points) =
+                        self.song.remove_effect_automation(rack_target, effect.id);
+                    if lanes > 0 {
+                        self.sequencer.refresh_loop(&self.song);
+                        self.status = format!(
+                            "removed {} #{id} · cleared {lanes} AUTO lane(s) / {points} point(s)",
+                            effect_kind_label(effect.kind)
+                        );
+                    }
+                }
             }
             Err(_error) => self.status = "FX REMOVE FAILED · old rack kept".into(),
         }
@@ -12856,9 +12976,31 @@ impl App {
     }
 
     fn confirm_effect_type_edit(&mut self) {
-        let Some(_edit) = self.fx_type_edit.take() else {
+        let Some(edit) = self.fx_type_edit.take() else {
             return;
         };
+        let original_schema = project_fx_rack(
+            &edit.original_rack,
+            &edit.original_aux,
+            &edit.original_drums,
+            self.fx_target,
+        )
+        .and_then(|rack| rack.effect(edit.effect_id))
+        .map(|effect| (effect.kind, effect.version));
+        let current_schema = self
+            .selected_effect()
+            .map(|effect| (effect.kind, effect.version));
+        if original_schema.is_some() && original_schema != current_schema {
+            let (lanes, points) = self
+                .song
+                .remove_effect_automation(automation_rack_target(self.fx_target), edit.effect_id);
+            if lanes > 0 {
+                self.sequencer.refresh_loop(&self.song);
+                self.status =
+                    format!("TYPE KEPT · cleared {lanes} AUTO lane(s) / {points} point(s)");
+                return;
+            }
+        }
         self.status.clear();
     }
 
@@ -13867,6 +14009,11 @@ impl App {
                 .flatten();
         }
         let tracker = self.sequencer.status();
+        if self.screen == Screen::Automation && self.automation_armed && tracker.playing {
+            if let Some(pattern_number) = self.song.order.get(tracker.order).copied() {
+                self.automation_capture_owns_pattern(pattern_number);
+            }
+        }
         if self.screen == Screen::TrackerMixer {
             self.refresh_tracker_mixer(&tracker);
         }
@@ -19114,7 +19261,11 @@ fn draw_automation<B: Backend>(f: &mut Frame<B>, a: &App) {
     let heading = format!(
         "AUTO · PAT {:02} · LANE {}/{} · {}",
         a.tracker_pattern_number(),
-        a.automation_lane + 1,
+        if lane.is_some() {
+            a.automation_lane + 1
+        } else {
+            0
+        },
         pattern.automation.len(),
         if a.automation_armed { "ARMED" } else { "SAFE" }
     );
@@ -19131,6 +19282,11 @@ fn draw_automation<B: Backend>(f: &mut Frame<B>, a: &App) {
         rect(body.x, body.y, body.width, 1),
     );
     let Some(lane) = lane else {
+        f.render_widget(
+            Paragraph::new("No lanes · press NEW to choose a target")
+                .style(Style::default().fg(Color::DarkGray)),
+            rect(body.x, body.y + 1, body.width, 1),
+        );
         return;
     };
     let meaning = match lane.curve {
@@ -35903,6 +36059,203 @@ release = 0.4
             );
             assert!((37..40).all(|x| b.get(x, 0).fg == Color::Red));
         }
+    }
+
+    #[test]
+    fn opening_automation_is_read_only_and_new_is_explicit() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        assert!(a.current_pattern().unwrap().automation.is_empty());
+        assert!(!a.project_is_dirty());
+
+        a.open_automation();
+
+        assert_eq!(a.screen, Screen::Automation);
+        assert!(a.current_pattern().unwrap().automation.is_empty());
+        assert!(!a.project_is_dirty());
+        assert_eq!(a.status, "NO AUTOMATION LANES · press NEW");
+        a.toggle_automation_arm();
+        assert!(!a.automation_armed);
+        assert_eq!(a.status, "NO AUTOMATION LANE · press NEW");
+
+        a.new_automation_lane();
+        assert_eq!(a.current_pattern().unwrap().automation.len(), 1);
+        assert!(a.project_is_dirty());
+    }
+
+    #[test]
+    fn populated_automation_lane_keeps_its_target_until_confirmed_clear() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.open_automation();
+        a.new_automation_lane();
+        let original = a.current_pattern().unwrap().automation[0].target.clone();
+        a.current_pattern_mut().unwrap().automation[0]
+            .points
+            .push(sequencer::AutomationPoint {
+                tick: 0,
+                value: 20_000,
+            });
+
+        a.cycle_automation_target(1);
+
+        assert_eq!(a.current_pattern().unwrap().automation[0].target, original);
+        assert_eq!(a.current_pattern().unwrap().automation[0].points.len(), 1);
+        assert_eq!(a.status, "TARGET KEPT · CLEAR populated lane first");
+
+        a.clear_automation_lane();
+        assert_eq!(a.current_pattern().unwrap().automation[0].points.len(), 1);
+        a.clear_automation_lane();
+        assert!(a.current_pattern().unwrap().automation[0].points.is_empty());
+        a.cycle_automation_target(1);
+        assert_ne!(a.current_pattern().unwrap().automation[0].target, original);
+    }
+
+    #[test]
+    fn automation_capture_disarms_before_an_arrangement_pattern_can_take_its_lane_index() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Automation;
+        a.tracker_order = 0;
+        a.automation_armed = true;
+
+        assert!(!a.automation_capture_owns_pattern(1));
+        assert!(!a.automation_armed);
+        assert_eq!(
+            a.status,
+            "AUTO SAFE · transport entered PAT 01 · reopen/arm there"
+        );
+    }
+
+    #[test]
+    fn stopped_automation_pickup_uses_the_selected_lane_at_the_cursor_row() {
+        let p = presets();
+        let mut a = app(&p);
+        let control = CONTROLS[0];
+        a.current_page_mut().unwrap().target = PageTarget::Synthv1("Preset 00".into());
+        a.current_pattern_mut()
+            .unwrap()
+            .automation
+            .push(sequencer::AutomationLane {
+                id: 1,
+                target: sequencer::AutomationTarget::Instrument {
+                    page: 0,
+                    engine: BackendKind::Synthv1.to_string(),
+                    control: control.xml_name.into(),
+                },
+                curve: sequencer::AutomationCurve::Linear,
+                points: vec![
+                    sequencer::AutomationPoint { tick: 0, value: 0 },
+                    sequencer::AutomationPoint {
+                        tick: 4 * sequencer::AUTOMATION_TICKS_PER_ROW,
+                        value: u16::MAX,
+                    },
+                ],
+            });
+        a.screen = Screen::Automation;
+        a.tracker_row = 4;
+
+        a.rearm_automation_pickup();
+
+        let mut pickup = a.pickup.lock().unwrap();
+        assert!(!pickup.accept(control.cc, control.min));
+        assert!(pickup.accept(control.cc, control.max));
+    }
+
+    #[test]
+    fn effect_removal_clears_dependent_automation_and_keeps_project_valid() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song
+            .insert_rack
+            .add_with_id(EffectKind::Utility, 1)
+            .unwrap();
+        a.current_pattern_mut()
+            .unwrap()
+            .automation
+            .push(sequencer::AutomationLane {
+                id: 1,
+                target: sequencer::AutomationTarget::Effect {
+                    rack: sequencer::EffectRackTarget::Source,
+                    effect_id: 1,
+                    effect_kind: EffectKind::Utility,
+                    effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+                    parameter: "trim_db".into(),
+                },
+                curve: sequencer::AutomationCurve::Linear,
+                points: vec![sequencer::AutomationPoint { tick: 0, value: 1 }],
+            });
+        a.song.validate().unwrap();
+        a.fx_target = 0;
+        a.fx_selection = FxRackSelection::Effect(1);
+
+        a.remove_effect();
+
+        assert!(a.song.insert_rack.effects.is_empty());
+        assert!(a.current_pattern().unwrap().automation.is_empty());
+        a.song.validate().unwrap();
+        assert!(a.status.contains("cleared 1 AUTO lane(s) / 1 point(s)"));
+    }
+
+    #[test]
+    fn effect_type_cancel_keeps_automation_but_confirm_clears_it() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song
+            .insert_rack
+            .add_with_id(EffectKind::Utility, 1)
+            .unwrap();
+        a.current_pattern_mut()
+            .unwrap()
+            .automation
+            .push(sequencer::AutomationLane {
+                id: 1,
+                target: sequencer::AutomationTarget::Effect {
+                    rack: sequencer::EffectRackTarget::Source,
+                    effect_id: 1,
+                    effect_kind: EffectKind::Utility,
+                    effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+                    parameter: "trim_db".into(),
+                },
+                curve: sequencer::AutomationCurve::Linear,
+                points: vec![sequencer::AutomationPoint { tick: 0, value: 1 }],
+            });
+        a.fx_target = 0;
+        a.fx_selection = FxRackSelection::Effect(1);
+        a.begin_effect_type_edit();
+        a.set_selected_effect_kind(EffectKind::Eq);
+        a.cancel_effect_type_edit();
+        assert_eq!(
+            a.song.insert_rack.effect(1).unwrap().kind,
+            EffectKind::Utility
+        );
+        assert_eq!(a.current_pattern().unwrap().automation.len(), 1);
+        a.song.validate().unwrap();
+
+        a.begin_effect_type_edit();
+        a.set_selected_effect_kind(EffectKind::Eq);
+        a.confirm_effect_type_edit();
+
+        assert_eq!(a.song.insert_rack.effect(1).unwrap().kind, EffectKind::Eq);
+        assert!(a.current_pattern().unwrap().automation.is_empty());
+        a.song.validate().unwrap();
+        assert!(a.status.contains("cleared 1 AUTO lane(s) / 1 point(s)"));
+    }
+
+    #[test]
+    fn automation_point_selection_tracks_sorted_loop_wrap_insertion() {
+        let points = [
+            sequencer::AutomationPoint { tick: 10, value: 1 },
+            sequencer::AutomationPoint {
+                tick: 100,
+                value: 2,
+            },
+        ];
+        assert_eq!(automation_point_index(&points, 10), 0);
+        assert_eq!(automation_point_index(&points, 50), 1);
+        assert_eq!(automation_point_index(&points, 200), 1);
     }
 
     #[test]

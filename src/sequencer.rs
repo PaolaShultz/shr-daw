@@ -656,6 +656,40 @@ impl Song {
         Ok(())
     }
 
+    /// Remove automation that can no longer resolve after an effect is
+    /// removed or its schema is replaced. Returns `(lanes, points)` removed.
+    pub fn remove_effect_automation(
+        &mut self,
+        rack: EffectRackTarget,
+        effect_id: crate::audio_graph::EffectId,
+    ) -> (usize, usize) {
+        let mut lanes = 0;
+        let mut points = 0;
+        for pattern in self.patterns.values_mut() {
+            pattern.automation.retain(|lane| {
+                let matches = match &lane.target {
+                    AutomationTarget::Effect {
+                        rack: target_rack,
+                        effect_id: target_id,
+                        ..
+                    }
+                    | AutomationTarget::EffectBypass {
+                        rack: target_rack,
+                        effect_id: target_id,
+                        ..
+                    } => *target_rack == rack && *target_id == effect_id,
+                    _ => false,
+                };
+                if matches {
+                    lanes += 1;
+                    points += lane.points.len();
+                }
+                !matches
+            });
+        }
+        (lanes, points)
+    }
+
     fn total_cell_count(&self) -> Result<usize> {
         self.patterns.values().try_fold(0usize, |total, pattern| {
             let pattern_cells = pattern
@@ -5908,6 +5942,58 @@ mod tests {
             points: Vec::new(),
         };
         assert!(song.validate().unwrap_err().to_string().contains("stale"));
+    }
+
+    #[test]
+    fn effect_automation_cleanup_is_exact_across_patterns_and_racks() {
+        let cfg = config();
+        let mut song = Song::new(&cfg);
+        song.insert_rack
+            .add_with_id(crate::audio_graph::EffectKind::Utility, 1)
+            .unwrap();
+        song.aux_routing
+            .master_rack
+            .add_with_id(crate::audio_graph::EffectKind::Utility, 2)
+            .unwrap();
+        let second = Pattern::new(
+            cfg.default_pattern_rows,
+            cfg.default_tempo,
+            4,
+            song.patterns[&0].pages.clone(),
+        );
+        let second_number = song.append_pattern(second).unwrap();
+        for (pattern_number, rack, effect_id) in [
+            (0, EffectRackTarget::Source, 1),
+            (second_number, EffectRackTarget::Master, 2),
+        ] {
+            song.patterns
+                .get_mut(&pattern_number)
+                .unwrap()
+                .automation
+                .push(AutomationLane {
+                    id: 1,
+                    target: AutomationTarget::Effect {
+                        rack,
+                        effect_id,
+                        effect_kind: crate::audio_graph::EffectKind::Utility,
+                        effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+                        parameter: "trim_db".into(),
+                    },
+                    curve: AutomationCurve::Linear,
+                    points: vec![AutomationPoint { tick: 0, value: 7 }],
+                });
+        }
+        song.validate().unwrap();
+
+        song.insert_rack.remove(1).unwrap();
+        assert_eq!(
+            song.remove_effect_automation(EffectRackTarget::Source, 1),
+            (1, 1)
+        );
+
+        assert!(song.patterns[&0].automation.is_empty());
+        assert_eq!(song.patterns[&second_number].automation.len(), 1);
+        song.validate().unwrap();
     }
 
     #[test]

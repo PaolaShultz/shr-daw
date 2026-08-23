@@ -1879,9 +1879,12 @@ step.</p>
 <h4 id="doc-tracker--automation-metronome-and-count-in" tabindex="-1">Automation, metronome, and count-in<a class="heading-anchor" href="#doc-tracker--automation-metronome-and-count-in" aria-label="Link to Automation, metronome, and count-in">#</a></h4>
 <p>Each Pattern owns independent sparse automation lanes; automation never uses
 the cell command character. Open <strong>AUTO</strong> from FT2's SOUND page. Up/Down picks
-a lane without moving the tracker cursor. The controller pages arm capture,
-add/delete and browse points, adjust a point, choose a stable target, inspect
-the target-owned curve type, and confirm <strong>CLEAR</strong>. Continuous instrument,
+an existing lane without moving the tracker cursor. Merely opening AUTO does
+not add data or dirty the Project; <strong>NEW</strong> explicitly creates the first or next
+unused target lane. The controller pages arm capture, add/delete and browse
+points, adjust a point, choose a stable target, inspect the target-owned curve
+type, and confirm <strong>CLEAR</strong>. A populated lane keeps its target until CLEAR is
+confirmed, so browsing cannot silently discard points. Continuous instrument,
 external CC, and effect parameters show <code>RAMP</code>: the value reaches the next
 automation point exactly. Integer, choice, toggle, bypass, mode, and division
 targets show <code>STEP</code> and change at their point. One point holds.</p>
@@ -1890,6 +1893,12 @@ records at the real transport position and monitors the value while tracker
 notes may be recorded at the same time. Unarmed controls do not replace an
 automated value. Start, stop, Project replacement, reset, arm changes, and
 leaving AUTO re-arm physical pickup against the effective automated value.
+Stopped pickup follows the selected lane at the tracker cursor. If Arrangement
+playback enters a different Pattern while capture is armed, AUTO becomes safe
+instead of applying the same lane index to unrelated Pattern data; reopen and
+arm that Pattern deliberately. Removing an effect, or confirming a different
+effect type, removes every now-unresolvable lane for that exact effect and
+reports the lane/point count. Cancelling a type change retains those lanes.
 Playback chases the current point and active ramp when started with Play Here;
 Pattern/Arrangement loops continue without restoring a preset value. Recorded
 knob streams are thinned into a bounded curve.</p>
@@ -2412,7 +2421,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 automation</td>
-<td>Pattern-owned sparse-lane child. Up/Down changes lanes; REC arms only the selected target and adds/deletes points; POINT browses and adjusts points; LANE changes target, explains fixed RAMP/STEP meaning, and confirms clear. Touch capture uses transport time, can run beside note REC, monitors the armed value, and re-arms pickup on ownership transitions. Back restores exact tracker context.</td>
+<td>Pattern-owned sparse-lane child. Opening is read-only; NEW explicitly creates an unused target lane. Up/Down changes lanes; REC arms only the selected target and adds/deletes points; POINT browses and adjusts points; LANE changes an empty lane's target, explains fixed RAMP/STEP meaning, and confirms clear. Populated lanes refuse target browsing until CLEAR is confirmed. Touch capture uses transport time, can run beside note REC, monitors the armed value, re-arms pickup at the actual cursor/playback value, and becomes safe rather than writing through a Pattern boundary. Effect removal or confirmed type replacement reports and clears only that effect's now-unresolvable lanes; Cancel retains them. Back restores exact tracker context.</td>
 </tr>
 <tr>
 <td>FT2 record</td>
@@ -7162,6 +7171,13 @@ Formats 0 and 1 migrate with empty effects; format 2 retains its source rack and
 gains empty aux/master routing. Unknown newer formats, fields, malformed rack
 data, unsafe paths, and over-limit structures are refused rather than partly
 loaded and then written back.</p>
+<p>Opening the automation editor does not create a lane. Lane creation and
+confirmed clearing are explicit, populated lanes cannot lose points through
+target browsing, and capture is disarmed before an Arrangement boundary could
+redirect a lane index into another Pattern. Effect removal and confirmed type
+replacement atomically discard only the automation lanes whose exact
+rack/effect identity can no longer resolve; cancelling the type change keeps
+both the effect and its automation.</p>
 <p>Normal Project save asks again before replacing an existing file. <code>SAVE AS</code>
 chooses a numbered non-overwriting copy. Rename publishes the complete new
 Project before removing the old filename and refuses collisions. New Ideas,
@@ -15568,6 +15584,27 @@ tracking section.</p>
 new thread in <code>$HOME/p/shsynth</code>. Durable repository policy is in
 <code>AGENTS.md</code>; detailed helper behavior is in <code>docs/MAINTAINER_HELPERS.md</code>. Never
 record credentials, GitHub device codes, or private file contents here.</p>
+<h4 id="doc-workspace_handoff--2026-08-23-ft2-automation-workflow-audit-and-repair" tabindex="-1">2026-08-23 FT2 automation workflow audit and repair<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-23-ft2-automation-workflow-audit-and-repair" aria-label="Link to 2026-08-23 FT2 automation workflow audit and repair">#</a></h4>
+<p>The current FT2 audit repaired automation and effect-lifecycle state integrity.
+Opening AUTO is read-only and NEW explicitly creates an unused target lane.
+Populated lanes refuse target browsing until their nearby double-confirmed
+CLEAR is used. Armed touch capture becomes safe when Arrangement playback
+enters another Pattern instead of applying the selected lane index to unrelated
+data, and loop-wrap capture keeps the selected point aligned. Pickup now uses
+the selected automation target and real stopped cursor or playback position.</p>
+<p>Removing an effect or confirming a replacement type also removes only that
+exact effect's now-unresolvable automation lanes and reports the affected lane
+and point counts; cancelling a type change retains both effect and automation.
+The bounded CC publisher now cancels a pending intermediate value when the
+control returns to the already-published value, preventing stale later output.</p>
+<p>The authorized combined pass used exact Rust 1.97.1
+(<code>rustc 1.97.1 (8bab26f4f 2026-07-14)</code>). Formatting, locked checking, 16
+focused automation/effect-lifecycle tests, and the complete normal suite passed
+with 978 tests successful and 13 documented research, audition, and performance
+tests ignored. The generated documentation site reproduced deterministically
+and its focused URL/reference checks passed. No Clippy, debug/release build,
+screenshot batch, JACK, synth, MIDI transmission, recording, audible, or
+physical-hardware action ran; none was required to verify this repair.</p>
 <h4 id="doc-workspace_handoff--2026-08-16-swarm-bass-matrix-and-shared-instrument-volume" tabindex="-1">2026-08-16 Swarm, Bass Matrix, and shared instrument volume<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-16-swarm-bass-matrix-and-shared-instrument-volume" aria-label="Link to 2026-08-16 Swarm, Bass Matrix, and shared instrument volume">#</a></h4>
 <p>The sibling Moj Sint engine now has five live models and 16 cleared starts.
 The earlier typed-graph warm pad is integrated as <code>Swarm Machine</code>; the new

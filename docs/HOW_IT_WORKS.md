@@ -579,6 +579,14 @@ gains empty aux/master routing. Unknown newer formats, fields, malformed rack
 data, unsafe paths, and over-limit structures are refused rather than partly
 loaded and then written back.
 
+Opening the automation editor does not create a lane. Lane creation and
+confirmed clearing are explicit, populated lanes cannot lose points through
+target browsing, and capture is disarmed before an Arrangement boundary could
+redirect a lane index into another Pattern. Effect removal and confirmed type
+replacement atomically discard only the automation lanes whose exact
+rack/effect identity can no longer resolve; cancelling the type change keeps
+both the effect and its automation.
+
 Normal Project save asks again before replacing an existing file. `SAVE AS`
 chooses a numbered non-overwriting copy. Rename publishes the complete new
 Project before removing the old filename and refuses collisions. New Ideas,
