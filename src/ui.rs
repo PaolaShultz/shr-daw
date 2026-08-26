@@ -1108,6 +1108,8 @@ struct App {
     fx_control_mode: engine::SharedFxControlMode,
     controller_online: bool,
     performance_inputs: Vec<crate::engine::MidiInputState>,
+    external_clock_input: Option<crate::engine::MidiInputState>,
+    external_clock_follower: crate::external_sync::ExternalClockFollower,
     controller_learn: Option<crate::controller_learn::LearnSession>,
     bus_selected: usize,
     final_recording_last: crate::audio_recorder::FinalMixRecorderStatus,
@@ -1323,6 +1325,9 @@ enum RoutingRow {
     DeviceProfile,
     ClockEnabled,
     ClockOutput,
+    SyncOwner,
+    SyncInput,
+    SyncStart,
     AudioOutput,
 }
 
@@ -1338,6 +1343,9 @@ impl RoutingRow {
             Self::DeviceProfile => "DEVICE".into(),
             Self::ClockEnabled => "CLOCK".into(),
             Self::ClockOutput => "CLK OUT".into(),
+            Self::SyncOwner => "SYNC".into(),
+            Self::SyncInput => "SYNC IN".into(),
+            Self::SyncStart => "SYNC POS".into(),
             Self::AudioOutput => "AUDIO".into(),
         }
     }
@@ -1617,6 +1625,18 @@ fn scheduled_software_plan(
     Ok(Some(SoftwarePlaybackPlan { parts }))
 }
 
+fn external_start_material(
+    song: &Song,
+    selected_pattern: u16,
+    mode: crate::config::ExternalClockStartMode,
+) -> Song {
+    let mut playback = song.clone();
+    if mode == crate::config::ExternalClockStartMode::Pattern {
+        playback.order = vec![selected_pattern];
+    }
+    playback
+}
+
 fn legacy_fluidsynth_route_id(route_id: &str) -> &str {
     route_id
         .strip_prefix("sf")
@@ -1784,6 +1804,20 @@ fn canonicalize_routing_draft(
             Err(_) => crate::midi_endpoint::stable_identity(input),
         };
     }
+    if !draft.config.external_clock.input_match.is_empty() {
+        match canonical(
+            inputs,
+            &draft.config.external_clock.input_match,
+            "external clock MIDI input",
+        ) {
+            Ok(input) => draft.config.external_clock.input_match = input,
+            Err(error) if draft.config.external_clock.enabled => return Err(error),
+            Err(_) => {
+                draft.config.external_clock.input_match =
+                    crate::midi_endpoint::stable_identity(&draft.config.external_clock.input_match);
+            }
+        }
+    }
     let mut performance_inputs = std::collections::HashSet::new();
     for input in &draft.config.midi_performance_input_matches {
         if !performance_inputs.insert(input.to_ascii_lowercase()) {
@@ -1950,10 +1984,12 @@ impl App {
         let song = Song::new_with_pages(&config.external_midi, routing_defaults.clone());
         let mut live_patterns = crate::live_performance::LivePatternPerformance::default();
         live_patterns.reset_for_project(&song);
-        let transport_clock = Arc::new(crate::loop_player::TransportClock::new(
-            &config.controller_clock,
-            config.external_midi.default_tempo,
-        ));
+        let transport_clock =
+            Arc::new(crate::loop_player::TransportClock::new_with_external_owner(
+                &config.controller_clock,
+                config.external_midi.default_tempo,
+                config.external_clock.enabled,
+            ));
         let drum_output = Arc::new(Mutex::new(None));
         let final_bus = FinalBusOwner::default();
         let sequencer = sequencer::Sequencer::start_with_clock(
@@ -2225,6 +2261,8 @@ impl App {
             fx_control_mode: Arc::new(AtomicBool::new(false)),
             controller_online: false,
             performance_inputs: Vec::new(),
+            external_clock_input: None,
+            external_clock_follower: crate::external_sync::ExternalClockFollower::default(),
             controller_learn: None,
             bus_selected: 0,
             final_recording_last: crate::audio_recorder::FinalMixRecorderStatus::default(),
@@ -2740,6 +2778,9 @@ impl App {
             RoutingRow::DeviceProfile,
             RoutingRow::ClockEnabled,
             RoutingRow::ClockOutput,
+            RoutingRow::SyncOwner,
+            RoutingRow::SyncInput,
+            RoutingRow::SyncStart,
             RoutingRow::AudioOutput,
         ]);
         rows
@@ -2816,7 +2857,8 @@ impl App {
                 draft.config.midi_input_matches =
                     (!choice.is_empty()).then_some(choice).into_iter().collect();
                 draft.config.midi_autoconnect = draft.controller.input_match.is_some()
-                    || !draft.config.midi_performance_input_matches.is_empty();
+                    || !draft.config.midi_performance_input_matches.is_empty()
+                    || draft.config.external_clock.enabled;
             }
             RoutingRow::ControllerRole => {
                 draft.config.midi_controller_musical_input =
@@ -2845,7 +2887,8 @@ impl App {
                         .saturating_sub(1),
                 );
                 draft.config.midi_autoconnect = draft.controller.input_match.is_some()
-                    || !draft.config.midi_performance_input_matches.is_empty();
+                    || !draft.config.midi_performance_input_matches.is_empty()
+                    || draft.config.external_clock.enabled;
             }
             RoutingRow::PerformanceAdd => {
                 let choice = cycle_text_choice("", &input_choices, true, direction);
@@ -2862,7 +2905,8 @@ impl App {
                     return;
                 }
                 draft.config.midi_autoconnect = draft.controller.input_match.is_some()
-                    || !draft.config.midi_performance_input_matches.is_empty();
+                    || !draft.config.midi_performance_input_matches.is_empty()
+                    || draft.config.external_clock.enabled;
             }
             RoutingRow::ExternalEnabled => {
                 draft.config.external_midi.enabled = !draft.config.external_midi.enabled;
@@ -2895,6 +2939,31 @@ impl App {
                     true,
                     direction,
                 );
+            }
+            RoutingRow::SyncOwner => {
+                draft.config.external_clock.enabled = !draft.config.external_clock.enabled;
+                draft.config.midi_autoconnect = draft.controller.input_match.is_some()
+                    || !draft.config.midi_performance_input_matches.is_empty()
+                    || draft.config.external_clock.enabled;
+            }
+            RoutingRow::SyncInput => {
+                draft.config.external_clock.input_match = cycle_text_choice(
+                    &draft.config.external_clock.input_match,
+                    &input_choices,
+                    true,
+                    direction,
+                );
+            }
+            RoutingRow::SyncStart => {
+                draft.config.external_clock.start_mode =
+                    match draft.config.external_clock.start_mode {
+                        crate::config::ExternalClockStartMode::Arrangement => {
+                            crate::config::ExternalClockStartMode::Pattern
+                        }
+                        crate::config::ExternalClockStartMode::Pattern => {
+                            crate::config::ExternalClockStartMode::Arrangement
+                        }
+                    };
             }
             RoutingRow::AudioOutput => {
                 if !audio_choices.is_empty() {
@@ -2960,6 +3029,21 @@ impl App {
         let runtime_path = state.join("shsynth.conf");
         let controller_path = state.join("controller.conf");
         let old_config = self.config.clone();
+        let sync_changed = draft.config.external_clock != old_config.external_clock;
+        let transport = self.sequencer.status();
+        if sync_changed
+            && (transport.playing
+                || transport.count_in.is_some()
+                || self.playback.is_some()
+                || self.controller_live_transport
+                || self.loop_player.status().playing
+                || self.song_previewing
+                || self.active_recording_owner().is_some())
+        {
+            self.status = "STOP TRANSPORT · then change SYNC".into();
+            self.routing.draft = Some(draft);
+            return;
+        }
         let old_controller = self
             .controller_config
             .read()
@@ -2986,15 +3070,30 @@ impl App {
                 if let Some(availability) = activated_availability {
                     self.controller_online = availability.controller_available();
                     self.performance_inputs = availability.performance;
+                    self.external_clock_input = availability.clock;
                 }
                 self.config = draft.config;
+                if sync_changed {
+                    self.external_clock_follower.reset_source();
+                    if self.config.external_clock.enabled {
+                        self.transport_clock.suspend_controller_output();
+                    }
+                }
                 self.controller_layout = draft.controller.layout;
                 self.refresh_routing_discovery();
-                self.status = match (audio_changed, clock_changed) {
-                    (true, true) => "Saved · audio+clock apply next start".into(),
-                    (true, false) => "Saved · audio applies next start".into(),
-                    (false, true) => "Saved · clock applies next start".into(),
-                    (false, false) => String::new(),
+                self.status = if sync_changed {
+                    if self.config.external_clock.enabled {
+                        "Saved · EXT waiting for clock".into()
+                    } else {
+                        "Saved · SYNC INTERNAL".into()
+                    }
+                } else {
+                    match (audio_changed, clock_changed) {
+                        (true, true) => "Saved · audio+clock apply next start".into(),
+                        (true, false) => "Saved · audio applies next start".into(),
+                        (false, true) => "Saved · clock applies next start".into(),
+                        (false, false) => String::new(),
+                    }
                 };
             }
             Err((stage, _error)) => {
@@ -5510,6 +5609,10 @@ impl App {
     }
 
     fn start_controller_live_transport(&mut self) -> bool {
+        if self.config.external_clock.enabled {
+            self.status = "EXT SYNC OWNS CLOCK · switch SYNC to INTERNAL".into();
+            return false;
+        }
         if !self.config.controller_clock.enabled {
             self.status = "CONTROLLER CLOCK OFF · enable in ROUTING".into();
             return false;
@@ -5622,6 +5725,48 @@ impl App {
                     Some("PERFORMANCE · final WAV".into())
                 }
             }
+        }
+    }
+
+    fn sync_status_message(&self) -> String {
+        if !self.config.external_clock.enabled {
+            return "SYNC INT".into();
+        }
+        if let Some(input) = self.external_clock_input.as_ref() {
+            if !input.available() {
+                return if input
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("ambiguous"))
+                {
+                    "EXT SOURCE AMBIG · ROUTING".into()
+                } else {
+                    "EXT SOURCE UNAVAILABLE · ROUTING".into()
+                };
+            }
+        } else {
+            return "EXT SOURCE UNAVAILABLE · ROUTING".into();
+        }
+        use crate::external_sync::FollowerState;
+        let tempo = self.external_clock_follower.tempo();
+        match self.external_clock_follower.state() {
+            FollowerState::Waiting => "EXT WAIT CLOCK".into(),
+            FollowerState::Acquiring { intervals } => {
+                format!(
+                    "EXT ACQUIRE {intervals}/{}",
+                    crate::external_sync::ACQUISITION_INTERVALS
+                )
+            }
+            FollowerState::Ready => tempo.map_or_else(
+                || "EXT READY · send START".into(),
+                |tempo| format!("EXT READY {tempo} · START"),
+            ),
+            FollowerState::Running => {
+                tempo.map_or_else(|| "EXT RUN".into(), |tempo| format!("EXT RUN {tempo}"))
+            }
+            FollowerState::Stopped => "EXT STOPPED · fresh START".into(),
+            FollowerState::Lost => "EXT CLOCK LOST · reacquire + START".into(),
+            FollowerState::Fault => "EXT CLOCK FAULT · reacquire + START".into(),
         }
     }
 
@@ -8966,15 +9111,121 @@ impl App {
         }
         self.automation_armed = false;
         self.rearm_automation_pickup();
-        self.status = "tracker stopped".into();
+        if self.config.external_clock.enabled {
+            self.external_clock_follower.local_stop();
+            self.status = "EXT STOPPED · fresh START required".into();
+        } else {
+            self.status = "tracker stopped".into();
+        }
+    }
+
+    fn handle_external_clock_action(
+        &mut self,
+        action: crate::external_sync::FollowerAction,
+        received: Instant,
+    ) {
+        use crate::external_sync::FollowerAction;
+        match action {
+            FollowerAction::None => {
+                if matches!(
+                    self.external_clock_follower.state(),
+                    crate::external_sync::FollowerState::Acquiring { .. }
+                ) && (self.status.starts_with("EXT CLOCK")
+                    || self.status.starts_with("EXT SOURCE CHANGED"))
+                {
+                    self.status.clear();
+                }
+            }
+            FollowerAction::Ready(tempo) => {
+                self.status = format!("EXT READY {tempo} BPM · send START");
+            }
+            FollowerAction::Start(tempo) | FollowerAction::Restart(tempo) => {
+                let cleaned_running =
+                    matches!(action, FollowerAction::Restart(_)) || self.sequencer.status().playing;
+                if cleaned_running {
+                    self.tracker_stop();
+                    let _ = self
+                        .external_clock_follower
+                        .receive(crate::external_sync::RealtimeMessage::Start, received);
+                }
+                if self.config.external_clock.start_mode
+                    == crate::config::ExternalClockStartMode::Pattern
+                    && self.screen == Screen::LivePatterns
+                {
+                    let Some(pattern) = self.live_patterns.selected() else {
+                        self.status = "EXT START REFUSED · no Live Pattern selected".into();
+                        self.external_clock_follower.local_stop();
+                        return;
+                    };
+                    let song = match self.shaped_live_song(pattern) {
+                        Ok(song) => song,
+                        Err(_) => {
+                            self.status = "EXT START REFUSED · Pattern invalid".into();
+                            self.external_clock_follower.local_stop();
+                            return;
+                        }
+                    };
+                    let Some(plan) = self.preflight_live_pattern(&song, pattern) else {
+                        self.external_clock_follower.local_stop();
+                        return;
+                    };
+                    if let Some(plan) = plan.as_ref() {
+                        if !self.ensure_tracker_engine_plan(plan) {
+                            self.external_clock_follower.local_stop();
+                            return;
+                        }
+                    }
+                    self.stage_pattern_loops(pattern);
+                    self.sequencer
+                        .live_external(&song, pattern, received, tempo);
+                    self.start_tracker_metronome_at(tempo);
+                    self.status = format!("EXT RUN {tempo} BPM · PAT {pattern:02}");
+                } else {
+                    self.start_tracker_playback(Some((received, tempo)));
+                }
+            }
+            FollowerAction::Pulse(update) => {
+                self.sequencer.external_pulse(update);
+                if let Some(controls) = self.final_bus.controls() {
+                    let _ = controls.set_metronome_tempo(update.tempo.as_f64() as f32);
+                }
+                if let Some(drums) = self.drum_host.as_ref() {
+                    drums.set_tempo(update.tempo);
+                }
+            }
+            FollowerAction::Stop => {
+                self.tracker_stop();
+                self.status = "EXT STOPPED · position retained · fresh START".into();
+            }
+            FollowerAction::StartRefused => {
+                self.status = "EXT START REFUSED · acquire 7 clocks first".into();
+            }
+            FollowerAction::ContinueRefused => {
+                self.status = "EXT CONTINUE REFUSED · send fresh START".into();
+            }
+            FollowerAction::Lost => {
+                self.tracker_stop();
+                self.external_clock_follower.reset_source();
+                self.status = "EXT CLOCK LOST · cleaned · reacquire + START".into();
+            }
+            FollowerAction::Fault => {
+                self.tracker_stop();
+                self.external_clock_follower.reset_source();
+                self.status = "EXT CLOCK FAULT · cleaned · reacquire + START".into();
+            }
+        }
     }
 
     fn start_tracker_metronome(&mut self) {
+        self.start_tracker_metronome_at(self.current_tempo());
+    }
+
+    fn start_tracker_metronome_at(&mut self, tempo: Bpm) {
         if !self.metronome_enabled {
             return;
         }
         let _ = self.retry_final_bus_for_mixer();
-        let tempo = self.current_tempo().as_f64() as f32;
+        let tempo = tempo.as_f64() as f32;
         let meter = self.current_pattern().map_or(4, |pattern| pattern.meter);
         if let Some(controls) = self.final_bus.controls() {
             let _ = controls.start_metronome(tempo, meter);
@@ -9339,6 +9590,21 @@ impl App {
     }
 
     fn toggle_tracker_playback(&mut self) {
+        if self.config.external_clock.enabled {
+            if self.tracker_recording.is_some() || self.sequencer.status().playing {
+                self.tracker_stop();
+            } else {
+                self.stop_controller_live_transport();
+                self.set_tracker_mode(TrackerMode::Play);
+                self.configure_tracker_route(false);
+                self.status = "EXT WAIT CLOCK · source must send START".into();
+            }
+            return;
+        }
+        self.start_tracker_playback(None);
+    }
+
+    fn start_tracker_playback(&mut self, external: Option<(Instant, Bpm)>) {
         if self.tracker_recording.is_some() {
             self.stop_tracker_recording();
         } else if self.sequencer.status().playing {
@@ -9356,17 +9622,52 @@ impl App {
         // has scheduled notes.
         self.configure_tracker_route(false);
         self.cancel_tracker_gesture();
-        let (order, row) = (self.tracker_order, self.tracker_row);
+        let (playback_song, order, row) = if external.is_some() {
+            match self.config.external_clock.start_mode {
+                crate::config::ExternalClockStartMode::Arrangement => {
+                    self.tracker_order = 0;
+                    self.tracker_row = 0;
+                    (
+                        external_start_material(
+                            &self.song,
+                            self.tracker_pattern_number(),
+                            self.config.external_clock.start_mode,
+                        ),
+                        0,
+                        0,
+                    )
+                }
+                crate::config::ExternalClockStartMode::Pattern => {
+                    let pattern = self.tracker_pattern_number();
+                    self.tracker_row = 0;
+                    (
+                        external_start_material(
+                            &self.song,
+                            pattern,
+                            self.config.external_clock.start_mode,
+                        ),
+                        0,
+                        0,
+                    )
+                }
+            }
+        } else {
+            (self.song.clone(), self.tracker_order, self.tracker_row)
+        };
         // The first pass starts at the cursor; every following pass starts at
         // row zero of this Arrangement Step, so preflight the complete loop.
-        let messages =
-            match sequencer::schedule_preflight(&self.song, &self.config.external_midi, order, 0) {
-                Ok(messages) => messages,
-                Err(_error) => {
-                    self.status = "FT2 PLAY FAILED · fix route, retry".into();
-                    return;
-                }
-            };
+        let messages = match sequencer::schedule_preflight(
+            &playback_song,
+            &self.config.external_midi,
+            order,
+            0,
+        ) {
+            Ok(messages) => messages,
+            Err(_error) => {
+                self.status = "FT2 PLAY FAILED · fix route, retry".into();
+                return;
+            }
+        };
         if messages.iter().any(|message| message.effect.is_some())
             && !self.retry_final_bus_for_mixer()
         {
@@ -9417,8 +9718,14 @@ impl App {
         }
         self.configure_tracker_route(false);
         self.rearm_automation_pickup();
-        self.sequencer.play(&self.song, order, row);
-        self.start_tracker_metronome();
+        if let Some((received, tempo)) = external {
+            self.sequencer
+                .play_external(&playback_song, order, row, received, tempo);
+            self.start_tracker_metronome_at(tempo);
+        } else {
+            self.sequencer.play(&playback_song, order, row);
+            self.start_tracker_metronome();
+        }
         if loops_ready {
             for slot in 0..crate::loop_player::LOOP_SLOTS {
                 if self.loop_player.slot_status(slot).loaded {
@@ -9433,7 +9740,11 @@ impl App {
             self.loop_runtime_pattern = None;
         }
         self.loop_cycle_start_order = order;
-        let incoming_order = if order + 1 < self.song.order.len() {
+        let incoming_order = if external.is_some_and(|_| {
+            self.config.external_clock.start_mode == crate::config::ExternalClockStartMode::Pattern
+        }) {
+            self.tracker_order
+        } else if order + 1 < self.song.order.len() {
             order + 1
         } else {
             order
@@ -9452,7 +9763,9 @@ impl App {
             .into_iter()
             .filter(|target| !self.target_online(target))
             .count();
-        self.status = if let Some(error) = loop_error {
+        self.status = if external.is_some() {
+            format!("EXT RUN {} BPM · {notes} MIDI", external.unwrap().1)
+        } else if let Some(error) = loop_error {
             format!("tracker playing · {notes} MIDI · {error}")
         } else if offline == 0 {
             format!(
@@ -9513,6 +9826,10 @@ impl App {
         let transport = self.sequencer.status();
         if transport.playing {
             self.follow_tracker_transport(&transport);
+        }
+        if self.config.external_clock.enabled && !transport.playing {
+            self.status = "EXT REC REFUSED · acquire clock and send START".into();
+            return;
         }
         let Some(target) = self.current_page().map(|page| page.target.clone()) else {
             self.status = "REC OFFLINE · current page missing".into();
@@ -10278,6 +10595,10 @@ impl App {
     }
 
     fn launch_live_selected(&mut self, immediate: bool) {
+        if self.config.external_clock.enabled && !self.sequencer.status().playing {
+            self.status = "EXT WAIT CLOCK · Start launches selected Pattern".into();
+            return;
+        }
         let Some(pattern) = self.live_patterns.selected() else {
             self.status = "no Live Pattern selected".into();
             return;
@@ -10333,6 +10654,10 @@ impl App {
     }
 
     fn retrigger_live_pattern(&mut self) {
+        if self.config.external_clock.enabled && !self.sequencer.status().playing {
+            self.status = "EXT WAIT CLOCK · retrigger refused until Start".into();
+            return;
+        }
         let queued = match self.live_patterns.queue_retrigger() {
             Ok(queued) => queued,
             Err(_) => {
@@ -11073,6 +11398,10 @@ impl App {
         };
         if self.loop_previewing && self.loop_preview_selection == Some(selection) {
             self.stop_loop_preview(true);
+            return;
+        }
+        if self.config.external_clock.enabled {
+            self.status = "EXT SYNC OWNS CLOCK · loop preview refused".into();
             return;
         }
         self.stop_loop_preview(false);
@@ -11980,6 +12309,10 @@ impl App {
         if self.song_previewing {
             self.stop_song_preview();
             self.status = "song preview stopped".into();
+            return;
+        }
+        if self.config.external_clock.enabled {
+            self.status = "EXT SYNC OWNS CLOCK · Project preview refused".into();
             return;
         }
         let Some(name) = self.song_list.get(self.song_selected).cloned() else {
@@ -13229,6 +13562,7 @@ impl App {
             self.screen,
             Screen::Tracker | Screen::TrackerParameters | Screen::TrackerMixer | Screen::Automation
         ) && self.tracker_mode == TrackerMode::Play
+            && !self.config.external_clock.enabled
         {
             TransportIndicator::Pause
         } else {
@@ -15340,6 +15674,10 @@ impl App {
     }
     fn tick(&mut self) {
         let now = Instant::now();
+        if self.config.external_clock.enabled {
+            let action = self.external_clock_follower.check_timeout(now);
+            self.handle_external_clock_action(action, now);
+        }
         if let Some(session) = self.controller_learn.as_mut() {
             session.tick(now);
         }
@@ -15667,6 +16005,12 @@ fn expected_startup_midi(router: Option<&engine::MidiRouter>) -> Option<String> 
                 .iter()
                 .find(|input| !input.available())
         })
+        .or_else(|| {
+            availability
+                .clock
+                .as_ref()
+                .filter(|input| !input.available())
+        })
         .map(|input| input.wanted.clone())
 }
 
@@ -15821,6 +16165,7 @@ fn app_loop(
     if let Ok(router) = &router {
         app.controller_online = router.availability().controller_available();
         app.performance_inputs = router.availability().performance.clone();
+        app.external_clock_input = router.availability().clock.clone();
     }
     if controller_notice.is_some() {
         app.status = "CONTROLLER ROUTE DEGRADED · ROUTING".into();
@@ -15853,6 +16198,14 @@ fn app_loop(
             notices.push(format!(
                 "{missing_performance} performance input(s) unavailable"
             ));
+        }
+        if let Some(clock) = router
+            .availability()
+            .clock
+            .as_ref()
+            .filter(|state| !state.available())
+        {
+            notices.push(format!("external clock {}", clock.description()));
         }
         if !notices.is_empty() {
             let notice: String = "MIDI INPUT MISSING · use keyboard / ROUTING".into();
@@ -15992,6 +16345,66 @@ fn drain(
                     }
                     crate::controller_learn::LearnAction::FinishSaved => {
                         app.finish_saved_controller_learn();
+                    }
+                }
+            }
+            MidiEvent::ExternalClock {
+                received,
+                source,
+                message,
+            } => {
+                let accepted = app.config.external_clock.enabled
+                    && app
+                        .external_clock_input
+                        .as_ref()
+                        .and_then(|state| state.resolved.as_deref())
+                        == Some(source.as_str());
+                if accepted {
+                    let action = app.external_clock_follower.receive(message, received);
+                    app.handle_external_clock_action(action, received);
+                }
+            }
+            MidiEvent::ExternalClockMalformed => {
+                if app.config.external_clock.enabled {
+                    let action = app.external_clock_follower.malformed();
+                    app.handle_external_clock_action(action, Instant::now());
+                }
+            }
+            MidiEvent::ExternalClockSourceLost(source) => {
+                let accepted = app
+                    .external_clock_input
+                    .as_ref()
+                    .and_then(|state| state.resolved.as_deref())
+                    == Some(source.as_str());
+                if app.config.external_clock.enabled && accepted {
+                    if app.sequencer.status().playing {
+                        app.tracker_stop();
+                    }
+                    if let Some(state) = app.external_clock_input.as_mut() {
+                        state.resolved = None;
+                        state.error = Some("source disconnected".into());
+                    }
+                    app.external_clock_follower.reset_source();
+                    app.status = "EXT SOURCE UNAVAILABLE · cleaned · ROUTING".into();
+                }
+            }
+            MidiEvent::MidiInputTopologyChanged => {
+                if let Some(router) = app.midi_router.as_mut() {
+                    match router.reconfigure_inputs(&app.config) {
+                        Ok(availability) => {
+                            app.controller_online = availability.controller_available();
+                            app.performance_inputs = availability.performance;
+                            app.external_clock_input = availability.clock;
+                            app.external_clock_follower.reset_source();
+                            app.status = "EXT SOURCE CHANGED · reacquire + START".into();
+                        }
+                        Err(_) => {
+                            if app.sequencer.status().playing {
+                                app.tracker_stop();
+                            }
+                            app.external_clock_follower.reset_source();
+                            app.status = "EXT SOURCE UNAVAILABLE · cleaned · ROUTING".into();
+                        }
                     }
                 }
             }
@@ -19301,6 +19714,16 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
             RoutingRow::ClockOutput => {
                 endpoint(&config.controller_clock.output_match, &a.routing_outputs)
             }
+            RoutingRow::SyncOwner => if config.external_clock.enabled {
+                "EXTERNAL"
+            } else {
+                "INTERNAL"
+            }
+            .into(),
+            RoutingRow::SyncInput => {
+                endpoint(&config.external_clock.input_match, &a.routing_inputs)
+            }
+            RoutingRow::SyncStart => config.external_clock.start_mode.label().into(),
             RoutingRow::AudioOutput => {
                 if audio_online {
                     crate::ui_text::fit_line(audio_name, value_width)
@@ -22765,11 +23188,12 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
             )
         })
     });
+    let sync_status = a.sync_status_message();
     let message = combined_status
         .as_deref()
         .or(recording_status.as_deref())
         .or_else(|| status_visible.then_some(status))
-        .unwrap_or("");
+        .unwrap_or(&sync_status);
     let message_color = if status_is_fault(message) {
         Color::LightYellow
     } else {
@@ -31597,6 +32021,150 @@ release = 0.4
             .filter_map(std::result::Result::ok)
             .any(|entry| entry.file_name().to_string_lossy().contains(".bak-")));
         fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn external_clock_routing_requires_one_exact_source_and_cancel_is_project_noop() {
+        let p = presets();
+        let mut a = app(&p);
+        let original_song = a.song.clone();
+        let original_dirty = a.project_is_dirty();
+        a.routing_inputs = vec!["Clock Box:USB MIDI 32:0".into()];
+        a.begin_routing_edit();
+        {
+            let draft = a.routing.draft.as_mut().unwrap();
+            draft.config.external_clock.enabled = true;
+            draft.config.external_clock.input_match = "Clock Box:USB MIDI 99:7".into();
+            draft.config.midi_autoconnect = true;
+        }
+        canonicalize_routing_draft(
+            a.routing.draft.as_mut().unwrap(),
+            &a.routing_inputs,
+            &a.routing_outputs,
+        )
+        .unwrap();
+        assert_eq!(
+            a.routing
+                .draft
+                .as_ref()
+                .unwrap()
+                .config
+                .external_clock
+                .input_match,
+            "Clock Box:USB MIDI"
+        );
+        assert!(a.cancel_routing_edit());
+        assert_eq!(a.song, original_song);
+        assert_eq!(a.project_is_dirty(), original_dirty);
+
+        let mut ambiguous = RoutingDraft {
+            config: a.config.clone(),
+            controller: crate::pads::PadConfig::default(),
+        };
+        ambiguous.config.external_clock.enabled = true;
+        ambiguous.config.external_clock.input_match = "Clock Box:USB MIDI".into();
+        ambiguous.config.midi_autoconnect = true;
+        assert!(canonicalize_routing_draft(
+            &mut ambiguous,
+            &[
+                "Clock Box:USB MIDI 32:0".into(),
+                "Clock Box:USB MIDI 41:0".into(),
+            ],
+            &[],
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("ambiguous"));
+        assert!(canonicalize_routing_draft(&mut ambiguous, &[], &[]).is_err());
+        assert_eq!(a.song, original_song);
+        assert_eq!(a.project_is_dirty(), original_dirty);
+    }
+
+    #[test]
+    fn unrelated_clock_is_ignored_and_exact_source_loss_is_visible_project_noop() {
+        let p = presets();
+        let mut a = app(&p);
+        a.config.external_clock.enabled = true;
+        a.config.external_clock.input_match = "Clock Box:USB MIDI".into();
+        a.external_clock_input = Some(crate::engine::MidiInputState {
+            wanted: "Clock Box:USB MIDI".into(),
+            resolved: Some("Clock Box:USB MIDI 32:0".into()),
+            error: None,
+        });
+        let original_song = a.song.clone();
+        let original_dirty = a.project_is_dirty();
+        let (tx, rx) = mpsc::channel();
+        tx.send(MidiEvent::ExternalClock {
+            received: Instant::now(),
+            source: "Other:USB MIDI 40:0".into(),
+            message: crate::external_sync::RealtimeMessage::TimingClock,
+        })
+        .unwrap();
+        drain(&rx, &mut a, Path::new("/none"), &tx);
+        assert_eq!(
+            a.external_clock_follower.state(),
+            crate::external_sync::FollowerState::Waiting
+        );
+
+        tx.send(MidiEvent::ExternalClockSourceLost(
+            "Clock Box:USB MIDI 32:0".into(),
+        ))
+        .unwrap();
+        drain(&rx, &mut a, Path::new("/none"), &tx);
+        assert!(a.status.contains("SOURCE UNAVAILABLE"));
+        assert!(!a.external_clock_input.as_ref().unwrap().available());
+        assert_eq!(a.song, original_song);
+        assert_eq!(a.project_is_dirty(), original_dirty);
+    }
+
+    #[test]
+    fn external_start_position_is_row_zero_for_arrangement_or_selected_pattern() {
+        let cfg = RuntimeConfig::default().external_midi;
+        let mut song = Song::new(&cfg);
+        song.patterns.insert(1, song.patterns[&0].clone());
+        song.order = vec![0, 1, 0];
+        let original = song.clone();
+
+        let arrangement =
+            external_start_material(&song, 1, crate::config::ExternalClockStartMode::Arrangement);
+        assert_eq!(arrangement.order, [0, 1, 0]);
+        let pattern =
+            external_start_material(&song, 1, crate::config::ExternalClockStartMode::Pattern);
+        assert_eq!(pattern.order, [1]);
+        assert_eq!(song, original);
+        assert_eq!(
+            pattern.patterns[&1].rows.len(),
+            original.patterns[&1].rows.len()
+        );
+    }
+
+    #[test]
+    fn sync_state_renders_on_native_status_row_for_every_controller_layout() {
+        let p = presets();
+        for layout in [
+            ControllerLayout::Eight,
+            ControllerLayout::Five,
+            ControllerLayout::Four,
+        ] {
+            let mut a = app(&p);
+            a.controller_layout = layout;
+            a.screen = Screen::Routing;
+            a.config.external_clock.enabled = true;
+            a.config.external_clock.input_match = "Clock Box:USB MIDI".into();
+            a.external_clock_input = Some(crate::engine::MidiInputState {
+                wanted: "Clock Box:USB MIDI".into(),
+                resolved: None,
+                error: Some("ambiguous stable identity".into()),
+            });
+            a.status.clear();
+            let frame = render_app(&mut a, 40, 13);
+            assert!(
+                row_text(&frame, 12).contains("EXT SOURCE AMBIG"),
+                "{}",
+                row_text(&frame, 12)
+            );
+            assert_eq!(a.transport_indicator(), TransportIndicator::Stop);
+        }
     }
 
     #[test]

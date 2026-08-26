@@ -90,6 +90,40 @@ pub struct ControllerClockConfig {
     pub output_match: String,
 }
 
+/// Machine-owned external transport input. Disabled means SHR's existing
+/// internal transport is the only clock owner.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExternalClockConfig {
+    pub enabled: bool,
+    /// Exact stable ALSA MIDI input identity. Hardware names never enter a
+    /// Project.
+    pub input_match: String,
+    pub start_mode: ExternalClockStartMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ExternalClockStartMode {
+    #[default]
+    Arrangement,
+    Pattern,
+}
+
+impl ExternalClockStartMode {
+    pub const fn config_value(self) -> &'static str {
+        match self {
+            Self::Arrangement => "arrangement",
+            Self::Pattern => "pattern",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Arrangement => "ARRANGEMENT",
+            Self::Pattern => "PATTERN",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StereoInputConfig {
     pub name: String,
@@ -238,6 +272,7 @@ pub struct RuntimeConfig {
     pub cpu_temperature_path: Option<PathBuf>,
     pub external_midi: ExternalMidiConfig,
     pub controller_clock: ControllerClockConfig,
+    pub external_clock: ExternalClockConfig,
     pub capture: AudioCaptureConfig,
     pub loop_player: LoopPlayerConfig,
 }
@@ -409,6 +444,11 @@ impl Default for RuntimeConfig {
                 enabled: false,
                 client_name: "shs-controller-clock".into(),
                 output_match: String::new(),
+            },
+            external_clock: ExternalClockConfig {
+                enabled: false,
+                input_match: String::new(),
+                start_mode: ExternalClockStartMode::Arrangement,
             },
             capture: AudioCaptureConfig {
                 client_name: "shs-recorder".into(),
@@ -806,6 +846,15 @@ impl RuntimeConfig {
                     self.controller_clock.client_name = required(key, value)?.into()
                 }
                 "controller_clock.output" => self.controller_clock.output_match = value.into(),
+                "external_clock.enabled" => self.external_clock.enabled = boolean(key, value)?,
+                "external_clock.input" => self.external_clock.input_match = value.into(),
+                "external_clock.start" => {
+                    self.external_clock.start_mode = match value.to_ascii_lowercase().as_str() {
+                        "arrangement" => ExternalClockStartMode::Arrangement,
+                        "pattern" => ExternalClockStartMode::Pattern,
+                        _ => bail!("{key} must be arrangement or pattern"),
+                    }
+                }
                 "capture.client" => self.capture.client_name = required(key, value)?.into(),
                 "capture.directory" => self.capture.directory = expand_home(required(key, value)?),
                 "capture.input" => {
@@ -918,6 +967,14 @@ impl RuntimeConfig {
         if self.controller_clock.enabled && self.controller_clock.output_match.is_empty() {
             bail!("controller_clock.enabled requires controller_clock.output");
         }
+        if self.external_clock.enabled {
+            if self.external_clock.input_match.is_empty() {
+                bail!("external_clock.enabled requires external_clock.input");
+            }
+            if !self.midi_autoconnect {
+                bail!("external_clock.enabled requires midi.autoconnect=true");
+            }
+        }
         if self.external_midi.channels.is_empty() {
             bail!("external_midi requires at least one channel");
         }
@@ -973,7 +1030,7 @@ impl RuntimeConfig {
             fs::create_dir_all(parent)?;
         }
         let mut text = format!(
-            "# SHR-DAW runtime and routing configuration v5\n\
+            "# SHR-DAW runtime and routing configuration v6\n\
              synthv1.command={}\n\
              synthv1.client={}\n\
              synth.startup_timeout_ms={}\n\
@@ -1157,7 +1214,7 @@ impl RuntimeConfig {
             text.push_str("external_midi.percussion_note=\n");
         }
         text.push_str(&format!(
-            "external_midi.bank_select={}\nexternal_midi.program_changes={}\nexternal_midi.send_transport={}\nexternal_midi.default_tempo={}\nexternal_midi.import_directory={}\nexternal_midi.pattern_rows={}\nexternal_midi.steps_per_beat={}\nexternal_midi.live_thru={}\nexternal_midi.profile={}\nexternal_midi.gate_percent={}\nexternal_midi.gesture_settle_ms={}\ncontroller_clock.enabled={}\ncontroller_clock.client={}\ncontroller_clock.output={}\ncapture.client={}\ncapture.directory={}\ncapture.ring_frames={}\ncapture.maximum_callback_frames={}\n",
+            "external_midi.bank_select={}\nexternal_midi.program_changes={}\nexternal_midi.send_transport={}\nexternal_midi.default_tempo={}\nexternal_midi.import_directory={}\nexternal_midi.pattern_rows={}\nexternal_midi.steps_per_beat={}\nexternal_midi.live_thru={}\nexternal_midi.profile={}\nexternal_midi.gate_percent={}\nexternal_midi.gesture_settle_ms={}\ncontroller_clock.enabled={}\ncontroller_clock.client={}\ncontroller_clock.output={}\nexternal_clock.enabled={}\nexternal_clock.input={}\nexternal_clock.start={}\ncapture.client={}\ncapture.directory={}\ncapture.ring_frames={}\ncapture.maximum_callback_frames={}\n",
             match self.external_midi.bank_select { BankSelectMode::Off => "off", BankSelectMode::Cc0 => "cc0", BankSelectMode::Cc0Cc32 => "cc0+cc32" },
             self.external_midi.program_changes, self.external_midi.send_transport,
             self.external_midi.default_tempo, self.external_midi.import_directory.display(),
@@ -1165,7 +1222,9 @@ impl RuntimeConfig {
             self.external_midi.steps_per_beat, self.external_midi.live_thru,
             self.external_midi.profile, self.external_midi.gate_percent, self.external_midi.gesture_settle.as_millis(),
             self.controller_clock.enabled, self.controller_clock.client_name,
-            self.controller_clock.output_match, self.capture.client_name,
+            self.controller_clock.output_match, self.external_clock.enabled,
+            self.external_clock.input_match, self.external_clock.start_mode.config_value(),
+            self.capture.client_name,
             self.capture.directory.display(), self.capture.ring_frames,
             self.capture.maximum_callback_frames
         ));
@@ -1512,6 +1571,59 @@ mod tests {
             "controller_clock.enabled=true\ncontroller_clock.output=\n",
         )
         .unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn external_clock_migrates_disabled_and_round_trips_exact_machine_source() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-external-clock-{}.conf",
+            std::process::id()
+        ));
+        fs::write(&path, "midi.autoconnect=false\n").unwrap();
+        let migrated = RuntimeConfig::load(&path).unwrap();
+        assert!(!migrated.external_clock.enabled);
+        assert!(migrated.external_clock.input_match.is_empty());
+        assert_eq!(
+            migrated.external_clock.start_mode,
+            ExternalClockStartMode::Arrangement
+        );
+
+        fs::write(
+            &path,
+            "midi.autoconnect=true\nexternal_clock.enabled=true\nexternal_clock.input=Clock Box:USB MIDI 32:0\nexternal_clock.start=pattern\n",
+        )
+        .unwrap();
+        let configured = RuntimeConfig::load(&path).unwrap();
+        assert!(configured.external_clock.enabled);
+        assert_eq!(
+            configured.external_clock.input_match,
+            "Clock Box:USB MIDI 32:0"
+        );
+        assert_eq!(
+            configured.external_clock.start_mode,
+            ExternalClockStartMode::Pattern
+        );
+        configured.save(&path).unwrap();
+        assert_eq!(
+            RuntimeConfig::load(&path).unwrap().external_clock,
+            configured.external_clock
+        );
+
+        fs::write(
+            &path,
+            "midi.autoconnect=true\nexternal_clock.enabled=true\nexternal_clock.input=\n",
+        )
+        .unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        fs::write(
+            &path,
+            "midi.autoconnect=false\nexternal_clock.enabled=true\nexternal_clock.input=Clock Box:USB MIDI\n",
+        )
+        .unwrap();
+        assert!(RuntimeConfig::load(&path).is_err());
+        fs::write(&path, "external_clock.start=continue\n").unwrap();
         assert!(RuntimeConfig::load(&path).is_err());
         let _ = fs::remove_file(path);
     }

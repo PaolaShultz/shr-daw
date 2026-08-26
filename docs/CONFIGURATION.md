@@ -80,6 +80,7 @@ content into private Project storage.
 | Owned final bus | `audio.graph.enabled`, `.client`, `.maximum_callback_frames` (1–4096), `.input`, monitoring confirmations |
 | External tracker MIDI | `external_midi.enabled`, `.client`, `.output`, `.max_tracks`, repeated `.channel`, `.melody_channel`, optional `.percussion_channel` and `.percussion_program`, `.percussion_input_base`, repeated `.percussion_note`, `.bank_select` (`off`, `cc0`, or `cc0+cc32`), `.program_changes`, `.send_transport`, `.default_tempo` (decimal 20.00–300.00), private `.import_directory`, `.pattern_rows` (1–256), `.steps_per_beat` (1–16), `.live_thru`, `.profile`, `.gate_percent` (1–100), `.gesture_settle_ms` |
 | Controller clock | `controller_clock.enabled`, `.client`, `.output`; disabled by default, with one exact stable ALSA MIDI output name required when enabled |
+| External transport input | `external_clock.enabled`, `.input`, `.start` (`arrangement` or `pattern`); disabled by default, machine-owned, and requires `midi.autoconnect=true` plus one exact stable ALSA MIDI input identity |
 | Synchronized capture | `capture.directory`, `.client`, repeated `capture.track=ID|LABEL|GROUP|ROLE|ARMED|EXACT_SOURCE`, legacy stereo `capture.input=NAME|LEFT|RIGHT`, `.ring_frames` (1024–4194304), `.maximum_callback_frames` (16–65536) |
 | WAV loop | `loop.client`, `loop.import_directory`, exactly two repeated `loop.output` entries when playback is used |
 
@@ -160,8 +161,9 @@ replaces SHR-owned MIDI inputs without layering them. Activation failure
 restores the previous files and route. Merely browsing, highlighting, or
 confirming an output choice does not open that output or send MIDI. Audio-
 output changes are marked `NEXT START` and take effect on the next managed
-engine start. Controller-clock changes also take effect on the next SHR start;
-MIDI input and controller-role changes activate immediately. Startup does not
+engine start. Controller-clock output changes also take effect on the next SHR
+start; MIDI input, controller-role, and external-transport input changes
+activate immediately while stopped. Startup does not
 silently migrate legacy names; canonical form is written only after a confirmed
 Routing edit. Every configured performance input has its own compact `PERF n`
 row and an explicit add row. Editing or removing one preserves all other
@@ -212,6 +214,10 @@ MiniLab must detect clock before it receives Start; sending Start before the
 first pulse left its External-Sync arpeggiator waiting. Continuous stopped-state
 clock is therefore the least surprising live-safe behavior. It lets the
 controller know the tempo before Play, while `FC` still stops its arpeggiator.
+When `external_clock.enabled=true`, the controller-clock worker is fully
+suspended—including stopped-state Timing Clock—so SHR cannot compete with or
+feed back the incoming owner. The next internal Play resumes its configured
+clock behavior.
 When controller clock is enabled, SHR permits an otherwise empty Pattern to run
 with FT2 transport; Playback can launch the live arpeggiator directly without a
 recorded take.
@@ -220,6 +226,30 @@ tempo before the first run); cell timing, number of pages/destinations, and
 swing/event placement do not create or move pulses. A live tempo change
 preserves the remaining pulse phase, and a delayed worker skips missed
 deadlines instead of producing a catch-up burst.
+
+## External USB MIDI transport input
+
+```text
+external_clock.enabled=false
+external_clock.input=
+external_clock.start=arrangement
+```
+
+Routing exposes these as `SYNC`, `SYNC IN`, and `SYNC POS`. Enabling external
+sync requires one currently resolvable exact input; the saved value omits only
+the volatile trailing ALSA numeric address. Missing or duplicate stable
+identities remain visibly refused and never select a substitute. Hardware and
+source names stay in this machine configuration, never in a Project.
+
+External mode follows `F8` at 24 PPQN and accepts `FA` Start plus `FC` Stop.
+`arrangement` Start means Arrangement step 1, row 1; `pattern` means row 1 of
+the selected Pattern (or selected Live Pattern). Seven clocks establish a
+usable estimate, the valid tempo range is 20.00–300.00 BPM, and more than 500
+ms without a pulse is loss. Stop, loss, source replacement, or fault requires
+clock reacquisition and a fresh Start; clocks alone never resume. Continue,
+Song Position Pointer, and clock thru are not implemented. See [Priority 7
+external transport sync acceptance](EXTERNAL_TRANSPORT_SYNC_ACCEPTANCE.md) for
+the exact filter, phase, cleanup, UI, output, and evidence contract.
 
 ### Raspberry Pi setup, backup, verification, and rollback
 

@@ -282,6 +282,14 @@ impl BusControls {
         true
     }
 
+    pub fn set_metronome_tempo(&self, bpm: f32) -> bool {
+        if !bpm.is_finite() || !(20.0..=300.0).contains(&bpm) {
+            return false;
+        }
+        self.metronome_bpm.store(bpm.to_bits(), Ordering::Release);
+        true
+    }
+
     pub fn stop_metronome(&self) {
         self.metronome_enabled.store(false, Ordering::Release);
         self.metronome_generation.fetch_add(1, Ordering::AcqRel);

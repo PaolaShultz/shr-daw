@@ -3059,6 +3059,31 @@ pub fn schedule_for_pass(
     .scheduled_messages())
 }
 
+/// Build transport-only material for an external clock owner. The Project is
+/// never modified: Pattern tempos become the follower tempo in this private
+/// clone, and in-Pattern tempo commands are suppressed because steady time is
+/// owned exclusively by the incoming MIDI Clock.
+pub(crate) fn song_for_external_clock(song: &Song, tempo: Bpm) -> Song {
+    let mut playback = song.clone();
+    for pattern in playback.patterns.values_mut() {
+        pattern.tempo = tempo;
+        for row in &mut pattern.rows {
+            for cell in row {
+                if matches!(cell.command, Command::Tempo(_)) {
+                    cell.command = Command::None;
+                }
+            }
+        }
+    }
+    playback
+}
+
+fn external_schedule_config(config: &ExternalMidiConfig) -> ExternalMidiConfig {
+    let mut playback = config.clone();
+    playback.send_transport = false;
+    playback
+}
+
 /// Route/engine preflight includes every conditional trigger without changing
 /// the deterministic playback result.
 pub fn schedule_preflight(
@@ -4105,6 +4130,9 @@ pub struct SequencerStatus {
     pub count_in: Option<u8>,
     /// Performance Fill latch. Changes are heard at the next playback cycle boundary.
     pub fill: bool,
+    /// The active transport is following the configured external MIDI Clock.
+    pub external_clock: bool,
+    pub external_tempo: Option<Bpm>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -4115,6 +4143,8 @@ pub struct TransportPosition {
 }
 enum Transport {
     Play(u64, Song, usize, usize),
+    PlayExternal(u64, Song, usize, usize, Instant, Bpm),
+    ExternalPulse(crate::external_sync::PulseUpdate),
     RefreshLoop(Song),
     Stop(u64),
     Mute(usize, bool),
@@ -4127,6 +4157,7 @@ enum Transport {
     LivePrepared(bool, Option<String>),
     LiveCancel,
     LiveImmediate(Song, u16, bool),
+    LiveExternal(u64, Song, u16, Instant, Bpm),
     Shutdown,
 }
 
@@ -4218,6 +4249,8 @@ impl Sequencer {
             status.playing = true;
             status.order = order;
             status.row = row;
+            status.external_clock = false;
+            status.external_tempo = None;
             status.generation = status.generation.wrapping_add(1);
             status.generation
         } else {
@@ -4226,6 +4259,39 @@ impl Sequencer {
         let _ = self
             .tx
             .send(Transport::Play(generation, song.clone(), order, row));
+    }
+    pub fn play_external(
+        &self,
+        song: &Song,
+        order: usize,
+        row: usize,
+        received: Instant,
+        tempo: Bpm,
+    ) {
+        let _ = self.count_in_tx.send(CountInCommand::Cancel);
+        let generation = if let Ok(mut status) = self.status.lock() {
+            status.playing = true;
+            status.order = order;
+            status.row = row;
+            status.external_clock = true;
+            status.external_tempo = Some(tempo);
+            status.generation = status.generation.wrapping_add(1);
+            status.generation
+        } else {
+            0
+        };
+        let _ = self.tx.send(Transport::PlayExternal(
+            generation,
+            song.clone(),
+            order,
+            row,
+            received,
+            tempo,
+        ));
+    }
+
+    pub fn external_pulse(&self, update: crate::external_sync::PulseUpdate) {
+        let _ = self.tx.send(Transport::ExternalPulse(update));
     }
     pub fn count_in(&self, song: &Song, order: usize, row: usize, beats: u8) {
         let tempo = song
@@ -4326,6 +4392,26 @@ impl Sequencer {
         let _ = self
             .tx
             .send(Transport::LiveImmediate(song.clone(), pattern, retrigger));
+    }
+    pub fn live_external(&self, song: &Song, pattern: u16, received: Instant, tempo: Bpm) {
+        let generation = if let Ok(mut status) = self.status.lock() {
+            status.playing = true;
+            status.order = 0;
+            status.row = 0;
+            status.external_clock = true;
+            status.external_tempo = Some(tempo);
+            status.generation = status.generation.wrapping_add(1);
+            status.generation
+        } else {
+            0
+        };
+        let _ = self.tx.send(Transport::LiveExternal(
+            generation,
+            song.clone(),
+            pattern,
+            received,
+            tempo,
+        ));
     }
     pub fn thru(&self, message: &[u8]) {
         if self.config.live_thru {
@@ -4475,6 +4561,8 @@ fn run_transport(
     let mut sounding_loop_order: Option<usize> = None;
     let mut live: Option<LiveRuntime> = None;
     let mut automation_cc = crate::automation::CcPublisher::new(Instant::now());
+    let mut active_config = config.clone();
+    let mut external_clock_owner = false;
     loop {
         while let Some((target, bytes)) = automation_cc.flush(Instant::now()) {
             if let Err(error) = outputs.send(&target, &bytes) {
@@ -4492,12 +4580,14 @@ fn run_transport(
             .min(Duration::from_millis(50));
         match rx.recv_timeout(timeout) {
             Ok(Transport::Play(generation, song, order, row)) => {
+                external_clock_owner = false;
+                active_config = config.clone();
                 automation_cc.clear(Instant::now());
                 live = None;
                 cleanup_owned_notes(&mut outputs, &mut note_owners);
                 active_notes.clear();
                 live_notes.clear();
-                match playback_schedules(&song, &config, order, row) {
+                match playback_schedules(&song, &active_config, order, row) {
                     Ok((first, repeat)) => {
                         messages = first;
                         repeat_messages = repeat;
@@ -4548,7 +4638,7 @@ fn run_transport(
                 active_notes.clear();
                 note_owners.clear();
                 live_notes.clear();
-                if config.send_transport {
+                if active_config.send_transport {
                     for target in &transport_targets {
                         let _ = outputs.send(target, &[0xfa]);
                     }
@@ -4573,12 +4663,141 @@ fn run_transport(
                         .unwrap_or_default()
                         .saturating_mul(AUTOMATION_TICKS_PER_ROW);
                     s.fill = false;
+                    s.external_clock = false;
+                    s.external_tempo = None;
+                }
+            }
+            Ok(Transport::PlayExternal(generation, song, order, row, received, tempo)) => {
+                external_clock_owner = true;
+                active_config = external_schedule_config(&config);
+                automation_cc.clear(Instant::now());
+                live = None;
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                active_notes.clear();
+                live_notes.clear();
+                let song = song_for_external_clock(&song, tempo);
+                match playback_schedules(&song, &active_config, order, row) {
+                    Ok((first, repeat)) => {
+                        messages = first;
+                        repeat_messages = repeat;
+                    }
+                    Err(error) => {
+                        messages.clear();
+                        repeat_messages.clear();
+                        transport_targets.clear();
+                        if let Ok(mut s) = status.lock() {
+                            if s.generation != generation {
+                                continue;
+                            }
+                            s.playing = false;
+                            s.targets.clear();
+                            s.fallbacks.clear();
+                            s.error = Some(error.to_string());
+                            s.external_clock = true;
+                            s.external_tempo = Some(tempo);
+                        }
+                        continue;
+                    }
+                }
+                transport_targets = messages
+                    .iter()
+                    .chain(repeat_messages.iter())
+                    .filter_map(|message| message.target.clone())
+                    .collect();
+                for target in &transport_targets {
+                    outputs.refresh(target);
+                }
+                update_target_status(&status, &outputs, &transport_targets);
+                index = 0;
+                started = received;
+                transport_tempo = tempo;
+                let playback_steps = song.steps_per_beat;
+                let first_origin_beat = row as f64 / f64::from(song.steps_per_beat);
+                loop_origin_beat = 0.0;
+                playback_pass = 1;
+                playback_start_order = order;
+                fill = false;
+                clock.play_external(first_origin_beat, transport_tempo);
+                let loop_pattern = song.order.get(order).copied();
+                playback_song = Some(song);
+                sounding_loop_order = Some(order);
+                muted.clear();
+                active_notes.clear();
+                note_owners.clear();
+                live_notes.clear();
+                if let Ok(mut s) = status.lock() {
+                    if s.generation != generation {
+                        continue;
+                    }
+                    s.playing = true;
+                    s.count_in = None;
+                    s.order = order;
+                    s.row = row;
+                    s.loop_pattern = loop_pattern;
+                    s.loop_order = Some(order);
+                    s.loop_row = row;
+                    s.loop_activation_serial = s.loop_activation_serial.wrapping_add(1);
+                    s.row_started_at = Some(started);
+                    s.row_duration = Duration::from_secs_f64(
+                        60.0 / transport_tempo.as_f64() / f64::from(playback_steps),
+                    );
+                    s.pattern_tick = u32::try_from(row)
+                        .unwrap_or_default()
+                        .saturating_mul(AUTOMATION_TICKS_PER_ROW);
+                    s.fill = false;
+                    s.external_clock = true;
+                    s.external_tempo = Some(tempo);
+                }
+            }
+            Ok(Transport::ExternalPulse(update)) => {
+                if !external_clock_owner {
+                    continue;
+                }
+                let elapsed = Instant::now().saturating_duration_since(started);
+                if update.tempo != transport_tempo {
+                    rescale_schedule(&mut messages, index, elapsed, transport_tempo, update.tempo);
+                    if !repeat_messages.is_empty() {
+                        rescale_schedule(
+                            &mut repeat_messages,
+                            0,
+                            Duration::ZERO,
+                            transport_tempo,
+                            update.tempo,
+                        );
+                    }
+                    if let Some(song) = playback_song.take() {
+                        playback_song = Some(song_for_external_clock(&song, update.tempo));
+                    }
+                    if let Some(runtime) = live.as_mut() {
+                        runtime.current_song =
+                            song_for_external_clock(&runtime.current_song, update.tempo);
+                    }
+                    transport_tempo = update.tempo;
+                    clock.tempo(update.tempo);
+                }
+                started =
+                    crate::external_sync::shift_instant(started, update.phase_correction_nanos);
+                if let Ok(mut s) = status.lock() {
+                    s.external_tempo = Some(update.tempo);
+                    s.row_started_at = s.row_started_at.map(|value| {
+                        crate::external_sync::shift_instant(value, update.phase_correction_nanos)
+                    });
+                    let steps = playback_song
+                        .as_ref()
+                        .map_or(active_config.steps_per_beat, |song| song.steps_per_beat);
+                    s.row_duration =
+                        Duration::from_secs_f64(60.0 / update.tempo.as_f64() / f64::from(steps));
                 }
             }
             Ok(Transport::RefreshLoop(song)) => {
+                let song = if external_clock_owner {
+                    song_for_external_clock(&song, transport_tempo)
+                } else {
+                    song
+                };
                 match schedule_for_pass(
                     &song,
-                    &config,
+                    &active_config,
                     playback_start_order,
                     0,
                     playback_pass.saturating_add(1),
@@ -4613,7 +4832,7 @@ fn run_transport(
                 cleanup_owned_notes(&mut outputs, &mut note_owners);
                 active_notes.clear();
                 live_notes.clear();
-                if config.send_transport {
+                if active_config.send_transport {
                     for target in &transport_targets {
                         let _ = outputs.send(target, &[0xfc]);
                     }
@@ -4713,6 +4932,9 @@ fn run_transport(
                 }
             }
             Ok(Transport::Tempo(bpm)) => {
+                if external_clock_owner {
+                    continue;
+                }
                 let elapsed = started.elapsed();
                 rescale_schedule(&mut messages, index, elapsed, transport_tempo, bpm);
                 if !repeat_messages.is_empty() {
@@ -4754,6 +4976,11 @@ fn run_transport(
             }
             Ok(Transport::LiveQueue(song, queued, requires_engine_prepare)) => {
                 if let Some(runtime) = live.as_mut() {
+                    let song = if external_clock_owner {
+                        song_for_external_clock(&song, transport_tempo)
+                    } else {
+                        song
+                    };
                     runtime.queued = Some(QueuedLive {
                         song,
                         requested: queued,
@@ -4775,7 +5002,7 @@ fn run_transport(
                         match activate_live_pattern(
                             &pending.song,
                             pending.requested,
-                            &config,
+                            &active_config,
                             &mut outputs,
                             &mut messages,
                             &mut active_notes,
@@ -4795,7 +5022,11 @@ fn run_transport(
                                 started = Instant::now();
                                 transport_tempo =
                                     runtime.current_song.patterns[&runtime.current].tempo;
-                                clock.play(0.0, transport_tempo);
+                                if external_clock_owner {
+                                    clock.play_external(0.0, transport_tempo);
+                                } else {
+                                    clock.play(0.0, transport_tempo);
+                                }
                                 publish_live_activation(&status, pending.requested);
                                 update_target_status(&status, &outputs, &transport_targets);
                             }
@@ -4814,7 +5045,7 @@ fn run_transport(
                             if let Ok(targets) = activate_live_pattern(
                                 &runtime.current_song,
                                 fallback,
-                                &config,
+                                &active_config,
                                 &mut outputs,
                                 &mut messages,
                                 &mut active_notes,
@@ -4830,7 +5061,11 @@ fn run_transport(
                                 started = Instant::now();
                                 transport_tempo =
                                     runtime.current_song.patterns[&runtime.current].tempo;
-                                clock.play(0.0, transport_tempo);
+                                if external_clock_owner {
+                                    clock.play_external(0.0, transport_tempo);
+                                } else {
+                                    clock.play(0.0, transport_tempo);
+                                }
                                 update_target_status(&status, &outputs, &transport_targets);
                                 if let Ok(mut status) = status.lock() {
                                     status.playing = true;
@@ -4854,6 +5089,11 @@ fn run_transport(
                 }
             }
             Ok(Transport::LiveImmediate(song, pattern, retrigger)) => {
+                let song = if external_clock_owner {
+                    song_for_external_clock(&song, transport_tempo)
+                } else {
+                    song
+                };
                 let requested = crate::live_performance::QueuedPattern {
                     pattern,
                     quantization: crate::live_performance::LaunchQuantization::Pattern,
@@ -4862,7 +5102,7 @@ fn run_transport(
                 match activate_live_pattern(
                     &song,
                     requested,
-                    &config,
+                    &active_config,
                     &mut outputs,
                     &mut messages,
                     &mut active_notes,
@@ -4877,7 +5117,11 @@ fn run_transport(
                         index = 0;
                         started = Instant::now();
                         transport_tempo = song.patterns[&pattern].tempo;
-                        clock.play(0.0, transport_tempo);
+                        if external_clock_owner {
+                            clock.play_external(0.0, transport_tempo);
+                        } else {
+                            clock.play(0.0, transport_tempo);
+                        }
                         live = Some(LiveRuntime {
                             current_song: song,
                             current: pattern,
@@ -4889,6 +5133,60 @@ fn run_transport(
                         sounding_loop_order = None;
                         publish_live_activation(&status, requested);
                         update_target_status(&status, &outputs, &transport_targets);
+                    }
+                    Err(error) => publish_live_failure(&status, error),
+                }
+            }
+            Ok(Transport::LiveExternal(generation, song, pattern, received, tempo)) => {
+                external_clock_owner = true;
+                active_config = external_schedule_config(&config);
+                let song = song_for_external_clock(&song, tempo);
+                let requested = crate::live_performance::QueuedPattern {
+                    pattern,
+                    quantization: crate::live_performance::LaunchQuantization::Pattern,
+                    retrigger: true,
+                };
+                match activate_live_pattern(
+                    &song,
+                    requested,
+                    &active_config,
+                    &mut outputs,
+                    &mut messages,
+                    &mut active_notes,
+                    &mut note_owners,
+                    1,
+                    fill,
+                    true,
+                ) {
+                    Ok(targets) => {
+                        muted.clear();
+                        transport_targets = targets;
+                        index = 0;
+                        started = received;
+                        transport_tempo = tempo;
+                        clock.play_external(0.0, tempo);
+                        live = Some(LiveRuntime {
+                            current_song: song,
+                            current: pattern,
+                            pass: 1,
+                            queued: None,
+                            pending: None,
+                        });
+                        playback_song = None;
+                        sounding_loop_order = None;
+                        publish_live_activation(&status, requested);
+                        update_target_status(&status, &outputs, &transport_targets);
+                        if let Ok(mut state) = status.lock() {
+                            if state.generation == generation {
+                                state.playing = true;
+                                state.external_clock = true;
+                                state.external_tempo = Some(tempo);
+                                state.row_started_at = Some(received);
+                                state.row_duration = Duration::from_secs_f64(
+                                    60.0 / tempo.as_f64() / f64::from(active_config.steps_per_beat),
+                                );
+                            }
+                        }
                     }
                     Err(error) => publish_live_failure(&status, error),
                 }
@@ -4940,7 +5238,7 @@ fn run_transport(
                     match activate_live_pattern(
                         &queued.song,
                         queued.requested,
-                        &config,
+                        &active_config,
                         &mut outputs,
                         &mut messages,
                         &mut active_notes,
@@ -5160,7 +5458,7 @@ fn run_transport(
                 match activate_live_pattern(
                     next_song,
                     requested,
-                    &config,
+                    &active_config,
                     &mut outputs,
                     &mut messages,
                     &mut active_notes,
@@ -5224,7 +5522,7 @@ fn run_transport(
                 } else if let Some(song) = playback_song.as_ref() {
                     match schedule_for_pass(
                         song,
-                        &config,
+                        &active_config,
                         playback_start_order,
                         0,
                         playback_pass,
@@ -6443,6 +6741,59 @@ mod tests {
         thread::sleep(Duration::from_millis(250));
         assert!(!sequencer.status().playing);
         assert_eq!(sequencer.status().count_in, None);
+    }
+
+    #[test]
+    fn external_start_pulse_stop_and_restart_use_the_single_transport_thread() {
+        let mut c = config();
+        c.send_transport = true;
+        let mut song = Song::new(&c);
+        song.patterns.get_mut(&0).unwrap().resize_rows(4).unwrap();
+        let clock = Arc::new(crate::loop_player::TransportClock::default());
+        let sequencer = Sequencer::start_with_clock(
+            &c,
+            Arc::new(Mutex::new(None)),
+            Arc::new(Mutex::new(None)),
+            clock,
+            Arc::new(crate::effects::EffectControlHub::default()),
+        );
+        let first = Instant::now();
+        let tempo = Bpm::from_whole(120).unwrap();
+        sequencer.play_external(&song, 0, 0, first, tempo);
+        let deadline = Instant::now() + Duration::from_millis(100);
+        while !sequencer.status().playing && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(sequencer.status().playing);
+        assert!(sequencer.status().external_clock);
+        assert_eq!(sequencer.status().external_tempo, Some(tempo));
+
+        let changed = Bpm::from_whole(121).unwrap();
+        sequencer.external_pulse(crate::external_sync::PulseUpdate {
+            tempo: changed,
+            phase_correction_nanos: 100_000,
+        });
+        let deadline = Instant::now() + Duration::from_millis(100);
+        while sequencer.status().external_tempo != Some(changed) && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert_eq!(sequencer.status().external_tempo, Some(changed));
+
+        sequencer.stop();
+        let deadline = Instant::now() + Duration::from_millis(100);
+        while sequencer.status().playing && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(!sequencer.status().playing);
+        assert!(sequencer.status().external_clock);
+
+        sequencer.play_external(&song, 0, 0, Instant::now(), tempo);
+        let deadline = Instant::now() + Duration::from_millis(100);
+        while !sequencer.status().playing && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(sequencer.status().playing);
+        sequencer.stop();
     }
 
     #[test]
@@ -8646,6 +8997,68 @@ mod tests {
         assert_ne!(
             first_release.at,
             Duration::from_secs_f64(60.0 / 101.0 / 4.0)
+        );
+    }
+
+    #[test]
+    fn external_clock_playback_clone_owns_steady_tempo_without_mutating_structure_or_feel() {
+        let mut cfg = config();
+        cfg.send_transport = true;
+        let mut song = Song::new(&cfg);
+        let external_tempo = Bpm::from_whole(90).unwrap();
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.resize_rows(8).unwrap();
+        pattern.tempo = Bpm::from_whole(137).unwrap();
+        pattern.swing_division = SwingDivision::Eighth;
+        pattern.swing_percent = 63;
+        pattern.rows[0][0] = Cell {
+            note: Note::On(60),
+            nudge: 17,
+            probability: 73,
+            condition: StepCondition::Fill,
+            command: Command::Retrigger(3),
+            ..Cell::default()
+        };
+        pattern.rows[2][1].command = Command::Tempo(Bpm::from_whole(210).unwrap());
+        pattern.pages[0].lanes[0].playback.rate = LaneRate::Double;
+        let original = song.clone();
+
+        let playback = song_for_external_clock(&song, external_tempo);
+        assert_eq!(song, original, "external sync must not mutate the Project");
+        assert_eq!(playback.order, original.order);
+        assert_eq!(
+            playback.patterns[&0].rows.len(),
+            original.patterns[&0].rows.len()
+        );
+        assert_eq!(playback.patterns[&0].tempo, external_tempo);
+        assert_eq!(playback.patterns[&0].rows[2][1].command, Command::None);
+        assert_eq!(
+            playback.patterns[&0].rows[0][0],
+            original.patterns[&0].rows[0][0]
+        );
+        assert_eq!(
+            playback.patterns[&0].pages[0].lanes[0].playback,
+            original.patterns[&0].pages[0].lanes[0].playback
+        );
+
+        let scheduled =
+            schedule_for_pass(&playback, &external_schedule_config(&cfg), 0, 0, 1, true).unwrap();
+        assert!(scheduled.iter().all(|message| message.bytes != [0xf8]));
+        assert!(scheduled
+            .iter()
+            .any(|message| message.bytes.first() == Some(&0x90)));
+        let row_starts = scheduled
+            .iter()
+            .filter(|message| message.bytes.is_empty() && message.effect.is_none())
+            .fold(BTreeMap::new(), |mut rows, message| {
+                rows.entry((message.order, message.row))
+                    .or_insert(message.at);
+                rows
+            });
+        assert_eq!(row_starts.len(), 8);
+        assert_eq!(
+            row_starts[&(0, 1)] - row_starts[&(0, 0)],
+            Duration::from_secs_f64(60.0 / 90.0 / f64::from(song.steps_per_beat))
         );
     }
     #[test]

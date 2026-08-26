@@ -183,6 +183,10 @@ Project loading refuses unknown newer schemas rather than rewriting them.
 Missing sounds and kits remain named and visibly unavailable; SHR never swaps
 in a similarly named backend or route. Starting, stopping, route loss, live
 switching, and reload retain the same note-cleanup and ownership boundaries.
+External USB MIDI sync changes only the steady transport owner: incoming
+Start/Stop still enter these same managed-instrument, drum, held-note, Loop,
+and cleanup paths, and no instrument route receives forwarded clock. See
+[Priority 7 external transport sync acceptance](EXTERNAL_TRANSPORT_SYNC_ACCEPTANCE.md).
 
 ## Where files and provenance live
 

@@ -42,6 +42,14 @@ pub enum MidiEvent {
         received: Instant,
         bytes: Vec<u8>,
     },
+    ExternalClock {
+        received: Instant,
+        source: String,
+        message: crate::external_sync::RealtimeMessage,
+    },
+    ExternalClockMalformed,
+    ExternalClockSourceLost(String),
+    MidiInputTopologyChanged,
     Error(String),
 }
 
@@ -159,6 +167,7 @@ struct CallbackRouting {
 struct InputRoles {
     controller: bool,
     performance: bool,
+    clock: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -192,6 +201,7 @@ impl MidiInputState {
 pub struct MidiInputAvailability {
     pub controller: Option<MidiInputState>,
     pub performance: Vec<MidiInputState>,
+    pub clock: Option<MidiInputState>,
 }
 
 impl MidiInputAvailability {
@@ -417,7 +427,7 @@ impl MidiRouter {
             };
             match connect_midi_input(tx.clone(), &planned, config, routing) {
                 Ok(connection) => {
-                    opened_names.push(planned.name.clone());
+                    opened_names.push((planned.name.clone(), planned.roles.clock));
                     inputs.push(connection);
                 }
                 Err(error) => mark_input_open_error(
@@ -436,13 +446,14 @@ impl MidiRouter {
             let tx = tx.clone();
             thread::spawn(move || {
                 let mut disconnected = std::collections::BTreeSet::new();
+                let mut replacement_notified = std::collections::BTreeSet::new();
                 while !stop.load(Ordering::Relaxed) {
                     thread::sleep(Duration::from_millis(250));
                     if stop.load(Ordering::Relaxed) {
                         break;
                     }
                     let visible = midi_input_names().unwrap_or_default();
-                    for source in &opened_names {
+                    for (source, clock_source) in &opened_names {
                         if visible.iter().any(|name| name == source) {
                             continue;
                         }
@@ -455,6 +466,22 @@ impl MidiRouter {
                             let _ = tx.send(MidiEvent::Error(format!(
                                 "MIDI input disconnected: {source}"
                             )));
+                            if *clock_source {
+                                let _ = tx.send(MidiEvent::ExternalClockSourceLost(source.clone()));
+                            }
+                        }
+                        if *clock_source
+                            && !replacement_notified.contains(source)
+                            && crate::midi_endpoint::matching_index(
+                                &visible,
+                                &crate::midi_endpoint::stable_identity(source),
+                                "external clock MIDI input",
+                            )
+                            .ok()
+                            .is_some()
+                        {
+                            replacement_notified.insert(source.clone());
+                            let _ = tx.send(MidiEvent::MidiInputTopologyChanged);
                         }
                     }
                 }
@@ -575,7 +602,7 @@ impl MidiRouter {
             };
             match connect_midi_input(self.tx.clone(), &planned, config, routing) {
                 Ok(connection) => {
-                    opened_names.push(planned.name.clone());
+                    opened_names.push((planned.name.clone(), planned.roles.clock));
                     self._inputs.push(connection);
                 }
                 Err(error) => {
@@ -603,7 +630,7 @@ impl MidiRouter {
         self.monitor_stop = Arc::new(AtomicBool::new(false));
     }
 
-    fn start_input_monitor(&mut self, opened_names: Vec<String>) {
+    fn start_input_monitor(&mut self, opened_names: Vec<(String, bool)>) {
         if opened_names.is_empty() {
             return;
         }
@@ -614,13 +641,14 @@ impl MidiRouter {
         let tx = self.tx.clone();
         self.monitor_thread = Some(thread::spawn(move || {
             let mut disconnected = std::collections::BTreeSet::new();
+            let mut replacement_notified = std::collections::BTreeSet::new();
             while !stop.load(Ordering::Relaxed) {
                 thread::sleep(Duration::from_millis(250));
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
                 let visible = midi_input_names().unwrap_or_default();
-                for source in &opened_names {
+                for (source, clock_source) in &opened_names {
                     if visible.iter().any(|name| name == source) {
                         continue;
                     }
@@ -633,6 +661,22 @@ impl MidiRouter {
                         let _ = tx.send(MidiEvent::Error(format!(
                             "MIDI input disconnected: {source}"
                         )));
+                        if *clock_source {
+                            let _ = tx.send(MidiEvent::ExternalClockSourceLost(source.clone()));
+                        }
+                    }
+                    if *clock_source
+                        && !replacement_notified.contains(source)
+                        && crate::midi_endpoint::matching_index(
+                            &visible,
+                            &crate::midi_endpoint::stable_identity(source),
+                            "external clock MIDI input",
+                        )
+                        .ok()
+                        .is_some()
+                    {
+                        replacement_notified.insert(source.clone());
+                        let _ = tx.send(MidiEvent::MidiInputTopologyChanged);
                     }
                 }
             }
@@ -1541,6 +1585,7 @@ fn plan_midi_inputs(names: &[String], pads: &PadConfig, config: &RuntimeConfig) 
                         InputRoles {
                             controller: true,
                             performance: config.midi_controller_musical_input,
+                            clock: false,
                         },
                     );
                     break;
@@ -1573,6 +1618,7 @@ fn plan_midi_inputs(names: &[String], pads: &PadConfig, config: &RuntimeConfig) 
                     InputRoles {
                         controller: false,
                         performance: true,
+                        clock: false,
                     },
                 );
             }
@@ -1581,6 +1627,32 @@ fn plan_midi_inputs(names: &[String], pads: &PadConfig, config: &RuntimeConfig) 
         }
         plan.availability.performance.push(state);
     }
+    if config.external_clock.enabled {
+        let wanted = config.external_clock.input_match.clone();
+        let mut state = MidiInputState {
+            wanted: wanted.clone(),
+            resolved: None,
+            error: None,
+        };
+        match unique_name_match(names, &wanted, "external clock MIDI input") {
+            Ok(Some(index)) => {
+                let name = names[index].clone();
+                state.resolved = Some(name.clone());
+                merge_planned_input(
+                    &mut plan.inputs,
+                    name,
+                    InputRoles {
+                        controller: false,
+                        performance: false,
+                        clock: true,
+                    },
+                );
+            }
+            Ok(None) => state.error = Some(format!("not found (wanted: {wanted})")),
+            Err(error) => state.error = Some(error.to_string()),
+        }
+        plan.availability.clock = Some(state);
+    }
     plan
 }
 
@@ -1588,6 +1660,7 @@ fn merge_planned_input(inputs: &mut Vec<PlannedMidiInput>, name: String, roles: 
     if let Some(existing) = inputs.iter_mut().find(|input| input.name == name) {
         existing.roles.controller |= roles.controller;
         existing.roles.performance |= roles.performance;
+        existing.roles.clock |= roles.clock;
     } else {
         inputs.push(PlannedMidiInput { name, roles });
     }
@@ -1608,6 +1681,11 @@ fn mark_input_open_error(
             if state.resolved.as_deref() == Some(&planned.name) {
                 state.error = Some(error.clone());
             }
+        }
+    }
+    if planned.roles.clock {
+        if let Some(state) = availability.clock.as_mut() {
+            state.error = Some(error);
         }
     }
 }
@@ -1990,140 +2068,173 @@ fn connect_midi_input(
     let mut encoder_modifier_down = false;
     let mut page_cycle_chord = crate::pads::PageCycleChordState::default();
     let mut locked_pad_notes = std::collections::HashMap::new();
+    let mut clock_stream = crate::external_sync::MidiByteStream::default();
     let connection = input
         .connect(
             port,
             "SHR-DAW monitor",
             move |_stamp, message, _| {
                 let received = Instant::now();
-                if controller_learning_owns_message(roles, learn_mode.load(Ordering::Relaxed)) {
-                    let _ = tx.send(MidiEvent::Learn {
-                        received,
-                        bytes: message.to_vec(),
-                    });
-                    return;
-                }
-                if invalid_note_message(message) {
-                    let _ = tx.send(MidiEvent::Error(
-                        "ignored malformed MIDI note message".into(),
-                    ));
-                    return;
-                }
-                let mut musical = roles.performance.then(|| message.to_vec());
-                if roles.controller {
-                    let Ok(pads) = callback_controller.read() else {
-                        let _ = tx.send(MidiEvent::Error("controller mapping lock failed".into()));
+                let items = if roles.clock {
+                    clock_stream.push(message)
+                } else {
+                    vec![crate::external_sync::StreamItem::Message(message.to_vec())]
+                };
+                let mut process_message = |message: &[u8]| {
+                    if controller_learning_owns_message(roles, learn_mode.load(Ordering::Relaxed)) {
+                        let _ = tx.send(MidiEvent::Learn {
+                            received,
+                            bytes: message.to_vec(),
+                        });
+                        return;
+                    }
+                    if invalid_note_message(message) {
+                        let _ = tx.send(MidiEvent::Error(
+                            "ignored malformed MIDI note message".into(),
+                        ));
+                        return;
+                    }
+                    let mut musical = roles.performance.then(|| message.to_vec());
+                    if roles.controller {
+                        let Ok(pads) = callback_controller.read() else {
+                            let _ =
+                                tx.send(MidiEvent::Error("controller mapping lock failed".into()));
+                            return;
+                        };
+                        let backend = backend
+                            .lock()
+                            .map(|kind| *kind)
+                            .unwrap_or(BackendKind::Synthv1);
+                        let (modifier_message, modifier_down) =
+                            pads.encoder_modifier_action(message);
+                        if modifier_message {
+                            encoder_modifier_down = modifier_down;
+                        }
+                        let (chord_message, chord_action) =
+                            pads.page_cycle_chord_action(message, &mut page_cycle_chord);
+                        if chord_message {
+                            if let Some((action, pressed)) = chord_action {
+                                let _ = tx.send(MidiEvent::Pad(action, pressed));
+                            }
+                            return;
+                        }
+                        if modifier_message {
+                            return;
+                        }
+                        let (lock_message, lock_down) = pads.lock_action(message);
+                        if lock_message && lock_down && !lock_pressed {
+                            pad_locked = !pad_locked;
+                            let _ = tx.send(MidiEvent::PadLock(pad_locked));
+                        }
+                        if lock_message {
+                            lock_pressed = lock_down;
+                        }
+                        let forced_pad_release =
+                            locked_pad_release(&pads, message, pad_locked, &mut locked_pad_notes);
+                        let fx_value = (fx_control_mode.load(Ordering::Relaxed)
+                            && message.len() >= 3
+                            && message[0] & 0xf0 == 0xb0)
+                            .then(|| pads.pot_position(message[1]))
+                            .flatten()
+                            .and_then(|position| CONTROLS.get(position).copied())
+                            .map(|control| {
+                                (control.cc, control::value_from_cc(control, message[2]))
+                            });
+                        if let Some((cc, value)) = fx_value {
+                            let _ = tx.send(MidiEvent::MappedControl {
+                                received,
+                                cc,
+                                value,
+                            });
+                            return;
+                        }
+                        let routed = crate::midi::route_with_pad_lock_and_modifier(
+                            &pads,
+                            backend,
+                            message,
+                            pad_locked,
+                            encoder_modifier_down,
+                        );
+                        if let Some((cc, value)) = routed.value {
+                            let _ = tx.send(MidiEvent::MappedControl {
+                                received,
+                                cc,
+                                value,
+                            });
+                        }
+                        let accepted = routed
+                            .value
+                            .map(|(cc, value)| {
+                                pickup
+                                    .lock()
+                                    .map(|mut pickup| pickup.accept(cc, value))
+                                    .unwrap_or(true)
+                            })
+                            .unwrap_or(true);
+                        if !pad_locked {
+                            if let Some((action, pressed)) = pads.action_state(message) {
+                                let _ = tx.send(MidiEvent::Pad(action, pressed));
+                            }
+                        }
+                        if let Some(action) = routed.encoder {
+                            let event = if routed.encoder_modified {
+                                MidiEvent::EncoderModified(action)
+                            } else {
+                                MidiEvent::Encoder(action)
+                            };
+                            let _ = tx.send(event);
+                        }
+                        if !accepted {
+                            return;
+                        }
+                        if let Some((cc, value)) = routed.value {
+                            let _ = tx.send(MidiEvent::Value(cc, value));
+                        }
+                        let mapped = routed.value.is_some() || routed.translated.is_some();
+                        musical = routed
+                            .translated
+                            .map(|bytes| bytes.to_vec())
+                            .or_else(|| {
+                                controller_allows_musical(roles, mapped, forced_pad_release)
+                                    .then(|| routed.forward.map(<[u8]>::to_vec))
+                                    .flatten()
+                            })
+                            .or_else(|| forced_pad_release.then(|| message.to_vec()));
+                    }
+                    let Some(message) = musical else {
                         return;
                     };
-                    let backend = backend
+                    let route = tracker_route.lock().ok().map(|route| route.clone());
+                    let scale = playback_scale.lock().ok().and_then(|scale| *scale);
+                    let deliveries = live_state
                         .lock()
-                        .map(|kind| *kind)
-                        .unwrap_or(BackendKind::Synthv1);
-                    let (modifier_message, modifier_down) = pads.encoder_modifier_action(message);
-                    if modifier_message {
-                        encoder_modifier_down = modifier_down;
-                    }
-                    let (chord_message, chord_action) =
-                        pads.page_cycle_chord_action(message, &mut page_cycle_chord);
-                    if chord_message {
-                        if let Some((action, pressed)) = chord_action {
-                            let _ = tx.send(MidiEvent::Pad(action, pressed));
-                        }
-                        return;
-                    }
-                    if modifier_message {
-                        return;
-                    }
-                    let (lock_message, lock_down) = pads.lock_action(message);
-                    if lock_message && lock_down && !lock_pressed {
-                        pad_locked = !pad_locked;
-                        let _ = tx.send(MidiEvent::PadLock(pad_locked));
-                    }
-                    if lock_message {
-                        lock_pressed = lock_down;
-                    }
-                    let forced_pad_release =
-                        locked_pad_release(&pads, message, pad_locked, &mut locked_pad_notes);
-                    let fx_value = (fx_control_mode.load(Ordering::Relaxed)
-                        && message.len() >= 3
-                        && message[0] & 0xf0 == 0xb0)
-                        .then(|| pads.pot_position(message[1]))
-                        .flatten()
-                        .and_then(|position| CONTROLS.get(position).copied())
-                        .map(|control| (control.cc, control::value_from_cc(control, message[2])));
-                    if let Some((cc, value)) = fx_value {
-                        let _ = tx.send(MidiEvent::MappedControl {
-                            received,
-                            cc,
-                            value,
-                        });
-                        return;
-                    }
-                    let routed = crate::midi::route_with_pad_lock_and_modifier(
-                        &pads,
-                        backend,
-                        message,
-                        pad_locked,
-                        encoder_modifier_down,
-                    );
-                    if let Some((cc, value)) = routed.value {
-                        let _ = tx.send(MidiEvent::MappedControl {
-                            received,
-                            cc,
-                            value,
-                        });
-                    }
-                    let accepted = routed
-                        .value
-                        .map(|(cc, value)| {
-                            pickup
-                                .lock()
-                                .map(|mut pickup| pickup.accept(cc, value))
-                                .unwrap_or(true)
+                        .map(|mut state| {
+                            route_live_message(
+                                &mut state,
+                                &source_id,
+                                &message,
+                                route.as_ref(),
+                                scale,
+                            )
                         })
-                        .unwrap_or(true);
-                    if !pad_locked {
-                        if let Some((action, pressed)) = pads.action_state(message) {
-                            let _ = tx.send(MidiEvent::Pad(action, pressed));
-                        }
-                    }
-                    if let Some(action) = routed.encoder {
-                        let event = if routed.encoder_modified {
-                            MidiEvent::EncoderModified(action)
-                        } else {
-                            MidiEvent::Encoder(action)
-                        };
-                        let _ = tx.send(event);
-                    }
-                    if !accepted {
-                        return;
-                    }
-                    if let Some((cc, value)) = routed.value {
-                        let _ = tx.send(MidiEvent::Value(cc, value));
-                    }
-                    let mapped = routed.value.is_some() || routed.translated.is_some();
-                    musical = routed
-                        .translated
-                        .map(|bytes| bytes.to_vec())
-                        .or_else(|| {
-                            controller_allows_musical(roles, mapped, forced_pad_release)
-                                .then(|| routed.forward.map(<[u8]>::to_vec))
-                                .flatten()
-                        })
-                        .or_else(|| forced_pad_release.then(|| message.to_vec()));
-                }
-                let Some(message) = musical else {
-                    return;
+                        .unwrap_or_default();
+                    deliver_midi(deliveries, received, &tx, &output, &tracker_input);
                 };
-                let route = tracker_route.lock().ok().map(|route| route.clone());
-                let scale = playback_scale.lock().ok().and_then(|scale| *scale);
-                let deliveries = live_state
-                    .lock()
-                    .map(|mut state| {
-                        route_live_message(&mut state, &source_id, &message, route.as_ref(), scale)
-                    })
-                    .unwrap_or_default();
-                deliver_midi(deliveries, received, &tx, &output, &tracker_input);
+                for item in items {
+                    match item {
+                        crate::external_sync::StreamItem::Message(bytes) => process_message(&bytes),
+                        crate::external_sync::StreamItem::Realtime(message) => {
+                            let _ = tx.send(MidiEvent::ExternalClock {
+                                received,
+                                source: source_id.clone(),
+                                message,
+                            });
+                        }
+                        crate::external_sync::StreamItem::Malformed => {
+                            let _ = tx.send(MidiEvent::ExternalClockMalformed);
+                        }
+                    }
+                }
             },
             (),
         )
@@ -3102,7 +3213,8 @@ mod tests {
             plan.inputs[0].roles,
             InputRoles {
                 controller: true,
-                performance: true
+                performance: true,
+                clock: false,
             }
         );
         assert!(plan.availability.controller_available());
@@ -3124,14 +3236,16 @@ mod tests {
             plan.inputs[0].roles,
             InputRoles {
                 controller: true,
-                performance: false
+                performance: false,
+                clock: false,
             }
         );
         assert_eq!(
             plan.inputs[1].roles,
             InputRoles {
                 controller: false,
-                performance: true
+                performance: true,
+                clock: false,
             }
         );
     }
@@ -3148,10 +3262,75 @@ mod tests {
             plan.inputs[0].roles,
             InputRoles {
                 controller: true,
-                performance: true
+                performance: true,
+                clock: false,
             }
         );
         assert_eq!(plan.availability.performance_available(), 1);
+    }
+
+    #[test]
+    fn external_clock_source_is_exact_refuses_missing_or_ambiguous_and_merges_roles() {
+        let mut config = input_role_config();
+        config.external_clock.enabled = true;
+        config.external_clock.input_match = "Clock Box:USB MIDI".into();
+        let names = vec![
+            "Unrelated Clock:USB MIDI 19:0".into(),
+            "Clock Box:USB MIDI 32:0".into(),
+        ];
+        let exact = plan_midi_inputs(&names, &PadConfig::default(), &config);
+        assert_eq!(exact.inputs.len(), 1);
+        assert_eq!(exact.inputs[0].name, "Clock Box:USB MIDI 32:0");
+        assert_eq!(
+            exact.inputs[0].roles,
+            InputRoles {
+                controller: false,
+                performance: false,
+                clock: true,
+            }
+        );
+        assert!(exact.availability.clock.as_ref().unwrap().available());
+
+        let replacement = plan_midi_inputs(
+            &["Clock Box:USB MIDI 47:3".into()],
+            &PadConfig::default(),
+            &config,
+        );
+        assert_eq!(
+            replacement.availability.clock.unwrap().resolved.as_deref(),
+            Some("Clock Box:USB MIDI 47:3")
+        );
+
+        let missing = plan_midi_inputs(
+            &["Unrelated Clock:USB MIDI 19:0".into()],
+            &PadConfig::default(),
+            &config,
+        );
+        assert!(missing.inputs.is_empty());
+        assert!(missing.availability.clock.unwrap().error.is_some());
+
+        let ambiguous = plan_midi_inputs(
+            &[
+                "Clock Box:USB MIDI 32:0".into(),
+                "Clock Box:USB MIDI 47:3".into(),
+            ],
+            &PadConfig::default(),
+            &config,
+        );
+        assert!(ambiguous.inputs.is_empty());
+        assert!(ambiguous
+            .availability
+            .clock
+            .unwrap()
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("ambiguous")));
+
+        config.midi_performance_input_matches = vec!["Clock Box:USB MIDI".into()];
+        let merged = plan_midi_inputs(&names, &PadConfig::default(), &config);
+        assert_eq!(merged.inputs.len(), 1);
+        assert!(merged.inputs[0].roles.performance);
+        assert!(merged.inputs[0].roles.clock);
     }
 
     #[test]
@@ -3191,6 +3370,7 @@ mod tests {
         let roles = InputRoles {
             controller: true,
             performance: false,
+            clock: false,
         };
         assert!(!controller_allows_musical(roles, false, false));
         assert!(controller_allows_musical(roles, true, false));
@@ -3202,21 +3382,24 @@ mod tests {
         assert!(controller_learning_owns_message(
             InputRoles {
                 controller: true,
-                performance: false
+                performance: false,
+                clock: false,
             },
             true
         ));
         assert!(!controller_learning_owns_message(
             InputRoles {
                 controller: false,
-                performance: true
+                performance: true,
+                clock: false,
             },
             true
         ));
         assert!(!controller_learning_owns_message(
             InputRoles {
                 controller: true,
-                performance: true
+                performance: true,
+                clock: false,
             },
             false
         ));

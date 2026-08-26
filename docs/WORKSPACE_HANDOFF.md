@@ -5,6 +5,57 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-26 Priority 7 external USB MIDI transport sync
+
+Priority 7 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact
+MIDI byte, source-resolution, acquisition/filter/phase, Start/Stop positioning,
+loss/reacquisition, output interaction, subsystem ownership, UI state, and
+acceptance contract is in `EXTERNAL_TRANSPORT_SYNC_ACCEPTANCE.md`.
+
+Routing now owns machine-only `SYNC` internal/external selection, one exact
+stable `SYNC IN`, and Arrangement/Pattern `SYNC POS`. External mode follows
+Timing Clock at 24 PPQN from only that resolved source. Seven clocks establish
+tempo; the tracker supports 20.00–300.00 BPM through a 24-interval median,
+bounded 1/8 smoothing, two-percent interval slew, one-eighth-pulse phase
+correction, 2 ms delivery-burst tolerance, and a 500 ms loss deadline. Stop,
+loss, source replacement, refusal, or bounded malformed-input fault requires
+reacquisition plus a fresh Start. Continue, Song Position Pointer, clock thru,
+and implicit internal fallback remain absent.
+
+Arrangement Start is step 1/row 1; Pattern Start is the selected Pattern/row 1,
+including the selected shaped Live Pattern. Playback uses the existing single
+sequencer and cleanup owners. The transient playback clone substitutes the
+filtered tempo and ignores Tempo commands without changing Project data or
+duration. Swing, groove, microtiming, REC FEEL, lanes, probability/conditions,
+PRE/FILL, retrigger, automation, Live launch boundaries, and Loop placement
+retain their event-level ownership. External mode suppresses tracker clock/
+Start/Stop output and fully suspends optional controller-clock pulses; the next
+internal Play resumes configured output. Stopped external REC and every local
+internal preview/play owner are visibly refused until the musician selects
+internal sync or an acquired external Start owns transport.
+
+Project format 17 is unchanged. Runtime configuration is version 6 and older
+configuration migrates to disabled internal sync with Arrangement Start.
+Routing browsing, Cancel, refusal, missing/ambiguous source, loss, Stop, and
+failed validation do not write Project, Pattern History, Arrangement, Pattern,
+structure, or dirty state.
+
+The owner-authorized non-Raspberry-Pi pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Formatting and
+`cargo check --locked` passed. Focused parser/follower, exact-source, owner/
+output, Start/Stop/restart, Routing transaction, 40x13/controller layout,
+scheduler, preflight, export, transport, and count-in groups passed. The
+complete `cargo test --locked` suite passed with 1,063 successful tests, zero
+failures, and 13 documented private-audition, hardware, and maintainer tests
+ignored. Clippy was not required by a failure or repository policy.
+
+No JACK, ALSA sequencer port, synth, MIDI transmission, playback, recording,
+audible, screenshot, physical-controller, real USB clock, or Raspberry Pi
+timing evidence was produced. Real source hot-plug/replacement, USB jitter,
+stuck-note cleanup, every physical controller layout, native display, Loop/
+metronome phase, recording feel, and audible musical acceptance remain human
+hardware work.
+
 ## 2026-08-26 Priority 6 harmonic generators
 
 Priority 6 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact

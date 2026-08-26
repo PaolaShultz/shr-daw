@@ -121,6 +121,18 @@ generator. Exact shared and harmonic semantics are in [Priority 5 deterministic
 generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md) and [Priority 6
 arpeggio, chord, and harmonizer generators](HARMONIC_GENERATORS_ACCEPTANCE.md).
 
+Routing `SYNC` can instead give steady transport time to one exact USB MIDI
+input. After seven Timing Clocks establish tempo, incoming Start begins either
+Arrangement step 1/row 1 or the selected Pattern/row 1 according to `SYNC POS`;
+Stop, loss, or refusal cleans through the normal FT2 transport and requires
+reacquisition plus a fresh Start. External time replaces only Pattern/Tempo-
+command steady tempo: swing, groove, timing, REC FEEL results, independent
+lanes, probability/conditions, retrigger, automation, Live Patterns, and Loop
+Mix retain their existing owners. Stopped external REC is refused rather than
+inventing an unsynchronised count-in. Continue, Song Position Pointer, clock
+thru, and external partial-position starts are not available. See [Priority 7
+external transport sync acceptance](EXTERNAL_TRANSPORT_SYNC_ACCEPTANCE.md).
+
 On the main tracker grid, the physical main rotary always moves rows. Holding
 the configured encoder Shift button while turning selects the previous or next
 column, continuing through page boundaries from Software Synth to MIDI, Drums,

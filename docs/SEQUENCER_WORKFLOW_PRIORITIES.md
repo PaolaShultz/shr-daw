@@ -2,7 +2,7 @@
 
 Created: 2026-08-26
 
-Status: owner-directed product priority; Priorities 1–6 are implemented and
+Status: owner-directed product priority; Priorities 1–7 are implemented and
 verified in their linked acceptance matrices
 
 ## Purpose and decision
@@ -16,8 +16,8 @@ Snapshot/Recall**. Priority 2 added timing and groove work, and Priority 3 added
 step probability/conditions. Priority 4 added independent lane cycles, speed,
 and direction; Priority 5 added deterministic generative tools. Priority 6
 extended that same draft with internal arpeggio, chord, and harmonizer
-generation. The original comparison and ordering remain here as the product
-decision record.
+generation. Priority 7 added exclusive external USB MIDI transport sync. The
+original comparison and ordering remain here as the product decision record.
 
 ## Product and hardware boundary
 
@@ -159,14 +159,14 @@ and KeyStep Pro retain their role as comparison evidence.
 
 ### 7. External transport sync through USB MIDI
 
-SHR-DAW is currently the clock authority. Following MIDI Clock and Start/Stop
-from one exact USB MIDI source is compatible with the hardware boundary and is
-common on hardware sequencers. It remains below the software composition work.
-
-Any later design must select one exact clock owner, reject ambiguous sources,
-separate steady transport from swung event placement, define loss/reacquisition,
-and avoid a second competing clock route. Song Position Pointer and Continue
-should not be added until SHR-DAW has truthful pause/relocation semantics.
+**Implemented in the bounded Priority 7 slice.** One exact configured USB MIDI
+source may own 24 PPQN Timing Clock plus Start/Stop, with bounded acquisition,
+tempo/phase tracking, visible loss/refusal/reacquisition, exclusive suppression
+of SHR clock output, and unchanged event-level timing owners. The exact
+positioning, output interaction, failure behavior, automated matrix, protocol
+provenance, and non-Raspberry-Pi evidence limit are in [Priority 7 external
+transport sync acceptance](EXTERNAL_TRANSPORT_SYNC_ACCEPTANCE.md). Song Position
+Pointer, Continue, and clock thru remain explicitly outside the first version.
 
 ### 8. Expressive MIDI and MPE through USB MIDI
 

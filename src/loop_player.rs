@@ -43,6 +43,7 @@ const CONTROL_SMOOTH_SECONDS: f32 = 0.015;
 #[derive(Debug)]
 pub struct TransportClock {
     playing: AtomicBool,
+    controller_owned: AtomicBool,
     generation: AtomicU64,
     loop_generation: AtomicU64,
     origin_beat: AtomicU64,
@@ -66,8 +67,19 @@ impl Default for TransportClock {
 
 impl TransportClock {
     pub fn new(config: &ControllerClockConfig, initial_bpm: Bpm) -> Self {
+        Self::new_with_external_owner(config, initial_bpm, false)
+    }
+
+    pub fn new_with_external_owner(
+        config: &ControllerClockConfig,
+        initial_bpm: Bpm,
+        external_owner: bool,
+    ) -> Self {
         let (controller_tx, controller_thread) = if config.enabled {
             let (tx, rx) = mpsc::channel();
+            if external_owner {
+                let _ = tx.send(ControllerClockCommand::Suspend);
+            }
             let output = AlsaControllerClockOutput::new(config.clone());
             let handle = thread::Builder::new()
                 .name("shsynth-controller-clock".into())
@@ -82,6 +94,7 @@ impl TransportClock {
         };
         Self {
             playing: AtomicBool::new(false),
+            controller_owned: AtomicBool::new(false),
             generation: AtomicU64::new(0),
             loop_generation: AtomicU64::new(u64::MAX),
             origin_beat: AtomicU64::new(0),
@@ -92,6 +105,29 @@ impl TransportClock {
     }
 
     pub fn play(&self, origin_beat: f64, bpm: Bpm) {
+        self.publish_play(origin_beat, bpm);
+        self.controller_owned.store(true, Ordering::Release);
+        if let Some(tx) = &self.controller_tx {
+            let _ = tx.send(ControllerClockCommand::Start(bpm.as_f64()));
+        }
+    }
+
+    /// Follow an incoming transport without also publishing SHR's controller
+    /// clock output. This is the mutual-exclusion boundary that prevents a
+    /// second clock owner or feedback loop.
+    pub fn play_external(&self, origin_beat: f64, bpm: Bpm) {
+        self.publish_play(origin_beat, bpm);
+        self.suspend_controller_output();
+    }
+
+    pub fn suspend_controller_output(&self) {
+        self.controller_owned.store(false, Ordering::Release);
+        if let Some(tx) = &self.controller_tx {
+            let _ = tx.send(ControllerClockCommand::Suspend);
+        }
+    }
+
+    fn publish_play(&self, origin_beat: f64, bpm: Bpm) {
         self.origin_beat.store(
             (origin_beat.max(0.0) * BEAT_UNITS) as u64,
             Ordering::Release,
@@ -100,15 +136,14 @@ impl TransportClock {
         self.bpm_x100
             .store(u64::from(bpm.hundredths()), Ordering::Release);
         self.playing.store(true, Ordering::Release);
-        if let Some(tx) = &self.controller_tx {
-            let _ = tx.send(ControllerClockCommand::Start(bpm.as_f64()));
-        }
     }
 
     pub fn stop(&self) {
         if self.playing.swap(false, Ordering::AcqRel) {
-            if let Some(tx) = &self.controller_tx {
-                let _ = tx.send(ControllerClockCommand::Stop);
+            if self.controller_owned.swap(false, Ordering::AcqRel) {
+                if let Some(tx) = &self.controller_tx {
+                    let _ = tx.send(ControllerClockCommand::Stop);
+                }
             }
         }
     }
@@ -125,8 +160,10 @@ impl TransportClock {
     pub fn tempo(&self, bpm: Bpm) {
         self.bpm_x100
             .store(u64::from(bpm.hundredths()), Ordering::Release);
-        if let Some(tx) = &self.controller_tx {
-            let _ = tx.send(ControllerClockCommand::Tempo(bpm.as_f64()));
+        if self.controller_owned.load(Ordering::Acquire) {
+            if let Some(tx) = &self.controller_tx {
+                let _ = tx.send(ControllerClockCommand::Tempo(bpm.as_f64()));
+            }
         }
     }
 
@@ -160,6 +197,7 @@ enum ControllerClockCommand {
     Start(f64),
     Tempo(f64),
     Stop,
+    Suspend,
     Shutdown,
 }
 
@@ -387,10 +425,16 @@ fn run_controller_clock(
     let mut output_available = true;
     let mut clock_sent = false;
     let mut transport_running = false;
+    let mut suspended = false;
     loop {
-        let timeout = phase.next_tick().saturating_sub(elapsed());
+        let timeout = if suspended {
+            Duration::from_millis(50)
+        } else {
+            phase.next_tick().saturating_sub(elapsed())
+        };
         match receiver.recv_timeout(timeout) {
             Ok(ControllerClockCommand::Start(bpm)) => {
+                suspended = false;
                 phase.tempo(elapsed(), bpm);
                 if transport_running && output_available {
                     let _ = output.send(ControllerClockMessage::Stop);
@@ -414,6 +458,14 @@ fn run_controller_clock(
                 }
                 transport_running = false;
             }
+            Ok(ControllerClockCommand::Suspend) => {
+                if transport_running && output_available {
+                    let _ = output.send(ControllerClockMessage::Stop);
+                }
+                transport_running = false;
+                suspended = true;
+                clock_sent = false;
+            }
             Ok(ControllerClockCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 if transport_running && output_available {
                     let _ = output.send(ControllerClockMessage::Stop);
@@ -421,7 +473,7 @@ fn run_controller_clock(
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                if phase.take_due(elapsed()) && output_available {
+                if !suspended && phase.take_due(elapsed()) && output_available {
                     output_available = output.send(ControllerClockMessage::TimingClock).is_ok();
                     clock_sent = output_available;
                 }
@@ -2143,6 +2195,56 @@ mod tests {
         clock.play(0.0, Bpm::from_whole(120).unwrap());
         clock.tempo("90.0".parse().unwrap());
         clock.stop();
+    }
+
+    #[test]
+    fn external_clock_owner_suspends_all_controller_clock_output_until_internal_play() {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let (tx, rx) = mpsc::channel();
+        let recorded = Arc::clone(&messages);
+        let worker = thread::spawn(move || {
+            run_controller_clock(
+                rx,
+                Box::new(RecordingClockOutput {
+                    messages: recorded,
+                    fail: false,
+                }),
+                120.0,
+            )
+        });
+        let clock = TransportClock {
+            playing: AtomicBool::new(false),
+            controller_owned: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
+            loop_generation: AtomicU64::new(u64::MAX),
+            origin_beat: AtomicU64::new(0),
+            bpm_x100: AtomicU64::new(u64::from(Bpm::DEFAULT.hundredths())),
+            controller_tx: Some(tx),
+            controller_thread: Mutex::new(Some(worker)),
+        };
+
+        clock.play_external(0.0, Bpm::from_whole(120).unwrap());
+        thread::sleep(Duration::from_millis(30));
+        messages.lock().unwrap().clear();
+        clock.tempo(Bpm::from_whole(90).unwrap());
+        clock.stop();
+        thread::sleep(Duration::from_millis(55));
+        assert!(messages.lock().unwrap().is_empty());
+
+        clock.play(0.0, Bpm::from_whole(120).unwrap());
+        thread::sleep(Duration::from_millis(30));
+        clock.stop();
+        thread::sleep(Duration::from_millis(10));
+        let messages = messages.lock().unwrap().clone();
+        assert_eq!(
+            messages.iter().filter(|m| m.as_slice() == [0xfa]).count(),
+            1
+        );
+        assert_eq!(
+            messages.iter().filter(|m| m.as_slice() == [0xfc]).count(),
+            1
+        );
+        assert!(messages.iter().any(|m| m.as_slice() == [0xf8]));
     }
 
     fn test_renderer(samples: Vec<[f32; 2]>) -> (LoopRenderer, Arc<AtomicMeter>) {

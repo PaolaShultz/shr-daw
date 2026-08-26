@@ -18,6 +18,7 @@ pub mod dsp;
 pub mod effect_schema;
 pub mod effects;
 mod engine;
+mod external_sync;
 mod final_bus;
 mod fsutil;
 mod generative;
