@@ -135,6 +135,9 @@ setup guide.
 - [Experimental development roadmap](EXPERIMENTAL_ROADMAP.md) — current work
   order, evidence boundaries, and the rule that keeps unrelated ideas out of
   the current track without treating `0.x` as production releases.
+- [Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md) — current
+  hardware-sequencer comparison, USB-only hardware boundary, ranked software
+  gaps, and the bounded Pattern Undo/Redo plus Snapshot implementation plan.
 - [Future improvements](FUTURE_IMPROVEMENTS.md) — unscheduled smart musical
   assistance, deferred routing and product ideas, and the deliberately
   unreasonable challenges.
