@@ -2,20 +2,22 @@
 
 Created: 2026-08-26
 
-Status: owner-directed product priority; Priorities 1–3 are implemented and
+Status: owner-directed product priority; Priorities 1–5 are implemented and
 verified in their linked acceptance matrices
 
 ## Purpose and decision
 
 This document compares SHR-DAW's current FT2 workflow with modern hardware
-step sequencers, records the accepted hardware boundary, and selects the first
-software workflow improvement.
+step sequencers, records the accepted hardware boundary, and preserves the
+ordered software workflow priorities.
 
 The first priority was **bounded FT2 Pattern Undo/Redo plus one explicit Pattern
 Snapshot/Recall**. Priority 2 added timing and groove work, and Priority 3 added
-step probability/conditions. Independent lane cycles/speed/direction are now
-the next unimplemented item. The original comparison and ordering remain here
-as the product decision record.
+step probability/conditions. Priority 4 added independent lane cycles, speed,
+and direction; Priority 5 added deterministic generative tools. Priority 6,
+internal arpeggio/chord/harmonizer generation, is the next unimplemented item.
+The original comparison and ordering remain here as the product decision
+record.
 
 ## Product and hardware boundary
 
@@ -39,8 +41,9 @@ Observed in current source and focused documentation:
 
 - FT2-style step editing and row-quantized real-time recording accept notes and
   chords through Manual, One-column, and Drum-auto entry.
-- A cell stores note, velocity, program, gate, and one Cut, Delay, Retrigger, or
-  Tempo command. Delay is late-only and occupies the single command slot.
+- A cell stores note, velocity, program, gate, independent signed timing,
+  probability, one loop-aware condition, and one Cut, Delay, Retrigger, or
+  Tempo command.
 - Patterns own tempo, 3/4 or 4/4 meter, pages, routes, lane setup, automation,
   cells, and four Loop Mix slots. Structural tools can reach any row count from
   1 through 256.
@@ -63,10 +66,15 @@ sequencer; it is how safely and fluidly a musician can explore inside it.
 
 ### 1. Bounded Pattern Undo/Redo and Snapshot/Recall
 
-Current transactions protect the operation presently open, but after an edit
-is confirmed the musician has no general way to step back, try an alternative,
-or restore a captured Pattern state. This friction is frequent, recovery may
-require manual reconstruction, and it affects every later creative helper.
+**Implemented in the bounded Priority 1 slice.** The exact mutation inventory,
+transaction boundaries, stopped-transport fallback, automated matrix, and
+non-Raspberry-Pi evidence limit are in
+[Pattern History mutation inventory](PATTERN_HISTORY_MUTATION_INVENTORY.md).
+
+Before Priority 1, transactions protected only the operation presently open;
+after an edit was confirmed the musician had no general way to step back, try
+an alternative, or restore a captured Pattern state. This section retains the
+rationale and original implementation contract behind the completed workflow.
 
 The first implementation is deliberately Pattern-scoped. It covers the
 selected Pattern's tempo, meter, pages, routes, cells, automation, and Loop Mix
@@ -80,12 +88,16 @@ recovery motion, not their exact button layout or history size.
 
 ### 2. Independent microtiming, swing, groove, and timing-aware REC
 
-SHR-DAW currently quantizes REC to rows. A cell can move late by Delay ticks,
-but cannot move early, and the timing cannot coexist with another command.
-Independent signed timing, Pattern swing, deterministic groove application,
-and an optional `REC FEEL` mode remain the next musical foundation after safe
-history. The staged representation and scheduler boundaries already live in
-`POST_COMPETITION_RHYTHM_PLAN.md`.
+**Implemented in the bounded Priority 2 slice.** The exact timing units,
+persistence migration, swing/groove/REC FEEL semantics, scheduler ownership,
+automated matrix, and non-Raspberry-Pi evidence limit are in
+[Rhythm workflow acceptance](RHYTHM_WORKFLOW_ACCEPTANCE.md).
+
+Before Priority 2, SHR-DAW quantized REC to rows and Delay could move a cell
+late only by occupying its single command slot. The completed workflow adds
+independent signed timing, Pattern swing, deterministic groove application,
+and optional runtime `REC FEEL`. This section retains the evidence behind that
+choice.
 
 Digitakt II, Hapax, Polyend Play, Circuit Tracks, and KeyStep Pro provide
 microtiming, swing, unquantized capture, or equivalent time-shift controls.
@@ -119,14 +131,17 @@ History transaction.
 
 ### 5. Deterministic generative tools
 
-SHR-DAW has authored drum grooves and phrase-end variations, but no Euclidean
-generator, accumulator, seeded mutation, or controlled random fill system.
-Hapax, OXI One, Torso T-1, and Polyend Play expose these kinds of tools.
+**Implemented in the bounded Priority 5 slice.** The exact Euclidean,
+accumulator, seeded-mutation, and controlled-FILL semantics; collision and
+transaction ownership; persistence behavior; automated matrix; and
+non-Raspberry-Pi evidence limit are in
+[Deterministic generative tools acceptance](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md).
 
-SHR-DAW's existing product direction remains correct: generate a visible draft,
-show affected/colliding events, retain a seed where randomness is involved,
-and require Apply, Apply to Clone, or Cancel. A hidden generator must not change
-the musician's result on every playback.
+The completed workflow generates a visible selected-lane draft, reports
+affected/colliding/protected cells, retains a runtime seed where randomness is
+involved, and requires Apply, Apply to Clone, or Cancel. Successful results are
+ordinary Pattern cells; playback never invokes a hidden generator. Hapax, OXI
+One, Torso T-1, and Polyend Play retain their role as comparison evidence.
 
 ### 6. Internal arpeggiator, chord generator, and harmonizer
 
@@ -348,7 +363,7 @@ for Redo. Snapshot and Recall use the same action dispatcher from the HISTORY
 screen. Mouse, keyboard, and controller must call identical actions. Returning
 to FT2 restores the exact prior page/lane/column/row and controller page.
 
-### Implementation sequence for a new thread
+### Historical Priority 1 implementation sequence
 
 1. **Inventory mutations.** Enumerate every `self.song`/Pattern mutation in
    `ui.rs`, classify it as included, excluded, draft-only, structural, or
@@ -377,8 +392,9 @@ to FT2 restores the exact prior page/lane/column/row and controller page.
    screenshot batches, JACK, MIDI, synth, playback, recording, or audible tests
    until the owner explicitly authorizes the combined pass.
 
-This is new work. Leave it uncommitted and unpushed for review unless the owner
-explicitly authorizes publication.
+This sequence is retained as implementation history. Priority 1 is published;
+its accepted stopped-transport fallback and remaining hardware evidence limit
+are recorded in `WORKSPACE_HANDOFF.md`.
 
 ### Acceptance matrix
 
