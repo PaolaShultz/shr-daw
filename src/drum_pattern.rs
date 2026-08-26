@@ -587,6 +587,12 @@ mod tests {
             condition: StepCondition::Ratio { hit: 2, cycle: 4 },
             ..Cell::default()
         };
+        pattern.rows[15][1] = Cell {
+            note: Note::On(38),
+            velocity: Some(127),
+            condition: StepCondition::Fill,
+            ..Cell::default()
+        };
         pattern.lanes[0] = LanePlayback {
             cycle_rows: 12,
             rate: crate::sequencer::LaneRate::Double,
@@ -596,6 +602,7 @@ mod tests {
         assert!(encoded.starts_with("SHR-DRUM-PATTERN 4\n"));
         assert!(encoded.contains("lane=0|12|double|pendulum\n"));
         assert!(encoded.contains("|R2|24|70|2:4\n"));
+        assert!(encoded.contains("|38|127|-|-|-|0|100|fill\n"));
         assert_eq!(decode(&encoded).unwrap(), pattern);
     }
 

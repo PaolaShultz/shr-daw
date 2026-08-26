@@ -123,8 +123,9 @@ configuration, or the architecture contracts.
   evidence gaps, and persistent fix tracking.
 - Sequencer acceptance: [Pattern History](PATTERN_HISTORY_MUTATION_INVENTORY.md),
   [rhythm workflow](RHYTHM_WORKFLOW_ACCEPTANCE.md),
-  [step probability/conditions](STEP_PROBABILITY_CONDITIONS_ACCEPTANCE.md), and
-  [independent lane playback](LANE_PLAYBACK_ACCEPTANCE.md) —
+  [step probability/conditions](STEP_PROBABILITY_CONDITIONS_ACCEPTANCE.md),
+  [independent lane playback](LANE_PLAYBACK_ACCEPTANCE.md), and
+  [deterministic generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md) —
   bounded contracts, automated matrices, and honest evidence limits.
 - [Workspace handoff](WORKSPACE_HANDOFF.md) — current checkout, local hardware,
   private/public boundary, and validation state for maintainers.

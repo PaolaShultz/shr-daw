@@ -7905,6 +7905,58 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn generated_fill_cells_follow_fill_pass_and_preflight_ownership() {
+        let cfg = config();
+        let mut song = Song::new(&cfg);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        let page = pattern
+            .pages
+            .iter()
+            .position(|page| page.percussion)
+            .unwrap();
+        let lane = page * LANES_PER_PAGE;
+        pattern.rows[1][lane] = Cell {
+            note: Note::On(38),
+            velocity: Some(84),
+            ..Cell::default()
+        };
+        let mut recipe = crate::generative::Recipe::bounded_for(
+            pattern,
+            crate::generative::Tool::Fill,
+            page,
+            0,
+            1,
+            99,
+        )
+        .unwrap();
+        recipe.length = 8;
+        recipe.amount = 4;
+        recipe.collision = crate::generative::CollisionPolicy::ReplaceNotes;
+        let draft = crate::generative::build(pattern, recipe).unwrap();
+        assert_eq!(draft.report.candidates, 4);
+        assert!(draft
+            .affected_rows
+            .iter()
+            .all(|row| draft.pattern.rows[*row][lane].condition == StepCondition::Fill));
+        song.patterns.insert(0, draft.pattern);
+
+        let off = schedule_for_pass(&song, &cfg, 0, 0, 1, false).unwrap();
+        let on = schedule_for_pass(&song, &cfg, 0, 0, 1, true).unwrap();
+        let preflight = schedule_preflight(&song, &cfg, 0, 0).unwrap();
+        let count = |messages: &[ScheduledMessage]| {
+            messages
+                .iter()
+                .filter(|message| {
+                    matches!(message.bytes.as_slice(), [status, 38, velocity]
+                        if status & 0xf0 == 0x90 && *velocity > 0)
+                })
+                .count()
+        };
+        assert!(count(&on) > count(&off));
+        assert!(count(&preflight) >= count(&on));
+    }
+
     fn lane_note_ons(messages: &[ScheduledMessage], lane: usize) -> Vec<(Duration, u8)> {
         messages
             .iter()

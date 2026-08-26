@@ -107,6 +107,14 @@ For a silent theory view of that stored key, open FT2 **TOOLS**, select the
 fifths, relative and parallel keys, and seven diatonic triads without changing
 the Project or playing anything. Back or Exit returns to the exact FT2 context.
 
+For offline Pattern generation, open FT2 **TOOLS**, select **PAGE**, choose
+**HISTORY**, switch to **RHYTHM**, and open **GEN**. Euclidean triggers,
+accumulator progressions, seeded mutation, and controlled drum fills remain a
+visible draft while you adjust or inspect them. **APPLY** commits the draft to
+the current Pattern as one undoable edit, **CLONE** appends an independent
+Pattern and Arrangement step, and **CANCEL** writes nothing. The result is
+ordinary editable FT2 cells; playback does not regenerate it.
+
 The practical loop is simple:
 
 ```text

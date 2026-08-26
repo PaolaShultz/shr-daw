@@ -33,12 +33,13 @@ pub enum Screen {
     PatternFeel,
     PatternGroove,
     LanePlayback,
+    PatternGenerator,
 }
 
 impl Screen {
-    pub const COUNT: usize = 28;
+    pub const COUNT: usize = 29;
     #[cfg(test)]
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -67,6 +68,7 @@ impl Screen {
         Self::PatternFeel,
         Self::PatternGroove,
         Self::LanePlayback,
+        Self::PatternGenerator,
     ];
 
     pub const fn index(self) -> usize {
@@ -99,6 +101,7 @@ impl Screen {
             Self::PatternFeel => 25,
             Self::PatternGroove => 26,
             Self::LanePlayback => 27,
+            Self::PatternGenerator => 28,
         }
     }
 
@@ -133,6 +136,7 @@ impl Screen {
             Self::PatternFeel => "FEEL",
             Self::PatternGroove => "GROOVE",
             Self::LanePlayback => "LANE CYCLE",
+            Self::PatternGenerator => "GENERATOR",
         }
     }
 }
@@ -204,6 +208,23 @@ pub enum Action {
     LanePlaybackApply,
     LanePlaybackReset,
     LanePlaybackCancel,
+    OpenPatternGenerator,
+    GeneratorTool,
+    GeneratorLengthDown,
+    GeneratorLengthUp,
+    GeneratorAmount,
+    GeneratorOffsetDown,
+    GeneratorOffsetUp,
+    GeneratorDensity,
+    GeneratorCollision,
+    GeneratorSeedDown,
+    GeneratorSeedUp,
+    GeneratorRepeat,
+    GeneratorInspect,
+    GeneratorStop,
+    GeneratorApply,
+    GeneratorClone,
+    GeneratorCancel,
     OpenPageOverlay,
     OpenPatternOverlay,
     OpenSongOverlay,
@@ -772,7 +793,7 @@ const PATTERN_HISTORY: [MenuPage; 4] = [
             on("FEEL", Action::OpenPatternFeel),
             on("GROOVE", Action::OpenPatternGroove),
             on("CYCLE", Action::OpenLanePlayback),
-            off(""),
+            on("GEN", Action::OpenPatternGenerator),
         ],
     ),
     page("", [off(""), off(""), off(""), off("")]),
@@ -860,6 +881,44 @@ const LANE_PLAYBACK: [MenuPage; 4] = [
             on("HELP", Action::OpenHelp),
             off(""),
             on("EXIT", Action::Back),
+        ],
+    ),
+];
+const PATTERN_GENERATOR: [MenuPage; 4] = [
+    page(
+        "SHAPE",
+        [
+            on("TOOL", Action::GeneratorTool),
+            on("LEN-", Action::GeneratorLengthDown),
+            on("LEN+", Action::GeneratorLengthUp),
+            on("AMOUNT", Action::GeneratorAmount),
+        ],
+    ),
+    page(
+        "DETAIL",
+        [
+            on("OFF-", Action::GeneratorOffsetDown),
+            on("OFF+", Action::GeneratorOffsetUp),
+            on("CTRL", Action::GeneratorDensity),
+            on("POLICY", Action::GeneratorCollision),
+        ],
+    ),
+    page(
+        "SEED",
+        [
+            on("SEED-", Action::GeneratorSeedDown),
+            on("SEED+", Action::GeneratorSeedUp),
+            on("REPEAT", Action::GeneratorRepeat),
+            on("INSPECT", Action::GeneratorInspect),
+        ],
+    ),
+    page(
+        "APPLY",
+        [
+            on("STOP", Action::GeneratorStop),
+            on("APPLY", Action::GeneratorApply),
+            on("CLONE", Action::GeneratorClone),
+            on("CANCEL", Action::GeneratorCancel),
         ],
     ),
 ];
@@ -1686,6 +1745,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::PatternFeel, _) => &PATTERN_FEEL,
         (Screen::PatternGroove, _) => &PATTERN_GROOVE,
         (Screen::LanePlayback, _) => &LANE_PLAYBACK,
+        (Screen::PatternGenerator, _) => &PATTERN_GENERATOR,
         (Screen::LivePatterns, _) => &LIVE_PATTERNS,
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
@@ -2318,6 +2378,10 @@ mod tests {
             history[1].slots[2].dispatch(),
             Some(Action::OpenLanePlayback)
         );
+        assert_eq!(
+            history[1].slots[3].dispatch(),
+            Some(Action::OpenPatternGenerator)
+        );
         assert_eq!(history[3].label, "SYS");
         assert_eq!(history[3].slots[0].dispatch(), Some(Action::StopAll));
         assert_eq!(history[3].slots[1].dispatch(), Some(Action::OpenHelp));
@@ -2354,6 +2418,7 @@ mod tests {
             (Screen::PatternFeel, MenuContext::Normal),
             (Screen::PatternGroove, MenuContext::Normal),
             (Screen::LanePlayback, MenuContext::Normal),
+            (Screen::PatternGenerator, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
             (Screen::MultichannelMonitor, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
@@ -2414,6 +2479,23 @@ mod tests {
             Action::LanePlaybackApply,
             Action::LanePlaybackReset,
             Action::LanePlaybackCancel,
+            Action::OpenPatternGenerator,
+            Action::GeneratorTool,
+            Action::GeneratorLengthDown,
+            Action::GeneratorLengthUp,
+            Action::GeneratorAmount,
+            Action::GeneratorOffsetDown,
+            Action::GeneratorOffsetUp,
+            Action::GeneratorDensity,
+            Action::GeneratorCollision,
+            Action::GeneratorSeedDown,
+            Action::GeneratorSeedUp,
+            Action::GeneratorRepeat,
+            Action::GeneratorInspect,
+            Action::GeneratorStop,
+            Action::GeneratorApply,
+            Action::GeneratorClone,
+            Action::GeneratorCancel,
             Action::OpenFxRack,
             Action::OpenFxEditor,
             Action::ResetMeter,

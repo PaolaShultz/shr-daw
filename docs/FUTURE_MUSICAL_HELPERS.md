@@ -2,7 +2,8 @@
 
 Created: 2026-08-02
 
-Status: FT2 Edit SIZE and read-only HARMONY implemented; remaining helpers are
+Status: FT2 Edit SIZE, read-only HARMONY, and the bounded Priority 5 Generator
+implemented; remaining arpeggio, roll, and Arrangement helpers are
 owner-directed proposals, not scheduled promises
 
 This plan covers small, inspectable helpers that turn a short musical idea into
@@ -33,6 +34,14 @@ Randomized helpers must store or display their seed. Running the same helper
 with the same input, settings, and seed must produce the same cells. Defaults
 should favor `NEW CLONE` or `EMPTY ONLY`; replacing existing notes is a
 separate explicit choice.
+
+Priority 5 now owns the implemented shared draft plus selected-lane Euclidean,
+accumulator, seeded-mutation, and controlled-FILL tools. Its exact scope,
+collision policy, Apply/Clone ownership, persistence, and acceptance matrix are
+in [Priority 5 deterministic generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md).
+That focused contract supersedes the earlier fill and shared-draft proposals
+below wherever they overlap; arpeggio, roll, and Arrangement assistance remain
+future proposals.
 
 ## FT2 Edit `SIZE` page
 
@@ -324,10 +333,10 @@ page/lane/column/cursor.
 | Phase | Work | Why first/next |
 |---|---|---|
 | 1 (implemented) | FT2 Edit SIZE model helpers and page | Immediate manual sketch speed; storage already supports it |
-| 2 | Shared generated-draft, collision summary, seed, preview, Apply/Clone/Cancel | Prevent every musical helper inventing unsafe replacement behavior |
+| 2 (implemented) | Shared generated-draft, collision summary, retained seed, inspect, Apply/Clone/Cancel, plus bounded Euclidean, accumulator, mutation, and FILL tools | One non-writing draft and explicit transaction owners for the first deterministic helpers |
 | 3 (implemented) | Read-only circle-of-fifths/HARMONY browser | Useful theory support with no generated-data risk |
 | 4 | Offline arpeggio generator | Small deterministic algorithms over existing cells |
-| 5 | Fill and roll drafts | Reuses retrigger and drum-page semantics after collision UI exists |
+| 5 (partial) | Controlled FILL implemented; roll drafts remain future work | FILL uses ordinary conditional cells; rolls still need their own bounded contract |
 | 6 | Template/constraint Arrangement assistant | Builds on clone/variation operations and explicit previews |
 
 Each phase is independently shippable. None should change the audio callback,
@@ -336,7 +345,7 @@ velocity contour or new harmony metadata is deliberately adopted.
 
 ## Remaining open owner decisions
 
-- Should generated arp/fill material default to a new Pattern clone or only a
-  temporary preview until the musician chooses a destination?
+- Should a future arpeggio or roll draft use the current Generator's
+  `EMPTY ONLY` current-Pattern default, or default to an independent clone?
 - Which two or three Arrangement templates match the musician's actual sketch
   workflow? Start with those, not a large genre menu.

@@ -5,6 +5,44 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-26 Priority 5 deterministic generative tools
+
+Priority 5 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact
+musical semantics and GT-01 through GT-14 acceptance matrix are in
+`DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md`. FT2 Tools PAGE -> HISTORY ->
+RHYTHM -> GEN reaches a selected-lane offline draft for Euclidean triggers,
+bounded accumulator progressions, seeded pitch mutation, and percussion-only
+controlled FILL cells through the existing four controller pages.
+
+The draft retains its seed where randomness is used and shows exact affected
+rows, replacements, collisions, and protected cells without changing the
+Song, History, dirty baseline, Arrangement, cursor, or transport. Stopped
+Apply to the current Pattern is exactly one Pattern History transaction. Apply
+to Clone uses the existing independent Pattern plus explicit appended
+Arrangement-step structural owner and never overwrites the source. Cancel,
+refusal, validation failure, and no-op Apply are non-writing.
+
+Priority 5 adds no persisted recipe or seed. Project format 17 and reusable
+drum-pattern format 4 persist only the generated ordinary Cells, so existing
+migrations remain unchanged and playback never regenerates. Context-free MIDI
+export remains deterministic pass 1 with FILL off; preflight continues to scan
+all conditional source triggers.
+
+The owner-authorized non-Raspberry-Pi pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check; the
+requested focused generator, migration, Pattern History, Priority 2-4,
+scheduler ownership, export/preflight/partial/repeated playback, navigation,
+controller, 40x13, and UI transaction matrices; and the complete normal suite
+passed. The final suite reported 1,038 passed, zero failed, and 13 ignored
+documented development, private-audition, and performance tests. Validation
+shortened the launcher to `GEN` to meet the established soft-button width.
+Clippy was not required by an observed failure or repository policy.
+
+No JACK, ALSA sequencer, synth, MIDI transmission, playback, recording,
+audible, screenshot, physical-controller, Raspberry Pi timing/headroom, or
+other hardware-changing evidence was produced. Musical approval remains a
+human listening/controller decision.
+
 ## 2026-08-26 Priority 4 independent lane playback
 
 Priority 4 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact

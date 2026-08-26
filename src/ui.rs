@@ -551,6 +551,14 @@ struct LanePlaybackDraft {
     playback: sequencer::LanePlayback,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PatternGeneratorSession {
+    pattern: u16,
+    recipe: crate::generative::Recipe,
+    draft: Option<crate::generative::Draft>,
+    error: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TrackerMixerReturn {
     order: usize,
@@ -994,6 +1002,8 @@ struct App {
     pattern_feel_draft: Option<PatternFeelDraft>,
     pattern_groove_draft: Option<PatternGrooveDraft>,
     lane_playback_draft: Option<LanePlaybackDraft>,
+    pattern_generator: Option<PatternGeneratorSession>,
+    last_generator_recipe: Option<crate::generative::Recipe>,
     recording_history_opening: Option<PatternHistoryState<PatternEditContext>>,
     page_history_opening: Option<PatternHistoryState<PatternEditContext>>,
     route_history_opening: Option<PatternHistoryState<PatternEditContext>>,
@@ -1415,6 +1425,7 @@ fn is_tracker_screen(screen: Screen) -> bool {
             | Screen::PatternFeel
             | Screen::PatternGroove
             | Screen::LanePlayback
+            | Screen::PatternGenerator
     )
 }
 
@@ -2109,6 +2120,8 @@ impl App {
             pattern_feel_draft: None,
             pattern_groove_draft: None,
             lane_playback_draft: None,
+            pattern_generator: None,
+            last_generator_recipe: None,
             recording_history_opening: None,
             page_history_opening: None,
             route_history_opening: None,
@@ -5682,6 +5695,7 @@ impl App {
                 | Screen::PatternFeel
                 | Screen::PatternGroove
                 | Screen::LanePlayback
+                | Screen::PatternGenerator
         ) {
             self.history_return_context.as_ref()
         } else {
@@ -5851,6 +5865,7 @@ impl App {
                 | Screen::PatternFeel
                 | Screen::PatternGroove
                 | Screen::LanePlayback
+                | Screen::PatternGenerator
         ) {
             self.history_return_context = Some(state.edit_context.clone());
         } else if is_tracker_screen(state.edit_context.screen) {
@@ -6241,6 +6256,330 @@ impl App {
         self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
         self.status = "CANCEL · lane unchanged".into();
     }
+    fn open_pattern_generator(&mut self) {
+        let pattern_number = self.tracker_pattern_number();
+        let Some(pattern) = self.song.patterns.get(&pattern_number) else {
+            self.status = "GENERATOR unavailable · Pattern missing".into();
+            return;
+        };
+        let seed = self.last_generator_recipe.map_or(1, |recipe| recipe.seed);
+        let Ok(recipe) = crate::generative::Recipe::bounded_for(
+            pattern,
+            crate::generative::Tool::Euclidean,
+            self.tracker_page,
+            self.tracker_track,
+            self.tracker_row,
+            seed,
+        ) else {
+            self.status = "GENERATOR unavailable · cursor outside Pattern".into();
+            return;
+        };
+        self.pattern_generator = Some(PatternGeneratorSession {
+            pattern: pattern_number,
+            recipe,
+            draft: None,
+            error: None,
+        });
+        self.set_screen(Screen::PatternGenerator);
+        self.reset_context_page();
+        self.rebuild_pattern_generator();
+    }
+    fn rebuild_pattern_generator(&mut self) {
+        let Some(session) = self.pattern_generator.as_ref() else {
+            return;
+        };
+        let pattern_number = session.pattern;
+        let recipe = session.recipe;
+        let result = self
+            .song
+            .patterns
+            .get(&pattern_number)
+            .context("generator source Pattern missing")
+            .and_then(|pattern| crate::generative::build(pattern, recipe));
+        let Some(session) = self.pattern_generator.as_mut() else {
+            return;
+        };
+        match result {
+            Ok(draft) => {
+                session.recipe = draft.recipe;
+                session.draft = Some(draft);
+                session.error = None;
+                self.generator_inspect();
+            }
+            Err(error) => {
+                session.draft = None;
+                session.error = Some(error.to_string());
+                self.status = format!(
+                    "DRAFT REFUSED · {}",
+                    crate::ui_text::fit_middle(&error.to_string(), 24)
+                );
+            }
+        }
+    }
+    fn cycle_generator_tool(&mut self) {
+        let Some(session) = self.pattern_generator.as_ref() else {
+            return;
+        };
+        let index = crate::generative::Tool::ALL
+            .iter()
+            .position(|tool| *tool == session.recipe.tool)
+            .unwrap_or(0);
+        let tool = crate::generative::Tool::ALL[(index + 1) % crate::generative::Tool::ALL.len()];
+        let Some(pattern) = self.song.patterns.get(&session.pattern) else {
+            return;
+        };
+        let mut recipe = match crate::generative::Recipe::bounded_for(
+            pattern,
+            tool,
+            session.recipe.page,
+            session.recipe.lane,
+            session.recipe.start_row,
+            session.recipe.seed,
+        ) {
+            Ok(recipe) => recipe,
+            Err(error) => {
+                self.status = format!("DRAFT REFUSED · {error}");
+                return;
+            }
+        };
+        recipe.collision = session.recipe.collision;
+        if let Some(session) = self.pattern_generator.as_mut() {
+            session.recipe = recipe;
+        }
+        self.rebuild_pattern_generator();
+    }
+    fn adjust_generator_length(&mut self, direction: i8) {
+        let Some(session) = self.pattern_generator.as_mut() else {
+            return;
+        };
+        session.recipe.length = if direction < 0 {
+            session.recipe.length.saturating_sub(1).max(1)
+        } else {
+            session.recipe.length.saturating_add(1)
+        };
+        self.rebuild_pattern_generator();
+    }
+    fn cycle_generator_amount(&mut self) {
+        let Some(session) = self.pattern_generator.as_mut() else {
+            return;
+        };
+        session.recipe.amount = match session.recipe.tool {
+            crate::generative::Tool::Euclidean | crate::generative::Tool::Fill => {
+                if session.recipe.amount >= session.recipe.length {
+                    0
+                } else {
+                    session.recipe.amount + 1
+                }
+            }
+            crate::generative::Tool::Accumulator => {
+                if session.recipe.amount >= 48 {
+                    1
+                } else {
+                    session.recipe.amount + 1
+                }
+            }
+            crate::generative::Tool::Mutation => {
+                if session.recipe.amount >= 12 {
+                    1
+                } else {
+                    session.recipe.amount + 1
+                }
+            }
+        };
+        self.rebuild_pattern_generator();
+    }
+    fn adjust_generator_offset(&mut self, direction: i8) {
+        let Some(session) = self.pattern_generator.as_mut() else {
+            return;
+        };
+        match session.recipe.tool {
+            crate::generative::Tool::Euclidean | crate::generative::Tool::Fill => {
+                let length = i32::from(session.recipe.length);
+                let next = (i32::from(session.recipe.phase) + i32::from(direction.signum()))
+                    .rem_euclid(length);
+                session.recipe.phase = next as u16;
+            }
+            crate::generative::Tool::Accumulator => {
+                let next = i16::from(session.recipe.offset) + i16::from(direction.signum());
+                session.recipe.offset = if next < -12 {
+                    12
+                } else if next > 12 {
+                    -12
+                } else {
+                    next as i8
+                };
+            }
+            crate::generative::Tool::Mutation => {
+                let next = i32::from(session.recipe.amount) + i32::from(direction.signum());
+                session.recipe.amount = next.clamp(1, 12) as u16;
+            }
+        }
+        self.rebuild_pattern_generator();
+    }
+    fn cycle_generator_density(&mut self) {
+        let Some(session) = self.pattern_generator.as_mut() else {
+            return;
+        };
+        if session.recipe.tool == crate::generative::Tool::Accumulator {
+            session.recipe.phase = (session.recipe.phase + 1) % session.recipe.length;
+        } else {
+            session.recipe.density = match session.recipe.density {
+                0..=24 => 25,
+                25..=49 => 50,
+                50..=74 => 75,
+                75..=99 => 100,
+                _ => 0,
+            };
+        }
+        self.rebuild_pattern_generator();
+    }
+    fn toggle_generator_collision(&mut self) {
+        let Some(session) = self.pattern_generator.as_mut() else {
+            return;
+        };
+        session.recipe.collision = match session.recipe.collision {
+            crate::generative::CollisionPolicy::EmptyOnly => {
+                crate::generative::CollisionPolicy::ReplaceNotes
+            }
+            crate::generative::CollisionPolicy::ReplaceNotes => {
+                crate::generative::CollisionPolicy::EmptyOnly
+            }
+        };
+        self.rebuild_pattern_generator();
+    }
+    fn adjust_generator_seed(&mut self, direction: i8) {
+        let Some(session) = self.pattern_generator.as_mut() else {
+            return;
+        };
+        session.recipe.seed = if direction < 0 {
+            session.recipe.seed.wrapping_sub(1)
+        } else {
+            session.recipe.seed.wrapping_add(1)
+        };
+        self.rebuild_pattern_generator();
+    }
+    fn repeat_generator_recipe(&mut self) {
+        let Some(recipe) = self.last_generator_recipe else {
+            self.status = "REPEAT — no retained generator".into();
+            return;
+        };
+        if let Some(session) = self.pattern_generator.as_mut() {
+            session.recipe = recipe;
+        }
+        self.rebuild_pattern_generator();
+    }
+    fn generator_inspect(&mut self) {
+        let Some(session) = self.pattern_generator.as_ref() else {
+            return;
+        };
+        if let Some(draft) = session.draft.as_ref() {
+            self.status = format!(
+                "DRAFT · {} affected · {} repl · {} coll",
+                draft.report.affected, draft.report.replacements, draft.report.collisions
+            );
+        } else if let Some(error) = session.error.as_ref() {
+            self.status = format!("DRAFT REFUSED · {}", crate::ui_text::fit_middle(error, 24));
+        }
+    }
+    fn stop_for_pattern_generator(&mut self) {
+        self.tracker_stop();
+        self.status = "STOPPED · generator draft kept".into();
+    }
+    fn generator_transport_stopped(&self) -> bool {
+        let transport = self.sequencer.status();
+        self.tracker_recording.is_none() && !transport.playing && transport.count_in.is_none()
+    }
+    fn apply_pattern_generator(&mut self) {
+        if !self.generator_transport_stopped() {
+            self.status = "STOP TO APPLY · generator draft kept".into();
+            return;
+        }
+        let Some(session) = self.pattern_generator.as_ref() else {
+            return;
+        };
+        let Some(draft) = session.draft.clone() else {
+            self.status = "APPLY REFUSED · repair draft first".into();
+            return;
+        };
+        let pattern_number = session.pattern;
+        let recipe = session.recipe;
+        let Some(source) = self.song.patterns.get(&pattern_number) else {
+            self.status = "APPLY REFUSED · source Pattern missing".into();
+            return;
+        };
+        if *source == draft.pattern {
+            self.last_generator_recipe = Some(recipe);
+            self.pattern_generator = None;
+            self.set_screen(Screen::PatternHistory);
+            self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+            self.status = "APPLY unchanged · history unchanged".into();
+            return;
+        }
+        let mut candidate = self.song.clone();
+        if candidate
+            .replace_pattern(pattern_number, draft.pattern)
+            .and_then(|_| candidate.validate())
+            .is_err()
+        {
+            self.status = "APPLY FAILED · Pattern/draft kept".into();
+            return;
+        }
+        let changed = self.with_pattern_history("GENERATE", None, |app| app.song = candidate);
+        if !changed {
+            self.status = "APPLY FAILED · Pattern/history kept".into();
+            return;
+        }
+        self.last_generator_recipe = Some(recipe);
+        self.pattern_generator = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = "GENERATED · one history step".into();
+    }
+    fn apply_pattern_generator_to_clone(&mut self) {
+        if !self.generator_transport_stopped() {
+            self.status = "STOP TO CLONE · generator draft kept".into();
+            return;
+        }
+        let Some(session) = self.pattern_generator.as_ref() else {
+            return;
+        };
+        let Some(draft) = session.draft.clone() else {
+            self.status = "CLONE REFUSED · repair draft first".into();
+            return;
+        };
+        let source_number = session.pattern;
+        let recipe = session.recipe;
+        let Some(source) = self.song.patterns.get(&source_number).cloned() else {
+            self.status = "CLONE REFUSED · source Pattern missing".into();
+            return;
+        };
+        let mut candidate = self.song.clone();
+        let number = match candidate.append_pattern(draft.pattern) {
+            Ok(number) => number,
+            Err(_error) => {
+                self.status = "CLONE FAILED · source/order unchanged".into();
+                return;
+            }
+        };
+        if candidate.patterns.get(&source_number) != Some(&source) || candidate.validate().is_err()
+        {
+            self.status = "CLONE FAILED · source/order unchanged".into();
+            return;
+        }
+        self.song = candidate;
+        self.tracker_order = self.song.order.len() - 1;
+        self.last_generator_recipe = Some(recipe);
+        self.pattern_generator = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = format!("GENERATED CLONE · PAT {source_number} -> {number}");
+    }
+    fn cancel_pattern_generator(&mut self) {
+        self.pattern_generator = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = "CANCEL · Pattern/Arrangement unchanged".into();
+    }
     fn clear_pattern_history(&mut self) {
         self.pattern_history.clear();
         self.history_return_context = None;
@@ -6250,6 +6589,8 @@ impl App {
         self.pattern_feel_draft = None;
         self.pattern_groove_draft = None;
         self.lane_playback_draft = None;
+        self.pattern_generator = None;
+        self.last_generator_recipe = None;
     }
     fn current_loop_settings(&self, slot: usize) -> Option<&sequencer::LoopSettings> {
         self.current_pattern()?.audio_loops.get(slot)?.as_ref()
@@ -16322,7 +16663,10 @@ fn perform(
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::TrackerTools => {}
             Screen::PatternHistory => {}
-            Screen::PatternFeel | Screen::PatternGroove | Screen::LanePlayback => {}
+            Screen::PatternFeel
+            | Screen::PatternGroove
+            | Screen::LanePlayback
+            | Screen::PatternGenerator => {}
             Screen::TrackerParameters => {}
             Screen::TrackerMixer => a.close_tracker_mixer(),
             Screen::Automation => {
@@ -16453,6 +16797,23 @@ fn perform(
         Action::LanePlaybackApply => a.apply_lane_playback(),
         Action::LanePlaybackReset => a.reset_lane_playback_draft(),
         Action::LanePlaybackCancel => a.cancel_lane_playback(),
+        Action::OpenPatternGenerator => a.open_pattern_generator(),
+        Action::GeneratorTool => a.cycle_generator_tool(),
+        Action::GeneratorLengthDown => a.adjust_generator_length(-1),
+        Action::GeneratorLengthUp => a.adjust_generator_length(1),
+        Action::GeneratorAmount => a.cycle_generator_amount(),
+        Action::GeneratorOffsetDown => a.adjust_generator_offset(-1),
+        Action::GeneratorOffsetUp => a.adjust_generator_offset(1),
+        Action::GeneratorDensity => a.cycle_generator_density(),
+        Action::GeneratorCollision => a.toggle_generator_collision(),
+        Action::GeneratorSeedDown => a.adjust_generator_seed(-1),
+        Action::GeneratorSeedUp => a.adjust_generator_seed(1),
+        Action::GeneratorRepeat => a.repeat_generator_recipe(),
+        Action::GeneratorInspect => a.generator_inspect(),
+        Action::GeneratorStop => a.stop_for_pattern_generator(),
+        Action::GeneratorApply => a.apply_pattern_generator(),
+        Action::GeneratorClone => a.apply_pattern_generator_to_clone(),
+        Action::GeneratorCancel => a.cancel_pattern_generator(),
         Action::OpenTrackerLoop => a.open_tracker_loop(),
         Action::OpenTrackerLoopAlign => {
             a.set_screen(Screen::TrackerLoopAlign);
@@ -16556,6 +16917,10 @@ fn perform(
         Action::MixerBankPrevious => a.move_tracker_mixer_bank(-1),
         Action::MixerBankNext => a.move_tracker_mixer_bank(1),
         Action::Back => {
+            if a.screen == Screen::PatternGenerator {
+                a.cancel_pattern_generator();
+                return false;
+            }
             if a.screen == Screen::LanePlayback {
                 a.cancel_lane_playback();
                 return false;
@@ -16678,6 +17043,7 @@ fn perform(
                 | Screen::PatternFeel
                 | Screen::PatternGroove
                 | Screen::LanePlayback
+                | Screen::PatternGenerator
                 | Screen::LivePatterns
                 | Screen::TrackerLoop => Screen::Tracker,
                 Screen::TrackerMixer => Screen::Tracker,
@@ -17111,6 +17477,7 @@ fn key_event(
             || a.pattern_feel_draft.is_some()
             || a.pattern_groove_draft.is_some()
             || a.lane_playback_draft.is_some()
+            || a.pattern_generator.is_some()
             || a.mixed_engine_prompt_active()
             || a.screen == Screen::TrackerPages;
         if draft_owns_input {
@@ -17594,6 +17961,37 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => {
                 Some(Action::LanePlaybackCancel)
             }
+            _ => None,
+        };
+        if let Some(action) = action {
+            perform(action, a, state, Some(tx));
+        }
+        return false;
+    }
+    if a.screen == Screen::PatternGenerator {
+        let action = match code {
+            KeyCode::Char('t') | KeyCode::Char('T') => Some(Action::GeneratorTool),
+            KeyCode::Char('[') => Some(Action::GeneratorLengthDown),
+            KeyCode::Char(']') => Some(Action::GeneratorLengthUp),
+            KeyCode::Char('h') | KeyCode::Char('H') => Some(Action::GeneratorAmount),
+            KeyCode::Left | KeyCode::Char('-') => Some(Action::GeneratorOffsetDown),
+            KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => {
+                Some(Action::GeneratorOffsetUp)
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') => Some(Action::GeneratorDensity),
+            KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::GeneratorCollision),
+            KeyCode::Char(',') => Some(Action::GeneratorSeedDown),
+            KeyCode::Char('.') => Some(Action::GeneratorSeedUp),
+            KeyCode::Char('r') | KeyCode::Char('R') => Some(Action::GeneratorRepeat),
+            KeyCode::Char('i') | KeyCode::Char('I') => Some(Action::GeneratorInspect),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+                Some(Action::GeneratorStop)
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') | KeyCode::Enter => {
+                Some(Action::GeneratorApply)
+            }
+            KeyCode::Char('c') | KeyCode::Char('C') => Some(Action::GeneratorClone),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => Some(Action::GeneratorCancel),
             _ => None,
         };
         if let Some(action) = action {
@@ -18289,6 +18687,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::PatternFeel => draw_pattern_feel(f, a),
         Screen::PatternGroove => draw_pattern_groove(f, a),
         Screen::LanePlayback => draw_lane_playback(f, a),
+        Screen::PatternGenerator => draw_pattern_generator(f, a),
         Screen::TrackerParameters => draw_tracker_parameters(f, a),
         Screen::TrackerMixer => draw_tracker_mixer(f, a),
         Screen::Automation => draw_automation(f, a),
@@ -20604,6 +21003,113 @@ fn draw_lane_playback<B: Backend>(f: &mut Frame<B>, a: &App) {
         ])
         .alignment(Alignment::Center),
         rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
+    );
+}
+
+fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let Some(session) = a.pattern_generator.as_ref() else {
+        return;
+    };
+    let recipe = session.recipe;
+    let end = recipe.end_row().saturating_sub(1);
+    let parameter = match recipe.tool {
+        crate::generative::Tool::Euclidean => {
+            format!("PULSES {} · ROT {}", recipe.amount, recipe.phase)
+        }
+        crate::generative::Tool::Accumulator => format!(
+            "WRAP {} · STEP {:+} · PHASE {}",
+            recipe.amount, recipe.offset, recipe.phase
+        ),
+        crate::generative::Tool::Mutation => {
+            format!("RANGE {} · DENS {}%", recipe.amount, recipe.density)
+        }
+        crate::generative::Tool::Fill => format!("HITS {} · ROT {}", recipe.amount, recipe.phase),
+    };
+    let mut lines = vec![
+        Spans::from(Span::styled(
+            format!(
+                "PAT {:02} P{} L{} · {}",
+                session.pattern,
+                recipe.page + 1,
+                recipe.lane + 1,
+                recipe.tool.label()
+            ),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from(Span::styled(
+            format!(
+                "ROWS {:02}-{:02} · LEN {}",
+                recipe.start_row, end, recipe.length
+            ),
+            Style::default().fg(Color::White),
+        )),
+        Spans::from(Span::styled(parameter, Style::default().fg(Color::White))),
+        Spans::from(Span::styled(
+            format!(
+                "{} · SEED {}{}",
+                recipe.collision.label(),
+                recipe.seed,
+                if recipe.tool.uses_seed() {
+                    ""
+                } else {
+                    " (unused)"
+                }
+            ),
+            Style::default().fg(Color::White),
+        )),
+    ];
+    if let Some(draft) = session.draft.as_ref() {
+        lines.push(Spans::from(Span::styled(
+            format!(
+                "DRAFT {} · REPL {} · COLL {} · PROT {}",
+                draft.report.affected,
+                draft.report.replacements,
+                draft.report.collisions,
+                draft.report.protected
+            ),
+            Style::default().fg(if draft.report.collisions > 0 {
+                Color::Yellow
+            } else {
+                Color::White
+            }),
+        )));
+        let rows = if draft.affected_rows.is_empty() {
+            "—".into()
+        } else {
+            draft
+                .affected_rows
+                .iter()
+                .map(|row| format!("{row:02}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        lines.push(Spans::from(Span::styled(
+            format!("AFFECTED ROWS · {}", crate::ui_text::fit_middle(&rows, 22)),
+            Style::default().fg(Color::White),
+        )));
+        lines.push(Spans::from(Span::styled(
+            "SOURCE UNCHANGED · APPLY / CLONE / CANCEL",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        lines.push(Spans::from(Span::styled(
+            format!(
+                "DRAFT REFUSED · {}",
+                session.error.as_deref().unwrap_or("unknown draft error")
+            ),
+            Style::default().fg(Color::Yellow),
+        )));
+        lines.push(Spans::from(Span::styled(
+            "SOURCE UNCHANGED · adjust or CANCEL",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    f.render_widget(
+        Paragraph::new(lines).alignment(Alignment::Center),
+        rect(z.x, z.y, z.width, z.height.saturating_sub(3)),
     );
 }
 
@@ -32438,6 +32944,7 @@ release = 0.4
             (Screen::PatternFeel, None),
             (Screen::PatternGroove, None),
             (Screen::LanePlayback, None),
+            (Screen::PatternGenerator, None),
         ];
         assert_eq!(expected.len(), Screen::ALL.len());
         for (screen, target) in expected {
@@ -38507,6 +39014,249 @@ release = 0.4
         assert!(a.lane_playback_draft.is_some());
         assert_eq!(a.pattern_history.depths(), (0, 0));
         assert_eq!(a.status, "STOP TO APPLY · CYCLE draft kept");
+    }
+
+    #[test]
+    fn generator_draft_adjustment_repeat_and_cancel_preserve_project_history_and_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        a.tracker_row = 0;
+        a.tracker_page = 0;
+        a.tracker_track = 0;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(90),
+            ..Cell::default()
+        };
+        a.project_clean_baseline = a.song.clone();
+        let original = a.song.clone();
+        let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
+
+        a.open_pattern_generator();
+        assert_eq!(a.screen, Screen::PatternGenerator);
+        let first = a.pattern_generator.as_ref().unwrap().draft.clone().unwrap();
+        a.adjust_generator_seed(1);
+        a.cycle_generator_amount();
+        a.toggle_generator_collision();
+        assert_eq!(a.song, original);
+        assert!(!a.project_is_dirty());
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), cursor);
+
+        a.last_generator_recipe = Some(first.recipe);
+        a.repeat_generator_recipe();
+        assert_eq!(
+            a.pattern_generator.as_ref().unwrap().draft.as_ref(),
+            Some(&first)
+        );
+        assert_eq!(a.song, original);
+        a.cancel_pattern_generator();
+        assert_eq!(a.song, original);
+        assert!(!a.project_is_dirty());
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), cursor);
+    }
+
+    #[test]
+    fn generator_apply_is_exactly_one_history_transaction_with_undo_redo() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(92),
+            ..Cell::default()
+        };
+        a.project_clean_baseline = a.song.clone();
+        let original = a.song.patterns[&0].clone();
+        let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
+
+        a.open_pattern_generator();
+        let expected = a
+            .pattern_generator
+            .as_ref()
+            .unwrap()
+            .draft
+            .as_ref()
+            .unwrap()
+            .pattern
+            .clone();
+        assert_ne!(expected, original);
+        a.apply_pattern_generator();
+
+        assert_eq!(a.song.patterns[&0], expected);
+        let encoded = sequencer::encode(&a.song).unwrap();
+        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
+        assert_eq!(sequencer::decode(&encoded).unwrap(), a.song);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+        assert!(a.project_is_dirty());
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), cursor);
+        a.pattern_undo();
+        assert_eq!(a.song.patterns[&0], original);
+        assert_eq!(a.pattern_history.depths(), (0, 1));
+        a.pattern_redo();
+        assert_eq!(a.song.patterns[&0], expected);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+    }
+
+    #[test]
+    fn generator_noop_apply_and_recording_refusal_leave_every_owner_unchanged() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song.patterns.get_mut(&0).unwrap().resize_rows(1).unwrap();
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            ..Cell::default()
+        };
+        a.project_clean_baseline = a.song.clone();
+        let original = a.song.clone();
+        a.open_pattern_generator();
+        assert_eq!(
+            a.pattern_generator
+                .as_ref()
+                .unwrap()
+                .draft
+                .as_ref()
+                .unwrap()
+                .report
+                .affected,
+            0
+        );
+        a.apply_pattern_generator();
+        assert_eq!(a.song, original);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert!(!a.project_is_dirty());
+
+        a.open_pattern_generator();
+        a.pattern_generator.as_mut().unwrap().recipe.collision =
+            crate::generative::CollisionPolicy::ReplaceNotes;
+        a.rebuild_pattern_generator();
+        a.tracker_recording = Some(TrackerRecording {
+            pattern: 0,
+            order: 0,
+            page: 0,
+            return_to_play: false,
+            last_row: 0,
+            next_lane: 0,
+            active_lanes: HashMap::new(),
+            lane_owners: HashMap::new(),
+            next_token: 1,
+            notes: 0,
+        });
+        a.apply_pattern_generator();
+        assert!(a.pattern_generator.is_some());
+        assert_eq!(a.song, original);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert_eq!(a.status, "STOP TO APPLY · generator draft kept");
+    }
+
+    #[test]
+    fn generator_apply_to_clone_uses_structural_owner_and_preserves_source_and_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        a.tracker_row = 3;
+        a.tracker_page = 0;
+        a.tracker_track = 0;
+        a.song.patterns.get_mut(&0).unwrap().rows[3][0] = Cell {
+            note: Note::On(64),
+            velocity: Some(88),
+            ..Cell::default()
+        };
+        a.project_clean_baseline = a.song.clone();
+        let source = a.song.patterns[&0].clone();
+        let old_order = a.song.order.clone();
+        let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
+
+        a.open_pattern_generator();
+        let expected = a
+            .pattern_generator
+            .as_ref()
+            .unwrap()
+            .draft
+            .as_ref()
+            .unwrap()
+            .pattern
+            .clone();
+        a.apply_pattern_generator_to_clone();
+
+        assert_eq!(a.song.patterns[&0], source);
+        assert_eq!(a.song.order.len(), old_order.len() + 1);
+        assert_eq!(&a.song.order[..old_order.len()], old_order.as_slice());
+        let clone = *a.song.order.last().unwrap();
+        assert_ne!(clone, 0);
+        assert_eq!(a.song.patterns[&clone], expected);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), cursor);
+    }
+
+    #[test]
+    fn generator_validation_and_clone_refusals_keep_draft_and_all_project_owners() {
+        let p = presets();
+        let mut invalid = app(&p);
+        invalid.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            ..Cell::default()
+        };
+        invalid.project_clean_baseline = invalid.song.clone();
+        let opening = invalid.song.clone();
+        invalid.open_pattern_generator();
+        invalid
+            .pattern_generator
+            .as_mut()
+            .unwrap()
+            .draft
+            .as_mut()
+            .unwrap()
+            .pattern
+            .rows
+            .clear();
+        invalid.apply_pattern_generator();
+        assert_eq!(invalid.song, opening);
+        assert!(invalid.pattern_generator.is_some());
+        assert_eq!(invalid.pattern_history.depths(), (0, 0));
+        assert!(!invalid.project_is_dirty());
+        assert_eq!(invalid.status, "APPLY FAILED · Pattern/draft kept");
+
+        let mut full = app(&p);
+        full.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            ..Cell::default()
+        };
+        let template = full.song.patterns[&0].clone();
+        while full.song.patterns.len() < 256 {
+            full.song.append_pattern(template.clone()).unwrap();
+        }
+        full.tracker_order = 0;
+        full.project_clean_baseline = full.song.clone();
+        let opening = full.song.clone();
+        full.open_pattern_generator();
+        full.apply_pattern_generator_to_clone();
+        assert_eq!(full.song, opening);
+        assert!(full.pattern_generator.is_some());
+        assert_eq!(full.pattern_history.depths(), (0, 0));
+        assert!(!full.project_is_dirty());
+        assert_eq!(full.status, "CLONE FAILED · source/order unchanged");
+    }
+
+    #[test]
+    fn generator_native_render_shows_inspectable_draft_and_preserves_status_row() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            ..Cell::default()
+        };
+        a.open_pattern_generator();
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("EUCLIDEAN"), "{text}");
+        assert!(text.contains("DRAFT"), "{text}");
+        assert!(text.contains("REPL"), "{text}");
+        assert!(text.contains("COLL"), "{text}");
+        assert!(text.contains("SOURCE UNCHANGED"), "{text}");
+        assert_eq!(buffer.get(0, 12).symbol, "■");
     }
 
     #[test]

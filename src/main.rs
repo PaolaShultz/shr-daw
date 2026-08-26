@@ -20,6 +20,7 @@ pub mod effects;
 mod engine;
 mod final_bus;
 mod fsutil;
+mod generative;
 mod geometry;
 mod gm;
 mod harmony;
