@@ -7928,6 +7928,7 @@ mod tests {
             0,
             1,
             99,
+            Scale::default(),
         )
         .unwrap();
         recipe.length = 8;
@@ -7955,6 +7956,68 @@ mod tests {
         };
         assert!(count(&on) > count(&off));
         assert!(count(&preflight) >= count(&on));
+    }
+
+    #[test]
+    fn stored_arpeggio_cells_keep_scheduler_preflight_partial_repeat_and_cleanup_ownership() {
+        let cfg = config();
+        let mut song = Song::new(&cfg);
+        let scale = song.project_key;
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(90),
+            ..Cell::default()
+        };
+        pattern.rows[0][1] = Cell {
+            note: Note::On(64),
+            velocity: Some(91),
+            ..Cell::default()
+        };
+        pattern.rows[0][2] = Cell {
+            note: Note::On(67),
+            velocity: Some(92),
+            ..Cell::default()
+        };
+        let mut recipe = crate::generative::Recipe::bounded_for(
+            pattern,
+            crate::generative::Tool::Arpeggio,
+            0,
+            3,
+            0,
+            1,
+            scale,
+        )
+        .unwrap();
+        recipe.length = 2;
+        recipe.gate = 50;
+        let draft = crate::generative::build(pattern, recipe).unwrap();
+        assert_eq!(draft.affected_rows, [1, 2, 3, 4, 5, 6]);
+        song.patterns.insert(0, draft.pattern);
+
+        let first = schedule(&song, &cfg, 0, 0).unwrap();
+        let repeated = schedule_for_pass(&song, &cfg, 0, 0, 1, false).unwrap();
+        let preflight = schedule_preflight(&song, &cfg, 0, 0).unwrap();
+        assert_eq!(first, repeated);
+        for note in [60, 64, 67] {
+            assert!(scheduled_note_on(&first, note));
+            assert!(scheduled_note_on(&preflight, note));
+            assert!(first.iter().any(|message| {
+                matches!(message.bytes.as_slice(), [status, off, _]
+                    if status & 0xf0 == 0x80 && *off == note)
+            }));
+        }
+        let (partial, next_repeat) = playback_schedules(&song, &cfg, 0, 2).unwrap();
+        assert_eq!(
+            lane_note_ons(&partial, 3).first().map(|(_, note)| *note),
+            Some(64)
+        );
+        assert_eq!(
+            lane_note_ons(&next_repeat, 3)
+                .first()
+                .map(|(_, note)| *note),
+            Some(60)
+        );
     }
 
     fn lane_note_ons(messages: &[ScheduledMessage], lane: usize) -> Vec<(Duration, u8)> {

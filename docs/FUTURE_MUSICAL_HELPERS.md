@@ -2,8 +2,8 @@
 
 Created: 2026-08-02
 
-Status: FT2 Edit SIZE, read-only HARMONY, and the bounded Priority 5 Generator
-implemented; remaining arpeggio, roll, and Arrangement helpers are
+Status: FT2 Edit SIZE, read-only HARMONY, and the bounded Priority 5/6
+Generator implemented; remaining roll and Arrangement helpers are
 owner-directed proposals, not scheduled promises
 
 This plan covers small, inspectable helpers that turn a short musical idea into
@@ -39,9 +39,12 @@ Priority 5 now owns the implemented shared draft plus selected-lane Euclidean,
 accumulator, seeded-mutation, and controlled-FILL tools. Its exact scope,
 collision policy, Apply/Clone ownership, persistence, and acceptance matrix are
 in [Priority 5 deterministic generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md).
-That focused contract supersedes the earlier fill and shared-draft proposals
-below wherever they overlap; arpeggio, roll, and Arrangement assistance remain
-future proposals.
+Priority 6 extends that same draft with the bounded arpeggio, Project-key triad,
+and diatonic harmonizer semantics in [Priority 6 arpeggio, chord, and
+harmonizer generators](HARMONIC_GENERATORS_ACCEPTANCE.md). Those focused
+contracts supersede the earlier fill, shared-draft, and first-arpeggio proposals
+below wherever they overlap; roll and Arrangement assistance remain future
+proposals.
 
 ## FT2 Edit `SIZE` page
 
@@ -192,6 +195,10 @@ Reference: [Open Music Theory: key signatures and the circle of fifths](https://
 
 ## Arpeggio pattern helpers
 
+Status: the bounded UP/DOWN/UP-DOWN/AS-LANE offline slice is implemented in the
+shared Generator. The larger pattern-family catalog below remains background
+for possible later owner-directed work, not current behavior.
+
 ### Deterministic pattern families
 
 Given sorted chord tones `p[0..n)` and optional octave copies, useful patterns
@@ -335,7 +342,7 @@ page/lane/column/cursor.
 | 1 (implemented) | FT2 Edit SIZE model helpers and page | Immediate manual sketch speed; storage already supports it |
 | 2 (implemented) | Shared generated-draft, collision summary, retained seed, inspect, Apply/Clone/Cancel, plus bounded Euclidean, accumulator, mutation, and FILL tools | One non-writing draft and explicit transaction owners for the first deterministic helpers |
 | 3 (implemented) | Read-only circle-of-fifths/HARMONY browser | Useful theory support with no generated-data risk |
-| 4 | Offline arpeggio generator | Small deterministic algorithms over existing cells |
+| 4 (implemented) | Offline arpeggio plus Project-key chord and harmonizer generators | Small deterministic algorithms over existing cells in the shared draft |
 | 5 (partial) | Controlled FILL implemented; roll drafts remain future work | FILL uses ordinary conditional cells; rolls still need their own bounded contract |
 | 6 | Template/constraint Arrangement assistant | Builds on clone/variation operations and explicit previews |
 
@@ -345,7 +352,7 @@ velocity contour or new harmony metadata is deliberately adopted.
 
 ## Remaining open owner decisions
 
-- Should a future arpeggio or roll draft use the current Generator's
-  `EMPTY ONLY` current-Pattern default, or default to an independent clone?
+- Should a future roll draft use the current Generator's `EMPTY ONLY`
+  current-Pattern default, or default to an independent clone?
 - Which two or three Arrangement templates match the musician's actual sketch
   workflow? Start with those, not a large genre menu.

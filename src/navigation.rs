@@ -904,10 +904,10 @@ const PATTERN_GENERATOR: [MenuPage; 4] = [
         ],
     ),
     page(
-        "SEED",
+        "VALUE",
         [
-            on("SEED-", Action::GeneratorSeedDown),
-            on("SEED+", Action::GeneratorSeedUp),
+            on("VALUE-", Action::GeneratorSeedDown),
+            on("VALUE+", Action::GeneratorSeedUp),
             on("REPEAT", Action::GeneratorRepeat),
             on("INSPECT", Action::GeneratorInspect),
         ],
@@ -2387,6 +2387,18 @@ mod tests {
         assert_eq!(history[3].slots[1].dispatch(), Some(Action::OpenHelp));
         assert_eq!(history[3].slots[2].dispatch(), None);
         assert_eq!(history[3].slots[3].dispatch(), Some(Action::Back));
+        let generator = pages(Screen::PatternGenerator, MenuContext::Normal);
+        assert_eq!(generator.len(), 4);
+        assert_eq!(generator[2].label, "VALUE");
+        assert_eq!(
+            generator[2].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::GeneratorSeedDown),
+                Some(Action::GeneratorSeedUp),
+                Some(Action::GeneratorRepeat),
+                Some(Action::GeneratorInspect),
+            ]
+        );
     }
 
     #[test]

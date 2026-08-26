@@ -456,4 +456,37 @@ mod tests {
         assert_eq!(first_export, second_export);
         assert!(first_export.report.events > 2);
     }
+
+    #[test]
+    fn stored_chord_generator_cells_export_deterministically_without_hidden_duration() {
+        let (mut song, config) = configured_song();
+        let baseline = timeline::compile(&song, &config, 0, 0).unwrap();
+        let scale = song.project_key;
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        let mut recipe = crate::generative::Recipe::bounded_for(
+            pattern,
+            crate::generative::Tool::Chord,
+            0,
+            0,
+            0,
+            1,
+            scale,
+        )
+        .unwrap();
+        recipe.collision = crate::generative::CollisionPolicy::ReplaceNotes;
+        let draft = crate::generative::build(pattern, recipe).unwrap();
+        assert_eq!(draft.report.affected, 3);
+        song.patterns.insert(0, draft.pattern);
+
+        let compiled = timeline::compile(&song, &config, 0, 0).unwrap();
+        let first = analyze(&song, &config).unwrap();
+        let second = analyze(&song, &config).unwrap();
+        assert_eq!(compiled.end_tick, baseline.end_tick);
+        assert_eq!(first, second);
+        for note in [36, 40, 43] {
+            assert!(first.bytes.windows(3).any(|message| {
+                message[0] & 0xf0 == 0x90 && message[1] == note && message[2] > 0
+            }));
+        }
+    }
 }

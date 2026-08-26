@@ -109,8 +109,13 @@ the Project or playing anything. Back or Exit returns to the exact FT2 context.
 
 For offline Pattern generation, open FT2 **TOOLS**, select **PAGE**, choose
 **HISTORY**, switch to **RHYTHM**, and open **GEN**. Euclidean triggers,
-accumulator progressions, seeded mutation, and controlled drum fills remain a
-visible draft while you adjust or inspect them. **APPLY** commits the draft to
+accumulator progressions, seeded mutation, controlled drum fills, cursor-row
+arpeggios, Project-key triads, and bounded diatonic harmony voices remain a
+visible draft while you adjust or inspect them. ARPEGGIO exposes order,
+octaves, row rate, gate, and repetitions; CHORD exposes degree, inversion,
+close/open voicing, three-lane placement, rate, and repetitions; HARMONIZER
+copies a selected lane span to another lane as a third/fifth above/below and
+makes out-of-scale refusal or skipping explicit. **APPLY** commits the draft to
 the current Pattern as one undoable edit, **CLONE** appends an independent
 Pattern and Arrangement step, and **CANCEL** writes nothing. The result is
 ordinary editable FT2 cells; playback does not regenerate it.

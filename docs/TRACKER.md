@@ -96,19 +96,30 @@ when—it never changes the Pattern's Arrangement duration. Exact scheduling,
 ownership, migration, and acceptance semantics are in [Priority 4 lane
 playback acceptance](LANE_PLAYBACK_ACCEPTANCE.md).
 
-**GEN** opens the offline deterministic Generator for the selected cursor
-cell and lane. Euclidean triggers, bounded accumulator progressions, seeded
-pitch mutation, and percussion-only controlled FILL cells are always built as
-an inspectable draft first. The screen shows the exact row span, settings,
-retained seed, affected rows, replacements, collisions, and protected cells.
-Its four pages expose Shape, Detail, Seed/Repeat/Inspect, and Stop/Apply/Clone/
-Cancel. Apply requires stopped transport and is one Pattern History step;
-Clone uses the existing structural owner to append an independent Pattern and
-explicit Arrangement step without overwriting the source. Cancel, refusal,
-and unchanged Apply write nothing. Only ordinary Cells persist, so playback,
-Project save/load, reusable drum patterns, export, and preflight never invoke a
-hidden generator. Exact bounds and semantics are in
-[Priority 5 deterministic generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md).
+**GEN** opens the one offline deterministic Generator for the selected Pattern,
+page, lane, and cursor row. Alongside Euclidean triggers, bounded accumulator
+progressions, seeded pitch mutation, and percussion-only controlled FILL, it
+offers three melodic tools. ARPEGGIO reads the existing notes across the cursor
+row as its explicit chord source and exposes order, upward octave count,
+1/2/4/8-row rate, 25/50/75/100% gate, and complete repetition count. CHORD
+derives one triad from the Project tonic/major-or-natural-minor scale plus
+degree, inversion, close/open voicing, three consecutive lanes, row rate, and
+repetition count. HARMONIZER copies the selected lane over a bounded row span
+to another explicit lane as a diatonic third/fifth above/below, with REFUSE or
+SKIP for out-of-scale notes and exact Note Off/field preservation.
+
+Every tool builds an inspectable draft first. The screen shows its explicit
+source/target and settings, affected rows and cells, replacements, collisions,
+protected cells, out-of-scale skips, and counted range/scope refusals. Its four
+pages remain Shape, Detail, Value/Repeat/Inspect, and Stop/Apply/Clone/Cancel.
+Apply requires stopped transport and is one Pattern History step; Clone uses
+the existing structural owner to append an independent Pattern and explicit
+Arrangement step without overwriting the source. Cancel, refusal, and unchanged
+Apply write nothing. Only ordinary Cells persist, so playback, Project
+save/load, reusable drum patterns, export, and preflight never invoke a hidden
+generator. Exact shared and harmonic semantics are in [Priority 5 deterministic
+generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md) and [Priority 6
+arpeggio, chord, and harmonizer generators](HARMONIC_GENERATORS_ACCEPTANCE.md).
 
 On the main tracker grid, the physical main rotary always moves rows. Holding
 the configured encoder Shift button while turning selects the previous or next

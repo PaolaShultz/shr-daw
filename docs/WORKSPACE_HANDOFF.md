@@ -5,6 +5,45 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-26 Priority 6 harmonic generators
+
+Priority 6 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact
+musical semantics and HG-01 through HG-13 acceptance matrix are in
+`HARMONIC_GENERATORS_ACCEPTANCE.md`. The existing FT2 Tools PAGE -> HISTORY ->
+RHYTHM -> GEN workflow now also drafts cursor-row arpeggios with explicit
+order/octaves/rate/gate/repetitions, Project-key diatonic triads with explicit
+degree/inversion/close-or-open voicing/lane/rate scope, and bounded diatonic
+third/fifth harmony voices with explicit lane/direction/out-of-scale policy.
+
+Priority 6 reuses the Priority 5 cloned draft, exact affected/replacement/
+collision/protected reporting, four controller pages, stopped current-Pattern
+History transaction, and existing independent Pattern plus appended
+Arrangement-step Clone owner. Opening, adjusting, inspecting, Repeat, Cancel,
+refusal, validation failure, and no-op Apply preserve Pattern, automation,
+History, dirty state, Arrangement, and FT2 cursor. HARMONY remains the separate
+read-only browser.
+
+Project format 17 and reusable drum-pattern format 4 remain unchanged. Only
+ordinary generated Cells persist, so MIDI export, preflight, partial playback,
+Pattern/Arrangement repeats, probability/conditions, PRE/FILL, swing/groove,
+REC FEEL, lane cycles, seeded mutation, and controlled fills retain their
+existing owners without playback-time harmonic regeneration.
+
+The owner-authorized non-Raspberry-Pi pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Formatting and
+locked check passed without warnings. The requested focused Priority 6,
+migration, Pattern History, Priority 2-5, scheduler/preflight/export/partial/
+repeat, navigation/controller, native 40x13, shared-status, and HARMONY matrices
+passed. The complete normal suite passed with 1,047 successful tests, zero
+failures, and 13 documented development, private-audition, and performance
+tests ignored. Clippy was not required by an observed failure or repository
+policy.
+
+No JACK, ALSA sequencer, synth, MIDI transmission, playback, recording,
+audible, screenshot, physical-controller, Raspberry Pi timing/headroom, or
+other hardware-changing evidence was produced. Musical approval remains a
+human listening/controller decision.
+
 ## 2026-08-26 Priority 5 deterministic generative tools
 
 Priority 5 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact

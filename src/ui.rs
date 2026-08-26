@@ -6270,6 +6270,7 @@ impl App {
             self.tracker_track,
             self.tracker_row,
             seed,
+            self.song.project_key,
         ) else {
             self.status = "GENERATOR unavailable · cursor outside Pattern".into();
             return;
@@ -6335,6 +6336,7 @@ impl App {
             session.recipe.lane,
             session.recipe.start_row,
             session.recipe.seed,
+            self.song.project_key,
         ) {
             Ok(recipe) => recipe,
             Err(error) => {
@@ -6363,29 +6365,54 @@ impl App {
         let Some(session) = self.pattern_generator.as_mut() else {
             return;
         };
-        session.recipe.amount = match session.recipe.tool {
+        match session.recipe.tool {
             crate::generative::Tool::Euclidean | crate::generative::Tool::Fill => {
-                if session.recipe.amount >= session.recipe.length {
+                session.recipe.amount = if session.recipe.amount >= session.recipe.length {
                     0
                 } else {
                     session.recipe.amount + 1
-                }
+                };
             }
             crate::generative::Tool::Accumulator => {
-                if session.recipe.amount >= 48 {
+                session.recipe.amount = if session.recipe.amount >= 48 {
                     1
                 } else {
                     session.recipe.amount + 1
-                }
+                };
             }
             crate::generative::Tool::Mutation => {
-                if session.recipe.amount >= 12 {
+                session.recipe.amount = if session.recipe.amount >= 12 {
                     1
                 } else {
                     session.recipe.amount + 1
-                }
+                };
             }
-        };
+            crate::generative::Tool::Arpeggio => {
+                let all = crate::generative::ArpeggioOrder::ALL;
+                let index = all
+                    .iter()
+                    .position(|order| *order == session.recipe.arpeggio_order)
+                    .unwrap_or(0);
+                session.recipe.arpeggio_order = all[(index + 1) % all.len()];
+            }
+            crate::generative::Tool::Chord => {
+                session.recipe.chord_degree = if session.recipe.chord_degree >= 7 {
+                    1
+                } else {
+                    session.recipe.chord_degree + 1
+                };
+            }
+            crate::generative::Tool::Harmonizer => {
+                session.recipe.harmony_interval = match session.recipe.harmony_interval {
+                    crate::generative::HarmonyInterval::Third => {
+                        crate::generative::HarmonyInterval::Fifth
+                    }
+                    crate::generative::HarmonyInterval::Fifth => {
+                        crate::generative::HarmonyInterval::Third
+                    }
+                };
+            }
+        }
         self.rebuild_pattern_generator();
     }
     fn adjust_generator_offset(&mut self, direction: i8) {
@@ -6413,6 +6440,35 @@ impl App {
                 let next = i32::from(session.recipe.amount) + i32::from(direction.signum());
                 session.recipe.amount = next.clamp(1, 12) as u16;
             }
+            crate::generative::Tool::Arpeggio => {
+                let next =
+                    i16::from(session.recipe.arpeggio_octaves) + i16::from(direction.signum());
+                session.recipe.arpeggio_octaves = if next < 1 {
+                    3
+                } else if next > 3 {
+                    1
+                } else {
+                    next as u8
+                };
+            }
+            crate::generative::Tool::Chord => {
+                let next =
+                    i16::from(session.recipe.chord_inversion) + i16::from(direction.signum());
+                session.recipe.chord_inversion = if next < 0 {
+                    2
+                } else if next > 2 {
+                    0
+                } else {
+                    next as u8
+                };
+            }
+            crate::generative::Tool::Harmonizer => {
+                session.recipe.harmony_voice = if direction < 0 {
+                    crate::generative::HarmonyVoice::Below
+                } else {
+                    crate::generative::HarmonyVoice::Above
+                };
+            }
         }
         self.rebuild_pattern_generator();
     }
@@ -6420,16 +6476,45 @@ impl App {
         let Some(session) = self.pattern_generator.as_mut() else {
             return;
         };
-        if session.recipe.tool == crate::generative::Tool::Accumulator {
-            session.recipe.phase = (session.recipe.phase + 1) % session.recipe.length;
-        } else {
-            session.recipe.density = match session.recipe.density {
-                0..=24 => 25,
-                25..=49 => 50,
-                50..=74 => 75,
-                75..=99 => 100,
-                _ => 0,
-            };
+        match session.recipe.tool {
+            crate::generative::Tool::Accumulator => {
+                session.recipe.phase = (session.recipe.phase + 1) % session.recipe.length;
+            }
+            crate::generative::Tool::Arpeggio => {
+                let all = crate::generative::RowRate::ALL;
+                let index = all
+                    .iter()
+                    .position(|rate| *rate == session.recipe.row_rate)
+                    .unwrap_or(0);
+                session.recipe.row_rate = all[(index + 1) % all.len()];
+            }
+            crate::generative::Tool::Chord => {
+                session.recipe.chord_voicing = match session.recipe.chord_voicing {
+                    crate::generative::ChordVoicing::Close => crate::generative::ChordVoicing::Open,
+                    crate::generative::ChordVoicing::Open => crate::generative::ChordVoicing::Close,
+                };
+            }
+            crate::generative::Tool::Harmonizer => {
+                session.recipe.out_of_scale = match session.recipe.out_of_scale {
+                    crate::generative::OutOfScalePolicy::Refuse => {
+                        crate::generative::OutOfScalePolicy::Skip
+                    }
+                    crate::generative::OutOfScalePolicy::Skip => {
+                        crate::generative::OutOfScalePolicy::Refuse
+                    }
+                };
+            }
+            crate::generative::Tool::Euclidean
+            | crate::generative::Tool::Mutation
+            | crate::generative::Tool::Fill => {
+                session.recipe.density = match session.recipe.density {
+                    0..=24 => 25,
+                    25..=49 => 50,
+                    50..=74 => 75,
+                    75..=99 => 100,
+                    _ => 0,
+                };
+            }
         }
         self.rebuild_pattern_generator();
     }
@@ -6451,11 +6536,59 @@ impl App {
         let Some(session) = self.pattern_generator.as_mut() else {
             return;
         };
-        session.recipe.seed = if direction < 0 {
-            session.recipe.seed.wrapping_sub(1)
-        } else {
-            session.recipe.seed.wrapping_add(1)
-        };
+        match session.recipe.tool {
+            crate::generative::Tool::Arpeggio => {
+                let values = [25, 50, 75, 100];
+                let index = values
+                    .iter()
+                    .position(|gate| *gate == session.recipe.gate)
+                    .unwrap_or(2);
+                let next = if direction < 0 {
+                    (index + values.len() - 1) % values.len()
+                } else {
+                    (index + 1) % values.len()
+                };
+                session.recipe.gate = values[next];
+            }
+            crate::generative::Tool::Chord => {
+                let all = crate::generative::RowRate::ALL;
+                let index = all
+                    .iter()
+                    .position(|rate| *rate == session.recipe.row_rate)
+                    .unwrap_or(0);
+                let next = if direction < 0 {
+                    (index + all.len() - 1) % all.len()
+                } else {
+                    (index + 1) % all.len()
+                };
+                session.recipe.row_rate = all[next];
+            }
+            crate::generative::Tool::Harmonizer => {
+                let mut lane = usize::from(session.recipe.harmony_target_lane);
+                for _ in 0..crate::sequencer::LANES_PER_PAGE {
+                    lane = if direction < 0 {
+                        (lane + crate::sequencer::LANES_PER_PAGE - 1)
+                            % crate::sequencer::LANES_PER_PAGE
+                    } else {
+                        (lane + 1) % crate::sequencer::LANES_PER_PAGE
+                    };
+                    if lane != session.recipe.lane {
+                        break;
+                    }
+                }
+                session.recipe.harmony_target_lane = lane as u8;
+            }
+            crate::generative::Tool::Euclidean
+            | crate::generative::Tool::Accumulator
+            | crate::generative::Tool::Mutation
+            | crate::generative::Tool::Fill => {
+                session.recipe.seed = if direction < 0 {
+                    session.recipe.seed.wrapping_sub(1)
+                } else {
+                    session.recipe.seed.wrapping_add(1)
+                };
+            }
+        }
         self.rebuild_pattern_generator();
     }
     fn repeat_generator_recipe(&mut self) {
@@ -21013,18 +21146,124 @@ fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
     };
     let recipe = session.recipe;
     let end = recipe.end_row().saturating_sub(1);
-    let parameter = match recipe.tool {
-        crate::generative::Tool::Euclidean => {
-            format!("PULSES {} · ROT {}", recipe.amount, recipe.phase)
-        }
-        crate::generative::Tool::Accumulator => format!(
-            "WRAP {} · STEP {:+} · PHASE {}",
-            recipe.amount, recipe.offset, recipe.phase
+    let chord_register = if a
+        .song
+        .patterns
+        .get(&session.pattern)
+        .is_some_and(|pattern| {
+            matches!(
+                pattern.rows[recipe.start_row]
+                    [recipe.page * crate::sequencer::LANES_PER_PAGE + recipe.lane]
+                    .note,
+                Note::On(_)
+            )
+        }) {
+        "CELL"
+    } else {
+        "C4"
+    };
+    let rows = match recipe.tool {
+        crate::generative::Tool::Arpeggio => format!(
+            "SOURCE ROW {:02} · REPEAT {}",
+            recipe.start_row, recipe.length
         ),
-        crate::generative::Tool::Mutation => {
-            format!("RANGE {} · DENS {}%", recipe.amount, recipe.density)
+        crate::generative::Tool::Chord => format!(
+            "ROW {:02} · REPEAT {} · REG {}",
+            recipe.start_row, recipe.length, chord_register
+        ),
+        crate::generative::Tool::Harmonizer => format!(
+            "ROWS {:02}-{:02} · SOURCE L{} -> L{}",
+            recipe.start_row,
+            end,
+            recipe.lane + 1,
+            recipe.harmony_target_lane + 1
+        ),
+        _ => format!(
+            "ROWS {:02}-{:02} · LEN {}",
+            recipe.start_row, end, recipe.length
+        ),
+    };
+    let (parameter, detail) = match recipe.tool {
+        crate::generative::Tool::Euclidean => (
+            format!("PULSES {} · ROT {}", recipe.amount, recipe.phase),
+            format!(
+                "{} · SEED {} (unused)",
+                recipe.collision.label(),
+                recipe.seed
+            ),
+        ),
+        crate::generative::Tool::Accumulator => (
+            format!(
+                "WRAP {} · STEP {:+} · PHASE {}",
+                recipe.amount, recipe.offset, recipe.phase
+            ),
+            format!(
+                "{} · SEED {} (unused)",
+                recipe.collision.label(),
+                recipe.seed
+            ),
+        ),
+        crate::generative::Tool::Mutation => (
+            format!("RANGE {} · DENS {}%", recipe.amount, recipe.density),
+            format!("{} · SEED {}", recipe.collision.label(), recipe.seed),
+        ),
+        crate::generative::Tool::Fill => (
+            format!("HITS {} · ROT {}", recipe.amount, recipe.phase),
+            format!("{} · SEED {}", recipe.collision.label(), recipe.seed),
+        ),
+        crate::generative::Tool::Arpeggio => (
+            format!(
+                "{} · OCT {} · {} · GATE {}%",
+                recipe.arpeggio_order.label(),
+                recipe.arpeggio_octaves,
+                recipe.row_rate.label(),
+                recipe.gate
+            ),
+            format!(
+                "SOURCE {} NOTE(S) -> L{} · {}",
+                session
+                    .draft
+                    .as_ref()
+                    .map_or(0, |draft| draft.report.source_cells),
+                recipe.lane + 1,
+                recipe.collision.label()
+            ),
+        ),
+        crate::generative::Tool::Chord => {
+            let inversion = ["ROOT", "FIRST", "SECOND"][usize::from(recipe.chord_inversion.min(2))];
+            (
+                format!(
+                    "KEY {} {} · DEG {} {} · INV {}",
+                    a.config.note_naming.pitch_name(recipe.scale.root),
+                    recipe.scale.kind.label(),
+                    recipe.chord_degree,
+                    crate::generative::chord_quality_label(recipe.scale, recipe.chord_degree),
+                    inversion
+                ),
+                format!(
+                    "{} · RATE {} · L{}-{} · {}",
+                    recipe.chord_voicing.label(),
+                    recipe.row_rate.label(),
+                    recipe.lane + 1,
+                    recipe.lane + 3,
+                    recipe.collision.label()
+                ),
+            )
         }
-        crate::generative::Tool::Fill => format!("HITS {} · ROT {}", recipe.amount, recipe.phase),
+        crate::generative::Tool::Harmonizer => (
+            format!(
+                "{} {} · OOS {}",
+                recipe.harmony_interval.label(),
+                recipe.harmony_voice.label(),
+                recipe.out_of_scale.label()
+            ),
+            format!(
+                "KEY {} {} · {}",
+                a.config.note_naming.pitch_name(recipe.scale.root),
+                recipe.scale.kind.label(),
+                recipe.collision.label()
+            ),
+        ),
     };
     let mut lines = vec![
         Spans::from(Span::styled(
@@ -21040,24 +21279,15 @@ fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
                 .add_modifier(Modifier::BOLD),
         )),
         Spans::from(Span::styled(
-            format!(
-                "ROWS {:02}-{:02} · LEN {}",
-                recipe.start_row, end, recipe.length
-            ),
+            crate::ui_text::fit_middle(&rows, usize::from(z.width)),
             Style::default().fg(Color::White),
         )),
-        Spans::from(Span::styled(parameter, Style::default().fg(Color::White))),
         Spans::from(Span::styled(
-            format!(
-                "{} · SEED {}{}",
-                recipe.collision.label(),
-                recipe.seed,
-                if recipe.tool.uses_seed() {
-                    ""
-                } else {
-                    " (unused)"
-                }
-            ),
+            crate::ui_text::fit_middle(&parameter, usize::from(z.width)),
+            Style::default().fg(Color::White),
+        )),
+        Spans::from(Span::styled(
+            crate::ui_text::fit_middle(&detail, usize::from(z.width)),
             Style::default().fg(Color::White),
         )),
     ];
@@ -21076,7 +21306,7 @@ fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
                 Color::White
             }),
         )));
-        let rows = if draft.affected_rows.is_empty() {
+        let affected_rows = if draft.affected_rows.is_empty() {
             "—".into()
         } else {
             draft
@@ -21087,7 +21317,15 @@ fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
                 .join(",")
         };
         lines.push(Spans::from(Span::styled(
-            format!("AFFECTED ROWS · {}", crate::ui_text::fit_middle(&rows, 22)),
+            format!(
+                "ROWS {}{}",
+                crate::ui_text::fit_middle(&affected_rows, 24),
+                if draft.report.out_of_scale > 0 {
+                    format!(" · OOS {}", draft.report.out_of_scale)
+                } else {
+                    String::new()
+                }
+            ),
             Style::default().fg(Color::White),
         )));
         lines.push(Spans::from(Span::styled(
@@ -21098,7 +21336,10 @@ fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
         lines.push(Spans::from(Span::styled(
             format!(
                 "DRAFT REFUSED · {}",
-                session.error.as_deref().unwrap_or("unknown draft error")
+                crate::ui_text::fit_middle(
+                    session.error.as_deref().unwrap_or("unknown draft error"),
+                    24
+                )
             ),
             Style::default().fg(Color::Yellow),
         )));
@@ -39170,6 +39411,13 @@ release = 0.4
         let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
 
         a.open_pattern_generator();
+        for _ in 0..4 {
+            a.cycle_generator_tool();
+        }
+        assert_eq!(
+            a.pattern_generator.as_ref().unwrap().recipe.tool,
+            crate::generative::Tool::Arpeggio
+        );
         let expected = a
             .pattern_generator
             .as_ref()
@@ -39189,6 +39437,142 @@ release = 0.4
         assert_eq!(a.song.patterns[&clone], expected);
         assert_eq!(a.pattern_history.depths(), (0, 0));
         assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), cursor);
+    }
+
+    #[test]
+    fn priority_six_generator_controls_are_visible_bounded_and_non_writing() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(81),
+            ..Cell::default()
+        };
+        a.song.patterns.get_mut(&0).unwrap().rows[0][1] = Cell {
+            note: Note::On(64),
+            velocity: Some(82),
+            ..Cell::default()
+        };
+        a.song.patterns.get_mut(&0).unwrap().rows[0][2] = Cell {
+            note: Note::On(67),
+            velocity: Some(83),
+            ..Cell::default()
+        };
+        a.project_clean_baseline = a.song.clone();
+        let opening = a.song.clone();
+        let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
+
+        a.open_pattern_generator();
+        for _ in 0..4 {
+            a.cycle_generator_tool();
+        }
+        a.adjust_generator_length(1);
+        a.cycle_generator_amount();
+        a.adjust_generator_offset(1);
+        a.cycle_generator_density();
+        a.adjust_generator_seed(-1);
+        let arpeggio = a.pattern_generator.as_ref().unwrap();
+        assert_eq!(arpeggio.recipe.tool, crate::generative::Tool::Arpeggio);
+        assert_eq!(arpeggio.recipe.length, 2);
+        assert_eq!(
+            arpeggio.recipe.arpeggio_order,
+            crate::generative::ArpeggioOrder::Down
+        );
+        assert_eq!(arpeggio.recipe.arpeggio_octaves, 2);
+        assert_eq!(arpeggio.recipe.row_rate, crate::generative::RowRate::Two);
+        assert_eq!(arpeggio.recipe.gate, 50);
+        assert!(arpeggio.draft.is_some());
+
+        a.cycle_generator_tool();
+        a.cycle_generator_amount();
+        a.adjust_generator_offset(1);
+        a.cycle_generator_density();
+        a.adjust_generator_seed(1);
+        let chord = a.pattern_generator.as_ref().unwrap();
+        assert_eq!(chord.recipe.tool, crate::generative::Tool::Chord);
+        assert_eq!(chord.recipe.chord_degree, 2);
+        assert_eq!(chord.recipe.chord_inversion, 1);
+        assert_eq!(
+            chord.recipe.chord_voicing,
+            crate::generative::ChordVoicing::Open
+        );
+        assert_eq!(chord.recipe.row_rate, crate::generative::RowRate::Two);
+        let chord_buffer = render_app(&mut a, 40, 13);
+        assert!(
+            buffer_text(&chord_buffer).contains("DEG 2 MIN"),
+            "{}",
+            buffer_text(&chord_buffer)
+        );
+
+        a.cycle_generator_tool();
+        a.cycle_generator_amount();
+        a.adjust_generator_offset(-1);
+        a.cycle_generator_density();
+        a.adjust_generator_seed(1);
+        let harmonizer = a.pattern_generator.as_ref().unwrap();
+        assert_eq!(harmonizer.recipe.tool, crate::generative::Tool::Harmonizer);
+        assert_eq!(
+            harmonizer.recipe.harmony_interval,
+            crate::generative::HarmonyInterval::Fifth
+        );
+        assert_eq!(
+            harmonizer.recipe.harmony_voice,
+            crate::generative::HarmonyVoice::Below
+        );
+        assert_eq!(
+            harmonizer.recipe.out_of_scale,
+            crate::generative::OutOfScalePolicy::Skip
+        );
+        assert_eq!(harmonizer.recipe.harmony_target_lane, 2);
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("HARMONIZER"), "{text}");
+        assert!(text.contains("OOS SKIP"), "{text}");
+        assert_eq!(buffer.get(0, 12).symbol, "■");
+        assert_eq!(a.song, opening);
+        assert!(!a.project_is_dirty());
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), cursor);
+    }
+
+    #[test]
+    fn chord_generator_apply_is_one_history_transaction_and_preserves_automation() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(90),
+            ..Cell::default()
+        };
+        a.project_clean_baseline = a.song.clone();
+        let source = a.song.patterns[&0].clone();
+        let automation = source.automation.clone();
+
+        a.open_pattern_generator();
+        for _ in 0..5 {
+            a.cycle_generator_tool();
+        }
+        a.toggle_generator_collision();
+        let expected = a
+            .pattern_generator
+            .as_ref()
+            .unwrap()
+            .draft
+            .as_ref()
+            .unwrap()
+            .pattern
+            .clone();
+        a.apply_pattern_generator();
+
+        assert_eq!(a.song.patterns[&0], expected);
+        assert_eq!(a.song.patterns[&0].automation, automation);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+        a.pattern_undo();
+        assert_eq!(a.song.patterns[&0], source);
+        a.pattern_redo();
+        assert_eq!(a.song.patterns[&0], expected);
     }
 
     #[test]

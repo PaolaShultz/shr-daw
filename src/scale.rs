@@ -14,7 +14,7 @@ impl ScaleKind {
         }
     }
 
-    const fn intervals(self) -> &'static [u8] {
+    pub(crate) const fn intervals(self) -> &'static [u8] {
         match self {
             Self::Major => &[0, 2, 4, 5, 7, 9, 11],
             Self::NaturalMinor => &[0, 2, 3, 5, 7, 8, 10],

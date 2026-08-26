@@ -2,7 +2,7 @@
 
 Created: 2026-08-26
 
-Status: owner-directed product priority; Priorities 1–5 are implemented and
+Status: owner-directed product priority; Priorities 1–6 are implemented and
 verified in their linked acceptance matrices
 
 ## Purpose and decision
@@ -14,10 +14,10 @@ ordered software workflow priorities.
 The first priority was **bounded FT2 Pattern Undo/Redo plus one explicit Pattern
 Snapshot/Recall**. Priority 2 added timing and groove work, and Priority 3 added
 step probability/conditions. Priority 4 added independent lane cycles, speed,
-and direction; Priority 5 added deterministic generative tools. Priority 6,
-internal arpeggio/chord/harmonizer generation, is the next unimplemented item.
-The original comparison and ordering remain here as the product decision
-record.
+and direction; Priority 5 added deterministic generative tools. Priority 6
+extended that same draft with internal arpeggio, chord, and harmonizer
+generation. The original comparison and ordering remain here as the product
+decision record.
 
 ## Product and hardware boundary
 
@@ -145,13 +145,17 @@ One, Torso T-1, and Polyend Play retain their role as comparison evidence.
 
 ### 6. Internal arpeggiator, chord generator, and harmonizer
 
-SHR-DAW records chords, applies a major/natural-minor input filter, and can send
-USB MIDI clock to a controller's arpeggiator. It does not itself generate an
-arpeggio, chord progression, chord-following part, or broad scale/harmonizer
-transform. OXI One, Hapax, Torso T-1, and KeyStep Pro provide examples.
+**Implemented in the bounded Priority 6 slice.** The exact cursor-row arpeggio
+source/order/octave/rate/gate/repetition semantics, Project-key triad degree/
+inversion/voicing/lane placement, diatonic harmonizer interval/voice/
+out-of-scale policy, range and collision rules, shared draft ownership,
+automated matrix, and non-Raspberry-Pi evidence limit are in [Priority 6
+arpeggio, chord, and harmonizer generators](HARMONIC_GENERATORS_ACCEPTANCE.md).
 
-The existing offline arpeggio and harmony-helper proposal remains preferable to
-an opaque live generator as a first version.
+The completed first version is offline and writes ordinary cells only. It does
+not introduce a live arpeggiator, chord-following transport owner, hidden
+playback regeneration, or another generator system. OXI One, Hapax, Torso T-1,
+and KeyStep Pro retain their role as comparison evidence.
 
 ### 7. External transport sync through USB MIDI
 

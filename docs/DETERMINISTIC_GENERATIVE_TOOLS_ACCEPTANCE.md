@@ -23,10 +23,11 @@ cells and never becomes another transport, scheduler, or hidden playback mode.
   settings, retained seed when used, exact affected/replacement/collision/
   protected counts, and the affected row numbers. This is the inspectable
   draft; there is no audition or automatic playback command in this pass.
-- The existing four controller pages are **SHAPE**, **DETAIL**, **SEED**, and
+- The existing four controller pages are **SHAPE**, **DETAIL**, **VALUE**, and
   **APPLY**. They expose tool/length/amount, tool-specific offset or phase,
   mutation density, collision policy,
-  seed down/up/Repeat/inspect, and Stop/Apply/Clone/Cancel. Keyboard, mouse,
+  the context-named value down/up (the seed for Mutation/Fill), Repeat/Inspect,
+  and Stop/Apply/Clone/Cancel. Keyboard, mouse,
   four-button page selection, five-button page cycling, and eight-button direct
   selection dispatch the same actions. No fifth page or hidden controller mode
   is added.

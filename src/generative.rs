@@ -3,6 +3,7 @@
 //! Drafting always clones the source Pattern. Playback never calls this module;
 //! Apply stores the resulting ordinary Cells through the existing owners.
 
+use crate::scale::Scale;
 use crate::sequencer::{Cell, Command, Note, Pattern, StepCondition, LANES_PER_PAGE};
 use anyhow::{bail, Context, Result};
 
@@ -13,14 +14,20 @@ pub enum Tool {
     Accumulator,
     Mutation,
     Fill,
+    Arpeggio,
+    Chord,
+    Harmonizer,
 }
 
 impl Tool {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 7] = [
         Self::Euclidean,
         Self::Accumulator,
         Self::Mutation,
         Self::Fill,
+        Self::Arpeggio,
+        Self::Chord,
+        Self::Harmonizer,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -29,11 +36,144 @@ impl Tool {
             Self::Accumulator => "ACCUMULATOR",
             Self::Mutation => "MUTATION",
             Self::Fill => "FILL",
+            Self::Arpeggio => "ARPEGGIO",
+            Self::Chord => "CHORD",
+            Self::Harmonizer => "HARMONIZER",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ArpeggioOrder {
+    #[default]
+    Up,
+    Down,
+    UpDown,
+    AsLane,
+}
+
+impl ArpeggioOrder {
+    pub const ALL: [Self; 4] = [Self::Up, Self::Down, Self::UpDown, Self::AsLane];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Up => "UP",
+            Self::Down => "DOWN",
+            Self::UpDown => "UP/DOWN",
+            Self::AsLane => "AS LANE",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RowRate {
+    #[default]
+    One,
+    Two,
+    Four,
+    Eight,
+}
+
+impl RowRate {
+    pub const ALL: [Self; 4] = [Self::One, Self::Two, Self::Four, Self::Eight];
+
+    pub const fn rows(self) -> usize {
+        match self {
+            Self::One => 1,
+            Self::Two => 2,
+            Self::Four => 4,
+            Self::Eight => 8,
         }
     }
 
-    pub const fn uses_seed(self) -> bool {
-        matches!(self, Self::Mutation | Self::Fill)
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::One => "1 ROW",
+            Self::Two => "2 ROWS",
+            Self::Four => "4 ROWS",
+            Self::Eight => "8 ROWS",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ChordVoicing {
+    #[default]
+    Close,
+    Open,
+}
+
+impl ChordVoicing {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Close => "CLOSE",
+            Self::Open => "OPEN",
+        }
+    }
+}
+
+pub fn chord_quality_label(scale: Scale, degree: u8) -> &'static str {
+    let index = degree.saturating_sub(1).min(6) as usize;
+    match scale.kind {
+        crate::scale::ScaleKind::Major => ["MAJ", "MIN", "MIN", "MAJ", "MAJ", "MIN", "DIM"][index],
+        crate::scale::ScaleKind::NaturalMinor => {
+            ["MIN", "DIM", "MAJ", "MIN", "MIN", "MAJ", "MAJ"][index]
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum HarmonyInterval {
+    #[default]
+    Third,
+    Fifth,
+}
+
+impl HarmonyInterval {
+    pub const fn steps(self) -> usize {
+        match self {
+            Self::Third => 2,
+            Self::Fifth => 4,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Third => "THIRD",
+            Self::Fifth => "FIFTH",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum HarmonyVoice {
+    #[default]
+    Above,
+    Below,
+}
+
+impl HarmonyVoice {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Above => "ABOVE",
+            Self::Below => "BELOW",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum OutOfScalePolicy {
+    #[default]
+    Refuse,
+    Skip,
+}
+
+impl OutOfScalePolicy {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Refuse => "REFUSE",
+            Self::Skip => "SKIP",
+        }
     }
 }
 
@@ -69,6 +209,18 @@ pub struct Recipe {
     pub density: u8,
     pub seed: u64,
     pub collision: CollisionPolicy,
+    pub scale: Scale,
+    pub arpeggio_order: ArpeggioOrder,
+    pub arpeggio_octaves: u8,
+    pub row_rate: RowRate,
+    pub gate: u8,
+    pub chord_degree: u8,
+    pub chord_inversion: u8,
+    pub chord_voicing: ChordVoicing,
+    pub harmony_interval: HarmonyInterval,
+    pub harmony_voice: HarmonyVoice,
+    pub harmony_target_lane: u8,
+    pub out_of_scale: OutOfScalePolicy,
 }
 
 impl Recipe {
@@ -79,6 +231,7 @@ impl Recipe {
         lane: usize,
         start_row: usize,
         retained_seed: u64,
+        scale: Scale,
     ) -> Result<Self> {
         let remaining = pattern
             .rows
@@ -89,7 +242,10 @@ impl Recipe {
         if page >= pattern.pages.len() || lane >= LANES_PER_PAGE {
             bail!("generator lane is outside the Pattern");
         }
-        let length = remaining.min(16) as u16;
+        let length = match tool {
+            Tool::Arpeggio | Tool::Chord => 1,
+            _ => remaining.min(16) as u16,
+        };
         Ok(Self {
             tool,
             page,
@@ -100,6 +256,7 @@ impl Recipe {
                 Tool::Euclidean | Tool::Fill => (length / 4).max(1),
                 Tool::Accumulator => 12,
                 Tool::Mutation => 2,
+                Tool::Arpeggio | Tool::Chord | Tool::Harmonizer => 1,
             },
             offset: match tool {
                 Tool::Accumulator => 2,
@@ -109,6 +266,22 @@ impl Recipe {
             density: 50,
             seed: retained_seed,
             collision: CollisionPolicy::EmptyOnly,
+            scale,
+            arpeggio_order: ArpeggioOrder::Up,
+            arpeggio_octaves: 1,
+            row_rate: RowRate::One,
+            gate: 75,
+            chord_degree: 1,
+            chord_inversion: 0,
+            chord_voicing: ChordVoicing::Close,
+            harmony_interval: HarmonyInterval::Third,
+            harmony_voice: HarmonyVoice::Above,
+            harmony_target_lane: if lane + 1 < LANES_PER_PAGE {
+                (lane + 1) as u8
+            } else {
+                lane.saturating_sub(1) as u8
+            },
+            out_of_scale: OutOfScalePolicy::Refuse,
         })
     }
 
@@ -122,7 +295,10 @@ impl Recipe {
             .checked_sub(self.start_row)
             .filter(|remaining| *remaining > 0)
             .context("generator row span is outside the Pattern")?;
-        self.length = self.length.clamp(1, remaining.min(256) as u16);
+        self.length = match self.tool {
+            Tool::Arpeggio | Tool::Chord => self.length.clamp(1, 8),
+            _ => self.length.clamp(1, remaining.min(256) as u16),
+        };
         match self.tool {
             Tool::Euclidean | Tool::Fill => {
                 self.amount = self.amount.min(self.length);
@@ -139,8 +315,26 @@ impl Recipe {
                 self.offset = 0;
                 self.phase = 0;
             }
+            Tool::Arpeggio | Tool::Chord | Tool::Harmonizer => {
+                self.amount = 1;
+                self.offset = 0;
+                self.phase = 0;
+            }
         }
         self.density = self.density.min(100);
+        self.scale.root %= 12;
+        self.arpeggio_octaves = self.arpeggio_octaves.clamp(1, 3);
+        self.gate = match self.gate {
+            0..=25 => 25,
+            26..=50 => 50,
+            51..=75 => 75,
+            _ => 100,
+        };
+        self.chord_degree = self.chord_degree.clamp(1, 7);
+        self.chord_inversion = self.chord_inversion.min(2);
+        self.harmony_target_lane = self
+            .harmony_target_lane
+            .min((LANES_PER_PAGE.saturating_sub(1)) as u8);
         Ok(())
     }
 
@@ -151,11 +345,14 @@ impl Recipe {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Report {
+    pub source_cells: usize,
     pub candidates: usize,
     pub affected: usize,
     pub replacements: usize,
     pub collisions: usize,
     pub protected: usize,
+    pub out_of_scale: usize,
+    pub range_refusals: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -260,6 +457,88 @@ pub fn build(pattern: &Pattern, mut recipe: Recipe) -> Result<Draft> {
                 );
             }
         }
+        Tool::Arpeggio => {
+            if pattern.pages[recipe.page].percussion {
+                bail!("arpeggio requires a melodic page");
+            }
+            let family = arpeggio_family(pattern, recipe)?;
+            report.source_cells = family.source_cells;
+            let family = family.cells;
+            let total = family
+                .len()
+                .checked_mul(usize::from(recipe.length))
+                .context("arpeggio repetition count is too large")?;
+            let final_offset = total
+                .checked_mul(recipe.row_rate.rows())
+                .context("arpeggio row placement is too large")?;
+            if recipe.start_row.saturating_add(final_offset) >= pattern.rows.len() {
+                bail!(
+                    "arpeggio Pattern-end refusal: {total} step(s) at {} from row {}",
+                    recipe.row_rate.label(),
+                    recipe.start_row
+                );
+            }
+            for index in 0..total {
+                let row = recipe.start_row + (index + 1) * recipe.row_rate.rows();
+                propose(
+                    &mut draft,
+                    recipe,
+                    row,
+                    global_lane,
+                    family[index % family.len()],
+                    &mut report,
+                    &mut affected_rows,
+                );
+            }
+        }
+        Tool::Chord => {
+            if pattern.pages[recipe.page].percussion {
+                bail!("chord generator requires a melodic page");
+            }
+            if recipe.lane + 2 >= LANES_PER_PAGE {
+                bail!("chord needs the selected lane plus two following lanes");
+            }
+            let notes = chord_notes(pattern, recipe, global_lane)?;
+            let repetitions = usize::from(recipe.length);
+            let final_offset = repetitions
+                .saturating_sub(1)
+                .checked_mul(recipe.row_rate.rows())
+                .context("chord row placement is too large")?;
+            if recipe.start_row.saturating_add(final_offset) >= pattern.rows.len() {
+                bail!(
+                    "chord Pattern-end refusal: {repetitions} chord(s) at {} from row {}",
+                    recipe.row_rate.label(),
+                    recipe.start_row
+                );
+            }
+            for repetition in 0..repetitions {
+                let row = recipe.start_row + repetition * recipe.row_rate.rows();
+                for (voice, note) in notes.into_iter().enumerate() {
+                    let candidate = Cell {
+                        note: Note::On(note),
+                        velocity: Some(pattern.pages[recipe.page].velocity),
+                        ..Cell::default()
+                    };
+                    propose(
+                        &mut draft,
+                        recipe,
+                        row,
+                        global_lane + voice,
+                        candidate,
+                        &mut report,
+                        &mut affected_rows,
+                    );
+                }
+            }
+        }
+        Tool::Harmonizer => harmonize(
+            pattern,
+            &mut draft,
+            recipe,
+            global_lane,
+            &mut report,
+            &mut affected_rows,
+        )?,
     }
     Ok(Draft {
         recipe,
@@ -267,6 +546,211 @@ pub fn build(pattern: &Pattern, mut recipe: Recipe) -> Result<Draft> {
         report,
         affected_rows,
     })
+}
+
+struct ArpeggioFamily {
+    source_cells: usize,
+    cells: Vec<Cell>,
+}
+
+fn arpeggio_family(pattern: &Pattern, recipe: Recipe) -> Result<ArpeggioFamily> {
+    let page_start = recipe.page * LANES_PER_PAGE;
+    let source_row = pattern
+        .rows
+        .get(recipe.start_row)
+        .context("arpeggio source row is outside the Pattern")?;
+    let mut sources = Vec::new();
+    for lane in 0..LANES_PER_PAGE {
+        let source = source_row[page_start + lane];
+        let Note::On(note) = source.note else {
+            continue;
+        };
+        if sources
+            .iter()
+            .any(|(existing, _): &(u8, Cell)| *existing == note)
+        {
+            continue;
+        }
+        sources.push((note, source));
+    }
+    if sources.is_empty() {
+        bail!("arpeggio source row needs an existing note or chord");
+    }
+    let source_cells = sources.len();
+    let mut expanded = Vec::new();
+    let mut range_refusals = 0usize;
+    for octave in 0..recipe.arpeggio_octaves {
+        for (note, source) in &sources {
+            let shifted = u16::from(*note) + u16::from(octave) * 12;
+            if shifted > 127 {
+                range_refusals += 1;
+                continue;
+            }
+            let mut candidate = *source;
+            candidate.note = Note::On(shifted as u8);
+            candidate.velocity = Some(
+                source
+                    .velocity
+                    .unwrap_or(pattern.pages[recipe.page].velocity),
+            );
+            candidate.gate = Some(recipe.gate);
+            candidate.command = Command::None;
+            candidate.nudge = 0;
+            candidate.probability = 100;
+            candidate.condition = StepCondition::Always;
+            expanded.push(candidate);
+        }
+    }
+    if range_refusals > 0 {
+        bail!("arpeggio MIDI range refusal: {range_refusals} note(s)");
+    }
+    let cells = match recipe.arpeggio_order {
+        ArpeggioOrder::AsLane => expanded,
+        ArpeggioOrder::Up => {
+            expanded.sort_by_key(|cell| match cell.note {
+                Note::On(note) => note,
+                _ => 0,
+            });
+            expanded
+        }
+        ArpeggioOrder::Down => {
+            expanded.sort_by_key(|cell| {
+                std::cmp::Reverse(match cell.note {
+                    Note::On(note) => note,
+                    _ => 0,
+                })
+            });
+            expanded
+        }
+        ArpeggioOrder::UpDown => {
+            expanded.sort_by_key(|cell| match cell.note {
+                Note::On(note) => note,
+                _ => 0,
+            });
+            let mut reflected = expanded.clone();
+            if expanded.len() > 2 {
+                reflected.extend(expanded[1..expanded.len() - 1].iter().rev().copied());
+            }
+            reflected
+        }
+    };
+    Ok(ArpeggioFamily {
+        source_cells,
+        cells,
+    })
+}
+
+fn chord_notes(pattern: &Pattern, recipe: Recipe, global_lane: usize) -> Result<[u8; 3]> {
+    let register = match pattern.rows[recipe.start_row][global_lane].note {
+        Note::On(note) => u16::from(note / 12) * 12,
+        Note::Empty | Note::Off => 60,
+    };
+    let intervals = recipe.scale.kind.intervals();
+    let degree = usize::from(recipe.chord_degree - 1);
+    let mut absolute = [0u16; 3];
+    for (voice, degree_offset) in [0usize, 2, 4].into_iter().enumerate() {
+        let scale_degree = degree + degree_offset;
+        let octave = scale_degree / intervals.len();
+        absolute[voice] = register
+            + u16::from(recipe.scale.root)
+            + u16::from(intervals[scale_degree % intervals.len()])
+            + u16::try_from(octave).unwrap_or(u16::MAX).saturating_mul(12);
+    }
+    for voice in 0..usize::from(recipe.chord_inversion) {
+        absolute[voice] = absolute[voice].saturating_add(12);
+    }
+    absolute.sort_unstable();
+    if recipe.chord_voicing == ChordVoicing::Open {
+        absolute[1] = absolute[1].saturating_add(12);
+        absolute.sort_unstable();
+    }
+    let range_refusals = absolute.iter().filter(|note| **note > 127).count();
+    if range_refusals > 0 {
+        bail!("chord MIDI range refusal: {range_refusals} voice(s)");
+    }
+    Ok(absolute.map(|note| note as u8))
+}
+
+fn harmonize(
+    source: &Pattern,
+    draft: &mut Pattern,
+    recipe: Recipe,
+    global_lane: usize,
+    report: &mut Report,
+    affected_rows: &mut Vec<usize>,
+) -> Result<()> {
+    if source.pages[recipe.page].percussion {
+        bail!("harmonizer requires a melodic page");
+    }
+    let target_lane = recipe.page * LANES_PER_PAGE + usize::from(recipe.harmony_target_lane);
+    if target_lane == global_lane {
+        bail!("harmonizer target lane must differ from the source lane");
+    }
+    let mut proposals = Vec::new();
+    let mut out_of_scale = 0usize;
+    let mut range_refusals = 0usize;
+    for row in recipe.start_row..recipe.end_row() {
+        let original = source.rows[row][global_lane];
+        match original.note {
+            Note::On(note) if !recipe.scale.contains(note) => out_of_scale += 1,
+            Note::On(note) => match diatonic_shift(
+                note,
+                recipe.scale,
+                recipe.harmony_interval.steps(),
+                recipe.harmony_voice,
+            ) {
+                Some(changed) => {
+                    let mut candidate = original;
+                    candidate.note = Note::On(changed);
+                    proposals.push((row, candidate));
+                    report.source_cells += 1;
+                }
+                None => range_refusals += 1,
+            },
+            Note::Off => {
+                proposals.push((row, original));
+                report.source_cells += 1;
+            }
+            Note::Empty => {}
+        }
+    }
+    if out_of_scale > 0 && recipe.out_of_scale == OutOfScalePolicy::Refuse {
+        bail!("harmonizer out-of-scale refusal: {out_of_scale} note(s)");
+    }
+    if range_refusals > 0 {
+        bail!("harmonizer MIDI range refusal: {range_refusals} note(s)");
+    }
+    report.out_of_scale = out_of_scale;
+    report.range_refusals = range_refusals;
+    for (row, candidate) in proposals {
+        propose(
+            draft,
+            recipe,
+            row,
+            target_lane,
+            candidate,
+            report,
+            affected_rows,
+        );
+    }
+    Ok(())
+}
+
+fn diatonic_shift(note: u8, scale: Scale, steps: usize, voice: HarmonyVoice) -> Option<u8> {
+    let direction = if voice == HarmonyVoice::Above { 1 } else { -1 };
+    let mut shifted = i16::from(note);
+    for _ in 0..steps {
+        loop {
+            shifted += direction;
+            if !(0..=127).contains(&shifted) {
+                return None;
+            }
+            if scale.contains(shifted as u8) {
+                break;
+            }
+        }
+    }
+    Some(shifted as u8)
 }
 
 fn trigger_template(pattern: &Pattern, recipe: Recipe, global_lane: usize) -> Result<Cell> {
@@ -362,7 +846,7 @@ fn mutate(
         draft.rows[row][global_lane] = candidate;
         report.affected += 1;
         report.replacements += 1;
-        affected_rows.push(row);
+        push_affected_row(affected_rows, row);
     }
 }
 
@@ -383,7 +867,7 @@ fn propose(
     if existing == Cell::default() {
         draft.rows[row][lane] = candidate;
         report.affected += 1;
-        affected_rows.push(row);
+        push_affected_row(affected_rows, row);
         return;
     }
     let replaceable = matches!(existing.note, Note::On(_)) && existing.command == Command::None;
@@ -391,10 +875,16 @@ fn propose(
         draft.rows[row][lane] = candidate;
         report.affected += 1;
         report.replacements += 1;
-        affected_rows.push(row);
+        push_affected_row(affected_rows, row);
     } else {
         report.collisions += 1;
         report.protected += usize::from(!replaceable);
+    }
+}
+
+fn push_affected_row(affected_rows: &mut Vec<usize>, row: usize) {
+    if affected_rows.last() != Some(&row) {
+        affected_rows.push(row);
     }
 }
 
@@ -453,7 +943,7 @@ mod tests {
     }
 
     fn recipe(pattern: &Pattern, tool: Tool) -> Recipe {
-        Recipe::bounded_for(pattern, tool, 0, 0, 0, 41).unwrap()
+        Recipe::bounded_for(pattern, tool, 0, 0, 0, 41, Scale::default()).unwrap()
     }
 
     #[test]
@@ -636,5 +1126,285 @@ mod tests {
         assert_eq!(replace.report.protected, 2);
         assert_eq!(replace.report.affected, 2);
         assert_eq!(pattern.swing_division, SwingDivision::Sixteenth);
+    }
+
+    #[test]
+    fn arpeggio_extracts_explicit_chord_orders_octaves_rates_gates_and_repeats() {
+        let mut pattern = fixture(48, false);
+        pattern.rows[0][0] = Cell {
+            note: Note::On(67),
+            velocity: Some(91),
+            program: Some(4),
+            gate: Some(20),
+            command: Command::Retrigger(2),
+            nudge: 12,
+            probability: 50,
+            condition: StepCondition::Previous,
+        };
+        pattern.rows[0][1] = Cell {
+            note: Note::On(60),
+            velocity: Some(72),
+            ..Cell::default()
+        };
+        pattern.rows[0][2] = Cell {
+            note: Note::On(64),
+            velocity: Some(83),
+            ..Cell::default()
+        };
+        pattern.rows[0][3] = Cell {
+            note: Note::On(60),
+            velocity: Some(120),
+            ..Cell::default()
+        };
+        let mut settings = recipe(&pattern, Tool::Arpeggio);
+        settings.length = 2;
+        settings.gate = 50;
+        settings.collision = CollisionPolicy::ReplaceNotes;
+        let up = build(&pattern, settings).unwrap();
+        assert_eq!(up, build(&pattern, settings).unwrap());
+        assert_eq!(up.report.source_cells, 3);
+        assert_eq!(up.report.affected, 6);
+        assert_eq!(up.affected_rows, [1, 2, 3, 4, 5, 6]);
+        assert_eq!(
+            up.pattern.rows[1..=6]
+                .iter()
+                .map(|row| row[0].note)
+                .collect::<Vec<_>>(),
+            [60, 64, 67, 60, 64, 67].map(Note::On)
+        );
+        for row in 1..=6 {
+            let cell = up.pattern.rows[row][0];
+            assert_eq!(cell.gate, Some(50));
+            assert_eq!(cell.command, Command::None);
+            assert_eq!(cell.nudge, 0);
+            assert_eq!(cell.probability, 100);
+            assert_eq!(cell.condition, StepCondition::Always);
+        }
+
+        settings.arpeggio_order = ArpeggioOrder::AsLane;
+        settings.length = 1;
+        let as_lane = build(&pattern, settings).unwrap();
+        assert_eq!(
+            as_lane.pattern.rows[1..=3]
+                .iter()
+                .map(|row| row[0].note)
+                .collect::<Vec<_>>(),
+            [67, 60, 64].map(Note::On)
+        );
+        settings.arpeggio_order = ArpeggioOrder::Down;
+        let down = build(&pattern, settings).unwrap();
+        assert_eq!(
+            down.pattern.rows[1..=3]
+                .iter()
+                .map(|row| row[0].note)
+                .collect::<Vec<_>>(),
+            [67, 64, 60].map(Note::On)
+        );
+        settings.arpeggio_order = ArpeggioOrder::UpDown;
+        settings.arpeggio_octaves = 2;
+        settings.row_rate = RowRate::Two;
+        let reflected = build(&pattern, settings).unwrap();
+        assert_eq!(
+            (1..=10)
+                .map(|index| reflected.pattern.rows[index * 2][0].note)
+                .collect::<Vec<_>>(),
+            [60, 64, 67, 72, 76, 79, 76, 72, 67, 64].map(Note::On)
+        );
+    }
+
+    #[test]
+    fn arpeggio_refuses_missing_source_midi_range_and_partial_pattern_end() {
+        let mut empty = fixture(8, false);
+        empty.rows[0][0] = Cell::default();
+        let settings = recipe(&empty, Tool::Arpeggio);
+        assert!(build(&empty, settings)
+            .unwrap_err()
+            .to_string()
+            .contains("existing note or chord"));
+
+        let mut high = fixture(16, false);
+        high.rows[0][0].note = Note::On(120);
+        let mut settings = recipe(&high, Tool::Arpeggio);
+        settings.arpeggio_octaves = 2;
+        assert_eq!(
+            build(&high, settings).unwrap_err().to_string(),
+            "arpeggio MIDI range refusal: 1 note(s)"
+        );
+
+        let short = fixture(4, false);
+        let mut settings = recipe(&short, Tool::Arpeggio);
+        settings.length = 2;
+        settings.row_rate = RowRate::Two;
+        assert!(build(&short, settings)
+            .unwrap_err()
+            .to_string()
+            .contains("Pattern-end refusal"));
+    }
+
+    #[test]
+    fn chord_degrees_quality_inversions_voicing_lanes_and_placement_are_exact() {
+        let pattern = fixture(32, false);
+        let expected_major = [
+            [60, 64, 67],
+            [62, 65, 69],
+            [64, 67, 71],
+            [65, 69, 72],
+            [67, 71, 74],
+            [69, 72, 76],
+            [71, 74, 77],
+        ];
+        let expected_minor = [
+            [60, 63, 67],
+            [62, 65, 68],
+            [63, 67, 70],
+            [65, 68, 72],
+            [67, 70, 74],
+            [68, 72, 75],
+            [70, 74, 77],
+        ];
+        for (kind, expected) in [
+            (crate::scale::ScaleKind::Major, expected_major),
+            (crate::scale::ScaleKind::NaturalMinor, expected_minor),
+        ] {
+            for degree in 1..=7 {
+                let mut settings = recipe(&pattern, Tool::Chord);
+                settings.scale.kind = kind;
+                settings.chord_degree = degree;
+                settings.collision = CollisionPolicy::ReplaceNotes;
+                let draft = build(&pattern, settings).unwrap();
+                assert_eq!(draft, build(&pattern, settings).unwrap());
+                assert_eq!(
+                    draft.pattern.rows[0][..3]
+                        .iter()
+                        .map(|cell| match cell.note {
+                            Note::On(note) => note,
+                            _ => 255,
+                        })
+                        .collect::<Vec<_>>(),
+                    expected[usize::from(degree - 1)]
+                );
+                assert_eq!(
+                    chord_quality_label(settings.scale, degree),
+                    match expected[usize::from(degree - 1)] {
+                        [root, third, fifth] if third - root == 4 && fifth - root == 7 => "MAJ",
+                        [root, third, fifth] if third - root == 3 && fifth - root == 7 => "MIN",
+                        _ => "DIM",
+                    }
+                );
+            }
+        }
+
+        let mut settings = recipe(&pattern, Tool::Chord);
+        settings.collision = CollisionPolicy::ReplaceNotes;
+        settings.chord_inversion = 1;
+        assert_eq!(chord_notes(&pattern, settings, 0).unwrap(), [64, 67, 72]);
+        settings.chord_inversion = 2;
+        assert_eq!(chord_notes(&pattern, settings, 0).unwrap(), [67, 72, 76]);
+        settings.chord_inversion = 0;
+        settings.chord_voicing = ChordVoicing::Open;
+        assert_eq!(chord_notes(&pattern, settings, 0).unwrap(), [60, 67, 76]);
+        settings.chord_voicing = ChordVoicing::Close;
+        settings.length = 3;
+        settings.row_rate = RowRate::Two;
+        let placed = build(&pattern, settings).unwrap();
+        assert_eq!(placed.affected_rows, [0, 2, 4]);
+        assert_eq!(placed.report.candidates, 9);
+
+        settings.lane = 2;
+        assert!(build(&pattern, settings)
+            .unwrap_err()
+            .to_string()
+            .contains("two following lanes"));
+    }
+
+    #[test]
+    fn chord_refuses_midi_and_pattern_bounds_before_returning_a_partial_draft() {
+        let mut pattern = fixture(4, false);
+        pattern.rows[0][0].note = Note::On(120);
+        let mut settings = recipe(&pattern, Tool::Chord);
+        settings.chord_inversion = 2;
+        assert!(build(&pattern, settings)
+            .unwrap_err()
+            .to_string()
+            .contains("MIDI range refusal"));
+
+        settings.chord_inversion = 0;
+        settings.length = 3;
+        settings.row_rate = RowRate::Two;
+        assert!(build(&pattern, settings)
+            .unwrap_err()
+            .to_string()
+            .contains("Pattern-end refusal"));
+    }
+
+    #[test]
+    fn harmonizer_scale_interval_voice_policy_range_and_fields_are_exact() {
+        let mut pattern = fixture(8, false);
+        pattern.rows[0][0] = Cell {
+            note: Note::On(60),
+            velocity: Some(71),
+            program: Some(3),
+            gate: Some(62),
+            command: Command::Retrigger(3),
+            nudge: -17,
+            probability: 63,
+            condition: StepCondition::Previous,
+        };
+        pattern.rows[1][0] = Cell {
+            note: Note::On(63),
+            velocity: Some(88),
+            ..Cell::default()
+        };
+        pattern.rows[2][0] = Cell {
+            note: Note::Off,
+            ..Cell::default()
+        };
+        pattern.rows[3][0] = Cell {
+            note: Note::On(71),
+            ..Cell::default()
+        };
+        let mut settings = recipe(&pattern, Tool::Harmonizer);
+        settings.length = 4;
+        assert_eq!(
+            build(&pattern, settings).unwrap_err().to_string(),
+            "harmonizer out-of-scale refusal: 1 note(s)"
+        );
+        settings.out_of_scale = OutOfScalePolicy::Skip;
+        let above_third = build(&pattern, settings).unwrap();
+        assert_eq!(above_third, build(&pattern, settings).unwrap());
+        assert_eq!(above_third.report.out_of_scale, 1);
+        assert_eq!(above_third.pattern.rows[0][1].note, Note::On(64));
+        let mut expected = pattern.rows[0][0];
+        expected.note = Note::On(64);
+        assert_eq!(above_third.pattern.rows[0][1], expected);
+        assert_eq!(above_third.pattern.rows[2][1].note, Note::Off);
+        assert_eq!(above_third.pattern.rows[1][1], Cell::default());
+        assert_eq!(pattern.rows[0][0].note, Note::On(60));
+
+        settings.harmony_interval = HarmonyInterval::Fifth;
+        assert_eq!(
+            build(&pattern, settings).unwrap().pattern.rows[0][1].note,
+            Note::On(67)
+        );
+        settings.harmony_voice = HarmonyVoice::Below;
+        settings.harmony_interval = HarmonyInterval::Third;
+        assert_eq!(
+            build(&pattern, settings).unwrap().pattern.rows[0][1].note,
+            Note::On(57)
+        );
+        settings.harmony_target_lane = 0;
+        assert!(build(&pattern, settings)
+            .unwrap_err()
+            .to_string()
+            .contains("must differ"));
+
+        let mut low = fixture(2, false);
+        low.rows[0][0].note = Note::On(0);
+        let mut low_settings = recipe(&low, Tool::Harmonizer);
+        low_settings.harmony_voice = HarmonyVoice::Below;
+        assert_eq!(
+            build(&low, low_settings).unwrap_err().to_string(),
+            "harmonizer MIDI range refusal: 1 note(s)"
+        );
     }
 }
