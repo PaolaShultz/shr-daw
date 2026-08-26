@@ -2,9 +2,8 @@
 
 Created: 2026-08-26
 
-Status: owner-directed product priority and implementation plan; current
-behavior remains unchanged until the corresponding work is implemented and
-verified
+Status: owner-directed product priority; Priorities 1–3 are implemented and
+verified in their linked acceptance matrices
 
 ## Purpose and decision
 
@@ -12,14 +11,11 @@ This document compares SHR-DAW's current FT2 workflow with modern hardware
 step sequencers, records the accepted hardware boundary, and selects the first
 software workflow improvement.
 
-The first priority is **bounded FT2 Pattern Undo/Redo plus one explicit Pattern
-Snapshot/Recall**. It comes before new timing, probability, generative, or
-harmony features because it improves ordinary editing immediately and gives
-all later experiments a nearby recovery path.
-
-This is a workflow decision, not an implementation claim. Current source has
-transactional cancellation in individual editors and dirty-Project protection,
-but no general musical Undo/Redo or Pattern Snapshot command.
+The first priority was **bounded FT2 Pattern Undo/Redo plus one explicit Pattern
+Snapshot/Recall**. Priority 2 added timing and groove work, and Priority 3 added
+step probability/conditions. Independent lane cycles/speed/direction are now
+the next unimplemented item. The original comparison and ordering remain here
+as the product decision record.
 
 ## Product and hardware boundary
 
@@ -96,13 +92,19 @@ microtiming, swing, unquantized capture, or equivalent time-shift controls.
 
 ### 3. Per-step probability and conditions
 
+**Implemented in the bounded Priority 3 slice.** The exact semantics,
+persistence migration, editor/runtime boundary, automated matrix, and
+non-Raspberry-Pi evidence limit are in
+[Step probability and conditions acceptance](STEP_PROBABILITY_CONDITIONS_ACCEPTANCE.md).
+
 Useful first conditions are percentage chance, first pass, last pass, `A:B`
 loop count, previous-result dependency, and Fill-only. They let a short Pattern
 evolve without cloning many nearly identical Patterns.
 
 Elektron documents probability, previous/neighbor, first/last, `A:B`, and Fill
 conditions. OXI One, Hapax, and Polyend Play provide related chance and logic
-systems. SHR-DAW currently stores no probability or condition in a Cell.
+systems. SHR-DAW now stores deterministic probability and one loop-aware
+condition in each Cell; this section retains the evidence behind that choice.
 
 ### 4. Independent lane cycles, speed, and playback direction
 

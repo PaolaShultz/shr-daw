@@ -371,7 +371,7 @@ does not process or meter them.
 The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback
 because no topology is rebuilt. Final recording rejects those edits. When the
-owned graph is disabled, the same edits update only Project format 15 state.
+owned graph is disabled, the same edits update only current Project state.
 The true-peak limiter remains active whenever the final bus is active and has
 no bypass. Exact ranges and latency are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
@@ -660,12 +660,13 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 15
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 16
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, EIGHTH/SIXTEENTH swing, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
 choice, and drum classification,
-every cell field including independent signed 1/96-row timing, exactly four optional Loop Mix slots, explicit software
+every cell field including independent signed 1/96-row timing, deterministic
+probability and a loop-aware condition, exactly four optional Loop Mix slots, explicit software
 engine/instrument identity, and optional external profile metadata. The Project
 continues to own the source insert rack, aux routing, master rack, fixed MASTER
 STRIP, final-bus routing, recording configuration, and unrelated Project
@@ -699,9 +700,10 @@ tempo-command values as deterministic integer hundredths; `10050` means
 for percussion pages; format 11 persists the per-page choice. Format 12 adds
 the Project key, selected drum kit, tuning state, and internal-drum page target.
 Format 13 adds the drum rack; Format 14 adds bounded sparse automation; Format
-15 adds Pattern swing and cell timing. Formats 0–14 load straight/on-grid in
+15 adds Pattern swing and cell timing. Format 16 adds cell probability and
+conditions; formats 0–15 load them as 100%/ALWAYS. Formats 0–14 load straight/on-grid in
 memory. Format 12 and older routing remains unchanged and receives restrained
-family defaults in memory. Explicit save writes format 15. Unknown newer
+family defaults in memory. Explicit save writes format 16. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 
@@ -819,12 +821,14 @@ features.
 
 ## FT2 cell fields
 
-The contextual **CELL EDIT** menu has four pages: **ROUTE** (Destination,
+The contextual **CELL EDIT** menu has four direct-action pages: **ROUTE** (Destination,
 Channel, inherited Instrument), **SOUND** (Bank MSB, Bank LSB, per-cell
 Program, Clear selected field), **CELL** (Note, Gate, Velocity, Effect), and
 **DONE** (Panic, Save draft, Effect Parameter, Exit/cancel). Empty positions
 are silent. Save writes the draft; Exit/cancel discards it without leaving a
-preview note.
+preview note. The rotary field sequence additionally exposes CHANCE,
+CONDITION, COND A, and COND B after Timing without adding a fifth controller
+page. Normal FT2 SOUND item 4 is FILL; CLICK is available on FT2 Tools SYS.
 
 Gate is inherited or 1–100% of a row. Velocity and program are inherited or
 MIDI 0–127. The single command field supports cut `C` and delay `D` ticks

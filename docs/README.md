@@ -121,6 +121,10 @@ configuration, or the architecture contracts.
 - [Workflow audit and repair handoff](WORKFLOW_AUDIT_HANDOFF.md) — complete
   musician/operator workflow coverage, first repair queue, deferred decisions,
   evidence gaps, and persistent fix tracking.
+- Sequencer acceptance: [Pattern History](PATTERN_HISTORY_MUTATION_INVENTORY.md),
+  [rhythm workflow](RHYTHM_WORKFLOW_ACCEPTANCE.md), and
+  [step probability/conditions](STEP_PROBABILITY_CONDITIONS_ACCEPTANCE.md) —
+  bounded contracts, automated matrices, and honest evidence limits.
 - [Workspace handoff](WORKSPACE_HANDOFF.md) — current checkout, local hardware,
   private/public boundary, and validation state for maintainers.
 

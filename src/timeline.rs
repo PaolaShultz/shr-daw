@@ -143,12 +143,34 @@ pub fn compile(
     start_order: usize,
     start_row: usize,
 ) -> Result<TimelinePlan> {
+    compile_with_conditions(
+        song,
+        config,
+        start_order,
+        start_row,
+        crate::sequencer::ConditionContext::playback(1, false),
+    )
+}
+
+pub(crate) fn compile_with_conditions(
+    song: &Song,
+    config: &ExternalMidiConfig,
+    start_order: usize,
+    start_row: usize,
+    conditions: crate::sequencer::ConditionContext,
+) -> Result<TimelinePlan> {
     song.validate()?;
     let ppqn_u32 = AUTOMATION_TICKS_PER_ROW
         .checked_mul(u32::from(song.steps_per_beat))
         .context("timeline PPQN overflow")?;
     let ppqn = u16::try_from(ppqn_u32).context("timeline PPQN exceeds Standard MIDI File")?;
-    let elapsed = crate::sequencer::schedule_elapsed(song, config, start_order, start_row)?;
+    let elapsed = crate::sequencer::schedule_elapsed_with_conditions(
+        song,
+        config,
+        start_order,
+        start_row,
+        conditions,
+    )?;
     if elapsed.len() > MAX_TIMELINE_EVENTS {
         bail!("timeline exceeds {MAX_TIMELINE_EVENTS} events");
     }

@@ -96,12 +96,13 @@ captured, this roadmap deliberately does not invent it. For each supplied item:
 5. verify normal, repeated, interrupted, saved/reloaded, and existing-state
    paths that apply.
 
-The first owner-selected software workflow item is bounded FT2 Pattern
-Undo/Redo plus one explicit Pattern Snapshot/Recall. Its current-behavior
-evidence, hardware boundary, scope, recovery contract, and staged implementation
-plan are in [Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md).
-It precedes the later microtiming, probability, generative, and harmony ideas;
-it does not authorize Raspberry Pi electronics work or direct CV/Gate support.
+The first three owner-selected software workflow items are implemented:
+bounded Pattern History/Snapshot, microtiming and deterministic groove tools,
+and deterministic per-step probability/conditions. Their boundaries and
+acceptance evidence are routed from
+[Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md). Independent
+lane cycles/speed/direction remain next in that ordering; none of this
+authorizes Raspberry Pi electronics work or direct CV/Gate support.
 
 Completion means the owner-approved FT2 inventory, its focused
 tests and hands-on checks, and matching current documentation. Planned rhythm,

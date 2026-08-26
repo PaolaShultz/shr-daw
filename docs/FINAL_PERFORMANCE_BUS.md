@@ -51,7 +51,7 @@ bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
 basic summing headroom. Input monitoring always starts OFF. These live
 performance controls are not
-Project data; current Project format 15 stores effect racks/routing and the
+Project data; current Project format 16 stores effect racks/routing and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
 Pattern, but not these final-bus levels, mutes, Input mode, or Input pans. JACK
 assignments remain machine configuration. A fresh runtime always starts in

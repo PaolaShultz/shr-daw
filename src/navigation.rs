@@ -284,6 +284,7 @@ pub enum Action {
     NoteEditorSave,
     NoteEditorCancel,
     TrackerPlayToggle,
+    TrackerFill,
     TrackerRecordToggle,
     TrackerRecFeel,
     TrackerNoobToggle,
@@ -671,7 +672,7 @@ const TRACKER: [MenuPage; 4] = [
             on("PARAM", Action::OpenTrackerParameters),
             on("MIX", Action::OpenTrackerMixer),
             on("AUTO", Action::OpenAutomation),
-            on("CLICK", Action::MetronomeToggle),
+            on("FILL", Action::TrackerFill),
         ],
     ),
     page(
@@ -737,7 +738,7 @@ const TRACKER_TOOLS: [MenuPage; 4] = [
         [
             on("PANIC", Action::StopAll),
             on("HELP", Action::OpenHelp),
-            off(""),
+            on("CLICK", Action::MetronomeToggle),
             on("EXIT", Action::Back),
         ],
     ),
@@ -1804,8 +1805,12 @@ mod tests {
                 Some(Action::OpenTrackerParameters),
                 Some(Action::OpenTrackerMixer),
                 Some(Action::OpenAutomation),
-                Some(Action::MetronomeToggle),
+                Some(Action::TrackerFill),
             ]
+        );
+        assert_eq!(
+            pages(Screen::TrackerTools, MenuContext::Normal)[3].slots[2].dispatch(),
+            Some(Action::MetronomeToggle)
         );
 
         let parameters = pages(Screen::TrackerParameters, MenuContext::Normal);

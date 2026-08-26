@@ -382,12 +382,16 @@ enum NoteEditorField {
     Velocity,
     Program,
     Timing,
+    Probability,
+    Condition,
+    ConditionA,
+    ConditionB,
     Effect,
     EffectParameter,
 }
 
 impl NoteEditorField {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 16] = [
         Self::Destination,
         Self::Channel,
         Self::DefaultProgram,
@@ -398,6 +402,10 @@ impl NoteEditorField {
         Self::Velocity,
         Self::Program,
         Self::Timing,
+        Self::Probability,
+        Self::Condition,
+        Self::ConditionA,
+        Self::ConditionB,
         Self::Effect,
         Self::EffectParameter,
     ];
@@ -414,6 +422,10 @@ impl NoteEditorField {
             Self::Velocity => "VELOCITY",
             Self::Program => "PROGRAM",
             Self::Timing => "TIMING",
+            Self::Probability => "CHANCE",
+            Self::Condition => "CONDITION",
+            Self::ConditionA => "COND A",
+            Self::ConditionB => "COND B",
             Self::Effect => "EFFECT",
             Self::EffectParameter => "PARAM",
         }
@@ -6472,6 +6484,77 @@ impl App {
                     };
                 }
             }
+            NoteEditorField::Probability => {
+                if let Some(editor) = self.note_editor.as_mut() {
+                    editor.draft.probability = if increase {
+                        editor.draft.probability.saturating_add(1).min(100)
+                    } else {
+                        editor.draft.probability.saturating_sub(1).max(1)
+                    };
+                }
+            }
+            NoteEditorField::Condition => {
+                let choices = [
+                    sequencer::StepCondition::Always,
+                    sequencer::StepCondition::First,
+                    sequencer::StepCondition::Last(4),
+                    sequencer::StepCondition::Ratio { hit: 1, cycle: 2 },
+                    sequencer::StepCondition::Previous,
+                    sequencer::StepCondition::Fill,
+                ];
+                if let Some(editor) = self.note_editor.as_mut() {
+                    let current = match editor.draft.condition {
+                        sequencer::StepCondition::Always => 0,
+                        sequencer::StepCondition::First => 1,
+                        sequencer::StepCondition::Last(_) => 2,
+                        sequencer::StepCondition::Ratio { .. } => 3,
+                        sequencer::StepCondition::Previous => 4,
+                        sequencer::StepCondition::Fill => 5,
+                    };
+                    let next = if increase {
+                        (current + 1) % choices.len()
+                    } else {
+                        (current + choices.len() - 1) % choices.len()
+                    };
+                    editor.draft.condition = choices[next];
+                }
+            }
+            NoteEditorField::ConditionA => {
+                if let Some(editor) = self.note_editor.as_mut() {
+                    if let sequencer::StepCondition::Ratio { hit, cycle } = editor.draft.condition {
+                        editor.draft.condition = sequencer::StepCondition::Ratio {
+                            hit: if increase {
+                                hit.saturating_add(1).min(cycle)
+                            } else {
+                                hit.saturating_sub(1).max(1)
+                            },
+                            cycle,
+                        };
+                    }
+                }
+            }
+            NoteEditorField::ConditionB => {
+                if let Some(editor) = self.note_editor.as_mut() {
+                    editor.draft.condition = match editor.draft.condition {
+                        sequencer::StepCondition::Last(cycle) => {
+                            sequencer::StepCondition::Last(if increase {
+                                cycle.saturating_add(1).min(16)
+                            } else {
+                                cycle.saturating_sub(1).max(2)
+                            })
+                        }
+                        sequencer::StepCondition::Ratio { hit, cycle } => {
+                            let cycle = if increase {
+                                cycle.saturating_add(1).min(16)
+                            } else {
+                                cycle.saturating_sub(1).max(2).max(hit)
+                            };
+                            sequencer::StepCondition::Ratio { hit, cycle }
+                        }
+                        other => other,
+                    };
+                }
+            }
             NoteEditorField::Effect => {
                 let effects = [
                     Command::None,
@@ -6583,6 +6666,12 @@ impl App {
                 NoteEditorField::Velocity => editor.draft.velocity = None,
                 NoteEditorField::Program => editor.draft.program = None,
                 NoteEditorField::Timing => editor.draft.nudge = 0,
+                NoteEditorField::Probability => editor.draft.probability = 100,
+                NoteEditorField::Condition
+                | NoteEditorField::ConditionA
+                | NoteEditorField::ConditionB => {
+                    editor.draft.condition = sequencer::StepCondition::Always
+                }
                 NoteEditorField::Effect | NoteEditorField::EffectParameter => {
                     editor.draft.command = Command::None
                 }
@@ -8641,13 +8730,14 @@ impl App {
         let (order, row) = (self.tracker_order, self.tracker_row);
         // The first pass starts at the cursor; every following pass starts at
         // row zero of this Arrangement Step, so preflight the complete loop.
-        let messages = match sequencer::schedule(&self.song, &self.config.external_midi, order, 0) {
-            Ok(messages) => messages,
-            Err(_error) => {
-                self.status = "FT2 PLAY FAILED · fix route, retry".into();
-                return;
-            }
-        };
+        let messages =
+            match sequencer::schedule_preflight(&self.song, &self.config.external_midi, order, 0) {
+                Ok(messages) => messages,
+                Err(_error) => {
+                    self.status = "FT2 PLAY FAILED · fix route, retry".into();
+                    return;
+                }
+            };
         if messages.iter().any(|message| message.effect.is_some())
             && !self.retry_final_bus_for_mixer()
         {
@@ -8747,6 +8837,16 @@ impl App {
             )
         } else {
             format!("tracker playing · {notes} events · {offline} target(s) offline")
+        };
+    }
+
+    fn toggle_tracker_fill(&mut self) {
+        let enabled = !self.sequencer.status().fill;
+        self.sequencer.fill(enabled);
+        self.status = if enabled {
+            "FILL ARMED · next cycle boundary".into()
+        } else {
+            "FILL OFF · next cycle boundary".into()
         };
     }
 
@@ -16475,6 +16575,7 @@ fn perform(
         }
         Action::IdeaPlayToggle => a.toggle_playback(),
         Action::TrackerPlayToggle => a.toggle_tracker_playback(),
+        Action::TrackerFill => a.toggle_tracker_fill(),
         Action::TrackerRecordToggle => a.toggle_tracker_recording(),
         Action::TrackerRecFeel => a.toggle_tracker_rec_feel(),
         Action::TrackerNoobToggle => a.toggle_tracker_noob(),
@@ -17464,6 +17565,10 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             }
             KeyCode::Char('p') => {
                 a.toggle_tracker_playback();
+                return false;
+            }
+            KeyCode::Char('f') => {
+                a.toggle_tracker_fill();
                 return false;
             }
             KeyCode::Char('P') => {
@@ -22682,6 +22787,24 @@ fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
         note => sequencer::note_name(note),
     };
     let timing = cell_timing_label(editor.draft.nudge, a.current_tempo(), a.song.steps_per_beat);
+    let condition = match editor.draft.condition {
+        sequencer::StepCondition::Always => "ALWAYS".into(),
+        sequencer::StepCondition::First => "FIRST PASS".into(),
+        sequencer::StepCondition::Last(cycle) => format!("LAST / {cycle}"),
+        sequencer::StepCondition::Ratio { hit, cycle } => format!("{hit}:{cycle}"),
+        sequencer::StepCondition::Previous => "PREVIOUS HIT".into(),
+        sequencer::StepCondition::Fill => "FILL ONLY".into(),
+    };
+    let condition_a = match editor.draft.condition {
+        sequencer::StepCondition::Ratio { hit, .. } => hit.to_string(),
+        _ => "—".into(),
+    };
+    let condition_b = match editor.draft.condition {
+        sequencer::StepCondition::Last(cycle) | sequencer::StepCondition::Ratio { cycle, .. } => {
+            cycle.to_string()
+        }
+        _ => "—".into(),
+    };
     let values = [
         (
             NoteEditorField::Destination,
@@ -22746,6 +22869,14 @@ fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
             "this cell only",
         ),
         (NoteEditorField::Timing, timing, "this cell"),
+        (
+            NoteEditorField::Probability,
+            format!("{}%", editor.draft.probability),
+            "deterministic",
+        ),
+        (NoteEditorField::Condition, condition, "this cell"),
+        (NoteEditorField::ConditionA, condition_a, "A pass"),
+        (NoteEditorField::ConditionB, condition_b, "B cycle"),
         (NoteEditorField::Effect, command.0, "this cell"),
         (NoteEditorField::EffectParameter, command.1, "this cell"),
     ];
@@ -34126,6 +34257,7 @@ release = 0.4
             gate: Some(50),
             nudge: 0,
             command: Command::Cut(3),
+            ..Cell::default()
         };
         a.song.patterns.get_mut(&0).unwrap().rows[0][0] = original;
         perform(Action::OpenNoteEditor, &mut a, Path::new("/none"), None);
@@ -34136,6 +34268,7 @@ release = 0.4
             gate: Some(33),
             nudge: 0,
             command: Command::Retrigger(4),
+            ..Cell::default()
         };
         a.note_editor.as_mut().unwrap().draft = edited;
         assert_eq!(a.song.patterns[&0].rows[0][0], original);
@@ -34160,6 +34293,7 @@ release = 0.4
             gate: Some(75),
             nudge: 0,
             command: Command::Delay(4),
+            ..Cell::default()
         };
         a.open_note_editor();
         a.select_note_editor_field(NoteEditorField::Velocity);
@@ -34329,6 +34463,70 @@ release = 0.4
         perform(Action::NoteEditorSave, &mut a, Path::new("/none"), None);
         assert_eq!(a.song.patterns[&0].rows[1][0].nudge, -1);
         assert_eq!(a.pattern_history.depths(), (1, 0));
+    }
+
+    #[test]
+    fn note_editor_probability_and_condition_save_as_one_history_transaction() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+        a.open_note_editor();
+        a.select_note_editor_field(NoteEditorField::Probability);
+        a.adjust_note_editor(-1);
+        a.select_note_editor_field(NoteEditorField::Condition);
+        a.adjust_note_editor(1);
+        perform(Action::NoteEditorSave, &mut a, Path::new("/none"), None);
+
+        let cell = a.song.patterns[&0].rows[0][0];
+        assert_eq!(cell.probability, 99);
+        assert_eq!(cell.condition, sequencer::StepCondition::First);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+        perform(Action::PatternUndo, &mut a, Path::new("/none"), None);
+        assert_eq!(a.song.patterns[&0].rows[0][0].probability, 100);
+        assert_eq!(
+            a.song.patterns[&0].rows[0][0].condition,
+            sequencer::StepCondition::Always
+        );
+    }
+
+    #[test]
+    fn note_editor_rotary_reaches_probability_and_condition_fields() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.open_note_editor();
+        for expected in [
+            NoteEditorField::Channel,
+            NoteEditorField::DefaultProgram,
+            NoteEditorField::BankMsb,
+            NoteEditorField::BankLsb,
+            NoteEditorField::Note,
+            NoteEditorField::Gate,
+            NoteEditorField::Velocity,
+            NoteEditorField::Program,
+            NoteEditorField::Timing,
+            NoteEditorField::Probability,
+            NoteEditorField::Condition,
+            NoteEditorField::ConditionA,
+            NoteEditorField::ConditionB,
+        ] {
+            perform(Action::Down, &mut a, Path::new("/none"), None);
+            assert_eq!(a.note_editor.as_ref().unwrap().field, expected);
+        }
+    }
+
+    #[test]
+    fn tracker_fill_action_updates_only_the_transport_latch() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        assert!(!a.sequencer.status().fill);
+        perform(Action::TrackerFill, &mut a, Path::new("/none"), None);
+        assert!(a.sequencer.status().fill);
+        assert_eq!(a.status, "FILL ARMED · next cycle boundary");
+        perform(Action::TrackerFill, &mut a, Path::new("/none"), None);
+        assert!(!a.sequencer.status().fill);
     }
 
     #[test]
@@ -35218,6 +35416,7 @@ release = 0.4
             gate: Some(40),
             nudge: 0,
             command: Command::Delay(3),
+            ..Cell::default()
         };
         a.copy_lane();
         a.song.patterns.get_mut(&0).unwrap().rows.truncate(1);
@@ -36058,6 +36257,7 @@ release = 0.4
             gate: Some(67),
             nudge: 0,
             command: Command::Delay(9),
+            ..Cell::default()
         };
         copied.current_pattern_mut().unwrap().rows[1][5] = complete;
         copied.tracker_row = 1;

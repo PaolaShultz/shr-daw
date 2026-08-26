@@ -67,7 +67,8 @@ contract appears in [ROUTE master overlay](#route-master-overlay).
 
 ### SOUND — current software instrument and mixer
 
-Normal FT2 page 3 is `SOUND`. `PARAM` opens an FT2-owned
+Normal FT2 page 3 is `SOUND`: `PARAM`, `MIX`, `AUTO`, and the next-boundary
+`FILL` latch. `CLICK` remains available on FT2 Tools SYS item 3. `PARAM` opens an FT2-owned
 parameter child without changing the selected Pattern, Arrangement step, page,
 lane, column, cursor row, mode, transport, route, or managed-engine ownership.
 Back/Esc or SYS `EXIT` returns to that exact location and the launching SOUND
@@ -208,8 +209,9 @@ SYS retains `PANIC`, `HELP`, and `EXIT`; main-encoder click and Back also exit.
 
 Cell Edit uses a draft copy: adjustments are not published until `CONFIRM`.
 The cell can contain a note, inherited or explicit velocity, inherited or
-explicit gate, an optional per-note program, and one command: cut, delay,
-retrigger, tempo, or none.
+explicit gate, an optional per-note program, independent timing, deterministic
+chance, one loop-aware condition, and one command: cut, delay, retrigger,
+tempo, or none.
 
 ### ROUTE — destination defaults for this cell
 
@@ -243,6 +245,13 @@ cycles cut, delay, retrigger, tempo, or none.
 `PANIC` stays reachable. `SAVE` commits the whole draft. `PARAM` selects the
 current command parameter. `EXIT` cancels and restores the original cell, so a
 half-edited draft never leaks into the Project.
+
+After TIME, the rotary field list continues with CHANCE, CONDITION, COND A,
+and COND B. The four visible direct-action pages remain unchanged; use the
+inactive rotary to select these fields, press to edit, then turn. Conditions
+are ALWAYS, FIRST, LAST/N, A:B, PRE, and FILL. Normal FT2 SOUND item 4 and
+keyboard `f` arm FILL for the next playback-cycle boundary; CLICK is on FT2
+Tools SYS.
 
 ## FT2 Tools
 

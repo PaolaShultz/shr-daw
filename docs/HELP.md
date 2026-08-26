@@ -83,6 +83,14 @@ swing and cell timing move musical events only; cursor rows, Loop timing, and
 MIDI clock stay steady. REC CAPTURE offers runtime-only REC FEEL; quantized REC
 remains the default.
 
+CELL EDIT's rotary list continues after TIME with CHANCE, CONDITION, COND A,
+and COND B. Chance is deterministic 1–100%. Conditions are FIRST, LAST/N,
+A:B, PRE, and FILL; ALWAYS is the default. LAST/N is the final pass in an
+N-pass cycle, PRE follows the preceding trigger in the same lane/pass, and
+FILL uses the runtime latch. Normal FT2 SOUND `FILL` or keyboard `f` changes
+that latch at the next cycle boundary. Stop/new Play clears it. CLICK remains
+under FT2 Tools SYS.
+
 ## Presets and playback
 
 Presets chooses the instrument engine and sound. Loading a sound starts or

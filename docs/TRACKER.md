@@ -345,6 +345,13 @@ Pressing **PLAY** on the main FT2 screen starts the first pass at the selected
 row. When playback reaches the end, subsequent passes restart at row 1 of that
 Pattern rather than at the original play cursor.
 
+Normal FT2 **SOUND** replaces its CLICK shortcut with **FILL**; CLICK remains
+available on FT2 Tools **SYS**. Keyboard `f` uses the same runtime latch. Fill
+changes are quantized to the next playback-cycle boundary, are cleared by Stop
+or a new Play start, and never dirty the Project. In normal FT2 that boundary
+is the selected Arrangement playback span; in Live Patterns it is the current
+Pattern boundary.
+
 Tempo commands inside cells still work inside the current pattern. When
 playback enters the next arrangement step, tempo starts again from that
 referenced pattern's master tempo. The arrangement boundary itself does not
@@ -367,8 +374,18 @@ A cell contains:
   instrument/program 1–128;
 - independent timing shown as ON GRID, EARLY … ms, or LATE … ms, stored within
   ±48 units of 1/96 row and applied after Pattern swing;
+- independent deterministic chance from 1–100%, with 100% as the default;
+- one loop-aware condition: ALWAYS, FIRST, LAST/N, A:B, PRE, or FILL;
 - one optional command: cut or delay tick 0–15, retrigger count 1–8, or decimal
   tempo 20.00–300.00 BPM.
+
+CELL EDIT's rotary field sequence exposes CHANCE, CONDITION, COND A, and COND
+B without adding a fifth controller page. LAST/N fires on the last pass of each
+N-pass cycle; A:B fires on pass A of each B-pass cycle; PRE follows the
+preceding note trigger in the same lane and playback pass; FILL fires only while
+the performance latch is armed. Conditions are checked before chance. Chance
+is deterministic for the Project, Arrangement step, row, lane, and pass.
+Chance and non-ALWAYS conditions require a note-on.
 
 The grid shows `<` for early, `>` for late, and a blank marker for on-grid
 timing without widening the four-lane native grid. `C`, `D`, `R`, and `T`
@@ -704,7 +721,7 @@ Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 15
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 16
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
 overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
@@ -721,8 +738,9 @@ of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
 settings are copied, never WAV files. Format 15 adds Pattern swing and the
 independent signed timing value on each cell. Formats 0–14 load straight and
-on-grid in memory. Loading, previewing, or inspecting does not rewrite an old
-file; explicit save writes format 15. Formats 0–9 migrate
+on-grid in memory. Format 16 adds deterministic cell probability and condition;
+formats 0–15 load at 100% and ALWAYS. Loading, previewing, or inspecting does
+not rewrite an old file; explicit save writes format 16. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.

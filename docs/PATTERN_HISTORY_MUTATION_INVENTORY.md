@@ -11,9 +11,9 @@ Pattern scope.
 The owner-authorized software pass completed on 2026-08-26 with exact Rust
 1.97.1 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). The locked
 check, focused Pattern-history model/UI/navigation/transaction tests, and the
-complete normal suite passed after bounded in-scope repairs. The final suite
-reported 1,009 passed, zero failed, and 13 documented ignored development,
-audition, and performance tests.
+complete normal suite passed again after Priority 3 integration and bounded
+in-scope fixture repair. The final suite reported 1,015 passed, zero failed,
+and 13 documented ignored development, audition, and performance tests.
 
 PH-01 through PH-18 were reconciled against the focused results, complete-suite
 regressions, and the function-level mutation audit below. Route and Loop

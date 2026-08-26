@@ -1,12 +1,14 @@
 //! Reusable four-lane drum patterns, stored independently from Projects.
-use crate::sequencer::{Cell, Command, Note, LANES_PER_PAGE};
+use crate::sequencer::{
+    condition_text, parse_condition, Cell, Command, Note, StepCondition, LANES_PER_PAGE,
+};
 use anyhow::{bail, Context, Result};
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const VERSION: u8 = 2;
+const VERSION: u8 = 3;
 const MAX_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -163,13 +165,15 @@ pub fn encode(pattern: &DrumPattern) -> Result<String> {
             .filter(|(_, cell)| **cell != Cell::default())
         {
             text.push_str(&format!(
-                "cell={row}|{lane}|{}|{}|{}|{}|{}|{}\n",
+                "cell={row}|{lane}|{}|{}|{}|{}|{}|{}|{}|{}\n",
                 note_text(cell.note),
                 optional(cell.velocity),
                 optional(cell.program),
                 optional(cell.gate),
                 command_text(cell.command),
-                cell.nudge
+                cell.nudge,
+                cell.probability,
+                condition_text(cell.condition)
             ));
         }
     }
@@ -222,7 +226,10 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
     let mut occupied = BTreeSet::new();
     for value in cells {
         let fields = value.split('|').collect::<Vec<_>>();
-        if (version == 1 && fields.len() != 7) || (version == 2 && fields.len() != 8) {
+        if (version == 1 && fields.len() != 7)
+            || (version == 2 && fields.len() != 8)
+            || (version == 3 && fields.len() != 10)
+        {
             bail!("invalid drum cell");
         }
         let row = fields[0].parse::<usize>()?;
@@ -242,6 +249,16 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
             gate: parse_optional(fields[5])?,
             command: parse_command(fields[6])?,
             nudge: if version >= 2 { fields[7].parse()? } else { 0 },
+            probability: if version >= 3 {
+                fields[8].parse()?
+            } else {
+                100
+            },
+            condition: if version >= 3 {
+                parse_condition(fields[9])?
+            } else {
+                StepCondition::Always
+            },
         };
     }
     validate(&pattern)?;
@@ -525,11 +542,13 @@ mod tests {
             gate: Some(50),
             command: Command::Retrigger(2),
             nudge: 24,
+            probability: 70,
+            condition: StepCondition::Ratio { hit: 2, cycle: 4 },
             ..Cell::default()
         };
         let encoded = encode(&pattern).unwrap();
-        assert!(encoded.starts_with("SHR-DRUM-PATTERN 2\n"));
-        assert!(encoded.contains("|R2|24\n"));
+        assert!(encoded.starts_with("SHR-DRUM-PATTERN 3\n"));
+        assert!(encoded.contains("|R2|24|70|2:4\n"));
         assert_eq!(decode(&encoded).unwrap(), pattern);
     }
 
@@ -541,12 +560,17 @@ mod tests {
         assert_eq!(pattern.rows[1][0].command, Command::Delay(4));
         assert!(encode(&pattern)
             .unwrap()
-            .starts_with("SHR-DRUM-PATTERN 2\n"));
+            .starts_with("SHR-DRUM-PATTERN 3\n"));
+
+        let v2 = "SHR-DRUM-PATTERN 2\nname=Old feel\ngenre=Test\nmeter=4\nrows=16\ncell=1|0|38|100|-|50|D4|12\n";
+        let pattern = decode(v2).unwrap();
+        assert_eq!(pattern.rows[1][0].probability, 100);
+        assert_eq!(pattern.rows[1][0].condition, StepCondition::Always);
     }
 
     #[test]
     fn rejects_invalid_or_future_files() {
-        assert!(decode("SHR-DRUM-PATTERN 3\nname=x\nmeter=4\nrows=16\n").is_err());
+        assert!(decode("SHR-DRUM-PATTERN 4\nname=x\nmeter=4\nrows=16\n").is_err());
         assert!(decode("SHR-DRUM-PATTERN 0\nname=x\nmeter=4\nrows=16\n").is_err());
         assert!(decode("SHR-DRUM-PATTERN 1\nname=x\nmeter=5\nrows=16\n").is_err());
     }

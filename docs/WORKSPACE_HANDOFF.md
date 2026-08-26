@@ -5,6 +5,45 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-26 Priority 3 step probability and conditions
+
+Priority 3 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The owning
+contract and acceptance matrix are in
+`STEP_PROBABILITY_CONDITIONS_ACCEPTANCE.md`. Each note-trigger Cell now stores
+independent deterministic probability plus ALWAYS, FIRST, LAST/N, A:B, PRE, or
+FILL. Condition evaluation precedes chance; PRE uses the preceding trigger in
+the same lane and playback pass. Normal FT2 regenerates at its selected
+Arrangement playback-span boundary; Live Patterns regenerate at their Pattern
+boundary, so pass conditions continue beyond the first repeat.
+
+Project format 16 persists the new fields and migrates formats 0–15 to
+100%/ALWAYS in memory without rewrite. Reusable drum-pattern format 3 does the
+same for formats 1–2. Context-free MIDI export uses deterministic pass 1 with
+FILL off. Route/engine preflight includes every conditional note so a later
+pass cannot introduce an unowned engine requirement.
+
+CELL EDIT exposes CHANCE, CONDITION, COND A, and COND B through the existing
+rotary field sequence; the four direct-action controller pages remain intact.
+Normal FT2 SOUND item 4 and keyboard `f` control the next-cycle-boundary FILL
+latch. CLICK moves to the previously empty FT2 Tools SYS item 3. Fill is
+runtime-only, clears on Stop/new Play, and never enters Pattern history. Saving
+the complete cell draft remains one undoable transaction.
+
+The owner-authorized non-Raspberry-Pi pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check;
+focused probability/condition, Project/drum migration, Pattern History,
+microtiming, swing, groove, REC FEEL, scheduler ownership, navigation, and UI
+transaction tests; and the complete normal suite passed. The suite reported
+1,015 passed, zero failed, and 13 ignored development, private-audition, and
+performance tests. Validation repaired stale format-15 fixtures, preserved the
+four-page controller contract, and corrected later playback passes to retain
+the selected starting Arrangement step.
+
+No JACK, ALSA sequencer, synth, MIDI transmission, playback, recording,
+audible, screenshot, physical-controller, Raspberry Pi timing, or other
+hardware-changing evidence was produced. Independent lane cycle/speed/direction
+remains the next ordered sequencer priority.
+
 ## 2026-08-26 Priority 2 rhythm workflow implementation
 
 Priority 2 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented in the
@@ -35,7 +74,7 @@ The owner-authorized combined software pass used exact Rust 1.97.1
 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check and
 focused Project/drum migration, microtiming, swing, deterministic groove, REC
 FEEL, scheduler ownership, navigation, and UI transaction tests passed. The
-complete normal suite passed with 1,009 successful tests, zero failures, and
+complete normal suite passed again with 1,015 successful tests, zero failures, and
 13 documented ignored development, audition, and performance tests. Validation
 repaired current format-15 page decoding, retained the established tracker beat
 highlighting, and shortened the CAPTURE controller label to `FEEL` so it fits

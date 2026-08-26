@@ -137,6 +137,10 @@ preset, cell/lane/page/Pattern scope, and strength. Apply is one Pattern history
 step; Cancel and no-op Apply are non-writing. Back returns to History page 2.
 CELL EDIT exposes independent TIME on its ROUTE page, and REC exposes the
 runtime-only REC FEEL toggle on CAPTURE.
+The CELL EDIT rotary list now continues through CHANCE, CONDITION, COND A, and
+COND B without adding an unreachable fifth controller page. Normal FT2 SOUND
+item 4 is FILL; CLICK moves to FT2 Tools SYS item 3. Keyboard `f` shares the
+same next-cycle-boundary Fill latch.
 
 ## Naming and safety conventions
 
