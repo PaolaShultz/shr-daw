@@ -6,6 +6,21 @@ This is the pre-implementation inventory for Priority 1 in
 acceptance table; they are not permission to broaden history beyond the named
 Pattern scope.
 
+## Combined-pass verification
+
+The owner-authorized software pass completed on 2026-08-26 with exact Rust
+1.97.1 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). The locked
+check, focused Pattern-history model/UI/navigation/transaction tests, and the
+complete normal suite passed after bounded in-scope repairs. The final suite
+reported 1,009 passed, zero failed, and 13 documented ignored development,
+audition, and performance tests.
+
+PH-01 through PH-18 were reconciled against the focused results, complete-suite
+regressions, and the function-level mutation audit below. Route and Loop
+publication/recovery evidence remains deterministic test-double and source
+evidence; no JACK, synth, MIDI, playback, recording, audible, screenshot, or
+physical-controller check was run.
+
 ## Mutation inventory
 
 | Source mutation family in `ui.rs` | Classification | First-version history boundary |

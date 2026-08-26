@@ -31,11 +31,20 @@ the default. Runtime-only REC FEEL uses the received MIDI callback timestamp to
 choose the nearest row and bounded offset, while a completed take remains one
 Undo step and retains existing note-owner cleanup.
 
-This pass has only formatting and source-level/static inspection. The exact
-pinned compiler, locked check, focused/full tests, screenshots, MIDI clock,
-Raspberry Pi timing, controller, and listening evidence remain pending the
-owner-requested combined check/test pass. Do not claim build, hardware, or
-musical validation yet.
+The owner-authorized combined software pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check and
+focused Project/drum migration, microtiming, swing, deterministic groove, REC
+FEEL, scheduler ownership, navigation, and UI transaction tests passed. The
+complete normal suite passed with 1,009 successful tests, zero failures, and
+13 documented ignored development, audition, and performance tests. Validation
+repaired current format-15 page decoding, retained the established tracker beat
+highlighting, and shortened the CAPTURE controller label to `FEEL` so it fits
+the canonical 40-column soft-button width.
+
+No screenshots, external MIDI clock measurement, Raspberry Pi timing,
+physical-controller use, listening, JACK, synth, MIDI transmission, playback,
+recording, audible, or other hardware-changing evidence was produced. The 75%
+swing ceiling remains an implementation bound rather than musical approval.
 
 ## 2026-08-26 bounded FT2 Pattern history implementation
 
@@ -63,11 +72,15 @@ one scheduler transaction that can atomically publish a full authoritative
 Pattern, activate managed routes and decoded Loop resources, restore context,
 and report success before stack movement.
 
-Only formatting, source inspection, documentation checks, and whitespace
-validation are permitted during this incremental pass. Cargo check/tests,
-Clippy, screenshot generation, JACK, synth, MIDI, playback, recording, and
-hardware work remain pending explicit combined-pass authorization. Do not
-describe the new behavior as build-verified until that pass is run.
+The same owner-authorized Rust 1.97.1 combined software pass completed the
+Pattern-history matrix through focused model/UI/navigation/transaction tests,
+the function-level mutation audit, and the complete suite result recorded
+above. The pass repaired the moved opening-state ownership error in history
+coalescing and stale test fixtures exposed by the new `Cell::nudge` field.
+Clippy was not required by an observed failure or repository policy. Runtime
+route/Loop recovery remains deterministic test-double and source evidence; the
+audio, screenshot, MIDI, controller, listening, and physical limits above also
+apply here.
 
 ## 2026-08-23 read-only FT2 HARMONY browser
 

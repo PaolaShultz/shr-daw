@@ -8930,6 +8930,7 @@ impl App {
         true
     }
 
+    #[cfg(test)]
     fn record_tracker_midi(&mut self, bytes: &[u8]) {
         self.record_tracker_midi_received(Instant::now(), bytes);
     }
@@ -9255,6 +9256,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     fn record_tracker_midi_at(&mut self, transport_row: usize, bytes: &[u8]) {
         self.record_tracker_midi_position(transport_row, 0, bytes);
     }
@@ -22468,7 +22470,11 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         for (screen_row, row_index) in (start..(start + rows).min(pattern.rows.len())).enumerate() {
             let y = grid.y + 1 + screen_row as u16;
             let selected = row_index == a.tracker_row;
-            let beat_stride = usize::from(a.song.steps_per_beat).max(1);
+            let beat_stride = if [6, 12, 24, 48, 96].contains(&pattern.rows.len()) {
+                (pattern.rows.len() / 4).max(1)
+            } else {
+                8.min(pattern.rows.len()).max(1)
+            };
             let beat_start = row_index % beat_stride == 0;
             let mut spans = vec![Span::styled(
                 format!("{:02X} ", row_index),
@@ -27029,7 +27035,7 @@ release = 0.4
         a.loop_imports = vec![source];
         a.loop_library_directory_override = Some(library.clone());
         a.loop_runtime_load_override = Some(Ok(()));
-        a.open_overlay(Action::OpenLoopLibrary);
+        a.open_overlay(Action::LoopImport);
         a.activate_overlay();
         assert!(a.overlay.is_none());
         assert_eq!(
@@ -27039,7 +27045,7 @@ release = 0.4
         );
         assert_eq!(fs::read_dir(&library).unwrap().count(), 1);
 
-        a.open_overlay(Action::OpenLoopLibrary);
+        a.open_overlay(Action::LoopImport);
         a.activate_overlay();
         assert!(a.overlay.is_none());
         assert_eq!(
@@ -34118,6 +34124,7 @@ release = 0.4
             velocity: Some(70),
             program: Some(2),
             gate: Some(50),
+            nudge: 0,
             command: Command::Cut(3),
         };
         a.song.patterns.get_mut(&0).unwrap().rows[0][0] = original;
@@ -34127,6 +34134,7 @@ release = 0.4
             velocity: Some(120),
             program: Some(19),
             gate: Some(33),
+            nudge: 0,
             command: Command::Retrigger(4),
         };
         a.note_editor.as_mut().unwrap().draft = edited;
@@ -34150,6 +34158,7 @@ release = 0.4
             velocity: Some(99),
             program: Some(8),
             gate: Some(75),
+            nudge: 0,
             command: Command::Delay(4),
         };
         a.open_note_editor();
@@ -35207,6 +35216,7 @@ release = 0.4
             velocity: Some(77),
             program: Some(5),
             gate: Some(40),
+            nudge: 0,
             command: Command::Delay(3),
         };
         a.copy_lane();
@@ -36046,6 +36056,7 @@ release = 0.4
             velocity: Some(123),
             program: Some(12),
             gate: Some(67),
+            nudge: 0,
             command: Command::Delay(9),
         };
         copied.current_pattern_mut().unwrap().rows[1][5] = complete;

@@ -2346,7 +2346,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        11..=14,
+                        11..=15,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor, note_off_enabled],
                     ) => (
                         Page {
@@ -5637,6 +5637,7 @@ mod tests {
             velocity: Some(111),
             program: Some(7),
             gate: Some(73),
+            nudge: 0,
             command: Command::Delay(5),
         };
         pattern.rows[1][5] = Cell {
@@ -5678,6 +5679,7 @@ mod tests {
             velocity: Some(127),
             program: Some(126),
             gate: Some(1),
+            nudge: 0,
             command: Command::Retrigger(8),
         };
         pattern.rows[1][6] = complete;
@@ -5706,6 +5708,7 @@ mod tests {
             velocity: Some(99),
             program: Some(42),
             gate: Some(88),
+            nudge: 0,
             command: Command::Delay(15),
         };
 
@@ -6842,7 +6845,11 @@ mod tests {
         let at = |note| {
             messages
                 .iter()
-                .find(|message| message.bytes == [0x90, note, 96])
+                .find(|message| {
+                    message.bytes.len() == 3
+                        && message.bytes[0] & 0xf0 == 0x90
+                        && message.bytes[1..] == [note, 96]
+                })
                 .unwrap()
                 .at
         };
@@ -6876,7 +6883,7 @@ mod tests {
     #[test]
     fn pattern_swing_moves_only_the_selected_alternating_subdivision() {
         let c = config();
-        let note_at = |division, row| {
+        let note_at = |division, row: usize| {
             let mut song = Song::new(&c);
             let pattern = song.patterns.get_mut(&0).unwrap();
             pattern.swing_division = division;

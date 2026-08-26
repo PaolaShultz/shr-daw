@@ -2,12 +2,27 @@
 
 Created: 2026-08-26
 
-Status: pre-edit implementation inventory and combined-pass test table
+Status: software combined pass completed 2026-08-26
 
 This table turns Priority 2 from `SEQUENCER_WORKFLOW_PRIORITIES.md` and Parts
 2–4 of `POST_COMPETITION_RHYTHM_PLAN.md` into the first implementation
-boundary. The combined Cargo, screenshot, MIDI, and listening pass remains
-separately owner-authorized.
+boundary. The Cargo portion is complete; screenshot, MIDI, hardware, and
+listening work remains separately safety-gated.
+
+## Combined-pass verification
+
+The owner-authorized software pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). The locked check,
+focused Project/drum migration, microtiming, swing, deterministic groove, REC
+FEEL, scheduler ownership, navigation, and UI transaction tests passed. The
+complete normal suite then passed with 1,009 successful tests, zero failures,
+and 13 documented ignored development, audition, and performance tests.
+
+RW-01 through RW-25 were reconciled against those focused results, the complete
+suite, and source inspection. RW-15 has deterministic render assertions but no
+new screenshot evidence, and RW-25 has dispatch tests but no physical-controller
+evidence. External MIDI clock measurement, Raspberry Pi timing, audible groove
+judgment, and the musical suitability of the 75% ceiling remain open.
 
 ## Current boundary inventory
 
@@ -78,8 +93,6 @@ separately owner-authorized.
 
 ## Deferred evidence
 
-- The owner-authorized combined pass will run the exact pinned compiler,
-  locked check, focused tests, and the subsequently requested broader checks.
 - External MIDI clock measurement, Raspberry Pi timing, screenshots, physical
   controller use, audible groove judgment, and the 75% musical ceiling remain
   unclaimed until separately exercised under the repository safety gate.

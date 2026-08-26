@@ -81,10 +81,11 @@ impl<C: Clone, G: Clone + Eq> PatternHistory<C, G> {
                 *pattern_id == opening.pattern_id && prior == gesture
             })
         });
+        let pattern_id = opening.pattern_id;
         if !continuing {
             self.push_undo(opening);
         }
-        self.coalescing = gesture.map(|gesture| (opening.pattern_id, gesture));
+        self.coalescing = gesture.map(|gesture| (pattern_id, gesture));
         self.prune();
         true
     }
@@ -261,6 +262,10 @@ mod tests {
     use super::*;
     use crate::sequencer::Song;
 
+    fn song() -> Song {
+        Song::new(&crate::config::RuntimeConfig::default().external_midi)
+    }
+
     fn state(pattern: &Pattern, label: &str) -> PatternHistoryState<usize> {
         PatternHistoryState {
             pattern_id: 0,
@@ -272,10 +277,7 @@ mod tests {
 
     #[test]
     fn no_op_does_not_create_history() {
-        let pattern = Song::new(&crate::config::ExternalMidiConfig::default())
-            .patterns
-            .remove(&0)
-            .unwrap();
+        let pattern = song().patterns.remove(&0).unwrap();
         let mut history = PatternHistory::<usize, usize>::default();
         assert!(!history.record_mutation(state(&pattern, "CELL"), &pattern, None));
         assert_eq!(history.depths(), (0, 0));
@@ -283,10 +285,7 @@ mod tests {
 
     #[test]
     fn new_edit_after_undo_clears_redo() {
-        let mut pattern = Song::new(&crate::config::ExternalMidiConfig::default())
-            .patterns
-            .remove(&0)
-            .unwrap();
+        let mut pattern = song().patterns.remove(&0).unwrap();
         let mut history = PatternHistory::<usize, usize>::default();
         let opening = state(&pattern, "CELL");
         pattern.rows[0][0].note = crate::sequencer::Note::On(60);
@@ -303,10 +302,7 @@ mod tests {
 
     #[test]
     fn one_gesture_coalesces_and_capacity_is_bounded() {
-        let mut pattern = Song::new(&crate::config::ExternalMidiConfig::default())
-            .patterns
-            .remove(&0)
-            .unwrap();
+        let mut pattern = song().patterns.remove(&0).unwrap();
         let mut history = PatternHistory::<usize, usize>::default();
         for value in 1..=40 {
             let opening = state(&pattern, "TEMPO");

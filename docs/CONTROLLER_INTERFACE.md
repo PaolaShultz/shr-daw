@@ -325,7 +325,7 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
 | FT2 loop align | Sys | Panic | Help | — | Exit |
 | FT2 record | Mode | — | Play | Record/stop | Edit |
-| FT2 record | Capture | REC FEEL | — | — | — |
+| FT2 record | Capture | FEEL | — | — | — |
 | FT2 record | Sys | Panic | N00B | Help | Exit |
 | FT2 edit | Edit | Cell edit | Blank/skip | Erase | N-off |
 | FT2 edit | Set | Note-length overlay | ADD 0–32 overlay | Column− | Column+ |

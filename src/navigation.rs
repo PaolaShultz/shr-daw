@@ -982,7 +982,7 @@ const TRACKER_RECORD: [MenuPage; 4] = [
     page(
         "CAPTURE",
         [
-            on("REC FEEL", Action::TrackerRecFeel),
+            on("FEEL", Action::TrackerRecFeel),
             off(""),
             off(""),
             off(""),
