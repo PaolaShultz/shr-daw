@@ -29,12 +29,15 @@ pub enum Screen {
     TrackerParameters,
     TrackerMixer,
     Automation,
+    PatternHistory,
+    PatternFeel,
+    PatternGroove,
 }
 
 impl Screen {
-    pub const COUNT: usize = 24;
+    pub const COUNT: usize = 27;
     #[cfg(test)]
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 27] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -59,6 +62,9 @@ impl Screen {
         Self::TrackerParameters,
         Self::TrackerMixer,
         Self::Automation,
+        Self::PatternHistory,
+        Self::PatternFeel,
+        Self::PatternGroove,
     ];
 
     pub const fn index(self) -> usize {
@@ -87,6 +93,9 @@ impl Screen {
             Self::TrackerParameters => 21,
             Self::TrackerMixer => 22,
             Self::Automation => 23,
+            Self::PatternHistory => 24,
+            Self::PatternFeel => 25,
+            Self::PatternGroove => 26,
         }
     }
 
@@ -117,6 +126,9 @@ impl Screen {
             Self::TrackerParameters => "FT2 PARAM",
             Self::TrackerMixer => "FT2 MIXER",
             Self::Automation => "AUTOMATION",
+            Self::PatternHistory => "HISTORY",
+            Self::PatternFeel => "FEEL",
+            Self::PatternGroove => "GROOVE",
         }
     }
 }
@@ -163,6 +175,22 @@ pub enum Action {
     OpenTrackerLoop,
     OpenTrackerLoopAlign,
     OpenHarmony,
+    OpenPatternHistory,
+    PatternUndo,
+    PatternRedo,
+    PatternSnapshot,
+    PatternRecall,
+    OpenPatternFeel,
+    FeelDivision,
+    FeelAmountDown,
+    FeelAmountUp,
+    FeelApply,
+    OpenPatternGroove,
+    GroovePreset,
+    GrooveScope,
+    GrooveStrengthDown,
+    GrooveStrengthUp,
+    GrooveApply,
     OpenPageOverlay,
     OpenPatternOverlay,
     OpenSongOverlay,
@@ -245,6 +273,7 @@ pub enum Action {
     GateField,
     VelocityField,
     ProgramField,
+    TimingField,
     EffectField,
     EffectParameterField,
     NoteEditorClearField,
@@ -256,6 +285,7 @@ pub enum Action {
     NoteEditorCancel,
     TrackerPlayToggle,
     TrackerRecordToggle,
+    TrackerRecFeel,
     TrackerNoobToggle,
     PlaybackNoobToggle,
     ConfirmRoutingDefaults,
@@ -699,9 +729,86 @@ const TRACKER_TOOLS: [MenuPage; 4] = [
             on("MUTE PG", Action::TrackerPageMute),
             on("MUTE", Action::TrackerMute),
             on("HARMONY", Action::OpenHarmony),
+            on("HISTORY", Action::OpenPatternHistory),
+        ],
+    ),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("HELP", Action::OpenHelp),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const PATTERN_HISTORY: [MenuPage; 4] = [
+    page(
+        "HISTORY",
+        [
+            on("UNDO", Action::PatternUndo),
+            on("REDO", Action::PatternRedo),
+            on("SNAP", Action::PatternSnapshot),
+            on("RECALL", Action::PatternRecall),
+        ],
+    ),
+    page(
+        "RHYTHM",
+        [
+            on("FEEL", Action::OpenPatternFeel),
+            on("GROOVE", Action::OpenPatternGroove),
+            off(""),
             off(""),
         ],
     ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("HELP", Action::OpenHelp),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const PATTERN_FEEL: [MenuPage; 4] = [
+    page(
+        "FEEL",
+        [
+            on("GRID", Action::FeelDivision),
+            on("AMT-", Action::FeelAmountDown),
+            on("AMT+", Action::FeelAmountUp),
+            on("APPLY", Action::FeelApply),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("HELP", Action::OpenHelp),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const PATTERN_GROOVE: [MenuPage; 4] = [
+    page(
+        "SHAPE",
+        [
+            on("PRESET", Action::GroovePreset),
+            on("SCOPE", Action::GrooveScope),
+            on("STR-", Action::GrooveStrengthDown),
+            on("STR+", Action::GrooveStrengthUp),
+        ],
+    ),
+    page(
+        "APPLY",
+        [on("APPLY", Action::GrooveApply), off(""), off(""), off("")],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
         [
@@ -872,7 +979,15 @@ const TRACKER_RECORD: [MenuPage; 4] = [
             on("EDIT", Action::TrackerEdit),
         ],
     ),
-    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "CAPTURE",
+        [
+            on("REC FEEL", Action::TrackerRecFeel),
+            off(""),
+            off(""),
+            off(""),
+        ],
+    ),
     page("", [off(""), off(""), off(""), off("")]),
     page(
         "SYS",
@@ -951,7 +1066,7 @@ const TRACKER_NOTE_EDIT: [MenuPage; 4] = [
             on("DEST", Action::NoteDestinationField),
             on("CHANNEL", Action::NoteChannelField),
             on("INSTR", Action::DefaultProgramField),
-            off(""),
+            on("TIME", Action::TimingField),
         ],
     ),
     page(
@@ -1523,6 +1638,9 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerPages, MenuContext::PageTarget | MenuContext::PageChannel) => &PAGE_FIELD,
         (Screen::TrackerPages, _) => &PAGES,
         (Screen::TrackerTools, _) => &TRACKER_TOOLS,
+        (Screen::PatternHistory, _) => &PATTERN_HISTORY,
+        (Screen::PatternFeel, _) => &PATTERN_FEEL,
+        (Screen::PatternGroove, _) => &PATTERN_GROOVE,
         (Screen::LivePatterns, _) => &LIVE_PATTERNS,
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
@@ -1808,6 +1926,7 @@ mod tests {
             Action::GateField,
             Action::VelocityField,
             Action::ProgramField,
+            Action::TimingField,
             Action::EffectField,
             Action::EffectParameterField,
             Action::NoteEditorSave,
@@ -2122,6 +2241,38 @@ mod tests {
     }
 
     #[test]
+    fn pattern_history_uses_the_remaining_tools_slot_and_canonical_sys_page() {
+        let tools = pages(Screen::TrackerTools, MenuContext::Normal);
+        assert_eq!(
+            tools[2].slots[3].dispatch(),
+            Some(Action::OpenPatternHistory)
+        );
+        let history = pages(Screen::PatternHistory, MenuContext::Normal);
+        assert_eq!(
+            history[0].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::PatternUndo),
+                Some(Action::PatternRedo),
+                Some(Action::PatternSnapshot),
+                Some(Action::PatternRecall),
+            ]
+        );
+        assert_eq!(
+            history[1].slots[0].dispatch(),
+            Some(Action::OpenPatternFeel)
+        );
+        assert_eq!(
+            history[1].slots[1].dispatch(),
+            Some(Action::OpenPatternGroove)
+        );
+        assert_eq!(history[3].label, "SYS");
+        assert_eq!(history[3].slots[0].dispatch(), Some(Action::StopAll));
+        assert_eq!(history[3].slots[1].dispatch(), Some(Action::OpenHelp));
+        assert_eq!(history[3].slots[2].dispatch(), None);
+        assert_eq!(history[3].slots[3].dispatch(), Some(Action::Back));
+    }
+
+    #[test]
     fn inventoried_controller_workflow_actions_are_all_reachable() {
         let contexts = [
             (Screen::Presets, MenuContext::Normal),
@@ -2142,10 +2293,13 @@ mod tests {
             (Screen::TrackerPages, MenuContext::PageTarget),
             (Screen::TrackerPages, MenuContext::PageChannel),
             (Screen::TrackerTools, MenuContext::Normal),
+            (Screen::PatternHistory, MenuContext::Normal),
             (Screen::LivePatterns, MenuContext::Normal),
             (Screen::TrackerArrange, MenuContext::Normal),
             (Screen::TrackerLoop, MenuContext::Normal),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
+            (Screen::PatternFeel, MenuContext::Normal),
+            (Screen::PatternGroove, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
             (Screen::MultichannelMonitor, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
@@ -2181,6 +2335,22 @@ mod tests {
             Action::OpenTrackerLoop,
             Action::OpenTrackerLoopAlign,
             Action::OpenHarmony,
+            Action::OpenPatternHistory,
+            Action::PatternUndo,
+            Action::PatternRedo,
+            Action::PatternSnapshot,
+            Action::PatternRecall,
+            Action::OpenPatternFeel,
+            Action::FeelDivision,
+            Action::FeelAmountDown,
+            Action::FeelAmountUp,
+            Action::FeelApply,
+            Action::OpenPatternGroove,
+            Action::GroovePreset,
+            Action::GrooveScope,
+            Action::GrooveStrengthDown,
+            Action::GrooveStrengthUp,
+            Action::GrooveApply,
             Action::OpenFxRack,
             Action::OpenFxEditor,
             Action::ResetMeter,
@@ -2226,12 +2396,14 @@ mod tests {
             Action::GateField,
             Action::VelocityField,
             Action::ProgramField,
+            Action::TimingField,
             Action::EffectField,
             Action::EffectParameterField,
             Action::NoteEditorClearField,
             Action::NoteEditorSave,
             Action::TrackerPlayToggle,
             Action::TrackerRecordToggle,
+            Action::TrackerRecFeel,
             Action::TrackerNoobToggle,
             Action::PlaybackNoobToggle,
             Action::OpenNoteLengthOverlay,

@@ -27,6 +27,7 @@ use crate::overlay::{
     RouteField, RouteSnapshot,
 };
 use crate::pads::{ControllerLayout, MenuInput, TapTempo};
+use crate::pattern_history::{PatternHistory, PatternHistoryState};
 use crate::performance_meter::{
     self, AudioAvailability, AudioLevel, BarCell, LedState, MeterColor, PerformanceMeter,
     VISIBLE_CPU_CORES,
@@ -41,7 +42,10 @@ use crate::tempo::Bpm;
 use crate::tracker_mixer::{MixerState, MixerStrip, PickupDirection};
 use anyhow::{bail, Context, Result};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEvent, MouseEventKind},
+    event::{
+        self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+        MouseEventKind,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -377,12 +381,13 @@ enum NoteEditorField {
     Gate,
     Velocity,
     Program,
+    Timing,
     Effect,
     EffectParameter,
 }
 
 impl NoteEditorField {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 12] = [
         Self::Destination,
         Self::Channel,
         Self::DefaultProgram,
@@ -392,6 +397,7 @@ impl NoteEditorField {
         Self::Gate,
         Self::Velocity,
         Self::Program,
+        Self::Timing,
         Self::Effect,
         Self::EffectParameter,
     ];
@@ -407,6 +413,7 @@ impl NoteEditorField {
             Self::Gate => "GATE",
             Self::Velocity => "VELOCITY",
             Self::Program => "PROGRAM",
+            Self::Timing => "TIMING",
             Self::Effect => "EFFECT",
             Self::EffectParameter => "PARAM",
         }
@@ -477,6 +484,51 @@ enum TrackerMode {
     Play,
     Rec,
     Edit,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PatternEditContext {
+    order: usize,
+    arrangement_step: usize,
+    row: usize,
+    page: usize,
+    lane: usize,
+    column: usize,
+    mode: TrackerMode,
+    automation_lane: usize,
+    automation_point: usize,
+    screen: Screen,
+    controller_page: usize,
+    page_select_mode: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PatternHistoryGesture {
+    Tempo,
+    Program { page: usize, column: usize },
+    BankMsb { page: usize, column: usize },
+    BankLsb { page: usize, column: usize },
+    AutomationValue { lane: usize, point: usize },
+    AutomationCapture { lane: usize },
+    LoopLevel(usize),
+    LoopFilter(usize),
+    LoopOffset(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PatternFeelDraft {
+    pattern: u16,
+    division: sequencer::SwingDivision,
+    amount: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PatternGrooveDraft {
+    pattern: u16,
+    preset: crate::rhythm::GroovePreset,
+    scope: crate::rhythm::GrooveScope,
+    strength: u8,
+    selection: crate::rhythm::GrooveSelection,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -916,6 +968,14 @@ struct App {
     tracker_mixer: MixerState,
     tracker_noob: bool,
     tracker_recording: Option<TrackerRecording>,
+    tracker_rec_feel: bool,
+    pattern_history: PatternHistory<PatternEditContext, PatternHistoryGesture>,
+    history_return_context: Option<PatternEditContext>,
+    pattern_feel_draft: Option<PatternFeelDraft>,
+    pattern_groove_draft: Option<PatternGrooveDraft>,
+    recording_history_opening: Option<PatternHistoryState<PatternEditContext>>,
+    page_history_opening: Option<PatternHistoryState<PatternEditContext>>,
+    route_history_opening: Option<PatternHistoryState<PatternEditContext>>,
     automation_lane: usize,
     automation_point: usize,
     automation_armed: bool,
@@ -930,6 +990,7 @@ struct App {
     playback_scale: engine::SharedPlaybackScale,
     tracker_gesture: GestureCapture,
     tracker_gesture_anchor: Option<(usize, usize, usize, usize)>,
+    tracker_gesture_history_opening: Option<PatternHistoryState<PatternEditContext>>,
     confirm_song_save: Option<String>,
     confirm_routing_defaults: bool,
     pending_routing_defaults: Option<Vec<sequencer::Page>>,
@@ -1329,6 +1390,9 @@ fn is_tracker_screen(screen: Screen) -> bool {
             | Screen::LivePatterns
             | Screen::TrackerLoop
             | Screen::TrackerLoopAlign
+            | Screen::PatternHistory
+            | Screen::PatternFeel
+            | Screen::PatternGroove
     )
 }
 
@@ -2017,6 +2081,14 @@ impl App {
             tracker_mixer: MixerState::default(),
             tracker_noob: false,
             tracker_recording: None,
+            tracker_rec_feel: false,
+            pattern_history: PatternHistory::default(),
+            history_return_context: None,
+            pattern_feel_draft: None,
+            pattern_groove_draft: None,
+            recording_history_opening: None,
+            page_history_opening: None,
+            route_history_opening: None,
             automation_lane: 0,
             automation_point: 0,
             automation_armed: false,
@@ -2030,6 +2102,7 @@ impl App {
             playback_noob: false,
             tracker_gesture: GestureCapture::default(),
             tracker_gesture_anchor: None,
+            tracker_gesture_history_opening: None,
             confirm_song_save: None,
             confirm_routing_defaults: false,
             pending_routing_defaults: None,
@@ -2504,6 +2577,7 @@ impl App {
             self.loop_player.unload_slot(slot);
         }
         self.song = baseline;
+        self.clear_pattern_history();
         self.live_patterns.reset_for_project(&self.song);
         self.live_shape_focus = None;
         self.live_activation_seen = 0;
@@ -3186,6 +3260,9 @@ impl App {
         };
         let caller_menu_page = self.menu_page();
         let caller_page_select_mode = self.page_select_mode;
+        if kind == OverlayKind::TrackerRoute && self.mixed_engine_remap.is_none() {
+            self.route_history_opening = self.pattern_history_state("ROUTE");
+        }
         self.page_select_mode = false;
         self.overlay = Some(OverlayState::new(
             kind,
@@ -3210,6 +3287,7 @@ impl App {
         let Some(overlay) = self.overlay.take() else {
             return;
         };
+        let route_closed = overlay.kind == OverlayKind::TrackerRoute;
         let route_restore = if cancelled {
             overlay
                 .route()
@@ -3238,6 +3316,9 @@ impl App {
             }
             None => String::new(),
         };
+        if cancelled && route_closed {
+            self.route_history_opening = None;
+        }
     }
 
     fn overlay_back(&mut self) {
@@ -3714,6 +3795,8 @@ impl App {
             let changed = route.dirty();
             self.close_overlay(false);
             self.clamp_tracker_cursor();
+            let opening = self.route_history_opening.take();
+            self.commit_pattern_history(opening, None);
             self.status = if changed {
                 "ROUTING APPLIED".into()
             } else {
@@ -3954,14 +4037,17 @@ impl App {
             },
             OverlayKind::LoopLibrary => {
                 self.stop_loop_preview(false);
+                let history_opening = self.pattern_history_state("LOOP ATTACH");
                 if selection < self.loop_imports.len() {
                     self.loop_selected = selection;
                     if self.import_selected_loop() {
+                        self.commit_pattern_history(history_opening, None);
                         let status = self.status.clone();
                         self.close_overlay(false);
                         self.status = status;
                     }
                 } else if self.select_loop_library_entry(selection - self.loop_imports.len()) {
+                    self.commit_pattern_history(history_opening, None);
                     let status = self.status.clone();
                     self.close_overlay(false);
                     self.status = status;
@@ -3983,6 +4069,9 @@ impl App {
 
     fn set_screen(&mut self, screen: Screen) {
         let previous = self.screen;
+        if previous != screen {
+            self.pattern_history.break_coalescing();
+        }
         if previous == Screen::MultichannelMonitor
             && !matches!(screen, Screen::MultichannelMonitor | Screen::Help)
         {
@@ -4335,6 +4424,7 @@ impl App {
     }
 
     fn move_automation_lane(&mut self, direction: i8) {
+        self.pattern_history.break_coalescing();
         let len = self
             .current_pattern()
             .map_or(0, |pattern| pattern.automation.len());
@@ -4455,6 +4545,7 @@ impl App {
     }
 
     fn toggle_automation_arm(&mut self) {
+        self.pattern_history.break_coalescing();
         if self
             .current_pattern()
             .is_none_or(|pattern| pattern.automation.get(self.automation_lane).is_none())
@@ -4511,6 +4602,7 @@ impl App {
     }
 
     fn move_automation_point(&mut self, direction: i8) {
+        self.pattern_history.break_coalescing();
         let len = self
             .current_pattern()
             .and_then(|pattern| {
@@ -5288,6 +5380,15 @@ impl App {
         self.menu_page_by_screen[self.screen.index()].min(3)
     }
 
+    fn history_action_available(&self, action: Action) -> bool {
+        match action {
+            Action::PatternUndo => self.pattern_history.next_undo().is_some(),
+            Action::PatternRedo => self.pattern_history.next_redo().is_some(),
+            Action::PatternRecall => self.pattern_history.snapshot().is_some(),
+            _ => true,
+        }
+    }
+
     fn select_menu_page(&mut self, page: usize) {
         self.prepare_confirmation_action(Action::Noop);
         let page = page.min(3);
@@ -5550,6 +5651,438 @@ impl App {
     fn current_pattern_mut(&mut self) -> Option<&mut sequencer::Pattern> {
         let pattern = self.tracker_pattern_number();
         self.song.patterns.get_mut(&pattern)
+    }
+    fn pattern_edit_context(&self) -> PatternEditContext {
+        let visible_context = if matches!(
+            self.screen,
+            Screen::PatternHistory | Screen::PatternFeel | Screen::PatternGroove
+        ) {
+            self.history_return_context.as_ref()
+        } else {
+            None
+        };
+        PatternEditContext {
+            order: visible_context.map_or(self.tracker_order, |context| context.order),
+            arrangement_step: visible_context
+                .map_or(self.arrange_selected, |context| context.arrangement_step),
+            row: visible_context.map_or(self.tracker_row, |context| context.row),
+            page: visible_context.map_or(self.tracker_page, |context| context.page),
+            lane: visible_context.map_or(
+                self.tracker_page * LANES_PER_PAGE + self.tracker_track,
+                |context| context.lane,
+            ),
+            column: visible_context.map_or(self.tracker_track, |context| context.column),
+            mode: visible_context.map_or(self.tracker_mode, |context| context.mode),
+            automation_lane: visible_context
+                .map_or(self.automation_lane, |context| context.automation_lane),
+            automation_point: visible_context
+                .map_or(self.automation_point, |context| context.automation_point),
+            screen: visible_context.map_or(self.screen, |context| context.screen),
+            controller_page: visible_context
+                .map_or(self.menu_page(), |context| context.controller_page),
+            page_select_mode: visible_context
+                .map_or(self.page_select_mode, |context| context.page_select_mode),
+        }
+    }
+    fn pattern_history_state(
+        &self,
+        label: impl Into<String>,
+    ) -> Option<PatternHistoryState<PatternEditContext>> {
+        let pattern_id = self.tracker_pattern_number();
+        Some(PatternHistoryState {
+            pattern_id,
+            pattern: self.song.patterns.get(&pattern_id)?.clone(),
+            edit_context: self.pattern_edit_context(),
+            label: label.into(),
+        })
+    }
+    fn commit_pattern_history(
+        &mut self,
+        opening: Option<PatternHistoryState<PatternEditContext>>,
+        gesture: Option<PatternHistoryGesture>,
+    ) -> bool {
+        let Some(opening) = opening else {
+            return false;
+        };
+        let Some(current) = self.song.patterns.get(&opening.pattern_id) else {
+            return false;
+        };
+        self.pattern_history
+            .record_mutation(opening, current, gesture)
+    }
+    fn with_pattern_history<F>(
+        &mut self,
+        label: &'static str,
+        gesture: Option<PatternHistoryGesture>,
+        mutation: F,
+    ) -> bool
+    where
+        F: FnOnce(&mut Self),
+    {
+        let opening = self.pattern_history_state(label);
+        mutation(self);
+        self.commit_pattern_history(opening, gesture)
+    }
+    fn apply_pattern_edit_context(&mut self, context: &PatternEditContext) {
+        let pattern_id = self
+            .song
+            .order
+            .get(context.order)
+            .copied()
+            .filter(|pattern| self.song.patterns.contains_key(pattern))
+            .unwrap_or_else(|| self.tracker_pattern_number());
+        self.tracker_order = self
+            .song
+            .order
+            .iter()
+            .enumerate()
+            .find_map(|(order, candidate)| (*candidate == pattern_id).then_some(order))
+            .unwrap_or(0);
+        self.arrange_selected = context
+            .arrangement_step
+            .min(self.song.order.len().saturating_sub(1));
+        self.tracker_page = context
+            .page
+            .min(self.current_pages().len().saturating_sub(1));
+        let page_start = self.tracker_page * LANES_PER_PAGE;
+        let lane_column = context.lane.saturating_sub(page_start);
+        self.tracker_track = context.column.min(lane_column).min(LANES_PER_PAGE - 1);
+        self.tracker_row = context.row.min(self.tracker_rows().saturating_sub(1));
+        self.tracker_mode = context.mode;
+        self.automation_lane = context.automation_lane.min(
+            self.current_pattern()
+                .map_or(0, |pattern| pattern.automation.len().saturating_sub(1)),
+        );
+        self.automation_point = context.automation_point.min(
+            self.current_pattern()
+                .and_then(|pattern| pattern.automation.get(self.automation_lane))
+                .map_or(0, |lane| lane.points.len().saturating_sub(1)),
+        );
+    }
+    fn restore_pattern_state(
+        &mut self,
+        state: &PatternHistoryState<PatternEditContext>,
+        verb: &str,
+    ) -> bool {
+        if self.sequencer.status().playing {
+            self.status = format!("STOP TRANSPORT · {verb} kept");
+            return false;
+        }
+        let mut candidate = self.song.clone();
+        if candidate
+            .replace_pattern(state.pattern_id, state.pattern.clone())
+            .and_then(|_| candidate.validate())
+            .is_err()
+        {
+            self.status = format!("{verb} FAILED · Pattern/history kept");
+            return false;
+        }
+        for settings in state.pattern.audio_loops.iter().flatten() {
+            let path = self.loop_library_directory().join(&settings.file);
+            let Ok(decoded) = crate::loop_player::DecodedLoop::open(&path) else {
+                self.status = format!("{verb} LOOP MISSING · Pattern/history kept");
+                return false;
+            };
+            if crate::loop_player::validate_prepared_loop(
+                decoded,
+                settings,
+                state.pattern.tempo,
+                state.pattern.meter,
+            )
+            .is_err()
+            {
+                self.status = format!("{verb} LOOP FAILED · Pattern/history kept");
+                return false;
+            }
+        }
+
+        let previous_song = self.song.clone();
+        let previous_context = self.pattern_edit_context();
+        self.song = candidate;
+        if let Some(order) = self
+            .song
+            .order
+            .iter()
+            .position(|pattern| *pattern == state.pattern_id)
+        {
+            self.tracker_order = order;
+        }
+        self.apply_pattern_edit_context(&state.edit_context);
+        let route_ready = self.sync_tracker_route();
+        let (failed_loops, loops_ready) = self.load_current_pattern_loops();
+        if !route_ready || !loops_ready || !failed_loops.is_empty() {
+            self.song = previous_song;
+            self.apply_pattern_edit_context(&previous_context);
+            let _ = self.sync_tracker_route();
+            let _ = self.load_current_pattern_loops();
+            self.status = format!("{verb} ACTIVATE FAILED · Pattern/history kept");
+            return false;
+        }
+        self.prepared_pattern_loops = None;
+        if matches!(
+            self.screen,
+            Screen::PatternHistory | Screen::PatternFeel | Screen::PatternGroove
+        ) {
+            self.history_return_context = Some(state.edit_context.clone());
+        } else if is_tracker_screen(state.edit_context.screen) {
+            self.set_screen(state.edit_context.screen);
+            self.menu_page_by_screen[state.edit_context.screen.index()] =
+                state.edit_context.controller_page.min(3);
+            self.page_select_mode = state.edit_context.page_select_mode;
+        }
+        self.status = format!("{verb} · {}", state.label);
+        true
+    }
+    fn pattern_undo(&mut self) {
+        if self.tracker_recording.is_some() {
+            self.finish_tracker_recording(false);
+        }
+        let Some(target) = self.pattern_history.prepare_undo() else {
+            self.status = "UNDO —".into();
+            return;
+        };
+        let Some(current) = self.pattern_history_state(target.label.clone()) else {
+            return;
+        };
+        if self.restore_pattern_state(&target, "UNDO") {
+            self.pattern_history.commit_undo(current);
+        }
+    }
+    fn pattern_redo(&mut self) {
+        if self.tracker_recording.is_some() {
+            self.status = "STOP RECORDING · REDO kept".into();
+            return;
+        }
+        let Some(target) = self.pattern_history.prepare_redo() else {
+            self.status = "REDO —".into();
+            return;
+        };
+        let Some(current) = self.pattern_history_state(target.label.clone()) else {
+            return;
+        };
+        if self.restore_pattern_state(&target, "REDO") {
+            self.pattern_history.commit_redo(current);
+        }
+    }
+    fn capture_pattern_snapshot(&mut self) {
+        let label = "SNAPSHOT";
+        let Some(state) = self.pattern_history_state(label) else {
+            self.status = "SNAP FAILED · Pattern unavailable".into();
+            return;
+        };
+        let pattern_id = state.pattern_id;
+        self.pattern_history.capture_snapshot(state);
+        self.status = format!("SNAP · Pattern {pattern_id}");
+    }
+    fn recall_pattern_snapshot(&mut self) {
+        if self.tracker_recording.is_some() {
+            self.status = "STOP RECORDING · RECALL kept".into();
+            return;
+        }
+        let Some(snapshot) = self.pattern_history.prepare_recall() else {
+            self.status = "RECALL —".into();
+            return;
+        };
+        let Some(current) = self.pattern_history_state("RECALL") else {
+            return;
+        };
+        if current.pattern_id == snapshot.pattern_id
+            && current.pattern == snapshot.pattern
+            && current.edit_context == snapshot.edit_context
+        {
+            self.status = "RECALL · already current".into();
+            return;
+        }
+        let target = PatternHistoryState {
+            pattern_id: snapshot.pattern_id,
+            pattern: snapshot.pattern,
+            edit_context: snapshot.edit_context,
+            label: snapshot.label,
+        };
+        if self.restore_pattern_state(&target, "RECALL") {
+            self.pattern_history.commit_recall(current);
+        }
+    }
+    fn open_pattern_feel(&mut self) {
+        let pattern = self.tracker_pattern_number();
+        let Some(current) = self.song.patterns.get(&pattern) else {
+            self.status = "FEEL unavailable · Pattern missing".into();
+            return;
+        };
+        self.pattern_feel_draft = Some(PatternFeelDraft {
+            pattern,
+            division: current.swing_division,
+            amount: current.swing_percent,
+        });
+        self.set_screen(Screen::PatternFeel);
+        self.reset_context_page();
+        self.status.clear();
+    }
+    fn adjust_pattern_feel(&mut self, amount: i8) {
+        let Some(draft) = self.pattern_feel_draft.as_mut() else {
+            return;
+        };
+        if amount == 0 {
+            draft.division = match draft.division {
+                sequencer::SwingDivision::Eighth => sequencer::SwingDivision::Sixteenth,
+                sequencer::SwingDivision::Sixteenth => sequencer::SwingDivision::Eighth,
+            };
+        } else if amount < 0 {
+            draft.amount = draft.amount.saturating_sub(1).max(50);
+        } else {
+            draft.amount = draft.amount.saturating_add(1).min(75);
+        }
+        self.status = if draft.amount == 50 {
+            "FEEL · STRAIGHT".into()
+        } else {
+            format!("FEEL · {} {}%", draft.division.label(), draft.amount)
+        };
+    }
+    fn apply_pattern_feel(&mut self) {
+        let Some(draft) = self.pattern_feel_draft else {
+            return;
+        };
+        let previous = self.song.patterns.get(&draft.pattern).cloned();
+        let changed = self.with_pattern_history("FEEL", None, |app| {
+            if let Some(pattern) = app.song.patterns.get_mut(&draft.pattern) {
+                pattern.swing_division = draft.division;
+                pattern.swing_percent = draft.amount;
+            }
+            if app.song.validate().is_err() {
+                if let Some(previous) = previous {
+                    app.song.patterns.insert(draft.pattern, previous);
+                }
+            }
+        });
+        if changed && self.sequencer.status().playing {
+            self.sequencer.refresh_loop(&self.song);
+        }
+        self.pattern_feel_draft = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = if changed {
+            if draft.amount == 50 {
+                "FEEL APPLIED · STRAIGHT".into()
+            } else {
+                format!(
+                    "FEEL APPLIED · {} {}%",
+                    draft.division.label(),
+                    draft.amount
+                )
+            }
+        } else {
+            "FEEL unchanged · history unchanged".into()
+        };
+    }
+    fn open_pattern_groove(&mut self) {
+        let pattern = self.tracker_pattern_number();
+        if !self.song.patterns.contains_key(&pattern) {
+            self.status = "GROOVE unavailable · Pattern missing".into();
+            return;
+        }
+        self.pattern_groove_draft = Some(PatternGrooveDraft {
+            pattern,
+            preset: crate::rhythm::GroovePreset::default(),
+            scope: crate::rhythm::GrooveScope::default(),
+            strength: 100,
+            selection: crate::rhythm::GrooveSelection {
+                row: self.tracker_row,
+                page: self.tracker_page,
+                lane: self.tracker_track,
+            },
+        });
+        self.set_screen(Screen::PatternGroove);
+        self.reset_context_page();
+        self.status.clear();
+    }
+    fn cycle_groove_preset(&mut self) {
+        let Some(draft) = self.pattern_groove_draft.as_mut() else {
+            return;
+        };
+        let index = crate::rhythm::GroovePreset::ALL
+            .iter()
+            .position(|preset| *preset == draft.preset)
+            .unwrap_or(0);
+        draft.preset =
+            crate::rhythm::GroovePreset::ALL[(index + 1) % crate::rhythm::GroovePreset::ALL.len()];
+        self.status = format!("GROOVE · {}", draft.preset.label());
+    }
+    fn cycle_groove_scope(&mut self) {
+        let Some(draft) = self.pattern_groove_draft.as_mut() else {
+            return;
+        };
+        let index = crate::rhythm::GrooveScope::ALL
+            .iter()
+            .position(|scope| *scope == draft.scope)
+            .unwrap_or(0);
+        draft.scope =
+            crate::rhythm::GrooveScope::ALL[(index + 1) % crate::rhythm::GrooveScope::ALL.len()];
+        self.status = format!("GROOVE SCOPE · {}", draft.scope.label());
+    }
+    fn adjust_groove_strength(&mut self, direction: i8) {
+        let Some(draft) = self.pattern_groove_draft.as_mut() else {
+            return;
+        };
+        draft.strength = if direction < 0 {
+            draft.strength.saturating_sub(5)
+        } else {
+            draft.strength.saturating_add(5).min(100)
+        };
+        self.status = format!("GROOVE STRENGTH · {}%", draft.strength);
+    }
+    fn apply_pattern_groove(&mut self) {
+        let Some(draft) = self.pattern_groove_draft else {
+            return;
+        };
+        let mut report = crate::rhythm::GrooveReport::default();
+        let previous = self.song.patterns.get(&draft.pattern).cloned();
+        let changed = self.with_pattern_history("GROOVE", None, |app| {
+            if let Some(pattern) = app.song.patterns.get_mut(&draft.pattern) {
+                report = crate::rhythm::apply(
+                    pattern,
+                    draft.preset,
+                    draft.scope,
+                    draft.selection,
+                    draft.strength,
+                );
+            }
+            if app.song.validate().is_err() {
+                if let Some(previous) = previous {
+                    app.song.patterns.insert(draft.pattern, previous);
+                    report = crate::rhythm::GrooveReport::default();
+                }
+            }
+        });
+        if changed && self.sequencer.status().playing {
+            self.sequencer.refresh_loop(&self.song);
+        }
+        self.pattern_groove_draft = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = if changed {
+            format!(
+                "GROOVE APPLIED · {}/{} hits",
+                report.changed, report.matched
+            )
+        } else {
+            format!("GROOVE unchanged · {} hits", report.matched)
+        };
+    }
+    fn cancel_pattern_rhythm_editor(&mut self) {
+        self.pattern_feel_draft = None;
+        self.pattern_groove_draft = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = "CANCEL · Pattern unchanged".into();
+    }
+    fn clear_pattern_history(&mut self) {
+        self.pattern_history.clear();
+        self.history_return_context = None;
+        self.recording_history_opening = None;
+        self.page_history_opening = None;
+        self.route_history_opening = None;
+        self.pattern_feel_draft = None;
+        self.pattern_groove_draft = None;
     }
     fn current_loop_settings(&self, slot: usize) -> Option<&sequencer::LoopSettings> {
         self.current_pattern()?.audio_loops.get(slot)?.as_ref()
@@ -5917,6 +6450,28 @@ impl App {
                     });
                 }
             }
+            NoteEditorField::Timing => {
+                let Some(row) = self
+                    .note_editor
+                    .as_ref()
+                    .and_then(|editor| self.song.patterns.get(&editor.pattern).map(|_| editor.row))
+                else {
+                    return;
+                };
+                let minimum = if row == 0 {
+                    0
+                } else {
+                    -sequencer::MAX_CELL_NUDGE
+                };
+                let maximum = sequencer::MAX_CELL_NUDGE;
+                if let Some(editor) = self.note_editor.as_mut() {
+                    editor.draft.nudge = if increase {
+                        editor.draft.nudge.saturating_add(1).min(maximum)
+                    } else {
+                        editor.draft.nudge.saturating_sub(1).max(minimum)
+                    };
+                }
+            }
             NoteEditorField::Effect => {
                 let effects = [
                     Command::None,
@@ -6027,6 +6582,7 @@ impl App {
                 NoteEditorField::Gate => editor.draft.gate = None,
                 NoteEditorField::Velocity => editor.draft.velocity = None,
                 NoteEditorField::Program => editor.draft.program = None,
+                NoteEditorField::Timing => editor.draft.nudge = 0,
                 NoteEditorField::Effect | NoteEditorField::EffectParameter => {
                     editor.draft.command = Command::None
                 }
@@ -6300,6 +6856,7 @@ impl App {
     }
 
     fn apply_pattern_resize(&mut self, pattern_number: u16, operation: PatternResizeOperation) {
+        let history_opening = self.pattern_history_state("SIZE");
         if pattern_number != self.tracker_pattern_number() {
             self.pattern_resize_prompt = None;
             self.status = "SIZE FAILED · Pattern changed".into();
@@ -6376,6 +6933,7 @@ impl App {
                 format!("DOUBLE EMPTY · {new_rows} rows")
             }
         };
+        self.commit_pattern_history(history_opening, None);
     }
 
     fn pattern_resize_button_label(&self, action: Action) -> Option<&'static str> {
@@ -6410,8 +6968,10 @@ impl App {
         }
     }
     fn cancel_tracker_gesture(&mut self) {
+        self.pattern_history.break_coalescing();
         self.tracker_gesture.cancel();
         self.tracker_gesture_anchor = None;
+        self.tracker_gesture_history_opening = None;
         if let Some(page) = self.current_page() {
             for channel in page
                 .columns
@@ -6463,6 +7023,8 @@ impl App {
         self.tracker_page = page_index;
         self.tracker_track = first_lane;
         self.write_edit_notes(&gesture.notes);
+        let opening = self.tracker_gesture_history_opening.take();
+        self.commit_pattern_history(opening, None);
     }
     fn set_tracker_edit(&mut self, enabled: bool) {
         if enabled && (self.tracker_recording.is_some() || self.sequencer.status().playing) {
@@ -7242,6 +7804,7 @@ impl App {
         }
     }
     fn open_page_manager(&mut self) {
+        self.page_history_opening = self.pattern_history_state("TRACKS APPLY");
         self.tracker_stop();
         self.set_tracker_mode(TrackerMode::Play);
         self.page_manager_original = Some(self.song.clone());
@@ -7260,6 +7823,7 @@ impl App {
         self.tracker_track = self.tracker_track.min(LANES_PER_PAGE - 1);
         self.page_manager_mode = PageManagerMode::Pages;
         self.page_field_original = None;
+        self.page_history_opening = None;
         self.set_screen(Screen::Tracker);
         self.sync_tracker_route();
         self.status = "Cancelled · Project routing restored".into();
@@ -7273,10 +7837,16 @@ impl App {
             self.status = "TRACKS CONFLICT · fix highlighted page".into();
             return;
         }
+        self.set_screen(Screen::Tracker);
+        if !self.sync_tracker_route() {
+            self.status = "TRACKS APPLY FAILED · draft kept · retry or Cancel".into();
+            self.set_screen(Screen::TrackerPages);
+            return;
+        }
         self.page_manager_original = None;
         self.page_field_original = None;
-        self.set_screen(Screen::Tracker);
-        self.sync_tracker_route();
+        let opening = self.page_history_opening.take();
+        self.commit_pattern_history(opening, None);
         let program_sent = self
             .current_page()
             .cloned()
@@ -7603,7 +8173,9 @@ impl App {
         });
     }
     fn set_tracker_tempo(&mut self, bpm: Bpm) {
+        let history_opening = self.pattern_history_state("TEMPO");
         let tempo = self.apply_tracker_tempo(bpm);
+        self.commit_pattern_history(history_opening, Some(PatternHistoryGesture::Tempo));
         self.status = if self.screen == Screen::Playback {
             format!(
                 "PLAYER / Pattern tempo {tempo} BPM{}",
@@ -8242,6 +8814,7 @@ impl App {
         self.cancel_note_editor();
         self.set_tracker_mode(TrackerMode::Play);
         let pattern = self.tracker_pattern_number();
+        let history_opening = self.pattern_history_state("REC TAKE");
         let order = self.tracker_order;
         let page_index = self.tracker_page;
         let return_to_play = transport.playing;
@@ -8262,6 +8835,7 @@ impl App {
             next_token: 1,
             notes: 0,
         });
+        self.recording_history_opening = history_opening;
         self.tracker_mode = TrackerMode::Rec;
         self.sync_tracker_route();
         self.reset_context_page();
@@ -8284,6 +8858,15 @@ impl App {
                 .get(page_index)
                 .map_or("page", |page| page.name.as_str())
         );
+    }
+
+    fn toggle_tracker_rec_feel(&mut self) {
+        self.tracker_rec_feel = !self.tracker_rec_feel;
+        self.status = if self.tracker_rec_feel {
+            "REC FEEL ON · callback timing kept".into()
+        } else {
+            "REC FEEL OFF · row quantize".into()
+        };
     }
 
     fn stop_tracker_recording(&mut self) -> bool {
@@ -8329,6 +8912,8 @@ impl App {
         self.tracker_mode = TrackerMode::Play;
         self.sync_tracker_route();
         self.reset_context_page();
+        let history_opening = self.recording_history_opening.take();
+        self.commit_pattern_history(history_opening, None);
         self.status = if return_to_play {
             format!(
                 "REC punch-out · {} notes · tracker playing",
@@ -8346,12 +8931,30 @@ impl App {
     }
 
     fn record_tracker_midi(&mut self, bytes: &[u8]) {
+        self.record_tracker_midi_received(Instant::now(), bytes);
+    }
+
+    fn record_tracker_midi_received(&mut self, received: Instant, bytes: &[u8]) {
         let transport = self.sequencer.status();
         if !transport.playing {
             return;
         }
-        let row = transport.row;
-        self.record_tracker_midi_at(row, bytes);
+        let (row, nudge) = if self.tracker_rec_feel {
+            self.sequencer
+                .position_at(received)
+                .and_then(|position| {
+                    self.tracker_recording.as_ref().and_then(|recording| {
+                        self.song
+                            .patterns
+                            .get(&recording.pattern)
+                            .map(|pattern| rec_feel_position(position, pattern.rows.len()))
+                    })
+                })
+                .unwrap_or((transport.row, 0))
+        } else {
+            (transport.row, 0)
+        };
+        self.record_tracker_midi_position(row, nudge, bytes);
     }
 
     fn automation_capture_owns_pattern(&mut self, pattern_number: u16) -> bool {
@@ -8378,6 +8981,12 @@ impl App {
         if !self.automation_capture_owns_pattern(pattern_number) {
             return;
         }
+        let history_opening = self
+            .tracker_recording
+            .is_none()
+            .then(|| self.pattern_history_state("AUTO RECORD"))
+            .flatten();
+        let opening_point = self.automation_point;
         let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
             return;
         };
@@ -8450,6 +9059,7 @@ impl App {
             self.tracker_live_input
                 .send(&target, &[0xb0 | channel, cc, raw]);
         }
+        let mut publication_failed = false;
         match &effect_target {
             sequencer::AutomationTarget::Effect {
                 effect_id,
@@ -8466,6 +9076,7 @@ impl App {
                     (normalized * 65_535.0).round() as u16,
                 ) {
                     self.status = format!("EFFECT AUTOMATION REJECTED · {error}");
+                    publication_failed = true;
                 }
             }
             sequencer::AutomationTarget::EffectBypass {
@@ -8482,13 +9093,29 @@ impl App {
                     (normalized * 65_535.0).round() as u16,
                 ) {
                     self.status = format!("EFFECT AUTOMATION REJECTED · {error}");
+                    publication_failed = true;
                 }
             }
             _ => {}
         }
+        if publication_failed {
+            if let Some(opening) = history_opening {
+                self.song
+                    .patterns
+                    .insert(opening.pattern_id, opening.pattern);
+            }
+            self.automation_point = opening_point;
+            return;
+        }
         if self.sequencer.status().playing {
             self.sequencer.refresh_loop(&self.song);
         }
+        self.commit_pattern_history(
+            history_opening,
+            Some(PatternHistoryGesture::AutomationCapture {
+                lane: self.automation_lane,
+            }),
+        );
     }
 
     fn capture_external_automation(&mut self, received: Instant, bytes: &[u8]) {
@@ -8504,6 +9131,11 @@ impl App {
         if !self.automation_capture_owns_pattern(pattern_number) {
             return;
         }
+        let history_opening = self
+            .tracker_recording
+            .is_none()
+            .then(|| self.pattern_history_state("AUTO RECORD"))
+            .flatten();
         let Some(pattern) = self.song.patterns.get_mut(&pattern_number) else {
             return;
         };
@@ -8531,6 +9163,12 @@ impl App {
         );
         self.automation_point = automation_point_index(&lane.points, position.pattern_tick);
         self.sequencer.refresh_loop(&self.song);
+        self.commit_pattern_history(
+            history_opening,
+            Some(PatternHistoryGesture::AutomationCapture {
+                lane: self.automation_lane,
+            }),
+        );
     }
 
     fn rearm_automation_pickup(&self) {
@@ -8618,6 +9256,10 @@ impl App {
     }
 
     fn record_tracker_midi_at(&mut self, transport_row: usize, bytes: &[u8]) {
+        self.record_tracker_midi_position(transport_row, 0, bytes);
+    }
+
+    fn record_tracker_midi_position(&mut self, transport_row: usize, nudge: i8, bytes: &[u8]) {
         if bytes.len() < 3 || !matches!(bytes[0] & 0xf0, 0x80 | 0x90) {
             return;
         }
@@ -8773,6 +9415,7 @@ impl App {
             note: Note::On(note),
             velocity: Some(bytes[2]),
             gate: Some(100),
+            nudge,
             ..Cell::default()
         };
         let Some(recording) = self.tracker_recording.as_mut() else {
@@ -8794,11 +9437,13 @@ impl App {
                 token,
             });
         recording.notes += 1;
+        let recording_pattern = recording.pattern;
         self.tracker_row = row;
         self.status = format!(
-            "REC pattern {} · row {row:02X} · lane {}",
-            recording.pattern,
-            lane + 1
+            "REC pattern {} · row {row:02X} · lane {} · {}",
+            recording_pattern,
+            lane + 1,
+            cell_timing_label(nudge, self.current_tempo(), self.song.steps_per_beat),
         );
         self.refresh_tracker_record_loop();
     }
@@ -9430,6 +10075,7 @@ impl App {
     }
 
     fn select_loop_slot(&mut self, direction: i8) {
+        self.pattern_history.break_coalescing();
         self.loop_slot_selected = wrapped_index(
             self.loop_slot_selected,
             crate::loop_player::LOOP_SLOTS,
@@ -9503,14 +10149,19 @@ impl App {
             self.status = format!("SLOT {} MISSING · IMPORT", slot + 1);
             return;
         };
+        let previous = settings.level_x1000;
         settings.level_x1000 = if direction < 0 {
             settings.level_x1000.saturating_sub(50)
         } else {
             settings.level_x1000.saturating_add(50).min(1_500)
         };
         let value = settings.level_x1000;
-        if update_runtime {
-            let _ = self.loop_player.set_slot_level(slot, value);
+        if update_runtime && self.loop_player.set_slot_level(slot, value).is_err() {
+            if let Some(settings) = self.current_loop_settings_mut(slot) {
+                settings.level_x1000 = previous;
+            }
+            self.status = "LOOP LEVEL FAILED · previous value kept".into();
+            return;
         }
         self.status = format!("SLOT {} LEVEL {}%", slot + 1, value / 10);
     }
@@ -9522,11 +10173,16 @@ impl App {
             self.status = format!("SLOT {} MISSING · IMPORT", slot + 1);
             return;
         };
+        let previous = settings.filter_x1000;
         settings.filter_x1000 = (i32::from(settings.filter_x1000) + i32::from(direction) * 50)
             .clamp(-1_000, 1_000) as i16;
         let value = settings.filter_x1000;
-        if update_runtime {
-            let _ = self.loop_player.set_slot_filter(slot, value);
+        if update_runtime && self.loop_player.set_slot_filter(slot, value).is_err() {
+            if let Some(settings) = self.current_loop_settings_mut(slot) {
+                settings.filter_x1000 = previous;
+            }
+            self.status = "LOOP FILTER FAILED · previous value kept".into();
+            return;
         }
         self.status = format!("SLOT {} FILTER {:+}%", slot + 1, value / 10);
     }
@@ -9537,9 +10193,14 @@ impl App {
         let Some(settings) = self.current_loop_settings_mut(slot) else {
             return;
         };
+        let previous = settings.filter_x1000;
         settings.filter_x1000 = 0;
-        if update_runtime {
-            let _ = self.loop_player.set_slot_filter(slot, 0);
+        if update_runtime && self.loop_player.set_slot_filter(slot, 0).is_err() {
+            if let Some(settings) = self.current_loop_settings_mut(slot) {
+                settings.filter_x1000 = previous;
+            }
+            self.status = "LOOP FILTER FAILED · previous value kept".into();
+            return;
         }
         self.status = format!("SLOT {} FILTER neutral", slot + 1);
     }
@@ -9956,12 +10617,19 @@ impl App {
     }
 
     fn adjust_loop_offset_bars(&mut self, direction: i8) {
+        let opening = self.current_pattern().cloned();
         let unit = i32::from(self.current_meter().clamp(1, 16));
         if let Some(settings) = self.current_loop_settings_mut(self.loop_slot_selected) {
             let delta = if direction < 0 { -unit } else { unit };
             settings.offset_beats = (settings.offset_beats + delta).clamp(-16_384, 16_384);
             let bars = f64::from(settings.offset_beats) / f64::from(unit);
-            self.load_current_loop();
+            if !self.load_current_loop() {
+                if let Some(opening) = opening {
+                    let pattern = self.tracker_pattern_number();
+                    self.song.patterns.insert(pattern, opening);
+                }
+                return;
+            }
             self.status = format!("loop offset {bars:+.0} bar(s)");
         } else {
             self.status = "import a loop first".into();
@@ -9969,6 +10637,7 @@ impl App {
     }
 
     fn adjust_loop_source_bpm(&mut self, direction: i8) {
+        let opening = self.current_pattern().cloned();
         let tempo = if let Some(settings) = self.current_loop_settings_mut(self.loop_slot_selected)
         {
             settings.source_bpm_x100 = if direction < 0 {
@@ -9987,10 +10656,16 @@ impl App {
         let tempo = self.apply_tracker_tempo(tempo);
         if self.load_current_loop() {
             self.status = format!("loop source BPM · Pattern {tempo} BPM");
+        } else if let Some(opening) = opening {
+            let prior_tempo = opening.tempo;
+            let pattern = self.tracker_pattern_number();
+            self.song.patterns.insert(pattern, opening);
+            self.apply_tracker_tempo(prior_tempo);
         }
     }
 
     fn cycle_loop_bpm_mode(&mut self) {
+        let opening = self.current_pattern().cloned();
         let tempo = if let Some(settings) = self.current_loop_settings_mut(self.loop_slot_selected)
         {
             settings.interpretation = match settings.interpretation {
@@ -10009,10 +10684,16 @@ impl App {
         let tempo = self.apply_tracker_tempo(tempo);
         if self.load_current_loop() {
             self.status = format!("loop BPM interpretation · Pattern {tempo} BPM");
+        } else if let Some(opening) = opening {
+            let prior_tempo = opening.tempo;
+            let pattern = self.tracker_pattern_number();
+            self.song.patterns.insert(pattern, opening);
+            self.apply_tracker_tempo(prior_tempo);
         }
     }
 
     fn adjust_loop_region(&mut self, start: bool, direction: i8) {
+        let opening = self.current_pattern().cloned();
         let unit = if self.loop_edit_bars {
             crate::loop_player::bar_to_beat(1, self.current_meter())
         } else {
@@ -10032,7 +10713,12 @@ impl App {
             if !start {
                 *value = (*value).max(1);
             }
-            self.load_current_loop();
+            if !self.load_current_loop() {
+                if let Some(opening) = opening {
+                    let pattern = self.tracker_pattern_number();
+                    self.song.patterns.insert(pattern, opening);
+                }
+            }
         }
     }
     fn save_song(&mut self) {
@@ -10172,6 +10858,7 @@ impl App {
             return;
         }
         self.song = song;
+        self.clear_pattern_history();
         self.live_patterns.reset_for_project(&self.song);
         self.live_shape_focus = None;
         self.live_activation_seen = 0;
@@ -10470,6 +11157,7 @@ impl App {
         }
         let report = imported.report;
         self.song = imported.song;
+        self.clear_pattern_history();
         if self.song == self.project_clean_baseline {
             self.project_clean_baseline.name.push_str(" · saved");
         }
@@ -10523,6 +11211,7 @@ impl App {
                     return;
                 }
                 self.song = song;
+                self.clear_pattern_history();
                 self.live_patterns.reset_for_project(&self.song);
                 self.live_shape_focus = None;
                 self.live_activation_seen = 0;
@@ -10716,6 +11405,7 @@ impl App {
             self.create_pattern(self.pattern_setup_rows);
             return;
         }
+        let history_opening = self.pattern_history_state("PAT CLEAR");
         let number = self.tracker_pattern_number();
         let rows = self.pattern_setup_rows;
         if let Some(pattern) = self.song.patterns.get(&number) {
@@ -10732,6 +11422,7 @@ impl App {
             "cleared pattern {number} · {}/4 · {rows} rows",
             self.pattern_clear_beats
         );
+        self.commit_pattern_history(history_opening, None);
     }
     fn new_pattern(&mut self) {
         self.choose_new_pattern();
@@ -14449,7 +15140,7 @@ fn app_loop(
         }
         match event::read()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => {
-                quit = key(k.code, &mut app, state, &tx)
+                quit = key_event(k, &mut app, state, &tx)
             }
             Event::Mouse(m) => quit = mouse(m, &mut app, state, &tx),
             _ => {}
@@ -14514,7 +15205,7 @@ fn drain(
                     app.sequencer.thru(&bytes);
                 }
                 if app.tracker_workspace_active() && app.tracker_recording.is_some() {
-                    app.record_tracker_midi(&bytes);
+                    app.record_tracker_midi_received(received, &bytes);
                 }
                 if app.screen == Screen::Tracker
                     && app.tracker_mode == TrackerMode::Edit
@@ -14525,6 +15216,7 @@ fn drain(
                         && bytes[0] & 0xf0 == 0x90
                         && bytes[2] > 0
                     {
+                        app.tracker_gesture_history_opening = app.pattern_history_state("CHORD");
                         app.tracker_gesture_anchor = Some((
                             app.tracker_order,
                             app.tracker_row,
@@ -14615,7 +15307,9 @@ fn dispatch_pad(
         MenuInput::ActivateItem(item) => {
             let slot = navigation::slot(app.screen, app.menu_context(), app.menu_page(), item);
             if let Some(action) = slot.and_then(|slot| slot.dispatch()) {
-                perform(action, app, state, Some(tx));
+                if app.history_action_available(action) {
+                    perform(action, app, state, Some(tx));
+                }
             }
         }
     }
@@ -15022,7 +15716,9 @@ fn perform(
                 }
             }
             Action::Back | Action::NoteEditorCancel => a.back_note_editor(),
-            Action::NoteEditorSave => a.save_note_editor(),
+            Action::NoteEditorSave => {
+                a.with_pattern_history("CELL EDIT", None, |app| app.save_note_editor());
+            }
             Action::NoteDestinationField => {
                 a.select_note_editor_field(NoteEditorField::Destination)
             }
@@ -15036,6 +15732,7 @@ fn perform(
             Action::GateField => a.select_note_editor_field(NoteEditorField::Gate),
             Action::VelocityField => a.select_note_editor_field(NoteEditorField::Velocity),
             Action::ProgramField => a.select_note_editor_field(NoteEditorField::Program),
+            Action::TimingField => a.select_note_editor_field(NoteEditorField::Timing),
             Action::EffectField => a.select_note_editor_field(NoteEditorField::Effect),
             Action::EffectParameterField => {
                 a.select_note_editor_field(NoteEditorField::EffectParameter)
@@ -15065,6 +15762,10 @@ fn perform(
             }
             Action::TrackerRecordToggle => {
                 a.toggle_tracker_recording();
+                return false;
+            }
+            Action::TrackerRecFeel => {
+                a.toggle_tracker_rec_feel();
                 return false;
             }
             Action::TrackerPlayToggle => {
@@ -15127,7 +15828,12 @@ fn perform(
             } else if a.screen == Screen::Help {
                 a.move_help(-1);
             } else if a.screen == Screen::TrackerLoopAlign {
-                a.adjust_loop_offset_bars(-1);
+                let slot = a.loop_slot_selected;
+                a.with_pattern_history(
+                    "LOOP OFFSET",
+                    Some(PatternHistoryGesture::LoopOffset(slot)),
+                    |app| app.adjust_loop_offset_bars(-1),
+                );
             } else if a.screen == Screen::Ideas {
                 a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), -1);
             } else if a.screen == Screen::Routing {
@@ -15191,7 +15897,12 @@ fn perform(
             } else if a.screen == Screen::Help {
                 a.move_help(1);
             } else if a.screen == Screen::TrackerLoopAlign {
-                a.adjust_loop_offset_bars(1);
+                let slot = a.loop_slot_selected;
+                a.with_pattern_history(
+                    "LOOP OFFSET",
+                    Some(PatternHistoryGesture::LoopOffset(slot)),
+                    |app| app.adjust_loop_offset_bars(1),
+                );
             } else if a.screen == Screen::Ideas {
                 a.idea_selected = wrapped_index(a.idea_selected, a.ideas.len(), 1);
             } else if a.screen == Screen::Routing {
@@ -15333,19 +16044,27 @@ fn perform(
                 a.inspect_idea();
             }
             Screen::Help => a.activate_help(),
-            Screen::Tracker => a.tracker_skip(),
+            Screen::Tracker => {
+                a.with_pattern_history("BLANK", None, |app| app.tracker_skip());
+            }
             Screen::TrackerFiles => match a.tracker_files_mode {
                 TrackerFilesMode::Projects => a.load_song(),
                 TrackerFilesMode::Patterns => {}
-                TrackerFilesMode::Drums => a.load_drum_pattern(),
+                TrackerFilesMode::Drums => {
+                    a.with_pattern_history("DRUM LOAD", None, |app| app.load_drum_pattern());
+                }
                 TrackerFilesMode::Midi => a.midi_import_action(),
             },
             Screen::TrackerArrange => a.arrangement_jump_to_pattern(),
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::TrackerTools => {}
+            Screen::PatternHistory => {}
+            Screen::PatternFeel | Screen::PatternGroove => {}
             Screen::TrackerParameters => {}
             Screen::TrackerMixer => a.close_tracker_mixer(),
-            Screen::Automation => a.add_automation_point(),
+            Screen::Automation => {
+                a.with_pattern_history("AUTO POINT", None, |app| app.add_automation_point());
+            }
             Screen::LivePatterns => {
                 if a.live_shape_focus.take().is_some() {
                     a.status = "Live Pattern browse".into();
@@ -15426,6 +16145,9 @@ fn perform(
         Action::OpenTrackerFiles => {
             if a.screen == Screen::TrackerPages {
                 a.confirm_page_manager();
+                if a.screen == Screen::TrackerPages {
+                    return false;
+                }
             }
             a.set_tracker_edit(false);
             a.song_list = sequencer::list(&sequencer::songs_dir());
@@ -15439,6 +16161,26 @@ fn perform(
         }
         Action::OpenTrackerArrange => a.open_arrange(),
         Action::OpenLivePatterns => a.open_live_patterns(),
+        Action::OpenPatternHistory => {
+            a.history_return_context = Some(a.pattern_edit_context());
+            a.set_screen(Screen::PatternHistory);
+            a.status.clear();
+        }
+        Action::PatternUndo => a.pattern_undo(),
+        Action::PatternRedo => a.pattern_redo(),
+        Action::PatternSnapshot => a.capture_pattern_snapshot(),
+        Action::PatternRecall => a.recall_pattern_snapshot(),
+        Action::OpenPatternFeel => a.open_pattern_feel(),
+        Action::FeelDivision => a.adjust_pattern_feel(0),
+        Action::FeelAmountDown => a.adjust_pattern_feel(-1),
+        Action::FeelAmountUp => a.adjust_pattern_feel(1),
+        Action::FeelApply => a.apply_pattern_feel(),
+        Action::OpenPatternGroove => a.open_pattern_groove(),
+        Action::GroovePreset => a.cycle_groove_preset(),
+        Action::GrooveScope => a.cycle_groove_scope(),
+        Action::GrooveStrengthDown => a.adjust_groove_strength(-1),
+        Action::GrooveStrengthUp => a.adjust_groove_strength(1),
+        Action::GrooveApply => a.apply_pattern_groove(),
         Action::OpenTrackerLoop => a.open_tracker_loop(),
         Action::OpenTrackerLoopAlign => {
             a.set_screen(Screen::TrackerLoopAlign);
@@ -15542,6 +16284,29 @@ fn perform(
         Action::MixerBankPrevious => a.move_tracker_mixer_bank(-1),
         Action::MixerBankNext => a.move_tracker_mixer_bank(1),
         Action::Back => {
+            if matches!(a.screen, Screen::PatternFeel | Screen::PatternGroove) {
+                a.cancel_pattern_rhythm_editor();
+                return false;
+            }
+            if a.screen == Screen::PatternHistory {
+                if let Some(context) = a.history_return_context.take() {
+                    a.apply_pattern_edit_context(&context);
+                    let screen = if is_tracker_screen(context.screen)
+                        && context.screen != Screen::PatternHistory
+                    {
+                        context.screen
+                    } else {
+                        Screen::TrackerTools
+                    };
+                    a.set_screen(screen);
+                    a.menu_page_by_screen[screen.index()] = context.controller_page.min(3);
+                    a.page_select_mode = context.page_select_mode;
+                } else {
+                    a.set_screen(Screen::TrackerTools);
+                }
+                a.status.clear();
+                return false;
+            }
             if a.screen == Screen::TrackerMixer {
                 a.close_tracker_mixer();
                 return false;
@@ -15633,6 +16398,9 @@ fn perform(
                 | Screen::TrackerTools
                 | Screen::TrackerParameters
                 | Screen::Automation
+                | Screen::PatternHistory
+                | Screen::PatternFeel
+                | Screen::PatternGroove
                 | Screen::LivePatterns
                 | Screen::TrackerLoop => Screen::Tracker,
                 Screen::TrackerMixer => Screen::Tracker,
@@ -15651,17 +16419,47 @@ fn perform(
         Action::ResetParameters => a.reset_parameters(),
         Action::OpenAutomation => a.open_automation(),
         Action::AutomationArm => a.toggle_automation_arm(),
-        Action::AutomationNewLane => a.new_automation_lane(),
-        Action::AutomationAddPoint => a.add_automation_point(),
-        Action::AutomationDeletePoint => a.delete_automation_point(),
+        Action::AutomationNewLane => {
+            a.with_pattern_history("AUTO LANE", None, |app| app.new_automation_lane());
+        }
+        Action::AutomationAddPoint => {
+            a.with_pattern_history("AUTO POINT", None, |app| app.add_automation_point());
+        }
+        Action::AutomationDeletePoint => {
+            a.with_pattern_history("AUTO DELETE", None, |app| app.delete_automation_point());
+        }
         Action::AutomationPreviousPoint => a.move_automation_point(-1),
         Action::AutomationNextPoint => a.move_automation_point(1),
-        Action::AutomationValueDecrease => a.adjust_automation_value(-1),
-        Action::AutomationValueIncrease => a.adjust_automation_value(1),
-        Action::AutomationTargetPrevious => a.cycle_automation_target(-1),
-        Action::AutomationTargetNext => a.cycle_automation_target(1),
-        Action::AutomationCurve => a.toggle_automation_curve(),
-        Action::AutomationClear => a.clear_automation_lane(),
+        Action::AutomationValueDecrease | Action::AutomationValueIncrease => {
+            let gesture = PatternHistoryGesture::AutomationValue {
+                lane: a.automation_lane,
+                point: a.automation_point,
+            };
+            let direction = if action == Action::AutomationValueDecrease {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history("AUTO VALUE", Some(gesture), |app| {
+                app.adjust_automation_value(direction)
+            });
+        }
+        Action::AutomationTargetPrevious | Action::AutomationTargetNext => {
+            let direction = if action == Action::AutomationTargetPrevious {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history("AUTO TARGET", None, |app| {
+                app.cycle_automation_target(direction)
+            });
+        }
+        Action::AutomationCurve => {
+            a.with_pattern_history("AUTO CURVE", None, |app| app.toggle_automation_curve());
+        }
+        Action::AutomationClear => {
+            a.with_pattern_history("AUTO CLEAR", None, |app| app.clear_automation_lane());
+        }
         Action::MetronomeToggle => a.toggle_metronome(),
         Action::IdeaRecordToggle => a.toggle_idea_recording(),
         Action::IdeaStop => a.stop_idea_transport(),
@@ -15676,15 +16474,28 @@ fn perform(
         Action::IdeaPlayToggle => a.toggle_playback(),
         Action::TrackerPlayToggle => a.toggle_tracker_playback(),
         Action::TrackerRecordToggle => a.toggle_tracker_recording(),
+        Action::TrackerRecFeel => a.toggle_tracker_rec_feel(),
         Action::TrackerNoobToggle => a.toggle_tracker_noob(),
         Action::PlaybackNoobToggle => a.toggle_playback_noob(),
         Action::ConfirmRoutingDefaults => a.finish_routing_defaults_prompt(true),
         Action::CancelRoutingDefaults => a.finish_routing_defaults_prompt(false),
         Action::LoopImport => a.open_overlay(Action::LoopImport),
-        Action::LoopRemove => a.remove_pattern_loop(),
-        Action::LoopSourceDown => a.adjust_loop_source_bpm(-1),
-        Action::LoopSourceUp => a.adjust_loop_source_bpm(1),
-        Action::LoopBpmMode => a.cycle_loop_bpm_mode(),
+        Action::LoopRemove => {
+            a.with_pattern_history("LOOP REMOVE", None, |app| app.remove_pattern_loop());
+        }
+        Action::LoopSourceDown | Action::LoopSourceUp => {
+            let direction = if action == Action::LoopSourceDown {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history("LOOP BPM", None, |app| {
+                app.adjust_loop_source_bpm(direction)
+            });
+        }
+        Action::LoopBpmMode => {
+            a.with_pattern_history("LOOP BPM MODE", None, |app| app.cycle_loop_bpm_mode());
+        }
         Action::LoopEditUnit => {
             a.loop_edit_bars = !a.loop_edit_bars;
             a.status = format!(
@@ -15692,13 +16503,42 @@ fn perform(
                 if a.loop_edit_bars { "BAR" } else { "BEAT" }
             );
         }
-        Action::LoopStartDown => a.adjust_loop_region(true, -1),
-        Action::LoopStartUp => a.adjust_loop_region(true, 1),
-        Action::LoopLengthDown => a.adjust_loop_region(false, -1),
-        Action::LoopLengthUp => a.adjust_loop_region(false, 1),
-        Action::LoopAutoAlign => a.auto_align_loop(),
-        Action::LoopOffsetDown => a.adjust_loop_offset_bars(-1),
-        Action::LoopOffsetUp => a.adjust_loop_offset_bars(1),
+        Action::LoopStartDown | Action::LoopStartUp => {
+            let direction = if action == Action::LoopStartDown {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history("LOOP START", None, |app| {
+                app.adjust_loop_region(true, direction)
+            });
+        }
+        Action::LoopLengthDown | Action::LoopLengthUp => {
+            let direction = if action == Action::LoopLengthDown {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history("LOOP LENGTH", None, |app| {
+                app.adjust_loop_region(false, direction)
+            });
+        }
+        Action::LoopAutoAlign => {
+            a.with_pattern_history("LOOP ALIGN", None, |app| app.auto_align_loop());
+        }
+        Action::LoopOffsetDown | Action::LoopOffsetUp => {
+            let slot = a.loop_slot_selected;
+            let direction = if action == Action::LoopOffsetDown {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history(
+                "LOOP OFFSET",
+                Some(PatternHistoryGesture::LoopOffset(slot)),
+                |app| app.adjust_loop_offset_bars(direction),
+            );
+        }
         Action::LoopAlignDone => {
             a.set_screen(Screen::TrackerLoop);
             a.status = "loop alignment set".into();
@@ -15712,14 +16552,42 @@ fn perform(
         Action::LoopSlotStop => a.command_loop_slot(crate::loop_player::LoopCommand::Stop),
         Action::LoopSlotCancel => a.cancel_loop_slot_queue(),
         Action::LoopSlotMute => a.toggle_loop_slot_mute(),
-        Action::LoopLevelDown => a.adjust_loop_slot_level(-1),
-        Action::LoopLevelUp => a.adjust_loop_slot_level(1),
-        Action::LoopFilterDown => a.adjust_loop_slot_filter(-1),
-        Action::LoopFilterUp => a.adjust_loop_slot_filter(1),
-        Action::LoopFilterNeutral => a.neutral_loop_slot_filter(),
+        Action::LoopLevelDown | Action::LoopLevelUp => {
+            let slot = a.loop_slot_selected;
+            let direction = if action == Action::LoopLevelDown {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history(
+                "LOOP LEVEL",
+                Some(PatternHistoryGesture::LoopLevel(slot)),
+                |app| app.adjust_loop_slot_level(direction),
+            );
+        }
+        Action::LoopFilterDown | Action::LoopFilterUp => {
+            let slot = a.loop_slot_selected;
+            let direction = if action == Action::LoopFilterDown {
+                -1
+            } else {
+                1
+            };
+            a.with_pattern_history(
+                "LOOP FILTER",
+                Some(PatternHistoryGesture::LoopFilter(slot)),
+                |app| app.adjust_loop_slot_filter(direction),
+            );
+        }
+        Action::LoopFilterNeutral => {
+            a.with_pattern_history("LOOP FILTER", None, |app| app.neutral_loop_slot_filter());
+        }
         Action::TapTempo => a.tap_tracker_tempo(),
-        Action::TrackerMute => a.toggle_tracker_lane_mute(),
-        Action::TrackerPageMute => a.toggle_tracker_page_mute(),
+        Action::TrackerMute => {
+            a.with_pattern_history("LANE MUTE", None, |app| app.toggle_tracker_lane_mute());
+        }
+        Action::TrackerPageMute => {
+            a.with_pattern_history("PAGE MUTE", None, |app| app.toggle_tracker_page_mute());
+        }
         Action::LiveLaunch => a.launch_live_selected(false),
         Action::LiveLaunchImmediate => a.launch_live_selected(true),
         Action::LiveCancel => a.cancel_live_queue(),
@@ -15760,19 +16628,33 @@ fn perform(
         Action::NewPattern => a.new_pattern(),
         Action::ClearPattern => a.choose_pattern_clear(),
         Action::ClearPatternNow => {
-            a.confirm_pattern_clear = false;
-            a.clear_pattern_now();
+            a.with_pattern_history("PAT CLEAR", None, |app| {
+                app.confirm_pattern_clear = false;
+                app.clear_pattern_now();
+            });
         }
         Action::ClonePattern => a.clone_pattern(),
         Action::CopyPattern => a.copy_pattern(),
         Action::PastePatternNew => a.paste_pattern_new(),
-        Action::PastePatternOver => a.paste_pattern_over(),
+        Action::PastePatternOver => {
+            a.with_pattern_history("PAT PASTE", None, |app| app.paste_pattern_over());
+        }
         Action::DeleteUnusedPattern => a.delete_unused_pattern(),
-        Action::TransposeDownOctave => a.transpose_pattern(-12),
-        Action::TransposeDownSemitone => a.transpose_pattern(-1),
-        Action::TransposeUpSemitone => a.transpose_pattern(1),
-        Action::TransposeUpOctave => a.transpose_pattern(12),
-        Action::LoadDrumPattern => a.load_drum_pattern(),
+        Action::TransposeDownOctave => {
+            a.with_pattern_history("TRANSPOSE", None, |app| app.transpose_pattern(-12));
+        }
+        Action::TransposeDownSemitone => {
+            a.with_pattern_history("TRANSPOSE", None, |app| app.transpose_pattern(-1));
+        }
+        Action::TransposeUpSemitone => {
+            a.with_pattern_history("TRANSPOSE", None, |app| app.transpose_pattern(1));
+        }
+        Action::TransposeUpOctave => {
+            a.with_pattern_history("TRANSPOSE", None, |app| app.transpose_pattern(12));
+        }
+        Action::LoadDrumPattern => {
+            a.with_pattern_history("DRUM LOAD", None, |app| app.load_drum_pattern());
+        }
         Action::SaveDrumPattern => a.save_drum_pattern(),
         Action::DeleteDrumPattern => a.delete_drum_pattern(),
         Action::DrumGenreDown => a.cycle_drum_genre(-1),
@@ -15780,9 +16662,13 @@ fn perform(
         Action::DrumMeter => a.toggle_drum_meter(),
         Action::DrumSize => a.cycle_drum_size(),
         Action::CopyLane => a.copy_lane(),
-        Action::PasteLane => a.paste_lane(),
+        Action::PasteLane => {
+            a.with_pattern_history("LANE PASTE", None, |app| app.paste_lane());
+        }
         Action::CopyPage => a.copy_page_block(),
-        Action::PastePage => a.paste_page_block(),
+        Action::PastePage => {
+            a.with_pattern_history("PAGE PASTE", None, |app| app.paste_page_block());
+        }
         Action::ArrangementAppend => a.arrangement_append_current(),
         Action::ArrangementInsert => a.arrangement_insert_current(),
         Action::ArrangementRemove => a.arrangement_remove_step(),
@@ -15807,9 +16693,15 @@ fn perform(
         Action::PatternResizeFirst | Action::PatternResizeSecond | Action::PatternResizeCancel => {
             unreachable!("SIZE confirmation actions are handled by their modal")
         }
-        Action::TrackerSkip => a.tracker_skip(),
-        Action::TrackerErase => a.tracker_erase(),
-        Action::TrackerNoteOff => a.tracker_note_off(),
+        Action::TrackerSkip => {
+            a.with_pattern_history("BLANK", None, |app| app.tracker_skip());
+        }
+        Action::TrackerErase => {
+            a.with_pattern_history("ERASE", None, |app| app.tracker_erase());
+        }
+        Action::TrackerNoteOff => {
+            a.with_pattern_history("NOTE OFF", None, |app| app.tracker_note_off());
+        }
         Action::OpenNoteEditor => a.open_note_editor(),
         Action::NoteDestinationField
         | Action::NoteChannelField
@@ -15820,6 +16712,7 @@ fn perform(
         | Action::GateField
         | Action::VelocityField
         | Action::ProgramField
+        | Action::TimingField
         | Action::EffectField
         | Action::EffectParameterField
         | Action::NoteEditorClearField
@@ -15843,12 +16736,40 @@ fn perform(
                 a.move_tracker_lane(1);
             }
         }
-        Action::PreviousProgram => a.change_program(-1),
-        Action::NextProgram => a.change_program(1),
-        Action::BankMsbDown => a.change_bank(true, -1),
-        Action::BankMsbUp => a.change_bank(true, 1),
-        Action::BankLsbDown => a.change_bank(false, -1),
-        Action::BankLsbUp => a.change_bank(false, 1),
+        Action::PreviousProgram | Action::NextProgram => {
+            let direction = if action == Action::PreviousProgram {
+                -1
+            } else {
+                1
+            };
+            let gesture = PatternHistoryGesture::Program {
+                page: a.tracker_page,
+                column: a.tracker_track,
+            };
+            a.with_pattern_history("PROGRAM", Some(gesture), |app| {
+                app.change_program(direction)
+            });
+        }
+        Action::BankMsbDown | Action::BankMsbUp => {
+            let direction = if action == Action::BankMsbDown { -1 } else { 1 };
+            let gesture = PatternHistoryGesture::BankMsb {
+                page: a.tracker_page,
+                column: a.tracker_track,
+            };
+            a.with_pattern_history("BANK MSB", Some(gesture), |app| {
+                app.change_bank(true, direction)
+            });
+        }
+        Action::BankLsbDown | Action::BankLsbUp => {
+            let direction = if action == Action::BankLsbDown { -1 } else { 1 };
+            let gesture = PatternHistoryGesture::BankLsb {
+                page: a.tracker_page,
+                column: a.tracker_track,
+            };
+            a.with_pattern_history("BANK LSB", Some(gesture), |app| {
+                app.change_bank(false, direction)
+            });
+        }
         Action::AddPage => a.add_tracker_page(),
         Action::EditPageTarget => a.edit_page_target(),
         Action::EditPageChannel => a.edit_page_channel(),
@@ -15890,6 +16811,46 @@ fn perform(
         Action::FxReturnCycle => a.cycle_aux_return(),
     }
     false
+}
+fn key_event(
+    event: KeyEvent,
+    a: &mut App,
+    state: &Path,
+    tx: &std::sync::mpsc::Sender<MidiEvent>,
+) -> bool {
+    let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+    let redo = ctrl
+        && (matches!(event.code, KeyCode::Char('y') | KeyCode::Char('Y'))
+            || (matches!(event.code, KeyCode::Char('z') | KeyCode::Char('Z'))
+                && event.modifiers.contains(KeyModifiers::SHIFT)));
+    let undo = ctrl
+        && matches!(event.code, KeyCode::Char('z') | KeyCode::Char('Z'))
+        && !event.modifiers.contains(KeyModifiers::SHIFT);
+    if (undo || redo) && is_tracker_screen(a.screen) {
+        let draft_owns_input = a.overlay.is_some()
+            || a.note_editor.is_some()
+            || a.pattern_resize_prompt.is_some()
+            || a.pattern_feel_draft.is_some()
+            || a.pattern_groove_draft.is_some()
+            || a.mixed_engine_prompt_active()
+            || a.screen == Screen::TrackerPages;
+        if draft_owns_input {
+            a.status = "APPLY/CANCEL FIRST · history unchanged".into();
+        } else {
+            perform(
+                if undo {
+                    Action::PatternUndo
+                } else {
+                    Action::PatternRedo
+                },
+                a,
+                state,
+                Some(tx),
+            );
+        }
+        return false;
+    }
+    key(event.code, a, state, tx)
 }
 fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<MidiEvent>) -> bool {
     if a.mixed_engine_prompt_active() {
@@ -16305,6 +17266,52 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         return false;
     }
+    if a.screen == Screen::PatternFeel {
+        let action = match code {
+            KeyCode::Char('g') | KeyCode::Char('G') => Some(Action::FeelDivision),
+            KeyCode::Left | KeyCode::Char('-') => Some(Action::FeelAmountDown),
+            KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::FeelAmountUp),
+            KeyCode::Char('a') | KeyCode::Char('A') | KeyCode::Enter => Some(Action::FeelApply),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => Some(Action::Back),
+            _ => None,
+        };
+        if let Some(action) = action {
+            perform(action, a, state, Some(tx));
+        }
+        return false;
+    }
+    if a.screen == Screen::PatternGroove {
+        let action = match code {
+            KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::GroovePreset),
+            KeyCode::Char('s') | KeyCode::Char('S') => Some(Action::GrooveScope),
+            KeyCode::Left | KeyCode::Char('-') => Some(Action::GrooveStrengthDown),
+            KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => {
+                Some(Action::GrooveStrengthUp)
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') | KeyCode::Enter => Some(Action::GrooveApply),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => Some(Action::Back),
+            _ => None,
+        };
+        if let Some(action) = action {
+            perform(action, a, state, Some(tx));
+        }
+        return false;
+    }
+    if a.screen == Screen::PatternHistory {
+        let action = match code {
+            KeyCode::Char('f') | KeyCode::Char('F') => Some(Action::OpenPatternFeel),
+            KeyCode::Char('g') | KeyCode::Char('G') => Some(Action::OpenPatternGroove),
+            KeyCode::Char('u') | KeyCode::Char('U') => Some(Action::PatternUndo),
+            KeyCode::Char('r') | KeyCode::Char('R') => Some(Action::PatternRedo),
+            KeyCode::Char('s') | KeyCode::Char('S') => Some(Action::PatternSnapshot),
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => Some(Action::Back),
+            _ => None,
+        };
+        if let Some(action) = action {
+            perform(action, a, state, Some(tx));
+        }
+        return false;
+    }
     if a.screen == Screen::TrackerTools {
         let action = match code {
             KeyCode::Char('h') | KeyCode::Char('H') => Some(Action::OpenHarmony),
@@ -16326,6 +17333,10 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 }
                 KeyCode::Char('p') | KeyCode::Char('P') => {
                     a.toggle_tracker_playback();
+                    true
+                }
+                KeyCode::Char('f') | KeyCode::Char('F') => {
+                    a.toggle_tracker_rec_feel();
                     true
                 }
                 KeyCode::Char('S') | KeyCode::Char(' ') => {
@@ -16382,7 +17393,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             let note = a.tracker_keyboard_note(semitone);
             a.audition_keyboard_note(note, 96);
             if a.tracker_mode == TrackerMode::Edit {
-                a.tracker_single_note(note, 96);
+                a.with_pattern_history("NOTE", None, |app| app.tracker_single_note(note, 96));
             }
             return false;
         }
@@ -16965,6 +17976,9 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerTools => {
             draw_tracker_child(f, "FT2 TOOLS", "Arrange · Live Patterns · Loop Mix · FX")
         }
+        Screen::PatternHistory => draw_pattern_history(f, a),
+        Screen::PatternFeel => draw_pattern_feel(f, a),
+        Screen::PatternGroove => draw_pattern_groove(f, a),
         Screen::TrackerParameters => draw_tracker_parameters(f, a),
         Screen::TrackerMixer => draw_tracker_mixer(f, a),
         Screen::Automation => draw_automation(f, a),
@@ -19145,6 +20159,99 @@ fn draw_tracker_child<B: Backend>(f: &mut Frame<B>, title: &str, details: &str) 
     );
 }
 
+fn draw_pattern_history<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let undo = a.pattern_history.next_undo().map_or_else(
+        || "UNDO —".into(),
+        |state| format!("UNDO · {}", state.label),
+    );
+    let redo = a.pattern_history.next_redo().map_or_else(
+        || "REDO —".into(),
+        |state| format!("REDO · {}", state.label),
+    );
+    let snapshot = a.pattern_history.snapshot().map_or_else(
+        || "SNAP —".into(),
+        |snapshot| format!("SNAP · PAT {:02} · {}", snapshot.pattern_id, snapshot.label),
+    );
+    f.render_widget(
+        Paragraph::new(vec![
+            Spans::from(Span::styled(undo, Style::default().fg(Color::White))),
+            Spans::from(Span::styled(redo, Style::default().fg(Color::White))),
+            Spans::from(Span::styled(snapshot, Style::default().fg(Color::White))),
+        ])
+        .alignment(Alignment::Center),
+        rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
+    );
+}
+
+fn draw_pattern_feel<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let Some(draft) = a.pattern_feel_draft else {
+        return;
+    };
+    let feel = if draft.amount == 50 {
+        "STRAIGHT".into()
+    } else {
+        format!("{} · {}%", draft.division.label(), draft.amount)
+    };
+    f.render_widget(
+        Paragraph::new(vec![
+            Spans::from(Span::styled(
+                format!("PAT {:02} FEEL", draft.pattern),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Spans::from(""),
+            Spans::from(Span::styled(feel, Style::default().fg(Color::White))),
+            Spans::from(Span::styled(
+                "APPLY keeps duration · EXIT cancels",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .alignment(Alignment::Center),
+        rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
+    );
+}
+
+fn draw_pattern_groove<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let Some(draft) = a.pattern_groove_draft else {
+        return;
+    };
+    let hits = a.song.patterns.get(&draft.pattern).map_or(0, |pattern| {
+        crate::rhythm::preview(pattern, draft.preset, draft.scope, draft.selection)
+    });
+    f.render_widget(
+        Paragraph::new(vec![
+            Spans::from(Span::styled(
+                format!("PAT {:02} GROOVE", draft.pattern),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Spans::from(Span::styled(
+                draft.preset.label(),
+                Style::default().fg(Color::White),
+            )),
+            Spans::from(Span::styled(
+                format!(
+                    "{} · {}% · {hits} hits",
+                    draft.scope.label(),
+                    draft.strength
+                ),
+                Style::default().fg(Color::White),
+            )),
+            Spans::from(Span::styled(
+                "APPLY writes exact values · EXIT cancels",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .alignment(Alignment::Center),
+        rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
+    );
+}
+
 fn draw_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App) {
     let z = f.size();
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
@@ -20676,7 +21783,14 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         if slot.state != SlotState::Enabled {
             continue;
         }
-        let color = Color::Yellow;
+        let available = slot
+            .dispatch()
+            .is_none_or(|action| a.history_action_available(action));
+        let color = if available {
+            Color::Yellow
+        } else {
+            Color::DarkGray
+        };
         let label = if matches!(
             slot.dispatch(),
             Some(
@@ -20737,8 +21851,10 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
             r,
         );
-        if let Some(action) = slot.dispatch() {
-            a.hits.actions.push((r, action));
+        if available {
+            if let Some(action) = slot.dispatch() {
+                a.hits.actions.push((r, action));
+            }
         }
     }
 }
@@ -21232,7 +22348,11 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             a.note_length.label()
         ))
     } else if a.tracker_mode == TrackerMode::Rec {
-        Some("REC READY".into())
+        Some(if a.tracker_rec_feel {
+            "REC FEEL".into()
+        } else {
+            "REC READY".into()
+        })
     } else {
         None
     };
@@ -21348,11 +22468,7 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         for (screen_row, row_index) in (start..(start + rows).min(pattern.rows.len())).enumerate() {
             let y = grid.y + 1 + screen_row as u16;
             let selected = row_index == a.tracker_row;
-            let beat_stride = if [6, 12, 24, 48, 96].contains(&pattern.rows.len()) {
-                (pattern.rows.len() / 4).max(1)
-            } else {
-                8.min(pattern.rows.len()).max(1)
-            };
+            let beat_stride = usize::from(a.song.steps_per_beat).max(1);
             let beat_start = row_index % beat_stride == 0;
             let mut spans = vec![Span::styled(
                 format!("{:02X} ", row_index),
@@ -21383,8 +22499,13 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                     })
                     .map_or(*stored_cell, |editor| editor.draft);
                 let velocity = cell.velocity.map_or("..".into(), |v| format!("{:02X}", v));
+                let timing = match cell.nudge.cmp(&0) {
+                    std::cmp::Ordering::Less => '<',
+                    std::cmp::Ordering::Equal => ' ',
+                    std::cmp::Ordering::Greater => '>',
+                };
                 let text = format!(
-                    "{} {velocity}{} ",
+                    "{} {velocity}{}{timing}",
                     sequencer::note_name(cell.note),
                     cell.command.marker()
                 );
@@ -21431,7 +22552,7 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             .program
             .map_or_else(|| "inherit".into(), |value| a.tracker_program_label(value));
         format!(
-            "{}{} · {} v{} g{} · {} · {command}",
+            "{}{} · {} v{} g{} · {} · {} · {command}",
             editor.field.label(),
             if editor.active { " ACTIVE" } else { "" },
             sequencer::note_name(editor.draft.note),
@@ -21444,6 +22565,7 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .gate
                 .map_or("inherit".into(), |value| format!("{value}%")),
             program,
+            cell_timing_label(editor.draft.nudge, a.current_tempo(), a.song.steps_per_beat,),
         )
     } else {
         let state = if !page.enabled {
@@ -21481,6 +22603,58 @@ fn draw_tracker<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     );
 }
 
+fn rec_feel_position(position: sequencer::TransportPosition, rows: usize) -> (usize, i8) {
+    if rows == 0 {
+        return (0, 0);
+    }
+    let row = position.row.min(rows - 1);
+    let row_tick = u32::try_from(row)
+        .unwrap_or_default()
+        .saturating_mul(sequencer::AUTOMATION_TICKS_PER_ROW);
+    let within = position
+        .pattern_tick
+        .saturating_sub(row_tick)
+        .min(sequencer::AUTOMATION_TICKS_PER_ROW.saturating_sub(1));
+    let (nearest_row, signed_ticks) =
+        if within > sequencer::AUTOMATION_TICKS_PER_ROW / 2 && row + 1 < rows {
+            (
+                row + 1,
+                i64::from(within) - i64::from(sequencer::AUTOMATION_TICKS_PER_ROW),
+            )
+        } else {
+            (row, i64::from(within))
+        };
+    let numerator = signed_ticks * i64::from(sequencer::TIMING_UNITS_PER_ROW);
+    let half = i64::from(sequencer::AUTOMATION_TICKS_PER_ROW) / 2;
+    let rounded = if numerator < 0 {
+        (numerator - half) / i64::from(sequencer::AUTOMATION_TICKS_PER_ROW)
+    } else {
+        (numerator + half) / i64::from(sequencer::AUTOMATION_TICKS_PER_ROW)
+    };
+    let minimum = if nearest_row == 0 {
+        0
+    } else {
+        -sequencer::MAX_CELL_NUDGE
+    };
+    let maximum = sequencer::MAX_CELL_NUDGE;
+    (nearest_row, (rounded as i8).clamp(minimum, maximum))
+}
+
+fn cell_timing_label(nudge: i8, tempo: Bpm, steps_per_beat: u8) -> String {
+    if nudge == 0 {
+        return "ON GRID".into();
+    }
+    let row_ms = 60_000.0 / tempo.as_f64() / f64::from(steps_per_beat.max(1));
+    let milliseconds = (row_ms * f64::from(nudge.unsigned_abs())
+        / f64::from(sequencer::TIMING_UNITS_PER_ROW as u8))
+    .round() as u32;
+    if nudge < 0 {
+        format!("EARLY {milliseconds} ms")
+    } else {
+        format!("LATE {milliseconds} ms")
+    }
+}
+
 fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
     let (Some(editor), Some(page)) = (a.note_editor.as_ref(), a.current_page()) else {
         return;
@@ -21501,6 +22675,7 @@ fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
         ),
         note => sequencer::note_name(note),
     };
+    let timing = cell_timing_label(editor.draft.nudge, a.current_tempo(), a.song.steps_per_beat);
     let values = [
         (
             NoteEditorField::Destination,
@@ -21564,6 +22739,7 @@ fn draw_tracker_note_editor<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
             ),
             "this cell only",
         ),
+        (NoteEditorField::Timing, timing, "this cell"),
         (NoteEditorField::Effect, command.0, "this cell"),
         (NoteEditorField::EffectParameter, command.1, "this cell"),
     ];
@@ -30873,6 +32049,9 @@ release = 0.4
             (Screen::TrackerParameters, None),
             (Screen::TrackerMixer, None),
             (Screen::Automation, None),
+            (Screen::PatternHistory, None),
+            (Screen::PatternFeel, None),
+            (Screen::PatternGroove, None),
         ];
         assert_eq!(expected.len(), Screen::ALL.len());
         for (screen, target) in expected {
@@ -33121,6 +34300,29 @@ release = 0.4
     }
 
     #[test]
+    fn note_editor_timing_cancel_is_exact_and_save_is_one_history_step() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.tracker_row = 1;
+        let original = a.song.patterns[&0].rows[1][0];
+
+        a.open_note_editor();
+        a.select_note_editor_field(NoteEditorField::Timing);
+        a.adjust_note_editor(-1);
+        a.cancel_note_editor();
+        assert_eq!(a.song.patterns[&0].rows[1][0], original);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+
+        a.open_note_editor();
+        a.select_note_editor_field(NoteEditorField::Timing);
+        a.adjust_note_editor(-1);
+        perform(Action::NoteEditorSave, &mut a, Path::new("/none"), None);
+        assert_eq!(a.song.patterns[&0].rows[1][0].nudge, -1);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+    }
+
+    #[test]
     fn controller_value_cycle_can_enter_note_off() {
         let p = presets();
         let mut a = app(&p);
@@ -33214,6 +34416,12 @@ release = 0.4
             row[lane].note = Note::On(60 + lane as u8);
             row[lane].command = command;
         }
+        row[0].nudge = 12;
+        a.song.patterns.get_mut(&0).unwrap().rows[1][1] = Cell {
+            note: Note::On(64),
+            nudge: -12,
+            ..Cell::default()
+        };
         let backend = TestBackend::new(40, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| draw(frame, &mut a)).unwrap();
@@ -33221,6 +34429,8 @@ release = 0.4
         for (x, marker) in [(9, "C"), (18, "D"), (27, "R"), (36, "T")] {
             assert_eq!(buffer.get(x, 2).symbol, marker);
         }
+        assert_eq!(buffer.get(10, 2).symbol, ">");
+        assert_eq!(buffer.get(19, 3).symbol, "<");
         assert_eq!(buffer.get(9, 2).fg, Color::Black);
         assert_eq!(buffer.get(9, 2).bg, Color::Yellow);
         assert_eq!(buffer.get(18, 2).bg, Color::DarkGray);
@@ -34114,6 +35324,7 @@ release = 0.4
         a.record_tracker_midi_at(0, &[0x90, 60, 111]);
         assert_eq!(a.song.patterns[&1].rows[0][0].note, Note::On(60));
         assert_eq!(a.song.patterns[&1].rows[0][0].velocity, Some(111));
+        assert_eq!(a.song.patterns[&1].rows[0][0].nudge, 0);
         assert!(a.song.patterns[&0]
             .rows
             .iter()
@@ -34141,6 +35352,38 @@ release = 0.4
 
         a.stop_tracker_recording();
         assert!(a.tracker_route.lock().unwrap().preview_state().0);
+    }
+
+    #[test]
+    fn rec_feel_chooses_the_nearest_row_and_signed_subrow_offset() {
+        let position = |within| sequencer::TransportPosition {
+            order: 0,
+            row: 4,
+            pattern_tick: 4 * sequencer::AUTOMATION_TICKS_PER_ROW + within,
+        };
+        assert_eq!(
+            rec_feel_position(position(sequencer::AUTOMATION_TICKS_PER_ROW / 4), 16),
+            (4, 24)
+        );
+        assert_eq!(
+            rec_feel_position(position(sequencer::AUTOMATION_TICKS_PER_ROW * 3 / 4), 16),
+            (5, -24)
+        );
+        assert_eq!(rec_feel_position(position(0), 16), (4, 0));
+    }
+
+    #[test]
+    fn realtime_record_position_stores_explicit_feel_without_changing_take_history_shape() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        connect_test_midi_hardware(&mut a);
+        a.current_page_mut().unwrap().target = PageTarget::ConfiguredExternal;
+        a.toggle_tracker_recording();
+        a.record_tracker_midi_position(2, -24, &[0x90, 60, 100]);
+        assert_eq!(a.song.patterns[&0].rows[2][0].nudge, -24);
+        a.stop_tracker_recording();
+        assert_eq!(a.pattern_history.depths(), (1, 0));
     }
 
     #[test]
@@ -36600,5 +37843,149 @@ release = 0.4
         };
         assert_eq!(automation_discrete_value(&toggle, 0, 1), u16::MAX);
         assert_eq!(automation_discrete_value(&toggle, u16::MAX, -1), 0);
+    }
+
+    #[test]
+    fn pattern_history_wrapper_undo_redo_and_new_edit_invalidation() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.project_clean_baseline = a.song.clone();
+
+        assert!(a.with_pattern_history("NOTE", None, |app| {
+            app.current_pattern_mut().unwrap().rows[0][0].note = Note::On(60);
+        }));
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+        assert!(a.project_is_dirty());
+
+        a.pattern_undo();
+        assert_eq!(a.current_pattern().unwrap().rows[0][0].note, Note::Empty);
+        assert_eq!(a.pattern_history.depths(), (0, 1));
+        assert!(!a.project_is_dirty());
+
+        a.pattern_redo();
+        assert_eq!(a.current_pattern().unwrap().rows[0][0].note, Note::On(60));
+        assert!(a.project_is_dirty());
+        a.pattern_undo();
+        assert!(a.with_pattern_history("NOTE", None, |app| {
+            app.current_pattern_mut().unwrap().rows[0][1].note = Note::On(64);
+        }));
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+    }
+
+    #[test]
+    fn snapshot_is_non_dirty_and_recall_is_undoable() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.project_clean_baseline = a.song.clone();
+        let snapped = a.current_pattern().unwrap().clone();
+
+        a.capture_pattern_snapshot();
+        assert!(!a.project_is_dirty());
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert!(a.with_pattern_history("NOTE", None, |app| {
+            app.current_pattern_mut().unwrap().rows[0][0].note = Note::On(67);
+        }));
+        let edited = a.current_pattern().unwrap().clone();
+
+        a.recall_pattern_snapshot();
+        assert_eq!(a.current_pattern().unwrap(), &snapped);
+        a.pattern_undo();
+        assert_eq!(a.current_pattern().unwrap(), &edited);
+    }
+
+    #[test]
+    fn history_screen_disables_unavailable_actions_and_shares_dispatch() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("UNDO —"));
+        assert!(text.contains("REDO —"));
+        assert!(text.contains("SNAP —"));
+        assert!(!a.hits.actions.iter().any(|(_, action)| matches!(
+            action,
+            Action::PatternUndo | Action::PatternRedo | Action::PatternRecall
+        )));
+        assert!(a
+            .hits
+            .actions
+            .iter()
+            .any(|(_, action)| *action == Action::PatternSnapshot));
+    }
+
+    #[test]
+    fn feel_apply_is_one_history_step_and_cancel_is_non_mutating() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        let original = a.current_pattern().unwrap().clone();
+
+        a.open_pattern_feel();
+        a.adjust_pattern_feel(1);
+        a.cancel_pattern_rhythm_editor();
+        assert_eq!(a.current_pattern().unwrap(), &original);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+
+        a.open_pattern_feel();
+        a.adjust_pattern_feel(1);
+        a.apply_pattern_feel();
+        assert_eq!(a.current_pattern().unwrap().swing_percent, 51);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+    }
+
+    #[test]
+    fn groove_apply_is_deterministic_undoable_and_zero_strength_is_a_noop() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        a.song.patterns.get_mut(&0).unwrap().rows[1][0] = Cell {
+            note: Note::On(38),
+            velocity: Some(100),
+            ..Cell::default()
+        };
+        a.tracker_row = 1;
+        a.open_pattern_groove();
+        a.pattern_groove_draft.as_mut().unwrap().strength = 0;
+        a.apply_pattern_groove();
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+
+        a.open_pattern_groove();
+        a.apply_pattern_groove();
+        let changed = a.song.patterns[&0].rows[1][0];
+        assert_ne!(changed.nudge, 0);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+        a.pattern_undo();
+        assert_eq!(a.song.patterns[&0].rows[1][0].nudge, 0);
+    }
+
+    #[test]
+    fn conventional_history_keys_use_the_action_dispatcher() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        a.with_pattern_history("NOTE", None, |app| {
+            app.current_pattern_mut().unwrap().rows[0][0].note = Note::On(60);
+        });
+        let (tx, _rx) = mpsc::channel();
+        key_event(
+            KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL),
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.current_pattern().unwrap().rows[0][0].note, Note::Empty);
+        key_event(
+            KeyEvent::new(
+                KeyCode::Char('z'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ),
+            &mut a,
+            Path::new("/none"),
+            &tx,
+        );
+        assert_eq!(a.current_pattern().unwrap().rows[0][0].note, Note::On(60));
     }
 }

@@ -107,6 +107,9 @@ flowchart TD
     ON --> TT[FT2 Tools]
     TT --> LP[Live Patterns]
     TT --> L[Loop Mix]
+    TT --> HS[Pattern History]
+    HS --> FEEL[Pattern Feel]
+    HS --> GROOVE[Deterministic Groove]
     F --> PT[Pattern tools]
     PT --> D[Drum patterns]
     PT --> PS[Pattern setup]
@@ -118,6 +121,22 @@ flowchart TD
 The Help screen returns to whichever screen opened it. `EXIT` follows the
 arrows in reverse by one level. Top-level workspaces return Home; nested tools
 return to their parent first.
+
+Pattern History is the fourth FT2 Tools PAGE action. Its History page is
+UNDO/REDO/SNAP/RECALL and its SYS page remains Panic/Help/blank/Exit. Empty
+Undo, Redo, and Recall controls are dim and cannot dispatch. Snapshot captures
+one Pattern without dirtying; Recall is undoable. Restore is immediate only
+while FT2 transport is stopped. During Play the requested stack position is
+kept and the status row asks for Stop; REC Undo finishes the current take and
+held-note cleanup first. Ctrl+Z, Ctrl+Y, and Ctrl+Shift+Z use the same restore
+actions as controller and mouse.
+
+Pattern History's RHYTHM page opens FEEL and GROOVE. FEEL owns a draft
+EIGHTH/SIXTEENTH division and 50–75% amount. GROOVE owns a deterministic
+preset, cell/lane/page/Pattern scope, and strength. Apply is one Pattern history
+step; Cancel and no-op Apply are non-writing. Back returns to History page 2.
+CELL EDIT exposes independent TIME on its ROUTE page, and REC exposes the
+runtime-only REC FEEL toggle on CAPTURE.
 
 ## Naming and safety conventions
 

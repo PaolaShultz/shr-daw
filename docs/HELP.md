@@ -62,6 +62,27 @@ item again, or use Back/Esc, to close. The controller strip has no separate
 Back item while an overlay is open. Back first cancels an active field, then
 cancels any unconfirmed draft and closes the overlay.
 
+FT2 Tools PAGE item 4 opens HISTORY. Page 1 is UNDO, REDO, SNAP, RECALL;
+unavailable actions are dim. Ctrl+Z is Undo, while Ctrl+Y and Ctrl+Shift+Z are
+Redo. SNAP is one non-dirty runtime Pattern capture and RECALL is undoable.
+History covers committed edits inside one existing Pattern, not Project or
+Arrangement structure, global mix/effects, runtime launch state, private files,
+or an editor draft before Apply. Restore currently requires stopped FT2
+transport; Play-time attempts keep history unchanged and ask you to stop.
+Undo during REC finishes the take and note cleanup first.
+
+HISTORY page 2 opens FEEL and GROOVE. FEEL sets Pattern EIGHTH/SIXTEENTH swing
+from straight 50% through 75%. GROOVE applies one deterministic preset to the
+selected cell, lane, page, or Pattern. Both remain drafts until Apply; Cancel
+and unchanged Apply do not enter history.
+
+CELL EDIT TIME is independent of the one-command field. It moves a cell up to
+half a row early or late in 1/96-row steps; Reset returns ON GRID. The tracker
+grid marks early with `<`, late with `>`, and on-grid with a blank. Pattern
+swing and cell timing move musical events only; cursor rows, Loop timing, and
+MIDI clock stay steady. REC CAPTURE offers runtime-only REC FEEL; quantized REC
+remains the default.
+
 ## Presets and playback
 
 Presets chooses the instrument engine and sound. Loading a sound starts or

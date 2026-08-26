@@ -49,12 +49,13 @@ or `q` can still exit from the splash.
 | FT2 mixer | A mode-preserving live audio child for up to twelve current-Pattern strips. Configured POT positions map directly with twelve controls or to a rotary-selected bank with fewer. Each strip shows page/name, canonical Synth/Drums/Loop/Input owner, signed dB gain, five-LED post-gain VU, link count, pickup direction, and honest `NO RETURN`, monitor-off, or offline state. Linked pages share gain/VU and re-arm the other assigned pots after either changes. Play/REC follow the sounding Pattern; Edit follows the edited Pattern. Opening activates the final bus without silently enabling Input monitoring. Main-encoder click, Back, or SYS Exit restores the exact tracker context. |
 | FT2 automation | Pattern-owned sparse-lane child. Opening is read-only; NEW explicitly creates an unused target lane. Up/Down changes lanes; REC arms only the selected target and adds/deletes points; POINT browses and adjusts points; LANE changes an empty lane's target, explains fixed RAMP/STEP meaning, and confirms clear. Populated lanes refuse target browsing until CLEAR is confirmed. Touch capture uses transport time, can run beside note REC, monitors the armed value, re-arms pickup at the actual cursor/playback value, and becomes safe rather than writing through a Pattern boundary. Effect removal or confirmed type replacement reports and clears only that effect's now-unresolvable lanes; Cancel retains them. Back restores exact tracker context. |
 | FT2 HARMONY | Read-only FT2 Tools overlay derived from the current Project tonic and major/natural-minor mode. It shows both circle-of-fifths neighbours, relative and parallel keys, and seven diatonic triads using the configured English/German note-name policy and SHR's canonical sharp spelling. Opening, repeated opening, encoder turns, and closing cannot change or dirty the Project, generate notes, or alter transport. The launcher/Exit, keyboard `H`/Back/Esc/Enter, controller, and mouse paths restore the exact caller page, page-select mode, Pattern/order/page/lane/column/cursor, FT2 mode, and transport. |
-| FT2 record | Record quantized note-ons and, when enabled for the page, release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. MODE keeps MIX and AUTO directly reachable. Stopped REC runs one visible meter-aware count-in bar and starts capture at row zero; REC during Play punches into the Arrangement without restart. Exact page/lane owners survive cursor moves and boundaries. Shift-rotary column turns are ignored while recorded notes are held; Edit note length does not affect REC. |
+| FT2 HISTORY | Bounded runtime history for committed mutations to one existing Pattern. Page 1 is exactly Undo, Redo, Snapshot, Recall; page 2 opens FEEL and GROOVE. FEEL drafts Pattern swing division/amount. GROOVE drafts one deterministic preset/scope/strength and writes exact cell timing/velocity only on Apply. Unavailable restore controls are visibly disabled. Snapshot capture is non-dirty and Recall is undoable. Mouse and controller dispatch the same actions; keyboard adds `Ctrl+Z`, `Ctrl+Y`, and `Ctrl+Shift+Z`. Restore preserves Pattern/order/row/page/lane/column/mode/controller context and currently requires stopped FT2 transport; a Play-time attempt leaves the stack unchanged, while REC Undo finishes the take and held-note cleanup first. |
+| FT2 record | Record row-quantized note-ons by default and, when enabled for the page, release-based note-offs through the selected page's target and persisted Manual, One-column, or Drum-auto layout. CAPTURE offers runtime-only REC FEEL, which keeps the nearest row plus a bounded callback-time offset. MODE keeps MIX directly reachable. Stopped REC runs one visible meter-aware count-in bar and starts capture at row zero; REC during Play punches into the Arrangement without restart. Exact page/lane owners survive cursor moves and boundaries. Shift-rotary column turns are ignored while recorded notes are held; Edit note length does not affect REC. |
 | FT2 edit | A contextual four-page command set only: EDIT has cell edit, blank/skip, erase, and note off; SET has independent 1/1–1/128 LENGTH and 0–32 ADD selectors plus column movement; SIZE has HALF, ROW-, ROW+, and DOUBLE across the complete Pattern; SYS has panic, N00B, help, and a one-level Exit back to normal FT2. Shift-click opens the live mixer without displacing these pages. Populated destructive/copy choices use a modal confirmation with exact cell counts. Normal FT2 SELECT remains available after Exit. It contains no Play/Record/Edit mode duplicates. Manual writes from the selected column, One column uses its C1–C4 anchor, and Drum auto allocates simultaneous hits without moving the cursor. |
 | FT2 N00B | Independent on/off scale filter layered over Play, Record, and Edit on a melodic page, using the scale selected on Player. Accepted notes keep their pitch; rejected notes stay silent. Play remains non-writing, while Record/Edit write only accepted notes. Toggling N00B is immediate, opens no screen, preserves the current mode, and moving to Drums turns only the filter off. |
 | Live Patterns | Browse four existing Patterns at a time without launch; use Shift-rotary or Left/Right for the tracker lane; distinguish selection/current/queue; replace or cancel Pattern/bar-boundary queues; deliberate immediate launch and current retrigger; capture only successful activations with Append/Replace confirmation; transient four-lane mute, velocity, gate, and transpose; literal Stop, Panic, keyboard equivalents, and preserved FT2 cursor. |
 | Loop Mix | Pattern-owned fourth musician-facing FT2 page; browse inbox WAVs with the ordinary rotary and select one of four private WAV slots with Shift-rotary, Left/Right, or the existing slot buttons, all without launch; queue independent launch/stop at the next Pattern-local bar; replace/cancel commands; show play/stop/queue/mute/missing/fault states; smoothed level and bipolar filter; import/attach/remove only the FT2 cursor Pattern's selected slot; isolate faults; shared library overlay and align child. |
-| FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
+| FT2 cell edit | Transactional route/channel/instrument, banks, note, gate, velocity, per-note program, independent 1/96-row timing, single command type/parameter, clear-field, save/cancel, and panic actions. Four-button encoder page selection remains available. |
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
 | Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; browse the filtered list with the ordinary rotary and change genre with Shift-rotary or the existing Genre−/Genre+ actions; load into the percussion page; save that page separately; confirmed deletion of user saves only. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
@@ -302,8 +303,16 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 PARAM | Sys | Panic | — | Help | Exit |
 | FT2 tools | Ops | Arrange | Live Patterns | FX | Loop Mix |
 | FT2 tools | Clip | Copy lane (`COPY L`) | Paste lane (`PASTE L`) | Copy page (`COPY PG`) | Paste page (`PSTE PG`) |
-| FT2 tools | Page | Mute page (`MUTE PG`) | Mute lane (`MUTE`) | Harmony browser | — |
+| FT2 tools | Page | Mute page (`MUTE PG`) | Mute lane (`MUTE`) | Harmony browser | History |
 | FT2 HARMONY | Overlay | — | — | Harmony/close | Exit |
+| FT2 HISTORY | History | Undo | Redo | Snapshot | Recall |
+| FT2 HISTORY | Rhythm | Feel | Groove | — | — |
+| FT2 HISTORY | Sys | Panic | Help | — | Exit |
+| FT2 FEEL | Feel | Division | Amount− | Amount+ | Apply |
+| FT2 FEEL | Sys | Panic | Help | — | Exit/cancel |
+| FT2 GROOVE | Shape | Preset | Scope | Strength− | Strength+ |
+| FT2 GROOVE | Apply | Apply | — | — | — |
+| FT2 GROOVE | Sys | Panic | Help | — | Exit/cancel |
 | FT2 tools | Sys | Panic | Help | — | Exit |
 | Live Patterns | Launch | Launch | Cancel queue | Retrigger current | Immediate |
 | Live Patterns | Timing | Stop | Pattern boundary | Bar boundary | Capture |
@@ -316,13 +325,14 @@ Blank physical positions and wholly empty pages are omitted.
 | FT2 loop align | Ops | Auto | Bar− | Bar+ | Done |
 | FT2 loop align | Sys | Panic | Help | — | Exit |
 | FT2 record | Mode | — | Play | Record/stop | Edit |
+| FT2 record | Capture | REC FEEL | — | — | — |
 | FT2 record | Sys | Panic | N00B | Help | Exit |
 | FT2 edit | Edit | Cell edit | Blank/skip | Erase | N-off |
 | FT2 edit | Set | Note-length overlay | ADD 0–32 overlay | Column− | Column+ |
 | FT2 edit | Size | Half | Row- | Row+ | Double |
 | FT2 SIZE choice | Choose | Top/Copy/Confirm | Bottom/Empty | Cancel | — |
 | FT2 edit | Sys | Panic | N00B | Help | Exit edit |
-| FT2 cell edit | Route | Destination | Channel | Instrument | — |
+| FT2 cell edit | Route | Destination | Channel | Instrument | Timing |
 | FT2 cell edit | Sound | Bank MSB | Bank LSB | Cell program | Clear field |
 | FT2 cell edit | Cell | Note | Gate | Velocity | Effect |
 | FT2 cell edit | Done | Panic | Save | Effect parameter | Exit/cancel |
@@ -415,21 +425,22 @@ Exit areas retain their assigned cells at 40×13.
 ## FT2 cell editor inventory and mapping
 
 A cell contains `note`, optional `velocity`, optional per-note `program`,
-optional `gate`, and one `command`: none, cut, delay, retrigger, or tempo. Song
-format stores all of these fields directly inside each FT2 Pattern.
+optional `gate`, independent signed `timing`, and one `command`: none, cut,
+delay, retrigger, or tempo. Song format stores all of these fields directly
+inside each FT2 Pattern.
 
 | Page | Item 1 | Item 2 | Item 3 | Item 4 |
 |---|---|---|---|---|
-| Route | Destination | Channel | Instrument | — |
+| Route | Destination | Channel | Instrument | Timing |
 | Sound | Bank MSB | Bank LSB | Cell program | Clear selected field |
 | Cell | Note | Gate | Velocity | Effect type |
 | Done | Panic | Save | Effect parameter | Exit/cancel |
 
-The first display spacer uses `C` for cut, `D` for delay, `R` for retrigger,
-`T` for tempo, and blank for no command. The data model supports one command
-per cell. Gate is 1–100% of a row or inherited; delayed notes and retrigger
-pulses are bounded by the row. Program is a per-note override of the page
-program, routed before the note on the same exact target/channel.
+The timing spacer uses `<` for early, `>` for late, and blank for on-grid. The
+command marker still uses `C`, `D`, `R`, or `T`. The data model supports one
+command plus timing per cell. Gate is 1–100% of a row or inherited; delayed
+notes and retrigger pulses remain bounded. Program is routed before the shifted
+note on the same exact target/channel.
 
 Physical MIDI notes and CCs remain configuration. Profiles name only `PAD 1`
 through `PAD 8`; the active screen gives pads 1–4 their page positions and

@@ -6,7 +6,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 const MAX_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -163,12 +163,13 @@ pub fn encode(pattern: &DrumPattern) -> Result<String> {
             .filter(|(_, cell)| **cell != Cell::default())
         {
             text.push_str(&format!(
-                "cell={row}|{lane}|{}|{}|{}|{}|{}\n",
+                "cell={row}|{lane}|{}|{}|{}|{}|{}|{}\n",
                 note_text(cell.note),
                 optional(cell.velocity),
                 optional(cell.program),
                 optional(cell.gate),
-                command_text(cell.command)
+                command_text(cell.command),
+                cell.nudge
             ));
         }
     }
@@ -186,7 +187,7 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
         .strip_prefix("SHR-DRUM-PATTERN ")
         .context("not an SHR-DAW drum pattern")?
         .parse::<u8>()?;
-    if version > VERSION {
+    if version == 0 || version > VERSION {
         bail!("unsupported drum pattern version {version}");
     }
     let mut name = None;
@@ -221,7 +222,7 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
     let mut occupied = BTreeSet::new();
     for value in cells {
         let fields = value.split('|').collect::<Vec<_>>();
-        if fields.len() != 7 {
+        if (version == 1 && fields.len() != 7) || (version == 2 && fields.len() != 8) {
             bail!("invalid drum cell");
         }
         let row = fields[0].parse::<usize>()?;
@@ -240,6 +241,7 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
             program: parse_optional(fields[4])?,
             gate: parse_optional(fields[5])?,
             command: parse_command(fields[6])?,
+            nudge: if version >= 2 { fields[7].parse()? } else { 0 },
         };
     }
     validate(&pattern)?;
@@ -265,8 +267,13 @@ fn validate(pattern: &DrumPattern) -> Result<()> {
     if pattern.rows.is_empty() || pattern.rows.len() > 256 {
         bail!("drum pattern needs 1..=256 rows");
     }
-    for cell in pattern.rows.iter().flatten() {
-        cell.validate()?;
+    for (row, cells) in pattern.rows.iter().enumerate() {
+        for cell in cells {
+            cell.validate()?;
+            if row == 0 && cell.nudge < 0 {
+                bail!("first drum row cannot move before Pattern start");
+            }
+        }
     }
     Ok(())
 }
@@ -517,14 +524,30 @@ mod tests {
             velocity: Some(110),
             gate: Some(50),
             command: Command::Retrigger(2),
+            nudge: 24,
             ..Cell::default()
         };
-        assert_eq!(decode(&encode(&pattern).unwrap()).unwrap(), pattern);
+        let encoded = encode(&pattern).unwrap();
+        assert!(encoded.starts_with("SHR-DRUM-PATTERN 2\n"));
+        assert!(encoded.contains("|R2|24\n"));
+        assert_eq!(decode(&encoded).unwrap(), pattern);
+    }
+
+    #[test]
+    fn version_one_migrates_cells_to_on_grid() {
+        let legacy = "SHR-DRUM-PATTERN 1\nname=Old beat\ngenre=Test\nmeter=4\nrows=16\ncell=1|0|38|100|-|50|D4\n";
+        let pattern = decode(legacy).unwrap();
+        assert_eq!(pattern.rows[1][0].nudge, 0);
+        assert_eq!(pattern.rows[1][0].command, Command::Delay(4));
+        assert!(encode(&pattern)
+            .unwrap()
+            .starts_with("SHR-DRUM-PATTERN 2\n"));
     }
 
     #[test]
     fn rejects_invalid_or_future_files() {
-        assert!(decode("SHR-DRUM-PATTERN 2\nname=x\nmeter=4\nrows=16\n").is_err());
+        assert!(decode("SHR-DRUM-PATTERN 3\nname=x\nmeter=4\nrows=16\n").is_err());
+        assert!(decode("SHR-DRUM-PATTERN 0\nname=x\nmeter=4\nrows=16\n").is_err());
         assert!(decode("SHR-DRUM-PATTERN 1\nname=x\nmeter=5\nrows=16\n").is_err());
     }
 

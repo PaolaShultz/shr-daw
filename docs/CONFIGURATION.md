@@ -371,7 +371,7 @@ does not process or meter them.
 The fixed MASTER STRIP is reached from the MASTER FX context and MTR. Its
 numerical controls and smoothed section bypasses may change during playback
 because no topology is rebuilt. Final recording rejects those edits. When the
-owned graph is disabled, the same edits update only Project format 14 state.
+owned graph is disabled, the same edits update only Project format 15 state.
 The true-peak limiter remains active whenever the final bus is active and has
 no bypass. Exact ranges and latency are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
@@ -660,12 +660,12 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 14
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 15
 stores each FT2 Pattern as a self-contained unit with its own tempo,
-meter, page targets, setup messages, four lanes per page, four column
+meter, EIGHTH/SIXTEENTH swing, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
 choice, and drum classification,
-every cell field, exactly four optional Loop Mix slots, explicit software
+every cell field including independent signed 1/96-row timing, exactly four optional Loop Mix slots, explicit software
 engine/instrument identity, and optional external profile metadata. The Project
 continues to own the source insert rack, aux routing, master rack, fixed MASTER
 STRIP, final-bus routing, recording configuration, and unrelated Project
@@ -698,8 +698,10 @@ tempo-command values as deterministic integer hundredths; `10050` means
 100.50 BPM. Format 10 infers automatic Note Off ON for melodic pages and OFF
 for percussion pages; format 11 persists the per-page choice. Format 12 adds
 the Project key, selected drum kit, tuning state, and internal-drum page target.
-Format 13 adds the drum rack. Format 12 and older routing remains unchanged and
-receives restrained family defaults in memory. Explicit save writes format 13. Unknown newer
+Format 13 adds the drum rack; Format 14 adds bounded sparse automation; Format
+15 adds Pattern swing and cell timing. Formats 0–14 load straight/on-grid in
+memory. Format 12 and older routing remains unchanged and receives restrained
+family defaults in memory. Explicit save writes format 15. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 
@@ -733,8 +735,10 @@ public repository or used to overwrite a `.shsong`.
 Reusable drum patterns are independent `.shdrum` files. Bundled patterns are
 installed below `share/shsynth/drum-patterns/`; controller-created user saves
 go below `${XDG_DATA_HOME}/shsynth/drum-patterns/`. They store four lanes of
-cells plus meter and row count, but deliberately do not store MIDI destinations,
-channels, banks, or programs. Loading therefore keeps the current percussion
+cells including independent timing, plus meter and row count, but deliberately
+do not store Pattern swing, MIDI destinations, channels, banks, or programs.
+Format 1 files load every cell on-grid; explicit saves use format 2. Loading
+therefore keeps the current percussion
 page's hardware routing intact. The installed `.shrdrums` catalog is a compact
 authored collection used to build filtered 24/48/96-row 3/4 and 32/64/128-row
 4/4 phrase variations. It is read-only like the individual bundled grooves.

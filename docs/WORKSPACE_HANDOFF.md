@@ -5,6 +5,70 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-26 Priority 2 rhythm workflow implementation
+
+Priority 2 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented in the
+working tree after the bounded Pattern-history work. The pre-edit boundary and
+acceptance matrix are in `RHYTHM_WORKFLOW_ACCEPTANCE.md`. Project format 15
+adds independent signed cell timing in 1/96-row units plus Pattern-owned
+EIGHTH/SIXTEENTH swing at 50–75%; format 14 and older load straight/on-grid
+without rewrite. Reusable drum-pattern format 2 stores timing and migrates
+format 1 cells to on-grid.
+
+The elapsed scheduler applies swing, cell timing, and the legacy Delay command
+only to cell events. Row markers, Pattern/Arrangement duration, MIDI clock, and
+Loop beat clock remain straight. Same-lane events are ordered by their shifted
+musical time, and a replaced note's generated gate release is suppressed when
+it would occur after the replacement. The existing canonical MIDI timeline is
+unchanged; live scheduling keeps the full fraction while SMF export rounds to
+its nearest existing tick.
+
+CELL EDIT adds independent TIME and the native grid adds `<`/blank/`>` timing
+markers. HISTORY page 2 opens transactional FEEL and deterministic GROOVE
+editors; successful Apply uses the Pattern-history wrapper, while Cancel,
+failure, and no-op Apply do not move history. Quantized real-time REC remains
+the default. Runtime-only REC FEEL uses the received MIDI callback timestamp to
+choose the nearest row and bounded offset, while a completed take remains one
+Undo step and retains existing note-owner cleanup.
+
+This pass has only formatting and source-level/static inspection. The exact
+pinned compiler, locked check, focused/full tests, screenshots, MIDI clock,
+Raspberry Pi timing, controller, and listening evidence remain pending the
+owner-requested combined check/test pass. Do not claim build, hardware, or
+musical validation yet.
+
+## 2026-08-26 bounded FT2 Pattern history implementation
+
+Priority 1 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented in the
+working tree for review: one runtime-only bounded Pattern history owner, at
+most 32 combined Undo/Redo states under the two-cell-budget plus
+two-automation-budget structural cap, one Snapshot outside the stacks, and one
+UI mutation wrapper. The pre-edit mutation inventory and acceptance table are
+in `PATTERN_HISTORY_MUTATION_INVENTORY.md`.
+
+Included committed cell/note/REC/Pattern tool/paste/page-route
+Apply/automation/Loop Mix families enter history; Project and Arrangement
+structure, global audio state, private files, runtime launch/transport state,
+and Apply/Cancel drafts do not. Snapshot capture is non-dirty, Recall is
+undoable, project replacement clears all runtime history, and Save retains it.
+HISTORY occupies FT2 Tools PAGE item 4 with UNDO/REDO/SNAP/RECALL, dynamic
+disabled controls, shared mouse/controller actions, and Ctrl+Z/Ctrl+Y/
+Ctrl+Shift+Z. Context records retain Pattern/order/row/page/lane/column/mode,
+automation selection, and controller page.
+
+The document-authorized stopped-transport fallback is explicit. A Play-time
+restore is refused without moving either stack; REC Undo first finishes the
+take and held-note cleanup. The blocker to boundary queueing is the absence of
+one scheduler transaction that can atomically publish a full authoritative
+Pattern, activate managed routes and decoded Loop resources, restore context,
+and report success before stack movement.
+
+Only formatting, source inspection, documentation checks, and whitespace
+validation are permitted during this incremental pass. Cargo check/tests,
+Clippy, screenshot generation, JACK, synth, MIDI, playback, recording, and
+hardware work remain pending explicit combined-pass authorization. Do not
+describe the new behavior as build-verified until that pass is run.
+
 ## 2026-08-23 read-only FT2 HARMONY browser
 
 The proposal-archive circle-of-fifths helper is now current implemented work.

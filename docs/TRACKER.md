@@ -50,6 +50,42 @@ It never changes the key, creates notes, starts playback, or dirties the
 Project. **HARMONY**, **EXIT**, Back/Esc, encoder press, or right-click closes
 it and restores the exact tools page and FT2 position.
 
+FT2 Tools **PAGE** also opens **HISTORY**. Its first controller page is exactly
+**UNDO**, **REDO**, **SNAP**, and **RECALL**; unavailable actions are dim and
+inert. History retains at most 32 prior Pattern states within a shared
+cell/automation memory budget. It covers committed edits to the selected
+existing Pattern: cells and notes, a completed REC take, tempo/meter/length and
+SIZE tools, clear/transpose/drum load, lane/page/Pattern paste-over, confirmed
+page and route changes, automation, and Pattern-owned Loop Mix settings.
+Project replacement and saving, Pattern/Arrangement structure, global FX and
+mixing, private files, live launch/shaping, transport, held notes, and drafts
+still waiting for Apply or Cancel are not Pattern history.
+
+`Ctrl+Z` performs Undo; `Ctrl+Y` and `Ctrl+Shift+Z` perform Redo. Undo/Redo
+restore the Pattern and its FT2 selection context. A successful new edit after
+Undo clears Redo; refused, failed, cancelled, and no-op commands do not move
+history. **SNAP** captures one runtime Pattern/context without dirtying the
+Project or changing transport. **RECALL** restores it as an undoable edit.
+Loading, importing, or creating another Project clears both stacks and the
+Snapshot; Save keeps useful history, and the existing Song-equality baseline
+continues to decide `SAVED` versus `DIRTY`.
+
+The first version restores only while FT2 transport is stopped. During Play it
+shows `STOP TRANSPORT · UNDO/REDO/RECALL kept` and leaves the requested action
+available. Undo during REC first finishes the take, releases its held-note
+owners, stops safely, and then restores. Full Play-time queueing is deferred
+because the scheduler has no boundary transaction that can atomically replace
+an authoritative full Pattern, activate its routes and decoded Loop resources,
+restore editor context, and report success before the history stacks move.
+
+HISTORY page 2 opens the Pattern rhythm tools. **FEEL** is a draft editor for
+straight or 50–75% EIGHTH/SIXTEENTH swing; Apply is one undoable Pattern edit
+and Cancel is non-writing. **GROOVE** previews one deterministic preset over
+the selected cell, lane, page, or whole Pattern, with 0–100% strength. Apply
+stores the resulting cell timing/velocity values as one undoable edit. The
+neutral preset names describe only their transformation and do not claim a
+cultural style.
+
 On the main tracker grid, the physical main rotary always moves rows. Holding
 the configured encoder Shift button while turning selects the previous or next
 column, continuing through page boundaries from Software Synth to MIDI, Drums,
@@ -329,10 +365,14 @@ A cell contains:
 - inherited velocity or MIDI velocity 0–127;
 - inherited program or a MIDI program override stored as 0–127 and shown as
   instrument/program 1–128;
+- independent timing shown as ON GRID, EARLY … ms, or LATE … ms, stored within
+  ±48 units of 1/96 row and applied after Pattern swing;
 - one optional command: cut or delay tick 0–15, retrigger count 1–8, or decimal
   tempo 20.00–300.00 BPM.
 
-The grid shows `C` for cut, `D` for delay, `R` for retrigger, and `T` for tempo.
+The grid shows `<` for early, `>` for late, and a blank marker for on-grid
+timing without widening the four-lane native grid. `C`, `D`, `R`, and `T`
+continue to identify cut, delay, retrigger, and tempo.
 One cell cannot contain more than one command. Velocity, program, gate, and
 retrigger need a note-on in a newly confirmed edit. Invalid combinations stay
 in the draft and show an error.
@@ -361,7 +401,11 @@ leaving REC, and later notes use that selected page. While one or more recorded
 notes are held, Shift-rotary turns are ignored rather than queued; movement
 resumes only after every matching Note Off.
 Played notes use the active page's Manual, One-column, or Drum-auto allocator
-and are quantized to Pattern rows. Events quantized to one row occupy distinct
+and are quantized to Pattern rows by default. The REC **CAPTURE** page can turn
+**REC FEEL** on for the current runtime session; then note-ons keep the nearest
+row plus their bounded callback-time offset. This option is not Project data,
+and switching it off returns immediately to zero-nudge recording. Events
+assigned to one row occupy distinct
 Drum-auto lanes. REC ignores the Edit note-length setting: each note-on records
 its exact Pattern/page/lane owner. With automatic Note Off enabled, its matching
 release writes the quantized note-off in that lane even after cursor movement,
@@ -649,7 +693,9 @@ omitted Loop Mix slots and SHR effect lanes; a second press saves below
 overwritten. The conductor carries exact tempo and meter changes. Named
 page/channel tracks carry bank, program, CC, velocity, notes, and exact gates
 in deterministic setup/CC/note order. Instrument and external-CC automation
-are exported. Audio loops and internal effect automation are omitted and
+are exported. Live playback keeps the full 1/96-row cell timing fraction; SMF
+export rounds that fraction to the nearest tick in the established export
+timeline. Audio loops and internal effect automation are omitted and
 counted rather than disguised as portable MIDI.
 
 The FX rack, editor, and fixed MASTER STRIP always show the owning Project plus
@@ -658,7 +704,7 @@ Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 14
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 15
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
 overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
@@ -673,8 +719,10 @@ empty automation in memory. Format 7's four Project-global slots migrate in memo
 distinct Pattern. Format 6's single `loop=` record similarly migrates to slot 1
 of every Pattern with its filename, BPM interpretation, cut, and placement
 unchanged; level becomes unity and the filter neutral. Only references and
-settings are copied, never WAV files. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 14. Formats 0–9 migrate
+settings are copied, never WAV files. Format 15 adds Pattern swing and the
+independent signed timing value on each cell. Formats 0–14 load straight and
+on-grid in memory. Loading, previewing, or inspecting does not rewrite an old
+file; explicit save writes format 15. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.

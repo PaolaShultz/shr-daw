@@ -554,7 +554,7 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 14 persists the complete tracker state, integer-hundredths
+Project format 15 persists the complete tracker state, integer-hundredths
 Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
 effects routing including the internal-drum rack, one Project-global fixed
@@ -562,12 +562,13 @@ MASTER STRIP, per-page entry
 mode/anchor, automatic Note Off choice, drum-role/choke overrides,
 explicit software engine/instrument identities, optional external profile
 metadata, Project tonic/mode, selected drum kit, drum tuning, and bounded
-Pattern-owned sparse automation lanes. Format 13 and older Projects gain empty
-automation in memory. Format 7's
+Pattern-owned sparse automation lanes, Pattern swing, and independent signed
+1/96-row cell timing. Format 14 and older Projects gain straight/on-grid rhythm
+defaults; Format 13 and older Projects gain empty automation in memory. Format 7's
 former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
-audio or rewrites the file; only an explicit save writes format 14. Format 12
+audio or rewrites the file; only an explicit save writes format 15. Format 12
 keeps its routing and gains safe family drum-effect defaults in memory. Format 10
 infers the Note Off choice from the percussion flag. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly
