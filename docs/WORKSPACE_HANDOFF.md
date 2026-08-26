@@ -5,6 +5,46 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-26 Priority 4 independent lane playback
+
+Priority 4 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact
+musical semantics and LC-01 through LC-27 acceptance matrix are in
+`LANE_PLAYBACK_ACCEPTANCE.md`. Every Pattern lane now owns FULL or an explicit
+cycle length, 1/4X through 4X rate, and forward, reverse, pendulum, or bounded
+deterministic-variation playback. Pattern tempo, row markers, automation, Loop
+Mix, MIDI clock, and Arrangement duration remain Pattern-time owners; lane
+drafting and Apply preserve the FT2 cursor.
+
+FT2 Tools PAGE -> HISTORY -> RHYTHM -> CYCLE reaches the stopped-transport
+draft/Apply workflow through the existing four controller pages. Successful
+Apply is one Pattern History transaction; Cancel, refusal, and no-op Apply are
+non-writing. Project format 17 persists lane settings and migrates formats
+0–16 to FULL/1X/FORWARD. Reusable drum-pattern format 4 persists its four lane
+settings and migrates formats 1–3/catalog entries to defaults while preserving
+the selected percussion page's routing, names, and mutes.
+
+The deterministic scheduler keeps lane phase on absolute Pattern time,
+supports independent rates and playhead order, and cleans note owners at lane
+wraps/pendulum turns, final Arrangement cleanup, mute/Stop/Panic, and Live
+replacement. Ordinary Pattern boundaries preserve exact owners so long gates
+and explicit releases in the following Pattern retain Priority 1–3 behavior.
+Preflight scans every possible source trigger; context-free export uses pass 1
+with FILL off and cannot extend the Arrangement conductor duration.
+
+The owner-authorized non-Raspberry-Pi pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check; the
+requested focused lane, migration, Pattern History, probability/condition,
+microtiming/swing/groove/REC FEEL, scheduler ownership, export/preflight/
+partial-playback, navigation/controller, and UI transaction tests; and the
+complete normal suite passed. The final suite reported 1,026 passed, zero
+failed, and 13 ignored documented development, private-audition, and
+performance tests.
+
+No JACK, ALSA sequencer, synth, MIDI transmission, playback, recording,
+audible, screenshot, physical-controller, Raspberry Pi timing/headroom, or
+other hardware-changing evidence was produced. Musical approval of the new
+rate/direction choices remains a human listening decision.
+
 ## 2026-08-26 Priority 3 step probability and conditions
 
 Priority 3 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The owning
@@ -41,8 +81,8 @@ the selected starting Arrangement step.
 
 No JACK, ALSA sequencer, synth, MIDI transmission, playback, recording,
 audible, screenshot, physical-controller, Raspberry Pi timing, or other
-hardware-changing evidence was produced. Independent lane cycle/speed/direction
-remains the next ordered sequencer priority.
+hardware-changing evidence was produced. Priority 4 completion is recorded in
+the newer section above.
 
 ## 2026-08-26 Priority 2 rhythm workflow implementation
 

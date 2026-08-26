@@ -32,12 +32,13 @@ pub enum Screen {
     PatternHistory,
     PatternFeel,
     PatternGroove,
+    LanePlayback,
 }
 
 impl Screen {
-    pub const COUNT: usize = 27;
+    pub const COUNT: usize = 28;
     #[cfg(test)]
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 28] = [
         Self::Home,
         Self::Presets,
         Self::Playback,
@@ -65,6 +66,7 @@ impl Screen {
         Self::PatternHistory,
         Self::PatternFeel,
         Self::PatternGroove,
+        Self::LanePlayback,
     ];
 
     pub const fn index(self) -> usize {
@@ -96,6 +98,7 @@ impl Screen {
             Self::PatternHistory => 24,
             Self::PatternFeel => 25,
             Self::PatternGroove => 26,
+            Self::LanePlayback => 27,
         }
     }
 
@@ -129,6 +132,7 @@ impl Screen {
             Self::PatternHistory => "HISTORY",
             Self::PatternFeel => "FEEL",
             Self::PatternGroove => "GROOVE",
+            Self::LanePlayback => "LANE CYCLE",
         }
     }
 }
@@ -191,6 +195,15 @@ pub enum Action {
     GrooveStrengthDown,
     GrooveStrengthUp,
     GrooveApply,
+    OpenLanePlayback,
+    LaneLengthDown,
+    LaneLengthUp,
+    LaneRate,
+    LaneDirection,
+    LanePlaybackStop,
+    LanePlaybackApply,
+    LanePlaybackReset,
+    LanePlaybackCancel,
     OpenPageOverlay,
     OpenPatternOverlay,
     OpenSongOverlay,
@@ -758,7 +771,7 @@ const PATTERN_HISTORY: [MenuPage; 4] = [
         [
             on("FEEL", Action::OpenPatternFeel),
             on("GROOVE", Action::OpenPatternGroove),
-            off(""),
+            on("CYCLE", Action::OpenLanePlayback),
             off(""),
         ],
     ),
@@ -808,6 +821,36 @@ const PATTERN_GROOVE: [MenuPage; 4] = [
     page(
         "APPLY",
         [on("APPLY", Action::GrooveApply), off(""), off(""), off("")],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("HELP", Action::OpenHelp),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const LANE_PLAYBACK: [MenuPage; 4] = [
+    page(
+        "CYCLE",
+        [
+            on("LEN-", Action::LaneLengthDown),
+            on("LEN+", Action::LaneLengthUp),
+            on("RATE", Action::LaneRate),
+            on("DIR", Action::LaneDirection),
+        ],
+    ),
+    page(
+        "APPLY",
+        [
+            on("STOP", Action::LanePlaybackStop),
+            on("APPLY", Action::LanePlaybackApply),
+            on("RESET", Action::LanePlaybackReset),
+            on("CANCEL", Action::LanePlaybackCancel),
+        ],
     ),
     page("", [off(""), off(""), off(""), off("")]),
     page(
@@ -1642,6 +1685,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::PatternHistory, _) => &PATTERN_HISTORY,
         (Screen::PatternFeel, _) => &PATTERN_FEEL,
         (Screen::PatternGroove, _) => &PATTERN_GROOVE,
+        (Screen::LanePlayback, _) => &LANE_PLAYBACK,
         (Screen::LivePatterns, _) => &LIVE_PATTERNS,
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
@@ -2270,6 +2314,10 @@ mod tests {
             history[1].slots[1].dispatch(),
             Some(Action::OpenPatternGroove)
         );
+        assert_eq!(
+            history[1].slots[2].dispatch(),
+            Some(Action::OpenLanePlayback)
+        );
         assert_eq!(history[3].label, "SYS");
         assert_eq!(history[3].slots[0].dispatch(), Some(Action::StopAll));
         assert_eq!(history[3].slots[1].dispatch(), Some(Action::OpenHelp));
@@ -2305,6 +2353,7 @@ mod tests {
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::PatternFeel, MenuContext::Normal),
             (Screen::PatternGroove, MenuContext::Normal),
+            (Screen::LanePlayback, MenuContext::Normal),
             (Screen::AudioRecorder, MenuContext::Normal),
             (Screen::MultichannelMonitor, MenuContext::Normal),
             (Screen::Meter, MenuContext::Normal),
@@ -2356,6 +2405,15 @@ mod tests {
             Action::GrooveStrengthDown,
             Action::GrooveStrengthUp,
             Action::GrooveApply,
+            Action::OpenLanePlayback,
+            Action::LaneLengthDown,
+            Action::LaneLengthUp,
+            Action::LaneRate,
+            Action::LaneDirection,
+            Action::LanePlaybackStop,
+            Action::LanePlaybackApply,
+            Action::LanePlaybackReset,
+            Action::LanePlaybackCancel,
             Action::OpenFxRack,
             Action::OpenFxEditor,
             Action::ResetMeter,

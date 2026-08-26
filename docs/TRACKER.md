@@ -86,6 +86,16 @@ stores the resulting cell timing/velocity values as one undoable edit. The
 neutral preset names describe only their transformation and do not claim a
 cultural style.
 
+**CYCLE** edits the selected lane's independent playback length, rate, and
+direction. Length is FULL or an explicit Pattern-row count; rates are 1/4X,
+1/2X, 1X, 2X, and 4X; directions are forward, reverse, pendulum, and bounded
+deterministic variation. Drafting does not move the FT2 cursor. Apply requires
+stopped transport and creates one Pattern History entry; Cancel and unchanged
+Apply create none. These settings change only which cells that lane reads and
+when—it never changes the Pattern's Arrangement duration. Exact scheduling,
+ownership, migration, and acceptance semantics are in [Priority 4 lane
+playback acceptance](LANE_PLAYBACK_ACCEPTANCE.md).
+
 On the main tracker grid, the physical main rotary always moves rows. Holding
 the configured encoder Shift button while turning selects the previous or next
 column, continuing through page boundaries from Software Synth to MIDI, Drums,
@@ -721,7 +731,7 @@ Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 16
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 17
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
 overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
@@ -740,7 +750,9 @@ settings are copied, never WAV files. Format 15 adds Pattern swing and the
 independent signed timing value on each cell. Formats 0–14 load straight and
 on-grid in memory. Format 16 adds deterministic cell probability and condition;
 formats 0–15 load at 100% and ALWAYS. Loading, previewing, or inspecting does
-not rewrite an old file; explicit save writes format 16. Formats 0–9 migrate
+not rewrite an old file. Format 17 adds independent lane cycle length, rate,
+and direction; formats 0–16 load FULL/1X/FORWARD. Explicit save writes format
+17. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.

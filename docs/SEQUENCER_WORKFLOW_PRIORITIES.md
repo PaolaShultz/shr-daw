@@ -108,15 +108,14 @@ condition in each Cell; this section retains the evidence behind that choice.
 
 ### 4. Independent lane cycles, speed, and playback direction
 
-SHR-DAW pages and lanes share their Pattern's rows, tempo, and forward playback.
-Independent lane lengths and rates would enable simultaneous polymeter and
-phasing; direction choices could include forward, reverse, pendulum, or a
-bounded deterministic variation. OXI One and Polyend Play expose independent
-track length/speed, and Polyend adds multiple playhead modes.
-
-This feature must not silently move the FT2 cursor or change the Pattern's
-Arrangement duration. Its scheduling model needs a separate design after the
-first three priorities.
+Implemented as the bounded workflow defined in [Priority 4 lane playback
+acceptance](LANE_PLAYBACK_ACCEPTANCE.md). Each lane owns FULL or an explicit
+cycle length, five exact rates, and forward, reverse, pendulum, or bounded
+deterministic-variation playback. Pattern-time owners—including tempo,
+Arrangement duration, row markers, swing, automation, and Loop Mix—remain
+unchanged, and editing does not move the FT2 cursor. The workflow reuses the
+four existing controller pages and commits one stopped-transport Pattern
+History transaction.
 
 ### 5. Deterministic generative tools
 

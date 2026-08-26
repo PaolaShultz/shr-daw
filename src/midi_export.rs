@@ -432,4 +432,28 @@ mod tests {
         assert_eq!(cc.last(), Some(&0));
         assert!(cc.windows(2).all(|values| values[0] != values[1]));
     }
+
+    #[test]
+    fn lane_cycles_export_deterministically_without_changing_arrangement_duration() {
+        let (mut song, config) = configured_song();
+        let baseline = timeline::compile(&song, &config, 0, 0).unwrap();
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.pages[0].lanes[0].playback = crate::sequencer::LanePlayback {
+            cycle_rows: 3,
+            rate: crate::sequencer::LaneRate::Double,
+            direction: crate::sequencer::LaneDirection::Variation,
+        };
+        pattern.rows[1][0].note = crate::sequencer::Note::On(38);
+        pattern.rows[2][0].note = crate::sequencer::Note::On(42);
+
+        let first_plan = timeline::compile(&song, &config, 0, 0).unwrap();
+        let second_plan = timeline::compile(&song, &config, 0, 0).unwrap();
+        let first_export = analyze(&song, &config).unwrap();
+        let second_export = analyze(&song, &config).unwrap();
+
+        assert_eq!(first_plan, second_plan);
+        assert_eq!(first_plan.end_tick, baseline.end_tick);
+        assert_eq!(first_export, second_export);
+        assert!(first_export.report.events > 2);
+    }
 }

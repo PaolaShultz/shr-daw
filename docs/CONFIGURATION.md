@@ -569,7 +569,7 @@ and each page stores:
 - four column channel/bank/program setups, with channels 1–16;
 - page velocity, mute, and percussion settings;
 - note-entry mode, One-column anchor, and optional drum-role/choke overrides;
-- four lane names and lane mute states;
+- four lane names, lane mute states, and independent cycle/rate/direction settings;
 - a reserved list of MIDI setup messages for later use.
 
 Open FT2 **SELECT** → **PAGE**, then choose **MANAGE PAGES / TRACKS**. The
@@ -660,7 +660,7 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 16
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 17
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, EIGHTH/SIXTEENTH swing, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
@@ -701,9 +701,11 @@ for percussion pages; format 11 persists the per-page choice. Format 12 adds
 the Project key, selected drum kit, tuning state, and internal-drum page target.
 Format 13 adds the drum rack; Format 14 adds bounded sparse automation; Format
 15 adds Pattern swing and cell timing. Format 16 adds cell probability and
-conditions; formats 0–15 load them as 100%/ALWAYS. Formats 0–14 load straight/on-grid in
+conditions; formats 0–15 load them as 100%/ALWAYS. Format 17 adds independent
+lane cycle length, rate, and direction; formats 0–16 load FULL/1X/FORWARD.
+Formats 0–14 load straight/on-grid in
 memory. Format 12 and older routing remains unchanged and receives restrained
-family defaults in memory. Explicit save writes format 16. Unknown newer
+family defaults in memory. Explicit save writes format 17. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 
@@ -737,9 +739,10 @@ public repository or used to overwrite a `.shsong`.
 Reusable drum patterns are independent `.shdrum` files. Bundled patterns are
 installed below `share/shsynth/drum-patterns/`; controller-created user saves
 go below `${XDG_DATA_HOME}/shsynth/drum-patterns/`. They store four lanes of
-cells including independent timing, plus meter and row count, but deliberately
+cells including independent timing and the four lanes' playback settings, plus meter and row count, but deliberately
 do not store Pattern swing, MIDI destinations, channels, banks, or programs.
-Format 1 files load every cell on-grid; explicit saves use format 2. Loading
+Formats 1–3 migrate missing timing/probability/condition or lane-playback data
+to their safe defaults; explicit saves use format 4. Loading
 therefore keeps the current percussion
 page's hardware routing intact. The installed `.shrdrums` catalog is a compact
 authored collection used to build filtered 24/48/96-row 3/4 and 32/64/128-row

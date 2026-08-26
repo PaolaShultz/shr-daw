@@ -544,6 +544,14 @@ struct PatternGrooveDraft {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct LanePlaybackDraft {
+    pattern: u16,
+    page: usize,
+    lane: usize,
+    playback: sequencer::LanePlayback,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TrackerMixerReturn {
     order: usize,
     row: usize,
@@ -985,6 +993,7 @@ struct App {
     history_return_context: Option<PatternEditContext>,
     pattern_feel_draft: Option<PatternFeelDraft>,
     pattern_groove_draft: Option<PatternGrooveDraft>,
+    lane_playback_draft: Option<LanePlaybackDraft>,
     recording_history_opening: Option<PatternHistoryState<PatternEditContext>>,
     page_history_opening: Option<PatternHistoryState<PatternEditContext>>,
     route_history_opening: Option<PatternHistoryState<PatternEditContext>>,
@@ -1405,6 +1414,7 @@ fn is_tracker_screen(screen: Screen) -> bool {
             | Screen::PatternHistory
             | Screen::PatternFeel
             | Screen::PatternGroove
+            | Screen::LanePlayback
     )
 }
 
@@ -2098,6 +2108,7 @@ impl App {
             history_return_context: None,
             pattern_feel_draft: None,
             pattern_groove_draft: None,
+            lane_playback_draft: None,
             recording_history_opening: None,
             page_history_opening: None,
             route_history_opening: None,
@@ -5667,7 +5678,10 @@ impl App {
     fn pattern_edit_context(&self) -> PatternEditContext {
         let visible_context = if matches!(
             self.screen,
-            Screen::PatternHistory | Screen::PatternFeel | Screen::PatternGroove
+            Screen::PatternHistory
+                | Screen::PatternFeel
+                | Screen::PatternGroove
+                | Screen::LanePlayback
         ) {
             self.history_return_context.as_ref()
         } else {
@@ -5833,7 +5847,10 @@ impl App {
         self.prepared_pattern_loops = None;
         if matches!(
             self.screen,
-            Screen::PatternHistory | Screen::PatternFeel | Screen::PatternGroove
+            Screen::PatternHistory
+                | Screen::PatternFeel
+                | Screen::PatternGroove
+                | Screen::LanePlayback
         ) {
             self.history_return_context = Some(state.edit_context.clone());
         } else if is_tracker_screen(state.edit_context.screen) {
@@ -6087,6 +6104,143 @@ impl App {
         self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
         self.status = "CANCEL · Pattern unchanged".into();
     }
+    fn open_lane_playback(&mut self) {
+        let pattern = self.tracker_pattern_number();
+        let Some(playback) = self
+            .song
+            .patterns
+            .get(&pattern)
+            .and_then(|pattern| pattern.pages.get(self.tracker_page))
+            .and_then(|page| page.lanes.get(self.tracker_track))
+            .map(|lane| lane.playback)
+        else {
+            self.status = "CYCLE unavailable · lane missing".into();
+            return;
+        };
+        self.lane_playback_draft = Some(LanePlaybackDraft {
+            pattern,
+            page: self.tracker_page,
+            lane: self.tracker_track,
+            playback,
+        });
+        self.set_screen(Screen::LanePlayback);
+        self.reset_context_page();
+        self.status.clear();
+    }
+    fn adjust_lane_cycle_length(&mut self, direction: i8) {
+        let Some(draft) = self.lane_playback_draft.as_mut() else {
+            return;
+        };
+        let rows = self
+            .song
+            .patterns
+            .get(&draft.pattern)
+            .map_or(1, |pattern| pattern.rows.len())
+            .max(1);
+        let choices = rows + 1;
+        let current = if draft.playback.cycle_rows == 0 {
+            rows
+        } else {
+            usize::from(draft.playback.cycle_rows).saturating_sub(1)
+        };
+        let next = wrapped_index(current, choices, direction.signum());
+        draft.playback.cycle_rows = if next == rows {
+            0
+        } else {
+            u16::try_from(next + 1).unwrap_or(u16::MAX)
+        };
+        self.lane_playback_status();
+    }
+    fn cycle_lane_rate(&mut self) {
+        let Some(draft) = self.lane_playback_draft.as_mut() else {
+            return;
+        };
+        let index = sequencer::LaneRate::ALL
+            .iter()
+            .position(|rate| *rate == draft.playback.rate)
+            .unwrap_or(0);
+        draft.playback.rate =
+            sequencer::LaneRate::ALL[(index + 1) % sequencer::LaneRate::ALL.len()];
+        self.lane_playback_status();
+    }
+    fn cycle_lane_direction(&mut self) {
+        let Some(draft) = self.lane_playback_draft.as_mut() else {
+            return;
+        };
+        let index = sequencer::LaneDirection::ALL
+            .iter()
+            .position(|direction| *direction == draft.playback.direction)
+            .unwrap_or(0);
+        draft.playback.direction =
+            sequencer::LaneDirection::ALL[(index + 1) % sequencer::LaneDirection::ALL.len()];
+        self.lane_playback_status();
+    }
+    fn reset_lane_playback_draft(&mut self) {
+        if let Some(draft) = self.lane_playback_draft.as_mut() {
+            draft.playback = sequencer::LanePlayback::default();
+            self.lane_playback_status();
+        }
+    }
+    fn lane_playback_status(&mut self) {
+        let Some(draft) = self.lane_playback_draft else {
+            return;
+        };
+        let length = if draft.playback.cycle_rows == 0 {
+            "FULL".into()
+        } else {
+            draft.playback.cycle_rows.to_string()
+        };
+        self.status = format!(
+            "CYCLE · {length} · {} · {}",
+            draft.playback.rate.label(),
+            draft.playback.direction.label()
+        );
+    }
+    fn stop_for_lane_playback(&mut self) {
+        self.tracker_stop();
+        self.status = "STOPPED · CYCLE draft kept".into();
+    }
+    fn apply_lane_playback(&mut self) {
+        let Some(draft) = self.lane_playback_draft else {
+            return;
+        };
+        let transport = self.sequencer.status();
+        if self.tracker_recording.is_some() || transport.playing || transport.count_in.is_some() {
+            self.status = "STOP TO APPLY · CYCLE draft kept".into();
+            return;
+        }
+        let previous = self.song.patterns.get(&draft.pattern).cloned();
+        let changed = self.with_pattern_history("LANE CYCLE", None, |app| {
+            if let Some(lane) = app
+                .song
+                .patterns
+                .get_mut(&draft.pattern)
+                .and_then(|pattern| pattern.pages.get_mut(draft.page))
+                .and_then(|page| page.lanes.get_mut(draft.lane))
+            {
+                lane.playback = draft.playback;
+            }
+            if app.song.validate().is_err() {
+                if let Some(previous) = previous {
+                    app.song.patterns.insert(draft.pattern, previous);
+                }
+            }
+        });
+        self.lane_playback_draft = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = if changed {
+            "CYCLE APPLIED · one history step".into()
+        } else {
+            "CYCLE unchanged · history unchanged".into()
+        };
+    }
+    fn cancel_lane_playback(&mut self) {
+        self.lane_playback_draft = None;
+        self.set_screen(Screen::PatternHistory);
+        self.menu_page_by_screen[Screen::PatternHistory.index()] = 1;
+        self.status = "CANCEL · lane unchanged".into();
+    }
     fn clear_pattern_history(&mut self) {
         self.pattern_history.clear();
         self.history_return_context = None;
@@ -6095,6 +6249,7 @@ impl App {
         self.route_history_opening = None;
         self.pattern_feel_draft = None;
         self.pattern_groove_draft = None;
+        self.lane_playback_draft = None;
     }
     fn current_loop_settings(&self, slot: usize) -> Option<&sequencer::LoopSettings> {
         self.current_pattern()?.audio_loops.get(slot)?.as_ref()
@@ -11766,6 +11921,11 @@ impl App {
             for (row, cells) in target.rows.iter_mut().enumerate() {
                 cells[start..start + LANES_PER_PAGE].copy_from_slice(&pattern.rows[row]);
             }
+            if let Some(target_page) = target.pages.get_mut(page) {
+                for (lane, playback) in target_page.lanes.iter_mut().zip(pattern.lanes) {
+                    lane.playback = playback;
+                }
+            }
         }
         self.tracker_page = page;
         self.tracker_row = 0;
@@ -11811,6 +11971,7 @@ impl App {
             name: stem.replace('-', " "),
             genre: "User".into(),
             meter: pattern.meter,
+            lanes: std::array::from_fn(|lane| pattern.pages[page].lanes[lane].playback),
             rows: pattern
                 .rows
                 .iter()
@@ -16161,7 +16322,7 @@ fn perform(
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::TrackerTools => {}
             Screen::PatternHistory => {}
-            Screen::PatternFeel | Screen::PatternGroove => {}
+            Screen::PatternFeel | Screen::PatternGroove | Screen::LanePlayback => {}
             Screen::TrackerParameters => {}
             Screen::TrackerMixer => a.close_tracker_mixer(),
             Screen::Automation => {
@@ -16283,6 +16444,15 @@ fn perform(
         Action::GrooveStrengthDown => a.adjust_groove_strength(-1),
         Action::GrooveStrengthUp => a.adjust_groove_strength(1),
         Action::GrooveApply => a.apply_pattern_groove(),
+        Action::OpenLanePlayback => a.open_lane_playback(),
+        Action::LaneLengthDown => a.adjust_lane_cycle_length(-1),
+        Action::LaneLengthUp => a.adjust_lane_cycle_length(1),
+        Action::LaneRate => a.cycle_lane_rate(),
+        Action::LaneDirection => a.cycle_lane_direction(),
+        Action::LanePlaybackStop => a.stop_for_lane_playback(),
+        Action::LanePlaybackApply => a.apply_lane_playback(),
+        Action::LanePlaybackReset => a.reset_lane_playback_draft(),
+        Action::LanePlaybackCancel => a.cancel_lane_playback(),
         Action::OpenTrackerLoop => a.open_tracker_loop(),
         Action::OpenTrackerLoopAlign => {
             a.set_screen(Screen::TrackerLoopAlign);
@@ -16386,6 +16556,10 @@ fn perform(
         Action::MixerBankPrevious => a.move_tracker_mixer_bank(-1),
         Action::MixerBankNext => a.move_tracker_mixer_bank(1),
         Action::Back => {
+            if a.screen == Screen::LanePlayback {
+                a.cancel_lane_playback();
+                return false;
+            }
             if matches!(a.screen, Screen::PatternFeel | Screen::PatternGroove) {
                 a.cancel_pattern_rhythm_editor();
                 return false;
@@ -16503,6 +16677,7 @@ fn perform(
                 | Screen::PatternHistory
                 | Screen::PatternFeel
                 | Screen::PatternGroove
+                | Screen::LanePlayback
                 | Screen::LivePatterns
                 | Screen::TrackerLoop => Screen::Tracker,
                 Screen::TrackerMixer => Screen::Tracker,
@@ -16935,6 +17110,7 @@ fn key_event(
             || a.pattern_resize_prompt.is_some()
             || a.pattern_feel_draft.is_some()
             || a.pattern_groove_draft.is_some()
+            || a.lane_playback_draft.is_some()
             || a.mixed_engine_prompt_active()
             || a.screen == Screen::TrackerPages;
         if draft_owns_input {
@@ -17400,10 +17576,36 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         return false;
     }
+    if a.screen == Screen::LanePlayback {
+        let action = match code {
+            KeyCode::Left | KeyCode::Char('[') | KeyCode::Char('-') => Some(Action::LaneLengthDown),
+            KeyCode::Right | KeyCode::Char(']') | KeyCode::Char('+') | KeyCode::Char('=') => {
+                Some(Action::LaneLengthUp)
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => Some(Action::LaneRate),
+            KeyCode::Char('d') | KeyCode::Char('D') => Some(Action::LaneDirection),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+                Some(Action::LanePlaybackStop)
+            }
+            KeyCode::Char('0') => Some(Action::LanePlaybackReset),
+            KeyCode::Char('a') | KeyCode::Char('A') | KeyCode::Enter => {
+                Some(Action::LanePlaybackApply)
+            }
+            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => {
+                Some(Action::LanePlaybackCancel)
+            }
+            _ => None,
+        };
+        if let Some(action) = action {
+            perform(action, a, state, Some(tx));
+        }
+        return false;
+    }
     if a.screen == Screen::PatternHistory {
         let action = match code {
             KeyCode::Char('f') | KeyCode::Char('F') => Some(Action::OpenPatternFeel),
             KeyCode::Char('g') | KeyCode::Char('G') => Some(Action::OpenPatternGroove),
+            KeyCode::Char('c') | KeyCode::Char('C') => Some(Action::OpenLanePlayback),
             KeyCode::Char('u') | KeyCode::Char('U') => Some(Action::PatternUndo),
             KeyCode::Char('r') | KeyCode::Char('R') => Some(Action::PatternRedo),
             KeyCode::Char('s') | KeyCode::Char('S') => Some(Action::PatternSnapshot),
@@ -18086,6 +18288,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::PatternHistory => draw_pattern_history(f, a),
         Screen::PatternFeel => draw_pattern_feel(f, a),
         Screen::PatternGroove => draw_pattern_groove(f, a),
+        Screen::LanePlayback => draw_lane_playback(f, a),
         Screen::TrackerParameters => draw_tracker_parameters(f, a),
         Screen::TrackerMixer => draw_tracker_mixer(f, a),
         Screen::Automation => draw_automation(f, a),
@@ -20351,6 +20554,51 @@ fn draw_pattern_groove<B: Backend>(f: &mut Frame<B>, a: &App) {
             )),
             Spans::from(Span::styled(
                 "APPLY writes exact values · EXIT cancels",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .alignment(Alignment::Center),
+        rect(z.x, z.y + 1, z.width, z.height.saturating_sub(4)),
+    );
+}
+
+fn draw_lane_playback<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let Some(draft) = a.lane_playback_draft else {
+        return;
+    };
+    let length = if draft.playback.cycle_rows == 0 {
+        "FULL".into()
+    } else {
+        draft.playback.cycle_rows.to_string()
+    };
+    f.render_widget(
+        Paragraph::new(vec![
+            Spans::from(Span::styled(
+                format!(
+                    "PAT {:02} · PAGE {} · LANE {}",
+                    draft.pattern,
+                    draft.page + 1,
+                    draft.lane + 1
+                ),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Spans::from(Span::styled(
+                format!("LENGTH {length}"),
+                Style::default().fg(Color::White),
+            )),
+            Spans::from(Span::styled(
+                format!(
+                    "RATE {} · {}",
+                    draft.playback.rate.label(),
+                    draft.playback.direction.label()
+                ),
+                Style::default().fg(Color::White),
+            )),
+            Spans::from(Span::styled(
+                "STOP before APPLY · EXIT cancels",
                 Style::default().fg(Color::DarkGray),
             )),
         ])
@@ -32189,6 +32437,7 @@ release = 0.4
             (Screen::PatternHistory, None),
             (Screen::PatternFeel, None),
             (Screen::PatternGroove, None),
+            (Screen::LanePlayback, None),
         ];
         assert_eq!(expected.len(), Screen::ALL.len());
         for (screen, target) in expected {
@@ -35286,7 +35535,13 @@ release = 0.4
             name: "Test groove".into(),
             genre: "Test".into(),
             meter: 4,
+            lanes: [sequencer::LanePlayback::default(); LANES_PER_PAGE],
             rows: vec![[Cell::default(); LANES_PER_PAGE]; 16],
+        };
+        drum.lanes[0] = sequencer::LanePlayback {
+            cycle_rows: 5,
+            rate: sequencer::LaneRate::Double,
+            direction: sequencer::LaneDirection::Reverse,
         };
         drum.rows[0][0] = Cell {
             note: Note::On(36),
@@ -35308,6 +35563,8 @@ release = 0.4
         a.song.patterns.get_mut(&0).unwrap().pages[percussion].columns[0].program = 55;
         a.song.patterns.get_mut(&0).unwrap().rows[3][0].note = Note::On(64);
         let page_before = a.song.patterns[&0].pages[percussion].clone();
+        let mut page_expected = page_before.clone();
+        page_expected.lanes[0].playback = drum.lanes[0];
 
         a.load_drum_pattern();
 
@@ -35316,7 +35573,8 @@ release = 0.4
         assert_eq!(pattern.rows[0][lane].note, Note::On(36));
         assert_eq!(pattern.rows[16][lane].note, Note::On(36));
         assert_eq!(pattern.rows[3][0].note, Note::On(64));
-        assert_eq!(pattern.pages[percussion], page_before);
+        assert_eq!(pattern.pages[percussion], page_expected);
+        assert_eq!(pattern.pages[percussion].lanes[0].playback, drum.lanes[0]);
         assert!(a.status.contains("routing unchanged"));
         let _ = fs::remove_file(path);
     }
@@ -38170,6 +38428,85 @@ release = 0.4
         assert_eq!(a.pattern_history.depths(), (1, 0));
         a.pattern_undo();
         assert_eq!(a.song.patterns[&0].rows[1][0].nudge, 0);
+    }
+
+    #[test]
+    fn lane_cycle_apply_is_one_history_step_and_preserves_tracker_selection() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        a.tracker_row = 7;
+        a.tracker_page = 1;
+        a.tracker_track = 2;
+        let selection = (a.tracker_row, a.tracker_page, a.tracker_track);
+
+        a.open_lane_playback();
+        a.adjust_lane_cycle_length(1);
+        a.cycle_lane_rate();
+        a.cycle_lane_direction();
+        let draft = a.lane_playback_draft.unwrap().playback;
+        a.apply_lane_playback();
+
+        assert_eq!(
+            a.song.patterns[&0].pages[selection.1].lanes[selection.2].playback,
+            draft
+        );
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), selection);
+        assert_eq!(a.pattern_history.depths(), (1, 0));
+        a.pattern_undo();
+        assert_eq!(
+            a.song.patterns[&0].pages[selection.1].lanes[selection.2].playback,
+            sequencer::LanePlayback::default()
+        );
+        a.pattern_redo();
+        assert_eq!(
+            a.song.patterns[&0].pages[selection.1].lanes[selection.2].playback,
+            draft
+        );
+    }
+
+    #[test]
+    fn lane_cycle_cancel_and_unchanged_apply_do_not_create_history() {
+        let p = presets();
+        let mut a = app(&p);
+        let original = a.current_pattern().unwrap().clone();
+
+        a.open_lane_playback();
+        a.adjust_lane_cycle_length(-1);
+        a.cancel_lane_playback();
+        assert_eq!(a.current_pattern().unwrap(), &original);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+
+        a.open_lane_playback();
+        a.apply_lane_playback();
+        assert_eq!(a.current_pattern().unwrap(), &original);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+    }
+
+    #[test]
+    fn lane_cycle_apply_is_refused_while_tracker_recording() {
+        let p = presets();
+        let mut a = app(&p);
+        a.open_lane_playback();
+        a.adjust_lane_cycle_length(-1);
+        a.tracker_recording = Some(TrackerRecording {
+            pattern: 0,
+            order: 0,
+            page: 0,
+            return_to_play: false,
+            last_row: 0,
+            next_lane: 0,
+            active_lanes: HashMap::new(),
+            lane_owners: HashMap::new(),
+            next_token: 1,
+            notes: 0,
+        });
+
+        a.apply_lane_playback();
+
+        assert!(a.lane_playback_draft.is_some());
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert_eq!(a.status, "STOP TO APPLY · CYCLE draft kept");
     }
 
     #[test]

@@ -11,7 +11,7 @@ The owner-authorized non-Raspberry-Pi pass used exact Rust 1.97.1
 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check,
 focused probability/condition, Project/drum migration, Pattern History,
 microtiming, swing, groove, REC FEEL, scheduler ownership, navigation, and UI
-transaction tests passed. The complete normal suite reported 1,015 passed,
+transaction tests passed again after Priority 4 integration. The complete normal suite reported 1,026 passed,
 zero failed, and 13 documented ignored development, private-audition, and
 performance tests.
 

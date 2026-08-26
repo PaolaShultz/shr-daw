@@ -11,11 +11,11 @@ Pattern scope.
 The owner-authorized software pass completed on 2026-08-26 with exact Rust
 1.97.1 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). The locked
 check, focused Pattern-history model/UI/navigation/transaction tests, and the
-complete normal suite passed again after Priority 3 integration and bounded
-in-scope fixture repair. The final suite reported 1,015 passed, zero failed,
-and 13 documented ignored development, audition, and performance tests.
+complete normal suite passed again after Priority 4 integration and bounded
+in-scope repair. The final suite reported 1,026 passed, zero failed, and 13
+documented ignored development, audition, and performance tests.
 
-PH-01 through PH-18 were reconciled against the focused results, complete-suite
+PH-01 through PH-19 were reconciled against the focused results, complete-suite
 regressions, and the function-level mutation audit below. Route and Loop
 publication/recovery evidence remains deterministic test-double and source
 evidence; no JACK, synth, MIDI, playback, recording, audible, screenshot, or
@@ -31,6 +31,7 @@ physical-controller check was run.
 | Pattern tempo, meter, row length/SIZE, clear, transpose, and cleared drum-pattern load | included | One successful command. A validation failure or unchanged value creates no entry. |
 | Lane paste, page paste, and Pattern paste-over | included | One successful paste. Pattern paste-new is structural and excluded. |
 | Page entry layout, page/lane mute, program, bank, and other persistent page settings | included | One successful command. Repeated encoder turns may coalesce as one continuous gesture. |
+| Lane cycle length, playback rate, and direction | included | One stopped-transport CYCLE Apply. Draft, Cancel, refusal, invalid data, and unchanged Apply create no entry. |
 | Page Manager page add/delete/reorder/route/settings while open | draft-only | The existing whole-song draft remains authoritative. Capture one Pattern entry only after Apply validates and commits; Cancel creates no entry. |
 | FT2 ROUTE target/setup edits and live audition adjustments while open | draft-only | Capture the opening Pattern before the draft. Ordinary Apply creates one entry only after validated publication and runtime activation succeed; Cancel/rollback creates none. |
 | Mixed-engine remap transaction | structural | It can change multiple Patterns plus engine ownership, so it remains under its existing confirmation/rollback transaction and outside Pattern history. |
@@ -67,6 +68,7 @@ This checklist is the function-level audit of `ui.rs`; helper calls such as
 | `open_page_manager`, `add_tracker_page`, `confirm_page_field`, `cancel_page_field`, `turn_page_manager`, `cancel_page_manager`, entry-layout `activate_overlay` branch | draft-only until Page Manager Apply |
 | `confirm_page_manager` | included once after validation and successful route activation |
 | `toggle_tracker_page_mute`, `toggle_tracker_lane_mute`, `set_tracker_tempo`/`apply_tracker_tempo`, `change_program`, `change_bank` | included persistent Pattern/page settings |
+| `open_lane_playback`, lane draft adjustments, `apply_lane_playback`, `cancel_lane_playback` | draft-only until stopped Apply; Apply is one included lane-settings entry |
 | `adjust_playback_noob_scale` | excluded Project-global key mutation |
 | `new_automation_lane`, `cycle_automation_target`, `add_automation_point`, `adjust_automation_value`, `delete_automation_point`, `toggle_automation_curve`, `clear_automation_lane`, `capture_automation_control`, `capture_external_automation` | included automation family; repeated capture/value input coalesces |
 | `commit_loop_candidate`, `remove_pattern_loop`, `adjust_loop_slot_level`, `adjust_loop_slot_filter`, `neutral_loop_slot_filter`, `auto_align_loop`, `adjust_loop_offset_bars`, `adjust_loop_source_bpm`, `cycle_loop_bpm_mode`, `adjust_loop_region`, Loop Library `activate_overlay` branch | included Pattern Loop attachment/settings after preflight succeeds |
@@ -98,6 +100,7 @@ This checklist is the function-level audit of `ui.rs`; helper calls such as
 | PH-16 | Undo back to the saved Pattern clears dirty; Redo makes it dirty again. | Snapshot capture alone never changes dirty. | Equality against the existing clean baseline, not a separate history flag. |
 | PH-17 | Project replacement clears undo, redo, and snapshot. | Save/Rename without Pattern replacement does not manufacture history. | No history state leaks between projects. |
 | PH-18 | Structural, global, draft-only, runtime-only, and private mutations remain absent from history. | Their existing transaction, queue, route, transport, and ownership behavior is unchanged. | Representative exclusion tests and source-level mutation audit. |
+| PH-19 | One stopped CYCLE Apply restores exact lane settings through Undo/Redo without moving the cursor. | Cancel, unchanged Apply, invalid settings, and Play/REC refusal leave both stacks unmoved. | Lane-settings equality, stack depths, and row/page/lane selection assertions. |
 
 The first implementation uses the document-authorized stopped-transport
 fallback for restore during Play. The existing scheduler can queue live Pattern

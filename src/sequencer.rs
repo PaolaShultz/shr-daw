@@ -17,7 +17,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 16;
+pub const SONG_VERSION: u8 = 17;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
 pub const AUTOMATION_TICKS_PER_ROW: u32 = 1_680;
@@ -289,6 +289,93 @@ impl PageTarget {
 pub struct Lane {
     pub name: String,
     pub enabled: bool,
+    pub playback: LanePlayback,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LanePlayback {
+    /// Zero follows the current Pattern length; non-zero values are explicit
+    /// source-row cycle lengths.
+    pub cycle_rows: u16,
+    pub rate: LaneRate,
+    pub direction: LaneDirection,
+}
+
+impl LanePlayback {
+    pub fn effective_rows(self, pattern_rows: usize) -> usize {
+        if self.cycle_rows == 0 {
+            pattern_rows
+        } else {
+            usize::from(self.cycle_rows).min(pattern_rows)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LaneRate {
+    Quarter,
+    Half,
+    #[default]
+    Normal,
+    Double,
+    Quadruple,
+}
+
+impl LaneRate {
+    pub const ALL: [Self; 5] = [
+        Self::Quarter,
+        Self::Half,
+        Self::Normal,
+        Self::Double,
+        Self::Quadruple,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Quarter => "1/4X",
+            Self::Half => "1/2X",
+            Self::Normal => "1X",
+            Self::Double => "2X",
+            Self::Quadruple => "4X",
+        }
+    }
+
+    const fn ratio(self) -> (usize, usize) {
+        match self {
+            Self::Quarter => (1, 4),
+            Self::Half => (1, 2),
+            Self::Normal => (1, 1),
+            Self::Double => (2, 1),
+            Self::Quadruple => (4, 1),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LaneDirection {
+    #[default]
+    Forward,
+    Reverse,
+    Pendulum,
+    Variation,
+}
+
+impl LaneDirection {
+    pub const ALL: [Self; 4] = [
+        Self::Forward,
+        Self::Reverse,
+        Self::Pendulum,
+        Self::Variation,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Forward => "FORWARD",
+            Self::Reverse => "REVERSE",
+            Self::Pendulum => "PENDULUM",
+            Self::Variation => "VARIATION",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1015,6 +1102,7 @@ impl Page {
                 .map(|lane| Lane {
                     name: format!("L{lane}"),
                     enabled: true,
+                    playback: LanePlayback::default(),
                 })
                 .collect(),
         }
@@ -1182,6 +1270,12 @@ impl Pattern {
         if let Some(first) = self.rows.first_mut() {
             for cell in first {
                 cell.nudge = cell.nudge.max(0);
+            }
+        }
+        let rows = u16::try_from(self.rows.len()).unwrap_or(u16::MAX);
+        for lane in self.pages.iter_mut().flat_map(|page| &mut page.lanes) {
+            if lane.playback.cycle_rows > rows {
+                lane.playback.cycle_rows = rows;
             }
         }
     }
@@ -1432,6 +1526,9 @@ impl Pattern {
             validate_label(&page.name, "pattern page name", 64)?;
             for lane in &page.lanes {
                 validate_label(&lane.name, "pattern lane name", 64)?;
+                if usize::from(lane.playback.cycle_rows) > self.rows.len() {
+                    bail!("lane cycle length exceeds Pattern rows");
+                }
             }
             if page.velocity > 127
                 || usize::from(page.entry_anchor) >= LANES_PER_PAGE
@@ -2074,9 +2171,12 @@ pub fn encode(song: &Song) -> Result<String> {
             }
             for (lane_index, lane) in page.lanes.iter().enumerate() {
                 out.push_str(&format!(
-                    "pattern_lane={number}|{page_index}|{lane_index}|{}|{}\n",
+                    "pattern_lane={number}|{page_index}|{lane_index}|{}|{}|{}|{}|{}\n",
                     escape(&lane.name),
-                    u8::from(lane.enabled)
+                    u8::from(lane.enabled),
+                    lane.playback.cycle_rows,
+                    lane_rate_text(lane.playback.rate),
+                    lane_direction_text(lane.playback.direction)
                 ));
             }
             for message in &page.setup {
@@ -2257,7 +2357,7 @@ pub fn decode(text: &str) -> Result<Song> {
                     (0..=14, [number, rows, tempo, meter]) => {
                         (*number, *rows, *tempo, *meter, SwingDivision::default(), 50)
                     }
-                    (15..=16, [number, rows, tempo, meter, division, amount]) => (
+                    (15..=17, [number, rows, tempo, meter, division, amount]) => (
                         *number,
                         *rows,
                         *tempo,
@@ -2408,7 +2508,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        11..=16,
+                        11..=17,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor, note_off_enabled],
                     ) => (
                         Page {
@@ -2462,7 +2562,7 @@ pub fn decode(text: &str) -> Result<Song> {
         let pattern = patterns.get_mut(&number).context("pattern page missing")?;
         pattern.pages = pages.into_values().collect();
     }
-    attach_pattern_lanes(&mut patterns, pattern_lanes)?;
+    attach_pattern_lanes(&mut patterns, pattern_lanes, version)?;
     if version >= 1 {
         attach_pattern_columns(&mut patterns, pattern_columns, version)?;
     }
@@ -2608,10 +2708,14 @@ pub fn decode(text: &str) -> Result<Song> {
     Ok(song)
 }
 
-fn attach_pattern_lanes(patterns: &mut BTreeMap<u16, Pattern>, lanes: Vec<String>) -> Result<()> {
+fn attach_pattern_lanes(
+    patterns: &mut BTreeMap<u16, Pattern>,
+    lanes: Vec<String>,
+    version: u8,
+) -> Result<()> {
     for value in lanes {
         let f = value.split('|').collect::<Vec<_>>();
-        if f.len() != 5 {
+        if (version <= 16 && f.len() != 5) || (version >= 17 && f.len() != 8) {
             bail!("invalid pattern lane");
         }
         let pattern = patterns
@@ -2628,6 +2732,15 @@ fn attach_pattern_lanes(patterns: &mut BTreeMap<u16, Pattern>, lanes: Vec<String
         page.lanes.push(Lane {
             name: unescape(f[3])?,
             enabled: binary_flag(f[4], "pattern lane enabled")?,
+            playback: if version >= 17 {
+                LanePlayback {
+                    cycle_rows: f[5].parse()?,
+                    rate: parse_lane_rate(f[6])?,
+                    direction: parse_lane_direction(f[7])?,
+                }
+            } else {
+                LanePlayback::default()
+            },
         });
     }
     Ok(())
@@ -3034,10 +3147,33 @@ pub(crate) fn schedule_elapsed_with_conditions(
             0
         };
         let pattern_start = at;
-        let pattern_duration = pattern_schedule_duration(pattern, first_row, song.steps_per_beat);
-        let pattern_end = pattern_start + pattern_duration;
+        let mut row_timings = Vec::with_capacity(pattern.rows.len().saturating_sub(first_row));
+        let mut timing_at = pattern_start;
+        let mut timing_tempo = pattern.tempo;
+        for (row_index, row) in pattern.rows.iter().enumerate().skip(first_row) {
+            let duration = Duration::from_secs_f64(
+                60.0 / timing_tempo.as_f64() / f64::from(song.steps_per_beat),
+            );
+            row_timings.push(RowTiming {
+                row: row_index,
+                start: timing_at,
+                end: timing_at + duration,
+                duration,
+            });
+            timing_at += duration;
+            if let Some(new_tempo) = row
+                .iter()
+                .filter_map(|cell| match cell.command {
+                    Command::Tempo(tempo) => Some(tempo),
+                    _ => None,
+                })
+                .next_back()
+            {
+                timing_tempo = new_tempo;
+            }
+        }
+        let pattern_end = timing_at;
         let last_event_at = pattern_end.saturating_sub(Duration::from_nanos(1));
-        let mut tempo = pattern.tempo;
         let mut pending = Vec::new();
         let mut programmed = vec![false; pattern.total_lanes()];
         let mut previous_result = vec![false; pattern.total_lanes()];
@@ -3053,11 +3189,10 @@ pub(crate) fn schedule_elapsed_with_conditions(
                 );
             }
         }
-        for (row_index, row) in pattern.rows.iter().enumerate().skip(first_row) {
-            let row_duration =
-                Duration::from_secs_f64(60.0 / tempo.as_f64() / f64::from(song.steps_per_beat));
-            let row_start = at;
-            let row_end = row_start + row_duration;
+        for (timing_index, timing) in row_timings.iter().copied().enumerate() {
+            let row_index = timing.row;
+            let row_duration = timing.duration;
+            let row_start = timing.start;
             // Row cursor and MIDI clock deliberately stay on the straight
             // transport grid. Swing and nudge affect only cell events.
             push(
@@ -3089,60 +3224,47 @@ pub(crate) fn schedule_elapsed_with_conditions(
                     }
                 }
             }
-            let swing = swing_offset(pattern, row_index, song.steps_per_beat, row_duration);
-            for (lane_index, cell) in row.iter().copied().enumerate() {
+            for lane_index in 0..pattern.total_lanes() {
                 let page_index = lane_index / LANES_PER_PAGE;
                 let column_index = lane_index % LANES_PER_PAGE;
                 let page = &pattern.pages[page_index];
                 if !page.enabled || !page.lanes[column_index].enabled {
                     continue;
                 }
-                let triggered = if matches!(cell.note, Note::On(_)) {
-                    let result = cell_triggered(
-                        cell,
-                        conditions,
-                        *pattern_number,
-                        order_index,
-                        row_index,
-                        lane_index,
-                        previous_result[lane_index],
-                    );
-                    previous_result[lane_index] = result;
-                    result
-                } else {
-                    true
-                };
-                if triggered && !matches!(cell.note, Note::Empty) {
-                    let delay = match cell.command {
-                        Command::Delay(tick) => {
-                            row_duration.mul_f64(f64::from(tick.min(15)) / 16.0)
-                        }
-                        _ => Duration::ZERO,
-                    };
-                    let swung = row_start + swing;
-                    let nudged = offset_duration(swung, row_duration, cell.nudge);
-                    let event_at = (nudged + delay).max(pattern_start).min(last_event_at);
-                    pending.push(PendingCellEvent {
-                        at: event_at,
-                        row_start,
-                        row_end,
+                let playback = page.lanes[column_index].playback;
+                let steps = lane_steps_for_row(
+                    playback,
+                    pattern.rows.len(),
+                    row_index,
+                    *pattern_number,
+                    order_index,
+                    lane_index,
+                    conditions.pass,
+                    conditions.include_all,
+                );
+                for step in steps {
+                    let cell = pattern.rows[step.source_row][lane_index];
+                    let swing = swing_offset(pattern, row_index, song.steps_per_beat, row_duration);
+                    let next_timing = row_timings.get(timing_index + 1).copied();
+                    let (step_start, step_end) = lane_step_times(
+                        if conditions.include_all {
+                            LaneRate::Normal
+                        } else {
+                            playback.rate
+                        },
+                        step,
+                        timing,
+                        next_timing,
+                        &row_timings,
+                        pattern,
+                        song.steps_per_beat,
                         pattern_end,
-                        order: order_index,
-                        row: row_index,
-                        lane: lane_index,
-                        page: page_index,
-                        column: column_index,
-                        cell,
-                        kind: PendingCellKind::Note,
-                    });
-                }
-                if triggered {
-                    if let Command::Cut(tick) = cell.command {
+                    );
+                    if step.boundary_before {
                         pending.push(PendingCellEvent {
-                            at: (row_start + row_duration.mul_f64(f64::from(tick.min(15)) / 16.0))
-                                .min(last_event_at),
-                            row_start,
-                            row_end,
+                            at: step_start.min(last_event_at),
+                            row_start: step_start,
+                            row_end: step_end,
                             pattern_end,
                             order: order_index,
                             row: row_index,
@@ -3150,23 +3272,86 @@ pub(crate) fn schedule_elapsed_with_conditions(
                             page: page_index,
                             column: column_index,
                             cell,
-                            kind: PendingCellKind::Cut,
+                            kind: PendingCellKind::Boundary,
                         });
+                    }
+                    let triggered = if matches!(cell.note, Note::On(_)) {
+                        let result = cell_triggered(
+                            cell,
+                            conditions,
+                            *pattern_number,
+                            order_index,
+                            step.source_row,
+                            lane_index,
+                            step.probability_occurrence,
+                            previous_result[lane_index],
+                        );
+                        previous_result[lane_index] = result;
+                        result
+                    } else {
+                        true
+                    };
+                    let step_duration = step_end.saturating_sub(step_start);
+                    let boundary_floor = if step.boundary_before {
+                        step_start
+                    } else {
+                        pattern_start
+                    };
+                    let boundary_ceiling = if step.boundary_after {
+                        step_end.saturating_sub(Duration::from_nanos(1))
+                    } else {
+                        last_event_at
+                    };
+                    if triggered && !matches!(cell.note, Note::Empty) {
+                        let delay = match cell.command {
+                            Command::Delay(tick) => {
+                                step_duration.mul_f64(f64::from(tick.min(15)) / 16.0)
+                            }
+                            _ => Duration::ZERO,
+                        };
+                        let swung = if playback.rate == LaneRate::Normal {
+                            row_start + swing
+                        } else {
+                            step_start
+                        };
+                        let nudged = offset_duration(swung, step_duration, cell.nudge);
+                        let event_at = (nudged + delay).max(boundary_floor).min(boundary_ceiling);
+                        pending.push(PendingCellEvent {
+                            at: event_at,
+                            row_start: step_start,
+                            row_end: step_end,
+                            pattern_end,
+                            order: order_index,
+                            row: row_index,
+                            lane: lane_index,
+                            page: page_index,
+                            column: column_index,
+                            cell,
+                            kind: PendingCellKind::Note,
+                        });
+                    }
+                    if triggered {
+                        if let Command::Cut(tick) = cell.command {
+                            pending.push(PendingCellEvent {
+                                at: (step_start
+                                    + step_duration.mul_f64(f64::from(tick.min(15)) / 16.0))
+                                .min(boundary_ceiling),
+                                row_start: step_start,
+                                row_end: step_end,
+                                pattern_end,
+                                order: order_index,
+                                row: row_index,
+                                lane: lane_index,
+                                page: page_index,
+                                column: column_index,
+                                cell,
+                                kind: PendingCellKind::Cut,
+                            });
+                        }
                     }
                 }
             }
-            if let Some(new_tempo) = row
-                .iter()
-                .filter_map(|cell| match cell.command {
-                    Command::Tempo(tempo) => Some(tempo),
-                    _ => None,
-                })
-                .next_back()
-            {
-                tempo = new_tempo;
-            }
             clock_step += 1;
-            at = row_end;
         }
         pending.sort_by_key(|event| (event.at, event.kind, event.row, event.lane));
         for (event_index, event) in pending.iter().copied().enumerate() {
@@ -3178,7 +3363,7 @@ pub(crate) fn schedule_elapsed_with_conditions(
             let mut column = *page.column(event.column);
             column.channel = page.runtime_channel(event.column, config);
             match event.kind {
-                PendingCellKind::Cut => {
+                PendingCellKind::Boundary | PendingCellKind::Cut => {
                     if let Some((target, channel, note, _)) = active.remove(&event.lane) {
                         push_lane(
                             &mut result,
@@ -3322,6 +3507,221 @@ pub(crate) fn schedule_elapsed_with_conditions(
     Ok(result)
 }
 
+#[derive(Clone, Copy, Debug)]
+struct RowTiming {
+    row: usize,
+    start: Duration,
+    end: Duration,
+    duration: Duration,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LaneStep {
+    source_row: usize,
+    substep: usize,
+    subdivisions: usize,
+    slow_rows: usize,
+    boundary_before: bool,
+    boundary_after: bool,
+    probability_occurrence: Option<usize>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lane_steps_for_row(
+    playback: LanePlayback,
+    pattern_rows: usize,
+    transport_row: usize,
+    pattern: u16,
+    order: usize,
+    lane: usize,
+    pass: u32,
+    preflight: bool,
+) -> Vec<LaneStep> {
+    if preflight {
+        return vec![LaneStep {
+            source_row: transport_row,
+            substep: 0,
+            subdivisions: 1,
+            slow_rows: 1,
+            boundary_before: false,
+            boundary_after: false,
+            probability_occurrence: None,
+        }];
+    }
+    let length = playback.effective_rows(pattern_rows).max(1);
+    let (subdivisions, slow_rows) = playback.rate.ratio();
+    let first_step = if slow_rows > 1 {
+        if !transport_row.is_multiple_of(slow_rows) {
+            return Vec::new();
+        }
+        transport_row / slow_rows
+    } else {
+        transport_row.saturating_mul(subdivisions)
+    };
+    (0..subdivisions)
+        .map(|substep| {
+            let step = first_step + substep;
+            let source_row =
+                lane_source_row(playback.direction, length, step, pattern, order, lane, pass);
+            let legacy = playback == LanePlayback::default() && source_row == transport_row;
+            LaneStep {
+                source_row,
+                substep,
+                subdivisions,
+                slow_rows,
+                boundary_before: lane_ownership_boundary(playback.direction, length, step),
+                boundary_after: lane_ownership_boundary(
+                    playback.direction,
+                    length,
+                    step.saturating_add(1),
+                ),
+                probability_occurrence: (!legacy).then_some(step),
+            }
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lane_source_row(
+    direction: LaneDirection,
+    length: usize,
+    step: usize,
+    pattern: u16,
+    order: usize,
+    lane: usize,
+    pass: u32,
+) -> usize {
+    match direction {
+        LaneDirection::Forward => step % length,
+        LaneDirection::Reverse => length - 1 - step % length,
+        LaneDirection::Pendulum if length == 1 => 0,
+        LaneDirection::Pendulum => {
+            let period = length.saturating_mul(2).saturating_sub(2);
+            let phase = step % period;
+            if phase < length {
+                phase
+            } else {
+                period - phase
+            }
+        }
+        LaneDirection::Variation => {
+            let cycle = step / length;
+            let position = step % length;
+            variation_position(length, position, pattern, order, lane, pass, cycle)
+        }
+    }
+}
+
+fn lane_ownership_boundary(direction: LaneDirection, length: usize, step: usize) -> bool {
+    if step == 0 {
+        return false;
+    }
+    match direction {
+        LaneDirection::Forward | LaneDirection::Reverse | LaneDirection::Variation => {
+            step.is_multiple_of(length)
+        }
+        LaneDirection::Pendulum if length == 1 => true,
+        LaneDirection::Pendulum if length == 2 => step >= 2,
+        LaneDirection::Pendulum => {
+            let period = length * 2 - 2;
+            let phase = step % period;
+            phase == length || (phase == 1 && step > 1)
+        }
+    }
+}
+
+fn variation_position(
+    length: usize,
+    position: usize,
+    pattern: u16,
+    order: usize,
+    lane: usize,
+    pass: u32,
+    cycle: usize,
+) -> usize {
+    if length <= 1 {
+        return 0;
+    }
+    let seed = deterministic_lane_seed(pattern, order, lane, pass, cycle);
+    let mut multiplier = (seed as usize % length).max(1);
+    while greatest_common_divisor(multiplier, length) != 1 {
+        multiplier = multiplier % (length - 1) + 1;
+    }
+    let offset = (seed.rotate_left(29) as usize) % length;
+    (multiplier * position + offset) % length
+}
+
+fn greatest_common_divisor(mut left: usize, mut right: usize) -> usize {
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    left
+}
+
+fn deterministic_lane_seed(
+    pattern: u16,
+    order: usize,
+    lane: usize,
+    pass: u32,
+    cycle: usize,
+) -> u64 {
+    let mut value = 0x6a09_e667_f3bc_c909u64;
+    for part in [
+        u64::from(pattern),
+        order as u64,
+        lane as u64,
+        u64::from(pass),
+        cycle as u64,
+    ] {
+        value ^= part.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        value = value.rotate_left(27).wrapping_mul(0x94d0_49bb_1331_11eb);
+        value ^= value >> 31;
+    }
+    value
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lane_step_times(
+    rate: LaneRate,
+    step: LaneStep,
+    timing: RowTiming,
+    next_timing: Option<RowTiming>,
+    timings: &[RowTiming],
+    pattern: &Pattern,
+    steps_per_beat: u8,
+    pattern_end: Duration,
+) -> (Duration, Duration) {
+    if rate == LaneRate::Normal {
+        return (timing.start, timing.end);
+    }
+    let swing = swing_offset(pattern, timing.row, steps_per_beat, timing.duration);
+    let container_start = timing.start + swing;
+    let container_end = if step.slow_rows > 1 {
+        timings
+            .iter()
+            .find(|candidate| candidate.row == timing.row + step.slow_rows)
+            .map(|candidate| {
+                candidate.start
+                    + swing_offset(pattern, candidate.row, steps_per_beat, candidate.duration)
+            })
+            .unwrap_or(pattern_end)
+    } else {
+        next_timing
+            .map(|candidate| {
+                candidate.start
+                    + swing_offset(pattern, candidate.row, steps_per_beat, candidate.duration)
+            })
+            .unwrap_or(pattern_end)
+    }
+    .max(container_start);
+    let span = container_end.saturating_sub(container_start);
+    let start =
+        container_start + span.mul_f64(step.substep as f64 / step.subdivisions.max(1) as f64);
+    let end =
+        container_start + span.mul_f64((step.substep + 1) as f64 / step.subdivisions.max(1) as f64);
+    (start, end.max(start))
+}
+
 fn cell_triggered(
     cell: Cell,
     context: ConditionContext,
@@ -3329,6 +3729,7 @@ fn cell_triggered(
     order: usize,
     row: usize,
     lane: usize,
+    occurrence: Option<usize>,
     previous: bool,
 ) -> bool {
     if context.include_all {
@@ -3345,14 +3746,22 @@ fn cell_triggered(
     };
     condition
         && (cell.probability == 100
-            || deterministic_percent(pattern, order, row, lane, pass) <= cell.probability)
+            || deterministic_percent(pattern, order, row, lane, pass, occurrence)
+                <= cell.probability)
 }
 
 fn pass_position(pass: u32, cycle: u8) -> u8 {
     ((pass.saturating_sub(1) % u32::from(cycle)) + 1) as u8
 }
 
-fn deterministic_percent(pattern: u16, order: usize, row: usize, lane: usize, pass: u32) -> u8 {
+fn deterministic_percent(
+    pattern: u16,
+    order: usize,
+    row: usize,
+    lane: usize,
+    pass: u32,
+    occurrence: Option<usize>,
+) -> u8 {
     let mut value = 0x9e37_79b9_7f4a_7c15u64;
     for part in [
         u64::from(pattern),
@@ -3360,7 +3769,10 @@ fn deterministic_percent(pattern: u16, order: usize, row: usize, lane: usize, pa
         row as u64,
         lane as u64,
         u64::from(pass),
-    ] {
+    ]
+    .into_iter()
+    .chain(occurrence.map(|value| value as u64))
+    {
         value ^= part
             .wrapping_add(0x9e37_79b9)
             .wrapping_add(value << 6)
@@ -3376,6 +3788,7 @@ fn deterministic_percent(pattern: u16, order: usize, row: usize, lane: usize, pa
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum PendingCellKind {
+    Boundary,
     Note,
     Cut,
 }
@@ -3393,29 +3806,6 @@ struct PendingCellEvent {
     column: usize,
     cell: Cell,
     kind: PendingCellKind,
-}
-
-fn pattern_schedule_duration(pattern: &Pattern, first_row: usize, steps_per_beat: u8) -> Duration {
-    let mut tempo = pattern.tempo;
-    pattern
-        .rows
-        .iter()
-        .skip(first_row)
-        .fold(Duration::ZERO, |duration, row| {
-            let row_duration =
-                Duration::from_secs_f64(60.0 / tempo.as_f64() / f64::from(steps_per_beat));
-            if let Some(next) = row
-                .iter()
-                .filter_map(|cell| match cell.command {
-                    Command::Tempo(tempo) => Some(tempo),
-                    _ => None,
-                })
-                .next_back()
-            {
-                tempo = next;
-            }
-            duration + row_duration
-        })
 }
 
 fn swing_offset(
@@ -4932,7 +5322,7 @@ fn activate_live_pattern(
     live_song.order = vec![requested.pattern];
     let mut scheduled = schedule_for_pass(&live_song, config, 0, 0, pass, fill)
         .map_err(|error| error.to_string())?;
-    strip_live_boundary_releases(pattern, &mut scheduled);
+    strip_live_boundary_releases(requested.pattern, pattern, pass, fill, &mut scheduled);
     if cleanup {
         cleanup_owned_notes(outputs, note_owners);
         active_notes.clear();
@@ -4943,7 +5333,13 @@ fn activate_live_pattern(
     Ok(targets)
 }
 
-fn strip_live_boundary_releases(pattern: &Pattern, messages: &mut Vec<ScheduledMessage>) {
+fn strip_live_boundary_releases(
+    pattern_number: u16,
+    pattern: &Pattern,
+    pass: u32,
+    fill: bool,
+    messages: &mut Vec<ScheduledMessage>,
+) {
     let boundary = messages
         .iter()
         .filter(|message| message.bytes.is_empty() && message.effect.is_none())
@@ -4951,18 +5347,7 @@ fn strip_live_boundary_releases(pattern: &Pattern, messages: &mut Vec<ScheduledM
         .max()
         .unwrap_or_default();
     let held_lanes = (0..pattern.total_lanes())
-        .filter(|lane| {
-            pattern
-                .rows
-                .iter()
-                .rev()
-                .find_map(|row| match row[*lane].note {
-                    Note::On(_) => Some(row[*lane].gate == Some(100)),
-                    Note::Off => Some(false),
-                    Note::Empty => None,
-                })
-                .unwrap_or(false)
-        })
+        .filter(|lane| lane_holds_at_pattern_end(pattern_number, pattern, *lane, pass, fill))
         .collect::<BTreeSet<_>>();
     messages.retain(|message| {
         !(message.at == boundary
@@ -4974,42 +5359,111 @@ fn strip_live_boundary_releases(pattern: &Pattern, messages: &mut Vec<ScheduledM
     });
 }
 
-fn transfer_held_lanes(
+fn lane_holds_at_pattern_end(
+    pattern_number: u16,
     pattern: &Pattern,
-    config: &ExternalMidiConfig,
+    lane: usize,
+    pass: u32,
+    fill: bool,
+) -> bool {
+    let page = &pattern.pages[lane / LANES_PER_PAGE];
+    let playback = page.lanes[lane % LANES_PER_PAGE].playback;
+    let context = ConditionContext::playback(pass, fill);
+    let mut previous = false;
+    let mut held = false;
+    let final_emitted_position = (0..pattern.rows.len()).rev().find_map(|transport_row| {
+        let count = lane_steps_for_row(
+            playback,
+            pattern.rows.len(),
+            transport_row,
+            pattern_number,
+            0,
+            lane,
+            pass,
+            false,
+        )
+        .len();
+        (count > 0).then_some((transport_row, count - 1))
+    });
+    for transport_row in 0..pattern.rows.len() {
+        let steps = lane_steps_for_row(
+            playback,
+            pattern.rows.len(),
+            transport_row,
+            pattern_number,
+            0,
+            lane,
+            pass,
+            false,
+        );
+        for (step_index, step) in steps.into_iter().enumerate() {
+            if step.boundary_before {
+                held = false;
+            }
+            let cell = pattern.rows[step.source_row][lane];
+            let triggered = if matches!(cell.note, Note::On(_)) {
+                let result = cell_triggered(
+                    cell,
+                    context,
+                    pattern_number,
+                    0,
+                    step.source_row,
+                    lane,
+                    step.probability_occurrence,
+                    previous,
+                );
+                previous = result;
+                result
+            } else {
+                true
+            };
+            if triggered {
+                match cell.note {
+                    Note::On(_) => held = cell.gate == Some(100),
+                    Note::Off => held = false,
+                    Note::Empty => {}
+                }
+            }
+            let final_emitted_step = final_emitted_position == Some((transport_row, step_index));
+            if step.boundary_after && !final_emitted_step {
+                held = false;
+            }
+        }
+    }
+    held
+}
+
+fn transfer_held_lanes(
+    _pattern: &Pattern,
+    _config: &ExternalMidiConfig,
     active_notes: &BTreeMap<usize, (PageTarget, u8, BTreeSet<u8>)>,
     messages: &mut Vec<ScheduledMessage>,
 ) {
     for (&lane, (old_target, old_channel, notes)) in active_notes {
-        let next = pattern.rows.iter().enumerate().find_map(|(row, cells)| {
-            cells.get(lane).and_then(|cell| match cell.note {
-                Note::On(note) => Some((row, Some(note))),
-                Note::Off => Some((row, None)),
-                Note::Empty => None,
-            })
-        });
-        let Some((row, next_note)) = next else {
-            continue;
-        };
-        let page = &pattern.pages[lane / LANES_PER_PAGE];
-        let at = messages
+        let first_attack = messages
             .iter()
-            .find(|message| {
-                message.bytes.is_empty() && message.effect.is_none() && message.row == row
+            .filter(|message| message.lane == Some(lane))
+            .find_map(|message| match message.bytes.as_slice() {
+                [status, note, velocity, ..] if status & 0xf0 == 0x90 && *velocity > 0 => {
+                    Some((message.at, message.target.clone(), status & 0x0f, *note))
+                }
+                _ => None,
             })
-            .map_or(Duration::ZERO, |message| message.at);
+            .filter(|(at, _, _, _)| at.is_zero());
         for &old_note in notes {
-            let same = next_note.is_some_and(|note| {
-                note == old_note
-                    && page.target == *old_target
-                    && page.runtime_channel(lane % LANES_PER_PAGE, config) == *old_channel
-            });
+            let same = first_attack
+                .as_ref()
+                .is_some_and(|(_, target, channel, note)| {
+                    *note == old_note
+                        && target.as_ref() == Some(old_target)
+                        && *channel == *old_channel
+                });
             if !same {
                 let release = ScheduledMessage {
-                    at,
+                    at: Duration::ZERO,
                     bytes: vec![0x80 | old_channel, old_note, 0],
                     order: 0,
-                    row,
+                    row: 0,
                     lane: Some(lane),
                     target: Some(old_target.clone()),
                     automation: false,
@@ -5017,7 +5471,7 @@ fn transfer_held_lanes(
                 };
                 let insert_at = messages
                     .iter()
-                    .position(|message| message.at >= at)
+                    .position(|message| !message.at.is_zero() || !message.bytes.is_empty())
                     .unwrap_or(messages.len());
                 messages.insert(insert_at, release);
             }
@@ -5524,6 +5978,7 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
             .map(|lane| Lane {
                 name: format!("L{lane}"),
                 enabled: true,
+                playback: LanePlayback::default(),
             })
             .collect(),
     };
@@ -5663,6 +6118,42 @@ fn parse_drum_role(value: &str) -> Result<DrumRole> {
         "long" => Ok(DrumRole::LongTail),
         "other" => Ok(DrumRole::Other),
         _ => bail!("invalid drum role"),
+    }
+}
+pub(crate) const fn lane_rate_text(rate: LaneRate) -> &'static str {
+    match rate {
+        LaneRate::Quarter => "quarter",
+        LaneRate::Half => "half",
+        LaneRate::Normal => "normal",
+        LaneRate::Double => "double",
+        LaneRate::Quadruple => "quadruple",
+    }
+}
+pub(crate) fn parse_lane_rate(value: &str) -> Result<LaneRate> {
+    match value {
+        "quarter" => Ok(LaneRate::Quarter),
+        "half" => Ok(LaneRate::Half),
+        "normal" => Ok(LaneRate::Normal),
+        "double" => Ok(LaneRate::Double),
+        "quadruple" => Ok(LaneRate::Quadruple),
+        _ => bail!("invalid lane playback rate"),
+    }
+}
+pub(crate) const fn lane_direction_text(direction: LaneDirection) -> &'static str {
+    match direction {
+        LaneDirection::Forward => "forward",
+        LaneDirection::Reverse => "reverse",
+        LaneDirection::Pendulum => "pendulum",
+        LaneDirection::Variation => "variation",
+    }
+}
+pub(crate) fn parse_lane_direction(value: &str) -> Result<LaneDirection> {
+    match value {
+        "forward" => Ok(LaneDirection::Forward),
+        "reverse" => Ok(LaneDirection::Reverse),
+        "pendulum" => Ok(LaneDirection::Pendulum),
+        "variation" => Ok(LaneDirection::Variation),
+        _ => bail!("invalid lane playback direction"),
     }
 }
 fn parse_target(value: &str, version: u8) -> Result<PageTarget> {
@@ -6082,6 +6573,24 @@ mod tests {
         let maximum = pattern_resize_fixture(256);
         assert!(maximum.insert_row_after(0).is_err());
     }
+
+    #[test]
+    fn pattern_resize_clamps_explicit_lane_cycles_but_full_tracks_growth() {
+        let mut pattern = pattern_resize_fixture(16);
+        pattern.pages[0].lanes[0].playback.cycle_rows = 12;
+        pattern.pages[0].lanes[1].playback.cycle_rows = 0;
+        pattern.resize_rows(8).unwrap();
+        assert_eq!(pattern.pages[0].lanes[0].playback.cycle_rows, 8);
+        assert_eq!(pattern.pages[0].lanes[1].playback.cycle_rows, 0);
+        pattern.resize_rows(24).unwrap();
+        assert_eq!(pattern.pages[0].lanes[0].playback.cycle_rows, 8);
+        assert_eq!(
+            pattern.pages[0].lanes[1]
+                .playback
+                .effective_rows(pattern.rows.len()),
+            24
+        );
+    }
     fn without_v15_rhythm_fields(text: &str) -> String {
         text.lines()
             .map(|line| {
@@ -6091,6 +6600,9 @@ mod tests {
                 } else if let Some(value) = line.strip_prefix("cell=") {
                     let fields = value.split('|').take(8).collect::<Vec<_>>();
                     format!("cell={}", fields.join("|"))
+                } else if let Some(value) = line.strip_prefix("pattern_lane=") {
+                    let fields = value.split('|').take(5).collect::<Vec<_>>();
+                    format!("pattern_lane={}", fields.join("|"))
                 } else {
                     line.to_owned()
                 }
@@ -6164,7 +6676,7 @@ mod tests {
                 !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
             })
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 16") {
+                if line.starts_with("SHSYNTH-SONG 17") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -6213,7 +6725,7 @@ mod tests {
         assert!(scheduled
             .iter()
             .any(|message| message.at == boundary && message.bytes == [0x80, 60, 0]));
-        strip_live_boundary_releases(&pattern, &mut scheduled);
+        strip_live_boundary_releases(0, &pattern, 1, false, &mut scheduled);
         assert!(!scheduled
             .iter()
             .any(|message| message.at == boundary && message.bytes == [0x80, 60, 0]));
@@ -6387,7 +6899,7 @@ mod tests {
             .unwrap();
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 16\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 17\n"));
         assert_eq!(decode(&text).unwrap(), s);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
@@ -6416,7 +6928,7 @@ mod tests {
         pages_mut(&mut song)[2].target = PageTarget::InternalDrums(drum_kit);
 
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
         assert!(encoded.contains("project_key=1|minor\n"));
         assert!(encoded.contains("drum_rack="));
         assert!(encoded.contains("|shr-drums:experimental-noise|"));
@@ -6454,7 +6966,7 @@ mod tests {
         assert_eq!(decode(&encoded).unwrap(), song);
 
         let fourteen =
-            without_v15_rhythm_fields(&encoded).replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 14", 1);
+            without_v15_rhythm_fields(&encoded).replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 14", 1);
         let migrated = decode(&fourteen).unwrap();
         assert_eq!(
             migrated.patterns[&0].automation,
@@ -6591,7 +7103,7 @@ mod tests {
             .lines()
             .filter(|line| !line.starts_with("drum_rack="))
             .map(|line| {
-                if line == "SHSYNTH-SONG 16" {
+                if line == "SHSYNTH-SONG 17" {
                     "SHSYNTH-SONG 12"
                 } else {
                     line
@@ -6615,7 +7127,7 @@ mod tests {
         assert_eq!(reverb.parameters["predelay_ms"], 14.0);
         assert_eq!(
             encode(&migrated).unwrap().lines().next(),
-            Some("SHSYNTH-SONG 16")
+            Some("SHSYNTH-SONG 17")
         );
     }
 
@@ -6626,7 +7138,7 @@ mod tests {
             Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
         pages_mut(&mut original)[2].target = PageTarget::ConfiguredExternal;
         let legacy = without_v12_fields(&encode(&original).unwrap()).replacen(
-            "SHSYNTH-SONG 16",
+            "SHSYNTH-SONG 17",
             "SHSYNTH-SONG 11",
             1,
         );
@@ -6681,7 +7193,7 @@ mod tests {
         pattern.rows[3][0].command = Command::Tempo("99.75".parse().unwrap());
         pattern.rows[3][0].nudge = -24;
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
         assert!(encoded.contains("pattern=0|64|10050|4|sixteenth|50\n"));
         assert!(encoded.contains("|manual|1|0\n"));
         assert!(encoded.contains("|T9975|-24|100|-\n"));
@@ -6700,7 +7212,7 @@ mod tests {
             ..Cell::default()
         };
         let legacy = without_v15_rhythm_fields(&encode(&current).unwrap()).replacen(
-            "SHSYNTH-SONG 16",
+            "SHSYNTH-SONG 17",
             "SHSYNTH-SONG 14",
             1,
         );
@@ -6724,7 +7236,7 @@ mod tests {
         let legacy = without_v15_rhythm_fields(&current)
             .lines()
             .map(|line| {
-                if line == "SHSYNTH-SONG 16" {
+                if line == "SHSYNTH-SONG 17" {
                     "SHSYNTH-SONG 10".to_owned()
                 } else if line.starts_with("project_key=")
                     || line.starts_with("drum_kit=")
@@ -6750,7 +7262,7 @@ mod tests {
     fn format_nine_whole_tempos_migrate_in_memory_without_rewriting() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy =
-            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 9", 1);
+            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 9", 1);
         let base = env::temp_dir().join(format!("shr-tempo-v9-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -6759,7 +7271,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.patterns[&0].tempo, Bpm::DEFAULT);
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 17\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -6771,7 +7283,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 8", 1);
+            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 8", 1);
         let base = env::temp_dir().join(format!("shr-strip-v8-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -6781,7 +7293,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.master_strip, MasterStripSettings::default());
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 17\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -6801,7 +7313,7 @@ mod tests {
                 .is_err()
         );
         assert!(decode(&encoded.replacen("\"version\":1", "\"version\":2", 1)).is_err());
-        assert!(decode(&encoded.replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 17", 1)).is_err());
+        assert!(decode(&encoded.replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 18", 1)).is_err());
     }
 
     #[test]
@@ -6973,7 +7485,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 7", 1)
+            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 7", 1)
             .replacen(
                 "insert_rack=",
                 "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
@@ -7005,7 +7517,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 6", 1)
+            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -7153,7 +7665,7 @@ mod tests {
             condition: StepCondition::Ratio { hit: 2, cycle: 3 },
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
         assert!(encoded.contains("|64|111|17|37|D6|24|73|2:3\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -7393,6 +7905,222 @@ mod tests {
         ));
     }
 
+    fn lane_note_ons(messages: &[ScheduledMessage], lane: usize) -> Vec<(Duration, u8)> {
+        messages
+            .iter()
+            .filter_map(|message| match message.bytes.as_slice() {
+                [status, note, velocity, ..]
+                    if status & 0xf0 == 0x90 && *velocity > 0 && message.lane == Some(lane) =>
+                {
+                    Some((message.at, *note))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn lane_cycle_song(rows: usize) -> (Song, ExternalMidiConfig) {
+        let mut cfg = config();
+        cfg.bank_select = BankSelectMode::Off;
+        cfg.program_changes = false;
+        let mut song = Song::new(&cfg);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.rows.truncate(rows);
+        for row in 0..rows {
+            pattern.rows[row][0] = Cell {
+                note: Note::On(60 + row as u8),
+                gate: Some(25),
+                ..Cell::default()
+            };
+        }
+        (song, cfg)
+    }
+
+    #[test]
+    fn independent_lane_length_forward_reverse_and_pendulum_are_exact() {
+        let (mut song, cfg) = lane_cycle_song(8);
+        let lane = &mut song.patterns.get_mut(&0).unwrap().pages[0].lanes[0];
+        lane.playback.cycle_rows = 4;
+
+        let notes = lane_note_ons(&schedule(&song, &cfg, 0, 0).unwrap(), 0)
+            .into_iter()
+            .map(|(_, note)| note)
+            .collect::<Vec<_>>();
+        assert_eq!(notes, [60, 61, 62, 63, 60, 61, 62, 63]);
+
+        song.patterns.get_mut(&0).unwrap().pages[0].lanes[0]
+            .playback
+            .direction = LaneDirection::Reverse;
+        let notes = lane_note_ons(&schedule(&song, &cfg, 0, 0).unwrap(), 0)
+            .into_iter()
+            .map(|(_, note)| note)
+            .collect::<Vec<_>>();
+        assert_eq!(notes, [63, 62, 61, 60, 63, 62, 61, 60]);
+
+        song.patterns.get_mut(&0).unwrap().pages[0].lanes[0]
+            .playback
+            .direction = LaneDirection::Pendulum;
+        let notes = lane_note_ons(&schedule(&song, &cfg, 0, 0).unwrap(), 0)
+            .into_iter()
+            .map(|(_, note)| note)
+            .collect::<Vec<_>>();
+        assert_eq!(notes, [60, 61, 62, 63, 62, 61, 60, 61]);
+    }
+
+    #[test]
+    fn lane_rates_use_exact_pattern_row_fractions_and_partial_phase() {
+        let expected = [
+            (LaneRate::Quarter, Duration::from_millis(500)),
+            (LaneRate::Half, Duration::from_millis(250)),
+            (LaneRate::Normal, Duration::from_millis(125)),
+            (LaneRate::Double, Duration::from_micros(62_500)),
+            (LaneRate::Quadruple, Duration::from_micros(31_250)),
+        ];
+        for (rate, spacing) in expected {
+            let (mut song, cfg) = lane_cycle_song(8);
+            song.patterns.get_mut(&0).unwrap().pages[0].lanes[0]
+                .playback
+                .rate = rate;
+            let notes = lane_note_ons(&schedule(&song, &cfg, 0, 0).unwrap(), 0);
+            assert!(notes.len() >= 2, "{} needs two emitted steps", rate.label());
+            assert_eq!(notes[1].0 - notes[0].0, spacing, "{}", rate.label());
+        }
+
+        let (mut song, cfg) = lane_cycle_song(8);
+        song.patterns.get_mut(&0).unwrap().pages[0].lanes[0]
+            .playback
+            .rate = LaneRate::Half;
+        let (first, repeat) = playback_schedules(&song, &cfg, 0, 2).unwrap();
+        assert_eq!(
+            lane_note_ons(&first, 0).first().map(|(_, note)| *note),
+            Some(61)
+        );
+        assert_eq!(
+            lane_note_ons(&repeat, 0).first().map(|(_, note)| *note),
+            Some(60)
+        );
+    }
+
+    #[test]
+    fn deterministic_variation_is_a_bounded_permutation_per_cycle() {
+        let (mut song, cfg) = lane_cycle_song(8);
+        let playback = &mut song.patterns.get_mut(&0).unwrap().pages[0].lanes[0].playback;
+        playback.cycle_rows = 4;
+        playback.direction = LaneDirection::Variation;
+        let first = schedule_for_pass(&song, &cfg, 0, 0, 1, false).unwrap();
+        let repeated = schedule_for_pass(&song, &cfg, 0, 0, 1, false).unwrap();
+        assert_eq!(first, repeated);
+        let notes = lane_note_ons(&first, 0)
+            .into_iter()
+            .map(|(_, note)| note)
+            .collect::<Vec<_>>();
+        for cycle in notes.chunks_exact(4) {
+            assert_eq!(
+                cycle.iter().copied().collect::<BTreeSet<_>>(),
+                BTreeSet::from([60, 61, 62, 63])
+            );
+        }
+        assert!((2..=8).any(|pass| {
+            let later = lane_note_ons(
+                &schedule_for_pass(&song, &cfg, 0, 0, pass, false).unwrap(),
+                0,
+            )
+            .into_iter()
+            .map(|(_, note)| note)
+            .collect::<Vec<_>>();
+            later[..4] != notes[..4]
+        }));
+    }
+
+    #[test]
+    fn lane_wraps_release_held_owners() {
+        let (mut song, cfg) = lane_cycle_song(4);
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern
+            .rows
+            .iter_mut()
+            .for_each(|row| row[0] = Cell::default());
+        pattern.rows[0][0] = Cell {
+            note: Note::On(60),
+            gate: Some(100),
+            ..Cell::default()
+        };
+        pattern.pages[0].lanes[0].playback.cycle_rows = 2;
+        let messages = schedule(&song, &cfg, 0, 0).unwrap();
+        assert!(messages.iter().any(|message| {
+            message.at == Duration::from_millis(250) && message.bytes == [0x80, 60, 0]
+        }));
+    }
+
+    #[test]
+    fn lane_cycles_keep_conditions_deterministic_and_preflight_scans_all_sources() {
+        let (mut song, cfg) = lane_cycle_song(8);
+        {
+            let pattern = song.patterns.get_mut(&0).unwrap();
+            pattern.pages[0].lanes[0].playback = LanePlayback {
+                cycle_rows: 2,
+                rate: LaneRate::Normal,
+                direction: LaneDirection::Forward,
+            };
+            pattern.rows[0][0].condition = StepCondition::Previous;
+            pattern.rows[1][0].condition = StepCondition::Always;
+        }
+        let notes = lane_note_ons(&schedule(&song, &cfg, 0, 0).unwrap(), 0)
+            .into_iter()
+            .map(|(_, note)| note)
+            .collect::<Vec<_>>();
+        assert_eq!(notes, [61, 60, 61, 60, 61, 60, 61]);
+
+        song.patterns.get_mut(&0).unwrap().pages[0].lanes[0].playback = LanePlayback {
+            cycle_rows: 8,
+            rate: LaneRate::Quarter,
+            direction: LaneDirection::Variation,
+        };
+        assert!(scheduled_note_on(
+            &schedule_preflight(&song, &cfg, 0, 0).unwrap(),
+            67
+        ));
+    }
+
+    #[test]
+    fn format_seventeen_round_trips_lane_playback_and_sixteen_migrates_defaults() {
+        let mut song = Song::new(&config());
+        song.patterns.get_mut(&0).unwrap().pages[0].lanes[2].playback = LanePlayback {
+            cycle_rows: 7,
+            rate: LaneRate::Double,
+            direction: LaneDirection::Reverse,
+        };
+        let current = encode(&song).unwrap();
+        assert!(current.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(current.contains("|7|double|reverse\n"));
+        assert_eq!(decode(&current).unwrap(), song);
+
+        let legacy = current
+            .lines()
+            .map(|line| {
+                if line == "SHSYNTH-SONG 17" {
+                    "SHSYNTH-SONG 16".into()
+                } else if let Some(lane) = line.strip_prefix("pattern_lane=") {
+                    format!(
+                        "pattern_lane={}",
+                        lane.split('|').take(5).collect::<Vec<_>>().join("|")
+                    )
+                } else {
+                    line.into()
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        let migrated = decode(&legacy).unwrap();
+        assert!(migrated.patterns[&0]
+            .pages
+            .iter()
+            .flat_map(|page| &page.lanes)
+            .all(|lane| lane.playback == LanePlayback::default()));
+        assert!(decode(&current.replace("|7|double|reverse", "|999|double|reverse")).is_err());
+        assert!(decode(&current.replace("|7|double|reverse", "|7|wild|reverse")).is_err());
+    }
+
     #[test]
     fn format_sixteen_round_trips_conditions_and_fifteen_migrates_to_always() {
         let mut song = Song::new(&config());
@@ -7403,19 +8131,24 @@ mod tests {
             ..Cell::default()
         };
         let current = encode(&song).unwrap();
-        assert!(current.starts_with("SHSYNTH-SONG 16\n"));
+        assert!(current.starts_with("SHSYNTH-SONG 17\n"));
         assert!(current.contains("|73|2:5\n"));
         assert_eq!(decode(&current).unwrap(), song);
 
         let legacy = current
             .lines()
             .map(|line| {
-                if line == "SHSYNTH-SONG 16" {
+                if line == "SHSYNTH-SONG 17" {
                     "SHSYNTH-SONG 15".into()
                 } else if let Some(cell) = line.strip_prefix("cell=") {
                     format!(
                         "cell={}",
                         cell.split('|').take(9).collect::<Vec<_>>().join("|")
+                    )
+                } else if let Some(lane) = line.strip_prefix("pattern_lane=") {
+                    format!(
+                        "pattern_lane={}",
+                        lane.split('|').take(5).collect::<Vec<_>>().join("|")
                     )
                 } else {
                     line.into()
@@ -8742,14 +9475,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 17\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -8758,14 +9491,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 17\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -8782,7 +9515,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 16\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
         assert!(encoded.contains("|default|-|manual|1|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -8798,7 +9531,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 16", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -8819,7 +9552,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 16",
+            "SHSYNTH-SONG 17",
             "SHSYNTH-SONG 4",
             1,
         );

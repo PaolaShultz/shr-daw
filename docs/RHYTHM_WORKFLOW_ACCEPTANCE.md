@@ -15,7 +15,7 @@ The owner-authorized software pass used exact Rust 1.97.1
 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). The locked check,
 focused Project/drum migration, microtiming, swing, deterministic groove, REC
 FEEL, scheduler ownership, navigation, and UI transaction tests passed again
-after Priority 3 integration. The complete normal suite then passed with 1,015
+after Priority 4 integration. The complete normal suite then passed with 1,026
 successful tests, zero failures, and 13 documented ignored development,
 audition, and performance tests.
 

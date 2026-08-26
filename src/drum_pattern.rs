@@ -1,6 +1,7 @@
 //! Reusable four-lane drum patterns, stored independently from Projects.
 use crate::sequencer::{
-    condition_text, parse_condition, Cell, Command, Note, StepCondition, LANES_PER_PAGE,
+    condition_text, lane_direction_text, lane_rate_text, parse_condition, parse_lane_direction,
+    parse_lane_rate, Cell, Command, LanePlayback, Note, StepCondition, LANES_PER_PAGE,
 };
 use anyhow::{bail, Context, Result};
 use std::collections::BTreeSet;
@@ -8,7 +9,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const VERSION: u8 = 3;
+const VERSION: u8 = 4;
 const MAX_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,6 +17,7 @@ pub struct DrumPattern {
     pub name: String,
     pub genre: String,
     pub meter: u8,
+    pub lanes: [LanePlayback; LANES_PER_PAGE],
     pub rows: Vec<[Cell; LANES_PER_PAGE]>,
 }
 
@@ -158,6 +160,14 @@ pub fn encode(pattern: &DrumPattern) -> Result<String> {
         pattern.meter,
         pattern.rows.len()
     );
+    for (lane, playback) in pattern.lanes.iter().enumerate() {
+        text.push_str(&format!(
+            "lane={lane}|{}|{}|{}\n",
+            playback.cycle_rows,
+            lane_rate_text(playback.rate),
+            lane_direction_text(playback.direction)
+        ));
+    }
     for (row, cells) in pattern.rows.iter().enumerate() {
         for (lane, cell) in cells
             .iter()
@@ -198,6 +208,7 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
     let mut genre = None;
     let mut meter = None;
     let mut row_count = None;
+    let mut lanes = Vec::new();
     let mut cells = Vec::new();
     for line in lines.filter(|line| !line.trim().is_empty() && !line.starts_with('#')) {
         let (key, value) = line.split_once('=').context("invalid drum pattern line")?;
@@ -206,6 +217,7 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
             "genre" if genre.is_none() => genre = Some(value.to_owned()),
             "meter" if meter.is_none() => meter = Some(value.parse::<u8>()?),
             "rows" if row_count.is_none() => row_count = Some(value.parse::<usize>()?),
+            "lane" if version >= 4 => lanes.push(value.to_owned()),
             "cell" => cells.push(value.to_owned()),
             "name" | "genre" | "meter" | "rows" => {
                 bail!("duplicate drum pattern field {key}")
@@ -221,14 +233,34 @@ pub fn decode(text: &str) -> Result<DrumPattern> {
         name: name.context("missing name")?,
         genre: genre.unwrap_or_else(|| "Other".into()),
         meter: meter.context("missing meter")?,
+        lanes: [LanePlayback::default(); LANES_PER_PAGE],
         rows: vec![[Cell::default(); LANES_PER_PAGE]; row_count],
     };
+    let mut occupied_lanes = BTreeSet::new();
+    for value in lanes {
+        let fields = value.split('|').collect::<Vec<_>>();
+        if fields.len() != 4 {
+            bail!("invalid drum lane playback settings");
+        }
+        let lane = fields[0].parse::<usize>()?;
+        if lane >= LANES_PER_PAGE || !occupied_lanes.insert(lane) {
+            bail!("duplicate or out-of-range drum lane");
+        }
+        pattern.lanes[lane] = LanePlayback {
+            cycle_rows: fields[1].parse()?,
+            rate: parse_lane_rate(fields[2])?,
+            direction: parse_lane_direction(fields[3])?,
+        };
+    }
+    if version >= 4 && occupied_lanes.len() != LANES_PER_PAGE {
+        bail!("current drum pattern needs four lane settings");
+    }
     let mut occupied = BTreeSet::new();
     for value in cells {
         let fields = value.split('|').collect::<Vec<_>>();
         if (version == 1 && fields.len() != 7)
             || (version == 2 && fields.len() != 8)
-            || (version == 3 && fields.len() != 10)
+            || (version >= 3 && fields.len() != 10)
         {
             bail!("invalid drum cell");
         }
@@ -283,6 +315,13 @@ fn validate(pattern: &DrumPattern) -> Result<()> {
     }
     if pattern.rows.is_empty() || pattern.rows.len() > 256 {
         bail!("drum pattern needs 1..=256 rows");
+    }
+    if pattern
+        .lanes
+        .iter()
+        .any(|lane| usize::from(lane.cycle_rows) > pattern.rows.len())
+    {
+        bail!("drum lane cycle length exceeds pattern rows");
     }
     for (row, cells) in pattern.rows.iter().enumerate() {
         for cell in cells {
@@ -389,6 +428,7 @@ fn decode_catalog(text: &str) -> Result<Vec<DrumPattern>> {
             name: fields[2].to_owned(),
             genre: fields[0].to_owned(),
             meter,
+            lanes: [LanePlayback::default(); LANES_PER_PAGE],
             rows: vec![[Cell::default(); LANES_PER_PAGE]; row_count],
         };
         for (lane, spec) in fields[3..].iter().enumerate() {
@@ -534,6 +574,7 @@ mod tests {
             name: "Test beat".into(),
             genre: "Test".into(),
             meter: 4,
+            lanes: [LanePlayback::default(); LANES_PER_PAGE],
             rows: vec![[Cell::default(); LANES_PER_PAGE]; 16],
         };
         pattern.rows[0][0] = Cell {
@@ -546,8 +587,14 @@ mod tests {
             condition: StepCondition::Ratio { hit: 2, cycle: 4 },
             ..Cell::default()
         };
+        pattern.lanes[0] = LanePlayback {
+            cycle_rows: 12,
+            rate: crate::sequencer::LaneRate::Double,
+            direction: crate::sequencer::LaneDirection::Pendulum,
+        };
         let encoded = encode(&pattern).unwrap();
-        assert!(encoded.starts_with("SHR-DRUM-PATTERN 3\n"));
+        assert!(encoded.starts_with("SHR-DRUM-PATTERN 4\n"));
+        assert!(encoded.contains("lane=0|12|double|pendulum\n"));
         assert!(encoded.contains("|R2|24|70|2:4\n"));
         assert_eq!(decode(&encoded).unwrap(), pattern);
     }
@@ -560,16 +607,25 @@ mod tests {
         assert_eq!(pattern.rows[1][0].command, Command::Delay(4));
         assert!(encode(&pattern)
             .unwrap()
-            .starts_with("SHR-DRUM-PATTERN 3\n"));
+            .starts_with("SHR-DRUM-PATTERN 4\n"));
 
         let v2 = "SHR-DRUM-PATTERN 2\nname=Old feel\ngenre=Test\nmeter=4\nrows=16\ncell=1|0|38|100|-|50|D4|12\n";
         let pattern = decode(v2).unwrap();
         assert_eq!(pattern.rows[1][0].probability, 100);
         assert_eq!(pattern.rows[1][0].condition, StepCondition::Always);
+
+        let v3 = "SHR-DRUM-PATTERN 3\nname=Old logic\ngenre=Test\nmeter=4\nrows=16\ncell=1|0|38|100|-|50|D4|12|75|first\n";
+        let pattern = decode(v3).unwrap();
+        assert_eq!(pattern.rows[1][0].probability, 75);
+        assert!(pattern
+            .lanes
+            .iter()
+            .all(|lane| *lane == LanePlayback::default()));
     }
 
     #[test]
     fn rejects_invalid_or_future_files() {
+        assert!(decode("SHR-DRUM-PATTERN 5\nname=x\nmeter=4\nrows=16\n").is_err());
         assert!(decode("SHR-DRUM-PATTERN 4\nname=x\nmeter=4\nrows=16\n").is_err());
         assert!(decode("SHR-DRUM-PATTERN 0\nname=x\nmeter=4\nrows=16\n").is_err());
         assert!(decode("SHR-DRUM-PATTERN 1\nname=x\nmeter=5\nrows=16\n").is_err());
