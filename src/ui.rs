@@ -885,7 +885,7 @@ impl ControllerLearnReason {
             Self::Offline => "Configured controller is offline",
             Self::NoReviewedProfile => "No reviewed profile matches controller",
             Self::IncompleteLearnedEncoder => "Learned master encoder is incomplete",
-            Self::UnusableReviewedEncoder => "Reviewed profile cannot use encoder",
+            Self::UnusableReviewedEncoder => "Controller found · learn master encoder",
         }
     }
 }
@@ -30227,8 +30227,22 @@ release = 0.4
         let mut a = app(&p);
         let (tx, _rx) = mpsc::channel();
         a.controller_online = true;
-        *a.controller_config.write().unwrap() =
-            crate::pads::PadConfig::unmapped("Test Controller MIDI");
+        let profile = a
+            .controller_profiles
+            .matching("Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1")
+            .unwrap();
+        let mut controller = crate::pads::PadConfig::default();
+        profile
+            .apply(
+                &mut controller,
+                "Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1",
+            )
+            .unwrap();
+        *a.controller_config.write().unwrap() = controller;
+        assert_eq!(
+            a.controller_learn_reason(),
+            Some(ControllerLearnReason::UnusableReviewedEncoder)
+        );
         a.home_selected = HOME_ENTRIES
             .iter()
             .position(|entry| entry.action == Action::OpenControllerLearn)

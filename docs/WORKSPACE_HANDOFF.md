@@ -5,6 +5,31 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-27 MiniLab mkII replacement discovery repair
+
+The borrowed MiniLab 3 has been returned and the owner now has an Arturia
+MiniLab mkII. Linux exposes its one input as `Arturia MiniLab mkII MIDI 1`; the
+existing private controller/runtime selections still name the absent MiniLab 3
+until a repaired binary next starts.
+
+Startup controller discovery now preserves an available configured controller,
+but when every saved selection is offline it automatically adopts one exact
+connected endpoint only if that endpoint is the sole match for a reviewed
+controller profile. It rebuilds from the reviewed profile instead of copying
+the absent device's learned messages. The MK2 has a partial identity/eight-pad
+profile with Arturia-manual provenance and deliberately no MIDI assignments, so
+Home selects usable MIDI Learn without risking stale MK3 Stop/Play/REC/Panic
+commands. Unknown replacements and multiple reviewed candidates remain
+unselected.
+
+The current change has source-format, JSON, reference, and whitespace evidence
+only. The repository's temporary build gate remains active: no build-producing
+Cargo command, binary build, test execution, app restart, MIDI capture/
+transmission, synth, JACK, playback, recording, audible, or physical-controller
+verification has run. The existing release binary therefore retains the old
+behavior until the owner explicitly authorizes the combined build-and-test
+pass.
+
 ## 2026-08-26 Priority 7 external USB MIDI transport sync
 
 Priority 7 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact
@@ -1170,12 +1195,16 @@ sample redistribution.
   not memory-instrumented. These facts prove practical 2 GB development with
   documented swap, not simultaneous compilation and live-audio operation or a
   measured speed difference against a 4 GB Pi 5.
-- Local configuration selects the MiniLab 3 controller, JACK
+- Local configuration still selects the now-absent MiniLab 3 controller until
+  the repaired startup migration runs. The connected, owner-purchased
+  controller is an Arturia MiniLab mkII. JACK uses
   `system:playback_1`/`system:playback_2`, AudioBox USB 96 stereo capture on
   `system:capture_1`/`system:capture_2`, and the AudioBox MIDI port as external
   output. These are private configuration values, not portable defaults.
-- The reviewed controller profile is `arturia-minilab-3`; controller and
-  performance MIDI roles are separate. Its configured eight-pad layout uses
+- The previous learned mapping targets `arturia-minilab-3`; the replacement
+  identity profile is `arturia-minilab-mkii` and intentionally has no messages
+  before MIDI Learn. Controller and performance MIDI roles remain separate.
+  The established eight-pad command layout uses
   four page pads plus semantic positions 5–8: STOP/PANIC, PLAY/LOAD/PREVIEW,
   REC/capture, and TAP. MiniLab notes 40–43 use the canonical
   `stop`/`play`/`rec`/`tap-tempo` roles; legacy item-role configuration remains
@@ -1198,9 +1227,10 @@ sample redistribution.
 - The per-user `fluidsynth.service` and system `amidiminder.service` are masked
   and stopped. `/usr/bin/fluidsynth` and the TimGM bank remain for SHR-owned
   on-demand use. Setup and tuning do not start or restart JACK.
-- All project equipment is borrowed. Preserve its configuration and require
-  explicit approval before any JACK, synth, MIDI, recording, audible, or other
-  physical-hardware test.
+- The MiniLab mkII is owner-purchased; the remaining project equipment is
+  borrowed. Preserve physical configuration and require explicit approval
+  before any JACK, synth, MIDI, recording, audible, or other physical-hardware
+  test.
 
 Rerun `scripts/setup-local.sh` only when the user requests configuration or
 hardware/JACK names change. Read `docs/MAINTAINER_HELPERS.md` first.

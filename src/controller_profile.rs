@@ -581,9 +581,11 @@ impl Catalog {
     }
 }
 
-/// Resolves only the controller already selected in state/runtime
-/// configuration. It never guesses among ports or profiles, which prevents a
-/// stale mapping from silently attaching to a different connected device.
+/// Resolves the selected controller when it remains connected. If every saved
+/// selection is offline, one exact connected endpoint with a unique reviewed
+/// profile is adopted as a replacement. The replacement always starts from
+/// that profile rather than inheriting stale learned messages. Unknown or
+/// multiple reviewed replacements remain unresolved.
 pub fn expected_for_connected(
     current: &PadConfig,
     runtime_matches: &[String],
@@ -597,7 +599,7 @@ pub fn expected_for_connected(
         .filter(|value| !value.trim().is_empty())
         .collect::<Vec<_>>();
     let mut resolved = Vec::new();
-    for wanted in wanted {
+    for wanted in &wanted {
         let wanted_lower = wanted.to_ascii_lowercase();
         let matches = connected_names
             .iter()
@@ -612,19 +614,31 @@ pub fn expected_for_connected(
     }
     let connected = match resolved.as_slice() {
         [name] => *name,
-        [] => return Ok(None),
+        [] if wanted.is_empty() => return Ok(None),
+        [] => {
+            let reviewed = connected_names
+                .iter()
+                .filter_map(|name| catalog.matching(name).map(|profile| (name, profile)))
+                .collect::<Vec<_>>();
+            match reviewed.as_slice() {
+                [(name, _)] => *name,
+                [] | [_, _, ..] => return Ok(None),
+            }
+        }
         _ => bail!("configured controller inputs resolve to different devices"),
     };
     let Some(profile) = catalog.matching(connected) else {
         return Ok(None);
     };
-    if current.profile.as_deref() == Some("learned") {
+    let replacing_offline_selection = resolved.is_empty();
+    if !replacing_offline_selection && current.profile.as_deref() == Some("learned") {
         return Ok(None);
     }
-    if current
-        .profile
-        .as_deref()
-        .is_some_and(|id| id != profile.id)
+    if !replacing_offline_selection
+        && current
+            .profile
+            .as_deref()
+            .is_some_and(|id| id != profile.id)
     {
         bail!("connected controller conflicts with saved profile marker");
     }
@@ -738,6 +752,25 @@ mod tests {
             assert_eq!(config.pads.get(&(36 + offset as u8)), Some(&action));
         }
         assert_eq!(config.lock_action(&[0xb0, 9, 127]), (false, false));
+
+        let profile = catalog
+            .matching("Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1 20:0")
+            .unwrap();
+        assert_eq!(profile.id, "arturia-minilab-mkii");
+        assert!(profile.pots.is_empty());
+        assert!(profile.note_pads.is_empty());
+        let mut config = PadConfig::default();
+        profile
+            .apply(
+                &mut config,
+                "Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1",
+            )
+            .unwrap();
+        assert_eq!(config.layout, ControllerLayout::Eight);
+        assert!(config.controls.is_empty());
+        assert!(config.pads.is_empty());
+        assert!(config.encoder_relative_cc.is_none());
+        assert!(config.encoder_press_cc.is_none());
     }
 
     #[test]
@@ -961,11 +994,43 @@ mod tests {
     }
 
     #[test]
-    fn stale_or_conflicting_selection_never_guesses_a_different_controller() {
+    fn offline_selection_adopts_only_one_reviewed_replacement_without_stale_mappings() {
         let catalog = Catalog::discover();
-        let stale = PadConfig::unmapped("Old Controller");
-        let connected = vec!["Minilab3:Minilab3 MIDI 28:0".into()];
-        assert!(expected_for_connected(&stale, &[], &connected, &catalog)
+        let mut stale = PadConfig::unmapped("Minilab3:Minilab3 MIDI");
+        stale.profile = Some("learned".into());
+        stale.encoder_relative_cc = Some(114);
+        stale.encoder_press_cc = Some(115);
+        stale.controls.insert(74, 1);
+        stale.pads.insert(36, PadAction::Pad1);
+        let connected = vec![
+            "Midi Through:Midi Through Port-0 14:0".into(),
+            "AudioBox USB 96:AudioBox USB 96 MIDI 1 16:0".into(),
+            "Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1 20:0".into(),
+        ];
+        let (expected, name) = expected_for_connected(&stale, &[], &connected, &catalog)
+            .unwrap()
+            .unwrap();
+        assert_eq!(name, "Arturia MiniLab mkII");
+        assert_eq!(expected.profile.as_deref(), Some("arturia-minilab-mkii"));
+        assert_eq!(
+            expected.input_match.as_deref(),
+            Some("Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1")
+        );
+        assert!(expected.controls.is_empty());
+        assert!(expected.pads.is_empty());
+        assert!(expected.encoder_relative_cc.is_none());
+        assert!(expected.encoder_press_cc.is_none());
+
+        let ambiguous = vec![
+            "Minilab3:Minilab3 MIDI 28:0".into(),
+            "Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1 20:0".into(),
+        ];
+        assert!(expected_for_connected(&stale, &[], &ambiguous, &catalog)
+            .unwrap()
+            .is_none());
+
+        let unknown = vec!["Unknown Controller:Unknown MIDI 24:0".into()];
+        assert!(expected_for_connected(&stale, &[], &unknown, &catalog)
             .unwrap()
             .is_none());
 

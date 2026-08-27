@@ -57,5 +57,12 @@
       "8": 10
     },
     "source": "SHR-DAW direct MIDI learn on the connected MiniLab 3: ordinary encoder CC 114, Shift CC 9, Shift+main-encoder CC 112, and click CC 115 on channel 1, with factory pads on channel 10; the earlier directly reviewed DAW-mode Shift CC 27 and shifted encoder CC 29 remain a compatibility variant; https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions"
+  },
+  {
+    "id": "arturia-minilab-mkii",
+    "name": "Arturia MiniLab mkII",
+    "match_names": ["arturia minilab mkii", "minilab mkii", "minilab mk ii"],
+    "layout": 8,
+    "source": "Arturia documents sixteen assignable encoders, clickable encoders 1 and 9, and two banks on eight physical pads. This partial profile intentionally maps no MIDI messages until direct SHR-DAW MIDI Learn verifies the selected hardware memory; https://downloads.arturia.com/products/minilab-mkII/manual/MiniLabmkII_Manual_1_0_7_EN.pdf"
   }
 ]

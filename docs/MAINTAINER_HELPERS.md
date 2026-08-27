@@ -292,8 +292,13 @@ both `shsynth.conf` and `controller.conf`. It then:
 - Controller learning listens only to the selected controller source;
   performance-only inputs bypass command interpretation.
 - Existing configuration is backed up rather than silently discarded.
-- Hardware discovery never overwrites a remembered route merely because that
-  hardware is absent. The user must explicitly choose a changed/disabled route.
+- Hardware discovery never copies messages from an absent remembered
+  controller onto another device. At application startup, one exact connected
+  endpoint with the sole reviewed controller profile may replace an offline
+  controller; the reviewed profile is rebuilt from scratch and the previous
+  private file is backed up. Unknown or multiple reviewed candidates remain
+  unchanged for explicit selection. Other remembered routes are never
+  overwritten merely because their hardware is absent.
 - Public and downloaded-private loop seeds never replace a same-named inbox
   file. Public packaging is constrained by `loops/cleared-loops.txt`.
 - Cleared demo Projects never replace same-named user songs. Demo source

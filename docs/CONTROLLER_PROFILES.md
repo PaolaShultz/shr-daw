@@ -92,7 +92,13 @@ The setup helper uses `SHSYNTH_STATE_DIR` internally when an explicit
 
 When no private `controller.conf` exists, startup uses the explicitly
 configured controller input to select one unique reviewed profile before the
-MIDI router opens. The bundled MiniLab 3 default mirrors the verified learned
+MIDI router opens. When a previously selected controller is offline, startup
+also adopts one exact connected endpoint if and only if it is the sole endpoint
+with a reviewed profile. It rebuilds the mapping from that profile instead of
+copying messages from the absent device. Unknown inputs and multiple reviewed
+replacement candidates remain unselected rather than guessed.
+
+The bundled MiniLab 3 default mirrors the verified learned
 mapping: encoder turn CC 114 and press CC 115 on channel 1, plus the eight
 Arturia/DAW factory pads on channel 10. The currently learned Shift CC 9 on
 channel 1 is the held encoder modifier, and its shifted turn is relative CC
@@ -103,6 +109,13 @@ CC29 shifted turn remain a catalog-declared compatibility variant, so an older
 learned MiniLab mapping receives only its missing shifted CC in memory; SHR
 does not rewrite the private file. Unknown or ambiguous controllers remain
 unmapped rather than inheriting this device-specific default.
+
+The bundled MiniLab mkII entry is deliberately a partial identity profile. The
+official hardware manual establishes its sixteen assignable encoders, clickable
+encoders 1 and 9, and two banks on eight physical pads, but those controls can
+emit user-programmed messages from several hardware memories. Startup can
+therefore select one connected MK2 automatically, then recommends MIDI Learn;
+it assigns no POT, PAD, encoder, or command message before direct learning.
 
 ## Upstream mapping sources
 
