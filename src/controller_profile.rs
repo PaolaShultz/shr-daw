@@ -41,6 +41,12 @@ pub struct ControllerProfile {
     #[serde(default)]
     pub encoder_press_channel: Option<u8>,
     #[serde(default)]
+    pub synth_press_cc: Option<u8>,
+    #[serde(default)]
+    pub synth_press_note: Option<u8>,
+    #[serde(default)]
+    pub synth_press_channel: Option<u8>,
+    #[serde(default)]
     pub encoder_modifier_cc: Option<u8>,
     /// Optional 1-based channel qualifier for the held encoder modifier.
     #[serde(default)]
@@ -112,8 +118,8 @@ impl ControllerProfile {
         }
         let mut pot_ccs = HashSet::new();
         for (&position, &incoming) in &self.pots {
-            if !(1..=12).contains(&position) {
-                bail!("controller profile {} POT position must be 1..12", self.id);
+            if !(1..=15).contains(&position) {
+                bail!("controller profile {} POT position must be 1..15", self.id);
             }
             crate::pads::ensure_midi_number(incoming, "controller profile POT CC")?;
             if !pot_ccs.insert(incoming) {
@@ -206,6 +212,8 @@ impl ControllerProfile {
                 self.encoder_press_note,
                 "controller profile encoder press note",
             ),
+            (self.synth_press_cc, "controller profile synth press CC"),
+            (self.synth_press_note, "controller profile synth press note"),
             (
                 self.encoder_modifier_cc,
                 "controller profile encoder modifier CC",
@@ -232,6 +240,7 @@ impl ControllerProfile {
                     self.encoder_relative_cc,
                     self.encoder_modified_relative_cc,
                     self.encoder_press_cc,
+                    self.synth_press_cc,
                     self.encoder_modifier_cc,
                     self.lock_cc,
                 ]
@@ -246,6 +255,12 @@ impl ControllerProfile {
         if self.encoder_press_cc.is_some() && self.encoder_press_note.is_some() {
             bail!(
                 "controller profile {} encoder press must use either a CC or a note",
+                self.id
+            );
+        }
+        if self.synth_press_cc.is_some() && self.synth_press_note.is_some() {
+            bail!(
+                "controller profile {} synth press must use either a CC or a note",
                 self.id
             );
         }
@@ -270,6 +285,18 @@ impl ControllerProfile {
         {
             bail!(
                 "controller profile {} has an invalid encoder press channel",
+                self.id
+            );
+        }
+        if self
+            .synth_press_channel
+            .is_some_and(|channel| !(1..=16).contains(&channel))
+            || (self.synth_press_channel.is_some()
+                && self.synth_press_cc.is_none()
+                && self.synth_press_note.is_none())
+        {
+            bail!(
+                "controller profile {} has an invalid synth press channel",
                 self.id
             );
         }
@@ -334,6 +361,12 @@ impl ControllerProfile {
                 self.id
             );
         }
+        if self
+            .synth_press_note
+            .is_some_and(|note| used_notes.contains(&note) || self.encoder_press_note == Some(note))
+        {
+            bail!("controller profile {} reuses synth press note", self.id);
+        }
         Ok(())
     }
 
@@ -380,6 +413,9 @@ impl ControllerProfile {
         config.encoder_press_cc = self.encoder_press_cc;
         config.encoder_press_note = self.encoder_press_note;
         config.encoder_press_channel = self.encoder_press_channel.map(|channel| channel - 1);
+        config.synth_press_cc = self.synth_press_cc;
+        config.synth_press_note = self.synth_press_note;
+        config.synth_press_channel = self.synth_press_channel.map(|channel| channel - 1);
         config.encoder_modifier = self.encoder_modifier_cc.map(|cc| ControllerButton::Cc {
             channel: self.encoder_modifier_channel.unwrap_or(1) - 1,
             cc,
@@ -841,6 +877,9 @@ mod tests {
             encoder_press_cc: None,
             encoder_press_note: None,
             encoder_press_channel: None,
+            synth_press_cc: None,
+            synth_press_note: None,
+            synth_press_channel: None,
             encoder_modifier_cc: None,
             encoder_modifier_channel: None,
             shifted_encoder_compatibility: Vec::new(),

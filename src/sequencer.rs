@@ -1701,6 +1701,7 @@ fn validate_automation_lane(
                     .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
                     .chain(crate::control::MOJ_SWARM_CONTROLS.iter())
                     .chain(crate::control::MOJ_BASS_MATRIX_CONTROLS.iter())
+                    .chain(crate::control::MOJ_DUAL_FILTER_CONTROLS.iter())
                     .any(|candidate| candidate.macro_id == control),
                 BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
                     control == "instrument_volume"

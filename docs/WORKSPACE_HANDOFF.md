@@ -33,6 +33,30 @@ release builds passed in 2m08s and 2m51s; plain `shr` resolves through
 capture/transmission, synth, JACK, playback, recording, audible, or physical-
 controller verification ran.
 
+## 2026-08-27 Moj Sint Dual Filter controller integration
+
+The approved Moj Sint Dual Filter design is implemented across the owning
+repositories. SHR recognizes the sixth Moj model and schema 8, maps its 15
+continuous controls to physical POT positions 1–15, learns a separate clickable
+synth rotary, and keeps the master rotary exclusively on navigation. One synth
+click sends the press-only core toggle; held sound is not retriggered, all pot
+values remain in place, and the parameter header plus status show
+`CORE: INDUSTRIAL` or `CORE: COUNTER`.
+
+Dual Filter preset load/reset sends exact CC20–34 values followed by persisted
+core state on CC36. Save New/Overwrite writes strict schema 8 with the exact
+dual-filter control names and selected core. Older Moj models retain their
+12-position mappings, including shared volume on position 5, and schemas 1–7
+remain readable. Controller profiles/config now accept POT 1–15 and optional
+`synth.press_cc`, `synth.press_note`, and `synth.press_channel`; the Learn flow
+captures the synth click separately and permits it to be skipped.
+
+No SHR Cargo build, check, test, or Clippy command has been run for this work:
+the repository's temporary build gate requires an explicit combined
+build-and-test authorization. Formatting and source-level inspection are the
+current SHR verification boundary. No JACK, ALSA synth launch, MIDI hardware,
+physical controller, audible, or Raspberry Pi evidence was produced.
+
 ## 2026-08-26 Priority 7 external USB MIDI transport sync
 
 Priority 7 from `SEQUENCER_WORKFLOW_PRIORITIES.md` is implemented. The exact

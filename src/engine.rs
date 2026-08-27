@@ -37,6 +37,7 @@ pub enum MidiEvent {
     Pad(PadAction, bool),
     Encoder(EncoderAction),
     EncoderModified(EncoderAction),
+    SynthAction(bool),
     PadLock(bool),
     Learn {
         received: Instant,
@@ -81,6 +82,7 @@ pub struct FluidSynthPart {
 pub type SharedOutput = Arc<Mutex<Option<MidiOutputConnection>>>;
 pub type SharedPickup = Arc<Mutex<crate::midi::Pickup>>;
 pub type SharedBackend = Arc<Mutex<BackendKind>>;
+pub type SharedMojModel = Arc<Mutex<Option<preset::MojModel>>>;
 pub type SharedTrackerRoute = Arc<Mutex<TrackerRoute>>;
 pub type SharedTrackerInput = Arc<Mutex<Option<crate::sequencer::LiveInput>>>;
 pub type SharedPlaybackScale = Arc<Mutex<Option<crate::scale::Scale>>>;
@@ -154,6 +156,7 @@ struct CallbackRouting {
     output: SharedOutput,
     pickup: SharedPickup,
     backend: SharedBackend,
+    moj_model: SharedMojModel,
     tracker_route: SharedTrackerRoute,
     tracker_input: SharedTrackerInput,
     playback_scale: SharedPlaybackScale,
@@ -367,6 +370,7 @@ pub struct MidiRouter {
     output: SharedOutput,
     pickup: SharedPickup,
     backend: SharedBackend,
+    moj_model: SharedMojModel,
     tracker_route: SharedTrackerRoute,
     tracker_input: SharedTrackerInput,
     playback_scale: SharedPlaybackScale,
@@ -391,6 +395,7 @@ impl MidiRouter {
         let output = Arc::new(Mutex::new(None));
         let pickup = Arc::new(Mutex::new(crate::midi::Pickup::default()));
         let backend = Arc::new(Mutex::new(BackendKind::Synthv1));
+        let moj_model = Arc::new(Mutex::new(None));
         let tracker_route = Arc::new(Mutex::new(TrackerRoute::default()));
         let tracker_input = Arc::new(Mutex::new(None));
         let playback_scale = Arc::new(Mutex::new(None));
@@ -417,6 +422,7 @@ impl MidiRouter {
                 output: Arc::clone(&output),
                 pickup: Arc::clone(&pickup),
                 backend: Arc::clone(&backend),
+                moj_model: Arc::clone(&moj_model),
                 tracker_route: Arc::clone(&tracker_route),
                 tracker_input: Arc::clone(&tracker_input),
                 playback_scale: Arc::clone(&playback_scale),
@@ -492,6 +498,7 @@ impl MidiRouter {
             output,
             pickup,
             backend,
+            moj_model,
             tracker_route,
             tracker_input,
             playback_scale,
@@ -516,6 +523,10 @@ impl MidiRouter {
 
     pub fn backend(&self) -> SharedBackend {
         Arc::clone(&self.backend)
+    }
+
+    pub fn moj_model(&self) -> SharedMojModel {
+        Arc::clone(&self.moj_model)
     }
 
     pub fn tracker_route(&self) -> SharedTrackerRoute {
@@ -592,6 +603,7 @@ impl MidiRouter {
                 output: Arc::clone(&self.output),
                 pickup: Arc::clone(&self.pickup),
                 backend: Arc::clone(&self.backend),
+                moj_model: Arc::clone(&self.moj_model),
                 tracker_route: Arc::clone(&self.tracker_route),
                 tracker_input: Arc::clone(&self.tracker_input),
                 playback_scale: Arc::clone(&self.playback_scale),
@@ -1068,6 +1080,17 @@ impl Engine {
                         (value.clamp(0.0, 1.0) * 127.0).round() as u8,
                     ])?;
                 }
+            }
+            if model == preset::MojModel::DualFilter {
+                let core = values
+                    .get(&control::MOJ_CORE_STATE_CC)
+                    .copied()
+                    .unwrap_or(0.0);
+                self.send(&[
+                    0xb0,
+                    control::MOJ_CORE_STATE_CC,
+                    if core >= 0.5 { 127 } else { 0 },
+                ])?;
             }
         } else if self.backend == BackendKind::Synthv1 {
             for message in mapped_parameter_messages(&self.control_routes, values) {
@@ -2042,6 +2065,7 @@ fn connect_midi_input(
         output,
         pickup,
         backend,
+        moj_model,
         tracker_route,
         tracker_input,
         playback_scale,
@@ -2105,6 +2129,7 @@ fn connect_midi_input(
                             .lock()
                             .map(|kind| *kind)
                             .unwrap_or(BackendKind::Synthv1);
+                        let moj_model = moj_model.lock().map(|model| *model).unwrap_or(None);
                         let (modifier_message, modifier_down) =
                             pads.encoder_modifier_action(message);
                         if modifier_message {
@@ -2151,10 +2176,14 @@ fn connect_midi_input(
                         let routed = crate::midi::route_with_pad_lock_and_modifier(
                             &pads,
                             backend,
+                            moj_model,
                             message,
                             pad_locked,
                             encoder_modifier_down,
                         );
+                        if let Some(pressed) = routed.synth_action {
+                            let _ = tx.send(MidiEvent::SynthAction(pressed));
+                        }
                         if let Some((cc, value)) = routed.value {
                             let _ = tx.send(MidiEvent::MappedControl {
                                 received,
@@ -2883,6 +2912,9 @@ pub fn daemon(preset: Preset, state: PathBuf, config: RuntimeConfig) -> Result<(
     let router = MidiRouter::start(&state, &config, tx)?;
     if let Ok(mut backend) = router.backend().lock() {
         *backend = preset.backend;
+    }
+    if let Ok(mut model) = router.moj_model().lock() {
+        *model = preset.moj_model();
     }
     router.arm_pickup(&initial_values(&preset)?);
     let mut engine = Engine::start(&preset, &state, router.output(), &config)?;

@@ -11,6 +11,8 @@ pub const INSTRUMENT_VOLUME_CC: u8 = 7;
 /// Controller/menu architecture reserves four banks of four controls.  The
 /// synthv1 0.9.29 profile intentionally populates only the verified 12.
 pub const MAPPED_CONTROL_CAPACITY: usize = 16;
+pub const MOJ_CORE_TOGGLE_CC: u8 = 35;
+pub const MOJ_CORE_STATE_CC: u8 = 36;
 
 /// synthv1 0.9.29 indices/ranges, verified against src/synthv1_param.cpp.
 #[derive(Clone, Copy, Debug)]
@@ -444,23 +446,103 @@ pub const MOJ_BASS_MATRIX_CONTROLS: [MojControl; 12] = [
     },
 ];
 
-// Moj Sint shares twelve physical positions. Position five is the universal
-// instrument-volume CC 7; the remaining displayed meanings come from the
-// selected synthesis model, not controller.conf.
+pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
+    MojControl {
+        cc: 20,
+        name: "A Cutoff",
+        macro_id: "filter_a_cutoff",
+    },
+    MojControl {
+        cc: 21,
+        name: "A Res",
+        macro_id: "filter_a_resonance",
+    },
+    MojControl {
+        cc: 22,
+        name: "A Env",
+        macro_id: "filter_a_envelope_depth",
+    },
+    MojControl {
+        cc: 23,
+        name: "B Cutoff",
+        macro_id: "filter_b_cutoff",
+    },
+    MojControl {
+        cc: 24,
+        name: "B Res",
+        macro_id: "filter_b_resonance",
+    },
+    MojControl {
+        cc: 25,
+        name: "B Env",
+        macro_id: "filter_b_envelope_depth",
+    },
+    MojControl {
+        cc: 26,
+        name: "Structure",
+        macro_id: "structure",
+    },
+    MojControl {
+        cc: 27,
+        name: "F Attack",
+        macro_id: "filter_attack",
+    },
+    MojControl {
+        cc: 28,
+        name: "F Decay",
+        macro_id: "filter_decay",
+    },
+    MojControl {
+        cc: 29,
+        name: "F Sustain",
+        macro_id: "filter_sustain",
+    },
+    MojControl {
+        cc: 30,
+        name: "F Release",
+        macro_id: "filter_release",
+    },
+    MojControl {
+        cc: 31,
+        name: "A Attack",
+        macro_id: "amp_attack",
+    },
+    MojControl {
+        cc: 32,
+        name: "A Decay",
+        macro_id: "amp_decay",
+    },
+    MojControl {
+        cc: 33,
+        name: "A Sustain",
+        macro_id: "amp_sustain",
+    },
+    MojControl {
+        cc: 34,
+        name: "A Release",
+        macro_id: "amp_release",
+    },
+];
+
+// The first five Moj Sint models share twelve physical positions. Position
+// five is their universal instrument-volume CC 7. Dual Filter supplies its own
+// 15-position table; meanings always come from the selected synthesis model,
+// not controller.conf.
 pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
 
-pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojControl; 12] {
+pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojControl] {
     match model {
         crate::preset::MojModel::ModelD => &MOJ_MODEL_D_CONTROLS,
         crate::preset::MojModel::SixOpPm => &MOJ_SIX_OP_PM_CONTROLS,
         crate::preset::MojModel::StrangeOscillator => &MOJ_STRANGE_CONTROLS,
         crate::preset::MojModel::SwarmMachine => &MOJ_SWARM_CONTROLS,
         crate::preset::MojModel::BassMatrix => &MOJ_BASS_MATRIX_CONTROLS,
+        crate::preset::MojModel::DualFilter => &MOJ_DUAL_FILTER_CONTROLS,
     }
 }
 
 pub fn moj_by_cc(cc: u8) -> Option<MojControl> {
-    MOJ_MODEL_D_CONTROLS
+    MOJ_DUAL_FILTER_CONTROLS
         .iter()
         .copied()
         .find(|control| control.cc == cc)
@@ -545,12 +627,15 @@ mod tests {
         let model_d = moj_controls(crate::preset::MojModel::ModelD);
         let six_op = moj_controls(crate::preset::MojModel::SixOpPm);
         assert_eq!(
-            model_d.map(|control| control.cc),
-            six_op.map(|control| control.cc)
+            model_d.iter().map(|control| control.cc).collect::<Vec<_>>(),
+            six_op.iter().map(|control| control.cc).collect::<Vec<_>>()
         );
         assert_eq!(
-            six_op.map(|control| control.macro_id),
-            [
+            six_op
+                .iter()
+                .map(|control| control.macro_id)
+                .collect::<Vec<_>>(),
+            vec![
                 "index",
                 "ratio",
                 "feedback",
@@ -567,9 +652,16 @@ mod tests {
         );
         for model in crate::preset::MojModel::ALL {
             let controls = moj_controls(model);
-            assert_eq!(controls[4].cc, 7);
-            assert_eq!(controls[4].name, "Volume");
-            assert_eq!(controls[4].macro_id, "instrument_volume");
+            if model == crate::preset::MojModel::DualFilter {
+                assert_eq!(controls.len(), 15);
+                assert_eq!(controls[6].macro_id, "structure");
+                assert_eq!(controls[14].cc, 34);
+            } else {
+                assert_eq!(controls.len(), 12);
+                assert_eq!(controls[4].cc, 7);
+                assert_eq!(controls[4].name, "Volume");
+                assert_eq!(controls[4].macro_id, "instrument_volume");
+            }
         }
     }
 }

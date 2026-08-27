@@ -550,6 +550,7 @@ pub fn mapped_control_cc(engine: &str, control: &str) -> Option<u8> {
             .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
             .chain(crate::control::MOJ_SWARM_CONTROLS.iter())
             .chain(crate::control::MOJ_BASS_MATRIX_CONTROLS.iter())
+            .chain(crate::control::MOJ_DUAL_FILTER_CONTROLS.iter())
             .find(|candidate| candidate.macro_id == control)
             .map(|candidate| candidate.cc),
         crate::preset::BackendKind::Yoshimi

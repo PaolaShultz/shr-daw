@@ -333,6 +333,10 @@ pub struct PadConfig {
     pub encoder_press_note: Option<u8>,
     /// Optional zero-based channel qualifier for either encoder press form.
     pub encoder_press_channel: Option<u8>,
+    /// Dedicated clickable synth rotary. This never replaces master navigation.
+    pub synth_press_cc: Option<u8>,
+    pub synth_press_note: Option<u8>,
+    pub synth_press_channel: Option<u8>,
     /// Held controller modifier used to give the encoder its secondary
     /// navigation gesture.
     pub encoder_modifier: Option<ControllerButton>,
@@ -363,6 +367,9 @@ impl Default for PadConfig {
             encoder_press_cc: None,
             encoder_press_note: None,
             encoder_press_channel: None,
+            synth_press_cc: None,
+            synth_press_note: None,
+            synth_press_channel: None,
             encoder_modifier: None,
             page_cycle_modifier: None,
             page_cycle_trigger: None,
@@ -468,6 +475,18 @@ impl PadConfig {
                 self.encoder_press_channel = optional_midi_channel(value, "encoder press channel")?;
                 continue;
             }
+            if key.trim() == "synth.press_cc" {
+                self.synth_press_cc = optional_midi_number(value, "synth press CC")?;
+                continue;
+            }
+            if key.trim() == "synth.press_note" {
+                self.synth_press_note = optional_midi_number(value, "synth press note")?;
+                continue;
+            }
+            if key.trim() == "synth.press_channel" {
+                self.synth_press_channel = optional_midi_channel(value, "synth press channel")?;
+                continue;
+            }
             if key.trim() == "encoder.modifier" {
                 self.encoder_modifier = optional_controller_button(value, "encoder modifier")?;
                 continue;
@@ -498,7 +517,7 @@ impl PadConfig {
                     self.controls.clear();
                     saw_controls = true;
                 }
-                let position = physical_position(position, 12, "POT position")?;
+                let position = physical_position(position, 15, "POT position")?;
                 let incoming = midi_number(value, "controller CC")?;
                 self.controls.insert(incoming, position);
                 continue;
@@ -655,8 +674,8 @@ impl PadConfig {
         }
         let mut positions = HashSet::new();
         for &position in self.controls.values() {
-            if !(1..=12).contains(&position) {
-                bail!("POT position must be 1..12");
+            if !(1..=15).contains(&position) {
+                bail!("POT position must be 1..15");
             }
             if !positions.insert(position) {
                 bail!("POT {position} is mapped more than once");
@@ -708,6 +727,8 @@ impl PadConfig {
             ),
             (self.encoder_press_cc, "encoder press CC"),
             (self.encoder_press_note, "encoder press note"),
+            (self.synth_press_cc, "synth press CC"),
+            (self.synth_press_note, "synth press note"),
             (self.lock_cc, "pad lock CC"),
         ] {
             if let Some(number) = number {
@@ -718,6 +739,7 @@ impl PadConfig {
             self.encoder_relative_cc,
             self.encoder_modified_relative_cc,
             self.encoder_press_cc,
+            self.synth_press_cc,
             self.lock_cc,
         ]
         .into_iter()
@@ -763,6 +785,36 @@ impl PadConfig {
         }
         if self.encoder_press_cc.is_some() && self.encoder_press_note.is_some() {
             bail!("encoder press must use either a CC or a note, not both");
+        }
+        if self.synth_press_cc.is_some() && self.synth_press_note.is_some() {
+            bail!("synth press must use either a CC or a note");
+        }
+        if self.synth_press_channel.is_some()
+            && self.synth_press_cc.is_none()
+            && self.synth_press_note.is_none()
+        {
+            bail!("synth press channel requires a synth press message");
+        }
+        if self.synth_press_channel.is_some_and(|channel| channel > 15) {
+            bail!("synth press channel must be 1..16");
+        }
+        if self.synth_press_cc.is_some_and(|cc| {
+            self.controls.contains_key(&cc)
+                || self.cc_buttons.contains_key(&cc)
+                || [
+                    self.encoder_relative_cc,
+                    self.encoder_modified_relative_cc,
+                    self.encoder_press_cc,
+                    self.lock_cc,
+                ]
+                .contains(&Some(cc))
+        }) {
+            bail!("synth press CC must be dedicated");
+        }
+        if self.synth_press_note.is_some_and(|note| {
+            self.pads.contains_key(&note) || self.encoder_press_note == Some(note)
+        }) {
+            bail!("synth press note must be dedicated");
         }
         if self
             .encoder_press_channel
@@ -865,7 +917,7 @@ impl PadConfig {
         }
         let mut entries: Vec<_> = self.pads.iter().collect();
         entries.sort_by_key(|(note, _)| **note);
-        let mut text = String::from("# SHR-DAW controller profile v8\n");
+        let mut text = String::from("# SHR-DAW controller profile v9\n");
         if let Some(input) = &self.input_match {
             text.push_str(&format!("input={input}\n"));
         }
@@ -874,7 +926,7 @@ impl PadConfig {
             self.profile.as_deref().unwrap_or_default()
         ));
         text.push_str(&format!(
-            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.modified_relative_cc={}\nencoder.modified_relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nencoder.modifier={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
+            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.modified_relative_cc={}\nencoder.modified_relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nsynth.press_cc={}\nsynth.press_note={}\nsynth.press_channel={}\nencoder.modifier={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
             match self.layout {
                 ControllerLayout::Eight => 8,
                 ControllerLayout::Five => 5,
@@ -895,6 +947,15 @@ impl PadConfig {
                 .map(|note| note.to_string())
                 .unwrap_or_default(),
             self.encoder_press_channel
+                .map(|channel| (channel + 1).to_string())
+                .unwrap_or_default(),
+            self.synth_press_cc
+                .map(|cc| cc.to_string())
+                .unwrap_or_default(),
+            self.synth_press_note
+                .map(|note| note.to_string())
+                .unwrap_or_default(),
+            self.synth_press_channel
                 .map(|channel| (channel + 1).to_string())
                 .unwrap_or_default(),
             self.encoder_modifier
@@ -996,8 +1057,26 @@ impl PadConfig {
         self.controls
             .get(&incoming)
             .copied()
-            .filter(|position| (1..=12).contains(position))
+            .filter(|position| (1..=15).contains(position))
             .map(|position| usize::from(position - 1))
+    }
+
+    pub fn synth_press_action(&self, message: &[u8]) -> Option<bool> {
+        if message.len() < 3 {
+            return None;
+        }
+        let channel_matches = self
+            .synth_press_channel
+            .is_none_or(|channel| channel == message[0] & 0x0f);
+        if !channel_matches {
+            return None;
+        }
+        match message[0] & 0xf0 {
+            0xb0 if self.synth_press_cc == Some(message[1]) => Some(message[2] > 0),
+            0x90 if self.synth_press_note == Some(message[1]) => Some(message[2] > 0),
+            0x80 if self.synth_press_note == Some(message[1]) => Some(false),
+            _ => None,
+        }
     }
 
     /// Centered relative mode uses 64 as stationary. Reversed/high-low mode
@@ -1577,6 +1656,21 @@ mod tests {
         assert!(saved.contains("pot.12=17"));
         assert!(saved.contains("pad.1=note.10.36"));
         assert!(saved.contains("pad.8=cc.10.43"));
+        let _ = fs::remove_file(path);
+    }
+    #[test]
+    fn fifteen_pots_and_dedicated_synth_click_round_trip() {
+        let path =
+            std::env::temp_dir().join(format!("shr-controller-15-pot-{}.conf", std::process::id()));
+        let mut config = PadConfig::unmapped("Controller");
+        config.controls.insert(99, 15);
+        config.synth_press_cc = Some(100);
+        config.synth_press_channel = Some(0);
+        config.save(&path).unwrap();
+        let restored = PadConfig::load(&path).unwrap();
+        assert_eq!(restored.pot_position(99), Some(14));
+        assert_eq!(restored.synth_press_action(&[0xb0, 100, 127]), Some(true));
+        assert_eq!(restored.synth_press_action(&[0xb0, 100, 0]), Some(false));
         let _ = fs::remove_file(path);
     }
     #[test]

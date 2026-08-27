@@ -101,15 +101,17 @@ pub enum MojModel {
     StrangeOscillator,
     SwarmMachine,
     BassMatrix,
+    DualFilter,
 }
 
 impl MojModel {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::ModelD,
         Self::SixOpPm,
         Self::StrangeOscillator,
         Self::SwarmMachine,
         Self::BassMatrix,
+        Self::DualFilter,
     ];
 
     pub const fn stable_id(self) -> &'static str {
@@ -119,6 +121,7 @@ impl MojModel {
             Self::StrangeOscillator => "strange_oscillator",
             Self::SwarmMachine => "swarm_machine",
             Self::BassMatrix => "bass_matrix",
+            Self::DualFilter => "dual_filter",
         }
     }
 
@@ -129,6 +132,7 @@ impl MojModel {
             Self::StrangeOscillator => "Strange Osc",
             Self::SwarmMachine => "Swarm Machine",
             Self::BassMatrix => "Bass Matrix",
+            Self::DualFilter => "Dual Filter",
         }
     }
 }
@@ -254,6 +258,7 @@ fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
         MojModel::StrangeOscillator => ("S-OSC", &["Strange Oscillator", "Strange Osc", "S-OSC"]),
         MojModel::SwarmMachine => ("SWARM", &["Swarm Machine", "Swarm", "SWARM"]),
         MojModel::BassMatrix => ("B-MAT", &["Bass Matrix", "B-MAT"]),
+        MojModel::DualFilter => ("D-FLT", &["Dual Filter", "D-FLT"]),
     };
     for prefix in redundant_prefixes {
         if sound
@@ -594,6 +599,13 @@ enum MojBassMatrixPatch {
     Transformer,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MojDualFilterCore {
+    Industrial,
+    Counter,
+}
+
 fn full_moj_volume() -> f32 {
     1.0
 }
@@ -714,6 +726,26 @@ struct MojMacrosBassMatrix {
     release: f32,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojDualFilterControls {
+    filter_a_cutoff: f32,
+    filter_a_resonance: f32,
+    filter_a_envelope_depth: f32,
+    filter_b_cutoff: f32,
+    filter_b_resonance: f32,
+    filter_b_envelope_depth: f32,
+    structure: f32,
+    filter_attack: f32,
+    filter_decay: f32,
+    filter_sustain: f32,
+    filter_release: f32,
+    amp_attack: f32,
+    amp_decay: f32,
+    amp_sustain: f32,
+    amp_release: f32,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MojPresetV7Swarm {
@@ -740,6 +772,19 @@ struct MojPresetV7BassMatrix {
     macros: MojMacrosBassMatrix,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV8DualFilter {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    instrument_volume: f32,
+    model: MojModel,
+    dual_filter_core: MojDualFilterCore,
+    controls: MojDualFilterControls,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MojMacrosV1 {
@@ -759,7 +804,7 @@ struct MojMacrosV1 {
 }
 
 impl MojMacrosV2 {
-    fn values(self) -> [f32; 12] {
+    fn values(self) -> [f32; 15] {
         [
             self.evolve,
             self.shape,
@@ -773,12 +818,15 @@ impl MojMacrosV2 {
             self.decay,
             self.sustain,
             self.release,
+            0.5,
+            0.5,
+            0.5,
         ]
     }
 }
 
 impl MojMacrosSixOp {
-    fn values(self) -> [f32; 12] {
+    fn values(self) -> [f32; 15] {
         [
             self.index,
             self.ratio,
@@ -792,12 +840,15 @@ impl MojMacrosSixOp {
             self.decay,
             self.sustain,
             self.release,
+            0.5,
+            0.5,
+            0.5,
         ]
     }
 }
 
 impl MojMacrosStrange {
-    fn values(self) -> [f32; 12] {
+    fn values(self) -> [f32; 15] {
         [
             self.type_,
             self.form,
@@ -811,12 +862,15 @@ impl MojMacrosStrange {
             self.decay,
             self.sustain,
             self.release,
+            0.5,
+            0.5,
+            0.5,
         ]
     }
 }
 
 impl MojMacrosSwarm {
-    fn values(self) -> [f32; 12] {
+    fn values(self) -> [f32; 15] {
         [
             self.mass,
             self.detune,
@@ -830,12 +884,15 @@ impl MojMacrosSwarm {
             self.decay,
             self.sustain,
             self.release,
+            0.5,
+            0.5,
+            0.5,
         ]
     }
 }
 
 impl MojMacrosBassMatrix {
-    fn values(self) -> [f32; 12] {
+    fn values(self) -> [f32; 15] {
         [
             self.body,
             self.growl,
@@ -849,6 +906,31 @@ impl MojMacrosBassMatrix {
             self.decay,
             self.sustain,
             self.release,
+            0.5,
+            0.5,
+            0.5,
+        ]
+    }
+}
+
+impl MojDualFilterControls {
+    fn values(self) -> [f32; 15] {
+        [
+            self.filter_a_cutoff,
+            self.filter_a_resonance,
+            self.filter_a_envelope_depth,
+            self.filter_b_cutoff,
+            self.filter_b_resonance,
+            self.filter_b_envelope_depth,
+            self.structure,
+            self.filter_attack,
+            self.filter_decay,
+            self.filter_sustain,
+            self.filter_release,
+            self.amp_attack,
+            self.amp_decay,
+            self.amp_sustain,
+            self.amp_release,
         ]
     }
 }
@@ -860,6 +942,7 @@ enum MojPatch {
     StrangeOscillator(MojStrangePatch),
     SwarmMachine(MojSwarmPatch),
     BassMatrix(MojBassMatrixPatch),
+    DualFilter(MojDualFilterCore),
 }
 
 #[derive(Debug)]
@@ -870,7 +953,7 @@ struct MojDocument {
     output_gain: f32,
     instrument_volume: f32,
     patch: MojPatch,
-    values: [f32; 12],
+    values: [f32; 15],
 }
 
 fn read_moj_document(path: &Path) -> Result<MojDocument> {
@@ -900,16 +983,18 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
     let (name, model, voices, output_gain, instrument_volume, patch, values) = match version {
-        7 => {
+        7 | 8 => {
             let model = value
                 .get("model")
                 .and_then(toml::Value::as_str)
-                .context("schema-7 Moj Sint preset has no model")?;
+                .context("current Moj Sint preset has no model")?;
             match model {
                 "model_d" => {
                     let document: MojPresetV5ModelD = toml::from_str(&source)?;
-                    if document.schema_version != 7 || document.model != MojModel::ModelD {
-                        bail!("invalid schema-7 Model D identity");
+                    if document.schema_version != version as u32
+                        || document.model != MojModel::ModelD
+                    {
+                        bail!("invalid current Model D identity");
                     }
                     (
                         document.name,
@@ -923,8 +1008,10 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 }
                 "six_op_pm" => {
                     let document: MojPresetV5SixOp = toml::from_str(&source)?;
-                    if document.schema_version != 7 || document.model != MojModel::SixOpPm {
-                        bail!("invalid schema-7 Six-Op PM identity");
+                    if document.schema_version != version as u32
+                        || document.model != MojModel::SixOpPm
+                    {
+                        bail!("invalid current Six-Op PM identity");
                     }
                     (
                         document.name,
@@ -938,9 +1025,10 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 }
                 "strange_oscillator" => {
                     let document: MojPresetV6Strange = toml::from_str(&source)?;
-                    if document.schema_version != 7 || document.model != MojModel::StrangeOscillator
+                    if document.schema_version != version as u32
+                        || document.model != MojModel::StrangeOscillator
                     {
-                        bail!("invalid schema-7 Strange Oscillator identity");
+                        bail!("invalid current Strange Oscillator identity");
                     }
                     (
                         document.name,
@@ -954,8 +1042,10 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 }
                 "swarm_machine" => {
                     let document: MojPresetV7Swarm = toml::from_str(&source)?;
-                    if document.schema_version != 7 || document.model != MojModel::SwarmMachine {
-                        bail!("invalid schema-7 Swarm Machine identity");
+                    if document.schema_version != version as u32
+                        || document.model != MojModel::SwarmMachine
+                    {
+                        bail!("invalid current Swarm Machine identity");
                     }
                     (
                         document.name,
@@ -969,8 +1059,10 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 }
                 "bass_matrix" => {
                     let document: MojPresetV7BassMatrix = toml::from_str(&source)?;
-                    if document.schema_version != 7 || document.model != MojModel::BassMatrix {
-                        bail!("invalid schema-7 Bass Matrix identity");
+                    if document.schema_version != version as u32
+                        || document.model != MojModel::BassMatrix
+                    {
+                        bail!("invalid current Bass Matrix identity");
                     }
                     (
                         document.name,
@@ -982,7 +1074,22 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.macros.values(),
                     )
                 }
-                _ => bail!("unknown schema-7 Moj Sint model"),
+                "dual_filter" if version == 8 => {
+                    let document: MojPresetV8DualFilter = toml::from_str(&source)?;
+                    if document.schema_version != 8 || document.model != MojModel::DualFilter {
+                        bail!("invalid schema-8 Dual Filter identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::DualFilter(document.dual_filter_core),
+                        document.controls.values(),
+                    )
+                }
+                _ => bail!("unknown current Moj Sint model"),
             }
         }
         6 => {
@@ -1197,7 +1304,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
 
 fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
     let document = read_moj_document(path)?;
-    let values = crate::control::moj_controls(document.model)
+    let mut values: HashMap<u8, f32> = crate::control::moj_controls(document.model)
         .iter()
         .enumerate()
         .map(|(index, control)| {
@@ -1209,6 +1316,15 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
             (control.cc, value)
         })
         .collect();
+    if let MojPatch::DualFilter(core) = document.patch {
+        values.insert(
+            crate::control::MOJ_CORE_STATE_CC,
+            match core {
+                MojDualFilterCore::Industrial => 0.0,
+                MojDualFilterCore::Counter => 1.0,
+            },
+        );
+    }
     Ok((document.name, document.model, values))
 }
 
@@ -2057,7 +2173,7 @@ fn serialize_moj_sint(
     let encoded = match (expected_model, document.patch) {
         (MojModel::ModelD, MojPatch::ModelD(model_d_patch)) => {
             toml::to_string_pretty(&MojPresetV5ModelD {
-                schema_version: 7,
+                schema_version: 8,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
@@ -2069,7 +2185,7 @@ fn serialize_moj_sint(
         }
         (MojModel::SixOpPm, MojPatch::SixOpPm(six_op_patch)) => {
             toml::to_string_pretty(&MojPresetV5SixOp {
-                schema_version: 7,
+                schema_version: 8,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
@@ -2081,7 +2197,7 @@ fn serialize_moj_sint(
         }
         (MojModel::StrangeOscillator, MojPatch::StrangeOscillator(strange_patch)) => {
             toml::to_string_pretty(&MojPresetV6Strange {
-                schema_version: 7,
+                schema_version: 8,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
@@ -2093,7 +2209,7 @@ fn serialize_moj_sint(
         }
         (MojModel::SwarmMachine, MojPatch::SwarmMachine(swarm_patch)) => {
             toml::to_string_pretty(&MojPresetV7Swarm {
-                schema_version: 7,
+                schema_version: 8,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
@@ -2105,7 +2221,7 @@ fn serialize_moj_sint(
         }
         (MojModel::BassMatrix, MojPatch::BassMatrix(bass_matrix_patch)) => {
             toml::to_string_pretty(&MojPresetV7BassMatrix {
-                schema_version: 7,
+                schema_version: 8,
                 name: name.into(),
                 voices: document.voices,
                 output_gain: document.output_gain,
@@ -2113,6 +2229,28 @@ fn serialize_moj_sint(
                 model: MojModel::BassMatrix,
                 bass_matrix_patch,
                 macros: MojMacrosBassMatrix::from_values(values),
+            })?
+        }
+        (MojModel::DualFilter, MojPatch::DualFilter(_)) => {
+            let dual_filter_core = if current_values
+                .get(&crate::control::MOJ_CORE_STATE_CC)
+                .copied()
+                .unwrap_or(0.0)
+                >= 0.5
+            {
+                MojDualFilterCore::Counter
+            } else {
+                MojDualFilterCore::Industrial
+            };
+            toml::to_string_pretty(&MojPresetV8DualFilter {
+                schema_version: 8,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                instrument_volume,
+                model: MojModel::DualFilter,
+                dual_filter_core,
+                controls: MojDualFilterControls::from_values(values),
             })?
         }
         _ => bail!("Moj Sint model and patch identity do not match"),
@@ -2123,7 +2261,7 @@ fn serialize_moj_sint(
 }
 
 impl MojMacrosV2 {
-    fn from_values(values: [f32; 12]) -> Self {
+    fn from_values(values: [f32; 15]) -> Self {
         Self {
             evolve: values[0],
             shape: values[1],
@@ -2142,7 +2280,7 @@ impl MojMacrosV2 {
 }
 
 impl MojMacrosSixOp {
-    fn from_values(values: [f32; 12]) -> Self {
+    fn from_values(values: [f32; 15]) -> Self {
         Self {
             index: values[0],
             ratio: values[1],
@@ -2161,7 +2299,7 @@ impl MojMacrosSixOp {
 }
 
 impl MojMacrosStrange {
-    fn from_values(values: [f32; 12]) -> Self {
+    fn from_values(values: [f32; 15]) -> Self {
         Self {
             type_: values[0],
             form: values[1],
@@ -2180,7 +2318,7 @@ impl MojMacrosStrange {
 }
 
 impl MojMacrosSwarm {
-    fn from_values(values: [f32; 12]) -> Self {
+    fn from_values(values: [f32; 15]) -> Self {
         Self {
             mass: values[0],
             detune: values[1],
@@ -2199,7 +2337,7 @@ impl MojMacrosSwarm {
 }
 
 impl MojMacrosBassMatrix {
-    fn from_values(values: [f32; 12]) -> Self {
+    fn from_values(values: [f32; 15]) -> Self {
         Self {
             body: values[0],
             growl: values[1],
@@ -2217,14 +2355,36 @@ impl MojMacrosBassMatrix {
     }
 }
 
+impl MojDualFilterControls {
+    fn from_values(values: [f32; 15]) -> Self {
+        Self {
+            filter_a_cutoff: values[0],
+            filter_a_resonance: values[1],
+            filter_a_envelope_depth: values[2],
+            filter_b_cutoff: values[3],
+            filter_b_resonance: values[4],
+            filter_b_envelope_depth: values[5],
+            structure: values[6],
+            filter_attack: values[7],
+            filter_decay: values[8],
+            filter_sustain: values[9],
+            filter_release: values[10],
+            amp_attack: values[11],
+            amp_decay: values[12],
+            amp_sustain: values[13],
+            amp_release: values[14],
+        }
+    }
+}
+
 fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
     let value: toml::Value = toml::from_str(source)?;
     if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        != Some(7)
+        != Some(8)
     {
-        bail!("saved Moj Sint preset is not schema 7")
+        bail!("saved Moj Sint preset is not schema 8")
     }
     match expected_model {
         MojModel::ModelD => {
@@ -2255,6 +2415,12 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
             let document: MojPresetV7BassMatrix = toml::from_str(source)?;
             if document.model != MojModel::BassMatrix {
                 bail!("saved Moj Sint Bass Matrix identity is invalid")
+            }
+        }
+        MojModel::DualFilter => {
+            let document: MojPresetV8DualFilter = toml::from_str(source)?;
+            if document.model != MojModel::DualFilter {
+                bail!("saved Moj Sint Dual Filter identity is invalid")
             }
         }
     }
@@ -2792,11 +2958,37 @@ sustain = 0.7
 release = 0.4
 "#
             .into(),
+            MojModel::DualFilter => r#"
+schema_version = 8
+name = "Factory Dual Filter"
+voices = 4
+output_gain = 0.18
+instrument_volume = 1.0
+model = "dual_filter"
+dual_filter_core = "industrial"
+[controls]
+filter_a_cutoff = 0.1
+filter_a_resonance = 0.2
+filter_a_envelope_depth = 0.3
+filter_b_cutoff = 0.4
+filter_b_resonance = 0.5
+filter_b_envelope_depth = 0.6
+structure = 0.7
+filter_attack = 0.8
+filter_decay = 0.2
+filter_sustain = 0.3
+filter_release = 0.7
+amp_attack = 0.4
+amp_decay = 0.5
+amp_sustain = 0.6
+amp_release = 0.7
+"#
+            .into(),
         }
     }
 
     #[test]
-    fn all_moj_models_save_as_strict_schema_seven_and_remain_model_scoped() {
+    fn all_moj_models_save_as_strict_schema_eight_and_remain_model_scoped() {
         let base =
             std::env::temp_dir().join(format!("shsynth-user-moj-save-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
@@ -2810,6 +3002,9 @@ release = 0.4
             assert_eq!(parsed_model, model);
             current.insert(20, 0.91);
             current.insert(7, 0.37);
+            if model == MojModel::DualFilter {
+                current.insert(crate::control::MOJ_CORE_STATE_CC, 1.0);
+            }
             let source = Preset {
                 backend: BackendKind::MojSint,
                 name,
@@ -2827,7 +3022,7 @@ release = 0.4
                 storage.moj_sint.join(model.stable_id())
             );
             let encoded = fs::read_to_string(path).unwrap();
-            assert!(encoded.contains("schema_version = 7"));
+            assert!(encoded.contains("schema_version = 8"));
             assert!(encoded.contains("instrument_volume = 0.37"));
             assert!(encoded.contains(&format!("model = {:?}", model.stable_id())));
             match model {
@@ -2857,6 +3052,15 @@ release = 0.4
                     assert!(encoded.contains("bass_matrix_patch = \"transformer\""));
                     assert!(encoded.contains("body = 0.91"));
                     assert!(encoded.contains("character = 0.5"));
+                }
+                MojModel::DualFilter => {
+                    assert!(encoded.contains("dual_filter_core = \"counter\""));
+                    assert!(encoded.contains("filter_a_cutoff = 0.91"));
+                    assert!(encoded.contains("amp_release = 0.7"));
+                    assert_eq!(
+                        read_moj_sint(path).unwrap().2[&crate::control::MOJ_CORE_STATE_CC],
+                        1.0
+                    );
                 }
             }
             assert_eq!(read_moj_sint(path).unwrap().1, model);

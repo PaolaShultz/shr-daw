@@ -66,13 +66,16 @@ pub enum LearnRole {
     EncoderCounterClockwise,
     EncoderClick,
     EncoderModifier,
+    SynthClick,
     Pad(usize),
     Confirm,
 }
 
 const FIRST_OPTIONAL_STEP: usize = 3;
-const CONTROL_STEP_START: usize = FIRST_OPTIONAL_STEP + 1;
-const BUTTON_STEP_START: usize = CONTROL_STEP_START + CONTROLS.len();
+const SYNTH_CLICK_STEP: usize = FIRST_OPTIONAL_STEP + 1;
+const ABSOLUTE_CONTROL_COUNT: usize = 15;
+const CONTROL_STEP_START: usize = SYNTH_CLICK_STEP + 1;
+const BUTTON_STEP_START: usize = CONTROL_STEP_START + ABSOLUTE_CONTROL_COUNT;
 const PAD_LEARN_STEPS: usize = 9;
 const CONFIRM_STEP: usize = BUTTON_STEP_START + PAD_LEARN_STEPS;
 const TOTAL_STEPS: usize = CONFIRM_STEP + 1;
@@ -85,6 +88,7 @@ impl LearnRole {
             Self::EncoderCounterClockwise => "MASTER ENCODER · TURN LEFT".into(),
             Self::EncoderClick => "MASTER ENCODER · CLICK".into(),
             Self::EncoderModifier => "ENCODER SHIFT · HOLD + TURN LEFT".into(),
+            Self::SynthClick => "SYNTH ROTARY · CLICK".into(),
             Self::Pad(index) => format!(
                 "PAD {}",
                 if index < 4 {
@@ -102,7 +106,7 @@ impl LearnRole {
     pub const fn skippable(self) -> bool {
         matches!(
             self,
-            Self::EncoderModifier | Self::AbsoluteControl(_) | Self::Pad(_)
+            Self::EncoderModifier | Self::SynthClick | Self::AbsoluteControl(_) | Self::Pad(_)
         )
     }
 }
@@ -228,6 +232,7 @@ impl LearnSession {
             1 => LearnRole::EncoderClockwise,
             2 => LearnRole::EncoderClick,
             3 => LearnRole::EncoderModifier,
+            SYNTH_CLICK_STEP => LearnRole::SynthClick,
             CONTROL_STEP_START..BUTTON_STEP_START => {
                 LearnRole::AbsoluteControl(self.step - CONTROL_STEP_START)
             }
@@ -575,13 +580,17 @@ impl LearnSession {
             LearnRole::EncoderCounterClockwise => self.learn_encoder_counterclockwise(message),
             LearnRole::EncoderClockwise => self.learn_encoder_clockwise(message),
             LearnRole::EncoderClick => self.learn_click(message),
+            LearnRole::SynthClick => self.learn_synth_click(message),
             LearnRole::EncoderModifier => unreachable!("handled as a held Shift+rotary chord"),
             LearnRole::Pad(index) => self.learn_pad(index, message),
             LearnRole::Confirm => return LearnAction::None,
         };
         match accepted {
             Ok(description) => {
-                if matches!(role, LearnRole::EncoderClick | LearnRole::Pad(_)) {
+                if matches!(
+                    role,
+                    LearnRole::EncoderClick | LearnRole::SynthClick | LearnRole::Pad(_)
+                ) {
                     let Some(input) = LearnInput::from_message(message) else {
                         return LearnAction::None;
                     };
@@ -712,6 +721,23 @@ impl LearnSession {
         }
     }
 
+    fn learn_synth_click(&mut self, message: &[u8]) -> Result<String, String> {
+        let button = button_from_message(message, &used_ccs(&self.draft), &used_notes(&self.draft))
+            .ok_or_else(|| "Expected an unused CC or note press".to_owned())?;
+        match button {
+            Button::Cc { cc, channel } => {
+                self.draft.synth_press_cc = Some(cc);
+                self.draft.synth_press_channel = Some(channel);
+                Ok(format!("CC {cc} ch {} = synth click", channel + 1))
+            }
+            Button::Note { note, channel } => {
+                self.draft.synth_press_note = Some(note);
+                self.draft.synth_press_channel = Some(channel);
+                Ok(format!("note {note} ch {} = synth click", channel + 1))
+            }
+        }
+    }
+
     fn learn_encoder_modifier_button(&self, message: &[u8]) -> Result<LearnInput, String> {
         let input = LearnInput::from_message(message)
             .ok_or_else(|| "Expected an unused CC or note press".to_owned())?;
@@ -780,6 +806,9 @@ impl LearnSession {
     fn role_is_mapped(&self) -> bool {
         match self.role() {
             LearnRole::EncoderModifier => self.draft.encoder_modifier.is_some(),
+            LearnRole::SynthClick => {
+                self.draft.synth_press_cc.is_some() || self.draft.synth_press_note.is_some()
+            }
             LearnRole::AbsoluteControl(index) => self
                 .draft
                 .controls
@@ -814,6 +843,11 @@ impl LearnSession {
                 self.draft.encoder_modifier = None;
                 self.draft.encoder_modified_relative_cc = None;
                 self.draft.encoder_modified_relative_reverse = false;
+            }
+            LearnRole::SynthClick => {
+                self.draft.synth_press_cc = None;
+                self.draft.synth_press_note = None;
+                self.draft.synth_press_channel = None;
             }
             LearnRole::AbsoluteControl(index) => {
                 let position = index as u8 + 1;
@@ -885,9 +919,10 @@ fn message_is_relevant(role: LearnRole, message: &[u8]) -> bool {
         LearnRole::AbsoluteControl(_) => message[0] & 0xf0 == 0xb0,
         LearnRole::EncoderClockwise => message[0] & 0xf0 == 0xb0,
         LearnRole::EncoderCounterClockwise => message[0] & 0xf0 == 0xb0 && message[2] != 64,
-        LearnRole::EncoderClick | LearnRole::EncoderModifier | LearnRole::Pad(_) => {
-            message[2] > 0 && matches!(message[0] & 0xf0, 0x90 | 0xb0)
-        }
+        LearnRole::EncoderClick
+        | LearnRole::EncoderModifier
+        | LearnRole::SynthClick
+        | LearnRole::Pad(_) => message[2] > 0 && matches!(message[0] & 0xf0, 0x90 | 0xb0),
         LearnRole::Confirm => false,
     }
 }
@@ -902,7 +937,7 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
     config.input_match = Some(stable_input_match(input_name));
     println!("Listening to {input_name}. MIDI is not being forwarded to an instrument.");
 
-    let missing = (1..=CONTROLS.len())
+    let missing = (1..=ABSOLUTE_CONTROL_COUNT)
         .filter(|position| {
             !config
                 .controls
@@ -916,7 +951,7 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
             0,
             missing,
         )?;
-        let positions = (1..=CONTROLS.len())
+        let positions = (1..=ABSOLUTE_CONTROL_COUNT)
             .filter(|position| {
                 !config
                     .controls
@@ -1002,6 +1037,27 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
             println!("  shifted encoder CC {cc}; direction convention detected");
         }
         println!("  release encoder Shift");
+    }
+
+    if config.synth_press_cc.is_none()
+        && config.synth_press_note.is_none()
+        && ask_yes_no("Learn the dedicated synth rotary click? [y/N]: ")?
+    {
+        match capture_button(
+            &receiver,
+            "Press the synth rotary",
+            &used_ccs(config),
+            &used_notes(config),
+        )? {
+            Button::Cc { cc, channel } => {
+                config.synth_press_cc = Some(cc);
+                config.synth_press_channel = Some(channel);
+            }
+            Button::Note { note, channel } => {
+                config.synth_press_note = Some(note);
+                config.synth_press_channel = Some(channel);
+            }
+        }
     }
 
     let layout = ask_number("Physical pads available (0, 4, 5, or 8) [0]: ", 0, 8)?;
@@ -1196,6 +1252,7 @@ fn used_ccs(config: &PadConfig) -> HashSet<u8> {
                 config.encoder_relative_cc,
                 config.encoder_modified_relative_cc,
                 config.encoder_press_cc,
+                config.synth_press_cc,
                 config.lock_cc,
             ]
             .into_iter()
@@ -1223,6 +1280,7 @@ fn used_notes(config: &PadConfig) -> HashSet<u8> {
         .keys()
         .copied()
         .chain(config.encoder_press_note)
+        .chain(config.synth_press_note)
         .chain(
             [
                 config.encoder_modifier,
@@ -1364,11 +1422,13 @@ mod tests {
             self.send(&[0xb0, click, 0]);
             assert_eq!(self.learn.role(), LearnRole::EncoderModifier);
             assert!(self.learn.skip());
+            assert_eq!(self.learn.role(), LearnRole::SynthClick);
+            assert!(self.learn.skip());
             assert_eq!(self.learn.role(), LearnRole::AbsoluteControl(0));
         }
 
         fn skip_controls(&mut self) {
-            for _ in 0..CONTROLS.len() {
+            for _ in 0..ABSOLUTE_CONTROL_COUNT {
                 assert!(self.learn.skip());
             }
             assert_eq!(self.learn.role(), LearnRole::Pad(0));
@@ -1417,6 +1477,8 @@ mod tests {
         h.send(&[0xb0, 118, 0]);
         assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
         assert!(h.learn.skip());
+        assert_eq!(h.learn.role(), LearnRole::SynthClick);
+        assert!(h.learn.skip());
         assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
         assert_eq!(h.learn.draft().encoder_press_cc, Some(118));
     }
@@ -1438,6 +1500,8 @@ mod tests {
         assert!(h.learn.feedback().contains("release Shift"));
         h.send(&[0xb0, 27, 0]);
 
+        assert_eq!(h.learn.role(), LearnRole::SynthClick);
+        assert!(h.learn.skip());
         assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
         assert_eq!(
             h.learn.draft().encoder_modifier,
@@ -1461,6 +1525,8 @@ mod tests {
         h.send(&[0xb0, 28, 63]);
         h.send(&[0xb0, 27, 0]);
 
+        assert_eq!(h.learn.role(), LearnRole::SynthClick);
+        assert!(h.learn.skip());
         assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
         assert_eq!(
             h.learn.draft().encoder_modifier,
@@ -1674,7 +1740,7 @@ mod tests {
         h.learn_master(28, 118, false);
         h.send(&[0xb0, 10, 40]);
         h.settle();
-        for _ in 1..CONTROLS.len() {
+        for _ in 1..ABSOLUTE_CONTROL_COUNT {
             assert!(h.learn.skip());
         }
         assert_eq!(h.learn.role(), LearnRole::Pad(0));

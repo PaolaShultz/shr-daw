@@ -957,6 +957,7 @@ struct App {
     midi_lifecycle: engine::MidiLifecycle,
     pickup: engine::SharedPickup,
     midi_backend: engine::SharedBackend,
+    midi_moj_model: engine::SharedMojModel,
     tracker_route: engine::SharedTrackerRoute,
     controller_profiles: crate::controller_profile::Catalog,
     device_profiles: DeviceProfiles,
@@ -1945,6 +1946,7 @@ impl App {
         midi_output: engine::SharedOutput,
         pickup: engine::SharedPickup,
         midi_backend: engine::SharedBackend,
+        midi_moj_model: engine::SharedMojModel,
         tracker_io: TrackerIo,
         config: RuntimeConfig,
         available_ports: AvailablePorts,
@@ -2110,6 +2112,7 @@ impl App {
             midi_lifecycle: tracker_io.lifecycle,
             pickup,
             midi_backend,
+            midi_moj_model,
             tracker_route: tracker_io.route,
             playback_scale: tracker_io.playback_scale,
             controller_profiles,
@@ -5338,6 +5341,9 @@ impl App {
         if let Ok(mut backend) = self.midi_backend.lock() {
             *backend = session.preset.backend;
         }
+        if let Ok(mut model) = self.midi_moj_model.lock() {
+            *model = session.preset.moj_model();
+        }
         self.engine = Some(engine);
         self.engine_owner = Some(session.owner);
         self.tracker_engine_plan = session.tracker_plan;
@@ -5401,6 +5407,9 @@ impl App {
                     .cloned();
                 if let Ok(mut backend) = self.midi_backend.lock() {
                     *backend = preset.backend;
+                }
+                if let Ok(mut model) = self.midi_moj_model.lock() {
+                    *model = preset.moj_model();
                 }
                 self.engine = Some(engine);
                 self.engine_owner = Some(owner);
@@ -15594,6 +15603,9 @@ impl App {
                             if let Ok(mut backend) = self.midi_backend.lock() {
                                 *backend = preset.backend;
                             }
+                            if let Ok(mut model) = self.midi_moj_model.lock() {
+                                *model = preset.moj_model();
+                            }
                             self.finish_idea_load(
                                 preset,
                                 original_values,
@@ -16098,6 +16110,10 @@ fn app_loop(
         .as_ref()
         .map(engine::MidiRouter::backend)
         .unwrap_or_else(|_| Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)));
+    let midi_moj_model = router
+        .as_ref()
+        .map(engine::MidiRouter::moj_model)
+        .unwrap_or_else(|_| Arc::new(std::sync::Mutex::new(None)));
     let tracker_route = router
         .as_ref()
         .map(engine::MidiRouter::tracker_route)
@@ -16140,6 +16156,7 @@ fn app_loop(
         output,
         pickup,
         midi_backend,
+        midi_moj_model,
         TrackerIo {
             route: tracker_route,
             input: tracker_input,
@@ -16329,6 +16346,28 @@ fn drain(
             MidiEvent::EncoderModified(action) => {
                 dispatch_modified_encoder(action, app, state, tx);
             }
+            MidiEvent::SynthAction(true) => {
+                if app.playing.as_ref().and_then(Preset::moj_model)
+                    == Some(preset::MojModel::DualFilter)
+                {
+                    let counter = app
+                        .values
+                        .get(&crate::control::MOJ_CORE_STATE_CC)
+                        .copied()
+                        .unwrap_or(0.0)
+                        < 0.5;
+                    app.values.insert(
+                        crate::control::MOJ_CORE_STATE_CC,
+                        if counter { 1.0 } else { 0.0 },
+                    );
+                    app.status = if counter {
+                        "CORE: COUNTER".into()
+                    } else {
+                        "CORE: INDUSTRIAL".into()
+                    };
+                }
+            }
+            MidiEvent::SynthAction(false) => {}
             MidiEvent::PadLock(locked) => {
                 app.pad_locked = locked;
                 app.status = if locked {
@@ -23495,7 +23534,24 @@ fn draw_synth_parameters<B: Backend>(
     let sound_name = a
         .playing
         .as_ref()
-        .map(|p| format!("{} · {}", p.backend.label(), p.display_name()))
+        .map(|p| {
+            let mut name = format!("{} · {}", p.backend.label(), p.display_name());
+            if p.moj_model() == Some(preset::MojModel::DualFilter) {
+                let core = if a
+                    .values
+                    .get(&crate::control::MOJ_CORE_STATE_CC)
+                    .copied()
+                    .unwrap_or(0.0)
+                    >= 0.5
+                {
+                    "COUNTER"
+                } else {
+                    "INDUSTRIAL"
+                };
+                name.push_str(&format!(" · CORE: {core}"));
+            }
+            name
+        })
         .unwrap_or_else(|| "none".into());
     let name = if context == SynthParameterContext::Tracker {
         format!("FT2 · {sound_name}")
@@ -23588,15 +23644,22 @@ fn draw_synth_parameters<B: Backend>(
             .and_then(Preset::moj_model)
             .map(moj_controls)
             .unwrap_or(&MOJ_CONTROLS);
+        let columns = if a.playing.as_ref().and_then(Preset::moj_model)
+            == Some(preset::MojModel::DualFilter)
+        {
+            5
+        } else {
+            4
+        };
         for (i, control) in controls.iter().enumerate() {
-            let col = (i % 4) as u16;
-            let control_row = (i / 4) as u16;
+            let col = (i % columns) as u16;
+            let control_row = (i / columns) as u16;
             let label_y = inner.y + control_row * 2;
             if label_y >= inner.y + inner.height {
                 break;
             }
-            let x = inner.x + col * inner.width / 4;
-            let next_x = inner.x + (col + 1) * inner.width / 4;
+            let x = inner.x + col * inner.width / columns as u16;
+            let next_x = inner.x + (col + 1) * inner.width / columns as u16;
             let width = next_x - x;
             let value = a.values.get(&control.cc).copied().unwrap_or(0.0);
             let original = a.original_values.get(&control.cc).copied().unwrap_or(0.0);
@@ -25799,6 +25862,7 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         Arc::new(std::sync::Mutex::new(None)),
         Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
         Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),
+        Arc::new(std::sync::Mutex::new(None)),
         TrackerIo {
             route: Arc::new(std::sync::Mutex::new(engine::TrackerRoute::default())),
             input: Arc::new(std::sync::Mutex::new(None)),
@@ -26986,6 +27050,7 @@ mod tests {
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
             Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),
+            Arc::new(std::sync::Mutex::new(None)),
             TrackerIo {
                 route: Arc::new(std::sync::Mutex::new(engine::TrackerRoute::default())),
                 input: Arc::new(std::sync::Mutex::new(None)),
@@ -34788,6 +34853,7 @@ release = 0.4
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
             Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),
+            Arc::new(std::sync::Mutex::new(None)),
             TrackerIo {
                 route: Arc::new(std::sync::Mutex::new(engine::TrackerRoute::default())),
                 input: Arc::new(std::sync::Mutex::new(None)),

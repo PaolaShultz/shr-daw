@@ -18,7 +18,7 @@ audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 | synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
 | Yoshimi | `.xiz` sounds and banks | Melodic synth | Read-only catalog and playback |
 | FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, and Bass Matrix sounds | Melodic synth | Seven timbre controls, shared volume, ADSR; private Overwrite or Save New |
+| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, and Dual Filter sounds | Melodic synth | Model-specific controls; Dual Filter uses 15 controls plus a reversible core click; private Overwrite or Save New |
 | SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments; read-only in SHR |
 | SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
@@ -103,10 +103,11 @@ their durable volume. After Load, Reset, Project/Idea restore, automation owners
 or another value-setting transition, physical knobs must reach or cross the
 effective value before they take control. This pickup rule prevents jumps.
 
-**RESET** restores the loaded twelve values without restarting the synth.
+**RESET** restores the loaded model values without restarting the synth. Dual
+Filter also restores its saved INDUSTRIAL or COUNTER core.
 **SAVE** offers Overwrite, Save New, and Cancel. Factory/system sounds are
 read-only, so Overwrite redirects to the next private `User NNN` sound. All
-five Moj models keep separate private namespaces. A successful save becomes the
+six Moj models keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable

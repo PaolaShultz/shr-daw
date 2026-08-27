@@ -1349,6 +1349,9 @@ fn ideas_command(
             if let Ok(mut backend) = router.backend().lock() {
                 *backend = p.backend;
             }
+            if let Ok(mut model) = router.moj_model().lock() {
+                *model = p.moj_model();
+            }
             router.arm_pickup(&values);
             let mut engine = engine::Engine::start(&p, state, router.output(), config)?;
             engine.bind_midi_lifecycle(router.lifecycle());

@@ -1,8 +1,9 @@
 use crate::control::{
-    by_cc, normalize, value_from_cc, CONTROLS, INSTRUMENT_VOLUME_CC, MOJ_CONTROLS,
+    by_cc, moj_controls, normalize, value_from_cc, CONTROLS, INSTRUMENT_VOLUME_CC,
+    MOJ_CORE_TOGGLE_CC,
 };
 use crate::pads::{EncoderAction, PadAction, PadConfig};
-use crate::preset::BackendKind;
+use crate::preset::{BackendKind, MojModel};
 use std::collections::HashMap;
 
 const PICKUP_TOLERANCE: f32 = 1.0 / 127.0 + f32::EPSILON;
@@ -71,6 +72,7 @@ pub struct Routed<'a> {
     pub pad: Option<PadAction>,
     pub encoder: Option<EncoderAction>,
     pub encoder_modified: bool,
+    pub synth_action: Option<bool>,
     pub value: Option<(u8, f32)>,
     pub translated: Option<[u8; 3]>,
     pub forward: Option<&'a [u8]>,
@@ -88,16 +90,18 @@ pub fn route_with_pad_lock<'a>(
     message: &'a [u8],
     pad_locked: bool,
 ) -> Routed<'a> {
-    route_with_pad_lock_and_modifier(pads, backend, message, pad_locked, false)
+    route_with_pad_lock_and_modifier(pads, backend, None, message, pad_locked, false)
 }
 
 pub fn route_with_pad_lock_and_modifier<'a>(
     pads: &PadConfig,
     backend: BackendKind,
+    moj_model: Option<MojModel>,
     message: &'a [u8],
     pad_locked: bool,
     encoder_modifier_down: bool,
 ) -> Routed<'a> {
+    let synth_action = pads.synth_press_action(message);
     let (lock_consumed, _) = pads.lock_action(message);
     let (mut pad_consumed, mut pad) = if pad_locked {
         (false, None)
@@ -118,7 +122,7 @@ pub fn route_with_pad_lock_and_modifier<'a>(
     }
     encoder = encoder.or(note_encoder);
     let encoder_consumed = cc_encoder_consumed || note_encoder_consumed;
-    let consumed = lock_consumed || pad_consumed || encoder_consumed;
+    let consumed = lock_consumed || pad_consumed || encoder_consumed || synth_action.is_some();
     let mapped_position = (!consumed && message.len() >= 3 && message[0] & 0xf0 == 0xb0)
         .then(|| pads.pot_position(message[1]))
         .flatten();
@@ -135,18 +139,25 @@ pub fn route_with_pad_lock_and_modifier<'a>(
             .and_then(|position| CONTROLS.get(position).copied())
             .map(|c| (c.cc, value_from_cc(c, message[2])))
     } else if backend == BackendKind::MojSint {
-        mapped_position.map(|index| {
-            (
-                MOJ_CONTROLS[index].cc,
-                f32::from(message[2].min(127)) / 127.0,
-            )
-        })
+        let controls = moj_controls(moj_model.unwrap_or(MojModel::ModelD));
+        mapped_position
+            .and_then(|index| controls.get(index))
+            .map(|control| (control.cc, f32::from(message[2].min(127)) / 127.0))
     } else {
         mapped_standard_volume
             .then(|| (INSTRUMENT_VOLUME_CC, f32::from(message[2].min(127)) / 127.0))
     };
     let translated = if backend == BackendKind::MojSint {
-        mapped_position.map(|index| [message[0], MOJ_CONTROLS[index].cc, message[2].min(127)])
+        if synth_action == Some(true) {
+            Some([0xb0 | (message[0] & 0x0f), MOJ_CORE_TOGGLE_CC, 127])
+        } else {
+            let controls = moj_controls(moj_model.unwrap_or(MojModel::ModelD));
+            mapped_position.and_then(|index| {
+                controls
+                    .get(index)
+                    .map(|control| [message[0], control.cc, message[2].min(127)])
+            })
+        }
     } else {
         (backend != BackendKind::Synthv1
             && !consumed
@@ -160,6 +171,7 @@ pub fn route_with_pad_lock_and_modifier<'a>(
         pad,
         encoder,
         encoder_modified,
+        synth_action,
         value,
         translated,
         forward: (!consumed && translated.is_none()).then_some(message),
@@ -254,6 +266,7 @@ mod tests {
         let left = route_with_pad_lock_and_modifier(
             &pads,
             BackendKind::Synthv1,
+            None,
             &[0xb0, 29, 63],
             false,
             modifier_down,
@@ -266,6 +279,7 @@ mod tests {
         let right = route_with_pad_lock_and_modifier(
             &pads,
             BackendKind::Synthv1,
+            None,
             &[0xb0, 29, 65],
             false,
             modifier_down,
@@ -280,6 +294,7 @@ mod tests {
         let ordinary = route_with_pad_lock_and_modifier(
             &pads,
             BackendKind::Synthv1,
+            None,
             &[0xb0, 114, 65],
             false,
             modifier_down,
@@ -291,6 +306,7 @@ mod tests {
             let routed = route_with_pad_lock_and_modifier(
                 &pads,
                 BackendKind::Synthv1,
+                None,
                 &musical,
                 false,
                 modifier_down,
@@ -435,5 +451,47 @@ mod tests {
         pickup.arm(&HashMap::from([(20, 0.75)]));
         assert!(!pickup.accept(20, 0.2));
         assert!(pickup.accept(20, 0.8));
+    }
+
+    #[test]
+    fn dual_filter_routes_all_fifteen_positions_and_a_press_only_core_click() {
+        let pads = PadConfig {
+            controls: HashMap::from([(99, 15)]),
+            synth_press_cc: Some(100),
+            synth_press_channel: Some(0),
+            ..PadConfig::default()
+        };
+        let control = route_with_pad_lock_and_modifier(
+            &pads,
+            BackendKind::MojSint,
+            Some(MojModel::DualFilter),
+            &[0xb0, 99, 64],
+            false,
+            false,
+        );
+        assert_eq!(control.value, Some((34, 64.0 / 127.0)));
+        assert_eq!(control.translated, Some([0xb0, 34, 64]));
+
+        let press = route_with_pad_lock_and_modifier(
+            &pads,
+            BackendKind::MojSint,
+            Some(MojModel::DualFilter),
+            &[0xb0, 100, 127],
+            false,
+            false,
+        );
+        assert_eq!(press.synth_action, Some(true));
+        assert_eq!(press.translated, Some([0xb0, MOJ_CORE_TOGGLE_CC, 127]));
+        let release = route_with_pad_lock_and_modifier(
+            &pads,
+            BackendKind::MojSint,
+            Some(MojModel::DualFilter),
+            &[0xb0, 100, 0],
+            false,
+            false,
+        );
+        assert_eq!(release.synth_action, Some(false));
+        assert_eq!(release.translated, None);
+        assert!(release.forward.is_none());
     }
 }

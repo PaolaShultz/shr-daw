@@ -465,12 +465,19 @@ without changing note numbers.
 
 ## Parameters, pickup, and extension points
 
-Menu navigation is discrete. `POT 1` through `POT 12` are continuous physical
+Menu navigation is discrete. `POT 1` through `POT 15` are continuous physical
 positions; each backend or editor supplies its own parameter table for those
 positions. Preset load, idea load, and in-place reset re-arm pickup;
 the verified synthv1 0.9.29 indices/ranges and green/yellow/red ±0.03 indicators
-are unchanged. `MAPPED_CONTROL_CAPACITY` reserves 16 entries while only the 12
-schema-verified controls are populated.
+are unchanged. Existing models retain their 12-position tables. Moj Sint Dual
+Filter uses all 15 positions for two filter blocks, STRUCTURE, filter ADSR, and
+amp ADSR.
+
+The master rotary always remains SHR navigation. A separate optional
+`synth.press_cc` or `synth.press_note` binding is learned for the clickable
+synth rotary. On Dual Filter it toggles only `CORE: INDUSTRIAL` and
+`CORE: COUNTER`; release is consumed, current pot values are preserved, and
+the visible core state is saved with the preset.
 
 All Shift-rotary secondary navigation uses the profile/configured modifier and
 optional shifted relative CC plus the same semantic actions as visible or
