@@ -22,13 +22,16 @@ Home selects usable MIDI Learn without risking stale MK3 Stop/Play/REC/Panic
 commands. Unknown replacements and multiple reviewed candidates remain
 unselected.
 
-The current change has source-format, JSON, reference, and whitespace evidence
-only. The repository's temporary build gate remains active: no build-producing
-Cargo command, binary build, test execution, app restart, MIDI capture/
-transmission, synth, JACK, playback, recording, audible, or physical-controller
-verification has run. The existing release binary therefore retains the old
-behavior until the owner explicitly authorizes the combined build-and-test
-pass.
+The owner-authorized combined pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Formatting, JSON,
+references, whitespace, locked check, all nine controller-profile tests, the
+two focused Home/keyboard Learn regressions, and the complete normal suite
+passed. The suite reported 1,063 successful tests, zero failures, and 13
+documented development/audition/performance tests ignored. Locked debug and
+release builds passed in 2m08s and 2m51s; plain `shr` resolves through
+`scripts/local.sh` to the new `target/release/shr`. No app restart, MIDI
+capture/transmission, synth, JACK, playback, recording, audible, or physical-
+controller verification ran.
 
 ## 2026-08-26 Priority 7 external USB MIDI transport sync
 
