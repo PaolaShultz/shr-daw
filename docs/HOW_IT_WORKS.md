@@ -27,7 +27,7 @@ SHR input router
   |                    |
   | commands/controls  +---- musical notes ----------------------+
   v                                                           |  |
-screen, menus, pickup                           managed synth <-+  |
+screen, menus, relative controls                managed synth <-+  |
                                                 or FT2 page -------+
 
 FT2 scheduler -> each page's MIDI destination -> software or hardware instrument
@@ -118,18 +118,17 @@ one `FC` as appropriate, while `F8` keeps the stopped controller ready at the
 current tempo until SHR exits.
 
 A controller profile describes what a physical device sends. The setup wizard
-can apply a reviewed profile or learn absolute controls, either relative
+can apply a reviewed profile or learn direction-only rotary messages,
 encoder direction, CC/note buttons, and an encoder press without forwarding
 the learning messages to a synth. Learned mappings remain private; reviewed
 catalog updates are validated and published atomically. See
 [Controller profiles](CONTROLLER_PROFILES.md).
 
-The 12 synthv1 controls use pickup. After a preset or Idea loads, or after
-`RESET`, mapped CC messages are blocked until the physical control reaches or
-crosses the stored value. This prevents a knob position from making the sound
-jump. Playback indicators compare each value with the original preset: green
+The synth controls use signed relative steps. After a preset or Idea loads, or
+after `RESET`, turns continue from the stored value, so stale hardware position
+cannot make the sound jump. Playback indicators compare each value with the original preset: green
 is more than 0.03 below it, bright yellow is within 0.03, and red is more than
-0.03 above it. Reset changes only those mapped parameters, re-arms pickup, and
+0.03 above it. Reset changes only those mapped parameters and
 does not restart the engine.
 
 Held notes drive the Playback note/chord display and its continuous keyboard
@@ -153,7 +152,7 @@ through one SHR-DAW workflow. Their runtime hosts are:
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks;
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
-- Moj Sint for strict `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, and Bass Matrix presets; and
+- Moj Sint for strict `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, and Dual Filter presets; and
 - SHR Sampler for strict preloaded `.shrinst` sample packages.
 
 Only one SHR-managed software engine process runs at a time. synthv1 and
@@ -386,7 +385,7 @@ There are four useful placement ideas:
   place for tone shaping, dynamics, distortion, or an effect that belongs to
   this sound.
 - An **aux send** makes a parallel copy. `PRE` takes it before source inserts;
-  `POST` takes it after them. Each of AUX 1 and AUX 2 has its own send, rack,
+  `POST` takes it after them. Each of AUX 1, AUX 2, and AUX 3 has its own send, rack,
   return gain, and meter.
 - An **aux return** brings only the effected copy back into the sum. The normal
   aux editor offers Delay, Reverb, Chorus, Flanger, and Phaser and forces them
@@ -559,7 +558,7 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 17 persists the complete tracker state, integer-hundredths
+Project format 18 persists the complete tracker state, integer-hundredths
 Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
 effects routing including the internal-drum rack, one Project-global fixed
@@ -575,8 +574,9 @@ defaults; Format 13 and older Projects gain empty automation in memory. Format 7
 former Project-global four slots migrate in memory into
 every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
-audio or rewrites the file. Formats 0–16 gain FULL/1X/FORWARD lane playback;
-only an explicit save writes format 17. Format 12
+audio or rewrites the file. Formats 0–16 gain FULL/1X/FORWARD lane playback.
+Format 18 expands the bounded aux inventory to three without changing any
+older saved route; only an explicit save writes format 18. Format 12
 keeps its routing and gains safe family drum-effect defaults in memory. Format 10
 infers the Note Off choice from the percussion flag. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly

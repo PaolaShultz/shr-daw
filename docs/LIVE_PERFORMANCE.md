@@ -108,9 +108,8 @@ The state survives navigation while the same Project is open. Loading or
 creating a Project resets every live shape to 100% velocity, 100% gate,
 zero transpose, and unmuted. The main encoder is a relative navigation
 control from `controller.conf` or the selected controller profile, so these
-controls do not introduce hard-coded CCs or an invisible absolute-knob mode.
-Any absolute mapped control elsewhere in SHR-DAW retains the established
-pickup rule and is re-armed when values load or reset.
+controls do not introduce hard-coded CCs or an invisible positional-knob mode.
+All mapped rotaries use the direction-only controller contract.
 
 Lane shaping is MIDI performance data, not per-lane audio processing. Several
 lanes can share one stereo synth output, and external devices do not share a

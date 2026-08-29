@@ -5,6 +5,438 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-08-29 development Pi returned to four shared CPUs
+
+The owner chose build throughput and simpler general scheduling over the
+optional dedicated-JACK CPU profile on this four-core Pi. The owned
+`shr-audio-tune remove` path removed CPU-3 boot isolation, IRQ housekeeping,
+the performance-governor service, and the JACK affinity drop-in. The matching
+private `audio.engine_cpu` value is cleared. The original boot-command-line
+backup remains under the helper's owned state directory.
+
+The already-running JACK server was not stopped or restarted and remains on
+CPU 3 for the rest of the current boot. The running kernel likewise still
+reports CPU 3 as isolated, so `nproc` remains 3 until reboot. Persistent boot
+configuration and systemd configuration are already unpinned; after the next
+normal reboot, ordinary builds and JACK share all four CPUs while JACK retains
+its existing real-time priority and memory-lock policy. The optional tuning
+helper remains available if measured 18-channel work later justifies restoring
+a dedicated core.
+
+## 2026-08-29 literal rotary order and legible MIDI Learn feedback
+
+The private 293-line retry trace showed that the old order caused a real
+identity error: Learn requested rotary 9's click before its turn, then called
+the lower-left rotary-9 turn “rotary 2” and stored CC 114 in physical slot 2.
+The owner then returned to click 9 with rotary-1 navigation, but click roles
+were missing from the mapped-role replacement check. CC 115 was therefore
+rejected as already used on every press instead of replacing itself.
+
+The attempted physical-column order was rejected by the owner as needlessly
+awkward. Learn now proceeds literally from rotary 1 through rotary 16. Rotary
+1's click and Shift work remain beside rotary 1, and rotary 9's click follows
+rotary 9's turn before rotary 10. Both click roles remain replaceable when
+revisited, including the secondary synth-click alias owned by rotary 9.
+
+The following 542-line private trace also showed why rotary 3 appeared unable
+to learn. Only 120 ms after its left stream became quiet, Learn requested RIGHT;
+a late left packet arrived 8–13 ms later and was immediately shown as a new
+direction error. Gesture transitions, success, and retry now use a 650 ms quiet
+window. Late matching packets extend that window. Per-packet proof counts no
+longer replace visible feedback, so one turn produces one legible state before
+the next instruction.
+
+Exact Rust 1.97.1 passed formatting, locked check, both in-app Learn integration
+tests, the numeric-order, feedback-timing, and click-9 regressions, and all 44
+controller-Learn tests. Locked DEV and REL builds passed in 1m04s and 2m58s
+while the running kernel still exposed only three build CPUs. The complete suite
+and unrelated opt-in tests were intentionally not run for this focused
+incremental repair.
+
+## 2026-08-29 controller-only MIDI Learn recovery
+
+The private 906-line last-session trace proved two controller-only recovery
+failures. Rotary 5 reached left proof 2/3, received one opposite packet, and
+entered a permanent rejected state whose visible recovery required keyboard
+`R`. Rotary-1 step navigation later worked in both directions, but returning
+to already-mapped rotary 4 made that step read-only: subsequent CC 76, 77, and
+93 turns were all ignored even though the screen said the step was armed.
+
+Rejected rotary attempts now wait for release and automatically re-arm the
+same step. No red error prompt names a keyboard key. Navigating to an already
+mapped step keeps its mapping until the first relevant replacement gesture;
+that gesture then replaces the old role mapping and learns normally. Rotary 1
+left/right remains the only step minus/plus gesture and needs no click.
+
+Exact Rust 1.97.1 passed formatting, whitespace inspection, locked check, both
+trace-derived controller-only regressions, and all 41 controller-Learn tests.
+Locked DEV and REL builds passed. The complete suite and unrelated opt-in tests
+were intentionally not run for this focused incremental repair.
+
+## 2026-08-29 rotary-only MIDI Learn step navigation
+
+After rotary 1's left and right directions are learned, its turns now change
+the selected Learn step directly: left is one step back and right is one step
+forward. No click is involved. The already-learned rotary-1 axis is the lower
+navigation boundary and Review is the upper boundary. Each step change enters
+the existing short input quarantine, so the same physical gesture cannot cross
+multiple steps. Navigation works from both an ordinary waiting step and a
+rejected rotary step and discards transient direction proof when leaving a
+step. The later controller-only recovery repair makes a revisited completed
+step editable by its next relevant gesture instead of leaving it read-only.
+
+Exact Rust 1.97.1 passed formatting, whitespace inspection, locked check, the
+focused no-click minus/plus navigation regression, and all 39 controller-Learn
+tests. Locked DEV and REL builds passed. The complete suite and unrelated
+opt-in tests were intentionally not run for this focused incremental repair.
+
+## 2026-08-29 MIDI Learn unrelated-CC proof repair
+
+The private last-session trace showed rotary 2 reach two of three valid left
+packets on its Relative 1 CC, after which an unrelated positional CC 1 stream
+forced the entire role into rejection. Once a performance rotary candidate has
+started either direction proof, Learn now ignores other channel/CC streams and
+retains the candidate's progress. Wrong-direction or positional values from
+the candidate itself remain rejected, so the relative-only safety contract is
+unchanged. A focused regression reproduces the observed two-packet proof,
+unrelated 1–86 sweep, and successful completion on the original CC.
+
+Exact Rust 1.97.1 passed formatting, whitespace inspection, locked check, the
+new focused regression, and all 39 controller-Learn tests. Locked DEV and REL
+builds passed; plain `shr` will use the refreshed release binary after the
+currently running older process is exited normally and reopened. The complete
+suite and unrelated opt-in tests were intentionally not run for this focused
+incremental repair.
+
+## 2026-08-29 MiniLab mkII Memory 2 rotary-mode repair
+
+The owner's MIDI Learn trace showed that the next requested performance rotary
+sent a positional CC 74 sweep and was correctly rejected by the relative-only
+learner. A direct Linux ALSA/SysEx audit of the active MiniLab mkII Memory 2
+found fourteen performance rotary slots in Absolute mode; only the CC 114
+rotary was already Relative 1. The pre-change mode, channel, CC, option, and raw
+replies were backed up privately below `user/state/shsynth/`.
+
+After the owner's explicit authorization to program the controller directly,
+only those fourteen rotary option fields were changed from Absolute to
+Relative 1. No CC, channel, button, Shift-layer, or other memory field was
+changed. An independent readback returned Relative 1 for all fifteen
+performance rotary slots. No JACK, synth, audio, playback, or recording path
+was started.
+
+## 2026-08-29 MIDI Learn delayed-release and shifted-left repair
+
+Physical review found two MIDI Learn capture failures in the current working
+tree. A launcher-click CC release arriving after the opening quiet timer could
+be stored as rotary 1's first command. Armed direction capture now accepts only
+moving relative CC values, so delayed zero releases and neutral/reset packets
+cannot become that mapping.
+
+The MiniLab mkII direct Shift-layer disambiguator also treated a Relative 2
+left packet (`127`) as a possible Shift-button press on every other packet, so
+its three-packet left proof could never finish. A repeated packet from the same
+channel/CC now identifies the candidate as the shifted rotary stream, retains
+the first packet, and lets the proof proceed; an actual press/release remains
+ignored.
+
+Every in-app Learn entry now replaces the private
+`midi-learn-last.log` below the configured state directory. It records the
+requested step, internal capture state, and every received raw MIDI packet in
+hex, including filtered and rejected traffic, and remains available after Save
+or Cancel. This diagnostic performs file I/O only on the ordinary UI-thread
+Learn path, never in the MIDI or audio callback.
+
+Source regressions cover the delayed release, the three-packet Relative 2
+shifted-left path, and exact last-session trace replacement/input retention.
+Formatting and whitespace inspection passed.
+The owner then explicitly authorized the combined build-and-test pass. Exact
+Rust 1.97.1 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6) passed
+locked check, all 38 controller-Learn tests, and both in-app Learn integration
+tests. The final locked debug and release builds passed in 1m42s and 3m00s. The build
+retained three non-fatal dead-code warnings. No app launch, live MIDI/JACK,
+audio, or physical follow-up ran.
+
+## 2026-08-28 performance-rotary direction proof
+
+A subsequent physical retry exposed two interaction regressions around that
+proof. The first line spent scarce width on `MIDI LEARN ·`, so the required
+Shift gesture could be clipped. Learn now uses exactly two rows total, with no
+shared transport/status footer: line 1 is the complete action-first gesture
+(`SHIFT + TURN ROTARY 1 LEFT`, for example), and line 2 is only its immediate
+state or recovery. Both rows use all 40 terminal columns.
+
+The learned master rotary no longer lets delayed packets from one slow gesture
+walk across several optional rotary or button roles. The later rotary-only
+navigation repair supersedes the earlier decision to ignore master turns:
+each deliberate turn changes exactly one step and re-enters the 120 ms input
+quarantine. Waiting on an untouched Shift, rotary-9 click, or PAD role still
+never changes it.
+
+The optional Shift layer now follows the same unambiguous direction proof as
+the other relative controls without requiring an unnatural continuous hold.
+The visible sequence is exactly `SHIFT + TURN ROTARY 1 LEFT`, `RELEASE SHIFT`,
+`SHIFT + TURN ROTARY 1 RIGHT`, `RELEASE SHIFT`. Releasing after the left action
+preserves its three-packet proof; the right action begins with a fresh Shift
+press and proves three opposite-direction packets on the same channel and CC.
+The Shift layer's MIDI encoding is inferred independently: physical left may
+arrive as low centered values, high centered values, or high/low Relative 2
+values, and physical right must prove the corresponding opposite range. It is
+not assumed to match the ordinary rotary. Bare `TURN`, one-sided learning, and
+holding Shift across both actions are no longer valid.
+
+Physical acceptance found that only rotary 9's **turn** behaved correctly. The
+other learned performance rotaries were positional MiniLab mkII knobs which the
+one-packet learner had mistaken for relative controls when their 0–127 sweep
+passed through values near 64. Runtime then treated those occasional values as
+signed steps, causing intermittent changes, reversals, and apparent resets.
+
+Performance Learn now proves the same relative contract already used by the
+master encoder. For every rotary 2–16 it asks for a left turn, requires three
+left-direction packets, waits for that gesture to become quiet, then asks for
+three right-direction packets on the same MIDI channel and CC. Both Relative 1
+and Relative 2 conventions are supported. A positional, wrong-direction, or
+different-control packet cannot save a mapping. The later controller-only
+recovery repair supersedes the explicit retry requirement: after release the
+same step automatically re-arms. The screen remains exactly two rows total and
+changes its first line from `TURN LEFT` to `TURN RIGHT` during the proof.
+
+No private controller configuration was repaired or rewritten. The currently
+running process also still maps the prior release image. On the next normal
+owner-controlled restart, rotaries which remain positional must be changed to
+Relative 1/2 in the hardware editor and learned again; unsupported positional
+knobs will now be refused honestly. Rotary 9's known-good turn is the physical
+reference, not its click. The natural Shift-release follow-up passes all 36
+focused Learn tests, both native two-line/40-column UI regressions, locked
+check, deterministic docs generation, and the optimized release build. The
+complete normal suite was intentionally not repeated under the incremental
+debug gate; its preceding run passed 1,092 tests with 13 historical or audition
+tests ignored before this focused interaction change. No connected MIDI/JACK
+test, app restart, or audible test ran.
+
+## 2026-08-28 Moj model-local catalog and stale-host repair
+
+The Moj Presets list no longer sorts by translated category labels or exposes
+the old global factory-file numbers. It uses the fixed model order Model D,
+Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, then Dual Filter.
+Each model has one visible letter and its own two-digit sequence: `D01`, `P01`,
+`O01`, `S01`, `B01`, and `F01`. The visible sound name follows that identity.
+Opening or switching to Moj Sint resets the cursor to `D01 Full Bass`; visible
+letter-jump uses those same model letters. This removes the misleading initial
+`16 Bass Matrix` selection caused by alphabetical category sorting.
+
+The observed Dual Filter `START FAILED` was a source/artifact compatibility
+failure, not a bad private configuration. SHR discovered schema-8 presets from
+the current Moj source tree but launched a Moj release executable last built
+before schema 8; that executable rejected the selected preset as unsupported.
+The Moj release executable was rebuilt from current source. All 21 cleared
+presets now pass its offline validator, and two production Dual Filter renders
+with identical inputs are byte-identical. The active SHR and synth processes
+were not stopped, restarted, connected, or exercised by the agent.
+
+Focused Moj catalog, visible-name, letter-jump, route, and engine-replacement
+regressions pass. The complete normal SHR suite passes 1,084 tests with 13
+historical/opt-in tests ignored. That pass also exposed and fixed a Project
+format-18 decoder range which still stopped at format 17, plus stale
+relative-only/3×5 test expectations. The locked release build and the real
+40×13 Presets documentation image were refreshed. The currently running SHR
+process still maps the previous executable; one normal user-controlled exit
+and reopen is required for the new list presentation.
+
+## 2026-08-28 relative-only controller contract
+
+The active controller contract has no absolute rotary mode. Rotary 1 and all
+fifteen mapped performance rotaries must emit direction-only Relative 1 or
+Relative 2 steps; MIDI Learn rejects positional 0–127 turns and tells the user
+to change the hardware mode. The runtime no longer stores, saves, learns, or
+decodes `rotary.relative`, `encoder.absolute`, or
+`encoder.modified_absolute`. Those old v9 keys are migration-only input: known
+misclassified MK2 mappings keep their relative identities, while unsupported
+positional surfaces are dropped instead of being silently reinterpreted. The
+next explicit save omits the obsolete keys.
+
+The returned MiniLab 3's positional parameter knobs were removed from its
+bundled mapping. Its relative master, buttons, and pads remain described, but
+SHR does not pretend its positional knobs satisfy the new direction-only
+surface. The current MiniLab mkII owner mapping remains the intended 1+15
+surface. Parameter, FX, aux-send, tracker-mixer, and automation turns therefore
+carry SHR's current value directly and do not expose pickup/catch status.
+
+Owner acceptance against the previously built release exposed the exact stale
+failure this contract removes: Learn saved the MiniLab mkII's repeated `63` and
+`65` direction packets as absolute positions, so the master menu moved once in
+each direction and then appeared trapped. Both the active private selector and
+the model-owned MK2 mapping have been corrected to relative mode. Current
+source has no absolute Learn path, and regression requires every repeated
+identical direction packet to navigate.
+
+The first authorized focused run then exposed a second stale-draft defect in
+the MK2 Shift step: validation wrote a candidate CC before rejecting a plain
+Shift-button packet, so retry could retain that rejected CC. Direct Shift
+learning now validates the packet before changing the draft. A Shift press and
+release leaves no mapping, while the following actual shifted turn becomes the
+alternate relative CC.
+
+The owner-authorized combined pass used exact Rust 1.97.1. Formatting and
+locked check passed. All 29 controller-Learn tests, both in-app save/activate
+tests, three repeated/relative encoder tests, three Home/two-line Learn tests,
+the obsolete-mode migration tests, and the observed MK2 migration test passed.
+The locked optimized release build passed and refreshed `target/release/shr`,
+which plain `shr` launches. No app launch, MIDI/JACK transmission, synth,
+audio, or fresh-binary physical-controller validation ran.
+
+## 2026-08-28 unified 3×5 synth and aux surface
+
+The learned MiniLab mkII performance surface is now one exact 15-rotary
+contract after the separate master encoder. Moj Sint Dual Filter already had
+its complete schema-8/CC20–34 host path and continues to own all fifteen slots
+as synthesis controls. Synthv1 and the five older 12-control Moj models now
+use slots 1–12 for their unchanged sound parameters and slots 13–15 for the
+current Project's AUX 1, AUX 2, and AUX 3 send levels. Those last messages are
+consumed as SHR Project controls and are never forwarded into the synth MIDI
+namespace. Rotaries carry the current send in 3 dB steps. A missing/empty aux honestly renders `NO FX`
+and refuses the turn until an effect exists.
+
+Player and FT2 PARAM now share one native 3×5 renderer. Older instruments show
+their twelve parameters followed by the three aux sends; Dual Filter shows its
+fifteen model parameters with no aux substitution. The FX target inventory and
+bounded audio graph now expose three independent wet aux buses. Project format
+18 and typed graph format 2 make that expanded contract explicit; older Project
+versions remain readable. The maximum graph-wide effect count remains 16 and
+the reverb limit remains two.
+
+Each compiled aux send now owns a lock-free linear-gain target. Surface turns
+publish that target through a 10 ms callback ramp without graph deactivation,
+allocation, locking, or callback-time dB conversion, so held notes and running
+transport keep sounding. OFF retains a disabled prepared route and can come
+back without a topology rebuild. Recording still refuses send changes. Aux
+rack, processor, tap-point, and other structural edits retain the stopped
+transport/recording publication invariant. With the graph disabled, surface
+turns change Project state without touching audio.
+
+Regression source covers the exact 12+3 and 15+0 routing split, non-forwarding
+of aux turns, three-bus allocation/validation, format-18 round trip, shared
+3×5 rendering, relative send steps, and Dual Filter retention
+of rotary 16. Formatting and whitespace validation passed. The combined pass
+recorded above compiled this work and built it into the optimized release, but
+did not run the separate focused aux/audio regressions or the complete suite.
+No live MIDI, JACK, synth, playback, recording, audible, or
+physical-controller validation has run for this change.
+
+## 2026-08-28 MIDI Learn interaction repair
+
+The in-app MIDI Learn screen originally owned exactly two body lines: the current
+physical action and one immediate instruction/result. The previous title,
+progress fraction, isolation commentary, gesture summary, mapping counts,
+required-control ledger, navigation legend, cancel prose, and save commentary
+were removed. The current action-first/two-rows-total contract at the top of
+this handoff supersedes the shared-row behavior from this earlier repair.
+
+Learn now orders all rotary-1 work together: left, right, click, and optional
+Shift+turn. The later numeric-order repair proceeds through rotary 2 to rotary
+16 and inserts rotary 9's click immediately after its turn.
+For a hardware-owned Shift layer, a second CC arriving during the Shift
+gesture replaces a premature Shift-button candidate with the actual shifted
+rotary CC. Once learned, that Shift identity is already reserved and cannot be
+captured as rotary 9's click. Rotary-1 click saves only at the final Review
+step instead of ending the session as soon as the three required controls
+happen to exist. The current controller workflow requires no keyboard input.
+
+Focused regression source covers the two-line 40×13 contract, reordered Shift
+and rotary-9 capture, Shift-candidate replacement, refusal to reuse Shift as a
+click, and final-step-only save. The combined check, focused tests, and release
+build are recorded in the relative-only section above. No app launch, live
+MIDI, JACK, synth, playback, recording, audible, or fresh-binary physical-
+controller validation has run.
+
+## 2026-08-27 MiniLab mkII direction-only encoder repair
+
+Physical acceptance showed that the learned MiniLab mkII rotary 1 behaved as a
+direction-only encoder, although MIDI Learn had saved it as absolute. The
+learner had required a neutral/reset packet between the sampled left and right
+values before recognizing Arturia Relative 1 or 2. It now recognizes those
+direction pairs with or without the neutral packet. The relative-only
+correction at the top of this handoff now also governs the MK2 hardware-owned
+Shift layer.
+
+The already-saved private MK2 mapping is corrected in memory when it has the
+observed erroneous `CC112`/absolute signature; loading never rewrites that
+private file. The owner confirmed that this personal MK2 setup uses
+direction-only turns for every rotary. The MK2 mapping therefore retains each
+physical rotary identity but discards its incoming position: left/right and
+turn-speed packets carry SHR's current synth, Moj Sint, FX, automation, or
+mixer value by signed steps. They bypass pickup entirely.
+
+A passive live capture was opened without transmitting MIDI or starting audio,
+but received no physical turns; the direction-only behavior is owner-provided
+physical evidence rather than a captured transcript. Exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6) passed locked check
+after rebasing the working tree onto `7fa9872` (`new controller prepare`). The
+merge makes the one learned rotary 9 click serve both its physical identity and
+the new Dual Filter synth action; Learn never asks for that same click twice.
+The focused Learn, controller-decoder, MIDI routing, signed-carry, FX
+pickup-bypass, Dual Filter click, preset, and native-render regressions passed.
+The complete normal suite reported 1,080 passed, zero failed, and 13 unrelated
+opt-in audio/maintainer tests ignored. The owner's explicit all-tests request
+then ran those 13 with fresh destinations below ignored `user/`; all passed.
+Locked debug and release builds passed in 2m09s and 2m59s. Formatting,
+controller JSON, generated documentation and drift check, focused generator
+tests, and whitespace validation passed. No MIDI transmission, synth, JACK,
+playback, recording, audible, or physical post-build acceptance ran.
+
+## 2026-08-27 per-model controller retention and MK2 Shift repair
+
+The controller replacement workflow now retains every explicitly learned known
+model below private state as `controller-mappings/PROFILE-ID.conf` while
+`controller.conf` remains only the active selector. Startup restores the sole
+connected reviewed model's private mapping before falling back to its bundled
+catalog default. Explicit Learn updates the active and model-owned copies as
+one recoverable operation; Cancel writes neither, and automatic device
+switching never overwrites another model's retained mapping. The old MiniLab 3
+mapping remains present in both its reviewed bundled profile and the existing
+private timestamped backup.
+
+Arturia documents that MiniLab mkII hardware Shift selects alternate CCs for
+encoders 1 and 9. This first implementation accepted a positional alternate
+CC; the relative-only correction at the top of this handoff supersedes that
+mode.
+
+The owner-authorized combined pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Formatting,
+locked check, 25 focused Learn tests, 12 controller-profile/automatic-switch
+tests, direct MK2 Shift decoding, both in-app save/cancel regressions, and the
+complete normal suite passed. The final suite reported 1,072 successful tests,
+zero failures, and 13 unrelated private-audition/maintainer tests ignored.
+Locked debug and release builds passed in 1m44s and 2m54s. The generated docs
+site and its focused tests passed. No app restart, live MIDI capture or
+transmission, JACK, synth, playback, recording, audible, or
+physical-controller acceptance ran for this follow-up.
+
+## 2026-08-27 MiniLab mkII sixteen-rotary surface
+
+The owner chose the MiniLab mkII as the project's controller surface: sixteen
+rotary turns, with clickable rotaries 1 and 9. MIDI Learn now captures rotary
+1 left/right/click, rotary 9 click, and turns for rotaries 2–16. The
+left/right capture originally distinguished positional 0–127 navigation from
+Arturia Relative 1/2. The owner's physical acceptance later established that
+this MK2 memory sends every parameter rotary as direction-only; the current
+relative-only behavior is recorded at the top of this handoff. Existing instruments
+use their twelve verified slots, while Dual Filter uses all fifteen and maps
+rotary 9's click to its core toggle. New saves use controller profile v9
+`rotary.2` through `rotary.16`; v8 `pot.1` through `pot.12` remains readable
+and migrates on the next explicit save.
+
+This is new work and remains uncommitted pending review. The owner-authorized
+combined pass used exact Rust 1.97.1 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`,
+LLVM 22.1.6). Formatting, locked check, 24 focused controller-learn tests, two
+focused in-app/render regressions, the complete normal suite, and locked debug
+and release builds passed. The final suite reported 1,067 successful tests,
+zero failures, and 13 documented private-audition/maintainer tests ignored.
+The explicitly requested opt-in pass then ran those 13 tests with fresh
+destinations below ignored `user/`; all 13 passed and produced 60 MiB of
+private review evidence. Debug and release builds completed in 1m51s and
+2m52s. No physical MIDI, JACK, synth, playback, recording, audible, or hardware
+acceptance ran.
+
 ## 2026-08-27 MiniLab mkII replacement discovery repair
 
 The borrowed MiniLab 3 has been returned and the owner now has an Arturia
@@ -37,8 +469,8 @@ controller verification ran.
 
 The approved Moj Sint Dual Filter design is implemented across the owning
 repositories. SHR recognizes the sixth Moj model and schema 8, maps its 15
-continuous controls to physical POT positions 1–15, learns a separate clickable
-synth rotary, and keeps the master rotary exclusively on navigation. One synth
+continuous controls to physical rotaries 2–16, uses rotary 9's learned click as
+the synth action, and keeps the master rotary exclusively on navigation. One synth
 click sends the press-only core toggle; held sound is not retriggered, all pot
 values remain in place, and the parameter header plus status show
 `CORE: INDUSTRIAL` or `CORE: COUNTER`.
@@ -48,14 +480,13 @@ core state on CC36. Save New/Overwrite writes strict schema 8 with the exact
 dual-filter control names and selected core. Older Moj models retain their
 12-position mappings, including shared volume on position 5, and schemas 1–7
 remain readable. Controller profiles/config now accept POT 1–15 and optional
-`synth.press_cc`, `synth.press_note`, and `synth.press_channel`; the Learn flow
-captures the synth click separately and permits it to be skipped.
+`synth.press_cc`, `synth.press_note`, and `synth.press_channel`; Learn stores
+the rotary 9 click under both its physical and synth-action identities.
 
-No SHR Cargo build, check, test, or Clippy command has been run for this work:
-the repository's temporary build gate requires an explicit combined
-build-and-test authorization. Formatting and source-level inspection are the
-current SHR verification boundary. No JACK, ALSA synth launch, MIDI hardware,
-physical controller, audible, or Raspberry Pi evidence was produced.
+The later owner-authorized combined pass is recorded in the direction-only
+encoder repair section above. No JACK, ALSA synth launch, MIDI hardware,
+physical controller, audible, or Raspberry Pi evidence was produced for the
+Dual Filter merge.
 
 ## 2026-08-26 Priority 7 external USB MIDI transport sync
 
@@ -574,7 +1005,7 @@ from its synthesis model. Strict Moj schema 4 names `model_d`; schemas 1–3
 migrate to it in memory. Discovery and Ideas retain typed model identity,
 Project/FT2 routes use model-qualified stable instrument IDs with legacy
 unqualified Model D lookup, and Playback selects its twelve labels from the
-loaded model while controller configuration remains only POT1–12 positions.
+loaded model while current parameters remain on rotary 2–13 positions.
 
 The next Moj Sint integration keeps that one managed engine and adds Six-Op PM
 as its second selectable model. Strict schema 5 has model-specific patch and
@@ -1238,19 +1669,14 @@ sample redistribution.
   readable. The master rotary browses content and its press selects/confirms.
   The Routing screen reports live visibility, not merely remembered
   configuration.
-- The optional audio profile reserves CPU 3. Boot isolation is active; the
-  performance-governor service and JACK affinity drop-in are installed. Inspect
-  with `shr-audio-tune status`; removal requires the helper's managed removal,
-  clearing `audio.engine_cpu`, and reboot. Never edit around its ownership
-  records in `/var/lib/shr-audio-tune/`. This is deliberate real-time isolation
-  for demanding simultaneous playback/recording, not a dormant JACK core that
-  ordinary builds reclaim when JACK stops. General builds use CPUs 0–2 until
-  removal and reboot; final Rust linking is largely serial and remains the
-  longest build stage. The Pi 5 kernel exposes neither full-tickless nor RCU
-  callback-offload support, so the helper correctly omits those tokens. The
-  supported isolation, governor, IRQ-affinity, and JACK-affinity state is live.
-  `shr-audio-tune doctor` currently reports one issue: host tuning owns CPU 3
-  while `audio.engine_cpu` is unset in runtime configuration.
+- The optional CPU-3 audio profile was removed on 2026-08-29 to return all four
+  cores to general builds and normal JACK scheduling. Persistent boot isolation,
+  IRQ housekeeping, the performance-governor service, the JACK affinity drop-in,
+  and private `audio.engine_cpu` pin are absent. The current kernel and already
+  running JACK process retain their old CPU-3 state only until the next normal
+  reboot; do not restart JACK merely to apply this change. The helper's original
+  command-line backup remains available, and `shr-audio-tune doctor none`
+  reports the shared-core persistent policy ready.
 - The per-user `fluidsynth.service` and system `amidiminder.service` are masked
   and stopped. `/usr/bin/fluidsynth` and the TimGM bank remain for SHR-owned
   on-demand use. Setup and tuning do not start or restart JACK.

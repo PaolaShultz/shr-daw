@@ -1,6 +1,6 @@
-//! Backend-specific mapped control profiles. Moj Sint shares the twelve
-//! physical positions and pickup behavior, but never synthv1 parameter indices
-//! or XML semantics.
+//! Backend-specific mapped control profiles. Existing Moj Sint models share
+//! the first twelve physical parameter positions, but never synthv1 parameter
+//! indices or XML semantics; model-specific tables may use all fifteen.
 
 use std::collections::HashMap;
 
@@ -8,9 +8,14 @@ pub const VOLUME_CC: u8 = 93;
 /// Standard MIDI channel-volume controller used by managed instruments whose
 /// native parameter map is not synthv1's DCA map.
 pub const INSTRUMENT_VOLUME_CC: u8 = 7;
-/// Controller/menu architecture reserves four banks of four controls.  The
-/// synthv1 0.9.29 profile intentionally populates only the verified 12.
-pub const MAPPED_CONTROL_CAPACITY: usize = 16;
+pub const LEGACY_SYNTH_CONTROL_COUNT: usize = 12;
+pub const AUX_SEND_CONTROL_COUNT: usize = 3;
+pub const PERFORMANCE_SURFACE_CONTROL_COUNT: usize =
+    LEGACY_SYNTH_CONTROL_COUNT + AUX_SEND_CONTROL_COUNT;
+/// The learned performance surface has exactly fifteen rotaries after the
+/// separate master encoder. Synthv1 intentionally populates only twelve synth
+/// parameters; its remaining three positions belong to Project aux sends.
+pub const MAPPED_CONTROL_CAPACITY: usize = PERFORMANCE_SURFACE_CONTROL_COUNT;
 pub const MOJ_CORE_TOGGLE_CC: u8 = 35;
 pub const MOJ_CORE_STATE_CC: u8 = 36;
 
@@ -25,7 +30,7 @@ pub struct Control {
     pub max: f32,
 }
 
-pub const CONTROLS: [Control; MAPPED_CONTROL_CAPACITY - 4] = [
+pub const CONTROLS: [Control; LEGACY_SYNTH_CONTROL_COUNT] = [
     Control {
         cc: 74,
         index: 17,
@@ -595,7 +600,11 @@ mod tests {
 
     #[test]
     fn mapping_has_unique_ccs_and_indices() {
-        assert!(CONTROLS.len() <= MAPPED_CONTROL_CAPACITY);
+        assert_eq!(CONTROLS.len(), LEGACY_SYNTH_CONTROL_COUNT);
+        assert_eq!(
+            CONTROLS.len() + AUX_SEND_CONTROL_COUNT,
+            MAPPED_CONTROL_CAPACITY
+        );
         for (i, a) in CONTROLS.iter().enumerate() {
             for b in &CONTROLS[i + 1..] {
                 assert_ne!(a.cc, b.cc);

@@ -20,7 +20,8 @@ For controller discovery, listen without forwarding MIDI to a synth. Ask me to
 move or press one control at a time. Identify the 12 continuous synth controls,
 main relative encoder, encoder press, lock control, and command pads. Verify
 the relative-encoder direction and value convention. Reject duplicate or
-conflicting assignments, preserve pickup, back up `controller.conf`, and show
+conflicting assignments, require Relative 1 or Relative 2, back up
+`controller.conf`, and show
 me the proposed map before calling it complete.
 
 Help with JACK, ALSA, external-instrument, tracker-page, and SoundFont routing

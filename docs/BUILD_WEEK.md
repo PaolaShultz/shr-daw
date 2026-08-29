@@ -238,7 +238,7 @@ renderer use 40×13; the historical facts below are intentionally not rewritten
 as though that later geometry had existed during the event.
 
 The pre-opening SHSynth baseline already included a 40×20 terminal, one-managed
-engine hosting for synthv1/Yoshimi/FluidSynth, sound browsing, pickup-safe
+engine hosting for synthv1/Yoshimi/FluidSynth, sound browsing, jump-safe
 synthv1 controls, MIDI Ideas, an initial external Casio tracker, stereo JACK
 capture, setup scripts, the MiniLab controller workflow, and 21 public cleared
 presets. This was substantial prior work and is not relabelled as a Build Week
@@ -271,7 +271,7 @@ They are not installed or published as product documentation.
 The clearest near-term story uses what already works:
 
 1. configure a controller and routes without hard-coded hardware;
-2. choose or shape a sound with pickup-safe controls;
+2. choose or shape a sound with jump-safe controls;
 3. load or edit a drum groove and record a melodic idea;
 4. arrange Patterns, add a private loop if useful, and record the stereo result;
 5. show the same workflow at 40x20 with the physical controller.

@@ -65,7 +65,7 @@ The current source compatibility set is:
 
 | Component | Required version | Installation form |
 | --- | --- | --- |
-| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 16 cleared presets |
+| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 21 cleared presets |
 | SHR Sampler | 0.1.2 (accepted runtime `>=0.1.2,<0.2.0`) | exact public commit, `shr-sampler`, one cleared package |
 | SHR Drums | 0.2.0 (accepted library `>=0.2.0,<0.3.0`) | exact public Cargo dependency compiled into `shr` |
 

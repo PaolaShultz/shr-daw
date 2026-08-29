@@ -74,11 +74,13 @@ silent: they only change the list and reset its selection according to the
 existing catalog contract. `LOAD` is the sole managed preset start or
 replacement action.
 
-The Moj Sint catalog has 16 ordered starts: seven Model D sounds from Full Bass
-through Matched No Drift or Feedback, six Six-Op PM sounds from Bell Metal
-through Mechanical Stab, Strange Oscillator, Swarm Warm Pad, and Bass Matrix.
-The list marks their model as `M-D`, `6-OP`, `S-OSC`, `SWARM`, or `B-MAT`.
-Selecting one only browses; `LOAD` starts it.
+The Moj Sint catalog has 21 ordered starts: seven Model D sounds, six Six-Op PM
+sounds, Strange Oscillator, Swarm Warm Pad, Bass Matrix, and five Dual Filter
+sounds. The list is grouped by model and gives each model one letter plus a
+two-digit number local to that model: `D01`, `P01`, `O01`, `S01`, `B01`, and
+`F01`. Opening or switching to Moj Sint selects `D01 Full Bass`, and typing a
+model letter jumps to that visible group. Selecting one only browses; `LOAD`
+starts it.
 
 SHR Sampler lists strict read-only `.shrinst` packages. `LOAD` validates the
 installed host version and complete package before replacing the current
@@ -110,7 +112,7 @@ green below the original value, bright yellow near it, and red above it. The
 Moj Sint uses seven model-specific timbre controls plus Volume in the first two
 rows and ADSR in the third; synthv1 retains its own names and indices. Read-only
 managed instruments show Volume at the same physical position. The main encoder
-press resets only these mapped controls and re-arms pickup; it does
+press resets only these mapped controls; it does
 not restart the synth.
 
 ### PLAY — capture a MIDI take
@@ -128,7 +130,8 @@ not start transport, so PLAY remains the deliberate start gesture.
 
 ![Populated Playback screen with the SOUND controller page](../images/menu/playback-sound.png)
 
-`RESET` restores the 12 mapped parameters in place and re-arms hardware pickup.
+`RESET` restores the 12 mapped parameters in place; subsequent relative turns
+continue from those restored values.
 `SAVE` opens `OVERWRITE`, `SAVE NEW`, and `CANCEL`. Factory and system sounds
 are read-only, so their Overwrite row clearly saves a new private `User NNN`
 sound instead. Save New numbers sounds independently for synthv1, Moj Sint
@@ -207,7 +210,7 @@ returns Home.
 
 MIDI Learn isolates controller messages from instruments while it captures the
 master rotary's counter-clockwise turn, clockwise turn, and click, followed by
-optional absolute controls and command buttons. Release each opening control
+optional relative controls and command buttons. Release each opening control
 as prompted. The review step writes a private controller profile only after
 confirmation; Back cancels without saving. A learned master rotary is enough
 to browse and confirm even when optional buttons are skipped.
@@ -383,7 +386,7 @@ effects, CPU state, or transport.
 ![Populated performance meter with the NAV controller page](../images/menu/performance-meter-nav.png)
 
 `FX` opens the same master-overlay layer used by FT2. Choose SOURCE, AUX 1,
-AUX 2, or MASTER, then click/Enter to open that rack.
+AUX 2, AUX 3, or MASTER, then click/Enter to open that rack.
 
 With Input selected, `DUAL` changes the exact configured pair from its original
 stereo mapping to two independently panned mono signals; it then reads

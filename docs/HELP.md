@@ -28,19 +28,27 @@ Back to cancel. Use `shr-setup` for initial machine setup.
 If a configured controller is offline, has no reviewed profile, or has not
 learned encoder turn and click, Home highlights MIDI Learn and explains why.
 Keyboard Up/Down/Enter still work. Optional command buttons may be skipped once
-the learned encoder can turn and click. The explanation uses Home's single
+the learned encoder can turn and click, but only through explicit `S` or
+keyboard-arrow input; master-rotary traffic is ignored during Learn. The explanation uses Home's single
 bottom line so the native menu keeps its empty first row. Home does not learn
 or send MIDI by itself; Learn keeps selected-controller messages isolated until
-an explicit save or cancel. Its optional encoder-Shift step learns the complete
-gesture: hold Shift, turn left once, then release. This captures either the
+an explicit save or cancel. Its optional encoder-Shift step learns two ordinary
+gestures: Shift plus a left turn, release Shift, Shift plus a right turn on the
+same CC, then release Shift again. This captures either the
 ordinary rotary CC or a different CC emitted only while Shift is held. Separate
 performance inputs continue to bypass controller interpretation.
+The Shifted CC may encode left/right opposite to the ordinary rotary; Learn
+discovers that from the two physical gestures instead of assuming they match.
+Learn itself uses exactly two rows total. The first is the complete required
+gesture, such as `SHIFT + TURN ROTARY 1 LEFT`; the second is its immediate
+state or retry. There is no repeated `MIDI LEARN` title or status footer.
 
 The controller menu has four pages. Page 1 is OPS. On child screens, page
 4 item 4 is EXIT and returns one level. Empty buttons are hidden and silent.
 
-Home is the only screen without the shared working-screen status row. The
-native fullscreen EQ owns all thirteen rows. The native 18-channel Levels
+Home and MIDI Learn are the screens without the shared working-screen status
+row. Learn owns only its two centered action rows. The native fullscreen EQ
+owns all thirteen rows. The native 18-channel Levels
 screen keeps the shared final row but omits the two controller rows; every
 other working screen places those rows immediately above status. The first status
 cell is steady green `>` for play, steady white `■` for stop, steady white `‖`
@@ -107,18 +115,23 @@ turning to change engine catalog in either direction; `[`/`]` and the two
 heading halves remain available. Catalog changes are silent. Only LOAD starts
 or replaces the managed preset.
 
-Synthv1 controls use pickup. After loading, idea load, or RESET, mapped CCs are
-blocked until the physical control reaches the stored value. This prevents
-jumps during live audio.
+Synthv1 controls add or subtract from SHR's current value immediately. The
+direction-only rotaries have no physical position to catch and cannot jump to
+a stale knob value.
 
-Moj Sint uses the same pickup behavior with seven model-specific timbre
+Moj Sint uses the same direction-only behavior with seven model-specific timbre
 controls, Volume at physical position 5, and ADSR. RESET restores the loaded
 `.mojsint` values in place without restarting the host. Those controls never
 use synthv1 XML names or parameter indices.
-Its 16 numbered factory starts contain seven Model D, six Six-Op PM, and one
-each for Strange Oscillator, Swarm Machine, and Bass Matrix.
-The same twelve physical positions show model-specific labels, keep pickup,
-and remain inside their selected model in FT2 ROUTE.
+Its 21 numbered factory starts contain seven Model D, six Six-Op PM, one each
+for Strange Oscillator, Swarm Machine, and Bass Matrix, and five Dual Filter
+starts. Player and FT2 PARAM always use a 3×5 surface. Synthv1 and the five
+older Moj models put their twelve synth controls first and Project AUX 1/2/3
+sends last; `NO FX` means that aux needs an effect before the send can move.
+With the owned graph active, these send levels ramp live without rebuilding the
+graph; recording refuses the change. With it disabled they update Project data.
+Dual Filter uses all fifteen positions for synthesis. Moj routes remain inside their selected
+model in FT2 ROUTE.
 
 SHR Sampler packages are read-only instruments. LOAD validates the host version
 and complete `.shrinst` package before replacing the current sound. A failure
@@ -171,7 +184,7 @@ instrument.
 Playback SYS FX or FT2 Tools OPS FX opens the current Project's FX rack. In
 FT2, uppercase F opens it directly. Back returns to the calling Player or FT2
 screen while its instrument remains active. TARGET cycles SOURCE,
-AUX 1, AUX 2, DRUMS, and MASTER. Shift-rotary selects that target in either
+AUX 1, AUX 2, AUX 3, DRUMS, and MASTER. Shift-rotary selects that target in either
 direction while the ordinary rotary browses rack rows. Source effects change
 the instrument in series.
 Each aux makes a parallel wet copy: SEND sets how much enters it, POINT chooses
@@ -225,7 +238,7 @@ active circles use one green, while yellow and red appear only at their active
 thresholds. Each channel's `MAX` number separately holds its highest peak
 without decay. CLIP is held in red. RESET clears `MAX`, the bright peaks, and
 CLIP. Any downward movement of the mapped synthv1 Volume control clears both
-`MAX` values even when pickup blocks the actual Volume change; increases,
+`MAX` values; increases,
 equal values, and other controls leave them alone. Stopped, unavailable, and
 new meter sessions cannot carry an old `MAX` forward.
 
@@ -284,7 +297,7 @@ all-notes-off cleanup.
 
 Loading an idea can replace the current sound. If a sound is already active,
 choose LOAD twice to confirm. Saved synthv1 control values are restored after
-the sound loads, and pickup is armed against those restored values.
+the sound loads, and relative turns continue from those restored values.
 
 Ideas are MIDI, not audio. Use the audio recorder when you need a WAV of the
 actual JACK input.
@@ -314,11 +327,11 @@ when ROUTE opened; Back during field editing restores that field first.
 Normal FT2 page 3 is `SOUND`, with `PARAM` and `MIX`. PARAM opens a
 tracker-owned view of the current software instrument without entering Player
 or replacing the tracker engine. It uses the same 12 mapped labels, values,
-relative-to-preset colours, held-note display, and POT pickup behavior as
+relative-to-preset colours, held-note display, and rotary carry behavior as
 Playback. Instrument choice stays in ROUTE; there is no second sound browser.
 
 PARAM SOUND provides RESET, SAVE, N00B, and one empty position. RESET restores
-the existing baseline in place and re-arms pickup without restarting the engine
+the existing baseline in place without restarting the engine
 or releasing notes. SAVE uses the normal preset-save overlay; successful save
 becomes the new RESET baseline and changes only the matching active FT2 route.
 PARAM SYS provides PANIC, an empty position, HELP, and EXIT. Unsupported
@@ -329,8 +342,8 @@ route, N00B state, live values, and launching SOUND page.
 MIX opens the live audio-level mixer in Play, REC, or Edit; Shift-clicking the
 main encoder is the direct shortcut in every mode. It controls canonical final-
 bus Synth, Drums, Loop, or configured Input owner gain, never MIDI velocity or
-CC volume. Linked pages share gain/VU and re-arm pickup after either pot moves.
-With fewer than twelve configured pots, turn the main encoder to choose the
+CC volume. Linked pages share gain/VU after either rotary moves.
+With fewer than twelve configured active rotaries, turn the main encoder to choose the
 active page bank. External MIDI without a configured stereo SHR return says
 `NO RETURN`; Input monitoring remains an explicit safety choice. Back, click,
 or SYS EXIT restores the exact tracker location and mode. Play/REC follow the
@@ -473,8 +486,11 @@ two-port `capture.input` configuration still appears as a linked stereo pair.
 If nothing sounds, check JACK first, then the page or preset target. Setup does
 not start or restart JACK for you.
 
-If controls do not move a synthv1 parameter, pickup is probably armed. Move the
-physical control through the loaded value once.
+If controls do not move a synthv1 parameter, verify that every mapped rotary is
+configured for Relative 1 or Relative 2 and run MIDI Learn again. Each
+performance rotary must prove a slow left turn and then a slow right turn on
+the same CC. A `POSITIONAL` or `DIRECTION` message means that role was not
+saved; change the hardware mode if necessary, then press `R` to retry.
 
 PANIC sends all-notes-off, stops owned playback/recording, and shuts down the
 managed engine. It does not kill synth processes SHR-DAW did not start.

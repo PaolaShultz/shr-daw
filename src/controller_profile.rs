@@ -1,14 +1,12 @@
 //! Discoverable, data-driven input-controller profiles.
 
-use crate::pads::{ControllerButton, ControllerLayout, PadAction, PadConfig};
+use crate::pads::{ControllerButton, ControllerLayout, PadAction, PadConfig, ROTARY_COUNT};
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
-#[cfg(test)]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub const UPDATE_URL: &str =
     "https://raw.githubusercontent.com/PaolaShultz/shr-daw/main/controller-profiles/catalog.json";
@@ -19,7 +17,11 @@ pub struct ControllerProfile {
     pub name: String,
     pub match_names: Vec<String>,
     pub layout: u8,
-    /// One-based physical POT position -> incoming controller CC.
+    /// Physical rotary number 2..=16 -> incoming controller CC. Rotary 1 is
+    /// configured separately as the relative master encoder.
+    #[serde(default)]
+    pub rotaries: HashMap<u8, u8>,
+    /// Legacy v8 positional POT slot -> incoming controller CC.
     #[serde(default)]
     pub pots: HashMap<u8, u8>,
     /// Legacy incoming CC -> synthv1 CC. Read only and normalized on apply.
@@ -46,6 +48,13 @@ pub struct ControllerProfile {
     pub synth_press_note: Option<u8>,
     #[serde(default)]
     pub synth_press_channel: Option<u8>,
+    #[serde(default)]
+    pub secondary_encoder_press_cc: Option<u8>,
+    #[serde(default)]
+    pub secondary_encoder_press_note: Option<u8>,
+    /// Optional 1-based channel qualifier for the rotary 9 press message.
+    #[serde(default)]
+    pub secondary_encoder_press_channel: Option<u8>,
     #[serde(default)]
     pub encoder_modifier_cc: Option<u8>,
     /// Optional 1-based channel qualifier for the held encoder modifier.
@@ -100,6 +109,13 @@ impl ControllerProfile {
         if self.id.trim().is_empty() || self.name.trim().is_empty() {
             bail!("controller profile needs a non-empty id and name");
         }
+        if !self
+            .id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            bail!("controller profile id must use only letters, numbers, '-' or '_'");
+        }
         if self
             .match_names
             .iter()
@@ -110,13 +126,28 @@ impl ControllerProfile {
         if !matches!(self.layout, 4 | 5 | 8) {
             bail!("controller profile {} layout must be 4, 5, or 8", self.id);
         }
-        if !self.pots.is_empty() && !self.controls.is_empty() {
+        let positional_sources = usize::from(!self.rotaries.is_empty())
+            + usize::from(!self.pots.is_empty())
+            + usize::from(!self.controls.is_empty());
+        if positional_sources > 1 {
             bail!(
-                "controller profile {} mixes positional and legacy POT mappings",
+                "controller profile {} mixes rotary and legacy POT mappings",
                 self.id
             );
         }
         let mut pot_ccs = HashSet::new();
+        for (&rotary, &incoming) in &self.rotaries {
+            if !(2..=ROTARY_COUNT).contains(&rotary) {
+                bail!(
+                    "controller profile {} rotary number must be 2..{ROTARY_COUNT}",
+                    self.id
+                );
+            }
+            crate::pads::ensure_midi_number(incoming, "controller profile rotary CC")?;
+            if !pot_ccs.insert(incoming) {
+                bail!("controller profile {} reuses rotary CC {incoming}", self.id);
+            }
+        }
         for (&position, &incoming) in &self.pots {
             if !(1..=15).contains(&position) {
                 bail!("controller profile {} POT position must be 1..15", self.id);
@@ -215,6 +246,14 @@ impl ControllerProfile {
             (self.synth_press_cc, "controller profile synth press CC"),
             (self.synth_press_note, "controller profile synth press note"),
             (
+                self.secondary_encoder_press_cc,
+                "controller profile secondary encoder press CC",
+            ),
+            (
+                self.secondary_encoder_press_note,
+                "controller profile secondary encoder press note",
+            ),
+            (
                 self.encoder_modifier_cc,
                 "controller profile encoder modifier CC",
             ),
@@ -225,9 +264,10 @@ impl ControllerProfile {
             }
         }
         let mut used_cc = self
-            .pots
+            .rotaries
             .values()
             .copied()
+            .chain(self.pots.values().copied())
             .chain(self.controls.keys().copied())
             .collect::<HashSet<_>>();
         for cc in self
@@ -241,6 +281,7 @@ impl ControllerProfile {
                     self.encoder_modified_relative_cc,
                     self.encoder_press_cc,
                     self.synth_press_cc,
+                    self.secondary_encoder_press_cc,
                     self.encoder_modifier_cc,
                     self.lock_cc,
                 ]
@@ -261,6 +302,13 @@ impl ControllerProfile {
         if self.synth_press_cc.is_some() && self.synth_press_note.is_some() {
             bail!(
                 "controller profile {} synth press must use either a CC or a note",
+                self.id
+            );
+        }
+        if self.secondary_encoder_press_cc.is_some() && self.secondary_encoder_press_note.is_some()
+        {
+            bail!(
+                "controller profile {} secondary encoder press must use either a CC or a note",
                 self.id
             );
         }
@@ -297,6 +345,18 @@ impl ControllerProfile {
         {
             bail!(
                 "controller profile {} has an invalid synth press channel",
+                self.id
+            );
+        }
+        if self
+            .secondary_encoder_press_channel
+            .is_some_and(|channel| !(1..=16).contains(&channel))
+            || (self.secondary_encoder_press_channel.is_some()
+                && self.secondary_encoder_press_cc.is_none()
+                && self.secondary_encoder_press_note.is_none())
+        {
+            bail!(
+                "controller profile {} has an invalid secondary encoder press channel",
                 self.id
             );
         }
@@ -367,6 +427,17 @@ impl ControllerProfile {
         {
             bail!("controller profile {} reuses synth press note", self.id);
         }
+        if self
+            .secondary_encoder_press_note
+            .is_some_and(|note| used_notes.contains(&note))
+            || (self.secondary_encoder_press_note.is_some()
+                && self.secondary_encoder_press_note == self.encoder_press_note)
+        {
+            bail!(
+                "controller profile {} reuses secondary encoder press note",
+                self.id
+            );
+        }
         Ok(())
     }
 
@@ -388,7 +459,12 @@ impl ControllerProfile {
             4 => ControllerLayout::Four,
             _ => unreachable!(),
         };
-        config.controls = if self.pots.is_empty() {
+        config.controls = if !self.rotaries.is_empty() {
+            self.rotaries
+                .iter()
+                .map(|(&rotary, &incoming)| (incoming, rotary - 1))
+                .collect()
+        } else if self.pots.is_empty() {
             self.controls
                 .iter()
                 .filter_map(|(&incoming, &target)| {
@@ -413,9 +489,19 @@ impl ControllerProfile {
         config.encoder_press_cc = self.encoder_press_cc;
         config.encoder_press_note = self.encoder_press_note;
         config.encoder_press_channel = self.encoder_press_channel.map(|channel| channel - 1);
-        config.synth_press_cc = self.synth_press_cc;
-        config.synth_press_note = self.synth_press_note;
-        config.synth_press_channel = self.synth_press_channel.map(|channel| channel - 1);
+        config.synth_press_cc = self.synth_press_cc.or(self.secondary_encoder_press_cc);
+        config.synth_press_note = self.synth_press_note.or(self.secondary_encoder_press_note);
+        config.synth_press_channel = self
+            .synth_press_channel
+            .or(self.secondary_encoder_press_channel)
+            .map(|channel| channel - 1);
+        config.secondary_encoder_press_cc = self.secondary_encoder_press_cc.or(self.synth_press_cc);
+        config.secondary_encoder_press_note =
+            self.secondary_encoder_press_note.or(self.synth_press_note);
+        config.secondary_encoder_press_channel = self
+            .secondary_encoder_press_channel
+            .or(self.synth_press_channel)
+            .map(|channel| channel - 1);
         config.encoder_modifier = self.encoder_modifier_cc.map(|cc| ControllerButton::Cc {
             channel: self.encoder_modifier_channel.unwrap_or(1) - 1,
             cc,
@@ -628,12 +714,22 @@ pub fn expected_for_connected(
     connected_names: &[String],
     catalog: &Catalog,
 ) -> Result<Option<(PadConfig, String)>> {
-    let wanted = current
+    // The private controller selection owns the current device. Runtime MIDI
+    // inputs are legacy fallbacks only when that selection is absent; mixing
+    // both would let a stale old-device name block automatic model switching.
+    let current_matches = current
         .input_match
         .iter()
-        .chain(runtime_matches.iter())
         .filter(|value| !value.trim().is_empty())
         .collect::<Vec<_>>();
+    let wanted = if current_matches.is_empty() {
+        runtime_matches
+            .iter()
+            .filter(|value| !value.trim().is_empty())
+            .collect::<Vec<_>>()
+    } else {
+        current_matches
+    };
     let mut resolved = Vec::new();
     for wanted in &wanted {
         let wanted_lower = wanted.to_ascii_lowercase();
@@ -667,7 +763,10 @@ pub fn expected_for_connected(
         return Ok(None);
     };
     let replacing_offline_selection = resolved.is_empty();
-    if !replacing_offline_selection && current.profile.as_deref() == Some("learned") {
+    if !replacing_offline_selection
+        && (current.profile.as_deref() == Some("learned")
+            || current.profile.as_deref() == Some(profile.id.as_str()))
+    {
         return Ok(None);
     }
     if !replacing_offline_selection
@@ -709,6 +808,42 @@ pub fn user_catalog_path() -> PathBuf {
             PathBuf::from(env::var_os("HOME").unwrap_or_else(|| ".".into())).join(".local/share")
         })
         .join("shsynth/controller-profiles/catalog.json")
+}
+
+/// Private learned mappings are keyed by the reviewed hardware model so an
+/// automatic controller replacement never destroys another device's setup.
+pub fn private_mapping_path(state: &Path, profile_id: &str) -> Result<PathBuf> {
+    if profile_id.is_empty()
+        || !profile_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        bail!("invalid controller profile id for private mapping");
+    }
+    Ok(state
+        .join("controller-mappings")
+        .join(format!("{profile_id}.conf")))
+}
+
+pub fn load_private_mapping(
+    state: &Path,
+    profile_id: &str,
+    input_name: &str,
+) -> Result<Option<PadConfig>> {
+    let path = private_mapping_path(state, profile_id)?;
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let mut config = PadConfig::load(&path)?;
+    if config.profile.as_deref() != Some(profile_id) {
+        bail!(
+            "private controller mapping {} has the wrong profile marker",
+            path.display()
+        );
+    }
+    config.input_match = Some(input_name.to_owned());
+    config.validate()?;
+    Ok(Some(config))
 }
 
 fn roots() -> Vec<PathBuf> {
@@ -753,13 +888,14 @@ mod tests {
         let catalog = Catalog::discover_bundled();
         let profile = catalog.matching("20:0 Arturia MiniLab3 MIDI 1").unwrap();
         assert_eq!(profile.id, "arturia-minilab-3");
-        assert_eq!(profile.pots.len(), 12);
+        assert!(profile.rotaries.is_empty());
+        assert!(profile.pots.is_empty());
         assert!(profile.controls.is_empty());
         assert_eq!(profile.note_pads.len(), 8);
         assert!(profile.note_buttons.is_empty());
         let mut config = PadConfig::default();
         profile.apply(&mut config, "MiniLab3 MIDI").unwrap();
-        assert_eq!(config.controls.len(), 12);
+        assert!(config.controls.is_empty());
         assert_eq!(config.pads.len(), 8);
         assert_eq!(config.pad_channels.len(), 8);
         assert!(config.pad_channels.values().all(|channel| *channel == 9));
@@ -793,6 +929,7 @@ mod tests {
             .matching("Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1 20:0")
             .unwrap();
         assert_eq!(profile.id, "arturia-minilab-mkii");
+        assert!(profile.rotaries.is_empty());
         assert!(profile.pots.is_empty());
         assert!(profile.note_pads.is_empty());
         let mut config = PadConfig::default();
@@ -868,6 +1005,7 @@ mod tests {
             name: "Test Controller".into(),
             match_names: vec!["test controller".into()],
             layout: 4,
+            rotaries: HashMap::new(),
             pots: HashMap::new(),
             controls: HashMap::new(),
             encoder_relative_cc: None,
@@ -880,6 +1018,9 @@ mod tests {
             synth_press_cc: None,
             synth_press_note: None,
             synth_press_channel: None,
+            secondary_encoder_press_cc: None,
+            secondary_encoder_press_note: None,
+            secondary_encoder_press_channel: None,
             encoder_modifier_cc: None,
             encoder_modifier_channel: None,
             shifted_encoder_compatibility: Vec::new(),
@@ -997,7 +1138,7 @@ mod tests {
             .unwrap();
         assert_eq!(name, "Arturia MiniLab 3");
         assert_eq!(expected.lock_cc, None);
-        assert_eq!(expected.controls.len(), 12);
+        assert!(expected.controls.is_empty());
         assert_eq!(expected.pad_channels.len(), 8);
         assert_ne!(expected, stale);
     }
@@ -1027,7 +1168,7 @@ mod tests {
         assert_eq!(expected.encoder_relative_cc, Some(114));
         assert_eq!(expected.encoder_press_cc, Some(115));
         assert_eq!(expected.encoder_press_channel, Some(0));
-        assert_eq!(expected.controls.len(), 12);
+        assert!(expected.controls.is_empty());
         assert_eq!(expected.pads.len(), 8);
         assert!(!missing.exists());
     }
@@ -1085,5 +1226,71 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn connected_model_keeps_its_complete_model_owned_mapping() {
+        let catalog = Catalog::discover_bundled();
+        let mut current = PadConfig::unmapped("Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1");
+        current.profile = Some("arturia-minilab-mkii".into());
+        current.encoder_relative_cc = Some(28);
+        current.encoder_press_cc = Some(118);
+        current.secondary_encoder_press_cc = Some(117);
+        let connected = vec!["Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1 20:0".into()];
+
+        assert!(expected_for_connected(&current, &[], &connected, &catalog)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn private_model_mapping_restores_with_the_current_stable_input() {
+        let base = std::env::temp_dir().join(format!(
+            "shsynth-private-controller-model-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+        let path = private_mapping_path(&base, "arturia-minilab-mkii").unwrap();
+        let learned = PadConfig {
+            input_match: Some("old numeric endpoint 24:0".into()),
+            profile: Some("arturia-minilab-mkii".into()),
+            encoder_relative_cc: Some(28),
+            encoder_press_cc: Some(118),
+            secondary_encoder_press_cc: Some(117),
+            ..PadConfig::default()
+        };
+        learned.save(&path).unwrap();
+
+        let restored = load_private_mapping(
+            &base,
+            "arturia-minilab-mkii",
+            "Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1",
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(restored.encoder_relative_cc, Some(28));
+        assert_eq!(restored.encoder_press_cc, Some(118));
+        assert_eq!(
+            restored.input_match.as_deref(),
+            Some("Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1")
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn stale_legacy_runtime_name_cannot_block_switching_back_to_old_model() {
+        let catalog = Catalog::discover_bundled();
+        let mut current = PadConfig::unmapped("Arturia MiniLab mkII:Arturia MiniLab mkII MIDI 1");
+        current.profile = Some("arturia-minilab-mkii".into());
+        let runtime = vec!["Minilab3:Minilab3 MIDI".into()];
+        let connected = vec!["Minilab3:Minilab3 MIDI 28:0".into()];
+
+        let (replacement, _) = expected_for_connected(&current, &runtime, &connected, &catalog)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(replacement.profile.as_deref(), Some("arturia-minilab-3"));
+        assert_eq!(replacement.encoder_relative_cc, Some(114));
     }
 }

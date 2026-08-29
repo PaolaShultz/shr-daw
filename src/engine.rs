@@ -29,6 +29,16 @@ pub enum MidiEvent {
         cc: u8,
         value: f32,
     },
+    RelativeRotary {
+        received: Instant,
+        position: usize,
+        steps: i8,
+    },
+    SurfaceControl {
+        received: Instant,
+        position: usize,
+        value: f32,
+    },
     Value(u8, f32),
     Raw {
         received: Instant,
@@ -2156,10 +2166,21 @@ fn connect_midi_input(
                         }
                         let forced_pad_release =
                             locked_pad_release(&pads, message, pad_locked, &mut locked_pad_notes);
+                        let (relative_rotary_message, relative_rotary) = pads.rotary_delta(message);
+                        if relative_rotary_message {
+                            if let Some((position, steps)) = relative_rotary {
+                                let _ = tx.send(MidiEvent::RelativeRotary {
+                                    received,
+                                    position,
+                                    steps,
+                                });
+                            }
+                            return;
+                        }
                         let fx_value = (fx_control_mode.load(Ordering::Relaxed)
                             && message.len() >= 3
                             && message[0] & 0xf0 == 0xb0)
-                            .then(|| pads.pot_position(message[1]))
+                            .then(|| pads.rotary_position(message[1]))
                             .flatten()
                             .and_then(|position| CONTROLS.get(position).copied())
                             .map(|control| {
@@ -2173,7 +2194,7 @@ fn connect_midi_input(
                             });
                             return;
                         }
-                        let routed = crate::midi::route_with_pad_lock_and_modifier(
+                        let routed = crate::midi::route_with_pad_lock_modifier_and_state(
                             &pads,
                             backend,
                             moj_model,
@@ -2188,6 +2209,13 @@ fn connect_midi_input(
                             let _ = tx.send(MidiEvent::MappedControl {
                                 received,
                                 cc,
+                                value,
+                            });
+                        }
+                        if let Some((position, value)) = routed.surface {
+                            let _ = tx.send(MidiEvent::SurfaceControl {
+                                received,
+                                position,
                                 value,
                             });
                         }

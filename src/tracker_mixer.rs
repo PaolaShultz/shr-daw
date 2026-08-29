@@ -1,4 +1,4 @@
-//! FT2 live mixer ownership, adaptive POT banking, and pickup state.
+//! FT2 live mixer ownership and adaptive relative-rotary banking.
 //!
 //! The UI is intentionally a view over the existing final-bus owner controls.
 //! This module never stores a second gain value.
@@ -8,7 +8,7 @@ use crate::final_bus::{BusSource, SOURCE_GAIN_MAX_DB, SOURCE_GAIN_MIN_DB};
 use crate::sequencer::{Page, PageTarget, Pattern};
 
 pub const MAX_MIXER_STRIPS: usize = 12;
-pub const PHYSICAL_POT_CAPACITY: usize = 12;
+pub const ACTIVE_ROTARY_CAPACITY: usize = 12;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StripKind {
@@ -88,66 +88,35 @@ fn configured_input(config: &RuntimeConfig) -> bool {
         })
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PickupDirection {
-    Up,
-    Down,
-    Either,
-    Caught,
-}
-
-impl PickupDirection {
-    pub const fn glyph(self) -> char {
-        match self {
-            Self::Up => '↑',
-            Self::Down => '↓',
-            Self::Either => '↕',
-            Self::Caught => '✓',
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct PickupCatch {
-    target: f32,
-    previous: Option<f32>,
-    caught: bool,
-}
-
 #[derive(Clone, Debug)]
 pub struct MixerState {
     bank: usize,
-    pot_positions: Vec<usize>,
-    physical_values: [Option<f32>; PHYSICAL_POT_CAPACITY],
-    pickup: [Option<PickupCatch>; PHYSICAL_POT_CAPACITY],
+    rotary_positions: Vec<usize>,
 }
 
 impl Default for MixerState {
     fn default() -> Self {
         Self {
             bank: 0,
-            pot_positions: Vec::new(),
-            physical_values: [None; PHYSICAL_POT_CAPACITY],
-            pickup: [None; PHYSICAL_POT_CAPACITY],
+            rotary_positions: Vec::new(),
         }
     }
 }
 
 impl MixerState {
-    pub fn configure_pots(&mut self, positions: impl IntoIterator<Item = usize>) {
+    pub fn configure_rotaries(&mut self, positions: impl IntoIterator<Item = usize>) {
         let mut positions = positions
             .into_iter()
-            .filter(|position| *position < PHYSICAL_POT_CAPACITY)
+            .filter(|position| *position < ACTIVE_ROTARY_CAPACITY)
             .collect::<Vec<_>>();
         positions.sort_unstable();
         positions.dedup();
-        self.pot_positions = positions;
+        self.rotary_positions = positions;
         self.bank = 0;
-        self.pickup.fill(None);
     }
 
-    pub fn pot_count(&self) -> usize {
-        self.pot_positions.len()
+    pub fn rotary_count(&self) -> usize {
+        self.rotary_positions.len()
     }
 
     pub fn bank(&self) -> usize {
@@ -155,10 +124,10 @@ impl MixerState {
     }
 
     pub fn bank_count(&self, strip_count: usize) -> usize {
-        if self.pot_positions.is_empty() || strip_count == 0 {
+        if self.rotary_positions.is_empty() || strip_count == 0 {
             1
         } else {
-            strip_count.div_ceil(self.pot_positions.len())
+            strip_count.div_ceil(self.rotary_positions.len())
         }
     }
 
@@ -182,115 +151,24 @@ impl MixerState {
 
     pub fn assigned_strip(&self, physical_position: usize, strip_count: usize) -> Option<usize> {
         let rank = self
-            .pot_positions
+            .rotary_positions
             .iter()
             .position(|position| *position == physical_position)?;
-        let strip = self.bank * self.pot_positions.len() + rank;
+        let strip = self.bank * self.rotary_positions.len() + rank;
         (strip < strip_count).then_some(strip)
     }
 
-    pub fn assigned_pot(&self, strip_index: usize, strip_count: usize) -> Option<usize> {
-        self.pot_positions
+    pub fn assigned_rotary(&self, strip_index: usize, strip_count: usize) -> Option<usize> {
+        self.rotary_positions
             .iter()
             .copied()
             .find(|position| self.assigned_strip(*position, strip_count) == Some(strip_index))
     }
 
-    pub fn pot_number_for_strip(&self, strip_index: usize, strip_count: usize) -> Option<usize> {
-        self.assigned_pot(strip_index, strip_count)
-            .map(|position| position + 1)
+    pub fn rotary_number_for_strip(&self, strip_index: usize, strip_count: usize) -> Option<usize> {
+        self.assigned_rotary(strip_index, strip_count)
+            .map(|position| position + 2)
     }
-
-    pub fn observe_physical(&mut self, physical_position: usize, normalized: f32) {
-        if physical_position < PHYSICAL_POT_CAPACITY {
-            self.physical_values[physical_position] = Some(normalized.clamp(0.0, 1.0));
-        }
-    }
-
-    pub fn arm_all(&mut self, strips: &[MixerStrip], gain: impl Fn(BusSource) -> f32) {
-        self.pickup.fill(None);
-        for position in self.pot_positions.iter().copied() {
-            let Some(strip) = self
-                .assigned_strip(position, strips.len())
-                .and_then(|index| strips.get(index))
-            else {
-                continue;
-            };
-            let Some(owner) = strip.owner else {
-                continue;
-            };
-            self.pickup[position] = Some(PickupCatch {
-                target: gain_db_to_normalized(gain(owner)),
-                previous: self.physical_values[position],
-                caught: false,
-            });
-        }
-    }
-
-    pub fn accept(&mut self, physical_position: usize, normalized: f32) -> bool {
-        let normalized = normalized.clamp(0.0, 1.0);
-        self.observe_physical(physical_position, normalized);
-        let Some(catch) = self
-            .pickup
-            .get_mut(physical_position)
-            .and_then(Option::as_mut)
-        else {
-            return false;
-        };
-        if catch.caught {
-            catch.target = normalized;
-            catch.previous = Some(normalized);
-            return true;
-        }
-        let close = (normalized - catch.target).abs() <= 1.0 / 127.0 + f32::EPSILON;
-        let crossed = catch
-            .previous
-            .is_some_and(|previous| (previous - catch.target) * (normalized - catch.target) <= 0.0);
-        catch.previous = Some(normalized);
-        catch.caught = close || crossed;
-        catch.caught
-    }
-
-    pub fn rearm_linked(
-        &mut self,
-        strips: &[MixerStrip],
-        owner: BusSource,
-        gain_db: f32,
-        changed_position: usize,
-    ) {
-        let target = gain_db_to_normalized(gain_db);
-        for position in self.pot_positions.iter().copied() {
-            let linked = self
-                .assigned_strip(position, strips.len())
-                .and_then(|index| strips.get(index))
-                .is_some_and(|strip| strip.owner == Some(owner));
-            if !linked {
-                continue;
-            }
-            self.pickup[position] = Some(PickupCatch {
-                target,
-                previous: self.physical_values[position],
-                caught: position == changed_position,
-            });
-        }
-    }
-
-    pub fn pickup_direction(&self, physical_position: usize) -> Option<PickupDirection> {
-        let catch = self.pickup.get(physical_position)?.as_ref()?;
-        if catch.caught {
-            return Some(PickupDirection::Caught);
-        }
-        Some(match self.physical_values[physical_position] {
-            Some(value) if value < catch.target => PickupDirection::Up,
-            Some(value) if value > catch.target => PickupDirection::Down,
-            Some(_) => PickupDirection::Caught,
-            None => PickupDirection::Either,
-        })
-    }
-}
-
-pub fn gain_db_to_normalized(gain_db: f32) -> f32 {
-    ((gain_db - SOURCE_GAIN_MIN_DB) / (SOURCE_GAIN_MAX_DB - SOURCE_GAIN_MIN_DB)).clamp(0.0, 1.0)
 }
 
 pub fn normalized_to_gain_db(normalized: f32) -> f32 {
@@ -319,11 +197,11 @@ mod tests {
     }
 
     #[test]
-    fn adaptive_banks_use_only_configured_physical_pots() {
+    fn adaptive_banks_use_only_configured_rotaries() {
         let strips = test_strips(&[Some(BusSource::Synth); 12]);
         let mut state = MixerState::default();
-        state.configure_pots([0, 2, 4, 6]);
-        assert_eq!(state.pot_count(), 4);
+        state.configure_rotaries([0, 2, 4, 6]);
+        assert_eq!(state.rotary_count(), 4);
         assert_eq!(state.bank_count(strips.len()), 3);
         assert_eq!(state.assigned_strip(2, strips.len()), Some(1));
         assert!(state.move_bank(1, strips.len()));
@@ -333,30 +211,14 @@ mod tests {
     }
 
     #[test]
-    fn twelve_pots_map_directly_without_banking() {
+    fn twelve_active_rotaries_map_directly_without_banking() {
         let strips = test_strips(&[Some(BusSource::Synth); 12]);
         let mut state = MixerState::default();
-        state.configure_pots(0..12);
+        state.configure_rotaries(0..12);
         assert_eq!(state.bank_count(strips.len()), 1);
         for index in 0..12 {
             assert_eq!(state.assigned_strip(index, strips.len()), Some(index));
         }
-    }
-
-    #[test]
-    fn linked_owner_change_rearms_the_other_assigned_pot() {
-        let strips = test_strips(&[Some(BusSource::Synth), Some(BusSource::Synth)]);
-        let mut state = MixerState::default();
-        state.configure_pots([0, 1]);
-        state.observe_physical(0, 0.5);
-        state.observe_physical(1, 0.2);
-        state.arm_all(&strips, |_| normalized_to_gain_db(0.5));
-        assert!(state.accept(0, 0.5));
-        state.rearm_linked(&strips, BusSource::Synth, normalized_to_gain_db(0.5), 0);
-        assert_eq!(state.pickup_direction(0), Some(PickupDirection::Caught));
-        assert_eq!(state.pickup_direction(1), Some(PickupDirection::Up));
-        assert!(!state.accept(1, 0.3));
-        assert!(state.accept(1, 0.6));
     }
 
     #[test]

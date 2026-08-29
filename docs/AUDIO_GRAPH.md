@@ -18,8 +18,8 @@ The active signal flow is:
 ```text
 managed instrument -> SOURCE inserts -------------------------------\
        |                    |                                            ^
-       |                    +-> POST send gain -> wet AUX 1/2 -> return -+
-       +----------------------> PRE send gain  -> wet AUX 1/2 -> return -+
+       |                    +-> POST send gain -> wet AUX 1/2/3 -> return -+
+       +----------------------> PRE send gain  -> wet AUX 1/2/3 -> return -+
 owned WAV loop ------------------------------------------------------+-> dry sum
 configured JACK input 1/2 -> stereo or dual-mono pan matrix -------/
 in-process SHR Drums -> Project DRUMS Reverb -> Delay --------------/
@@ -29,8 +29,12 @@ dry sum -> MASTER inserts -> live master level
         -> FINAL OUT meter -> final stereo WAV tap -> playback L/R
 ```
 
-Each aux bus has its own send level, pre/post source-insert tap, forced-wet
+Each of the three bounded aux buses has its own send level, pre/post source-insert tap, forced-wet
 serial rack, return level, and return meter. Each return is mixed exactly once.
+Compiled send taps retain lock-free linear-gain controls. Player/FT2 surface
+changes use a 10 ms ramp during held notes or transport without deactivating or
+recompiling the graph; OFF is a prepared zero-gain route. Recording refuses
+those changes. Tap point, rack, and processor edits remain structural.
 The complete dry-plus-wet sum then passes through the master rack, live master
 level, fixed Project-owned strip, and post-limiter meter immediately before the
 recorder tap and playback. The final WAV and JACK playback buffers contain the
@@ -104,6 +108,8 @@ alive until client deactivation returns.
 Project formats 10–13 store the managed-source `InsertRack`,
 `ProjectAuxRouting`, and fixed `MasterStripSettings` as strict JSON inside the
 versioned `.shsong` line format. Format 13 adds the fixed internal-drum rack.
+Project format 18 and typed graph format 2 expand the bounded aux inventory
+from two buses to three; older Projects retain their exact existing routes.
 Format 12 and older Projects keep their exact page routing and migrate a
 restrained family-specific Reverb-plus-bypassed-Delay rack in memory.
 Formats 0 and 1 migrate to an empty rack and routing; format 2 keeps its source
@@ -140,7 +146,7 @@ effects[] { instance_id, kind, version, bypass, parameters-by-name }
 source_chains[] { source_id, ordered effect instance IDs }
 master_chain { ordered effect instance IDs }
 aux_buses[] { id, ordered effect instance IDs, return_gain }
-sends[] { source_id, aux_id, level, pre_or_post }
+sends[] { source_id, aux_id, level, enabled, pre_or_post }
 monitoring_mode
 recording_tap
 ```
@@ -375,7 +381,7 @@ keeps its non-decaying numeric L/R maxima entirely in UI presentation state;
 the audio callback continues to publish only the bounded lock-free snapshots.
 The bar's brighter circular peak LED retains its existing hold and decay
 behavior. The numeric maxima reset on MTR RESET, every downward mapped synthv1
-Volume movement even before pickup, and meter/engine session boundaries. The MTR
+Volume movement and meter/engine session boundaries. The MTR
 CPU bars are whole-core `/proc/stat` load and deliberately cannot diagnose
 per-process DSP cost, callback deadlines, scheduling jitter, or xruns; those
 belong to the explicit checkpoint counters and JACK evidence.

@@ -515,19 +515,18 @@ shared owner gain. The configured Input remains marked `M` while
 software monitoring is off; opening the mixer does not silently defeat the
 direct/software doubled-monitoring guard.
 
-The heading identifies the source Pattern and current POT bank. Configured
-physical POT positions are ranked in order, so one through twelve pots are
-usable. Twelve map directly to strips 1–12. Fewer pots map to the current bank;
+The heading identifies the source Pattern and current rotary bank. Configured
+active rotary positions are ranked in order, so physical rotaries 2–13 are
+usable. Twelve map directly to strips 1–12. Fewer rotaries map to the current bank;
 turn the main encoder or use `BANK-`/`BANK+` to change banks. Each strip shows
-its Pattern page/name, owner, signed dB gain, pickup `↑`/`↓`/`↕`/`✓`, five-LED
+its Pattern page/name, owner, signed dB gain, five-LED
 VU, and `L2` or higher when multiple strips share that owner. The VU uses the
 same circular LED language as the rest of SHR-DAW.
 
 Linked strips read and write one canonical owner gain and one post-gain owner
 meter. Moving either is audible immediately through the existing 10 ms final-
-bus ramp. A linked change re-arms the other assigned non-motorized pots, so a
-physical position can never jump the shared gain. Changing banks also re-arms
-pickup.
+bus ramp. Direction-only controls carry the current linked value, so a
+physical position cannot jump the shared gain.
 
 In Play and REC, the mixer follows the Pattern that the sequencer is actually
 sounding, including Arrangement and Live Pattern changes, even while another
@@ -668,8 +667,8 @@ Arm is explicit and applies only to the selected lane. Touching its control
 records at the real transport position and monitors the value while tracker
 notes may be recorded at the same time. Unarmed controls do not replace an
 automated value. Start, stop, Project replacement, reset, arm changes, and
-leaving AUTO re-arm physical pickup against the effective automated value.
-Stopped pickup follows the selected lane at the tracker cursor. If Arrangement
+leaving AUTO keeps relative turns anchored to the effective automated value.
+When stopped, the selected lane follows the tracker cursor. If Arrangement
 playback enters a different Pattern while capture is armed, AUTO becomes safe
 instead of applying the same lane index to unrelated Pattern data; reopen and
 arm that Pattern deliberately. Removing an effect, or confirming a different
@@ -768,11 +767,11 @@ Project data. The strip remains global when Arrangement or Live Patterns
 changes Pattern.
 
 Projects are readable `.shsong` text files stored below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 17
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 18
 stores each Pattern's tempo, meter, pages, four column setups, lanes, setup
 messages, per-page entry mode/anchor, automatic Note Off choice, and drum-role
 overrides, cells, persistent Project tonic/mode, selected drum kit and tuning,
-the fixed internal-drum Reverb-then-Delay rack, source insert rack, two aux
+the fixed internal-drum Reverb-then-Delay rack, source insert rack, three aux
 routes, and master rack. Portable
 pages use explicit `default` markers rather than numeric routing. Pattern-owned
 software pages store explicit engine and stable instrument identities; optional
@@ -788,8 +787,9 @@ independent signed timing value on each cell. Formats 0–14 load straight and
 on-grid in memory. Format 16 adds deterministic cell probability and condition;
 formats 0–15 load at 100% and ALWAYS. Loading, previewing, or inspecting does
 not rewrite an old file. Format 17 adds independent lane cycle length, rate,
-and direction; formats 0–16 load FULL/1X/FORWARD. Explicit save writes format
-17. Formats 0–9 migrate
+and direction; formats 0–16 load FULL/1X/FORWARD. Format 18 expands the bounded
+aux inventory to three while older Projects retain their existing routes.
+Explicit save writes format 18. Formats 0–9 migrate
 their whole-BPM Pattern and tempo-command values to integer hundredths in
 memory. Format 10 persists those fields as integer hundredths, so `10050`
 means 100.50 BPM. Formats 0–8 gain a neutral fixed strip only in memory.
@@ -833,10 +833,10 @@ page to hardware. See [Public-domain demo songs](DEMO_SONGS.md).
 
 ## Effects saved with the Project
 
-The Project also owns the managed instrument's ordered source insert rack, two
+The Project also owns the managed instrument's ordered source insert rack, three
 aux send/rack/return routes, and master rack. Those settings are independent of
 the Pattern/Arrangement structure: repeating a Pattern does not duplicate an
-effect, and changing Arrangement steps does not change rack order. The two aux
+effect, and changing Arrangement steps does not change rack order. The three aux
 sends take their pre/post source-insert taps from the one managed software
 instrument, not from individual MIDI lanes.
 

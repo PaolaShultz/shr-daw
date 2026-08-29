@@ -7,7 +7,7 @@ use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, Stere
 use crate::effects::{BypassMode, EffectControl, EffectSlot, MeterHandles};
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 const TIMING_HISTOGRAM_BUCKET_NANOSECONDS: u64 = 1_000;
@@ -223,17 +223,85 @@ fn aux_bypass_mode(states: &[RuntimeAuxEffectState], index: usize) -> BypassMode
 
 struct RuntimeFader {
     gain: SmoothedValue,
+    control: Option<Arc<AuxSendControl>>,
+    last_target: f32,
+    smoothing_samples: u32,
     meter: MeterAccumulator,
     published: Arc<AtomicMeter>,
 }
 
+pub struct AuxSendControl {
+    linear_gain_bits: AtomicU32,
+}
+
+impl AuxSendControl {
+    fn new(level_db: Option<f32>) -> Result<Self, PlanError> {
+        let linear = level_db
+            .map(db_to_gain)
+            .transpose()
+            .map_err(|error| PlanError::new(error.to_string()))?
+            .unwrap_or(0.0);
+        Ok(Self {
+            linear_gain_bits: AtomicU32::new(linear.to_bits()),
+        })
+    }
+
+    pub fn set_level_db(&self, level_db: Option<f32>) -> Result<(), PlanError> {
+        if level_db.is_some_and(|level| !level.is_finite() || !(-60.0..=12.0).contains(&level)) {
+            return Err(PlanError::new("aux send target outside safe range"));
+        }
+        let linear = level_db
+            .map(db_to_gain)
+            .transpose()
+            .map_err(|error| PlanError::new(error.to_string()))?
+            .unwrap_or(0.0);
+        self.linear_gain_bits
+            .store(linear.to_bits(), Ordering::Release);
+        Ok(())
+    }
+
+    fn linear_gain(&self) -> f32 {
+        f32::from_bits(self.linear_gain_bits.load(Ordering::Acquire))
+    }
+}
+
 impl RuntimeFader {
     fn new(gain_db: f32, maximum_frames: usize) -> Result<Self, PlanError> {
+        Self::new_with_control(gain_db, maximum_frames, 48_000, None)
+    }
+
+    fn new_aux(
+        level_db: f32,
+        enabled: bool,
+        maximum_frames: usize,
+        sample_rate: u32,
+    ) -> Result<(Self, Arc<AuxSendControl>), PlanError> {
+        let control = Arc::new(AuxSendControl::new(enabled.then_some(level_db))?);
+        let fader = Self::new_with_control(
+            level_db,
+            maximum_frames,
+            sample_rate,
+            Some(Arc::clone(&control)),
+        )?;
+        Ok((fader, control))
+    }
+
+    fn new_with_control(
+        gain_db: f32,
+        maximum_frames: usize,
+        sample_rate: u32,
+        control: Option<Arc<AuxSendControl>>,
+    ) -> Result<Self, PlanError> {
+        let initial = if let Some(control) = &control {
+            control.linear_gain()
+        } else {
+            db_to_gain(gain_db).map_err(|error| PlanError::new(error.to_string()))?
+        };
         Ok(Self {
-            gain: SmoothedValue::new(
-                db_to_gain(gain_db).map_err(|error| PlanError::new(error.to_string()))?,
-            )
-            .map_err(|error| PlanError::new(error.to_string()))?,
+            gain: SmoothedValue::new(initial).map_err(|error| PlanError::new(error.to_string()))?,
+            control,
+            last_target: initial,
+            smoothing_samples: ((sample_rate as f32 * 0.01).round() as u32).max(1),
             meter: MeterAccumulator::new(maximum_frames)
                 .map_err(|error| PlanError::new(error.to_string()))?,
             published: Arc::new(AtomicMeter::default()),
@@ -242,6 +310,19 @@ impl RuntimeFader {
 
     #[inline]
     fn process(&mut self, frames: &mut [StereoFrame]) {
+        if let Some(control) = &self.control {
+            let target = control.linear_gain();
+            if target != self.last_target {
+                if self
+                    .gain
+                    .set_target(target, self.smoothing_samples)
+                    .is_err()
+                {
+                    let _ = self.gain.reset(0.0);
+                }
+                self.last_target = target;
+            }
+        }
         for frame in frames.iter_mut() {
             let gain = self.gain.next_value();
             *frame = self
@@ -268,6 +349,7 @@ pub struct GraphPlan {
     source_nodes: Box<[NodeId]>,
     sink_nodes: Box<[NodeId]>,
     aux_effect_states: Box<[RuntimeAuxEffectState]>,
+    aux_send_controls: BTreeMap<AuxId, Arc<AuxSendControl>>,
 }
 
 impl GraphPlan {
@@ -360,6 +442,7 @@ impl GraphPlan {
         let mut nodes = Vec::with_capacity(order.len());
         let mut source_nodes = Vec::new();
         let mut sink_nodes = Vec::new();
+        let mut aux_send_controls = BTreeMap::new();
         for id in order {
             let node = node_by_id[&id];
             let operation = match &node.kind {
@@ -411,13 +494,19 @@ impl GraphPlan {
                 NodeKind::SendTap {
                     aux_id,
                     source_node,
-                } => Operation::Fader(Box::new(RuntimeFader::new(
-                    sends
+                } => {
+                    let send = sends
                         .get(&(*source_node, *aux_id))
-                        .ok_or_else(|| PlanError::new("send tap route missing"))?
-                        .level_db,
-                    maximum_frames,
-                )?)),
+                        .ok_or_else(|| PlanError::new("send tap route missing"))?;
+                    let (fader, control) = RuntimeFader::new_aux(
+                        send.level_db,
+                        send.enabled,
+                        maximum_frames,
+                        graph.sample_rate,
+                    )?;
+                    aux_send_controls.insert(*aux_id, control);
+                    Operation::Fader(Box::new(fader))
+                }
                 NodeKind::AuxReturn { aux_id } => Operation::Fader(Box::new(RuntimeFader::new(
                     aux_buses
                         .get(aux_id)
@@ -446,6 +535,7 @@ impl GraphPlan {
             source_nodes: source_nodes.into_boxed_slice(),
             sink_nodes: sink_nodes.into_boxed_slice(),
             aux_effect_states: aux_effect_states.into_boxed_slice(),
+            aux_send_controls,
         })
     }
 
@@ -566,6 +656,10 @@ impl GraphPlan {
             Operation::Effect(slot) if slot.id() == effect_id => Some(slot.control()),
             _ => None,
         })
+    }
+
+    pub fn aux_send_control(&self, aux_id: AuxId) -> Option<Arc<AuxSendControl>> {
+        self.aux_send_controls.get(&aux_id).map(Arc::clone)
     }
 
     pub fn set_utility(
@@ -749,7 +843,7 @@ mod tests {
             to: 4,
         });
         GraphDefinition {
-            format_version: 1,
+            format_version: GRAPH_FORMAT_VERSION,
             enabled: true,
             sample_rate: 48_000,
             maximum_callback_frames: 128,
@@ -879,6 +973,7 @@ mod tests {
                 source_node: 1,
                 aux_id: 1,
                 level_db: 0.0,
+                enabled: true,
                 point: SendPoint::PreInsert,
             }],
             monitoring: Monitoring::default(),
@@ -1018,6 +1113,7 @@ mod tests {
                 source_node: 1,
                 aux_id: 1,
                 level_db: -6.0206,
+                enabled: true,
                 point: SendPoint::PreInsert,
             }],
             monitoring: Monitoring::default(),
@@ -1358,6 +1454,48 @@ mod tests {
         assert!(plan.output_buffer(4, 128).unwrap().iter().all(|frame| {
             frame.left.is_finite() && frame.right.is_finite() && frame.left.abs() <= 0.5
         }));
+    }
+
+    #[test]
+    fn three_aux_graph_renders_finite_without_callback_allocations() {
+        let source_rack = InsertRack::default();
+        let mut routing = ProjectAuxRouting::default();
+        for kind in [EffectKind::Reverb, EffectKind::Delay, EffectKind::Chorus] {
+            let aux_id = routing.add_bus().unwrap();
+            routing.add_effect(&source_rack, aux_id, kind).unwrap();
+            routing
+                .set_send(&source_rack, aux_id, -18.0, SendPoint::PostInsert)
+                .unwrap();
+        }
+        let graph = crate::audio_graph_client::managed_graph_definition(
+            48_000,
+            128,
+            &["out:l".into(), "out:r".into()],
+            &["in:l".into(), "in:r".into()],
+            Monitoring {
+                direct: false,
+                software: true,
+                doubled_path_confirmed: false,
+            },
+            &source_rack,
+            &routing,
+        );
+        assert_eq!(graph.aux_buses.len(), 3);
+        let mut plan = GraphPlan::compile(&graph).unwrap();
+        let third = plan.aux_send_control(3).unwrap();
+        third.set_level_db(None).unwrap();
+        assert_no_allocations(|| {
+            let source = plan.source_buffer_mut(1, 128).unwrap();
+            source.fill(StereoFrame::SILENCE);
+            source[0] = StereoFrame::new(0.25, -0.25);
+            assert_eq!(plan.process(128), ProcessStatus::Complete);
+        });
+        assert!(plan
+            .output_buffer(100, 128)
+            .unwrap()
+            .iter()
+            .all(|frame| frame.left.is_finite() && frame.right.is_finite()));
+        assert!(third.set_level_db(Some(12.1)).is_err());
     }
 
     #[test]

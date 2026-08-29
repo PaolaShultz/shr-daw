@@ -135,6 +135,17 @@ impl MojModel {
             Self::DualFilter => "Dual Filter",
         }
     }
+
+    pub const fn catalog_letter(self) -> char {
+        match self {
+            Self::ModelD => 'D',
+            Self::SixOpPm => 'P',
+            Self::StrangeOscillator => 'O',
+            Self::SwarmMachine => 'S',
+            Self::BassMatrix => 'B',
+            Self::DualFilter => 'F',
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -278,6 +289,46 @@ fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
         (None, false) => format!("{code} {sound}"),
         (None, true) => code.into(),
     }
+}
+
+/// Presets shows Moj Sint as one model-grouped catalog. Each model owns one
+/// stable letter and its own visible 01-based sequence, independent of old
+/// global factory filename numbers.
+pub fn moj_catalog_display_name(presets: &[Preset], index: usize) -> Option<String> {
+    let preset = presets.get(index)?;
+    let model = preset.moj_model()?;
+    let ordinal = presets[..=index]
+        .iter()
+        .filter(|candidate| candidate.moj_model() == Some(model))
+        .count();
+    let compact = compact_moj_sint_name(model, &preset.name);
+    let without_number = compact
+        .split_once(' ')
+        .map_or(compact.as_str(), |(first, rest)| {
+            if first.chars().all(|character| character.is_ascii_digit()) {
+                rest
+            } else {
+                compact.as_str()
+            }
+        });
+    let old_code = match model {
+        MojModel::ModelD => "M-D",
+        MojModel::SixOpPm => "6-OP",
+        MojModel::StrangeOscillator => "S-OSC",
+        MojModel::SwarmMachine => "SWARM",
+        MojModel::BassMatrix => "B-MAT",
+        MojModel::DualFilter => "D-FLT",
+    };
+    let sound = without_number
+        .strip_prefix(old_code)
+        .unwrap_or(without_number)
+        .trim_start();
+    let sound = if sound.is_empty() {
+        clean_numbered_name(&preset.name)
+    } else {
+        sound.to_owned()
+    };
+    Some(format!("{}{:02} {sound}", model.catalog_letter(), ordinal))
 }
 
 #[derive(Clone, Debug)]
@@ -1687,6 +1738,7 @@ fn title_case(value: &str) -> String {
 pub(crate) fn sort_presets(presets: &mut [Preset]) {
     presets.sort_by_key(|preset| {
         (
+            preset.moj_model(),
             preset
                 .category
                 .as_deref()
@@ -2591,6 +2643,51 @@ mod tests {
     }
 
     #[test]
+    fn moj_catalog_is_model_grouped_and_numbered_inside_each_model() {
+        let preset = |model: MojModel, name: &str| Preset {
+            backend: BackendKind::MojSint,
+            name: name.into(),
+            category: Some(model.label().into()),
+            id: PresetId::MojSint {
+                model,
+                path: PathBuf::from(format!("{name}.mojsint")),
+            },
+        };
+        let mut presets = vec![
+            preset(MojModel::DualFilter, "18 Dual Filter Serial Bass"),
+            preset(MojModel::BassMatrix, "16 Bass Matrix"),
+            preset(MojModel::SixOpPm, "09 Six-Op Fractured Metal"),
+            preset(MojModel::ModelD, "02 Full Lead"),
+            preset(MojModel::SwarmMachine, "15 Swarm Warm Pad"),
+            preset(MojModel::StrangeOscillator, "14 Strange Oscillator"),
+            preset(MojModel::DualFilter, "17 Dual Filter Industrial Lead"),
+            preset(MojModel::SixOpPm, "08 Six-Op Bell Metal"),
+            preset(MojModel::ModelD, "01 Full Bass"),
+        ];
+
+        sort_presets(&mut presets);
+
+        assert_eq!(
+            presets
+                .iter()
+                .enumerate()
+                .map(|(index, _)| moj_catalog_display_name(&presets, index).unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "D01 Full Bass",
+                "D02 Full Lead",
+                "P01 Bell Metal",
+                "P02 Fractured Metal",
+                "O01 Strange Oscillator",
+                "S01 Warm Pad",
+                "B01 Bass Matrix",
+                "F01 Industrial Lead",
+                "F02 Serial Bass",
+            ]
+        );
+    }
+
+    #[test]
     fn read_only_managed_instruments_start_with_visible_unity_volume() {
         let presets = [
             Preset {
@@ -3066,7 +3163,7 @@ amp_release = 0.7
             assert_eq!(read_moj_sint(path).unwrap().1, model);
         }
         let discovered = discover_moj_sint(std::slice::from_ref(&storage.moj_sint)).unwrap();
-        assert_eq!(discovered.len(), 5);
+        assert_eq!(discovered.len(), MojModel::ALL.len());
         assert!(discovered.iter().any(|preset| {
             preset.name == "User 001" && preset.moj_model() == Some(MojModel::ModelD)
         }));
@@ -3078,6 +3175,10 @@ amp_release = 0.7
         }));
         assert!(discovered.iter().any(|preset| preset.name == "User 001"
             && preset.moj_model() == Some(MojModel::SwarmMachine)));
+        assert!(discovered
+            .iter()
+            .any(|preset| preset.name == "User 001"
+                && preset.moj_model() == Some(MojModel::DualFilter)));
         assert!(discovered
             .iter()
             .any(|preset| preset.name == "User 001"

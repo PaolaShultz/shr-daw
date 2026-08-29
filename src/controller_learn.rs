@@ -1,11 +1,13 @@
 //! Non-audible controller discovery and MIDI learn.
 
-use crate::control::CONTROLS;
-use crate::pads::{ControllerButton, ControllerLayout, PadAction, PadConfig};
+use crate::pads::{
+    ControllerButton, ControllerLayout, PadAction, PadConfig, MAPPED_ROTARY_COUNT,
+    SECONDARY_CLICK_ROTARY,
+};
 use anyhow::{anyhow, bail, Context, Result};
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use std::collections::HashSet;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -61,36 +63,34 @@ pub fn resolve_input_name(names: &[String], wanted: Option<&str>) -> Result<Stri
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LearnRole {
-    AbsoluteControl(usize),
+    RotaryTurn(usize),
     EncoderClockwise,
     EncoderCounterClockwise,
     EncoderClick,
+    SecondaryEncoderClick,
     EncoderModifier,
-    SynthClick,
     Pad(usize),
     Confirm,
 }
 
 const FIRST_OPTIONAL_STEP: usize = 3;
-const SYNTH_CLICK_STEP: usize = FIRST_OPTIONAL_STEP + 1;
-const ABSOLUTE_CONTROL_COUNT: usize = 15;
-const CONTROL_STEP_START: usize = SYNTH_CLICK_STEP + 1;
-const BUTTON_STEP_START: usize = CONTROL_STEP_START + ABSOLUTE_CONTROL_COUNT;
+const CONTROL_STEP_START: usize = FIRST_OPTIONAL_STEP + 1;
+const SECONDARY_CLICK_STEP: usize = CONTROL_STEP_START + 8;
+const BUTTON_STEP_START: usize = CONTROL_STEP_START + MAPPED_ROTARY_COUNT as usize + 1;
 const PAD_LEARN_STEPS: usize = 9;
 const CONFIRM_STEP: usize = BUTTON_STEP_START + PAD_LEARN_STEPS;
-const TOTAL_STEPS: usize = CONFIRM_STEP + 1;
 
 impl LearnRole {
     fn label(self) -> String {
         match self {
-            Self::AbsoluteControl(index) => format!("POT {}", index + 1),
-            Self::EncoderClockwise => "MASTER ENCODER · TURN RIGHT".into(),
-            Self::EncoderCounterClockwise => "MASTER ENCODER · TURN LEFT".into(),
-            Self::EncoderClick => "MASTER ENCODER · CLICK".into(),
-            Self::EncoderModifier => "ENCODER SHIFT · HOLD + TURN LEFT".into(),
-            Self::SynthClick => "SYNTH ROTARY · CLICK".into(),
+            Self::RotaryTurn(index) => format!("TURN ROTARY {}", index + 2),
+            Self::EncoderClockwise => "TURN ROTARY 1 RIGHT".into(),
+            Self::EncoderCounterClockwise => "TURN ROTARY 1 LEFT".into(),
+            Self::EncoderClick => "CLICK ROTARY 1".into(),
+            Self::SecondaryEncoderClick => format!("CLICK ROTARY {SECONDARY_CLICK_ROTARY}"),
+            Self::EncoderModifier => "SHIFT + TURN ROTARY 1 LEFT".into(),
             Self::Pad(index) => format!(
-                "PAD {}",
+                "PRESS PAD {}",
                 if index < 4 {
                     index + 1
                 } else if index == 4 {
@@ -99,14 +99,14 @@ impl LearnRole {
                     index - 4
                 }
             ),
-            Self::Confirm => "REVIEW AND SAVE".into(),
+            Self::Confirm => "REVIEW · CLICK ROTARY 1 TO SAVE".into(),
         }
     }
 
     pub const fn skippable(self) -> bool {
         matches!(
             self,
-            Self::EncoderModifier | Self::SynthClick | Self::AbsoluteControl(_) | Self::Pad(_)
+            Self::EncoderModifier | Self::RotaryTurn(_) | Self::Pad(_)
         )
     }
 }
@@ -114,9 +114,32 @@ impl LearnRole {
 #[derive(Clone, Debug)]
 pub struct LearnSession {
     draft: PadConfig,
+    encoder_left_value: Option<u8>,
+    rotary_proof: Option<RotaryProof>,
     step: usize,
     feedback: String,
     state: LearnState,
+    trace_path: Option<PathBuf>,
+    trace_started: Instant,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RotaryProof {
+    channel: u8,
+    cc: u8,
+    left_min: u8,
+    left_max: u8,
+    right_min: u8,
+    right_max: u8,
+    reverse: bool,
+    left_proven: bool,
+    repeats: u8,
+}
+
+enum RotaryLearn {
+    Pending,
+    LeftProven { cc: u8 },
+    Complete(String),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -127,19 +150,66 @@ enum LearnInput {
 
 #[derive(Clone, Copy, Debug)]
 enum LearnState {
-    EntryQuiet { deadline: Instant },
+    EntryQuiet {
+        deadline: Instant,
+    },
     Armed,
-    Settling { cc: u8, deadline: Instant },
-    ButtonHeld { input: LearnInput },
-    EncoderModifierCandidate { modifier: LearnInput },
-    EncoderModifierChordHeld { modifier: LearnInput },
-    CycleCandidate { modifier: LearnInput },
-    CycleConfirm { candidate: LearnInput },
-    CycleConfirmHeld { candidate: LearnInput },
-    CycleChordHeld { modifier: LearnInput },
-    PostRelease { deadline: Instant },
-    NavigationSettling { cc: u8, deadline: Instant },
-    SaveButtonHeld { input: LearnInput, saved: bool },
+    Settling {
+        cc: u8,
+        deadline: Instant,
+    },
+    RotaryLeftSettling {
+        cc: u8,
+        deadline: Instant,
+    },
+    DirectShiftCandidate {
+        channel: u8,
+        cc: u8,
+        value: u8,
+        deadline: Instant,
+    },
+    ShiftLeftSettling {
+        cc: u8,
+        modifier: Option<LearnInput>,
+        deadline: Instant,
+    },
+    ShiftLeftRelease {
+        modifier: LearnInput,
+    },
+    ShiftRightArmed {
+        modifier: Option<LearnInput>,
+    },
+    ShiftRightHeld {
+        modifier: LearnInput,
+    },
+    ButtonHeld {
+        input: LearnInput,
+    },
+    EncoderModifierCandidate {
+        modifier: LearnInput,
+    },
+    EncoderModifierChordHeld {
+        modifier: LearnInput,
+    },
+    CycleCandidate {
+        modifier: LearnInput,
+    },
+    CycleConfirm {
+        candidate: LearnInput,
+    },
+    CycleConfirmHeld {
+        candidate: LearnInput,
+    },
+    CycleChordHeld {
+        modifier: LearnInput,
+    },
+    PostRelease {
+        deadline: Instant,
+    },
+    SaveButtonHeld {
+        input: LearnInput,
+        saved: bool,
+    },
     Saved,
 }
 
@@ -151,7 +221,9 @@ pub enum LearnAction {
 }
 
 const ENTRY_QUIET: Duration = Duration::from_millis(120);
-const GESTURE_SETTLE: Duration = Duration::from_millis(120);
+const GESTURE_SETTLE: Duration = Duration::from_millis(650);
+const ERROR_SETTLE: Duration = Duration::from_millis(650);
+const SHIFT_GESTURE_SETTLE: Duration = Duration::from_secs(2);
 
 impl LearnInput {
     fn from_message(message: &[u8]) -> Option<Self> {
@@ -208,22 +280,68 @@ impl LearnInput {
 }
 
 impl LearnSession {
-    pub fn new(input_name: &str) -> Self {
-        Self::new_at(input_name, Instant::now())
+    pub fn new_at(input_name: &str, now: Instant) -> Self {
+        Self::new_for_profile_at(input_name, None, now)
     }
 
-    pub fn new_at(input_name: &str, now: Instant) -> Self {
+    pub fn new_for_profile(input_name: &str, profile: Option<&str>) -> Self {
+        Self::new_for_profile_at(input_name, profile, Instant::now())
+    }
+
+    pub fn new_for_profile_with_trace(
+        input_name: &str,
+        profile: Option<&str>,
+        trace_path: &Path,
+    ) -> Self {
+        Self::new_for_profile_at_with_trace(input_name, profile, Instant::now(), Some(trace_path))
+    }
+
+    pub fn new_for_profile_at(input_name: &str, profile: Option<&str>, now: Instant) -> Self {
+        Self::new_for_profile_at_with_trace(input_name, profile, now, None)
+    }
+
+    fn new_for_profile_at_with_trace(
+        input_name: &str,
+        profile: Option<&str>,
+        now: Instant,
+        trace_path: Option<&Path>,
+    ) -> Self {
         let mut draft = PadConfig::unmapped(stable_input_match(input_name));
-        draft.profile = Some("learned".into());
+        draft.profile = Some(profile.unwrap_or("learned").to_owned());
         draft.layout = ControllerLayout::Four;
-        Self {
+        let mut session = Self {
             draft,
+            encoder_left_value: None,
+            rotary_proof: None,
             step: 0,
             feedback: "Release the opening control · waiting for quiet".into(),
             state: LearnState::EntryQuiet {
                 deadline: now + ENTRY_QUIET,
             },
+            trace_path: None,
+            trace_started: now,
+        };
+        if let Some(path) = trace_path {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            if let Ok(mut file) = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(path)
+            {
+                let _ = writeln!(
+                    file,
+                    "START input={:?} profile={:?}",
+                    input_name,
+                    profile.unwrap_or("learned")
+                );
+                session.trace_path = Some(path.to_path_buf());
+                session.trace_context("ASK", now);
+            }
         }
+        session
     }
 
     pub fn role(&self) -> LearnRole {
@@ -232,9 +350,15 @@ impl LearnSession {
             1 => LearnRole::EncoderClockwise,
             2 => LearnRole::EncoderClick,
             3 => LearnRole::EncoderModifier,
-            SYNTH_CLICK_STEP => LearnRole::SynthClick,
             CONTROL_STEP_START..BUTTON_STEP_START => {
-                LearnRole::AbsoluteControl(self.step - CONTROL_STEP_START)
+                if self.step == SECONDARY_CLICK_STEP {
+                    LearnRole::SecondaryEncoderClick
+                } else {
+                    let order_index = self.step
+                        - CONTROL_STEP_START
+                        - usize::from(self.step > SECONDARY_CLICK_STEP);
+                    LearnRole::RotaryTurn(order_index)
+                }
             }
             BUTTON_STEP_START..CONFIRM_STEP => LearnRole::Pad(self.step - BUTTON_STEP_START),
             _ => LearnRole::Confirm,
@@ -243,6 +367,29 @@ impl LearnSession {
 
     pub fn role_label(&self) -> String {
         match self.role() {
+            LearnRole::EncoderModifier => match self.state {
+                LearnState::ShiftLeftSettling { .. } | LearnState::ShiftLeftRelease { .. } => {
+                    "RELEASE SHIFT".into()
+                }
+                LearnState::ShiftRightArmed { .. } | LearnState::ShiftRightHeld { .. } => {
+                    "SHIFT + TURN ROTARY 1 RIGHT".into()
+                }
+                LearnState::EncoderModifierChordHeld { .. } | LearnState::Settling { .. } => {
+                    "RELEASE SHIFT".into()
+                }
+                _ => LearnRole::EncoderModifier.label(),
+            },
+            LearnRole::RotaryTurn(index) => format!(
+                "TURN ROTARY {} {}",
+                index + 2,
+                if self.rotary_proof.is_some_and(|proof| proof.left_proven)
+                    && !matches!(self.state, LearnState::RotaryLeftSettling { .. })
+                {
+                    "RIGHT"
+                } else {
+                    "LEFT"
+                }
+            ),
             LearnRole::Pad(index) => format!("PAD {}", self.pad_for_step(index).number().unwrap()),
             role => role.label(),
         }
@@ -265,19 +412,189 @@ impl LearnSession {
         PadAction::physical(number).expect("bounded physical PAD")
     }
 
-    pub fn progress(&self) -> (usize, usize) {
-        (self.step.min(CONFIRM_STEP) + 1, TOTAL_STEPS)
-    }
-
     pub fn feedback(&self) -> &str {
         &self.feedback
+    }
+
+    pub fn prompt_line(&self) -> String {
+        if self.feedback_is_error() {
+            if self.feedback.starts_with("POSITIONAL") {
+                return "POSITIONAL · release; retry same step".into();
+            }
+            if self.feedback.starts_with("DIRECTION") {
+                return format!("{} · release; retry", self.feedback);
+            }
+            return "Not accepted · release; retry step".into();
+        }
+        match self.state {
+            LearnState::ShiftLeftSettling { .. } => {
+                return "Next: Shift + turn R1 right".into();
+            }
+            LearnState::ShiftLeftRelease { .. } => {
+                return "Next: Shift + turn R1 right".into();
+            }
+            LearnState::ShiftRightArmed { .. } => {
+                return "Turn right; release Shift when done".into();
+            }
+            LearnState::ShiftRightHeld { .. } => {
+                return "Turn R1 right; release when done".into();
+            }
+            LearnState::EncoderModifierChordHeld { .. } | LearnState::Settling { .. }
+                if self.role() == LearnRole::EncoderModifier =>
+            {
+                return "Axis learned; release Shift".into();
+            }
+            LearnState::RotaryLeftSettling { .. } => {
+                return "Finish left turn; wait".into();
+            }
+            _ => {}
+        }
+        if let LearnRole::RotaryTurn(index) = self.role() {
+            if self.rotary_proof.is_some_and(|proof| proof.left_proven) {
+                return format!("Turn R{} right slowly", index + 2);
+            }
+            return format!("Turn R{} left slowly", index + 2);
+        }
+        match self.state {
+            LearnState::EntryQuiet { .. } => "Release controls".into(),
+            LearnState::Armed => match self.role() {
+                LearnRole::EncoderCounterClockwise => "Turn left now".into(),
+                LearnRole::EncoderClockwise => "Turn right now".into(),
+                LearnRole::EncoderClick => "Press and release".into(),
+                LearnRole::EncoderModifier => "Turn left; release Shift when done".into(),
+                LearnRole::SecondaryEncoderClick => "Press and release".into(),
+                LearnRole::RotaryTurn(index) => format!("Turn R{}", index + 2),
+                LearnRole::Pad(index) => {
+                    format!("Press PAD {}", self.pad_for_step(index).number().unwrap())
+                }
+                LearnRole::Confirm => "Click rotary 1 to save".into(),
+            },
+            LearnState::DirectShiftCandidate { .. } => {
+                "Turn R1 left; release Shift when done".into()
+            }
+            LearnState::Settling { .. } | LearnState::PostRelease { .. } => {
+                "OK · finish movement".into()
+            }
+            LearnState::RotaryLeftSettling { .. } => "Finish left turn; wait".into(),
+            LearnState::ShiftLeftSettling { .. } => "Next: Shift + turn R1 right".into(),
+            LearnState::ShiftLeftRelease { .. } => "Release Shift; then Shift + turn right".into(),
+            LearnState::ShiftRightArmed { .. } => "Turn right; release Shift when done".into(),
+            LearnState::ShiftRightHeld { .. } => "Turn R1 right; release when done".into(),
+            LearnState::ButtonHeld { .. } => "OK · release button".into(),
+            LearnState::EncoderModifierCandidate { .. } => {
+                "Turn R1 left; release Shift when done".into()
+            }
+            LearnState::EncoderModifierChordHeld { .. } => "Axis learned; release Shift".into(),
+            LearnState::CycleCandidate { .. } => "Hold it; move the page control".into(),
+            LearnState::CycleConfirm { .. } => "Press it again to use it alone".into(),
+            LearnState::CycleConfirmHeld { .. } => "Release to confirm this button".into(),
+            LearnState::CycleChordHeld { .. } => "OK · release the modifier".into(),
+            LearnState::SaveButtonHeld { saved, .. } => {
+                if saved {
+                    "Saved · release rotary 1".into()
+                } else {
+                    "Saving · keep rotary 1 held".into()
+                }
+            }
+            LearnState::Saved => "Saved".into(),
+        }
+    }
+
+    pub fn feedback_is_error(&self) -> bool {
+        let feedback = self.feedback.to_ascii_lowercase();
+        feedback.starts_with("conflict")
+            || feedback.starts_with("expected")
+            || feedback.starts_with("no position")
+            || feedback.starts_with("learn the")
+            || feedback.starts_with("rotary")
+            || feedback.starts_with("positional")
+            || feedback.starts_with("direction")
+            || feedback.starts_with("shift released")
+            || feedback.starts_with("save failed")
     }
 
     pub fn draft(&self) -> &PadConfig {
         &self.draft
     }
 
+    fn trace_state_name(&self) -> &'static str {
+        match self.state {
+            LearnState::EntryQuiet { .. } => "entry-quiet",
+            LearnState::Armed => "armed",
+            LearnState::Settling { .. } => "settling",
+            LearnState::RotaryLeftSettling { .. } => "rotary-left-settling",
+            LearnState::DirectShiftCandidate { .. } => "direct-shift-candidate",
+            LearnState::ShiftLeftSettling { .. } => "shift-left-settling",
+            LearnState::ShiftLeftRelease { .. } => "shift-left-release",
+            LearnState::ShiftRightArmed { .. } => "shift-right-armed",
+            LearnState::ShiftRightHeld { .. } => "shift-right-held",
+            LearnState::ButtonHeld { .. } => "button-held",
+            LearnState::EncoderModifierCandidate { .. } => "modifier-candidate",
+            LearnState::EncoderModifierChordHeld { .. } => "modifier-chord-held",
+            LearnState::CycleCandidate { .. } => "cycle-candidate",
+            LearnState::CycleConfirm { .. } => "cycle-confirm",
+            LearnState::CycleConfirmHeld { .. } => "cycle-confirm-held",
+            LearnState::CycleChordHeld { .. } => "cycle-chord-held",
+            LearnState::PostRelease { .. } => "post-release",
+            LearnState::SaveButtonHeld { .. } => "save-button-held",
+            LearnState::Saved => "saved",
+        }
+    }
+
+    fn trace_summary(&self) -> String {
+        format!(
+            "step={:?} state={} prompt={:?} feedback={:?}",
+            self.role_label(),
+            self.trace_state_name(),
+            self.prompt_line(),
+            self.feedback
+        )
+    }
+
+    fn trace_line(&self, event: &str, now: Instant, detail: &str) {
+        let Some(path) = self.trace_path.as_ref() else {
+            return;
+        };
+        let elapsed = now
+            .saturating_duration_since(self.trace_started)
+            .as_millis();
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+            let _ = writeln!(file, "+{elapsed:06}ms {event} {detail}");
+        }
+    }
+
+    fn trace_context(&self, event: &str, now: Instant) {
+        self.trace_line(event, now, &self.trace_summary());
+    }
+
+    fn trace_context_if_changed(&self, before: Option<String>, now: Instant) {
+        if before.is_some_and(|before| before != self.trace_summary()) {
+            self.trace_context("ASK", now);
+        }
+    }
+
+    fn trace_input(&self, message: &[u8], now: Instant) {
+        if self.trace_path.is_none() {
+            return;
+        }
+        let bytes = message
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        self.trace_line(
+            "INPUT",
+            now,
+            &format!(
+                "step={:?} state={} bytes={bytes}",
+                self.role_label(),
+                self.trace_state_name()
+            ),
+        );
+    }
+
     pub fn tick(&mut self, now: Instant) {
+        let before = self.trace_path.as_ref().map(|_| self.trace_summary());
         match self.state {
             LearnState::EntryQuiet { deadline } if now >= deadline => {
                 self.state = LearnState::Armed;
@@ -286,14 +603,32 @@ impl LearnSession {
             LearnState::Settling { deadline, .. } if now >= deadline => {
                 self.advance_after_capture();
             }
-            LearnState::NavigationSettling { deadline, .. } if now >= deadline => {
+            LearnState::RotaryLeftSettling { deadline, .. } if now >= deadline => {
                 self.state = LearnState::Armed;
+                self.feedback = format!("Ready · {}", self.role_label());
+            }
+            LearnState::DirectShiftCandidate { deadline, .. } if now >= deadline => {
+                self.clear_current_mapping();
+                self.state = LearnState::Armed;
+                self.feedback = "Shift press ignored · Shift + turn rotary 1 left".into();
+            }
+            LearnState::ShiftLeftSettling {
+                modifier, deadline, ..
+            } if now >= deadline => {
+                if let Some(modifier) = modifier {
+                    self.state = LearnState::ShiftLeftRelease { modifier };
+                    self.feedback = "Left verified · release Shift".into();
+                } else {
+                    self.state = LearnState::ShiftRightArmed { modifier: None };
+                    self.feedback = "Left verified · Shift + turn right".into();
+                }
             }
             LearnState::PostRelease { deadline } if now >= deadline => {
                 self.advance_after_capture();
             }
             _ => {}
         }
+        self.trace_context_if_changed(before, now);
     }
 
     pub fn retry(&mut self) {
@@ -301,6 +636,12 @@ impl LearnSession {
     }
 
     pub fn retry_at(&mut self, now: Instant) {
+        let before = self.trace_path.as_ref().map(|_| self.trace_summary());
+        self.retry_at_inner(now);
+        self.trace_context_if_changed(before, now);
+    }
+
+    fn retry_at_inner(&mut self, now: Instant) {
         if matches!(
             self.state,
             LearnState::Saved | LearnState::SaveButtonHeld { saved: true, .. }
@@ -319,6 +660,14 @@ impl LearnSession {
     }
 
     pub fn previous(&mut self) -> bool {
+        let now = Instant::now();
+        let before = self.trace_path.as_ref().map(|_| self.trace_summary());
+        let changed = self.previous_inner();
+        self.trace_context_if_changed(before, now);
+        changed
+    }
+
+    fn previous_inner(&mut self) -> bool {
         if !matches!(self.state, LearnState::Armed) {
             return false;
         }
@@ -332,14 +681,22 @@ impl LearnSession {
     }
 
     pub fn skip(&mut self) -> bool {
+        let now = Instant::now();
+        let before = self.trace_path.as_ref().map(|_| self.trace_summary());
+        let changed = self.skip_inner();
+        self.trace_context_if_changed(before, now);
+        changed
+    }
+
+    fn skip_inner(&mut self) -> bool {
         if !matches!(self.state, LearnState::Armed) {
             return false;
         }
         if !self.role().skippable() {
             self.feedback = if self.can_finish() {
-                "Click the encoder or press Enter to save and exit".into()
+                "Go to Review and click rotary 1 to save".into()
             } else {
-                "Learn the master encoder first · Esc cancels".into()
+                "Rotary 1 turn/click and rotary 9 click are required".into()
             };
             return false;
         }
@@ -349,7 +706,62 @@ impl LearnSession {
         true
     }
 
+    fn master_step_direction(&self, message: &[u8]) -> Option<i8> {
+        if self.step < 2
+            || !(matches!(self.state, LearnState::Armed)
+                || matches!(self.state, LearnState::EntryQuiet { .. }) && self.feedback_is_error())
+            || message.len() < 3
+            || message[0] & 0xf0 != 0xb0
+            || Some(message[1]) != self.draft.encoder_relative_cc
+        {
+            return None;
+        }
+        match (self.draft.encoder_relative_reverse, message[2]) {
+            (false, 61..=63) | (true, 125..=127) => Some(-1),
+            (false, 65..=67) | (true, 1..=3) => Some(1),
+            _ => None,
+        }
+    }
+
+    fn change_step_with_master(&mut self, direction: i8, now: Instant) {
+        let changed = if direction < 0 {
+            if self.step <= 2 {
+                false
+            } else {
+                self.step_backward();
+                true
+            }
+        } else if self.step >= CONFIRM_STEP {
+            false
+        } else {
+            self.step_forward();
+            true
+        };
+        self.state = LearnState::EntryQuiet {
+            deadline: now + ENTRY_QUIET,
+        };
+        self.feedback = if changed {
+            format!("Selected {}", self.role_label())
+        } else if direction < 0 {
+            "Rotary 1 setup is the first fixed step".into()
+        } else {
+            "Review is the final step".into()
+        };
+    }
+
     pub fn receive(&mut self, message: &[u8], now: Instant) -> LearnAction {
+        let before = self.trace_path.as_ref().map(|_| self.trace_summary());
+        self.trace_input(message, now);
+        let action = self.receive_inner(message, now);
+        self.trace_context_if_changed(before, now);
+        action
+    }
+
+    fn receive_inner(&mut self, message: &[u8], now: Instant) -> LearnAction {
+        if let Some(direction) = self.master_step_direction(message) {
+            self.change_step_with_master(direction, now);
+            return LearnAction::None;
+        }
         match self.state {
             LearnState::EntryQuiet { ref mut deadline } => {
                 if message_marks_activity(message) {
@@ -357,16 +769,99 @@ impl LearnSession {
                 }
                 return LearnAction::None;
             }
-            LearnState::Settling {
-                cc,
-                ref mut deadline,
-            }
-            | LearnState::NavigationSettling {
-                cc,
-                ref mut deadline,
-            } => {
+            LearnState::Settling { cc, .. } => {
                 if cc_message(message, cc) {
-                    *deadline = now + GESTURE_SETTLE;
+                    if self.step == 0 && matches!(message[2], 61..=63 | 125..=127) {
+                        self.encoder_left_value = Some(message[2]);
+                    }
+                    self.state = LearnState::Settling {
+                        cc,
+                        deadline: now + GESTURE_SETTLE,
+                    };
+                }
+                return LearnAction::None;
+            }
+            LearnState::RotaryLeftSettling { cc, .. } => {
+                if cc_message(message, cc) {
+                    self.state = LearnState::RotaryLeftSettling {
+                        cc,
+                        deadline: now + GESTURE_SETTLE,
+                    };
+                }
+                return LearnAction::None;
+            }
+            LearnState::DirectShiftCandidate {
+                channel, cc, value, ..
+            } => {
+                let same_candidate = message.len() >= 3
+                    && message[0] & 0xf0 == 0xb0
+                    && message[0] & 0x0f == channel
+                    && message[1] == cc;
+                if same_candidate && message[2] == 0 {
+                    self.rotary_proof = None;
+                    self.state = LearnState::Armed;
+                    self.feedback = "Shift press ignored · Shift + turn left".into();
+                    return LearnAction::None;
+                }
+                if moving_cc(message).is_some() {
+                    self.state = LearnState::Armed;
+                    if same_candidate {
+                        let candidate = [0xb0 | channel, cc, value];
+                        self.capture_shift_rotary(None, &candidate, now);
+                    }
+                    self.capture_shift_rotary(None, message, now);
+                }
+                return LearnAction::None;
+            }
+            LearnState::ShiftLeftSettling {
+                cc,
+                modifier,
+                deadline: _,
+            } => {
+                if modifier.is_some_and(|input| input.is_release(message)) {
+                    self.state = LearnState::ShiftRightArmed { modifier };
+                    self.feedback = "Left verified · Shift + turn right".into();
+                } else if cc_message(message, cc) {
+                    self.state = LearnState::ShiftLeftSettling {
+                        cc,
+                        modifier,
+                        deadline: now + GESTURE_SETTLE,
+                    };
+                }
+                return LearnAction::None;
+            }
+            LearnState::ShiftLeftRelease { modifier } => {
+                if modifier.is_release(message) {
+                    self.state = LearnState::ShiftRightArmed {
+                        modifier: Some(modifier),
+                    };
+                    self.feedback = "Left verified · Shift + turn right".into();
+                }
+                return LearnAction::None;
+            }
+            LearnState::ShiftRightArmed { modifier } => {
+                if let Some(modifier) = modifier {
+                    if !modifier.is_release(message) && modifier.matches_message(message) {
+                        self.state = LearnState::ShiftRightHeld { modifier };
+                        self.feedback = "Shift pressed · turn rotary 1 right".into();
+                    }
+                } else if self
+                    .rotary_proof
+                    .is_some_and(|proof| cc_message(message, proof.cc))
+                {
+                    self.capture_shift_rotary(None, message, now);
+                }
+                return LearnAction::None;
+            }
+            LearnState::ShiftRightHeld { modifier } => {
+                if modifier.is_release(message) {
+                    let repeats = self.rotary_proof.map(|proof| proof.repeats).unwrap_or(0);
+                    self.state = LearnState::ShiftRightArmed {
+                        modifier: Some(modifier),
+                    };
+                    self.feedback = format!("Right {repeats}/3 · Shift + turn right again");
+                } else {
+                    self.capture_shift_rotary(Some(modifier), message, now);
                 }
                 return LearnAction::None;
             }
@@ -379,32 +874,17 @@ impl LearnSession {
             LearnState::EncoderModifierCandidate { modifier } => {
                 if modifier.is_release(message) {
                     self.state = LearnState::Armed;
-                    self.feedback =
-                        "Shift released too soon · hold Shift and turn the encoder left".into();
-                } else if let Some((cc, value)) = moving_cc(message) {
+                    let repeats = self.rotary_proof.map(|proof| proof.repeats).unwrap_or(0);
+                    self.feedback = format!("Left {repeats}/3 · Shift + turn left again");
+                } else if let Some((cc, _)) = moving_cc(message) {
                     let modifier_cc = match modifier {
                         LearnInput::Cc { cc, .. } => Some(cc),
                         LearnInput::Note { .. } => None,
                     };
-                    let ordinary_cc = self.draft.encoder_relative_cc;
                     if Some(cc) == modifier_cc {
                         return LearnAction::None;
                     }
-                    if Some(cc) != ordinary_cc && used_ccs(&self.draft).contains(&cc) {
-                        self.feedback =
-                            format!("Conflict · shifted encoder CC {cc} is already assigned");
-                        return LearnAction::None;
-                    }
-                    self.draft.encoder_modifier = Some(modifier.controller_button());
-                    if Some(cc) == ordinary_cc {
-                        self.draft.encoder_modified_relative_cc = None;
-                        self.draft.encoder_modified_relative_reverse = false;
-                    } else {
-                        self.draft.encoder_modified_relative_cc = Some(cc);
-                        self.draft.encoder_modified_relative_reverse = value > 64;
-                    }
-                    self.state = LearnState::EncoderModifierChordHeld { modifier };
-                    self.feedback = "Shift+left learned · OK · release Shift to continue".into();
+                    self.capture_shift_rotary(Some(modifier), message, now);
                 }
                 return LearnAction::None;
             }
@@ -504,54 +984,43 @@ impl LearnSession {
             LearnState::Armed => {}
         }
 
+        let role = self.role();
         if self.can_finish() {
-            let navigation = {
-                let cc_action = self.draft.encoder_action(message);
+            let action = {
+                let cc_action = self
+                    .draft
+                    .encoder_action_with_modifier_and_state(message, false);
                 if cc_action.0 {
-                    cc_action
+                    (cc_action.0, cc_action.1)
                 } else {
                     self.draft.encoder_note_action(message)
                 }
             };
-            if navigation.0 {
-                match navigation.1 {
-                    Some(crate::pads::EncoderAction::Up) => {
-                        self.previous();
-                        if let Some(cc) = cc_number(message) {
-                            self.state = LearnState::NavigationSettling {
-                                cc,
-                                deadline: now + GESTURE_SETTLE,
-                            };
-                        }
+            if action.0 {
+                if role == LearnRole::Confirm
+                    && action.1 == Some(crate::pads::EncoderAction::Select)
+                {
+                    if let Some(input) = LearnInput::from_message(message) {
+                        self.state = LearnState::SaveButtonHeld {
+                            input,
+                            saved: false,
+                        };
+                        self.feedback = "Save requested · keep the encoder held".into();
+                        return LearnAction::Save;
                     }
-                    Some(crate::pads::EncoderAction::Down) => {
-                        self.skip();
-                        if let Some(cc) = cc_number(message) {
-                            self.state = LearnState::NavigationSettling {
-                                cc,
-                                deadline: now + GESTURE_SETTLE,
-                            };
-                        }
-                    }
-                    Some(crate::pads::EncoderAction::Select) => {
-                        if let Some(input) = LearnInput::from_message(message) {
-                            self.state = LearnState::SaveButtonHeld {
-                                input,
-                                saved: false,
-                            };
-                            self.feedback = "Save requested · keep the encoder held".into();
-                            return LearnAction::Save;
-                        }
-                    }
-                    None => {}
                 }
                 return LearnAction::None;
             }
         }
-
-        let role = self.role();
-        if self.role_is_mapped() || !message_is_relevant(role, message) {
+        if role == LearnRole::Confirm {
             return LearnAction::None;
+        }
+
+        if !message_is_relevant(role, message) {
+            return LearnAction::None;
+        }
+        if self.role_is_mapped() {
+            self.clear_current_mapping();
         }
         if role == LearnRole::Pad(4) {
             if let Some(modifier) = LearnInput::from_message(message) {
@@ -561,6 +1030,29 @@ impl LearnSession {
             return LearnAction::None;
         }
         if role == LearnRole::EncoderModifier {
+            let direct_hardware_shift =
+                self.draft.profile.as_deref() == Some("arturia-minilab-mkii");
+            if direct_hardware_shift {
+                let Some((cc, value)) = moving_cc(message) else {
+                    self.feedback = "Shift + turn rotary 1 left".into();
+                    return LearnAction::None;
+                };
+                if self.rotary_proof.is_none()
+                    && value == 127
+                    && !self.draft.encoder_relative_reverse
+                {
+                    self.state = LearnState::DirectShiftCandidate {
+                        channel: message[0] & 0x0f,
+                        cc,
+                        value,
+                        deadline: now + SHIFT_GESTURE_SETTLE,
+                    };
+                    self.feedback = "Shift pressed · turn rotary 1 left".into();
+                } else {
+                    self.capture_shift_rotary(None, message, now);
+                }
+                return LearnAction::None;
+            }
             let input = match self.learn_encoder_modifier_button(message) {
                 Ok(input) => input,
                 Err(message) => {
@@ -570,17 +1062,47 @@ impl LearnSession {
             };
             self.state = LearnState::EncoderModifierCandidate { modifier: input };
             self.feedback = format!(
-                "{} held · now turn the encoder left",
+                "{} held · now turn rotary 1 left",
                 learn_input_description(input)
             );
             return LearnAction::None;
         }
+        if let LearnRole::RotaryTurn(index) = role {
+            match self.learn_rotary(index, message) {
+                Ok(RotaryLearn::Complete(description)) => {
+                    let Some(cc) = cc_number(message) else {
+                        return LearnAction::None;
+                    };
+                    self.state = LearnState::Settling {
+                        cc,
+                        deadline: now + GESTURE_SETTLE,
+                    };
+                    self.feedback = format!("Learned {description} · OK · finish movement");
+                }
+                Ok(RotaryLearn::LeftProven { cc }) => {
+                    self.state = LearnState::RotaryLeftSettling {
+                        cc,
+                        deadline: now + GESTURE_SETTLE,
+                    };
+                    self.feedback = "Left direction verified · finish the turn".into();
+                }
+                Ok(RotaryLearn::Pending) => {}
+                Err(message) => {
+                    self.clear_current_mapping();
+                    self.state = LearnState::EntryQuiet {
+                        deadline: now + ERROR_SETTLE,
+                    };
+                    self.feedback = message;
+                }
+            }
+            return LearnAction::None;
+        }
         let accepted = match role {
-            LearnRole::AbsoluteControl(index) => self.learn_absolute(index, message),
+            LearnRole::RotaryTurn(_) => unreachable!("handled as a proven relative stream"),
             LearnRole::EncoderCounterClockwise => self.learn_encoder_counterclockwise(message),
             LearnRole::EncoderClockwise => self.learn_encoder_clockwise(message),
             LearnRole::EncoderClick => self.learn_click(message),
-            LearnRole::SynthClick => self.learn_synth_click(message),
+            LearnRole::SecondaryEncoderClick => self.learn_secondary_click(message),
             LearnRole::EncoderModifier => unreachable!("handled as a held Shift+rotary chord"),
             LearnRole::Pad(index) => self.learn_pad(index, message),
             LearnRole::Confirm => return LearnAction::None,
@@ -589,7 +1111,7 @@ impl LearnSession {
             Ok(description) => {
                 if matches!(
                     role,
-                    LearnRole::EncoderClick | LearnRole::SynthClick | LearnRole::Pad(_)
+                    LearnRole::EncoderClick | LearnRole::SecondaryEncoderClick | LearnRole::Pad(_)
                 ) {
                     let Some(input) = LearnInput::from_message(message) else {
                         return LearnAction::None;
@@ -641,13 +1163,14 @@ impl LearnSession {
         self.step_forward();
         self.state = LearnState::Armed;
         self.feedback = if self.role() == LearnRole::Confirm {
-            "Learning complete · click the encoder or press Enter to save".into()
+            "Learning complete · click rotary 1 to save".into()
         } else {
             format!("Ready · {}", self.role_label())
         };
     }
 
     fn step_forward(&mut self) {
+        self.rotary_proof = None;
         self.step = (self.step + 1).min(CONFIRM_STEP);
         if self.role() == LearnRole::Pad(4) && !self.cycle_page_role_needed() {
             self.step = (self.step + 1).min(CONFIRM_STEP);
@@ -655,6 +1178,7 @@ impl LearnSession {
     }
 
     fn step_backward(&mut self) {
+        self.rotary_proof = None;
         self.step = self.step.saturating_sub(1);
         if self.role() == LearnRole::Pad(4) && !self.cycle_page_role_needed() {
             self.step = self.step.saturating_sub(1);
@@ -665,16 +1189,99 @@ impl LearnSession {
         self.draft.layout != ControllerLayout::Eight
     }
 
-    fn learn_absolute(&mut self, index: usize, message: &[u8]) -> Result<String, String> {
+    fn learn_rotary(&mut self, index: usize, message: &[u8]) -> Result<RotaryLearn, String> {
         if message.len() < 3 || message[0] & 0xf0 != 0xb0 {
-            return Err("Expected an absolute knob/fader CC".into());
+            return Err("Expected a relative rotary CC".into());
         }
+        let channel = message[0] & 0x0f;
         let cc = message[1];
+        if self
+            .rotary_proof
+            .is_some_and(|proof| proof.channel != channel || proof.cc != cc)
+        {
+            return Ok(RotaryLearn::Pending);
+        }
+        let value = message[2];
+        let neutral = if self.draft.encoder_relative_reverse {
+            value == 0
+        } else {
+            value == 64
+        };
+        if neutral {
+            return Ok(RotaryLearn::Pending);
+        }
+        let learning_right = self.rotary_proof.is_some_and(|proof| proof.left_proven);
+        let expected_value = if self.draft.encoder_relative_reverse {
+            if learning_right {
+                matches!(value, 1..=3)
+            } else {
+                matches!(value, 125..=127)
+            }
+        } else if learning_right {
+            matches!(value, 65..=67)
+        } else {
+            matches!(value, 61..=63)
+        };
+        if !expected_value {
+            return Err(if learning_right {
+                "DIRECTION · turn right".into()
+            } else {
+                self.rotary_proof = None;
+                "POSITIONAL · set Relative 1/2".into()
+            });
+        }
         if used_ccs(&self.draft).contains(&cc) {
             return Err(format!("Conflict · CC {cc} is already assigned · retry"));
         }
+        let repeats = match self.rotary_proof {
+            Some(proof) => proof.repeats.saturating_add(1),
+            None => 1,
+        };
+        let mut proof = self.rotary_proof.unwrap_or(RotaryProof {
+            channel,
+            cc,
+            left_min: if self.draft.encoder_relative_reverse {
+                125
+            } else {
+                61
+            },
+            left_max: if self.draft.encoder_relative_reverse {
+                127
+            } else {
+                63
+            },
+            right_min: if self.draft.encoder_relative_reverse {
+                1
+            } else {
+                65
+            },
+            right_max: if self.draft.encoder_relative_reverse {
+                3
+            } else {
+                67
+            },
+            reverse: self.draft.encoder_relative_reverse,
+            left_proven: false,
+            repeats: 0,
+        });
+        proof.repeats = repeats;
+        self.rotary_proof = Some(proof);
+        if repeats < 3 {
+            return Ok(RotaryLearn::Pending);
+        }
+        if !learning_right {
+            if let Some(proof) = self.rotary_proof.as_mut() {
+                proof.left_proven = true;
+                proof.repeats = 0;
+            }
+            return Ok(RotaryLearn::LeftProven { cc });
+        }
         self.draft.controls.insert(cc, index as u8 + 1);
-        Ok(format!("CC {cc} = POT {}", index + 1))
+        self.rotary_proof = None;
+        Ok(RotaryLearn::Complete(format!(
+            "CC {cc} = ROTARY {}",
+            index + 2
+        )))
     }
 
     fn learn_encoder_clockwise(&mut self, message: &[u8]) -> Result<String, String> {
@@ -684,24 +1291,32 @@ impl LearnSession {
         if message.len() < 3 || message[0] & 0xf0 != 0xb0 || message[1] != cc {
             return Err(format!("Expected the same encoder CC {cc}"));
         }
-        let expected_less = self.draft.encoder_relative_reverse;
-        if message[2] == 0 || message[2] == 64 || (message[2] < 64) != expected_less {
-            return Err("Direction conflict · turn the encoder right and retry".into());
+        let left = self
+            .encoder_left_value
+            .ok_or_else(|| "Learn the counterclockwise direction first".to_owned())?;
+        let right = message[2];
+        if (61..=63).contains(&left) && (65..=67).contains(&right) {
+            self.draft.encoder_relative_reverse = false;
+            return Ok(format!("CC {cc} = relative 1 navigation · right"));
         }
-        Ok(format!("CC {cc} value {} = right", message[2]))
+        if (125..=127).contains(&left) && (1..=3).contains(&right) {
+            self.draft.encoder_relative_reverse = true;
+            return Ok(format!("CC {cc} = relative 2 navigation · right"));
+        }
+        Err("Rotary 1 is not sending relative steps · set the controller to Relative 1 or 2".into())
     }
 
     fn learn_encoder_counterclockwise(&mut self, message: &[u8]) -> Result<String, String> {
-        if message.len() < 3 || message[0] & 0xf0 != 0xb0 || matches!(message[2], 0 | 64) {
-            return Err("Expected a moving relative CC (not neutral 0 or 64)".into());
-        }
-        let cc = message[1];
+        let Some((cc, value)) = moving_cc(message) else {
+            return Err("Expected a moving relative CC".into());
+        };
         if used_ccs(&self.draft).contains(&cc) {
             return Err(format!("Conflict · CC {cc} is already assigned · retry"));
         }
         self.draft.encoder_relative_cc = Some(cc);
-        self.draft.encoder_relative_reverse = message[2] > 64;
-        Ok(format!("CC {cc} value {} = left", message[2]))
+        self.draft.encoder_relative_reverse = false;
+        self.encoder_left_value = Some(value);
+        Ok(format!("CC {cc} value {value} = left"))
     }
 
     fn learn_click(&mut self, message: &[u8]) -> Result<String, String> {
@@ -721,19 +1336,29 @@ impl LearnSession {
         }
     }
 
-    fn learn_synth_click(&mut self, message: &[u8]) -> Result<String, String> {
+    fn learn_secondary_click(&mut self, message: &[u8]) -> Result<String, String> {
         let button = button_from_message(message, &used_ccs(&self.draft), &used_notes(&self.draft))
             .ok_or_else(|| "Expected an unused CC or note press".to_owned())?;
         match button {
             Button::Cc { cc, channel } => {
+                self.draft.secondary_encoder_press_cc = Some(cc);
+                self.draft.secondary_encoder_press_channel = Some(channel);
                 self.draft.synth_press_cc = Some(cc);
                 self.draft.synth_press_channel = Some(channel);
-                Ok(format!("CC {cc} ch {} = synth click", channel + 1))
+                Ok(format!(
+                    "CC {cc} ch {} = rotary {SECONDARY_CLICK_ROTARY} synth click",
+                    channel + 1
+                ))
             }
             Button::Note { note, channel } => {
+                self.draft.secondary_encoder_press_note = Some(note);
+                self.draft.secondary_encoder_press_channel = Some(channel);
                 self.draft.synth_press_note = Some(note);
                 self.draft.synth_press_channel = Some(channel);
-                Ok(format!("note {note} ch {} = synth click", channel + 1))
+                Ok(format!(
+                    "note {note} ch {} = rotary {SECONDARY_CLICK_ROTARY} synth click",
+                    channel + 1
+                ))
             }
         }
     }
@@ -792,7 +1417,7 @@ impl LearnSession {
 
     pub fn validated_config(&self) -> Result<PadConfig> {
         if !self.can_finish() {
-            bail!("learn the master encoder left, right, and click before saving");
+            bail!("learn rotary 1 turn/click and rotary 9 click before saving");
         }
         self.draft.validate()?;
         Ok(self.draft.clone())
@@ -801,15 +1426,28 @@ impl LearnSession {
     pub fn can_finish(&self) -> bool {
         self.draft.encoder_relative_cc.is_some()
             && (self.draft.encoder_press_cc.is_some() || self.draft.encoder_press_note.is_some())
+            && (self.draft.secondary_encoder_press_cc.is_some()
+                || self.draft.secondary_encoder_press_note.is_some())
+    }
+
+    pub fn ready_to_save(&self) -> bool {
+        self.role() == LearnRole::Confirm && self.can_finish()
     }
 
     fn role_is_mapped(&self) -> bool {
         match self.role() {
-            LearnRole::EncoderModifier => self.draft.encoder_modifier.is_some(),
-            LearnRole::SynthClick => {
-                self.draft.synth_press_cc.is_some() || self.draft.synth_press_note.is_some()
+            LearnRole::EncoderModifier => {
+                self.draft.encoder_modifier.is_some()
+                    || self.draft.encoder_modified_relative_cc.is_some()
             }
-            LearnRole::AbsoluteControl(index) => self
+            LearnRole::EncoderClick => {
+                self.draft.encoder_press_cc.is_some() || self.draft.encoder_press_note.is_some()
+            }
+            LearnRole::SecondaryEncoderClick => {
+                self.draft.secondary_encoder_press_cc.is_some()
+                    || self.draft.secondary_encoder_press_note.is_some()
+            }
+            LearnRole::RotaryTurn(index) => self
                 .draft
                 .controls
                 .values()
@@ -829,27 +1467,32 @@ impl LearnSession {
     }
 
     fn clear_current_mapping(&mut self) {
+        self.rotary_proof = None;
         match self.role() {
             LearnRole::EncoderCounterClockwise => {
                 self.draft.encoder_relative_cc = None;
                 self.draft.encoder_relative_reverse = false;
+                self.encoder_left_value = None;
             }
             LearnRole::EncoderClick => {
                 self.draft.encoder_press_cc = None;
                 self.draft.encoder_press_note = None;
                 self.draft.encoder_press_channel = None;
             }
+            LearnRole::SecondaryEncoderClick => {
+                self.draft.secondary_encoder_press_cc = None;
+                self.draft.secondary_encoder_press_note = None;
+                self.draft.secondary_encoder_press_channel = None;
+                self.draft.synth_press_cc = None;
+                self.draft.synth_press_note = None;
+                self.draft.synth_press_channel = None;
+            }
             LearnRole::EncoderModifier => {
                 self.draft.encoder_modifier = None;
                 self.draft.encoder_modified_relative_cc = None;
                 self.draft.encoder_modified_relative_reverse = false;
             }
-            LearnRole::SynthClick => {
-                self.draft.synth_press_cc = None;
-                self.draft.synth_press_note = None;
-                self.draft.synth_press_channel = None;
-            }
-            LearnRole::AbsoluteControl(index) => {
+            LearnRole::RotaryTurn(index) => {
                 let position = index as u8 + 1;
                 self.draft.controls.retain(|_, mapped| *mapped != position);
             }
@@ -882,6 +1525,166 @@ impl LearnSession {
             }
             LearnRole::EncoderClockwise | LearnRole::Confirm => {}
         }
+    }
+
+    fn capture_shift_rotary(&mut self, modifier: Option<LearnInput>, message: &[u8], now: Instant) {
+        match self.learn_shift_rotary(modifier, message) {
+            Ok(RotaryLearn::Pending) => {}
+            Ok(RotaryLearn::LeftProven { cc }) => {
+                self.state = LearnState::ShiftLeftSettling {
+                    cc,
+                    modifier,
+                    deadline: now + GESTURE_SETTLE,
+                };
+                self.feedback = "Left verified · release Shift".into();
+            }
+            Ok(RotaryLearn::Complete(description)) => {
+                let Some(cc) = cc_number(message) else {
+                    return;
+                };
+                self.state = if let Some(modifier) = modifier {
+                    LearnState::EncoderModifierChordHeld { modifier }
+                } else {
+                    LearnState::Settling {
+                        cc,
+                        deadline: now + GESTURE_SETTLE,
+                    }
+                };
+                self.feedback = format!("Learned {description} · release Shift");
+            }
+            Err(message) => {
+                self.rotary_proof = None;
+                self.state = LearnState::Armed;
+                self.feedback = message;
+            }
+        }
+    }
+
+    fn learn_shift_rotary(
+        &mut self,
+        modifier: Option<LearnInput>,
+        message: &[u8],
+    ) -> Result<RotaryLearn, String> {
+        if message.len() < 3 || message[0] & 0xf0 != 0xb0 {
+            return Err("Expected Shift plus a relative rotary CC".into());
+        }
+        let channel = message[0] & 0x0f;
+        let cc = message[1];
+        let value = message[2];
+        let modifier_cc = modifier.and_then(|input| match input {
+            LearnInput::Cc { cc, .. } => Some(cc),
+            LearnInput::Note { .. } => None,
+        });
+        if Some(cc) == modifier_cc {
+            return Ok(RotaryLearn::Pending);
+        }
+        let ordinary_cc = self.draft.encoder_relative_cc;
+        if modifier.is_none() && Some(cc) == ordinary_cc {
+            return Err(format!(
+                "Expected the alternate Shift CC, not ordinary rotary CC {cc}"
+            ));
+        }
+        if Some(cc) != ordinary_cc && used_ccs(&self.draft).contains(&cc) {
+            return Err(format!(
+                "Conflict · shifted rotary CC {cc} is already assigned"
+            ));
+        }
+        if matches!(value, 0 | 64) {
+            return Ok(RotaryLearn::Pending);
+        }
+        let learning_right = self.rotary_proof.is_some_and(|proof| proof.left_proven);
+        let signature = match self.rotary_proof {
+            Some(proof) => proof,
+            None => match value {
+                61..=63 => RotaryProof {
+                    channel,
+                    cc,
+                    left_min: 61,
+                    left_max: 63,
+                    right_min: 65,
+                    right_max: 67,
+                    reverse: false,
+                    left_proven: false,
+                    repeats: 0,
+                },
+                65..=67 => RotaryProof {
+                    channel,
+                    cc,
+                    left_min: 65,
+                    left_max: 67,
+                    right_min: 61,
+                    right_max: 63,
+                    reverse: true,
+                    left_proven: false,
+                    repeats: 0,
+                },
+                125..=127 => RotaryProof {
+                    channel,
+                    cc,
+                    left_min: 125,
+                    left_max: 127,
+                    right_min: 1,
+                    right_max: 3,
+                    reverse: true,
+                    left_proven: false,
+                    repeats: 0,
+                },
+                _ => return Err("DIRECTION · turn left".into()),
+            },
+        };
+        let expected = if learning_right {
+            (signature.right_min..=signature.right_max).contains(&value)
+        } else {
+            (signature.left_min..=signature.left_max).contains(&value)
+        };
+        if !expected {
+            return Err(format!(
+                "DIRECTION · turn {}",
+                if learning_right { "right" } else { "left" }
+            ));
+        }
+        if Some(cc) == ordinary_cc && signature.reverse != self.draft.encoder_relative_reverse {
+            return Err("Shifted ordinary CC has the opposite direction".into());
+        }
+        let repeats = match self.rotary_proof {
+            Some(proof) if proof.channel != channel || proof.cc != cc => {
+                return Err(format!("Expected the same shifted rotary CC {}", proof.cc));
+            }
+            Some(proof) => proof.repeats.saturating_add(1),
+            None => 1,
+        };
+        self.rotary_proof = Some(RotaryProof {
+            repeats,
+            ..signature
+        });
+        if repeats < 3 {
+            self.feedback = format!(
+                "{} direction proof {repeats}/3",
+                if learning_right { "Right" } else { "Left" }
+            );
+            return Ok(RotaryLearn::Pending);
+        }
+        if !learning_right {
+            if let Some(proof) = self.rotary_proof.as_mut() {
+                proof.left_proven = true;
+                proof.repeats = 0;
+            }
+            return Ok(RotaryLearn::LeftProven { cc });
+        }
+        let reverse = self
+            .rotary_proof
+            .map(|proof| proof.reverse)
+            .unwrap_or(false);
+        self.draft.encoder_modifier = modifier.map(LearnInput::controller_button);
+        if Some(cc) == ordinary_cc {
+            self.draft.encoder_modified_relative_cc = None;
+            self.draft.encoder_modified_relative_reverse = false;
+        } else {
+            self.draft.encoder_modified_relative_cc = Some(cc);
+            self.draft.encoder_modified_relative_reverse = reverse;
+        }
+        self.rotary_proof = None;
+        Ok(RotaryLearn::Complete(format!("Shift rotary CC {cc}")))
     }
 }
 
@@ -916,12 +1719,13 @@ fn message_is_relevant(role: LearnRole, message: &[u8]) -> bool {
         return false;
     }
     match role {
-        LearnRole::AbsoluteControl(_) => message[0] & 0xf0 == 0xb0,
-        LearnRole::EncoderClockwise => message[0] & 0xf0 == 0xb0,
-        LearnRole::EncoderCounterClockwise => message[0] & 0xf0 == 0xb0 && message[2] != 64,
+        LearnRole::RotaryTurn(_) => message[0] & 0xf0 == 0xb0,
+        LearnRole::EncoderClockwise | LearnRole::EncoderCounterClockwise => {
+            moving_cc(message).is_some()
+        }
         LearnRole::EncoderClick
+        | LearnRole::SecondaryEncoderClick
         | LearnRole::EncoderModifier
-        | LearnRole::SynthClick
         | LearnRole::Pad(_) => message[2] > 0 && matches!(message[0] & 0xf0, 0x90 | 0xb0),
         LearnRole::Confirm => false,
     }
@@ -937,7 +1741,7 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
     config.input_match = Some(stable_input_match(input_name));
     println!("Listening to {input_name}. MIDI is not being forwarded to an instrument.");
 
-    let missing = (1..=ABSOLUTE_CONTROL_COUNT)
+    let missing = (1..=usize::from(MAPPED_ROTARY_COUNT))
         .filter(|position| {
             !config
                 .controls
@@ -947,11 +1751,11 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
         .count();
     if missing > 0 {
         let count = ask_number(
-            &format!("Additional POT positions to learn (0-{missing}) [0]: "),
+            &format!("Additional rotary turns to learn (0-{missing}) [0]: "),
             0,
             missing,
         )?;
-        let positions = (1..=ABSOLUTE_CONTROL_COUNT)
+        let positions = (1..=usize::from(MAPPED_ROTARY_COUNT))
             .filter(|position| {
                 !config
                     .controls
@@ -961,28 +1765,39 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
             .take(count)
             .collect::<Vec<_>>();
         for position in positions {
-            let cc = capture_cc(
+            let (cc, value) = capture_cc_value(
                 &receiver,
-                &format!("Move POT {position}"),
+                &format!("Turn ROTARY {}", position + 1),
                 &used_ccs(config),
             )?;
+            let relative_value = if config.encoder_relative_reverse {
+                matches!(value, 1..=3 | 125..=127)
+            } else {
+                matches!(value, 61..=63 | 65..=67)
+            };
+            if !relative_value {
+                bail!("ROTARY {} is not sending relative steps", position + 1);
+            }
             config.controls.insert(cc, position as u8);
-            println!("  POT {position} -> CC {cc}");
+            println!("  ROTARY {} -> CC {cc}", position + 1);
         }
     }
 
-    if config.encoder_relative_cc.is_none() && ask_yes_no("Learn a main endless encoder? [y/N]: ")?
+    if config.encoder_relative_cc.is_none()
+        && ask_yes_no("Learn a relative ROTARY 1 navigation turn? [y/N]: ")?
     {
         let (cc, value) = capture_cc_value(
             &receiver,
             "Turn the main encoder clockwise",
             &used_ccs(config),
         )?;
-        if value == 64 {
-            bail!("encoder sent only its stationary value; turn it farther and retry");
-        }
+        let reverse = match value {
+            65..=67 => false,
+            1..=3 => true,
+            _ => bail!("encoder is not sending Relative 1 or Relative 2 steps"),
+        };
         config.encoder_relative_cc = Some(cc);
-        config.encoder_relative_reverse = value < 64;
+        config.encoder_relative_reverse = reverse;
         println!("  encoder CC {cc}; direction convention detected");
     }
 
@@ -992,12 +1807,43 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
     {
         match capture_button(
             &receiver,
-            "Press the main encoder",
+            "Press ROTARY 1",
             &used_ccs(config),
             &used_notes(config),
         )? {
-            Button::Cc { cc, .. } => config.encoder_press_cc = Some(cc),
-            Button::Note { note, .. } => config.encoder_press_note = Some(note),
+            Button::Cc { cc, channel } => {
+                config.encoder_press_cc = Some(cc);
+                config.encoder_press_channel = Some(channel);
+            }
+            Button::Note { note, channel } => {
+                config.encoder_press_note = Some(note);
+                config.encoder_press_channel = Some(channel);
+            }
+        }
+    }
+
+    if config.secondary_encoder_press_cc.is_none()
+        && config.secondary_encoder_press_note.is_none()
+        && ask_yes_no("Learn the ROTARY 9 press? [y/N]: ")?
+    {
+        match capture_button(
+            &receiver,
+            "Press ROTARY 9",
+            &used_ccs(config),
+            &used_notes(config),
+        )? {
+            Button::Cc { cc, channel } => {
+                config.secondary_encoder_press_cc = Some(cc);
+                config.secondary_encoder_press_channel = Some(channel);
+                config.synth_press_cc = Some(cc);
+                config.synth_press_channel = Some(channel);
+            }
+            Button::Note { note, channel } => {
+                config.secondary_encoder_press_note = Some(note);
+                config.secondary_encoder_press_channel = Some(channel);
+                config.synth_press_note = Some(note);
+                config.synth_press_channel = Some(channel);
+            }
         }
     }
 
@@ -1023,10 +1869,11 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
             "Keep holding Shift and turn the main encoder counterclockwise",
             &shifted_turn_conflicts,
         )?;
-        if matches!(value, 0 | 64) {
-            bail!("shifted encoder sent only a stationary value; turn it farther and retry");
-        }
-        let reverse = value > 64;
+        let reverse = match value {
+            61..=63 => false,
+            125..=127 => true,
+            _ => bail!("shifted encoder is not sending Relative 1 or Relative 2 steps"),
+        };
         if Some(cc) == config.encoder_relative_cc {
             config.encoder_modified_relative_cc = None;
             config.encoder_modified_relative_reverse = false;
@@ -1037,27 +1884,6 @@ pub fn learn(config: &mut PadConfig, input_name: &str) -> Result<()> {
             println!("  shifted encoder CC {cc}; direction convention detected");
         }
         println!("  release encoder Shift");
-    }
-
-    if config.synth_press_cc.is_none()
-        && config.synth_press_note.is_none()
-        && ask_yes_no("Learn the dedicated synth rotary click? [y/N]: ")?
-    {
-        match capture_button(
-            &receiver,
-            "Press the synth rotary",
-            &used_ccs(config),
-            &used_notes(config),
-        )? {
-            Button::Cc { cc, channel } => {
-                config.synth_press_cc = Some(cc);
-                config.synth_press_channel = Some(channel);
-            }
-            Button::Note { note, channel } => {
-                config.synth_press_note = Some(note);
-                config.synth_press_channel = Some(channel);
-            }
-        }
     }
 
     let layout = ask_number("Physical pads available (0, 4, 5, or 8) [0]: ", 0, 8)?;
@@ -1158,6 +1984,51 @@ pub fn backup(path: &Path) -> Result<Option<PathBuf>> {
     bail!("could not allocate a unique controller backup name")
 }
 
+fn restore_file(path: &Path, contents: Option<&[u8]>) {
+    match contents {
+        Some(contents) => {
+            let _ = crate::fsutil::atomic_write(path, contents);
+        }
+        None if path.is_file() => {
+            let _ = fs::remove_file(path);
+        }
+        None => {}
+    }
+}
+
+/// Saves the active controller and, for reviewed hardware, the model-owned
+/// learned mapping as one recoverable operation. Automatic model switching
+/// writes only `controller.conf`; only an explicit Learn save updates the
+/// model-owned copy.
+pub fn save_learned_for_state(state: &Path, config: &PadConfig) -> Result<Option<PathBuf>> {
+    let active = state.join("controller.conf");
+    let model = config
+        .profile
+        .as_deref()
+        .filter(|profile| *profile != "learned")
+        .map(|profile| crate::controller_profile::private_mapping_path(state, profile))
+        .transpose()?;
+    let old_active = fs::read(&active).ok();
+    let old_model = model.as_ref().and_then(|path| fs::read(path).ok());
+
+    let result = (|| {
+        backup(&active)?;
+        if let Some(path) = &model {
+            backup(path)?;
+            config.save(path)?;
+        }
+        config.save(&active)
+    })();
+    if let Err(error) = result {
+        restore_file(&active, old_active.as_deref());
+        if let Some(path) = &model {
+            restore_file(path, old_model.as_deref());
+        }
+        return Err(error);
+    }
+    Ok(model)
+}
+
 enum Button {
     Cc { cc: u8, channel: u8 },
     Note { note: u8, channel: u8 },
@@ -1253,6 +2124,7 @@ fn used_ccs(config: &PadConfig) -> HashSet<u8> {
                 config.encoder_modified_relative_cc,
                 config.encoder_press_cc,
                 config.synth_press_cc,
+                config.secondary_encoder_press_cc,
                 config.lock_cc,
             ]
             .into_iter()
@@ -1281,6 +2153,7 @@ fn used_notes(config: &PadConfig) -> HashSet<u8> {
         .copied()
         .chain(config.encoder_press_note)
         .chain(config.synth_press_note)
+        .chain(config.secondary_encoder_press_note)
         .chain(
             [
                 config.encoder_modifier,
@@ -1331,12 +2204,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn learn_labels_expose_only_physical_pot_and_pad_identity() {
-        assert_eq!(LearnRole::AbsoluteControl(0).label(), "POT 1");
-        assert_eq!(LearnRole::AbsoluteControl(11).label(), "POT 12");
-        assert_eq!(LearnRole::Pad(0).label(), "PAD 1");
+    fn learn_labels_expose_physical_rotary_and_pad_identity() {
+        assert_eq!(LearnRole::RotaryTurn(0).label(), "TURN ROTARY 2");
+        assert_eq!(LearnRole::RotaryTurn(14).label(), "TURN ROTARY 16");
+        assert_eq!(LearnRole::Pad(0).label(), "PRESS PAD 1");
+        assert_eq!(
+            LearnRole::EncoderModifier.label(),
+            "SHIFT + TURN ROTARY 1 LEFT"
+        );
         for forbidden in ["Flt", "Volume", "Dly", "STOP", "PLAY", "REC", "TAP"] {
-            assert!(!LearnRole::AbsoluteControl(0).label().contains(forbidden));
+            assert!(!LearnRole::RotaryTurn(0).label().contains(forbidden));
             assert!(!LearnRole::Pad(0).label().contains(forbidden));
         }
     }
@@ -1383,6 +2260,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(base);
     }
 
+    #[test]
+    fn explicit_learn_save_keeps_active_and_model_owned_copies() {
+        let base = std::env::temp_dir().join(format!(
+            "shsynth-controller-model-save-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let old = PadConfig {
+            input_match: Some("MiniLab3 MIDI".into()),
+            profile: Some("arturia-minilab-3".into()),
+            encoder_relative_cc: Some(114),
+            encoder_press_cc: Some(115),
+            ..PadConfig::default()
+        };
+        old.save(&base.join("controller.conf")).unwrap();
+        let learned = PadConfig {
+            input_match: Some("Arturia MiniLab mkII MIDI".into()),
+            profile: Some("arturia-minilab-mkii".into()),
+            encoder_relative_cc: Some(28),
+            encoder_press_cc: Some(118),
+            secondary_encoder_press_cc: Some(117),
+            ..PadConfig::default()
+        };
+
+        let model = save_learned_for_state(&base, &learned).unwrap().unwrap();
+
+        assert_eq!(
+            PadConfig::load(&base.join("controller.conf")).unwrap(),
+            learned
+        );
+        assert_eq!(PadConfig::load(&model).unwrap(), learned);
+        let backups = std::fs::read_dir(&base)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".bak-"))
+            .count();
+        assert_eq!(backups, 1);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
     struct Harness {
         learn: LearnSession,
         now: Instant,
@@ -1422,16 +2340,50 @@ mod tests {
             self.send(&[0xb0, click, 0]);
             assert_eq!(self.learn.role(), LearnRole::EncoderModifier);
             assert!(self.learn.skip());
-            assert_eq!(self.learn.role(), LearnRole::SynthClick);
-            assert!(self.learn.skip());
-            assert_eq!(self.learn.role(), LearnRole::AbsoluteControl(0));
+            assert_eq!(self.learn.role(), LearnRole::RotaryTurn(0));
+        }
+
+        fn learn_rotary(&mut self, cc: u8) {
+            let (left, right) = if self.learn.draft().encoder_relative_reverse {
+                (127, 1)
+            } else {
+                (63, 65)
+            };
+            for _ in 0..3 {
+                self.send(&[0xb0, cc, left]);
+            }
+            assert!(self.learn.draft().controls.get(&cc).is_none());
+            self.settle();
+            for _ in 0..3 {
+                self.send(&[0xb0, cc, right]);
+            }
+            assert!(self.learn.draft().controls.get(&cc).is_some());
+            self.settle();
         }
 
         fn skip_controls(&mut self) {
-            for _ in 0..ABSOLUTE_CONTROL_COUNT {
-                assert!(self.learn.skip());
+            while self.learn.role() != LearnRole::Pad(0) {
+                match self.learn.role() {
+                    LearnRole::RotaryTurn(_) => assert!(self.learn.skip()),
+                    LearnRole::SecondaryEncoderClick => {
+                        self.send(&[0xb0, 117, 127]);
+                        self.send(&[0xb0, 117, 0]);
+                    }
+                    role => panic!("unexpected control role: {role:?}"),
+                }
             }
             assert_eq!(self.learn.role(), LearnRole::Pad(0));
+        }
+
+        fn skip_to_confirm(&mut self) {
+            while self.learn.role() != LearnRole::Confirm {
+                if self.learn.role() == LearnRole::SecondaryEncoderClick {
+                    self.send(&[0xb0, 117, 127]);
+                    self.send(&[0xb0, 117, 0]);
+                } else {
+                    assert!(self.learn.skip());
+                }
+            }
         }
     }
 
@@ -1446,6 +2398,66 @@ mod tests {
         learn.tick(start + Duration::from_millis(20) + ENTRY_QUIET);
         learn.receive(&[0xb0, 28, 63], start + Duration::from_millis(141));
         assert_eq!(learn.draft().encoder_relative_cc, Some(28));
+    }
+
+    #[test]
+    fn delayed_opening_click_release_is_filtered_after_rotary_left_arms() {
+        let start = Instant::now();
+        let mut learn = LearnSession::new_at("Controller", start);
+        learn.tick(start + ENTRY_QUIET);
+
+        learn.receive(
+            &[0xb0, 118, 0],
+            start + ENTRY_QUIET + Duration::from_millis(1),
+        );
+
+        assert_eq!(learn.role(), LearnRole::EncoderCounterClockwise);
+        assert_eq!(learn.draft().encoder_relative_cc, None);
+        learn.receive(
+            &[0xb0, 28, 63],
+            start + ENTRY_QUIET + Duration::from_millis(2),
+        );
+        assert_eq!(learn.draft().encoder_relative_cc, Some(28));
+    }
+
+    #[test]
+    fn last_learn_trace_replaces_old_content_and_records_steps_and_all_inputs() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-midi-learn-last-{}.log",
+            std::process::id()
+        ));
+        fs::write(&path, "stale previous session\n").unwrap();
+        let start = Instant::now();
+        let mut learn = LearnSession::new_for_profile_at_with_trace(
+            "Controller",
+            Some("test-profile"),
+            start,
+            Some(&path),
+        );
+        learn.tick(start + ENTRY_QUIET);
+        learn.receive(
+            &[0xb0, 118, 0],
+            start + ENTRY_QUIET + Duration::from_millis(1),
+        );
+        learn.receive(
+            &[0xb0, 28, 63],
+            start + ENTRY_QUIET + Duration::from_millis(2),
+        );
+
+        let trace = fs::read_to_string(&path).unwrap();
+        assert!(!trace.contains("stale previous session"));
+        assert!(trace.contains("START input=\"Controller\" profile=\"test-profile\""));
+        assert!(trace.contains("ASK step=\"TURN ROTARY 1 LEFT\""));
+        assert!(trace.contains("INPUT step=\"TURN ROTARY 1 LEFT\" state=armed bytes=B0 76 00"));
+        assert!(trace.contains("INPUT step=\"TURN ROTARY 1 LEFT\" state=armed bytes=B0 1C 3F"));
+        assert_eq!(
+            trace
+                .lines()
+                .filter(|line| line.contains(" INPUT "))
+                .count(),
+            2
+        );
+        let _ = fs::remove_file(path);
     }
 
     #[test]
@@ -1464,7 +2476,40 @@ mod tests {
     }
 
     #[test]
-    fn click_press_release_is_consumed_before_control_one_arms() {
+    fn relative_one_without_neutral_packets_is_accepted() {
+        let mut h = Harness::new();
+        h.send(&[0xb0, 112, 63]);
+        h.settle();
+        h.send(&[0xb0, 112, 65]);
+
+        assert!(h.learn.feedback().contains("relative 1 navigation"));
+        assert!(!h.learn.draft().encoder_relative_reverse);
+    }
+
+    #[test]
+    fn relative_two_without_neutral_packets_is_accepted() {
+        let mut h = Harness::new();
+        h.send(&[0xb0, 112, 127]);
+        h.settle();
+        h.send(&[0xb0, 112, 1]);
+
+        assert!(h.learn.feedback().contains("relative 2 navigation"));
+        assert!(h.learn.draft().encoder_relative_reverse);
+    }
+
+    #[test]
+    fn positional_rotary_one_is_rejected() {
+        let mut h = Harness::new();
+        h.send(&[0xb0, 28, 80]);
+        h.send(&[0xb0, 28, 79]);
+        h.settle();
+        h.send(&[0xb0, 28, 80]);
+        assert!(h.learn.feedback().contains("not sending relative steps"));
+        assert_eq!(h.learn.role(), LearnRole::EncoderClockwise);
+    }
+
+    #[test]
+    fn both_click_press_release_sequences_advance_once() {
         let mut h = Harness::new();
         h.send(&[0xb0, 28, 63]);
         h.settle();
@@ -1477,57 +2522,134 @@ mod tests {
         h.send(&[0xb0, 118, 0]);
         assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
         assert!(h.learn.skip());
-        assert_eq!(h.learn.role(), LearnRole::SynthClick);
-        assert!(h.learn.skip());
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
         assert_eq!(h.learn.draft().encoder_press_cc, Some(118));
+    }
+
+    #[test]
+    fn learn_scans_rotaries_one_through_sixteen_with_special_actions_in_place() {
+        let mut h = Harness::new();
+        h.send(&[0xb0, 28, 63]);
+        h.settle();
+        h.send(&[0xb0, 28, 65]);
+        h.settle();
+        h.send(&[0xb0, 118, 127]);
+        h.send(&[0xb0, 118, 0]);
+        assert!(h.learn.skip());
+
+        for expected in 0..=7 {
+            assert_eq!(h.learn.role(), LearnRole::RotaryTurn(expected));
+            assert!(h.learn.skip());
+        }
+        assert_eq!(h.learn.role(), LearnRole::SecondaryEncoderClick);
+        h.send(&[0xb0, 117, 127]);
+        h.send(&[0xb0, 117, 0]);
+        for expected in 8..=14 {
+            assert_eq!(h.learn.role(), LearnRole::RotaryTurn(expected));
+            assert!(h.learn.skip());
+        }
+        assert_eq!(h.learn.role(), LearnRole::Pad(0));
+    }
+
+    #[test]
+    fn revisited_rotary_nine_click_can_be_recorded_again() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+
+        for _ in 0..8 {
+            h.send(&[0xb0, 28, 65]);
+            h.settle();
+        }
+        assert_eq!(h.learn.role(), LearnRole::SecondaryEncoderClick);
+        h.send(&[0xb0, 117, 127]);
+        h.send(&[0xb0, 117, 0]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(8));
+        h.send(&[0xb0, 28, 63]);
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::SecondaryEncoderClick);
+        h.send(&[0xb0, 117, 127]);
+
+        assert!(h.learn.feedback().contains("rotary 9 synth click"));
+        assert_eq!(h.learn.draft().secondary_encoder_press_cc, Some(117));
+        assert_eq!(h.learn.draft().synth_press_cc, Some(117));
+        h.send(&[0xb0, 117, 0]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(8));
     }
 
     #[test]
     fn optional_encoder_shift_learns_shift_plus_left_before_controls() {
         let mut h = Harness::new();
         h.send(&[0xb0, 28, 63]);
+        h.send(&[0xb0, 28, 64]);
         h.settle();
         h.send(&[0xb0, 28, 65]);
+        h.send(&[0xb0, 28, 64]);
         h.settle();
         h.send(&[0xb0, 118, 127]);
         h.send(&[0xb0, 118, 0]);
         assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
 
         h.send(&[0xb0, 27, 127]);
-        assert!(h.learn.feedback().contains("turn the encoder left"));
-        h.send(&[0xb0, 29, 63]);
+        assert!(h.learn.feedback().contains("turn rotary 1 left"));
+        for value in [63, 62, 61] {
+            h.send(&[0xb0, 29, value]);
+        }
+        assert_eq!(h.learn.draft().encoder_modifier, None);
+        assert_eq!(h.learn.role_label(), "RELEASE SHIFT");
+        h.send(&[0xb0, 27, 0]);
+        assert!(h.learn.role_label().contains("RIGHT"));
+        assert_eq!(h.learn.role_label(), "SHIFT + TURN ROTARY 1 RIGHT");
+        h.send(&[0xb0, 27, 127]);
+        for value in [65, 66, 67] {
+            h.send(&[0xb0, 29, value]);
+        }
         assert!(h.learn.feedback().contains("release Shift"));
         h.send(&[0xb0, 27, 0]);
 
-        assert_eq!(h.learn.role(), LearnRole::SynthClick);
-        assert!(h.learn.skip());
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        for _ in 0..8 {
+            assert!(h.learn.skip());
+        }
+        assert_eq!(h.learn.role(), LearnRole::SecondaryEncoderClick);
         assert_eq!(
             h.learn.draft().encoder_modifier,
             Some(ControllerButton::Cc { channel: 0, cc: 27 })
         );
         assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(29));
         assert!(!h.learn.draft().encoder_modified_relative_reverse);
+        h.send(&[0xb0, 27, 127]);
+        assert_eq!(h.learn.draft().secondary_encoder_press_cc, None);
+        assert!(h.learn.feedback().contains("Expected an unused"));
+        h.send(&[0xb0, 117, 127]);
+        h.send(&[0xb0, 117, 0]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(8));
     }
 
     #[test]
     fn optional_encoder_shift_accepts_the_ordinary_relative_cc() {
         let mut h = Harness::new();
         h.send(&[0xb0, 28, 63]);
+        h.send(&[0xb0, 28, 64]);
         h.settle();
         h.send(&[0xb0, 28, 65]);
+        h.send(&[0xb0, 28, 64]);
         h.settle();
         h.send(&[0xb0, 118, 127]);
         h.send(&[0xb0, 118, 0]);
 
         h.send(&[0xb0, 27, 127]);
-        h.send(&[0xb0, 28, 63]);
+        for _ in 0..3 {
+            h.send(&[0xb0, 28, 63]);
+        }
+        h.send(&[0xb0, 27, 0]);
+        h.send(&[0xb0, 27, 127]);
+        for _ in 0..3 {
+            h.send(&[0xb0, 28, 65]);
+        }
         h.send(&[0xb0, 27, 0]);
 
-        assert_eq!(h.learn.role(), LearnRole::SynthClick);
-        assert!(h.learn.skip());
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
         assert_eq!(
             h.learn.draft().encoder_modifier,
             Some(ControllerButton::Cc { channel: 0, cc: 27 })
@@ -1536,32 +2658,389 @@ mod tests {
     }
 
     #[test]
-    fn absolute_stream_stays_on_control_one_then_advances_once() {
+    fn minilab_mkii_shift_layer_is_direct_relative_without_a_shift_packet() {
+        let start = Instant::now();
+        let mut h = Harness {
+            learn: LearnSession::new_for_profile_at(
+                "Arturia MiniLab mkII MIDI 1",
+                Some("arturia-minilab-mkii"),
+                start,
+            ),
+            now: start + ENTRY_QUIET,
+        };
+        h.learn.tick(h.now);
+        h.send(&[0xb0, 112, 63]);
+        h.settle();
+        h.send(&[0xb0, 112, 65]);
+        h.settle();
+        h.send(&[0xb0, 113, 127]);
+        h.send(&[0xb0, 113, 0]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 63]);
+        }
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+        h.settle();
+        assert!(h.learn.role_label().contains("RIGHT"));
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 65]);
+        }
+
+        assert!(h.learn.feedback().contains("Shift rotary CC 7"));
+        assert_eq!(h.learn.draft().encoder_modifier, None);
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+        assert!(!h.learn.draft().encoder_modified_relative_reverse);
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+    }
+
+    #[test]
+    fn direct_shift_layer_proves_relative_two_left_and_right() {
+        let start = Instant::now();
+        let mut h = Harness {
+            learn: LearnSession::new_for_profile_at(
+                "Arturia MiniLab mkII MIDI 1",
+                Some("arturia-minilab-mkii"),
+                start,
+            ),
+            now: start + ENTRY_QUIET,
+        };
+        h.learn.tick(h.now);
+        h.send(&[0xb0, 114, 127]);
+        h.settle();
+        h.send(&[0xb0, 114, 1]);
+        h.settle();
+        h.send(&[0xb0, 115, 127]);
+        h.send(&[0xb0, 115, 0]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 127]);
+        }
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+        assert_eq!(h.learn.role_label(), "RELEASE SHIFT");
+        h.settle();
+        assert!(h.learn.role_label().contains("RIGHT"));
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 1]);
+        }
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+        assert!(h.learn.draft().encoder_modified_relative_reverse);
+    }
+
+    #[test]
+    fn direct_shift_layer_may_reverse_the_ordinary_rotary_direction_encoding() {
+        let start = Instant::now();
+        let mut h = Harness {
+            learn: LearnSession::new_for_profile_at(
+                "Arturia MiniLab mkII MIDI 1",
+                Some("arturia-minilab-mkii"),
+                start,
+            ),
+            now: start + ENTRY_QUIET,
+        };
+        h.learn.tick(h.now);
+        h.send(&[0xb0, 112, 63]);
+        h.settle();
+        h.send(&[0xb0, 112, 65]);
+        h.settle();
+        h.send(&[0xb0, 113, 127]);
+        h.send(&[0xb0, 113, 0]);
+
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 65]);
+        }
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+        h.settle();
+        assert!(h.learn.role_label().contains("RIGHT"));
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 63]);
+        }
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+        assert!(h.learn.draft().encoder_modified_relative_reverse);
+    }
+
+    #[test]
+    fn minilab_mkii_shift_press_is_replaced_by_the_shifted_turn() {
+        let start = Instant::now();
+        let mut h = Harness {
+            learn: LearnSession::new_for_profile_at(
+                "Arturia MiniLab mkII MIDI 1",
+                Some("arturia-minilab-mkii"),
+                start,
+            ),
+            now: start + ENTRY_QUIET,
+        };
+        h.learn.tick(h.now);
+        h.send(&[0xb0, 112, 63]);
+        h.settle();
+        h.send(&[0xb0, 112, 65]);
+        h.settle();
+        h.send(&[0xb0, 113, 127]);
+        h.send(&[0xb0, 113, 0]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+
+        h.send(&[0xb0, 27, 127]);
+        h.send(&[0xb0, 27, 0]);
+
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+
+        h.send(&[0xb0, 27, 127]);
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 63]);
+        }
+        h.settle();
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 65]);
+        }
+
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+    }
+
+    #[test]
+    fn relative_stream_stays_on_control_one_then_advances_once() {
         let mut h = Harness::new();
         h.learn_master(28, 118, false);
-        h.send(&[0xb0, 10, 20]);
+        for _ in 0..3 {
+            h.send(&[0xb0, 10, 63]);
+        }
+        h.settle();
+        for _ in 0..3 {
+            h.send(&[0xb0, 10, 65]);
+        }
         let success = h.learn.feedback().to_owned();
-        for value in [21, 22, 23] {
+        for value in [66, 67, 65] {
             h.send(&[0xb0, 10, value]);
-            assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(0));
+            assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
             assert_eq!(h.learn.feedback(), success);
         }
         h.settle();
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(1));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
         h.settle();
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(1));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+    }
+
+    #[test]
+    fn performance_rotary_requires_proven_left_and_right_streams() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+
+        h.send(&[0xb0, 10, 63]);
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+        assert!(h.learn.prompt_line().contains("left"));
+
+        h.send(&[0xb0, 10, 62]);
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+        h.send(&[0xb0, 10, 61]);
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+        h.settle();
+        assert!(h.learn.role_label().contains("RIGHT"));
+        h.send(&[0xb0, 10, 65]);
+        h.send(&[0xb0, 10, 66]);
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+        h.send(&[0xb0, 10, 67]);
+        assert_eq!(h.learn.draft().controls.get(&10), Some(&1));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+    }
+
+    #[test]
+    fn rotary_feedback_waits_for_quiet_and_cannot_flash_into_the_next_direction() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+        for value in [63, 62, 61] {
+            h.send(&[0xb0, 10, value]);
+        }
+        assert_eq!(h.learn.role_label(), "TURN ROTARY 2 LEFT");
+
+        h.now += GESTURE_SETTLE - Duration::from_millis(1);
+        h.learn.tick(h.now);
+        h.send(&[0xb0, 10, 63]);
+        assert_eq!(h.learn.role_label(), "TURN ROTARY 2 LEFT");
+        h.settle();
+        assert_eq!(h.learn.role_label(), "TURN ROTARY 2 RIGHT");
+
+        for value in [65, 66, 67] {
+            h.send(&[0xb0, 10, value]);
+        }
+        let success = h.learn.feedback().to_owned();
+        h.now += GESTURE_SETTLE - Duration::from_millis(1);
+        h.learn.tick(h.now);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        assert_eq!(h.learn.feedback(), success);
+        h.now += Duration::from_millis(2);
+        h.learn.tick(h.now);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+    }
+
+    #[test]
+    fn positional_rotary_crossing_the_relative_range_is_never_learned() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+
+        for value in [61, 62, 63, 64, 65, 66, 67, 68] {
+            h.send(&[0xb0, 10, value]);
+        }
+        h.settle();
+        h.send(&[0xb0, 10, 63]);
+
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        assert!(h.learn.feedback().starts_with("DIRECTION"));
+        for value in [64, 65, 66, 67] {
+            h.send(&[0xb0, 10, value]);
+        }
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+    }
+
+    #[test]
+    fn opposite_direction_rejects_but_different_cc_is_ignored() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+        for value in [63, 62, 61] {
+            h.send(&[0xb0, 10, value]);
+        }
+        h.settle();
+
+        h.send(&[0xb0, 10, 63]);
+        assert!(h.learn.feedback().starts_with("DIRECTION"));
+        assert!(h.learn.feedback_is_error());
+        assert!(h.learn.prompt_line().contains("turn right"));
+
+        h.settle();
+        for value in [63, 62, 61] {
+            h.send(&[0xb0, 10, value]);
+        }
+        h.settle();
+        h.send(&[0xb0, 11, 65]);
+        assert!(!h.learn.feedback_is_error());
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+        for value in [65, 66, 67] {
+            h.send(&[0xb0, 10, value]);
+        }
+        assert_eq!(h.learn.draft().controls.get(&10), Some(&1));
+    }
+
+    #[test]
+    fn revisited_mapped_step_accepts_a_replacement_without_a_keyboard() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+        h.learn_rotary(10);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+
+        h.send(&[0xb0, 28, 63]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        h.settle();
+        h.learn_rotary(11);
+
+        assert!(!h.learn.draft().controls.contains_key(&10));
+        assert_eq!(h.learn.draft().controls.get(&11), Some(&1));
+    }
+
+    #[test]
+    fn rejected_rotary_rearms_itself_and_prompts_for_no_keys() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+        h.send(&[0xb0, 10, 63]);
+        h.send(&[0xb0, 10, 62]);
+        h.send(&[0xb0, 10, 67]);
+
+        assert!(h.learn.feedback_is_error());
+        for key_name in [" R ", " S ", "Esc", "Enter"] {
+            assert!(!h.learn.prompt_line().contains(key_name));
+        }
+        h.settle();
+        h.learn_rotary(10);
+        assert_eq!(h.learn.draft().controls.get(&10), Some(&1));
+    }
+
+    #[test]
+    fn unrelated_absolute_stream_does_not_poison_partial_rotary_proof() {
+        let mut h = Harness::new();
+        h.learn_master(28, 118, false);
+
+        h.send(&[0xb0, 10, 63]);
+        h.send(&[0xb0, 10, 62]);
+        let stable_feedback = h.learn.feedback().to_owned();
+        for value in 1..=86 {
+            h.send(&[0xb0, 1, value]);
+        }
+        assert!(!h.learn.feedback_is_error());
+        assert_eq!(h.learn.feedback(), stable_feedback);
+
+        h.send(&[0xb0, 10, 61]);
+        h.settle();
+        for value in [65, 66, 67] {
+            h.send(&[0xb0, 10, value]);
+        }
+        assert_eq!(h.learn.draft().controls.get(&10), Some(&1));
+    }
+
+    #[test]
+    fn high_low_relative_rotary_proves_both_directions() {
+        let mut h = Harness::new();
+        h.learn_master(114, 115, true);
+        h.learn_rotary(10);
+        assert_eq!(h.learn.draft().controls.get(&10), Some(&1));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
     }
 
     #[test]
     fn next_control_packet_during_settle_is_not_taken_by_control_one() {
         let mut h = Harness::new();
         h.learn_master(28, 118, false);
-        h.send(&[0xb0, 10, 20]);
-        h.send(&[0xb0, 11, 30]);
+        for _ in 0..3 {
+            h.send(&[0xb0, 10, 63]);
+        }
         h.settle();
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(1));
+        for _ in 0..3 {
+            h.send(&[0xb0, 10, 65]);
+        }
+        h.send(&[0xb0, 11, 65]);
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
         assert_eq!(h.learn.draft().controls.len(), 1);
-        h.send(&[0xb0, 11, 31]);
+        h.learn_rotary(11);
         assert_eq!(h.learn.draft().controls.len(), 2);
         assert_eq!(h.learn.draft().controls[&11], 2);
     }
@@ -1596,21 +3075,69 @@ mod tests {
     }
 
     #[test]
-    fn multi_packet_rotary_browse_gesture_skips_one_role() {
+    fn learned_master_rotary_changes_steps_minus_plus_without_a_click() {
         let mut h = Harness::new();
         h.learn_master(28, 118, false);
-        for value in [65, 66, 67, 64] {
-            h.send(&[0xb0, 28, value]);
-        }
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(1));
+
+        h.send(&[0xb0, 28, 65]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+        h.send(&[0xb0, 28, 65]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
         h.settle();
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(1));
+        h.send(&[0xb0, 28, 63]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+
+        h.settle();
+        h.send(&[0xb0, 10, 63]);
+        h.send(&[0xb0, 10, 62]);
+        h.send(&[0xb0, 1, 1]);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        h.send(&[0xb0, 28, 63]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+    }
+
+    #[test]
+    fn waiting_never_advances_an_unlearned_shift_click_or_pad() {
+        let mut h = Harness::new();
+        h.send(&[0xb0, 28, 63]);
+        h.settle();
+        h.send(&[0xb0, 28, 65]);
+        h.settle();
+        h.send(&[0xb0, 118, 127]);
+        h.send(&[0xb0, 118, 0]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+        h.now += Duration::from_secs(30);
+        h.learn.tick(h.now);
+        assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+
+        assert!(h.learn.skip());
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        for _ in 0..8 {
+            assert!(h.learn.skip());
+        }
+        assert_eq!(h.learn.role(), LearnRole::SecondaryEncoderClick);
+        h.now += Duration::from_secs(30);
+        h.learn.tick(h.now);
+        assert_eq!(h.learn.role(), LearnRole::SecondaryEncoderClick);
+
+        h.send(&[0xb0, 117, 127]);
+        h.send(&[0xb0, 117, 0]);
+        h.skip_controls();
+        assert_eq!(h.learn.role(), LearnRole::Pad(0));
+        h.now += Duration::from_secs(30);
+        h.learn.tick(h.now);
+        assert_eq!(h.learn.role(), LearnRole::Pad(0));
     }
 
     #[test]
     fn save_click_repeats_and_release_produce_one_action() {
         let mut h = Harness::new();
         h.learn_master(28, 118, false);
+        assert_eq!(h.send(&[0xb0, 118, 127]), LearnAction::None);
+        assert_eq!(h.send(&[0xb0, 118, 0]), LearnAction::None);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        h.settle();
+        h.skip_to_confirm();
         assert_eq!(h.send(&[0xb0, 118, 127]), LearnAction::Save);
         assert_eq!(h.send(&[0xb0, 118, 127]), LearnAction::None);
         h.learn.mark_save_result(true);
@@ -1622,16 +3149,26 @@ mod tests {
     fn retry_clears_only_current_role_and_reentry_has_fresh_quarantine() {
         let mut h = Harness::new();
         h.learn_master(28, 118, false);
-        h.send(&[0xb0, 10, 20]);
+        h.send(&[0xb0, 10, 63]);
         h.learn.retry_at(h.now);
         assert_eq!(h.learn.draft().encoder_relative_cc, Some(28));
         assert_eq!(h.learn.draft().encoder_press_cc, Some(118));
-        assert!(h.learn.draft().controls.is_empty());
-        h.send(&[0xb0, 10, 21]);
-        assert!(h.learn.draft().controls.is_empty());
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
+        h.send(&[0xb0, 10, 63]);
+        assert!(!h
+            .learn
+            .draft()
+            .controls
+            .values()
+            .any(|position| *position == 1));
         h.now += ENTRY_QUIET;
         h.learn.tick(h.now);
-        h.send(&[0xb0, 11, 30]);
+        h.learn_rotary(11);
         assert_eq!(h.learn.draft().controls[&11], 1);
 
         let mut reentered = LearnSession::new_at("Controller", h.now);
@@ -1645,6 +3182,7 @@ mod tests {
         for (rotary, click) in [(28, 118), (114, 115)] {
             let mut h = Harness::new();
             h.learn_master(rotary, click, false);
+            h.skip_controls();
             let config = h.learn.validated_config().unwrap();
             assert_eq!(config.encoder_relative_cc, Some(rotary));
             assert_eq!(config.encoder_press_cc, Some(click));
@@ -1656,21 +3194,25 @@ mod tests {
         let mut h = Harness::new();
         h.learn_master(114, 115, true);
         assert!(h.learn.draft().encoder_relative_reverse);
-        for value in [1, 2, 3, 0] {
-            h.send(&[0xb0, 114, value]);
-        }
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(1));
+        h.learn_rotary(10);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
         h.settle();
-        assert_eq!(h.learn.role(), LearnRole::AbsoluteControl(1));
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
     }
 
     #[test]
     fn trailing_traffic_cannot_replace_accepted_success_with_conflict() {
         let mut h = Harness::new();
         h.learn_master(28, 118, false);
-        h.send(&[0xb0, 10, 20]);
+        for _ in 0..3 {
+            h.send(&[0xb0, 10, 63]);
+        }
+        h.settle();
+        for _ in 0..3 {
+            h.send(&[0xb0, 10, 65]);
+        }
         let success = h.learn.feedback().to_owned();
-        h.send(&[0xb0, 10, 21]);
+        h.send(&[0xb0, 10, 66]);
         h.send(&[0xb0, 28, 64]);
         assert_eq!(h.learn.feedback(), success);
         assert!(success.contains("OK"));
@@ -1738,12 +3280,8 @@ mod tests {
     fn page_cycle_chord_ignores_modifier_press_and_may_reuse_a_control() {
         let mut h = Harness::new();
         h.learn_master(28, 118, false);
-        h.send(&[0xb0, 10, 40]);
-        h.settle();
-        for _ in 1..ABSOLUTE_CONTROL_COUNT {
-            assert!(h.learn.skip());
-        }
-        assert_eq!(h.learn.role(), LearnRole::Pad(0));
+        h.learn_rotary(10);
+        h.skip_controls();
         for _ in 0..4 {
             assert!(h.learn.skip());
         }
@@ -1754,7 +3292,7 @@ mod tests {
         assert_eq!(h.learn.draft().page_cycle_modifier, None);
         h.send(&[0xb0, 27, 127]);
         assert_eq!(h.learn.draft().page_cycle_modifier, None);
-        h.send(&[0xb0, 10, 70]);
+        h.send(&[0xb0, 10, 65]);
         assert_eq!(
             h.learn.draft().page_cycle_modifier,
             Some(ControllerButton::Cc { channel: 0, cc: 27 })
@@ -1764,7 +3302,7 @@ mod tests {
             Some(ControllerButton::Cc { channel: 0, cc: 10 })
         );
         assert!(h.learn.feedback().contains("OK"));
-        h.send(&[0xb0, 10, 71]);
+        h.send(&[0xb0, 10, 66]);
         assert_eq!(h.learn.role(), LearnRole::Pad(4));
         h.send(&[0xb0, 27, 0]);
         assert_eq!(h.learn.role(), LearnRole::Pad(5));

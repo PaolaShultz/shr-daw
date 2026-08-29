@@ -115,7 +115,11 @@ asks with the two example scales `C D E F G A B C` and
 
 ## Controller and performance MIDI inputs
 
-`controller.conf input=` is the explicit control-surface selector. When it is
+`controller.conf input=` is the active control-surface selector. Explicit MIDI
+Learn for a reviewed controller also saves
+`controller-mappings/PROFILE-ID.conf` beside it, so reconnecting a known model
+restores that model's private mapping instead of borrowing or destroying the
+mapping of the previously connected model. When `controller.conf input=` is
 empty, repeated `midi.input=` values are tried in order as legacy alternatives;
 they do not open multiple devices. The default
 `midi.controller_musical_input=true` preserves combined-device behavior:
@@ -319,7 +323,7 @@ setting is active. See
 The SHR-owned JACK client sums whichever optional managed instrument, SHR
 Drums, and Loop sources are present plus one configured stereo capture pair.
 The melodic instrument retains its Project-persisted source insert rack and
-two aux buses. The complete sum then passes through the master rack, live
+three aux buses. The complete sum then passes through the master rack, live
 master level, fixed Project MASTER STRIP, final meter, final stereo recorder
 tap, and playback. Automatic startup remains disabled by default; MTR Input
 **MON ON** explicitly starts this same bus for input-only monitoring:
@@ -467,17 +471,19 @@ the next play so reconnected hardware is used without rewriting the Project.
 
 ## Controller menu layouts
 
-`controller.conf` records physical identity only. `pot.1` through `pot.12` name
-the twelve continuous positions; `pad.1` through `pad.8` name physical pads.
+`controller.conf` records physical identity only. `rotary.2` through
+`rotary.16` name the fifteen direction-only turns; rotary 1's relative turn and the
+clicks on rotaries 1 and 9 use the separate `encoder.*` fields. `pad.1` through
+`pad.8` name physical pads.
 Instrument and screen tables—not the controller profile—give those positions
 their current parameter or action. The current context is described in the
 [complete controller map](CONTROLLER_INTERFACE.md#complete-controller-map).
 
-Each POT value is the absolute CC emitted by that position:
+Each rotary entry identifies the CC emitted by that physical control:
 
 ```text
-pot.1=74
-pot.2=71
+rotary.2=74
+rotary.3=71
 ```
 
 Eight-button layout:
@@ -534,16 +540,22 @@ encoder.modified_relative_cc=29
 encoder.modified_relative_reverse=false
 ```
 
+Parameter rotaries carry SHR's current value by the signed left/right step.
+Preset load,
+RESET, mixer-bank changes, and linked controls continue from the current value
+because the hardware never claims a parameter position.
+
 Use `note.1.27` instead when the button sends a note. Omit
 `encoder.modified_relative_cc` when held turns keep using the ordinary
 `encoder.relative_cc`; otherwise the shifted CC is consumed but navigates only
 while the configured modifier is down. The reviewed MiniLab 3 profile maps the
 currently learned Shift CC9 and shifted rotary CC112 automatically. The earlier
 DAW-mode CC27/CC29 pair remains compatible. MIDI Learn's optional
-**ENCODER SHIFT** step captures the complete held gesture: hold Shift, turn
-left once, then release. It stores a separate shifted relative CC when
-the controller emits one, or leaves the ordinary encoder CC active when held
-turns keep using it. The explicit keys remain available for manual profiles.
+**ENCODER SHIFT** step captures two separate gestures: Shift plus left, release,
+then Shift plus right and release again. It stores a separate shifted relative CC when an
+explicit MIDI modifier is present. For the MiniLab mkII, whose hardware Shift
+selects an alternate CC without sending a standalone modifier message, it
+stores that alternate relative CC directly.
 
 Four-button layout:
 
@@ -564,9 +576,11 @@ five-pad layout uses pad 1 for page cycle and pads 2–5 for visible actions; th
 four-pad layout uses pads 1–4 for visible actions. Those meanings are runtime
 layout rules and are not stored in the controller profile.
 
-Legacy `cc.INCOMING=TARGET`, `pad.NOTE=ROLE`, and
-`button.cc.NUMBER=ROLE` entries remain readable and migrate in memory to the
-same numbered POT/PAD positions. New saves use only positional syntax.
+Legacy `pad.NOTE=ROLE` and `button.cc.NUMBER=ROLE` entries remain readable and
+migrate in memory to the same PAD positions. Positional continuous mappings
+from `cc.INCOMING=TARGET` or version-8 `pot.1` through `pot.12` are read only
+long enough to drop them; they are never reinterpreted as direction steps. New
+saves use only `rotary.2` through `rotary.16` for learned relative controls.
 Command-note on/off and matching polyphonic pressure remain consumed; unmapped
 musical notes pass through.
 Disabled (`-`) and planned (`~`) entries never dispatch actions.
@@ -577,15 +591,20 @@ List or change controller mappings with:
 shr pads list
 shr pads input "Controller port name"
 shr pads layout 5
-shr pads pot 1 74
+shr pads rotary 2 74
 shr pads pad 1 note 10 36
 ```
 
 `encoder.relative_reverse=true` supports relative
 encoders whose clockwise messages are below 64.
+Positional 0–127 rotary output is unsupported. MIDI Learn asks for Relative 1
+or Relative 2 instead of recording an absolute mode.
 `encoder.modified_relative_reverse=true` applies the same convention to a
-separate shifted turn CC, and `encoder.press_note=N` supports encoder presses
-sent as notes. Normally `shr-setup` or `shr pads learn` writes these details.
+separate shifted turn CC. `encoder.press_note=N` stores rotary 1's click as a
+note; `encoder.secondary_press_note=N` does the same for rotary 9. The saved
+`synth.press_cc` or `synth.press_note` alias lets that same physical second
+click drive a model-owned action such as Dual Filter's core toggle. Normally
+`shr-setup` or `shr pads learn` writes these details.
 See
 [Automatic controller setup and MIDI learn](CONTROLLER_PROFILES.md).
 
@@ -690,7 +709,7 @@ bank, and program values.
 ## Project files
 
 Projects are stored as `.shsong` text files below
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 17
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/songs/`. Current Project format 18
 stores each FT2 Pattern as a self-contained unit with its own tempo,
 meter, EIGHTH/SIXTEENTH swing, page targets, setup messages, four lanes per page, four column
 channel/bank/program setups, per-page entry mode/anchor, automatic Note Off
@@ -733,9 +752,12 @@ Format 13 adds the drum rack; Format 14 adds bounded sparse automation; Format
 15 adds Pattern swing and cell timing. Format 16 adds cell probability and
 conditions; formats 0–15 load them as 100%/ALWAYS. Format 17 adds independent
 lane cycle length, rate, and direction; formats 0–16 load FULL/1X/FORWARD.
+Format 18 expands the bounded Project aux inventory from two buses to three;
+older Projects retain their exact existing aux routes and load the third slot
+empty.
 Formats 0–14 load straight/on-grid in
 memory. Format 12 and older routing remains unchanged and receives restrained
-family defaults in memory. Explicit save writes format 17. Unknown newer
+family defaults in memory. Explicit save writes format 18. Unknown newer
 formats and malformed, non-finite, out-of-range, unknown-field, or newer
 MASTER STRIP records remain refused.
 

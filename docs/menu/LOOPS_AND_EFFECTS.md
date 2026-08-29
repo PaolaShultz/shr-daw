@@ -115,7 +115,7 @@ performing another automatic analysis.
 
 ## FX Rack
 
-The rack targets `SOURCE`, `AUX 1`, `AUX 2`, `DRUMS`, or `MASTER`. Source,
+The rack targets `SOURCE`, `AUX 1`, `AUX 2`, `AUX 3`, `DRUMS`, or `MASTER`. Source,
 drum, and master racks are serial inserts. Aux buses have an independent send
 level, pre/post source-insert point, wet-only processor rack, and return level.
 Each rack is bounded to eight effects. The ordinary rotary browses its rows;

@@ -31,7 +31,7 @@ The 12 panel values come from these parameters:
 | 45–48 | `DCA1_ATTACK` through `DCA1_RELEASE` | 0–1 |
 | 132–134 | `DEL1_WET`, `DEL1_DELAY`, `DEL1_FEEDB` | 0–1 |
 
-Choose their initial values carefully: they are the pickup targets, the
+Choose their initial values carefully: they are the relative-turn baselines, the
 Playback-screen encoder reset values, and neutral reference for the colored
 indicators. Keep output levels conservative and leave the limiter enabled
 unless there is a reason not to.
@@ -54,8 +54,8 @@ xmllint --noout "presets/synthv1/New Sound.synthv1"
 
 Static validation cannot judge tone. Audition through the normal interface only
 when authorized, compare soft and hard velocities across several octaves, test
-chords for clipping, and confirm the in-place parameter reset plus all 12 pickup
-controls afterward.
+chords for clipping, and confirm the in-place parameter reset plus all twelve
+relative controls afterward.
 
 For imported patches, record their origin and license in this document or a
 nearby note. Do not assume a preset found online is redistributable. Once a

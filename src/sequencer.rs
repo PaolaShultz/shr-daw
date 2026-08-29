@@ -17,7 +17,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const SONG_VERSION: u8 = 17;
+pub const SONG_VERSION: u8 = 18;
 pub const LANES_PER_PAGE: usize = 4;
 pub const LOOP_SLOT_COUNT: usize = 4;
 pub const AUTOMATION_TICKS_PER_ROW: u32 = 1_680;
@@ -2358,7 +2358,7 @@ pub fn decode(text: &str) -> Result<Song> {
                     (0..=14, [number, rows, tempo, meter]) => {
                         (*number, *rows, *tempo, *meter, SwingDivision::default(), 50)
                     }
-                    (15..=17, [number, rows, tempo, meter, division, amount]) => (
+                    (15..=18, [number, rows, tempo, meter, division, amount]) => (
                         *number,
                         *rows,
                         *tempo,
@@ -2509,7 +2509,7 @@ pub fn decode(text: &str) -> Result<Song> {
                         )
                     }
                     (
-                        11..=17,
+                        11..=18,
                         [_, _, name, enabled, velocity, percussion, target, profile, entry_mode, entry_anchor, note_off_enabled],
                     ) => (
                         Page {
@@ -2649,6 +2649,9 @@ pub fn decode(text: &str) -> Result<Song> {
     } else {
         ProjectAuxRouting::default()
     };
+    if version < 18 && (aux_routing.buses.len() > 2 || aux_routing.sends.len() > 2) {
+        bail!("Project format {version} cannot contain a third aux route");
+    }
     let migrated_drum_id = if version < 13 {
         Some(
             insert_rack
@@ -7028,7 +7031,7 @@ mod tests {
                 !line.starts_with("pattern_drum_class=") && !line.starts_with("master_strip=")
             })
             .map(|line| {
-                if line.starts_with("SHSYNTH-SONG 17") {
+                if line.starts_with("SHSYNTH-SONG 18") {
                     "SHSYNTH-SONG 5"
                 } else if line.starts_with("pattern_page=") {
                     let without_anchor = line.rsplit_once('|').unwrap().0;
@@ -7249,10 +7252,33 @@ mod tests {
                 crate::audio_graph::SendPoint::PostInsert,
             )
             .unwrap();
+        for (kind, level) in [
+            (crate::audio_graph::EffectKind::Delay, -12.0),
+            (crate::audio_graph::EffectKind::Chorus, -24.0),
+        ] {
+            let aux = s.aux_routing.add_bus().unwrap();
+            s.aux_routing.add_effect(&s.insert_rack, aux, kind).unwrap();
+            s.aux_routing
+                .set_send(
+                    &s.insert_rack,
+                    aux,
+                    level,
+                    crate::audio_graph::SendPoint::PostInsert,
+                )
+                .unwrap();
+        }
         s.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let text = encode(&s).unwrap();
-        assert!(text.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(text.starts_with("SHSYNTH-SONG 18\n"));
+        assert_eq!(s.aux_routing.buses.len(), 3);
         assert_eq!(decode(&text).unwrap(), s);
+        assert!(decode(&text.replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 17", 1)).is_err());
+        let mut legacy = s.clone();
+        legacy.aux_routing.remove_bus(3).unwrap();
+        let legacy = encode(&legacy)
+            .unwrap()
+            .replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 17", 1);
+        assert_eq!(decode(&legacy).unwrap().aux_routing.buses.len(), 2);
         assert!(decode(&text.replace("gate=80\n", "")).is_err());
         assert!(decode(&text.replace("\"threshold_db\":-27.5", "\"threshold_db\":null")).is_err());
     }
@@ -7280,7 +7306,7 @@ mod tests {
         pages_mut(&mut song)[2].target = PageTarget::InternalDrums(drum_kit);
 
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 18\n"));
         assert!(encoded.contains("project_key=1|minor\n"));
         assert!(encoded.contains("drum_rack="));
         assert!(encoded.contains("|shr-drums:experimental-noise|"));
@@ -7318,7 +7344,7 @@ mod tests {
         assert_eq!(decode(&encoded).unwrap(), song);
 
         let fourteen =
-            without_v15_rhythm_fields(&encoded).replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 14", 1);
+            without_v15_rhythm_fields(&encoded).replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 14", 1);
         let migrated = decode(&fourteen).unwrap();
         assert_eq!(
             migrated.patterns[&0].automation,
@@ -7455,7 +7481,7 @@ mod tests {
             .lines()
             .filter(|line| !line.starts_with("drum_rack="))
             .map(|line| {
-                if line == "SHSYNTH-SONG 17" {
+                if line == "SHSYNTH-SONG 18" {
                     "SHSYNTH-SONG 12"
                 } else {
                     line
@@ -7479,7 +7505,7 @@ mod tests {
         assert_eq!(reverb.parameters["predelay_ms"], 14.0);
         assert_eq!(
             encode(&migrated).unwrap().lines().next(),
-            Some("SHSYNTH-SONG 17")
+            Some("SHSYNTH-SONG 18")
         );
     }
 
@@ -7490,7 +7516,7 @@ mod tests {
             Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
         pages_mut(&mut original)[2].target = PageTarget::ConfiguredExternal;
         let legacy = without_v12_fields(&encode(&original).unwrap()).replacen(
-            "SHSYNTH-SONG 17",
+            "SHSYNTH-SONG 18",
             "SHSYNTH-SONG 11",
             1,
         );
@@ -7545,7 +7571,7 @@ mod tests {
         pattern.rows[3][0].command = Command::Tempo("99.75".parse().unwrap());
         pattern.rows[3][0].nudge = -24;
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 18\n"));
         assert!(encoded.contains("pattern=0|64|10050|4|sixteenth|50\n"));
         assert!(encoded.contains("|manual|1|0\n"));
         assert!(encoded.contains("|T9975|-24|100|-\n"));
@@ -7564,7 +7590,7 @@ mod tests {
             ..Cell::default()
         };
         let legacy = without_v15_rhythm_fields(&encode(&current).unwrap()).replacen(
-            "SHSYNTH-SONG 17",
+            "SHSYNTH-SONG 18",
             "SHSYNTH-SONG 14",
             1,
         );
@@ -7588,7 +7614,7 @@ mod tests {
         let legacy = without_v15_rhythm_fields(&current)
             .lines()
             .map(|line| {
-                if line == "SHSYNTH-SONG 17" {
+                if line == "SHSYNTH-SONG 18" {
                     "SHSYNTH-SONG 10".to_owned()
                 } else if line.starts_with("project_key=")
                     || line.starts_with("drum_kit=")
@@ -7614,7 +7640,7 @@ mod tests {
     fn format_nine_whole_tempos_migrate_in_memory_without_rewriting() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy =
-            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 9", 1);
+            downgrade_tempo_fields(&current).replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 9", 1);
         let base = env::temp_dir().join(format!("shr-tempo-v9-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -7623,7 +7649,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.patterns[&0].tempo, Bpm::DEFAULT);
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 18\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -7635,7 +7661,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 8", 1);
+            .replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 8", 1);
         let base = env::temp_dir().join(format!("shr-strip-v8-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -7645,7 +7671,7 @@ mod tests {
         let loaded = load(&base, "legacy").unwrap();
         assert_eq!(loaded.master_strip, MasterStripSettings::default());
         assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
-        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encode(&loaded).unwrap().starts_with("SHSYNTH-SONG 18\n"));
         let _ = fs::remove_dir_all(base);
     }
 
@@ -7665,7 +7691,7 @@ mod tests {
                 .is_err()
         );
         assert!(decode(&encoded.replacen("\"version\":1", "\"version\":2", 1)).is_err());
-        assert!(decode(&encoded.replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 18", 1)).is_err());
+        assert!(decode(&encoded.replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 19", 1)).is_err());
     }
 
     #[test]
@@ -7837,7 +7863,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 7", 1)
+            .replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 7", 1)
             .replacen(
                 "insert_rack=",
                 "loop_slot=1|shared.wav|12000|normal|0|16|0|875|-200\ninsert_rack=",
@@ -7869,7 +7895,7 @@ mod tests {
             .filter(|line| !line.starts_with("master_strip="))
             .collect::<Vec<_>>()
             .join("\n")
-            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 6", 1)
+            .replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 6", 1)
             .replacen(
                 "insert_rack=",
                 "loop=legacy.wav|9876|double|5|14|-8\ninsert_rack=",
@@ -8017,7 +8043,7 @@ mod tests {
             condition: StepCondition::Ratio { hit: 2, cycle: 3 },
         };
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 18\n"));
         assert!(encoded.contains("|64|111|17|37|D6|24|73|2:3\n"));
         assert_eq!(decode(&encoded).unwrap(), song);
     }
@@ -8558,14 +8584,14 @@ mod tests {
             direction: LaneDirection::Reverse,
         };
         let current = encode(&song).unwrap();
-        assert!(current.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(current.starts_with("SHSYNTH-SONG 18\n"));
         assert!(current.contains("|7|double|reverse\n"));
         assert_eq!(decode(&current).unwrap(), song);
 
         let legacy = current
             .lines()
             .map(|line| {
-                if line == "SHSYNTH-SONG 17" {
+                if line == "SHSYNTH-SONG 18" {
                     "SHSYNTH-SONG 16".into()
                 } else if let Some(lane) = line.strip_prefix("pattern_lane=") {
                     format!(
@@ -8598,14 +8624,14 @@ mod tests {
             ..Cell::default()
         };
         let current = encode(&song).unwrap();
-        assert!(current.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(current.starts_with("SHSYNTH-SONG 18\n"));
         assert!(current.contains("|73|2:5\n"));
         assert_eq!(decode(&current).unwrap(), song);
 
         let legacy = current
             .lines()
             .map(|line| {
-                if line == "SHSYNTH-SONG 17" {
+                if line == "SHSYNTH-SONG 18" {
                     "SHSYNTH-SONG 15".into()
                 } else if let Some(cell) = line.strip_prefix("cell=") {
                     format!(
@@ -10004,14 +10030,14 @@ mod tests {
             }; LANES_PER_PAGE]
         );
         assert!(song.insert_rack.order.is_empty());
-        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encode(&song).unwrap().starts_with("SHSYNTH-SONG 18\n"));
     }
 
     #[test]
     fn version_one_project_migrates_to_an_empty_insert_rack() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 1", 1)
+            .replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 1", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -10020,14 +10046,14 @@ mod tests {
             .join("\n");
         let migrated = decode(&legacy).unwrap();
         assert!(migrated.insert_rack.order.is_empty());
-        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encode(&migrated).unwrap().starts_with("SHSYNTH-SONG 18\n"));
     }
 
     #[test]
     fn version_two_project_migrates_to_empty_aux_routing() {
         let current = encode(&Song::new(&config())).unwrap();
         let old = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 2", 1)
+            .replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 2", 1)
             .replace("|default|default|default|default\n", "|1|0|0|0\n")
             .replace("|default\n", "|configured\n")
             .lines()
@@ -10044,7 +10070,7 @@ mod tests {
         let cfg = config();
         let song = Song::new(&cfg);
         let encoded = encode(&song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 18\n"));
         assert!(encoded.contains("|default|-|manual|1|1\n"));
         assert!(encoded.contains("|default|default|default|default\n"));
         let decoded = decode(&encoded).unwrap();
@@ -10060,7 +10086,7 @@ mod tests {
     fn version_three_routes_migrate_without_becoming_portable() {
         let current = encode(&Song::new(&config())).unwrap();
         let legacy = without_v5_profile_fields(&current)
-            .replacen("SHSYNTH-SONG 17", "SHSYNTH-SONG 3", 1)
+            .replacen("SHSYNTH-SONG 18", "SHSYNTH-SONG 3", 1)
             .replace("|default|default|default|default\n", "|7|0|0|0\n")
             .replace("|default\n", "|configured\n");
         let migrated = decode(&legacy).unwrap();
@@ -10081,7 +10107,7 @@ mod tests {
         let mut song = Song::new(&config());
         pages_mut(&mut song)[0].target = PageTarget::Synthv1("Legacy Lead".into());
         let legacy = without_v5_profile_fields(&encode(&song).unwrap()).replacen(
-            "SHSYNTH-SONG 17",
+            "SHSYNTH-SONG 18",
             "SHSYNTH-SONG 4",
             1,
         );

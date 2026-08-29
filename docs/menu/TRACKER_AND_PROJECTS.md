@@ -74,11 +74,12 @@ lane, column, cursor row, mode, transport, route, or managed-engine ownership.
 Back/Esc or SYS `EXIT` returns to that exact location and the launching SOUND
 page. Instrument selection remains in `ROUTE`.
 
-The child reuses Playback's current 12-control view, including the active
-synthv1 or Moj Sint model labels, live values, relative-to-preset colours,
-pickup, held notes, and native three-by-four layout. Its SOUND page contains
+The child reuses Playback's current 3×5 view, including the active synthv1 or
+Moj Sint model labels, live values, relative-to-preset colours, rotary carry, and
+held notes. Older 12-control instruments use the final three slots for Project
+AUX 1/2/3 sends; Dual Filter retains fifteen synth controls. Its SOUND page contains
 `RESET`, `SAVE`, `N00B`, and one empty position. RESET restores the existing
-baseline in place and re-arms pickup without restarting the engine or releasing
+baseline in place without restarting the engine or releasing
 notes. SAVE uses the same Overwrite/Save New/Cancel overlay and private preset
 storage as Playback; a successful save becomes the new RESET baseline and
 retargets only the active matching FT2 route. Its SYS page contains `PANIC`, an
@@ -190,16 +191,16 @@ it follows the Pattern being edited.
 
 At native 40×13 it uses one 4×3 panel for up to twelve strips. Every strip shows
 its page/name, canonical `SYN`, `DRM`, `LOP`, or `INP` owner, signed gain, five
-circular VU LEDs, shared-owner link count, and pickup direction. External MIDI
+circular VU LEDs and shared-owner link count. External MIDI
 without an exact configured stereo SHR return says `NO RETURN` and exposes no
 working fader or VU. A configured Input marked `M` is still monitor-off; opening
 the mixer never silently changes that safety choice.
 
-With twelve configured pots, pages 1–12 map directly. With fewer pots, the
-ordered available POT positions control the visible bank. Turn the main encoder
-or use `BANK-` and `BANK+` to change banks; bank changes re-arm pickup. Pages
-with the same owner share one gain and VU. Moving either linked control re-arms
-the other assigned non-motorized pot before it can change that owner again.
+With twelve configured active rotaries, pages 1–12 map directly. With fewer
+rotaries, the ordered available rotary positions control the visible bank. Turn the main encoder
+or use `BANK-` and `BANK+` to change banks. Direction-only rotaries carry the
+current gain directly. Pages with the same owner share one gain and
+VU.
 
 Opening the panel activates the final bus so live audition and transport use
 owner gain → Project processing/master strip → master volume → limiter/output.

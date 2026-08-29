@@ -4,20 +4,6 @@
     "name": "Arturia MiniLab 3",
     "match_names": ["minilab3", "minilab 3", "minilab mk3"],
     "layout": 8,
-    "pots": {
-      "1": 74,
-      "2": 71,
-      "3": 76,
-      "4": 77,
-      "5": 93,
-      "6": 18,
-      "7": 19,
-      "8": 16,
-      "9": 82,
-      "10": 83,
-      "11": 85,
-      "12": 17
-    },
     "encoder_relative_cc": 114,
     "encoder_relative_reverse": false,
     "encoder_modified_relative_cc": 112,
@@ -56,7 +42,7 @@
       "7": 10,
       "8": 10
     },
-    "source": "SHR-DAW direct MIDI learn on the connected MiniLab 3: ordinary encoder CC 114, Shift CC 9, Shift+main-encoder CC 112, and click CC 115 on channel 1, with factory pads on channel 10; the earlier directly reviewed DAW-mode Shift CC 27 and shifted encoder CC 29 remain a compatibility variant; https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions"
+    "source": "SHR-DAW direct MIDI learn on the formerly connected MiniLab 3: ordinary relative encoder CC 114, Shift CC 9, Shift+main-encoder CC 112, and click CC 115 on channel 1, with factory pads on channel 10. Its positional parameter knobs are intentionally not mapped by the direction-only rotary contract; the earlier directly reviewed DAW-mode Shift CC 27 and shifted encoder CC 29 remain a compatibility variant; https://support.arturia.com/hc/en-us/articles/6189475866396-MiniLab-3-General-Questions"
   },
   {
     "id": "arturia-minilab-mkii",

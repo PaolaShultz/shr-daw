@@ -1,6 +1,6 @@
 use crate::control::{
-    by_cc, moj_controls, normalize, value_from_cc, CONTROLS, INSTRUMENT_VOLUME_CC,
-    MOJ_CORE_TOGGLE_CC,
+    by_cc, moj_controls, normalize, value_from_cc, AUX_SEND_CONTROL_COUNT, CONTROLS,
+    INSTRUMENT_VOLUME_CC, LEGACY_SYNTH_CONTROL_COUNT, MOJ_CORE_TOGGLE_CC,
 };
 use crate::pads::{EncoderAction, PadAction, PadConfig};
 use crate::preset::{BackendKind, MojModel};
@@ -74,6 +74,9 @@ pub struct Routed<'a> {
     pub encoder_modified: bool,
     pub synth_action: Option<bool>,
     pub value: Option<(u8, f32)>,
+    /// A same-screen Project control owned by a physical rotary position, not
+    /// by the active synth's MIDI CC namespace.
+    pub surface: Option<(usize, f32)>,
     pub translated: Option<[u8; 3]>,
     pub forward: Option<&'a [u8]>,
 }
@@ -93,7 +96,26 @@ pub fn route_with_pad_lock<'a>(
     route_with_pad_lock_and_modifier(pads, backend, None, message, pad_locked, false)
 }
 
+#[cfg(test)]
 pub fn route_with_pad_lock_and_modifier<'a>(
+    pads: &PadConfig,
+    backend: BackendKind,
+    moj_model: Option<MojModel>,
+    message: &'a [u8],
+    pad_locked: bool,
+    encoder_modifier_down: bool,
+) -> Routed<'a> {
+    route_with_pad_lock_modifier_and_state(
+        pads,
+        backend,
+        moj_model,
+        message,
+        pad_locked,
+        encoder_modifier_down,
+    )
+}
+
+pub fn route_with_pad_lock_modifier_and_state<'a>(
     pads: &PadConfig,
     backend: BackendKind,
     moj_model: Option<MojModel>,
@@ -115,27 +137,53 @@ pub fn route_with_pad_lock_and_modifier<'a>(
         }
     }
     let (cc_encoder_consumed, mut encoder, mut encoder_modified) =
-        pads.encoder_action_with_modifier(message, encoder_modifier_down);
+        pads.encoder_action_with_modifier_and_state(message, encoder_modifier_down);
     let (note_encoder_consumed, note_encoder) = pads.encoder_note_action(message);
     if encoder.is_none() {
         encoder_modified = encoder_modifier_down && note_encoder.is_some();
     }
     encoder = encoder.or(note_encoder);
     let encoder_consumed = cc_encoder_consumed || note_encoder_consumed;
-    let consumed = lock_consumed || pad_consumed || encoder_consumed || synth_action.is_some();
-    let mapped_position = (!consumed && message.len() >= 3 && message[0] & 0xf0 == 0xb0)
-        .then(|| pads.pot_position(message[1]))
+    let secondary_click_consumed = pads.secondary_encoder_press_consumed(message);
+    let command_consumed = lock_consumed
+        || pad_consumed
+        || encoder_consumed
+        || secondary_click_consumed
+        || synth_action.is_some();
+    let mapped_position = (!command_consumed && message.len() >= 3 && message[0] & 0xf0 == 0xb0)
+        .then(|| pads.rotary_position(message[1]))
         .flatten();
+    let mapped_control_count = if backend == BackendKind::MojSint {
+        moj_controls(moj_model.unwrap_or(MojModel::ModelD)).len()
+    } else {
+        CONTROLS.len()
+    };
+    let legacy_aux_surface = match backend {
+        BackendKind::Synthv1 => true,
+        BackendKind::MojSint => moj_model.unwrap_or(MojModel::ModelD) != MojModel::DualFilter,
+        BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => false,
+    };
+    let surface = legacy_aux_surface
+        .then_some(mapped_position)
+        .flatten()
+        .filter(|index| {
+            (LEGACY_SYNTH_CONTROL_COUNT..LEGACY_SYNTH_CONTROL_COUNT + AUX_SEND_CONTROL_COUNT)
+                .contains(index)
+        })
+        .map(|index| (index, f32::from(message[2].min(127)) / 127.0));
+    let reserved_rotary =
+        mapped_position.is_some_and(|index| index >= mapped_control_count && surface.is_none());
+    let consumed = command_consumed || surface.is_some() || reserved_rotary;
     let volume_position = CONTROLS
         .iter()
         .position(|control| control.cc == crate::control::VOLUME_CC);
     let mapped_standard_volume = mapped_position == volume_position;
     let value = if backend == BackendKind::Synthv1
-        && !consumed
+        && !command_consumed
         && message.len() >= 3
         && message[0] & 0xf0 == 0xb0
     {
-        pads.pot_position(message[1])
+        pads.rotary_position(message[1])
             .and_then(|position| CONTROLS.get(position).copied())
             .map(|c| (c.cc, value_from_cc(c, message[2])))
     } else if backend == BackendKind::MojSint {
@@ -173,6 +221,7 @@ pub fn route_with_pad_lock_and_modifier<'a>(
         encoder_modified,
         synth_action,
         value,
+        surface,
         translated,
         forward: (!consumed && translated.is_none()).then_some(message),
     }
@@ -249,6 +298,39 @@ mod tests {
         assert!(release.consumed);
         assert!(release.encoder.is_none());
         assert!(release.forward.is_none());
+    }
+
+    #[test]
+    fn rotary_nine_click_and_legacy_aux_turns_are_consumed_without_synth_actions() {
+        let pads = PadConfig {
+            controls: HashMap::from([(86, 13), (87, 15)]),
+            secondary_encoder_press_cc: Some(119),
+            secondary_encoder_press_channel: Some(0),
+            ..PadConfig::default()
+        };
+        for message in [[0xb0, 119, 127], [0xb0, 119, 0]] {
+            let routed = route(&pads, BackendKind::Synthv1, &message);
+            assert!(routed.consumed);
+            assert_eq!(routed.encoder, None);
+            assert_eq!(routed.value, None);
+            assert_eq!(routed.surface, None);
+            assert_eq!(routed.translated, None);
+            assert!(routed.forward.is_none());
+        }
+        for (message, position) in [([0xb0, 86, 64], 12), ([0xb0, 87, 64], 14)] {
+            let routed = route(&pads, BackendKind::Synthv1, &message);
+            assert!(routed.consumed);
+            assert_eq!(routed.encoder, None);
+            assert_eq!(routed.value, None);
+            assert_eq!(routed.surface, Some((position, 64.0 / 127.0)));
+            assert_eq!(routed.translated, None);
+            assert!(routed.forward.is_none());
+        }
+        let wrong_channel = [0xb1, 119, 127];
+        assert_eq!(
+            route(&pads, BackendKind::Synthv1, &wrong_channel).forward,
+            Some(&wrong_channel[..])
+        );
     }
 
     #[test]
@@ -457,8 +539,8 @@ mod tests {
     fn dual_filter_routes_all_fifteen_positions_and_a_press_only_core_click() {
         let pads = PadConfig {
             controls: HashMap::from([(99, 15)]),
-            synth_press_cc: Some(100),
-            synth_press_channel: Some(0),
+            secondary_encoder_press_cc: Some(100),
+            secondary_encoder_press_channel: Some(0),
             ..PadConfig::default()
         };
         let control = route_with_pad_lock_and_modifier(
@@ -470,6 +552,7 @@ mod tests {
             false,
         );
         assert_eq!(control.value, Some((34, 64.0 / 127.0)));
+        assert_eq!(control.surface, None);
         assert_eq!(control.translated, Some([0xb0, 34, 64]));
 
         let press = route_with_pad_lock_and_modifier(

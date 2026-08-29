@@ -5,7 +5,10 @@ use crate::audio_graph_client::FinalBusOwner;
 use crate::audio_recorder::{AudioRecorder, RecorderStatus, RecorderTrackStatus};
 use crate::chord::HeldNotes;
 use crate::config::{ExternalMidiConfig, RuntimeConfig};
-use crate::control::{moj_controls, parameter_color, CONTROLS, MOJ_CONTROLS, VOLUME_CC};
+use crate::control::{
+    moj_controls, parameter_color, AUX_SEND_CONTROL_COUNT, CONTROLS, LEGACY_SYNTH_CONTROL_COUNT,
+    MOJ_CONTROLS, VOLUME_CC,
+};
 use crate::device_profile::{DeviceProfile, Registry as DeviceProfiles};
 use crate::drum_pattern::{self, DrumPattern};
 use crate::engine::{self, Engine, MidiEvent};
@@ -39,7 +42,7 @@ use crate::sequencer::{
     self, Cell, Command, GestureCapture, Note, PageTarget, SoftwareRoute, Song, LANES_PER_PAGE,
 };
 use crate::tempo::Bpm;
-use crate::tracker_mixer::{MixerState, MixerStrip, PickupDirection};
+use crate::tracker_mixer::{MixerState, MixerStrip};
 use anyhow::{bail, Context, Result};
 use crossterm::{
     event::{
@@ -161,6 +164,7 @@ fn fx_target_label(target: usize) -> &'static str {
         0 => "SOURCE",
         1 => "AUX 1",
         2 => "AUX 2",
+        3 => "AUX 3",
         DRUM_FX_TARGET => "DRUMS",
         _ => "MASTER",
     }
@@ -1097,7 +1101,6 @@ struct App {
     fx_edit_original: Option<(InsertRack, ProjectAuxRouting, InsertRack)>,
     fx_type_edit: Option<FxTypeEdit>,
     fx_numeric_input: Option<String>,
-    fx_pickup: FxPickup,
     fx_rack_parent: Screen,
     master_strip_parent: Screen,
     master_strip_parent_menu_page: usize,
@@ -1303,18 +1306,6 @@ impl EqEditorField {
     }
 }
 
-#[derive(Clone, Copy)]
-struct FxCatch {
-    target: f32,
-    previous: Option<f32>,
-    caught: bool,
-}
-
-#[derive(Default)]
-struct FxPickup {
-    controls: HashMap<u8, FxCatch>,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RoutingRow {
     Controller,
@@ -1362,40 +1353,6 @@ struct RoutingDraft {
 struct RoutingEditor {
     selected: usize,
     draft: Option<RoutingDraft>,
-}
-
-impl FxPickup {
-    fn arm(&mut self, targets: impl IntoIterator<Item = (u8, f32)>) {
-        self.controls = targets
-            .into_iter()
-            .map(|(cc, target)| {
-                (
-                    cc,
-                    FxCatch {
-                        target: target.clamp(0.0, 1.0),
-                        previous: None,
-                        caught: false,
-                    },
-                )
-            })
-            .collect();
-    }
-
-    fn accept(&mut self, cc: u8, value: f32) -> bool {
-        let Some(catch) = self.controls.get_mut(&cc) else {
-            return false;
-        };
-        if catch.caught {
-            return true;
-        }
-        let close = (value - catch.target).abs() <= 1.0 / 127.0 + f32::EPSILON;
-        let crossed = catch
-            .previous
-            .is_some_and(|previous| (previous - catch.target) * (value - catch.target) <= 0.0);
-        catch.previous = Some(value);
-        catch.caught = close || crossed;
-        catch.caught
-    }
 }
 
 fn normalized_physical_control(cc: u8, value: f32) -> Option<(usize, f32)> {
@@ -2252,7 +2209,6 @@ impl App {
             fx_edit_original: None,
             fx_type_edit: None,
             fx_numeric_input: None,
-            fx_pickup: FxPickup::default(),
             fx_rack_parent: Screen::Home,
             master_strip_parent: Screen::FxRack,
             master_strip_parent_menu_page: 0,
@@ -2344,7 +2300,10 @@ impl App {
         let letter = letter.to_ascii_lowercase();
         let selected = match self.screen {
             Screen::Presets => first_letter_index(
-                self.presets.iter().map(|preset| preset.name.as_str()),
+                self.presets.iter().enumerate().map(|(index, preset)| {
+                    preset::moj_catalog_display_name(&self.presets, index)
+                        .unwrap_or_else(|| preset.name.clone())
+                }),
                 letter,
             )
             .map(|index| {
@@ -2680,16 +2639,35 @@ impl App {
             self.status = "MIDI LEARN OFFLINE · connect input".into();
             return;
         }
-        let input = self
+        let current = self
             .controller_config
             .read()
             .ok()
-            .and_then(|config| config.input_match.clone());
-        let Some(input) = input else {
+            .map(|config| config.clone());
+        let Some(current) = current else {
+            self.status = "MIDI LEARN · controller state unavailable".into();
+            return;
+        };
+        let Some(input) = current.input_match else {
             self.status = "MIDI LEARN · select input in ROUTING".into();
             return;
         };
-        self.controller_learn = Some(crate::controller_learn::LearnSession::new(&input));
+        let reviewed_id = self
+            .controller_profiles
+            .matching(&input)
+            .map(|profile| profile.id.as_str());
+        let profile = current
+            .profile
+            .as_deref()
+            .filter(|profile| *profile != "learned")
+            .or(reviewed_id);
+        self.controller_learn = Some(
+            crate::controller_learn::LearnSession::new_for_profile_with_trace(
+                &input,
+                profile,
+                &self.engine_state.join("midi-learn-last.log"),
+            ),
+        );
         self.learn_mode.store(true, Ordering::Relaxed);
         self.status.clear();
     }
@@ -3137,6 +3115,9 @@ impl App {
         let Some(session) = self.controller_learn.as_ref() else {
             return;
         };
+        if !session.ready_to_save() {
+            return;
+        }
         let config = match session.validated_config() {
             Ok(config) => config,
             Err(_error) => {
@@ -3149,9 +3130,7 @@ impl App {
                 return;
             }
         };
-        let path = state.join("controller.conf");
-        if let Err(_error) = crate::controller_learn::backup(&path).and_then(|_| config.save(&path))
-        {
+        if let Err(_error) = crate::controller_learn::save_learned_for_state(state, &config) {
             self.status = "CONTROLLER SAVE FAILED · retry SAVE".into();
             if wait_for_release {
                 if let Some(session) = self.controller_learn.as_mut() {
@@ -4280,9 +4259,6 @@ impl App {
             ),
             Ordering::Relaxed,
         );
-        if screen == Screen::FxEditor {
-            self.arm_fx_pickup();
-        }
         if previous != screen {
             if previous_tracker && !next_tracker {
                 self.disable_tracker_route();
@@ -4343,19 +4319,6 @@ impl App {
         self.tracker_mixer_strips = strips;
         self.tracker_mixer
             .clamp_bank(self.tracker_mixer_strips.len());
-        self.arm_tracker_mixer_pickup();
-    }
-
-    fn arm_tracker_mixer_pickup(&mut self) {
-        let controls = self.final_bus.controls();
-        self.tracker_mixer
-            .arm_all(&self.tracker_mixer_strips, |source| {
-                controls
-                    .as_ref()
-                    .map_or(DEFAULT_SOURCE_GAIN_DB, |controls| {
-                        controls.source_gain_db(source)
-                    })
-            });
     }
 
     fn open_tracker_mixer(&mut self) {
@@ -4381,12 +4344,11 @@ impl App {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        self.tracker_mixer.configure_pots(positions);
+        self.tracker_mixer.configure_rotaries(positions);
         let status = self.sequencer.status();
         self.tracker_mixer_pattern = None;
         self.refresh_tracker_mixer(&status);
         let active = self.retry_final_bus_for_mixer();
-        self.arm_tracker_mixer_pickup();
         self.set_screen(Screen::TrackerMixer);
         self.status = if active {
             String::new()
@@ -4697,7 +4659,7 @@ impl App {
         self.status = if self.automation_armed {
             "AUTO ARMED · touch selected control · notes may record too".into()
         } else {
-            "AUTO SAFE · pickup re-armed".into()
+            "AUTO SAFE · rotary values ready".into()
         };
     }
 
@@ -4819,24 +4781,16 @@ impl App {
         self.automation_armed = false;
         self.rearm_automation_pickup();
         self.sequencer.refresh_loop(&self.song);
-        self.status = "automation lane cleared · pickup re-armed".into();
+        self.status = "automation lane cleared · rotary values ready".into();
     }
 
     fn move_tracker_mixer_bank(&mut self, direction: i8) {
-        if self
-            .tracker_mixer
-            .move_bank(direction, self.tracker_mixer_strips.len())
-        {
-            self.arm_tracker_mixer_pickup();
-        }
+        self.tracker_mixer
+            .move_bank(direction, self.tracker_mixer_strips.len());
         let count = self
             .tracker_mixer
             .bank_count(self.tracker_mixer_strips.len());
-        self.status = format!(
-            "FT2 MIX · BANK {}/{} · pickup re-armed",
-            self.tracker_mixer.bank() + 1,
-            count
-        );
+        self.status = format!("FT2 MIX · BANK {}/{}", self.tracker_mixer.bank() + 1, count);
     }
 
     fn apply_tracker_mixer_control(&mut self, cc: u8, value: f32) {
@@ -4847,8 +4801,6 @@ impl App {
             .tracker_mixer
             .assigned_strip(physical_position, self.tracker_mixer_strips.len())
         else {
-            self.tracker_mixer
-                .observe_physical(physical_position, normalized);
             return;
         };
         let Some(owner) = self
@@ -4856,20 +4808,9 @@ impl App {
             .get(strip_index)
             .and_then(|strip| strip.owner)
         else {
-            self.tracker_mixer
-                .observe_physical(physical_position, normalized);
-            self.status = "NO AUDIO RETURN · POT inactive".into();
+            self.status = "NO AUDIO RETURN · ROTARY inactive".into();
             return;
         };
-        if !self.tracker_mixer.accept(physical_position, normalized) {
-            let direction = self
-                .tracker_mixer
-                .pickup_direction(physical_position)
-                .unwrap_or(PickupDirection::Either)
-                .glyph();
-            self.status = format!("POT {} {direction} · pickup", physical_position + 1);
-            return;
-        }
         let Some(controls) = self.final_bus.controls() else {
             self.status = "FINAL BUS UNAVAILABLE · gain unchanged".into();
             return;
@@ -4879,12 +4820,34 @@ impl App {
             self.status = "FT2 MIX gain rejected".into();
             return;
         }
-        self.tracker_mixer.rearm_linked(
-            &self.tracker_mixer_strips,
-            owner,
-            gain_db,
-            physical_position,
-        );
+        self.status = format!("{} {gain_db:+.1} dB", owner.label());
+    }
+
+    fn apply_tracker_mixer_delta(&mut self, physical_position: usize, steps: i8) {
+        let Some(strip_index) = self
+            .tracker_mixer
+            .assigned_strip(physical_position, self.tracker_mixer_strips.len())
+        else {
+            return;
+        };
+        let Some(owner) = self
+            .tracker_mixer_strips
+            .get(strip_index)
+            .and_then(|strip| strip.owner)
+        else {
+            self.status = "NO AUDIO RETURN · ROTARY inactive".into();
+            return;
+        };
+        let Some(controls) = self.final_bus.controls() else {
+            self.status = "FINAL BUS UNAVAILABLE · gain unchanged".into();
+            return;
+        };
+        let gain_db = (controls.source_gain_db(owner) + f32::from(steps) * 0.5)
+            .clamp(SOURCE_GAIN_MIN_DB, SOURCE_GAIN_MAX_DB);
+        if !controls.set_source_gain_db(owner, gain_db) {
+            self.status = "FT2 MIX gain rejected".into();
+            return;
+        }
         self.status = format!("{} {gain_db:+.1} dB", owner.label());
     }
 
@@ -5571,6 +5534,20 @@ impl App {
             .unwrap_or(BackendKind::Synthv1)
     }
 
+    fn preset_catalog_name(&self, selected: &Preset) -> String {
+        self.catalogs
+            .iter()
+            .find(|catalog| catalog.backend == selected.backend)
+            .and_then(|catalog| {
+                catalog
+                    .presets
+                    .iter()
+                    .position(|preset| preset.id == selected.id)
+                    .and_then(|index| preset::moj_catalog_display_name(&catalog.presets, index))
+            })
+            .unwrap_or_else(|| selected.display_name())
+    }
+
     fn cycle_engine(&mut self, direction: i8) {
         if self.catalogs.is_empty() {
             return;
@@ -5592,7 +5569,7 @@ impl App {
                 .unwrap_or_else(|| format!("{} · {} sounds", next.label(), self.presets.len()));
         }
     }
-    fn arm_pickup(&self) {
+    fn arm_pickup(&mut self) {
         if let Ok(mut pickup) = self.pickup.lock() {
             pickup.arm(&self.values);
         }
@@ -13526,9 +13503,6 @@ impl App {
     }
 
     fn observe_mapped_control(&mut self, cc: u8, value: f32) {
-        if let Some((position, normalized)) = normalized_physical_control(cc, value) {
-            self.tracker_mixer.observe_physical(position, normalized);
-        }
         if !matches!(cc, VOLUME_CC | crate::control::INSTRUMENT_VOLUME_CC) {
             return;
         }
@@ -13539,6 +13513,201 @@ impl App {
             self.performance_meter.clear_numeric_peaks();
         }
         self.last_mapped_volume = Some(value);
+    }
+
+    fn legacy_aux_surface_active(&self) -> bool {
+        match self.playing.as_ref().map(|preset| preset.backend) {
+            Some(BackendKind::Synthv1) => true,
+            Some(BackendKind::MojSint) => self
+                .playing
+                .as_ref()
+                .and_then(Preset::moj_model)
+                .is_some_and(|model| model != preset::MojModel::DualFilter),
+            _ => false,
+        }
+    }
+
+    fn aux_surface_visible(&self) -> bool {
+        self.legacy_aux_surface_active()
+            && matches!(self.screen, Screen::Playback | Screen::TrackerParameters)
+    }
+
+    fn apply_aux_surface_control(&mut self, position: usize, normalized: f32) {
+        if !self.aux_surface_visible() {
+            return;
+        }
+        let Some(index) = position.checked_sub(LEGACY_SYNTH_CONTROL_COUNT) else {
+            return;
+        };
+        if index >= AUX_SEND_CONTROL_COUNT {
+            return;
+        }
+        let normalized = normalized.clamp(0.0, 1.0);
+        self.set_aux_surface_level(position, normalized);
+    }
+
+    fn apply_aux_surface_delta(&mut self, position: usize, steps: i8) {
+        if steps == 0 || !self.aux_surface_visible() {
+            return;
+        }
+        let Some(index) = position.checked_sub(LEGACY_SYNTH_CONTROL_COUNT) else {
+            return;
+        };
+        if index >= AUX_SEND_CONTROL_COUNT {
+            return;
+        }
+        let aux_id = index as u8 + 1;
+        let current = self
+            .song
+            .aux_routing
+            .sends
+            .iter()
+            .find(|send| send.aux_id == aux_id)
+            .map(|send| send.level_db);
+        let next = match (current, steps.signum()) {
+            (None, -1) => 0.0,
+            (None, _) => aux_send_normalize_db(-27.0 + 3.0 * f32::from(steps - 1)),
+            (Some(level), _) => {
+                let level = level + 3.0 * f32::from(steps);
+                if level < -60.0 {
+                    0.0
+                } else {
+                    aux_send_normalize_db(level.clamp(-60.0, 12.0))
+                }
+            }
+        };
+        self.set_aux_surface_level(position, next);
+    }
+
+    fn set_aux_surface_level(&mut self, position: usize, normalized: f32) {
+        let index = position - LEGACY_SYNTH_CONTROL_COUNT;
+        let aux_id = index as u8 + 1;
+        let mut aux = self.song.aux_routing.clone();
+        let Some(bus) = aux.buses.iter().find(|bus| bus.id == aux_id) else {
+            self.status = format!("AUX {aux_id} · add an effect first");
+            return;
+        };
+        if bus.rack.effects.is_empty() {
+            self.status = format!("AUX {aux_id} · add an effect first");
+            return;
+        }
+        let (level_db, message) = if normalized <= f32::EPSILON {
+            aux.clear_send(aux_id);
+            (None, format!("AUX {aux_id} send · OFF"))
+        } else {
+            let level_db = aux_send_denormalize(normalized);
+            let point = aux
+                .sends
+                .iter()
+                .find(|send| send.aux_id == aux_id)
+                .map(|send| send.point)
+                .unwrap_or(SendPoint::PostInsert);
+            if aux
+                .set_send(&self.song.insert_rack, aux_id, level_db, point)
+                .is_err()
+            {
+                self.status = format!("AUX {aux_id} send failed · old value kept");
+                return;
+            }
+            (
+                Some(level_db),
+                format!("AUX {aux_id} send · {level_db:+.1} dB"),
+            )
+        };
+        if self.final_bus.active() {
+            if self.audio_recorder.status().recording
+                || self.recorder.is_recording()
+                || self.final_bus.recording_active()
+            {
+                self.status = "STOP RECORDING · AUX send unchanged".into();
+                return;
+            }
+            if self
+                .final_bus
+                .apply_aux_send_level(aux_id, level_db)
+                .is_err()
+            {
+                self.status = format!("AUX {aux_id} send failed · old value kept");
+                return;
+            }
+            self.song.aux_routing = aux;
+            self.status = message;
+            return;
+        }
+        self.commit_fx_routing(
+            self.song.insert_rack.clone(),
+            aux,
+            self.song.drum_rack.clone(),
+            message,
+        );
+    }
+
+    fn apply_relative_rotary(&mut self, received: Instant, position: usize, steps: i8) {
+        if steps == 0 {
+            return;
+        }
+        if self.screen == Screen::FxEditor {
+            self.apply_fx_control_delta(position, steps);
+            return;
+        }
+        if self.screen == Screen::TrackerMixer {
+            self.apply_tracker_mixer_delta(position, steps);
+            return;
+        }
+        if self.legacy_aux_surface_active() && position >= LEGACY_SYNTH_CONTROL_COUNT {
+            self.apply_aux_surface_delta(position, steps);
+            return;
+        }
+
+        let backend = self
+            .midi_backend
+            .lock()
+            .map(|backend| *backend)
+            .unwrap_or(BackendKind::Synthv1);
+        let target = match backend {
+            BackendKind::Synthv1 => CONTROLS.get(position).copied().map(|control| {
+                let current = self.values.get(&control.cc).copied().unwrap_or(control.min);
+                let normalized = (crate::control::normalize(control, current)
+                    + f32::from(steps) / 127.0)
+                    .clamp(0.0, 1.0);
+                let value = control.min + normalized * (control.max - control.min);
+                (control.cc, value, (normalized * 127.0).round() as u8)
+            }),
+            BackendKind::MojSint => {
+                let controls = self
+                    .playing
+                    .as_ref()
+                    .and_then(Preset::moj_model)
+                    .map(moj_controls)
+                    .unwrap_or(&MOJ_CONTROLS);
+                controls.get(position).map(|control| {
+                    let current = self.values.get(&control.cc).copied().unwrap_or_default();
+                    let value = (current + f32::from(steps) / 127.0).clamp(0.0, 1.0);
+                    (control.cc, value, (value * 127.0).round() as u8)
+                })
+            }
+            BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => CONTROLS
+                .iter()
+                .position(|control| control.cc == VOLUME_CC)
+                .filter(|volume_position| *volume_position == position)
+                .map(|_| {
+                    let cc = crate::control::INSTRUMENT_VOLUME_CC;
+                    let current = self.values.get(&cc).copied().unwrap_or_default();
+                    let value = (current + f32::from(steps) / 127.0).clamp(0.0, 1.0);
+                    (cc, value, (value * 127.0).round() as u8)
+                }),
+        };
+        let Some((cc, value, raw)) = target else {
+            return;
+        };
+        if let Ok(mut output) = self.midi_output.lock() {
+            if let Some(output) = output.as_mut() {
+                let _ = output.send(&[0xb0, cc, raw]);
+            }
+        }
+        self.capture_automation_control(received, cc, value);
+        self.observe_mapped_control(cc, value);
+        self.apply_control_value(cc, value);
     }
 
     fn apply_control_value(&mut self, cc: u8, value: f32) {
@@ -14188,44 +14357,6 @@ impl App {
         }
     }
 
-    fn arm_fx_pickup(&mut self) {
-        let targets = self
-            .selected_effect()
-            .map(|effect| {
-                crate::effect_schema::controls(effect.kind)
-                    .iter()
-                    .enumerate()
-                    .zip(CONTROLS.iter())
-                    .filter_map(|((index, _mapping), control)| {
-                        let spec = crate::effect_schema::controlled_parameter(effect.kind, index)?;
-                        let value = effect
-                            .parameters
-                            .get(spec.name)
-                            .copied()
-                            .unwrap_or(spec.default);
-                        let normalized = match spec.value_type {
-                            crate::effect_schema::ParameterType::Choices(choices) => choices
-                                .iter()
-                                .position(|choice| f32::from(*choice) == value)
-                                .map(|index| {
-                                    index as f32 / choices.len().saturating_sub(1).max(1) as f32
-                                })
-                                .unwrap_or(0.0),
-                            crate::effect_schema::ParameterType::Continuous
-                                if effect.kind == EffectKind::Eq && spec.unit == "Hz" =>
-                            {
-                                eq_log_normalize(value, spec.minimum, spec.maximum)
-                            }
-                            _ => (value - spec.minimum) / (spec.maximum - spec.minimum).max(1.0),
-                        };
-                        Some((control.cc, normalized))
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        self.fx_pickup.arm(targets);
-    }
-
     fn apply_fx_control(&mut self, cc: u8, value: f32) {
         let Some(control_index) = CONTROLS.iter().position(|control| control.cc == cc) else {
             return;
@@ -14240,10 +14371,6 @@ impl App {
             return;
         };
         let normalized = crate::control::normalize(control, value);
-        if !self.fx_pickup.accept(cc, normalized) {
-            self.status = format!("{} waiting for pickup", fx_hardware_label(control_index));
-            return;
-        }
         let Some(id) = self.selected_effect_id() else {
             return;
         };
@@ -14310,6 +14437,60 @@ impl App {
                 spec.unit
             ),
         );
+    }
+
+    fn apply_fx_control_delta(&mut self, control_index: usize, steps: i8) {
+        let Some(control) = CONTROLS.get(control_index).copied() else {
+            return;
+        };
+        let Some(effect) = self.selected_effect() else {
+            return;
+        };
+        let Some(spec) = crate::effect_schema::controlled_parameter(effect.kind, control_index)
+        else {
+            self.status = format!(
+                "{} has no parameter on this effect",
+                fx_hardware_label(control_index)
+            );
+            return;
+        };
+        let current = effect
+            .parameters
+            .get(spec.name)
+            .copied()
+            .unwrap_or(spec.default);
+        let normalized = match spec.value_type {
+            crate::effect_schema::ParameterType::Continuous => {
+                let current = if effect.kind == EffectKind::Eq && spec.unit == "Hz" {
+                    eq_log_normalize(current, spec.minimum, spec.maximum)
+                } else {
+                    (current - spec.minimum) / (spec.maximum - spec.minimum).max(1.0)
+                };
+                (current + f32::from(steps) / 127.0).clamp(0.0, 1.0)
+            }
+            crate::effect_schema::ParameterType::Integer => {
+                let value = (current + f32::from(steps)).clamp(spec.minimum, spec.maximum);
+                (value - spec.minimum) / (spec.maximum - spec.minimum).max(1.0)
+            }
+            crate::effect_schema::ParameterType::Toggle => {
+                if steps < 0 {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
+            crate::effect_schema::ParameterType::Choices(choices) => {
+                let current = choices
+                    .iter()
+                    .position(|choice| f32::from(*choice) == current)
+                    .unwrap_or(0) as i16;
+                let last = choices.len().saturating_sub(1) as i16;
+                let next = (current + i16::from(steps)).clamp(0, last);
+                f32::from(next) / f32::from(last.max(1))
+            }
+        };
+        let value = control.min + normalized * (control.max - control.min);
+        self.apply_fx_control(control.cc, value);
     }
 
     fn commit_fx_routing(
@@ -14830,7 +15011,7 @@ impl App {
 
     fn adjust_aux_send(&mut self, direction: i8) {
         if !is_aux_target(self.fx_target) {
-            self.status = "select AUX 1 or AUX 2 for send level".into();
+            self.status = "select AUX 1, AUX 2, or AUX 3 for send level".into();
             return;
         }
         let aux_id = self.fx_target as u8;
@@ -14873,7 +15054,7 @@ impl App {
 
     fn toggle_aux_send_point(&mut self) {
         if !is_aux_target(self.fx_target) {
-            self.status = "select AUX 1 or AUX 2".into();
+            self.status = "select AUX 1, AUX 2, or AUX 3".into();
             return;
         }
         let aux_id = self.fx_target as u8;
@@ -14900,7 +15081,7 @@ impl App {
 
     fn cycle_aux_return(&mut self) {
         if !is_aux_target(self.fx_target) {
-            self.status = "select AUX 1 or AUX 2".into();
+            self.status = "select AUX 1, AUX 2, or AUX 3".into();
             return;
         }
         let aux_id = self.fx_target as u8;
@@ -15226,7 +15407,7 @@ impl App {
         }
         self.values = self.original_values.clone();
         self.arm_pickup();
-        self.status = "RESET · controls waiting for pickup".into();
+        self.status = "RESET · rotary values ready".into();
     }
 
     fn save_current_user_preset(&mut self, overwrite_requested: bool) {
@@ -16262,7 +16443,7 @@ fn auto_wire_controller(state: &Path, config: &RuntimeConfig) -> Result<()> {
     let current = crate::pads::PadConfig::load(&path)?;
     let connected = crate::controller_learn::input_names()?;
     let catalog = crate::controller_profile::Catalog::discover();
-    let Some((expected, _profile_name)) = crate::controller_profile::expected_for_connected(
+    let Some((mut expected, _profile_name)) = crate::controller_profile::expected_for_connected(
         &current,
         &config.midi_input_matches,
         &connected,
@@ -16271,6 +16452,15 @@ fn auto_wire_controller(state: &Path, config: &RuntimeConfig) -> Result<()> {
     else {
         return Ok(());
     };
+    if let Some(profile_id) = expected.profile.as_deref() {
+        if let Some(stored) = crate::controller_profile::load_private_mapping(
+            state,
+            profile_id,
+            expected.input_match.as_deref().unwrap_or_default(),
+        )? {
+            expected = stored;
+        }
+    }
     if expected != current {
         crate::controller_learn::backup(&path)?;
         expected.save(&path)?;
@@ -16300,6 +16490,16 @@ fn drain(
                     app.observe_mapped_control(cc, v);
                 }
             }
+            MidiEvent::RelativeRotary {
+                received,
+                position,
+                steps,
+            } => app.apply_relative_rotary(received, position, steps),
+            MidiEvent::SurfaceControl {
+                received: _,
+                position,
+                value,
+            } => app.apply_aux_surface_control(position, value),
             MidiEvent::Value(cc, v) => {
                 app.apply_control_value(cc, v);
             }
@@ -19237,19 +19437,17 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         );
         return;
     }
-    let uses_shared_status =
-        a.controller_learn.is_some() || (a.screen != Screen::Home && !fullscreen_eq);
+    if a.controller_learn.is_some() {
+        draw_controller_learn(f, a);
+        return;
+    }
+    let uses_shared_status = a.screen != Screen::Home && !fullscreen_eq;
     let clear_area = if uses_shared_status {
         rect(area.x, area.y, area.width, area.height.saturating_sub(1))
     } else {
         area
     };
     f.render_widget(Clear, clear_area);
-    if a.controller_learn.is_some() {
-        draw_controller_learn(f, a);
-        draw_master_status(f, a);
-        return;
-    }
     match a.screen {
         Screen::Home => {
             draw_home(f, a);
@@ -19826,105 +20024,33 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
 
 fn draw_controller_learn<B: Backend>(f: &mut Frame<B>, a: &App) {
     let full = f.size();
-    let area = rect(full.x, full.y, full.width, full.height.saturating_sub(1));
+    let area = full;
     let session = a.controller_learn.as_ref().expect("learn modal is active");
-    let (step, total) = session.progress();
-    let role = session.role();
-    let draft = session.draft();
-    let feedback_lower = session.feedback().to_ascii_lowercase();
-    let save_or_recovery = if role == crate::controller_learn::LearnRole::Confirm {
-        Span::styled(
-            "Enter / rotary click · SAVE + EXIT",
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else if session.can_finish() {
-        Span::raw("←/→ browse · S skip · R retry")
-    } else {
-        Span::raw("Master rotary required")
-    };
-    let gesture = if role == crate::controller_learn::LearnRole::EncoderModifier {
-        "Hold Shift · turn left · release"
-    } else if session.can_finish() {
-        "Move once · auto-next after release"
-    } else {
-        "Finish left, right, click and release"
-    };
+    let width = usize::from(area.width);
+    let content = rect(
+        area.x,
+        area.y + area.height.saturating_sub(2) / 2,
+        area.width,
+        2,
+    );
     let lines = vec![
         Spans::from(Span::styled(
-            format!("MIDI LEARN · {step}/{total}"),
+            crate::ui_text::fit_line(&session.role_label(), width),
             Style::default()
-                .fg(Color::Green)
+                .fg(Color::LightYellow)
                 .add_modifier(Modifier::BOLD),
         )),
-        Spans::from("Controller isolated · synth protected"),
         Spans::from(Span::styled(
-            crate::ui_text::fit_line(
-                &session.role_label(),
-                usize::from(area.width.saturating_sub(2)),
-            ),
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Spans::from(gesture),
-        Spans::from(Span::styled(
-            crate::ui_text::fit_line(
-                session.feedback(),
-                usize::from(area.width.saturating_sub(2)),
-            ),
-            Style::default().fg(
-                if feedback_lower.contains("conflict") || feedback_lower.contains("expected") {
-                    Color::Red
-                } else {
-                    Color::Green
-                },
-            ),
-        )),
-        Spans::from(format!(
-            "Mapped · {} POTs · {} PADs",
-            draft.controls.len(),
-            draft.pads.len() + draft.cc_buttons.len()
-        )),
-        Spans::from(format!(
-            "Encoder · turn {} · click {} · Shift {}",
-            if draft.encoder_relative_cc.is_some() {
-                "OK"
+            crate::ui_text::fit_line(&session.prompt_line(), width),
+            Style::default().fg(if session.feedback_is_error() {
+                Color::Red
             } else {
-                "--"
-            },
-            if draft.encoder_press_cc.is_some() || draft.encoder_press_note.is_some() {
-                "OK"
-            } else {
-                "--"
-            },
-            if draft.encoder_modifier.is_some() {
-                "OK"
-            } else {
-                "--"
-            }
+                Color::Green
+            }),
         )),
-        Spans::from(save_or_recovery),
-        Spans::from("Esc cancel · previous map kept"),
-        Spans::from(if role == crate::controller_learn::LearnRole::Confirm {
-            "Save backs up and activates now"
-        } else if session.can_finish() {
-            "Rotary gestures latch · click saves"
-        } else {
-            "Complete required encoder gestures"
-        }),
     ];
-    f.render_widget(
-        Paragraph::new(lines).block(
-            Block::default()
-                .title(" CONTROLLER SETUP ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Green)),
-        ),
-        area,
-    );
+    f.render_widget(Clear, area);
+    f.render_widget(Paragraph::new(lines), content);
 }
 
 fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
@@ -21825,10 +21951,10 @@ fn draw_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App) {
         .tracker_mixer_pattern
         .map_or_else(|| "--".into(), |number| format!("{number:02}"));
     let heading = format!(
-        "FT2 MIX · PAT {pattern} · BANK {}/{} · {} POT",
+        "FT2 MIX · PAT {pattern} · BANK {}/{} · {} ROT",
         a.tracker_mixer.bank() + 1,
         bank_count,
-        a.tracker_mixer.pot_count()
+        a.tracker_mixer.rotary_count()
     );
     f.render_widget(
         Paragraph::new(crate::ui_text::fit_middle(
@@ -21854,8 +21980,8 @@ fn draw_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App) {
         let group = index / 4;
         let x = body.x + u16::try_from(column).unwrap_or(0) * cell_width;
         let y = body.y + 1 + u16::try_from(group).unwrap_or(0) * 3;
-        let pot = a.tracker_mixer.pot_number_for_strip(index, strip_count);
-        let prefix = pot.map_or_else(|| "  ".into(), |number| format!("{number}>"));
+        let rotary = a.tracker_mixer.rotary_number_for_strip(index, strip_count);
+        let prefix = rotary.map_or_else(|| "  ".into(), |number| format!("{number}>"));
         let number = strip.display_number();
         let label_width = usize::from(cell_width).saturating_sub(prefix.len() + number.len() + 1);
         let first = format!(
@@ -21863,7 +21989,7 @@ fn draw_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App) {
             crate::ui_text::fit_middle(&strip.name, label_width)
         );
         f.render_widget(
-            Paragraph::new(first).style(Style::default().fg(if pot.is_some() {
+            Paragraph::new(first).style(Style::default().fg(if rotary.is_some() {
                 Color::LightYellow
             } else {
                 Color::White
@@ -21888,9 +22014,7 @@ fn draw_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App) {
             .map_or(DEFAULT_SOURCE_GAIN_DB, |controls| {
                 controls.source_gain_db(owner)
             });
-        let direction = pot
-            .and_then(|number| a.tracker_mixer.pickup_direction(number - 1))
-            .map_or('·', PickupDirection::glyph);
+        let direction = '·';
         let second = format!("{} {gain:+.1}{direction}", mixer_owner_label(owner));
         f.render_widget(
             Paragraph::new(second).style(Style::default().fg(if mixer_owner_ready(a, owner) {
@@ -22048,8 +22172,8 @@ fn draw_automation<B: Backend>(f: &mut Frame<B>, a: &App) {
 }
 
 fn draw_compact_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App, body: Rect) {
-    let start = a.tracker_mixer.bank() * a.tracker_mixer.pot_count();
-    let count = a.tracker_mixer.pot_count().max(1);
+    let start = a.tracker_mixer.bank() * a.tracker_mixer.rotary_count();
+    let count = a.tracker_mixer.rotary_count().max(1);
     let controls = a.final_bus.controls();
     let lines = a
         .tracker_mixer_strips
@@ -22057,7 +22181,7 @@ fn draw_compact_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App, body: Rect)
         .enumerate()
         .skip(start)
         .take(count)
-        .map(|(index, strip)| {
+        .map(|(_, strip)| {
             let number = strip.display_number();
             strip.owner.map_or_else(
                 || {
@@ -22072,12 +22196,7 @@ fn draw_compact_tracker_mixer<B: Backend>(f: &mut Frame<B>, a: &App, body: Rect)
                         .map_or(DEFAULT_SOURCE_GAIN_DB, |controls| {
                             controls.source_gain_db(owner)
                         });
-                    let pot = a
-                        .tracker_mixer
-                        .pot_number_for_strip(index, a.tracker_mixer_strips.len());
-                    let direction = pot
-                        .and_then(|number| a.tracker_mixer.pickup_direction(number - 1))
-                        .map_or('·', PickupDirection::glyph);
+                    let direction = '·';
                     Spans::from(format!(
                         "{number} {:<8} {} {gain:+.1}{direction}",
                         strip.name,
@@ -23106,7 +23225,6 @@ fn status_is_consequential(message: &str) -> bool {
         "applies next start",
         "unchanged",
         "private wav",
-        "pickup",
     ]
     .iter()
     .any(|needle| message.contains(needle))
@@ -23116,7 +23234,7 @@ fn status_is_silent(message: &str) -> bool {
     let message = message.trim().to_ascii_lowercase();
     message.is_empty()
         || message == "ready"
-        || message == "midi ready · pickup armed"
+        || message == "midi ready"
         || message == "synth stopped"
         || message == "tracker stopped"
         || message == "tracker rewound · press play to start"
@@ -23447,7 +23565,7 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .as_ref()
         .map(|preset| {
             crate::ui_text::fit_middle(
-                &format!("Playing · {}", preset.display_name()),
+                &format!("Playing · {}", a.preset_catalog_name(preset)),
                 usize::from(head.width),
             )
         })
@@ -23472,7 +23590,8 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         .map(|i| {
             let mark = if i == a.selected { "▶" } else { " " };
             let name = if a.presets[i].backend == BackendKind::MojSint {
-                a.presets[i].display_name()
+                preset::moj_catalog_display_name(&a.presets, i)
+                    .unwrap_or_else(|| a.presets[i].display_name())
             } else {
                 format!("{:02} {}", i + 1, a.presets[i].display_name())
             };
@@ -23520,6 +23639,80 @@ fn draw_playing<B: Backend>(f: &mut Frame<B>, a: &mut App) {
 
 fn draw_tracker_parameters<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     draw_synth_parameters(f, a, SynthParameterContext::Tracker);
+}
+
+fn aux_send_normalize_db(level_db: f32) -> f32 {
+    let level = (level_db.clamp(-60.0, 12.0) + 60.0) / 72.0;
+    (1.0 + level * 126.0) / 127.0
+}
+
+fn aux_send_denormalize(normalized: f32) -> f32 {
+    let level = ((normalized.clamp(0.0, 1.0) * 127.0 - 1.0) / 126.0).clamp(0.0, 1.0);
+    -60.0 + level * 72.0
+}
+
+fn aux_send_normalized(routing: &ProjectAuxRouting, aux_id: u8) -> f32 {
+    routing
+        .sends
+        .iter()
+        .find(|send| send.aux_id == aux_id)
+        .map(|send| aux_send_normalize_db(send.level_db))
+        .unwrap_or(0.0)
+}
+
+fn aux_send_display(routing: &ProjectAuxRouting, aux_id: u8) -> String {
+    let ready = routing
+        .buses
+        .iter()
+        .find(|bus| bus.id == aux_id)
+        .is_some_and(|bus| !bus.rack.effects.is_empty());
+    if !ready {
+        return "NO FX".into();
+    }
+    routing
+        .sends
+        .iter()
+        .find(|send| send.aux_id == aux_id)
+        .map(|send| format!("{:+.0}dB", send.level_db))
+        .unwrap_or_else(|| "OFF".into())
+}
+
+fn draw_aux_surface_slots<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
+    for index in 0..AUX_SEND_CONTROL_COUNT {
+        let surface_index = LEGACY_SYNTH_CONTROL_COUNT + index;
+        let col = (surface_index % 5) as u16;
+        let control_row = (surface_index / 5) as u16;
+        let label_y = area.y + control_row * 2;
+        if label_y >= area.y + area.height {
+            break;
+        }
+        let x = area.x + col * area.width / 5;
+        let next_x = area.x + (col + 1) * area.width / 5;
+        let width = next_x - x;
+        let aux_id = index as u8 + 1;
+        let value = aux_send_normalized(&a.song.aux_routing, aux_id);
+        let original = aux_send_normalized(&a.project_clean_baseline.aux_routing, aux_id);
+        f.render_widget(
+            Paragraph::new(format!("Aux {aux_id}"))
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::LightCyan)),
+            rect(x, label_y, width, 1),
+        );
+        if label_y + 1 < area.y + area.height {
+            f.render_widget(
+                Paragraph::new(Spans::from(vec![
+                    Span::styled(
+                        truncate(&aux_send_display(&a.song.aux_routing, aux_id), 5),
+                        Style::default().fg(Color::Yellow),
+                    ),
+                    Span::raw(" "),
+                    Span::styled("●", Style::default().fg(parameter_color(value, original))),
+                ]))
+                .alignment(Alignment::Center),
+                rect(x, label_y + 1, width, 1),
+            );
+        }
+    }
 }
 
 fn draw_synth_parameters<B: Backend>(
@@ -23606,14 +23799,14 @@ fn draw_synth_parameters<B: Backend>(
     let playing_backend = a.playing.as_ref().map(|preset| preset.backend);
     if playing_backend == Some(BackendKind::Synthv1) {
         for (i, c) in CONTROLS.iter().enumerate() {
-            let col = (i % 4) as u16;
-            let control_row = (i / 4) as u16;
+            let col = (i % 5) as u16;
+            let control_row = (i / 5) as u16;
             let label_y = inner.y + control_row * 2;
             if label_y >= inner.y + inner.height {
                 break;
             }
-            let x = inner.x + col * inner.width / 4;
-            let next_x = inner.x + (col + 1) * inner.width / 4;
+            let x = inner.x + col * inner.width / 5;
+            let next_x = inner.x + (col + 1) * inner.width / 5;
             let w = next_x - x;
             let v = a.values.get(&c.cc).copied().unwrap_or(c.min);
             let original = a.original_values.get(&c.cc).copied().unwrap_or(c.min);
@@ -23637,6 +23830,7 @@ fn draw_synth_parameters<B: Backend>(
                 rect(x, label_y + 1, w, 1),
             );
         }
+        draw_aux_surface_slots(f, a, inner);
     } else if playing_backend == Some(BackendKind::MojSint) {
         let controls = a
             .playing
@@ -23644,13 +23838,7 @@ fn draw_synth_parameters<B: Backend>(
             .and_then(Preset::moj_model)
             .map(moj_controls)
             .unwrap_or(&MOJ_CONTROLS);
-        let columns = if a.playing.as_ref().and_then(Preset::moj_model)
-            == Some(preset::MojModel::DualFilter)
-        {
-            5
-        } else {
-            4
-        };
+        let columns = 5;
         for (i, control) in controls.iter().enumerate() {
             let col = (i % columns) as u16;
             let control_row = (i / columns) as u16;
@@ -23680,6 +23868,9 @@ fn draw_synth_parameters<B: Backend>(
                     rect(x, label_y + 1, width, 1),
                 );
             }
+        }
+        if controls.len() == LEGACY_SYNTH_CONTROL_COUNT {
+            draw_aux_surface_slots(f, a, inner);
         }
     } else if playing_backend.is_some() {
         let value = a
@@ -25891,7 +26082,7 @@ fn configure_screenshot(app: &mut App, screen: Screen) {
     match screen {
         Screen::Presets => {
             app.selected = 0;
-            app.status = "MIDI ready · pickup armed".into();
+            app.status = "MIDI ready".into();
         }
         Screen::Playback => {
             for (note, velocity) in [(62, 100), (66, 92), (69, 104)] {
@@ -27232,6 +27423,23 @@ mod tests {
     }
 
     #[test]
+    fn relative_rotary_carries_the_current_parameter_without_pickup() {
+        let p = presets();
+        let mut a = app(&p);
+        a.values.insert(CONTROLS[0].cc, 0.5);
+        a.pickup
+            .lock()
+            .unwrap()
+            .arm(&HashMap::from([(CONTROLS[0].cc, 0.9)]));
+
+        a.apply_relative_rotary(Instant::now(), 0, 2);
+
+        let expected = 0.5 + 2.0 / 127.0;
+        assert!((a.values[&CONTROLS[0].cc] - expected).abs() < 0.000_1);
+        assert!(!a.pickup.lock().unwrap().accept(CONTROLS[0].cc, 0.5));
+    }
+
+    #[test]
     fn fresh_tracker_engine_session_populates_parameter_values_and_reset_baseline() {
         let base = std::env::temp_dir().join(format!(
             "shsynth-ui-tracker-param-baseline-{}",
@@ -27265,9 +27473,9 @@ mod tests {
     }
 
     #[test]
-    fn tracker_parameter_view_uses_existing_pot_pickup_and_renders_the_accepted_value() {
+    fn tracker_parameter_view_uses_existing_rotary_pickup_and_renders_the_accepted_value() {
         let base = std::env::temp_dir().join(format!(
-            "shsynth-ui-tracker-param-pot-{}",
+            "shsynth-ui-tracker-param-rotary-{}",
             std::process::id()
         ));
         let mut app = editable_tracker_parameter_app(&base);
@@ -27821,7 +28029,7 @@ release = 0.4
         let _ = fs::remove_dir_all(base);
     }
     fn learn_settle(a: &mut App, now: &mut Instant) {
-        *now += Duration::from_millis(200);
+        *now += Duration::from_millis(700);
         a.controller_learn.as_mut().unwrap().tick(*now);
     }
     fn learn_master(a: &mut App, rotary: u8, click: u8) -> Instant {
@@ -27829,8 +28037,10 @@ release = 0.4
         let mut now = Instant::now() + Duration::from_secs(1);
         a.controller_learn.as_mut().unwrap().tick(now);
         learn_send(a, &mut now, &[0xb0, rotary, 63]);
+        learn_send(a, &mut now, &[0xb0, rotary, 64]);
         learn_settle(a, &mut now);
         learn_send(a, &mut now, &[0xb0, rotary, 65]);
+        learn_send(a, &mut now, &[0xb0, rotary, 64]);
         learn_settle(a, &mut now);
         learn_send(a, &mut now, &[0xb0, click, 127]);
         learn_send(a, &mut now, &[0xb0, click, 0]);
@@ -27839,6 +28049,10 @@ release = 0.4
             crate::controller_learn::LearnRole::EncoderModifier
         );
         a.controller_learn.as_mut().unwrap().skip();
+        assert_eq!(
+            a.controller_learn.as_ref().unwrap().role(),
+            crate::controller_learn::LearnRole::RotaryTurn(0)
+        );
         now
     }
     fn connect_test_midi_hardware(app: &mut App) {
@@ -29412,7 +29626,7 @@ release = 0.4
     }
 
     #[test]
-    fn moj_sint_playback_uses_three_rows_of_four_real_controls() {
+    fn moj_sint_playback_uses_three_by_five_surface_with_three_aux_sends() {
         let presets = presets();
         let mut app = app(&presets);
         app.screen = Screen::Playback;
@@ -29433,12 +29647,59 @@ release = 0.4
         let text = buffer_text(&render_app(&mut app, 40, 13));
         for label in [
             "Evolve", "Shape", "Color", "Edge", "Volume", "Motion", "Depth", "Space", "Attack",
-            "Decay", "Sustain", "Release",
+            "Decay", "Sustain", "Release", "Aux 1", "Aux 2", "Aux 3",
         ] {
             assert!(text.contains(label), "missing {label} in\n{text}");
         }
         assert!(!text.contains("Width"));
         assert!(!text.contains("No synthv1"));
+    }
+
+    #[test]
+    fn legacy_surface_rotaries_control_three_aux_sends_but_dual_filter_keeps_slot_fifteen() {
+        assert_eq!(aux_send_normalize_db(-60.0), 1.0 / 127.0);
+        assert!((aux_send_denormalize(1.0 / 127.0) + 60.0).abs() < 0.000_01);
+        assert_eq!(aux_send_denormalize(1.0), 12.0);
+        let presets = presets();
+        let mut app = app(&presets);
+        app.screen = Screen::Playback;
+        app.playing = Some(moj_preset(preset::MojModel::ModelD, "Model D"));
+        for (kind, level_db) in [
+            (EffectKind::Reverb, -18.0),
+            (EffectKind::Delay, -18.0),
+            (EffectKind::Chorus, -18.0),
+        ] {
+            let aux_id = app.song.aux_routing.add_bus().unwrap();
+            app.song
+                .aux_routing
+                .add_effect(&app.song.insert_rack, aux_id, kind)
+                .unwrap();
+            app.song
+                .aux_routing
+                .set_send(
+                    &app.song.insert_rack,
+                    aux_id,
+                    level_db,
+                    SendPoint::PostInsert,
+                )
+                .unwrap();
+        }
+        let caught = aux_send_normalize_db(-18.0);
+        app.apply_aux_surface_control(12, caught);
+        app.apply_aux_surface_control(12, 1.0);
+        assert_eq!(app.song.aux_routing.sends[0].level_db, 12.0);
+        app.apply_aux_surface_delta(13, 1);
+        assert_eq!(app.song.aux_routing.sends[1].level_db, -15.0);
+        app.apply_aux_surface_delta(14, -1);
+        assert_eq!(app.song.aux_routing.sends[2].level_db, -21.0);
+
+        let sends = app.song.aux_routing.sends.clone();
+        app.playing = Some(moj_preset(preset::MojModel::DualFilter, "Dual Filter"));
+        *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+        app.values.insert(34, 0.5);
+        app.apply_relative_rotary(Instant::now(), 14, 1);
+        assert!(app.values[&34] > 0.5);
+        assert_eq!(app.song.aux_routing.sends, sends);
     }
 
     #[test]
@@ -29453,21 +29714,13 @@ release = 0.4
             .collect();
         app.original_values = app.values.clone();
         let text = buffer_text(&render_app(&mut app, 40, 13));
-        for label in [
-            "Index",
-            "Ratio",
-            "Feedback",
-            "Op Decay",
-            "Volume",
-            "Key Scale",
-            "Velocity",
-            "Motion",
-            "Attack",
-            "Decay",
-            "Sustain",
-            "Release",
-        ] {
-            assert!(text.contains(label), "missing {label} in\n{text}");
+        let control_width = 40 / 5;
+        for control in moj_controls(preset::MojModel::SixOpPm) {
+            let visible_label = truncate(control.name, control_width);
+            assert!(
+                text.contains(&visible_label),
+                "missing {visible_label} in\n{text}"
+            );
         }
         assert!(!text.contains("Evolve"));
     }
@@ -29536,9 +29789,12 @@ release = 0.4
             moj.original_values = moj.values.clone();
             let frame = render_app(&mut moj, 40, 13);
             let text = buffer_text(&frame);
+            let columns = 5;
+            let control_width = 40 / columns;
             for control in moj_controls(model) {
+                let visible_label = truncate(control.name, control_width);
                 assert!(
-                    text.contains(control.name),
+                    text.contains(&visible_label),
                     "{model:?} tracker parameter view omitted {}: {text}",
                     control.name
                 );
@@ -29638,11 +29894,17 @@ release = 0.4
     }
 
     #[test]
-    fn moj_sint_preset_list_shows_one_number_and_one_short_model_code() {
-        let moj_presets = vec![
-            moj_preset(preset::MojModel::ModelD, "01 Full Bass"),
+    fn moj_sint_preset_list_starts_at_d01_and_groups_model_local_names() {
+        let mut moj_presets = vec![
+            moj_preset(
+                preset::MojModel::DualFilter,
+                "17 Dual Filter Industrial Lead",
+            ),
             moj_preset(preset::MojModel::SixOpPm, "08 Six-Op Bell Metal"),
+            moj_preset(preset::MojModel::ModelD, "02 Full Lead"),
+            moj_preset(preset::MojModel::ModelD, "01 Full Bass"),
         ];
+        preset::sort_presets(&mut moj_presets);
         let mut app = app(&presets());
         app.catalogs.insert(
             0,
@@ -29657,12 +29919,16 @@ release = 0.4
         app.screen = Screen::Presets;
 
         let text = buffer_text(&render_app(&mut app, 40, 13));
-        assert!(text.contains("01 M-D Full Bass"), "{text}");
-        assert!(text.contains("08 6-OP Bell Metal"), "{text}");
+        assert_eq!(app.selected, 0);
+        assert!(text.contains("▶ D01 Full Bass"), "{text}");
+        assert!(text.contains("D02 Full Lead"), "{text}");
+        assert!(text.contains("P01 Bell Metal"), "{text}");
+        assert!(text.contains("F01 Industrial Lead"), "{text}");
         assert!(!text.contains("[Model D]"), "{text}");
         assert!(!text.contains("[Six-Op PM]"), "{text}");
-        assert!(!text.contains("01 01"), "{text}");
-        assert!(!text.contains("08 08"), "{text}");
+        assert!(!text.contains("08 Six-Op"), "{text}");
+        assert!(app.jump_to_letter('P'));
+        assert_eq!(app.selected, 2);
     }
 
     #[test]
@@ -31013,15 +31279,15 @@ release = 0.4
     }
 
     #[test]
-    fn canonical_presets_screenshot_starts_with_compact_moj_sint_names() {
+    fn canonical_presets_screenshot_starts_with_model_local_moj_sint_names() {
         let mut app = screenshot_app(RuntimeConfig::default());
         configure_screenshot_scenario(&mut app, ScreenshotScenario::Presets);
 
         let text = buffer_text(&render_app(&mut app, 40, 13));
         assert!(text.contains("PRESETS · Moj Sint"), "{text}");
-        assert!(text.contains("01 M-D Full Bass"), "{text}");
+        assert!(text.contains("D01 Full Bass"), "{text}");
         assert!(!text.contains("[Model D]"), "{text}");
-        assert!(!text.contains("01 01"), "{text}");
+        assert!(!text.contains("01 M-D"), "{text}");
     }
 
     #[test]
@@ -31083,7 +31349,9 @@ release = 0.4
                 .map(|cell| cell.symbol.as_str())
                 .collect::<String>();
             match scenario {
-                ScreenshotSpecialScenario::Home => assert!(last_row.trim().is_empty()),
+                ScreenshotSpecialScenario::Home | ScreenshotSpecialScenario::MidiLearn => {
+                    assert!(last_row.trim().is_empty())
+                }
                 ScreenshotSpecialScenario::FxEditorEq => {
                     assert_eq!(last_row, "     50 200   1k   5k 20k│LOG Hz        ");
                     assert!(!transport.contains(&last_row.chars().next().unwrap()));
@@ -31097,17 +31365,78 @@ release = 0.4
     }
 
     #[test]
-    fn native_midi_learn_keeps_feedback_cancel_and_recovery_visible() {
+    fn native_midi_learn_is_exactly_two_lines_total() {
         let mut a = screenshot_app(RuntimeConfig::default());
         configure_special_screenshot_scenario(&mut a, ScreenshotSpecialScenario::MidiLearn);
 
         let buffer = render_app(&mut a, 40, 13);
         let text = buffer_text(&buffer);
+        let populated_rows = (0..13)
+            .filter(|row| !row_text(&buffer, *row).trim().is_empty())
+            .count();
 
-        assert!(text.contains("Mapped ·"));
-        assert!(text.contains("Encoder ·"));
-        assert!(text.contains("Esc cancel · previous map kept"));
-        assert!(row_text(&buffer, 12).starts_with('■'));
+        assert_eq!(populated_rows, 2, "{text}");
+        assert!(text.contains("TURN ROTARY 1 LEFT"));
+        assert!(!text.contains("MIDI LEARN"), "{text}");
+        for garbage in [
+            "Mapped ·",
+            "Controller isolated",
+            "R1 turn",
+            "previous map kept",
+        ] {
+            assert!(!text.contains(garbage), "{text}");
+        }
+        assert!(row_text(&buffer, 12).trim().is_empty());
+    }
+
+    #[test]
+    fn native_midi_learn_shows_the_complete_shift_gesture_within_forty_columns() {
+        let mut a = screenshot_app(RuntimeConfig::default());
+        let start = Instant::now();
+        let mut now = start + Duration::from_secs(1);
+        let mut session = crate::controller_learn::LearnSession::new_at("Controller", start);
+        session.tick(now);
+        now += Duration::from_millis(1);
+        session.receive(&[0xb0, 28, 63], now);
+        now += Duration::from_millis(200);
+        session.tick(now);
+        now += Duration::from_millis(1);
+        session.receive(&[0xb0, 28, 65], now);
+        now += Duration::from_millis(200);
+        session.tick(now);
+        now += Duration::from_millis(1);
+        session.receive(&[0xb0, 118, 127], now);
+        now += Duration::from_millis(1);
+        session.receive(&[0xb0, 118, 0], now);
+        assert_eq!(
+            session.role(),
+            crate::controller_learn::LearnRole::EncoderModifier
+        );
+        a.controller_learn = Some(session);
+
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("SHIFT + TURN ROTARY 1 LEFT"), "{text}");
+        assert!(!text.contains("MIDI LEARN"), "{text}");
+        assert_eq!(
+            (0..13)
+                .filter(|row| !row_text(&buffer, *row).trim().is_empty())
+                .count(),
+            2,
+            "{text}"
+        );
+
+        let session = a.controller_learn.as_mut().unwrap();
+        now += Duration::from_millis(1);
+        session.receive(&[0xb0, 27, 127], now);
+        for value in [63, 62, 61] {
+            now += Duration::from_millis(1);
+            session.receive(&[0xb0, 29, value], now);
+        }
+        now += Duration::from_millis(1);
+        session.receive(&[0xb0, 27, 0], now);
+        let right = buffer_text(&render_app(&mut a, 40, 13));
+        assert!(right.contains("SHIFT + TURN ROTARY 1 RIGHT"), "{right}");
     }
 
     #[test]
@@ -32725,12 +33054,6 @@ release = 0.4
             3.5
         );
 
-        a.arm_fx_pickup();
-        a.fx_pickup
-            .controls
-            .get_mut(&CONTROLS[2].cc)
-            .unwrap()
-            .caught = true;
         let midpoint = CONTROLS[2].min + (CONTROLS[2].max - CONTROLS[2].min) * 0.5;
         a.apply_fx_control(CONTROLS[2].cc, midpoint);
         let frequency = a.song.insert_rack.effect(id).unwrap().parameters["high_mid_hz"];
@@ -33049,7 +33372,7 @@ release = 0.4
     }
 
     #[test]
-    fn effect_parameter_keyboard_numeric_validation_cancel_and_knob_pickup() {
+    fn effect_parameter_keyboard_numeric_validation_cancel_and_relative_turns() {
         let p = presets();
         let mut a = app(&p);
         a.add_effect();
@@ -33082,22 +33405,23 @@ release = 0.4
         );
 
         a.fx_parameter = 0;
-        a.arm_fx_pickup();
-        a.apply_fx_control(CONTROLS[0].cc, 1.0);
-        assert!(a.status.contains("waiting for pickup"));
-        a.apply_fx_control(CONTROLS[0].cc, 0.0);
         a.apply_fx_control(CONTROLS[0].cc, 1.0);
         assert_eq!(
             a.song.insert_rack.effect(id).unwrap().parameters["low_shelf_hz"],
             800.0
         );
 
-        a.arm_fx_pickup();
         a.apply_fx_control(CONTROLS[4].cc, 0.5);
         a.apply_fx_control(CONTROLS[4].cc, 1.0);
         assert_eq!(
             a.song.insert_rack.effect(id).unwrap().parameters["low_shelf_db"],
             18.0
+        );
+
+        a.apply_fx_control_delta(4, -1);
+        assert_eq!(
+            a.song.insert_rack.effect(id).unwrap().parameters["low_shelf_db"],
+            17.5
         );
     }
 
@@ -33124,9 +33448,19 @@ release = 0.4
         assert_eq!(*a.controller_config.read().unwrap(), original);
 
         let mut now = learn_master(&mut a, 28, 118);
-        for cc in 10..=21 {
-            learn_send(&mut a, &mut now, &[0xb0, cc, 64]);
+        for (index, cc) in (10..=24).enumerate() {
+            for _ in 0..3 {
+                learn_send(&mut a, &mut now, &[0xb0, cc, 63]);
+            }
             learn_settle(&mut a, &mut now);
+            for _ in 0..3 {
+                learn_send(&mut a, &mut now, &[0xb0, cc, 65]);
+            }
+            learn_settle(&mut a, &mut now);
+            if index == 7 {
+                learn_send(&mut a, &mut now, &[0xb0, 117, 127]);
+                learn_send(&mut a, &mut now, &[0xb0, 117, 0]);
+            }
         }
         for note in 36..=43 {
             learn_send(&mut a, &mut now, &[0x99, note, 100]);
@@ -33153,7 +33487,7 @@ release = 0.4
         assert!(a.controller_learn.is_some());
         assert!(a.learn_mode.load(Ordering::Relaxed));
         let saved = crate::pads::PadConfig::load(&state.join("controller.conf")).unwrap();
-        assert_eq!(saved.controls.len(), 12);
+        assert_eq!(saved.controls.len(), 15);
         assert_eq!(saved.pads.len(), 8);
         assert_eq!(*a.controller_config.read().unwrap(), saved);
         assert!(fs::read_dir(&state)
@@ -33192,7 +33526,7 @@ release = 0.4
     }
 
     #[test]
-    fn in_app_learn_rotary_browses_and_second_click_saves_encoder_only() {
+    fn in_app_learn_uses_master_step_navigation_and_saves_only_at_final_review() {
         let p = presets();
         let mut a = app(&p);
         a.controller_online = true;
@@ -33201,7 +33535,7 @@ release = 0.4
         let mut now = learn_master(&mut a, 28, 118);
         assert_eq!(
             a.controller_learn.as_ref().unwrap().role(),
-            crate::controller_learn::LearnRole::AbsoluteControl(0)
+            crate::controller_learn::LearnRole::RotaryTurn(0)
         );
 
         let state = std::env::temp_dir().join(format!(
@@ -33224,9 +33558,9 @@ release = 0.4
         drain(&rx, &mut a, &state, &tx);
         assert_eq!(
             a.controller_learn.as_ref().unwrap().role(),
-            crate::controller_learn::LearnRole::AbsoluteControl(1)
+            crate::controller_learn::LearnRole::RotaryTurn(1)
         );
-        now += Duration::from_millis(200);
+        now += Duration::from_millis(700);
         a.controller_learn.as_mut().unwrap().tick(now);
         now += Duration::from_millis(1);
         tx.send(MidiEvent::Learn {
@@ -33237,11 +33571,47 @@ release = 0.4
         drain(&rx, &mut a, &state, &tx);
         assert_eq!(
             a.controller_learn.as_ref().unwrap().role(),
-            crate::controller_learn::LearnRole::AbsoluteControl(0)
+            crate::controller_learn::LearnRole::RotaryTurn(0)
         );
 
-        now += Duration::from_millis(200);
+        now += Duration::from_millis(700);
         a.controller_learn.as_mut().unwrap().tick(now);
+        now += Duration::from_millis(1);
+        tx.send(MidiEvent::Learn {
+            received: now,
+            bytes: vec![0xb0, 118, 127],
+        })
+        .unwrap();
+        now += Duration::from_millis(1);
+        tx.send(MidiEvent::Learn {
+            received: now,
+            bytes: vec![0xb0, 118, 0],
+        })
+        .unwrap();
+        drain(&rx, &mut a, &state, &tx);
+        assert!(a.controller_learn.is_some());
+        assert!(!state.join("controller.conf").exists());
+        assert_eq!(
+            a.controller_learn.as_ref().unwrap().role(),
+            crate::controller_learn::LearnRole::RotaryTurn(0)
+        );
+        learn_settle(&mut a, &mut now);
+        key(KeyCode::Enter, &mut a, &state, &tx);
+        assert!(a.controller_learn.is_some());
+        assert!(!state.join("controller.conf").exists());
+
+        while a.controller_learn.as_ref().unwrap().role()
+            != crate::controller_learn::LearnRole::Confirm
+        {
+            if a.controller_learn.as_ref().unwrap().role()
+                == crate::controller_learn::LearnRole::SecondaryEncoderClick
+            {
+                learn_send(&mut a, &mut now, &[0xb0, 117, 127]);
+                learn_send(&mut a, &mut now, &[0xb0, 117, 0]);
+            } else {
+                assert!(a.controller_learn.as_mut().unwrap().skip());
+            }
+        }
         now += Duration::from_millis(1);
         tx.send(MidiEvent::Learn {
             received: now,
@@ -33259,6 +33629,7 @@ release = 0.4
         let saved = crate::pads::PadConfig::load(&state.join("controller.conf")).unwrap();
         assert_eq!(saved.encoder_relative_cc, Some(28));
         assert_eq!(saved.encoder_press_cc, Some(118));
+        assert_eq!(saved.secondary_encoder_press_cc, Some(117));
         assert!(saved.controls.is_empty());
         assert!(saved.pads.is_empty());
         assert_eq!(saved.layout, crate::pads::ControllerLayout::Four);
@@ -33347,6 +33718,12 @@ release = 0.4
         );
         let second_aux_effect = a.selected_effect_id().unwrap();
         a.cycle_fx_target(1);
+        a.fx_add_kind = FIRST_AUX_EFFECT_INDEX;
+        a.add_effect();
+        assert_eq!(a.song.aux_routing.buses.len(), 3);
+        let third_aux_effect = a.selected_effect_id().unwrap();
+        assert!(third_aux_effect > second_aux_effect);
+        a.cycle_fx_target(1);
         assert_eq!(a.fx_target, DRUM_FX_TARGET);
         assert_eq!(
             crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
@@ -33356,7 +33733,7 @@ release = 0.4
         a.fx_add_kind = 0;
         a.add_effect();
         let master_effect = a.selected_effect_id().unwrap();
-        assert!(master_effect > second_aux_effect);
+        assert!(master_effect > third_aux_effect);
         assert_eq!(a.song.aux_routing.master_rack.order, [master_effect]);
         a.song.aux_routing.validate(&a.song.insert_rack).unwrap();
     }
@@ -34898,7 +35275,7 @@ release = 0.4
     }
 
     #[test]
-    fn playback_controls_match_three_physical_rows_of_four() {
+    fn playback_controls_match_three_physical_rows_of_five() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Playback;
@@ -34915,23 +35292,29 @@ release = 0.4
                 .collect::<String>()
         };
 
+        let labels = |y| {
+            let row = row_text(y);
+            (0..5)
+                .map(|column| row[column * 8..(column + 1) * 8].trim().to_owned())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            row_text(1).split_whitespace().collect::<Vec<_>>(),
-            ["Flt", "cut", "Flt", "res", "Flt", "env", "LFO", "rate"]
+            labels(1),
+            ["Flt cut", "Flt res", "Flt env", "LFO rate", "Volume"]
         );
-        assert_eq!(
-            row_text(3).split_whitespace().collect::<Vec<_>>(),
-            ["Volume", "Dly", "amt", "Dly", "time", "Dly", "fb"]
-        );
-        assert_eq!(
-            row_text(5).split_whitespace().collect::<Vec<_>>(),
-            ["Atk", "Dec", "Sus", "Rel"]
-        );
-        for y in [1, 3, 5] {
+        assert_eq!(labels(3), ["Dly amt", "Dly time", "Dly fb", "Atk", "Dec"]);
+        assert_eq!(labels(5), ["Sus", "Rel", "Aux 1", "Aux 2", "Aux 3"]);
+        for y in [1, 3] {
             assert!((0..40)
                 .filter(|x| b.get(*x, y).symbol != " ")
                 .all(|x| b.get(x, y).fg == Color::White));
         }
+        assert!((0..16)
+            .filter(|x| b.get(*x, 5).symbol != " ")
+            .all(|x| b.get(x, 5).fg == Color::White));
+        assert!((16..40)
+            .filter(|x| b.get(*x, 5).symbol != " ")
+            .all(|x| b.get(x, 5).fg == Color::LightCyan));
 
         let indicator_colors = (0..40)
             .filter_map(|x| {
@@ -34945,6 +35328,7 @@ release = 0.4
                 Color::Green,
                 Color::LightYellow,
                 Color::Red,
+                Color::LightYellow,
                 Color::LightYellow
             ]
         );
@@ -39976,7 +40360,7 @@ release = 0.4
 
         assert_eq!(a.song.patterns[&0], expected);
         let encoded = sequencer::encode(&a.song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 17\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 18\n"));
         assert_eq!(sequencer::decode(&encoded).unwrap(), a.song);
         assert_eq!(a.pattern_history.depths(), (1, 0));
         assert!(a.project_is_dirty());

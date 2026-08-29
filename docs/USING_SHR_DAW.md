@@ -82,8 +82,8 @@ arpeggiator. `PLAY` sends Start even when no MIDI take exists, `RECORD` starts
 the same clock before capture, `STOP` ends it without unloading the instrument,
 and `TAP` changes tempo without silently starting transport.
 
-Moj Sint keeps its own preset format and controls. Its 16 authored starts form
-five editable model families. SHR Sampler packages are read-only and use their
+Moj Sint keeps its own preset format and controls. Its 21 authored starts form
+six editable model families. SHR Sampler packages are read-only and use their
 own strict format; the installed project-authored factory package is a neutral
 first-load sound. SHR Drums is separate from the managed melodic engine and
 runs in process. See [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md)
@@ -178,8 +178,8 @@ FT2 **AUTO** records compact Pattern-owned control curves independently from
 notes and cell commands. Arm only the lane you mean to write. Continuous
 controls ramp to the next point; switches, choices, modes, divisions, and
 bypass step at their point. Play Here and loops chase the effective value, and
-physical knobs keep pickup protection when automation takes or releases
-ownership.
+relative turns continue from the effective automated value when automation
+takes or releases ownership.
 
 Keep **CLICK** on when recording from stop: SHR-DAW accents beat one, displays
 one bar of `4 3 2 1 → REC`, and begins capture at row zero. Punching into a

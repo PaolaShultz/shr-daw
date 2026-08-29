@@ -717,7 +717,7 @@ fn usage() {
          Controller and routing:\n\
            pads list|ports|profiles|auto [PORT]|learn [PORT]|update\n\
            pads input PORT_MATCH|layout 8|5|4\n\
-           pads pot POSITION INCOMING_CC\n\
+           pads rotary ROTARY INCOMING_CC\n\
            pads pad POSITION note|cc CHANNEL|any NUMBER\n\
            clock ports\n\
            casio diagnostic\n\
@@ -1395,7 +1395,13 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
             let input = controller_learn::resolve_input(args.get(1).map(String::as_str))?;
             let stable_input = controller_learn::stable_input_match(&input);
             if let Some(profile) = controller_profile::Catalog::discover().matching(&input) {
-                profile.apply(&mut config, &stable_input)?;
+                if let Some(stored) =
+                    controller_profile::load_private_mapping(state, &profile.id, &stable_input)?
+                {
+                    config = stored;
+                } else {
+                    profile.apply(&mut config, &stable_input)?;
+                }
                 if let Some(backup) = controller_learn::backup(&path)? {
                     println!("Backed up {}", backup.display());
                 }
@@ -1425,11 +1431,11 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
                 }
             }
             controller_learn::learn(&mut config, &input)?;
-            if let Some(backup) = controller_learn::backup(&path)? {
-                println!("Backed up {}", backup.display());
-            }
-            config.save(&path)?;
+            let model = controller_learn::save_learned_for_state(state, &config)?;
             println!("Saved learned controller mapping to {}", path.display());
+            if let Some(model) = model {
+                println!("Saved model mapping to {}", model.display());
+            }
             Ok(())
         }
         "update" => update_controller_profiles(),
@@ -1447,12 +1453,12 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
                 || "off".into(),
                 |cc| {
                     format!(
-                        "CC {cc} ({})",
+                        "CC {cc} (relative{})",
                         if config.encoder_relative_reverse {
-                            "reversed"
+                            ", reversed"
                         } else {
-                            "normal"
-                        }
+                            ""
+                        },
                     )
                 },
             );
@@ -1461,34 +1467,51 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
                 .map(|cc| format!("CC {cc}"))
                 .or_else(|| config.encoder_press_note.map(|note| format!("note {note}")))
                 .unwrap_or_else(|| "off".into());
+            let secondary_encoder_press = config
+                .secondary_encoder_press_cc
+                .map(|cc| format!("CC {cc}"))
+                .or_else(|| {
+                    config
+                        .secondary_encoder_press_note
+                        .map(|note| format!("note {note}"))
+                })
+                .unwrap_or_else(|| "off".into());
             let encoder_modifier = config
                 .encoder_modifier
                 .map(|button| button.to_string())
                 .unwrap_or_else(|| "off".into());
-            let modified_turn = if config.encoder_modifier.is_none() {
-                "off".into()
-            } else {
-                config.encoder_modified_relative_cc.map_or_else(
-                    || "same CC".into(),
-                    |cc| {
-                        format!(
-                            "CC {cc} ({})",
-                            if config.encoder_modified_relative_reverse {
-                                "reversed"
-                            } else {
-                                "normal"
-                            }
-                        )
-                    },
-                )
-            };
+            let modified_turn = config.encoder_modified_relative_cc.map_or_else(
+                || {
+                    if config.encoder_modifier.is_some() {
+                        "same CC".into()
+                    } else {
+                        "off".into()
+                    }
+                },
+                |cc| {
+                    format!(
+                        "CC {cc} ({}{})",
+                        if config.encoder_modified_relative_reverse {
+                            "reversed"
+                        } else {
+                            "normal"
+                        },
+                        if config.encoder_modifier.is_none() {
+                            ", hardware Shift layer"
+                        } else {
+                            ""
+                        }
+                    )
+                },
+            );
             let lock = config
                 .lock_cc
                 .map(|cc| format!("CC {cc}"))
                 .unwrap_or_else(|| "off".into());
             println!(
-                "encoder: turn {encoder_turn}, press {encoder_press}, Shift {encoder_modifier}, Shift turn {modified_turn}; pad lock {lock}"
+                "rotary 1: turn {encoder_turn}, press {encoder_press}, Shift {encoder_modifier}, Shift turn {modified_turn}; rotary 9 press {secondary_encoder_press}; pad lock {lock}"
             );
+            println!("rotaries 2-16: signed carry from current app values");
             if let (Some(modifier), Some(trigger)) =
                 (config.page_cycle_modifier, config.page_cycle_trigger)
             {
@@ -1497,7 +1520,7 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
             let mut controls = config.controls.iter().collect::<Vec<_>>();
             controls.sort_by_key(|x| x.1);
             for (incoming, position) in controls {
-                println!("POT {position}: CC {incoming}");
+                println!("ROTARY {}: CC {incoming}", position + 1);
             }
             let mut pads = config
                 .pads
@@ -1588,6 +1611,26 @@ fn pads_command(args: &[String], state: &Path) -> Result<()> {
             config.controls.insert(incoming, position);
             config.save(&path)
         }
+        "rotary" => {
+            let rotary: u8 = args
+                .get(1)
+                .context("usage: shr pads rotary ROTARY INCOMING_CC")?
+                .parse()
+                .context("rotary number must be 2..16")?;
+            if !(2..=pads::ROTARY_COUNT).contains(&rotary) {
+                bail!("rotary number must be 2..16");
+            }
+            let incoming = pads::midi_number(
+                args.get(2)
+                    .context("usage: shr pads rotary ROTARY INCOMING_CC")?,
+                "controller CC",
+            )?;
+            let position = rotary - 1;
+            config.controls.retain(|_, mapped| *mapped != position);
+            config.controls.insert(incoming, position);
+            config.save(&path)
+        }
+        // Legacy v8 command: POT 1..12 maps to rotary slots 2..13.
         "pot" => {
             let position: u8 = args
                 .get(1)

@@ -8,6 +8,13 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_CONTROLLER_CONFIG: &str = include_str!("../config/controller.conf");
 
+/// The MiniLab mkII surface has one master encoder followed by the shared
+/// fifteen-slot performance contract. Older instruments use 12 synth + 3 aux;
+/// Dual Filter uses all 15 for synthesis.
+pub const MAPPED_ROTARY_COUNT: u8 = crate::control::PERFORMANCE_SURFACE_CONTROL_COUNT as u8;
+pub const ROTARY_COUNT: u8 = MAPPED_ROTARY_COUNT + 1;
+pub const SECONDARY_CLICK_ROTARY: u8 = 9;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PadAction {
     Pad1,
@@ -320,8 +327,11 @@ pub struct PadConfig {
     pub cc_buttons: HashMap<u8, PadAction>,
     /// Optional zero-based MIDI channel for each CC command.
     pub cc_button_channels: HashMap<u8, u8>,
-    /// Incoming controller CC -> one-based physical POT position.
+    /// Incoming controller CC -> one-based non-master rotary slot. Slot 1 is
+    /// physical rotary 2, and slot 15 is physical rotary 16.
     pub controls: HashMap<u8, u8>,
+    /// Every mapped rotary is direction-only and carries the application's
+    /// current value by a signed encoder step.
     pub encoder_relative_cc: Option<u8>,
     pub encoder_relative_reverse: bool,
     /// Optional relative CC emitted only while the configured encoder
@@ -337,6 +347,10 @@ pub struct PadConfig {
     pub synth_press_cc: Option<u8>,
     pub synth_press_note: Option<u8>,
     pub synth_press_channel: Option<u8>,
+    pub secondary_encoder_press_cc: Option<u8>,
+    pub secondary_encoder_press_note: Option<u8>,
+    /// Optional zero-based channel qualifier for the rotary 9 press.
+    pub secondary_encoder_press_channel: Option<u8>,
     /// Held controller modifier used to give the encoder its secondary
     /// navigation gesture.
     pub encoder_modifier: Option<ControllerButton>,
@@ -370,6 +384,9 @@ impl Default for PadConfig {
             synth_press_cc: None,
             synth_press_note: None,
             synth_press_channel: None,
+            secondary_encoder_press_cc: None,
+            secondary_encoder_press_note: None,
+            secondary_encoder_press_channel: None,
             encoder_modifier: None,
             page_cycle_modifier: None,
             page_cycle_trigger: None,
@@ -411,8 +428,12 @@ impl PadConfig {
         let mut saw_controls = false;
         let mut saw_physical_pads = false;
         let mut saw_positional_pots = false;
+        let mut saw_rotaries = false;
         let mut saw_legacy_controls = false;
         let mut saw_legacy_pads = false;
+        let mut obsolete_rotaries_relative = None;
+        let mut obsolete_encoder_absolute = false;
+        let mut obsolete_modified_absolute = false;
         for (line_no, line) in text.lines().enumerate() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -436,6 +457,18 @@ impl PadConfig {
                     "4" | "four" => ControllerLayout::Four,
                     _ => bail!("menu.layout must be 8, 5, or 4"),
                 };
+                continue;
+            }
+            if key.trim() == "rotary.relative" {
+                obsolete_rotaries_relative = Some(parse_legacy_bool(value, "rotary.relative")?);
+                continue;
+            }
+            if key.trim() == "encoder.absolute" {
+                obsolete_encoder_absolute = parse_legacy_bool(value, "encoder.absolute")?;
+                continue;
+            }
+            if key.trim() == "encoder.modified_absolute" {
+                obsolete_modified_absolute = parse_legacy_bool(value, "encoder.modified_absolute")?;
                 continue;
             }
             if key.trim() == "encoder.relative_cc" {
@@ -487,6 +520,21 @@ impl PadConfig {
                 self.synth_press_channel = optional_midi_channel(value, "synth press channel")?;
                 continue;
             }
+            if key.trim() == "encoder.secondary_press_cc" {
+                self.secondary_encoder_press_cc =
+                    optional_midi_number(value, "secondary encoder press CC")?;
+                continue;
+            }
+            if key.trim() == "encoder.secondary_press_note" {
+                self.secondary_encoder_press_note =
+                    optional_midi_number(value, "secondary encoder press note")?;
+                continue;
+            }
+            if key.trim() == "encoder.secondary_press_channel" {
+                self.secondary_encoder_press_channel =
+                    optional_midi_channel(value, "secondary encoder press channel")?;
+                continue;
+            }
             if key.trim() == "encoder.modifier" {
                 self.encoder_modifier = optional_controller_button(value, "encoder modifier")?;
                 continue;
@@ -504,10 +552,49 @@ impl PadConfig {
                 self.lock_cc = optional_midi_number(value, "pad lock CC")?;
                 continue;
             }
-            if let Some(position) = key.trim().strip_prefix("pot.") {
+            if let Some(rotary) = key.trim().strip_prefix("rotary.") {
+                if saw_positional_pots && !saw_rotaries {
+                    bail!(
+                        "{}:{}: cannot mix rotary and legacy POT mappings",
+                        path.display(),
+                        line_no + 1
+                    );
+                }
                 if saw_legacy_controls {
                     bail!(
-                        "{}:{}: cannot mix positional and legacy POT mappings",
+                        "{}:{}: cannot mix positional and legacy rotary mappings",
+                        path.display(),
+                        line_no + 1
+                    );
+                }
+                saw_positional_pots = true;
+                saw_rotaries = true;
+                if !saw_controls {
+                    self.controls.clear();
+                    saw_controls = true;
+                }
+                let rotary = physical_position(rotary, ROTARY_COUNT, "rotary number")?;
+                if rotary == 1 {
+                    bail!("rotary 1 is the relative master encoder");
+                }
+                let incoming = midi_number(value, "controller CC")?;
+                self.controls.insert(incoming, rotary - 1);
+                continue;
+            }
+            // Legacy v8 positional mappings numbered only the twelve
+            // parameter controls. Parse their identities for migration, then
+            // drop them unless the observed MK2 correction applies.
+            if let Some(position) = key.trim().strip_prefix("pot.") {
+                if saw_rotaries {
+                    bail!(
+                        "{}:{}: cannot mix rotary and legacy POT mappings",
+                        path.display(),
+                        line_no + 1
+                    );
+                }
+                if saw_legacy_controls {
+                    bail!(
+                        "{}:{}: cannot mix positional and legacy rotary mappings",
                         path.display(),
                         line_no + 1
                     );
@@ -573,7 +660,7 @@ impl PadConfig {
             if let Some(raw) = key.trim().strip_prefix("cc.") {
                 if saw_positional_pots {
                     bail!(
-                        "{}:{}: cannot mix positional and legacy POT mappings",
+                        "{}:{}: cannot mix positional and legacy rotary mappings",
                         path.display(),
                         line_no + 1
                     );
@@ -653,6 +740,20 @@ impl PadConfig {
         for pad in self.pads.values_mut().chain(self.cc_buttons.values_mut()) {
             *pad = pad.normalized(self.layout);
         }
+        if self.profile.as_deref() != Some("arturia-minilab-mkii") {
+            let legacy_positional_map = (saw_positional_pots && !saw_rotaries)
+                || saw_legacy_controls
+                || obsolete_rotaries_relative == Some(false);
+            if legacy_positional_map {
+                self.controls.clear();
+            }
+            if obsolete_encoder_absolute {
+                self.encoder_relative_cc = None;
+            }
+            if obsolete_modified_absolute {
+                self.encoder_modified_relative_cc = None;
+            }
+        }
         self.validate()
     }
 
@@ -674,11 +775,11 @@ impl PadConfig {
         }
         let mut positions = HashSet::new();
         for &position in self.controls.values() {
-            if !(1..=15).contains(&position) {
-                bail!("POT position must be 1..15");
+            if !(1..=MAPPED_ROTARY_COUNT).contains(&position) {
+                bail!("rotary slot must be 1..{MAPPED_ROTARY_COUNT}");
             }
             if !positions.insert(position) {
-                bail!("POT {position} is mapped more than once");
+                bail!("rotary {} is mapped more than once", position + 1);
             }
         }
         for &cc in self.cc_buttons.keys() {
@@ -729,6 +830,14 @@ impl PadConfig {
             (self.encoder_press_note, "encoder press note"),
             (self.synth_press_cc, "synth press CC"),
             (self.synth_press_note, "synth press note"),
+            (
+                self.secondary_encoder_press_cc,
+                "secondary encoder press CC",
+            ),
+            (
+                self.secondary_encoder_press_note,
+                "secondary encoder press note",
+            ),
             (self.lock_cc, "pad lock CC"),
         ] {
             if let Some(number) = number {
@@ -740,13 +849,14 @@ impl PadConfig {
             self.encoder_modified_relative_cc,
             self.encoder_press_cc,
             self.synth_press_cc,
+            self.secondary_encoder_press_cc,
             self.lock_cc,
         ]
         .into_iter()
         .flatten()
         {
             if self.controls.contains_key(&encoder_cc) {
-                bail!("encoder CC {encoder_cc} is also mapped as a POT");
+                bail!("encoder CC {encoder_cc} is also mapped as a rotary");
             }
             if self.cc_buttons.contains_key(&encoder_cc) {
                 bail!("encoder CC {encoder_cc} is also mapped as a PAD");
@@ -757,28 +867,38 @@ impl PadConfig {
             .keys()
             .any(|cc| self.cc_buttons.contains_key(cc))
         {
-            bail!("a controller CC cannot be both a POT and a PAD");
+            bail!("a controller CC cannot be both a rotary and a PAD");
         }
         if (self.encoder_relative_cc == self.encoder_press_cc && self.encoder_relative_cc.is_some())
             || (self.encoder_modified_relative_cc == self.encoder_press_cc
                 && self.encoder_modified_relative_cc.is_some())
             || (self.encoder_relative_cc == self.encoder_modified_relative_cc
                 && self.encoder_relative_cc.is_some())
+            || (self.encoder_relative_cc == self.secondary_encoder_press_cc
+                && self.encoder_relative_cc.is_some())
+            || (self.encoder_modified_relative_cc == self.secondary_encoder_press_cc
+                && self.encoder_modified_relative_cc.is_some())
+            || (self.encoder_press_cc == self.secondary_encoder_press_cc
+                && self.encoder_press_cc.is_some())
         {
-            bail!("ordinary turn, shifted turn, and encoder press CCs must be different");
+            bail!("rotary turn and press CCs must all be different");
         }
         if self.lock_cc.is_some()
             && [
                 self.encoder_relative_cc,
                 self.encoder_modified_relative_cc,
                 self.encoder_press_cc,
+                self.secondary_encoder_press_cc,
             ]
             .contains(&self.lock_cc)
         {
             bail!("pad lock CC must differ from encoder CCs");
         }
-        if self.encoder_modified_relative_cc.is_some() && self.encoder_modifier.is_none() {
-            bail!("modified encoder relative CC requires an encoder modifier");
+        // A controller may consume its physical Shift button internally and
+        // expose only a distinct shifted-turn CC. That alternate CC is
+        // sufficient to identify the modified relative gesture.
+        if self.encoder_modified_relative_cc.is_some() && self.encoder_relative_cc.is_none() {
+            bail!("modified encoder turn requires an ordinary encoder turn");
         }
         if self.encoder_modified_relative_reverse && self.encoder_modified_relative_cc.is_none() {
             bail!("modified encoder reverse requires a modified encoder relative CC");
@@ -825,6 +945,24 @@ impl PadConfig {
         {
             bail!("encoder press channel requires an encoder press CC or note and channel 1..16");
         }
+        if self.secondary_encoder_press_cc.is_some() && self.secondary_encoder_press_note.is_some()
+        {
+            bail!("secondary encoder press must use either a CC or a note, not both");
+        }
+        if self
+            .secondary_encoder_press_channel
+            .is_some_and(|channel| channel > 15)
+            || (self.secondary_encoder_press_channel.is_some()
+                && self.secondary_encoder_press_cc.is_none()
+                && self.secondary_encoder_press_note.is_none())
+        {
+            bail!("secondary encoder press channel requires a press CC or note and channel 1..16");
+        }
+        if self.encoder_press_note.is_some()
+            && self.encoder_press_note == self.secondary_encoder_press_note
+        {
+            bail!("primary and secondary encoder press notes must be different");
+        }
         if let Some(modifier) = self.encoder_modifier {
             match modifier {
                 ControllerButton::Cc { channel, cc } => {
@@ -836,6 +974,7 @@ impl PadConfig {
                             self.encoder_relative_cc,
                             self.encoder_modified_relative_cc,
                             self.encoder_press_cc,
+                            self.secondary_encoder_press_cc,
                             self.lock_cc,
                         ]
                         .contains(&Some(cc))
@@ -848,6 +987,7 @@ impl PadConfig {
                     if channel > 15
                         || self.pads.contains_key(&note)
                         || self.encoder_press_note == Some(note)
+                        || self.secondary_encoder_press_note == Some(note)
                     {
                         bail!("encoder modifier must be a dedicated note on channel 1..16");
                     }
@@ -889,12 +1029,15 @@ impl PadConfig {
                         || [
                             self.encoder_relative_cc,
                             self.encoder_press_cc,
+                            self.secondary_encoder_press_cc,
                             self.lock_cc,
                         ]
                         .contains(&Some(cc))
                 }
                 ControllerButton::Note { note, .. } => {
-                    self.pads.contains_key(&note) || self.encoder_press_note == Some(note)
+                    self.pads.contains_key(&note)
+                        || self.encoder_press_note == Some(note)
+                        || self.secondary_encoder_press_note == Some(note)
                 }
             };
             if conflicts {
@@ -906,6 +1049,12 @@ impl PadConfig {
             .is_some_and(|note| self.pads.contains_key(&note))
         {
             bail!("encoder press note is also mapped as a PAD");
+        }
+        if self
+            .secondary_encoder_press_note
+            .is_some_and(|note| self.pads.contains_key(&note))
+        {
+            bail!("secondary encoder press note is also mapped as a PAD");
         }
         Ok(())
     }
@@ -926,7 +1075,7 @@ impl PadConfig {
             self.profile.as_deref().unwrap_or_default()
         ));
         text.push_str(&format!(
-            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.modified_relative_cc={}\nencoder.modified_relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nsynth.press_cc={}\nsynth.press_note={}\nsynth.press_channel={}\nencoder.modifier={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
+            "menu.layout={}\nencoder.relative_cc={}\nencoder.relative_reverse={}\nencoder.modified_relative_cc={}\nencoder.modified_relative_reverse={}\nencoder.press_cc={}\nencoder.press_note={}\nencoder.press_channel={}\nsynth.press_cc={}\nsynth.press_note={}\nsynth.press_channel={}\nencoder.secondary_press_cc={}\nencoder.secondary_press_note={}\nencoder.secondary_press_channel={}\nencoder.modifier={}\npage_cycle.modifier={}\npage_cycle.trigger={}\nlock.cc={}\n",
             match self.layout {
                 ControllerLayout::Eight => 8,
                 ControllerLayout::Five => 5,
@@ -958,6 +1107,15 @@ impl PadConfig {
             self.synth_press_channel
                 .map(|channel| (channel + 1).to_string())
                 .unwrap_or_default(),
+            self.secondary_encoder_press_cc
+                .map(|cc| cc.to_string())
+                .unwrap_or_default(),
+            self.secondary_encoder_press_note
+                .map(|note| note.to_string())
+                .unwrap_or_default(),
+            self.secondary_encoder_press_channel
+                .map(|channel| (channel + 1).to_string())
+                .unwrap_or_default(),
             self.encoder_modifier
                 .map(ControllerButton::setting)
                 .unwrap_or_default(),
@@ -972,7 +1130,7 @@ impl PadConfig {
         let mut controls: Vec<_> = self.controls.iter().collect();
         controls.sort_by_key(|(_, position)| **position);
         for (incoming, position) in controls {
-            text.push_str(&format!("pot.{position}={incoming}\n"));
+            text.push_str(&format!("rotary.{}={incoming}\n", position + 1));
         }
         let mut pads = entries
             .into_iter()
@@ -1053,11 +1211,11 @@ impl PadConfig {
         })
     }
 
-    pub fn pot_position(&self, incoming: u8) -> Option<usize> {
+    pub fn rotary_position(&self, incoming: u8) -> Option<usize> {
         self.controls
             .get(&incoming)
             .copied()
-            .filter(|position| (1..=15).contains(position))
+            .filter(|position| (1..=MAPPED_ROTARY_COUNT).contains(position))
             .map(|position| usize::from(position - 1))
     }
 
@@ -1067,16 +1225,44 @@ impl PadConfig {
         }
         let channel_matches = self
             .synth_press_channel
+            .or(self.secondary_encoder_press_channel)
             .is_none_or(|channel| channel == message[0] & 0x0f);
         if !channel_matches {
             return None;
         }
+        let cc = self.synth_press_cc.or(self.secondary_encoder_press_cc);
+        let note = self.synth_press_note.or(self.secondary_encoder_press_note);
         match message[0] & 0xf0 {
-            0xb0 if self.synth_press_cc == Some(message[1]) => Some(message[2] > 0),
-            0x90 if self.synth_press_note == Some(message[1]) => Some(message[2] > 0),
-            0x80 if self.synth_press_note == Some(message[1]) => Some(false),
+            0xb0 if cc == Some(message[1]) => Some(message[2] > 0),
+            0x90 if note == Some(message[1]) => Some(message[2] > 0),
+            0x80 if note == Some(message[1]) => Some(false),
             _ => None,
         }
+    }
+
+    /// Returns a signed step for a direction-only mapped rotary. Turn-speed
+    /// values carry their 1..3 magnitude; neutral packets are consumed.
+    pub fn rotary_delta(&self, message: &[u8]) -> (bool, Option<(usize, i8)>) {
+        if message.len() < 3 || message[0] & 0xf0 != 0xb0 {
+            return (false, None);
+        }
+        let Some(position) = self.rotary_position(message[1]) else {
+            return (false, None);
+        };
+        let value = message[2];
+        let delta = if self.encoder_relative_reverse {
+            match value {
+                125..=127 => i16::from(value) - 128,
+                1..=3 => i16::from(value),
+                _ => 0,
+            }
+        } else {
+            match value {
+                61..=63 | 65..=67 => i16::from(value) - 64,
+                _ => 0,
+            }
+        };
+        (true, (delta != 0).then_some((position, delta as i8)))
     }
 
     /// Centered relative mode uses 64 as stationary. Reversed/high-low mode
@@ -1095,13 +1281,25 @@ impl PadConfig {
     }
 
     /// Classifies both ordinary and modifier-specific encoder CCs. A shifted
-    /// CC is always consumed, but it navigates only while the configured
-    /// modifier is actually held.
+    /// CC is always consumed. It navigates while an explicit MIDI modifier is
+    /// held, or unconditionally when the hardware consumes Shift internally
+    /// and exposes only the alternate CC.
+    #[cfg(test)]
     pub fn encoder_action_with_modifier(
         &self,
         message: &[u8],
         modifier_down: bool,
     ) -> (bool, Option<EncoderAction>, bool) {
+        self.encoder_action_with_modifier_and_state(message, modifier_down)
+    }
+
+    pub fn encoder_action_with_modifier_and_state(
+        &self,
+        message: &[u8],
+        modifier_down: bool,
+    ) -> (bool, Option<EncoderAction>, bool) {
+        let direct_modified = self.encoder_modifier.is_none();
+        let modified_active = direct_modified || modifier_down;
         let (modified_consumed, modified_action) = relative_encoder_action(
             message,
             self.encoder_modified_relative_cc,
@@ -1110,8 +1308,8 @@ impl PadConfig {
         if modified_consumed {
             return (
                 true,
-                modifier_down.then_some(modified_action).flatten(),
-                modifier_down,
+                modified_active.then_some(modified_action).flatten(),
+                modified_active && modified_action.is_some(),
             );
         }
         let (consumed, action) = self.encoder_action(message);
@@ -1152,6 +1350,41 @@ impl PadConfig {
         }
         let pressed = message[0] & 0xf0 == 0x90 && message[2] > 0;
         (true, pressed.then_some(EncoderAction::Select))
+    }
+
+    /// Rotary 9's click is learned and isolated now, but intentionally has no
+    /// application action until its musical role is assigned.
+    pub fn secondary_encoder_press_consumed(&self, message: &[u8]) -> bool {
+        let button = self
+            .secondary_encoder_press_cc
+            .map(|cc| ControllerButton::Cc {
+                channel: self.secondary_encoder_press_channel.unwrap_or(0),
+                cc,
+            })
+            .or_else(|| {
+                self.secondary_encoder_press_note
+                    .map(|note| ControllerButton::Note {
+                        channel: self.secondary_encoder_press_channel.unwrap_or(0),
+                        note,
+                    })
+            });
+        let Some(button) = button else {
+            return false;
+        };
+        if self.secondary_encoder_press_channel.is_some() {
+            button.matches(message)
+        } else {
+            match button {
+                ControllerButton::Cc { cc, .. } => {
+                    message.len() >= 3 && message[0] & 0xf0 == 0xb0 && message[1] == cc
+                }
+                ControllerButton::Note { note, .. } => {
+                    message.len() >= 3
+                        && matches!(message[0] & 0xf0, 0x80 | 0x90)
+                        && message[1] == note
+                }
+            }
+        }
     }
 
     pub fn encoder_modifier_action(&self, message: &[u8]) -> (bool, bool) {
@@ -1253,6 +1486,14 @@ fn physical_position(value: &str, maximum: u8, description: &str) -> Result<u8> 
         bail!("{description} must be 1..{maximum}");
     }
     Ok(position)
+}
+
+fn parse_legacy_bool(value: &str, description: &str) -> Result<bool> {
+    match value.trim() {
+        "true" | "yes" | "1" => Ok(true),
+        "false" | "no" | "0" => Ok(false),
+        _ => bail!("{description} must be true or false"),
+    }
 }
 
 enum PhysicalPadBinding {
@@ -1461,6 +1702,27 @@ mod tests {
     }
 
     #[test]
+    fn repeated_identical_relative_encoder_steps_each_navigate() {
+        let c = PadConfig {
+            encoder_relative_cc: Some(112),
+            ..PadConfig::default()
+        };
+
+        for _ in 0..3 {
+            assert_eq!(
+                c.encoder_action(&[0xb0, 112, 63]),
+                (true, Some(EncoderAction::Up))
+            );
+        }
+        for _ in 0..3 {
+            assert_eq!(
+                c.encoder_action(&[0xb0, 112, 65]),
+                (true, Some(EncoderAction::Down))
+            );
+        }
+    }
+
+    #[test]
     fn high_low_relative_encoder_treats_zero_as_neutral() {
         let c = PadConfig {
             encoder_relative_cc: Some(114),
@@ -1526,7 +1788,7 @@ mod tests {
     }
 
     #[test]
-    fn page_cycle_chord_latches_once_and_reuses_an_absolute_control() {
+    fn page_cycle_chord_latches_once_and_reuses_a_mapped_control() {
         let c = PadConfig {
             controls: HashMap::from([(10, 1)]),
             page_cycle_modifier: Some(ControllerButton::Cc { channel: 0, cc: 27 }),
@@ -1562,13 +1824,13 @@ mod tests {
         );
     }
     #[test]
-    fn older_controller_profile_keeps_unspecified_encoder_controls_unmapped() {
+    fn older_positional_profile_drops_controls_and_keeps_encoders_unmapped() {
         let path =
             std::env::temp_dir().join(format!("shsynth-controller-{}.conf", std::process::id()));
         fs::write(&path, "input=AudioBox USB 96\ncc.86=74\npad.36=arp\n").unwrap();
         let config = PadConfig::load(&path).unwrap();
         assert_eq!(config.input_match.as_deref(), Some("AudioBox USB 96"));
-        assert_eq!(config.controls, HashMap::from([(86, 1)]));
+        assert!(config.controls.is_empty());
         assert_eq!(config.encoder_relative_cc, None);
         assert_eq!(config.encoder_press_cc, None);
         assert_eq!(config.layout, ControllerLayout::Eight);
@@ -1636,7 +1898,7 @@ mod tests {
         let _ = fs::remove_file(path);
     }
     #[test]
-    fn positional_pots_and_pads_round_trip_without_parameter_or_action_names() {
+    fn legacy_positional_pots_are_dropped_while_pads_survive() {
         let path = std::env::temp_dir().join(format!(
             "shsynth-controller-positional-{}.conf",
             std::process::id()
@@ -1647,19 +1909,19 @@ mod tests {
         )
         .unwrap();
         let config = PadConfig::load(&path).unwrap();
-        assert_eq!(config.controls, HashMap::from([(74, 1), (17, 12)]));
+        assert!(config.controls.is_empty());
         assert_eq!(config.pads[&36], PadAction::Pad1);
         assert_eq!(config.cc_buttons[&43], PadAction::Pad8);
         config.save(&path).unwrap();
         let saved = fs::read_to_string(&path).unwrap();
-        assert!(saved.contains("pot.1=74"));
-        assert!(saved.contains("pot.12=17"));
+        assert!(!saved.contains("rotary.2=74"));
+        assert!(!saved.contains("rotary.13=17"));
         assert!(saved.contains("pad.1=note.10.36"));
         assert!(saved.contains("pad.8=cc.10.43"));
         let _ = fs::remove_file(path);
     }
     #[test]
-    fn fifteen_pots_and_dedicated_synth_click_round_trip() {
+    fn fifteen_rotaries_and_dedicated_synth_click_round_trip() {
         let path =
             std::env::temp_dir().join(format!("shr-controller-15-pot-{}.conf", std::process::id()));
         let mut config = PadConfig::unmapped("Controller");
@@ -1668,10 +1930,118 @@ mod tests {
         config.synth_press_channel = Some(0);
         config.save(&path).unwrap();
         let restored = PadConfig::load(&path).unwrap();
-        assert_eq!(restored.pot_position(99), Some(14));
+        assert_eq!(restored.rotary_position(99), Some(14));
         assert_eq!(restored.synth_press_action(&[0xb0, 100, 127]), Some(true));
         assert_eq!(restored.synth_press_action(&[0xb0, 100, 0]), Some(false));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sixteen_rotary_profile_and_two_clicks_round_trip() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-controller-sixteen-rotaries-{}.conf",
+            std::process::id()
+        ));
+        let mut text = String::from(
+            "encoder.relative_cc=28\nencoder.press_cc=118\nencoder.press_channel=1\nencoder.secondary_press_note=99\nencoder.secondary_press_channel=2\n",
+        );
+        for rotary in 2..=ROTARY_COUNT {
+            text.push_str(&format!("rotary.{rotary}={}\n", rotary + 40));
+        }
+        fs::write(&path, text).unwrap();
+        let config = PadConfig::load(&path).unwrap();
+        assert_eq!(config.controls.len(), usize::from(MAPPED_ROTARY_COUNT));
+        assert_eq!(config.rotary_position(42), Some(0));
+        assert_eq!(config.rotary_position(56), Some(14));
+        assert_eq!(config.secondary_encoder_press_note, Some(99));
+        assert_eq!(config.secondary_encoder_press_channel, Some(1));
+        config.save(&path).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("rotary.16=56"));
+        assert!(saved.contains("encoder.secondary_press_note=99"));
+        assert_eq!(PadConfig::load(&path).unwrap(), config);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn obsolete_absolute_markers_are_ignored_without_rewriting() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-minilab-mkii-relative-repair-{}.conf",
+            std::process::id()
+        ));
+        let text = "profile=arturia-minilab-mkii\nencoder.relative_cc=112\nencoder.absolute=true\nencoder.press_cc=113\n";
+        fs::write(&path, text).unwrap();
+
+        let loaded = PadConfig::load(&path).unwrap();
+
+        assert_eq!(loaded.encoder_relative_cc, Some(112));
+        assert_eq!(fs::read_to_string(&path).unwrap(), text);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn obsolete_positional_surface_is_not_reinterpreted_as_relative() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-controller-positional-drop-{}.conf",
+            std::process::id()
+        ));
+        let text = "profile=arturia-minilab-3\nrotary.relative=false\nrotary.2=74\nencoder.relative_cc=114\n";
+        fs::write(&path, text).unwrap();
+
+        let loaded = PadConfig::load(&path).unwrap();
+
+        assert!(loaded.controls.is_empty());
+        assert_eq!(loaded.encoder_relative_cc, Some(114));
+        assert_eq!(fs::read_to_string(&path).unwrap(), text);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn observed_mkii_misclassification_keeps_its_relative_surface_identity() {
+        let path = std::env::temp_dir().join(format!(
+            "shsynth-controller-mkii-relative-{}.conf",
+            std::process::id()
+        ));
+        let text = "profile=arturia-minilab-mkii\nrotary.relative=false\nrotary.2=74\nencoder.relative_cc=112\nencoder.absolute=true\n";
+        fs::write(&path, text).unwrap();
+
+        let loaded = PadConfig::load(&path).unwrap();
+
+        assert_eq!(loaded.rotary_position(74), Some(0));
+        assert_eq!(loaded.encoder_relative_cc, Some(112));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn direction_only_rotaries_report_signed_speed_and_consume_neutral() {
+        let relative_one = PadConfig {
+            controls: HashMap::from([(74, 1)]),
+            ..PadConfig::default()
+        };
+        assert_eq!(
+            relative_one.rotary_delta(&[0xb0, 74, 63]),
+            (true, Some((0, -1)))
+        );
+        assert_eq!(
+            relative_one.rotary_delta(&[0xb0, 74, 67]),
+            (true, Some((0, 3)))
+        );
+        assert_eq!(relative_one.rotary_delta(&[0xb0, 74, 64]), (true, None));
+
+        let relative_two = PadConfig {
+            controls: HashMap::from([(74, 1)]),
+            encoder_relative_reverse: true,
+            ..PadConfig::default()
+        };
+        assert_eq!(
+            relative_two.rotary_delta(&[0xb0, 74, 127]),
+            (true, Some((0, -1)))
+        );
+        assert_eq!(
+            relative_two.rotary_delta(&[0xb0, 74, 3]),
+            (true, Some((0, 3)))
+        );
+        assert_eq!(relative_two.rotary_delta(&[0xb0, 74, 0]), (true, None));
     }
     #[test]
     fn tap_tempo_uses_stable_recent_intervals_and_rejects_long_gap() {
@@ -1728,11 +2098,15 @@ mod tests {
             "encoder.relative_cc=128\n",
             "encoder.press_cc=128\n",
             "encoder.press_note=128\n",
+            "encoder.secondary_press_cc=128\n",
+            "encoder.secondary_press_note=128\n",
             "lock.cc=128\n",
             "pad.0.36=item-1\n",
             "pad.17.36=item-1\n",
             "button.cc.17.44=item-1\n",
             "pot.1=74\ncc.71=71\n",
+            "rotary.1=74\n",
+            "rotary.17=74\n",
             "pad.1=note.10.36\npad.37=page-2\n",
         ] {
             fs::write(&path, text).unwrap();

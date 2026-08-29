@@ -6,11 +6,11 @@
 
 use crate::audio_graph::{
     AuxBus, ChannelLayout, Edge, GraphDefinition, InsertRack, Monitoring, Node, NodeKind,
-    ProjectAuxRouting, RecordingTap, SendRoute, SinkKind, SourceChain, SourceKind, StereoPorts,
-    GRAPH_FORMAT_VERSION,
+    ProjectAuxRouting, RecordingTap, SendPoint, SendRoute, SinkKind, SourceChain, SourceKind,
+    StereoPorts, GRAPH_FORMAT_VERSION,
 };
 use crate::audio_graph_runtime::{
-    CallbackTimingCounters, CallbackTimingSnapshot, GraphPlan, ProcessStatus,
+    AuxSendControl, CallbackTimingCounters, CallbackTimingSnapshot, GraphPlan, ProcessStatus,
 };
 use crate::audio_recorder::{FinalMixCapture, FinalMixRecorder, FinalMixRecorderStatus};
 use crate::config::{AudioCaptureConfig, AudioGraphConfig};
@@ -239,6 +239,7 @@ pub(crate) struct OwnedAudioGraph {
     final_recorder: FinalMixRecorder,
     monitoring: Monitoring,
     effect_controls: std::collections::BTreeMap<u32, std::sync::Arc<crate::effects::EffectControl>>,
+    aux_send_controls: std::collections::BTreeMap<u8, std::sync::Arc<AuxSendControl>>,
 }
 
 #[derive(Default)]
@@ -431,6 +432,19 @@ impl FinalBusOwner {
         Ok(true)
     }
 
+    pub(crate) fn apply_aux_send_level(&self, aux_id: u8, level_db: Option<f32>) -> Result<bool> {
+        let Some(graph) = self.graph.as_ref() else {
+            return Ok(false);
+        };
+        graph
+            .aux_send_controls
+            .get(&aux_id)
+            .with_context(|| format!("AUX {aux_id} runtime control is unavailable"))?
+            .set_level_db(level_db)
+            .map_err(anyhow::Error::msg)?;
+        Ok(true)
+    }
+
     pub(crate) fn reset_master_strip_loudness(&self) -> bool {
         let Some(graph) = self.graph.as_ref() else {
             return false;
@@ -612,6 +626,14 @@ impl OwnedAudioGraph {
                     .map(|control| (effect.id, control))
             })
             .collect();
+        let aux_send_controls = definition
+            .aux_buses
+            .iter()
+            .filter_map(|aux| {
+                plan.aux_send_control(aux.id)
+                    .map(|control| (aux.id, control))
+            })
+            .collect();
 
         let inputs = [
             jack.register_audio_port("managed_in_l", PortDirection::Input)?,
@@ -762,6 +784,7 @@ impl OwnedAudioGraph {
             final_recorder,
             monitoring,
             effect_controls,
+            aux_send_controls,
         })
     }
 
@@ -933,6 +956,16 @@ impl OwnedAudioGraph {
                     .plan
                     .effect_control_by_id(effect.id)
                     .map(|control| (effect.id, control))
+            })
+            .collect();
+        self.aux_send_controls = definition
+            .aux_buses
+            .iter()
+            .filter_map(|aux| {
+                self.callback
+                    .plan
+                    .aux_send_control(aux.id)
+                    .map(|control| (aux.id, control))
             })
             .collect();
         self.callback.final_bus.reset();
@@ -1133,7 +1166,7 @@ pub(crate) fn managed_graph_definition(
         });
         let send = aux_routing.sends.iter().find(|send| send.aux_id == bus.id);
         let mut aux_previous = None;
-        if let Some(send) = send {
+        if !bus.rack.effects.is_empty() {
             let send_node = FIRST_SEND_NODE + bus_index as u32;
             nodes.push(Node {
                 id: send_node,
@@ -1145,7 +1178,7 @@ pub(crate) fn managed_graph_definition(
             });
             edges.push(Edge {
                 id: edges.len() as u32 + 1,
-                from: match send.point {
+                from: match send.map(|send| send.point).unwrap_or(SendPoint::PostInsert) {
                     crate::audio_graph::SendPoint::PreInsert => SOURCE_NODE,
                     crate::audio_graph::SendPoint::PostInsert => previous,
                 },
@@ -1154,8 +1187,9 @@ pub(crate) fn managed_graph_definition(
             sends.push(SendRoute {
                 source_node: SOURCE_NODE,
                 aux_id: bus.id,
-                level_db: send.level_db,
-                point: send.point,
+                level_db: send.map(|send| send.level_db).unwrap_or(-60.0),
+                enabled: send.is_some(),
+                point: send.map(|send| send.point).unwrap_or(SendPoint::PostInsert),
             });
             aux_previous = Some(send_node);
         }
@@ -1731,6 +1765,7 @@ mod tests {
         assert_eq!(graph.aux_buses[0].effects, [reverb]);
         assert_eq!(graph.master_chain, [master]);
         assert_eq!(graph.sends[0].level_db, -18.0);
+        assert!(graph.sends[0].enabled);
         assert_eq!(
             graph
                 .nodes
@@ -1739,6 +1774,23 @@ mod tests {
                 .count(),
             1
         );
+        routing.clear_send(aux);
+        let disabled = managed_graph_definition(
+            48_000,
+            128,
+            &destinations,
+            &test_live_ports(),
+            test_monitoring(),
+            &rack,
+            &routing,
+        );
+        disabled.validate().unwrap();
+        assert_eq!(disabled.sends.len(), 1);
+        assert!(!disabled.sends[0].enabled);
+        assert!(GraphPlan::compile(&disabled)
+            .unwrap()
+            .aux_send_control(aux)
+            .is_some());
     }
 
     #[test]

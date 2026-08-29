@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-pub const GRAPH_FORMAT_VERSION: u32 = 1;
+pub const GRAPH_FORMAT_VERSION: u32 = 2;
 pub const EFFECT_FORMAT_VERSION: u32 = 1;
 pub const MAX_SOURCES: usize = 4;
-pub const MAX_AUX_BUSES: usize = 2;
+pub const MAX_AUX_BUSES: usize = 3;
 pub const MAX_CHAIN_EFFECTS: usize = 8;
 pub const MAX_EFFECTS: usize = 16;
 pub const MAX_NODES: usize = 32;
@@ -679,6 +679,7 @@ pub struct SendRoute {
     pub source_node: NodeId,
     pub aux_id: AuxId,
     pub level_db: f32,
+    pub enabled: bool,
     pub point: SendPoint,
 }
 
@@ -1355,17 +1356,27 @@ mod tests {
             .unwrap();
         let first = routing.add_bus().unwrap();
         let second = routing.add_bus().unwrap();
+        let third = routing.add_bus().unwrap();
+        assert!(routing.add_bus().is_err());
         let reverb = routing
             .add_effect(&source, first, EffectKind::Reverb)
             .unwrap();
         let delay = routing
             .add_effect(&source, second, EffectKind::Delay)
             .unwrap();
-        assert!(master_id > source_id && reverb > master_id && delay > reverb);
+        let chorus = routing
+            .add_effect(&source, third, EffectKind::Chorus)
+            .unwrap();
+        assert!(master_id > source_id && reverb > master_id && delay > reverb && chorus > delay);
         for bus in &routing.buses {
             let effect = bus.rack.effects.first().unwrap();
             assert_eq!(effect.parameters.get("dry_percent"), Some(&0.0));
-            assert_eq!(effect.parameters.get("wet_percent"), Some(&100.0));
+            let wet_name = if matches!(effect.kind, EffectKind::Delay | EffectKind::Reverb) {
+                "wet_percent"
+            } else {
+                "mix_percent"
+            };
+            assert_eq!(effect.parameters.get(wet_name), Some(&100.0));
         }
         routing
             .set_send(&source, first, -18.0, SendPoint::PostInsert)
@@ -1373,9 +1384,13 @@ mod tests {
         routing
             .set_send(&source, second, -9.0, SendPoint::PreInsert)
             .unwrap();
+        routing
+            .set_send(&source, third, -24.0, SendPoint::PostInsert)
+            .unwrap();
         routing.validate(&source).unwrap();
         assert_eq!(routing.sends[0].level_db, -18.0);
         assert_ne!(routing.sends[0].point, routing.sends[1].point);
+        assert_eq!(routing.sends[2].aux_id, third);
         routing.remove_bus(first).unwrap();
         assert!(routing.sends.iter().all(|send| send.aux_id != first));
     }

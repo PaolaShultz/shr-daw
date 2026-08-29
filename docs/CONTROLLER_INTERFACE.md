@@ -42,12 +42,12 @@ or `q` can still exit from the splash.
 | Home | Centered startup navigation root with equal-width bars for Software Synths, FT2, Recorder, Performance, MIDI Learn, Routing, Effects, Ideas, and Help. Encoder/Up/Down selects a workspace and encoder click/Enter opens it. Its existing bottom line overrides ordinary guidance with the exact owning workspace whenever recording or transport remains active. Home has no MIDI quit command; Esc or `q` quits from the computer keyboard. A note-bearing dirty Project uses the rotary `SAVE (AUTO)` / `SAVE (NAME)` / `DON'T SAVE` / `BACK` protection; a zero-note Project never asks to save on exit. |
 | Presets | Select previous/next, keyboard page up/down, first/last, Shift-rotary previous/next engine across synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler, and load the selected sound. Moj Sint sounds show their synthesis model separately from the Moj Sint engine; SHR Sampler packages remain read-only. Its physical pages contain only sound browsing, load, panic, contextual help, and Exit to Home; engine browsing remains available from Shift-rotary, `[`/`]`, and the two header halves. |
 | MTR | With the final bus active: choose Synth/Loop/Input/Drums, adjust its bounded smoothed level, use MUTE for optional sources or the one MON ON/MON OFF Input action, switch Input between stereo and dual mono, and pan configured Input 1 and Input 2 independently in dual mono. `IN CTRL` cycles LEVEL/PAN 1/PAN 2, and the ordinary minus/plus pair follows that focus. Both new Input choices live on the visible NAV controller page and add no dedicated computer-keyboard shortcuts. Dual mono starts at `1L100 2R100`, so its initial output matches stereo. Inspect final sample/true peaks and linked reduction, and start/stop the callback-boundary final stereo recording. Input monitoring defaults off and MON ON can activate the bus without launching an optional source. At native 40×13 the body reserves its final rows for recording integrity and a doubled-monitoring refusal; healthy sources omit `READY`/`ON`. With the bus inactive, the passive CPU/VU view puts an unavailable reason in the VU heading instead of clipping it below the body. NAV opens either the selected source/AUX/master rack overlay or the fixed Project MASTER STRIP and owns the two Input controls. |
-| Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the main rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the 12 mapped parameters in place; open and return from the FX rack without stopping the sound; use STOP/PLAY/RECORD/TAP for a free-time take or the dedicated external-sync controller arpeggiator; save the current synthv1 or Moj Sint sound through the explicit Overwrite/Save New/Cancel overlay; use `SOUNDS` to return directly to the Presets catalog and its visible `LOAD`; panic; contextual help; return to Presets. PLAY sends a fresh controller Start even with no take, RECORD starts the same clock before capture, STOP sends Stop without unloading the sound, and TAP changes tempo without starting transport. Factory/system sounds are read-only and redirect Overwrite to a private numbered sound. Saving changes neither the running engine nor held notes and makes the values the new RESET baseline. N00B never replaces the Player body. Synthv1 and Moj Sint models each render their own 12-control three-by-four layout and use the same physical pickup crossing path without storing parameter names in the controller map. |
+| Playback | Inspect held notes/chords and aligned decimal MIDI strike velocities, with keyboard state added only when the terminal is taller than native 40×13; toggle the N00B filter in place and, while enabled, turn the main rotary through all root plus major/natural-minor choices shown by a compact `SCALE` control; reset the active synth parameters in place; open and return from the FX rack without stopping the sound; use STOP/PLAY/RECORD/TAP for a free-time take or the dedicated external-sync controller arpeggiator; save the current synthv1 or Moj Sint sound through the explicit Overwrite/Save New/Cancel overlay; use `SOUNDS` to return directly to the Presets catalog and its visible `LOAD`; panic; contextual help; return to Presets. PLAY sends a fresh controller Start even with no take, RECORD starts the same clock before capture, STOP sends Stop without unloading the sound, and TAP changes tempo without starting transport. Factory/system sounds are read-only and redirect Overwrite to a private numbered sound. Saving changes neither the running engine nor held notes and makes the values the new RESET baseline. N00B never replaces the Player body. The native parameter surface is always three by five: Synthv1 and the five older Moj models show twelve synth controls plus AUX 1/2/3 sends, while Moj Sint Dual Filter shows its fifteen synthesis controls. Aux sends use a live 10 ms gain ramp and refuse changes during recording. Direction-only mappings carry current values. |
 | Ideas | Previous/next/first/last idea; inspect, load, play, delete, record, and save; panic; contextual help; Exit to Home. |
 | FT2 normal | The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries, while Shift-click opens the FT2 live mixer. Keyboard Up/Down also moves rows. PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, SOUND contains PARAM, MIX, AUTO, and next-boundary FILL, and SYS holds panic/N00B/help/Exit. PARAM and AUTO return to the exact cursor, mode, transport, route, and launching page. CLICK toggles the internally owned final-bus metronome from FT2 Tools SYS item 3. With external `SYNC` selected, local PLAY enters visible clock waiting or performs literal Stop; only an acquired incoming Start launches Arrangement step 1/row 1 or selected Pattern/row 1. In ROUTE, turning an active field validates and applies the choice to the Project and live route. Moj Sint exposes `ENGINE → MODEL → PATCH`; patch browsing stays within its selected model. `APPLY` keeps the result; `CANCEL` restores the route snapshot from when the overlay opened. Back restores the active field first. The physical item buttons, mouse, and keyboard `A`/`C` share those actions. Its `KIT` field selects an installed SHR Drums kit when the target is SHR Drums; a successful kit change resets old kit-specific tuning while preserving the Project key and drum effects. Exit never asks to save when the entire Project has zero note events; explicit SAVE remains available for an empty routing template. |
-| FT2 PARAM | Reuses Playback's active backend/model 12-control renderer, values, relative-to-preset colours, held-note presentation, configured POT1–12 mapping, and pickup crossing while keeping tracker engine ownership. SOUND provides RESET, SAVE, N00B, and one empty position; SYS provides Panic, one empty position, Help, and Exit. RESET is in-place and re-arms pickup. SAVE reuses Overwrite/Save New/Cancel and retargets only the active matching FT2 route after success. Unsupported backends visibly provide neither editable parameters nor save support. The ordinary and Shift rotary do not edit synth parameters. Back/Esc/Exit restores the exact FT2 state and launching menu page. |
-| FT2 mixer | A mode-preserving live audio child for up to twelve current-Pattern strips. Configured POT positions map directly with twelve controls or to a rotary-selected bank with fewer. Each strip shows page/name, canonical Synth/Drums/Loop/Input owner, signed dB gain, five-LED post-gain VU, link count, pickup direction, and honest `NO RETURN`, monitor-off, or offline state. Linked pages share gain/VU and re-arm the other assigned pots after either changes. Play/REC follow the sounding Pattern; Edit follows the edited Pattern. Opening activates the final bus without silently enabling Input monitoring. Main-encoder click, Back, or SYS Exit restores the exact tracker context. |
-| FT2 automation | Pattern-owned sparse-lane child. Opening is read-only; NEW explicitly creates an unused target lane. Up/Down changes lanes; REC arms only the selected target and adds/deletes points; POINT browses and adjusts points; LANE changes an empty lane's target, explains fixed RAMP/STEP meaning, and confirms clear. Populated lanes refuse target browsing until CLEAR is confirmed. Touch capture uses transport time, can run beside note REC, monitors the armed value, re-arms pickup at the actual cursor/playback value, and becomes safe rather than writing through a Pattern boundary. Effect removal or confirmed type replacement reports and clears only that effect's now-unresolvable lanes; Cancel retains them. Back restores exact tracker context. |
+| FT2 PARAM | Reuses Playback's active backend/model three-by-five renderer, values, relative-to-preset colours, held-note presentation, and configured rotary 2–16 mapping while keeping tracker engine ownership. Older 12-control instruments expose AUX 1/2/3 in the final row; Dual Filter retains all fifteen synth controls. SOUND provides RESET, SAVE, N00B, and one empty position; SYS provides Panic, one empty position, Help, and Exit. RESET is in place. SAVE reuses Overwrite/Save New/Cancel and retargets only the active matching FT2 route after success. Unsupported backends visibly provide neither editable parameters nor save support. The ordinary and Shift rotary do not edit synth parameters. Back/Esc/Exit restores the exact FT2 state and launching menu page. |
+| FT2 mixer | A mode-preserving live audio child for up to twelve current-Pattern strips. Configured active rotary positions map directly with twelve controls or to a rotary-selected bank with fewer. Each strip shows page/name, canonical Synth/Drums/Loop/Input owner, signed dB gain, five-LED post-gain VU, link count, and honest `NO RETURN`, monitor-off, or offline state. Linked pages share gain/VU. Play/REC follow the sounding Pattern; Edit follows the edited Pattern. Opening activates the final bus without silently enabling Input monitoring. Main-encoder click, Back, or SYS Exit restores the exact tracker context. |
+| FT2 automation | Pattern-owned sparse-lane child. Opening is read-only; NEW explicitly creates an unused target lane. Up/Down changes lanes; REC arms only the selected target and adds/deletes points; POINT browses and adjusts points; LANE changes an empty lane's target, explains fixed RAMP/STEP meaning, and confirms clear. Populated lanes refuse target browsing until CLEAR is confirmed. Touch capture uses transport time, can run beside note REC, monitors the armed value, and becomes safe rather than writing through a Pattern boundary. Effect removal or confirmed type replacement reports and clears only that effect's now-unresolvable lanes; Cancel retains them. Back restores exact tracker context. |
 | FT2 HARMONY | Read-only FT2 Tools overlay derived from the current Project tonic and major/natural-minor mode. It shows both circle-of-fifths neighbours, relative and parallel keys, and seven diatonic triads using the configured English/German note-name policy and SHR's canonical sharp spelling. Opening, repeated opening, encoder turns, and closing cannot change or dirty the Project, generate notes, or alter transport. The launcher/Exit, keyboard `H`/Back/Esc/Enter, controller, and mouse paths restore the exact caller page, page-select mode, Pattern/order/page/lane/column/cursor, FT2 mode, and transport. |
 | FT2 HISTORY | Bounded runtime history for committed mutations to one existing Pattern. Page 1 is exactly Undo, Redo, Snapshot, Recall; page 2 opens FEEL, GROOVE, CYCLE, and GEN. FEEL drafts Pattern swing division/amount. GROOVE drafts one deterministic preset/scope/strength and writes exact cell timing/velocity only on Apply. CYCLE drafts the selected lane's independent length, rate, and direction; stopped Apply is one history entry and never moves the FT2 cursor or changes Arrangement duration. GEN opens the one offline inspectable Euclidean/accumulator/seeded-mutation/controlled-FILL/arpeggio/chord/harmonizer workflow described below. Unavailable restore controls are visibly disabled. Snapshot capture is non-dirty and Recall is undoable. Mouse and controller dispatch the same actions; keyboard adds `Ctrl+Z`, `Ctrl+Y`, and `Ctrl+Shift+Z`. Restore preserves Pattern/order/row/page/lane/column/mode/controller context and currently requires stopped FT2 transport; a Play-time attempt leaves the stack unchanged, while REC Undo finishes the take and held-note cleanup first. |
 | FT2 GENERATOR | Offline draft for the selected Pattern/page/lane/cursor context, with explicit harmonic source/target, complete tool settings, affected/replacement/collision/protected counts, affected rows, out-of-scale skips, range/scope refusals, collision policy, and retained seed where used. ARPEGGIO reads the cursor-row chord and exposes order/octaves/rate/gate/repetitions; CHORD uses Project key/degree/inversion/close-or-open voicing/three lanes/rate/repetitions; HARMONIZER copies a bounded source-lane span to an explicit target as a diatonic third/fifth above/below under REFUSE/SKIP policy. SHAPE selects tool/length/amount; DETAIL exposes tool-specific secondary/control values and policy; VALUE changes gate, chord rate, harmony target, or existing seed as named in the body, then offers Repeat and Inspect; APPLY owns Stop, current-Pattern Apply, Apply to Clone, and Cancel. Opening and every draft action preserve Song, History, dirty state, Arrangement, automation, and FT2 cursor. Current Apply is one stopped History transaction. Clone uses the existing independent Pattern plus explicit appended Arrangement-step owner. The result is ordinary Cells; no playback-time generation exists. HARMONY remains a separate read-only browser. |
@@ -66,7 +66,7 @@ or `q` can still exit from the splash.
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
 | Audio recorder | Select and name a track (`NAME` accepts the current value by rotary click and allows optional keyboard editing); assign an exact discovered JACK source; arm/disarm one, every resolved track, or all; refresh source discovery without rewriting preferences; start/stop one synchronized take; inspect elapsed time, active count, selected-track activity, drop/xrun/high-water status, final basename or failure; Exit to Home and panic. The native body uses a selection-following five-track window and reserves its final two rows for integrity/recovery and the result. Healthy tracks omit `ready`; only `MISSING` is called out. |
 | 18-channel Levels | Show all 18 recording inputs simultaneously as three groups of six fixed nine-LED dBFS meters. Encoder, Left/Right, `j`/`k`, or pointer selects without scrolling; encoder click/Enter/Space arms the selected channel. Visible TAKE, CHANNEL, and SYS pages provide setup, record, literal Stop, reset, previous/next, arm, refresh, Panic, Help, and Exit. At native 40×13 it omits controller rows but keeps shared row 13; compact geometry falls back rather than cropping. |
-| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, drum, or master with Shift-rotary or the existing forward TARGET action; select the typed `+ INSERT EFFECT` row with the ordinary rotary; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. Shift-rotary is inert in the type and parameter editors. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
+| FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, AUX 3, drum, or master with Shift-rotary or the existing forward TARGET action; select the typed `+ INSERT EFFECT` row with the ordinary rotary; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. Shift-rotary is inert in the type and parameter editors. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
 | MASTER STRIP | Compact fixed-order INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL front page with one selected-section value and bounded mastering meters; DETAIL opens only that section's advanced values. In DETAIL, the ordinary rotary browses that section's parameters and Shift-rotary changes section through the existing previous/next order. Optional sections have smoothed bypass; A/B retains fixed latency and true-peak protection; RESET I clears integrated loudness. Playback allows numerical audition without a topology rebuild, final recording rejects edits, and a disabled graph changes only Project state. Back preserves caller, page, FX/tracker selection, and cursor. |
 | Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external MIDI enable/output/profile, controller clock enable/output, exclusive `SYNC` internal/external owner, exact `SYNC IN`, `SYNC POS` Arrangement/Pattern Start, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate or ambiguous inputs, backs up and atomically saves it, safely activates live MIDI input changes while transport is stopped, refreshes discovery, and rolls back on failure. All controller layouts reach the same scrolling rows through the canonical menu dispatcher. Interface availability and unverified downstream DIN profile are separate states. |
 | Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
@@ -94,7 +94,7 @@ as `CPU 52°C` whenever useful state or a fault fits beside it. Longer actionabl
 text temporarily owns all 38 cells so its consequence and recovery are not
 lost; the temperature returns when that message clears. Text is fitted after
 reserving ownership, consequence, and recovery. Routine success lasts at most
-1.5 seconds; a retained-work, rollback, pickup, or All Notes Off consequence
+1.5 seconds; a retained-work, rollback, or All Notes Off consequence
 lasts at most three seconds. Confirmations and faults remain until resolved,
 while active recording always names its owner and merges any recording fault.
 With no configured temperature and no message, an idle transport cell alone is
@@ -103,7 +103,7 @@ and the two controller rows sit immediately above the shared status row.
 Working-screen frame cleanup stops above that row; only the shared renderer
 clears and replaces it. The fullscreen EQ deliberately owns all thirteen rows: its final
 row is the 50 Hz–20 kHz logarithmic axis, temporarily replaced only by a useful
-pickup, range, or fault message. It has no visible controller rows. A compact
+range or fault message. It has no visible controller rows. A compact
 terminal falls back to the ordinary FX editor and shared status layout.
 Levels likewise falls back to its compact ordinary layout below 40×13.
 
@@ -164,11 +164,13 @@ input, toggle, and return layer.
 
 ## Input model
 
-Shift state always comes from the configured encoder modifier. A controller
-profile may also declare the separate relative CC that its rotary emits while
-that modifier is held; those packets are consumed but navigate only while the
-configured Shift is down. Releasing Shift immediately restores the ordinary
-rotary path. The following table is the current secondary-navigation contract:
+Shift state comes either from a configured MIDI modifier or from a dedicated
+alternate encoder CC produced only by the controller's hardware Shift layer.
+The latter is the MiniLab mkII path: Arturia documents that Shift changes the
+CC of encoders 1 and 9, so SHR does not wait for an independent Shift packet
+that the controller does not expose. Releasing Shift restores the ordinary
+rotary CC in hardware. The following table is the current
+secondary-navigation contract:
 
 | Screen/context | Ordinary rotary | Shift+rotary | Existing action reused |
 |---|---|---|---|
@@ -217,7 +219,10 @@ to select controller pages while Shift is held.
 - When a configured controller is offline, lacks a matching reviewed profile,
   or has an incomplete learned encoder, Home initially selects MIDI Learn and
   gives the reason. A learned master encoder with turn and click is usable even
-  without optional pads. Home itself neither learns nor transmits.
+  without optional pads. Home itself neither learns nor transmits. During
+  Learn, master turn/click packets cannot browse or skip capture roles; only
+  explicit keyboard skip/back can move past an unlearned optional control.
+  Learn renders exactly two action-first rows total and no shared status row.
 - Help is a child screen. It tries to show the same help at
   `http://<LAN-IP>/help` while open. The master encoder moves one help row at a
   time. Encoder press follows a highlighted internal section link on eight-
@@ -463,28 +468,38 @@ pads 5–8 their contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
 meanings. Older semantic mappings still decode to those physical positions
 without changing note numbers.
 
-## Parameters, pickup, and extension points
+## Parameters, relative turns, and extension points
 
-Menu navigation is discrete. `POT 1` through `POT 15` are continuous physical
-positions; each backend or editor supplies its own parameter table for those
-positions. Preset load, idea load, and in-place reset re-arm pickup;
+Menu navigation is discrete. Rotary 1 supplies relative navigation and its
+click selects. Rotaries 2–16 supply up to fifteen continuous parameter slots;
+each backend or editor supplies its own parameter table for those slots. The
+MiniLab mkII discards incoming rotary position and carries SHR's
+current parameter by signed steps across preset load, reset, mixer-bank changes,
+and linked controls. Rotary 9's click is learned and persisted;
 the verified synthv1 0.9.29 indices/ranges and green/yellow/red ±0.03 indicators
-are unchanged. Existing models retain their 12-position tables. Moj Sint Dual
-Filter uses all 15 positions for two filter blocks, STRUCTURE, filter ADSR, and
-amp ADSR.
+are unchanged. Existing models retain their 12-position synth tables and use
+positions 13–15 for Project AUX 1, AUX 2, and AUX 3 sends on Player and FT2
+PARAM. These Project controls are consumed before backend forwarding. Moj Sint
+Dual Filter instead uses all 15 parameter rotaries for two filter blocks,
+STRUCTURE, filter ADSR, and amp ADSR.
 
-The master rotary always remains SHR navigation. A separate optional
-`synth.press_cc` or `synth.press_note` binding is learned for the clickable
-synth rotary. On Dual Filter it toggles only `CORE: INDUSTRIAL` and
-`CORE: COUNTER`; release is consumed, current pot values are preserved, and
+The master rotary always remains SHR navigation. Rotary 9's learned click is
+also stored as the optional `synth.press_cc` or `synth.press_note` binding. On
+Dual Filter it toggles only `CORE: INDUSTRIAL` and
+`CORE: COUNTER`; release is consumed, current rotary values are preserved, and
 the visible core state is saved with the preset.
 
-All Shift-rotary secondary navigation uses the profile/configured modifier and
-optional shifted relative CC plus the same semantic actions as visible or
-keyboard navigation. It adds no hard-coded hardware message and no hidden
-absolute-knob mode. If a future profile maps an absolute continuous control,
-it must use the same pickup crossing rule and re-arm whenever a Project or
-runtime value resets.
+All Shift-rotary secondary navigation uses either the profile/configured MIDI
+modifier or the learned hardware Shift-layer CC plus the same semantic actions
+as visible or keyboard navigation. The MiniLab mkII alternate CC is also
+relative. Shift Learn names and proves both directions as separate gestures:
+Shift plus repeated left packets, release, then Shift plus repeated right
+packets on the same CC, followed by release. Its direction encoding is learned
+independently and may oppose the ordinary axis.
+For each performance rotary, Learn requires repeated left-direction
+packets followed by repeated right-direction packets on the same channel and
+CC. Positional or wrong-direction input is rejected and cannot resume on that
+role until explicit retry or skip.
 
 `Action` and the empty menu slots remain extension points. Future features are
 not shown on the hardware menu until they actually dispatch a working action.

@@ -61,7 +61,7 @@ Project keeps its stored routes.
 
 ## Moj Sint sounds
 
-Moj Sint is SHR-DAW's editable in-house synthesis family. Its 16 cleared
+Moj Sint is SHR-DAW's editable in-house synthesis family. Its 21 cleared
 factory starts are grouped by synthesis model:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
@@ -74,13 +74,19 @@ factory starts are grouped by synthesis model:
   scanned string, or register machine;
 - Swarm Machine: the typed modular graph's warm, wide nine-oscillator pad;
 - Bass Matrix: one transformable start with a phase-locked sub/body and a
-  separate punch, growl, metal, drive, filter, and unstable character path.
+  separate punch, growl, metal, drive, filter, and unstable character path;
+- Dual Filter: Industrial Lead, Serial Bass, Counter Growl, Envelope Punch,
+  and Topology Motion.
 
-Presets shows compact `M-D`, `6-OP`, `S-OSC`, `SWARM`, and `B-MAT` identities. In FT2 **ROUTE**, choosing
-Moj Sint adds an explicit `ENGINE → MODEL → PATCH` hierarchy. Changing the
-model selects that model's first available patch, and patch browsing never
-crosses the selected model boundary. Apply keeps the complete live-auditioned
-route; Cancel restores its opening snapshot.
+Presets groups the catalog in the fixed model order Model D, Six-Op PM, Strange
+Oscillator, Swarm Machine, Bass Matrix, and Dual Filter. Visible identities use
+one model letter and a two-digit number local to that model: `D01`, `P01`,
+`O01`, `S01`, `B01`, and `F01`. Opening or switching to Moj Sint starts at
+`D01 Full Bass`; letter-jump follows those visible model letters. In FT2
+**ROUTE**, choosing Moj Sint adds an explicit `ENGINE → MODEL → PATCH`
+hierarchy. Changing the model selects that model's first available patch, and
+patch browsing never crosses the selected model boundary. Apply keeps the
+complete live-auditioned route; Cancel restores its opening snapshot.
 
 Playback and FT2 **PARAM** use the same 12 physical control positions, with
 labels chosen by the loaded model:
@@ -93,15 +99,15 @@ labels chosen by the loaded model:
 | 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
 
 Moj timbre and ADSR retain their established CCs. Physical position 5 uses
-MIDI CC7 as the shared instrument-volume contract. Position 5 is a continuous
-pot in the repository-local MiniLab profile. Its smoothed gain runs from
+MIDI CC7 as the shared instrument-volume contract. Position 5 is a mapped
+direction-only rotary. Its smoothed gain runs from
 silence to the preset's normal maximum and does not enter timbre DSP. synthv1
 uses its smoothed DCA volume at the same position; Yoshimi, FluidSynth, and SHR
 Sampler receive standard channel volume. Those read-only optional backends do
 not gain an SHR preset-save format: FT2 automation and Project MIDI state own
 their durable volume. After Load, Reset, Project/Idea restore, automation ownership changes,
-or another value-setting transition, physical knobs must reach or cross the
-effective value before they take control. This pickup rule prevents jumps.
+or another value-setting transition, physical turns continue from the
+effective value by signed relative steps, preventing jumps after a load or reset.
 
 **RESET** restores the loaded model values without restarting the synth. Dual
 Filter also restores its saved INDUSTRIAL or COUNTER core.
