@@ -41,9 +41,10 @@ performance tests.
 - Standard MIDI File export and other context-free scheduling use deterministic
   pass 1 with FILL off. Route/engine preflight includes every conditional note
   so a later pass or Fill cannot require an engine that playback did not own.
-- Project format 16 persists probability and condition. Formats 0–15 migrate
-  to 100% and ALWAYS in memory without rewriting. Reusable drum-pattern format
-  3 persists the same fields; formats 1–2 migrate to those defaults.
+- Project format 16, the feature's baseline, persists probability and
+  condition. Formats 0 through 15 migrate to 100% and ALWAYS in memory without
+  rewriting. Reusable drum-pattern format 3 persists the same fields; formats
+  1 and 2 migrate to those defaults.
 
 ## Acceptance matrix
 

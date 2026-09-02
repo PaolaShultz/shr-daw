@@ -2,8 +2,7 @@
 
 Created: 2026-08-26
 
-Status: base software combined pass completed 2026-08-26; ROLL implementation
-added 2026-09-02 and awaiting the next authorized combined pass
+Status: implemented and software-validated through ROLL on 2026-09-02
 
 This document owns the bounded Priority 5 contract selected in
 [Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md). The first
@@ -157,8 +156,8 @@ source has no explicit velocity.
 ## Persistence, reuse, export, and playback
 
 - Priority 5 and ROLL add no persisted recipe or seed and therefore do not
-  change Project format 17 or reusable drum-pattern format 4. Formats 0-16 retain
-  their existing migrations; inspecting or loading never rewrites a file.
+  change current Project format 18 or reusable drum-pattern format 4. Existing
+  migrations remain unchanged; inspecting or loading never rewrites a file.
 - Apply persists concrete ordinary Cells through the existing Project encoder.
   Apply to Clone persists the same cells in an independent existing Pattern
   record. Save/load/clone/copy/paste and repeated playback do not regenerate
@@ -186,7 +185,7 @@ source has no explicit velocity.
 | GT-06 | Opening, every adjustment, seed change, Repeat, Cancel, refusal, validation failure, and no-op Apply preserve Pattern History, dirty state, cursor, and structural state. |
 | GT-07 | Current Apply is exactly one undoable/redoable History transaction; source/draft equality gives no transaction. |
 | GT-08 | Apply to Clone leaves the source exact, uses one independent appended Pattern/Arrangement step, preserves cursor fields, and rolls back on structural refusal. |
-| GT-09 | Project format 17 and legacy migration round trips generated cells without a rewrite-on-load or schema change. |
+| GT-09 | Current Project format 18 and legacy migration round trip generated cells without a rewrite-on-load or generator schema change. |
 | GT-10 | Reusable drum-pattern format 4 round trips generated timing/probability/FILL cells and lane settings; loading changes only the selected percussion page. |
 | GT-11 | Probability, conditions, PRE/FILL, microtiming, swing, groove, REC FEEL, and independent lane cycles retain their Priority 2-4 behavior. |
 | GT-12 | Scheduler ownership, note cleanup, export, preflight, partial playback, and repeated playback consume only stored cells. |
@@ -197,19 +196,15 @@ source has no explicit velocity.
 
 ## Evidence limits
 
-The 2026-08-26 authorized non-Raspberry-Pi software pass used exact Rust 1.97.1
-(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check,
-the GT-01 through GT-14 focused algorithm/migration/History/scheduler/export/
-preflight/navigation/controller/rendering transaction matrices for GT-01
-through GT-14, and the
-complete normal suite passed. The final suite reported 1,038 passed, zero
-failed, and 13 documented ignored development, private-audition, and
-performance tests. Focused validation shortened only the RHYTHM launcher from
-`GENERATE` to `GEN` so it meets the established 40-column soft-button width;
-the entered screen remains `GENERATOR`. Clippy was not required by an observed
-failure or repository policy. GT-15 and GT-16 are source-level regression
-coverage added with ROLL; they have not yet been executed because the current
-incremental-debug rule requires separate authorization before compilation.
+The 2026-09-02 authorized non-Raspberry-Pi software pass used exact Rust 1.97.1.
+Locked check, the complete 117-test generator-related filter, four exact ROLL
+regressions, and the complete normal suite passed. The final suite reported
+1,114 passed, zero failed, and 13 documented ignored development,
+private-audition, and performance tests. This covers GT-01 through GT-16,
+including draft-only behavior, bounded ROLL generation, controller routing,
+Clone ownership, and rollback on refusal. A later full build pass repeated the
+locked check and the same complete normal-suite result. Clippy was not required
+by an observed failure or repository policy.
 
 Software tests can prove deterministic drafts, storage, transactions,
 navigation, rendering geometry, scheduling, export, and preflight without

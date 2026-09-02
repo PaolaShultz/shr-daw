@@ -65,13 +65,19 @@ The current source compatibility set is:
 
 | Component | Required version | Installation form |
 | --- | --- | --- |
-| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 21 cleared presets |
+| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 16 cleared presets |
 | SHR Sampler | 0.1.2 (accepted runtime `>=0.1.2,<0.2.0`) | exact public commit, `shr-sampler`, one cleared package |
 | SHR Drums | 0.2.0 (accepted library `>=0.2.0,<0.3.0`) | exact public Cargo dependency compiled into `shr` |
 
 The machine-readable source commits and runtime bounds live only in
 `install/compatibility.json`; documentation summarizes rather than duplicates
 their hashes.
+
+SHR-DAW source can host the newer Moj Sint preset schema 8 and its Dual Filter
+model, but the current compatibility file still pins the earlier public Moj
+Sint commit whose cleared catalog contains 16 starts. The installer therefore
+does not install the five Dual Filter starts. Treat the compatibility file,
+not the broader host capability, as the installation contract.
 
 The installer:
 

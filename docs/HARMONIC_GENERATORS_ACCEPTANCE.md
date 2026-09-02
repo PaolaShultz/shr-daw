@@ -153,8 +153,9 @@ transport owner, playback mode, or hidden recipe.
 
 ## Persistence, reuse, export, and playback
 
-- Priority 6 adds no persisted recipe, mode, or seed and does not change
-  Project format 17 or reusable drum-pattern format 4. Old Projects retain
+- Priority 6 adds no persisted recipe, mode, or seed. At this feature's
+  baseline it did not change Project format 17 or reusable drum-pattern format
+  4. Old Projects retain
   their current in-memory migrations and are not rewritten by inspection.
 - Apply stores only ordinary Cells. Save/load, Pattern clone/copy/paste,
   reusable drum-pattern boundaries, partial playback, repeated playback, and
@@ -182,7 +183,7 @@ transport owner, playback mode, or hidden recipe.
 | HG-06 | Drafts report exact affected cells/rows, replacements, collisions, protected cells, out-of-scale skips, and counted range refusals. |
 | HG-07 | Open, every parameter change, Inspect, Repeat, Cancel, refusal, validation failure, and no-op Apply preserve Pattern, Arrangement, History, dirty state, cursor, and automation. |
 | HG-08 | Current Apply is exactly one Pattern History transaction with exact Undo/Redo; Clone leaves the source exact and uses one independent Pattern plus appended Arrangement step. |
-| HG-09 | Project format 17 and reusable drum-pattern format 4 remain unchanged; ordinary generated cells round-trip and old formats retain existing migration behavior. |
+| HG-09 | Baseline Project format 17 and reusable drum-pattern format 4 remain unchanged by these generators; ordinary generated cells round-trip and old formats retain existing migration behavior. |
 | HG-10 | Priority 2-5 timing, probability, conditions, PRE/FILL, swing, groove, REC FEEL, lane cycles, seeded mutation, and controlled fill retain their exact behavior. |
 | HG-11 | Scheduler ownership, Note Off/cleanup, preflight, MIDI export, partial playback, Pattern repeat, and repeated Arrangement references consume stored cells only. |
 | HG-12 | GEN and every new parameter remain reachable on exactly four pages for four-, five-, and eight-control layouts; keyboard/mouse share dispatch; native 40x13 rendering preserves the shared status row and FT2 cursor. |

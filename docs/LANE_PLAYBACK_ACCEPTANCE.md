@@ -77,8 +77,8 @@ FT2 edit cursor or the Pattern's Arrangement duration.
 
 ## Persistence and migration
 
-- Project format 17 stores cycle length, rate, and direction on each
-  `pattern_lane` record. Formats 0-16 migrate in memory to
+- Project format 17, the feature's baseline, stores cycle length, rate, and
+  direction on each `pattern_lane` record. Formats 0-16 migrate in memory to
   `FULL/1X/FORWARD` without rewriting the source file.
 - Reusable drum-pattern format 4 stores the four lanes' playback settings.
   Formats 1-3 and the compact bundled catalog migrate to defaults. Save copies

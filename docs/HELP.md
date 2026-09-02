@@ -123,9 +123,10 @@ Moj Sint uses the same direction-only behavior with seven model-specific timbre
 controls, Volume at physical position 5, and ADSR. RESET restores the loaded
 `.mojsint` values in place without restarting the host. Those controls never
 use synthv1 XML names or parameter indices.
-Its 21 numbered factory starts contain seven Model D, six Six-Op PM, one each
-for Strange Oscillator, Swarm Machine, and Bass Matrix, and five Dual Filter
-starts. Player and FT2 PARAM always use a 3×5 surface. Synthv1 and the five
+The current catalog has 21 numbered starts: seven Model D, six Six-Op PM, one
+each for Strange Oscillator, Swarm Machine, and Bass Matrix, and five Dual
+Filter starts. The public SHR-DAW installer currently pins the 16-start
+pre-Dual-Filter catalog. Player and FT2 PARAM always use a 3×5 surface. Synthv1 and the five
 older Moj models put their twelve synth controls first and Project AUX 1/2/3
 sends last; `NO FX` means that aux needs an effect before the send can move.
 With the owned graph active, these send levels ramp live without rebuilding the
@@ -326,9 +327,11 @@ when ROUTE opened; Back during field editing restores that field first.
 
 Normal FT2 page 3 is `SOUND`, with `PARAM` and `MIX`. PARAM opens a
 tracker-owned view of the current software instrument without entering Player
-or replacing the tracker engine. It uses the same 12 mapped labels, values,
+or replacing the tracker engine. It uses the same 3×5 labels, values,
 relative-to-preset colours, held-note display, and rotary carry behavior as
-Playback. Instrument choice stays in ROUTE; there is no second sound browser.
+Playback. Synthv1 and the five older Moj models use 12 synthesis positions and
+three aux sends; Dual Filter uses all 15 for synthesis. Instrument choice stays
+in ROUTE; there is no second sound browser.
 
 PARAM SOUND provides RESET, SAVE, N00B, and one empty position. RESET restores
 the existing baseline in place without restarting the engine

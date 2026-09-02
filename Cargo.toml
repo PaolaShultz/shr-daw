@@ -31,9 +31,10 @@ strip = true
 lto = true
 codegen-units = 1
 
-# The repository-local launcher deliberately runs target/debug/shr. Retain
-# assertions and debug symbols, but optimize the production DSP callbacks so
-# the DEV artifact can still meet JACK's real-time deadline.
+# An explicit SHSYNTH_BIN=target/debug/shr development launch retains
+# assertions and debug symbols. Optimize the production DSP callbacks so the
+# DEV artifact can still meet JACK's real-time deadline; the default local
+# launcher uses target/release/shr.
 [profile.dev]
 opt-level = 2
 

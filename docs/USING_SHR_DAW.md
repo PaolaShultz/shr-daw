@@ -82,11 +82,14 @@ arpeggiator. `PLAY` sends Start even when no MIDI take exists, `RECORD` starts
 the same clock before capture, `STOP` ends it without unloading the instrument,
 and `TAP` changes tempo without silently starting transport.
 
-Moj Sint keeps its own preset format and controls. Its 21 authored starts form
-six editable model families. SHR Sampler packages are read-only and use their
-own strict format; the installed project-authored factory package is a neutral
-first-load sound. SHR Drums is separate from the managed melodic engine and
-runs in process. See [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md)
+Moj Sint keeps its own preset format and controls. Its current source catalog
+has 21 authored starts across six editable model families. SHR-DAW's public
+installer pin supplies the first 16 through Bass Matrix; the five Dual Filter
+starts require a compatible newer Moj Sint checkout. SHR Sampler packages are
+read-only and use their own strict format; the installed project-authored
+factory package is a neutral first-load sound. SHR Drums is separate from the
+managed melodic engine and runs in process. See
+[SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md)
 for the complete sound-system guide: Moj controls and saves, Sampler
 validation, Drums kits, routing, ownership, recovery, and public provenance.
 

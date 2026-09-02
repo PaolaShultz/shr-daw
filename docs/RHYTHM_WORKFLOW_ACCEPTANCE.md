@@ -31,8 +31,8 @@ judgment, and the musical suitability of the 75% ceiling remain open.
 | --- | --- | --- |
 | Cell event data | `sequencer::Cell` stores note, velocity, program, gate, and one command | Add independent signed `nudge`; retain every command unchanged. |
 | Pattern feel | `sequencer::Pattern` stores tempo/meter/pages/routes/cells/automation/Loop Mix | Add straight-default swing division and amount as Pattern-owned data. |
-| Project format | `sequencer::encode/decode`, current format 14 | One backward-compatible format bump; older Projects migrate in memory to zero nudge and straight feel. |
-| Drum format | `drum_pattern::encode/decode`, current format 1 | One backward-compatible format bump; older files load zero nudge. |
+| Project format | `sequencer::encode/decode`, format 14 at this feature's baseline | One backward-compatible format bump; older Projects migrate in memory to zero nudge and straight feel. |
+| Drum format | `drum_pattern::encode/decode`, format 1 at this feature's baseline | One backward-compatible format bump; older files load zero nudge. |
 | Musical scheduling | `sequencer::schedule_elapsed` creates steady row markers, MIDI clock, and cell messages | Swing and nudge affect cell events only; row markers, Pattern duration, MIDI clock, and Loop beat clock remain steady. |
 | Canonical timeline/export | `timeline::compile` converts the elapsed schedule into a bounded tick plan | Preserve the existing timeline/automation resolution; live scheduling retains the full 1/96-row fraction and SMF export rounds to the nearest existing tick. |
 | Note editing | FT2 CELL editor owns a draft and Save/Cancel | Add `TIMING`; Save commits through Pattern history, Cancel restores byte-for-byte. |
@@ -67,7 +67,7 @@ judgment, and the musical suitability of the 75% ceiling remain open.
 | ID | Scenario | Required result | Planned evidence |
 | --- | --- | --- | --- |
 | RW-01 | New/old Cell | Default is zero nudge; `-48`, `0`, and `48` validate; values outside the bound fail. | Model tests. |
-| RW-02 | Project format 14 load | Loads byte content without rewrite; every cell is zero nudge and every Pattern is straight. | Migration fixture and no-write test. |
+| RW-02 | Baseline Project format 14 load | Loads byte content without rewrite; every cell is zero nudge and every Pattern is straight. | Migration fixture and no-write test. |
 | RW-03 | Current Project round trip | Nudge coexists with Cut, Delay, Retrigger, Tempo, velocity, program, and gate; Pattern feel round-trips exactly. | Encode/decode tests. |
 | RW-04 | Drum format 1 load/current round trip | Old drums gain zero nudge in memory; current drums retain deliberate timing with commands. | Drum codec tests. |
 | RW-05 | Exact microtiming | Early/on-grid/late notes schedule at the represented fraction from 20–300 BPM. | Focused scheduler tests. |

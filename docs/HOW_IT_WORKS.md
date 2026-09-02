@@ -58,8 +58,9 @@ processing.
 SHR-DAW opens each exact ALSA source at most once, then classifies messages by
 the configured role before they reach an instrument:
 
-- menu buttons, the main encoder, encoder press, and the 12 mapped synthv1
-  controls stay inside SHR-DAW;
+- menu buttons, the main encoder, encoder press, and the 15 relative
+  performance rotaries stay inside SHR-DAW; the loaded backend decides whether
+  those positions control synthesis or Project aux sends;
 - command-pad note-on, note-off, velocity-zero release, and polyphonic pressure
   are consumed only when note and optional channel both match, so releasing or
   pressing a menu pad cannot leak while the same note on another channel stays
@@ -225,6 +226,42 @@ are configuration. The engine code does not assume the development hardware.
 The five catalogs also remain separate: synthv1 XML, Yoshimi instruments,
 SoundFont programs, `.mojsint` files, and `.shrinst` packages never borrow one
 another's parsers or controls.
+
+## Maintained component repositories
+
+Three maintained repositories supply SHR-DAW components. Their boundaries are
+part of the installation and recovery contract.
+
+| Component | Runtime boundary | Component ownership | SHR-DAW ownership |
+| --- | --- | --- | --- |
+| [SHR Drums](https://github.com/PaolaShultz/shr-drums) | Rust library compiled into `shr`; there is no drum child process | Format 1 `.shrkit` validation, bounded sample decode, voice rendering, and the offline `shr-kit` compiler | Pattern timing, MIDI note dispatch, JACK publication, effects, kit selection, and public kit allowlists |
+| [Moj Sint](https://github.com/PaolaShultz/moj-sint) | One managed `moj-sint` process with an ALSA input and stereo JACK output | Preset schema, synthesis models, MIDI controls, audio rendering, and the factory preset manifest | Exact command/preset configuration, process identity and shutdown, route connection, replacement rollback, private saves, and Project state |
+| [SHR Sampler](https://github.com/PaolaShultz/shr-sampler) | One managed `shr-sampler` process with an ALSA input and stereo JACK output | Format 1 package parsing, integrity checks, decoded samples, voice rendering, live host, and the cleared factory package | Version/package preflight, exact command/instrument configuration, process identity and shutdown, route connection, replacement rollback, and Project state |
+
+The current machine-readable pins are exact commits: SHR Drums
+`0199297b3efd160a67e3f47df64a6bf418c20df2`, Moj Sint
+`693ad165271ae04bc2da6746642b87af1875b553`, and SHR Sampler
+`9f2115f5fcc25d6ffa82a7106ee069cad47ce592`. `Cargo.toml` owns the SHR Drums
+dependency; `install/compatibility.json` owns installer revisions and accepted
+runtime ranges. The Moj Sint pin contains the 16-start catalog through Bass
+Matrix. SHR-DAW source can also host schema 8 and Dual Filter, but the installer
+will not provide those five newer starts until its compatibility pin changes.
+
+Each component refuses malformed or unsupported owned data before replacing a
+working session. SHR-DAW isolates a drum-kit failure to that source and keeps
+healthy sources running. For external instruments, it attempts one restoration
+of the previous owned session after replacement fails and never stops a
+matching process it did not start.
+
+Public installation copies only files named by the relevant cleared manifest.
+Private presets, kits, samples, packages, renders, Projects, and recordings stay
+outside all four repositories. Developers should read the
+[SHR Drums package format](https://github.com/PaolaShultz/shr-drums/blob/main/FORMAT.md),
+[Moj Sint documentation index](https://github.com/PaolaShultz/moj-sint/blob/main/docs/README.md),
+and [SHR Sampler host architecture](https://github.com/PaolaShultz/shr-sampler/blob/main/docs/HOST_ARCHITECTURE.md).
+Musicians should start with
+[SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md), which describes the
+shared load, play, save, and recovery workflow.
 
 ## Three different kinds of recording
 
@@ -610,8 +647,8 @@ below `${XDG_DATA_HOME:-~/.local/share}/shsynth/`. A repository-local launch
 redirects both into ignored `user/`. Important private data includes Ideas,
 Projects, recordings, imported loops, user drum patterns, learned controller
 configuration, profile overrides, and uncleared presets. Public packaging uses
-only the 21-presets allowlist, the authored drum data, and files named by the
-cleared demo manifest. See
+only cleared preset and component manifests, authored drum data, and files
+named by the cleared demo manifest. See
 [Licensing and redistribution](../THIRD_PARTY.md).
 
 ## Performance information and honest limits

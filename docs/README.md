@@ -55,8 +55,8 @@ configuration, or the architecture contracts.
 ## Architecture and safety
 
 - [How SHR-DAW works](HOW_IT_WORKS.md) — end-to-end MIDI/audio routing,
-  instrument ownership, Ideas, FT2 Projects, loops, recording, the full effect
-  palette, graph safety, persistence, and honest current limits.
+  maintained component boundaries, instrument ownership, Ideas, FT2 Projects,
+  loops, recording, graph safety, persistence, and current limits.
 - [Audio graph and DSP contract](AUDIO_GRAPH.md) — Project effects data, exact
   parameter schemas, real-time limits, routing publication, meters, bypass,
   tails, topology limits, and curation gates.
@@ -81,7 +81,8 @@ configuration, or the architecture contracts.
   [sample provenance](https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md)
   live with that repository.
 - [Moj Sint](https://github.com/PaolaShultz/moj-sint): public managed synth host,
-  strict preset schema, and 16 allowlisted factory starts.
+  strict preset schema, and current factory catalog. SHR-DAW's installer pin
+  currently supplies 16 of those starts.
 - [SHR Sampler](https://github.com/PaolaShultz/shr-sampler): public strict
   sample-package engine and project-authored cleared factory instrument.
 
@@ -114,6 +115,8 @@ configuration, or the architecture contracts.
 - [Early development sprint record](BUILD_WEEK.md) — chronology, model
   provenance, division of work, target-native workflow, and evaluation; no
   hackathon application or submission was made.
+- [Development history](DEVELOPMENT_HISTORY.md): dated implementation,
+  validation, and machine-session evidence moved out of the current handoff.
 - [Učenje kroz istraživanje](UCENJE_KROZ_ISTRAZIVANJE.md): the creator's
   Croatian essay about learning through musical exploration.
 - [Feature and quirk matrix](BUILD_WEEK_FEATURE_MATRIX.md) — subsystem-level
@@ -127,7 +130,8 @@ configuration, or the architecture contracts.
   [independent lane playback](LANE_PLAYBACK_ACCEPTANCE.md), and
   [deterministic generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md),
   [arpeggio, chord, and harmonizer generators](HARMONIC_GENERATORS_ACCEPTANCE.md),
-  and [external USB MIDI transport sync](EXTERNAL_TRANSPORT_SYNC_ACCEPTANCE.md) —
+  [A A B A Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md), and
+  [external USB MIDI transport sync](EXTERNAL_TRANSPORT_SYNC_ACCEPTANCE.md):
   bounded contracts, automated matrices, and honest evidence limits.
 - [Workspace handoff](WORKSPACE_HANDOFF.md) — current checkout, local hardware,
   private/public boundary, and validation state for maintainers.

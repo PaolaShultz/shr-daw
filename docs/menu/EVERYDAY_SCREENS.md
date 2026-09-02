@@ -100,7 +100,9 @@ computer-keyboard-only from Home.
 
 Playback appears after a sound is loaded. At native 40×13 the body shows the
 held chord and notes, each note's decimal MIDI strike velocity directly beneath
-it, and the selected backend's 12 mapped controls. Taller terminals use spare space for a
+it, and the selected backend's 3×5 controls. Synthv1 and the five older Moj
+models use 12 synthesis controls plus three aux sends; Dual Filter uses all 15
+for synthesis. Taller terminals use spare space for a
 continuous two-row keyboard state. The
 aligned velocity row helps with gentle/strong control, consistent chord
 attacks, and bass-plus-chord balance. It is MIDI input data, not an audio
@@ -120,8 +122,8 @@ not restart the synth.
 ![Populated Playback screen with the PLAY controller page](../images/menu/playback-play.png)
 
 `PLAY` plays or stops the captured take. With no take, it still sends a fresh
-Start to the configured controller clock so the MiniLab 3 External-Sync
-arpeggiator works with live keys. `RECORD` starts the same transport before
+Start to the configured controller clock so a controller in external-sync
+arpeggiator mode works with live keys. `RECORD` starts the same transport before
 free-time MIDI capture. `STOP` sends controller Stop and All Notes Off without
 unloading the sound. `TAP` updates the current Pattern/controller tempo; it does
 not start transport, so PLAY remains the deliberate start gesture.
@@ -130,8 +132,8 @@ not start transport, so PLAY remains the deliberate start gesture.
 
 ![Populated Playback screen with the SOUND controller page](../images/menu/playback-sound.png)
 
-`RESET` restores the 12 mapped parameters in place; subsequent relative turns
-continue from those restored values.
+`RESET` restores every mapped synthesis parameter in place; subsequent
+relative turns continue from those restored values.
 `SAVE` opens `OVERWRITE`, `SAVE NEW`, and `CANCEL`. Factory and system sounds
 are read-only, so their Overwrite row clearly saves a new private `User NNN`
 sound instead. Save New numbers sounds independently for synthv1, Moj Sint

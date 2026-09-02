@@ -61,8 +61,8 @@ Project keeps its stored routes.
 
 ## Moj Sint sounds
 
-Moj Sint is SHR-DAW's editable in-house synthesis family. Its 21 cleared
-factory starts are grouped by synthesis model:
+Moj Sint is SHR-DAW's editable in-house synthesis family. The current installer
+pins a 16-start catalog with these five models:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
   Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
@@ -74,12 +74,18 @@ factory starts are grouped by synthesis model:
   scanned string, or register machine;
 - Swarm Machine: the typed modular graph's warm, wide nine-oscillator pad;
 - Bass Matrix: one transformable start with a phase-locked sub/body and a
-  separate punch, growl, metal, drive, filter, and unstable character path;
-- Dual Filter: Industrial Lead, Serial Bass, Counter Growl, Envelope Punch,
-  and Topology Motion.
+  separate punch, growl, metal, drive, filter, and unstable character path.
 
-Presets groups the catalog in the fixed model order Model D, Six-Op PM, Strange
-Oscillator, Swarm Machine, Bass Matrix, and Dual Filter. Visible identities use
+The current SHR-DAW source also supports Moj Sint preset schema 8, the Dual
+Filter model, and its five cleared starts: Industrial Lead, Serial Bass,
+Counter Growl, Envelope Punch, and Topology Motion. Those starts require a
+newer Moj Sint checkout than the exact commit in
+`install/compatibility.json`; they are not part of the current public installer
+payload.
+
+Presets groups the available catalog in the fixed model order Model D, Six-Op
+PM, Strange Oscillator, Swarm Machine, Bass Matrix, then Dual Filter when the
+configured Moj Sint provides it. Visible identities use
 one model letter and a two-digit number local to that model: `D01`, `P01`,
 `O01`, `S01`, `B01`, and `F01`. Opening or switching to Moj Sint starts at
 `D01 Full Bass`; letter-jump follows those visible model letters. In FT2
@@ -88,8 +94,9 @@ hierarchy. Changing the model selects that model's first available patch, and
 patch browsing never crosses the selected model boundary. Apply keeps the
 complete live-auditioned route; Cancel restores its opening snapshot.
 
-Playback and FT2 **PARAM** use the same 12 physical control positions, with
-labels chosen by the loaded model:
+Playback and FT2 **PARAM** use the same 3×5 control surface. The five models in
+the pinned installer catalog use the first 12 positions for synthesis and the
+last three for Project aux sends. Their synthesis labels are:
 
 | Positions | Model D | Six-Op PM | Strange Oscillator | Swarm Machine | Bass Matrix |
 | --- | --- | --- | --- | --- | --- |
@@ -97,6 +104,9 @@ labels chosen by the loaded model:
 | 5 | Volume | Volume | Volume | Volume | Volume |
 | 6–8 | Motion, Depth, Space | Key Scale, Velocity, Motion | Chaos, Color, Space | Motion, Color, Space | Drive, Filter, Unstable |
 | 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
+
+Dual Filter uses all 15 positions for synthesis when a compatible schema 8
+Moj Sint is configured, so it has no aux controls on this surface.
 
 Moj timbre and ADSR retain their established CCs. Physical position 5 uses
 MIDI CC7 as the shared instrument-volume contract. Position 5 is a mapped
