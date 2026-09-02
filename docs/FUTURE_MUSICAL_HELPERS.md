@@ -3,7 +3,7 @@
 Created: 2026-08-02
 
 Status: FT2 Edit SIZE, read-only HARMONY, and the bounded Priority 5/6
-Generator implemented; remaining roll and Arrangement helpers are
+Generator including ROLL implemented; remaining Arrangement helpers are
 owner-directed proposals, not scheduled promises
 
 This plan covers small, inspectable helpers that turn a short musical idea into
@@ -36,15 +36,15 @@ should favor `NEW CLONE` or `EMPTY ONLY`; replacing existing notes is a
 separate explicit choice.
 
 Priority 5 now owns the implemented shared draft plus selected-lane Euclidean,
-accumulator, seeded-mutation, and controlled-FILL tools. Its exact scope,
+accumulator, seeded-mutation, controlled-FILL, and ROLL tools. Its exact scope,
 collision policy, Apply/Clone ownership, persistence, and acceptance matrix are
 in [Priority 5 deterministic generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md).
 Priority 6 extends that same draft with the bounded arpeggio, Project-key triad,
 and diatonic harmonizer semantics in [Priority 6 arpeggio, chord, and
 harmonizer generators](HARMONIC_GENERATORS_ACCEPTANCE.md). Those focused
-contracts supersede the earlier fill, shared-draft, and first-arpeggio proposals
-below wherever they overlap; roll and Arrangement assistance remain future
-proposals.
+contracts supersede the earlier fill, roll, shared-draft, and first-arpeggio
+proposals below wherever they overlap; Arrangement assistance remains a future
+proposal.
 
 ## FT2 Edit `SIZE` page
 
@@ -258,24 +258,24 @@ many pulses and preserves bounded gate/note cleanup. All pulses currently share
 one velocity, so a true within-row crescendo cannot be represented by the
 existing command alone.
 
-### Feasible first helper
+### Implemented helper boundary
 
-Add a `FILL` draft action for a selected percussion page with:
+The shared Generator already includes a controlled `FILL` draft for the
+selected percussion lane. Its bounded cursor-anchored span, exact hit count,
+rotation, explicit velocity build, seeded placement, collision report, and
+FILL-only condition are defined in
+[Priority 5 deterministic generative tools](DETERMINISTIC_GENERATIVE_TOOLS_ACCEPTANCE.md).
+Named multi-drum families and Arrangement-boundary placement remain possible
+later additions rather than claims made by the current tool.
 
-- length: one beat, half bar, or one bar;
-- family: snare build, kick pickup, hat burst, sparse break, or mapped-drum
-  walk;
-- density and velocity direction;
-- placement: ending at cursor, Pattern end, or selected Arrangement boundary;
-- collision policy: `NEW CLONE` (default), `EMPTY ONLY`, or explicit `REPLACE`;
-  and
-- deterministic variant/seed.
-
-Add a separate `ROLL` action for the current percussion cell or selected row
-span. Same-velocity within-row rolls can use Retrigger immediately. Accented or
-crescendo rolls should initially use multiple ordinary rows with explicit
-velocities. A later per-pulse velocity contour would require a command/storage
-extension and must not silently change old `Retrigger` meaning.
+The shared Generator now includes `ROLL` for the current percussion cell and a
+bounded row span. It uses `1..=8` total pulses. EVEN uses the existing
+Retrigger command when several pulses occupy one row; ACCENT and CRESCENDO use
+multiple ordinary rows with explicit velocities. `NEW CLONE` is its visible
+default, while EMPTY ONLY and REPLACE NOTE remain explicit current-Pattern
+choices. A later per-pulse velocity contour would still require a
+command/storage extension and must not silently change old `Retrigger`
+meaning.
 
 Drum roles must come from Project/configured percussion mapping or the selected
 kit's declared semantics. Do not hard-code a borrowed device's note map into
@@ -343,7 +343,7 @@ page/lane/column/cursor.
 | 2 (implemented) | Shared generated-draft, collision summary, retained seed, inspect, Apply/Clone/Cancel, plus bounded Euclidean, accumulator, mutation, and FILL tools | One non-writing draft and explicit transaction owners for the first deterministic helpers |
 | 3 (implemented) | Read-only circle-of-fifths/HARMONY browser | Useful theory support with no generated-data risk |
 | 4 (implemented) | Offline arpeggio plus Project-key chord and harmonizer generators | Small deterministic algorithms over existing cells in the shared draft |
-| 5 (partial) | Controlled FILL implemented; roll drafts remain future work | FILL uses ordinary conditional cells; rolls still need their own bounded contract |
+| 5 (implemented; validation pending) | Controlled FILL plus bounded EVEN/ACCENT/CRESCENDO roll drafts | FILL uses ordinary conditional cells; ROLL reuses bounded Retrigger or explicit-velocity rows without a schema change |
 | 6 | Template/constraint Arrangement assistant | Builds on clone/variation operations and explicit previews |
 
 Each phase is independently shippable. None should change the audio callback,
@@ -352,7 +352,5 @@ velocity contour or new harmony metadata is deliberately adopted.
 
 ## Remaining open owner decisions
 
-- Should a future roll draft use the current Generator's `EMPTY ONLY`
-  current-Pattern default, or default to an independent clone?
 - Which two or three Arrangement templates match the musician's actual sketch
   workflow? Start with those, not a large genre menu.

@@ -6475,7 +6475,13 @@ impl App {
                 return;
             }
         };
-        recipe.collision = session.recipe.collision;
+        recipe.collision = match (session.recipe.tool, tool, session.recipe.collision) {
+            (_, crate::generative::Tool::Roll, _) => crate::generative::CollisionPolicy::NewClone,
+            (crate::generative::Tool::Roll, _, crate::generative::CollisionPolicy::NewClone) => {
+                crate::generative::CollisionPolicy::EmptyOnly
+            }
+            (_, _, collision) => collision,
+        };
         if let Some(session) = self.pattern_generator.as_mut() {
             session.recipe = recipe;
         }
@@ -6517,6 +6523,16 @@ impl App {
                 } else {
                     session.recipe.amount + 1
                 };
+            }
+            crate::generative::Tool::Roll => {
+                session.recipe.amount = if session.recipe.amount >= 8 {
+                    1
+                } else {
+                    session.recipe.amount + 1
+                };
+                if session.recipe.roll_shape != crate::generative::RollShape::Even {
+                    session.recipe.length = session.recipe.length.max(session.recipe.amount);
+                }
             }
             crate::generative::Tool::Arpeggio => {
                 let all = crate::generative::ArpeggioOrder::ALL;
@@ -6570,6 +6586,16 @@ impl App {
             crate::generative::Tool::Mutation => {
                 let next = i32::from(session.recipe.amount) + i32::from(direction.signum());
                 session.recipe.amount = next.clamp(1, 12) as u16;
+            }
+            crate::generative::Tool::Roll => {
+                let next = i16::from(session.recipe.offset) + i16::from(direction.signum());
+                session.recipe.offset = if next < 1 {
+                    63
+                } else if next > 63 {
+                    1
+                } else {
+                    next as i8
+                };
             }
             crate::generative::Tool::Arpeggio => {
                 let next =
@@ -6635,6 +6661,17 @@ impl App {
                     }
                 };
             }
+            crate::generative::Tool::Roll => {
+                let all = crate::generative::RollShape::ALL;
+                let index = all
+                    .iter()
+                    .position(|shape| *shape == session.recipe.roll_shape)
+                    .unwrap_or(0);
+                session.recipe.roll_shape = all[(index + 1) % all.len()];
+                if session.recipe.roll_shape != crate::generative::RollShape::Even {
+                    session.recipe.length = session.recipe.length.max(session.recipe.amount);
+                }
+            }
             crate::generative::Tool::Euclidean
             | crate::generative::Tool::Mutation
             | crate::generative::Tool::Fill => {
@@ -6653,11 +6690,18 @@ impl App {
         let Some(session) = self.pattern_generator.as_mut() else {
             return;
         };
-        session.recipe.collision = match session.recipe.collision {
-            crate::generative::CollisionPolicy::EmptyOnly => {
+        session.recipe.collision = match (session.recipe.tool, session.recipe.collision) {
+            (crate::generative::Tool::Roll, crate::generative::CollisionPolicy::NewClone) => {
+                crate::generative::CollisionPolicy::EmptyOnly
+            }
+            (_, crate::generative::CollisionPolicy::EmptyOnly) => {
                 crate::generative::CollisionPolicy::ReplaceNotes
             }
-            crate::generative::CollisionPolicy::ReplaceNotes => {
+            (crate::generative::Tool::Roll, crate::generative::CollisionPolicy::ReplaceNotes) => {
+                crate::generative::CollisionPolicy::NewClone
+            }
+            (_, crate::generative::CollisionPolicy::ReplaceNotes)
+            | (_, crate::generative::CollisionPolicy::NewClone) => {
                 crate::generative::CollisionPolicy::EmptyOnly
             }
         };
@@ -6712,7 +6756,8 @@ impl App {
             crate::generative::Tool::Euclidean
             | crate::generative::Tool::Accumulator
             | crate::generative::Tool::Mutation
-            | crate::generative::Tool::Fill => {
+            | crate::generative::Tool::Fill
+            | crate::generative::Tool::Roll => {
                 session.recipe.seed = if direction < 0 {
                     session.recipe.seed.wrapping_sub(1)
                 } else {
@@ -6754,6 +6799,12 @@ impl App {
         self.tracker_recording.is_none() && !transport.playing && transport.count_in.is_none()
     }
     fn apply_pattern_generator(&mut self) {
+        if self.pattern_generator.as_ref().is_some_and(|session| {
+            session.recipe.collision == crate::generative::CollisionPolicy::NewClone
+        }) {
+            self.apply_pattern_generator_to_clone();
+            return;
+        }
         if !self.generator_transport_stopped() {
             self.status = "STOP TO APPLY · generator draft kept".into();
             return;
@@ -21766,6 +21817,10 @@ fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
             recipe.lane + 1,
             recipe.harmony_target_lane + 1
         ),
+        crate::generative::Tool::Roll => format!(
+            "ROWS {:02}-{:02} · SPAN {}",
+            recipe.start_row, end, recipe.length
+        ),
         _ => format!(
             "ROWS {:02}-{:02} · LEN {}",
             recipe.start_row, end, recipe.length
@@ -21798,6 +21853,19 @@ fn draw_pattern_generator<B: Backend>(f: &mut Frame<B>, a: &App) {
         crate::generative::Tool::Fill => (
             format!("HITS {} · ROT {}", recipe.amount, recipe.phase),
             format!("{} · SEED {}", recipe.collision.label(), recipe.seed),
+        ),
+        crate::generative::Tool::Roll => (
+            format!(
+                "{} · PULSES {} · DEPTH {}",
+                recipe.roll_shape.label(),
+                recipe.amount,
+                recipe.offset
+            ),
+            format!(
+                "{} · SEED {} (unused)",
+                recipe.collision.label(),
+                recipe.seed
+            ),
         ),
         crate::generative::Tool::Arpeggio => (
             format!(
@@ -40443,7 +40511,7 @@ release = 0.4
         let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
 
         a.open_pattern_generator();
-        for _ in 0..4 {
+        for _ in 0..5 {
             a.cycle_generator_tool();
         }
         assert_eq!(
@@ -40496,7 +40564,7 @@ release = 0.4
         let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
 
         a.open_pattern_generator();
-        for _ in 0..4 {
+        for _ in 0..5 {
             a.cycle_generator_tool();
         }
         a.adjust_generator_length(1);
@@ -40583,7 +40651,7 @@ release = 0.4
         let automation = source.automation.clone();
 
         a.open_pattern_generator();
-        for _ in 0..5 {
+        for _ in 0..6 {
             a.cycle_generator_tool();
         }
         a.toggle_generator_collision();
@@ -40654,6 +40722,85 @@ release = 0.4
         assert_eq!(full.pattern_history.depths(), (0, 0));
         assert!(!full.project_is_dirty());
         assert_eq!(full.status, "CLONE FAILED · source/order unchanged");
+    }
+
+    #[test]
+    fn roll_defaults_to_an_independent_clone_and_keeps_the_ft2_cursor() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::PatternHistory;
+        a.tracker_page = a.percussion_page_index().unwrap();
+        a.tracker_track = 0;
+        a.tracker_row = 3;
+        let lane = a.tracker_page * crate::sequencer::LANES_PER_PAGE;
+        a.song.patterns.get_mut(&0).unwrap().rows[3][lane] = Cell {
+            note: Note::On(38),
+            velocity: Some(84),
+            ..Cell::default()
+        };
+        a.project_clean_baseline = a.song.clone();
+        let source = a.song.patterns[&0].clone();
+        let old_order_len = a.song.order.len();
+        let cursor = (a.tracker_row, a.tracker_page, a.tracker_track);
+
+        a.open_pattern_generator();
+        for _ in 0..4 {
+            a.cycle_generator_tool();
+        }
+        let roll = a.pattern_generator.as_ref().unwrap();
+        assert_eq!(roll.recipe.tool, crate::generative::Tool::Roll);
+        assert_eq!(
+            roll.recipe.collision,
+            crate::generative::CollisionPolicy::NewClone
+        );
+        assert_eq!(
+            roll.draft.as_ref().unwrap().pattern.rows[3][lane].command,
+            Command::Retrigger(4)
+        );
+        a.toggle_generator_collision();
+        assert_eq!(
+            a.pattern_generator.as_ref().unwrap().recipe.collision,
+            crate::generative::CollisionPolicy::EmptyOnly
+        );
+        a.toggle_generator_collision();
+        assert_eq!(
+            a.pattern_generator.as_ref().unwrap().recipe.collision,
+            crate::generative::CollisionPolicy::ReplaceNotes
+        );
+        a.toggle_generator_collision();
+        assert_eq!(
+            a.pattern_generator.as_ref().unwrap().recipe.collision,
+            crate::generative::CollisionPolicy::NewClone
+        );
+
+        a.cycle_generator_density();
+        let roll = a.pattern_generator.as_ref().unwrap();
+        assert_eq!(roll.recipe.roll_shape, crate::generative::RollShape::Accent);
+        assert_eq!(roll.recipe.length, 4);
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("ROLL"), "{text}");
+        assert!(text.contains("ACCENT"), "{text}");
+        assert!(text.contains("NEW CLONE"), "{text}");
+        assert_eq!(buffer.get(0, 12).symbol, "■");
+
+        let expected = a
+            .pattern_generator
+            .as_ref()
+            .unwrap()
+            .draft
+            .as_ref()
+            .unwrap()
+            .pattern
+            .clone();
+        a.apply_pattern_generator();
+
+        assert_eq!(a.song.patterns[&0], source);
+        assert_eq!(a.song.order.len(), old_order_len + 1);
+        let clone = *a.song.order.last().unwrap();
+        assert_eq!(a.song.patterns[&clone], expected);
+        assert_eq!(a.pattern_history.depths(), (0, 0));
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), cursor);
     }
 
     #[test]

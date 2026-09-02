@@ -5,6 +5,30 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-09-02 ROLL generator implementation awaiting combined validation
+
+The existing FT2 Tools PAGE -> HISTORY -> RHYTHM -> GEN workflow now includes
+a percussion-only ROLL draft; it adds no launcher, controller page, playback
+mode, or storage schema. Length selects a cursor-anchored bounded row span and
+amount selects 1–8 total pulses. EVEN uses the existing Retrigger command when
+several pulses share a row. ACCENT and CRESCENDO instead use deterministic
+ordinary rows with explicit bounded velocities because the current command
+cannot store a per-pulse contour.
+
+ROLL visibly defaults to NEW CLONE. Under that policy Apply delegates to the
+existing stopped independent-Pattern plus appended-Arrangement-step owner;
+EMPTY ONLY and REPLACE NOTE remain explicit current-Pattern choices. Draft,
+collision, Cancel/refusal, Pattern History, cursor, routing, and transport
+ownership remain the shared Generator contract. Source-level regression cases
+cover pulse bounds, odd/multi-row distribution, final-row placement, shaped
+velocity, percussion refusal, minimum/maximum tempo scheduling with automatic
+Note Off disabled, rendering, and default-clone ownership.
+
+Formatting and source inspection are allowed, but no build-producing command
+or test has run: the repository's temporary combined-pass rule still requires
+explicit user authorization first. No JACK, synth, MIDI, playback, recording,
+or hardware action was taken.
+
 ## 2026-09-02 user-owned npm and Codex installation
 
 The interactive and login-shell JavaScript tool path is repaired. Node.js

@@ -14,17 +14,19 @@ pub enum Tool {
     Accumulator,
     Mutation,
     Fill,
+    Roll,
     Arpeggio,
     Chord,
     Harmonizer,
 }
 
 impl Tool {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Euclidean,
         Self::Accumulator,
         Self::Mutation,
         Self::Fill,
+        Self::Roll,
         Self::Arpeggio,
         Self::Chord,
         Self::Harmonizer,
@@ -36,9 +38,30 @@ impl Tool {
             Self::Accumulator => "ACCUMULATOR",
             Self::Mutation => "MUTATION",
             Self::Fill => "FILL",
+            Self::Roll => "ROLL",
             Self::Arpeggio => "ARPEGGIO",
             Self::Chord => "CHORD",
             Self::Harmonizer => "HARMONIZER",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RollShape {
+    #[default]
+    Even,
+    Accent,
+    Crescendo,
+}
+
+impl RollShape {
+    pub const ALL: [Self; 3] = [Self::Even, Self::Accent, Self::Crescendo];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Even => "EVEN",
+            Self::Accent => "ACCENT",
+            Self::Crescendo => "CRESCENDO",
         }
     }
 }
@@ -182,6 +205,7 @@ pub enum CollisionPolicy {
     #[default]
     EmptyOnly,
     ReplaceNotes,
+    NewClone,
 }
 
 impl CollisionPolicy {
@@ -189,6 +213,7 @@ impl CollisionPolicy {
         match self {
             Self::EmptyOnly => "EMPTY ONLY",
             Self::ReplaceNotes => "REPLACE NOTE",
+            Self::NewClone => "NEW CLONE",
         }
     }
 }
@@ -200,9 +225,9 @@ pub struct Recipe {
     pub lane: usize,
     pub start_row: usize,
     pub length: u16,
-    /// Euclidean/Fill hits, Accumulator wrap span, Mutation pitch range.
+    /// Euclidean/Fill hits, Roll pulses, Accumulator wrap span, Mutation pitch range.
     pub amount: u16,
-    /// Accumulator signed increment. Other tools keep this zero.
+    /// Accumulator signed increment or Roll velocity depth.
     pub offset: i8,
     /// Euclidean/Fill rotation or Accumulator initial phase.
     pub phase: u16,
@@ -221,6 +246,7 @@ pub struct Recipe {
     pub harmony_voice: HarmonyVoice,
     pub harmony_target_lane: u8,
     pub out_of_scale: OutOfScalePolicy,
+    pub roll_shape: RollShape,
 }
 
 impl Recipe {
@@ -243,7 +269,7 @@ impl Recipe {
             bail!("generator lane is outside the Pattern");
         }
         let length = match tool {
-            Tool::Arpeggio | Tool::Chord => 1,
+            Tool::Roll | Tool::Arpeggio | Tool::Chord => 1,
             _ => remaining.min(16) as u16,
         };
         Ok(Self {
@@ -256,16 +282,22 @@ impl Recipe {
                 Tool::Euclidean | Tool::Fill => (length / 4).max(1),
                 Tool::Accumulator => 12,
                 Tool::Mutation => 2,
+                Tool::Roll => 4,
                 Tool::Arpeggio | Tool::Chord | Tool::Harmonizer => 1,
             },
             offset: match tool {
                 Tool::Accumulator => 2,
+                Tool::Roll => 24,
                 _ => 0,
             },
             phase: 0,
             density: 50,
             seed: retained_seed,
-            collision: CollisionPolicy::EmptyOnly,
+            collision: if tool == Tool::Roll {
+                CollisionPolicy::NewClone
+            } else {
+                CollisionPolicy::EmptyOnly
+            },
             scale,
             arpeggio_order: ArpeggioOrder::Up,
             arpeggio_octaves: 1,
@@ -282,6 +314,7 @@ impl Recipe {
                 lane.saturating_sub(1) as u8
             },
             out_of_scale: OutOfScalePolicy::Refuse,
+            roll_shape: RollShape::Even,
         })
     }
 
@@ -315,6 +348,14 @@ impl Recipe {
                 self.offset = 0;
                 self.phase = 0;
             }
+            Tool::Roll => {
+                self.amount = self.amount.clamp(1, 8);
+                if self.roll_shape != RollShape::Even {
+                    self.amount = self.amount.min(self.length);
+                }
+                self.offset = self.offset.clamp(1, 63);
+                self.phase = 0;
+            }
             Tool::Arpeggio | Tool::Chord | Tool::Harmonizer => {
                 self.amount = 1;
                 self.offset = 0;
@@ -335,6 +376,9 @@ impl Recipe {
         self.harmony_target_lane = self
             .harmony_target_lane
             .min((LANES_PER_PAGE.saturating_sub(1)) as u8);
+        if self.tool != Tool::Roll && self.collision == CollisionPolicy::NewClone {
+            self.collision = CollisionPolicy::EmptyOnly;
+        }
         Ok(())
     }
 
@@ -457,6 +501,14 @@ pub fn build(pattern: &Pattern, mut recipe: Recipe) -> Result<Draft> {
                 );
             }
         }
+        Tool::Roll => roll(
+            pattern,
+            &mut draft,
+            recipe,
+            global_lane,
+            &mut report,
+            &mut affected_rows,
+        )?,
         Tool::Arpeggio => {
             if pattern.pages[recipe.page].percussion {
                 bail!("arpeggio requires a melodic page");
@@ -546,6 +598,87 @@ pub fn build(pattern: &Pattern, mut recipe: Recipe) -> Result<Draft> {
         report,
         affected_rows,
     })
+}
+
+fn roll(
+    source: &Pattern,
+    draft: &mut Pattern,
+    recipe: Recipe,
+    global_lane: usize,
+    report: &mut Report,
+    affected_rows: &mut Vec<usize>,
+) -> Result<()> {
+    if !source.pages[recipe.page].percussion {
+        bail!("roll requires a percussion page");
+    }
+    let template = trigger_template(source, recipe, global_lane)?;
+    let pulses = usize::from(recipe.amount);
+    let length = usize::from(recipe.length);
+    let active_rows = pulses.min(length);
+    let base_velocity = template
+        .velocity
+        .unwrap_or(source.pages[recipe.page].velocity)
+        .max(1);
+
+    for rank in 0..active_rows {
+        let step = spaced_roll_step(rank, active_rows, length);
+        let mut candidate = template;
+        if recipe.roll_shape == RollShape::Even {
+            let count = pulses / active_rows + usize::from(rank < pulses % active_rows);
+            candidate.command = if count > 1 {
+                Command::Retrigger(count as u8)
+            } else {
+                Command::None
+            };
+            candidate.velocity = Some(base_velocity);
+        } else {
+            candidate.command = Command::None;
+            candidate.velocity = Some(roll_velocity(
+                base_velocity,
+                recipe.offset as u8,
+                recipe.roll_shape,
+                rank,
+                active_rows,
+            ));
+        }
+        propose(
+            draft,
+            recipe,
+            recipe.start_row + step,
+            global_lane,
+            candidate,
+            report,
+            affected_rows,
+        );
+    }
+    Ok(())
+}
+
+fn spaced_roll_step(rank: usize, pulses: usize, length: usize) -> usize {
+    if pulses <= 1 {
+        0
+    } else {
+        rank * (length - 1) / (pulses - 1)
+    }
+}
+
+fn roll_velocity(base: u8, depth: u8, shape: RollShape, rank: usize, pulses: usize) -> u8 {
+    let quiet = base.saturating_sub(depth).max(1);
+    match shape {
+        RollShape::Even => base,
+        RollShape::Accent => {
+            if rank % 2 == 0 {
+                base
+            } else {
+                quiet
+            }
+        }
+        RollShape::Crescendo if pulses > 1 => {
+            let rise = usize::from(base - quiet) * rank / (pulses - 1);
+            quiet.saturating_add(rise as u8)
+        }
+        RollShape::Crescendo => base,
+    }
 }
 
 struct ArpeggioFamily {
@@ -871,7 +1004,11 @@ fn propose(
         return;
     }
     let replaceable = matches!(existing.note, Note::On(_)) && existing.command == Command::None;
-    if recipe.collision == CollisionPolicy::ReplaceNotes && replaceable {
+    if matches!(
+        recipe.collision,
+        CollisionPolicy::ReplaceNotes | CollisionPolicy::NewClone
+    ) && replaceable
+    {
         draft.rows[row][lane] = candidate;
         report.affected += 1;
         report.replacements += 1;
@@ -1093,6 +1230,88 @@ mod tests {
         assert_eq!(rotated.affected_rows, expected);
         let melodic = fixture(16, false);
         assert!(build(&melodic, settings).is_err());
+    }
+
+    #[test]
+    fn even_roll_uses_exact_bounded_retriggers_and_stays_inside_its_span() {
+        let pattern = fixture(9, true);
+        let mut settings = recipe(&pattern, Tool::Roll);
+        assert_eq!(settings.collision, CollisionPolicy::NewClone);
+        settings.amount = 1;
+        let one_pulse = build(&pattern, settings).unwrap();
+        assert_eq!(one_pulse.pattern.rows[0][0].command, Command::None);
+        assert_eq!(one_pulse.report.affected, 0);
+
+        settings.amount = 8;
+        let one_row = build(&pattern, settings).unwrap();
+        assert_eq!(one_row.pattern.rows[0][0].command, Command::Retrigger(8));
+        assert_eq!(one_row.report.affected, 1);
+        assert_eq!(one_row.report.replacements, 1);
+        assert_eq!(one_row.affected_rows, [0]);
+
+        settings.collision = CollisionPolicy::EmptyOnly;
+        let protected_source = build(&pattern, settings).unwrap();
+        assert_eq!(protected_source.report.affected, 0);
+        assert_eq!(protected_source.report.collisions, 1);
+        settings.collision = CollisionPolicy::ReplaceNotes;
+        assert_eq!(build(&pattern, settings).unwrap().pattern, one_row.pattern);
+        settings.collision = CollisionPolicy::NewClone;
+
+        settings.length = 3;
+        let odd_span = build(&pattern, settings).unwrap();
+        assert_eq!(odd_span.pattern.rows[0][0].command, Command::Retrigger(3));
+        assert_eq!(odd_span.pattern.rows[1][0].command, Command::Retrigger(3));
+        assert_eq!(odd_span.pattern.rows[2][0].command, Command::Retrigger(2));
+        assert_eq!(odd_span.affected_rows, [0, 1, 2]);
+        assert_eq!(odd_span, build(&pattern, settings).unwrap());
+
+        let mut final_row = pattern.clone();
+        final_row.rows[8][0] = final_row.rows[0][0];
+        let final_settings =
+            Recipe::bounded_for(&final_row, Tool::Roll, 0, 0, 8, 41, Scale::default()).unwrap();
+        let final_draft = build(&final_row, final_settings).unwrap();
+        assert_eq!(final_draft.affected_rows, [8]);
+        assert_eq!(
+            final_draft.pattern.rows[8][0].command,
+            Command::Retrigger(4)
+        );
+    }
+
+    #[test]
+    fn shaped_rolls_use_spaced_ordinary_rows_and_explicit_velocities() {
+        let pattern = fixture(8, true);
+        let mut settings = recipe(&pattern, Tool::Roll);
+        settings.length = 8;
+        settings.amount = 4;
+        settings.offset = 24;
+        settings.roll_shape = RollShape::Accent;
+        let accent = build(&pattern, settings).unwrap();
+        assert_eq!(accent.affected_rows, [2, 4, 7]);
+        let accent_cells = [0, 2, 4, 7].map(|row| accent.pattern.rows[row][0]);
+        assert_eq!(
+            accent_cells.map(|cell| cell.velocity),
+            [Some(80), Some(56), Some(80), Some(56)]
+        );
+        assert!(accent_cells
+            .iter()
+            .all(|cell| cell.command == Command::None));
+
+        settings.roll_shape = RollShape::Crescendo;
+        let crescendo = build(&pattern, settings).unwrap();
+        assert_eq!(crescendo.affected_rows, [0, 2, 4, 7]);
+        assert_eq!(
+            [0, 2, 4, 7].map(|row| crescendo.pattern.rows[row][0].velocity),
+            [Some(56), Some(64), Some(72), Some(80)]
+        );
+        assert!([0, 2, 4, 7]
+            .iter()
+            .all(|row| crescendo.pattern.rows[*row][0].command == Command::None));
+
+        let melodic = fixture(8, false);
+        assert!(build(&melodic, settings)
+            .unwrap_err()
+            .to_string()
+            .contains("percussion"));
     }
 
     #[test]

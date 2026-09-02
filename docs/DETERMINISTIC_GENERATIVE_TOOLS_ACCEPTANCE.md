@@ -2,7 +2,8 @@
 
 Created: 2026-08-26
 
-Status: software combined pass completed 2026-08-26
+Status: base software combined pass completed 2026-08-26; ROLL implementation
+added 2026-09-02 and awaiting the next authorized combined pass
 
 This document owns the bounded Priority 5 contract selected in
 [Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md). The first
@@ -25,7 +26,7 @@ cells and never becomes another transport, scheduler, or hidden playback mode.
   draft; there is no audition or automatic playback command in this pass.
 - The existing four controller pages are **SHAPE**, **DETAIL**, **VALUE**, and
   **APPLY**. They expose tool/length/amount, tool-specific offset or phase,
-  mutation density, collision policy,
+  mutation density, Roll shape/depth, collision policy,
   the context-named value down/up (the seed for Mutation/Fill), Repeat/Inspect,
   and Stop/Apply/Clone/Cancel. Keyboard, mouse,
   four-button page selection, five-button page cycling, and eight-button direct
@@ -33,6 +34,8 @@ cells and never becomes another transport, scheduler, or hidden playback mode.
   is added.
 - Apply to the current Pattern requires stopped transport and swaps the exact
   validated draft into that Pattern through one Pattern History transaction.
+  ROLL's visible NEW CLONE policy routes Apply to Clone instead; choosing EMPTY
+  ONLY or REPLACE NOTE restores the ordinary current-Pattern Apply meaning.
   Apply to Clone also requires stopped transport and uses `Song::append_pattern`
   exactly like the existing Clone operation: the source Pattern remains
   untouched, one independent Pattern and one explicit final Arrangement step
@@ -56,6 +59,11 @@ cells and never becomes another transport, scheduler, or hidden playback mode.
   **REPLACE NOTE** may replace a `Note::On` cell only when its command is
   `None`; Note Off and every command-bearing cell are protected. Identical
   proposals are no-ops, not affected cells or collisions.
+- ROLL alone opens with **NEW CLONE** because its source cell is necessarily an
+  existing note. It previews with the same replaceable-note rules as REPLACE
+  NOTE, but Apply delegates to the existing independent Clone transaction.
+  Cycling policy makes EMPTY ONLY and REPLACE NOTE explicit current-Pattern
+  choices; leaving ROLL restores the ordinary EMPTY ONLY default.
 - Seeded Mutation is deliberately different: it changes only eligible existing
   `Note::On` cells whose command is `None`. Empty, Note Off, and command-bearing
   cells are protected and never become mutation targets. Its selected changed
@@ -72,8 +80,9 @@ All note-producing tools take their source note from the selected cursor cell.
 That cell must contain `Note::On`; its note, optional velocity, program, and
 gate form the template. Generated triggers deliberately reset command, timing,
 probability, and condition to `None`, on-grid, 100%, and ALWAYS, except that a
-controlled Fill is explicitly FILL-only. The page default velocity is used
-when the source has no explicit velocity.
+controlled Fill is explicitly FILL-only and EVEN Roll uses the existing
+Retrigger command when needed. The page default velocity is used when the
+source has no explicit velocity.
 
 ### Euclidean
 
@@ -122,20 +131,43 @@ when the source has no explicit velocity.
 - Fill never writes another lane or melodic page and never changes Pattern or
   Arrangement duration.
 
+### Roll
+
+- Roll requires a percussion page and an existing note at the selected cell.
+  Length is a bounded span beginning at the cursor; amount is exactly `1..=8`
+  total pulses. Pulse rows are distributed deterministically from the first to
+  the last row of the span. When there are more pulses than rows, EVEN divides
+  them across those rows with ordinary one-pulse notes or existing
+  `Retrigger(2..=8)` commands, so every pulse remains inside its owning row.
+- EVEN keeps the source/page velocity. A one-row EVEN roll is the direct
+  within-row case: one pulse is an unchanged ordinary note and two through
+  eight pulses store `Retrigger(2..=8)`. No per-pulse contour is invented.
+- ACCENT and CRESCENDO use one ordinary trigger per selected pulse row and
+  therefore never store Retrigger. ACCENT alternates the source velocity with
+  a quieter velocity. CRESCENDO rises linearly from the quieter velocity to
+  the source velocity. Depth is `1..=63`; both endpoints remain in `1..=127`.
+  Shaped pulse count is bounded by the selected row span because the current
+  Cell schema cannot represent different velocities inside one row.
+- Roll copies only the selected percussion note template and resets timing,
+  probability, and condition exactly like the other note-producing tools. It
+  never changes drum mapping, kit, routing, effects, Pattern length, or another
+  lane. Identical settings repeat exactly; the retained seed is shown but not
+  used because this first Roll contract has no random choice.
+
 ## Persistence, reuse, export, and playback
 
-- Priority 5 adds no persisted recipe or seed and therefore does not change
-  Project format 17 or reusable drum-pattern format 4. Formats 0-16 retain
+- Priority 5 and ROLL add no persisted recipe or seed and therefore do not
+  change Project format 17 or reusable drum-pattern format 4. Formats 0-16 retain
   their existing migrations; inspecting or loading never rewrites a file.
 - Apply persists concrete ordinary Cells through the existing Project encoder.
   Apply to Clone persists the same cells in an independent existing Pattern
   record. Save/load/clone/copy/paste and repeated playback do not regenerate
   anything.
 - Saving a reusable drum pattern copies generated percussion cells, including
-  FILL conditions, timing, probability, and lane-cycle data through the
-  existing format. Loading copies those cells through its existing selected-page
-  ownership; no recipe, seed, routing, kit, effect, or Arrangement state is
-  smuggled into the reusable file.
+  FILL conditions, ROLL Retrigger commands, timing, probability, and lane-cycle
+  data through the existing format. Loading copies those cells through its
+  existing selected-page ownership; no recipe, seed, routing, kit, effect, or
+  Arrangement state is smuggled into the reusable file.
 - Context-free MIDI export remains deterministic pass 1 with FILL off, so
   FILL-only generated triggers are absent from that export. Preflight retains
   its existing all-source-trigger scan, including generated conditional cells.
@@ -160,19 +192,24 @@ when the source has no explicit velocity.
 | GT-12 | Scheduler ownership, note cleanup, export, preflight, partial playback, and repeated playback consume only stored cells. |
 | GT-13 | Navigation exposes GEN and all actions through exactly four pages on supported controller layouts; native 40x13 rendering preserves the shared status row and FT2 cursor. |
 | GT-14 | Keyboard, mouse, controller, Apply/Clone/Cancel, refusal, and return paths share the same UI transaction owners. |
+| GT-15 | ROLL covers one/eight pulses, one-row Retrigger, odd/multi-row distribution, final-row bounds, percussion refusal, explicit ACCENT/CRESCENDO velocities, and byte-stable repeatability. |
+| GT-16 | ROLL opens with NEW CLONE, Apply delegates to the existing structural owner, current-Pattern policies remain explicit, reports stay exact, and source/Arrangement/cursor/History owners survive every refusal or Cancel. |
 
 ## Evidence limits
 
-The authorized non-Raspberry-Pi software pass used exact Rust 1.97.1
+The 2026-08-26 authorized non-Raspberry-Pi software pass used exact Rust 1.97.1
 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`, LLVM 22.1.6). Locked check,
 the GT-01 through GT-14 focused algorithm/migration/History/scheduler/export/
-preflight/navigation/controller/rendering transaction matrices, and the
+preflight/navigation/controller/rendering transaction matrices for GT-01
+through GT-14, and the
 complete normal suite passed. The final suite reported 1,038 passed, zero
 failed, and 13 documented ignored development, private-audition, and
 performance tests. Focused validation shortened only the RHYTHM launcher from
 `GENERATE` to `GEN` so it meets the established 40-column soft-button width;
 the entered screen remains `GENERATOR`. Clippy was not required by an observed
-failure or repository policy.
+failure or repository policy. GT-15 and GT-16 are source-level regression
+coverage added with ROLL; they have not yet been executed because the current
+incremental-debug rule requires separate authorization before compilation.
 
 Software tests can prove deterministic drafts, storage, transactions,
 navigation, rendering geometry, scheduling, export, and preflight without

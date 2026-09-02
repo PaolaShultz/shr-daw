@@ -8337,6 +8337,58 @@ mod tests {
     }
 
     #[test]
+    fn generated_final_row_roll_schedules_eight_bounded_pulses_at_tempo_extremes() {
+        let cfg = config();
+        for tempo in [
+            Bpm::from_hundredths(2_000).unwrap(),
+            Bpm::from_hundredths(30_000).unwrap(),
+        ] {
+            let mut song = Song::new(&cfg);
+            let pattern = song.patterns.get_mut(&0).unwrap();
+            pattern.tempo = tempo;
+            let page = pattern
+                .pages
+                .iter()
+                .position(|page| page.percussion)
+                .unwrap();
+            pattern.pages[page].note_off_enabled = false;
+            let lane = page * LANES_PER_PAGE;
+            let final_row = pattern.rows.len() - 1;
+            pattern.rows[final_row][lane] = Cell {
+                note: Note::On(38),
+                velocity: Some(84),
+                ..Cell::default()
+            };
+            let mut recipe = crate::generative::Recipe::bounded_for(
+                pattern,
+                crate::generative::Tool::Roll,
+                page,
+                0,
+                final_row,
+                1,
+                Scale::default(),
+            )
+            .unwrap();
+            recipe.amount = 8;
+            let draft = crate::generative::build(pattern, recipe).unwrap();
+            assert_eq!(draft.affected_rows, [final_row]);
+            *pattern = draft.pattern;
+
+            let attacks = schedule(&song, &cfg, 0, 0)
+                .unwrap()
+                .into_iter()
+                .filter(|message| {
+                    matches!(message.bytes.as_slice(), [status, 38, 84]
+                        if status & 0xf0 == 0x90)
+                })
+                .map(|message| message.at)
+                .collect::<Vec<_>>();
+            assert_eq!(attacks.len(), 8);
+            assert!(attacks.windows(2).all(|pair| pair[0] < pair[1]));
+        }
+    }
+
+    #[test]
     fn stored_arpeggio_cells_keep_scheduler_preflight_partial_repeat_and_cleanup_ownership() {
         let cfg = config();
         let mut song = Song::new(&cfg);

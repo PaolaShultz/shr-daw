@@ -99,7 +99,12 @@ playback acceptance](LANE_PLAYBACK_ACCEPTANCE.md).
 **GEN** opens the one offline deterministic Generator for the selected Pattern,
 page, lane, and cursor row. Alongside Euclidean triggers, bounded accumulator
 progressions, seeded pitch mutation, and percussion-only controlled FILL, it
-offers three melodic tools. ARPEGGIO reads the existing notes across the cursor
+offers ROLL without another launcher or mode. ROLL uses 1–8 total pulses over
+the selected span: EVEN uses the existing within-row Retrigger command, while
+ACCENT and CRESCENDO use ordinary rows with explicit velocities. It defaults
+to an independent new clone; EMPTY ONLY and REPLACE NOTE are explicit
+current-Pattern choices. The Generator also offers three melodic tools.
+ARPEGGIO reads the existing notes across the cursor
 row as its explicit chord source and exposes order, upward octave count,
 1/2/4/8-row rate, 25/50/75/100% gate, and complete repetition count. CHORD
 derives one triad from the Project tonic/major-or-natural-minor scale plus
