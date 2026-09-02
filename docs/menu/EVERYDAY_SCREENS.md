@@ -217,21 +217,23 @@ to browse and confirm even when optional buttons are skipped.
 
 ## Help
 
-Help is always available locally with `?` or F1, even if the optional temporary
-LAN page cannot bind. Turn the encoder one rendered row at a time. On eight- or
-five-button layouts, encoder press follows a selected section link.
-Opening Help preserves the exact caller, controller page, FT2 mode/location,
-cursor, editor draft, and active transport. EXIT restores that exact context.
-If the LAN port cannot be acquired, only the local reader opens and reports the
-failure; no URL is advertised.
+Help is always available locally with `?` or F1. Opening it performs no network
+action and preserves the exact caller, controller page, FT2 mode/location,
+cursor, editor draft, and active transport. Turn the encoder one rendered row
+at a time. On eight- or five-button layouts, encoder press follows a selected
+section link. EXIT restores the exact caller and stops any active web share.
+If SHARE cannot acquire a LAN address or listener, the local reader stays open,
+reports the failure, and leaves SHARE beside it for retry; no URL is advertised.
 
 ### OPS — read and follow links
 
 ![Populated Help screen with the OPS controller page](../images/menu/help-ops.png)
 
 `OPEN` follows the highlighted internal link and is the required link action on
-a four-button layout. `TOP` returns to the beginning. Keyboard
-PageUp/PageDown retain page scrolling; physical pads do not.
+a four-button layout. `TOP` returns to the beginning. `SHARE` explicitly starts
+temporary web Help on the displayed LAN address and OS-assigned port, then
+becomes `WEB OFF`. Keyboard `W` toggles the same share. PageUp/PageDown retain
+page scrolling; physical pads do not.
 
 ### SYS — safety and return
 

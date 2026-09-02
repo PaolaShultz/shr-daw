@@ -2,7 +2,8 @@
 
 Date: 2026-07-23
 
-Status: R01–R15 combined acceptance passed; publication recorded below
+Status: R01–R15 combined acceptance passed; D05/D10 LAN Help is `SOURCE DONE`
+pending the explicitly gated build/test pass
 
 This is the durable handoff and repair ledger for the first complete
 musician/operator workflow audit. It contains the analysis, the evidence gaps,
@@ -13,6 +14,22 @@ Do not delete a finding when it is repaired. Change its status, record the
 scoped commit and verification evidence, and leave any remaining question or
 physical gate visible. This file is a work ledger, not a replacement for the
 focused documents that define current behavior.
+
+## 2026-09-02 D05/D10 LAN Help resolution
+
+The general maintenance request authorized resolving the highest-value
+machine-only workflow debt. Opening Help is now local and performs no route
+discovery or listener bind. OPS `SHARE`, keyboard `W`, and the same mouse/
+controller dispatcher explicitly start temporary web Help. It binds only the
+detected LAN address on an OS-assigned port, displays the exact URL, and changes
+the action to `WEB OFF`; that action or leaving Help stops the server. Failed
+sharing retains local Help with a nearby retry action.
+
+This resolves the surprising network side effect in D05 and removes D10's
+privileged fixed-port requirement without persisting another setting. Rust
+formatting, source inspection, and whitespace checks are the permitted current
+evidence. The build-producing focused tests remain intentionally unrun until
+the user authorizes the combined build-and-test pass.
 
 ## 0.4.6 software-monitor repair
 
@@ -188,7 +205,7 @@ physically or aurally validated.
 | Shutdown, panic, signal | Keyboard quit or process stop invokes global owned cleanup | Stops recordings/transports, releases notes, drops owned engine | `observed`: source plus connected synth teardown and isolated recorder SIGKILL recovery; exact owned cleanup and route restoration passed |
 | Global navigation and Back | Controller pages, encoder, keyboard, overlays, and nested editors | Most draft paths restore; order navigation and Tracks have exceptions | `observed`: navigation/UI/tests/screenshots. C6, C7 |
 | Status and transport | Working screens compute one global transport cell | Home keeps its special layout while showing authoritative active ownership | `observed`: render source/tests and regenerated screenshots. R02/R13 accepted; C6, C9 |
-| Help | Local help preserves caller and automatically attempts LAN hosting | Leaving Help stops server; opening has network side effects | `observed`: UI/help source. No LAN/accessibility user test |
+| Help | Local help preserves caller; explicit SHARE temporarily publishes the same content on the detected LAN address and displayed port | WEB OFF/Exit stops the server; failed sharing preserves local help and nearby retry | `observed`: UI/help source and D05/D10 repair. Build/test and LAN/accessibility user evidence pending |
 | MIDI Learn and controller setup | Auto-profile or learn, backup, mapping, Home recommendation | Learn isolates MIDI; incomplete mapping remains recoverable | `observed`: source/docs/config. Current controllers not tested |
 | Routing | Browse, detached field edit, full validation/save, live input activation or next-start status | Field cancel, rollback, and every repeated performance input are preserved | `observed`: source/config/tests/docs plus connected exact-route and byte-identical restoration checks. R04 accepted; C2, C3, C8 |
 | Presets, Playback, synth ownership | Engine browse/load, musical MIDI, mapped controls, pickup, N00B, reset, Ideas/FX | Replacement and panic clean ownership | `observed`: source/docs/tests/screenshots plus connected synth lifecycle and all-channel panic checks. No owner audible/pickup observation |
@@ -485,22 +502,24 @@ These remain individually scoped even when implemented in one working session.
 | R14 | `observed`: routing defaults save before Project save, so failed/pending Project save can still change defaults. Make the outcome transactional or defer defaults until Project success. | Explicit default confirmation and no-replace Project save | `DONE`: deferred/commit focused test and complete suites passed |
 | R15 | `observed`: current Loop overlay has no delete; legacy menu/state/delete dispatch remains. Prove unreachable, then remove stale code/tests. | No loop deletion from browser; Project REMOVE keeps WAV | `DONE`: stale reachability search is clean; shared-overlay focused test and complete suites passed |
 
-## Decision queue for tomorrow
+## Remaining decision queue
 
-Do not answer these in the first repair pass.
+The instruction not to answer these applied to the first 2026-07-23 repair
+pass. D05 and D10 were resolved by the later explicitly authorized maintenance
+pass; the other rows still require product-owner direction.
 
-| ID | Decision needed | Why it is not safe to assume |
+| ID | Decision/status | Rationale |
 |---|---|---|
 | D01 | Should keyboard `q` remain global, become Home-only, or behave like Back until Home? | It changes expert keyboard navigation and quit reachability. R01 only protects the current path. |
 | D02 | Which transports/recorders are intentionally allowed to continue after Home return? | Recorder explicitly continues; other workflows are not equally clear. R02 only makes activity visible. |
 | D03 | Should the whole Tracks draft be completely detached until DONE, or have explicit live audition? | Documentation says draft; source currently synchronizes routes while browsing. R03 only fixes field Cancel. |
 | D04 | Should install and setup remain one command, become explicit phases, or collect all ordinary config before commit? | Packaging, recovery, and operator expectations change materially. R06 only improves consequence/interruption reporting. |
-| D05 | Should LAN Help be per-use SHARE, a persisted opt-in, or removed? Which interface/port? | Network exposure and accessibility trade off; current automatic `0.0.0.0:80` is not a necessary local-help constraint. |
+| D05 | RESOLVED 2026-09-02: LAN Help is a per-use `SHARE`, bound only to the detected LAN interface. | Explicit publication preserves phone access without making local Help consent to a network side effect. |
 | D06 | Should default `doctor` mean core/editor readiness or complete-audio readiness? | Exit-code consumers and first-run interpretation may differ. R07 preserves current strict exit. |
 | D07 | Is controller-only custom text naming required? | A character editor is new interaction work; R08 only makes the keyboard dependency honest. |
 | D08 | Is Help's documented one-step START desired, or is current REWIND then PLAY intended? | Either source or embedded Help must change, but the musical motion needs owner choice. |
 | D09 | Should active Home state offer a direct reopen/stop action, or only authoritative information? | Adds navigation/transport behavior beyond R02's visibility repair. |
-| D10 | Should LAN help ever use a privileged port? | Port 80 affects permissions, deployment, and exposure. |
+| D10 | RESOLVED 2026-09-02: use an OS-assigned port and display it in the exact URL. | No privileged or fixed-port dependency remains. |
 
 ### Deferred finding evidence
 
@@ -510,12 +529,12 @@ Do not answer these in the first repair pass.
 | D02 | `observed`: raw recorder explicitly survives EXIT; Idea/final/loop/tracker transport paths are not documented with one consistent background policy | C4/C9; active work can cross a screen boundary without a single ownership rule | Decide permitted background owners; preserve finalization and R02's authoritative visibility |
 | D03 | `observed`: Tracks stores an original Project but edits `self.song` and synchronizes routes while browsing/adding | C2/C3/C6; a documented draft can change live ownership | Choose detached-until-DONE or explicit audition; preserve exact routes, conflict validation, note cleanup, and R03 field Cancel |
 | D04 | `observed`: install and setup combine packages, service masks, configuration, downloads, `.jackdrc`, and optional tuning | C2/C5/C8; interruption recovery spans several ownership domains | Choose one command with checkpoints, explicit phases, or collected config commit; preserve exact service/helper ownership and no JACK start |
-| D05 | `observed`: opening local Help always calls the server starter, which route-discovers through `8.8.8.8` and binds `0.0.0.0:80`; leaving Help drops it | C5 plus phone accessibility; opening text is not clear consent to LAN publication | Choose per-use SHARE, persisted opt-in, or removal; preserve embedded offline Help, caller return, bounded server, and auto-stop |
+| D05 | `resolved`: opening local Help performs no network action; explicit SHARE discovers the LAN address, binds only that address, and keeps the exact URL visible | C5 plus phone accessibility; network publication now follows explicit intent | SHARE/WEB OFF and Exit preserve embedded Help, caller return, bounded server, retry, and auto-stop |
 | D06 | `observed`: `doctor` counts unreachable JACK as a problem even though docs support editor/external-MIDI use without JACK | C3/C5; valid partial readiness looks like whole-product failure | Choose core-ready or complete-audio default semantics; preserve R07 grouped truth and every exact diagnostic |
 | D07 | `observed`: controller can open NAME and confirm/cancel, but only keyboard character/backspace events edit text | C7; visible controller action cannot complete custom naming | Choose honest keyboard boundary or bounded controller editor; preserve validation, generated defaults, and Cancel |
 | D08 | `observed`: embedded Help promises one-step START; source exposes REWIND that stops/positions and asks for PLAY | C6 and literal navigation; source and musician instruction disagree | Choose START or REWIND→PLAY; preserve explicit stop/rewind note cleanup and selected-position PLAY |
 | D09 | R02 can show exact activity without adding a new command, but a direct reopen/stop shortcut would alter Home navigation | C7/C9; visibility and control are separate requirements | Decide information-only versus direct owner action after R02; preserve Home layout and no controller quit |
-| D10 | `observed`: Help uses privileged port 80 and all-interface binding, so access may fail or expose more interfaces than intended | C5 and platform limits; port choice changes deployment/security behavior | Choose nonprivileged port and intended interface together with D05; preserve phone accessibility and local Help |
+| D10 | `resolved`: Help asks the OS for a port and binds only the detected LAN address | C5 and platform limits; the displayed URL carries the chosen port | Preserve phone accessibility without privileged bind or all-interface exposure |
 
 Record tomorrow's answers here:
 
@@ -525,12 +544,12 @@ Record tomorrow's answers here:
 | D02 | _pending_ | _pending_ |
 | D03 | _pending_ | _pending_ |
 | D04 | _pending_ | _pending_ |
-| D05 | _pending_ | _pending_ |
+| D05 | Per-use SHARE on detected LAN address and OS-assigned port / 2026-09-02 | Source/docs/tests updated; combined build/test gate pending |
 | D06 | _pending_ | _pending_ |
 | D07 | _pending_ | _pending_ |
 | D08 | _pending_ | _pending_ |
 | D09 | _pending_ | _pending_ |
-| D10 | _pending_ | _pending_ |
+| D10 | Never require fixed privileged port 80 / 2026-09-02 | Folded into D05 repair |
 
 ## Physical and user-evidence queue
 
@@ -615,3 +634,4 @@ Append one row per coherent repair. Do not replace history.
 | 2026-07-23 | Audit | Review and repair ledger created; no implementation | Read-only artifact reconciliation; no compile | None; no physical/user validation | Not applicable |
 | 2026-07-23 | R01–R15 | First READY repair queue implemented; all items `SOURCE DONE`; D01–D10 and P01–P08 unchanged | Rust formatting, focused source inspection, `bash -n`, `shellcheck`, stale-path search, and `git diff --check` passed | Not run: the explicit combined-pass, screenshot, and physical authorizations remain outstanding | `6d55069` pushed to `origin/main` |
 | 2026-07-23 | R01–R15 acceptance | All repairs verified; synthv1 teardown xrun found and repaired; D01–D10 unanswered | Formatting, shell/Python/XML/JSON/demo/static checks and `git diff --check` passed | Locked check/builds; 16 focused tests; debug/release suites 662 pass + 4 ignored each; warning-denied Clippy; 105-image debug/release drift; helper/setup/install checks; 60-second raw/final stress; real capture and failure/recovery drills; connected release checkpoints with zero new xruns or route drift | This acceptance repair commit pushed to `origin/main` |
+| 2026-09-02 | D05/D10 | Local Help no longer opens a listener; explicit SHARE uses only the detected LAN address and an OS-assigned port | Rust formatting, source inspection, focused stale-text search, deterministic docs regeneration/check, and `git diff --check` | Intentionally not run until explicit combined build/test authorization | Scoped `SOURCE DONE` repair committed and pushed |

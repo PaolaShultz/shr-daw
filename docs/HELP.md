@@ -57,8 +57,9 @@ red without hiding the circle.
 
 Four-button controllers use encoder press to enter page-select mode. Turn to
 choose a menu page, then press again to return the encoder to screen control.
-In Help, use OPS OPEN to follow the highlighted link. In target/channel
-editors, use OPS CONFIRM; SYS EXIT cancels the field.
+In Help, use OPS OPEN to follow the highlighted link. OPS SHARE or keyboard W
+temporarily publishes Help at the displayed LAN address; WEB OFF or EXIT stops
+it. In target/channel editors, use OPS CONFIRM; SYS EXIT cancels the field.
 
 Some navigation actions open a master overlay instead of replacing the current
 workspace. The workspace remains visible around a 38×11 border; its usable

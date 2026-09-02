@@ -69,7 +69,7 @@ or `q` can still exit from the splash.
 | FX rack/editor | Show the owning Project and its `NEW`/`SAVED`/`DIRTY` state; choose source, AUX 1, AUX 2, AUX 3, drum, or master with Shift-rotary or the existing forward TARGET action; select the typed `+ INSERT EFFECT` row with the ordinary rotary; add/select/remove/bypass/reorder bounded effects; and edit every parameter using explicit compact labels and type-aware values. Shift-rotary is inert in the type and parameter editors. The native 40×13 EQ is a dedicated fullscreen logarithmic graph with four one-cell band markers and all bypass, band, low-cut, and output fields; other processors retain the 2×4 physical-control grid. The rack and parameter fields keep the current selection visible. Aux time effects are forced wet. An active graph publishes FX changes only with stopped transport and recording; a disabled graph accepts Project-only edits without touching audio. |
 | MASTER STRIP | Compact fixed-order INPUT, TONE, GLUE, COLOR, IMAGE, and LOUD/CEIL front page with one selected-section value and bounded mastering meters; DETAIL opens only that section's advanced values. In DETAIL, the ordinary rotary browses that section's parameters and Shift-rotary changes section through the existing previous/next order. Optional sections have smoothed bypass; A/B retains fixed latency and true-peak protection; RESET I clears integrated loudness. Playback allows numerical audition without a topology rebuild, final recording rejects edits, and a disabled graph changes only Project state. Back preserves caller, page, FX/tracker selection, and cursor. |
 | Routing | Transactional rotary editor for controller input/role, every repeated performance input plus an explicit add row, external MIDI enable/output/profile, controller clock enable/output, exclusive `SYNC` internal/external owner, exact `SYNC IN`, `SYNC POS` Arrangement/Pattern Start, and audio output. Browsing never writes or transmits. Field confirmation validates the whole candidate, rejects duplicate or ambiguous inputs, backs up and atomically saves it, safely activates live MIDI input changes while transport is stopped, refreshes discovery, and rolls back on failure. All controller layouts reach the same scrolling rows through the canonical menu dispatcher. Interface availability and unverified downstream DIN profile are separate states. |
-| Help | Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
+| Help | Compact Markdown user help, explicit temporary LAN sharing on the detected interface and an OS-assigned port, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen. |
 | Global/safety | Stop MIDI playback, tracker transport, recorder, managed engine, and owned notes; All Notes Off; cancel or leave the current controller level. Application exit remains computer-keyboard-only. Help is also reachable from `?` or F1. Process termination remains limited to the engine owned by SHR-DAW. |
 
 The complete final screen × page × item mapping is maintained below. The table
@@ -223,12 +223,15 @@ to select controller pages while Shift is held.
   Learn, master turn/click packets cannot browse or skip capture roles; only
   explicit keyboard skip/back can move past an unlearned optional control.
   Learn renders exactly two action-first rows total and no shared status row.
-- Help is a child screen. It tries to show the same help at
-  `http://<LAN-IP>/help` while open. The master encoder moves one help row at a
-  time. Encoder press follows a highlighted internal section link on eight-
-  and five-button layouts; four-button layouts use OPS `OPEN` because encoder
-  press is reserved for page selection. The compact help text uses a stable
-  38-column width so link targets and rendered rows remain identical.
+- Help is a child screen and opening it is entirely local. OPS `SHARE` starts
+  the same help on the detected LAN interface at the exact displayed
+  `http://<LAN-IP>:<PORT>/help`; `WEB OFF` stops it, and leaving Help also stops
+  it. The OS chooses the port, so sharing does not require privileged port 80.
+  Keyboard `W` toggles the same action. The master encoder moves one help row
+  at a time. Encoder press follows a highlighted internal section link on
+  eight- and five-button layouts; four-button layouts use OPS `OPEN` because
+  encoder press is reserved for page selection. The compact help text uses a
+  stable 38-column width so link targets and rendered rows remain identical.
 - Target/channel fields use encoder press to confirm on eight- and five-button
   layouts. Four-button layouts use the visible OPS `CONFIRM` item; SYS `EXIT`
   cancels the field on every layout and restores that field's complete
@@ -294,7 +297,7 @@ Blank physical positions and wholly empty pages are omitted.
 | Ideas | Play | Inspect | Play | Record | Delete |
 | Ideas | File | Save | Load | First | Last |
 | Ideas | Sys | Panic | — | Help | Exit |
-| Help | Ops | Open link | Top | — | — |
+| Help | Ops | Open link | Top | Share / Web off | — |
 | Help | Sys | Panic | — | — | Exit |
 | FT2 | Play | Cell edit | Play | Record | Edit |
 | FT2 | Select | Page overlay | Pattern overlay | Song overlay | Route overlay |

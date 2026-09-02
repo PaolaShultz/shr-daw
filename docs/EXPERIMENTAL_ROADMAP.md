@@ -96,13 +96,16 @@ captured, this roadmap deliberately does not invent it. For each supplied item:
 5. verify normal, repeated, interrupted, saved/reloaded, and existing-state
    paths that apply.
 
-The first three owner-selected software workflow items are implemented:
-bounded Pattern History/Snapshot, microtiming and deterministic groove tools,
-and deterministic per-step probability/conditions. Their boundaries and
+All seven owner-selected software workflow priorities are implemented: bounded
+Pattern History/Snapshot; microtiming, swing, groove, and timing-aware REC;
+step probability/conditions; independent lane cycles, speed, and direction;
+deterministic generators; bounded arpeggio/chord/harmony generation; and
+exclusive external USB MIDI transport sync. Their exact boundaries and
 acceptance evidence are routed from
-[Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md). Independent
-lane cycles/speed/direction remain next in that ordering; none of this
-authorizes Raspberry Pi electronics work or direct CV/Gate support.
+[Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md). Expressive
+MIDI/MPE remains an unscheduled lower-priority candidate, not the automatic
+next task. None of this authorizes Raspberry Pi electronics work or direct
+CV/Gate support.
 
 Completion means the owner-approved FT2 inventory, its focused
 tests and hands-on checks, and matching current documentation. Planned rhythm,

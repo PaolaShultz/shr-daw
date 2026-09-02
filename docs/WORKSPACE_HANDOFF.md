@@ -5,6 +5,21 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-09-02 explicit, interface-scoped LAN Help
+
+Opening in-app Help is now entirely local and does not discover a route or open
+a listener. OPS `SHARE`, keyboard `W`, and the shared mouse/controller action
+explicitly start the temporary web page. It binds only the detected LAN
+address on an OS-assigned port, displays the exact URL, and changes the visible
+action to `WEB OFF`; that action or leaving Help stops the server. A failed
+share leaves local Help usable and the SHARE retry beside the failure.
+
+This resolves workflow-audit decisions D05 and D10 without a persisted setting,
+all-interface exposure, or privileged port 80. Rust formatting, source
+inspection, whitespace checks, and deterministic documentation generation and
+drift checks passed. Build-producing focused tests and screenshot regeneration
+remain intentionally unrun under the combined-pass gate.
+
 ## 2026-09-02 user-owned npm and Codex installation
 
 The interactive and login-shell JavaScript tool path is repaired. Node.js

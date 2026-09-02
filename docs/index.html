@@ -1138,8 +1138,9 @@ for pause, or red <code>●</code> for record; record alone pulses between red a
 red without hiding the circle.</p>
 <p>Four-button controllers use encoder press to enter page-select mode. Turn to
 choose a menu page, then press again to return the encoder to screen control.
-In Help, use OPS OPEN to follow the highlighted link. In target/channel
-editors, use OPS CONFIRM; SYS EXIT cancels the field.</p>
+In Help, use OPS OPEN to follow the highlighted link. OPS SHARE or keyboard W
+temporarily publishes Help at the displayed LAN address; WEB OFF or EXIT stops
+it. In target/channel editors, use OPS CONFIRM; SYS EXIT cancels the field.</p>
 <p>Some navigation actions open a master overlay instead of replacing the current
 workspace. The workspace remains visible around a 38×11 border; its usable
 inside is 36×9 on a 40×13 display. While the overlay is open, its bottom
@@ -2711,7 +2712,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>Help</td>
-<td>Compact Markdown user help, temporary LAN web help when port 80 is available, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen.</td>
+<td>Compact Markdown user help, explicit temporary LAN sharing on the detected interface and an OS-assigned port, section links selected by the master encoder, keyboard page scrolling, top, and return to the previous screen.</td>
 </tr>
 <tr>
 <td>Global/safety</td>
@@ -2910,12 +2911,15 @@ without optional pads. Home itself neither learns nor transmits. During
 Learn, master turn/click packets cannot browse or skip capture roles; only
 explicit keyboard skip/back can move past an unlearned optional control.
 Learn renders exactly two action-first rows total and no shared status row.</li>
-<li>Help is a child screen. It tries to show the same help at
-<code>http://&lt;LAN-IP&gt;/help</code> while open. The master encoder moves one help row at a
-time. Encoder press follows a highlighted internal section link on eight-
-and five-button layouts; four-button layouts use OPS <code>OPEN</code> because encoder
-press is reserved for page selection. The compact help text uses a stable
-38-column width so link targets and rendered rows remain identical.</li>
+<li>Help is a child screen and opening it is entirely local. OPS <code>SHARE</code> starts
+the same help on the detected LAN interface at the exact displayed
+<code>http://&lt;LAN-IP&gt;:&lt;PORT&gt;/help</code>; <code>WEB OFF</code> stops it, and leaving Help also stops
+it. The OS chooses the port, so sharing does not require privileged port 80.
+Keyboard <code>W</code> toggles the same action. The master encoder moves one help row
+at a time. Encoder press follows a highlighted internal section link on
+eight- and five-button layouts; four-button layouts use OPS <code>OPEN</code> because
+encoder press is reserved for page selection. The compact help text uses a
+stable 38-column width so link targets and rendered rows remain identical.</li>
 <li>Target/channel fields use encoder press to confirm on eight- and five-button
 layouts. Four-button layouts use the visible OPS <code>CONFIRM</code> item; SYS <code>EXIT</code>
 cancels the field on every layout and restores that field's complete
@@ -3197,7 +3201,7 @@ channel-1 pads cannot safely be commands because they collide with the keys.</li
 <td>Ops</td>
 <td>Open link</td>
 <td>Top</td>
-<td>—</td>
+<td>Share / Web off</td>
 <td>—</td>
 </tr>
 <tr>
@@ -4363,18 +4367,20 @@ as prompted. The review step writes a private controller profile only after
 confirmation; Back cancels without saving. A learned master rotary is enough
 to browse and confirm even when optional buttons are skipped.</p>
 <h4 id="doc-menu-everyday_screens--help" tabindex="-1">Help<a class="heading-anchor" href="#doc-menu-everyday_screens--help" aria-label="Link to Help">#</a></h4>
-<p>Help is always available locally with <code>?</code> or F1, even if the optional temporary
-LAN page cannot bind. Turn the encoder one rendered row at a time. On eight- or
-five-button layouts, encoder press follows a selected section link.
-Opening Help preserves the exact caller, controller page, FT2 mode/location,
-cursor, editor draft, and active transport. EXIT restores that exact context.
-If the LAN port cannot be acquired, only the local reader opens and reports the
-failure; no URL is advertised.</p>
+<p>Help is always available locally with <code>?</code> or F1. Opening it performs no network
+action and preserves the exact caller, controller page, FT2 mode/location,
+cursor, editor draft, and active transport. Turn the encoder one rendered row
+at a time. On eight- or five-button layouts, encoder press follows a selected
+section link. EXIT restores the exact caller and stops any active web share.
+If SHARE cannot acquire a LAN address or listener, the local reader stays open,
+reports the failure, and leaves SHARE beside it for retry; no URL is advertised.</p>
 <h5 id="doc-menu-everyday_screens--ops-read-and-follow-links" tabindex="-1">OPS — read and follow links<a class="heading-anchor" href="#doc-menu-everyday_screens--ops-read-and-follow-links" aria-label="Link to OPS — read and follow links">#</a></h5>
 <p><img src="images/menu/help-ops.png" alt="Populated Help screen with the OPS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="ebac4b13f74b31e187b9bbf1ad6e35bec974b42b7ea135cbadc48fcad4b442fc" class="tui-shot" id="shot-ebac4b13f74b" /></p>
 <p><code>OPEN</code> follows the highlighted internal link and is the required link action on
-a four-button layout. <code>TOP</code> returns to the beginning. Keyboard
-PageUp/PageDown retain page scrolling; physical pads do not.</p>
+a four-button layout. <code>TOP</code> returns to the beginning. <code>SHARE</code> explicitly starts
+temporary web Help on the displayed LAN address and OS-assigned port, then
+becomes <code>WEB OFF</code>. Keyboard <code>W</code> toggles the same share. PageUp/PageDown retain
+page scrolling; physical pads do not.</p>
 <h5 id="doc-menu-everyday_screens--sys-safety-and-return" tabindex="-1">SYS — safety and return<a class="heading-anchor" href="#doc-menu-everyday_screens--sys-safety-and-return" aria-label="Link to SYS — safety and return">#</a></h5>
 <p><img src="images/menu/help-sys.png" alt="Populated Help screen with the SYS controller page" width="960" height="624" loading="lazy" decoding="async" data-source-sha256="61da8cab11d315536c9398259c4c2d0fd345701d11d47a78f4db21cee525c4f2" class="tui-shot" id="shot-61da8cab11d3" /></p>
 <p><code>PANIC</code> remains available while reading. <code>EXIT</code> returns to the exact screen
@@ -5693,7 +5699,7 @@ later administrator edits are retained.</p>
 <td>A4</td>
 <td>CPU frequency governor</td>
 <td>Owned oneshot service records/restores governors and selects <code>performance</code> at boot</td>
-<td>Not a guaranteed Patchbox property; current Pi is active through SHR's service</td>
+<td>Not a guaranteed Patchbox property; current development Pi uses the ordinary dynamic governor</td>
 <td>Usually dynamic governor</td>
 <td>Service configured/active state plus every policy's live <code>scaling_governor</code>; frequency/throttle telemetry is separate</td>
 <td><strong>Optional with dedicated-core profile.</strong> Removes frequency-selection delay/jitter; costs power and heat. <code>schedutil</code> already raises frequency for RT tasks, so benefit must be measured.</td>
@@ -5702,10 +5708,10 @@ later administrator edits are retained.</p>
 <td>A5</td>
 <td><code>isolcpus=domain,managed_irq</code>, <code>irqaffinity</code>, housekeeping set</td>
 <td>Managed boot tokens; JACK drop-in; managed synth inherits <code>audio.engine_cpu</code>; ordinary SHR/writers/builds stay elsewhere</td>
-<td>Not assumed; current Pi has SHR-owned CPU 3 isolation</td>
+<td>Not assumed; current development Pi removed its SHR-owned CPU 3 profile for four-core build throughput</td>
 <td>Absent by default</td>
 <td>Selected boot file, <code>/proc/cmdline</code>, <code>/sys/devices/system/cpu/isolated</code>, IRQ masks, JACK and synth process affinity</td>
-<td><strong>Optional, retained design for demanding 18×18 work.</strong> Stronger than affinity alone because unrelated scheduler work is excluded. Costs one general/build CPU until removal and reboot.</td>
+<td><strong>Optional, retained design for measured demanding 18×18 work.</strong> Stronger than affinity alone because unrelated scheduler work is excluded. Costs one general/build CPU until removal and reboot, so the four-core development default is shared CPUs.</td>
 </tr>
 <tr>
 <td>A6</td>
@@ -5719,11 +5725,11 @@ later administrator edits are retained.</p>
 <tr>
 <td>A7</td>
 <td>systemd <code>CPUAffinity</code>, <code>AllowedCPUs</code>, RT/memlock/scheduling directives</td>
-<td>JACK drop-in uses <code>CPUAffinity</code>, <code>LimitRTPRIO</code>, <code>LimitMEMLOCK</code>; JACK itself requests FIFO priority</td>
-<td>Patchbox JACK unit already provides RT/memlock; SHR adds affinity only</td>
+<td>The optional dedicated profile's JACK drop-in uses <code>CPUAffinity</code>, <code>LimitRTPRIO</code>, <code>LimitMEMLOCK</code>; JACK itself requests FIFO priority</td>
+<td>Patchbox JACK unit already provides RT/memlock; SHR adds affinity only with the dedicated profile</td>
 <td>Managed stock service consumes the same drop-in when chosen</td>
 <td>Unit fragment/drop-ins, <code>systemctl show</code>, <code>MainPID</code>, <code>/proc/PID/status</code> and limits</td>
-<td><strong>Keep CPUAffinity and limits. Reject duplicate AllowedCPUs and forced unit FIFO.</strong> <code>AllowedCPUs</code> is a cgroup cpuset control with parent constraints; affinity already supplies the required process placement. JACK owns its RT-thread policy.</td>
+<td><strong>Keep CPUAffinity only with an intentionally installed dedicated profile; always keep the required RT/memlock limits. Reject duplicate AllowedCPUs and forced unit FIFO.</strong> <code>AllowedCPUs</code> is a cgroup cpuset control with parent constraints; affinity already supplies the required process placement. JACK owns its RT-thread policy.</td>
 </tr>
 <tr>
 <td>A8</td>
@@ -6029,6 +6035,13 @@ FIFO priority 95, correct RT/memlock limits, and no current throttle flag. Its
 boot log explicitly rejected <code>nohz_full=3</code> and <code>rcu_nocbs=3</code>; this is machine
 evidence for the repaired feature detection, not a universal Raspberry Pi
 kernel claim.</p>
+<p>On 2026-08-29 the owner removed that optional profile on the four-core
+development Pi because its build-throughput cost outweighed an unmeasured audio
+benefit in the current workload. The helper removed the persistent CPU/IRQ,
+governor, and JACK-affinity settings without restarting live JACK; the next
+normal reboot completes the transition to four shared CPUs. This machine choice
+does not remove the reversible profile or claim that isolation cannot benefit a
+later measured 18-channel workload.</p>
 <h4 id="doc-audio_system_optimization--physical-gates" tabindex="-1">Physical gates<a class="heading-anchor" href="#doc-audio_system_optimization--physical-gates" aria-label="Link to Physical gates">#</a></h4>
 <p>Fixtures prove file ownership, parsing, transaction, cancellation defaults and
 configured/live classification. They cannot prove xrun performance, USB
@@ -6949,6 +6962,11 @@ Extra values and encoder neutral/reset packets extend that same gesture instead
 of becoming the next role. On entry, release the control that opened MIDI Learn
 and wait for the ready indication; its release and already queued traffic are
 quarantined.</p>
+<p>Each in-app session replaces the private <code>midi-learn-last.log</code> in SHR's
+configured state directory. The trace records the requested physical step,
+learner state, and every received MIDI message as hexadecimal bytes, including
+traffic that is filtered or rejected. It remains after Save or Cancel so the
+last failed physical attempt can be inspected without repeating it first.</p>
 <p>First turn rotary 1 left and let it settle, turn it right and let it settle,
 then click and release it. At the optional encoder Shift step, press Shift and
 turn rotary 1 left until three left packets are verified, then release Shift.
@@ -6958,23 +6976,33 @@ button packet cannot win before the rotary packet arrives. Learn stores
 either an explicit MIDI modifier plus its relative turn CC, or the MK2-style
 alternate relative CC when Shift itself produces no MIDI event. The shifted
 axis learns its own direction encoding; it may be the reverse of the ordinary
-rotary. Click and
-release rotary 9 next. Skipping Shift remains valid. Learn then walks through
-the optional numbered rotary-turn and PAD positions. The master rotary is
-ignored during capture so delayed packets cannot skip roles; use <code>S</code> or the
-keyboard arrows for an explicit skip/back. For each
-rotary 2–16, turn left slowly until Learn verifies three left-direction
+rotary. Skipping Shift remains valid. Learn then proceeds literally through
+rotaries 2, 3, 4, and so on to rotary 16 before the PAD positions. Rotary 9's
+click is captured immediately after its turn, just as rotary 1's special click
+and Shift actions stay with rotary 1.
+As soon as rotary 1's
+left/right axis is learned, turn it left or right to move one Learn step back
+or forward; no click is required. The selected step re-enters the short input
+quarantine, so trailing packets from that turn cannot move twice. For each
+performance rotary, turn left slowly until Learn verifies three left-direction
 packets, let the gesture settle, then turn the same rotary right until three
 right-direction packets are verified. The MIDI channel and CC must match in
-both directions. A wrong-direction or positional packet locks that role until
-<code>R</code> retries or <code>S</code> skips it, so sweeping a positional knob through the values
-around 64 cannot become a mapping. One completed left/right proof moves by
-exactly one role regardless of how many packets either gesture emits. Each
+both directions. Once a candidate rotary has started its proof, traffic from a
+different CC is ignored without losing that proof. A wrong-direction or
+positional packet from the candidate itself rejects that attempt, waits for
+the gesture to be released, and automatically re-arms the same step. Direction
+changes, success, and retry remain visible through a 650 ms quiet window, which
+also prevents late packets from the previous turn being treated as the next
+requested direction. Packet proof counts remain in the private trace rather
+than flashing onscreen. Sweeping
+a positional knob through the values around 64 therefore cannot become a
+mapping and needs no keyboard recovery. One completed left/right proof moves
+by exactly one role regardless of how many packets either gesture emits. Each
 learned PAD advances after release. The
-learner ends at one explicit Review step; only there does an encoder click or
-Enter save the mappings under the reviewed controller model, make a backup,
-activate that model, and exit after release. Earlier clicks cannot save or end
-the session. Esc cancels and keeps the previous file. The in-app Learn screen
+learner ends at one explicit Review step; only there does a rotary-1 click save
+the mappings under the reviewed controller model, make a backup, activate that
+model, and exit after release. Earlier clicks cannot save or end the session.
+The controller workflow requires no computer keyboard. The in-app Learn screen
 shows exactly two rows total and no status footer. The first row starts with
 the complete required action; the second contains only its immediate
 instruction, success, or retry. It does not repeat the Learn title, mapping
@@ -14807,13 +14835,13 @@ are in <code>CONTROLLER_INTERFACE.md</code>.</p>
 </tr>
 <tr>
 <td>Local and LAN help</td>
-<td>Show compact help at 38 columns; temporarily serve the same content at <code>/help</code></td>
-<td><code>?</code>/F1, K/C links; browser optional</td>
-<td>Port 80 is fixed; no persistent setting</td>
+<td>Show compact help at 38 columns; explicitly share the same content at <code>/help</code> when requested</td>
+<td><code>?</code>/F1, K/M/C links and SHARE; browser optional</td>
+<td>Detected LAN interface and OS-assigned port; no persistent setting</td>
 <td>None</td>
-<td>Local help always works if bind/network fails; status explains LAN result</td>
-<td>Server exists only while Help is open, has bounded requests/timeouts, and serves one escaped page</td>
-<td><code>help.rs</code>, <code>ui.rs</code>; HTML, timeout, navigation tests</td>
+<td>Local help opens without network activity; failed SHARE keeps it usable and offers retry</td>
+<td>Server starts only after SHARE, binds only the detected interface, stops on WEB OFF/Exit, has bounded requests/timeouts, and serves one escaped page</td>
+<td><code>help.rs</code>, <code>ui.rs</code>; HTML, bind, consent, retry, navigation tests</td>
 <td>Help screen</td>
 </tr>
 <tr>
@@ -14859,7 +14887,8 @@ direct monitoring; one managed software synth runs at a time; there is no
 native sampler, multitrack audio editing timeline, or XM compatibility.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-workflow_audit_handoff" data-source="docs/WORKFLOW_AUDIT_HANDOFF.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Workflow audit and repair handoff</span><span class="document-summary">Complete musician/operator workflow coverage, first repair queue, deferred decisions, evidence gaps, and persistent fix tracking.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/WORKFLOW_AUDIT_HANDOFF.md" target="_blank" rel="noopener noreferrer external">View docs/WORKFLOW_AUDIT_HANDOFF.md source</a></div><p>Date: 2026-07-23</p>
-<p>Status: R01–R15 combined acceptance passed; publication recorded below</p>
+<p>Status: R01–R15 combined acceptance passed; D05/D10 LAN Help is <code>SOURCE DONE</code>
+pending the explicitly gated build/test pass</p>
 <p>This is the durable handoff and repair ledger for the first complete
 musician/operator workflow audit. It contains the analysis, the evidence gaps,
 the safe first repair queue, the questions reserved for the next decision pass,
@@ -14868,6 +14897,19 @@ and the verification required before any item can be marked complete.</p>
 scoped commit and verification evidence, and leave any remaining question or
 physical gate visible. This file is a work ledger, not a replacement for the
 focused documents that define current behavior.</p>
+<h4 id="doc-workflow_audit_handoff--2026-09-02-d05d10-lan-help-resolution" tabindex="-1">2026-09-02 D05/D10 LAN Help resolution<a class="heading-anchor" href="#doc-workflow_audit_handoff--2026-09-02-d05d10-lan-help-resolution" aria-label="Link to 2026-09-02 D05/D10 LAN Help resolution">#</a></h4>
+<p>The general maintenance request authorized resolving the highest-value
+machine-only workflow debt. Opening Help is now local and performs no route
+discovery or listener bind. OPS <code>SHARE</code>, keyboard <code>W</code>, and the same mouse/
+controller dispatcher explicitly start temporary web Help. It binds only the
+detected LAN address on an OS-assigned port, displays the exact URL, and changes
+the action to <code>WEB OFF</code>; that action or leaving Help stops the server. Failed
+sharing retains local Help with a nearby retry action.</p>
+<p>This resolves the surprising network side effect in D05 and removes D10's
+privileged fixed-port requirement without persisting another setting. Rust
+formatting, source inspection, and whitespace checks are the permitted current
+evidence. The build-producing focused tests remain intentionally unrun until
+the user authorizes the combined build-and-test pass.</p>
 <h4 id="doc-workflow_audit_handoff--046-software-monitor-repair" tabindex="-1">0.4.6 software-monitor repair<a class="heading-anchor" href="#doc-workflow_audit_handoff--046-software-monitor-repair" aria-label="Link to 0.4.6 software-monitor repair">#</a></h4>
 <p>The post-audit 0.4.6 repair gives MTR Input one visible MON ON/MON OFF action,
 defaulting off, and moves the final-bus owner out of the optional managed
@@ -15209,9 +15251,9 @@ physically or aurally validated.</p>
 </tr>
 <tr>
 <td>Help</td>
-<td>Local help preserves caller and automatically attempts LAN hosting</td>
-<td>Leaving Help stops server; opening has network side effects</td>
-<td><code>observed</code>: UI/help source. No LAN/accessibility user test</td>
+<td>Local help preserves caller; explicit SHARE temporarily publishes the same content on the detected LAN address and displayed port</td>
+<td>WEB OFF/Exit stops the server; failed sharing preserves local help and nearby retry</td>
+<td><code>observed</code>: UI/help source and D05/D10 repair. Build/test and LAN/accessibility user evidence pending</td>
 </tr>
 <tr>
 <td>MIDI Learn and controller setup</td>
@@ -15669,14 +15711,16 @@ rollback. <code>bash -n</code>, <code>shellcheck</code>, formatting, source insp
 </tr>
 </tbody>
 </table>
-<h4 id="doc-workflow_audit_handoff--decision-queue-for-tomorrow" tabindex="-1">Decision queue for tomorrow<a class="heading-anchor" href="#doc-workflow_audit_handoff--decision-queue-for-tomorrow" aria-label="Link to Decision queue for tomorrow">#</a></h4>
-<p>Do not answer these in the first repair pass.</p>
+<h4 id="doc-workflow_audit_handoff--remaining-decision-queue" tabindex="-1">Remaining decision queue<a class="heading-anchor" href="#doc-workflow_audit_handoff--remaining-decision-queue" aria-label="Link to Remaining decision queue">#</a></h4>
+<p>The instruction not to answer these applied to the first 2026-07-23 repair
+pass. D05 and D10 were resolved by the later explicitly authorized maintenance
+pass; the other rows still require product-owner direction.</p>
 <table>
 <thead>
 <tr>
 <th>ID</th>
-<th>Decision needed</th>
-<th>Why it is not safe to assume</th>
+<th>Decision/status</th>
+<th>Rationale</th>
 </tr>
 </thead>
 <tbody>
@@ -15702,8 +15746,8 @@ rollback. <code>bash -n</code>, <code>shellcheck</code>, formatting, source insp
 </tr>
 <tr>
 <td>D05</td>
-<td>Should LAN Help be per-use SHARE, a persisted opt-in, or removed? Which interface/port?</td>
-<td>Network exposure and accessibility trade off; current automatic <code>0.0.0.0:80</code> is not a necessary local-help constraint.</td>
+<td>RESOLVED 2026-09-02: LAN Help is a per-use <code>SHARE</code>, bound only to the detected LAN interface.</td>
+<td>Explicit publication preserves phone access without making local Help consent to a network side effect.</td>
 </tr>
 <tr>
 <td>D06</td>
@@ -15727,8 +15771,8 @@ rollback. <code>bash -n</code>, <code>shellcheck</code>, formatting, source insp
 </tr>
 <tr>
 <td>D10</td>
-<td>Should LAN help ever use a privileged port?</td>
-<td>Port 80 affects permissions, deployment, and exposure.</td>
+<td>RESOLVED 2026-09-02: use an OS-assigned port and display it in the exact URL.</td>
+<td>No privileged or fixed-port dependency remains.</td>
 </tr>
 </tbody>
 </table>
@@ -15769,9 +15813,9 @@ rollback. <code>bash -n</code>, <code>shellcheck</code>, formatting, source insp
 </tr>
 <tr>
 <td>D05</td>
-<td><code>observed</code>: opening local Help always calls the server starter, which route-discovers through <code>8.8.8.8</code> and binds <code>0.0.0.0:80</code>; leaving Help drops it</td>
-<td>C5 plus phone accessibility; opening text is not clear consent to LAN publication</td>
-<td>Choose per-use SHARE, persisted opt-in, or removal; preserve embedded offline Help, caller return, bounded server, and auto-stop</td>
+<td><code>resolved</code>: opening local Help performs no network action; explicit SHARE discovers the LAN address, binds only that address, and keeps the exact URL visible</td>
+<td>C5 plus phone accessibility; network publication now follows explicit intent</td>
+<td>SHARE/WEB OFF and Exit preserve embedded Help, caller return, bounded server, retry, and auto-stop</td>
 </tr>
 <tr>
 <td>D06</td>
@@ -15799,9 +15843,9 @@ rollback. <code>bash -n</code>, <code>shellcheck</code>, formatting, source insp
 </tr>
 <tr>
 <td>D10</td>
-<td><code>observed</code>: Help uses privileged port 80 and all-interface binding, so access may fail or expose more interfaces than intended</td>
-<td>C5 and platform limits; port choice changes deployment/security behavior</td>
-<td>Choose nonprivileged port and intended interface together with D05; preserve phone accessibility and local Help</td>
+<td><code>resolved</code>: Help asks the OS for a port and binds only the detected LAN address</td>
+<td>C5 and platform limits; the displayed URL carries the chosen port</td>
+<td>Preserve phone accessibility without privileged bind or all-interface exposure</td>
 </tr>
 </tbody>
 </table>
@@ -15837,8 +15881,8 @@ rollback. <code>bash -n</code>, <code>shellcheck</code>, formatting, source insp
 </tr>
 <tr>
 <td>D05</td>
-<td><em>pending</em></td>
-<td><em>pending</em></td>
+<td>Per-use SHARE on detected LAN address and OS-assigned port / 2026-09-02</td>
+<td>Source/docs/tests updated; combined build/test gate pending</td>
 </tr>
 <tr>
 <td>D06</td>
@@ -15862,8 +15906,8 @@ rollback. <code>bash -n</code>, <code>shellcheck</code>, formatting, source insp
 </tr>
 <tr>
 <td>D10</td>
-<td><em>pending</em></td>
-<td><em>pending</em></td>
+<td>Never require fixed privileged port 80 / 2026-09-02</td>
+<td>Folded into D05 repair</td>
 </tr>
 </tbody>
 </table>
@@ -16111,6 +16155,14 @@ tracking section.</p>
 <td>Formatting, shell/Python/XML/JSON/demo/static checks and <code>git diff --check</code> passed</td>
 <td>Locked check/builds; 16 focused tests; debug/release suites 662 pass + 4 ignored each; warning-denied Clippy; 105-image debug/release drift; helper/setup/install checks; 60-second raw/final stress; real capture and failure/recovery drills; connected release checkpoints with zero new xruns or route drift</td>
 <td>This acceptance repair commit pushed to <code>origin/main</code></td>
+</tr>
+<tr>
+<td>2026-09-02</td>
+<td>D05/D10</td>
+<td>Local Help no longer opens a listener; explicit SHARE uses only the detected LAN address and an OS-assigned port</td>
+<td>Rust formatting, source inspection, focused stale-text search, deterministic docs regeneration/check, and <code>git diff --check</code></td>
+<td>Intentionally not run until explicit combined build/test authorization</td>
+<td>Scoped <code>SOURCE DONE</code> repair committed and pushed</td>
 </tr>
 </tbody>
 </table>
@@ -17767,6 +17819,158 @@ this development-PC pass.</p>
 new thread in <code>$HOME/p/shsynth</code>. Durable repository policy is in
 <code>AGENTS.md</code>; detailed helper behavior is in <code>docs/MAINTAINER_HELPERS.md</code>. Never
 record credentials, GitHub device codes, or private file contents here.</p>
+<h4 id="doc-workspace_handoff--2026-09-02-explicit-interface-scoped-lan-help" tabindex="-1">2026-09-02 explicit, interface-scoped LAN Help<a class="heading-anchor" href="#doc-workspace_handoff--2026-09-02-explicit-interface-scoped-lan-help" aria-label="Link to 2026-09-02 explicit, interface-scoped LAN Help">#</a></h4>
+<p>Opening in-app Help is now entirely local and does not discover a route or open
+a listener. OPS <code>SHARE</code>, keyboard <code>W</code>, and the shared mouse/controller action
+explicitly start the temporary web page. It binds only the detected LAN
+address on an OS-assigned port, displays the exact URL, and changes the visible
+action to <code>WEB OFF</code>; that action or leaving Help stops the server. A failed
+share leaves local Help usable and the SHARE retry beside the failure.</p>
+<p>This resolves workflow-audit decisions D05 and D10 without a persisted setting,
+all-interface exposure, or privileged port 80. Rust formatting, source
+inspection, whitespace checks, and deterministic documentation generation and
+drift checks passed. Build-producing focused tests and screenshot regeneration
+remain intentionally unrun under the combined-pass gate.</p>
+<h4 id="doc-workspace_handoff--2026-09-02-user-owned-npm-and-codex-installation" tabindex="-1">2026-09-02 user-owned npm and Codex installation<a class="heading-anchor" href="#doc-workspace_handoff--2026-09-02-user-owned-npm-and-codex-installation" aria-label="Link to 2026-09-02 user-owned npm and Codex installation">#</a></h4>
+<p>The interactive and login-shell JavaScript tool path is repaired. Node.js
+24.20.0 remains the normal root-owned NodeSource <code>node_24.x</code> system runtime,
+while npm's global prefix is now the user-owned <code>$HOME/.local</code> through
+<code>$HOME/.npmrc</code>. Plain <code>npm</code> and <code>npx</code> resolve from <code>$HOME/.local/bin</code> to npm
+12.0.2, and normal unprivileged global installs no longer target <code>/usr</code>.</p>
+<p>Codex CLI 0.152.1 is installed with OpenAI's standalone Linux ARM64 installer
+below <code>$HOME/.codex/packages/standalone/</code>; <code>$HOME/.local/bin/codex</code> selects its
+current release. The duplicate root-owned npm-managed Codex installation and
+its <code>/usr/bin/codex</code> link were removed. The obsolete
+<code>check_for_update_on_startup = false</code> override was removed from private Codex
+configuration because the selected standalone installation can update in user
+space. Auditing found no root-owned entries below <code>$HOME/.npm</code>, <code>$HOME/.local</code>,
+or <code>$HOME/.codex</code>; a clean login shell resolves the same commands and all
+<code>npm doctor</code> registry, version, PATH, permission, and cache checks pass.</p>
+<h4 id="doc-workspace_handoff--2026-08-29-development-pi-returned-to-four-shared-cpus" tabindex="-1">2026-08-29 development Pi returned to four shared CPUs<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-29-development-pi-returned-to-four-shared-cpus" aria-label="Link to 2026-08-29 development Pi returned to four shared CPUs">#</a></h4>
+<p>The owner chose build throughput and simpler general scheduling over the
+optional dedicated-JACK CPU profile on this four-core Pi. The owned
+<code>shr-audio-tune remove</code> path removed CPU-3 boot isolation, IRQ housekeeping,
+the performance-governor service, and the JACK affinity drop-in. The matching
+private <code>audio.engine_cpu</code> value is cleared. The original boot-command-line
+backup remains under the helper's owned state directory.</p>
+<p>The already-running JACK server was not stopped or restarted and remains on
+CPU 3 for the rest of the current boot. The running kernel likewise still
+reports CPU 3 as isolated, so <code>nproc</code> remains 3 until reboot. Persistent boot
+configuration and systemd configuration are already unpinned; after the next
+normal reboot, ordinary builds and JACK share all four CPUs while JACK retains
+its existing real-time priority and memory-lock policy. The optional tuning
+helper remains available if measured 18-channel work later justifies restoring
+a dedicated core.</p>
+<h4 id="doc-workspace_handoff--2026-08-29-literal-rotary-order-and-legible-midi-learn-feedback" tabindex="-1">2026-08-29 literal rotary order and legible MIDI Learn feedback<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-29-literal-rotary-order-and-legible-midi-learn-feedback" aria-label="Link to 2026-08-29 literal rotary order and legible MIDI Learn feedback">#</a></h4>
+<p>The private 293-line retry trace showed that the old order caused a real
+identity error: Learn requested rotary 9's click before its turn, then called
+the lower-left rotary-9 turn “rotary 2” and stored CC 114 in physical slot 2.
+The owner then returned to click 9 with rotary-1 navigation, but click roles
+were missing from the mapped-role replacement check. CC 115 was therefore
+rejected as already used on every press instead of replacing itself.</p>
+<p>The attempted physical-column order was rejected by the owner as needlessly
+awkward. Learn now proceeds literally from rotary 1 through rotary 16. Rotary
+1's click and Shift work remain beside rotary 1, and rotary 9's click follows
+rotary 9's turn before rotary 10. Both click roles remain replaceable when
+revisited, including the secondary synth-click alias owned by rotary 9.</p>
+<p>The following 542-line private trace also showed why rotary 3 appeared unable
+to learn. Only 120 ms after its left stream became quiet, Learn requested RIGHT;
+a late left packet arrived 8–13 ms later and was immediately shown as a new
+direction error. Gesture transitions, success, and retry now use a 650 ms quiet
+window. Late matching packets extend that window. Per-packet proof counts no
+longer replace visible feedback, so one turn produces one legible state before
+the next instruction.</p>
+<p>Exact Rust 1.97.1 passed formatting, locked check, both in-app Learn integration
+tests, the numeric-order, feedback-timing, and click-9 regressions, and all 44
+controller-Learn tests. Locked DEV and REL builds passed in 1m04s and 2m58s
+while the running kernel still exposed only three build CPUs. The complete suite
+and unrelated opt-in tests were intentionally not run for this focused
+incremental repair.</p>
+<h4 id="doc-workspace_handoff--2026-08-29-controller-only-midi-learn-recovery" tabindex="-1">2026-08-29 controller-only MIDI Learn recovery<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-29-controller-only-midi-learn-recovery" aria-label="Link to 2026-08-29 controller-only MIDI Learn recovery">#</a></h4>
+<p>The private 906-line last-session trace proved two controller-only recovery
+failures. Rotary 5 reached left proof 2/3, received one opposite packet, and
+entered a permanent rejected state whose visible recovery required keyboard
+<code>R</code>. Rotary-1 step navigation later worked in both directions, but returning
+to already-mapped rotary 4 made that step read-only: subsequent CC 76, 77, and
+93 turns were all ignored even though the screen said the step was armed.</p>
+<p>Rejected rotary attempts now wait for release and automatically re-arm the
+same step. No red error prompt names a keyboard key. Navigating to an already
+mapped step keeps its mapping until the first relevant replacement gesture;
+that gesture then replaces the old role mapping and learns normally. Rotary 1
+left/right remains the only step minus/plus gesture and needs no click.</p>
+<p>Exact Rust 1.97.1 passed formatting, whitespace inspection, locked check, both
+trace-derived controller-only regressions, and all 41 controller-Learn tests.
+Locked DEV and REL builds passed. The complete suite and unrelated opt-in tests
+were intentionally not run for this focused incremental repair.</p>
+<h4 id="doc-workspace_handoff--2026-08-29-rotary-only-midi-learn-step-navigation" tabindex="-1">2026-08-29 rotary-only MIDI Learn step navigation<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-29-rotary-only-midi-learn-step-navigation" aria-label="Link to 2026-08-29 rotary-only MIDI Learn step navigation">#</a></h4>
+<p>After rotary 1's left and right directions are learned, its turns now change
+the selected Learn step directly: left is one step back and right is one step
+forward. No click is involved. The already-learned rotary-1 axis is the lower
+navigation boundary and Review is the upper boundary. Each step change enters
+the existing short input quarantine, so the same physical gesture cannot cross
+multiple steps. Navigation works from both an ordinary waiting step and a
+rejected rotary step and discards transient direction proof when leaving a
+step. The later controller-only recovery repair makes a revisited completed
+step editable by its next relevant gesture instead of leaving it read-only.</p>
+<p>Exact Rust 1.97.1 passed formatting, whitespace inspection, locked check, the
+focused no-click minus/plus navigation regression, and all 39 controller-Learn
+tests. Locked DEV and REL builds passed. The complete suite and unrelated
+opt-in tests were intentionally not run for this focused incremental repair.</p>
+<h4 id="doc-workspace_handoff--2026-08-29-midi-learn-unrelated-cc-proof-repair" tabindex="-1">2026-08-29 MIDI Learn unrelated-CC proof repair<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-29-midi-learn-unrelated-cc-proof-repair" aria-label="Link to 2026-08-29 MIDI Learn unrelated-CC proof repair">#</a></h4>
+<p>The private last-session trace showed rotary 2 reach two of three valid left
+packets on its Relative 1 CC, after which an unrelated positional CC 1 stream
+forced the entire role into rejection. Once a performance rotary candidate has
+started either direction proof, Learn now ignores other channel/CC streams and
+retains the candidate's progress. Wrong-direction or positional values from
+the candidate itself remain rejected, so the relative-only safety contract is
+unchanged. A focused regression reproduces the observed two-packet proof,
+unrelated 1–86 sweep, and successful completion on the original CC.</p>
+<p>Exact Rust 1.97.1 passed formatting, whitespace inspection, locked check, the
+new focused regression, and all 39 controller-Learn tests. Locked DEV and REL
+builds passed; plain <code>shr</code> will use the refreshed release binary after the
+currently running older process is exited normally and reopened. The complete
+suite and unrelated opt-in tests were intentionally not run for this focused
+incremental repair.</p>
+<h4 id="doc-workspace_handoff--2026-08-29-minilab-mkii-memory-2-rotary-mode-repair" tabindex="-1">2026-08-29 MiniLab mkII Memory 2 rotary-mode repair<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-29-minilab-mkii-memory-2-rotary-mode-repair" aria-label="Link to 2026-08-29 MiniLab mkII Memory 2 rotary-mode repair">#</a></h4>
+<p>The owner's MIDI Learn trace showed that the next requested performance rotary
+sent a positional CC 74 sweep and was correctly rejected by the relative-only
+learner. A direct Linux ALSA/SysEx audit of the active MiniLab mkII Memory 2
+found fourteen performance rotary slots in Absolute mode; only the CC 114
+rotary was already Relative 1. The pre-change mode, channel, CC, option, and raw
+replies were backed up privately below <code>$SHSYNTH_USER_DIR/state/shsynth/</code>.</p>
+<p>After the owner's explicit authorization to program the controller directly,
+only those fourteen rotary option fields were changed from Absolute to
+Relative 1. No CC, channel, button, Shift-layer, or other memory field was
+changed. An independent readback returned Relative 1 for all fifteen
+performance rotary slots. No JACK, synth, audio, playback, or recording path
+was started.</p>
+<h4 id="doc-workspace_handoff--2026-08-29-midi-learn-delayed-release-and-shifted-left-repair" tabindex="-1">2026-08-29 MIDI Learn delayed-release and shifted-left repair<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-29-midi-learn-delayed-release-and-shifted-left-repair" aria-label="Link to 2026-08-29 MIDI Learn delayed-release and shifted-left repair">#</a></h4>
+<p>Physical review found two MIDI Learn capture failures in the current working
+tree. A launcher-click CC release arriving after the opening quiet timer could
+be stored as rotary 1's first command. Armed direction capture now accepts only
+moving relative CC values, so delayed zero releases and neutral/reset packets
+cannot become that mapping.</p>
+<p>The MiniLab mkII direct Shift-layer disambiguator also treated a Relative 2
+left packet (<code>127</code>) as a possible Shift-button press on every other packet, so
+its three-packet left proof could never finish. A repeated packet from the same
+channel/CC now identifies the candidate as the shifted rotary stream, retains
+the first packet, and lets the proof proceed; an actual press/release remains
+ignored.</p>
+<p>Every in-app Learn entry now replaces the private
+<code>midi-learn-last.log</code> below the configured state directory. It records the
+requested step, internal capture state, and every received raw MIDI packet in
+hex, including filtered and rejected traffic, and remains available after Save
+or Cancel. This diagnostic performs file I/O only on the ordinary UI-thread
+Learn path, never in the MIDI or audio callback.</p>
+<p>Source regressions cover the delayed release, the three-packet Relative 2
+shifted-left path, and exact last-session trace replacement/input retention.
+Formatting and whitespace inspection passed.
+The owner then explicitly authorized the combined build-and-test pass. Exact
+Rust 1.97.1 (<code>8bab26f4f68e0e26f0bb7960be334d5b520ea452</code>, LLVM 22.1.6) passed
+locked check, all 38 controller-Learn tests, and both in-app Learn integration
+tests. The final locked debug and release builds passed in 1m42s and 3m00s. The build
+retained three non-fatal dead-code warnings. No app launch, live MIDI/JACK,
+audio, or physical follow-up ran.</p>
 <h4 id="doc-workspace_handoff--2026-08-28-performance-rotary-direction-proof" tabindex="-1">2026-08-28 performance-rotary direction proof<a class="heading-anchor" href="#doc-workspace_handoff--2026-08-28-performance-rotary-direction-proof" aria-label="Link to 2026-08-28 performance-rotary direction proof">#</a></h4>
 <p>A subsequent physical retry exposed two interaction regressions around that
 proof. The first line spent scarce width on <code>MIDI LEARN ·</code>, so the required
@@ -17774,13 +17978,12 @@ Shift gesture could be clipped. Learn now uses exactly two rows total, with no
 shared transport/status footer: line 1 is the complete action-first gesture
 (<code>SHIFT + TURN ROTARY 1 LEFT</code>, for example), and line 2 is only its immediate
 state or recovery. Both rows use all 40 terminal columns.</p>
-<p>The learned master rotary also no longer browses or skips roles while Learn is
-capturing. Delayed packets from one slow master gesture could previously become
-fresh next/previous commands after the 120 ms settle period and walk across
-optional rotary or button roles. Master turn/click packets are now ignored
-until the final Review, where click alone saves. <code>S</code> or keyboard arrows remain
-the explicit skip/back path. Waiting on an untouched Shift, rotary-9 click, or
-PAD role never changes it.</p>
+<p>The learned master rotary no longer lets delayed packets from one slow gesture
+walk across several optional rotary or button roles. The later rotary-only
+navigation repair supersedes the earlier decision to ignore master turns:
+each deliberate turn changes exactly one step and re-enters the 120 ms input
+quarantine. Waiting on an untouched Shift, rotary-9 click, or PAD role still
+never changes it.</p>
 <p>The optional Shift layer now follows the same unambiguous direction proof as
 the other relative controls without requiring an unnatural continuous hold.
 The visible sequence is exactly <code>SHIFT + TURN ROTARY 1 LEFT</code>, <code>RELEASE SHIFT</code>,
@@ -17802,10 +18005,10 @@ master encoder. For every rotary 2–16 it asks for a left turn, requires three
 left-direction packets, waits for that gesture to become quiet, then asks for
 three right-direction packets on the same MIDI channel and CC. Both Relative 1
 and Relative 2 conventions are supported. A positional, wrong-direction, or
-different-control packet cannot save a mapping; the role stops consuming MIDI
-until the owner explicitly retries or skips it. The screen remains exactly two
-rows total and changes its first line from <code>TURN LEFT</code> to <code>TURN RIGHT</code> during
-the proof.</p>
+different-control packet cannot save a mapping. The later controller-only
+recovery repair supersedes the explicit retry requirement: after release the
+same step automatically re-arms. The screen remains exactly two rows total and
+changes its first line from <code>TURN LEFT</code> to <code>TURN RIGHT</code> during the proof.</p>
 <p>No private controller configuration was repaired or rewritten. The currently
 running process also still maps the prior release image. On the next normal
 owner-controlled restart, rotaries which remain positional must be changed to
@@ -17919,14 +18122,15 @@ progress fraction, isolation commentary, gesture summary, mapping counts,
 required-control ledger, navigation legend, cancel prose, and save commentary
 were removed. The current action-first/two-rows-total contract at the top of
 this handoff supersedes the shared-row behavior from this earlier repair.</p>
-<p>Learn now orders all rotary-1 work together: left, right, click, optional
-Shift+turn, then rotary 9 click, followed by optional rotary turns and pads.
+<p>Learn now orders all rotary-1 work together: left, right, click, and optional
+Shift+turn. The later numeric-order repair proceeds through rotary 2 to rotary
+16 and inserts rotary 9's click immediately after its turn.
 For a hardware-owned Shift layer, a second CC arriving during the Shift
 gesture replaces a premature Shift-button candidate with the actual shifted
 rotary CC. Once learned, that Shift identity is already reserved and cannot be
-captured as rotary 9's click. Encoder click and Enter save only at the final
-Review step instead of ending the session as soon as the three required
-controls happen to exist; Esc still cancels without writing.</p>
+captured as rotary 9's click. Rotary-1 click saves only at the final Review
+step instead of ending the session as soon as the three required controls
+happen to exist. The current controller workflow requires no keyboard input.</p>
 <p>Focused regression source covers the two-line 40×13 contract, reordered Shift
 and rotary-9 capture, Shift-candidate replacement, refusal to reuse Shift as a
 click, and final-step-only save. The combined check, focused tests, and release
@@ -19105,19 +19309,14 @@ REC/capture, and TAP. MiniLab notes 40–43 use the canonical
 readable. The master rotary browses content and its press selects/confirms.
 The Routing screen reports live visibility, not merely remembered
 configuration.</li>
-<li>The optional audio profile reserves CPU 3. Boot isolation is active; the
-performance-governor service and JACK affinity drop-in are installed. Inspect
-with <code>shr-audio-tune status</code>; removal requires the helper's managed removal,
-clearing <code>audio.engine_cpu</code>, and reboot. Never edit around its ownership
-records in <code>/var/lib/shr-audio-tune/</code>. This is deliberate real-time isolation
-for demanding simultaneous playback/recording, not a dormant JACK core that
-ordinary builds reclaim when JACK stops. General builds use CPUs 0–2 until
-removal and reboot; final Rust linking is largely serial and remains the
-longest build stage. The Pi 5 kernel exposes neither full-tickless nor RCU
-callback-offload support, so the helper correctly omits those tokens. The
-supported isolation, governor, IRQ-affinity, and JACK-affinity state is live.
-<code>shr-audio-tune doctor</code> currently reports one issue: host tuning owns CPU 3
-while <code>audio.engine_cpu</code> is unset in runtime configuration.</li>
+<li>The optional CPU-3 audio profile was removed on 2026-08-29 to return all four
+cores to general builds and normal JACK scheduling. Persistent boot isolation,
+IRQ housekeeping, the performance-governor service, the JACK affinity drop-in,
+and private <code>audio.engine_cpu</code> pin are absent. The current kernel and already
+running JACK process retain their old CPU-3 state only until the next normal
+reboot; do not restart JACK merely to apply this change. The helper's original
+command-line backup remains available, and <code>shr-audio-tune doctor none</code>
+reports the shared-core persistent policy ready.</li>
 <li>The per-user <code>fluidsynth.service</code> and system <code>amidiminder.service</code> are masked
 and stopped. <code>/usr/bin/fluidsynth</code> and the TimGM bank remain for SHR-owned
 on-demand use. Setup and tuning do not start or restart JACK.</li>
@@ -19212,14 +19411,14 @@ actively searching, and zero RAM while idle, suitable for the planned 2 GB Pi
 (<code>libxml2-utils</code>), <code>shellcheck</code>, <code>zk</code>, and <code>fzf</code>. Rust 1.85 remains locally
 available only for an explicit historical comparison; it is not the
 development or validation default.
-The system JavaScript tools use Node.js 24.18.0 LTS from the root-owned
-NodeSource <code>node_24.x</code> repository, npm 12.0.1, and the root-owned Codex CLI
-0.146.0. Documentation layout checks use Chromium and ChromeDriver
-150.0.7871.181 with Selenium 4.31.1. Codex startup update checks are disabled
-in the private user configuration because an unprivileged updater cannot
-replace that system
-installation; update it deliberately with
-<code>sudo npm install -g npm@latest @openai/codex@latest</code>. The restored broken
+The system Node.js runtime is version 24.20.0 from the root-owned NodeSource
+<code>node_24.x</code> repository. User-owned npm 12.0.2 uses <code>$HOME/.local</code> as its global
+prefix, and user-owned standalone Codex CLI 0.152.1 is installed below
+<code>$HOME/.codex/packages/standalone/</code> with its command in <code>$HOME/.local/bin</code>.
+Use ordinary unprivileged <code>npm install -g ...</code> for global JavaScript packages
+and OpenAI's standalone installer for Codex updates; do not recreate a
+root-owned global Codex package. Documentation layout checks use Chromium and
+ChromeDriver 150.0.7871.181 with Selenium 4.31.1. The restored broken
 <code>~/.local/bin/codex</code> link to the former <code>$HOME</code> checkout is retained only
 below ignored <code>$SHSYNTH_USER_DIR/system-update-20260729/</code>; <code>$HOME</code> and the <code>patch</code>
 account do not exist on this installation. Pillow is not installed and the
@@ -19357,13 +19556,16 @@ work; and</li>
 <li>verify normal, repeated, interrupted, saved/reloaded, and existing-state
 paths that apply.</li>
 </ol>
-<p>The first three owner-selected software workflow items are implemented:
-bounded Pattern History/Snapshot, microtiming and deterministic groove tools,
-and deterministic per-step probability/conditions. Their boundaries and
+<p>All seven owner-selected software workflow priorities are implemented: bounded
+Pattern History/Snapshot; microtiming, swing, groove, and timing-aware REC;
+step probability/conditions; independent lane cycles, speed, and direction;
+deterministic generators; bounded arpeggio/chord/harmony generation; and
+exclusive external USB MIDI transport sync. Their exact boundaries and
 acceptance evidence are routed from
-<a href="#doc-sequencer_workflow_priorities">Sequencer workflow priorities</a>. Independent
-lane cycles/speed/direction remain next in that ordering; none of this
-authorizes Raspberry Pi electronics work or direct CV/Gate support.</p>
+<a href="#doc-sequencer_workflow_priorities">Sequencer workflow priorities</a>. Expressive
+MIDI/MPE remains an unscheduled lower-priority candidate, not the automatic
+next task. None of this authorizes Raspberry Pi electronics work or direct
+CV/Gate support.</p>
 <p>Completion means the owner-approved FT2 inventory, its focused
 tests and hands-on checks, and matching current documentation. Planned rhythm,
 mixer, analysis, or other ideas are not blockers unless the owner adds them to
@@ -19395,7 +19597,7 @@ and</li>
 <a href="#doc-mr18_test_plan">MR18 acceptance plan</a>. The track is not marked checked
 until that physical evidence passes.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-sequencer_workflow_priorities" data-source="docs/SEQUENCER_WORKFLOW_PRIORITIES.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Sequencer workflow priorities</span><span class="document-summary">Current hardware-sequencer comparison, USB-only hardware boundary, ranked software gaps, and the bounded Pattern Undo/Redo plus Snapshot implementation plan.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/SEQUENCER_WORKFLOW_PRIORITIES.md" target="_blank" rel="noopener noreferrer external">View docs/SEQUENCER_WORKFLOW_PRIORITIES.md source</a></div><p>Created: 2026-08-26</p>
+<details class="document" id="doc-sequencer_workflow_priorities" data-source="docs/SEQUENCER_WORKFLOW_PRIORITIES.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Sequencer workflow priorities</span><span class="document-summary">Current hardware-sequencer comparison, USB-only hardware boundary, the seven implemented priorities, and the remaining unscheduled expressive-MIDI gap.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/SEQUENCER_WORKFLOW_PRIORITIES.md" target="_blank" rel="noopener noreferrer external">View docs/SEQUENCER_WORKFLOW_PRIORITIES.md source</a></div><p>Created: 2026-08-26</p>
 <p>Status: owner-directed product priority; Priorities 1–7 are implemented and
 verified in their linked acceptance matrices</p>
 <h4 id="doc-sequencer_workflow_priorities--purpose-and-decision" tabindex="-1">Purpose and decision<a class="heading-anchor" href="#doc-sequencer_workflow_priorities--purpose-and-decision" aria-label="Link to Purpose and decision">#</a></h4>
@@ -20000,14 +20202,14 @@ change, or schedule is implied today. The complete boundaries and planned
 experiment matrix are in the <a href="#doc-pi5_headroom_plan">Raspberry Pi 5 headroom and footprint
 plan</a>.</p>
 <h4 id="doc-future_improvements--irregular-patterns-swing-and-groove-timing" tabindex="-1">Irregular Patterns, swing, and groove timing<a class="heading-anchor" href="#doc-future_improvements--irregular-patterns-swing-and-groove-timing" aria-label="Link to Irregular Patterns, swing, and groove timing">#</a></h4>
-<p>The post-competition plan for arbitrary Pattern shortening/growing, individual
-early/late hits, Pattern-wide swing, groove tools, expressive tracker capture,
-and optional formal odd-meter metadata is in the <a href="#doc-post_competition_rhythm_plan">legacy rhythm
-proposal</a>. Its first planned phase uses the
-existing arbitrary row-count scheduler. Its earlier transactional Length
-surface is superseded by the owner-directed FT2 Edit <code>SIZE</code> page in
-<a href="#doc-future_musical_helpers">Future musical sketch helpers</a>; the later timing,
-swing, groove, and meter phases remain applicable.</p>
+<p>Arbitrary Pattern shortening/growing, independent early/late hits,
+Pattern-wide swing, deterministic groove tools, and timing-aware tracker REC
+are implemented. Their current contracts live in <a href="#doc-tracker">the tracker
+manual</a>, <a href="#doc-rhythm_workflow_acceptance">rhythm workflow acceptance</a>,
+and the owner-directed FT2 Edit <code>SIZE</code> work in
+<a href="#doc-future_musical_helpers">Future musical sketch helpers</a>. Only optional
+formal odd-meter/grouping metadata from the <a href="#doc-post_competition_rhythm_plan">legacy rhythm
+proposal</a> remains an unscheduled idea.</p>
 <h4 id="doc-future_improvements--unreasonable-but-useful-challenges" tabindex="-1">Unreasonable but useful challenges<a class="heading-anchor" href="#doc-future_improvements--unreasonable-but-useful-challenges" aria-label="Link to Unreasonable but useful challenges">#</a></h4>
 <p>These are moonshots, not release promises. They exist because a tiny music box
 should occasionally attempt something delightfully excessive, and because a
@@ -21024,12 +21226,14 @@ mix, and the displayed/recorded post-master signal agrees with playback. MIDI
 lanes without isolated audio must remain honestly identified rather than
 receiving controls that cannot work.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-post_competition_rhythm_plan" data-source="docs/POST_COMPETITION_RHYTHM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition rhythm plan</span><span class="document-summary">Arbitrary Pattern length, microtiming, swing, groove tools, and optional formal meter.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_RHYTHM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_RHYTHM_PLAN.md source</a></div><p>Created: 2026-07-19</p>
-<p>Status: proposal archive, not current behavior or scheduled scope</p>
+<details class="document" id="doc-post_competition_rhythm_plan" data-source="docs/POST_COMPETITION_RHYTHM_PLAN.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Post-competition rhythm plan</span><span class="document-summary">Arbitrary Pattern length/timing work now implemented elsewhere plus the remaining optional formal-meter proposal.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/POST_COMPETITION_RHYTHM_PLAN.md" target="_blank" rel="noopener noreferrer external">View docs/POST_COMPETITION_RHYTHM_PLAN.md source</a></div><p>Created: 2026-07-19</p>
+<p>Status: historical proposal archive; Parts 1–4 were superseded or implemented,
+and optional formal meter/grouping remains unscheduled</p>
 <p>The owner-directed FT2 Edit <code>SIZE</code> page in
 <a href="#doc-future_musical_helpers">Future musical sketch helpers</a> supersedes Part 1's
-older standalone <code>LENGTH</code> interaction. Parts 2–5 remain the timing, swing,
-groove, and optional-meter plan.</p>
+older standalone <code>LENGTH</code> interaction. Parts 2–4 are implemented under the
+current <a href="#doc-rhythm_workflow_acceptance">rhythm workflow acceptance</a>. Part 5's
+formal odd-meter/grouping metadata remains an unscheduled proposal.</p>
 <p>This document was written for work after an early competition-oriented sprint.
 No application or submission was made. The work is deliberately split into
 independently testable phases so SHR-DAW can gain useful rhythm features before
