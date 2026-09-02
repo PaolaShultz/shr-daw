@@ -443,8 +443,8 @@ rotary 9's click to its core toggle. New saves use controller profile v9
 `rotary.2` through `rotary.16`; v8 `pot.1` through `pot.12` remains readable
 and migrates on the next explicit save.
 
-This is new work and remains uncommitted pending review. The owner-authorized
-combined pass used exact Rust 1.97.1 (`8bab26f4f68e0e26f0bb7960be334d5b520ea452`,
+The owner-authorized combined pass used exact Rust 1.97.1
+(`8bab26f4f68e0e26f0bb7960be334d5b520ea452`,
 LLVM 22.1.6). Formatting, locked check, 24 focused controller-learn tests, two
 focused in-app/render regressions, the complete normal suite, and locked debug
 and release builds passed. The final suite reported 1,067 successful tests,
@@ -1616,7 +1616,7 @@ repository's local identity is `PaolaShultz` with GitHub's numeric no-reply
 address. Keep those values; if authentication expires, use `gh auth login
 --hostname github.com --git-protocol https --web` and let the user complete the
 device flow. The repository is public, so apply the publishing boundary in
-`AGENTS.md` before any requested commit or push.
+`AGENTS.md` before any commit or push.
 
 ## Private runtime and public packaging
 

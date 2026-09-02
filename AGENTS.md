@@ -51,28 +51,13 @@ parallel work.
 
 ### Completion and publication
 
-Classify repository-changing work by its intended outcome, not by whether the
-diff adds new lines:
-
-- **Repair work** restores or completes existing intended behavior: bug fixes,
-  contract corrections, regressions, broken workflows, safety fixes, and
-  implementation required to make an already-promised path work. A completed
-  repair task ends with a scoped commit and push to the current shared branch
-  unless the user explicitly says not to commit or push, the task is review-only,
-  or credentials/network/server policy prevents publication. Commit and push are
-  ordinary completion steps for repair work and do not require a separate user
-  prompt.
-- **New work** introduces a capability, feature, experiment, prototype, or
-  product direction that was not already part of the intended behavior. Do not
-  commit or push new work unless the user explicitly asks. Keep it available in
-  the working tree for review.
-
-When one request mixes repair and new work, commit and push only independently
-stageable repair paths or hunks; leave the new work uncommitted unless the user
-authorizes it. If the changes cannot be separated safely, do not publish the
-mixed commit without the user's direction. Documentation and tests required to
-describe or verify a repair belong with that repair. A review or audit that
-makes no repository changes has nothing to commit.
+A completed repository-changing task ends with a scoped commit and push to the
+current shared branch unless the user explicitly says not to commit or push,
+the task is review-only, or credentials/network/server policy prevents
+publication. Commit and push are ordinary completion steps and do not require
+a separate user prompt. Documentation and tests required to describe or
+verify the change belong with it. A review or audit that makes no repository
+changes has nothing to commit.
 
 Use `main` for ordinary development. The early sprint snapshot is preserved by
 its historical tag; no hackathon application or submission was made. Do not
@@ -196,11 +181,11 @@ below ignored `user/` (or an explicit `SHSYNTH_USER_DIR`). Use
 `scripts/setup-local.sh` and `scripts/local.sh` for repository-local operation.
 Never stage or publish a path below `user/`.
 
-Publish repair work by default and new work only when asked, as defined in the
-completion contract above. Use the existing GitHub CLI login and
-repository-local Git identity; never invent an identity or expose credentials.
-Before committing or pushing, inspect `git status --short`, confirm no `user/`
-path is staged, and run `git diff --cached --check`.
+Publish completed repository work by default as defined in the completion
+contract above. Use the existing GitHub CLI login and repository-local Git
+identity; never invent an identity or expose credentials. Before committing or
+pushing, inspect `git status --short`, confirm no `user/` path is staged, and
+run `git diff --cached --check`.
 
 Only presets listed in `presets/synthv1/cleared-presets.txt` and documented in
 `THIRD_PARTY.md` may be public. Follow `docs/NEW_PATCHES.md`, validate current
