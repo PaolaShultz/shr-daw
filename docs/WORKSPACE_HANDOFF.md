@@ -5,6 +5,24 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
+## 2026-09-02 user-owned npm and Codex installation
+
+The interactive and login-shell JavaScript tool path is repaired. Node.js
+24.20.0 remains the normal root-owned NodeSource `node_24.x` system runtime,
+while npm's global prefix is now the user-owned `$HOME/.local` through
+`$HOME/.npmrc`. Plain `npm` and `npx` resolve from `$HOME/.local/bin` to npm
+12.0.2, and normal unprivileged global installs no longer target `/usr`.
+
+Codex CLI 0.152.1 is installed with OpenAI's standalone Linux ARM64 installer
+below `$HOME/.codex/packages/standalone/`; `$HOME/.local/bin/codex` selects its
+current release. The duplicate root-owned npm-managed Codex installation and
+its `/usr/bin/codex` link were removed. The obsolete
+`check_for_update_on_startup = false` override was removed from private Codex
+configuration because the selected standalone installation can update in user
+space. Auditing found no root-owned entries below `$HOME/.npm`, `$HOME/.local`,
+or `$HOME/.codex`; a clean login shell resolves the same commands and all
+`npm doctor` registry, version, PATH, permission, and cache checks pass.
+
 ## 2026-08-29 development Pi returned to four shared CPUs
 
 The owner chose build throughput and simpler general scheduling over the
@@ -1783,14 +1801,14 @@ Exact Rust 1.97.1 is the repository pin and is installed with `gh`, `xmllint`
 (`libxml2-utils`), `shellcheck`, `zk`, and `fzf`. Rust 1.85 remains locally
 available only for an explicit historical comparison; it is not the
 development or validation default.
-The system JavaScript tools use Node.js 24.18.0 LTS from the root-owned
-NodeSource `node_24.x` repository, npm 12.0.1, and the root-owned Codex CLI
-0.146.0. Documentation layout checks use Chromium and ChromeDriver
-150.0.7871.181 with Selenium 4.31.1. Codex startup update checks are disabled
-in the private user configuration because an unprivileged updater cannot
-replace that system
-installation; update it deliberately with
-`sudo npm install -g npm@latest @openai/codex@latest`. The restored broken
+The system Node.js runtime is version 24.20.0 from the root-owned NodeSource
+`node_24.x` repository. User-owned npm 12.0.2 uses `$HOME/.local` as its global
+prefix, and user-owned standalone Codex CLI 0.152.1 is installed below
+`$HOME/.codex/packages/standalone/` with its command in `$HOME/.local/bin`.
+Use ordinary unprivileged `npm install -g ...` for global JavaScript packages
+and OpenAI's standalone installer for Codex updates; do not recreate a
+root-owned global Codex package. Documentation layout checks use Chromium and
+ChromeDriver 150.0.7871.181 with Selenium 4.31.1. The restored broken
 `~/.local/bin/codex` link to the former `/home/patch` checkout is retained only
 below ignored `user/system-update-20260729/`; `/home/patch` and the `patch`
 account do not exist on this installation. Pillow is not installed and the
