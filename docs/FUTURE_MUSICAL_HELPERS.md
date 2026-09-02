@@ -2,9 +2,9 @@
 
 Created: 2026-08-02
 
-Status: FT2 Edit SIZE, read-only HARMONY, and the bounded Priority 5/6
-Generator including ROLL implemented; remaining Arrangement helpers are
-owner-directed proposals, not scheduled promises
+Status: FT2 Edit SIZE, read-only HARMONY, the bounded Priority 5/6 Generator
+including ROLL, and the first A A B A Arrangement assistant implemented;
+larger Arrangement helpers remain owner-directed proposals
 
 This plan covers small, inspectable helpers that turn a short musical idea into
 editable FT2 material. The helpers should remove repetitive work, not decide
@@ -43,8 +43,8 @@ Priority 6 extends that same draft with the bounded arpeggio, Project-key triad,
 and diatonic harmonizer semantics in [Priority 6 arpeggio, chord, and
 harmonizer generators](HARMONIC_GENERATORS_ACCEPTANCE.md). Those focused
 contracts supersede the earlier fill, roll, shared-draft, and first-arpeggio
-proposals below wherever they overlap; Arrangement assistance remains a future
-proposal.
+proposals below wherever they overlap. The implemented Arrangement slice is
+owned by [A A B A Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## FT2 Edit `SIZE` page
 
@@ -295,6 +295,15 @@ or other Patterns unless the user chooses a new clone and Arrangement insert.
 
 ## Arrangement assistance
 
+Status: the first transparent `A A B A` template is implemented. `A` is the
+Pattern selected on ARRANGE and `B` remains unset until the musician explicitly
+chooses one existing Pattern ID. The non-writing draft lists all four Pattern
+references, exact row totals, and any missing or invalid Pattern. APPEND adds
+the four references after the current order; REPLACE uses the existing unsaved
+Project guard before swapping only the order; CANCEL writes nothing. No Pattern
+is cloned or changed, and no schema or playback-time generator was added. The
+remaining template and variation ideas in this section are proposals.
+
 Arrangement should be hierarchical: song → sections → phrases/bars → Pattern
 steps. A useful helper asks the musician to label or choose roles such as
 Intro, A/Verse, B/Chorus, Bridge/Break, and Outro, then proposes references to
@@ -327,13 +336,14 @@ and [Marmoret, Cohen, and Bimbot, barwise hierarchical structure and dynamic pro
 
 ### Safe Arrangement result
 
-The first assistant should output an Arrangement draft made from existing
-Pattern references plus explicitly named clones. It shows total bars/rows,
-section labels, every cloned or transformed Pattern, and which original
-Patterns remain untouched. `APPEND`, `REPLACE`, and `CANCEL` are distinct;
-Replace uses the existing dirty-Project protection. Preview follows the draft
-without committing it, and failure returns to the exact prior order/Pattern/
-page/lane/column/cursor.
+The implemented first assistant outputs a bounded draft made only from
+existing Pattern references. It shows all four section labels and Pattern IDs,
+each Pattern's rows, the exact total steps and rows, and any invalid or missing
+Pattern. `APPEND`, `REPLACE`, and `CANCEL` are distinct; Replace uses the
+existing dirty-Project protection. Cancellation, refusal, invalid bounds, a
+missing Pattern, or failed validation leaves the exact prior Arrangement,
+Pattern data, History, dirty state, transport, and FT2 cursor/context intact.
+Cloned or transformed sections and draft playback remain later work.
 
 ## Implementation sequence
 
@@ -343,8 +353,8 @@ page/lane/column/cursor.
 | 2 (implemented) | Shared generated-draft, collision summary, retained seed, inspect, Apply/Clone/Cancel, plus bounded Euclidean, accumulator, mutation, and FILL tools | One non-writing draft and explicit transaction owners for the first deterministic helpers |
 | 3 (implemented) | Read-only circle-of-fifths/HARMONY browser | Useful theory support with no generated-data risk |
 | 4 (implemented) | Offline arpeggio plus Project-key chord and harmonizer generators | Small deterministic algorithms over existing cells in the shared draft |
-| 5 (implemented; validation pending) | Controlled FILL plus bounded EVEN/ACCENT/CRESCENDO roll drafts | FILL uses ordinary conditional cells; ROLL reuses bounded Retrigger or explicit-velocity rows without a schema change |
-| 6 | Template/constraint Arrangement assistant | Builds on clone/variation operations and explicit previews |
+| 5 (implemented and validated) | Controlled FILL plus bounded EVEN/ACCENT/CRESCENDO roll drafts | FILL uses ordinary conditional cells; ROLL reuses bounded Retrigger or explicit-velocity rows without a schema change |
+| 6 (first slice implemented) | Explicit A A B A Arrangement draft, Append/Replace/Cancel | Reuses existing Pattern references and Arrangement transactions without Pattern mutation |
 
 Each phase is independently shippable. None should change the audio callback,
 start hardware, or require a Project-format bump unless a later retrigger

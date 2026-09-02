@@ -421,6 +421,12 @@ pub enum Action {
     ArrangementMoveLater,
     ArrangementJumpToPattern,
     ArrangementPlayFromStep,
+    OpenArrangementAssistant,
+    ArrangementAssistantPreviousB,
+    ArrangementAssistantNextB,
+    ArrangementAssistantAppend,
+    ArrangementAssistantReplace,
+    ArrangementAssistantCancel,
     AddPage,
     EditPageTarget,
     EditPageChannel,
@@ -512,6 +518,7 @@ pub enum MenuContext {
     PatternClear,
     PatternTools,
     DrumPatterns,
+    ArrangementAssistant,
     FxEmpty,
     FxType,
 }
@@ -977,6 +984,44 @@ const ARRANGE: [MenuPage; 4] = [
             on("DOWN", Action::ArrangementMoveLater),
             on("REPEAT", Action::ArrangementDuplicate),
             on("REMOVE", Action::ArrangementRemove),
+        ],
+    ),
+    page(
+        "FORM",
+        [
+            on("AABA", Action::OpenArrangementAssistant),
+            off(""),
+            off(""),
+            off(""),
+        ],
+    ),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            on("HELP", Action::OpenHelp),
+            off(""),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+const ARRANGEMENT_ASSISTANT: [MenuPage; 4] = [
+    page(
+        "FORM",
+        [
+            on("B-", Action::ArrangementAssistantPreviousB),
+            on("B+", Action::ArrangementAssistantNextB),
+            off(""),
+            off(""),
+        ],
+    ),
+    page(
+        "APPLY",
+        [
+            on("STOP", Action::StopAll),
+            on("APPEND", Action::ArrangementAssistantAppend),
+            on("REPLACE", Action::ArrangementAssistantReplace),
+            on("CANCEL", Action::ArrangementAssistantCancel),
         ],
     ),
     page("", [off(""), off(""), off(""), off("")]),
@@ -1737,6 +1782,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerFiles, MenuContext::PatternTools) => &PATTERN_TOOLS,
         (Screen::TrackerFiles, MenuContext::DrumPatterns) => &DRUM_PATTERNS,
         (Screen::TrackerFiles, _) => &FILES,
+        (Screen::TrackerArrange, MenuContext::ArrangementAssistant) => &ARRANGEMENT_ASSISTANT,
         (Screen::TrackerArrange, _) => &ARRANGE,
         (Screen::TrackerPages, MenuContext::PageTarget | MenuContext::PageChannel) => &PAGE_FIELD,
         (Screen::TrackerPages, _) => &PAGES,
@@ -2402,6 +2448,39 @@ mod tests {
     }
 
     #[test]
+    fn arrangement_assistant_uses_the_free_arrange_page_and_its_own_four_pages() {
+        let arrange = pages(Screen::TrackerArrange, MenuContext::Normal);
+        assert_eq!(arrange.len(), 4);
+        assert_eq!(arrange[2].label, "FORM");
+        assert_eq!(
+            arrange[2].slots[0].dispatch(),
+            Some(Action::OpenArrangementAssistant)
+        );
+
+        let assistant = pages(Screen::TrackerArrange, MenuContext::ArrangementAssistant);
+        assert_eq!(assistant.len(), 4);
+        assert_eq!(
+            assistant[0].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::ArrangementAssistantPreviousB),
+                Some(Action::ArrangementAssistantNextB),
+                None,
+                None,
+            ]
+        );
+        assert_eq!(
+            assistant[1].slots.map(MenuSlot::dispatch),
+            [
+                Some(Action::StopAll),
+                Some(Action::ArrangementAssistantAppend),
+                Some(Action::ArrangementAssistantReplace),
+                Some(Action::ArrangementAssistantCancel),
+            ]
+        );
+        assert_eq!(assistant[3].label, "SYS");
+    }
+
+    #[test]
     fn inventoried_controller_workflow_actions_are_all_reachable() {
         let contexts = [
             (Screen::Presets, MenuContext::Normal),
@@ -2425,6 +2504,7 @@ mod tests {
             (Screen::PatternHistory, MenuContext::Normal),
             (Screen::LivePatterns, MenuContext::Normal),
             (Screen::TrackerArrange, MenuContext::Normal),
+            (Screen::TrackerArrange, MenuContext::ArrangementAssistant),
             (Screen::TrackerLoop, MenuContext::Normal),
             (Screen::TrackerLoopAlign, MenuContext::Normal),
             (Screen::PatternFeel, MenuContext::Normal),
@@ -2508,6 +2588,12 @@ mod tests {
             Action::GeneratorApply,
             Action::GeneratorClone,
             Action::GeneratorCancel,
+            Action::OpenArrangementAssistant,
+            Action::ArrangementAssistantPreviousB,
+            Action::ArrangementAssistantNextB,
+            Action::ArrangementAssistantAppend,
+            Action::ArrangementAssistantReplace,
+            Action::ArrangementAssistantCancel,
             Action::OpenFxRack,
             Action::OpenFxEditor,
             Action::ResetMeter,

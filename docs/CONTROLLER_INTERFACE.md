@@ -60,7 +60,7 @@ or `q` can still exit from the splash.
 | Tracker files | Select saved Project; load; preview/stop; save with overwrite confirmation; create a confirmed blank Project; save a numbered non-overwriting copy; delete with repeat confirmation; rename; open the Pattern child; back/cancel and panic. |
 | Pattern tools | New, clone, clear, copy, paste-new, paste-over, or clean unused Patterns; transpose melodic pages by semitone or octave; open reusable drum patterns. |
 | Drum patterns | Filter 72 bundled plus user rhythms by genre, meter, and 2/4/8-bar size; browse the filtered list with the ordinary rotary and change genre with Shift-rotary or the existing Genre−/Genre+ actions; load into the percussion page; save that page separately; confirmed deletion of user saves only. Empty Patterns may adopt the selected shape, while existing melody blocks resizing. |
-| FT2 arrange | Select arrangement step; append/insert current pattern; duplicate/remove step; move step earlier/later; jump to referenced pattern; play from selected step; back and panic. |
+| FT2 arrange | Select an Arrangement step; append/insert the current Pattern; duplicate/remove a step; move it earlier/later; jump to its Pattern; or play from it. FORM opens the non-writing A A B A assistant with the selected Pattern as A and no implicit B. B-/B+ explicitly choose an existing Pattern ID. The assistant keeps four pages: FORM, APPLY with Stop/Append/Replace/Cancel, one empty page, and canonical SYS. Append and Replace validate before changing only the order; dirty Replace uses the existing unsaved-Project guard. Cancel and every refusal preserve Pattern data, History, dirty state, transport, and FT2 cursor/context. |
 | Pattern setup | Choose 3/4 or 4/4 and pattern length; CONFIRM performs NEW/CLEAR with that shape, KEEP performs the same operation with the current Pattern's shape, and Exit cancels. |
 | Tracks page manager | Select pages with the encoder and change the selected column with Shift-rotary or the existing Column−/Column+ actions; add a four-lane page; edit target, channel, bank, program, and the per-page Manual/One-column/Drum-auto entry layout; confirm all changes; or exit and restore the original Project. |
 | Target/channel field mode | Previous/next choice, confirm field, cancel field. Encoder turn/press and menu items share these operations. |
@@ -365,7 +365,11 @@ Blank physical positions and wholly empty pages are omitted.
 | Drum patterns | Sys | Panic | — | Help | Exit |
 | Arrange | Ops | Jump | Play | Append | Insert |
 | Arrange | Step | Up | Down | Repeat | Remove |
+| Arrange | Form | A A B A assistant (`AABA`) | — | — | — |
 | Arrange | Sys | Panic | Help | — | Exit |
+| A A B A draft | Form | B Pattern− | B Pattern+ | — | — |
+| A A B A draft | Apply | Stop | Append | Replace | Cancel |
+| A A B A draft | Sys | Panic | Help | — | Exit/cancel |
 | Pattern setup | Ops | 3/4 | 4/4 | Length (`LNGTH`) | — |
 | Pattern setup | Apply | Confirm | Keep | — | — |
 | Pattern setup | Sys | Panic | — | Help | Exit/cancel |

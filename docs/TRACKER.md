@@ -654,6 +654,22 @@ or insert the current pattern, duplicate or remove a step, move a step earlier
 or later, jump to the referenced pattern for editing, and play from the selected
 step.
 
+ARRANGE's **FORM** page opens the bounded `A A B A` assistant. `A` is the
+Pattern referenced by the selected Arrangement step. `B` starts unselected;
+turn the main encoder or use **B-**/**B+** to choose one existing Pattern ID
+explicitly. The draft changes no Project data and shows all four references,
+each Pattern's row count, the total four steps and total rows, plus any missing
+or invalid Pattern.
+
+With transport stopped, **APPEND** adds those four references after the current
+Arrangement. **REPLACE** swaps only the Arrangement and first passes through
+the normal unsaved-Project `SAVE (AUTO)` / `SAVE (NAME)` / `DON'T SAVE` /
+`BACK` guard when the Project is dirty. **CANCEL** or Exit returns to the same
+Arrangement selection and controller context. Refusal, missing Patterns,
+invalid limits, and failed validation leave Arrangement, Pattern data, Pattern
+History, dirty state, transport, and the FT2 cursor/context unchanged. This
+first slice never clones or edits Pattern contents and stores no recipe.
+
 ## Automation, metronome, and count-in
 
 Each Pattern owns independent sparse automation lanes; automation never uses

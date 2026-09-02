@@ -547,6 +547,16 @@ struct PatternGrooveDraft {
     selection: crate::rhythm::GrooveSelection,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ArrangementAssistantSession {
+    anchor_pattern: u16,
+    b_pattern: Option<u16>,
+    draft: crate::arrangement_assistant::ArrangementDraft,
+    opening_arrange_selected: usize,
+    opening_menu_page: usize,
+    opening_page_select_mode: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct LanePlaybackDraft {
     pattern: u16,
@@ -785,6 +795,7 @@ enum PendingProjectAction {
     NewProject,
     Load(String),
     ImportMidi,
+    ReplaceArrangement(Vec<u16>),
     Quit,
 }
 
@@ -1008,6 +1019,7 @@ struct App {
     pattern_groove_draft: Option<PatternGrooveDraft>,
     lane_playback_draft: Option<LanePlaybackDraft>,
     pattern_generator: Option<PatternGeneratorSession>,
+    arrangement_assistant: Option<ArrangementAssistantSession>,
     last_generator_recipe: Option<crate::generative::Recipe>,
     recording_history_opening: Option<PatternHistoryState<PatternEditContext>>,
     page_history_opening: Option<PatternHistoryState<PatternEditContext>>,
@@ -2117,6 +2129,7 @@ impl App {
             pattern_groove_draft: None,
             lane_playback_draft: None,
             pattern_generator: None,
+            arrangement_assistant: None,
             last_generator_recipe: None,
             recording_history_opening: None,
             page_history_opening: None,
@@ -2442,6 +2455,9 @@ impl App {
             }
             PendingProjectAction::Load(name) => self.load_song_named(&name),
             PendingProjectAction::ImportMidi => self.commit_midi_import(),
+            PendingProjectAction::ReplaceArrangement(patterns) => {
+                self.complete_arrangement_assistant_replace(patterns)
+            }
             PendingProjectAction::Quit => self.quit_requested = true,
         }
     }
@@ -3188,6 +3204,8 @@ impl App {
             MenuContext::TrackerRecord
         } else if self.screen == Screen::Tracker && self.tracker_mode == TrackerMode::Edit {
             MenuContext::TrackerEdit
+        } else if self.screen == Screen::TrackerArrange && self.arrangement_assistant.is_some() {
+            MenuContext::ArrangementAssistant
         } else if self.screen == Screen::TrackerFiles && self.confirm_pattern_clear {
             MenuContext::PatternClear
         } else if self.screen == Screen::TrackerFiles {
@@ -6905,6 +6923,7 @@ impl App {
         self.pattern_groove_draft = None;
         self.lane_playback_draft = None;
         self.pattern_generator = None;
+        self.arrangement_assistant = None;
         self.last_generator_recipe = None;
     }
     fn current_loop_settings(&self, slot: usize) -> Option<&sequencer::LoopSettings> {
@@ -13085,6 +13104,146 @@ impl App {
         self.reset_context_page();
         self.status = "FT2 arrangement · chain pattern steps".into();
     }
+    fn open_arrangement_assistant(&mut self) {
+        let Some(anchor_pattern) = self.song.order.get(self.arrange_selected).copied() else {
+            self.status = "A A B A unavailable · selected Pattern missing".into();
+            return;
+        };
+        let draft =
+            crate::arrangement_assistant::ArrangementDraft::aaba(&self.song, anchor_pattern, None);
+        self.arrangement_assistant = Some(ArrangementAssistantSession {
+            anchor_pattern,
+            b_pattern: None,
+            draft,
+            opening_arrange_selected: self.arrange_selected,
+            opening_menu_page: self.menu_page(),
+            opening_page_select_mode: self.page_select_mode,
+        });
+        self.menu_page_by_screen[Screen::TrackerArrange.index()] = 0;
+        self.page_select_mode = false;
+        self.status = "A A B A DRAFT · select B explicitly".into();
+    }
+    fn rebuild_arrangement_assistant(&mut self) {
+        let Some(session) = self.arrangement_assistant.as_ref() else {
+            return;
+        };
+        let draft = crate::arrangement_assistant::ArrangementDraft::aaba(
+            &self.song,
+            session.anchor_pattern,
+            session.b_pattern,
+        );
+        if let Some(session) = self.arrangement_assistant.as_mut() {
+            session.draft = draft;
+        }
+    }
+    fn select_arrangement_assistant_b(&mut self, direction: i8) {
+        let patterns = self.song.patterns.keys().copied().collect::<Vec<_>>();
+        if patterns.is_empty() {
+            self.status = "B SELECT REFUSED · no Patterns".into();
+            return;
+        }
+        let current = self
+            .arrangement_assistant
+            .as_ref()
+            .and_then(|session| session.b_pattern)
+            .and_then(|selected| patterns.iter().position(|pattern| *pattern == selected));
+        let next = match current {
+            Some(current) => wrapped_index(current, patterns.len(), direction),
+            None if direction < 0 => patterns.len() - 1,
+            None => 0,
+        };
+        if let Some(session) = self.arrangement_assistant.as_mut() {
+            session.b_pattern = Some(patterns[next]);
+        }
+        self.rebuild_arrangement_assistant();
+        self.status = format!("B = PAT {:02} · draft rebuilt", patterns[next]);
+    }
+    fn arrangement_assistant_references(&mut self) -> Option<Vec<u16>> {
+        self.rebuild_arrangement_assistant();
+        let result = self
+            .arrangement_assistant
+            .as_ref()
+            .map(|session| session.draft.pattern_references());
+        match result {
+            Some(Ok(patterns)) => Some(patterns),
+            Some(Err(error)) => {
+                self.status = format!(
+                    "DRAFT REFUSED · {}",
+                    crate::ui_text::fit_middle(&error.to_string(), 24)
+                );
+                None
+            }
+            None => None,
+        }
+    }
+    fn arrangement_assistant_transport_is_stopped(&mut self) -> bool {
+        let transport = self.sequencer.status();
+        if self.tracker_recording.is_some() || transport.playing || transport.count_in.is_some() {
+            self.status = "STOP TO CHANGE ARRANGEMENT · draft kept".into();
+            false
+        } else {
+            true
+        }
+    }
+    fn append_arrangement_assistant(&mut self) {
+        if !self.arrangement_assistant_transport_is_stopped() {
+            return;
+        }
+        let Some(patterns) = self.arrangement_assistant_references() else {
+            return;
+        };
+        match self.song.append_arrangement(&patterns) {
+            Ok(first) => {
+                self.arrangement_assistant = None;
+                self.arrange_selected = first;
+                self.menu_page_by_screen[Screen::TrackerArrange.index()] = 0;
+                self.page_select_mode = false;
+                self.status = "A A B A APPENDED · 4 Pattern references".into();
+            }
+            Err(error) => {
+                self.status = format!(
+                    "APPEND REFUSED · {}",
+                    crate::ui_text::fit_middle(&error.to_string(), 22)
+                );
+            }
+        }
+    }
+    fn request_replace_arrangement_assistant(&mut self) {
+        if !self.arrangement_assistant_transport_is_stopped() {
+            return;
+        }
+        let Some(patterns) = self.arrangement_assistant_references() else {
+            return;
+        };
+        self.begin_project_action(PendingProjectAction::ReplaceArrangement(patterns));
+    }
+    fn complete_arrangement_assistant_replace(&mut self, patterns: Vec<u16>) {
+        match self.song.replace_arrangement(patterns) {
+            Ok(()) => {
+                self.arrangement_assistant = None;
+                self.arrange_selected = 0;
+                self.tracker_order = self.tracker_order.min(self.song.order.len() - 1);
+                self.menu_page_by_screen[Screen::TrackerArrange.index()] = 0;
+                self.page_select_mode = false;
+                self.status = "ARRANGEMENT REPLACED · A A B A".into();
+            }
+            Err(error) => {
+                self.status = format!(
+                    "REPLACE REFUSED · {}",
+                    crate::ui_text::fit_middle(&error.to_string(), 21)
+                );
+            }
+        }
+    }
+    fn cancel_arrangement_assistant(&mut self) {
+        let Some(session) = self.arrangement_assistant.take() else {
+            return;
+        };
+        self.arrange_selected = session.opening_arrange_selected;
+        self.menu_page_by_screen[Screen::TrackerArrange.index()] = session.opening_menu_page.min(3);
+        self.page_select_mode = session.opening_page_select_mode;
+        self.status = "CANCEL · Arrangement unchanged".into();
+    }
     fn select_arrangement_step(&mut self, direction: i8) {
         self.arrange_selected =
             wrapped_index(self.arrange_selected, self.song.order.len(), direction);
@@ -17294,6 +17453,8 @@ fn perform(
                     }
                     TrackerFilesMode::Patterns => {}
                 }
+            } else if a.screen == Screen::TrackerArrange && a.arrangement_assistant.is_some() {
+                a.select_arrangement_assistant_b(-1);
             } else if a.screen == Screen::TrackerArrange {
                 a.select_arrangement_step(-1);
             } else if a.screen == Screen::Tracker {
@@ -17363,6 +17524,8 @@ fn perform(
                     }
                     TrackerFilesMode::Patterns => {}
                 }
+            } else if a.screen == Screen::TrackerArrange && a.arrangement_assistant.is_some() {
+                a.select_arrangement_assistant_b(1);
             } else if a.screen == Screen::TrackerArrange {
                 a.select_arrangement_step(1);
             } else if a.screen == Screen::Tracker {
@@ -17495,6 +17658,7 @@ fn perform(
                 }
                 TrackerFilesMode::Midi => a.midi_import_action(),
             },
+            Screen::TrackerArrange if a.arrangement_assistant.is_some() => {}
             Screen::TrackerArrange => a.arrangement_jump_to_pattern(),
             Screen::TrackerPages => a.confirm_page_manager(),
             Screen::TrackerTools => {}
@@ -17753,6 +17917,10 @@ fn perform(
         Action::MixerBankPrevious => a.move_tracker_mixer_bank(-1),
         Action::MixerBankNext => a.move_tracker_mixer_bank(1),
         Action::Back => {
+            if a.screen == Screen::TrackerArrange && a.arrangement_assistant.is_some() {
+                a.cancel_arrangement_assistant();
+                return false;
+            }
             if a.screen == Screen::PatternGenerator {
                 a.cancel_pattern_generator();
                 return false;
@@ -18157,6 +18325,12 @@ fn perform(
         Action::ArrangementMoveLater => a.arrangement_move_step(1),
         Action::ArrangementJumpToPattern => a.arrangement_jump_to_pattern(),
         Action::ArrangementPlayFromStep => a.arrangement_play_from_step(),
+        Action::OpenArrangementAssistant => a.open_arrangement_assistant(),
+        Action::ArrangementAssistantPreviousB => a.select_arrangement_assistant_b(-1),
+        Action::ArrangementAssistantNextB => a.select_arrangement_assistant_b(1),
+        Action::ArrangementAssistantAppend => a.append_arrangement_assistant(),
+        Action::ArrangementAssistantReplace => a.request_replace_arrangement_assistant(),
+        Action::ArrangementAssistantCancel => a.cancel_arrangement_assistant(),
         Action::TrackerEdit => {
             let enabled = a.tracker_mode != TrackerMode::Edit;
             a.set_tracker_edit(enabled);
@@ -18730,12 +18904,36 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         }
         return false;
     }
+    if a.screen == Screen::TrackerArrange && a.arrangement_assistant.is_some() {
+        let action = match code {
+            KeyCode::Left | KeyCode::Char('[') | KeyCode::Char('-') => {
+                Some(Action::ArrangementAssistantPreviousB)
+            }
+            KeyCode::Right | KeyCode::Char(']') | KeyCode::Char('+') | KeyCode::Char('=') => {
+                Some(Action::ArrangementAssistantNextB)
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') => Some(Action::ArrangementAssistantAppend),
+            KeyCode::Char('r') | KeyCode::Char('R') => Some(Action::ArrangementAssistantReplace),
+            KeyCode::Esc
+            | KeyCode::Char('b')
+            | KeyCode::Char('B')
+            | KeyCode::Char('c')
+            | KeyCode::Char('C') => Some(Action::ArrangementAssistantCancel),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
+            _ => None,
+        };
+        if let Some(action) = action {
+            perform(action, a, state, Some(tx));
+        }
+        return false;
+    }
     if a.screen == Screen::TrackerArrange {
         let action = match code {
             KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::ArrangementPlayFromStep),
             KeyCode::Char('a') | KeyCode::Char('A') => Some(Action::ArrangementAppend),
             KeyCode::Char('i') | KeyCode::Char('I') => Some(Action::ArrangementInsert),
             KeyCode::Char('d') | KeyCode::Char('D') => Some(Action::ArrangementDuplicate),
+            KeyCode::Char('f') | KeyCode::Char('F') => Some(Action::OpenArrangementAssistant),
             KeyCode::Delete | KeyCode::Backspace => Some(Action::ArrangementRemove),
             KeyCode::Char('<') => Some(Action::ArrangementMoveEarlier),
             KeyCode::Char('>') => Some(Action::ArrangementMoveLater),
@@ -19730,6 +19928,7 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
             format!("LOAD {}", crate::ui_text::fit_middle(name, 25))
         }
         PendingProjectAction::ImportMidi => "IMPORT ANALYSED MIDI".into(),
+        PendingProjectAction::ReplaceArrangement(_) => "REPLACE ARRANGEMENT".into(),
         PendingProjectAction::Quit => "QUIT SHR-DAW".into(),
     };
     let width = usize::from(area.width.saturating_sub(2));
@@ -24924,6 +25123,11 @@ fn draw_tracker_pages<B: Backend>(f: &mut Frame<B>, a: &mut App) {
 }
 
 fn draw_tracker_arrange<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    if a.arrangement_assistant.is_some() {
+        a.rebuild_arrangement_assistant();
+        draw_arrangement_assistant(f, a);
+        return;
+    }
     let z = f.size();
     a.arrange_selected = a.arrange_selected.min(a.song.order.len().saturating_sub(1));
     f.render_widget(
@@ -24987,6 +25191,84 @@ fn draw_tracker_arrange<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .border_style(Style::default().fg(Color::Green)),
         ),
         list,
+    );
+}
+
+fn draw_arrangement_assistant<B: Backend>(f: &mut Frame<B>, a: &App) {
+    let z = f.size();
+    let Some(session) = a.arrangement_assistant.as_ref() else {
+        return;
+    };
+    let mut lines = vec![Spans::from(Span::styled(
+        "ARRANGEMENT DRAFT · A A B A",
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    for (index, reference) in session.draft.references.iter().enumerate() {
+        let pattern = reference
+            .pattern
+            .map_or_else(|| "--".into(), |pattern| format!("{pattern:02}"));
+        let detail = reference.rows.map_or_else(
+            || {
+                if reference.pattern.is_none() {
+                    "SELECT B".into()
+                } else if reference
+                    .issue
+                    .as_deref()
+                    .is_some_and(|issue| issue.contains("missing"))
+                {
+                    "MISSING".into()
+                } else {
+                    "INVALID".into()
+                }
+            },
+            |rows| format!("{rows:03} ROWS"),
+        );
+        lines.push(Spans::from(Span::styled(
+            format!(
+                "{} {} · PAT {} · {}",
+                index + 1,
+                reference.section.label(),
+                pattern,
+                detail
+            ),
+            Style::default().fg(if reference.issue.is_some() {
+                Color::Yellow
+            } else {
+                Color::White
+            }),
+        )));
+    }
+    lines.push(Spans::from(Span::styled(
+        session.draft.total_rows.map_or_else(
+            || format!("TOTAL {} STEPS · ROWS —", session.draft.references.len()),
+            |rows| {
+                format!(
+                    "TOTAL {} STEPS · {rows} ROWS",
+                    session.draft.references.len()
+                )
+            },
+        ),
+        Style::default().fg(if session.draft.first_issue().is_some() {
+            Color::Yellow
+        } else {
+            Color::White
+        }),
+    )));
+    if let Some(issue) = session.draft.first_issue() {
+        lines.push(Spans::from(Span::styled(
+            crate::ui_text::fit_middle(issue, usize::from(z.width)),
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+    lines.push(Spans::from(Span::styled(
+        "UNCHANGED · APPEND / REPLACE / CANCEL",
+        Style::default().fg(Color::DarkGray),
+    )));
+    f.render_widget(
+        Paragraph::new(lines).alignment(Alignment::Center),
+        rect(z.x, z.y, z.width, z.height.saturating_sub(3)),
     );
 }
 
@@ -31466,11 +31748,11 @@ release = 0.4
         session.tick(now);
         now += Duration::from_millis(1);
         session.receive(&[0xb0, 28, 63], now);
-        now += Duration::from_millis(200);
+        now += Duration::from_millis(700);
         session.tick(now);
         now += Duration::from_millis(1);
         session.receive(&[0xb0, 28, 65], now);
-        now += Duration::from_millis(200);
+        now += Duration::from_millis(700);
         session.tick(now);
         now += Duration::from_millis(1);
         session.receive(&[0xb0, 118, 127], now);
@@ -37560,6 +37842,268 @@ release = 0.4
         a.arrangement_jump_to_pattern();
         assert_eq!(a.screen, Screen::Tracker);
         assert_eq!(a.tracker_order, 1);
+    }
+
+    fn prepare_arrangement_assistant_fixture(a: &mut App) {
+        let pattern = sequencer::Pattern::empty_like_setup(24, &a.song.patterns[&0]);
+        a.song.patterns.insert(1, pattern);
+        a.song.order = vec![0, 1, 0];
+        a.mark_project_clean();
+        a.open_arrange();
+        a.arrange_selected = 0;
+        a.menu_page_by_screen[Screen::TrackerArrange.index()] = 2;
+    }
+
+    fn explicitly_select_assistant_b_one(a: &mut App) {
+        a.select_arrangement_assistant_b(1);
+        a.select_arrangement_assistant_b(1);
+        assert_eq!(
+            a.arrangement_assistant
+                .as_ref()
+                .and_then(|session| session.b_pattern),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn arrangement_assistant_requires_explicit_b_and_renders_every_reference_and_total() {
+        let p = presets();
+        let mut a = app(&p);
+        prepare_arrangement_assistant_fixture(&mut a);
+        let before = a.song.clone();
+
+        a.open_arrangement_assistant();
+        assert_eq!(a.song, before);
+        assert_eq!(a.menu_context(), MenuContext::ArrangementAssistant);
+        assert!(a
+            .arrangement_assistant
+            .as_ref()
+            .unwrap()
+            .draft
+            .pattern_references()
+            .is_err());
+
+        explicitly_select_assistant_b_one(&mut a);
+        let buffer = render_app(&mut a, 40, 13);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("ARRANGEMENT DRAFT · A A B A"));
+        assert!(text.contains("1 A · PAT 00 · 064 ROWS"));
+        assert!(text.contains("2 A · PAT 00 · 064 ROWS"));
+        assert!(text.contains("3 B · PAT 01 · 024 ROWS"));
+        assert!(text.contains("4 A · PAT 00 · 064 ROWS"));
+        assert!(text.contains("TOTAL 4 STEPS · 216 ROWS"));
+        assert_eq!(a.song, before);
+    }
+
+    #[test]
+    fn arrangement_assistant_cancel_restores_exact_song_history_dirty_transport_and_context() {
+        let p = presets();
+        let mut a = app(&p);
+        prepare_arrangement_assistant_fixture(&mut a);
+        a.tracker_order = 2;
+        a.tracker_row = 17;
+        a.tracker_page = 1;
+        a.tracker_track = 3;
+        a.tracker_mode = TrackerMode::Edit;
+        a.capture_pattern_snapshot();
+        a.song.name = "dirty arrangement sketch".into();
+        let before_song = a.song.clone();
+        let before_baseline = a.project_clean_baseline.clone();
+        let before_depths = a.pattern_history.depths();
+        let before_snapshot = a.pattern_history.snapshot().cloned();
+        let before_transport = a.sequencer.status();
+        let before_context = (
+            a.tracker_order,
+            a.tracker_row,
+            a.tracker_page,
+            a.tracker_track,
+            a.tracker_mode,
+            a.arrange_selected,
+            a.menu_page(),
+            a.page_select_mode,
+        );
+
+        a.open_arrangement_assistant();
+        explicitly_select_assistant_b_one(&mut a);
+        a.cancel_arrangement_assistant();
+
+        assert_eq!(a.song, before_song);
+        assert_eq!(a.project_clean_baseline, before_baseline);
+        assert_eq!(a.pattern_history.depths(), before_depths);
+        assert_eq!(a.pattern_history.snapshot(), before_snapshot.as_ref());
+        let after_transport = a.sequencer.status();
+        assert_eq!(
+            (
+                after_transport.playing,
+                after_transport.order,
+                after_transport.row,
+                after_transport.generation,
+                after_transport.count_in,
+            ),
+            (
+                before_transport.playing,
+                before_transport.order,
+                before_transport.row,
+                before_transport.generation,
+                before_transport.count_in,
+            )
+        );
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track,
+                a.tracker_mode,
+                a.arrange_selected,
+                a.menu_page(),
+                a.page_select_mode,
+            ),
+            before_context
+        );
+        assert!(a.project_is_dirty());
+    }
+
+    #[test]
+    fn arrangement_assistant_append_is_one_order_only_transaction() {
+        let p = presets();
+        let mut a = app(&p);
+        prepare_arrangement_assistant_fixture(&mut a);
+        a.capture_pattern_snapshot();
+        let patterns = a.song.patterns.clone();
+        let history = (
+            a.pattern_history.depths(),
+            a.pattern_history.snapshot().cloned(),
+        );
+        let cursor = (
+            a.tracker_order,
+            a.tracker_row,
+            a.tracker_page,
+            a.tracker_track,
+            a.tracker_mode,
+        );
+        a.open_arrangement_assistant();
+        explicitly_select_assistant_b_one(&mut a);
+
+        a.append_arrangement_assistant();
+
+        assert_eq!(a.song.order, [0, 1, 0, 0, 0, 1, 0]);
+        assert_eq!(a.song.patterns, patterns);
+        assert_eq!(
+            (
+                a.pattern_history.depths(),
+                a.pattern_history.snapshot().cloned()
+            ),
+            history
+        );
+        assert_eq!(
+            (
+                a.tracker_order,
+                a.tracker_row,
+                a.tracker_page,
+                a.tracker_track,
+                a.tracker_mode,
+            ),
+            cursor
+        );
+        assert!(a.arrangement_assistant.is_none());
+        assert!(a.project_is_dirty());
+    }
+
+    #[test]
+    fn arrangement_assistant_replace_uses_dirty_guard_and_back_is_exactly_reversible() {
+        let p = presets();
+        let mut a = app(&p);
+        prepare_arrangement_assistant_fixture(&mut a);
+        a.tracker_row = 19;
+        a.tracker_page = 1;
+        a.tracker_track = 2;
+        a.song.name = "unsaved form".into();
+        let patterns = a.song.patterns.clone();
+        let before = a.song.clone();
+        let baseline = a.project_clean_baseline.clone();
+        a.open_arrangement_assistant();
+        explicitly_select_assistant_b_one(&mut a);
+
+        a.request_replace_arrangement_assistant();
+        assert_eq!(
+            a.pending_project_action,
+            Some(PendingProjectAction::ReplaceArrangement(vec![0, 0, 1, 0]))
+        );
+        assert_eq!(a.song, before);
+        a.cancel_project_action();
+        assert_eq!(a.song, before);
+        assert_eq!(a.project_clean_baseline, baseline);
+        assert_eq!((a.tracker_row, a.tracker_page, a.tracker_track), (19, 1, 2));
+        assert!(a.arrangement_assistant.is_some());
+
+        a.request_replace_arrangement_assistant();
+        a.project_guard_selected = ProjectGuardChoice::DontSave;
+        a.activate_project_guard();
+        assert_eq!(a.song.order, [0, 0, 1, 0]);
+        assert_eq!(a.song.patterns, patterns);
+        assert_eq!(a.project_clean_baseline, baseline);
+        assert!(a.project_is_dirty());
+        assert!(a.pending_project_action.is_none());
+        assert!(a.arrangement_assistant.is_none());
+    }
+
+    #[test]
+    fn arrangement_assistant_missing_invalid_bounds_and_playing_refusals_are_non_writing() {
+        let p = presets();
+
+        let mut missing = app(&p);
+        prepare_arrangement_assistant_fixture(&mut missing);
+        missing.song.order = vec![0];
+        missing.open_arrangement_assistant();
+        explicitly_select_assistant_b_one(&mut missing);
+        missing.song.patterns.remove(&1);
+        let before = missing.song.clone();
+        let dirty = missing.project_is_dirty();
+        missing.append_arrangement_assistant();
+        assert_eq!(missing.song, before);
+        assert_eq!(missing.project_is_dirty(), dirty);
+        assert!(missing.status.contains("REFUSED"));
+
+        let mut invalid = app(&p);
+        prepare_arrangement_assistant_fixture(&mut invalid);
+        invalid.song.order = vec![0];
+        invalid.open_arrangement_assistant();
+        explicitly_select_assistant_b_one(&mut invalid);
+        invalid.song.patterns.get_mut(&1).unwrap().rows.clear();
+        let before = invalid.song.clone();
+        invalid.request_replace_arrangement_assistant();
+        assert_eq!(invalid.song, before);
+        assert!(invalid.pending_project_action.is_none());
+        assert!(invalid.status.contains("REFUSED"));
+
+        let mut bounded = app(&p);
+        prepare_arrangement_assistant_fixture(&mut bounded);
+        bounded.song.order = vec![0; sequencer::MAX_ARRANGEMENT_STEPS - 2];
+        bounded.mark_project_clean();
+        bounded.arrange_selected = 0;
+        bounded.open_arrangement_assistant();
+        explicitly_select_assistant_b_one(&mut bounded);
+        let before = bounded.song.clone();
+        bounded.append_arrangement_assistant();
+        assert_eq!(bounded.song, before);
+        assert!(!bounded.project_is_dirty());
+        assert!(bounded.status.contains("APPEND REFUSED"));
+
+        let mut playing = app(&p);
+        prepare_arrangement_assistant_fixture(&mut playing);
+        playing.open_arrangement_assistant();
+        explicitly_select_assistant_b_one(&mut playing);
+        let before = playing.song.clone();
+        playing.sequencer.play(&playing.song, 0, 0);
+        let generation = playing.sequencer.status().generation;
+        playing.append_arrangement_assistant();
+        assert_eq!(playing.song, before);
+        let status = playing.sequencer.status();
+        assert!(status.playing);
+        assert_eq!(status.generation, generation);
+        assert!(playing.status.contains("STOP TO CHANGE"));
+        playing.sequencer.stop();
     }
 
     #[test]

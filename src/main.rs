@@ -1,3 +1,4 @@
+mod arrangement_assistant;
 pub mod audio_graph;
 mod audio_graph_client;
 pub mod audio_graph_runtime;

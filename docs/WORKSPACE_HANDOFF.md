@@ -5,29 +5,46 @@ new thread in `$HOME/p/shsynth`. Durable repository policy is in
 `AGENTS.md`; detailed helper behavior is in `docs/MAINTAINER_HELPERS.md`. Never
 record credentials, GitHub device codes, or private file contents here.
 
-## 2026-09-02 ROLL generator implementation awaiting combined validation
+## 2026-09-02 bounded ROLL and A A B A Arrangement assistant validated
 
-The existing FT2 Tools PAGE -> HISTORY -> RHYTHM -> GEN workflow now includes
-a percussion-only ROLL draft; it adds no launcher, controller page, playback
-mode, or storage schema. Length selects a cursor-anchored bounded row span and
-amount selects 1–8 total pulses. EVEN uses the existing Retrigger command when
-several pulses share a row. ACCENT and CRESCENDO instead use deterministic
-ordinary rows with explicit bounded velocities because the current command
-cannot store a per-pulse contour.
+The existing FT2 Tools PAGE -> HISTORY -> RHYTHM -> GEN workflow includes the
+percussion-only ROLL draft. Length selects a cursor-anchored bounded row span
+and amount selects 1–8 total pulses. EVEN uses the existing Retrigger command
+when several pulses share a row. ACCENT and CRESCENDO use deterministic
+ordinary rows with bounded explicit velocities. ROLL defaults visibly to NEW
+CLONE and delegates Apply to the existing stopped independent-Pattern plus
+appended-Arrangement-step owner; EMPTY ONLY and REPLACE NOTE remain explicit
+current-Pattern choices.
 
-ROLL visibly defaults to NEW CLONE. Under that policy Apply delegates to the
-existing stopped independent-Pattern plus appended-Arrangement-step owner;
-EMPTY ONLY and REPLACE NOTE remain explicit current-Pattern choices. Draft,
-collision, Cancel/refusal, Pattern History, cursor, routing, and transport
-ownership remain the shared Generator contract. Source-level regression cases
-cover pulse bounds, odd/multi-row distribution, final-row placement, shaped
-velocity, percussion refusal, minimum/maximum tempo scheduling with automatic
-Note Off disabled, rendering, and default-clone ownership.
+ARRANGE FORM now opens the smallest Phase 6 assistant. It captures the Pattern
+referenced by the selected Arrangement step as A, leaves B unset until the
+musician explicitly browses existing sorted Pattern IDs, and displays the
+fixed A A B A draft with every reference, each Pattern's rows, total steps and
+rows, and missing or invalid state. APPEND atomically adds the four references
+after the current order. REPLACE routes through the existing unsaved-Project
+guard before atomically swapping only the order. CANCEL, Back, refusal, invalid
+bounds, missing Patterns, and failed validation retain the exact prior Song,
+Pattern data, History, dirty state, transport, and FT2 cursor/context. No
+Pattern is cloned or modified, and no schema or playback-time generator was
+added.
 
-Formatting and source inspection are allowed, but no build-producing command
-or test has run: the repository's temporary combined-pass rule still requires
-explicit user authorization first. No JACK, synth, MIDI, playback, recording,
-or hardware action was taken.
+The authorized combined pass installed and used `rustc 1.97.1
+(8bab26f4f 2026-07-14)`, host `aarch64-unknown-linux-gnu`, LLVM 22.1.6.
+Formatting and `cargo check --locked` passed with the three existing nonfatal
+dead-code warnings. `cargo test --locked arrangement_assistant` passed all 10
+matching regressions. `cargo test --locked roll` passed 117 tests because the
+substring also matches `controller`; the four intended ROLL regressions were
+included and then passed again individually by exact test name. The first
+complete suite found one stale MIDI Learn UI test still using a 200 ms clock
+advance despite the production 650 ms settle contract; the regression now
+advances 700 ms and passes in isolation. The clean complete rerun passed 1,114
+tests, with 13 opt-in tests ignored.
+
+Historical research, audition generation, exhaustive opt-in matrices,
+benchmarks, hardware tests, Clippy, release builds, JACK, synth, external MIDI,
+audible playback, and recording were intentionally skipped. Test-only fake
+sequencer state covered the active-transport refusal without starting a
+playback or hardware path.
 
 ## 2026-09-02 user-owned npm and Codex installation
 

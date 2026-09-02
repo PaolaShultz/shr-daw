@@ -25,7 +25,7 @@ pub const TIMING_UNITS_PER_ROW: i8 = 96;
 pub const MAX_CELL_NUDGE: i8 = TIMING_UNITS_PER_ROW / 2;
 const MAX_PROJECT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PROJECT_PATTERNS: usize = 256;
-const MAX_ARRANGEMENT_STEPS: usize = 4096;
+pub(crate) const MAX_ARRANGEMENT_STEPS: usize = 4096;
 pub(crate) const MAX_PROJECT_CELLS: usize = 1_048_576;
 const MAX_SETUP_MESSAGES_PER_PAGE: usize = 256;
 pub const MAX_AUTOMATION_LANES_PER_PATTERN: usize = 128;
@@ -946,6 +946,59 @@ impl Song {
         }
         self.order.insert(index, pattern);
         Ok(index)
+    }
+
+    pub(crate) fn arrangement_pattern_rows(&self, number: u16) -> Result<usize> {
+        let pattern = self
+            .patterns
+            .get(&number)
+            .with_context(|| format!("Pattern {number:02} is missing"))?;
+        pattern
+            .validate()
+            .with_context(|| format!("Pattern {number:02} is invalid"))?;
+        Ok(pattern.rows.len())
+    }
+
+    /// Replace only the Arrangement after the complete prospective order has
+    /// been prepared and validated. Pattern records are neither copied nor
+    /// changed by this transaction.
+    pub(crate) fn replace_arrangement(&mut self, order: Vec<u16>) -> Result<()> {
+        self.validate().context("current Project is invalid")?;
+        self.validate_arrangement_order(&order)?;
+        self.order = order;
+        Ok(())
+    }
+
+    /// Append a prepared group as one Arrangement transaction. A failed
+    /// allocation or validation leaves the existing order untouched.
+    pub(crate) fn append_arrangement(&mut self, patterns: &[u16]) -> Result<usize> {
+        self.validate().context("current Project is invalid")?;
+        let first = self.order.len();
+        let total = first
+            .checked_add(patterns.len())
+            .context("arrangement step count overflow")?;
+        if total > MAX_ARRANGEMENT_STEPS {
+            bail!("arrangement would exceed {MAX_ARRANGEMENT_STEPS} steps");
+        }
+        let mut order = Vec::new();
+        order
+            .try_reserve_exact(total)
+            .context("could not prepare Arrangement draft")?;
+        order.extend_from_slice(&self.order);
+        order.extend_from_slice(patterns);
+        self.validate_arrangement_order(&order)?;
+        self.order = order;
+        Ok(first)
+    }
+
+    fn validate_arrangement_order(&self, order: &[u16]) -> Result<()> {
+        if order.is_empty() || order.len() > MAX_ARRANGEMENT_STEPS {
+            bail!("arrangement needs 1..={MAX_ARRANGEMENT_STEPS} steps");
+        }
+        for number in order {
+            self.arrangement_pattern_rows(*number)?;
+        }
+        Ok(())
     }
 
     pub fn pattern_reference_count(&self, number: u16) -> usize {
