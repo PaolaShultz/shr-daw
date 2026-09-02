@@ -248,14 +248,14 @@ plan](PI5_HEADROOM_PLAN.md).
 
 ## Irregular Patterns, swing, and groove timing
 
-Arbitrary Pattern shortening/growing, independent early/late hits,
-Pattern-wide swing, deterministic groove tools, and timing-aware tracker REC
-are implemented. Their current contracts live in [the tracker
-manual](TRACKER.md), [rhythm workflow acceptance](RHYTHM_WORKFLOW_ACCEPTANCE.md),
-and the owner-directed FT2 Edit `SIZE` work in
-[Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md). Only optional
-formal odd-meter/grouping metadata from the [legacy rhythm
-proposal](POST_COMPETITION_RHYTHM_PLAN.md) remains an unscheduled idea.
+The post-competition plan for arbitrary Pattern shortening/growing, individual
+early/late hits, Pattern-wide swing, groove tools, expressive tracker capture,
+and optional formal odd-meter metadata is in the [legacy rhythm
+proposal](POST_COMPETITION_RHYTHM_PLAN.md). Its first planned phase uses the
+existing arbitrary row-count scheduler. Its earlier transactional Length
+surface is superseded by the owner-directed FT2 Edit `SIZE` page in
+[Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md); the later timing,
+swing, groove, and meter phases remain applicable.
 
 ## Unreasonable but useful challenges
 

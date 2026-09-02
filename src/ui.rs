@@ -15625,7 +15625,7 @@ impl App {
             self.help_previous_page_select_mode = self.page_select_mode;
         }
         self.set_screen(Screen::Help);
-        self.web_help_status = "LOCAL HELP · SHARE FOR PHONE".into();
+        self.start_web_help();
         self.status.clear();
     }
     fn close_help(&mut self) {
@@ -15637,13 +15637,12 @@ impl App {
         self.page_select_mode = self.help_previous_page_select_mode;
         self.status.clear();
     }
-    fn toggle_web_help(&mut self) {
-        if self.web_help.take().is_some() {
-            self.web_help_status = "LOCAL HELP · WEB SHARE STOPPED".into();
+    fn start_web_help(&mut self) {
+        if self.web_help.is_some() {
             return;
         }
         if !self.web_help_enabled {
-            self.web_help_status = "WEB SHARE DISABLED".into();
+            self.web_help_status = "web help unavailable".into();
             return;
         }
         match help::start_web_help() {
@@ -17087,7 +17086,6 @@ fn perform(
             Action::Home => a.help_selected = 0,
             Action::End => a.help_selected = help::lines(HELP_TEXT_WIDTH).len().saturating_sub(1),
             Action::Activate => a.activate_help(),
-            Action::ToggleWebHelp => a.toggle_web_help(),
             Action::Back => a.close_help(),
             Action::OpenHelp => {}
             Action::Quit | Action::StopAll => unreachable!("handled before help dispatch"),
@@ -17513,7 +17511,6 @@ fn perform(
         }
         Action::OpenIdeas => a.open_ideas(),
         Action::OpenHelp => a.open_help(),
-        Action::ToggleWebHelp => a.toggle_web_help(),
         Action::OpenControllerLearn => a.begin_controller_learn(),
         Action::OpenTracker => {
             let entry = a.prepare_first_tracker_instrument();
@@ -18588,7 +18585,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::PageDown => Some(Action::PageDown),
             KeyCode::Home => Some(Action::Home),
             KeyCode::End => Some(Action::End),
-            KeyCode::Char('w') | KeyCode::Char('W') => Some(Action::ToggleWebHelp),
             KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
             KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
             _ => None,
@@ -21534,15 +21530,16 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         a.help_offset = a.help_selected + 1 - rows;
     }
     a.hits.list = body;
-    let web_status = a.web_help_status.as_str();
-    let web_fault = web_status.starts_with("WEB SHARE FAILED");
+    let web_status = if a.web_help_status == "web help unavailable" {
+        "WEB OFFLINE · local help active"
+    } else {
+        a.web_help_status.as_str()
+    };
     f.render_widget(
         Paragraph::new(truncate(web_status, z.width as usize)).style(
             Style::default()
                 .fg(if a.web_help.is_some() {
                     Color::LightYellow
-                } else if web_fault {
-                    Color::Yellow
                 } else {
                     Color::DarkGray
                 })
@@ -23492,12 +23489,6 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 continue;
             };
             label
-        } else if slot.dispatch() == Some(Action::ToggleWebHelp) {
-            if a.web_help.is_some() {
-                "WEB OFF"
-            } else {
-                "SHARE"
-            }
         } else if slot.dispatch() == Some(Action::BusMute)
             && a.bus_selected < crate::final_bus::SOURCE_COUNT
             && BusSource::ALL[a.bus_selected] == BusSource::Input
@@ -26348,7 +26339,7 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
             app.status = "Compact Bass · 18.4 s · ready to inspect".into();
         }
         ScreenshotScenario::Help => {
-            app.web_help_status = "LOCAL HELP · SHARE FOR PHONE".into();
+            app.web_help_status = "Local help · LAN page not started for screenshot".into();
             app.help_selected = 2;
             app.help_offset = 0;
             app.status = "turn to move · OPEN follows section links".into();
@@ -34291,19 +34282,13 @@ release = 0.4
     fn help_opens_links_and_returns_to_previous_screen() {
         let p = presets();
         let mut a = app(&p);
-        let (tx, _rx) = mpsc::channel();
         a.screen = Screen::Tracker;
 
         perform(Action::OpenHelp, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Help);
         assert_eq!(a.help_previous, Screen::Tracker);
         assert!(a.status.is_empty());
-        assert_eq!(a.web_help_status, "LOCAL HELP · SHARE FOR PHONE");
-        assert!(a.web_help.is_none());
-
-        key(KeyCode::Char('W'), &mut a, Path::new("/none"), &tx);
-        assert_eq!(a.web_help_status, "WEB SHARE DISABLED");
-        assert!(a.web_help.is_none());
+        assert_eq!(a.web_help_status, "web help unavailable");
 
         a.help_selected = help::lines(38)
             .iter()

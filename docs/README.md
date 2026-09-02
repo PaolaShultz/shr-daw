@@ -144,8 +144,8 @@ setup guide.
   order, evidence boundaries, and the rule that keeps unrelated ideas out of
   the current track without treating `0.x` as production releases.
 - [Sequencer workflow priorities](SEQUENCER_WORKFLOW_PRIORITIES.md) — current
-  hardware-sequencer comparison, USB-only hardware boundary, the seven
-  implemented priorities, and the remaining unscheduled expressive-MIDI gap.
+  hardware-sequencer comparison, USB-only hardware boundary, ranked software
+  gaps, and the bounded Pattern Undo/Redo plus Snapshot implementation plan.
 - [Future improvements](FUTURE_IMPROVEMENTS.md) — unscheduled smart musical
   assistance, deferred routing and product ideas, and the deliberately
   unreasonable challenges.
@@ -158,5 +158,4 @@ setup guide.
 - [Legacy mixer and aux proposal](POST_COMPETITION_MIXER_AUX_PLAN.md) —
   multi-strip mixer and shared-aux migration, retained from the early sprint.
 - [Legacy rhythm proposal](POST_COMPETITION_RHYTHM_PLAN.md) — arbitrary Pattern
-  length/timing work now implemented elsewhere plus the remaining optional
-  formal-meter proposal.
+  length, microtiming, swing, groove tools, and optional formal meter.

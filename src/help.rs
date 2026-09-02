@@ -8,6 +8,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 const HELP_MARKDOWN: &str = include_str!("../docs/HELP.md");
+const WEB_HELP_PORT: u16 = 80;
 const WEB_HELP_PATH: &str = "/help";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -114,21 +115,14 @@ pub enum WebHelpUnavailable {
 
 impl WebHelpUnavailable {
     pub fn label(&self) -> &'static str {
-        match self {
-            Self::NoLanIp => "WEB SHARE FAILED · NO LAN ADDRESS",
-            Self::PortUnavailable => "WEB SHARE FAILED · CANNOT LISTEN",
-        }
+        "web help unavailable"
     }
 }
 
 pub fn start_web_help() -> Result<WebHelpServer, WebHelpUnavailable> {
     let ip = lan_ipv4().ok_or(WebHelpUnavailable::NoLanIp)?;
-    let listener = bind_web_help(SocketAddr::from((ip, 0)))?;
-    let port = listener
-        .local_addr()
-        .map_err(|_| WebHelpUnavailable::PortUnavailable)?
-        .port();
-    let url = format!("http://{ip}:{port}{WEB_HELP_PATH}");
+    let listener = bind_web_help(SocketAddr::from(([0, 0, 0, 0], WEB_HELP_PORT)))?;
+    let url = format!("http://{ip}{WEB_HELP_PATH}");
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
     let html = Arc::<str>::from(markdown_html());
@@ -465,14 +459,5 @@ mod tests {
             bind_web_help(address),
             Err(WebHelpUnavailable::PortUnavailable)
         ));
-    }
-
-    #[test]
-    fn zero_port_uses_an_os_assigned_listener_on_only_the_requested_address() {
-        let listener = bind_web_help(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
-        let address = listener.local_addr().unwrap();
-
-        assert_eq!(address.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert_ne!(address.port(), 0);
     }
 }

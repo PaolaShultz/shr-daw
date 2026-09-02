@@ -2,14 +2,12 @@
 
 Created: 2026-07-19
 
-Status: historical proposal archive; Parts 1–4 were superseded or implemented,
-and optional formal meter/grouping remains unscheduled
+Status: proposal archive, not current behavior or scheduled scope
 
 The owner-directed FT2 Edit `SIZE` page in
 [Future musical sketch helpers](FUTURE_MUSICAL_HELPERS.md) supersedes Part 1's
-older standalone `LENGTH` interaction. Parts 2–4 are implemented under the
-current [rhythm workflow acceptance](RHYTHM_WORKFLOW_ACCEPTANCE.md). Part 5's
-formal odd-meter/grouping metadata remains an unscheduled proposal.
+older standalone `LENGTH` interaction. Parts 2–5 remain the timing, swing,
+groove, and optional-meter plan.
 
 This document was written for work after an early competition-oriented sprint.
 No application or submission was made. The work is deliberately split into
