@@ -78,6 +78,11 @@ test clock now waits 700 ms, the isolated regression passes, and the complete
 suite passes cleanly. A later all-build pass repeated the locked check and
 complete normal suite with the same 1,114/0/13 result, then produced both
 locked artifacts: DEV in 2m14s at 1,537,568 KiB peak RSS and REL in 2m59s at
-1,548,464 KiB peak RSS. Historical research, audition generation, benchmarks,
-hardware tests, Clippy, JACK, synth, external MIDI, audible playback, and
+1,548,464 KiB peak RSS. The same explicit full-suite request then ran all 13
+opt-in historical, exhaustive, callback-cost, and private evidence-renderer
+tests offline. Eleven passed in one serial invocation. The two drum renderers
+refused pre-created destinations as designed, then each passed with a fresh
+create-only child path. The ignored evidence directory contains 52 files
+(60 MiB) below `user/full-suite-20260902-4zTh7d/` and remains private.
+Hardware tests, Clippy, JACK, synth, external MIDI, audible playback, and
 recording were intentionally not run.

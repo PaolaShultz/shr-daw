@@ -42,9 +42,9 @@ tests, with 13 opt-in tests ignored.
 
 Historical research, audition generation, exhaustive opt-in matrices,
 benchmarks, hardware tests, Clippy, JACK, synth, external MIDI, audible
-playback, and recording were intentionally skipped. Test-only fake sequencer
-state covered the active-transport refusal without starting a playback or
-hardware path.
+playback, and recording were intentionally skipped during that scoped pass.
+Test-only fake sequencer state covered the active-transport refusal without
+starting a playback or hardware path.
 
 A later all-build pass again used exact Rust 1.97.1 and repeated
 `cargo check --locked` plus the complete normal suite. The suite passed 1,114
@@ -54,6 +54,17 @@ peak RSS, and the locked optimized REL build completed in 2m59s at 1,548,464
 KiB peak RSS. Both AArch64 artifacts are present at their canonical target
 paths, and plain `shr` will use the refreshed REL binary. The three existing
 nonfatal dead-code warnings remain unchanged. Neither artifact was launched.
+
+The same explicit full-suite request then ran all 13 opt-in tests offline and
+serially. Eleven historical, exhaustive, callback-cost, and private-renderer
+tests passed together. The two drum renderers initially refused because their
+destinations had been pre-created; this was an invocation error enforcing
+their create-only safety boundary, not a source failure. Each passed when
+rerun with a fresh nonexistent child path. The 52 generated private evidence
+files occupy 60 MiB below ignored
+`user/full-suite-20260902-4zTh7d/`; do not stage or publish them. No source
+change was required. Hardware tests, Clippy, JACK, synth, external MIDI,
+audible playback, and recording remained outside the pass.
 
 ## 2026-09-02 user-owned npm and Codex installation
 
