@@ -41,10 +41,19 @@ advances 700 ms and passes in isolation. The clean complete rerun passed 1,114
 tests, with 13 opt-in tests ignored.
 
 Historical research, audition generation, exhaustive opt-in matrices,
-benchmarks, hardware tests, Clippy, release builds, JACK, synth, external MIDI,
-audible playback, and recording were intentionally skipped. Test-only fake
-sequencer state covered the active-transport refusal without starting a
-playback or hardware path.
+benchmarks, hardware tests, Clippy, JACK, synth, external MIDI, audible
+playback, and recording were intentionally skipped. Test-only fake sequencer
+state covered the active-transport refusal without starting a playback or
+hardware path.
+
+A later all-build pass again used exact Rust 1.97.1 and repeated
+`cargo check --locked` plus the complete normal suite. The suite passed 1,114
+tests with zero failures and 13 documented opt-in tests ignored; no source
+repair was required. The locked DEV build completed in 2m14s at 1,537,568 KiB
+peak RSS, and the locked optimized REL build completed in 2m59s at 1,548,464
+KiB peak RSS. Both AArch64 artifacts are present at their canonical target
+paths, and plain `shr` will use the refreshed REL binary. The three existing
+nonfatal dead-code warnings remain unchanged. Neither artifact was launched.
 
 ## 2026-09-02 user-owned npm and Codex installation
 

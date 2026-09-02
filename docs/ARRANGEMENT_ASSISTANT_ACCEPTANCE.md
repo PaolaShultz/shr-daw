@@ -75,6 +75,9 @@ production suite passed 1,114 tests with 13 opt-in tests ignored.
 The first complete-suite run found one stale MIDI Learn display regression
 that still waited 200 ms despite the production 650 ms settling contract. Its
 test clock now waits 700 ms, the isolated regression passes, and the complete
-suite passes cleanly. Historical research, audition generation, benchmarks,
-hardware tests, release builds, Clippy, JACK, synth, external MIDI, audible
-playback, and recording were intentionally not run.
+suite passes cleanly. A later all-build pass repeated the locked check and
+complete normal suite with the same 1,114/0/13 result, then produced both
+locked artifacts: DEV in 2m14s at 1,537,568 KiB peak RSS and REL in 2m59s at
+1,548,464 KiB peak RSS. Historical research, audition generation, benchmarks,
+hardware tests, Clippy, JACK, synth, external MIDI, audible playback, and
+recording were intentionally not run.
