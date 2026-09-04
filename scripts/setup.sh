@@ -744,7 +744,7 @@ elif ((${#cards[@]})) && ask_yes_no \
       cp -p "$HOME/.jackdrc" "$HOME/.jackdrc.bak-$STAMP"
       JACKDRC_BACKUP="$HOME/.jackdrc.bak-$STAMP"
     fi
-    printf '/usr/bin/jackd -t 2000 -R -P 95 -d alsa -d hw:%s -r %s -p %s -n %s -X seq -s -S\n' \
+    printf '/usr/bin/jackd -t 2000 -R -P 95 --sync -d alsa -d hw:%s -r %s -p %s -n %s -X seq -s -S\n' \
       "$card" "$sample_rate" "$period_size" "$periods" >"$HOME/.jackdrc"
     JACKDRC_WRITTEN=true
     printf 'Wrote %s; start or restart JACK yourself only when it is safe.\n' "$HOME/.jackdrc"

@@ -706,7 +706,7 @@ validate_jack_service_values() {
 
 jack_service_command() {
   local card=$1 rate=$2 period_size=$3 periods=$4
-  printf '/usr/bin/jackd -t 2000 -R -P 95 -d alsa -d hw:%s -r %s -p %s -n %s -X seq -s -S\n' \
+  printf '/usr/bin/jackd -t 2000 -R -P 95 --sync -d alsa -d hw:%s -r %s -p %s -n %s -X seq -s -S\n' \
     "$card" "$rate" "$period_size" "$periods"
 }
 

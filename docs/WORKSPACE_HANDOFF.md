@@ -111,6 +111,14 @@ create-only drum renderers passed when each received a fresh nonexistent
 destination. Their generated evidence remains below ignored `user/` and must
 not be staged or published.
 
+On 2026-09-04, the managed JACK generator was changed to select JACK2
+synchronous mode before the ALSA backend. The 29-test isolated audio-policy
+suite, ShellCheck, and shell syntax passed. A live 48 kHz/128-frame/two-period
+run reported 128 capture plus 128 playback frames. A representative two-NAM
+plus cabinet chain ran for five minutes at roughly 26–34% JACK DSP load with
+zero xruns and 51–55°C observed temperature. This is JACK graph-latency and
+scheduling evidence, not a physical analogue loopback measurement.
+
 Hardware tests, Clippy, JACK, synth processes, external MIDI, audible playback,
 recording, listening, and Raspberry Pi callback/headroom acceptance were not
 part of those passes.

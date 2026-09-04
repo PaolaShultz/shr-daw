@@ -491,11 +491,15 @@ pass 'JACK enabled/disabled/active/inactive/duplicate/external states'
 managed_jack="$(new_fixture managed-jack)"
 output="$(run_tuner "$managed_jack" jack-plan patch A96 48000 128 3)"
 assert_contains "$output" 'stable ALSA card:  A96' 'managed JACK plan uses ALSA name'
+assert_contains "$output" '--sync -d alsa' \
+  'managed JACK plan selects synchronous graph processing before the backend'
 run_tuner "$managed_jack" jack-install patch A96 48000 128 3 >/dev/null
 [[ "$(stat -c '%a' "$managed_jack/var/lib/shr-audio-tune/jack-service/manifest")" == 644 ]] ||
   fail 'managed JACK ownership manifest is not doctor-readable'
 assert_file_contains "$managed_jack/etc/jackdrc" 'hw:A96' \
   'managed JACK command uses stable ALSA name'
+assert_file_contains "$managed_jack/etc/jackdrc" '95 --sync -d alsa' \
+  'managed JACK command avoids one asynchronous graph period'
 assert_file_not_contains "$managed_jack/etc/jackdrc" 'hw:1 ' \
   'managed JACK command avoids numeric card order'
 assert_file_contains "$managed_jack/etc/systemd/system/jack.service" \
@@ -538,7 +542,7 @@ printf '123\n' >"$managed_state/jack.service.MainPID"
 mkdir -p "$managed_jack/proc/123"
 printf 'jackd\n' >"$managed_jack/proc/123/comm"
 printf 'Cpus_allowed_list:\t0-3\n' >"$managed_jack/proc/123/status"
-printf '%s\0' /usr/bin/jackd -t 2000 -R -P 95 -d alsa -d hw:A96 \
+printf '%s\0' /usr/bin/jackd -t 2000 -R -P 95 --sync -d alsa -d hw:A96 \
   -r 48000 -p 128 -n 3 -X seq -s -S >"$managed_jack/proc/123/cmdline"
 output="$(run_tuner "$managed_jack" doctor none)"
 assert_contains "$output" 'managed headless JACK service disables session-bus audio reservation' \
@@ -591,11 +595,13 @@ fake_bin="$TEST_ROOT/fake-bin"
 mkdir -p "$fake_bin"
 ln -s /usr/bin/dirname "$fake_bin/dirname"
 ln -s /usr/bin/pwd "$fake_bin/pwd"
+ln -s /usr/bin/python3 "$fake_bin/python3"
+ln -s /usr/bin/sed "$fake_bin/sed"
 ln -s /usr/bin/apt-get "$fake_bin/apt-get"
 if output="$(PATH="$fake_bin" /usr/bin/bash "$INSTALLER" --plan 2>&1)"; then
   fail 'missing sudo preflight was accepted'
 fi
-assert_contains "$output" 'require sudo' 'missing sudo failure is precise'
+assert_contains "$output" 'requires sudo' 'missing sudo failure is precise'
 find "$fake_bin/apt-get" -maxdepth 0 -delete
 ln -s /usr/bin/sudo "$fake_bin/sudo"
 if output="$(PATH="$fake_bin" /usr/bin/bash "$INSTALLER" --plan 2>&1)"; then
@@ -631,6 +637,8 @@ rg -q --fixed-strings \
   "$ROOT/scripts/setup.sh" || fail 'stock JACK boot service is not the setup default'
 rg -q --fixed-strings 'jack-install "${USER:?USER is not set}"' \
   "$ROOT/scripts/setup.sh" || fail 'setup does not use the owned JACK installer'
+rg -q --fixed-strings -- '--sync -d alsa' "$ROOT/scripts/setup.sh" ||
+  fail 'setup fallback JACK command omits synchronous graph processing'
 rg -q 'JACK was not restarted' "$TUNER" ||
   fail 'no-JACK-restart contract is missing'
 if rg -n '^[[:space:]]*(sudo[[:space:]]+)?systemctl(_safe)?[[:space:]]+(start|restart)[[:space:]]+jack' \

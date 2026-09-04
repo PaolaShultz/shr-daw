@@ -270,7 +270,11 @@ both `shsynth.conf` and `controller.conf`. It then:
   order can change. The service uses `hw:NAME`, runs as the musician account,
   retries after a temporarily absent interface, and sets
   `JACK_NO_AUDIO_RESERVATION=1` because a headless system unit has no desktop
-  session bus. It is enabled but never started by setup.
+  session bus. JACK2 synchronous mode is selected before the ALSA backend so
+  the graph completes into the next hardware period instead of playing the
+  preceding graph cycle with one extra period of latency. The backend's final
+  `-S` remains the separate ALSA short-sample-format preference. The service is
+  enabled but never started by setup.
 - The wizard may write `~/.jackdrc` only after the managed service is declined,
   and only when no system JACK service already owns lifecycle. Patchbox's
   shared service and `/etc/jackdrc` remain Patchbox-owned.
@@ -462,8 +466,10 @@ Commands:
   and bounded timing values without mutation.
 - `jack-install` refuses a live or external JACK owner, creates marked
   `/etc/jackdrc` and `jack.service`, records their hashes, and enables but does
-  not start the service. `jack-remove` refuses to stop live audio and removes
-  only unchanged marked files.
+  not start the service. Its command selects JACK2 synchronous mode before the
+  ALSA backend; this avoids the asynchronous engine's extra graph period while
+  retaining the requested ALSA playback-period count. `jack-remove` refuses to
+  stop live audio and removes only unchanged marked files.
 - `runtime-start` and `runtime-stop` are internal systemd-service entry points,
   not normal maintainer commands.
 
