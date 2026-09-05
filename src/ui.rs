@@ -30661,6 +30661,32 @@ release = 0.4
     }
 
     #[test]
+    fn pressure_chain_surface_keeps_sweep_and_three_aux_slots_at_native_size() {
+        let presets = presets();
+        let mut app = app(&presets);
+        app.screen = Screen::Playback;
+        app.playing = Some(moj_preset(
+            preset::MojModel::PressureChain,
+            "Pressure Chain Deep Cascade",
+        ));
+        *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+        app.values = moj_controls(preset::MojModel::PressureChain)
+            .iter()
+            .map(|control| (control.cc, 0.5))
+            .collect();
+        app.original_values = app.values.clone();
+        let text = buffer_text(&render_app(&mut app, 40, 13));
+        for control in moj_controls(preset::MojModel::PressureChain) {
+            let label = truncate(control.name, 8);
+            assert!(text.contains(&label), "missing {label} in {text}");
+        }
+        assert!(app.legacy_aux_surface_active());
+        app.apply_relative_rotary(Instant::now(), 4, 1);
+        assert!(app.values[&24] > 0.5);
+        assert!(!app.values.contains_key(&7));
+    }
+
+    #[test]
     fn six_op_playback_uses_its_model_specific_twelve_controls() {
         let presets = presets();
         let mut app = app(&presets);

@@ -18,7 +18,7 @@ audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 | synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
 | Yoshimi | `.xiz` sounds and banks | Melodic synth | Read-only catalog and playback |
 | FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, and Dual Filter sounds | Melodic synth | Model-specific controls; Dual Filter uses 15 controls plus a reversible core click; private Overwrite or Save New |
+| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, and Pressure Chain sounds | Melodic synth | Model-specific controls; Dual Filter uses 15 controls plus a reversible core click; private Overwrite or Save New |
 | SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments; read-only in SHR |
 | SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
@@ -61,8 +61,8 @@ Project keeps its stored routes.
 
 ## Moj Sint sounds
 
-Moj Sint is SHR-DAW's editable in-house synthesis family. The current installer
-pins a 16-start catalog with these five models:
+Moj Sint is SHR-DAW's editable in-house synthesis family. The installer pins
+a 24-start catalog with these seven models:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
   Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
@@ -76,26 +76,28 @@ pins a 16-start catalog with these five models:
 - Bass Matrix: one transformable start with a phase-locked sub/body and a
   separate punch, growl, metal, drive, filter, and unstable character path.
 
-The current SHR-DAW source also supports Moj Sint preset schema 8, the Dual
-Filter model, and its five cleared starts: Industrial Lead, Serial Bass,
-Counter Growl, Envelope Punch, and Topology Motion. Those starts require a
-newer Moj Sint checkout than the exact commit in
-`install/compatibility.json`; they are not part of the current public installer
-payload.
+- Dual Filter: Industrial Lead, Serial Bass, Counter Growl, Envelope Punch,
+  and Topology Motion;
+- Pressure Chain: Deep Cascade, Body Tap, and Cross Feed. Each preset selects
+  one monophonic topology with velocity-coupled pressure and overlapping-note
+  slide. Releasing the latest note returns to the most recently held note.
+
+Pressure Chain requires Moj Sint preset schema 9. The installation pin contains
+that engine and all 24 cleared starts. Existing installations need a matching
+host binary update before loading the new model; source changes alone do not
+replace a running or installed executable.
 
 Presets groups the available catalog in the fixed model order Model D, Six-Op
-PM, Strange Oscillator, Swarm Machine, Bass Matrix, then Dual Filter when the
-configured Moj Sint provides it. Visible identities use
+PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, then Pressure Chain. Visible identities use
 one model letter and a two-digit number local to that model: `D01`, `P01`,
-`O01`, `S01`, `B01`, and `F01`. Opening or switching to Moj Sint starts at
+`O01`, `S01`, `B01`, `F01`, and `C01`. Opening or switching to Moj Sint starts at
 `D01 Full Bass`; letter-jump follows those visible model letters. In FT2
 **ROUTE**, choosing Moj Sint adds an explicit `ENGINE → MODEL → PATCH`
 hierarchy. Changing the model selects that model's first available patch, and
 patch browsing never crosses the selected model boundary. Apply keeps the
 complete live-auditioned route; Cancel restores its opening snapshot.
 
-Playback and FT2 **PARAM** use the same 3×5 control surface. The five models in
-the pinned installer catalog use the first 12 positions for synthesis and the
+Playback and FT2 **PARAM** use the same 3×5 control surface. The first five models use the first 12 positions for synthesis and the
 last three for Project aux sends. Their synthesis labels are:
 
 | Positions | Model D | Six-Op PM | Strange Oscillator | Swarm Machine | Bass Matrix |
@@ -105,10 +107,13 @@ last three for Project aux sends. Their synthesis labels are:
 | 6–8 | Motion, Depth, Space | Key Scale, Velocity, Motion | Chaos, Color, Space | Motion, Color, Space | Drive, Filter, Unstable |
 | 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
 
-Dual Filter uses all 15 positions for synthesis when a compatible schema 8
-Moj Sint is configured, so it has no aux controls on this surface.
+Dual Filter uses all 15 positions for synthesis, so it has no aux controls
+on this surface. Pressure Chain uses Source, Shape, Cutoff, Resonance, Sweep,
+F Decay, Pressure, Bite, then amp Attack, Decay, Sustain, Release. Positions
+13–15 remain AUX sends. Its fifth rotary is Sweep; no timbre control is hidden.
 
-Moj timbre and ADSR retain their established CCs. Physical position 5 uses
+Moj timbre and ADSR retain their established CCs. For the first five models,
+physical position 5 uses
 MIDI CC7 as the shared instrument-volume contract. Position 5 is a mapped
 direction-only rotary. Its smoothed gain runs from
 silence to the preset's normal maximum and does not enter timbre DSP. synthv1
@@ -123,7 +128,7 @@ effective value by signed relative steps, preventing jumps after a load or reset
 Filter also restores its saved INDUSTRIAL or COUNTER core.
 **SAVE** offers Overwrite, Save New, and Cancel. Factory/system sounds are
 read-only, so Overwrite redirects to the next private `User NNN` sound. All
-six Moj models keep separate private namespaces. A successful save becomes the
+seven Moj models keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable

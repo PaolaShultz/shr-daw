@@ -102,16 +102,18 @@ pub enum MojModel {
     SwarmMachine,
     BassMatrix,
     DualFilter,
+    PressureChain,
 }
 
 impl MojModel {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::ModelD,
         Self::SixOpPm,
         Self::StrangeOscillator,
         Self::SwarmMachine,
         Self::BassMatrix,
         Self::DualFilter,
+        Self::PressureChain,
     ];
 
     pub const fn stable_id(self) -> &'static str {
@@ -122,6 +124,7 @@ impl MojModel {
             Self::SwarmMachine => "swarm_machine",
             Self::BassMatrix => "bass_matrix",
             Self::DualFilter => "dual_filter",
+            Self::PressureChain => "pressure_chain",
         }
     }
 
@@ -133,6 +136,7 @@ impl MojModel {
             Self::SwarmMachine => "Swarm Machine",
             Self::BassMatrix => "Bass Matrix",
             Self::DualFilter => "Dual Filter",
+            Self::PressureChain => "Pressure Chain",
         }
     }
 
@@ -144,6 +148,7 @@ impl MojModel {
             Self::SwarmMachine => 'S',
             Self::BassMatrix => 'B',
             Self::DualFilter => 'F',
+            Self::PressureChain => 'C',
         }
     }
 }
@@ -270,6 +275,7 @@ fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
         MojModel::SwarmMachine => ("SWARM", &["Swarm Machine", "Swarm", "SWARM"]),
         MojModel::BassMatrix => ("B-MAT", &["Bass Matrix", "B-MAT"]),
         MojModel::DualFilter => ("D-FLT", &["Dual Filter", "D-FLT"]),
+        MojModel::PressureChain => ("P-CHN", &["Pressure Chain", "P-CHN"]),
     };
     for prefix in redundant_prefixes {
         if sound
@@ -318,6 +324,7 @@ pub fn moj_catalog_display_name(presets: &[Preset], index: usize) -> Option<Stri
         MojModel::SwarmMachine => "SWARM",
         MojModel::BassMatrix => "B-MAT",
         MojModel::DualFilter => "D-FLT",
+        MojModel::PressureChain => "P-CHN",
     };
     let sound = without_number
         .strip_prefix(old_code)
@@ -986,6 +993,78 @@ impl MojDualFilterControls {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MojPressureTopology {
+    DeepCascade,
+    BodyTap,
+    CrossFeed,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosPressure {
+    source: f32,
+    shape: f32,
+    cutoff: f32,
+    resonance: f32,
+    sweep: f32,
+    filter_decay: f32,
+    pressure: f32,
+    bite: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+impl MojMacrosPressure {
+    fn values(self) -> [f32; 15] {
+        [
+            self.source,
+            self.shape,
+            self.cutoff,
+            self.resonance,
+            self.sweep,
+            self.filter_decay,
+            self.pressure,
+            self.bite,
+            self.attack,
+            self.decay,
+            self.sustain,
+            self.release,
+            0.5,
+            0.5,
+            0.5,
+        ]
+    }
+    fn from_values(values: [f32; 15]) -> Self {
+        Self {
+            source: values[0],
+            shape: values[1],
+            cutoff: values[2],
+            resonance: values[3],
+            sweep: values[4],
+            filter_decay: values[5],
+            pressure: values[6],
+            bite: values[7],
+            attack: values[8],
+            decay: values[9],
+            sustain: values[10],
+            release: values[11],
+        }
+    }
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV9Pressure {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    instrument_volume: f32,
+    model: MojModel,
+    pressure_chain_topology: MojPressureTopology,
+    macros: MojMacrosPressure,
+}
 #[derive(Clone, Copy, Debug)]
 enum MojPatch {
     ModelD(MojModelDPatch),
@@ -994,6 +1073,7 @@ enum MojPatch {
     SwarmMachine(MojSwarmPatch),
     BassMatrix(MojBassMatrixPatch),
     DualFilter(MojDualFilterCore),
+    PressureChain(MojPressureTopology),
 }
 
 #[derive(Debug)]
@@ -1034,7 +1114,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
     let (name, model, voices, output_gain, instrument_volume, patch, values) = match version {
-        7 | 8 => {
+        7 | 8 | 9 => {
             let model = value
                 .get("model")
                 .and_then(toml::Value::as_str)
@@ -1125,9 +1205,11 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.macros.values(),
                     )
                 }
-                "dual_filter" if version == 8 => {
+                "dual_filter" if version >= 8 => {
                     let document: MojPresetV8DualFilter = toml::from_str(&source)?;
-                    if document.schema_version != 8 || document.model != MojModel::DualFilter {
+                    if document.schema_version != version as u32
+                        || document.model != MojModel::DualFilter
+                    {
                         bail!("invalid schema-8 Dual Filter identity");
                     }
                     (
@@ -1138,6 +1220,21 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.instrument_volume,
                         MojPatch::DualFilter(document.dual_filter_core),
                         document.controls.values(),
+                    )
+                }
+                "pressure_chain" if version == 9 => {
+                    let document: MojPresetV9Pressure = toml::from_str(&source)?;
+                    if document.model != MojModel::PressureChain || document.voices != 1 {
+                        bail!("invalid monophonic Pressure Chain identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::PressureChain(document.pressure_chain_topology),
+                        document.macros.values(),
                     )
                 }
                 _ => bail!("unknown current Moj Sint model"),
@@ -2305,6 +2402,18 @@ fn serialize_moj_sint(
                 controls: MojDualFilterControls::from_values(values),
             })?
         }
+        (MojModel::PressureChain, MojPatch::PressureChain(pressure_chain_topology)) => {
+            toml::to_string_pretty(&MojPresetV9Pressure {
+                schema_version: 9,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                instrument_volume,
+                model: MojModel::PressureChain,
+                pressure_chain_topology,
+                macros: MojMacrosPressure::from_values(values),
+            })?
+        }
         _ => bail!("Moj Sint model and patch identity do not match"),
     };
     // Round-trip through the same strict schema before publication.
@@ -2434,9 +2543,13 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
     if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        != Some(8)
+        != Some(if expected_model == MojModel::PressureChain {
+            9
+        } else {
+            8
+        })
     {
-        bail!("saved Moj Sint preset is not schema 8")
+        bail!("saved Moj Sint preset schema does not match its model")
     }
     match expected_model {
         MojModel::ModelD => {
@@ -2467,6 +2580,12 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
             let document: MojPresetV7BassMatrix = toml::from_str(source)?;
             if document.model != MojModel::BassMatrix {
                 bail!("saved Moj Sint Bass Matrix identity is invalid")
+            }
+        }
+        MojModel::PressureChain => {
+            let document: MojPresetV9Pressure = toml::from_str(source)?;
+            if document.model != MojModel::PressureChain || document.voices != 1 {
+                bail!("saved Moj Sint Pressure Chain identity is invalid")
             }
         }
         MojModel::DualFilter => {
@@ -3055,6 +3174,29 @@ sustain = 0.7
 release = 0.4
 "#
             .into(),
+            MojModel::PressureChain => r#"schema_version = 9
+name = "Pressure Chain Deep Cascade"
+voices = 1
+output_gain = 0.7
+instrument_volume = 1.0
+model = "pressure_chain"
+pressure_chain_topology = "deep_cascade"
+
+[macros]
+source = 0.35
+shape = 0.62
+cutoff = 0.32
+resonance = 0.68
+sweep = 0.72
+filter_decay = 0.38
+pressure = 0.70
+bite = 0.42
+attack = 0.10
+decay = 0.40
+sustain = 0.66
+release = 0.48
+"#
+            .into(),
             MojModel::DualFilter => r#"
 schema_version = 8
 name = "Factory Dual Filter"
@@ -3085,7 +3227,7 @@ amp_release = 0.7
     }
 
     #[test]
-    fn all_moj_models_save_as_strict_schema_eight_and_remain_model_scoped() {
+    fn all_moj_models_save_as_strict_schema_and_remain_model_scoped() {
         let base =
             std::env::temp_dir().join(format!("shsynth-user-moj-save-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
@@ -3119,7 +3261,11 @@ amp_release = 0.7
                 storage.moj_sint.join(model.stable_id())
             );
             let encoded = fs::read_to_string(path).unwrap();
-            assert!(encoded.contains("schema_version = 8"));
+            assert!(encoded.contains(if model == MojModel::PressureChain {
+                "schema_version = 9"
+            } else {
+                "schema_version = 8"
+            }));
             assert!(encoded.contains("instrument_volume = 0.37"));
             assert!(encoded.contains(&format!("model = {:?}", model.stable_id())));
             match model {
@@ -3149,6 +3295,11 @@ amp_release = 0.7
                     assert!(encoded.contains("bass_matrix_patch = \"transformer\""));
                     assert!(encoded.contains("body = 0.91"));
                     assert!(encoded.contains("character = 0.5"));
+                }
+                MojModel::PressureChain => {
+                    assert!(encoded.contains("pressure_chain_topology = \"deep_cascade\""));
+                    assert!(encoded.contains("source = 0.91"));
+                    assert!(encoded.contains("sweep = 0.72"));
                 }
                 MojModel::DualFilter => {
                     assert!(encoded.contains("dual_filter_core = \"counter\""));

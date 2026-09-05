@@ -451,6 +451,69 @@ pub const MOJ_BASS_MATRIX_CONTROLS: [MojControl; 12] = [
     },
 ];
 
+pub const MOJ_PRESSURE_CONTROLS: [MojControl; 12] = [
+    MojControl {
+        cc: 20,
+        name: "Source",
+        macro_id: "source",
+    },
+    MojControl {
+        cc: 21,
+        name: "Shape",
+        macro_id: "shape",
+    },
+    MojControl {
+        cc: 22,
+        name: "Cutoff",
+        macro_id: "cutoff",
+    },
+    MojControl {
+        cc: 23,
+        name: "Resonance",
+        macro_id: "resonance",
+    },
+    MojControl {
+        cc: 24,
+        name: "Sweep",
+        macro_id: "sweep",
+    },
+    MojControl {
+        cc: 25,
+        name: "F Decay",
+        macro_id: "filter_decay",
+    },
+    MojControl {
+        cc: 26,
+        name: "Pressure",
+        macro_id: "pressure",
+    },
+    MojControl {
+        cc: 27,
+        name: "Bite",
+        macro_id: "bite",
+    },
+    MojControl {
+        cc: 28,
+        name: "Attack",
+        macro_id: "attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Decay",
+        macro_id: "decay",
+    },
+    MojControl {
+        cc: 30,
+        name: "Sustain",
+        macro_id: "sustain",
+    },
+    MojControl {
+        cc: 31,
+        name: "Release",
+        macro_id: "release",
+    },
+];
+
 pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
     MojControl {
         cc: 20,
@@ -543,6 +606,7 @@ pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojContro
         crate::preset::MojModel::SwarmMachine => &MOJ_SWARM_CONTROLS,
         crate::preset::MojModel::BassMatrix => &MOJ_BASS_MATRIX_CONTROLS,
         crate::preset::MojModel::DualFilter => &MOJ_DUAL_FILTER_CONTROLS,
+        crate::preset::MojModel::PressureChain => &MOJ_PRESSURE_CONTROLS,
     }
 }
 
@@ -665,6 +729,10 @@ mod tests {
                 assert_eq!(controls.len(), 15);
                 assert_eq!(controls[6].macro_id, "structure");
                 assert_eq!(controls[14].cc, 34);
+            } else if model == crate::preset::MojModel::PressureChain {
+                assert_eq!(controls.len(), 12);
+                assert_eq!(controls[4].cc, 24);
+                assert_eq!(controls[4].macro_id, "sweep");
             } else {
                 assert_eq!(controls.len(), 12);
                 assert_eq!(controls[4].cc, 7);

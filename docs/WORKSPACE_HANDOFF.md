@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-02
+Updated: 2026-09-05
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -46,11 +46,20 @@ Machine-readable ownership remains in `Cargo.toml` and
 | Moj Sint 0.2.3 | exact Git revision installed as a managed external process |
 | SHR Sampler 0.1.2 | exact Git revision installed as a managed external process; accepted runtime range `>=0.1.2,<0.2.0` |
 
-The current Moj Sint installer revision contains 16 cleared factory starts
-through Bass Matrix. SHR-DAW source also supports Moj Sint schema 8, Dual
-Filter, and five additional cleared starts, but those require a newer Moj Sint
-revision than the compatibility file currently pins. Do not describe the
-21-start catalog as installed until the pin and payload are updated together.
+SHR source supports Moj Sint schema 9 and seven models, including monophonic
+Pressure Chain with Deep Cascade, Body Tap, and Cross Feed starts (24 cleared
+starts in the companion source catalog). Pressure Chain exposes all eight
+timbre values plus amp ADSR; position 5 is SWEEP and 13–15 remain AUX sends.
+Its one stereo return uses the existing Project instrument strip. The
+installer pins the compatible schema-9 engine and all 24 cleared starts.
+Existing installations still need matching binary updates; release binaries
+were not rebuilt during this integration.
+
+The non-audible integration pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6)
+on AArch64. Formatting, locked checks, 18 focused Moj regressions, and the
+normal SHR suite passed (1,128 tests, 14 ignored). Moj's normal all-target
+suite and focused live DSP tests also passed. Controller/listening and
+real-time hardware acceptance remain for the coordinated human session.
 
 [How SHR-DAW works](HOW_IT_WORKS.md) owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.
@@ -155,9 +164,6 @@ cleared files but must preserve same-named musician files.
 
 ## Genuine open work
 
-- Reconcile the Moj Sint compatibility pin and 16-start installation payload
-  with SHR-DAW's schema 8 and Dual Filter support before claiming a 21-start
-  installed catalog.
 - Run the MR18 procedure only when the user authorizes the borrowed-hardware
   session. Synthetic recorder tests do not prove 18-channel hardware capture.
 - Complete non-audible physical 40x13 overlay and navigation review before any
