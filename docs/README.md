@@ -90,6 +90,9 @@ configuration, or the architecture contracts.
 
 ## Measurements and audits
 
+- [Repository code review — 2026-09-05](CODE_REVIEW_2026-09-05.md) — prioritized
+  source findings, reproduced installer failures, and regression criteria for
+  later fixes.
 - [Phase 1 dry graph](PHASE1_AUDIO_GRAPH_MEASUREMENT.md) — owned-routing and
   bit-exact fallback checkpoint.
 - [Phase 2 insert effects](PHASE2_AUDIO_GRAPH_MEASUREMENT.md) — deterministic
