@@ -52,8 +52,9 @@ starts in the companion source catalog). Pressure Chain exposes all eight
 timbre values plus amp ADSR; position 5 is SWEEP and 13–15 remain AUX sends.
 Its one stereo return uses the existing Project instrument strip. The
 installer pins the compatible schema-9 engine and all 24 cleared starts.
-Existing installations still need matching binary updates; release binaries
-were not rebuilt during this integration.
+The subsequent authorized build pass refreshed this checkout’s debug and
+release binaries and the companion Moj host. It did not reinstall external
+payloads or restart running applications.
 
 The non-audible integration pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6)
 on AArch64. Formatting, locked checks, 18 focused Moj regressions, and the
@@ -104,7 +105,21 @@ and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
 
-The latest authorized combined pass used exact Rust 1.97.1 on 2026-09-02.
+The September 5 full pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6) on
+AArch64. Formatting, locked all-target/all-feature checks, 1,128 normal Rust
+tests, 11 Python helper tests, and 29 isolated audio-policy checks passed.
+All debug and release targets build; existing dead-code warnings remain.
+The 14 opt-in historical/exhaustive tests stayed ignored.
+
+Moj Sint passed 349 normal tests (35 ignored), warning-denied Clippy, audit,
+and licence/source checks. A release-only test allocator declaration was
+corrected; its five focused regressions pass in debug and release. Both build
+profiles complete. The fresh release host validates all 24 cleared presets,
+and paired offline renders of all three Pressure Chain topologies match
+byte-for-byte. No running host, JACK, MIDI, hardware, playback, or recording
+was started or restarted; listening and real-time headroom remain unverified.
+
+The September 2 combined pass used exact Rust 1.97.1.
 Formatting, locked check, all ten Arrangement-assistant regressions, the
 117-test generator-related filter, the four exact ROLL regressions, and the
 complete normal suite passed. The clean suite result was 1,114 passed, zero
