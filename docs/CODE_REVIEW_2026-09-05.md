@@ -1,7 +1,10 @@
 # Repository code review — 2026-09-05
 
 This report records **21 findings: 12 P1 and 9 P2**. It is a repair backlog,
-not an implementation change or a release sign-off. All findings are **open**.
+not a release sign-off. The original review findings are preserved below.
+Repairs for all 21 were implemented in `e6726d87dd745a0560561a06cd9510594f931307`.
+They remain **pending regression validation**, not closed; see the
+[implementation record](#implementation-record).
 
 Reviewed source: commit `4bda7603ab6b929dcae5aa68f8f125b77c801066`
 (`Record complete debug and release validation pass`). Source links and line
@@ -643,3 +646,51 @@ Remaining validation limits are not additional defect claims: real JACK
 shutdown/reconnection behavior, MIDI-device-specific timing, sustained disk
 pressure, and audio quality require later authorized evidence. Passing existing
 tests or fixing these 21 entries would not by itself prove those properties.
+
+
+## Implementation record
+
+Repair commit: `e6726d87dd745a0560561a06cd9510594f931307`.
+All IDs below refer to that implementation commit. The original source links
+above continue to refer to the reviewed revision, as stated at the beginning.
+
+| Findings | Implemented repair | Regression/source evidence prepared |
+| --- | --- | --- |
+| CR-01 | Rename saves the current Song, including same-stem edits | Extended Project rename regression checks current cells/order in memory and on disk, plus existing invalid-name/collision cases |
+| CR-02 | Snapshot errors stop before backup/mutation; recovery errors propagate | Routing rollback regression, learned-save read-failure regression, and shared snapshot/restore checks |
+| CR-03 | Preflight mixed final/temporary stems; separate recovered and failed outcomes | New recovery test covers every stem-publication boundary and repeat recovery; existing unsafe-manifest/symlink checks updated |
+| CR-04 | Callback-only DSP uses explicit interior mutability; owner caches meters and kit ID before activation | Callback ownership/accessor audit and new hardware-free concurrent meter-read test; aliasing-checker execution remains pending |
+| CR-05 | Graph and drums retain separate control-owner identities through scheduling/publication | Existing owner-clearing test now deliberately collides IDs; timeline test asserts drum owner survives scheduling |
+| CR-06 | Stopped sequencer acknowledges configuration replacement and retires old destinations | New same-worker configuration regression; mocked physical destination delivery remains pending |
+| CR-07 | Close/join producers before draining notes, including partial activation failure | Reconfigure/Drop caller audit; local midir ALSA `close_internal` and Drop confirm thread join precedes return; barrier-controlled MIDI delivery execution remains pending |
+| CR-08 | Every schedule/automation event append checks its budget before allocation growth or sorting | New low-budget repeated-Pattern and remaining-effect-budget regressions |
+| CR-09 | Descriptor-checked regular-file reads enforce byte limits before decode | New maximum/over-limit, sparse-file, and nonregular-input regression; load/rename/overwrite callers audited |
+| CR-10 | Writer arms capture after startup; terminal failure cannot be overwritten; producer quiescence permits ring cleanup | New forced-startup-failure/callback/retry regression; existing writer-failure fixtures retained |
+| CR-11 | Graph consumes bypass before DSP; late bypass publication remains pending for the next callback | New automated/explicit AUX comparison with one and two generators; existing wet-tail/bypass regressions retained |
+| CR-12 | Interior tempo commands precede their effective row; conflicting quantized boundaries refuse conversion | New imported-tempo/canonical-timeline boundary regression; existing import quantization tests retained |
+| CR-13 | Capture reserves cleanup within a shared save/load budget and visibly stops with accepted events preserved | New injected-budget capture/cleanup/SMF decode regression; save computes encoded size before allocation/publication |
+| CR-14 | Startup fallback retains an inactive router with the same shared App handles | New inactive-owner retention regression; Routing success fixture supplies an inert router; hardware recovery execution remains pending |
+| CR-15 | Stop/log dispatch precedes runtime config and preset discovery | Source/caller audit; exact owned-process cleanup remains unchanged |
+| CR-16 | Early fixture-only screenshot dispatch, discovery-free constructor, inert clock, compiled drum catalog | New enabled-hardware/discovery-isolation constructor regression; screenshot scenario calls audited for private discovery; no screenshots generated |
+| CR-17 | Recovery checks all backups and before/after resource fingerprints before mutation | New intervening-repair and missing-backup fixtures |
+| CR-18 | Recovery/removal use no-follow pinned parent descriptors, including state | New redirected-parent and post-preflight parent-swap fixtures |
+| CR-19 | One process lock covers the complete transaction; planning stays read-only | New competing-process apply/remove/recover and lock-owner-death fixtures |
+| CR-20 | Durable backup, journal, atomic resource, manifest, and retirement ordering | New fsync-failure and durable-commit/interrupted-retirement fixtures; no power-loss experiment |
+| CR-21 | Durable pending service ownership and idempotent partial install/removal recovery | Added redirected-filesystem fixtures for every publication/removal boundary and intervening administrator edits |
+
+Validation actually performed for the repair: Rust formatting/parse checks,
+Python `py_compile`, Bash syntax, ShellCheck on both changed shell files,
+source/caller inspection (including the installed midir dependency's shutdown
+contract), and `git diff --check`. These passed. None of the added or retained
+regression tests has been executed for this repair.
+
+The repository's explicit combined-pass restriction remains in force. Rust
+compilation, Cargo check/test, Python and shell regression execution, Clippy,
+the normal production suite, historical/exhaustive tests, benchmarks, image
+rendering, and live JACK/MIDI/audio/hardware checks were intentionally skipped.
+The next authorized combined pass should run locked check and the focused
+persistence, recorder recovery/startup, callback/control, routing, timeline,
+import, capture-budget, and screenshot-isolation regressions, plus
+`scripts/test_managed_install.py` and `scripts/test-audio-performance.sh` in
+their disposable mocked roots. Full-suite or hardware validation still requires
+the separate authorization defined in `AGENTS.md`.
