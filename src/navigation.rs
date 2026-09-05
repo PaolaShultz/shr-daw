@@ -6,6 +6,8 @@
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Screen {
     Home,
+    Master,
+    Inserts,
     Presets,
     Playback,
     Ideas,
@@ -37,10 +39,12 @@ pub enum Screen {
 }
 
 impl Screen {
-    pub const COUNT: usize = 29;
+    pub const COUNT: usize = 31;
     #[cfg(test)]
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 31] = [
         Self::Home,
+        Self::Master,
+        Self::Inserts,
         Self::Presets,
         Self::Playback,
         Self::Ideas,
@@ -74,6 +78,8 @@ impl Screen {
     pub const fn index(self) -> usize {
         match self {
             Self::Home => 0,
+            Self::Master => 29,
+            Self::Inserts => 30,
             Self::Presets => 1,
             Self::Playback => 2,
             Self::Ideas => 3,
@@ -109,6 +115,8 @@ impl Screen {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Home => "HOME",
+            Self::Master => "MASTER",
+            Self::Inserts => "INSERTS",
             Self::Presets => "PRESETS",
             Self::Playback => "PLAYBACK",
             Self::Ideas => "IDEAS",
@@ -156,6 +164,7 @@ pub enum Action {
     Back,
     Quit,
     StopAll,
+    WorkspaceStop,
     OpenPresets,
     OpenIdeas,
     OpenHelp,
@@ -242,6 +251,10 @@ pub enum Action {
     OpenFxRack,
     OpenFxEditor,
     OpenMasterStrip,
+    ChannelField,
+    ChannelDecrease,
+    ChannelIncrease,
+    ChannelBypass,
     MasterStripDecrease,
     MasterStripIncrease,
     MasterStripBypass,
@@ -1529,6 +1542,65 @@ const MULTICHANNEL_MONITOR: [MenuPage; 4] = [
     ),
 ];
 
+const MASTER: [MenuPage; 4] = [
+    page(
+        "OPEN",
+        [
+            on("UP", Action::Up),
+            on("DOWN", Action::Down),
+            on("OPEN", Action::Activate),
+            on("BACK", Action::Back),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "RUN",
+        [on("STOP", Action::WorkspaceStop), off(""), off(""), off("")],
+    ),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("BACK", Action::Back),
+        ],
+    ),
+];
+const INSERTS: [MenuPage; 4] = [
+    page(
+        "STRIP",
+        [
+            on("FIELD", Action::ChannelField),
+            on("VALUE-", Action::ChannelDecrease),
+            on("VALUE+", Action::ChannelIncrease),
+            on("BYPASS", Action::ChannelBypass),
+        ],
+    ),
+    page(
+        "INST",
+        [
+            on("PREV", Action::Up),
+            on("NEXT", Action::Down),
+            off(""),
+            on("BACK", Action::Back),
+        ],
+    ),
+    page(
+        "RUN",
+        [on("STOP", Action::WorkspaceStop), off(""), off(""), off("")],
+    ),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("BACK", Action::Back),
+        ],
+    ),
+];
+
 const FX_RACK: [MenuPage; 4] = [
     page(
         "OPS",
@@ -1807,6 +1879,8 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
         (Screen::AudioRecorder, _) => &AUDIO,
         (Screen::MultichannelMonitor, _) => &MULTICHANNEL_MONITOR,
+        (Screen::Master, _) => &MASTER,
+        (Screen::Inserts, _) => &INSERTS,
         (Screen::FxRack, MenuContext::FxEmpty) => &FX_RACK_EMPTY,
         (Screen::FxRack, MenuContext::FxType) => &FX_TYPE,
         (Screen::FxRack, _) => &FX_RACK,

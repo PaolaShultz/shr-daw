@@ -183,9 +183,13 @@ instrument.
 ## Effects graph
 
 Home EFFECTS, Player FX, FT2 SOUND FX (also uppercase F), and
-Performance FX open the same Project effects overview. AUX 1–3 and MASTER
-show their effect counts, bypass counts, and aux send levels. Select a row to
-open its rack. Back restores the exact caller and controller page without
+Performance FX open the same MASTER workspace: CHANNEL INSERTS, AUX 1–3,
+MASTER INSERTS, and MASTER STRIP. Effect/bypass counts and sends stay visible.
+CHANNEL INSERTS opens optional per-instrument BASS/TREBLE/COMP: Up/Down selects
+an instrument, Enter or FIELD selects a value, and VALUE−/VALUE+ changes it.
+BYPASS explicitly enables/disables the strip; new strips are flat/OFF.
+Shared FluidSynth mixes and external MIDI without isolated returns cannot be
+processed independently. Select an AUX or MASTER INSERTS row to open its rack. Back restores the exact caller and controller page without
 stopping transport or unloading the instrument. TARGET and Shift-rotary cycle
 AUX 1, AUX 2, AUX 3, and MASTER; the ordinary rotary browses rack rows.
 Existing SOURCE inserts and automation remain compatible Project data and

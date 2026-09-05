@@ -89,13 +89,15 @@ flowchart TD
     H0 --> M[Performance]
     H0 --> ML[MIDI Learn]
     H0 --> RTE[Routing editor]
-    H0 --> FO[Project effects overview]
+    H0 --> FO[MASTER workspace]
     H0 --> I[Ideas]
     H0 --> H[Help]
     P -->|Load| PB[Playback]
     M --> FO
     PB --> FO
     T --> FO
+    FO --> CI[Instrument INSERTS]
+    FO --> MS[MASTER STRIP]
     FO --> FX[AUX 1–3 or MASTER insert rack]
     FX --> FE[FX editor]
     T --> ON[PAGE / PATTERN / SONG / ROUTE overlays]

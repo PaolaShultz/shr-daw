@@ -113,22 +113,30 @@ settings and returns to WAV Loop.
 `PANIC` and `HELP` stay available. `EXIT` returns to Loop Mix without
 performing another automatic analysis.
 
+## MASTER and instrument INSERTS
+
+Home EFFECTS and Player, FT2, and Performance FX open one central MASTER
+workspace. Its sections are CHANNEL INSERTS, AUX 1, AUX 2, AUX 3, MASTER INSERTS,
+and MASTER STRIP. Back retraces the nested views to the exact caller.
+[Instrument channel inserts](../CHANNEL_INSERTS.md) documents the fixed optional
+BASS/TREBLE/COMP controls, identities, backend limitations, and OFF defaults.
+
 ## FX Rack
 
-The rack targets `SOURCE`, `AUX 1`, `AUX 2`, `AUX 3`, `DRUMS`, or `MASTER`. Source,
-drum, and master racks are serial inserts. Aux buses have an independent send
-level, pre/post source-insert point, wet-only processor rack, and return level.
-Each rack is bounded to eight effects. The ordinary rotary browses its rows;
-Shift-rotary selects the previous or next target in the existing order. With
-the graph active, FX changes are refused while transport or recording makes
-publication unsafe. With it disabled, the same controls edit saved Project
-data without touching audio.
+The ordinary rack targets are AUX 1–3 and MASTER INSERTS. AUX racks are
+parallel wet-only returns with independent sends and return levels; MASTER
+INSERTS processes the whole mix. Existing SOURCE racks and automation remain
+compatible, and the legacy fixed DRUMS rack keeps its own renderer. Neither is
+repurposed as an instrument channel strip.
 
-The first screenshot shows a populated source chain. Selecting another target
-keeps the same menu but changes the body and which routing actions apply.
-The final blank-looking `+ INSERT EFFECT` row is a typed functional selection,
-not an effect index or decoration. It remains reachable once, participates in
-first/last wrapping, and click/Enter inserts an effect at that position.
+Each arbitrary rack is bounded to eight effects. The rotary selects rows;
+Shift-rotary selects AUX 1, AUX 2, AUX 3, or MASTER. Structural changes retain
+the existing transport/recording guards. With the graph disabled, edits change
+Project data without processing direct audio. The `+ INSERT EFFECT` row is a
+functional selection for adding a processor.
+
+The rack/editor screenshots below predate MASTER navigation and may show a
+legacy SOURCE target; they illustrate the retained rack controls.
 
 ### OPS — edit rack contents
 
@@ -151,7 +159,7 @@ Project-global mastering path after this reorderable rack.
 
 ![Populated FX Rack with the ROUTE page](../images/menu/fx-rack-route.png)
 
-`TARGET` cycles Source, Aux 1, Aux 2, Drums, and Master forward. Shift-rotary
+`TARGET` cycles AUX 1, AUX 2, AUX 3, and MASTER INSERTS forward. Shift-rotary
 uses that same order in either direction. On an aux target, `SEND-` and `SEND+`
 adjust its send level in dB and `POINT` toggles pre/post source inserts. Those
 three controls report that an aux must be selected when used elsewhere.

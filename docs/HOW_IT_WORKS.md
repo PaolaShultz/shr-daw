@@ -210,7 +210,8 @@ bank/program on channel 10 before sending `0x99` note-ons. A missing or failed
 selection stays explicit, offline, and silent instead of falling through to a
 previous part, Player sound, channel 1, or external MIDI. Saved Project routes
 and channels are never replaced by this fresh-Project default.
-All FluidSynth parts still cross the same stereo JACK boundary. They share the
+Optional [instrument channel strips](CHANNEL_INSERTS.md) process supported
+isolated instrument returns. All FluidSynth parts still cross the same stereo JACK boundary. They share the
 managed synth strip, source effects, meters, final-bus routing, and recording
 path; there are no per-instrument EQ/compressor/aux strips, stems, or JACK
 outputs. MIDI channel volume and pan remain ordinary channel messages where a
@@ -605,7 +606,7 @@ it does not own.
 
 ## Project and private-data safety
 
-Project format 18 persists the complete tracker state, integer-hundredths
+Project format 19 persists the complete tracker state, integer-hundredths
 Pattern/command tempos, exactly four optional
 Loop Mix slots under each Pattern,
 effects routing including the internal-drum rack, one Project-global fixed
@@ -623,7 +624,7 @@ every distinct Pattern. Format 6's single WAV record migrates to slot 1 of
 every Pattern. Formats 0–8 gain a neutral strip in memory. No migration copies
 audio or rewrites the file. Formats 0–16 gain FULL/1X/FORWARD lane playback.
 Format 18 expands the bounded aux inventory to three without changing any
-older saved route; only an explicit save writes format 18. Format 12
+older saved route; only an explicit save writes format 19. Format 12
 keeps its routing and gains safe family drum-effect defaults in memory. Format 10
 infers the Note Off choice from the percussion flag. Format 5
 and older ordinary pages gain Manual/C1 entry defaults in memory; explicitly

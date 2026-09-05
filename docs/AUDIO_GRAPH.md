@@ -16,17 +16,21 @@ bus](FINAL_PERFORMANCE_BUS.md) owns monitoring and final recording.
 The active signal flow is:
 
 ```text
-managed instrument -> SOURCE inserts -------------------------------\
-       |                    |                                            ^
-       |                    +-> POST send gain -> wet AUX 1/2/3 -> return -+
-       +----------------------> PRE send gain  -> wet AUX 1/2/3 -> return -+
-owned WAV loop ------------------------------------------------------+-> dry sum
-configured JACK input 1/2 -> stereo or dual-mono pan matrix -------/
-in-process SHR Drums -> Project DRUMS Reverb -> Delay --------------/
+managed instrument -> channel strip -> source fader -> SOURCE inserts
+                                             |              |
+                                             | PRE          | POST
+                                             +---- AUX taps-+
+                                                      |
+                                               wet AUX 1/2/3
+                                                      |
+managed dry + AUX returns ----------------------------+---\
+owned WAV loop -> source fader ----------------------------+-> sum
+configured input -> stereo/dual-mono matrix -> fader -------+
+SHR Drums -> kit bus -> DRUMS Reverb/Delay -> channel -> fader/
 
-dry sum -> MASTER inserts -> live master level
-        -> fixed MASTER STRIP (INPUT/TONE/GLUE/COLOR/IMAGE/LOUD)
-        -> FINAL OUT meter -> final stereo WAV tap -> playback L/R
+sum -> MASTER inserts -> live master level
+    -> fixed MASTER STRIP (INPUT/TONE/GLUE/COLOR/IMAGE/LOUD)
+    -> FINAL OUT meter -> final stereo WAV tap -> playback L/R
 ```
 
 Each of the three bounded aux buses has its own send level, pre/post source-insert tap, forced-wet
@@ -55,8 +59,9 @@ a -18 dB post-insert send. Return changes also use 3 dB steps and wrap from
 ## Ownership boundary
 
 Workspace navigation does not deactivate this bus or unload sound sources.
-The normal effects overview exposes AUX 1–3 and MASTER inserts; the fixed
-MASTER STRIP remains a distinct downstream stage. Legacy SOURCE racks and
+The central MASTER workspace exposes CHANNEL INSERTS, AUX 1–3, MASTER INSERTS,
+and the distinct downstream MASTER STRIP. [Instrument channel strips](CHANNEL_INSERTS.md)
+process isolated returns before source faders and melodic AUX taps. Legacy SOURCE racks and
 their automation are validated, processed, and serialized unchanged. They
 are outside the normal rack-creation path. PANIC performs bounded note cleanup;
 only actual shutdown or explicit replacement releases session ownership.

@@ -206,17 +206,18 @@ and SHR-only effect automation are counted as omissions.
 
 ## Effects and final sound
 
-Home EFFECTS, Player FX, FT2 SOUND FX, and Performance FX share one overview:
-AUX 1–3 are parallel wet-only send/return buses and MASTER is a whole-mix
-insert rack. Each Player/FT2 aux knob controls its send, not a dry/wet mix.
-The fixed MASTER STRIP is a separate mastering stage after the insert rack.
-Existing source inserts remain loaded and saved for compatibility, outside
-the normal creation path. The Project owns all these settings, along with
-the fixed DRUMS Reverb-then-Delay rack.
+Home EFFECTS, Player FX, FT2 SOUND FX, and Performance FX open one MASTER
+workspace: CHANNEL INSERTS, AUX 1–3, MASTER INSERTS, and MASTER STRIP.
+CHANNEL INSERTS opens optional instrument BASS/TREBLE/COMP strips, flat/OFF by
+default. Lanes sharing an instrument share its strip. AUX racks remain parallel
+wet-only sends/returns, MASTER INSERTS processes the whole mix, and MASTER STRIP
+is the separate fixed mastering stage. SOURCE compatibility data remains intact.
+See [Instrument channel inserts](CHANNEL_INSERTS.md) for controls, supported
+backend outputs, signal placement, and explicit shared-return limitations.
 
-Home, Player, FT2, Effects, and Performance share one live session. Back and
-Exit retain unsaved work, cursor and controller context, engine, routing, and
-transport or recording, including Projects with no notes. PANIC cleans up
+Home, Player, FT2, MASTER, INSERTS, and Performance share one live session.
+Back retains unsaved work, cursor and controller context, engine, routing,
+transport, and recording, including Projects with no notes. PANIC cleans up
 notes without closing that session; STOP ends the relevant transport or take.
 Save before quitting or replacing a Project to retain it across restarts.
 

@@ -54,6 +54,8 @@ configuration, or the architecture contracts.
 
 ## Architecture and safety
 
+- [Instrument channel inserts and central MASTER](CHANNEL_INSERTS.md) —
+  controls, backend coverage, Project identity, and DSP boundaries.
 - [How SHR-DAW works](HOW_IT_WORKS.md) — end-to-end MIDI/audio routing,
   maintained component boundaries, instrument ownership, Ideas, FT2 Projects,
   loops, recording, graph safety, persistence, and current limits.

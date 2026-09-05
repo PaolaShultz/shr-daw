@@ -51,13 +51,14 @@ bounded to -60..+6 dB, master gain to -60..0 dB, and all level/mute transitions
 use a 10 ms sample ramp. New runtime buses start each source at -6 dB to leave
 basic summing headroom. Input monitoring always starts OFF. These live
 performance controls are not
-Project data; current Project format 18 stores effect racks/routing and the
+Project data; current Project format 19 stores optional instrument channel strips, effect racks/routing, and the
 fixed MASTER STRIP at Project scope and four Loop Mix settings under each
 Pattern, but not these final-bus levels, mutes, Input mode, or Input pans. JACK
 assignments remain machine configuration. A fresh runtime always starts in
 stereo mode; dual-mono choices do not reinterpret raw multitrack recording.
 
-Each source publishes one lightweight post-owner-gain stereo peak for the FT2
+Isolated instrument [channel strips](CHANNEL_INSERTS.md) precede the source
+faders; their parameters belong to the Project. Each source publishes one lightweight post-owner-gain stereo peak for the FT2
 mixer before the graph performs Project processing and summing. The existing
 fader loop accumulates those peaks, so callback work remains one bounded pass:
 two absolute-value/maximum updates per frame and two atomic stores per owner per

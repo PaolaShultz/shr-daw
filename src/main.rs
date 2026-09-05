@@ -4,6 +4,7 @@ mod audio_graph_client;
 pub mod audio_graph_runtime;
 mod audio_recorder;
 mod automation;
+mod channel_strip;
 mod chord;
 mod compiler_bench;
 mod config;

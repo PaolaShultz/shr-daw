@@ -43,8 +43,8 @@ impl StereoBiquad {
 }
 
 /// Crossfade between two individually stable filters. Coefficients are
-/// calculated on the control side; the sample path only processes and mixes.
-struct SmoothedStereoBiquad {
+/// supplied on parameter updates; the sample path only processes and mixes.
+pub(super) struct SmoothedStereoBiquad {
     current: StereoBiquad,
     next: StereoBiquad,
     mix: SmoothedValue,
@@ -53,7 +53,7 @@ struct SmoothedStereoBiquad {
 }
 
 impl SmoothedStereoBiquad {
-    fn new(coefficients: BiquadCoefficients) -> Self {
+    pub(super) fn new(coefficients: BiquadCoefficients) -> Self {
         Self {
             current: StereoBiquad::new(coefficients),
             next: StereoBiquad::new(coefficients),
@@ -63,7 +63,10 @@ impl SmoothedStereoBiquad {
         }
     }
 
-    fn set_coefficients(&mut self, coefficients: BiquadCoefficients) -> Result<(), EffectError> {
+    pub(super) fn set_coefficients(
+        &mut self,
+        coefficients: BiquadCoefficients,
+    ) -> Result<(), EffectError> {
         if self.transitioning {
             self.pending = Some(coefficients);
             return Ok(());
@@ -81,7 +84,7 @@ impl SmoothedStereoBiquad {
     }
 
     #[inline]
-    fn process(&mut self, frame: StereoFrame) -> StereoFrame {
+    pub(super) fn process(&mut self, frame: StereoFrame) -> StereoFrame {
         if !self.transitioning {
             return self.current.process(frame);
         }

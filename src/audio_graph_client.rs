@@ -244,6 +244,8 @@ pub(crate) struct OwnedAudioGraph {
 
 #[derive(Default)]
 pub(crate) struct FinalBusOwner {
+    channel_settings: [crate::channel_strip::Settings; 2],
+    channel_bindings: [Option<crate::channel_strip::Binding>; 2],
     graph: Option<OwnedAudioGraph>,
     last_recording: FinalMixRecorderStatus,
     fallback: Option<String>,
@@ -274,6 +276,23 @@ pub(crate) struct PerformanceBusPorts {
 }
 
 impl FinalBusOwner {
+    pub(crate) fn set_channels(
+        &mut self,
+        settings: [crate::channel_strip::Settings; 2],
+        bindings: [Option<crate::channel_strip::Binding>; 2],
+    ) {
+        self.channel_settings = settings;
+        if let Some(controls) = self.controls() {
+            for (index, (control, setting)) in controls.channels.iter().zip(settings).enumerate() {
+                if self.channel_bindings[index] != bindings[index] {
+                    control.publish_reset(setting);
+                } else {
+                    let _ = control.publish(setting);
+                }
+            }
+        }
+        self.channel_bindings = bindings;
+    }
     pub(crate) fn effect_hub(&self) -> std::sync::Arc<crate::effects::EffectControlHub> {
         std::sync::Arc::clone(&self.effect_hub)
     }
@@ -352,6 +371,7 @@ impl FinalBusOwner {
             rack,
             aux_routing,
             master_strip,
+            self.channel_settings,
             input_monitoring,
             &available,
         )?;
@@ -570,6 +590,7 @@ impl OwnedAudioGraph {
         rack: &InsertRack,
         aux_routing: &ProjectAuxRouting,
         master_strip: &MasterStripSettings,
+        channel_settings: [crate::channel_strip::Settings; 2],
         input_monitoring: bool,
         available_ports: &[String],
     ) -> Result<Self> {
@@ -709,6 +730,9 @@ impl OwnedAudioGraph {
             live_source_ports: live_source_ports.clone(),
         };
         let controls = initial_bus_controls(input_monitoring);
+        for (control, setting) in controls.channels.iter().zip(channel_settings) {
+            control.publish(setting).map_err(anyhow::Error::msg)?;
+        }
         let strip_controls = std::sync::Arc::new(
             MasterStripControls::new(sample_rate, master_strip)
                 .map_err(anyhow::Error::msg)

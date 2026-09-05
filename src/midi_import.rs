@@ -794,6 +794,7 @@ pub fn convert(smf: &Smf, project_name: &str) -> Result<ImportedProject> {
         gate_percent: 80,
         insert_rack: Default::default(),
         aux_routing: Default::default(),
+        channels: crate::channel_strip::Channels::default(),
         master_strip: Default::default(),
         order,
         patterns,

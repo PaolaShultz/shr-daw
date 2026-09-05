@@ -113,6 +113,7 @@ impl AtomicFader {
 }
 
 pub struct BusControls {
+    pub channels: [Arc<crate::channel_strip::Controls>; 2],
     sources: [AtomicFader; SOURCE_COUNT],
     source_meters: [AtomicSourceMeter; SOURCE_COUNT],
     input_dual_mono: AtomicBool,
@@ -132,6 +133,7 @@ pub struct BusControls {
 impl Default for BusControls {
     fn default() -> Self {
         Self {
+            channels: std::array::from_fn(|_| Arc::new(crate::channel_strip::Controls::default())),
             sources: std::array::from_fn(|_| AtomicFader::new(DEFAULT_SOURCE_GAIN_DB)),
             source_meters: std::array::from_fn(|_| AtomicSourceMeter::new()),
             input_dual_mono: AtomicBool::new(false),
@@ -362,6 +364,7 @@ impl RuntimeFader {
 }
 
 pub struct FinalBusProcessor {
+    channels: [crate::effects::channel::ChannelProcessor; 2],
     controls: Arc<BusControls>,
     source_faders: [RuntimeFader; SOURCE_COUNT],
     input_matrix: [RuntimeFader; 4],
@@ -396,6 +399,16 @@ impl FinalBusProcessor {
         };
         let matrix = input_matrix_targets(&controls);
         Ok(Self {
+            channels: [
+                crate::effects::channel::ChannelProcessor::new(
+                    sample_rate,
+                    Arc::clone(&controls.channels[0]),
+                )?,
+                crate::effects::channel::ChannelProcessor::new(
+                    sample_rate,
+                    Arc::clone(&controls.channels[1]),
+                )?,
+            ],
             source_faders: [
                 source_fader(BusSource::Synth)?,
                 source_fader(BusSource::Loop)?,
@@ -462,6 +475,11 @@ impl FinalBusProcessor {
 
     #[inline]
     pub fn process_source(&mut self, source: BusSource, frames: &mut [StereoFrame]) {
+        match source {
+            BusSource::Synth => self.channels[0].process(frames),
+            BusSource::Drums => self.channels[1].process(frames),
+            _ => {}
+        }
         let index = source.index();
         self.source_faders[index].refresh(
             self.controls.source_gain_db(source),
@@ -580,6 +598,9 @@ impl FinalBusProcessor {
 
     pub fn reset(&mut self) {
         self.strip.reset();
+        for channel in &mut self.channels {
+            channel.reset();
+        }
     }
 }
 
@@ -629,6 +650,37 @@ mod tests {
         )
         .unwrap();
         (processor, controls)
+    }
+
+    #[test]
+    fn instrument_channel_processing_precedes_summing_and_leaves_other_returns_exact() {
+        use crate::channel_strip::Settings;
+        use crate::dsp::allocation_test::assert_no_allocations;
+        let (mut processed, controls) = processor(48_000, 256);
+        let (mut reference, _) = processor(48_000, 256);
+        controls.channels[1]
+            .publish(Settings {
+                enabled: true,
+                bass: -6,
+                treble: 4,
+                comp: 70,
+            })
+            .unwrap();
+        for _ in 0..100 {
+            for source in BusSource::ALL {
+                let mut actual = [StereoFrame::new(0.5, -0.25); 256];
+                let mut expected = actual;
+                assert_no_allocations(|| {
+                    processed.process_source(source, &mut actual);
+                    reference.process_source(source, &mut expected);
+                });
+                if source != BusSource::Drums {
+                    assert_eq!(actual, expected);
+                } else {
+                    assert_ne!(actual, expected);
+                }
+            }
+        }
     }
 
     #[test]

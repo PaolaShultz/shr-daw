@@ -1118,8 +1118,16 @@ struct App {
     fx_type_edit: Option<FxTypeEdit>,
     fx_numeric_input: Option<String>,
     fx_rack_parent: Screen,
+    master_parent: Screen,
+    master_parent_page_select: bool,
+    master_selection: usize,
+    inserts_selection: usize,
+    inserts_field: usize,
     master_strip_parent: Screen,
     master_strip_parent_menu_page: usize,
+    master_strip_parent_page_select: bool,
+    master_strip_detail_caller: Option<(MasterStripSection, usize, bool)>,
+    fx_editor_parent_page_select: bool,
     master_strip_section: MasterStripSection,
     master_strip_parameter: usize,
     master_strip_meter_preview: Option<crate::final_bus::FinalBusMeterSnapshot>,
@@ -1465,10 +1473,35 @@ fn automation_discrete_value(
     ((next * 65_535 + steps / 2) / steps) as u16
 }
 
+fn channel_binding(route: &SoftwareRoute) -> crate::channel_strip::Binding {
+    crate::channel_strip::Binding {
+        backend: match route.engine {
+            BackendKind::Synthv1 => "synthv1",
+            BackendKind::Yoshimi => "yoshimi",
+            BackendKind::FluidSynth => "fluidsynth",
+            BackendKind::MojSint => "moj-sint",
+            BackendKind::ShrSampler => "shr-sampler",
+        }
+        .into(),
+        instrument: route.instrument.clone(),
+    }
+}
+fn preset_channel_binding(preset: &Preset) -> crate::channel_strip::Binding {
+    channel_binding(&SoftwareRoute {
+        engine: preset.backend,
+        instrument: preset.route_id(),
+    })
+}
+
 fn is_fx_screen(screen: Screen) -> bool {
     matches!(
         screen,
-        Screen::FxRack | Screen::FxEditor | Screen::MasterStrip | Screen::MasterStripAdvanced
+        Screen::Master
+            | Screen::Inserts
+            | Screen::FxRack
+            | Screen::FxEditor
+            | Screen::MasterStrip
+            | Screen::MasterStripAdvanced
     )
 }
 
@@ -2228,9 +2261,17 @@ impl App {
             fx_edit_original: None,
             fx_type_edit: None,
             fx_numeric_input: None,
+            master_parent: Screen::Home,
+            master_parent_page_select: false,
+            master_selection: 0,
+            inserts_selection: 0,
+            inserts_field: 0,
             fx_rack_parent: Screen::Home,
             master_strip_parent: Screen::FxRack,
             master_strip_parent_menu_page: 0,
+            master_strip_parent_page_select: false,
+            master_strip_detail_caller: None,
+            fx_editor_parent_page_select: false,
             master_strip_section: MasterStripSection::default(),
             master_strip_parameter: 0,
             master_strip_meter_preview: None,
@@ -3235,6 +3276,10 @@ impl App {
     }
 
     fn open_overlay(&mut self, action: Action) {
+        if matches!(action, Action::OpenFxRack | Action::OpenEffectsOverlay) {
+            self.open_master();
+            return;
+        }
         let Some(kind) = OverlayKind::from_action(action) else {
             return;
         };
@@ -4200,7 +4245,173 @@ impl App {
         self.automation_point = context.automation_point;
     }
 
+    fn open_master(&mut self) {
+        if self.overlay.is_some() || self.keyboard_modal_active() || is_fx_screen(self.screen) {
+            return;
+        }
+        self.master_parent = self.screen;
+        self.master_parent_page_select = self.page_select_mode;
+        self.fx_caller_context =
+            is_tracker_screen(self.screen).then(|| self.pattern_edit_context());
+        self.set_screen(Screen::Master);
+        self.status.clear();
+    }
+
+    fn activate_master(&mut self) {
+        self.fx_caller_page_select_mode = self.page_select_mode;
+        match self.master_selection {
+            0 => self.set_screen(Screen::Inserts),
+            1..=4 => {
+                self.fx_target = if self.master_selection == 4 {
+                    MASTER_FX_TARGET
+                } else {
+                    self.master_selection
+                };
+                self.fx_rack_parent = Screen::Master;
+                self.fx_selection = project_fx_rack(
+                    &self.song.insert_rack,
+                    &self.song.aux_routing,
+                    &self.song.drum_rack,
+                    self.fx_target,
+                )
+                .and_then(|rack| rack.order.first().copied())
+                .map(FxRackSelection::Effect)
+                .unwrap_or(FxRackSelection::Insert);
+                self.set_screen(Screen::FxRack);
+            }
+            _ => {
+                self.master_strip_parent = Screen::Master;
+                self.master_strip_parent_menu_page = self.menu_page();
+                self.set_screen(Screen::MasterStrip);
+            }
+        }
+        self.status.clear();
+    }
+
+    fn channel_bindings(&self) -> Vec<crate::channel_strip::Binding> {
+        let mut bindings = BTreeSet::new();
+        for pattern in self.song.patterns.values() {
+            for page in &pattern.pages {
+                match &page.target {
+                    PageTarget::Software(route) => {
+                        bindings.insert(channel_binding(route));
+                    }
+                    PageTarget::Synthv1(name) => {
+                        bindings.insert(channel_binding(&SoftwareRoute::synthv1(name)));
+                    }
+                    PageTarget::InternalDrums(_) => {
+                        bindings.insert(self.drum_channel_binding());
+                    }
+                    PageTarget::ActiveInstrument => {
+                        if let Some(preset) = &self.playing {
+                            bindings.insert(preset_channel_binding(preset));
+                        }
+                    }
+                    PageTarget::Default if !self.config.external_midi.enabled => {
+                        if let Some(preset) = &self.playing {
+                            bindings.insert(preset_channel_binding(preset));
+                        }
+                    }
+                    _ => {
+                        bindings.insert(crate::channel_strip::Binding {
+                            backend: "external".into(),
+                            instrument: page.target.label().into(),
+                        });
+                    }
+                }
+            }
+        }
+        if let Some(preset) = &self.playing {
+            bindings.insert(preset_channel_binding(preset));
+        }
+        for instrument in &self.song.channels.instruments {
+            bindings.insert(instrument.binding.clone());
+        }
+        bindings.into_iter().collect()
+    }
+
+    fn drum_channel_binding(&self) -> crate::channel_strip::Binding {
+        crate::channel_strip::Binding {
+            backend: "shr-drums".into(),
+            instrument: self.song.drum_kit.clone(),
+        }
+    }
+
+    fn sync_channel_settings(&mut self) {
+        let synth = self
+            .playing
+            .as_ref()
+            .filter(|p| p.backend != BackendKind::FluidSynth)
+            .map(|p| self.song.channels.settings(&preset_channel_binding(p)))
+            .unwrap_or_default();
+        let drums = self.song.channels.settings(&self.drum_channel_binding());
+        self.final_bus.set_channels(
+            [synth, drums],
+            [
+                self.playing
+                    .as_ref()
+                    .filter(|p| p.backend != BackendKind::FluidSynth)
+                    .map(preset_channel_binding),
+                Some(self.drum_channel_binding()),
+            ],
+        );
+    }
+
+    fn edit_channel(&mut self, direction: i8, bypass: bool) {
+        let Some(binding) = self.channel_bindings().get(self.inserts_selection).cloned() else {
+            return;
+        };
+        if binding.backend == "fluidsynth" || binding.backend == "external" {
+            self.status = if binding.backend == "fluidsynth" {
+                "PART RETURNS REQUIRED · shared mix"
+            } else {
+                "ISOLATED AUDIO RETURN REQUIRED"
+            }
+            .into();
+            return;
+        }
+        let mut settings = self.song.channels.settings(&binding);
+        if bypass {
+            settings.enabled = !settings.enabled;
+        } else {
+            match self.inserts_field {
+                0 => settings.bass = (settings.bass + direction).clamp(-12, 12),
+                1 => settings.treble = (settings.treble + direction).clamp(-12, 12),
+                _ => {
+                    settings.comp =
+                        (settings.comp as i16 + direction as i16 * 5).clamp(0, 100) as u8
+                }
+            }
+        }
+        match self.song.channels.set(binding, settings) {
+            Ok(()) => {
+                self.sync_channel_settings();
+                self.status = if self.final_bus.active() {
+                    String::new()
+                } else {
+                    "NO FINAL BUS · settings saved in Project".into()
+                };
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
     fn set_screen(&mut self, screen: Screen) {
+        if screen == Screen::MasterStripAdvanced && self.screen == Screen::MasterStrip {
+            self.master_strip_detail_caller = Some((
+                self.master_strip_section,
+                self.master_strip_parameter,
+                self.page_select_mode,
+            ));
+        }
+        if screen == Screen::FxEditor && self.screen == Screen::FxRack {
+            self.fx_editor_parent_page_select = self.page_select_mode;
+        }
+        if screen == Screen::MasterStrip
+            && !matches!(self.screen, Screen::MasterStripAdvanced | Screen::Help)
+        {
+            self.master_strip_parent_page_select = self.page_select_mode;
+        }
         // Views do not own the session lifetime. Replacement and shutdown
         // explicitly stop transports and release owned resources.
         if self.screen != screen {
@@ -4807,22 +5018,26 @@ impl App {
         self.status = format!("{} {gain_db:+.1} dB", owner.label());
     }
 
+    fn effects_workspace_caller(&self, mut screen: Screen) -> Screen {
+        // A bounded walk through view parents; no transport or ownership mutation.
+        for _ in 0..5 {
+            screen = match screen {
+                Screen::Help => self.help_previous,
+                Screen::Master | Screen::Inserts => self.master_parent,
+                Screen::FxRack | Screen::FxEditor => self.fx_rack_parent,
+                Screen::MasterStrip | Screen::MasterStripAdvanced => self.master_strip_parent,
+                _ => return screen,
+            };
+        }
+        screen
+    }
+
     fn screen_keeps_playback_workspace_active(&self, screen: Screen) -> bool {
-        screen == Screen::Playback
-            || (is_fx_screen(screen) && self.fx_rack_parent == Screen::Playback)
-            || (screen == Screen::Help
-                && (self.help_previous == Screen::Playback
-                    || (is_fx_screen(self.help_previous)
-                        && self.fx_rack_parent == Screen::Playback)))
+        self.effects_workspace_caller(screen) == Screen::Playback
     }
 
     fn screen_keeps_tracker_workspace_active(&self, screen: Screen) -> bool {
-        is_tracker_screen(screen)
-            || (is_fx_screen(screen) && is_tracker_screen(self.fx_rack_parent))
-            || (screen == Screen::Help
-                && (is_tracker_screen(self.help_previous)
-                    || (is_fx_screen(self.help_previous)
-                        && is_tracker_screen(self.fx_rack_parent))))
+        is_tracker_screen(self.effects_workspace_caller(screen))
     }
 
     fn tracker_workspace_active(&self) -> bool {
@@ -5239,6 +5454,21 @@ impl App {
                 fluid_parts,
             );
         }
+        let synth_settings = if preset.backend == BackendKind::FluidSynth {
+            crate::channel_strip::Settings::default()
+        } else {
+            self.song.channels.settings(&preset_channel_binding(preset))
+        };
+        self.final_bus.set_channels(
+            [
+                synth_settings,
+                self.song.channels.settings(&self.drum_channel_binding()),
+            ],
+            [
+                Some(preset_channel_binding(preset)),
+                Some(self.drum_channel_binding()),
+            ],
+        );
         let mut engine_config = self.config.clone();
         if self.final_bus.active() {
             // The application-owned final bus already owns playback. A newly
@@ -11344,6 +11574,7 @@ impl App {
     }
 
     fn retry_final_bus_with_force(&mut self, force: bool) -> bool {
+        self.sync_channel_settings();
         if !force && !self.config.audio_graph.enabled && !self.input_monitoring {
             return false;
         }
@@ -15700,6 +15931,8 @@ impl App {
             }
             _ => None,
         };
+        let old_binding = preset_channel_binding(source);
+        let new_binding = preset_channel_binding(&saved);
         let new_route = SoftwareRoute {
             engine: saved.backend,
             instrument: saved.route_id(),
@@ -15757,6 +15990,37 @@ impl App {
                 if owns_old_route {
                     page.target = PageTarget::Software(new_route);
                 }
+            }
+        }
+        let old_route_retained = self
+            .song
+            .patterns
+            .values()
+            .flat_map(|p| &p.pages)
+            .any(|page| match &page.target {
+                PageTarget::Software(route) => channel_binding(route) == old_binding,
+                PageTarget::Synthv1(name) => {
+                    channel_binding(&SoftwareRoute::synthv1(name)) == old_binding
+                }
+                _ => false,
+            });
+        if !old_route_retained
+            && old_binding != new_binding
+            && !self
+                .song
+                .channels
+                .instruments
+                .iter()
+                .any(|i| i.binding == new_binding)
+        {
+            if let Some(instrument) = self
+                .song
+                .channels
+                .instruments
+                .iter_mut()
+                .find(|i| i.binding == old_binding)
+            {
+                instrument.binding = new_binding;
             }
         }
         self.playing = Some(saved);
@@ -16098,6 +16362,7 @@ impl App {
         }
     }
     fn tick(&mut self) {
+        self.sync_channel_settings();
         let now = Instant::now();
         if self.config.external_clock.enabled {
             let action = self.external_clock_follower.check_timeout(now);
@@ -17503,6 +17768,11 @@ fn perform(
                 a.adjust_live_shape(-1);
             } else if a.screen == Screen::Presets {
                 a.selected = wrapped_index(a.selected, a.presets.len(), -1);
+            } else if a.screen == Screen::Master {
+                a.master_selection = wrapped_index(a.master_selection, 6, -1);
+            } else if a.screen == Screen::Inserts {
+                a.inserts_selection =
+                    wrapped_index(a.inserts_selection, a.channel_bindings().len(), -1);
             } else if a.screen == Screen::FxRack {
                 a.move_fx_rack_selection(-1);
             } else if a.screen == Screen::FxEditor {
@@ -17574,6 +17844,11 @@ fn perform(
                 a.adjust_live_shape(1);
             } else if a.screen == Screen::Presets {
                 a.selected = wrapped_index(a.selected, a.presets.len(), 1);
+            } else if a.screen == Screen::Master {
+                a.master_selection = wrapped_index(a.master_selection, 6, 1);
+            } else if a.screen == Screen::Inserts {
+                a.inserts_selection =
+                    wrapped_index(a.inserts_selection, a.channel_bindings().len(), 1);
             } else if a.screen == Screen::FxRack {
                 a.move_fx_rack_selection(1);
             } else if a.screen == Screen::FxEditor {
@@ -17728,6 +18003,8 @@ fn perform(
                     a.begin_fx_value_edit();
                 }
             }
+            Screen::Master => a.activate_master(),
+            Screen::Inserts => a.inserts_field = (a.inserts_field + 1) % 3,
             Screen::MasterStrip => {
                 a.master_strip_parameter = 0;
                 a.set_screen(Screen::MasterStripAdvanced);
@@ -17922,6 +18199,11 @@ fn perform(
             a.set_screen(Screen::MasterStrip);
             a.status.clear();
         }
+        Action::ChannelField => a.inserts_field = (a.inserts_field + 1) % 3,
+        Action::ChannelDecrease => a.edit_channel(-1, false),
+        Action::ChannelIncrease => a.edit_channel(1, false),
+        Action::ChannelBypass => a.edit_channel(0, true),
+        Action::WorkspaceStop => a.stop_workspace_transport(),
         Action::MasterStripDecrease => a.adjust_master_strip_parameter(-1),
         Action::MasterStripIncrease => a.adjust_master_strip_parameter(1),
         Action::MasterStripBypass => a.toggle_master_strip_bypass(),
@@ -18055,10 +18337,15 @@ fn perform(
             }
             a.confirm_delete = None;
             a.confirm_load = None;
+            let leaving_strip_detail = a.screen == Screen::MasterStripAdvanced;
+            let leaving_fx_editor = a.screen == Screen::FxEditor;
+            let leaving_master = a.screen == Screen::Master;
             let leaving_master_strip = a.screen == Screen::MasterStrip;
             let leaving_fx_rack = a.screen == Screen::FxRack;
             let next_screen = match a.screen {
                 Screen::Home => Screen::Home,
+                Screen::Master => a.master_parent,
+                Screen::Inserts => Screen::Master,
                 Screen::Presets
                 | Screen::Ideas
                 | Screen::Tracker
@@ -18089,11 +18376,30 @@ fn perform(
                 Screen::Help => a.help_previous,
             };
             a.set_screen(next_screen);
-            if leaving_fx_rack {
+            if leaving_master {
+                a.restore_fx_caller_context();
+                a.page_select_mode = a.master_parent_page_select;
+            }
+            if leaving_fx_rack && next_screen != Screen::Master {
                 a.restore_fx_caller_context();
                 a.page_select_mode = a.fx_caller_page_select_mode;
             }
+            if next_screen == Screen::Master {
+                a.page_select_mode = a.fx_caller_page_select_mode;
+            }
+            if leaving_strip_detail {
+                if let Some((section, parameter, page_select)) = a.master_strip_detail_caller.take()
+                {
+                    a.master_strip_section = section;
+                    a.master_strip_parameter = parameter;
+                    a.page_select_mode = page_select;
+                }
+            }
+            if leaving_fx_editor {
+                a.page_select_mode = a.fx_editor_parent_page_select;
+            }
             if leaving_master_strip {
+                a.page_select_mode = a.master_strip_parent_page_select;
                 a.menu_page_by_screen[next_screen.index()] = a.master_strip_parent_menu_page.min(3);
             }
         }
@@ -18814,6 +19120,20 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
     } {
         dispatch_encoder_input(action, a, state, tx, false);
         return false;
+    }
+    if matches!(a.screen, Screen::Master | Screen::Inserts) {
+        let action = match code {
+            KeyCode::Left if a.screen == Screen::Inserts => Some(Action::ChannelDecrease),
+            KeyCode::Right if a.screen == Screen::Inserts => Some(Action::ChannelIncrease),
+            KeyCode::Tab if a.screen == Screen::Inserts => Some(Action::ChannelField),
+            KeyCode::Char('x') if a.screen == Screen::Inserts => Some(Action::ChannelBypass),
+            KeyCode::Char('s') | KeyCode::Char(' ') => Some(Action::WorkspaceStop),
+            KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
+            _ => None,
+        };
+        if let Some(action) = action {
+            return perform(action, a, state, Some(tx));
+        }
     }
     let letter_jump_blocked = a.keyboard_modal_active();
     let confirmation_action = match (a.screen, &code) {
@@ -19775,6 +20095,8 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
         Screen::AudioRecorder => draw_audio_recorder(f, a),
         Screen::MultichannelMonitor => draw_multichannel_monitor(f, a),
+        Screen::Master => draw_master_workspace(f, a),
+        Screen::Inserts => draw_channel_inserts(f, a),
         Screen::FxRack => draw_fx_rack(f, a),
         Screen::FxEditor => draw_fx_editor(f, a),
         Screen::MasterStrip => draw_master_strip(f, a),
@@ -20592,6 +20914,206 @@ fn selected_master_strip_meter(
             master_strip_meter_line("OUT", meter.output_true_peak_dbtp, " dBTP".into())
         }
     }
+}
+
+fn draw_master_workspace<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let mut lines = vec![
+        Spans::from("MASTER"),
+        Spans::from(project_owner_line(a, z.width as usize)),
+    ];
+    let active = a
+        .song
+        .channels
+        .instruments
+        .iter()
+        .filter(|i| i.settings.active())
+        .count();
+    let mut rows = vec![format!("CHANNEL INSERTS   {active} ON")];
+    for target in 1..=4 {
+        let target = if target == 4 {
+            MASTER_FX_TARGET
+        } else {
+            target
+        };
+        let rack = project_fx_rack(
+            &a.song.insert_rack,
+            &a.song.aux_routing,
+            &a.song.drum_rack,
+            target,
+        );
+        let count = rack.map_or(0, |r| r.effects.len());
+        let bypass = rack.map_or(0, |r| r.effects.iter().filter(|e| e.bypass).count());
+        rows.push(if is_aux_target(target) {
+            format!(
+                "AUX {target} {:3.0}%  {count} FX {bypass} BYP",
+                aux_send_normalized(&a.song.aux_routing, target as u8) * 100.0
+            )
+        } else {
+            format!("MASTER INSERTS   {count} FX {bypass} BYP")
+        });
+    }
+    let strip = &a.song.master_strip;
+    let count = [
+        strip.input_bypass,
+        strip.tone_bypass,
+        strip.glue_bypass,
+        strip.color_bypass,
+        strip.image_bypass,
+    ]
+    .iter()
+    .filter(|b| !**b)
+    .count();
+    rows.push(format!(
+        "MASTER STRIP     {count} ON {:+.1}dB",
+        strip.loud_db
+    ));
+    for (index, row) in rows.into_iter().enumerate() {
+        lines.push(Spans::from(Span::styled(
+            format!(
+                "{} {row}",
+                if index == a.master_selection {
+                    ">"
+                } else {
+                    " "
+                }
+            ),
+            Style::default().fg(if index == a.master_selection {
+                Color::Yellow
+            } else {
+                Color::White
+            }),
+        )));
+    }
+    f.render_widget(Paragraph::new(lines), body);
+}
+
+fn draw_channel_inserts<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let bindings = a.channel_bindings();
+    a.inserts_selection = a.inserts_selection.min(bindings.len().saturating_sub(1));
+    let mut lines = vec![Spans::from("INSERTS · INSTRUMENT OUTPUTS")];
+    let visible = usize::from(body.height.saturating_sub(7))
+        .min(3)
+        .min(bindings.len());
+    let start = a
+        .inserts_selection
+        .saturating_sub(1)
+        .min(bindings.len().saturating_sub(visible));
+    for (index, binding) in bindings.iter().enumerate().skip(start).take(visible) {
+        let settings = a.song.channels.settings(binding);
+        let state = if matches!(binding.backend.as_str(), "fluidsynth" | "external") {
+            "NO RETURN"
+        } else if settings.active() {
+            "ON"
+        } else if settings.enabled {
+            "FLAT"
+        } else {
+            "BYPASS"
+        };
+        let row = crate::ui_text::label_value(
+            &binding.instrument,
+            state,
+            usize::from(body.width.saturating_sub(2)),
+        );
+        lines.push(Spans::from(Span::styled(
+            format!(
+                "{} {row}",
+                if index == a.inserts_selection {
+                    ">"
+                } else {
+                    " "
+                }
+            ),
+            Style::default().fg(if index == a.inserts_selection {
+                Color::Yellow
+            } else {
+                Color::White
+            }),
+        )));
+    }
+    if let Some(binding) = bindings.get(a.inserts_selection) {
+        let settings = a.song.channels.settings(binding);
+        let unsupported = matches!(binding.backend.as_str(), "fluidsynth" | "external");
+        let identity = a
+            .song
+            .channels
+            .instruments
+            .iter()
+            .find(|i| &i.binding == binding)
+            .map(|i| format!("#{:03}", i.id))
+            .unwrap_or_else(|| "OFF".into());
+        lines.push(Spans::from(format!(
+            "{} {identity} {}/{}",
+            binding.backend,
+            a.inserts_selection + 1,
+            bindings.len()
+        )));
+        for (index, label) in [
+            format!("BASS   {:+.1} dB", settings.bass as f32 * 0.5),
+            format!("TREBLE {:+.1} dB", settings.treble as f32 * 0.5),
+            if settings.comp == 0 {
+                "COMP   OFF".into()
+            } else {
+                format!("COMP   {}%", settings.comp)
+            },
+        ]
+        .iter()
+        .enumerate()
+        {
+            lines.push(Spans::from(Span::styled(
+                format!(
+                    "{} {label}",
+                    if index == a.inserts_field { ">" } else { " " }
+                ),
+                Style::default().fg(if index == a.inserts_field {
+                    Color::Yellow
+                } else {
+                    Color::White
+                }),
+            )));
+        }
+        let runtime_index = if binding == &a.drum_channel_binding() && a.drum_host.is_some() {
+            Some(1)
+        } else if a
+            .playing
+            .as_ref()
+            .is_some_and(|p| preset_channel_binding(p) == *binding)
+            && a.engine.is_some()
+            && !unsupported
+        {
+            Some(0)
+        } else {
+            None
+        };
+        if let Some((controls, index)) = a.final_bus.controls().zip(runtime_index) {
+            let (peak, reduction) = controls.channels[index].meter();
+            let level = if peak > 0.0 {
+                format!("{:.1}", 20.0 * peak.log10())
+            } else {
+                "-inf".into()
+            };
+            lines.push(Spans::from(format!(
+                "OUT {level} dBFS  GR {reduction:.1} dB"
+            )));
+        } else {
+            lines.push(Spans::from("NO ACTIVE AUDIO RETURN"));
+        }
+        lines.push(Spans::from(if unsupported {
+            "ISOLATED RETURN REQUIRED"
+        } else if settings.active() {
+            "ON"
+        } else if settings.enabled {
+            "FLAT · COMP OFF"
+        } else {
+            "BYPASS"
+        }));
+    } else {
+        lines.push(Spans::from("No instrument routes in this Project"));
+    }
+    f.render_widget(Paragraph::new(lines), body);
 }
 
 fn draw_master_strip<B: Backend>(f: &mut Frame<B>, a: &mut App) {
@@ -27290,9 +27812,7 @@ fn configure_special_screenshot_scenario(app: &mut App, scenario: ScreenshotSpec
             configure_demo_fx(app);
             app.screen = Screen::Meter;
             app.open_overlay(Action::OpenEffectsOverlay);
-            if let Some(overlay) = app.overlay.as_mut() {
-                overlay.selection = 3;
-            }
+            app.master_selection = 4;
         }
         ScreenshotSpecialScenario::InputMonitorQuiet
         | ScreenshotSpecialScenario::InputMonitorPeaks
@@ -29473,13 +29993,13 @@ release = 0.4
         a.screen = Screen::Meter;
         a.menu_page_by_screen[Screen::Meter.index()] = 2;
         a.open_overlay(Action::OpenEffectsOverlay);
-        assert_eq!(a.overlay.as_ref().unwrap().kind, OverlayKind::MixEffects);
-        assert_eq!(a.overlay.as_ref().unwrap().caller, Screen::Meter);
-        a.overlay.as_mut().unwrap().selection = 1;
-        a.activate_overlay();
+        assert_eq!(a.screen, Screen::Master);
+        assert_eq!(a.master_parent, Screen::Meter);
+        a.master_selection = 2;
+        a.activate_master();
         assert_eq!(a.screen, Screen::FxRack);
         assert_eq!(a.fx_target, 2);
-        assert_eq!(a.fx_rack_parent, Screen::Meter);
+        assert_eq!(a.fx_rack_parent, Screen::Master);
     }
 
     #[test]
@@ -30820,10 +31340,12 @@ release = 0.4
         assert_eq!(app.screen, Screen::Routing);
         perform(Action::Back, &mut app, Path::new("/none"), None);
         perform(Action::OpenFxRack, &mut app, Path::new("/none"), None);
-        assert_eq!(app.overlay.as_ref().unwrap().kind, OverlayKind::MixEffects);
-        app.activate_overlay();
+        assert_eq!(app.screen, Screen::Master);
+        app.master_selection = 1;
+        app.activate_master();
         assert_eq!(app.screen, Screen::FxRack);
-        assert_eq!(app.fx_rack_parent, Screen::Home);
+        assert_eq!(app.fx_rack_parent, Screen::Master);
+        assert_eq!(app.master_parent, Screen::Home);
     }
 
     #[test]
@@ -31089,8 +31611,8 @@ release = 0.4
 
         let mut effects = app(&p);
         perform(Action::OpenFxRack, &mut effects, Path::new("/none"), None);
-        effects.overlay.as_mut().unwrap().selection = 3;
-        effects.activate_overlay();
+        effects.master_selection = 4;
+        effects.activate_master();
         effects.add_effect();
         effects.confirm_effect_type_edit();
         perform(Action::OpenFxEditor, &mut effects, Path::new("/none"), None);
@@ -31101,6 +31623,8 @@ release = 0.4
         assert!(effects.fx_edit_original.is_none());
         perform(Action::Back, &mut effects, Path::new("/none"), None);
         assert_eq!(effects.screen, Screen::FxRack);
+        perform(Action::Back, &mut effects, Path::new("/none"), None);
+        assert_eq!(effects.screen, Screen::Master);
         perform(Action::Back, &mut effects, Path::new("/none"), None);
         assert_eq!(effects.screen, Screen::Home);
     }
@@ -32354,8 +32878,11 @@ release = 0.4
 
         perform(Action::OpenMeter, &mut a, Path::new("/none"), None);
         perform(Action::OpenFxRack, &mut a, Path::new("/none"), None);
-        a.activate_overlay();
-        assert_eq!(a.fx_rack_parent, Screen::Meter);
+        a.master_selection = 1;
+        a.activate_master();
+        assert_eq!(a.fx_rack_parent, Screen::Master);
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Master);
         perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Meter);
     }
@@ -32425,59 +32952,109 @@ release = 0.4
             Screen::Playback,
             Screen::Tracker,
             Screen::Meter,
+            Screen::LivePatterns,
         ] {
-            let mut a = app(&p);
-            a.screen = caller;
-            a.menu_page_by_screen[caller.index()] = 2;
-            a.page_select_mode = true;
-            a.tracker_row = 7;
-            a.tracker_track = 2;
-            let before = a.song.clone();
-            let action = if caller == Screen::Meter {
-                Action::OpenEffectsOverlay
-            } else {
-                Action::OpenFxRack
-            };
-            perform(action, &mut a, Path::new("/none"), None);
-            assert_eq!(a.overlay.as_ref().unwrap().kind, OverlayKind::MixEffects);
-            let frame = render_app(&mut a, 40, 13);
-            let text = buffer_text(&frame);
-            for label in ["AUX 1", "AUX 2", "AUX 3", "MASTER INSERT", "0%"] {
-                assert!(
-                    text.contains(label),
-                    "{caller:?}: missing {label} in {text}"
-                );
-            }
-            assert_eq!(
-                overlay::geometry_for(OverlayKind::MixEffects, Rect::new(0, 0, 40, 13))
-                    .outer
-                    .bottom(),
-                10
-            );
-            assert!(!row_text(&frame, 12).contains("FX"));
-            a.activate_overlay();
-            assert_eq!(a.screen, Screen::FxRack);
-            assert_eq!(a.fx_target, 1);
-            perform(Action::Back, &mut a, Path::new("/none"), None);
-            assert_eq!(
-                (
+            for selection in 0..6 {
+                let mut a = app(&p);
+                a.screen = caller;
+                a.menu_page_by_screen[caller.index()] = 2;
+                a.page_select_mode = true;
+                a.tracker_row = 7;
+                a.tracker_track = 2;
+                let before = a.song.clone();
+                perform(Action::OpenFxRack, &mut a, Path::new("/none"), None);
+                assert_eq!(a.screen, Screen::Master);
+                assert_eq!(a.effects_workspace_caller(a.screen), caller);
+                assert!(a.overlay.is_none());
+                let frame = render_app(&mut a, 40, 13);
+                let text = buffer_text(&frame);
+                for label in [
+                    "CHANNEL INSERTS",
+                    "AUX 1",
+                    "AUX 2",
+                    "AUX 3",
+                    "MASTER INSERTS",
+                    "MASTER STRIP",
+                ] {
+                    assert!(text.contains(label), "missing {label}: {text}");
+                }
+                assert!(row_text(&frame, 12).starts_with('■'));
+                a.master_selection = selection;
+                perform(Action::Activate, &mut a, Path::new("/none"), None);
+                assert_eq!(
                     a.screen,
-                    a.menu_page(),
-                    a.page_select_mode,
-                    a.tracker_row,
-                    a.tracker_track
-                ),
-                (caller, 2, true, 7, 2)
-            );
-            assert_eq!(a.song, before);
-            perform(action, &mut a, Path::new("/none"), None);
-            perform(Action::Back, &mut a, Path::new("/none"), None);
-            assert!(a.overlay.is_none());
-            assert_eq!(
-                (a.screen, a.menu_page(), a.page_select_mode),
-                (caller, 2, true)
-            );
+                    if selection == 0 {
+                        Screen::Inserts
+                    } else if selection == 5 {
+                        Screen::MasterStrip
+                    } else {
+                        Screen::FxRack
+                    }
+                );
+                assert_eq!(a.effects_workspace_caller(a.screen), caller);
+                perform(Action::Back, &mut a, Path::new("/none"), None);
+                assert_eq!(a.screen, Screen::Master);
+                assert_eq!(a.master_selection, selection);
+                perform(Action::Back, &mut a, Path::new("/none"), None);
+                assert_eq!(
+                    (
+                        a.screen,
+                        a.menu_page(),
+                        a.page_select_mode,
+                        a.tracker_row,
+                        a.tracker_track
+                    ),
+                    (caller, 2, true, 7, 2)
+                );
+                assert_eq!(a.song, before);
+            }
         }
+    }
+
+    #[test]
+    fn channel_inserts_share_instrument_identity_and_preserve_project_session() {
+        let p = presets();
+        let mut a = app(&p);
+        a.playing = Some(p[0].clone());
+        let binding = preset_channel_binding(&p[0]);
+        let route = SoftwareRoute {
+            engine: p[0].backend,
+            instrument: p[0].route_id(),
+        };
+        for page in &mut a.song.patterns.get_mut(&0).unwrap().pages {
+            page.target = PageTarget::Software(route.clone());
+        }
+        assert_eq!(a.channel_bindings(), vec![binding.clone()]);
+        a.screen = Screen::Inserts;
+        a.inserts_field = 2;
+        a.edit_channel(1, false);
+        a.edit_channel(0, true);
+        let before = a.song.clone();
+        assert_eq!(before.channels.instruments.len(), 1);
+        assert_eq!(before.channels.settings(&binding).comp, 5);
+        for screen in [
+            Screen::Home,
+            Screen::Playback,
+            Screen::Tracker,
+            Screen::Master,
+            Screen::Inserts,
+            Screen::Meter,
+        ] {
+            a.set_screen(screen);
+            assert_eq!(a.song, before);
+        }
+        assert!(a.project_is_dirty());
+        assert_eq!(
+            sequencer::decode(&sequencer::encode(&a.song).unwrap()).unwrap(),
+            before
+        );
+        a.screen = Screen::Inserts;
+        let frame = render_app(&mut a, 40, 13);
+        let text = buffer_text(&frame);
+        for label in ["BASS", "TREBLE", "COMP", "BYPASS", "5%"] {
+            assert!(text.contains(label), "{text}");
+        }
+        assert!(row_text(&frame, 12).starts_with('■'));
     }
 
     #[test]
@@ -32561,6 +33138,8 @@ release = 0.4
                 Screen::Tracker,
                 Screen::Home,
                 Screen::Playback,
+                Screen::Master,
+                Screen::Inserts,
             ] {
                 a.set_screen(screen);
                 assert_eq!(a.engine.as_ref().unwrap().process_id(), pid);
@@ -34856,6 +35435,8 @@ release = 0.4
         a.fx_type_edit = None;
         let expected = [
             (Screen::Home, None),
+            (Screen::Master, None),
+            (Screen::Inserts, None),
             (Screen::Presets, Some(SecondaryNavigation::PresetEngine)),
             (Screen::Playback, None),
             (Screen::Ideas, None),
@@ -41320,7 +41901,7 @@ release = 0.4
 
         assert_eq!(a.song.patterns[&0], expected);
         let encoded = sequencer::encode(&a.song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 18\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 19\n"));
         assert_eq!(sequencer::decode(&encoded).unwrap(), a.song);
         assert_eq!(a.pattern_history.depths(), (1, 0));
         assert!(a.project_is_dirty());

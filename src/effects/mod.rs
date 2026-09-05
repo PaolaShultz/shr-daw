@@ -1,5 +1,6 @@
 //! Preallocated, allocation-free insert-effect runtime slots.
 
+pub(crate) mod channel;
 mod compressor;
 mod crusher;
 mod delay;

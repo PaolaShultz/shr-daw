@@ -387,8 +387,9 @@ effects, CPU state, or transport.
 
 ![Populated performance meter with the NAV controller page](../images/menu/performance-meter-nav.png)
 
-`FX` opens the same master-overlay layer used by FT2. Choose SOURCE, AUX 1,
-AUX 2, AUX 3, or MASTER, then click/Enter to open that rack.
+`FX` opens the central MASTER workspace shared with Home, Player, and FT2.
+Choose CHANNEL INSERTS, AUX 1–3, MASTER INSERTS, or MASTER STRIP; click/Enter
+opens that section. Back restores the Performance caller.
 
 With Input selected, `DUAL` changes the exact configured pair from its original
 stereo mapping to two independently panned mono signals; it then reads
@@ -398,10 +399,9 @@ PAN 2; the OPS minus/plus pair follows that focus. Mode and focus use these
 visible controller actions and add no dedicated computer-keyboard shortcuts.
 These live values are not saved in the Project.
 
-![Effects-routing overlay over the performance meter](../images/menu/overlay-performance-fx.png)
-
-The MTR remains underneath; pressing the highlighted `FX` again closes the
-overlay without changing audio or Project state.
+The former effects-overlay screenshot is superseded by the MASTER working
+screen. [Instrument channel inserts](../CHANNEL_INSERTS.md) owns the current
+navigation and backend coverage.
 
 ### SYS — safety and return
 
