@@ -4204,6 +4204,7 @@ enum Transport {
     ExternalPulse(crate::external_sync::PulseUpdate),
     RefreshLoop(Song),
     Stop(u64),
+    Panic(Vec<(PageTarget, u8)>),
     Mute(usize, bool),
     Thru(PageTarget, Vec<u8>),
     CancelThru(PageTarget, u8),
@@ -4400,6 +4401,10 @@ impl Sequencer {
             0
         };
         let _ = self.tx.send(Transport::Stop(generation));
+    }
+    /// Bounded note recovery without changing transport, clock, or routing.
+    pub fn panic(&self, live_destinations: Vec<(PageTarget, u8)>) {
+        let _ = self.tx.send(Transport::Panic(live_destinations));
     }
     pub fn mute(&self, track: usize, muted: bool) {
         let _ = self.tx.send(Transport::Mute(track, muted));
@@ -4879,6 +4884,21 @@ fn run_transport(
                         }
                     }
                 }
+            }
+            Ok(Transport::Panic(live_destinations)) => {
+                let channels = note_owners
+                    .keys()
+                    .map(|(target, channel, _)| (target.clone(), *channel))
+                    .chain(live_destinations)
+                    .collect::<BTreeSet<_>>();
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                for (target, channel) in channels {
+                    for message in panic_messages([channel]) {
+                        outputs.send_cleanup(&target, &message);
+                    }
+                }
+                active_notes.clear();
+                live_notes.clear();
             }
             Ok(Transport::Stop(generation)) => {
                 automation_cc.clear(Instant::now());

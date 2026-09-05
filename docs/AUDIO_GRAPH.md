@@ -54,6 +54,13 @@ a -18 dB post-insert send. Return changes also use 3 dB steps and wrap from
 
 ## Ownership boundary
 
+Workspace navigation does not deactivate this bus or unload sound sources.
+The normal effects overview exposes AUX 1–3 and MASTER inserts; the fixed
+MASTER STRIP remains a distinct downstream stage. Legacy SOURCE racks and
+their automation are validated, processed, and serialized unchanged. They
+are outside the normal rack-creation path. PANIC performs bounded note cleanup;
+only actual shutdown or explicit replacement releases session ownership.
+
 One application-owned JACK client contains the current stereo graph. Its
 lifetime is independent of every optional sound source, so MTR Input **MON ON**
 can activate it without a managed synth, Loop, or drums. Effects are internal
@@ -356,9 +363,9 @@ fallback, click-conscious bypass, reset, and separate input/output peak/RMS,
 clip, and non-finite meters. The EQ, compressor, distortion, crusher/reducer, gate,
 multimode filter, delay, chorus, flanger, phaser, tremolo/autopan, and
 shared-topology reverb have passed their deterministic software response gates.
-They are available in source and master racks; delay/reverb/modulation effects
-on an aux are validated as 100% wet. Two independently scaled pre/post sends
-feed two metered returns, which are mixed exactly once before the ordered master
+They are available in legacy source and ordinary master racks; delay/reverb/modulation effects
+on an aux are validated as 100% wet. Three independently scaled pre/post sends
+feed three metered returns, which are mixed exactly once before the ordered master
 chain. Source and master bypass retain dry passthrough. Aux bypass tracks wet
 generators explicitly: an all-bypassed bus returns silence, a delay may drain a
 wet-only tail with muted input, and serial conditioning may pass an already-wet

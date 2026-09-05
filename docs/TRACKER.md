@@ -253,8 +253,8 @@ workspace. Shift-rotary column navigation preserves already sounding notes on
 their original routes while later notes start from the newly selected column.
 Explicit page/track route, preset, channel, program, or destination changes
 still end notes on the old route. The FX rack/editor is an FT2 child: live input
-and the owned synth stay active, and Back returns to its FT2 caller. Leaving
-top-level FT2 for an unrelated workspace ends notes and unloads its owned synth.
+and the owned synth stay active, and Back returns to its exact FT2 caller.
+Visiting Home, Player, Effects, or Performance retains the same live session.
 
 `AUTO · machine default` is a real portable target. Its saved channel, bank,
 program, and setup fields are blank; at playback the machine's configured
@@ -356,7 +356,7 @@ it does not change the independent **ADD** cursor advance or create a second
 timing system.
 
 Edit has four controller pages: **EDIT**, **SET**, **SIZE**, and **SYS**.
-Normal FT2 **SELECT** remains one Exit away and still owns PAGE, PATTERN, SONG,
+Normal FT2 **SELECT** remains available after toggling Edit off with `E` and owns PAGE, PATTERN, SONG,
 and ROUTE. **SIZE** changes the current Pattern across every page and lane:
 
 - **HALF** accepts an even length of at least two rows. A populated Pattern asks
@@ -397,7 +397,7 @@ Pressing **PLAY** on the main FT2 screen starts the first pass at the selected
 row. When playback reaches the end, subsequent passes restart at row 1 of that
 Pattern rather than at the original play cursor.
 
-Normal FT2 **SOUND** replaces its CLICK shortcut with **FILL**; CLICK remains
+FT2 Tools **OPS** holds **FILL**; normal FT2 **SOUND** holds **FX**. CLICK remains
 available on FT2 Tools **SYS**. Keyboard `f` uses the same runtime latch. Fill
 changes are quantized to the next playback-cycle boundary, are cleared by Stop
 or a new Play start, and never dirty the Project. In normal FT2 that boundary
@@ -493,7 +493,7 @@ controller mappings.
 Real-time recording accepts the selected page when its exact target is online,
 including the factory Software Synth page. An offline or missing target refuses
 **REC** instead of substituting another destination. Stop, mute, panic, target
-failure, route interruption, Project replacement, and exit clear every recorded
+failure, route interruption, Project replacement, and application termination clear every recorded
 input owner and release auditioned notes. A Drum-auto capacity fault keeps
 recording and transport responsive, reports `DRUM LANES FULL`, and leaves
 existing cells unchanged.
@@ -731,18 +731,18 @@ automatic names keep both actions usable from a four-button controller.
 while computer-keyboard editing is optional; collisions are refused and a
 saved rename keeps the loaded Project state.
 
-FT2 workspace Exit and computer-keyboard quit open the dirty-Project guard only
-after at least one note event exists anywhere in the Project. With zero note
-events, Exit discards unsaved setup experiments back to the clean baseline and
-returns without a save question; quit likewise never asks to save. Empty
-routing/template work is retained only through an explicit **SAVE**. New
-Project, LOAD, and MIDI replacement still protect any dirty Project before
-replacement. The rotary guard opens on `SAVE (AUTO)`, followed by
+FT2 Exit navigates Home without a save question. It retains the live Project,
+dirty state, Pattern history, cursor, mode, controller page, engine, routing,
+and active transport or recording. Re-entry resumes that session. This also
+applies to zero-note Projects containing effects, routing, kit, or name edits.
+Save is required to keep work across application termination or reboot.
+Quit, New Project, LOAD, and MIDI replacement protect every dirty Project,
+including empty setup templates. The rotary guard opens on `SAVE (AUTO)`, followed by
 `SAVE (NAME)`, `DON'T SAVE`, and `BACK`.
 `SAVE (AUTO)` reuses a saved identity or chooses the next free automatic name.
 `SAVE (NAME)` starts with a collision-free automatic suggestion that rotary
-click accepts without typing. `DON'T SAVE` explicitly restores the clean
-Project baseline before FT2 Exit. `BACK`, Esc, and any failed or pending save
+click accepts without typing. `DON'T SAVE` permits the explicit quit or replacement.
+`BACK`, Esc, and any failed or pending save
 keep the Project and exact mode/order/Pattern/page/lane/row context.
 
 **MIDI** uses the private configured MIDI inbox and follows an analyse-then-

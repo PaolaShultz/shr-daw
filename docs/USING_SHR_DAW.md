@@ -61,8 +61,11 @@ in Presets:
 
 Browsing is silent. `LOAD` is the only managed start or replacement action.
 Only one SHR-managed melodic engine runs at a time. The loaded instrument
-continues when you leave Presets or Playback and stops on replacement, Panic,
+continues across workspace navigation and stops on incompatible replacement,
 shutdown, or an FT2 route that needs a different backend.
+If entering FT2 finds a different loaded sound, it retains that sound and
+shows `PLAY loads Project sound`. Explicit PLAY then loads the Project route;
+the engine replacement still shuts down the old owned process first.
 
 Playback shows held notes, decimal MIDI strike velocity, chord names, a
 keyboard-state strip when space permits, and 12 controls for the active
@@ -203,9 +206,19 @@ and SHR-only effect automation are counted as omissions.
 
 ## Effects and final sound
 
-Effects contains bounded source, aux, drums, and master processing. The
-Project owns rack order, parameters, routing, the fixed DRUMS
-Reverb-then-Delay rack, and the fixed MASTER STRIP.
+Home EFFECTS, Player FX, FT2 SOUND FX, and Performance FX share one overview:
+AUX 1–3 are parallel wet-only send/return buses and MASTER is a whole-mix
+insert rack. Each Player/FT2 aux knob controls its send, not a dry/wet mix.
+The fixed MASTER STRIP is a separate mastering stage after the insert rack.
+Existing source inserts remain loaded and saved for compatibility, outside
+the normal creation path. The Project owns all these settings, along with
+the fixed DRUMS Reverb-then-Delay rack.
+
+Home, Player, FT2, Effects, and Performance share one live session. Back and
+Exit retain unsaved work, cursor and controller context, engine, routing, and
+transport or recording, including Projects with no notes. PANIC cleans up
+notes without closing that session; STOP ends the relevant transport or take.
+Save before quitting or replacing a Project to retain it across restarts.
 
 With the optional graph disabled, ordinary source, aux, and master rack edits
 change Project data but do not process direct audio. The DRUMS rack still

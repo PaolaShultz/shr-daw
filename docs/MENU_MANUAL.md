@@ -44,7 +44,7 @@ positions:
 - Page 1 holds the screen's primary workflow; on FT2 it is PLAY, while SELECT
   holds the page/pattern/song/route overlays. On workspaces, child screens, and editors, `SYS` item 4 is `EXIT`,
   which goes back one level. MIDI controls never quit SHR-DAW.
-- `PANIC` stops owned playback and sends All Notes Off. It does not kill an
+- `PANIC` sends bounded note cleanup while retaining transport, engines, and Project work. It does not kill an
   unrelated synth or JACK client.
 
 Home has no shared status row. Its own last line appears only for active owned
@@ -89,12 +89,14 @@ flowchart TD
     H0 --> M[Performance]
     H0 --> ML[MIDI Learn]
     H0 --> RTE[Routing editor]
-    H0 --> FX[Effects / FX rack]
+    H0 --> FO[Project effects overview]
     H0 --> I[Ideas]
     H0 --> H[Help]
     P -->|Load| PB[Playback]
-    M --> MO[MTR FX overlay]
-    MO --> FX
+    M --> FO
+    PB --> FO
+    T --> FO
+    FO --> FX[AUX 1–3 or MASTER insert rack]
     FX --> FE[FX editor]
     T --> ON[PAGE / PATTERN / SONG / ROUTE overlays]
     T --> N[N00B filter on/off]

@@ -287,7 +287,7 @@ SHR-DAW uses “record” for three intentionally different jobs:
    produced it.
 
 Idea take playback runs independently of screen redraw. Stop, route changes,
-replacement, panic, and exit release the exact notes still owned by that take.
+replacement, panic, and application termination release the exact notes still owned by that take.
 Ideas publish into new private directories without replacing a same-named
 Idea.
 
@@ -309,6 +309,16 @@ the final-bus route nor changes unrelated JACK connections. See [the complete
 recorder contract](MULTITRACK_RECORDING.md).
 
 ## Projects, Patterns, pages, and columns
+
+Home, Player, FT2, Effects, and Performance are views of one live in-memory
+session. Navigation preserves Project data and dirty state, Pattern history,
+FT2 context, loaded engine and pickup, audio routes, and running transport or
+recording. FT2 Exit is navigation, including for zero-note setup Projects;
+it never restores the clean baseline. Saving persists that session across
+termination. Quit and explicit Project replacement guard all dirty work.
+STOP ends its musical transport/take; PANIC cleans up notes without releasing
+engine or final-bus ownership. Full shutdown remains exclusive to termination
+and explicit incompatible replacement.
 
 A **Project** is the complete tracker work saved as one `.shsong` file. It
 contains:

@@ -81,6 +81,8 @@ pub struct Engine {
     midi_lifecycle: Option<MidiLifecycle>,
     #[cfg(test)]
     test_process: bool,
+    #[cfg(test)]
+    pub(crate) test_note_cleanup: Mutex<Vec<Vec<u8>>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -272,6 +274,10 @@ impl Default for TrackerRoute {
 }
 
 impl TrackerRoute {
+    pub(crate) fn enabled_for(&self, target: &crate::sequencer::PageTarget) -> bool {
+        self.enabled && &self.target == target
+    }
+
     pub fn configure(&mut self, config: TrackerRouteConfig<'_>) {
         self.revision = self.revision.wrapping_add(1);
         self.navigation_revision = self.navigation_revision.wrapping_add(1);
@@ -338,6 +344,14 @@ impl TrackerRoute {
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect()
+    }
+
+    pub(crate) fn active_destinations(&self) -> Vec<(crate::sequencer::PageTarget, u8)> {
+        if self.enabled {
+            self.destinations()
+        } else {
+            Vec::new()
+        }
     }
 
     #[cfg(test)]
@@ -767,6 +781,7 @@ impl Engine {
             audio_route_notice: None,
             midi_lifecycle: None,
             test_process: true,
+            test_note_cleanup: Mutex::new(Vec::new()),
         };
         if backend == BackendKind::FluidSynth && !parts.is_empty() {
             engine.configure_fluidsynth_parts(parts)?;
@@ -977,6 +992,8 @@ impl Engine {
             midi_lifecycle: None,
             #[cfg(test)]
             test_process: false,
+            #[cfg(test)]
+            test_note_cleanup: Mutex::new(Vec::new()),
         };
         if preset.backend == BackendKind::FluidSynth {
             engine.configure_fluidsynth_parts(fluid_parts)?;
@@ -1021,6 +1038,8 @@ impl Engine {
     pub fn panic(&self) {
         let messages = crate::recording::all_notes_off();
         for (index, message) in messages.iter().enumerate() {
+            #[cfg(test)]
+            self.test_note_cleanup.lock().unwrap().push(message.clone());
             let _ = self.send(message);
             // synthv1 0.9.29 handles ALSA sequencer control events on its
             // audio path. A complete 48-message panic delivered in one burst

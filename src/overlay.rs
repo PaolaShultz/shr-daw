@@ -45,7 +45,7 @@ impl OverlayKind {
             Action::OpenEntryLayoutOverlay => Some(Self::TrackerEntryLayout),
             Action::OpenPresetSaveOverlay => Some(Self::PresetSave),
             Action::LoopImport | Action::OpenLoopLibrary => Some(Self::LoopLibrary),
-            Action::OpenEffectsOverlay => Some(Self::MixEffects),
+            Action::OpenEffectsOverlay | Action::OpenFxRack => Some(Self::MixEffects),
             Action::OpenHarmony => Some(Self::Harmony),
             _ => None,
         }
@@ -63,7 +63,7 @@ impl OverlayKind {
             Self::TrackerEntryLayout => "PAGE NOTE ENTRY",
             Self::PresetSave => "SAVE USER SOUND",
             Self::LoopLibrary => "LOOP BROWSER",
-            Self::MixEffects => "EFFECTS ROUTING",
+            Self::MixEffects => "PROJECT EFFECTS",
             Self::Harmony => "HARMONY",
         }
     }
@@ -262,6 +262,10 @@ impl OverlayState {
     /// page; other overlays preserve their launcher position, with the Loop
     /// Browser and Song Navigation adding their documented anchors.
     pub fn controller_action(&self, item: usize) -> Option<(&'static str, Action)> {
+        if self.kind == OverlayKind::MixEffects {
+            let slot = navigation::EFFECTS_OVERVIEW_PAGE.slots.get(item).copied()?;
+            return slot.dispatch().map(|action| (slot.label, action));
+        }
         if self.kind == OverlayKind::TrackerRoute {
             let slot = navigation::ROUTE_OVERLAY_PAGE.slots.get(item).copied()?;
             return slot.dispatch().map(|action| (slot.label, action));
@@ -506,10 +510,10 @@ pub fn geometry(area: Rect) -> OverlayGeometry {
     OverlayGeometry { outer, inner }
 }
 
-/// ROUTE leaves the same two controller rows used by ordinary working
-/// screens. Other overlays retain their compact launcher-in-border layout.
+/// ROUTE and the effects overview leave the two canonical controller rows.
+/// The effects overview also keeps its launcher inside the border.
 pub fn geometry_for(kind: OverlayKind, area: Rect) -> OverlayGeometry {
-    if kind != OverlayKind::TrackerRoute || area.height < 5 {
+    if !matches!(kind, OverlayKind::TrackerRoute | OverlayKind::MixEffects) || area.height < 5 {
         return geometry(area);
     }
     geometry(Rect::new(

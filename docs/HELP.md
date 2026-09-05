@@ -95,7 +95,7 @@ CELL EDIT's rotary list continues after TIME with CHANCE, CONDITION, COND A,
 and COND B. Chance is deterministic 1–100%. Conditions are FIRST, LAST/N,
 A:B, PRE, and FILL; ALWAYS is the default. LAST/N is the final pass in an
 N-pass cycle, PRE follows the preceding trigger in the same lane/pass, and
-FILL uses the runtime latch. Normal FT2 SOUND `FILL` or keyboard `f` changes
+FILL uses the runtime latch. FT2 Tools OPS `FILL` or keyboard `f` changes
 that latch at the next cycle boundary. Stop/new Play clears it. CLICK remains
 under FT2 Tools SYS.
 
@@ -104,7 +104,7 @@ under FT2 Tools SYS.
 Presets chooses the instrument engine and sound. Loading a sound starts or
 reuses only the engine owned by SHR-DAW; unrelated synth processes are left
 alone. Presets and Playback share that owned sound, and leaving those screens
-keeps it running. Global panic, shutdown, replacement, or an explicit different
+keeps it running. Shutdown, incompatible replacement, or an explicit different
 FT2 software route ends it safely. A genuinely new, empty, unsaved default FT2
 Project adopts the current engine/instrument on page 1 without restarting it;
 without a Player instrument, FT2 loads the first available synthv1 preset.
@@ -174,7 +174,7 @@ synthv1 and Moj Sint. Factory or system sounds are read-only, so Overwrite
 clearly redirects to a new private `User NNN` sound. A saved sound becomes the
 current RESET baseline without restarting the engine or changing its values. Use the overlay
 with the controller, encoder/Enter, or mouse; keyboard `O`, `N`, and `C` select
-its three actions while `S` remains Panic. Unsupported backends show SAVE
+its three actions while `S` remains STOP. Unsupported backends show SAVE
 UNAVAILABLE. A storage or format failure leaves the overlay open and preserves
 the current sound, controls, held notes, and existing file. Save MIDI takes from
 Ideas. `SOUNDS` returns directly to Presets, where `LOAD` starts the highlighted
@@ -182,12 +182,14 @@ instrument.
 
 ## Effects graph
 
-Playback SYS FX or FT2 Tools OPS FX opens the current Project's FX rack. In
-FT2, uppercase F opens it directly. Back returns to the calling Player or FT2
-screen while its instrument remains active. TARGET cycles SOURCE,
-AUX 1, AUX 2, AUX 3, DRUMS, and MASTER. Shift-rotary selects that target in either
-direction while the ordinary rotary browses rack rows. Source effects change
-the instrument in series.
+Home EFFECTS, Player FX, FT2 SOUND FX (also uppercase F), and
+Performance FX open the same Project effects overview. AUX 1–3 and MASTER
+show their effect counts, bypass counts, and aux send levels. Select a row to
+open its rack. Back restores the exact caller and controller page without
+stopping transport or unloading the instrument. TARGET and Shift-rotary cycle
+AUX 1, AUX 2, AUX 3, and MASTER; the ordinary rotary browses rack rows.
+Existing SOURCE inserts and automation remain compatible Project data and
+continue processing, but source inserts are outside the normal editing path.
 Each aux makes a parallel wet copy: SEND sets how much enters it, POINT chooses
 before or after source effects, and RETURN sets how much comes back. Master
 effects change the final dry-plus-aux mix.
@@ -282,7 +284,7 @@ brighter LED in the same colour is the held sample peak.
 Turn the encoder or use Left/Right or `j`/`k` to select a channel. Click/Enter
 or Space toggles its arm. PageUp/PageDown shows TAKE, CHANNEL, and SYS commands
 in the right half; `r` records, `s` stops, `x` resets holds, `u` returns to
-setup, and uppercase `S` panics. The shared final row remains the only status
+setup, and uppercase `S` performs PANIC note cleanup. The shared final row remains the only status
 row. `M`, `F`, and held `C` distinguish missing, faulted, and clipped channels
 from ordinary silence. This is a recording overview, not the MTR final-bus
 mixer, Audio Recorder setup, route detail, audible monitor, or mixer strip.
@@ -495,8 +497,11 @@ performance rotary must prove a slow left turn and then a slow right turn on
 the same CC. A `POSITIONAL` or `DIRECTION` message means that role was not
 saved; change the hardware mode if necessary, then press `R` to retry.
 
-PANIC sends all-notes-off, stops owned playback/recording, and shuts down the
-managed engine. It does not kill synth processes SHR-DAW did not start.
+PANIC performs bounded All Notes Off and stuck-note cleanup while retaining
+engines, transport, recording, Project work, and audio routing. STOP ends the
+relevant transport or recording, retaining the engine and Project. Workspace
+Exit navigates without closing the session. Actual quit and incompatible
+replacement still perform owned-engine shutdown and note cleanup.
 
 Pad lock lets command pads play as musical notes. Turn pad lock off when menu
 buttons appear to do nothing.

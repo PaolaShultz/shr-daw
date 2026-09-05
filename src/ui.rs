@@ -95,7 +95,9 @@ const BUILD_BADGE: &str = if cfg!(debug_assertions) { "DEV" } else { "REL" };
 const FIRST_AUX_EFFECT_INDEX: usize = 3;
 const DRUM_FX_TARGET: usize = MAX_AUX_BUSES + 1;
 const MASTER_FX_TARGET: usize = MAX_AUX_BUSES + 2;
+#[cfg(test)]
 const FX_TARGET_COUNT: usize = MAX_AUX_BUSES + 3;
+const WORKSPACE_FX_TARGETS: [usize; 4] = [1, 2, 3, MASTER_FX_TARGET];
 const COMPRESSOR_GAIN_REDUCTION_LEDS_DB: [f32; 11] =
     [0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 18.0, 24.0];
 // U+25CF is one cell wide in the target TTY font and is the master LED glyph.
@@ -161,7 +163,7 @@ fn fx_hardware_label(index: usize) -> String {
 
 fn fx_target_label(target: usize) -> &'static str {
     match target {
-        0 => "SOURCE",
+        0 => "LEGACY SOURCE",
         1 => "AUX 1",
         2 => "AUX 2",
         3 => "AUX 3",
@@ -1109,6 +1111,8 @@ struct App {
     eq_editor_field: EqEditorField,
     fx_add_kind: usize,
     fx_target: usize,
+    fx_caller_page_select_mode: bool,
+    fx_caller_context: Option<PatternEditContext>,
     fx_value_editing: bool,
     fx_edit_original: Option<(InsertRack, ProjectAuxRouting, InsertRack)>,
     fx_type_edit: Option<FxTypeEdit>,
@@ -2218,6 +2222,8 @@ impl App {
             eq_editor_field: EqEditorField::default(),
             fx_add_kind: 0,
             fx_target: 0,
+            fx_caller_page_select_mode: false,
+            fx_caller_context: None,
             fx_value_editing: false,
             fx_edit_original: None,
             fx_type_edit: None,
@@ -2413,21 +2419,7 @@ impl App {
     }
 
     fn begin_project_action(&mut self, action: PendingProjectAction) {
-        if matches!(
-            action,
-            PendingProjectAction::ExitTracker | PendingProjectAction::Quit
-        ) && !self
-            .song
-            .patterns
-            .values()
-            .any(sequencer::pattern_has_note_events)
-        {
-            if action == PendingProjectAction::ExitTracker
-                && self.project_is_dirty()
-                && !self.restore_clean_project_for_exit()
-            {
-                return;
-            }
+        if action == PendingProjectAction::ExitTracker {
             self.complete_project_action(action);
             return;
         }
@@ -2445,7 +2437,6 @@ impl App {
     fn complete_project_action(&mut self, action: PendingProjectAction) {
         match action {
             PendingProjectAction::ExitTracker => {
-                self.set_tracker_edit(false);
                 self.set_screen(Screen::Home);
                 self.status.clear();
             }
@@ -2478,9 +2469,6 @@ impl App {
         let Some(action) = self.pending_project_action.clone() else {
             return;
         };
-        if action == PendingProjectAction::ExitTracker && !self.restore_clean_project_for_exit() {
-            return;
-        }
         if self.pending_project_action.take().is_some() {
             self.project_guard_selected = ProjectGuardChoice::SaveAuto;
             self.project_guard_naming = false;
@@ -2606,43 +2594,6 @@ impl App {
                 self.status = "PROJECT SAVE FAILED · Project and guard kept".into();
             }
         }
-    }
-
-    fn restore_clean_project_for_exit(&mut self) -> bool {
-        let baseline = self.project_clean_baseline.clone();
-        self.cancel_note_editor();
-        self.cancel_tracker_gesture();
-        self.stop_tracker_recording();
-        self.sequencer.stop();
-        self.song_previewing = false;
-        self.loop_player.stop();
-        if let Err(status) = self.publish_project_audio_runtime(
-            &baseline.insert_rack,
-            &baseline.aux_routing,
-            &baseline.drum_rack,
-            &baseline.master_strip,
-        ) {
-            self.status = format!("{status} · guard kept");
-            return false;
-        }
-        for slot in 0..crate::loop_player::LOOP_SLOTS {
-            self.loop_player.unload_slot(slot);
-        }
-        self.song = baseline;
-        self.clear_pattern_history();
-        self.live_patterns.reset_for_project(&self.song);
-        self.live_shape_focus = None;
-        self.live_activation_seen = 0;
-        self.live_prepare_seen = None;
-        self.loop_activation_seen = 0;
-        self.loop_runtime_pattern = None;
-        self.prepared_pattern_loops = None;
-        self.loop_slot_selected = 0;
-        self.reset_multichannel_monitor_context();
-        self.clamp_tracker_cursor();
-        self.refresh_page_targets();
-        self.sync_tracker_route();
-        true
     }
 
     fn request_quit(&mut self) -> bool {
@@ -3233,7 +3184,7 @@ impl App {
         let overlay = self.overlay.as_ref()?;
         if self.mixed_engine_remap.is_some() && overlay.kind == OverlayKind::TrackerRoute {
             return match item {
-                0 => Some(("STOP", Action::StopAll)),
+                0 => Some(("STOP", Action::LiveStop)),
                 1 => Some(("PREVIEW", Action::PreviewRouteDraft)),
                 3 => Some(("CANCEL", Action::CancelRouteOverlay)),
                 _ => None,
@@ -3272,7 +3223,7 @@ impl App {
             OverlayKind::TrackerEntryLayout => 8,
             OverlayKind::PresetSave => 3,
             OverlayKind::LoopLibrary => self.loop_imports.len() + self.loop_library.len(),
-            OverlayKind::MixEffects => FX_TARGET_COUNT,
+            OverlayKind::MixEffects => WORKSPACE_FX_TARGETS.len(),
             OverlayKind::Harmony => 0,
         }
     }
@@ -3309,7 +3260,10 @@ impl App {
                 caller == Screen::TrackerFiles && self.confirm_pattern_clear
             }
             OverlayKind::LoopLibrary => caller == Screen::TrackerLoop,
-            OverlayKind::MixEffects => caller == Screen::Meter,
+            OverlayKind::MixEffects => {
+                matches!(caller, Screen::Home | Screen::Playback | Screen::Meter)
+                    || is_tracker_screen(caller)
+            }
             OverlayKind::Harmony => caller == Screen::TrackerTools,
         };
         if !allowed {
@@ -3333,7 +3287,14 @@ impl App {
             self.refresh_loop_library();
         }
         let context = self.menu_context();
-        let Some(launcher) = OverlayLauncher::resolve(caller, context, action) else {
+        let Some(launcher) = OverlayLauncher::resolve(caller, context, action).or_else(|| {
+            (kind == OverlayKind::MixEffects).then_some(OverlayLauncher {
+                action,
+                label: "EFFECTS",
+                page: self.menu_page(),
+                item: 0,
+            })
+        }) else {
             self.status = "NO ACTION HERE · use visible controls".into();
             return;
         };
@@ -3374,7 +3335,10 @@ impl App {
                 .position(|entry| entry.current)
                 .map(|index| self.loop_imports.len() + index)
                 .unwrap_or(0),
-            OverlayKind::MixEffects => self.fx_target.min(MASTER_FX_TARGET),
+            OverlayKind::MixEffects => WORKSPACE_FX_TARGETS
+                .iter()
+                .position(|target| *target == self.fx_target)
+                .unwrap_or(0),
             OverlayKind::Harmony => 0,
         };
         let draft = if kind == OverlayKind::TrackerRoute {
@@ -3395,6 +3359,9 @@ impl App {
         };
         let caller_menu_page = self.menu_page();
         let caller_page_select_mode = self.page_select_mode;
+        if kind == OverlayKind::MixEffects {
+            self.fx_caller_context = is_tracker_screen(caller).then(|| self.pattern_edit_context());
+        }
         if kind == OverlayKind::TrackerRoute && self.mixed_engine_remap.is_none() {
             self.route_history_opening = self.pattern_history_state("ROUTE");
         }
@@ -3440,6 +3407,9 @@ impl App {
         if self.screen == overlay.caller {
             self.menu_page_by_screen[self.screen.index()] = overlay.caller_menu_page.min(3);
             self.page_select_mode = overlay.caller_page_select_mode;
+        }
+        if overlay.kind == OverlayKind::MixEffects {
+            self.restore_fx_caller_context();
         }
         self.status = match route_restore {
             Some((pattern, page_index, snapshot)) => {
@@ -4189,12 +4159,21 @@ impl App {
                 }
             }
             OverlayKind::MixEffects => {
-                self.fx_target = selection.min(MASTER_FX_TARGET);
+                self.fx_target = WORKSPACE_FX_TARGETS[selection.min(3)];
+                self.fx_rack_parent = self.screen;
                 self.close_overlay(false);
+                self.fx_caller_page_select_mode = self.page_select_mode;
                 if self.selected_effect_id().is_none() {
-                    self.fx_selection = FxRackSelection::Insert;
+                    self.fx_selection = project_fx_rack(
+                        &self.song.insert_rack,
+                        &self.song.aux_routing,
+                        &self.song.drum_rack,
+                        self.fx_target,
+                    )
+                    .and_then(|rack| rack.order.first().copied())
+                    .map(FxRackSelection::Effect)
+                    .unwrap_or(FxRackSelection::Insert);
                 }
-                self.fx_rack_parent = Screen::Meter;
                 self.set_screen(Screen::FxRack);
                 self.status = format!("{} rack", fx_target_label(self.fx_target));
             }
@@ -4202,74 +4181,42 @@ impl App {
         }
     }
 
-    fn set_screen(&mut self, screen: Screen) {
-        let previous = self.screen;
-        if previous != screen {
-            self.pattern_history.break_coalescing();
-        }
-        if previous == Screen::MultichannelMonitor
-            && !matches!(screen, Screen::MultichannelMonitor | Screen::Help)
+    fn restore_fx_caller_context(&mut self) {
+        let Some(context) = self.fx_caller_context.as_ref() else {
+            return;
+        };
+        self.tracker_order = context.order;
+        self.arrange_selected = context.arrangement_step;
+        self.tracker_row = context.row;
+        self.tracker_page = context.page;
+        self.tracker_track = context.column;
+        self.tracker_mode = if context.mode == TrackerMode::Rec && self.tracker_recording.is_none()
         {
-            self.audio_recorder.stop_monitoring();
-        }
-        let playback_filter_was_active =
-            self.playback_noob && self.screen_keeps_playback_workspace_active(previous);
-        let playback_filter_will_be_active =
-            self.playback_noob && self.screen_keeps_playback_workspace_active(screen);
-        let leaving_playback_workspace = self.screen_keeps_playback_workspace_active(previous)
-            && !self.screen_keeps_playback_workspace_active(screen);
-        if leaving_playback_workspace && self.controller_live_transport {
-            self.stop_controller_live_transport();
-            if let Some(engine) = self.engine.as_ref() {
-                engine.panic();
-            }
-            self.held_notes = HeldNotes::default();
-        }
-        if playback_filter_was_active && !playback_filter_will_be_active {
-            if let Some(engine) = self.engine.as_ref() {
-                engine.panic();
-            }
-            self.held_notes = HeldNotes::default();
-        }
-        let previous_tracker = self.screen_keeps_tracker_workspace_active(previous);
-        let next_tracker = self.screen_keeps_tracker_workspace_active(screen);
-        let leaving_tracker_workspace = previous_tracker && !next_tracker;
-        if previous == Screen::Automation && screen != Screen::Automation {
-            self.automation_armed = false;
-            self.confirm_automation_clear = false;
-            self.rearm_automation_pickup();
-        }
-        let leaving_loop_player = previous == Screen::TrackerLoop
-            && !matches!(screen, Screen::TrackerLoop | Screen::Help);
-        if leaving_loop_player && !leaving_tracker_workspace {
-            if self.loop_previewing {
-                self.stop_loop_preview(false);
-            } else {
-                self.tracker_stop();
-            }
-        }
-        if leaving_tracker_workspace {
-            if self.loop_previewing {
-                self.stop_loop_preview(false);
-            }
-            // FT2 owns its transport as well as its live route and managed
-            // engine. Stop synchronously before teardown so Home and the
-            // shared status row cannot observe a sounding-stopped engine with
-            // a stale sequencer `playing` flag.
-            self.tracker_stop();
-        }
+            TrackerMode::Play
+        } else {
+            context.mode
+        };
+        self.automation_lane = context.automation_lane;
+        self.automation_point = context.automation_point;
+    }
+
+    fn set_screen(&mut self, screen: Screen) {
+        // Views do not own the session lifetime. Replacement and shutdown
+        // explicitly stop transports and release owned resources.
         if self.screen != screen {
+            // Browser auditions are temporary previews, not session transport.
             if self.screen == Screen::TrackerFiles && self.song_previewing {
                 self.stop_song_preview();
             }
-            if screen != Screen::MultichannelMonitor {
-                self.menu_page_by_screen[screen.index()] = 0;
+            if self.screen == Screen::TrackerLoop && screen != Screen::Help && self.loop_previewing
+            {
+                self.stop_loop_preview(false);
             }
+            self.pattern_history.break_coalescing();
             self.page_select_mode = false;
             self.prepare_confirmation_action(Action::Noop);
         }
         self.screen = screen;
-        self.sync_playback_noob();
         self.fx_control_mode.store(
             matches!(
                 screen,
@@ -4277,15 +4224,6 @@ impl App {
             ),
             Ordering::Relaxed,
         );
-        if previous != screen {
-            if previous_tracker && !next_tracker {
-                self.disable_tracker_route();
-                self.unload_owned_engine(|owner| matches!(owner, EngineOwner::Tracker(_)));
-            }
-            if !previous_tracker && next_tracker {
-                self.unload_owned_engine(|owner| *owner == EngineOwner::SoftwareSynth);
-            }
-        }
     }
 
     fn open_tracker_parameters(&mut self) {
@@ -4889,6 +4827,9 @@ impl App {
 
     fn tracker_workspace_active(&self) -> bool {
         self.screen_keeps_tracker_workspace_active(self.screen)
+            || self.tracker_recording.is_some()
+            || self.sequencer.status().playing
+            || matches!(self.engine_owner, Some(EngineOwner::Tracker(_)))
     }
 
     fn genuinely_new_empty_default_project(&self) -> bool {
@@ -5156,6 +5097,11 @@ impl App {
                         .expect("resolved plan")
                         .clone(),
                 )
+                || (*owner == EngineOwner::SoftwareSynth
+                    && self.playing.as_ref().is_some_and(|preset| {
+                        preset.backend == resolved.primary.backend
+                            && preset.route_id() == resolved.primary.route_id()
+                    }))
         });
         if same_backend
             && self.engine.as_mut().is_some_and(|engine| engine.alive())
@@ -5201,6 +5147,9 @@ impl App {
             && self.engine.as_mut().is_some_and(|engine| engine.alive())
             && resolved.primary.backend != BackendKind::FluidSynth
         {
+            self.engine_owner = Some(EngineOwner::Tracker(
+                resolved.plan.primary_route().unwrap().clone(),
+            ));
             self.tracker_engine_plan = Some(resolved.plan);
             return true;
         }
@@ -5271,6 +5220,11 @@ impl App {
         fluid_parts: &[engine::FluidSynthPart],
         state: &Path,
     ) -> Result<Engine> {
+        #[cfg(test)]
+        assert!(
+            self.engine.is_none(),
+            "replacement must release the old engine before starting another"
+        );
         #[cfg(test)]
         if let Some(result) = self.engine_start_script.pop_front() {
             result.map_err(anyhow::Error::msg)?;
@@ -5371,6 +5325,10 @@ impl App {
             }
         }
         let previous = self.engine_session();
+        if self.engine.is_some() {
+            self.tracker_stop();
+            self.stop_idea_transport();
+        }
         if let Some(engine) = self.engine.as_mut() {
             engine.panic();
         }
@@ -5774,7 +5732,67 @@ impl App {
         }
     }
 
-    fn stop_all(&mut self, state: &Path) {
+    fn panic_notes(&mut self) {
+        let destinations = self
+            .tracker_route
+            .lock()
+            .map(|route| route.active_destinations())
+            .unwrap_or_default();
+        self.sequencer.panic(destinations);
+        self.cancel_tracker_gesture();
+        self.release_tracker_audition();
+        if let Some(engine) = self.engine.as_ref() {
+            engine.panic();
+        }
+        if let Some(drums) = self.drum_host.as_ref() {
+            drums.all_notes_off();
+        }
+        if let Some(recording) = self.tracker_recording.as_mut() {
+            recording.active_lanes.clear();
+            recording.lane_owners.clear();
+        }
+        self.held_notes = HeldNotes::default();
+        self.status = "PANIC · All Notes Off".into();
+    }
+
+    fn stop_workspace_transport(&mut self) {
+        match self.active_recording_owner() {
+            Some(RecordingOwner::Tracker) => {
+                self.tracker_stop();
+                return;
+            }
+            Some(RecordingOwner::Idea) => {
+                self.stop_idea_transport();
+                return;
+            }
+            Some(RecordingOwner::Multitrack) => {
+                self.stop_audio_recording();
+                return;
+            }
+            Some(RecordingOwner::Final) => {
+                self.toggle_final_recording();
+                return;
+            }
+            None => {}
+        }
+        if self.tracker_recording.is_some() || is_tracker_screen(self.screen) {
+            self.tracker_stop();
+        } else if self.screen == Screen::AudioRecorder || self.screen == Screen::MultichannelMonitor
+        {
+            self.stop_audio_recording();
+        } else if self.screen == Screen::Meter && self.final_bus.recording_active() {
+            self.toggle_final_recording();
+        } else if self.recorder.is_recording()
+            || self.playback.is_some()
+            || self.controller_live_transport
+        {
+            self.stop_idea_transport();
+        } else {
+            self.tracker_stop();
+        }
+    }
+
+    fn shutdown_session(&mut self, state: &Path) {
         self.cancel_note_editor();
         self.cancel_tracker_gesture();
         self.stop_tracker_recording();
@@ -10012,7 +10030,7 @@ impl App {
             }
         }
         self.tracker_mode = TrackerMode::Play;
-        self.sync_tracker_route();
+        self.configure_tracker_route(false);
         self.reset_context_page();
         let history_opening = self.recording_history_opening.take();
         self.commit_pattern_history(history_opening, None);
@@ -13702,6 +13720,8 @@ impl App {
         original_values: HashMap<u8, f32>,
         values: HashMap<u8, f32>,
     ) {
+        self.tracker_stop();
+        self.disable_tracker_route();
         self.performance_meter
             .set_audio_unavailable(AudioAvailability::Stopped);
         self.playing = Some(preset);
@@ -15191,7 +15211,12 @@ impl App {
     }
 
     fn cycle_fx_target(&mut self, direction: i8) {
-        self.fx_target = wrapped_index(self.fx_target, FX_TARGET_COUNT, direction);
+        let index = WORKSPACE_FX_TARGETS
+            .iter()
+            .position(|target| *target == self.fx_target)
+            .map(|index| wrapped_index(index, WORKSPACE_FX_TARGETS.len(), direction))
+            .unwrap_or(if direction < 0 { 3 } else { 0 });
+        self.fx_target = WORKSPACE_FX_TARGETS[index];
         self.fx_selection = if is_drum_fx_target(self.fx_target) {
             self.song
                 .drum_rack
@@ -15819,9 +15844,6 @@ impl App {
         }
     }
     fn open_ideas(&mut self) {
-        if self.screen == Screen::Tracker {
-            self.set_tracker_mode(TrackerMode::Play);
-        }
         self.ideas = recording::list(&recording::ideas_dir()).unwrap_or_default();
         self.idea_selected = self.idea_selected.min(self.ideas.len().saturating_sub(1));
         self.confirm_delete = None;
@@ -16162,7 +16184,7 @@ impl App {
         {
             self.commit_tracker_gesture(now);
         }
-        if self.screen == Screen::Tracker {
+        if self.screen == Screen::Tracker || self.tracker_recording.is_some() {
             let tracker = self.sequencer.status();
             self.follow_tracker_transport(&tracker);
             if let Some(recording) = self.tracker_recording.as_mut() {
@@ -16644,7 +16666,7 @@ fn app_loop(
             _ => {}
         }
     }
-    app.stop_all(state);
+    app.shutdown_session(state);
     Ok(())
 }
 
@@ -17156,7 +17178,11 @@ fn perform(
     // PANIC is the other global system action. It remains live even while a
     // modal confirmation owns the rest of the input dispatch.
     if action == Action::StopAll {
-        a.stop_all(state);
+        a.panic_notes();
+        return false;
+    }
+    if action == Action::LiveStop {
+        a.tracker_stop();
         return false;
     }
     if a.pattern_resize_prompt.is_some() {
@@ -17378,8 +17404,7 @@ fn perform(
                 return false;
             }
             Action::Back => {
-                a.stop_tracker_recording();
-                a.set_tracker_mode(TrackerMode::Play);
+                a.set_screen(Screen::Home);
                 return false;
             }
             Action::TrackerMute => {
@@ -17720,8 +17745,11 @@ fn perform(
         Action::Quit => unreachable!("quit is handled before contextual dispatch"),
         Action::StopAll => unreachable!("panic is handled before contextual dispatch"),
         Action::OpenPresets => {
-            a.set_tracker_edit(false);
-            a.set_screen(Screen::Presets);
+            a.set_screen(if a.engine.is_some() {
+                Screen::Playback
+            } else {
+                Screen::Presets
+            });
             a.status.clear();
         }
         Action::OpenIdeas => a.open_ideas(),
@@ -17729,9 +17757,34 @@ fn perform(
         Action::OpenControllerLearn => a.begin_controller_learn(),
         Action::OpenTracker => {
             let entry = a.prepare_first_tracker_instrument();
+            let retained = a.current_page().is_some_and(|page| {
+                a.tracker_route
+                    .lock()
+                    .is_ok_and(|route| route.enabled_for(&page.target))
+            }) && (a.current_page_software_plan().is_none()
+                || a.engine.as_mut().is_some_and(|engine| engine.alive()));
+            if retained {
+                a.set_screen(Screen::Tracker);
+                a.status.clear();
+                return false;
+            }
             a.set_screen(Screen::Tracker);
             a.refresh_page_targets();
-            let engine_ready = a.sync_tracker_route();
+            let incompatible = a.engine.is_some()
+                && a.current_page_software_plan()
+                    .and_then(|plan| plan.primary_route().cloned())
+                    .is_some_and(|route| {
+                        a.playing.as_ref().is_none_or(|preset| {
+                            preset.backend != route.engine || preset.route_id() != route.instrument
+                        })
+                    });
+            if incompatible {
+                // Entering a view never consents to replacing the sounding
+                // instrument. The explicit Project PLAY action loads its route.
+                a.status = "FT2 SOUND DIFFERS · PLAY loads Project sound".into();
+                return false;
+            }
+            let engine_ready = a.sync_tracker_route_for_navigation();
             let page_online = a
                 .current_page()
                 .is_some_and(|page| a.target_online(&page.target));
@@ -17839,25 +17892,12 @@ fn perform(
         }
         Action::PreviewRouteDraft => a.preview_route_draft(),
         Action::OpenAudioRecorder => {
-            a.set_tracker_edit(false);
             a.set_screen(Screen::AudioRecorder);
             a.status.clear();
         }
         Action::OpenMultichannelMonitor => a.open_multichannel_monitor(),
         Action::OpenFxRack => {
-            if !matches!(a.screen, Screen::FxRack | Screen::FxEditor) {
-                a.fx_rack_parent = a.screen;
-                if a.screen == Screen::Playback || is_tracker_screen(a.screen) {
-                    a.fx_target = 0;
-                }
-            }
-            if a.selected_effect_id().is_none() {
-                a.fx_selection = FxRackSelection::Insert;
-            }
-            a.fx_value_editing = false;
-            a.fx_edit_original = None;
-            a.set_screen(Screen::FxRack);
-            a.status.clear();
+            a.open_overlay(Action::OpenFxRack);
         }
         Action::OpenFxEditor => {
             if a.selected_effect_id().is_some() {
@@ -17888,13 +17928,10 @@ fn perform(
         Action::MasterStripCompare => a.toggle_master_strip_compare(),
         Action::MasterStripResetLoudness => a.reset_master_strip_loudness(),
         Action::OpenMeter => {
-            a.set_tracker_edit(false);
             a.set_screen(Screen::Meter);
-            a.reset_context_page();
             a.status.clear();
         }
         Action::OpenRouting => {
-            a.set_tracker_edit(false);
             a.open_routing_editor();
         }
         Action::ResetMeter => {
@@ -17960,11 +17997,6 @@ fn perform(
                 a.close_tracker_parameters();
                 return false;
             }
-            if a.screen == Screen::Tracker && a.tracker_mode == TrackerMode::Edit {
-                a.set_tracker_edit(false);
-                a.status = "EDIT off".into();
-                return false;
-            }
             if a.screen == Screen::Routing && a.cancel_routing_edit() {
                 return false;
             }
@@ -18023,10 +18055,8 @@ fn perform(
             }
             a.confirm_delete = None;
             a.confirm_load = None;
-            if is_tracker_screen(a.screen) {
-                a.set_tracker_edit(false);
-            }
             let leaving_master_strip = a.screen == Screen::MasterStrip;
+            let leaving_fx_rack = a.screen == Screen::FxRack;
             let next_screen = match a.screen {
                 Screen::Home => Screen::Home,
                 Screen::Presets
@@ -18059,6 +18089,10 @@ fn perform(
                 Screen::Help => a.help_previous,
             };
             a.set_screen(next_screen);
+            if leaving_fx_rack {
+                a.restore_fx_caller_context();
+                a.page_select_mode = a.fx_caller_page_select_mode;
+            }
             if leaving_master_strip {
                 a.menu_page_by_screen[next_screen.index()] = a.master_strip_parent_menu_page.min(3);
             }
@@ -18521,7 +18555,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 }
                 a.activate_mixed_engine_remap_choice();
             }
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+                a.stop_workspace_transport()
+            }
             _ => {}
         }
         return false;
@@ -18555,7 +18591,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Down => a.move_project_guard(1),
             KeyCode::Enter => a.activate_project_guard(),
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.cancel_project_action(),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+                a.stop_workspace_transport()
+            }
             _ => {}
         }
         return a.quit_requested;
@@ -18570,7 +18608,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Down | KeyCode::Right => a.move_pattern_resize_choice(1),
             KeyCode::Enter => a.activate_selected_pattern_resize_choice(),
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.cancel_pattern_resize(),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+                a.stop_workspace_transport()
+            }
             _ => {}
         }
         return false;
@@ -18714,7 +18754,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 a.overlay_back();
             }
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => a.overlay_back(),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+                a.stop_workspace_transport()
+            }
             _ => {}
         }
         return false;
@@ -18919,7 +18961,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             | KeyCode::Char('B')
             | KeyCode::Char('c')
             | KeyCode::Char('C') => Some(Action::ArrangementAssistantCancel),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::LiveStop),
             _ => None,
         };
         if let Some(action) = action {
@@ -18938,7 +18980,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             KeyCode::Char('<') => Some(Action::ArrangementMoveEarlier),
             KeyCode::Char('>') => Some(Action::ArrangementMoveLater),
             KeyCode::Esc | KeyCode::Char('b') => Some(Action::Back),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::LiveStop),
             _ => None,
         };
         if let Some(action) = action {
@@ -19053,7 +19095,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         let action = match code {
             KeyCode::Char('h') | KeyCode::Char('H') => Some(Action::OpenHarmony),
             KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('B') => Some(Action::Back),
-            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::StopAll),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => Some(Action::LiveStop),
             _ => None,
         };
         if let Some(action) = action {
@@ -19077,7 +19119,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                     true
                 }
                 KeyCode::Char('S') | KeyCode::Char(' ') => {
-                    a.stop_all(state);
+                    a.stop_workspace_transport();
                     true
                 }
                 KeyCode::Esc | KeyCode::Char('B') => {
@@ -19202,7 +19244,7 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
                 return false;
             }
             KeyCode::Char('f') => {
-                a.toggle_tracker_fill();
+                perform(Action::TrackerFill, a, state, Some(tx));
                 return false;
             }
             KeyCode::Char('P') => {
@@ -19387,7 +19429,9 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
         KeyCode::Char('s') | KeyCode::Char('S') if a.screen == Screen::Playback => {
             a.stop_idea_transport()
         }
-        KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => a.stop_all(state),
+        KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+            a.stop_workspace_transport()
+        }
         KeyCode::Char('b') => {
             perform(Action::Back, a, state, Some(tx));
         }
@@ -19408,9 +19452,6 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             perform(Action::OpenFxRack, a, state, Some(tx));
         }
         KeyCode::Char('a') => {
-            if a.screen == Screen::Tracker {
-                a.set_tracker_edit(false);
-            }
             a.set_screen(Screen::AudioRecorder);
             a.status.clear();
         }
@@ -19700,6 +19741,12 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     match a.screen {
         Screen::Home => {
             draw_home(f, a);
+            if a.overlay.is_some() {
+                draw_overlay(f, a);
+                draw_overlay_launcher(f, a);
+                draw_master_status(f, a);
+                return;
+            }
             draw_project_guard(f, a);
             draw_project_name_input(f, a);
             return;
@@ -19713,7 +19760,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerArrange => draw_tracker_arrange(f, a),
         Screen::TrackerPages => draw_tracker_pages(f, a),
         Screen::TrackerTools => {
-            draw_tracker_child(f, "FT2 TOOLS", "Arrange · Live Patterns · Loop Mix · FX")
+            draw_tracker_child(f, "FT2 TOOLS", "Arrange · Live Patterns · Loop Mix · Fill")
         }
         Screen::PatternHistory => draw_pattern_history(f, a),
         Screen::PatternFeel => draw_pattern_feel(f, a),
@@ -23204,7 +23251,8 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 crate::ui_text::label_value(&entry.file, &state, 35)
             }))
             .collect(),
-        OverlayKind::MixEffects => (0..FX_TARGET_COUNT)
+        OverlayKind::MixEffects => WORKSPACE_FX_TARGETS
+            .into_iter()
             .map(|target| {
                 let effects = project_fx_rack(
                     &a.song.insert_rack,
@@ -23213,7 +23261,24 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                     target,
                 )
                 .map_or(0, |rack| rack.order.len());
-                format!("{} · {effects} effect(s)", fx_target_label(target))
+                let bypassed = project_fx_rack(
+                    &a.song.insert_rack,
+                    &a.song.aux_routing,
+                    &a.song.drum_rack,
+                    target,
+                )
+                .map_or(0, |rack| {
+                    rack.effects.iter().filter(|effect| effect.bypass).count()
+                });
+                if is_aux_target(target) {
+                    let send = aux_send_normalized(&a.song.aux_routing, target as u8) * 100.0;
+                    format!(
+                        "{} {send:3.0}% · {effects} FX {bypassed} BYP",
+                        fx_target_label(target)
+                    )
+                } else {
+                    format!("MASTER INSERT · {effects} FX {bypassed} BYP")
+                }
             })
             .collect(),
         OverlayKind::Harmony => {
@@ -23364,8 +23429,23 @@ fn draw_overlay_launcher<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         return;
     };
     let z = f.size();
-    if overlay.kind == OverlayKind::TrackerRoute && z.height >= 3 && z.width >= 4 {
+    if matches!(
+        overlay.kind,
+        OverlayKind::TrackerRoute | OverlayKind::MixEffects
+    ) && z.height >= 3
+        && z.width >= 4
+    {
         draw_route_overlay_controller(f, a);
+        if overlay.kind == OverlayKind::MixEffects {
+            let outer = overlay::geometry_for(overlay.kind, z).outer;
+            let button = rect(outer.x + 1, outer.bottom().saturating_sub(1), 9, 1);
+            f.render_widget(
+                Paragraph::new("[EFFECTS]")
+                    .style(Style::default().fg(Color::LightYellow).bg(Color::Black)),
+                button,
+            );
+            a.hits.actions.push((button, overlay.launcher.action));
+        }
         return;
     }
     let geometry = overlay::geometry_for(overlay.kind, z);
@@ -23419,7 +23499,15 @@ fn draw_route_overlay_controller<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         })),
         rect(menu_x, page_y, 3, 1),
     );
-    let page = navigation::ROUTE_OVERLAY_PAGE;
+    let page = if a
+        .overlay
+        .as_ref()
+        .is_some_and(|overlay| overlay.kind == OverlayKind::MixEffects)
+    {
+        navigation::EFFECTS_OVERVIEW_PAGE
+    } else {
+        navigation::ROUTE_OVERLAY_PAGE
+    };
     let page_width = menu_width / 4;
     f.render_widget(
         Paragraph::new(format!(
@@ -29390,7 +29478,7 @@ release = 0.4
         a.overlay.as_mut().unwrap().selection = 1;
         a.activate_overlay();
         assert_eq!(a.screen, Screen::FxRack);
-        assert_eq!(a.fx_target, 1);
+        assert_eq!(a.fx_target, 2);
         assert_eq!(a.fx_rack_parent, Screen::Meter);
     }
 
@@ -30732,6 +30820,8 @@ release = 0.4
         assert_eq!(app.screen, Screen::Routing);
         perform(Action::Back, &mut app, Path::new("/none"), None);
         perform(Action::OpenFxRack, &mut app, Path::new("/none"), None);
+        assert_eq!(app.overlay.as_ref().unwrap().kind, OverlayKind::MixEffects);
+        app.activate_overlay();
         assert_eq!(app.screen, Screen::FxRack);
         assert_eq!(app.fx_rack_parent, Screen::Home);
     }
@@ -30974,7 +31064,7 @@ release = 0.4
     }
 
     #[test]
-    fn home_back_paths_keep_standalone_sound_and_release_other_workspace_state() {
+    fn home_back_paths_keep_owned_sound_and_effect_editor_context() {
         let p = presets();
 
         let mut synth = app(&p);
@@ -30991,11 +31081,16 @@ release = 0.4
         )));
         perform(Action::Back, &mut tracker, Path::new("/none"), None);
         assert_eq!(tracker.screen, Screen::Home);
-        assert_eq!(tracker.engine_owner, None);
+        assert!(matches!(
+            tracker.engine_owner,
+            Some(EngineOwner::Tracker(_))
+        ));
         assert!(!tracker.tracker_route.lock().unwrap().preview_state().0);
 
         let mut effects = app(&p);
         perform(Action::OpenFxRack, &mut effects, Path::new("/none"), None);
+        effects.overlay.as_mut().unwrap().selection = 3;
+        effects.activate_overlay();
         effects.add_effect();
         effects.confirm_effect_type_edit();
         perform(Action::OpenFxEditor, &mut effects, Path::new("/none"), None);
@@ -31094,7 +31189,7 @@ release = 0.4
     }
 
     #[test]
-    fn dirty_ft2_exit_guard_is_rotary_first_and_auto_save_exits_after_success() {
+    fn dirty_quit_guard_is_rotary_first_and_auto_save_quits_after_success() {
         let p = presets();
         let mut a = app(&p);
         let base =
@@ -31105,11 +31200,8 @@ release = 0.4
         a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
         let (tx, _rx) = mpsc::channel();
 
-        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
-        assert_eq!(
-            a.pending_project_action,
-            Some(PendingProjectAction::ExitTracker)
-        );
+        a.request_quit();
+        assert_eq!(a.pending_project_action, Some(PendingProjectAction::Quit));
         assert_eq!(a.project_guard_selected, ProjectGuardChoice::SaveAuto);
         assert_eq!(a.screen, Screen::Tracker);
         dispatch_encoder(
@@ -31119,7 +31211,7 @@ release = 0.4
             &tx,
         );
 
-        assert_eq!(a.screen, Screen::Home);
+        assert!(a.quit_requested);
         assert!(a.pending_project_action.is_none());
         assert_eq!(a.song_file_stem.as_deref(), Some("project-001"));
         assert!(base.join("project-001.shsong").is_file());
@@ -31128,11 +31220,11 @@ release = 0.4
     }
 
     #[test]
-    fn zero_note_project_never_prompts_to_save_on_ft2_exit_or_app_quit() {
+    fn workspace_zero_note_navigation_retains_setup_but_quit_guards_it() {
         let p = presets();
         let mut ft2_exit = app(&p);
         ft2_exit.screen = Screen::Tracker;
-        let baseline = ft2_exit.project_clean_baseline.clone();
+
         ft2_exit.song.patterns.get_mut(&0).unwrap().pages[0]
             .column_mut(0)
             .channel = 7;
@@ -31142,8 +31234,8 @@ release = 0.4
 
         assert_eq!(ft2_exit.screen, Screen::Home);
         assert!(ft2_exit.pending_project_action.is_none());
-        assert_eq!(ft2_exit.song, baseline);
-        assert!(!ft2_exit.project_is_dirty());
+        assert_eq!(ft2_exit.song.patterns[&0].pages[0].column(0).channel, 7);
+        assert!(ft2_exit.project_is_dirty());
 
         let mut app_quit = app(&p);
         app_quit.song.patterns.get_mut(&0).unwrap().pages[0]
@@ -31153,8 +31245,11 @@ release = 0.4
 
         app_quit.begin_project_action(PendingProjectAction::Quit);
 
-        assert!(app_quit.quit_requested);
-        assert!(app_quit.pending_project_action.is_none());
+        assert!(!app_quit.quit_requested);
+        assert_eq!(
+            app_quit.pending_project_action,
+            Some(PendingProjectAction::Quit)
+        );
     }
 
     #[test]
@@ -31168,7 +31263,7 @@ release = 0.4
         a.screen = Screen::Tracker;
         a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(64);
         let (tx, _rx) = mpsc::channel();
-        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        a.request_quit();
         dispatch_encoder(
             crate::pads::EncoderAction::Down,
             &mut a,
@@ -31190,7 +31285,7 @@ release = 0.4
             Path::new("/none"),
             &tx,
         );
-        assert_eq!(a.screen, Screen::Home);
+        assert!(a.quit_requested);
         assert!(base.join("project-001.shsong").is_file());
         assert!(a.project_name_input.is_none());
         assert!(!a.project_guard_naming);
@@ -31225,7 +31320,7 @@ release = 0.4
             a.menu_page(),
         );
         let (tx, _rx) = mpsc::channel();
-        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        a.request_quit();
         dispatch_encoder(
             crate::pads::EncoderAction::Select,
             &mut a,
@@ -31245,51 +31340,38 @@ release = 0.4
             ),
             context
         );
-        assert_eq!(
-            a.pending_project_action,
-            Some(PendingProjectAction::ExitTracker)
-        );
+        assert_eq!(a.pending_project_action, Some(PendingProjectAction::Quit));
         assert!(a.status.contains("guard kept"));
         let _ = fs::remove_file(base);
     }
 
     #[test]
-    fn guard_dont_save_restores_clean_baseline_before_ft2_exit() {
+    fn workspace_dirty_note_project_exits_without_guard_or_discard() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
-        let baseline = a.project_clean_baseline.clone();
+        a.tracker_mode = TrackerMode::Edit;
+        a.tracker_row = 9;
+        a.tracker_track = 2;
+        a.menu_page_by_screen[Screen::Tracker.index()] = 2;
         a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(72);
         a.song.master_strip.input_trim_db = 3.0;
-        a.song.patterns.get_mut(&0).unwrap().audio_loops[0] = Some(sequencer::LoopSettings::new(
-            "dirty.wav".into(),
-            12_000,
-            sequencer::BpmInterpretation::Normal,
-            0,
-            4,
-            0,
-        ));
-        let (tx, _rx) = mpsc::channel();
-        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
-        for _ in 0..2 {
-            dispatch_encoder(
-                crate::pads::EncoderAction::Down,
-                &mut a,
-                Path::new("/none"),
-                &tx,
-            );
-        }
-        assert_eq!(a.project_guard_selected, ProjectGuardChoice::DontSave);
-        dispatch_encoder(
-            crate::pads::EncoderAction::Select,
-            &mut a,
-            Path::new("/none"),
-            &tx,
-        );
+        let before = a.song.clone();
+        perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Home);
-        assert_eq!(a.song, baseline);
-        assert!(!a.loop_player.status().playing);
-        assert!(!a.project_is_dirty());
+        assert!(a.pending_project_action.is_none());
+        assert_eq!(a.song, before);
+        assert!(a.project_is_dirty());
+        a.set_screen(Screen::Tracker);
+        assert_eq!(
+            (
+                a.tracker_row,
+                a.tracker_track,
+                a.tracker_mode,
+                a.menu_page()
+            ),
+            (9, 2, TrackerMode::Edit, 2)
+        );
     }
 
     #[test]
@@ -31316,7 +31398,7 @@ release = 0.4
             a.page_select_mode,
         );
         let (tx, _rx) = mpsc::channel();
-        perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+        a.request_quit();
         for _ in 0..3 {
             dispatch_encoder(
                 crate::pads::EncoderAction::Down,
@@ -31378,7 +31460,7 @@ release = 0.4
         let mut a = app(&p);
         a.screen = Screen::Tracker;
         a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
-        a.begin_project_action(PendingProjectAction::ExitTracker);
+        a.begin_project_action(PendingProjectAction::Quit);
         let buffer = render_app(&mut a, 40, 13);
         let text = buffer_text(&buffer);
         assert!(text.contains("SAVE (AUTO)"));
@@ -32272,6 +32354,7 @@ release = 0.4
 
         perform(Action::OpenMeter, &mut a, Path::new("/none"), None);
         perform(Action::OpenFxRack, &mut a, Path::new("/none"), None);
+        a.activate_overlay();
         assert_eq!(a.fx_rack_parent, Screen::Meter);
         perform(Action::Back, &mut a, Path::new("/none"), None);
         assert_eq!(a.screen, Screen::Meter);
@@ -32335,38 +32418,286 @@ release = 0.4
     }
 
     #[test]
-    fn playback_and_ft2_effects_return_to_their_callers_without_dropping_ownership() {
+    fn workspace_effects_overview_restores_every_caller_and_native_layout() {
         let p = presets();
+        for caller in [
+            Screen::Home,
+            Screen::Playback,
+            Screen::Tracker,
+            Screen::Meter,
+        ] {
+            let mut a = app(&p);
+            a.screen = caller;
+            a.menu_page_by_screen[caller.index()] = 2;
+            a.page_select_mode = true;
+            a.tracker_row = 7;
+            a.tracker_track = 2;
+            let before = a.song.clone();
+            let action = if caller == Screen::Meter {
+                Action::OpenEffectsOverlay
+            } else {
+                Action::OpenFxRack
+            };
+            perform(action, &mut a, Path::new("/none"), None);
+            assert_eq!(a.overlay.as_ref().unwrap().kind, OverlayKind::MixEffects);
+            let frame = render_app(&mut a, 40, 13);
+            let text = buffer_text(&frame);
+            for label in ["AUX 1", "AUX 2", "AUX 3", "MASTER INSERT", "0%"] {
+                assert!(
+                    text.contains(label),
+                    "{caller:?}: missing {label} in {text}"
+                );
+            }
+            assert_eq!(
+                overlay::geometry_for(OverlayKind::MixEffects, Rect::new(0, 0, 40, 13))
+                    .outer
+                    .bottom(),
+                10
+            );
+            assert!(!row_text(&frame, 12).contains("FX"));
+            a.activate_overlay();
+            assert_eq!(a.screen, Screen::FxRack);
+            assert_eq!(a.fx_target, 1);
+            perform(Action::Back, &mut a, Path::new("/none"), None);
+            assert_eq!(
+                (
+                    a.screen,
+                    a.menu_page(),
+                    a.page_select_mode,
+                    a.tracker_row,
+                    a.tracker_track
+                ),
+                (caller, 2, true, 7, 2)
+            );
+            assert_eq!(a.song, before);
+            perform(action, &mut a, Path::new("/none"), None);
+            perform(Action::Back, &mut a, Path::new("/none"), None);
+            assert!(a.overlay.is_none());
+            assert_eq!(
+                (a.screen, a.menu_page(), a.page_select_mode),
+                (caller, 2, true)
+            );
+        }
+    }
 
-        let mut playback = app(&p);
-        playback.screen = Screen::Playback;
-        playback.engine_owner = Some(EngineOwner::SoftwareSynth);
-        perform(Action::OpenFxRack, &mut playback, Path::new("/none"), None);
-        assert_eq!(playback.screen, Screen::FxRack);
-        assert_eq!(playback.fx_rack_parent, Screen::Playback);
-        assert_eq!(playback.fx_target, 0);
-        assert_eq!(playback.engine_owner, Some(EngineOwner::SoftwareSynth));
-        perform(Action::Back, &mut playback, Path::new("/none"), None);
-        assert_eq!(playback.screen, Screen::Playback);
-        assert_eq!(playback.engine_owner, Some(EngineOwner::SoftwareSynth));
-
-        let route = SoftwareRoute::synthv1("Preset 00");
-        let mut tracker = app(&p);
-        tracker.screen = Screen::Tracker;
-        tracker.engine_owner = Some(EngineOwner::Tracker(route.clone()));
-        tracker.sync_tracker_route();
-        perform(Action::OpenFxRack, &mut tracker, Path::new("/none"), None);
-        assert_eq!(tracker.screen, Screen::FxRack);
-        assert_eq!(tracker.fx_rack_parent, Screen::Tracker);
+    #[test]
+    fn workspace_effects_only_project_survives_exit_and_legacy_source_round_trip() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Tracker;
+        let source = a.song.insert_rack.add(EffectKind::Delay).unwrap();
+        a.current_pattern_mut()
+            .unwrap()
+            .automation
+            .push(sequencer::AutomationLane {
+                id: 1,
+                target: sequencer::AutomationTarget::Effect {
+                    rack: sequencer::EffectRackTarget::Source,
+                    effect_id: source,
+                    effect_kind: EffectKind::Delay,
+                    effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+                    parameter: "wet_percent".into(),
+                },
+                curve: sequencer::AutomationCurve::Linear,
+                points: vec![sequencer::AutomationPoint {
+                    tick: 0,
+                    value: 1000,
+                }],
+            });
+        for target in 1..=3 {
+            let bus = a.song.aux_routing.add_bus().unwrap();
+            a.song
+                .aux_routing
+                .add_effect(&a.song.insert_rack, bus, EffectKind::Reverb)
+                .unwrap();
+            a.fx_target = target;
+            a.adjust_aux_send(1);
+        }
+        let before = a.song.clone();
+        assert!(a.project_is_dirty());
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Home);
+        assert!(a.pending_project_action.is_none());
+        perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Tracker);
+        assert_eq!(a.song, before);
+        assert!(a.project_is_dirty());
+        let decoded = sequencer::decode(&sequencer::encode(&a.song).unwrap()).unwrap();
+        assert_eq!(decoded.insert_rack, before.insert_rack);
+        assert_eq!(decoded.insert_rack.order, [source]);
+        assert_eq!(decoded.aux_routing, before.aux_routing);
         assert_eq!(
-            tracker.engine_owner,
-            Some(EngineOwner::Tracker(route.clone()))
+            decoded.patterns[&0].automation,
+            before.patterns[&0].automation
         );
-        assert!(tracker.tracker_route.lock().unwrap().preview_state().0);
-        perform(Action::Back, &mut tracker, Path::new("/none"), None);
-        assert_eq!(tracker.screen, Screen::Tracker);
-        assert_eq!(tracker.engine_owner, Some(EngineOwner::Tracker(route)));
-        assert!(tracker.tracker_route.lock().unwrap().preview_state().0);
+    }
+
+    #[test]
+    fn workspace_navigation_panic_stop_and_shutdown_preserve_their_scopes() {
+        let p = presets();
+        for owner in [
+            EngineOwner::SoftwareSynth,
+            EngineOwner::Tracker(SoftwareRoute::synthv1("Pattern Sound")),
+        ] {
+            let mut a = app(&p);
+            a.engine = Some(
+                Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output))
+                    .unwrap(),
+            );
+            a.engine_owner = Some(owner.clone());
+            a.playing = Some(p[0].clone());
+            a.values.insert(7, 0.42);
+            let pid = a.engine.as_ref().unwrap().process_id();
+            let before = a.song.clone();
+            let route = a.tracker_route.lock().unwrap().preview_state();
+            let controls = Arc::new(crate::final_bus::BusControls::default());
+            a.final_bus.set_controls_override(Arc::clone(&controls));
+            a.input_monitoring = true;
+            a.controller_live_transport = true;
+            for screen in [
+                Screen::Playback,
+                Screen::Home,
+                Screen::Meter,
+                Screen::Tracker,
+                Screen::Home,
+                Screen::Playback,
+            ] {
+                a.set_screen(screen);
+                assert_eq!(a.engine.as_ref().unwrap().process_id(), pid);
+                assert_eq!(a.engine_owner, Some(owner.clone()));
+                assert!(a.controller_live_transport);
+            }
+            perform(Action::StopAll, &mut a, Path::new("/none"), None);
+            assert!(a.status.contains("All Notes Off"));
+            assert_eq!(
+                *a.engine.as_ref().unwrap().test_note_cleanup.lock().unwrap(),
+                recording::all_notes_off()
+            );
+            assert!(a.controller_live_transport);
+            assert_eq!(a.engine.as_ref().unwrap().process_id(), pid);
+            assert_eq!(a.engine_owner, Some(owner.clone()));
+            assert_eq!(a.song, before);
+            assert_eq!(a.tracker_route.lock().unwrap().preview_state(), route);
+            assert_eq!(a.values.get(&7), Some(&0.42));
+            assert!(a.input_monitoring);
+            assert!(Arc::ptr_eq(&a.final_bus.controls().unwrap(), &controls));
+            a.stop_workspace_transport();
+            assert!(!a.controller_live_transport);
+            assert_eq!(a.engine.as_ref().unwrap().process_id(), pid);
+            assert_eq!(a.song, before);
+            assert!(a.request_quit());
+            a.shutdown_session(Path::new("/none"));
+            assert!(a.engine.is_none());
+            assert!(a.engine_owner.is_none());
+            assert_eq!(a.song, before);
+        }
+    }
+
+    #[test]
+    fn workspace_aux_mix_is_locked_on_every_edit_path_but_master_is_an_insert() {
+        let p = presets();
+        for kind in [
+            EffectKind::Delay,
+            EffectKind::Reverb,
+            EffectKind::Chorus,
+            EffectKind::Flanger,
+            EffectKind::Phaser,
+        ] {
+            let mut a = app(&p);
+            let bus = a.song.aux_routing.add_bus().unwrap();
+            let id = a
+                .song
+                .aux_routing
+                .add_effect(&a.song.insert_rack, bus, kind)
+                .unwrap();
+            a.fx_target = 1;
+            a.fx_selection = FxRackSelection::Effect(id);
+            a.screen = Screen::FxEditor;
+            let wet = a.selected_effect().unwrap().clone();
+            assert_eq!(wet.parameters["dry_percent"], 0.0);
+            let mix = if matches!(kind, EffectKind::Delay | EffectKind::Reverb) {
+                "wet_percent"
+            } else {
+                "mix_percent"
+            };
+            assert_eq!(wet.parameters[mix], 100.0);
+            for index in 0..CONTROLS.len() {
+                let Some(spec) = crate::effect_schema::controlled_parameter(kind, index) else {
+                    continue;
+                };
+                if !matches!(spec.name, "dry_percent" | "wet_percent" | "mix_percent") {
+                    continue;
+                }
+                a.fx_parameter = index;
+                a.adjust_effect_parameter(-1);
+                a.apply_fx_control(CONTROLS[index].cc, CONTROLS[index].min);
+                a.fx_numeric_input = Some("42".into());
+                a.commit_fx_numeric_entry();
+                assert_eq!(a.selected_effect(), Some(&wet));
+            }
+            a.song
+                .aux_routing
+                .master_rack
+                .add_with_id(kind, id + 1)
+                .unwrap();
+            a.fx_target = MASTER_FX_TARGET;
+            a.fx_selection = FxRackSelection::Effect(id + 1);
+            a.fx_parameter = (0..CONTROLS.len())
+                .find(|index| {
+                    crate::effect_schema::controlled_parameter(kind, *index)
+                        .is_some_and(|spec| spec.name == "dry_percent")
+                })
+                .unwrap();
+            a.adjust_effect_parameter(-1);
+            assert!(a.selected_effect().unwrap().parameters["dry_percent"] < 100.0);
+            a.song.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn workspace_aux_send_edits_are_immediately_visible_on_player_and_ft2() {
+        let p = presets();
+        let mut a = app(&p);
+        a.playing = Some(p[0].clone());
+        for target in 1..=3 {
+            let bus = a.song.aux_routing.add_bus().unwrap();
+            a.song
+                .aux_routing
+                .add_effect(&a.song.insert_rack, bus, EffectKind::Delay)
+                .unwrap();
+            a.fx_target = target;
+            a.adjust_aux_send(1);
+            a.adjust_aux_send(1);
+            assert_eq!(aux_send_display(&a.song.aux_routing, target as u8), "-21dB");
+        }
+        for screen in [Screen::Playback, Screen::TrackerParameters] {
+            a.set_screen(screen);
+            let text = buffer_text(&render_app(&mut a, 40, 13));
+            assert_eq!(text.matches("-21dB").count(), 3, "{screen:?}: {text}");
+        }
+    }
+
+    #[test]
+    fn workspace_ft2_entry_defers_incompatible_replacement_to_explicit_play() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song.name = "Existing Project".into();
+        a.current_page_mut().unwrap().target =
+            PageTarget::Software(SoftwareRoute::synthv1(p[1].route_id()));
+        a.engine = Some(
+            Engine::start_test_process(BackendKind::Synthv1, Arc::clone(&a.midi_output)).unwrap(),
+        );
+        a.playing = Some(p[0].clone());
+        a.engine_owner = Some(EngineOwner::SoftwareSynth);
+        let pid = a.engine.as_ref().unwrap().process_id();
+        let before = a.song.clone();
+        perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Tracker);
+        assert!(a.status.contains("PLAY loads Project sound"));
+        assert_eq!(a.engine.as_ref().unwrap().process_id(), pid);
+        assert_eq!(a.playing.as_ref(), Some(&p[0]));
+        assert_eq!(a.engine_owner, Some(EngineOwner::SoftwareSynth));
+        assert_eq!(a.song, before);
     }
 
     #[test]
@@ -33284,7 +33615,7 @@ release = 0.4
 
         a.screen = Screen::FxEditor;
         let editor = render_app(&mut a, 40, 13);
-        assert!(buffer_text(&editor).contains("EQ · SOURCE #1"));
+        assert!(buffer_text(&editor).contains("EQ · LEGACY SOURCE #1"));
         assert!(!buffer_text(&editor).contains("PROJECT night bus"));
         assert!(buffer_text(&editor).contains("DIRTY"));
     }
@@ -34074,12 +34405,11 @@ release = 0.4
         let third_aux_effect = a.selected_effect_id().unwrap();
         assert!(third_aux_effect > second_aux_effect);
         a.cycle_fx_target(1);
-        assert_eq!(a.fx_target, DRUM_FX_TARGET);
+        assert_eq!(a.fx_target, MASTER_FX_TARGET);
         assert_eq!(
             crate::audio_graph::drum_effect_mode_label(&a.song.drum_rack),
             "REVERB"
         );
-        a.cycle_fx_target(1);
         a.fx_add_kind = 0;
         a.add_effect();
         let master_effect = a.selected_effect_id().unwrap();
@@ -34589,7 +34919,7 @@ release = 0.4
     }
 
     #[test]
-    fn all_item_buttons_use_the_selected_screen_menu_and_screen_entry_starts_on_page_one() {
+    fn all_item_buttons_use_the_selected_screen_menu_and_reentry_retains_page() {
         let p = presets();
         let mut a = app(&p);
         let (tx, rx) = mpsc::channel();
@@ -34605,7 +34935,7 @@ release = 0.4
         assert_eq!(a.menu_page(), 0);
         a.select_menu_page(1);
         perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
-        assert_eq!(a.menu_page(), 0, "FT2 entry starts on PLAY");
+        assert_eq!(a.menu_page(), 1, "FT2 reentry retains its page");
     }
 
     #[test]
@@ -34621,6 +34951,7 @@ release = 0.4
             Action::OpenFxRack,
             Action::OpenMeter,
         ] {
+            a.close_overlay(true);
             a.set_screen(Screen::Home);
             a.status = "stale message".into();
             perform(action, &mut a, Path::new("/none"), None);
@@ -34925,7 +35256,8 @@ release = 0.4
             &tx,
         );
         assert!(a.overlay.is_none());
-        assert!(key(KeyCode::Char('q'), &mut a, Path::new("/none"), &tx));
+        assert!(!key(KeyCode::Char('q'), &mut a, Path::new("/none"), &tx));
+        assert_eq!(a.pending_project_action, Some(PendingProjectAction::Quit));
     }
 
     #[test]
@@ -34958,7 +35290,7 @@ release = 0.4
     }
 
     #[test]
-    fn tracker_record_exit_stops_capture_without_leaving_tracker() {
+    fn workspace_tracker_record_exit_retains_capture_at_home() {
         let p = presets();
         let mut a = app(&p);
         connect_test_midi_hardware(&mut a);
@@ -34969,9 +35301,9 @@ release = 0.4
 
         perform(Action::Back, &mut a, Path::new("/none"), None);
 
-        assert_eq!(a.screen, Screen::Tracker);
-        assert!(a.tracker_recording.is_none());
-        assert_eq!(a.tracker_mode, TrackerMode::Play);
+        assert_eq!(a.screen, Screen::Home);
+        assert!(a.tracker_recording.is_some());
+        assert_eq!(a.tracker_mode, TrackerMode::Rec);
     }
 
     #[test]
@@ -35029,6 +35361,7 @@ release = 0.4
             .as_deref()
             .is_some_and(|message| message == "4 3 2 1 → REC"));
 
+        a.unload_owned_engine(|_| true); // Simulate actual engine loss, not navigation.
         a.toggle_idea_recording();
         assert_eq!(
             a.active_recording_owner(),
@@ -35818,7 +36151,7 @@ release = 0.4
     }
 
     #[test]
-    fn leaving_ft2_stops_transport_and_home_never_restores_stale_playing_state() {
+    fn workspace_ft2_transport_continues_at_home_until_explicit_stop() {
         let p = presets();
         let mut a = app(&p);
         connect_test_midi_hardware(&mut a);
@@ -35840,11 +36173,12 @@ release = 0.4
             assert_eq!(a.home_activity(), Some("> PLAY · FT2 · arrangement"));
 
             a.set_screen(Screen::Home);
-            assert!(!a.sequencer.status().playing);
-            assert_eq!(a.transport_indicator(), TransportIndicator::Stop);
-            assert_eq!(a.home_activity(), None);
+            assert!(a.sequencer.status().playing);
+            assert_eq!(a.transport_indicator(), TransportIndicator::Play);
+            assert_eq!(a.home_activity(), Some("> PLAY · FT2 · arrangement"));
             assert!(!a.loop_player.status().playing);
             assert!(a.tracker_recording.is_none());
+            a.tracker_stop();
         }
 
         a.set_screen(Screen::Tracker);
@@ -39431,6 +39765,21 @@ release = 0.4
             a.tracker_route.lock().unwrap().destinations(),
             vec![(PageTarget::Software(SoftwareRoute::synthv1("Preset 38")), 0)]
         );
+
+        let pickup = format!("{:?}", a.pickup.lock().unwrap());
+        for _ in 0..2 {
+            perform(Action::Back, &mut a, Path::new("/none"), None);
+            assert_eq!(a.screen, Screen::Home);
+            perform(Action::OpenPresets, &mut a, Path::new("/none"), None);
+            assert_eq!(a.screen, Screen::Playback);
+            perform(Action::Back, &mut a, Path::new("/none"), None);
+            perform(Action::Back, &mut a, Path::new("/none"), None);
+            perform(Action::OpenTracker, &mut a, Path::new("/none"), None);
+            assert_eq!(a.screen, Screen::Tracker);
+            assert_eq!(a.engine.as_ref().unwrap().process_id(), process_id);
+            assert!(matches!(a.engine_owner, Some(EngineOwner::Tracker(_))));
+            assert_eq!(format!("{:?}", a.pickup.lock().unwrap()), pickup);
+        }
     }
 
     #[test]
@@ -39726,10 +40075,9 @@ release = 0.4
             unsaved.song.patterns[&0].pages[0].target,
             PageTarget::Software(explicit)
         );
-        assert_eq!(
-            unsaved.engine_owner,
-            Some(EngineOwner::Tracker(SoftwareRoute::synthv1("Preset 17")))
-        );
+        assert_eq!(unsaved.engine_owner, Some(EngineOwner::SoftwareSynth));
+        assert_eq!(unsaved.playing.as_ref(), Some(&p[38]));
+        assert!(unsaved.status.contains("PLAY loads Project sound"));
     }
 
     #[test]

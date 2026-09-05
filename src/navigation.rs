@@ -713,7 +713,7 @@ const TRACKER: [MenuPage; 4] = [
             on("PARAM", Action::OpenTrackerParameters),
             on("MIX", Action::OpenTrackerMixer),
             on("AUTO", Action::OpenAutomation),
-            on("FILL", Action::TrackerFill),
+            on("FX", Action::OpenFxRack),
         ],
     ),
     page(
@@ -737,6 +737,16 @@ pub const ROUTE_OVERLAY_PAGE: MenuPage = page(
     ],
 );
 
+pub const EFFECTS_OVERVIEW_PAGE: MenuPage = page(
+    "EFFECTS",
+    [
+        on("OPEN", Action::Activate),
+        off(""),
+        off(""),
+        on("EXIT", Action::Back),
+    ],
+);
+
 pub const PRESET_SAVE_OVERLAY_PAGE: MenuPage = page(
     "SAVE",
     [
@@ -752,7 +762,7 @@ const TRACKER_TOOLS: [MenuPage; 4] = [
         [
             on("ARR", Action::OpenTrackerArrange),
             on("LIVE", Action::OpenLivePatterns),
-            on("FX", Action::OpenFxRack),
+            on("FILL", Action::TrackerFill),
             on("LOOP", Action::OpenTrackerLoop),
         ],
     ),
@@ -1018,7 +1028,7 @@ const ARRANGEMENT_ASSISTANT: [MenuPage; 4] = [
     page(
         "APPLY",
         [
-            on("STOP", Action::StopAll),
+            on("STOP", Action::LiveStop),
             on("APPEND", Action::ArrangementAssistantAppend),
             on("REPLACE", Action::ArrangementAssistantReplace),
             on("CANCEL", Action::ArrangementAssistantCancel),
@@ -1955,7 +1965,7 @@ mod tests {
                 Some(Action::OpenTrackerParameters),
                 Some(Action::OpenTrackerMixer),
                 Some(Action::OpenAutomation),
-                Some(Action::TrackerFill),
+                Some(Action::OpenFxRack),
             ]
         );
         assert_eq!(
@@ -2362,7 +2372,7 @@ mod tests {
             Some(Action::OpenFxRack)
         );
         assert_eq!(
-            slot(Screen::TrackerTools, MenuContext::Normal, 0, 2).and_then(MenuSlot::dispatch),
+            slot(Screen::Tracker, MenuContext::Normal, 2, 3).and_then(MenuSlot::dispatch),
             Some(Action::OpenFxRack)
         );
         assert_eq!(
@@ -2380,7 +2390,7 @@ mod tests {
                 Some(Action::OpenRouteOverlay),
             ]
         );
-        assert!(!pages(Screen::Tracker, MenuContext::Normal)
+        assert!(pages(Screen::Tracker, MenuContext::Normal)
             .iter()
             .flat_map(|page| page.slots)
             .any(|slot| slot.dispatch() == Some(Action::OpenFxRack)));
@@ -2471,7 +2481,7 @@ mod tests {
         assert_eq!(
             assistant[1].slots.map(MenuSlot::dispatch),
             [
-                Some(Action::StopAll),
+                Some(Action::LiveStop),
                 Some(Action::ArrangementAssistantAppend),
                 Some(Action::ArrangementAssistantReplace),
                 Some(Action::ArrangementAssistantCancel),
