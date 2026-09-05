@@ -14,6 +14,7 @@ JACK_SERVICE="$PREFIX/etc/systemd/system/jack.service"
 JACK_CONFIG="$PREFIX/etc/jackdrc"
 JACK_SERVICE_STATE="$STATE_DIR/jack-service"
 JACK_SERVICE_MANIFEST="$JACK_SERVICE_STATE/manifest"
+JACK_SERVICE_PENDING="$JACK_SERVICE_STATE/pending"
 TUNE_SERVICE="$PREFIX/etc/systemd/system/shr-audio-performance.service"
 RUNTIME_HELPER="$PREFIX/usr/local/libexec/shr-audio-tune-runtime"
 RUN_DIR="$PREFIX/run/shr-audio-tune"
@@ -730,6 +731,69 @@ plan_jack_service() {
     '  recovery:          sudo shr-audio-tune jack-remove (refuses a live service)'
 }
 
+# Publish bytes before their directory entry; pending ownership is durable
+# before any live service/config file can appear.
+jack_publish_file() {
+  local source=$1 destination=$2 mode=$3 temporary
+  temporary="$(mktemp "${destination}.XXXXXX")"
+  if ! install -m "$mode" "$source" "$temporary" || ! sync "$temporary" ||
+     ! mv -T "$temporary" "$destination" || ! sync "${destination%/*}"; then
+    rm -f -- "$temporary"
+    return 1
+  fi
+}
+
+jack_owned_files_match() {
+  local manifest=$1 path key expected
+  for key in service_sha config_sha; do
+    path=$JACK_SERVICE
+    [[ "$key" == config_sha ]] && path=$JACK_CONFIG
+    if [[ -e "$path" || -L "$path" ]]; then
+      expected="$(awk -F= -v key="$key" '$1 == key { print $2 }' "$manifest")"
+      [[ ! -L "$path" && -f "$path" && "$(sha_file "$path")" == "$expected" ]] || {
+        printf 'Later administrator edits detected; managed JACK files were left untouched.\n' >&2
+        return 1
+      }
+    fi
+  done
+}
+
+recover_jack_service() {
+  [[ -e "$JACK_SERVICE_PENDING" ]] || return 0
+  [[ ! -L "$JACK_SERVICE_PENDING" && -f "$JACK_SERVICE_PENDING" ]] || return 1
+  if [[ "$(systemctl_active jack.service)" == active || "$(jack_process_count)" -gt 0 ]]; then
+    printf 'JACK is live; pending recovery will not stop audio implicitly.\n' >&2
+    return 1
+  fi
+  jack_owned_files_match "$JACK_SERVICE_PENDING" || return 1
+  if [[ -e "$JACK_SERVICE_MANIFEST" ]] && ! cmp -s "$JACK_SERVICE_PENDING" "$JACK_SERVICE_MANIFEST"; then
+    printf 'JACK ownership manifest changed; pending recovery preserved it.\n' >&2
+    return 1
+  fi
+  if [[ -f "$JACK_SERVICE" ]]; then
+    systemctl_safe disable jack.service || return 1
+  fi
+  local path
+  for path in "$JACK_SERVICE" "$JACK_CONFIG" "$JACK_SERVICE_MANIFEST"; do
+    if [[ -e "$path" ]]; then
+      rm -- "$path" || return 1
+      sync "${path%/*}" || return 1
+    fi
+  done
+  systemctl_safe daemon-reload || return 1
+  rm -- "$JACK_SERVICE_PENDING" || return 1
+  sync "$JACK_SERVICE_STATE" || return 1
+}
+
+with_jack_service_lock() (
+  need_root
+  mkdir -p "$JACK_SERVICE_STATE"
+  local descriptor
+  exec {descriptor}<"$JACK_SERVICE_STATE"
+  flock -n "$descriptor" || { printf 'Another JACK ownership transaction is active.\n' >&2; return 1; }
+  "$@"
+)
+
 install_jack_service() {
   need_root
   (($# == 5)) || {
@@ -737,6 +801,7 @@ install_jack_service() {
     return 2
   }
   local user=$1 card=$2 rate=$3 period_size=$4 periods=$5
+  recover_jack_service
   validate_jack_service_values "$user" "$card" "$rate" "$period_size" "$periods"
 
   local owner count
@@ -783,7 +848,7 @@ install_jack_service() {
   fi
 
   for path in "$JACK_SERVICE" "$JACK_CONFIG"; do
-    if [[ -e "$path" ]]; then
+    if [[ -e "$path" || -L "$path" ]]; then
       printf 'Existing administrator/distribution path is intentionally untouched: %s\n' "$path" >&2
       return 1
     fi
@@ -834,25 +899,22 @@ install_jack_service() {
     "config_sha=$(sha_file "$config_stage")" >"$manifest_stage"
 
   mkdir -p "${JACK_SERVICE%/*}" "$JACK_SERVICE_STATE"
-  if ! install -m 0644 "$service_stage" "$JACK_SERVICE" ||
-     ! install -m 0755 "$config_stage" "$JACK_CONFIG" ||
-     ! install -m 0644 "$manifest_stage" "$JACK_SERVICE_MANIFEST"; then
-    find "$JACK_SERVICE" "$JACK_CONFIG" "$JACK_SERVICE_MANIFEST" \
-      -maxdepth 0 -type f -delete 2>/dev/null || true
-    rmdir "$JACK_SERVICE_STATE" 2>/dev/null || true
+  sync "$STATE_DIR" "${STATE_DIR%/*}" "${JACK_SERVICE%/*}"
+  jack_publish_file "$manifest_stage" "$JACK_SERVICE_PENDING" 0644
+  if ! jack_publish_file "$service_stage" "$JACK_SERVICE" 0644 ||
+     ! jack_publish_file "$config_stage" "$JACK_CONFIG" 0755 ||
+     ! jack_publish_file "$manifest_stage" "$JACK_SERVICE_MANIFEST" 0644 ||
+     ! systemctl_safe daemon-reload || ! systemctl_safe enable jack.service; then
+    recover_jack_service || {
+      printf 'JACK install remains pending; inspect edits and retry jack-remove.\n' >&2
+      return 1
+    }
     clear_directory "$stage"
-    printf 'JACK service file installation failed and new files were rolled back.\n' >&2
+    printf 'JACK service installation failed; owned files were rolled back.\n' >&2
     return 1
   fi
-  if ! systemctl_safe daemon-reload || ! systemctl_safe enable jack.service; then
-    find "$JACK_SERVICE" "$JACK_CONFIG" "$JACK_SERVICE_MANIFEST" \
-      -maxdepth 0 -type f -delete 2>/dev/null || true
-    rmdir "$JACK_SERVICE_STATE" 2>/dev/null || true
-    systemctl_safe daemon-reload >/dev/null 2>&1 || true
-    clear_directory "$stage"
-    printf 'JACK service installation failed and its new files were rolled back.\n' >&2
-    return 1
-  fi
+  rm -- "$JACK_SERVICE_PENDING"
+  sync "$JACK_SERVICE_STATE"
   clear_directory "$stage"
   printf 'Installed and enabled the SHR-managed JACK boot service for hw:%s.\n' "$card"
   printf 'JACK was not started. Reboot, or explicitly run sudo systemctl start jack.service when safe.\n'
@@ -860,6 +922,7 @@ install_jack_service() {
 
 remove_jack_service() {
   need_root
+  recover_jack_service
   [[ -f "$JACK_SERVICE_MANIFEST" ]] || {
     printf 'No SHR-managed JACK boot service is installed.\n'
     return 0
@@ -871,20 +934,9 @@ remove_jack_service() {
       'Then rerun: sudo shr-audio-tune jack-remove' >&2
     return 1
   fi
-  [[ -f "$JACK_SERVICE" && -f "$JACK_CONFIG" ]] || {
-    printf 'Managed JACK service state is incomplete; inspect before manual recovery.\n' >&2
-    return 1
-  }
-  [[ "$(sha_file "$JACK_SERVICE")" == "$(jack_service_manifest_value service_sha)" &&
-     "$(sha_file "$JACK_CONFIG")" == "$(jack_service_manifest_value config_sha)" ]] || {
-    printf 'Later administrator edits detected; managed JACK files were left untouched.\n' >&2
-    return 1
-  }
-  systemctl_safe disable jack.service
-  find "$JACK_SERVICE" "$JACK_CONFIG" "$JACK_SERVICE_MANIFEST" \
-    -maxdepth 0 -type f -delete
-  rmdir "$JACK_SERVICE_STATE" 2>/dev/null || true
-  systemctl_safe daemon-reload
+  jack_owned_files_match "$JACK_SERVICE_MANIFEST"
+  jack_publish_file "$JACK_SERVICE_MANIFEST" "$JACK_SERVICE_PENDING" 0644
+  recover_jack_service
   printf 'Removed the unchanged SHR-managed JACK boot service.\n'
 }
 
@@ -1759,8 +1811,8 @@ case "${1:-status}" in
   permissions-install) permissions_install "${2:-}" ;;
   permissions-remove) permissions_remove ;;
   jack-plan) shift; plan_jack_service "$@" ;;
-  jack-install) shift; install_jack_service "$@" ;;
-  jack-remove) remove_jack_service ;;
+  jack-install) shift; with_jack_service_lock install_jack_service "$@" ;;
+  jack-remove) with_jack_service_lock remove_jack_service ;;
   install) install_tuning "${2:-}" ;;
   recover) recover_tuning ;;
   remove) remove_tuning ;;

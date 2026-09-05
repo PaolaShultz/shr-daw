@@ -193,7 +193,7 @@ pub(crate) fn compile_with_conditions(
     }
 
     append_runtime_automation(song, &automation, &mut midi)?;
-    let effects = effect_events(&automation);
+    let effects = effect_events(&automation, MAX_TIMELINE_EVENTS.saturating_sub(midi.len()))?;
     if midi.len().saturating_add(effects.len()) > MAX_TIMELINE_EVENTS {
         bail!("timeline exceeds {MAX_TIMELINE_EVENTS} events");
     }
@@ -281,29 +281,38 @@ fn tick_at_duration(elapsed: Duration, ppqn: u16, tempos: &[TempoChange], end_ti
     low
 }
 
-fn effect_events(segments: &[AutomationSegment]) -> Vec<TickEffectEvent> {
+fn effect_events(segments: &[AutomationSegment], budget: usize) -> Result<Vec<TickEffectEvent>> {
     let mut events = Vec::new();
     let mut ordinal = 0u32;
     for segment in segments {
-        let (effect_id, effect_kind, effect_version, parameter) = match &segment.target {
+        let (owner, effect_id, effect_kind, effect_version, parameter) = match &segment.target {
             AutomationTarget::Effect {
+                rack,
                 effect_id,
                 effect_kind,
                 effect_version,
                 parameter,
                 ..
             } => (
+                rack.owner(),
                 *effect_id,
                 *effect_kind,
                 *effect_version,
                 Some(parameter.clone()),
             ),
             AutomationTarget::EffectBypass {
+                rack,
                 effect_id,
                 effect_kind,
                 effect_version,
                 ..
-            } => (*effect_id, *effect_kind, *effect_version, None),
+            } => (
+                rack.owner(),
+                *effect_id,
+                *effect_kind,
+                *effect_version,
+                None,
+            ),
             _ => continue,
         };
         let samples =
@@ -325,11 +334,13 @@ fn effect_events(segments: &[AutomationSegment]) -> Vec<TickEffectEvent> {
                 (i64::from(segment.start_value) + delta * offset as i64 / samples as i64)
                     .clamp(0, i64::from(u16::MAX)) as u16
             };
+            anyhow::ensure!(events.len() < budget, "timeline event budget exceeded");
             events.push(TickEffectEvent {
                 tick,
                 order: segment.order,
                 row: 0,
                 message: crate::sequencer::ScheduledEffectAutomation {
+                    owner,
                     effect_id,
                     effect_kind,
                     effect_version,
@@ -342,7 +353,7 @@ fn effect_events(segments: &[AutomationSegment]) -> Vec<TickEffectEvent> {
         }
     }
     events.sort_by_key(|event| (event.tick, event.ordinal));
-    events
+    Ok(events)
 }
 
 fn musical_maps(
@@ -411,7 +422,7 @@ fn musical_maps(
                 origin,
                 local_start,
                 pattern_ticks,
-            );
+            )?;
         }
         origin = origin
             .checked_add(
@@ -440,9 +451,9 @@ fn append_lane_segments(
     origin: u64,
     local_start: u32,
     pattern_ticks: u32,
-) {
+) -> Result<()> {
     if lane.points.is_empty() || pattern_ticks == 0 {
-        return;
+        return Ok(());
     }
     let mut start_local = local_start;
     while start_local < pattern_ticks {
@@ -458,6 +469,10 @@ fn append_lane_segments(
         let end_value = lane
             .value_at(end_local, pattern_ticks)
             .unwrap_or(start_value);
+        anyhow::ensure!(
+            out.len() < MAX_TIMELINE_EVENTS,
+            "automation segment budget exceeded"
+        );
         out.push(AutomationSegment {
             pattern,
             order,
@@ -474,6 +489,7 @@ fn append_lane_segments(
         }
         start_local = end_local;
     }
+    Ok(())
 }
 
 fn append_runtime_automation(
@@ -518,6 +534,10 @@ fn append_runtime_automation(
             .target
             .clone();
         for (tick, value) in sampled_7bit(segment) {
+            anyhow::ensure!(
+                midi.len() < MAX_TIMELINE_EVENTS,
+                "timeline event budget exceeded"
+            );
             midi.push(TickMidiEvent {
                 tick,
                 bytes: vec![0xb0 | channel, controller, value],
@@ -720,5 +740,28 @@ mod tests {
         }
         assert_eq!(mapped_control_cc("Moj Sint", "mass"), Some(20));
         assert_eq!(mapped_control_cc("Moj Sint", "unstable"), Some(27));
+    }
+    #[test]
+    fn effect_expansion_obeys_remaining_shared_budget() {
+        let segment = AutomationSegment {
+            pattern: 0,
+            order: 0,
+            lane_id: 1,
+            target: AutomationTarget::EffectBypass {
+                rack: crate::sequencer::EffectRackTarget::Drums,
+                effect_id: 1,
+                effect_kind: crate::audio_graph::EffectKind::Reverb,
+                effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
+            },
+            curve: AutomationCurve::Step,
+            start_tick: 0,
+            end_tick: 96,
+            start_value: 0,
+            end_value: u16::MAX,
+        };
+        assert!(effect_events(&[segment.clone()], 0).is_err());
+        let result = effect_events(&[segment.clone()], 1).unwrap();
+        assert_eq!(result[0].message.owner, crate::effects::EffectOwner::Drums);
+        assert!(effect_events(&[segment.clone(), segment], 1).is_err());
     }
 }

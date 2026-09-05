@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,6 +22,42 @@ pub fn command_exists(program: &str) -> bool {
     std::env::var_os("PATH")
         .map(|paths| std::env::split_paths(&paths).any(|dir| is_executable(&dir.join(program))))
         .unwrap_or(false)
+}
+
+/// Snapshot absence only on NotFound; unreadable originals must stop a transaction.
+pub fn snapshot(path: &Path) -> Result<Option<Vec<u8>>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("snapshot {}", path.display())),
+    }
+}
+
+pub fn restore(path: &Path, contents: Option<&[u8]>) -> Result<()> {
+    match contents {
+        Some(bytes) => atomic_write(path, bytes),
+        None => match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error).context("remove newly created configuration"),
+        },
+    }
+}
+
+/// Nonblocking open rejects FIFOs/devices before reading; the descriptor's
+/// metadata and byte limit also cover file replacement and concurrent growth.
+pub fn read_text_bounded(path: &Path, limit: usize) -> Result<String> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    anyhow::ensure!(metadata.is_file(), "expected a regular file");
+    anyhow::ensure!(metadata.len() <= limit as u64, "file exceeds {limit} bytes");
+    let mut bytes = Vec::new();
+    file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    anyhow::ensure!(bytes.len() <= limit, "file exceeds {limit} bytes");
+    String::from_utf8(bytes).context("file is not UTF-8")
 }
 
 pub fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
@@ -138,5 +175,21 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), b"original");
         assert_eq!(fs::read_dir(&base).unwrap().count(), 1);
         let _ = fs::remove_dir_all(base);
+    }
+    #[test]
+    fn bounded_reader_rejects_sparse_files_and_nonregular_inputs() {
+        let base = std::env::temp_dir().join(format!("shr-bounded-read-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let file = base.join("input");
+        fs::write(&file, b"1234").unwrap();
+        assert_eq!(read_text_bounded(&file, 4).unwrap(), "1234");
+        assert!(read_text_bounded(&file, 3).is_err());
+        fs::File::create(&file).unwrap().set_len(1 << 32).unwrap();
+        assert!(read_text_bounded(&file, 16).is_err());
+        assert!(read_text_bounded(&base, 16).is_err());
+        assert!(snapshot(&base).is_err());
+        assert!(snapshot(&base.join("absent")).unwrap().is_none());
+        assert!(restore(&base, Some(b"cannot replace directory")).is_err());
+        fs::remove_dir_all(base).unwrap();
     }
 }

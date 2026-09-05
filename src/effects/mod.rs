@@ -16,7 +16,7 @@ mod tremolo_pan;
 use crate::audio_graph::{EffectId, EffectInstance, EffectKind};
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
 use crate::effect_schema;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -144,75 +144,54 @@ impl EffectControl {
     }
 }
 
-#[derive(Default)]
-struct EffectControlRegistry {
-    controls: BTreeMap<EffectId, Arc<EffectControl>>,
-    graph_ids: BTreeSet<EffectId>,
-    drum_ids: BTreeSet<EffectId>,
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum EffectOwner {
+    Graph,
+    Drums,
 }
 
 #[derive(Default)]
 pub struct EffectControlHub {
-    controls: RwLock<EffectControlRegistry>,
+    controls: RwLock<BTreeMap<(EffectOwner, EffectId), Arc<EffectControl>>>,
 }
 
 impl EffectControlHub {
+    fn replace(
+        &self,
+        owner: EffectOwner,
+        controls: impl IntoIterator<Item = (EffectId, Arc<EffectControl>)>,
+    ) {
+        if let Ok(mut active) = self.controls.write() {
+            active.retain(|(scope, _), _| *scope != owner);
+            active.extend(
+                controls
+                    .into_iter()
+                    .map(|(id, control)| ((owner, id), control)),
+            );
+        }
+    }
     pub fn replace_graph(
         &self,
         controls: impl IntoIterator<Item = (EffectId, Arc<EffectControl>)>,
     ) {
-        if let Ok(mut active) = self.controls.write() {
-            let controls = controls.into_iter().collect::<BTreeMap<_, _>>();
-            let ids = controls.keys().copied().collect::<BTreeSet<_>>();
-            for id in std::mem::take(&mut active.graph_ids) {
-                if !active.drum_ids.contains(&id) {
-                    active.controls.remove(&id);
-                }
-            }
-            active.controls.extend(controls);
-            active.graph_ids = ids;
-        }
+        self.replace(EffectOwner::Graph, controls);
     }
-
     pub fn replace_drums(
         &self,
         controls: impl IntoIterator<Item = (EffectId, Arc<EffectControl>)>,
     ) {
-        if let Ok(mut active) = self.controls.write() {
-            let controls = controls.into_iter().collect::<BTreeMap<_, _>>();
-            let ids = controls.keys().copied().collect::<BTreeSet<_>>();
-            for id in std::mem::take(&mut active.drum_ids) {
-                if !active.graph_ids.contains(&id) {
-                    active.controls.remove(&id);
-                }
-            }
-            active.controls.extend(controls);
-            active.drum_ids = ids;
-        }
+        self.replace(EffectOwner::Drums, controls);
     }
-
     pub fn clear_graph(&self) {
-        if let Ok(mut active) = self.controls.write() {
-            for id in std::mem::take(&mut active.graph_ids) {
-                if !active.drum_ids.contains(&id) {
-                    active.controls.remove(&id);
-                }
-            }
-        }
+        self.replace_graph(std::iter::empty());
     }
-
     pub fn clear_drums(&self) {
-        if let Ok(mut active) = self.controls.write() {
-            for id in std::mem::take(&mut active.drum_ids) {
-                if !active.graph_ids.contains(&id) {
-                    active.controls.remove(&id);
-                }
-            }
-        }
+        self.replace_drums(std::iter::empty());
     }
 
     pub fn publish_normalized(
         &self,
+        owner: EffectOwner,
         id: EffectId,
         kind: EffectKind,
         version: u32,
@@ -223,8 +202,7 @@ impl EffectControlHub {
             .controls
             .read()
             .map_err(|_| EffectError::new("effect control registry is unavailable"))?
-            .controls
-            .get(&id)
+            .get(&(owner, id))
             .cloned()
             .ok_or_else(|| EffectError::new("effect automation target is stale or missing"))?;
         if control.kind() != kind || control.version() != version {
@@ -434,6 +412,7 @@ pub struct EffectSlot {
     processor: Processor,
     processed_mix: SmoothedValue,
     bypass_mode: BypassMode,
+    graph_owns_bypass: bool,
     wet_only: bool,
     bypass_fade_samples: u32,
     input_meter: MeterAccumulator,
@@ -484,6 +463,7 @@ impl EffectSlot {
             )
             .map_err(|error| EffectError::new(error.to_string()))?,
             bypass_mode,
+            graph_owns_bypass: false,
             wet_only,
             bypass_fade_samples,
             input_meter: MeterAccumulator::new(meter_window)
@@ -635,9 +615,28 @@ impl EffectSlot {
         self.processor.publish();
     }
 
+    pub(crate) fn use_graph_bypass_owner(&mut self) {
+        self.graph_owns_bypass = true;
+    }
+
+    pub(crate) fn take_bypass_control(&self) -> Option<bool> {
+        let dirty = self
+            .control
+            .dirty
+            .fetch_and(!BYPASS_DIRTY_BIT, Ordering::AcqRel);
+        (dirty & BYPASS_DIRTY_BIT != 0).then(|| self.control.bypass.load(Ordering::Acquire))
+    }
+
     #[inline]
     fn consume_control(&mut self) {
-        let dirty = self.control.dirty.swap(0, Ordering::AcqRel);
+        let dirty = if self.graph_owns_bypass {
+            self.control
+                .dirty
+                .fetch_and(BYPASS_DIRTY_BIT, Ordering::AcqRel)
+                & !BYPASS_DIRTY_BIT
+        } else {
+            self.control.dirty.swap(0, Ordering::AcqRel)
+        };
         for (index, spec) in effect_schema::schema(self.kind).iter().enumerate() {
             if dirty & (1u64 << index) == 0 {
                 continue;
@@ -933,7 +932,7 @@ mod tests {
     fn graph_and_drum_control_owners_clear_independently() {
         let graph = EffectSlot::compile(&utility(BTreeMap::new(), false), 48_000, 64).unwrap();
         let mut drum_effect = utility(BTreeMap::new(), false);
-        drum_effect.id = 8;
+        drum_effect.id = 7;
         let drums = EffectSlot::compile(&drum_effect, 48_000, 64).unwrap();
         let graph_control = graph.control();
         let drum_control = drums.control();
@@ -943,7 +942,8 @@ mod tests {
         hub.clear_graph();
         assert!(hub
             .publish_normalized(
-                8,
+                EffectOwner::Drums,
+                7,
                 EffectKind::Utility,
                 EFFECT_FORMAT_VERSION,
                 Some("mute"),
@@ -952,6 +952,7 @@ mod tests {
             .is_ok());
         assert!(hub
             .publish_normalized(
+                EffectOwner::Graph,
                 7,
                 EffectKind::Utility,
                 EFFECT_FORMAT_VERSION,
@@ -962,7 +963,8 @@ mod tests {
         hub.clear_drums();
         assert!(hub
             .publish_normalized(
-                8,
+                EffectOwner::Drums,
+                7,
                 EffectKind::Utility,
                 EFFECT_FORMAT_VERSION,
                 Some("mute"),

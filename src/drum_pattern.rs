@@ -130,7 +130,10 @@ pub fn load(entry: &Entry) -> Result<DrumPattern> {
 }
 
 pub fn load_path(path: &Path) -> Result<DrumPattern> {
-    decode(&fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?)
+    decode(
+        &crate::fsutil::read_text_bounded(path, MAX_BYTES)
+            .with_context(|| format!("read {}", path.display()))?,
+    )
 }
 
 pub fn save_user(pattern: &DrumPattern, stem: &str) -> Result<PathBuf> {
@@ -398,7 +401,7 @@ fn parse_command(value: &str) -> Result<Command> {
 /// Compact authored catalog format. Each lane contains comma-separated step
 /// numbers with an optional hit kind suffix: X accent, g ghost, o open hat,
 /// c clap, or r rim. One catalog line is one one-bar groove.
-fn decode_catalog(text: &str) -> Result<Vec<DrumPattern>> {
+pub(crate) fn decode_catalog(text: &str) -> Result<Vec<DrumPattern>> {
     let mut lines = text.lines();
     let version = lines
         .next()

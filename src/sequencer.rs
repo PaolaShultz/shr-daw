@@ -452,6 +452,15 @@ pub enum EffectRackTarget {
     Aux(u8),
     Drums,
 }
+impl EffectRackTarget {
+    pub fn owner(self) -> crate::effects::EffectOwner {
+        if self == Self::Drums {
+            crate::effects::EffectOwner::Drums
+        } else {
+            crate::effects::EffectOwner::Graph
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
@@ -3028,7 +3037,7 @@ pub fn save(base: &Path, song: &Song, overwrite: bool) -> Result<PathBuf> {
         bail!("song already exists; confirm overwrite explicitly");
     }
     if path.exists() && overwrite {
-        let existing = fs::read_to_string(&path)?;
+        let existing = crate::fsutil::read_text_bounded(&path, MAX_PROJECT_BYTES)?;
         decode(&existing)
             .context("refusing to overwrite unsupported, malformed, or unknown project data")?;
     }
@@ -3043,7 +3052,10 @@ pub fn save(base: &Path, song: &Song, overwrite: bool) -> Result<PathBuf> {
 }
 
 pub fn load(base: &Path, name: &str) -> Result<Song> {
-    decode(&fs::read_to_string(song_path(base, name)?)?)
+    decode(&crate::fsutil::read_text_bounded(
+        &song_path(base, name)?,
+        MAX_PROJECT_BYTES,
+    )?)
 }
 
 pub fn delete(base: &Path, name: &str) -> Result<()> {
@@ -3054,12 +3066,18 @@ pub fn delete(base: &Path, name: &str) -> Result<()> {
 /// Publish a renamed Project without replacing either source or destination.
 /// The destination is fully encoded before the old directory entry is removed,
 /// so every failure before removal preserves the original Project.
-pub fn rename_project(base: &Path, old_stem: &str, display_name: &str) -> Result<(Song, PathBuf)> {
+pub fn rename_project(
+    base: &Path,
+    old_stem: &str,
+    current: &Song,
+    display_name: &str,
+) -> Result<(Song, PathBuf)> {
     validate_label(display_name, "project name", 64)?;
     let new_stem = safe_name(display_name);
     let old_path = song_path(base, old_stem)?;
     let new_path = song_path(base, &new_stem)?;
-    let mut song = load(base, old_stem)?;
+    load(base, old_stem).context("validate original Project before rename")?;
+    let mut song = current.clone();
     song.name = display_name.to_owned();
     song.validate()?;
     if old_path == new_path {
@@ -3101,6 +3119,7 @@ pub struct ScheduledMessage {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScheduledEffectAutomation {
+    pub owner: crate::effects::EffectOwner,
     pub effect_id: crate::audio_graph::EffectId,
     pub effect_kind: crate::audio_graph::EffectKind,
     pub effect_version: u32,
@@ -3226,6 +3245,24 @@ pub(crate) fn schedule_elapsed_with_conditions(
     start_row: usize,
     conditions: ConditionContext,
 ) -> Result<Vec<ScheduledMessage>> {
+    schedule_elapsed_with_budget(
+        song,
+        config,
+        start_order,
+        start_row,
+        conditions,
+        crate::timeline::MAX_TIMELINE_EVENTS,
+    )
+}
+
+pub(crate) fn schedule_elapsed_with_budget(
+    song: &Song,
+    config: &ExternalMidiConfig,
+    start_order: usize,
+    start_row: usize,
+    conditions: ConditionContext,
+    budget: usize,
+) -> Result<Vec<ScheduledMessage>> {
     song.validate()?;
     let device_profiles = DeviceProfiles::discover();
     let first_pattern = song
@@ -3287,7 +3324,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                     0,
                     message.clone(),
                     Some(page.target.clone()),
-                );
+                    budget,
+                )?;
             }
         }
         for (timing_index, timing) in row_timings.iter().copied().enumerate() {
@@ -3303,7 +3341,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                 row_index,
                 Vec::new(),
                 None,
-            );
+                budget,
+            )?;
             if config.send_transport {
                 let targets = pattern
                     .pages
@@ -3321,7 +3360,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                             row_index,
                             vec![0xf8],
                             Some(target.clone()),
-                        );
+                            budget,
+                        )?;
                     }
                 }
             }
@@ -3362,6 +3402,7 @@ pub(crate) fn schedule_elapsed_with_conditions(
                         pattern_end,
                     );
                     if step.boundary_before {
+                        anyhow::ensure!(pending.len() < budget, "pending event budget exceeded");
                         pending.push(PendingCellEvent {
                             at: step_start.min(last_event_at),
                             row_start: step_start,
@@ -3417,6 +3458,7 @@ pub(crate) fn schedule_elapsed_with_conditions(
                         };
                         let nudged = offset_duration(swung, step_duration, cell.nudge);
                         let event_at = (nudged + delay).max(boundary_floor).min(boundary_ceiling);
+                        anyhow::ensure!(pending.len() < budget, "pending event budget exceeded");
                         pending.push(PendingCellEvent {
                             at: event_at,
                             row_start: step_start,
@@ -3433,6 +3475,10 @@ pub(crate) fn schedule_elapsed_with_conditions(
                     }
                     if triggered {
                         if let Command::Cut(tick) = cell.command {
+                            anyhow::ensure!(
+                                pending.len() < budget,
+                                "pending event budget exceeded"
+                            );
                             pending.push(PendingCellEvent {
                                 at: (step_start
                                     + step_duration.mul_f64(f64::from(tick.min(15)) / 16.0))
@@ -3474,7 +3520,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                             vec![0x80 | channel, note, 0],
                             event.lane,
                             &target,
-                        );
+                            budget,
+                        )?;
                     }
                 }
                 PendingCellKind::Note => match event.cell.note {
@@ -3492,7 +3539,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                                 event.cell.program.unwrap_or(column.program),
                                 config,
                                 &device_profiles,
-                            );
+                                budget,
+                            )?;
                             programmed[event.lane] = true;
                         }
                         if let Some((old_target, old_channel, old, old_percussion)) =
@@ -3507,7 +3555,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                                     vec![0x80 | old_channel, old, 0],
                                     event.lane,
                                     &old_target,
-                                );
+                                    budget,
+                                )?;
                             }
                         }
                         active.insert(
@@ -3548,7 +3597,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                                 ],
                                 event.lane,
                                 &page.target,
-                            );
+                                budget,
+                            )?;
                             if !page.percussion && !explicit_release {
                                 let release_at = (pulse_at + gate).min(event.pattern_end);
                                 if next_lane_event_at.is_some_and(|next| next < release_at) {
@@ -3562,7 +3612,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                                     vec![0x80 | column.channel, note, 0],
                                     event.lane,
                                     &page.target,
-                                );
+                                    budget,
+                                )?;
                             }
                         }
                     }
@@ -3581,7 +3632,8 @@ pub(crate) fn schedule_elapsed_with_conditions(
                                 vec![0x80 | channel, note, 0],
                                 event.lane,
                                 &target,
-                            );
+                                budget,
+                            )?;
                         }
                     }
                     Note::Empty => {}
@@ -3596,13 +3648,14 @@ pub(crate) fn schedule_elapsed_with_conditions(
         song.order.len().saturating_sub(1),
         0,
         &mut active,
-    );
+        budget,
+    )?;
     // Do not loop as soon as the last note's gate closes: the final rest rows
     // are musically significant. This boundary marker holds the transport to
     // the exact end of the scheduled pattern/order span.
     if let Some((order, pattern_number)) = song.order.iter().enumerate().next_back() {
         let row = song.patterns[pattern_number].rows.len().saturating_sub(1);
-        push(&mut result, at, order, row, Vec::new(), None);
+        push(&mut result, at, order, row, Vec::new(), None, budget)?;
     }
     result.sort_by_key(|message| message.at);
     Ok(result)
@@ -4006,7 +4059,8 @@ fn release_active_notes(
     order: usize,
     row: usize,
     active: &mut BTreeMap<usize, (PageTarget, u8, u8, bool)>,
-) {
+    budget: usize,
+) -> Result<()> {
     for (lane_index, (target, channel, note, percussion)) in std::mem::take(active) {
         // Preserve one-shot drum tails across the scheduled arrangement end.
         // Stop/route changes issue their own explicit cleanup.
@@ -4021,8 +4075,10 @@ fn release_active_notes(
             vec![0x80 | channel, note, 0],
             lane_index,
             &target,
-        );
+            budget,
+        )?;
     }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -4040,7 +4096,8 @@ fn append_program(
     mut program: u8,
     config: &ExternalMidiConfig,
     device_profiles: &DeviceProfiles,
-) {
+    budget: usize,
+) -> Result<()> {
     if matches!(
         page.target,
         PageTarget::ActiveInstrument
@@ -4048,7 +4105,7 @@ fn append_program(
             | PageTarget::Software(_)
             | PageTarget::InternalDrums(_)
     ) {
-        return;
+        return Ok(());
     }
     let mut selection = config.clone();
     if page.target == PageTarget::Default {
@@ -4057,7 +4114,7 @@ fn append_program(
             .then_some(config.percussion_program)
             .flatten()
         else {
-            return;
+            return Ok(());
         };
         program = machine_program;
     }
@@ -4085,7 +4142,8 @@ fn append_program(
             position.row,
             vec![0xb0 | column.channel, 0, column.bank_msb],
             Some(page.target.clone()),
-        ),
+            budget,
+        )?,
         BankSelectMode::Cc0Cc32 => {
             push(
                 out,
@@ -4094,7 +4152,8 @@ fn append_program(
                 position.row,
                 vec![0xb0 | column.channel, 0, column.bank_msb],
                 Some(page.target.clone()),
-            );
+                budget,
+            )?;
             push(
                 out,
                 position.at,
@@ -4102,7 +4161,8 @@ fn append_program(
                 position.row,
                 vec![0xb0 | column.channel, 32, column.bank_lsb],
                 Some(page.target.clone()),
-            );
+                budget,
+            )?;
         }
     }
     if selection.program_changes {
@@ -4113,8 +4173,10 @@ fn append_program(
             position.row,
             vec![0xc0 | column.channel, program],
             Some(page.target.clone()),
-        );
+            budget,
+        )?;
     }
+    Ok(())
 }
 fn push(
     out: &mut Vec<ScheduledMessage>,
@@ -4123,7 +4185,9 @@ fn push(
     row: usize,
     bytes: Vec<u8>,
     target: Option<PageTarget>,
-) {
+    budget: usize,
+) -> Result<()> {
+    anyhow::ensure!(out.len() < budget, "timeline event budget exceeded");
     out.push(ScheduledMessage {
         at,
         bytes,
@@ -4134,6 +4198,7 @@ fn push(
         automation: false,
         effect: None,
     });
+    Ok(())
 }
 
 fn push_lane(
@@ -4144,7 +4209,9 @@ fn push_lane(
     bytes: Vec<u8>,
     lane: usize,
     target: &PageTarget,
-) {
+    budget: usize,
+) -> Result<()> {
+    anyhow::ensure!(out.len() < budget, "timeline event budget exceeded");
     out.push(ScheduledMessage {
         at,
         bytes,
@@ -4155,6 +4222,7 @@ fn push_lane(
         automation: false,
         effect: None,
     });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -4223,6 +4291,7 @@ enum Transport {
     ExternalPulse(crate::external_sync::PulseUpdate),
     RefreshLoop(Song),
     Stop(u64),
+    Configure(ExternalMidiConfig, mpsc::Sender<()>),
     Panic(Vec<(PageTarget, u8)>),
     Mute(usize, bool),
     Thru(PageTarget, Vec<u8>),
@@ -4409,6 +4478,20 @@ impl Sequencer {
             tx: self.tx.clone(),
         }
     }
+    pub fn reconfigure(&mut self, config: &ExternalMidiConfig) -> Result<()> {
+        // Routing applies at a stopped boundary and acknowledges the worker's
+        // cleanup and destination retirement before accepting saved settings.
+        self.stop();
+        let (tx, rx) = mpsc::channel();
+        self.tx
+            .send(Transport::Configure(config.clone(), tx))
+            .context("sequencer owner unavailable")?;
+        rx.recv()
+            .context("sequencer routing acknowledgement lost")?;
+        self.config = config.clone();
+        Ok(())
+    }
+
     pub fn stop(&self) {
         let _ = self.count_in_tx.send(CountInCommand::Cancel);
         let generation = if let Ok(mut status) = self.status.lock() {
@@ -4617,7 +4700,7 @@ fn run_count_in(
 fn run_transport(
     rx: mpsc::Receiver<Transport>,
     status: Arc<Mutex<SequencerStatus>>,
-    config: ExternalMidiConfig,
+    mut config: ExternalMidiConfig,
     instrument: crate::engine::SharedOutput,
     drums: crate::drums_host::SharedDrumOutput,
     clock: Arc<crate::loop_player::TransportClock>,
@@ -4918,6 +5001,22 @@ fn run_transport(
                 }
                 active_notes.clear();
                 live_notes.clear();
+            }
+            Ok(Transport::Configure(next, reply)) => {
+                cleanup_owned_notes(&mut outputs, &mut note_owners);
+                active_notes.clear();
+                live_notes.clear();
+                outputs.destinations.clear();
+                outputs.config = next.clone();
+                config = next.clone();
+                active_config = next;
+                transport_targets.clear();
+                if let Ok(mut status) = status.lock() {
+                    status.targets.clear();
+                    status.fallbacks.clear();
+                    status.error = None;
+                }
+                let _ = reply.send(());
             }
             Ok(Transport::Stop(generation)) => {
                 automation_cc.clear(Instant::now());
@@ -5404,6 +5503,7 @@ fn run_transport(
             }
             if let Some(effect) = message.effect.as_ref() {
                 if let Err(error) = effect_hub.publish_normalized(
+                    effect.owner,
                     effect.effect_id,
                     effect.effect_kind,
                     effect.effect_version,
@@ -6389,7 +6489,8 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
         0,
         config,
         &DeviceProfiles::discover(),
-    );
+        crate::timeline::MAX_TIMELINE_EVENTS,
+    )?;
     push(
         &mut dry,
         Duration::ZERO,
@@ -6397,7 +6498,8 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
         0,
         vec![0x90 | page.column(0).channel, 60, 64],
         Some(page.target.clone()),
-    );
+        crate::timeline::MAX_TIMELINE_EVENTS,
+    )?;
     push(
         &mut dry,
         Duration::from_millis(250),
@@ -6405,7 +6507,8 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
         0,
         vec![0x80 | page.column(0).channel, 60, 0],
         Some(page.target.clone()),
-    );
+        crate::timeline::MAX_TIMELINE_EVENTS,
+    )?;
     if let Some(channel) = config.percussion_channel {
         if config.program_changes {
             if let Some(program) = config.percussion_program {
@@ -6416,7 +6519,8 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
                     0,
                     vec![0xc0 | channel, program],
                     Some(page.target.clone()),
-                );
+                    crate::timeline::MAX_TIMELINE_EVENTS,
+                )?;
             }
         }
         push(
@@ -6426,7 +6530,8 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
             0,
             vec![0x90 | channel, 36, 96],
             Some(page.target.clone()),
-        );
+            crate::timeline::MAX_TIMELINE_EVENTS,
+        )?;
         push(
             &mut dry,
             Duration::from_millis(125),
@@ -6434,7 +6539,8 @@ pub fn diagnostic(config: &ExternalMidiConfig) -> Result<String> {
             0,
             vec![0x80 | channel, 36, 0],
             Some(page.target.clone()),
-        );
+            crate::timeline::MAX_TIMELINE_EVENTS,
+        )?;
     }
     let messages = dry
         .iter()
@@ -10552,14 +10658,68 @@ mod tests {
         let mut taken = Song::new(&config());
         taken.name = "taken".into();
         save(&base, &taken, false).unwrap();
-        assert!(rename_project(&base, "first", "taken").is_err());
+        assert!(rename_project(&base, "first", &first, "taken").is_err());
         assert!(base.join("first.shsong").exists());
-        assert!(rename_project(&base, "first", "bad\nname").is_err());
+        assert!(rename_project(&base, "first", &first, "bad\nname").is_err());
         assert!(base.join("first.shsong").exists());
-        let (renamed, path) = rename_project(&base, "first", "My Bass Project").unwrap();
+        first.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(71);
+        first.order.push(0);
+        let (same, _) = rename_project(&base, "first", &first, "first").unwrap();
+        assert_eq!(same, first);
+        assert_eq!(load(&base, "first").unwrap(), first);
+        let (renamed, path) = rename_project(&base, "first", &first, "My Bass Project").unwrap();
+        let mut expected = first.clone();
+        expected.name = "My Bass Project".into();
+        assert_eq!(renamed, expected);
+        assert_eq!(load(&base, "My-Bass-Project").unwrap(), expected);
         assert_eq!(renamed.name, "My Bass Project");
         assert_eq!(path.file_name().unwrap(), "My-Bass-Project.shsong");
         assert!(!base.join("first.shsong").exists());
         let _ = fs::remove_dir_all(base);
+    }
+    #[test]
+    fn repeated_pattern_expansion_stops_at_injected_budget() {
+        let config = config();
+        let mut song = Song::new(&config);
+        song.order = vec![0; 32];
+        song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+        let error = schedule_elapsed_with_budget(
+            &song,
+            &config,
+            0,
+            0,
+            ConditionContext::playback(1, false),
+            12,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("budget"));
+        assert!(schedule_elapsed_with_budget(
+            &song,
+            &config,
+            0,
+            0,
+            ConditionContext::playback(1, false),
+            8192
+        )
+        .is_ok());
+    }
+    #[test]
+    fn stopped_sequencer_acknowledges_new_external_settings_without_restart() {
+        let mut config = config();
+        config.enabled = false;
+        let mut sequencer = Sequencer::start_with_clock(
+            &config,
+            Arc::new(Mutex::new(None)),
+            Arc::new(Mutex::new(None)),
+            Arc::new(crate::loop_player::TransportClock::default()),
+            Arc::new(crate::effects::EffectControlHub::default()),
+        );
+        config.output_match = "fixture destination B".into();
+        sequencer.reconfigure(&config).unwrap();
+        assert_eq!(sequencer.config, config);
+        assert!(!sequencer.status().playing);
+        config.output_match = "fixture destination A".into();
+        sequencer.reconfigure(&config).unwrap();
+        assert_eq!(sequencer.config, config);
     }
 }

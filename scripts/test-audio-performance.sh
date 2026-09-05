@@ -574,6 +574,40 @@ assert_file_contains "$managed_jack/etc/jackdrc" '# later administrator edit' \
   'edited JACK file remains present'
 pass 'managed JACK doctor, live lifecycle, removal, and edit protection'
 
+# Reconstruct every durable file boundary of install/removal without operating
+# any real service. A retry must recognize pending ownership and remain safe.
+for boundary in 0 1 2 3; do
+  interrupted_jack="$(new_fixture "jack-boundary-$boundary")"
+  run_tuner "$interrupted_jack" jack-install patch A96 48000 128 3 >/dev/null
+  jack_state="$interrupted_jack/var/lib/shr-audio-tune/jack-service"
+  cp "$jack_state/manifest" "$jack_state/pending"
+  ((boundary >= 3)) || rm "$jack_state/manifest"
+  ((boundary >= 2)) || rm "$interrupted_jack/etc/jackdrc"
+  ((boundary >= 1)) || rm "$interrupted_jack/etc/systemd/system/jack.service"
+  run_tuner "$interrupted_jack" jack-install patch A96 48000 128 3 >/dev/null
+  [[ -f "$jack_state/manifest" && ! -e "$jack_state/pending" ]] || fail 'JACK install retry did not finish'
+  cp "$jack_state/manifest" "$jack_state/pending"
+  ((boundary < 1)) || rm "$interrupted_jack/etc/systemd/system/jack.service"
+  ((boundary < 2)) || rm "$interrupted_jack/etc/jackdrc"
+  ((boundary < 3)) || rm "$jack_state/manifest"
+  run_tuner "$interrupted_jack" jack-remove >/dev/null
+  [[ ! -e "$jack_state/pending" && ! -e "$jack_state/manifest" ]] || fail 'JACK removal retry did not finish'
+done
+pass 'pending JACK installation and removal resume at every file boundary'
+
+pending_edit="$(new_fixture jack-pending-edit)"
+run_tuner "$pending_edit" jack-install patch A96 48000 128 3 >/dev/null
+jack_state="$pending_edit/var/lib/shr-audio-tune/jack-service"
+cp "$jack_state/manifest" "$jack_state/pending"
+printf '# administrator repair\n' >>"$pending_edit/etc/jackdrc"
+if run_tuner "$pending_edit" jack-remove >"$TEST_ROOT/pending-edit.out" 2>&1; then
+  fail 'pending JACK recovery discarded administrator repair'
+fi
+[[ -f "$pending_edit/etc/systemd/system/jack.service" ]] || fail 'failed JACK preflight removed another file'
+assert_file_contains "$pending_edit/etc/jackdrc" 'administrator repair' 'pending JACK repair remains'
+pass 'pending JACK recovery preflights all resources before removal'
+
+
 if SHR_TUNE_ROOT='' "$TUNER" install 3 >"$TEST_ROOT/nonroot.out" 2>&1; then
   fail 'non-root host mutation was accepted'
 fi

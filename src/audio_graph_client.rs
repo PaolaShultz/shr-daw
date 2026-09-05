@@ -22,6 +22,7 @@ use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGet
 use crate::master_strip::{MasterStripControls, MasterStripSettings};
 use anyhow::{anyhow, bail, Context, Result};
 use libc::{c_int, c_uint, c_void};
+use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const SOURCE_NODE: u32 = 1;
@@ -208,7 +209,8 @@ impl BoundaryRoutes {
 }
 
 struct CallbackData {
-    plan: GraphPlan,
+    plan: UnsafeCell<GraphPlan>,
+    maximum_frames: usize,
     inputs: [*mut JackPort; 8],
     input_port_ids: [u32; 8],
     output_left: *mut JackPort,
@@ -220,9 +222,9 @@ struct CallbackData {
     source_lost: AtomicBool,
     input_monitoring: AtomicBool,
     timing: CallbackTimingCounters,
-    final_bus: FinalBusProcessor,
+    final_bus: UnsafeCell<FinalBusProcessor>,
     final_capture: FinalMixCapture,
-    final_buffer: Box<[StereoFrame]>,
+    final_buffer: UnsafeCell<Box<[StereoFrame]>>,
 }
 
 // JACK owns callback scheduling, while the box itself remains pinned and is
@@ -238,6 +240,7 @@ pub(crate) struct OwnedAudioGraph {
     meters: std::sync::Arc<FinalBusMeters>,
     final_recorder: FinalMixRecorder,
     monitoring: Monitoring,
+    effect_meters: std::collections::BTreeMap<u32, crate::effects::MeterHandles>,
     effect_controls: std::collections::BTreeMap<u32, std::sync::Arc<crate::effects::EffectControl>>,
     aux_send_controls: std::collections::BTreeMap<u8, std::sync::Arc<AuxSendControl>>,
 }
@@ -639,6 +642,14 @@ impl OwnedAudioGraph {
             aux_routing,
         );
         let plan = GraphPlan::compile(&definition).context("compile managed audio graph")?;
+        let effect_meters = definition
+            .effects
+            .iter()
+            .filter_map(|effect| {
+                plan.effect_meters_by_id(effect.id)
+                    .map(|meters| (effect.id, meters))
+            })
+            .collect();
         let effect_controls = definition
             .effects
             .iter()
@@ -756,7 +767,8 @@ impl OwnedAudioGraph {
         )?;
         let final_capture = final_recorder.capture_handle();
         let mut callback = Box::new(CallbackData {
-            plan,
+            maximum_frames: plan.maximum_frames(),
+            plan: UnsafeCell::new(plan),
             inputs,
             input_port_ids,
             output_left,
@@ -768,10 +780,12 @@ impl OwnedAudioGraph {
             source_lost: AtomicBool::new(false),
             input_monitoring: AtomicBool::new(input_monitoring),
             timing: CallbackTimingCounters::default(),
-            final_bus,
+            final_bus: UnsafeCell::new(final_bus),
             final_capture,
-            final_buffer: vec![StereoFrame::SILENCE; config.maximum_callback_frames as usize]
-                .into_boxed_slice(),
+            final_buffer: UnsafeCell::new(
+                vec![StereoFrame::SILENCE; config.maximum_callback_frames as usize]
+                    .into_boxed_slice(),
+            ),
         });
         let callback_pointer = ((&mut *callback) as *mut CallbackData).cast();
         // SAFETY: callback remains boxed until after explicit JACK deactivation.
@@ -807,6 +821,7 @@ impl OwnedAudioGraph {
             meters,
             final_recorder,
             monitoring,
+            effect_meters,
             effect_controls,
             aux_send_controls,
         })
@@ -898,11 +913,11 @@ impl OwnedAudioGraph {
     }
 
     pub(crate) fn effect_meter(&self, effect_id: u32) -> Option<EffectMeterSnapshot> {
-        let handles = self.callback.plan.effect_meters_by_id(effect_id)?;
+        let handles = self.effect_meters.get(&effect_id)?;
         Some(EffectMeterSnapshot {
             input: handles.input.load(),
             output: handles.output.load(),
-            gain_reduction_db: handles.gain_reduction.map(|meter| meter.load()),
+            gain_reduction_db: handles.gain_reduction.as_ref().map(|meter| meter.load()),
         })
     }
 
@@ -952,7 +967,7 @@ impl OwnedAudioGraph {
         let destinations = self.routes.destinations.clone();
         let definition = managed_graph_definition(
             self.callback.sample_rate,
-            self.callback.plan.maximum_frames() as u32,
+            self.callback.maximum_frames as u32,
             &destinations,
             &self.routes.live_source_ports,
             self.monitoring,
@@ -964,7 +979,7 @@ impl OwnedAudioGraph {
             .map_err(|error| anyhow!(error.to_string()))?;
         self.callback.armed.store(false, Ordering::Release);
         self.jack.deactivate();
-        if let Err(error) = self.callback.plan.reconfigure(&definition) {
+        if let Err(error) = self.callback.plan.get_mut().reconfigure(&definition) {
             if self.jack.activate().is_ok() {
                 self.callback.armed.store(true, Ordering::Release);
             } else {
@@ -972,12 +987,24 @@ impl OwnedAudioGraph {
             }
             return Err(anyhow!(error.to_string()).context("compile replacement audio rack"));
         }
+        self.effect_meters = definition
+            .effects
+            .iter()
+            .filter_map(|effect| {
+                self.callback
+                    .plan
+                    .get_mut()
+                    .effect_meters_by_id(effect.id)
+                    .map(|meters| (effect.id, meters))
+            })
+            .collect();
         self.effect_controls = definition
             .effects
             .iter()
             .filter_map(|effect| {
                 self.callback
                     .plan
+                    .get_mut()
                     .effect_control_by_id(effect.id)
                     .map(|control| (effect.id, control))
             })
@@ -988,11 +1015,12 @@ impl OwnedAudioGraph {
             .filter_map(|aux| {
                 self.callback
                     .plan
+                    .get_mut()
                     .aux_send_control(aux.id)
                     .map(|control| (aux.id, control))
             })
             .collect();
-        self.callback.final_bus.reset();
+        self.callback.final_bus.get_mut().reset();
         if let Err(error) = self.jack.activate() {
             let _ = self.restore_direct();
             return Err(error.context("reactivate audio graph after rack publication"));
@@ -1329,15 +1357,32 @@ fn dry_graph_definition(
     )
 }
 
+#[cfg(test)]
 fn process_block(
     callback: &mut CallbackData,
+    frames: usize,
+    inputs: [&[f32]; 8],
+    left: &mut [f32],
+    right: &mut [f32],
+) -> ProcessStatus {
+    // Exclusive test borrow guarantees no active callback.
+    unsafe { process_exclusive(callback, frames, inputs, left, right) }
+}
+
+unsafe fn process_exclusive(
+    callback: &CallbackData,
     frames: usize,
     inputs: [&[f32]; 8],
     output_left: &mut [f32],
     output_right: &mut [f32],
 ) -> ProcessStatus {
+    // SAFETY: only JACK's non-overlapping process callback enters while active;
+    // the owner accesses these cells only after deactivate has joined it.
+    let plan = unsafe { &mut *callback.plan.get() };
+    let final_bus = unsafe { &mut *callback.final_bus.get() };
+    let final_buffer = unsafe { &mut *callback.final_buffer.get() };
     let publish = callback.armed.load(Ordering::Acquire);
-    if frames > callback.plan.maximum_frames()
+    if frames > plan.maximum_frames()
         || inputs.iter().any(|input| input.len() < frames)
         || output_left.len() < frames
         || output_right.len() < frames
@@ -1353,7 +1398,7 @@ fn process_block(
         (INPUT_SOURCE_NODE, BusSource::Input, 4, 5),
         (DRUM_SOURCE_NODE, BusSource::Drums, 6, 7),
     ] {
-        let Some(source) = callback.plan.source_buffer_mut(node, frames) else {
+        let Some(source) = plan.source_buffer_mut(node, frames) else {
             callback.final_capture.callback_violation();
             output_left[..frames].fill(0.0);
             output_right[..frames].fill(0.0);
@@ -1367,9 +1412,9 @@ fn process_block(
         {
             *frame = StereoFrame::new(left_sample, right_sample);
         }
-        callback.final_bus.process_source(source_kind, source);
+        final_bus.process_source(source_kind, source);
     }
-    let status = callback.plan.process(frames);
+    let status = plan.process(frames);
     if !publish || !matches!(status, ProcessStatus::Complete) {
         if publish && !matches!(status, ProcessStatus::Complete) {
             callback.final_capture.callback_violation();
@@ -1378,22 +1423,18 @@ fn process_block(
         output_right[..frames].fill(0.0);
         return status;
     }
-    let Some(output) = callback.plan.output_buffer(SINK_NODE, frames) else {
+    let Some(output) = plan.output_buffer(SINK_NODE, frames) else {
         callback.final_capture.callback_violation();
         output_left[..frames].fill(0.0);
         output_right[..frames].fill(0.0);
         return ProcessStatus::OversizedBlock;
     };
-    callback.final_buffer[..frames].copy_from_slice(output);
-    callback
-        .final_bus
-        .process_final(&mut callback.final_buffer[..frames]);
-    callback
-        .final_capture
-        .capture(&callback.final_buffer[..frames]);
+    final_buffer[..frames].copy_from_slice(output);
+    final_bus.process_final(&mut final_buffer[..frames]);
+    callback.final_capture.capture(&final_buffer[..frames]);
     for index in 0..frames {
-        output_left[index] = callback.final_buffer[index].left;
-        output_right[index] = callback.final_buffer[index].right;
+        output_left[index] = final_buffer[index].left;
+        output_right[index] = final_buffer[index].right;
     }
     status
 }
@@ -1403,7 +1444,7 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
         return 0;
     }
     // SAFETY: OwnedAudioGraph pins CallbackData until JACK is inactive.
-    let callback = unsafe { &mut *argument.cast::<CallbackData>() };
+    let callback = unsafe { &*argument.cast::<CallbackData>() };
     let start = monotonic_nanoseconds();
     let get_buffer = callback.port_get_buffer;
     let mut input_pointers = [std::ptr::null_mut(); 8];
@@ -1425,7 +1466,8 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
         input_pointers.map(|pointer| unsafe { std::slice::from_raw_parts(pointer, frame_count) });
     let output_left = unsafe { std::slice::from_raw_parts_mut(output_left, frame_count) };
     let output_right = unsafe { std::slice::from_raw_parts_mut(output_right, frame_count) };
-    let status = process_block(callback, frame_count, inputs, output_left, output_right);
+    let status =
+        unsafe { process_exclusive(callback, frame_count, inputs, output_left, output_right) };
     let end = monotonic_nanoseconds();
     let elapsed = if start == 0 || end == 0 {
         0
@@ -1603,8 +1645,11 @@ mod tests {
         let recorder =
             FinalMixRecorder::new(directory, 48_000, 4096, maximum_frames as usize).unwrap();
         let callback = CallbackData {
-            plan: GraphPlan::compile(&dry_graph_definition(48_000, maximum_frames, &destinations))
-                .unwrap(),
+            maximum_frames: maximum_frames as usize,
+            plan: UnsafeCell::new(
+                GraphPlan::compile(&dry_graph_definition(48_000, maximum_frames, &destinations))
+                    .unwrap(),
+            ),
             inputs: [std::ptr::null_mut(); 8],
             input_port_ids: [10, 11, 12, 13, 14, 15, 16, 17],
             output_left: std::ptr::null_mut(),
@@ -1616,16 +1661,20 @@ mod tests {
             source_lost: AtomicBool::new(false),
             input_monitoring: AtomicBool::new(input_monitoring),
             timing: CallbackTimingCounters::default(),
-            final_bus: FinalBusProcessor::new(
-                48_000,
-                maximum_frames as usize,
-                std::sync::Arc::clone(&controls),
-                strip_controls,
-                meters,
-            )
-            .unwrap(),
+            final_bus: UnsafeCell::new(
+                FinalBusProcessor::new(
+                    48_000,
+                    maximum_frames as usize,
+                    std::sync::Arc::clone(&controls),
+                    strip_controls,
+                    meters,
+                )
+                .unwrap(),
+            ),
             final_capture: recorder.capture_handle(),
-            final_buffer: vec![StereoFrame::SILENCE; maximum_frames as usize].into_boxed_slice(),
+            final_buffer: UnsafeCell::new(
+                vec![StereoFrame::SILENCE; maximum_frames as usize].into_boxed_slice(),
+            ),
         };
         (callback, recorder, controls)
     }
@@ -2169,5 +2218,30 @@ mod tests {
         assert!(validate_stereo_boundary(&duplicate, "test").is_err());
         let empty = [String::new(), "right:port".to_owned()];
         assert!(validate_stereo_boundary(&empty, "test").is_err());
+    }
+    #[test]
+    fn callback_mutation_and_owner_meter_reads_use_disjoint_storage() {
+        let mut callback = callback(64);
+        let definition = dry_graph_definition(48_000, 64, &["main:l".into(), "main:r".into()]);
+        callback.plan = UnsafeCell::new(GraphPlan::compile(&definition).unwrap());
+        let meter = callback.plan.get_mut().meter(MASTER_NODE).unwrap();
+        let worker = std::thread::spawn(move || {
+            let inputs = [[0.1_f32; 64]; 8];
+            let mut left = [0.0; 64];
+            let mut right = [0.0; 64];
+            for _ in 0..64 {
+                process_block(
+                    &mut callback,
+                    64,
+                    inputs.each_ref().map(|input| input.as_slice()),
+                    &mut left,
+                    &mut right,
+                );
+            }
+        });
+        for _ in 0..64 {
+            let _ = meter.load();
+        }
+        worker.join().unwrap();
     }
 }

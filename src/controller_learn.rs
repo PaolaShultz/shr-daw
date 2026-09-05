@@ -1984,18 +1984,6 @@ pub fn backup(path: &Path) -> Result<Option<PathBuf>> {
     bail!("could not allocate a unique controller backup name")
 }
 
-fn restore_file(path: &Path, contents: Option<&[u8]>) {
-    match contents {
-        Some(contents) => {
-            let _ = crate::fsutil::atomic_write(path, contents);
-        }
-        None if path.is_file() => {
-            let _ = fs::remove_file(path);
-        }
-        None => {}
-    }
-}
-
 /// Saves the active controller and, for reviewed hardware, the model-owned
 /// learned mapping as one recoverable operation. Automatic model switching
 /// writes only `controller.conf`; only an explicit Learn save updates the
@@ -2008,21 +1996,35 @@ pub fn save_learned_for_state(state: &Path, config: &PadConfig) -> Result<Option
         .filter(|profile| *profile != "learned")
         .map(|profile| crate::controller_profile::private_mapping_path(state, profile))
         .transpose()?;
-    let old_active = fs::read(&active).ok();
-    let old_model = model.as_ref().and_then(|path| fs::read(path).ok());
+    let old_active = crate::fsutil::snapshot(&active)?;
+    let old_model = model
+        .as_ref()
+        .map(|path| crate::fsutil::snapshot(path))
+        .transpose()?
+        .flatten();
 
+    backup(&active)?;
+    if let Some(path) = &model {
+        backup(path)?;
+    }
     let result = (|| {
-        backup(&active)?;
         if let Some(path) = &model {
-            backup(path)?;
             config.save(path)?;
         }
         config.save(&active)
     })();
     if let Err(error) = result {
-        restore_file(&active, old_active.as_deref());
-        if let Some(path) = &model {
-            restore_file(path, old_model.as_deref());
+        let active_restore = crate::fsutil::restore(&active, old_active.as_deref());
+        let model_restore = model
+            .as_ref()
+            .map(|path| crate::fsutil::restore(path, old_model.as_deref()))
+            .transpose();
+        let mut error = error;
+        for recovery in [active_restore.err(), model_restore.err()]
+            .into_iter()
+            .flatten()
+        {
+            error = error.context(format!("configuration recovery failed: {recovery:#}"));
         }
         return Err(error);
     }
@@ -3307,5 +3309,24 @@ mod tests {
         h.send(&[0xb0, 27, 0]);
         assert_eq!(h.learn.role(), LearnRole::Pad(5));
         h.learn.validated_config().unwrap();
+    }
+    #[test]
+    fn learned_save_read_failure_preserves_active_original() {
+        let base =
+            std::env::temp_dir().join(format!("shr-learn-read-failure-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let active = base.join("controller.conf");
+        std::fs::write(&active, b"original").unwrap();
+        let config = PadConfig {
+            profile: Some("arturia-minilab-mkii".into()),
+            ..PadConfig::default()
+        };
+        let model =
+            crate::controller_profile::private_mapping_path(&base, "arturia-minilab-mkii").unwrap();
+        std::fs::create_dir_all(&model).unwrap();
+        assert!(save_learned_for_state(&base, &config).is_err());
+        assert_eq!(std::fs::read(&active).unwrap(), b"original");
+        assert!(model.is_dir());
+        std::fs::remove_dir_all(base).unwrap();
     }
 }

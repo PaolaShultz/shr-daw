@@ -1880,18 +1880,6 @@ fn validate_routing_draft(draft: &RoutingDraft, state: &Path) -> Result<()> {
     result.with_context(|| format!("validate complete candidate for {}", state.display()))
 }
 
-fn restore_config_file(path: &Path, contents: Option<&[u8]>) {
-    match contents {
-        Some(contents) => {
-            let _ = crate::fsutil::atomic_write(path, contents);
-        }
-        None if path.is_file() => {
-            let _ = fs::remove_file(path);
-        }
-        None => {}
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RoutingTransactionStage {
     Save,
@@ -1907,20 +1895,41 @@ fn persist_routing_transaction<F>(
 where
     F: FnOnce() -> Result<()>,
 {
-    let old_runtime = fs::read(runtime_path).ok();
-    let old_controller = fs::read(controller_path).ok();
-    let save = crate::controller_learn::backup(runtime_path)
+    let old_runtime = crate::fsutil::snapshot(runtime_path)
+        .map_err(|error| (RoutingTransactionStage::Save, error))?;
+    let old_controller = crate::fsutil::snapshot(controller_path)
+        .map_err(|error| (RoutingTransactionStage::Save, error))?;
+    crate::controller_learn::backup(runtime_path)
         .and_then(|_| crate::controller_learn::backup(controller_path))
-        .and_then(|_| draft.config.save(runtime_path))
+        .map_err(|error| (RoutingTransactionStage::Save, error))?;
+    let save = draft
+        .config
+        .save(runtime_path)
         .and_then(|_| draft.controller.save(controller_path));
     if let Err(error) = save {
-        restore_config_file(runtime_path, old_runtime.as_deref());
-        restore_config_file(controller_path, old_controller.as_deref());
+        let restores = [
+            crate::fsutil::restore(runtime_path, old_runtime.as_deref()),
+            crate::fsutil::restore(controller_path, old_controller.as_deref()),
+        ];
+        let error = restores
+            .into_iter()
+            .filter_map(Result::err)
+            .fold(error, |error, recovery| {
+                error.context(format!("configuration recovery failed: {recovery:#}"))
+            });
         return Err((RoutingTransactionStage::Save, error));
     }
     if let Err(error) = activate() {
-        restore_config_file(runtime_path, old_runtime.as_deref());
-        restore_config_file(controller_path, old_controller.as_deref());
+        let restores = [
+            crate::fsutil::restore(runtime_path, old_runtime.as_deref()),
+            crate::fsutil::restore(controller_path, old_controller.as_deref()),
+        ];
+        let error = restores
+            .into_iter()
+            .filter_map(Result::err)
+            .fold(error, |error, recovery| {
+                error.context(format!("configuration recovery failed: {recovery:#}"))
+            });
         return Err((RoutingTransactionStage::Activate, error));
     }
     Ok(())
@@ -1959,13 +1968,52 @@ impl App {
         engine_state: PathBuf,
         routing_defaults_path: PathBuf,
     ) -> Self {
+        Self::new_with_discovery(
+            catalogs,
+            user_preset_storage,
+            midi_output,
+            pickup,
+            midi_backend,
+            midi_moj_model,
+            tracker_io,
+            config,
+            available_ports,
+            engine_state,
+            routing_defaults_path,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_discovery(
+        catalogs: &[Catalog],
+        user_preset_storage: preset::UserPresetStorage,
+        midi_output: engine::SharedOutput,
+        pickup: engine::SharedPickup,
+        midi_backend: engine::SharedBackend,
+        midi_moj_model: engine::SharedMojModel,
+        tracker_io: TrackerIo,
+        config: RuntimeConfig,
+        available_ports: AvailablePorts,
+        engine_state: PathBuf,
+        routing_defaults_path: PathBuf,
+        discover: bool,
+    ) -> Self {
         let backend_index = 0;
         let presets = catalogs
             .get(backend_index)
             .map(|catalog| catalog.presets.clone())
             .unwrap_or_default();
-        let controller_profiles = crate::controller_profile::Catalog::discover();
-        let device_profiles = DeviceProfiles::discover();
+        let controller_profiles = if discover {
+            crate::controller_profile::Catalog::discover()
+        } else {
+            Default::default()
+        };
+        let device_profiles = if discover {
+            DeviceProfiles::discover()
+        } else {
+            Default::default()
+        };
         let first_synthv1 = catalogs
             .iter()
             .find(|catalog| catalog.backend == BackendKind::Synthv1)
@@ -1973,7 +2021,11 @@ impl App {
             .map(|preset| preset.name.as_str())
             .unwrap_or("Unavailable synthv1 preset");
         let gm_drums_route = configured_gm_drum_route(catalogs);
-        let drum_kits = crate::drums_host::discover_kits(&config.drums.kit_directory);
+        let drum_kits = if discover {
+            crate::drums_host::discover_kits(&config.drums.kit_directory)
+        } else {
+            Vec::new()
+        };
         let drum_target = drum_kits
             .iter()
             .find(|kit| kit.id == "big-rock-muldjord")
@@ -1982,9 +2034,12 @@ impl App {
             .unwrap_or_else(|| PageTarget::Software(gm_drums_route.clone()));
         let factory_routing =
             sequencer::factory_routing_pages(first_synthv1, gm_drums_route.clone());
-        let mut routing_defaults =
+        let mut routing_defaults = if discover {
             sequencer::load_routing_defaults(&routing_defaults_path, &factory_routing)
-                .unwrap_or(factory_routing);
+                .unwrap_or(factory_routing)
+        } else {
+            factory_routing
+        };
         enforce_fresh_drum_page(&mut routing_defaults, &drum_target);
         let mut defaults_song = Song::new_with_pages(&config.external_midi, routing_defaults);
         sequencer::upgrade_legacy_synth_routes(&mut defaults_song, first_synthv1);
@@ -1992,12 +2047,15 @@ impl App {
         let song = Song::new_with_pages(&config.external_midi, routing_defaults.clone());
         let mut live_patterns = crate::live_performance::LivePatternPerformance::default();
         live_patterns.reset_for_project(&song);
-        let transport_clock =
-            Arc::new(crate::loop_player::TransportClock::new_with_external_owner(
+        let transport_clock = Arc::new(if discover {
+            crate::loop_player::TransportClock::new_with_external_owner(
                 &config.controller_clock,
                 config.external_midi.default_tempo,
                 config.external_clock.enabled,
-            ));
+            )
+        } else {
+            crate::loop_player::TransportClock::default()
+        });
         let drum_output = Arc::new(Mutex::new(None));
         let final_bus = FinalBusOwner::default();
         let sequencer = sequencer::Sequencer::start_with_clock(
@@ -2045,8 +2103,16 @@ impl App {
                     .any(|needle| !needle.is_empty() && name.contains(needle))
             })
             .collect();
-        let loop_imports = crate::loop_player::list_wavs(&config.loop_player.import_directory);
-        let midi_imports = crate::midi_import::discover(&config.external_midi.import_directory);
+        let loop_imports = if discover {
+            crate::loop_player::list_wavs(&config.loop_player.import_directory)
+        } else {
+            Vec::new()
+        };
+        let midi_imports = if discover {
+            crate::midi_import::discover(&config.external_midi.import_directory)
+        } else {
+            Vec::new()
+        };
         let project_clean_baseline = song.clone();
         Self {
             catalogs: catalogs.to_vec(),
@@ -2094,7 +2160,11 @@ impl App {
             controller_live_transport: false,
             transport_clock,
             tap: TapTempo::default(),
-            ideas: recording::list(&recording::ideas_dir()).unwrap_or_default(),
+            ideas: if discover {
+                recording::list(&recording::ideas_dir()).unwrap_or_default()
+            } else {
+                Vec::new()
+            },
             idea_selected: 0,
             idea_offset: 0,
             help_selected: 0,
@@ -2139,7 +2209,11 @@ impl App {
             #[cfg(test)]
             songs_directory_override: None,
             audio_track_name_input: None,
-            song_list: sequencer::list(&sequencer::songs_dir()),
+            song_list: if discover {
+                sequencer::list(&sequencer::songs_dir())
+            } else {
+                Vec::new()
+            },
             song_selected: 0,
             midi_imports,
             midi_import_selected: 0,
@@ -2238,7 +2312,11 @@ impl App {
             confirm_pattern_paste_over: None,
             confirm_pattern_delete: None,
             tracker_files_mode: TrackerFilesMode::Projects,
-            drum_patterns: drum_pattern::discover(),
+            drum_patterns: if discover {
+                drum_pattern::discover()
+            } else {
+                Vec::new()
+            },
             drum_pattern_selected: 0,
             drum_genre_selected: 0,
             drum_meter: 4,
@@ -3019,8 +3097,9 @@ impl App {
         let controller_path = state.join("controller.conf");
         let old_config = self.config.clone();
         let sync_changed = draft.config.external_clock != old_config.external_clock;
+        let midi_changed = draft.config.external_midi != old_config.external_midi;
         let transport = self.sequencer.status();
-        if sync_changed
+        if (sync_changed || midi_changed)
             && (transport.playing
                 || transport.count_in.is_some()
                 || self.playback.is_some()
@@ -3029,7 +3108,7 @@ impl App {
                 || self.song_previewing
                 || self.active_recording_owner().is_some())
         {
-            self.status = "STOP TRANSPORT · then change SYNC".into();
+            self.status = "STOP TRANSPORT · then change MIDI/SYNC".into();
             self.routing.draft = Some(draft);
             return;
         }
@@ -3047,11 +3126,15 @@ impl App {
                 if let Ok(mut controller) = self.controller_config.write() {
                     *controller = draft.controller.clone();
                 }
-                activated_availability = self
-                    .midi_router
-                    .as_mut()
-                    .map(|router| router.reconfigure_inputs(&draft.config))
-                    .transpose()?;
+                activated_availability = Some(
+                    self.midi_router
+                        .as_mut()
+                        .context("MIDI routing owner unavailable")?
+                        .reconfigure_inputs(&draft.config)?,
+                );
+                if midi_changed {
+                    self.sequencer.reconfigure(&draft.config.external_midi)?;
+                }
                 Ok(())
             });
         match transaction {
@@ -3085,20 +3168,24 @@ impl App {
                     }
                 };
             }
-            Err((stage, _error)) => {
+            Err((stage, error)) => {
                 if let Ok(mut controller) = self.controller_config.write() {
                     *controller = old_controller;
                 }
                 if stage == RoutingTransactionStage::Activate {
                     if let Some(router) = self.midi_router.as_mut() {
-                        let _ = router.reconfigure_inputs(&old_config);
+                        if let Err(recovery) = router.reconfigure_inputs(&old_config) {
+                            self.status = format!("ROUTE RECOVERY FAILED · {recovery:#}");
+                            self.routing.draft = Some(draft);
+                            return;
+                        }
                     }
                 }
                 self.config = old_config;
                 self.refresh_routing_discovery();
                 self.status = match stage {
-                    RoutingTransactionStage::Save => "SAVE FAILED · draft kept · retry OK".into(),
-                    RoutingTransactionStage::Activate => "ROUTE FAILED · old route restored".into(),
+                    RoutingTransactionStage::Save => format!("SAVE FAILED · {error:#}"),
+                    RoutingTransactionStage::Activate => format!("ROUTE FAILED · {error:#}"),
                 };
                 self.routing.draft = Some(draft);
             }
@@ -10413,6 +10500,7 @@ impl App {
         let mut publication_failed = false;
         match &effect_target {
             sequencer::AutomationTarget::Effect {
+                rack,
                 effect_id,
                 effect_kind,
                 effect_version,
@@ -10420,6 +10508,7 @@ impl App {
                 ..
             } => {
                 if let Err(error) = self.final_bus.effect_hub().publish_normalized(
+                    rack.owner(),
                     *effect_id,
                     *effect_kind,
                     *effect_version,
@@ -10431,12 +10520,14 @@ impl App {
                 }
             }
             sequencer::AutomationTarget::EffectBypass {
+                rack,
                 effect_id,
                 effect_kind,
                 effect_version,
                 ..
             } => {
                 if let Err(error) = self.final_bus.effect_hub().publish_normalized(
+                    rack.owner(),
                     *effect_id,
                     *effect_kind,
                     *effect_version,
@@ -12284,7 +12375,8 @@ impl App {
         }
         if let Some(old_stem) = self.song_file_stem.clone() {
             self.tracker_stop();
-            match sequencer::rename_project(&sequencer::songs_dir(), &old_stem, display) {
+            match sequencer::rename_project(&sequencer::songs_dir(), &old_stem, &self.song, display)
+            {
                 Ok((song, path)) => {
                     self.song = song;
                     self.song_file_stem = path
@@ -12873,7 +12965,11 @@ impl App {
         self.status = format!("pattern {} tools", self.tracker_pattern_number());
     }
     fn open_drum_patterns(&mut self) {
-        self.drum_patterns = drum_pattern::discover();
+        self.prepare_drum_patterns(drum_pattern::discover());
+    }
+
+    fn prepare_drum_patterns(&mut self, entries: Vec<drum_pattern::Entry>) {
+        self.drum_patterns = entries;
         self.drum_meter = self.current_meter();
         let sizes = drum_sizes(self.drum_meter);
         self.drum_target_rows = sizes
@@ -16776,6 +16872,13 @@ fn app_loop(
         }
     }
     while rx.try_recv().is_ok() {}
+    let router_failed = router.is_err();
+    if router_failed {
+        router = Ok(engine::MidiRouter::inactive(
+            crate::pads::PadConfig::load(&state.join("controller.conf")).unwrap_or_default(),
+            tx.clone(),
+        ));
+    }
     let output = router
         .as_ref()
         .map(engine::MidiRouter::output)
@@ -16865,7 +16968,7 @@ fn app_loop(
     if controller_notice.is_some() {
         app.status = "CONTROLLER ROUTE DEGRADED · ROUTING".into();
     }
-    if let Err(_error) = &router {
+    if router_failed {
         let notice: String = if config.midi_autoconnect {
             "MIDI INPUT MISSING · use keyboard / ROUTING".into()
         } else {
@@ -17002,7 +17105,16 @@ fn drain(
             }
             MidiEvent::Raw { received, bytes } => {
                 app.held_notes.observe(&bytes);
+                let recording_before = app.recorder.is_recording();
                 app.recorder.capture(received, &bytes);
+                if recording_before && app.recorder.limit_reached {
+                    app.last = app.recorder.events.clone();
+                    app.stop_controller_live_transport();
+                    if let Some(engine) = &app.engine {
+                        engine.panic();
+                    }
+                    app.status = "IDEA LIMIT · stopped · accepted take kept for SAVE".into();
+                }
                 app.capture_external_automation(received, &bytes);
                 let tracker_preview = app.tracker_workspace_active();
                 if !tracker_preview {
@@ -26528,7 +26640,8 @@ struct ScreenshotCell {
 const SCREENSHOT_COLS: u16 = 40;
 const SCREENSHOT_ROWS: u16 = 13;
 
-pub fn readme_screenshots_json(config: &RuntimeConfig) -> Result<String> {
+pub fn readme_screenshots_json() -> Result<String> {
+    let config = RuntimeConfig::default();
     let readme_screens = [
         ("shr-daw-presets.png", ScreenshotScenario::Presets),
         ("shr-daw-playback.png", ScreenshotScenario::Playback),
@@ -26909,6 +27022,11 @@ impl ScreenshotSpecialScenario {
 }
 
 fn screenshot_app(mut config: RuntimeConfig) -> App {
+    config.capture.directory = PathBuf::from("/fixture/recordings");
+    config.drums.kit_directory = PathBuf::from("/fixture/kits");
+    config.external_midi.import_directory = PathBuf::from("/fixture/midi");
+    config.loop_player.import_directory = PathBuf::from("/fixture/loops");
+    config.preset_dir = None;
     config.cpu_temperature_path = None;
     config.capture.inputs = vec![crate::config::StereoInputConfig {
         name: "AudioBox USB 96".into(),
@@ -27007,9 +27125,12 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         .map(|track| track.preferred_source)
         .filter(|source| !source.is_empty())
         .collect();
-    let mut app = App::new(
+    let mut app = App::new_with_discovery(
         &catalogs,
-        preset::UserPresetStorage::from_environment(),
+        preset::UserPresetStorage {
+            synthv1: PathBuf::new(),
+            moj_sint: PathBuf::new(),
+        },
         Arc::new(std::sync::Mutex::new(None)),
         Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
         Arc::new(std::sync::Mutex::new(BackendKind::Synthv1)),
@@ -27028,6 +27149,7 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         },
         PathBuf::from("/none"),
         PathBuf::from("/none"),
+        false,
     );
     app.web_help_enabled = false;
     app.playing = catalogs[1].presets.first().cloned();
@@ -27355,7 +27477,23 @@ fn configure_screenshot_scenario(app: &mut App, scenario: ScreenshotScenario) {
         ScreenshotScenario::DrumPatterns => {
             fill_demo_song(app);
             app.open_pattern_tools();
-            app.open_drum_patterns();
+            let patterns =
+                drum_pattern::decode_catalog(include_str!("../drum-patterns/catalog.shrdrums"))
+                    .expect("bundled screenshot drum catalog");
+            app.prepare_drum_patterns(
+                patterns
+                    .into_iter()
+                    .map(|pattern| drum_pattern::Entry {
+                        name: pattern.name.clone(),
+                        genre: pattern.genre.clone(),
+                        meter: pattern.meter,
+                        rows: pattern.rows.len(),
+                        path: PathBuf::from("fixture.shrdrums"),
+                        user: false,
+                        bundled: Some(pattern),
+                    })
+                    .collect(),
+            );
         }
         ScreenshotScenario::PatternSetup => {
             fill_demo_song(app);
@@ -33688,6 +33826,12 @@ release = 0.4
         let mut a = app(&p);
         a.config.external_midi.enabled = true;
         a.config.external_midi.output_match = "AudioBox USB 96 AudioBox USB 96 MIDI 1".into();
+        a.config.midi_autoconnect = false;
+        let (sender, _receiver) = mpsc::channel();
+        a.midi_router = Some(engine::MidiRouter::inactive(
+            crate::pads::PadConfig::default(),
+            sender,
+        ));
         a.config.save(&base.join("shsynth.conf")).unwrap();
         let controller = a.controller_config.read().unwrap().clone();
         controller.save(&base.join("controller.conf")).unwrap();
@@ -42347,5 +42491,21 @@ release = 0.4
             &tx,
         );
         assert_eq!(a.current_pattern().unwrap().rows[0][0].note, Note::On(60));
+    }
+    #[test]
+    fn screenshot_constructor_ignores_discovery_and_enabled_hardware_settings() {
+        let mut config = RuntimeConfig::default();
+        config.controller_clock.enabled = true;
+        config.midi_autoconnect = true;
+        config.external_clock.enabled = true;
+        config.drums.kit_directory = PathBuf::from("/must-not-read-private-kits");
+        let app = screenshot_app(config);
+        assert!(app.midi_router.is_none());
+        assert!(app.ideas.is_empty());
+        assert!(app.song_list.is_empty());
+        assert!(app.drum_kits.is_empty());
+        assert!(app.controller_profiles.profiles().is_empty());
+        assert_eq!(app.device_profiles.profiles().count(), 0);
+        assert!(!app.transport_clock.has_controller_output());
     }
 }

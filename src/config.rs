@@ -50,7 +50,7 @@ pub enum BankSelectMode {
     Cc0Cc32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExternalMidiConfig {
     pub enabled: bool,
     pub client_name: String,

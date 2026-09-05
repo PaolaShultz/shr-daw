@@ -468,7 +468,7 @@ impl GraphPlan {
                     let bypass_mode = aux_state
                         .map(|index| aux_bypass_mode(&aux_effect_states, index))
                         .unwrap_or(BypassMode::DryPassthrough);
-                    let slot = match retained.remove(effect_id) {
+                    let mut slot = match retained.remove(effect_id) {
                         Some(mut slot) if slot.kind() == effect.kind => {
                             slot.apply_instance_with_placement(effect, wet_only, bypass_mode)
                                 .map_err(|error| PlanError::new(error.to_string()))?;
@@ -485,6 +485,7 @@ impl GraphPlan {
                             .map_err(|error| PlanError::new(error.to_string()))?,
                         ),
                     };
+                    slot.use_graph_bypass_owner();
                     Operation::Effect(slot)
                 }
                 NodeKind::Sink { .. } => {
@@ -736,6 +737,17 @@ impl GraphPlan {
     pub fn process(&mut self, frames: usize) -> ProcessStatus {
         if frames > self.maximum_frames {
             return ProcessStatus::OversizedBlock;
+        }
+        // Consume every AUX bypass before processing any audio. Slots must not
+        // apply bypass independently using a mode compiled for old topology.
+        for index in 0..self.nodes.len() {
+            let change = match &self.nodes[index].operation {
+                Operation::Effect(slot) => slot.take_bypass_control(),
+                _ => None,
+            };
+            if let Some(bypass) = change {
+                let _ = self.set_effect_bypass(self.nodes[index].id, bypass);
+            }
         }
         for node_index in 0..self.nodes.len() {
             let target = self.nodes[node_index].buffer;
@@ -1557,5 +1569,49 @@ mod tests {
         let snapshot = counters.snapshot();
         assert_eq!(snapshot.p95_nanoseconds, 95_000);
         assert_eq!(snapshot.p99_nanoseconds, 99_000);
+    }
+    #[test]
+    fn automated_aux_bypass_matches_explicit_owner_transition() {
+        for count in [1, 2] {
+            let graph = aux_chain_graph(
+                (0..count)
+                    .map(|index| {
+                        configured_effect(
+                            10 + index,
+                            EffectKind::Delay,
+                            false,
+                            [
+                                ("time_ms", 1.0),
+                                ("feedback_percent", 0.0),
+                                ("wet_percent", 100.0),
+                                ("dry_percent", 0.0),
+                            ],
+                        )
+                    })
+                    .collect(),
+            );
+            let mut explicit = GraphPlan::compile(&graph).unwrap();
+            let mut automated = GraphPlan::compile(&graph).unwrap();
+            for index in 0..count {
+                explicit.set_effect_bypass(10 + index, true).unwrap();
+                automated
+                    .effect_control_by_id(10 + index)
+                    .unwrap()
+                    .publish_bypass(true)
+                    .unwrap();
+            }
+            for _ in 0..16 {
+                for plan in [&mut explicit, &mut automated] {
+                    plan.source_buffer_mut(1, 64)
+                        .unwrap()
+                        .fill(StereoFrame::new(0.25, 0.25));
+                    assert_eq!(plan.process(64), ProcessStatus::Complete);
+                }
+                assert_eq!(
+                    explicit.output_buffer(100, 64),
+                    automated.output_buffer(100, 64)
+                );
+            }
+        }
     }
 }

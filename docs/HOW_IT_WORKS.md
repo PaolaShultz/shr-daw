@@ -93,6 +93,13 @@ device traffic. There is no captured evidence that synthv1 acts on this foreign
 manufacturer message. An exact profile-qualified metadata rule can be added if
 a future workflow needs it; unrelated SysEx must continue to pass.
 
+Routing retains its shared input/output, pickup, learning, and tracker owners
+when startup falls back to keyboard input. Applying corrected Routing can open
+inputs in the same App. Input replacement and shutdown close and join callbacks
+before releasing their remaining notes. Changes to external MIDI settings
+require stopped transport; the sequencer releases old destinations and
+acknowledges the new settings before Routing accepts the save.
+
 ## Controller clock ownership
 
 An optional dedicated output makes SHR the MiniLab clock/transport master. It
@@ -290,7 +297,9 @@ SHR-DAW uses “record” for three intentionally different jobs:
 Idea take playback runs independently of screen redraw. Stop, route changes,
 replacement, panic, and application termination release the exact notes still owned by that take.
 Ideas publish into new private directories without replacing a same-named
-Idea.
+Idea. Capture reserves MIDI cleanup space within the loader's 16 MiB budget.
+When that budget is reached, recording stops visibly and keeps accepted events
+for Save; save also checks encoded size before publishing an Idea.
 
 The audio callback copies a whole multichannel callback into one fixed ring or
 rejects all of it; an ordinary worker performs every file operation. A unique
@@ -550,6 +559,12 @@ two ports in dual mono. The graph deliberately has no general strips, pan for
 other sources, solo, hardware insert, per-input effect chain, or arbitrary
 wiring.
 
+Graph and drum automation controls use separate owner identities, so saved
+Projects with overlapping effect IDs remain playable without migration. AUX
+bypass automation is consumed by the graph at callback boundaries and uses the
+same wet-tail/silence rules as explicit bypass. UI meter reads use shared handles
+captured before activation; mutable graph/drum DSP remains callback-owned.
+
 ## Live Patterns, Loop Mix, and the final bus
 
 Live Patterns is a sequencer-owned performance view over existing Pattern
@@ -646,7 +661,14 @@ both the effect and its automation.
 
 Normal Project save asks again before replacing an existing file. `SAVE AS`
 chooses a numbered non-overwriting copy. Rename publishes the complete new
-Project before removing the old filename and refuses collisions. New Ideas,
+Project, including current unsaved edits, before removing the old filename and
+refuses collisions. A same-filename rename saves those current edits too.
+Project and drum-pattern loading checks regular-file type and bounded reads
+before decoding (16 MiB and 256 KiB respectively). Timeline expansion checks
+its event budget on each append, including cleanup and sampled automation.
+Imported interior-row tempo changes are placed on the preceding tracker row
+so their effective boundaries match the MIDI input; conflicting tempo changes
+that quantize to one boundary are refused. New Ideas,
 audio recordings, imported loops, and user drum patterns likewise choose or
 require unused destinations. Destructive deletion is explicit and scoped:
 Pattern cleanup checks zero Arrangement references, and Pattern loop removal

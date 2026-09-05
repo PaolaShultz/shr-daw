@@ -15,6 +15,7 @@ use shr_drums::{
     event_queue, load_package, DrumEngine, DrumEvent, EventSender, KitManifest, KitTuning,
     MusicalMode, PitchClass, ProjectKey, StereoFrame,
 };
+use std::cell::UnsafeCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -53,10 +54,10 @@ pub fn discover_kits(directory: &Path) -> Vec<KitEntry> {
 }
 
 struct CallbackData {
-    engine: DrumEngine,
-    effects: DrumEffectStack,
+    engine: UnsafeCell<DrumEngine>,
+    effects: UnsafeCell<DrumEffectStack>,
     tempo_bpm: Arc<AtomicU32>,
-    applied_tempo_bits: u32,
+    applied_tempo_bits: UnsafeCell<u32>,
     output_left: *mut JackPort,
     output_right: *mut JackPort,
     port_get_buffer: PortGetBuffer,
@@ -138,6 +139,7 @@ impl DrumEffectStack {
 unsafe impl Send for CallbackData {}
 
 pub struct DrumHost {
+    kit_id: String,
     jack: JackClient,
     callback: Box<CallbackData>,
     sender: EventSender,
@@ -197,11 +199,13 @@ impl DrumHost {
             jack.port_name_string(output_left)?,
             jack.port_name_string(output_right)?,
         ];
+        let kit_id = engine.kit_id().to_owned();
+        let effect_controls = effects.controls();
         let mut callback = Box::new(CallbackData {
-            engine,
-            effects,
+            engine: UnsafeCell::new(engine),
+            effects: UnsafeCell::new(effects),
             tempo_bpm: Arc::clone(&tempo_bpm),
-            applied_tempo_bits: tempo_bits,
+            applied_tempo_bits: UnsafeCell::new(tempo_bits),
             output_left,
             output_right,
             port_get_buffer: jack.port_get_buffer(),
@@ -224,8 +228,9 @@ impl DrumHost {
         *shared
             .lock()
             .map_err(|_| anyhow::anyhow!("SHR Drums output lock failed"))? = Some(sender.clone());
-        effect_hub.replace_drums(callback.effects.controls());
+        effect_hub.replace_drums(effect_controls);
         Ok(Self {
+            kit_id,
             jack,
             callback,
             sender,
@@ -240,7 +245,7 @@ impl DrumHost {
     }
 
     pub fn kit_id(&self) -> &str {
-        self.callback.engine.kit_id()
+        &self.kit_id
     }
 
     pub fn output_ports(&self) -> [String; 2] {
@@ -282,8 +287,8 @@ impl Drop for DrumHost {
     fn drop(&mut self) {
         let _ = self.sender.all_notes_off();
         self.jack.deactivate();
-        self.callback.engine.all_notes_off();
-        self.callback.effects.reset();
+        self.callback.engine.get_mut().all_notes_off();
+        self.callback.effects.get_mut().reset();
         self.effect_hub.clear_drums();
         if let Ok(mut shared) = self.shared.lock() {
             *shared = None;
@@ -315,7 +320,17 @@ pub fn send_midi(sender: &EventSender, bytes: &[u8]) -> std::result::Result<(), 
     })
 }
 
-fn process_block(callback: &mut CallbackData, frames: usize, left: &mut [f32], right: &mut [f32]) {
+unsafe fn process_block(
+    callback: &CallbackData,
+    frames: usize,
+    left: &mut [f32],
+    right: &mut [f32],
+) {
+    // SAFETY: JACK serializes process callbacks; owner access occurs only
+    // after deactivation. Other callbacks touch only shared atomic status.
+    let engine = unsafe { &mut *callback.engine.get() };
+    let effects = unsafe { &mut *callback.effects.get() };
+    let applied_tempo_bits = unsafe { &mut *callback.applied_tempo_bits.get() };
     if frames > callback.maximum_frames || left.len() < frames || right.len() < frames {
         left.fill(0.0);
         right.fill(0.0);
@@ -324,14 +339,14 @@ fn process_block(callback: &mut CallbackData, frames: usize, left: &mut [f32], r
     for offset in (0..frames).step_by(256) {
         let end = (offset + 256).min(frames);
         let mut rendered = [StereoFrame::SILENCE; 256];
-        callback.engine.process(&mut rendered[..end - offset]);
-        if callback.engine.take_hard_reset_request() {
-            callback.effects.reset();
+        engine.process(&mut rendered[..end - offset]);
+        if engine.take_hard_reset_request() {
+            effects.reset();
         }
         let tempo_bits = callback.tempo_bpm.load(Ordering::Acquire);
-        if tempo_bits != callback.applied_tempo_bits {
-            callback.effects.set_tempo(f32::from_bits(tempo_bits));
-            callback.applied_tempo_bits = tempo_bits;
+        if tempo_bits != *applied_tempo_bits {
+            effects.set_tempo(f32::from_bits(tempo_bits));
+            *applied_tempo_bits = tempo_bits;
         }
         let mut effected = [EffectFrame::SILENCE; 256];
         for (target, source) in effected[..end - offset]
@@ -340,7 +355,7 @@ fn process_block(callback: &mut CallbackData, frames: usize, left: &mut [f32], r
         {
             *target = EffectFrame::new(source.left, source.right);
         }
-        callback.effects.process(&mut effected[..end - offset]);
+        effects.process(&mut effected[..end - offset]);
         for (index, frame) in effected[..end - offset].iter().enumerate() {
             left[offset + index] = frame.left;
             right[offset + index] = frame.right;
@@ -353,7 +368,7 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
         return 0;
     }
     // SAFETY: JACK receives the pinned callback pointer during start.
-    let callback = unsafe { &mut *argument.cast::<CallbackData>() };
+    let callback = unsafe { &*argument.cast::<CallbackData>() };
     let frames = frames as usize;
     let left_pointer =
         unsafe { (callback.port_get_buffer)(callback.output_left, frames as c_uint) }.cast::<f32>();
@@ -367,7 +382,9 @@ unsafe extern "C" fn process_callback(frames: c_uint, argument: *mut c_void) -> 
     // SAFETY: JACK owns buffers for exactly this callback's frame count.
     let left = unsafe { std::slice::from_raw_parts_mut(left_pointer, frames) };
     let right = unsafe { std::slice::from_raw_parts_mut(right_pointer, frames) };
-    process_block(callback, frames, left, right);
+    unsafe {
+        process_block(callback, frames, left, right);
+    }
     0
 }
 

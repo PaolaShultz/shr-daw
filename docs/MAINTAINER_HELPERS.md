@@ -370,6 +370,21 @@ records file hashes/modes and symlink targets, refuses differing unowned or
 modified owned resources, backs up every changed path, and leaves a recovery
 journal before its first mutation. Apply recovers an interrupted transaction
 before retry. The planner never performs that recovery or any other mutation.
+Planning, apply, recovery, and removal hold one process lock on the existing
+installation-root directory. A competing operation refuses before mutation;
+the lock is released even if its owner dies. Planning creates no lock file.
+Resource changes use pinned, no-follow parent directory descriptors, including
+recovery and uninstall. Backups and their directories are synchronized before
+the journal; atomic payload replacements are synchronized before the manifest;
+the manifest is durable before the journal is retired. Synchronization errors
+leave recoverable pending state.
+
+Recovery preflights every backup and live resource against journaled before/after
+fingerprints. An intervening edit, missing backup, redirected parent, or legacy
+journal without those fingerprints is a conflict: files are preserved for
+inspection. A durable completed manifest with a surviving journal is recognized
+as committed, so retry retires the journal without rolling the payload back.
+
 The installer normally opens `shr-setup` after a successful apply.
 
 The opt-in whole-system hardware-free validation is:
@@ -469,7 +484,13 @@ Commands:
   not start the service. Its command selects JACK2 synchronous mode before the
   ALSA backend; this avoids the asynchronous engine's extra graph period while
   retaining the requested ALSA playback-period count. `jack-remove` refuses to
-  stop live audio and removes only unchanged marked files.
+  stop live audio and removes only unchanged marked files. Both commands lock
+  the service ownership directory and recover a pending file transaction before
+  continuing. A synchronized pending manifest precedes live-file publication;
+  removal retains it until file removal and daemon reload complete. Missing
+  companion files are safe to retry, while later edits refuse recovery before
+  any file is removed. These paths require the standard `flock` and `sync`
+  utilities and never start or stop JACK.
 - `runtime-start` and `runtime-stop` are internal systemd-service entry points,
   not normal maintainer commands.
 
@@ -684,7 +705,11 @@ manifest's 40×13 canvas so the same renderer can prove the non-native path
 without changing image dimensions. JSON supplies each cell's symbol,
 foreground, background, and bold state. A complete render removes only stale
 TUI PNGs in the two owned output namespaces after writing the current
-manifest. No JACK server, engine, MIDI port, or private user file is involved.
+manifest. The `screenshots` command dispatches before runtime configuration or private
+catalog discovery. Its App constructor skips discovery and supplies an inert
+transport clock, even if a test supplies enabled hardware settings. Drum-browser
+frames use the compiled public catalog. No JACK server, engine, MIDI port, or
+private user file is involved.
 
 ### Image parameters
 

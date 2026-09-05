@@ -101,6 +101,15 @@ fn real_main() -> Result<()> {
     if args.first().map(String::as_str) == Some("compiler-ab-bench") {
         return compiler_ab_benchmark_command(&args[1..]);
     }
+    match args.first().map(String::as_str) {
+        Some("screenshots") => {
+            println!("{}", ui::readme_screenshots_json()?);
+            return Ok(());
+        }
+        Some("stop") => return engine::stop_managed(&state),
+        Some("log" | "logs") => return show_log(&state, args.get(1)),
+        _ => {}
+    }
     let runtime = config::RuntimeConfig::load(&state.join("shsynth.conf"))?;
     let preset_dir = preset_dir(&runtime)?;
     let user_preset_storage = preset::UserPresetStorage::from_environment();
@@ -128,12 +137,6 @@ fn real_main() -> Result<()> {
             Ok(())
         }
         "doctor" => doctor(&runtime, &preset_dir, &state),
-        "screenshots" => {
-            println!("{}", ui::readme_screenshots_json(&runtime)?);
-            Ok(())
-        }
-        "stop" => engine::stop_managed(&state),
-        "log" | "logs" => show_log(&state, args.get(1)),
         "ideas" => ideas_command(&args[1..], &presets, &state, &runtime),
         "pads" => pads_command(&args[1..], &state),
         "clock" => clock_command(&args[1..], &runtime),

@@ -1134,8 +1134,15 @@ fn place_tempo_commands(
     quantized: &mut usize,
     maximum: &mut u64,
 ) -> Result<()> {
+    let mut placed = BTreeMap::new();
     for event in tempos.iter().filter(|event| event.tick > 0) {
         let position = quantize_tick(event.tick, ppqn, steps)?;
+        if placed
+            .insert(position.row, event.tempo)
+            .is_some_and(|old| old != event.tempo)
+        {
+            bail!("different tempo changes quantize to the same tracker boundary");
+        }
         record_quantization(position.displacement, exact, quantized, maximum);
         let Some((pattern_number, row)) = locate_row(position.row, spans) else {
             continue;
@@ -1147,9 +1154,16 @@ fn place_tempo_commands(
             pattern.tempo = event.tempo;
             continue;
         }
-        let cell = pattern.rows[row]
-            .iter_mut()
-            .find(|cell| cell.command == Command::None)
+        // Tempo commands take effect after their row. Repeated equal changes
+        // share one command; conflicting quantized boundaries are refused.
+        let cells = &mut pattern.rows[row - 1];
+        let index = cells
+            .iter()
+            .position(|cell| matches!(cell.command, Command::Tempo(_)))
+            .or_else(|| cells.iter().position(|cell| cell.command == Command::None))
+            .context("tracker row has no cell available for a tempo command")?;
+        let cell = cells
+            .get_mut(index)
             .context("tracker row has no cell available for a tempo command")?;
         cell.command = Command::Tempo(event.tempo);
     }
@@ -1658,5 +1672,29 @@ mod tests {
             actual_notes, expected_notes,
             "every imported channel, pitch, velocity, start, and duration must survive"
         );
+    }
+    #[test]
+    fn interior_tempo_boundary_round_trips_at_its_original_tick() {
+        let conductor = track(&[
+            0, 0xff, 0x51, 3, 0x07, 0xa1, 0x20, 120, 0xff, 0x51, 3, 0x0f, 0x42, 0x40, 0, 0xff,
+            0x2f, 0,
+        ]);
+        let notes = track(&[
+            0, 0x90, 60, 100, 120, 0x80, 60, 0, 0, 0x90, 64, 100, 120, 0x80, 64, 0, 0, 0xff, 0x2f,
+            0,
+        ]);
+        let imported = convert(
+            &parse(&smf(1, &[conductor, notes], 480)).unwrap(),
+            "tempo-boundary",
+        )
+        .unwrap();
+        let config = crate::config::RuntimeConfig::default().external_midi;
+        let plan = crate::timeline::compile(&imported.song, &config, 0, 0).unwrap();
+        let change = plan
+            .tempos
+            .iter()
+            .find(|change| change.tempo == "60".parse().unwrap())
+            .unwrap();
+        assert_eq!(change.tick * 480, 120 * u64::from(plan.ppqn));
     }
 }

@@ -245,6 +245,7 @@ const FINAL_CAPTURE_IDLE: u32 = 0;
 const FINAL_CAPTURE_ARMED: u32 = 1;
 const FINAL_CAPTURE_ACTIVE: u32 = 2;
 const FINAL_CAPTURE_STOP: u32 = 3;
+const FINAL_CAPTURE_STARTING: u32 = 4;
 
 #[derive(Clone, Debug, Default)]
 pub struct FinalMixRecorderStatus {
@@ -263,6 +264,7 @@ struct FinalMixShared {
     ring: InterleavedRing,
     mode: AtomicU32,
     writer_running: AtomicBool,
+    producer_active: AtomicBool,
     fault: AtomicU32,
     accepted_frames: AtomicU64,
     written_frames: AtomicU64,
@@ -281,6 +283,22 @@ impl FinalMixCapture {
     /// only at a complete callback boundary.
     #[inline]
     pub(crate) fn capture(&self, frames: &[StereoFrame]) {
+        if !self.shared.writer_running.load(Ordering::Acquire) {
+            return;
+        }
+        self.shared.producer_active.store(true, Ordering::SeqCst);
+        struct ProducerGuard<'a>(&'a AtomicBool);
+        impl Drop for ProducerGuard<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::SeqCst);
+            }
+        }
+        let _producer = ProducerGuard(&self.shared.producer_active);
+        if !self.shared.writer_running.load(Ordering::SeqCst)
+            || self.shared.fault.load(Ordering::Acquire) != FAULT_NONE
+        {
+            return;
+        }
         let mut mode = self.shared.mode.load(Ordering::Acquire);
         if mode == FINAL_CAPTURE_ARMED {
             let _ = self.shared.mode.compare_exchange(
@@ -389,6 +407,7 @@ impl FinalMixRecorder {
                 ring: InterleavedRing::new(2, ring_frames)?,
                 mode: AtomicU32::new(FINAL_CAPTURE_IDLE),
                 writer_running: AtomicBool::new(false),
+                producer_active: AtomicBool::new(false),
                 fault: AtomicU32::new(FAULT_NONE),
                 accepted_frames: AtomicU64::new(0),
                 written_frames: AtomicU64::new(0),
@@ -411,6 +430,14 @@ impl FinalMixRecorder {
     }
 
     pub(crate) fn start(&mut self, optional_name: Option<&str>) -> Result<()> {
+        self.start_with_behavior(optional_name, WriterBehavior::default())
+    }
+
+    fn start_with_behavior(
+        &mut self,
+        optional_name: Option<&str>,
+        behavior: WriterBehavior,
+    ) -> Result<()> {
         self.reap_finished()?;
         if self.worker.is_some()
             || self.shared.mode.load(Ordering::Acquire) != FINAL_CAPTURE_IDLE
@@ -437,11 +464,13 @@ impl FinalMixRecorder {
             *status = FinalMixRecorderStatus {
                 recording: true,
                 path: Some(final_path.clone()),
-                error: (!recovered.is_empty())
-                    .then(|| format!("recovered {} interrupted recording(s)", recovered.len())),
+                error: recovered.notice(),
                 ..FinalMixRecorderStatus::default()
             };
         }
+        self.shared
+            .mode
+            .store(FINAL_CAPTURE_STARTING, Ordering::Release);
         let shared = Arc::clone(&self.shared);
         let status = Arc::clone(&self.status);
         let worker_final = final_path.clone();
@@ -455,10 +484,8 @@ impl FinalMixRecorder {
                         &worker_final,
                         &shared,
                         &status,
-                        WriterBehavior::default(),
+                        behavior,
                     );
-                    shared.writer_running.store(false, Ordering::Release);
-                    shared.mode.store(FINAL_CAPTURE_IDLE, Ordering::Release);
                     if let Err(error) = result {
                         shared
                             .fault
@@ -475,12 +502,33 @@ impl FinalMixRecorder {
                             public.path = worker_temporary.exists().then_some(worker_temporary);
                         }
                     }
+                    shared.writer_running.store(false, Ordering::SeqCst);
+                    shared.mode.store(FINAL_CAPTURE_IDLE, Ordering::Release);
+                })
+                .map_err(|error| {
+                    self.shared.writer_running.store(false, Ordering::Release);
+                    self.shared
+                        .mode
+                        .store(FINAL_CAPTURE_IDLE, Ordering::Release);
+                    error
                 })
                 .context("start final-mix writer thread")?,
         );
-        self.shared
-            .mode
-            .store(FINAL_CAPTURE_ARMED, Ordering::Release);
+        // The writer alone arms capture after it has created the WAV header.
+        while self.shared.mode.load(Ordering::Acquire) == FINAL_CAPTURE_STARTING {
+            if self
+                .worker
+                .as_ref()
+                .is_some_and(|worker| worker.is_finished())
+            {
+                break;
+            }
+            thread::yield_now();
+        }
+        if self.shared.fault.load(Ordering::Acquire) != FAULT_NONE {
+            return self.join_worker();
+        }
+        self.reap_finished()?;
         Ok(())
     }
 
@@ -565,11 +613,20 @@ impl FinalMixRecorder {
     }
 
     fn join_worker(&mut self) -> Result<()> {
+        self.shared.writer_running.store(false, Ordering::SeqCst);
+        self.shared
+            .mode
+            .store(FINAL_CAPTURE_IDLE, Ordering::Release);
+        while self.shared.producer_active.load(Ordering::SeqCst) {
+            thread::yield_now();
+        }
         if let Some(worker) = self.worker.take() {
             worker
                 .join()
                 .map_err(|_| anyhow!("final-mix writer thread panicked"))?;
         }
+        let mut discarded = vec![0.0; self.shared.maximum_callback_frames * 2];
+        while self.shared.ring.pop_interleaved(&mut discarded) != 0 {}
         let fault = self.shared.fault.load(Ordering::Acquire);
         if fault != FAULT_NONE {
             bail!(fault_message(fault));
@@ -1024,12 +1081,7 @@ impl AudioRecorder {
                 active_tracks: armed.len(),
                 path: Some(paths.final_path.clone()),
                 tracks: initial_tracks,
-                error: (!recovered.is_empty()).then(|| {
-                    format!(
-                        "recovered/reported {} interrupted recording(s)",
-                        recovered.len()
-                    )
-                }),
+                error: recovered.notice(),
                 ..RecorderStatus::default()
             };
         }
@@ -1478,6 +1530,11 @@ fn write_final_mix(
     status: &Mutex<FinalMixRecorderStatus>,
     behavior: WriterBehavior,
 ) -> Result<()> {
+    if behavior.fail_after_frames == Some(0)
+        && shared.mode.load(Ordering::Acquire) == FINAL_CAPTURE_STARTING
+    {
+        bail!("simulated final-mix startup failure");
+    }
     let file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1490,6 +1547,12 @@ fn write_final_mix(
     let mut scratch = vec![0.0f32; scratch_frames * 2];
     let mut encoded = Vec::with_capacity(scratch_frames * 6);
     let mut frames = 0u64;
+    let _ = shared.mode.compare_exchange(
+        FINAL_CAPTURE_STARTING,
+        FINAL_CAPTURE_ARMED,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    );
     while shared.writer_running.load(Ordering::Acquire) || !shared.ring.is_empty() {
         let count = shared.ring.pop_interleaved(&mut scratch);
         if count == 0 {
@@ -2317,7 +2380,25 @@ fn read_mono_i24_at(path: &Path, frame: u64) -> Result<f32> {
     Ok(signed as f32 / 8_388_607.0)
 }
 
-pub fn recover_interrupted(directory: &Path) -> Result<Vec<PathBuf>> {
+#[derive(Default, Debug)]
+pub struct RecoveryReport {
+    pub recovered: Vec<PathBuf>,
+    pub failed: Vec<(PathBuf, String)>,
+}
+
+impl RecoveryReport {
+    fn notice(&self) -> Option<String> {
+        (!self.recovered.is_empty() || !self.failed.is_empty()).then(|| {
+            format!(
+                "recovered {} interrupted recording(s); {} need recovery",
+                self.recovered.len(),
+                self.failed.len()
+            )
+        })
+    }
+}
+
+pub fn recover_interrupted(directory: &Path) -> Result<RecoveryReport> {
     let mut found = recover_legacy_stereo_parts(directory)?;
     let Ok(entries) = fs::read_dir(directory) else {
         return Ok(found);
@@ -2330,12 +2411,12 @@ pub fn recover_interrupted(directory: &Path) -> Result<Vec<PathBuf>> {
             continue;
         }
         if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-            found.push(path);
+            found.failed.push((path, "not a session directory".into()));
             continue;
         }
         match recover_session_directory(&path) {
-            Ok(recovered) => found.push(recovered),
-            Err(_) => found.push(path),
+            Ok(recovered) => found.recovered.push(recovered),
+            Err(error) => found.failed.push((path, format!("{error:#}"))),
         }
     }
     Ok(found)
@@ -2364,8 +2445,23 @@ fn recover_session_directory(path: &Path) -> Result<PathBuf> {
         bail!("unsafe or duplicate interrupted stem filename");
     }
     let mut frame_counts = Vec::with_capacity(manifest.tracks.len());
+    let mut stem_paths = Vec::with_capacity(manifest.tracks.len());
     for track in &manifest.tracks {
         let part = path.join(format!("{}.part", track.wav_file));
+        let final_path = path.join(&track.wav_file);
+        let exists = |path: &Path| -> Result<bool> {
+            match fs::symlink_metadata(path) {
+                Ok(_) => Ok(true),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(error.into()),
+            }
+        };
+        let part_exists = exists(&part)?;
+        let final_exists = exists(&final_path)?;
+        if part_exists == final_exists {
+            bail!("interrupted stem must have exactly one final or temporary file");
+        }
+        let part = if part_exists { part } else { final_path };
         let metadata = fs::symlink_metadata(&part)?;
         if !metadata.file_type().is_file() {
             bail!("interrupted stem is not a regular file");
@@ -2374,14 +2470,18 @@ fn recover_session_directory(path: &Path) -> Result<PathBuf> {
         if len < 44 || !is_mono_wav_part(&part) {
             bail!("invalid interrupted mono WAV");
         }
+        let mut file = File::open(&part)?;
+        if read_wav_rate(&mut file, 3) != Some(manifest.sample_rate) {
+            bail!("interrupted stem sample rate differs from manifest");
+        }
         frame_counts.push(((len - 44) / 3).min(MONO_WAV_MAX_FRAMES));
+        stem_paths.push(part);
     }
     let common_frames = frame_counts
         .into_iter()
         .min()
         .context("no interrupted stems")?;
-    for track in &mut manifest.tracks {
-        let part = path.join(format!("{}.part", track.wav_file));
+    for (track, part) in manifest.tracks.iter_mut().zip(stem_paths) {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -2391,7 +2491,10 @@ fn recover_session_directory(path: &Path) -> Result<PathBuf> {
         finalize_mono_wav(&mut file, manifest.sample_rate, common_frames)?;
         file.sync_all()?;
         drop(file);
-        crate::fsutil::rename_noreplace(&part, &path.join(&track.wav_file))?;
+        let final_path = path.join(&track.wav_file);
+        if part != final_path {
+            crate::fsutil::rename_noreplace(&part, &final_path)?;
+        }
         track.frames = common_frames;
         track.finalized = true;
     }
@@ -2442,8 +2545,8 @@ fn is_mono_wav_part(path: &Path) -> bool {
         && read_wav_rate_bytes(&header, 3).is_some()
 }
 
-fn recover_legacy_stereo_parts(directory: &Path) -> Result<Vec<PathBuf>> {
-    let mut found = Vec::new();
+fn recover_legacy_stereo_parts(directory: &Path) -> Result<RecoveryReport> {
+    let mut found = RecoveryReport::default();
     let Ok(entries) = fs::read_dir(directory) else {
         return Ok(found);
     };
@@ -2453,7 +2556,7 @@ fn recover_legacy_stereo_parts(directory: &Path) -> Result<Vec<PathBuf>> {
             continue;
         }
         if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
-            found.push(path);
+            found.failed.push((path, "invalid interrupted WAV".into()));
             continue;
         }
         let len = entry.metadata().map(|metadata| metadata.len()).unwrap_or(0);
@@ -2476,9 +2579,9 @@ fn recover_legacy_stereo_parts(directory: &Path) -> Result<Vec<PathBuf>> {
                 .trim_end_matches(".wav.part");
             let recovered = unique_file(directory, &format!("{stem}-recovered"), "wav")?;
             crate::fsutil::rename_noreplace(&path, &recovered)?;
-            found.push(recovered);
+            found.recovered.push(recovered);
         } else {
-            found.push(path);
+            found.failed.push((path, "invalid interrupted WAV".into()));
         }
     }
     Ok(found)
@@ -2939,9 +3042,11 @@ mod tests {
             file.write_all(&vec![0; (10 - index) * 3]).unwrap();
         }
         let recovered = recover_interrupted(&base).unwrap();
-        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered.recovered.len(), 1);
+        assert!(recovered.failed.is_empty());
         let manifest: SessionManifest =
-            serde_json::from_slice(&fs::read(recovered[0].join("session.json")).unwrap()).unwrap();
+            serde_json::from_slice(&fs::read(recovered.recovered[0].join("session.json")).unwrap())
+                .unwrap();
         assert_eq!(manifest.total_frames, 9);
         assert_eq!(manifest.completeness, "recovered-incomplete");
         assert!(manifest.tracks.iter().all(|track| track.frames == 9));
@@ -2985,7 +3090,9 @@ mod tests {
         fs::write(&target, b"private").unwrap();
         let link = base.join("linked.wav.part");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        assert_eq!(recover_interrupted(&base).unwrap(), [link]);
+        let report = recover_interrupted(&base).unwrap();
+        assert!(report.recovered.is_empty());
+        assert_eq!(report.failed[0].0, link);
         assert_eq!(fs::read(&target).unwrap(), b"private");
         let first = unique_session_paths(&base, "safe").unwrap();
         fs::create_dir(&first.final_path).unwrap();
@@ -3213,8 +3320,9 @@ mod tests {
         );
         assert!(!base.join("final-mix.wav").exists());
         let recovered = recover_interrupted(&base).unwrap();
-        assert_eq!(recovered.len(), 1);
-        assert_eq!(read_stereo_i24(&recovered[0]).len(), 128);
+        assert_eq!(recovered.recovered.len(), 1);
+        assert!(recovered.failed.is_empty());
+        assert_eq!(read_stereo_i24(&recovered.recovered[0]).len(), 128);
         let _ = fs::remove_dir_all(base);
     }
 
@@ -3229,6 +3337,7 @@ mod tests {
             ring: InterleavedRing::new(2, 64).unwrap(),
             mode: AtomicU32::new(FINAL_CAPTURE_IDLE),
             writer_running: AtomicBool::new(false),
+            producer_active: AtomicBool::new(false),
             fault: AtomicU32::new(FAULT_NONE),
             accepted_frames: AtomicU64::new(0),
             written_frames: AtomicU64::new(0),
@@ -3267,6 +3376,7 @@ mod tests {
             ring: InterleavedRing::new(2, 17).unwrap(),
             mode: AtomicU32::new(FINAL_CAPTURE_ACTIVE),
             writer_running: AtomicBool::new(true),
+            producer_active: AtomicBool::new(false),
             fault: AtomicU32::new(FAULT_NONE),
             accepted_frames: AtomicU64::new(0),
             written_frames: AtomicU64::new(0),
@@ -3291,6 +3401,7 @@ mod tests {
             ring: InterleavedRing::new(2, 129).unwrap(),
             mode: AtomicU32::new(FINAL_CAPTURE_ACTIVE),
             writer_running: AtomicBool::new(true),
+            producer_active: AtomicBool::new(false),
             fault: AtomicU32::new(FAULT_NONE),
             accepted_frames: AtomicU64::new(0),
             written_frames: AtomicU64::new(0),
@@ -3331,6 +3442,7 @@ mod tests {
             ring: InterleavedRing::new(2, 64).unwrap(),
             mode: AtomicU32::new(FINAL_CAPTURE_IDLE),
             writer_running: AtomicBool::new(false),
+            producer_active: AtomicBool::new(false),
             fault: AtomicU32::new(FAULT_NONE),
             accepted_frames: AtomicU64::new(0),
             written_frames: AtomicU64::new(0),
@@ -3365,5 +3477,61 @@ mod tests {
         .is_err());
         assert!(!missing_parent.exists());
         let _ = fs::remove_dir_all(base);
+    }
+    #[test]
+    fn recovery_resumes_after_each_stem_publication() {
+        let base = std::env::temp_dir().join(format!("shr-stem-resume-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        for finalized in 0..=3 {
+            let paths = test_paths(&base, &format!("boundary-{finalized}"));
+            fs::create_dir(&paths.temporary).unwrap();
+            let manifest = manifest_for(&paths, &tracks(3), 48_000);
+            write_manifest(&paths.temporary, &manifest).unwrap();
+            for (index, track) in manifest.tracks.iter().enumerate() {
+                let part = paths.temporary.join(format!("{}.part", track.wav_file));
+                let mut file = File::create(&part).unwrap();
+                write_mono_wav_header(&mut file, 48_000, 0).unwrap();
+                file.write_all(&[0; 30]).unwrap();
+                drop(file);
+                if index < finalized {
+                    fs::rename(&part, paths.temporary.join(&track.wav_file)).unwrap();
+                }
+            }
+            let report = recover_interrupted(&base).unwrap();
+            assert_eq!(report.recovered.len(), 1);
+            assert!(report.failed.is_empty());
+            let recovered: SessionManifest = serde_json::from_slice(
+                &fs::read(report.recovered[0].join("session.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(recovered.total_frames, 10);
+            assert!(recover_interrupted(&base).unwrap().recovered.is_empty());
+        }
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn final_mix_failed_start_cannot_rearm_and_retry_is_reusable() {
+        let base = std::env::temp_dir().join(format!("shr-writer-start-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let mut recorder = FinalMixRecorder::new(base.clone(), 48_000, 512, 128).unwrap();
+        let capture = recorder.capture_handle();
+        assert!(recorder
+            .start_with_behavior(
+                None,
+                WriterBehavior {
+                    delay: Duration::ZERO,
+                    fail_after_frames: Some(0)
+                }
+            )
+            .is_err());
+        capture.capture(&[StereoFrame::SILENCE; 128]);
+        assert!(!recorder.is_recording());
+        assert!(recorder.shared.ring.is_empty());
+        recorder.start(None).unwrap();
+        capture.capture(&[StereoFrame::SILENCE; 128]);
+        recorder.stop_after_deactivate().unwrap();
+        assert_eq!(recorder.status().total_frames, 128);
+        fs::remove_dir_all(base).unwrap();
     }
 }

@@ -120,6 +120,11 @@ impl TransportClock {
         self.suspend_controller_output();
     }
 
+    #[cfg(test)]
+    pub(crate) fn has_controller_output(&self) -> bool {
+        self.controller_tx.is_some()
+    }
+
     pub fn suspend_controller_output(&self) {
         self.controller_owned.store(false, Ordering::Release);
         if let Some(tx) = &self.controller_tx {

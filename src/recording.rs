@@ -26,11 +26,13 @@ pub struct Recorder {
     started: Option<Instant>,
     used_channels: u16,
     pub events: Vec<TimedEvent>,
+    pub limit_reached: bool,
 }
 
 impl Recorder {
     pub fn start(&mut self, now: Instant) {
         self.events.clear();
+        self.limit_reached = false;
         self.used_channels = 0;
         self.started = Some(now);
     }
@@ -57,11 +59,30 @@ impl Recorder {
         self.started.is_some()
     }
     pub fn capture(&mut self, now: Instant, bytes: &[u8]) {
+        self.capture_with_budget(now, bytes, MAX_IDEA_MIDI_BYTES as usize);
+    }
+
+    fn capture_with_budget(&mut self, now: Instant, bytes: &[u8], budget: usize) {
         let Some(start) = self.started else { return };
         let Some(elapsed) = now.checked_duration_since(start) else {
             return;
         };
         if is_musical(bytes) {
+            // SMF header/tempo/end = 33 bytes; each channel event uses at most
+            // four delta bytes + three MIDI bytes. Reserve all 48 cleanup events.
+            let required =
+                33usize.saturating_add(self.events.len().saturating_add(1 + 48).saturating_mul(7));
+            let previous_ms = self.events.last().map_or(0, |event| event.micros / 1000);
+            if required > budget
+                || elapsed.as_micros() / 1000 > u128::from(previous_ms) + 0x0fff_ffff
+            {
+                // Preserve the accepted performance; end cleanup at its last
+                // representable timestamp instead of truncating an SMF delta.
+                let accepted = self.events.last().map_or(0, |event| event.micros);
+                self.stop(start + Duration::from_micros(accepted));
+                self.limit_reached = true;
+                return;
+            }
             self.used_channels |= 1 << (bytes[0] & 0x0f);
             self.events.push(TimedEvent {
                 micros: elapsed.as_micros() as u64,
@@ -259,6 +280,30 @@ pub fn save(
     {
         bail!("idea contains invalid or out-of-order MIDI events");
     }
+    let mut encoded_size = 33usize;
+    let mut previous_ms = 0;
+    for event in events {
+        let ms = event.micros / 1000;
+        let delta = ms - previous_ms;
+        let delta_bytes = if delta < 128 {
+            1
+        } else if delta < 16_384 {
+            2
+        } else if delta < 2_097_152 {
+            3
+        } else {
+            4
+        };
+        encoded_size = encoded_size
+            .checked_add(delta_bytes + event.bytes.len())
+            .context("Idea size overflow")?;
+        anyhow::ensure!(
+            encoded_size as u64 <= MAX_IDEA_MIDI_BYTES,
+            "Idea exceeds MIDI resource budget"
+        );
+        previous_ms = ms;
+    }
+    let encoded = encode_smf(events);
     let tmp = create_temporary_idea(base, &name)?;
     let result = (|| -> Result<()> {
         write_preset_ref(&tmp.join("preset.ref"), preset)?;
@@ -267,7 +312,7 @@ pub fn save(
         } else if let PresetId::MojSint { path, .. } = &preset.id {
             fs::copy(path, tmp.join("preset.mojsint"))?;
         }
-        fs::write(tmp.join("recording.mid"), encode_smf(events))?;
+        fs::write(tmp.join("recording.mid"), &encoded)?;
         let created = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let mut parameters = serde_json::Map::new();
         if preset.backend == BackendKind::Synthv1 {
@@ -1102,5 +1147,27 @@ release = 0.6
         let (_, parameters, _) = load_with_parameters(&base, "legacy").unwrap();
         assert!(parameters.is_empty());
         let _ = fs::remove_dir_all(base);
+    }
+    #[test]
+    fn capture_budget_preserves_accepted_events_and_cleanup() {
+        let now = Instant::now();
+        let mut recorder = Recorder::default();
+        recorder.start(now);
+        let budget = 33 + (48 + 2) * 7;
+        recorder.capture_with_budget(now, &[0x90, 60, 100], budget);
+        recorder.capture_with_budget(now, &[0x90, 64, 100], budget);
+        recorder.capture_with_budget(now, &[0x90, 67, 100], budget);
+        assert!(recorder.limit_reached);
+        assert!(!recorder.is_recording());
+        assert_eq!(recorder.events[0].bytes, [0x90, 60, 100]);
+        assert_eq!(recorder.events[1].bytes, [0x90, 64, 100]);
+        assert_eq!(recorder.events.len(), 5);
+        assert!(encode_smf(&recorder.events).len() <= budget);
+        assert_eq!(
+            decode_smf(&encode_smf(&recorder.events)).unwrap(),
+            recorder.events
+        );
+        recorder.start(now);
+        assert!(!recorder.limit_reached);
     }
 }

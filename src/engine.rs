@@ -409,6 +409,28 @@ pub struct MidiRouter {
 }
 
 impl MidiRouter {
+    /// Own all shared handles even when no input can be opened yet.
+    pub fn inactive(pads: PadConfig, tx: Sender<MidiEvent>) -> Self {
+        Self {
+            _inputs: Vec::new(),
+            output: Arc::new(Mutex::new(None)),
+            pickup: Arc::new(Mutex::new(crate::midi::Pickup::default())),
+            backend: Arc::new(Mutex::new(BackendKind::Synthv1)),
+            moj_model: Arc::new(Mutex::new(None)),
+            tracker_route: Arc::new(Mutex::new(TrackerRoute::default())),
+            tracker_input: Arc::new(Mutex::new(None)),
+            playback_scale: Arc::new(Mutex::new(None)),
+            controller: Arc::new(RwLock::new(pads)),
+            learn_mode: Arc::new(AtomicBool::new(false)),
+            fx_control_mode: Arc::new(AtomicBool::new(false)),
+            live_state: Arc::new(Mutex::new(LiveMidiState::default())),
+            availability: MidiInputAvailability::default(),
+            tx,
+            monitor_stop: Arc::new(AtomicBool::new(false)),
+            monitor_thread: None,
+        }
+    }
+
     pub fn start(state: &Path, config: &RuntimeConfig, tx: Sender<MidiEvent>) -> Result<Self> {
         if !config.midi_autoconnect {
             bail!("MIDI routing is disabled in shsynth.conf");
@@ -597,6 +619,9 @@ impl MidiRouter {
     /// input is opened, so routes are never layered.
     pub fn reconfigure_inputs(&mut self, config: &RuntimeConfig) -> Result<MidiInputAvailability> {
         self.stop_input_monitor();
+        // Dropping midir connections joins their callback producers, including
+        // callbacks between ownership calculation and destination delivery.
+        self._inputs.clear();
         let deliveries = self
             .live_state
             .lock()
@@ -608,7 +633,6 @@ impl MidiRouter {
             &self.output,
             &self.tracker_input,
         );
-        self._inputs.clear();
         if !config.midi_autoconnect {
             self.availability = MidiInputAvailability::default();
             return Ok(self.availability.clone());
@@ -643,6 +667,17 @@ impl MidiRouter {
                 }
                 Err(error) => {
                     self._inputs.clear();
+                    let deliveries = self
+                        .live_state
+                        .lock()
+                        .map_or_else(|_| Vec::new(), |mut state| release_all_inputs(&mut state));
+                    deliver_midi(
+                        deliveries,
+                        Instant::now(),
+                        &self.tx,
+                        &self.output,
+                        &self.tracker_input,
+                    );
                     mark_input_open_error(
                         &mut plan.availability,
                         &planned,
@@ -723,6 +758,9 @@ impl MidiRouter {
 impl Drop for MidiRouter {
     fn drop(&mut self) {
         self.stop_input_monitor();
+        // Dropping midir connections joins their callback producers, including
+        // callbacks between ownership calculation and destination delivery.
+        self._inputs.clear();
         let deliveries = self
             .live_state
             .lock()
@@ -4258,5 +4296,23 @@ mod tests {
             parse_jack_audio_sources(lines),
             ["source:one", "system:capture_1", "system:capture_2"]
         );
+    }
+    #[test]
+    fn inactive_router_retains_shared_owners_across_disabled_reconfiguration() {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let mut router = MidiRouter::inactive(PadConfig::default(), tx);
+        let output = router.output();
+        let pickup = router.pickup();
+        let tracker = router.tracker_input();
+        let learn = router.learn_mode();
+        let lifecycle = router.lifecycle();
+        let mut config = RuntimeConfig::default();
+        config.midi_autoconnect = false;
+        router.reconfigure_inputs(&config).unwrap();
+        assert!(Arc::ptr_eq(&output, &router.output()));
+        assert!(Arc::ptr_eq(&pickup, &router.pickup()));
+        assert!(Arc::ptr_eq(&tracker, &router.tracker_input()));
+        assert!(Arc::ptr_eq(&learn, &router.learn_mode()));
+        assert!(Arc::ptr_eq(&lifecycle.state, &router.lifecycle().state));
     }
 }

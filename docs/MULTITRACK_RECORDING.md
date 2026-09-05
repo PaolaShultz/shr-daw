@@ -181,9 +181,13 @@ The UI reports the reason and location instead of presenting damaged stems as
 successful.
 
 On the next start, a recognized interrupted session is recovered without
-following symlinks. Each valid partial mono WAV is truncated to the shortest
-whole-frame count shared by all stems, finalized, and published only as
-`recovered-incomplete`; its manifest says that review is required. The old
+following symlinks. Recovery accepts one valid final `.wav` or temporary
+`.wav.part` per stem, including interruption between individual stem renames.
+Having both forms, neither form, or a mismatched sample rate is a recovery
+failure. All stems are checked before modification, then truncated to the
+shortest shared whole-frame count and published as `recovered-incomplete`.
+Retries resume the same finalization process; the manifest requires review.
+Failed recoveries are reported separately from successful recordings. The old
 single stereo `.wav.part` recovery path is retained.
 
 ## Hardware-free 18-channel soak
