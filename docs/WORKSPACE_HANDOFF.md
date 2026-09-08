@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-05
+Updated: 2026-09-08
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -104,6 +104,13 @@ The focused contracts and acceptance matrices live in
 and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
+
+The September 8 title change marks Moj Sint Pressure Chain with one inverted
+`M` cell in Playback and FT2 PARAM. Other model titles have no voice marker.
+Long names reserve room for the marker inside the existing title area.
+Formatting and source/whitespace checks passed. Existing native-size UI tests
+now cover the marker, long-name clipping, and its absence on other Moj models;
+tests and compilation remain deferred under the incremental-build rule.
 
 The September 5 full pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6) on
 AArch64. Formatting, locked all-target/all-feature checks, 1,128 normal Rust

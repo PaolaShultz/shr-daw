@@ -24740,6 +24740,18 @@ fn draw_synth_parameters<B: Backend>(
     } else {
         sound_name
     };
+    let title_width = usize::from(header.width.saturating_sub(8));
+    let title = if a.playing.as_ref().and_then(Preset::moj_model)
+        == Some(preset::MojModel::PressureChain)
+    {
+        Spans::from(vec![
+            Span::raw(truncate(&name, title_width.saturating_sub(2))),
+            Span::raw(" "),
+            Span::styled("M", Style::default().add_modifier(Modifier::REVERSED)),
+        ])
+    } else {
+        Spans::from(truncate(&name, title_width))
+    };
     f.render_widget(
         Paragraph::new(BUILD_BADGE).style(
             Style::default()
@@ -24753,13 +24765,11 @@ fn draw_synth_parameters<B: Backend>(
         rect(header.x, header.y, header.width.min(3), 1),
     );
     f.render_widget(
-        Paragraph::new(truncate(&name, usize::from(z.width.saturating_sub(8))))
-            .alignment(Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
+        Paragraph::new(title).alignment(Alignment::Center).style(
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
         rect(header.x + 4, header.y, header.width.saturating_sub(8), 1),
     );
     let tracker_noob = a.tracker_noob && a.current_page().is_some_and(|page| !page.percussion);
@@ -30813,7 +30823,14 @@ release = 0.4
             .map(|control| (control.cc, 0.5))
             .collect();
         app.original_values = app.values.clone();
-        let text = buffer_text(&render_app(&mut app, 40, 13));
+        let frame = render_app(&mut app, 40, 13);
+        let text = buffer_text(&frame);
+        let mono_cells = (4..36)
+            .map(|column| buffer_cell(&frame, column, 0))
+            .filter(|cell| cell.modifier.contains(Modifier::REVERSED))
+            .collect::<Vec<_>>();
+        assert_eq!(mono_cells.len(), 1);
+        assert_eq!(mono_cells[0].symbol, "M");
         for control in moj_controls(preset::MojModel::PressureChain) {
             let label = truncate(control.name, 8);
             assert!(text.contains(&label), "missing {label} in {text}");
@@ -30822,6 +30839,16 @@ release = 0.4
         app.apply_relative_rotary(Instant::now(), 4, 1);
         assert!(app.values[&24] > 0.5);
         assert!(!app.values.contains_key(&7));
+
+        app.playing.as_mut().unwrap().name = "Pressure Chain Very Long Private Sound Name".into();
+        app.pad_locked = true;
+        let frame = render_app(&mut app, 40, 13);
+        assert_eq!(buffer_cell(&frame, 35, 0).symbol, "M");
+        assert!(buffer_cell(&frame, 35, 0)
+            .modifier
+            .contains(Modifier::REVERSED));
+        assert!(row_text(&frame, 0).starts_with(BUILD_BADGE));
+        assert!(row_text(&frame, 0).ends_with("LCK"));
     }
 
     #[test]
@@ -30911,6 +30938,18 @@ release = 0.4
             moj.original_values = moj.values.clone();
             let frame = render_app(&mut moj, 40, 13);
             let text = buffer_text(&frame);
+            let mono_cells = (4..36)
+                .map(|column| buffer_cell(&frame, column, 0))
+                .filter(|cell| cell.modifier.contains(Modifier::REVERSED))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                mono_cells.len(),
+                usize::from(model == preset::MojModel::PressureChain),
+                "{model:?} monophonic title marker"
+            );
+            if let Some(cell) = mono_cells.first() {
+                assert_eq!(cell.symbol, "M");
+            }
             let columns = 5;
             let control_width = 40 / columns;
             for control in moj_controls(model) {
