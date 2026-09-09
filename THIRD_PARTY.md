@@ -202,3 +202,8 @@ samples, so neither the 78 MB archive nor extracted WAVs may be committed,
 packaged, mirrored, or copied into a public release. Setup asks first, stores a
 source/terms note beside the private files, and downloads from:
 <https://www.musicradar.com/news/sampleradar-free-80s-pop-drums-samples>.
+
+Moj's Open303 model incorporates Robin Schmidt's MIT core and Takuya Ooura's
+separately permitted FFT. The installer retains both notices under
+`share/doc/moj-sint/open303`. Its four factory starts are newly authored Moj
+parameter documents, with no imported factory programs or samples.

@@ -24741,9 +24741,10 @@ fn draw_synth_parameters<B: Backend>(
         sound_name
     };
     let title_width = usize::from(header.width.saturating_sub(8));
-    let title = if a.playing.as_ref().and_then(Preset::moj_model)
-        == Some(preset::MojModel::PressureChain)
-    {
+    let title = if matches!(
+        a.playing.as_ref().and_then(Preset::moj_model),
+        Some(preset::MojModel::PressureChain | preset::MojModel::Open303)
+    ) {
         Spans::from(vec![
             Span::raw(truncate(&name, title_width.saturating_sub(2))),
             Span::raw(" "),
@@ -30944,7 +30945,10 @@ release = 0.4
                 .collect::<Vec<_>>();
             assert_eq!(
                 mono_cells.len(),
-                usize::from(model == preset::MojModel::PressureChain),
+                usize::from(matches!(
+                    model,
+                    preset::MojModel::PressureChain | preset::MojModel::Open303
+                )),
                 "{model:?} monophonic title marker"
             );
             if let Some(cell) = mono_cells.first() {

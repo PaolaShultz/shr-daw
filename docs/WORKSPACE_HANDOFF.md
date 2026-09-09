@@ -46,15 +46,13 @@ Machine-readable ownership remains in `Cargo.toml` and
 | Moj Sint 0.2.3 | exact Git revision installed as a managed external process |
 | SHR Sampler 0.1.2 | exact Git revision installed as a managed external process; accepted runtime range `>=0.1.2,<0.2.0` |
 
-SHR source supports Moj Sint schema 9 and seven models, including monophonic
-Pressure Chain with Deep Cascade, Body Tap, and Cross Feed starts (24 cleared
-starts in the companion source catalog). Pressure Chain exposes all eight
-timbre values plus amp ADSR; position 5 is SWEEP and 13–15 remain AUX sends.
-Its one stereo return uses the existing Project instrument strip. The
-installer pins the compatible schema-9 engine and all 24 cleared starts.
-The subsequent authorized build pass refreshed this checkout’s debug and
-release binaries and the companion Moj host. It did not reinstall external
-payloads or restart running applications.
+SHR source supports Moj Sint through schema 10 and eight models, including
+monophonic Pressure Chain and Open303 (28 cleared companion starts).
+Open303 adds its own native envelope controls and four starts. Pressure Chain
+retains eight timbre values plus ADSR; Open303 uses eleven native controls and
+volume. Both keep AUX at 13–15 and the existing Project instrument strip.
+The Open303 source update awaits the explicitly authorized SHR build pass;
+previously built or independently installed binaries retain their old behavior.
 
 The non-audible integration pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6)
 on AArch64. Formatting, locked checks, 18 focused Moj regressions, and the
@@ -64,6 +62,30 @@ real-time hardware acceptance remain for the coordinated human session.
 
 [How SHR-DAW works](HOW_IT_WORKS.md) owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.
+
+## Open303 integration, 2026-09-09
+
+The owner requested Open303 and a few presets. Source now supports the eighth
+Moj model, schema-10 Open303, its two preset-owned filter types and A01–A04
+Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck (28 total Moj starts).
+The existing catalog, Project route, private save/reset, and instrument strip
+retain its identity. It is monophonic and displays the same `M` marker.
+
+Its twelve controls are Wave, Cutoff, Res, Env Mod, Volume, F Decay, Accent,
+Slide, F Attack, Ac Attack, Ac Decay, and Amp Dec. Position 5 is CC7 volume;
+13–15 stay AUX. Native envelope timings replace generic ADSR labels only for
+Open303. The installer retains the separate Open303 MIT and Ooura FFT notices.
+Companion source owns the native preparation, bounded note stack, and render
+safety. Existing models and private files are preserved.
+
+The installer now pins the compatible public Moj engine with all 28 starts.
+Moj's normal suite passes 359 tests (36 ignored), focused Open303 release tests
+and native sanitizer/allocation/spectral checks pass, and all factory presets
+validate with deterministic paired release renders. SHR formatting, source
+inspection, Python syntax and read-only compatibility checks pass. SHR Rust
+compilation and runtime rollout remain subject to the explicit combined
+build/test gate in AGENTS.md; the owner has been asked for that authorization.
+No running process or hardware was restarted.
 
 ## Current sequencer contracts
 

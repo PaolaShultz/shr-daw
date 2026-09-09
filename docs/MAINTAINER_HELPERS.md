@@ -363,7 +363,9 @@ revision and compiles it in process. No source checkout or nested `.git`
 directory enters the runtime tree.
 
 `prepare_install.py` stages the three executables plus only allowlisted public
-presets, instruments, kits, loops, demos, and documentation. It rejects unsafe,
+presets, instruments, kits, loops, demos, and documentation. Open303
+MIT/Ooura notices and provenance manifests are retained below
+`share/doc/moj-sint/open303`. It rejects unsafe,
 missing, linked, duplicated, moving, non-public, or version-mismatched inputs.
 `managed_install.py` then preflights and applies the payload with `sudo`. It
 records file hashes/modes and symlink targets, refuses differing unowned or

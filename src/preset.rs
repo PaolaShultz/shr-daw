@@ -103,10 +103,11 @@ pub enum MojModel {
     BassMatrix,
     DualFilter,
     PressureChain,
+    Open303,
 }
 
 impl MojModel {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::ModelD,
         Self::SixOpPm,
         Self::StrangeOscillator,
@@ -114,6 +115,7 @@ impl MojModel {
         Self::BassMatrix,
         Self::DualFilter,
         Self::PressureChain,
+        Self::Open303,
     ];
 
     pub const fn stable_id(self) -> &'static str {
@@ -125,6 +127,7 @@ impl MojModel {
             Self::BassMatrix => "bass_matrix",
             Self::DualFilter => "dual_filter",
             Self::PressureChain => "pressure_chain",
+            Self::Open303 => "open303",
         }
     }
 
@@ -137,6 +140,7 @@ impl MojModel {
             Self::BassMatrix => "Bass Matrix",
             Self::DualFilter => "Dual Filter",
             Self::PressureChain => "Pressure Chain",
+            Self::Open303 => "Open303",
         }
     }
 
@@ -149,6 +153,7 @@ impl MojModel {
             Self::BassMatrix => 'B',
             Self::DualFilter => 'F',
             Self::PressureChain => 'C',
+            Self::Open303 => 'A',
         }
     }
 }
@@ -276,6 +281,7 @@ fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
         MojModel::BassMatrix => ("B-MAT", &["Bass Matrix", "B-MAT"]),
         MojModel::DualFilter => ("D-FLT", &["Dual Filter", "D-FLT"]),
         MojModel::PressureChain => ("P-CHN", &["Pressure Chain", "P-CHN"]),
+        MojModel::Open303 => ("Open303", &["Open303"]),
     };
     for prefix in redundant_prefixes {
         if sound
@@ -325,6 +331,7 @@ pub fn moj_catalog_display_name(presets: &[Preset], index: usize) -> Option<Stri
         MojModel::BassMatrix => "B-MAT",
         MojModel::DualFilter => "D-FLT",
         MojModel::PressureChain => "P-CHN",
+        MojModel::Open303 => "Open303",
     };
     let sound = without_number
         .strip_prefix(old_code)
@@ -1065,6 +1072,76 @@ struct MojPresetV9Pressure {
     pressure_chain_topology: MojPressureTopology,
     macros: MojMacrosPressure,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MojOpen303Filter {
+    Tb303,
+    Lowpass18,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosOpen303 {
+    waveform: f32,
+    cutoff: f32,
+    resonance: f32,
+    env_mod: f32,
+    filter_decay: f32,
+    accent: f32,
+    slide: f32,
+    normal_attack: f32,
+    accent_attack: f32,
+    accent_decay: f32,
+    amp_decay: f32,
+}
+impl MojMacrosOpen303 {
+    fn values(self) -> [f32; 15] {
+        [
+            self.waveform,
+            self.cutoff,
+            self.resonance,
+            self.env_mod,
+            0.5,
+            self.filter_decay,
+            self.accent,
+            self.slide,
+            self.normal_attack,
+            self.accent_attack,
+            self.accent_decay,
+            self.amp_decay,
+            0.5,
+            0.5,
+            0.5,
+        ]
+    }
+    fn from_values(v: [f32; 15]) -> Self {
+        Self {
+            waveform: v[0],
+            cutoff: v[1],
+            resonance: v[2],
+            env_mod: v[3],
+            filter_decay: v[5],
+            accent: v[6],
+            slide: v[7],
+            normal_attack: v[8],
+            accent_attack: v[9],
+            accent_decay: v[10],
+            amp_decay: v[11],
+        }
+    }
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV10Open303 {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    instrument_volume: f32,
+    model: MojModel,
+    open303_filter: MojOpen303Filter,
+    macros: MojMacrosOpen303,
+}
+
 #[derive(Clone, Copy, Debug)]
 enum MojPatch {
     ModelD(MojModelDPatch),
@@ -1074,6 +1151,7 @@ enum MojPatch {
     BassMatrix(MojBassMatrixPatch),
     DualFilter(MojDualFilterCore),
     PressureChain(MojPressureTopology),
+    Open303(MojOpen303Filter),
 }
 
 #[derive(Debug)]
@@ -1114,7 +1192,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         .and_then(toml::Value::as_integer)
         .context("Moj Sint preset has no numeric schema_version")?;
     let (name, model, voices, output_gain, instrument_volume, patch, values) = match version {
-        7 | 8 | 9 => {
+        7 | 8 | 9 | 10 => {
             let model = value
                 .get("model")
                 .and_then(toml::Value::as_str)
@@ -1222,7 +1300,22 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.controls.values(),
                     )
                 }
-                "pressure_chain" if version == 9 => {
+                "open303" if version == 10 => {
+                    let document: MojPresetV10Open303 = toml::from_str(&source)?;
+                    if document.model != MojModel::Open303 || document.voices != 1 {
+                        bail!("invalid monophonic Open303 identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::Open303(document.open303_filter),
+                        document.macros.values(),
+                    )
+                }
+                "pressure_chain" if version >= 9 => {
                     let document: MojPresetV9Pressure = toml::from_str(&source)?;
                     if document.model != MojModel::PressureChain || document.voices != 1 {
                         bail!("invalid monophonic Pressure Chain identity");
@@ -2402,6 +2495,18 @@ fn serialize_moj_sint(
                 controls: MojDualFilterControls::from_values(values),
             })?
         }
+        (MojModel::Open303, MojPatch::Open303(open303_filter)) => {
+            toml::to_string_pretty(&MojPresetV10Open303 {
+                schema_version: 10,
+                name: name.into(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                instrument_volume,
+                model: MojModel::Open303,
+                open303_filter,
+                macros: MojMacrosOpen303::from_values(values),
+            })?
+        }
         (MojModel::PressureChain, MojPatch::PressureChain(pressure_chain_topology)) => {
             toml::to_string_pretty(&MojPresetV9Pressure {
                 schema_version: 9,
@@ -2543,7 +2648,9 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
     if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        != Some(if expected_model == MojModel::PressureChain {
+        != Some(if expected_model == MojModel::Open303 {
+            10
+        } else if expected_model == MojModel::PressureChain {
             9
         } else {
             8
@@ -2552,6 +2659,13 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
         bail!("saved Moj Sint preset schema does not match its model")
     }
     match expected_model {
+        MojModel::Open303 => {
+            let document: MojPresetV10Open303 = toml::from_str(source)?;
+            if document.model != MojModel::Open303 || document.voices != 1 {
+                bail!("saved Open303 identity is invalid");
+            }
+        }
+
         MojModel::ModelD => {
             let document: MojPresetV5ModelD = toml::from_str(source)?;
             if document.model != MojModel::ModelD {
@@ -3174,6 +3288,28 @@ sustain = 0.7
 release = 0.4
 "#
             .into(),
+            MojModel::Open303 => r#"schema_version = 10
+name = "Open303 Rubber Bass"
+voices = 1
+output_gain = 0.8
+instrument_volume = 1.0
+model = "open303"
+open303_filter = "tb303"
+
+[macros]
+waveform = 0
+cutoff = 0.25
+resonance = 0.65
+env_mod = 0.45
+filter_decay = 0.25
+accent = 0.7
+slide = 0.2
+normal_attack = 0.09
+accent_attack = 0.09
+accent_decay = 0.3
+amp_decay = 0.39
+"#
+            .into(),
             MojModel::PressureChain => r#"schema_version = 9
 name = "Pressure Chain Deep Cascade"
 voices = 1
@@ -3261,7 +3397,9 @@ amp_release = 0.7
                 storage.moj_sint.join(model.stable_id())
             );
             let encoded = fs::read_to_string(path).unwrap();
-            assert!(encoded.contains(if model == MojModel::PressureChain {
+            assert!(encoded.contains(if model == MojModel::Open303 {
+                "schema_version = 10"
+            } else if model == MojModel::PressureChain {
                 "schema_version = 9"
             } else {
                 "schema_version = 8"
@@ -3295,6 +3433,10 @@ amp_release = 0.7
                     assert!(encoded.contains("bass_matrix_patch = \"transformer\""));
                     assert!(encoded.contains("body = 0.91"));
                     assert!(encoded.contains("character = 0.5"));
+                }
+                MojModel::Open303 => {
+                    assert!(encoded.contains("open303_filter = \"tb303\""));
+                    assert!(encoded.contains("waveform = 0.91"));
                 }
                 MojModel::PressureChain => {
                     assert!(encoded.contains("pressure_chain_topology = \"deep_cascade\""));

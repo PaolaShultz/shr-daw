@@ -507,3 +507,10 @@ role until explicit retry or skip.
 
 `Action` and the empty menu slots remain extension points. Future features are
 not shown on the hardware menu until they actually dispatch a working action.
+
+### Open303
+
+Moj Open303 uses twelve controls: Wave, Cutoff, Res, Env Mod, Volume, F Decay,
+Accent, Slide, F Attack, Ac Attack, Ac Decay, Amp Dec. The last four are native
+envelope timings, not ADSR. AUX remains at 13–15. A01–A04 are the four factory
+starts; the inverted M marks monophonic operation. Filter identity is preset-owned.

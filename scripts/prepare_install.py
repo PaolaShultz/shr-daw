@@ -206,6 +206,11 @@ def prepare(root: Path, output: Path, profile: str) -> None:
             doc.mkdir(parents=True)
             for filename in ("LICENSE", "README.md", "THIRD_PARTY.md"):
                 shutil.copy2(source / filename, doc / filename)
+            if name == "moj-sint":
+                notices = doc / "open303"
+                notices.mkdir()
+                for filename in ("LICENSE-MIT", "LICENSE-OOURA", "README.md", "UPSTREAM.sha256", "LOCAL.sha256"):
+                    shutil.copy2(source / "vendor/open303" / filename, notices / filename)
 
 
 def main() -> int:

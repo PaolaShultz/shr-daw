@@ -598,6 +598,69 @@ pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
 // not controller.conf.
 pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
 
+pub const MOJ_OPEN303_CONTROLS: [MojControl; 12] = [
+    MojControl {
+        cc: 20,
+        name: "Wave",
+        macro_id: "waveform",
+    },
+    MojControl {
+        cc: 21,
+        name: "Cutoff",
+        macro_id: "cutoff",
+    },
+    MojControl {
+        cc: 22,
+        name: "Res",
+        macro_id: "resonance",
+    },
+    MojControl {
+        cc: 23,
+        name: "Env Mod",
+        macro_id: "env_mod",
+    },
+    MojControl {
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
+    },
+    MojControl {
+        cc: 25,
+        name: "F Decay",
+        macro_id: "filter_decay",
+    },
+    MojControl {
+        cc: 26,
+        name: "Accent",
+        macro_id: "accent",
+    },
+    MojControl {
+        cc: 27,
+        name: "Slide",
+        macro_id: "slide",
+    },
+    MojControl {
+        cc: 28,
+        name: "F Attack",
+        macro_id: "normal_attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Ac Attack",
+        macro_id: "accent_attack",
+    },
+    MojControl {
+        cc: 30,
+        name: "Ac Decay",
+        macro_id: "accent_decay",
+    },
+    MojControl {
+        cc: 31,
+        name: "Amp Dec",
+        macro_id: "amp_decay",
+    },
+];
+
 pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojControl] {
     match model {
         crate::preset::MojModel::ModelD => &MOJ_MODEL_D_CONTROLS,
@@ -607,6 +670,7 @@ pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojContro
         crate::preset::MojModel::BassMatrix => &MOJ_BASS_MATRIX_CONTROLS,
         crate::preset::MojModel::DualFilter => &MOJ_DUAL_FILTER_CONTROLS,
         crate::preset::MojModel::PressureChain => &MOJ_PRESSURE_CONTROLS,
+        crate::preset::MojModel::Open303 => &MOJ_OPEN303_CONTROLS,
     }
 }
 

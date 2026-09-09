@@ -160,7 +160,7 @@ through one SHR-DAW workflow. Their runtime hosts are:
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks;
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
-- Moj Sint for strict `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, and Dual Filter presets; and
+- Moj Sint for strict `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets; and
 - SHR Sampler for strict preloaded `.shrinst` sample packages.
 
 Only one SHR-managed software engine process runs at a time. synthv1 and
@@ -246,14 +246,12 @@ part of the installation and recovery contract.
 | [Moj Sint](https://github.com/PaolaShultz/moj-sint) | One managed `moj-sint` process with an ALSA input and stereo JACK output | Preset schema, synthesis models, MIDI controls, audio rendering, and the factory preset manifest | Exact command/preset configuration, process identity and shutdown, route connection, replacement rollback, private saves, and Project state |
 | [SHR Sampler](https://github.com/PaolaShultz/shr-sampler) | One managed `shr-sampler` process with an ALSA input and stereo JACK output | Format 1 package parsing, integrity checks, decoded samples, voice rendering, live host, and the cleared factory package | Version/package preflight, exact command/instrument configuration, process identity and shutdown, route connection, replacement rollback, and Project state |
 
-The current machine-readable pins are exact commits: SHR Drums
-`0199297b3efd160a67e3f47df64a6bf418c20df2`, Moj Sint
-`693ad165271ae04bc2da6746642b87af1875b553`, and SHR Sampler
-`9f2115f5fcc25d6ffa82a7106ee069cad47ce592`. `Cargo.toml` owns the SHR Drums
-dependency; `install/compatibility.json` owns installer revisions and accepted
-runtime ranges. The Moj Sint pin contains the 16-start catalog through Bass
-Matrix. SHR-DAW source can also host schema 8 and Dual Filter, but the installer
-will not provide those five newer starts until its compatibility pin changes.
+The current exact component revisions live in `Cargo.toml` (SHR Drums) and
+`install/compatibility.json` (external engines). Moj Sint's companion catalog
+now includes eight models and 28 starts, including monophonic schema-10
+Open303 with four authored starts. Its MIT and separately permitted Ooura FFT
+notices are retained in the installed documentation. Source changes become
+available in the running app only after the matching build and normal reload.
 
 Each component refuses malformed or unsupported owned data before replacing a
 working session. SHR-DAW isolates a drum-kit failure to that source and keeps
