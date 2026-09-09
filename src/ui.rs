@@ -33848,7 +33848,9 @@ release = 0.4
         assert!(retained.config.midi_controller_musical_input);
         assert_eq!(retained.controller.layout, expected_layout);
         assert_eq!(save_failure.routing.selected, 2);
-        assert!(save_failure.status.contains("draft kept"));
+        // Save failures expose the underlying storage error; retained draft/row
+        // state is asserted above rather than inferred from obsolete status prose.
+        assert!(save_failure.status.starts_with("SAVE FAILED · "));
         assert!(save_failure.cancel_routing_edit());
         assert!(save_failure.routing.draft.is_none());
         fs::remove_file(missing_parent).unwrap();

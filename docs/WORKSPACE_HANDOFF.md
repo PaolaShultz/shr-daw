@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-08
+Updated: 2026-09-09
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -51,8 +51,9 @@ monophonic Pressure Chain and Open303 (28 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
 volume. Both keep AUX at 13–15 and the existing Project instrument strip.
-The Open303 source update awaits the explicitly authorized SHR build pass;
-previously built or independently installed binaries retain their old behavior.
+The authorized September 9 pass refreshed all checkout debug/release targets.
+The configured checkout host/catalog and the normal release launcher now
+provide Open303 after a normal exit/reopen; running processes were preserved.
 
 The non-audible integration pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6)
 on AArch64. Formatting, locked checks, 18 focused Moj regressions, and the
@@ -82,9 +83,16 @@ The installer now pins the compatible public Moj engine with all 28 starts.
 Moj's normal suite passes 359 tests (36 ignored), focused Open303 release tests
 and native sanitizer/allocation/spectral checks pass, and all factory presets
 validate with deterministic paired release renders. SHR formatting, source
-inspection, Python syntax and read-only compatibility checks pass. SHR Rust
-compilation and runtime rollout remain subject to the explicit combined
-build/test gate in AGENTS.md; the owner has been asked for that authorization.
+inspection, Python syntax and read-only compatibility checks pass. The owner subsequently authorized the full build. All debug and release
+targets in both checkouts build with exact Rust 1.97.1 on AArch64. SHR
+passes its locked check and 1,141 normal tests (14 historical tests ignored).
+A stale routing-recovery test expected obsolete status prose; it now checks
+the current save-error prefix while retaining all direct state assertions.
+Existing compiler warnings remain. The fresh SHR release discovers all four
+Open303 starts in an isolated catalog. All 28 Moj presets validate, and the
+four new starts produce identical paired release renders. Existing local
+configuration already selects the companion checkout host/catalog; no private
+configuration, presets, or independent installed payloads were changed.
 No running process or hardware was restarted.
 
 ## Current sequencer contracts
@@ -132,7 +140,7 @@ The September 8 title change marks Moj Sint Pressure Chain with one inverted
 Long names reserve room for the marker inside the existing title area.
 Formatting and source/whitespace checks passed. Existing native-size UI tests
 now cover the marker, long-name clipping, and its absence on other Moj models;
-tests and compilation remain deferred under the incremental-build rule.
+these tests and compilation subsequently passed in the September 9 combined pass.
 
 The September 5 full pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6) on
 AArch64. Formatting, locked all-target/all-feature checks, 1,128 normal Rust
