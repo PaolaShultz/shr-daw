@@ -745,6 +745,24 @@ impl GraphPlan {
 
     /// Process one block. Source buffers must be filled before this call.
     pub fn process(&mut self, frames: usize) -> ProcessStatus {
+        self.process_at_tempo(frames, None)
+    }
+
+    /// Managed graph delays follow the shared transport tempo; standalone
+    /// plans can retain their explicit effect-local tempo through `process`.
+    pub(crate) fn process_with_tempo(
+        &mut self,
+        frames: usize,
+        tempo: crate::tempo::Bpm,
+    ) -> ProcessStatus {
+        self.process_at_tempo(frames, Some(tempo))
+    }
+
+    fn process_at_tempo(
+        &mut self,
+        frames: usize,
+        tempo: Option<crate::tempo::Bpm>,
+    ) -> ProcessStatus {
         if frames > self.maximum_frames {
             return ProcessStatus::OversizedBlock;
         }
@@ -771,7 +789,9 @@ impl GraphPlan {
                 Operation::Source | Operation::Pass | Operation::Sink => {}
                 Operation::Fader(fader) => fader.process(&mut self.buffers[target][..frames]),
                 Operation::Meter(meter) => meter.process(&mut self.buffers[target][..frames]),
-                Operation::Effect(slot) => slot.process(&mut self.buffers[target][..frames]),
+                Operation::Effect(slot) => {
+                    slot.process_with_tempo(&mut self.buffers[target][..frames], tempo)
+                }
             }
         }
         ProcessStatus::Complete

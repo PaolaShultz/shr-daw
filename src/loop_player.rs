@@ -172,6 +172,14 @@ impl TransportClock {
         }
     }
 
+    /// The running clock owns tempo, including Pattern and external-clock changes.
+    /// Stopped consumers use the selected Project Pattern instead.
+    pub fn playing_tempo(&self) -> Option<Bpm> {
+        self.playing
+            .load(Ordering::Acquire)
+            .then(|| Bpm::from_hundredths_clamped(self.bpm_x100.load(Ordering::Acquire) as u16))
+    }
+
     /// Reposition the loop at a repeated Project boundary without emitting a
     /// second MIDI Start. Controller transport remains one continuous run.
     pub fn restart_cycle(&self, origin_beat: f64) {
@@ -2556,18 +2564,23 @@ mod tests {
     #[test]
     fn transport_clock_tracks_play_restart_tempo_and_stop() {
         let clock = TransportClock::default();
+        assert_eq!(clock.playing_tempo(), None);
         clock.play(3.5, Bpm::from_whole(120).unwrap());
+        assert_eq!(clock.playing_tempo(), Some(Bpm::DEFAULT));
         assert!(clock.playing.load(Ordering::Acquire));
         assert_eq!(clock.origin_beat.load(Ordering::Acquire), 3_500_000);
         let first_generation = clock.generation.load(Ordering::Acquire);
 
         clock.tempo("150.25".parse().unwrap());
+        assert_eq!(clock.playing_tempo(), Some("150.25".parse().unwrap()));
         clock.play(1.0, Bpm::from_whole(90).unwrap());
+        assert_eq!(clock.playing_tempo(), Some("90".parse().unwrap()));
         assert!(clock.generation.load(Ordering::Acquire) > first_generation);
         assert_eq!(clock.origin_beat.load(Ordering::Acquire), 1_000_000);
 
         clock.stop();
         assert!(!clock.playing.load(Ordering::Acquire));
+        assert_eq!(clock.playing_tempo(), None);
     }
 
     #[test]

@@ -127,7 +127,9 @@ Start to the configured controller clock so a controller in external-sync
 arpeggiator mode works with live keys. `RECORD` starts the same transport before
 free-time MIDI capture. `STOP` sends controller Stop and All Notes Off without
 unloading the sound. `TAP` updates the current Pattern/controller tempo; it does
-not start transport, so PLAY remains the deliberate start gesture.
+not start transport, so PLAY remains the deliberate start gesture. Player's
+bottom status row always shows tempo immediately after the transport symbol,
+including fractional BPM.
 
 ### SOUND — reset, save sound, scale filter, and sounds
 

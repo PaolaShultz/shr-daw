@@ -90,7 +90,9 @@ remain on the Ideas screen. `SOUNDS` returns to Presets and its visible `LOAD`.
 Playback's PLAY page also owns the optional external-sync controller
 arpeggiator. `PLAY` sends Start even when no MIDI take exists, `RECORD` starts
 the same clock before capture, `STOP` ends it without unloading the instrument,
-and `TAP` changes tempo without silently starting transport.
+and `TAP` changes tempo without silently starting transport. The bottom status
+row always shows Player's tempo after the transport symbol, retaining decimal
+BPM when set.
 
 Moj Sint keeps its own preset format and controls. Its current source catalog
 has 21 authored starts across six editable model families. SHR-DAW's public
@@ -241,6 +243,11 @@ when automatic graph startup is disabled. Stop transport before the first
 activation; once active, send levels can change during playback. Recording
 refuses all send changes. If activation fails, the old send and routes remain;
 `AUX n UNAVAILABLE` asks you to retry the send.
+
+For echoes on the beat, set Delay `SYNC ON` and `DIVISION 1/4`. It follows the
+Project/transport tempo; `1/8` repeats every half beat. If the editor shows
+yellow `2s LIMIT`, choose a shorter division. With `SYNC OFF`, `TIME` sets
+milliseconds instead.
 
 The DRUMS rack still processes in-process drums on their direct path. With the
 graph active, stop transport and recording before changing graph structure.

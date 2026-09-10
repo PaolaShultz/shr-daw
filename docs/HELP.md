@@ -163,7 +163,8 @@ Playback PLAY starts a saved MIDI take or, with no take, the configured
 external-sync controller arpeggiator. RECORD starts the same controller clock
 before free-time capture. STOP ends the take/arp and sends All Notes Off without
 unloading the sound. TAP changes the current Pattern/controller tempo but never
-starts transport by itself.
+starts transport by itself. Player always shows the tempo immediately after
+the transport symbol in the bottom status row, including fractional BPM.
 
 Playback N00B toggles the filter on the existing Player screen. While on, its
 compact SCALE rotary appears below the normal controls; turn the master encoder
@@ -206,6 +207,12 @@ processor's type; PARAM opens its named values; DEL removes it. ORDER moves the
 same stable instance and BYPASS fades a source or master effect toward dry. A
 fully bypassed aux returns silence, so it never doubles the dry source; a delay
 tail can be allowed to fade with new input muted. Aux effects are forced wet.
+
+Delay `SYNC ON` follows the Project/transport tempo; `SYNC OFF` uses `TIME` in
+milliseconds. `DIVISION 1/4` is one beat, `1/8` is half a beat, and `4/1` is
+sixteen beats. The synced editor shows BPM and the actual left/right times.
+Yellow `2s LIMIT` means a requested channel time exceeds two seconds; choose
+a shorter division.
 
 The editor selects named parameters and adjusts values in physical units. At
 40×13 an EQ fills all thirteen rows: four one-cell markers move on a

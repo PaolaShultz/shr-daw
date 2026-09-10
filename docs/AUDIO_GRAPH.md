@@ -475,9 +475,10 @@ hidden state.
 
 Delay has a two-second-per-channel storage limit, feedback limited to 92%,
 feedback-path low-pass filtering, smoothed free/synchronised time changes, and
-stereo, ping-pong, or mono-to-stereo routing. The drum host supplies the active
-Pattern tempo without allocation or locking in the callback. Ordinary tracker
-Stop drains voices and ambience naturally. Panic, All Notes Off, Project or
+stereo, ping-pong, or mono-to-stereo routing. The drum host follows the shared
+transport clock, or the selected Pattern tempo when stopped, without allocation
+or locking in the callback. Ordinary tracker Stop drains voices and ambience
+naturally. Panic, All Notes Off, Project or
 drum-effect replacement, route-host replacement, and shutdown clear recursive
 state deterministically.
 
@@ -503,9 +504,18 @@ listed in their current order.
 | Gate | `threshold_db` -80..0 (-48); `hysteresis_db` 0..24 (6); `range_db` -80..0 (-60); `attack_ms` 0.1..100 (2); `hold_ms` 0..500 (40); `release_ms` 5..2000 (150) |
 | Crusher | `bit_depth` 4..16 (12); `hold_factor` 1..32 (1); `dither`; `mix_percent` 0..100 (100) |
 
-Delay sync divisions 0..7 are the note values 1/16, 1/8, 1/4, 1/2, 1, 2, 4,
-and 8 (0.25 through 32 quarter-note beats). The source and master racks allow
-all 13 types. The normal aux editor
+Delay sync divisions 0..7 are the note values 1/16, 1/8, 1/4, 1/2, 1/1, 2/1,
+4/1, and 8/1 (0.25 through 32 quarter-note beats). `1/4` is one beat; `4/1`
+is sixteen beats. With `tempo_sync` enabled, live source, AUX, master, and DRUMS
+delays follow the running transport clock, or the selected Pattern tempo when
+stopped. Their saved `tempo_bpm` remains compatible data; the runtime tempo
+override does not rewrite it or dirty the Project. With sync disabled,
+`time_ms` owns timing. The two-second-per-channel capacity still bounds the
+resulting left/right times. The synced editor shows BPM and actual L/R
+milliseconds using the same timing calculation as the processor, with yellow
+`2s LIMIT` when either requested channel time exceeds that bound.
+
+The source and master racks allow all 13 types. The normal aux editor
 offers Delay, Reverb, Chorus, Flanger, and Phaser and forces their wet/dry
 values; conditioning effects can exist in a loaded aux chain only when the
 chain also contains one of those wet generators.

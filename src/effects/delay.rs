@@ -1,12 +1,65 @@
 use super::{smooth, EffectError, PARAMETER_SMOOTH_SAMPLES};
-use crate::audio_graph::EffectInstance;
+use crate::audio_graph::{EffectInstance, EffectKind};
 use crate::dsp::{FractionalDelayLine, OnePole, OnePoleMode, SmoothedValue, StereoFrame};
 use crate::effect_schema;
+use crate::tempo::Bpm;
 
 const MAXIMUM_DELAY_SECONDS: f32 = 2.0;
 const TIME_CHANGE_MILLISECONDS: f32 = 20.0;
 const EMERGENCY_LEVEL: f32 = 64.0;
 const DIVISION_BEATS: [f32; 8] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0];
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct DelayTiming {
+    pub synced: bool,
+    pub left_ms: f32,
+    pub right_ms: f32,
+    pub limited: bool,
+}
+
+/// Display the same bounded timing used by the processor, using the current
+/// Project/transport tempo without changing the persisted effect parameters.
+pub(crate) fn delay_timing(
+    effect: &EffectInstance,
+    tempo: Bpm,
+) -> Result<DelayTiming, EffectError> {
+    if effect.kind != EffectKind::Delay {
+        return Err(EffectError::new("delay timing requires a Delay effect"));
+    }
+    let value = |name| {
+        effect_schema::parameter(effect, name).map_err(|error| EffectError::new(error.to_string()))
+    };
+    Ok(timing_milliseconds(
+        value("tempo_sync")? == 1.0,
+        tempo.as_f64() as f32,
+        value("division")? as usize,
+        value("time_ms")?,
+        value("stereo_ratio")?,
+    ))
+}
+
+fn timing_milliseconds(
+    synced: bool,
+    tempo_bpm: f32,
+    division: usize,
+    time_ms: f32,
+    stereo_ratio: f32,
+) -> DelayTiming {
+    let requested = if synced {
+        60_000.0 / tempo_bpm * DIVISION_BEATS[division]
+    } else {
+        time_ms
+    };
+    let maximum = MAXIMUM_DELAY_SECONDS * 1_000.0;
+    let left_ms = requested.min(maximum);
+    let requested_right = left_ms * stereo_ratio;
+    DelayTiming {
+        synced,
+        left_ms,
+        right_ms: requested_right.min(maximum),
+        limited: requested > maximum || requested_right > maximum,
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Mode {
@@ -165,8 +218,10 @@ impl Delay {
                 self.update_time()?;
             }
             "tempo_bpm" => {
-                self.tempo_bpm = value;
-                self.update_time()?;
+                if self.tempo_bpm != value {
+                    self.tempo_bpm = value;
+                    self.update_time()?;
+                }
             }
             "division" => {
                 self.division = value as usize;
@@ -269,13 +324,9 @@ fn delay_samples(
     stereo_ratio: f32,
     capacity: usize,
 ) -> (f32, f32) {
-    let milliseconds = if tempo_sync {
-        60_000.0 / tempo_bpm * DIVISION_BEATS[division]
-    } else {
-        time_ms
-    };
-    let left = (milliseconds * sample_rate / 1_000.0).clamp(1.0, capacity as f32);
-    let right = (left * stereo_ratio).clamp(1.0, capacity as f32);
+    let timing = timing_milliseconds(tempo_sync, tempo_bpm, division, time_ms, stereo_ratio);
+    let left = (timing.left_ms * sample_rate / 1_000.0).clamp(1.0, capacity as f32);
+    let right = (timing.right_ms * sample_rate / 1_000.0).clamp(1.0, capacity as f32);
     (left, right)
 }
 
@@ -299,6 +350,93 @@ mod tests {
                 .collect::<BTreeMap<_, _>>(),
             owned_memory_bytes: 0,
         }
+    }
+
+    #[test]
+    fn timing_reports_note_divisions_and_the_actual_two_second_limit() {
+        for (division, expected_ms, limited) in [
+            (0.0, 125.0, false),
+            (1.0, 250.0, false),
+            (2.0, 500.0, false),
+            (4.0, 2_000.0, false),
+            (6.0, 2_000.0, true),
+        ] {
+            let configured = effect([
+                ("tempo_sync", 1.0),
+                ("tempo_bpm", 60.0), // Project tempo must own this calculation.
+                ("division", division),
+            ]);
+            let timing = delay_timing(&configured, Bpm::from_whole(120).unwrap()).unwrap();
+            assert_eq!(
+                timing,
+                DelayTiming {
+                    synced: true,
+                    left_ms: expected_ms,
+                    right_ms: expected_ms,
+                    limited,
+                }
+            );
+            let mut processor = Delay::compile(&configured, 48_000).unwrap();
+            processor.set_parameter("tempo_bpm", 120.0).unwrap();
+            for _ in 0..960 {
+                processor.process(StereoFrame::SILENCE);
+            }
+            assert_eq!(processor.left_time.current(), timing.left_ms * 48.0);
+            assert_eq!(processor.right_time.current(), timing.right_ms * 48.0);
+        }
+        let configured = effect([
+            ("tempo_sync", 1.0),
+            ("division", 3.0),
+            ("stereo_ratio", 2.0),
+        ]);
+        let timing = delay_timing(&configured, Bpm::from_whole(80).unwrap()).unwrap();
+        assert_eq!(
+            (timing.left_ms, timing.right_ms, timing.limited),
+            (1_500.0, 2_000.0, true)
+        );
+        let free = effect([("time_ms", 375.0)]);
+        let timing = delay_timing(&free, Bpm::from_whole(20).unwrap()).unwrap();
+        assert_eq!(
+            (timing.synced, timing.left_ms, timing.limited),
+            (false, 375.0, false)
+        );
+    }
+
+    #[test]
+    fn runtime_tempo_overrides_local_automation_without_restarting_each_block_ramp() {
+        let configured = effect([
+            ("tempo_sync", 1.0),
+            ("tempo_bpm", 90.0),
+            ("division", 0.0),
+            ("time_ms", 10.0),
+        ]);
+        let stored = configured.parameters.clone();
+        let mut slot = EffectSlot::compile(&configured, 48_000, 64).unwrap();
+        let control = slot.control();
+        for (tempo, expected_samples) in [(120, 6_000.0), (60, 12_000.0)] {
+            control.publish_normalized("tempo_bpm", u16::MAX).unwrap();
+            assert_no_allocations(|| {
+                for _ in 0..16 {
+                    let mut block = [StereoFrame::SILENCE; 64];
+                    slot.process_with_tempo(&mut block, Bpm::from_whole(tempo));
+                }
+            });
+            let super::super::Processor::Delay(delay) = &slot.processor else {
+                panic!("compiled Delay expected");
+            };
+            assert_eq!(delay.left_time.current(), expected_samples);
+            assert_eq!(delay.tempo_bpm, f32::from(tempo));
+        }
+        control.publish_normalized("tempo_sync", 0).unwrap();
+        for _ in 0..16 {
+            let mut block = [StereoFrame::SILENCE; 64];
+            slot.process_with_tempo(&mut block, Bpm::from_whole(240));
+        }
+        let super::super::Processor::Delay(delay) = &slot.processor else {
+            panic!("compiled Delay expected");
+        };
+        assert_eq!(delay.left_time.current(), 480.0);
+        assert_eq!(configured.parameters, stored);
     }
 
     #[test]

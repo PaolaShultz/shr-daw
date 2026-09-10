@@ -20,10 +20,11 @@ use crate::final_bus::{
 };
 use crate::jack::{Client as JackClient, Port as JackPort, PortDirection, PortGetBuffer};
 use crate::master_strip::{MasterStripControls, MasterStripSettings};
+use crate::tempo::Bpm;
 use anyhow::{anyhow, bail, Context, Result};
 use libc::{c_int, c_uint, c_void};
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 const SOURCE_NODE: u32 = 1;
 const LOOP_SOURCE_NODE: u32 = 2;
@@ -209,6 +210,8 @@ impl BoundaryRoutes {
 }
 
 struct CallbackData {
+    stopped_tempo: AtomicU32,
+    transport_clock: Option<std::sync::Arc<crate::loop_player::TransportClock>>,
     plan: UnsafeCell<GraphPlan>,
     maximum_frames: usize,
     inputs: [*mut JackPort; 8],
@@ -247,6 +250,8 @@ pub(crate) struct OwnedAudioGraph {
 
 #[derive(Default)]
 pub(crate) struct FinalBusOwner {
+    stopped_tempo: Bpm,
+    transport_clock: Option<std::sync::Arc<crate::loop_player::TransportClock>>,
     channel_settings: [crate::channel_strip::Settings; 2],
     channel_bindings: [Option<crate::channel_strip::Binding>; 2],
     graph: Option<OwnedAudioGraph>,
@@ -279,6 +284,35 @@ pub(crate) struct PerformanceBusPorts {
 }
 
 impl FinalBusOwner {
+    pub(crate) fn with_transport_clock(
+        clock: std::sync::Arc<crate::loop_player::TransportClock>,
+    ) -> Self {
+        Self {
+            transport_clock: Some(clock),
+            ..Self::default()
+        }
+    }
+
+    /// Retain the selected Pattern tempo even before the graph is active.
+    /// A running transport takes precedence directly in the callback.
+    pub(crate) fn set_tempo(&mut self, tempo: Bpm) {
+        self.stopped_tempo = tempo;
+        if let Some(graph) = self.graph.as_ref() {
+            graph
+                .callback
+                .stopped_tempo
+                .store(u32::from(tempo.hundredths()), Ordering::Release);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tempo(&self) -> Bpm {
+        self.transport_clock
+            .as_ref()
+            .and_then(|clock| clock.playing_tempo())
+            .unwrap_or(self.stopped_tempo)
+    }
+
     pub(crate) fn set_channels(
         &mut self,
         settings: [crate::channel_strip::Settings; 2],
@@ -375,6 +409,8 @@ impl FinalBusOwner {
             aux_routing,
             master_strip,
             self.channel_settings,
+            self.stopped_tempo,
+            self.transport_clock.clone(),
             input_monitoring,
             &available,
         )?;
@@ -602,6 +638,8 @@ impl OwnedAudioGraph {
         aux_routing: &ProjectAuxRouting,
         master_strip: &MasterStripSettings,
         channel_settings: [crate::channel_strip::Settings; 2],
+        stopped_tempo: Bpm,
+        transport_clock: Option<std::sync::Arc<crate::loop_player::TransportClock>>,
         input_monitoring: bool,
         available_ports: &[String],
     ) -> Result<Self> {
@@ -775,6 +813,8 @@ impl OwnedAudioGraph {
         )?;
         let final_capture = final_recorder.capture_handle();
         let mut callback = Box::new(CallbackData {
+            stopped_tempo: AtomicU32::new(u32::from(stopped_tempo.hundredths())),
+            transport_clock,
             maximum_frames: plan.maximum_frames(),
             plan: UnsafeCell::new(plan),
             inputs,
@@ -1422,7 +1462,15 @@ unsafe fn process_exclusive(
         }
         final_bus.process_source(source_kind, source);
     }
-    let status = plan.process(frames);
+    let tempo = callback
+        .transport_clock
+        .as_ref()
+        .and_then(|clock| clock.playing_tempo())
+        .unwrap_or_else(|| {
+            Bpm::from_hundredths(callback.stopped_tempo.load(Ordering::Acquire) as u16)
+                .unwrap_or(Bpm::DEFAULT)
+        });
+    let status = plan.process_with_tempo(frames, tempo);
     if !publish || !matches!(status, ProcessStatus::Complete) {
         if publish && !matches!(status, ProcessStatus::Complete) {
             callback.final_capture.callback_violation();
@@ -1653,6 +1701,8 @@ mod tests {
         let recorder =
             FinalMixRecorder::new(directory, 48_000, 4096, maximum_frames as usize).unwrap();
         let callback = CallbackData {
+            stopped_tempo: AtomicU32::new(u32::from(Bpm::DEFAULT.hundredths())),
+            transport_clock: None,
             maximum_frames: maximum_frames as usize,
             plan: UnsafeCell::new(
                 GraphPlan::compile(&dry_graph_definition(48_000, maximum_frames, &destinations))
@@ -2474,5 +2524,168 @@ mod tests {
             let _ = meter.load();
         }
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn graph_owner_keeps_stopped_pattern_tempo_under_internal_and_external_transport() {
+        let clock = std::sync::Arc::new(crate::loop_player::TransportClock::default());
+        let mut owner = FinalBusOwner::with_transport_clock(clock.clone());
+        owner.set_tempo(Bpm::from_hundredths(12_345).unwrap());
+        assert_eq!(owner.tempo().hundredths(), 12_345);
+        clock.play(0.0, Bpm::from_whole(90).unwrap());
+        owner.set_tempo(Bpm::from_whole(140).unwrap());
+        assert_eq!(owner.tempo().hundredths(), 9_000);
+        clock.tempo(Bpm::from_hundredths(8_765).unwrap());
+        assert_eq!(owner.tempo().hundredths(), 8_765);
+        clock.play_external(0.0, Bpm::from_whole(110).unwrap());
+        assert_eq!(owner.tempo().hundredths(), 11_000);
+        clock.stop();
+        assert_eq!(owner.tempo().hundredths(), 14_000);
+        assert!(!owner.active());
+    }
+
+    #[test]
+    fn callback_delay_inserts_aux_and_master_follow_the_live_transport_clock() {
+        use crate::audio_graph::EffectKind;
+        const FRAMES: usize = 128;
+        for placement in 0..3 {
+            let mut rack = InsertRack::default();
+            let mut routing = ProjectAuxRouting::default();
+            let id = match placement {
+                0 => rack.add(EffectKind::Delay).unwrap(),
+                1 => {
+                    let aux = routing.add_bus().unwrap();
+                    let id = routing.add_effect(&rack, aux, EffectKind::Delay).unwrap();
+                    routing
+                        .set_send(&rack, aux, 0.0, SendPoint::PostInsert)
+                        .unwrap();
+                    id
+                }
+                _ => routing.master_rack.add(EffectKind::Delay).unwrap(),
+            };
+            let effect = match placement {
+                0 => rack.effect_mut(id).unwrap(),
+                1 => routing.buses[0].rack.effect_mut(id).unwrap(),
+                _ => routing.master_rack.effect_mut(id).unwrap(),
+            };
+            for (name, value) in [
+                ("tempo_sync", 1.0),
+                ("tempo_bpm", 90.0),
+                ("division", 0.0),
+                ("feedback_percent", 0.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+            ] {
+                effect.parameters.insert(name.into(), value);
+            }
+            let definition = managed_graph_definition(
+                48_000,
+                FRAMES as u32,
+                &["main:l".into(), "main:r".into()],
+                &test_live_ports(),
+                test_monitoring(),
+                &rack,
+                &routing,
+            );
+            let saved_definition = definition.clone();
+            for clock_mode in 0..3 {
+                let clock = std::sync::Arc::new(crate::loop_player::TransportClock::default());
+                let mut callback = callback(FRAMES as u32);
+                callback.plan = UnsafeCell::new(GraphPlan::compile(&definition).unwrap());
+                callback.transport_clock = Some(clock.clone());
+                callback.armed.store(true, Ordering::Release);
+                let mut inputs = [[0.0; FRAMES]; 8];
+                let mut left = [0.0; FRAMES];
+                let mut right = [0.0; FRAMES];
+                // The graph has already processed with the stopped tempo.
+                for _ in 0..8 {
+                    process_block(
+                        &mut callback,
+                        FRAMES,
+                        inputs.each_ref().map(|s| s.as_slice()),
+                        &mut left,
+                        &mut right,
+                    );
+                }
+                let expected = match clock_mode {
+                    0 => 6_000,
+                    1 => {
+                        clock.play(0.0, Bpm::from_whole(120).unwrap());
+                        clock.tempo(Bpm::from_whole(60).unwrap());
+                        12_000
+                    }
+                    _ => {
+                        clock.play_external(0.0, Bpm::from_whole(120).unwrap());
+                        clock.tempo(Bpm::from_whole(80).unwrap());
+                        // Rack publication must keep following the shared clock.
+                        callback.plan.get_mut().reconfigure(&definition).unwrap();
+                        9_000
+                    }
+                };
+                // This exercises the complete output callback, including the
+                // neutral MASTER STRIP's declared alignment/lookahead latency.
+                let strip_latency = callback.final_bus.get_mut().latency_samples();
+                let expected = expected + strip_latency;
+                callback
+                    .plan
+                    .get_mut()
+                    .effect_control_by_id(id)
+                    .unwrap()
+                    .publish_normalized("tempo_bpm", u16::MAX)
+                    .unwrap();
+                let mut rendered = vec![0.0; expected + FRAMES * 2];
+                assert_no_allocations(|| {
+                    for _ in 0..8 {
+                        process_block(
+                            &mut callback,
+                            FRAMES,
+                            inputs.each_ref().map(|s| s.as_slice()),
+                            &mut left,
+                            &mut right,
+                        );
+                    }
+                    for (index, output) in rendered.chunks_mut(FRAMES).enumerate() {
+                        inputs[0].fill(0.0);
+                        inputs[1].fill(0.0);
+                        if index == 0 {
+                            inputs[0][0] = 0.25;
+                            inputs[1][0] = 0.25;
+                        }
+                        assert_eq!(
+                            process_block(
+                                &mut callback,
+                                output.len(),
+                                inputs.each_ref().map(|s| s.as_slice()),
+                                &mut left,
+                                &mut right
+                            ),
+                            ProcessStatus::Complete
+                        );
+                        output.copy_from_slice(&left[..output.len()]);
+                    }
+                });
+                // AUX retains its dry path through the same MASTER STRIP.
+                assert!(
+                    rendered[..expected]
+                        .iter()
+                        .enumerate()
+                        .all(|(index, sample)| {
+                            if placement == 1 && index == strip_latency {
+                                (*sample - 0.25).abs() < 1.0e-4
+                            } else {
+                                sample.abs() < 1.0e-5
+                            }
+                        }),
+                    "placement {placement}, clock {clock_mode}"
+                );
+                assert!(
+                    (rendered[expected] - 0.25).abs() < 1.0e-4,
+                    "placement {placement}, clock {clock_mode}, sample {}",
+                    rendered[expected]
+                );
+                assert!(rendered.iter().all(|sample| sample.is_finite()));
+                assert_eq!(definition, saved_definition);
+            }
+        }
     }
 }

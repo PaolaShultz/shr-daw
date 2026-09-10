@@ -2058,7 +2058,7 @@ impl App {
             crate::loop_player::TransportClock::default()
         });
         let drum_output = Arc::new(Mutex::new(None));
-        let final_bus = FinalBusOwner::default();
+        let final_bus = FinalBusOwner::with_transport_clock(Arc::clone(&transport_clock));
         let sequencer = sequencer::Sequencer::start_with_clock(
             &config.external_midi,
             Arc::clone(&midi_output),
@@ -7366,6 +7366,11 @@ impl App {
                 pattern.tempo
             })
     }
+    fn effective_tempo(&self) -> Bpm {
+        self.transport_clock
+            .playing_tempo()
+            .unwrap_or_else(|| self.current_tempo())
+    }
     fn current_meter(&self) -> u8 {
         self.current_pattern().map_or(4, |pattern| pattern.meter)
     }
@@ -9498,14 +9503,7 @@ impl App {
         let tempo = self.apply_tracker_tempo(bpm);
         self.commit_pattern_history(history_opening, Some(PatternHistoryGesture::Tempo));
         self.status = if self.screen == Screen::Playback {
-            format!(
-                "PLAYER / Pattern tempo {tempo} BPM{}",
-                if self.controller_live_transport {
-                    " · clock updated"
-                } else {
-                    " · PLAY starts arp"
-                }
-            )
+            String::new()
         } else {
             format!("pattern tempo {tempo} BPM")
         };
@@ -9514,6 +9512,7 @@ impl App {
         if let Some(pattern) = self.current_pattern_mut() {
             pattern.tempo = tempo;
         }
+        self.final_bus.set_tempo(self.current_tempo());
         if let Some(drums) = self.drum_host.as_ref() {
             drums.set_tempo(tempo);
         }
@@ -9776,6 +9775,7 @@ impl App {
             &self.song.drum_tuning,
             &self.song.drum_rack,
             tempo,
+            Arc::clone(&self.transport_clock),
             &resolved.outputs,
             Arc::clone(&self.drum_output),
             self.final_bus.effect_hub(),
@@ -11732,6 +11732,7 @@ impl App {
     }
 
     fn retry_final_bus_with_force(&mut self, force: bool) -> bool {
+        self.final_bus.set_tempo(self.current_tempo());
         self.sync_channel_settings();
         if !force
             && !self.config.audio_graph.enabled
@@ -16562,6 +16563,10 @@ impl App {
         }
     }
     fn tick(&mut self) {
+        self.final_bus.set_tempo(self.current_tempo());
+        if let Some(drums) = self.drum_host.as_ref() {
+            drums.set_tempo(self.current_tempo());
+        }
         self.sync_channel_settings();
         let now = Instant::now();
         if self.config.external_clock.enabled {
@@ -22206,6 +22211,29 @@ fn draw_fx_editor<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         lines.push(Spans::from(headings));
         lines.push(Spans::from(values));
     }
+    if effect.kind == EffectKind::Delay {
+        let tempo = a.effective_tempo();
+        if let Ok(timing) = crate::effects::delay_timing(effect, tempo) {
+            if timing.synced {
+                lines.push(Spans::from(Span::styled(
+                    crate::ui_text::fit_line(
+                        &format!(
+                            "{tempo} BPM · L{:.0} R{:.0}ms{}",
+                            timing.left_ms,
+                            timing.right_ms,
+                            if timing.limited { " · 2s LIMIT" } else { "" },
+                        ),
+                        inner_width,
+                    ),
+                    Style::default().fg(if timing.limited {
+                        Color::LightYellow
+                    } else {
+                        Color::White
+                    }),
+                )));
+            }
+        }
+    }
     let meter = (!is_drum_fx_target(a.fx_target))
         .then(|| a.final_bus.effect_meter(id))
         .flatten();
@@ -24457,7 +24485,11 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
             )
         })
     });
-    let sync_status = a.sync_status_message();
+    let sync_status = if a.screen == Screen::Playback && !a.config.external_clock.enabled {
+        String::new()
+    } else {
+        a.sync_status_message()
+    };
     let message = combined_status
         .as_deref()
         .or(recording_status.as_deref())
@@ -24474,8 +24506,16 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
             .unwrap_or_else(|| "CPU --°C".into())
     });
     let text_cells = usize::from(z.width.saturating_sub(2).min(STATUS_TEXT_CELLS));
-    let (message, gap, temperature) =
-        fit_shared_status_text(message, temperature.as_deref(), text_cells);
+    let tempo = if a.screen == Screen::Playback {
+        crate::ui_text::fit_line(&format!("{} BPM ", a.effective_tempo()), text_cells)
+    } else {
+        String::new()
+    };
+    let (message, gap, temperature) = fit_shared_status_text(
+        message,
+        temperature.as_deref(),
+        text_cells.saturating_sub(crate::ui_text::width(&tempo)),
+    );
     f.render_widget(
         Paragraph::new(Spans::from(vec![
             Span::styled(
@@ -24485,6 +24525,7 @@ fn draw_master_status<B: Backend>(f: &mut Frame<B>, a: &App) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
+            Span::styled(tempo, Style::default().fg(Color::White)),
             Span::styled(message, Style::default().fg(message_color)),
             Span::raw(gap),
             Span::styled(temperature, Style::default().fg(Color::Gray)),
@@ -33155,6 +33196,105 @@ release = 0.4
     }
 
     #[test]
+    fn player_status_keeps_live_tempo_visible_across_pages_messages_and_stop() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Playback;
+        a.set_tracker_tempo("123.45".parse().unwrap());
+        assert_eq!(a.final_bus.tempo(), a.current_tempo());
+        let song = a.song.clone();
+        for page in 0..4 {
+            a.select_menu_page(page);
+            let row = row_text(&render_app(&mut a, 40, 13), 12);
+            assert!(row.starts_with("■ 123.45 BPM "), "{row}");
+            assert!(!row.contains("SYNC INT"), "{row}");
+        }
+        a.status = "Preset saved".into();
+        a.status_clock = RefCell::new(StatusClock {
+            text: a.status.clone(),
+            since: Instant::now() - Duration::from_secs(30),
+        });
+        let row = row_text(&render_app(&mut a, 40, 13), 12);
+        assert!(row.starts_with("■ 123.45 BPM "), "{row}");
+        assert!(!row.contains("Preset saved"), "{row}");
+
+        a.status = "ROUTING FAILED · old route kept · retry".into();
+        let row = row_text(&render_app(&mut a, 40, 13), 12);
+        assert!(row.starts_with("■ 123.45 BPM "), "{row}");
+        assert!(row.contains("retry"), "{row}");
+        assert_eq!(crate::ui_text::width(&row), 40);
+
+        // The disabled test clock emits no MIDI. A running clock owns the
+        // displayed tempo even when a different Pattern is being inspected.
+        a.controller_live_transport = true;
+        a.transport_clock.play(0.0, "90".parse().unwrap());
+        assert_eq!(a.final_bus.tempo(), a.effective_tempo());
+        a.status.clear();
+        let row = row_text(&render_app(&mut a, 40, 13), 12);
+        assert!(row.starts_with("> 90 BPM "), "{row}");
+        a.transport_clock.tempo("91.25".parse().unwrap());
+        assert_eq!(a.final_bus.tempo(), a.effective_tempo());
+        let row = row_text(&render_app(&mut a, 40, 13), 12);
+        assert!(row.starts_with("> 91.25 BPM "), "{row}");
+        a.transport_clock.stop();
+        a.controller_live_transport = false;
+        let row = row_text(&render_app(&mut a, 40, 13), 12);
+        assert!(row.starts_with("■ 123.45 BPM "), "{row}");
+        assert_eq!(
+            a.song, song,
+            "rendering and clock changes do not edit the Project"
+        );
+        a.current_pattern_mut().unwrap().tempo = "88".parse().unwrap();
+        a.tick();
+        assert_eq!(a.final_bus.tempo(), "88".parse().unwrap());
+        let row = row_text(&render_app(&mut a, 40, 13), 12);
+        assert!(row.starts_with("■ 88 BPM "), "{row}");
+    }
+
+    #[test]
+    fn synced_delay_editor_shows_actual_tempo_times_and_capacity_limit() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::FxEditor;
+        let id = a.song.insert_rack.add(EffectKind::Delay).unwrap();
+        a.fx_selection = FxRackSelection::Effect(id);
+        {
+            let effect = a.song.insert_rack.effect_mut(id).unwrap();
+            effect.parameters.insert("tempo_sync".into(), 1.0);
+            effect.parameters.insert("division".into(), 2.0);
+            effect.parameters.insert("stereo_ratio".into(), 1.0);
+        }
+        a.set_tracker_tempo("120".parse().unwrap());
+        let normal = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&normal).contains("120 BPM · L500 R500ms"));
+        assert!(!buffer_text(&normal).contains("2s LIMIT"));
+        assert!(row_text(&normal, 12).starts_with('■'));
+        a.song
+            .insert_rack
+            .effect_mut(id)
+            .unwrap()
+            .parameters
+            .insert("division".into(), 6.0);
+        let limited = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&limited).contains("120 BPM · L2000 R2000ms · 2s LIMIT"));
+        assert!(row_text(&limited, 12).starts_with('■'));
+        assert!(
+            row_text(&limited, 11).contains('['),
+            "controller actions remain visible"
+        );
+
+        a.song
+            .insert_rack
+            .effect_mut(id)
+            .unwrap()
+            .parameters
+            .insert("tempo_sync".into(), 0.0);
+        let free = render_app(&mut a, 40, 13);
+        assert!(!buffer_text(&free).contains("2s LIMIT"));
+        assert!(!buffer_text(&free).contains("120 BPM · L"));
+    }
+
+    #[test]
     fn routine_status_expires_but_fault_and_recovery_persist() {
         let p = presets();
         let mut a = app(&p);
@@ -37288,7 +37428,8 @@ release = 0.4
             .collect::<String>();
         assert!(text.contains("Sus"));
         assert!(text.contains("Rel"));
-        assert!(!text.contains("BPM"));
+        assert!(row_text(b, 19).starts_with("■ 120 BPM "));
+        assert!((0..19).all(|row| !row_text(b, row).contains("BPM")));
         assert!(text.contains("CPU 52°C"));
         let title = (0..40)
             .map(|x| b.get(x, 0).symbol.as_str())
@@ -37313,6 +37454,7 @@ release = 0.4
         t.draw(|f| draw(f, &mut a)).unwrap();
         let b = t.backend().buffer();
         assert_eq!(b.get(0, 19).symbol, "●");
+        assert!(row_text(b, 19).starts_with("● 120 BPM "));
         assert!(matches!(b.get(0, 19).fg, Color::Red | Color::LightRed));
         assert!((37..40).all(|x| b.get(x, 0).symbol == " "));
     }
@@ -37910,10 +38052,7 @@ release = 0.4
 
         a.set_tracker_tempo(Bpm::from_hundredths_clamped(12_345));
         assert_eq!(a.current_tempo().hundredths(), 12_345);
-        assert_eq!(
-            a.status,
-            "PLAYER / Pattern tempo 123.45 BPM · clock updated"
-        );
+        assert!(a.status.is_empty(), "tempo has a permanent status field");
 
         a.stop_idea_transport();
         assert!(!a.controller_live_transport);

@@ -16,6 +16,7 @@ mod tremolo_pan;
 use crate::audio_graph::{EffectId, EffectInstance, EffectKind};
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
 use crate::effect_schema;
+use crate::tempo::Bpm;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -24,6 +25,7 @@ use std::sync::{Arc, RwLock};
 pub use compressor::AtomicGainReduction;
 use compressor::Compressor;
 use crusher::Crusher;
+pub(crate) use delay::delay_timing;
 use delay::Delay;
 use distortion::Distortion;
 use eq::Eq;
@@ -576,7 +578,16 @@ impl EffectSlot {
     /// Process an in-place stereo block without allocation, locks, logging,
     /// I/O, blocking, or unbounded coefficient work.
     pub fn process(&mut self, frames: &mut [StereoFrame]) {
-        self.consume_control();
+        self.process_with_tempo(frames, None);
+    }
+
+    pub(crate) fn process_with_tempo(&mut self, frames: &mut [StereoFrame], tempo: Option<Bpm>) {
+        self.consume_control(tempo);
+        if let (Some(tempo), Processor::Delay(delay)) = (tempo, &mut self.processor) {
+            // Bpm is already validated. Repeating the same tempo does not
+            // restart the delay's bounded 20 ms timing transition.
+            let _ = delay.set_parameter("tempo_bpm", tempo.as_f64() as f32);
+        }
         for frame in frames.iter_mut() {
             let dry = self.input_meter.process(*frame);
             let processed = self.processor.process(dry);
@@ -628,7 +639,7 @@ impl EffectSlot {
     }
 
     #[inline]
-    fn consume_control(&mut self) {
+    fn consume_control(&mut self, tempo: Option<Bpm>) {
         let dirty = if self.graph_owns_bypass {
             self.control
                 .dirty
@@ -638,7 +649,7 @@ impl EffectSlot {
             self.control.dirty.swap(0, Ordering::AcqRel)
         };
         for (index, spec) in effect_schema::schema(self.kind).iter().enumerate() {
-            if dirty & (1u64 << index) == 0 {
+            if dirty & (1u64 << index) == 0 || (tempo.is_some() && spec.name == "tempo_bpm") {
                 continue;
             }
             let value = f32::from_bits(self.control.values[index].load(Ordering::Acquire));

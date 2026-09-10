@@ -5490,14 +5490,13 @@ fn run_transport(
                         && candidate.effect.is_none()
                         && candidate.at > message.at
                 }) {
-                    let seconds = (next.at - message.at).as_secs_f64();
-                    if seconds > 0.0 {
-                        if let Ok(tapped) =
-                            format!("{:.2}", 60.0 / seconds / f64::from(config.steps_per_beat))
-                                .parse::<Bpm>()
-                        {
-                            clock.tempo(tapped);
-                        }
+                    if let Some(tempo) = row_marker_tempo(
+                        next.at - message.at,
+                        live.as_ref().map(|runtime| &runtime.current_song),
+                        playback_song.as_ref(),
+                        active_config.steps_per_beat,
+                    ) {
+                        clock.tempo(tempo);
                     }
                 }
             }
@@ -5742,6 +5741,26 @@ fn run_transport(
             }
         }
     }
+}
+
+fn row_marker_tempo(
+    duration: Duration,
+    live_song: Option<&Song>,
+    playback_song: Option<&Song>,
+    fallback_steps: u8,
+) -> Option<Bpm> {
+    let seconds = duration.as_secs_f64();
+    if seconds <= 0.0 {
+        return None;
+    }
+    // Row spacing was compiled with the sounding Song's timebase. A loaded
+    // Project or Live Pattern may differ from the application's default.
+    let steps = live_song
+        .or(playback_song)
+        .map_or(fallback_steps, |song| song.steps_per_beat);
+    format!("{:.2}", 60.0 / seconds / f64::from(steps))
+        .parse()
+        .ok()
 }
 
 struct LiveRuntime {
@@ -9328,6 +9347,41 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(notes[0].at, Duration::from_millis(125));
         assert_eq!(notes[1].order, 1);
+    }
+
+    #[test]
+    fn row_marker_tempo_uses_loaded_and_live_song_steps_with_tempo_commands() {
+        let c = config();
+        assert_eq!(c.steps_per_beat, 4);
+        let default_timebase = Song::new(&c);
+        let mut song = Song::new(&c);
+        song.steps_per_beat = 8;
+        let pattern = song.patterns.get_mut(&0).unwrap();
+        pattern.resize_rows(3).unwrap();
+        pattern.tempo = Bpm::from_whole(120).unwrap();
+        pattern.rows[0][0].command = Command::Tempo(Bpm::from_whole(60).unwrap());
+        let scheduled = schedule(&song, &c, 0, 0).unwrap();
+        let markers = scheduled
+            .iter()
+            .filter(|message| message.bytes.is_empty() && message.effect.is_none())
+            .take(3)
+            .collect::<Vec<_>>();
+        assert_eq!(markers.len(), 3);
+        for (pair, expected) in markers.windows(2).zip([120, 60]) {
+            let duration = pair[1].at - pair[0].at;
+            for (live, playback) in [(None, Some(&song)), (Some(&song), Some(&default_timebase))] {
+                assert_eq!(
+                    row_marker_tempo(duration, live, playback, c.steps_per_beat),
+                    Bpm::from_whole(expected)
+                );
+            }
+            // The original config-based calculation doubled both tempos.
+            assert_eq!(
+                row_marker_tempo(duration, None, None, c.steps_per_beat),
+                Bpm::from_whole(expected * 2)
+            );
+        }
+        assert_eq!(row_marker_tempo(Duration::ZERO, Some(&song), None, 4), None);
     }
 
     #[test]

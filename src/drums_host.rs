@@ -57,7 +57,7 @@ struct CallbackData {
     engine: UnsafeCell<DrumEngine>,
     effects: UnsafeCell<DrumEffectStack>,
     tempo_bpm: Arc<AtomicU32>,
-    applied_tempo_bits: UnsafeCell<u32>,
+    transport_clock: Arc<crate::loop_player::TransportClock>,
     output_left: *mut JackPort,
     output_right: *mut JackPort,
     port_get_buffer: PortGetBuffer,
@@ -98,17 +98,13 @@ impl DrumEffectStack {
         Ok(stack)
     }
 
-    fn set_tempo(&mut self, tempo: f32) {
-        for slot in &mut self.slots {
-            if slot.kind() == crate::audio_graph::EffectKind::Delay {
-                let _ = slot.set_parameter("tempo_bpm", tempo);
-            }
-        }
+    pub(crate) fn process(&mut self, frames: &mut [EffectFrame]) {
+        self.process_with_tempo(frames, None);
     }
 
-    pub(crate) fn process(&mut self, frames: &mut [EffectFrame]) {
+    fn process_with_tempo(&mut self, frames: &mut [EffectFrame], tempo: Option<Bpm>) {
         for slot in &mut self.slots {
-            slot.process(frames);
+            slot.process_with_tempo(frames, tempo);
         }
         const CEILING: f32 = 0.891_250_9;
         for frame in frames {
@@ -163,6 +159,7 @@ impl DrumHost {
         tuning: &KitTuning,
         drum_rack: &crate::audio_graph::InsertRack,
         tempo: Bpm,
+        transport_clock: Arc<crate::loop_player::TransportClock>,
         destinations: &[String],
         shared: SharedDrumOutput,
         effect_hub: Arc<EffectControlHub>,
@@ -205,7 +202,7 @@ impl DrumHost {
             engine: UnsafeCell::new(engine),
             effects: UnsafeCell::new(effects),
             tempo_bpm: Arc::clone(&tempo_bpm),
-            applied_tempo_bits: UnsafeCell::new(tempo_bits),
+            transport_clock,
             output_left,
             output_right,
             port_get_buffer: jack.port_get_buffer(),
@@ -320,6 +317,13 @@ pub fn send_midi(sender: &EventSender, bytes: &[u8]) -> std::result::Result<(), 
     })
 }
 
+fn effect_tempo(clock: &crate::loop_player::TransportClock, stopped_tempo: &AtomicU32) -> Bpm {
+    clock.playing_tempo().unwrap_or_else(|| {
+        let bpm = f32::from_bits(stopped_tempo.load(Ordering::Acquire));
+        Bpm::from_hundredths_clamped((bpm * 100.0).round() as u16)
+    })
+}
+
 unsafe fn process_block(
     callback: &CallbackData,
     frames: usize,
@@ -330,7 +334,6 @@ unsafe fn process_block(
     // after deactivation. Other callbacks touch only shared atomic status.
     let engine = unsafe { &mut *callback.engine.get() };
     let effects = unsafe { &mut *callback.effects.get() };
-    let applied_tempo_bits = unsafe { &mut *callback.applied_tempo_bits.get() };
     if frames > callback.maximum_frames || left.len() < frames || right.len() < frames {
         left.fill(0.0);
         right.fill(0.0);
@@ -343,11 +346,7 @@ unsafe fn process_block(
         if engine.take_hard_reset_request() {
             effects.reset();
         }
-        let tempo_bits = callback.tempo_bpm.load(Ordering::Acquire);
-        if tempo_bits != *applied_tempo_bits {
-            effects.set_tempo(f32::from_bits(tempo_bits));
-            *applied_tempo_bits = tempo_bits;
-        }
+        let tempo = effect_tempo(&callback.transport_clock, &callback.tempo_bpm);
         let mut effected = [EffectFrame::SILENCE; 256];
         for (target, source) in effected[..end - offset]
             .iter_mut()
@@ -355,7 +354,7 @@ unsafe fn process_block(
         {
             *target = EffectFrame::new(source.left, source.right);
         }
-        effects.process(&mut effected[..end - offset]);
+        effects.process_with_tempo(&mut effected[..end - offset], Some(tempo));
         for (index, frame) in effected[..end - offset].iter().enumerate() {
             left[offset + index] = frame.left;
             right[offset + index] = frame.right;
@@ -447,6 +446,87 @@ mod tests {
         );
         assert_eq!(receiver.pop(), Some(DrumEvent::NoteOff { note: 36 }));
         assert_eq!(receiver.pop(), Some(DrumEvent::AllNotesOff));
+    }
+
+    #[test]
+    fn drum_delay_follows_running_clock_and_returns_to_selected_pattern_when_stopped() {
+        let mut rack = rack_mode(false, true);
+        for (name, value) in [
+            ("tempo_sync", 1.0),
+            ("division", 0.0),
+            ("feedback_percent", 0.0),
+            ("stereo_ratio", 1.0),
+            ("wet_percent", 100.0),
+            ("dry_percent", 0.0),
+        ] {
+            set(&mut rack, EffectKind::Delay, name, value);
+        }
+        let saved = rack.clone();
+        let clock = crate::loop_player::TransportClock::default();
+        let stopped = AtomicU32::new(120.0_f32.to_bits());
+        let mut stack = DrumEffectStack::compile(&rack, SAMPLE_RATE, 128, Bpm::DEFAULT).unwrap();
+        let delay_control = stack
+            .slots
+            .iter()
+            .find(|slot| slot.kind() == EffectKind::Delay)
+            .unwrap()
+            .control();
+        for (stage, expected_bpm, first_echo) in [
+            (0, 120, 6_000),
+            (1, 240, 3_000),
+            (2, 60, 12_000),
+            (3, 80, 9_000),
+            (4, 90, 8_000),
+        ] {
+            match stage {
+                1 => clock.play(0.0, Bpm::from_whole(240).unwrap()),
+                2 => {
+                    // An inspected Pattern must not override the running one.
+                    stopped.store(90.0_f32.to_bits(), Ordering::Release);
+                    clock.tempo(Bpm::from_whole(60).unwrap());
+                }
+                3 => clock.play_external(0.0, Bpm::from_whole(80).unwrap()),
+                4 => clock.stop(),
+                _ => {}
+            }
+            assert_eq!(
+                effect_tempo(&clock, &stopped),
+                Bpm::from_whole(expected_bpm).unwrap()
+            );
+            stack.reset();
+            let mut settle = [EffectFrame::SILENCE; 1_024];
+            let mut response = vec![EffectFrame::SILENCE; first_echo + 128];
+            response[0] = EffectFrame::new(0.5, 0.5);
+            assert_no_allocations(|| {
+                for chunk in settle.chunks_mut(128).chain(response.chunks_mut(128)) {
+                    // Local tempo automation cannot take ownership back from
+                    // either the running clock or the selected stopped Pattern.
+                    delay_control
+                        .publish_normalized("tempo_bpm", u16::MAX)
+                        .unwrap();
+                    stack.process_with_tempo(chunk, Some(effect_tempo(&clock, &stopped)));
+                }
+            });
+            assert!(
+                response[..first_echo]
+                    .iter()
+                    .all(|frame| { frame.left.abs().max(frame.right.abs()) < 1.0e-7 }),
+                "early echo at stage {stage}"
+            );
+            assert!(
+                (response[first_echo].left - 0.5).abs() < 1.0e-5,
+                "wrong echo time at stage {stage}"
+            );
+            assert!(
+                response[first_echo + 1..]
+                    .iter()
+                    .all(|frame| { frame.left.abs().max(frame.right.abs()) < 1.0e-7 }),
+                "unexpected tail at stage {stage}"
+            );
+        }
+        stopped.store(123.45_f32.to_bits(), Ordering::Release);
+        assert_eq!(effect_tempo(&clock, &stopped), "123.45".parse().unwrap());
+        assert_eq!(rack, saved, "runtime tempo must not rewrite the rack");
     }
 
     #[test]
