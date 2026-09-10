@@ -31166,7 +31166,7 @@ release = 0.4
                     }
                 }
             }
-            assert!(row_text(&frame, 12).starts_with('‖'));
+            assert!(row_text(&frame, 12).starts_with('■'));
         }
     }
 
