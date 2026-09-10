@@ -220,6 +220,12 @@ Back retains unsaved work, cursor and controller context, engine, routing,
 transport, and recording, including Projects with no notes. PANIC cleans up
 notes without closing that session; STOP ends the relevant transport or take.
 Save before quitting or replacing a Project to retain it across restarts.
+The exit dialog identifies the Project and shows which areas changed, such as
+TEMPO, KEY/SCALE, or FX/AUX. Auditioning notes in Player, browsing sounds, and
+changing the synth's own parameters there do not change the Project. Player TAP
+tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project settings and can
+require saving even when the Project contains no notes. Synth sound edits use
+Player SAVE; MIDI Learn saves its controller mapping separately.
 
 With the optional graph disabled, ordinary source, aux, and master rack edits
 change Project data but do not process direct audio. The DRUMS rack still

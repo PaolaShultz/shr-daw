@@ -2527,6 +2527,62 @@ impl App {
         self.song != self.project_clean_baseline
     }
 
+    fn project_change_summary(&self) -> String {
+        let song = &self.song;
+        let clean = &self.project_clean_baseline;
+        let pattern_changed = |diff: fn(&sequencer::Pattern, &sequencer::Pattern) -> bool| {
+            song.patterns
+                .iter()
+                .any(|(id, pattern)| clean.patterns.get(id).is_some_and(|old| diff(pattern, old)))
+        };
+        let changes = [
+            (song.name != clean.name, "NAME"),
+            (song.project_key != clean.project_key, "KEY/SCALE"),
+            (pattern_changed(|a, b| a.tempo != b.tempo), "TEMPO"),
+            (
+                song.steps_per_beat != clean.steps_per_beat
+                    || song.gate_percent != clean.gate_percent
+                    || pattern_changed(|a, b| {
+                        a.meter != b.meter
+                            || a.swing_division != b.swing_division
+                            || a.swing_percent != b.swing_percent
+                    }),
+                "TIMING",
+            ),
+            (pattern_changed(|a, b| a.rows != b.rows), "NOTES"),
+            (pattern_changed(|a, b| a.pages != b.pages), "ROUTING"),
+            (
+                pattern_changed(|a, b| a.audio_loops != b.audio_loops),
+                "LOOPS",
+            ),
+            (
+                pattern_changed(|a, b| a.automation != b.automation),
+                "AUTOMATION",
+            ),
+            (
+                song.order != clean.order || !song.patterns.keys().eq(clean.patterns.keys()),
+                "ARRANGEMENT",
+            ),
+            (
+                song.drum_kit != clean.drum_kit || song.drum_tuning != clean.drum_tuning,
+                "DRUMS",
+            ),
+            (
+                song.insert_rack != clean.insert_rack
+                    || song.aux_routing != clean.aux_routing
+                    || song.drum_rack != clean.drum_rack,
+                "FX/AUX",
+            ),
+            (song.master_strip != clean.master_strip, "MASTER"),
+            (song.channels != clean.channels, "CHANNEL INSERTS"),
+        ];
+        changes
+            .into_iter()
+            .filter_map(|(changed, label)| changed.then_some(label))
+            .collect::<Vec<_>>()
+            .join(" + ")
+    }
+
     fn mixed_engine_prompt_active(&self) -> bool {
         self.mixed_engine_remap
             .as_ref()
@@ -19995,10 +20051,14 @@ fn mouse(
         return false;
     }
     if matches!(m.kind, MouseEventKind::Down(MouseButton::Right)) {
-        if a.screen != Screen::Home {
+        if a.project_guard_naming {
+            a.cancel_project_guard_name();
+        } else if a.pending_project_action.is_some() {
+            a.cancel_project_action();
+        } else if a.screen != Screen::Home {
             perform(Action::Back, a, state, Some(tx));
         } else {
-            return true;
+            return a.request_quit();
         }
         return false;
     }
@@ -20413,7 +20473,7 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
         PendingProjectAction::Quit => "QUIT SHR-DAW".into(),
     };
     let width = usize::from(area.width.saturating_sub(2));
-    let rows = ProjectGuardChoice::ALL
+    let mut rows = ProjectGuardChoice::ALL
         .into_iter()
         .map(|choice| {
             let selected = choice == a.project_guard_selected;
@@ -20430,6 +20490,15 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
             ))
         })
         .collect::<Vec<_>>();
+    if area.height >= 7 {
+        rows.insert(
+            0,
+            Spans::from(Span::raw(crate::ui_text::fit_line(
+                &format!("Changed: {}", a.project_change_summary()),
+                width,
+            ))),
+        );
+    }
     f.render_widget(Clear, area);
     f.render_widget(
         Paragraph::new(rows)
@@ -20437,7 +20506,7 @@ fn draw_project_guard<B: Backend>(f: &mut Frame<B>, a: &App) {
             .style(Style::default().bg(Color::Black))
             .block(
                 Block::default()
-                    .title(format!(" UNSAVED · {action} "))
+                    .title(format!(" PROJECT · {action} "))
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::Yellow)),
             ),
@@ -31994,6 +32063,128 @@ release = 0.4
     }
 
     #[test]
+    fn synth_playing_and_parameter_changes_preserve_project_and_exit_guard() {
+        for edited_project in [false, true] {
+            let p = presets();
+            let mut a = app(&p);
+            if edited_project {
+                a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(67);
+            }
+            let before = a.song.clone();
+            let baseline = a.project_clean_baseline.clone();
+            let (tx, rx) = mpsc::channel();
+            for sound in [
+                p[0].clone(),
+                moj_preset(preset::MojModel::PressureChain, "Pressure Chain Bass"),
+                moj_preset(preset::MojModel::Open303, "Open303 Bass"),
+            ] {
+                *a.midi_backend.lock().unwrap() = sound.backend;
+                *a.midi_moj_model.lock().unwrap() = sound.moj_model();
+                let first_cc = sound
+                    .moj_model()
+                    .map_or(CONTROLS[0].cc, |model| moj_controls(model)[0].cc);
+                let values = HashMap::from([(74, 0.5), (VOLUME_CC, 0.5), (first_cc, 0.5)]);
+                a.commit_loaded_preset(sound, values.clone(), values);
+                for bytes in [
+                    [0x90, 36, 100],
+                    [0x90, 43, 100],
+                    [0x80, 36, 0],
+                    [0x80, 43, 0],
+                ] {
+                    tx.send(MidiEvent::Raw {
+                        received: Instant::now(),
+                        bytes: bytes.to_vec(),
+                    })
+                    .unwrap();
+                }
+                tx.send(MidiEvent::Value(74, 0.75)).unwrap();
+                drain(&rx, &mut a, Path::new("/none"), &tx);
+                let parameter_before = a.values[&first_cc];
+                tx.send(MidiEvent::RelativeRotary {
+                    received: Instant::now(),
+                    position: 0,
+                    steps: -3,
+                })
+                .unwrap();
+                drain(&rx, &mut a, Path::new("/none"), &tx);
+                assert!(a.values[&first_cc] < parameter_before);
+                perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+                perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
+                assert_eq!(a.screen, Screen::Home);
+                assert_eq!(a.song, before);
+                assert_eq!(a.project_clean_baseline, baseline);
+            }
+            assert_eq!(a.request_quit(), !edited_project);
+            assert_eq!(a.pending_project_action.is_some(), edited_project);
+        }
+    }
+
+    #[test]
+    fn project_exit_prompt_names_shared_player_changes_and_preserves_cancel() {
+        let cases: [(&str, fn(&mut App)); 3] = [
+            ("TEMPO", |a| {
+                a.set_tracker_tempo(Bpm::from_hundredths_clamped(12_345))
+            }),
+            ("KEY/SCALE", |a| {
+                a.toggle_playback_noob();
+                a.adjust_playback_noob_scale(1);
+            }),
+            ("MASTER", |a| a.song.master_strip.input_trim_db = 3.0),
+        ];
+        for (changed, edit) in cases {
+            let mut a = app(&presets());
+            a.screen = Screen::Playback;
+            let opening = a.song.clone();
+            edit(&mut a);
+            let edited = a.song.clone();
+            assert!(!a.request_quit());
+            let frame = render_app(&mut a, 40, 13);
+            let text = buffer_text(&frame);
+            assert!(text.contains("PROJECT · QUIT SHR-DAW"), "{text}");
+            assert!(text.contains(&format!("Changed: {changed}")), "{text}");
+            for choice in ["SAVE (AUTO)", "SAVE (NAME)", "DON'T SAVE", "BACK"] {
+                assert!(text.contains(choice), "{text}");
+            }
+            assert!(row_text(&frame, 12).starts_with('■'));
+            a.cancel_project_action();
+            assert_eq!(a.song, edited);
+            assert!(a.project_is_dirty());
+            a.song = opening;
+            assert!(!a.project_is_dirty());
+            assert!(a.request_quit());
+        }
+    }
+
+    #[test]
+    fn home_right_click_guards_project_edits_and_cancels_without_discarding() {
+        let right_click = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        };
+        let (tx, _rx) = mpsc::channel();
+        let mut clean = app(&presets());
+        assert!(mouse(right_click, &mut clean, Path::new("/none"), &tx));
+        assert!(clean.quit_requested);
+
+        let mut edited = app(&presets());
+        edited.song.master_strip.input_trim_db = 3.0;
+        let before = edited.song.clone();
+        assert!(!mouse(right_click, &mut edited, Path::new("/none"), &tx));
+        assert_eq!(
+            edited.pending_project_action,
+            Some(PendingProjectAction::Quit)
+        );
+        assert!(!edited.quit_requested);
+        assert!(!mouse(right_click, &mut edited, Path::new("/none"), &tx));
+        assert!(edited.pending_project_action.is_none());
+        assert!(!edited.quit_requested);
+        assert_eq!(edited.song, before);
+        assert!(edited.project_is_dirty());
+    }
+
+    #[test]
     fn dirty_quit_guard_is_rotary_first_and_auto_save_quits_after_success() {
         let p = presets();
         let mut a = app(&p);
@@ -32688,7 +32879,8 @@ release = 0.4
         let text = buffer_text(&buffer);
 
         for expected in [
-            "UNSAVED · LOAD",
+            "PROJECT · LOAD",
+            "Changed: NAME",
             "SAVE (AUTO)",
             "SAVE (NAME)",
             "DON'T SAVE",
