@@ -32463,7 +32463,8 @@ release = 0.4
         assert!(text.contains("SAVE (NAME)"));
         assert!(text.contains("DON'T SAVE"));
         assert!(text.contains("BACK"));
-        assert!((2..38).any(|column| buffer.get(column, 3).bg == Color::Yellow));
+        assert!(row_text(&buffer, 3).contains("Changed: NOTES"));
+        assert!((2..38).any(|column| buffer.get(column, 4).bg == Color::Yellow));
         assert_eq!(buffer.get(0, 12).symbol, "‖");
     }
 
