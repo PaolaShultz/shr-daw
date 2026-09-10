@@ -166,11 +166,11 @@ input, toggle, and return layer.
 
 Shift state comes either from a configured MIDI modifier or from a dedicated
 alternate encoder CC produced only by the controller's hardware Shift layer.
-The latter is the MiniLab mkII path: Arturia documents that Shift changes the
-CC of encoders 1 and 9, so SHR does not wait for an independent Shift packet
-that the controller does not expose. Releasing Shift restores the ordinary
-rotary CC in hardware. The following table is the current
-secondary-navigation contract:
+The latter is the MiniLab mkII path: Arturia documents separate Shift functions
+for encoders 1 and 9. Shift press/release SysEx can also arrive, but SHR learns
+the alternate relative CC rather than treating SysEx as a navigation modifier.
+Releasing Shift restores the ordinary rotary CC in hardware. The following
+table is the current secondary-navigation contract:
 
 | Screen/context | Ordinary rotary | Shift+rotary | Existing action reused |
 |---|---|---|---|
@@ -220,8 +220,8 @@ to select controller pages while Shift is held.
   or has an incomplete learned encoder, Home initially selects MIDI Learn and
   gives the reason. A learned master encoder with turn and click is usable even
   without optional pads. Home itself neither learns nor transmits. During
-  Learn, master turn/click packets cannot browse or skip capture roles; only
-  explicit keyboard skip/back can move past an unlearned optional control.
+  Learn, a deliberate learned master turn moves one capture role backward or
+  forward after input quarantine; its click saves only at Review.
   Learn renders exactly two action-first rows total and no shared status row.
 - Help is a child screen. It tries to show the same help at
   `http://<LAN-IP>/help` while open. The master encoder moves one help row at a
@@ -500,10 +500,13 @@ relative. Shift Learn names and proves both directions as separate gestures:
 Shift plus repeated left packets, release, then Shift plus repeated right
 packets on the same CC, followed by release. Its direction encoding is learned
 independently and may oppose the ordinary axis.
+Neutral reset packets between shifted turns do not discard the tentative
+direction proof. Both directions must still pass before the axis is stored;
+button press/release alone cannot establish it.
 For each performance rotary, Learn requires repeated left-direction
 packets followed by repeated right-direction packets on the same channel and
-CC. Positional or wrong-direction input is rejected and cannot resume on that
-role until explicit retry or skip.
+CC. Positional or wrong-direction input is rejected; after the gesture becomes
+quiet, the same role automatically re-arms for retry.
 
 `Action` and the empty menu slots remain extension points. Future features are
 not shown on the hardware menu until they actually dispatch a working action.

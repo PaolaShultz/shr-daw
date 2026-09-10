@@ -132,6 +132,7 @@ struct RotaryProof {
     right_min: u8,
     right_max: u8,
     reverse: bool,
+    button_ambiguous: bool,
     left_proven: bool,
     repeats: u8,
 }
@@ -224,6 +225,7 @@ const ENTRY_QUIET: Duration = Duration::from_millis(120);
 const GESTURE_SETTLE: Duration = Duration::from_millis(650);
 const ERROR_SETTLE: Duration = Duration::from_millis(650);
 const SHIFT_GESTURE_SETTLE: Duration = Duration::from_secs(2);
+const SHIFT_SYSEX_WAIT: &str = "SysEx received; waiting for rotary CC";
 
 impl LearnInput {
     fn from_message(message: &[u8]) -> Option<Self> {
@@ -417,6 +419,9 @@ impl LearnSession {
     }
 
     pub fn prompt_line(&self) -> String {
+        if self.feedback == SHIFT_SYSEX_WAIT {
+            return self.feedback.clone();
+        }
         if self.feedback_is_error() {
             if self.feedback.starts_with("POSITIONAL") {
                 return "POSITIONAL · release; retry same step".into();
@@ -762,6 +767,40 @@ impl LearnSession {
             self.change_step_with_master(direction, now);
             return LearnAction::None;
         }
+        if self.role() == LearnRole::EncoderModifier
+            && matches!(
+                self.state,
+                LearnState::Armed
+                    | LearnState::ShiftLeftSettling { modifier: None, .. }
+                    | LearnState::ShiftRightArmed { modifier: None }
+            )
+            && self.starts_unassigned_shift_rotary(message)
+            && self.rotary_proof.is_some_and(|proof| {
+                proof.button_ambiguous
+                    && (proof.channel != message[0] & 0x0f || proof.cc != message[1])
+            })
+        {
+            // Repeated 127/0 button presses resemble Relative 2 left turns.
+            // Until a non-button value resolves that ambiguity, let the real
+            // shifted rotary replace the candidate, including after settling.
+            self.rotary_proof = None;
+            self.state = LearnState::Armed;
+            self.capture_shift_rotary(None, message, now);
+            return LearnAction::None;
+        }
+        if self.role() == LearnRole::EncoderModifier
+            && matches!(
+                self.state,
+                LearnState::Armed | LearnState::ShiftRightArmed { modifier: None }
+            )
+            && self.rotary_proof.is_none_or(|proof| proof.repeats == 0)
+            && complete_sysex_message(message)
+        {
+            // Receipt alone identifies neither Shift nor a rotary movement.
+            // Show why capture is still waiting without changing its proof.
+            self.feedback = SHIFT_SYSEX_WAIT.into();
+            return LearnAction::None;
+        }
         match self.state {
             LearnState::EntryQuiet { ref mut deadline } => {
                 if message_marks_activity(message) {
@@ -791,25 +830,48 @@ impl LearnSession {
                 return LearnAction::None;
             }
             LearnState::DirectShiftCandidate {
-                channel, cc, value, ..
+                channel,
+                cc,
+                value,
+                deadline,
             } => {
                 let same_candidate = message.len() >= 3
                     && message[0] & 0xf0 == 0xb0
                     && message[0] & 0x0f == channel
                     && message[1] == cc;
                 if same_candidate && message[2] == 0 {
-                    self.rotary_proof = None;
-                    self.state = LearnState::Armed;
-                    self.feedback = "Shift press ignored · Shift + turn left".into();
+                    // This can be a button release or a Relative 2 reset.
+                    // Keep the candidate until movement proves it or its
+                    // original deadline expires; zero never counts as proof.
                     return LearnAction::None;
                 }
                 if moving_cc(message).is_some() {
-                    self.state = LearnState::Armed;
                     if same_candidate {
-                        let candidate = [0xb0 | channel, cc, value];
-                        self.capture_shift_rotary(None, &candidate, now);
+                        self.state = LearnState::Armed;
+                        if self.rotary_proof.is_none() {
+                            let candidate = [0xb0 | channel, cc, value];
+                            self.capture_shift_rotary(None, &candidate, now);
+                        }
+                        self.capture_shift_rotary(None, message, now);
+                        if matches!(self.state, LearnState::Armed)
+                            && self
+                                .rotary_proof
+                                .is_some_and(|proof| proof.button_ambiguous)
+                        {
+                            // A tentative button must remain replaceable by
+                            // the actual shifted CC until it proves a rotary.
+                            self.state = LearnState::DirectShiftCandidate {
+                                channel,
+                                cc,
+                                value,
+                                deadline,
+                            };
+                        }
+                    } else if self.starts_unassigned_shift_rotary(message) {
+                        self.rotary_proof = None;
+                        self.state = LearnState::Armed;
+                        self.capture_shift_rotary(None, message, now);
                     }
-                    self.capture_shift_rotary(None, message, now);
                 }
                 return LearnAction::None;
             }
@@ -822,6 +884,13 @@ impl LearnSession {
                     self.state = LearnState::ShiftRightArmed { modifier };
                     self.feedback = "Left verified · Shift + turn right".into();
                 } else if cc_message(message, cc) {
+                    if let Some(proof) = self.rotary_proof.as_mut() {
+                        if proof.channel == message[0] & 0x0f
+                            && matches!(message[2], 1..=3 | 125..=126)
+                        {
+                            proof.button_ambiguous = false;
+                        }
+                    }
                     self.state = LearnState::ShiftLeftSettling {
                         cc,
                         modifier,
@@ -1261,6 +1330,7 @@ impl LearnSession {
                 67
             },
             reverse: self.draft.encoder_relative_reverse,
+            button_ambiguous: false,
             left_proven: false,
             repeats: 0,
         });
@@ -1527,6 +1597,14 @@ impl LearnSession {
         }
     }
 
+    fn starts_unassigned_shift_rotary(&self, message: &[u8]) -> bool {
+        moving_cc(message).is_some_and(|(cc, value)| {
+            cc < 128
+                && matches!(value, 61..=63 | 65..=67 | 125..=127)
+                && !used_ccs(&self.draft).contains(&cc)
+        })
+    }
+
     fn capture_shift_rotary(&mut self, modifier: Option<LearnInput>, message: &[u8], now: Instant) {
         match self.learn_shift_rotary(modifier, message) {
             Ok(RotaryLearn::Pending) => {}
@@ -1604,6 +1682,7 @@ impl LearnSession {
                     right_min: 65,
                     right_max: 67,
                     reverse: false,
+                    button_ambiguous: false,
                     left_proven: false,
                     repeats: 0,
                 },
@@ -1615,6 +1694,7 @@ impl LearnSession {
                     right_min: 61,
                     right_max: 63,
                     reverse: true,
+                    button_ambiguous: false,
                     left_proven: false,
                     repeats: 0,
                 },
@@ -1626,6 +1706,7 @@ impl LearnSession {
                     right_min: 1,
                     right_max: 3,
                     reverse: true,
+                    button_ambiguous: modifier.is_none() && value == 127,
                     left_proven: false,
                     repeats: 0,
                 },
@@ -1655,6 +1736,7 @@ impl LearnSession {
         };
         self.rotary_proof = Some(RotaryProof {
             repeats,
+            button_ambiguous: signature.button_ambiguous && value == 127,
             ..signature
         });
         if repeats < 3 {
@@ -1686,6 +1768,15 @@ impl LearnSession {
         self.rotary_proof = None;
         Ok(RotaryLearn::Complete(format!("Shift rotary CC {cc}")))
     }
+}
+
+fn complete_sysex_message(message: &[u8]) -> bool {
+    message.len() >= 3
+        && message[0] == 0xf0
+        && message.last() == Some(&0xf7)
+        && message[1..message.len() - 1]
+            .iter()
+            .all(|byte| *byte < 0x80)
 }
 
 fn cc_number(message: &[u8]) -> Option<u8> {
@@ -2317,6 +2408,29 @@ mod tests {
             Self { learn, now }
         }
 
+        fn minilab_mkii_shift() -> Self {
+            let start = Instant::now();
+            let mut h = Self {
+                learn: LearnSession::new_for_profile_at(
+                    "Arturia MiniLab mkII MIDI 1",
+                    Some("arturia-minilab-mkii"),
+                    start,
+                ),
+                now: start + ENTRY_QUIET,
+            };
+            h.learn.tick(h.now);
+            h.send(&[0xb0, 112, 64]);
+            h.send(&[0xb0, 112, 63]);
+            h.settle();
+            h.send(&[0xb0, 112, 64]);
+            h.send(&[0xb0, 112, 65]);
+            h.settle();
+            h.send(&[0xb0, 113, 127]);
+            h.send(&[0xb0, 113, 0]);
+            assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+            h
+        }
+
         fn send(&mut self, message: &[u8]) -> LearnAction {
             self.now += Duration::from_millis(1);
             self.learn.receive(message, self.now)
@@ -2695,6 +2809,294 @@ mod tests {
         assert!(!h.learn.draft().encoder_modified_relative_reverse);
         h.settle();
         assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+    }
+
+    #[test]
+    fn shift_sysex_receipt_is_visible_without_learning_a_modifier_or_movement() {
+        let mut h = Harness::minilab_mkii_shift();
+        let press = [
+            0xf0, 0x00, 0x20, 0x6b, 0x7f, 0x42, 0x02, 0x00, 0x00, 0x2e, 0x7f, 0xf7,
+        ];
+        let mut release = press;
+        release[10] = 0;
+        let original = h.learn.draft().clone();
+
+        for _ in 0..10 {
+            h.send(&press);
+            h.send(&release);
+        }
+        assert_eq!(h.learn.feedback(), SHIFT_SYSEX_WAIT);
+        assert_eq!(h.learn.prompt_line(), SHIFT_SYSEX_WAIT);
+        assert!(h.learn.prompt_line().chars().count() <= 40);
+        assert_eq!(h.learn.role_label(), "SHIFT + TURN ROTARY 1 LEFT");
+        assert_eq!(h.learn.draft(), &original);
+        assert_eq!(h.learn.rotary_proof, None);
+
+        h.send(&[0xb0, 7, 63]);
+        let partial_left = h.learn.feedback().to_owned();
+        h.send(&release);
+        assert_eq!(h.learn.feedback(), partial_left);
+        for _ in 0..2 {
+            h.send(&[0xb0, 7, 63]);
+        }
+        let left_verified = h.learn.feedback().to_owned();
+        h.send(&release);
+        assert_eq!(h.learn.feedback(), left_verified);
+        h.settle();
+
+        h.send(&press);
+        assert_eq!(h.learn.prompt_line(), SHIFT_SYSEX_WAIT);
+        assert!(h.learn.role_label().contains("RIGHT"));
+        assert_eq!(h.learn.draft(), &original);
+        h.send(&[0xb0, 7, 65]);
+        let partial_right = h.learn.feedback().to_owned();
+        h.send(&release);
+        assert_eq!(h.learn.feedback(), partial_right);
+        for _ in 0..2 {
+            h.send(&[0xb0, 7, 65]);
+        }
+        let learned = h.learn.feedback().to_owned();
+        h.send(&release);
+        assert_eq!(h.learn.feedback(), learned);
+        assert_eq!(h.learn.draft().encoder_modifier, None);
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+    }
+
+    #[test]
+    fn shift_sysex_feedback_requires_a_complete_message_and_waiting_axis() {
+        let mut h = Harness::new();
+        let complete = [0xf0, 0x7d, 0x01, 0xf7];
+        let ordinary_prompt = h.learn.prompt_line();
+        h.send(&complete);
+        assert_eq!(h.learn.prompt_line(), ordinary_prompt);
+
+        let mut h = Harness::minilab_mkii_shift();
+        let waiting = h.learn.feedback().to_owned();
+        for message in [
+            &[][..],
+            &[0xf0][..],
+            &[0xf0, 0xf7][..],
+            &[0xf0, 0x7d, 0x01][..],
+            &[0x7d, 0x01, 0xf7][..],
+            &[0xf0, 0x7d, 0x90, 0xf7][..],
+        ] {
+            h.send(message);
+            assert_eq!(h.learn.feedback(), waiting);
+        }
+        h.send(&complete);
+        assert_eq!(h.learn.prompt_line(), SHIFT_SYSEX_WAIT);
+        h.send(&[0xb0, 7, 127]);
+        let candidate = h.learn.feedback().to_owned();
+        h.send(&complete);
+        assert_eq!(h.learn.feedback(), candidate);
+        assert!(matches!(
+            h.learn.state,
+            LearnState::DirectShiftCandidate { .. }
+        ));
+    }
+
+    #[test]
+    fn direct_shift_relative_two_resets_preserve_left_proof_with_relative_one_master() {
+        let mut h = Harness::minilab_mkii_shift();
+        assert!(!h.learn.draft().encoder_relative_reverse);
+
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 0]);
+            h.send(&[0xb0, 7, 127]);
+            assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+        }
+        h.send(&[0xb0, 7, 0]);
+        assert_eq!(h.learn.role_label(), "RELEASE SHIFT");
+        h.settle();
+        assert!(h.learn.role_label().contains("RIGHT"));
+        for _ in 0..2 {
+            h.send(&[0xb0, 7, 0]);
+            h.send(&[0xb0, 7, 1]);
+            assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+        }
+        h.send(&[0xb0, 7, 0]);
+        h.send(&[0xb0, 7, 1]);
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+        assert!(h.learn.draft().encoder_modified_relative_reverse);
+        assert_eq!(h.learn.draft().encoder_modifier, None);
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+    }
+
+    #[test]
+    fn direct_shift_button_release_and_repeated_presses_never_save_an_axis() {
+        for presses in 1..=2 {
+            let mut h = Harness::minilab_mkii_shift();
+            let original = h.learn.draft().clone();
+            for _ in 0..presses {
+                h.send(&[0xb0, 27, 127]);
+                h.send(&[0xb0, 27, 0]);
+            }
+            assert!(matches!(
+                h.learn.state,
+                LearnState::DirectShiftCandidate { .. }
+            ));
+            h.now += SHIFT_GESTURE_SETTLE + Duration::from_millis(1);
+            h.learn.tick(h.now);
+            assert!(matches!(h.learn.state, LearnState::Armed));
+            assert!(h.learn.feedback().starts_with("Shift press ignored"));
+            assert_eq!(h.learn.rotary_proof, None);
+            assert_eq!(h.learn.draft(), &original);
+        }
+
+        let mut h = Harness::minilab_mkii_shift();
+        let original = h.learn.draft().clone();
+        for _ in 0..12 {
+            h.send(&[0xb0, 27, 127]);
+            h.send(&[0xb0, 27, 0]);
+            h.settle();
+            assert_eq!(h.learn.draft(), &original);
+            assert_eq!(h.learn.role(), LearnRole::EncoderModifier);
+        }
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 63]);
+        }
+        h.settle();
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 65]);
+        }
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+    }
+
+    #[test]
+    fn direct_shift_rotary_replaces_button_bursts_during_settle_and_right_wait() {
+        for presses in [3, 12] {
+            for wait_for_right in [false, true] {
+                let mut h = Harness::minilab_mkii_shift();
+                for _ in 0..presses {
+                    h.send(&[0xb0, 27, 127]);
+                    h.send(&[0xb0, 27, 0]);
+                }
+                assert!(matches!(
+                    h.learn.state,
+                    LearnState::ShiftLeftSettling { .. }
+                ));
+                if wait_for_right {
+                    h.settle();
+                    assert!(matches!(h.learn.state, LearnState::ShiftRightArmed { .. }));
+                }
+                assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+
+                for _ in 0..3 {
+                    h.send(&[0xb0, 7, 64]);
+                    h.send(&[0xb0, 7, 63]);
+                }
+                assert!(matches!(
+                    h.learn.state,
+                    LearnState::ShiftLeftSettling { cc: 7, .. }
+                ));
+                assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+                h.settle();
+                for _ in 0..2 {
+                    h.send(&[0xb0, 7, 64]);
+                    h.send(&[0xb0, 7, 65]);
+                    assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+                }
+                h.send(&[0xb0, 7, 65]);
+                assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+                assert!(!h.learn.draft().encoder_modified_relative_reverse);
+                assert_eq!(h.learn.draft().encoder_modifier, None);
+            }
+        }
+    }
+
+    #[test]
+    fn ambiguous_shift_proof_preserves_master_navigation() {
+        let mut h = Harness::minilab_mkii_shift();
+        h.send(&[0xb0, 27, 127]);
+        h.send(&[0xb0, 7, 127]);
+        assert!(matches!(h.learn.state, LearnState::Armed));
+        assert!(h.learn.rotary_proof.unwrap().button_ambiguous);
+
+        h.send(&[0xb0, 112, 63]);
+        assert_eq!(h.learn.role(), LearnRole::EncoderClick);
+        assert!(!h.learn.feedback_is_error());
+        assert_eq!(h.learn.draft().encoder_relative_cc, Some(112));
+    }
+
+    #[test]
+    fn ambiguous_shift_proof_ignores_reserved_ccs_and_invalid_replacement_values() {
+        for (presses, wait_for_right) in [(1, false), (3, false), (3, true)] {
+            let mut h = Harness::minilab_mkii_shift();
+            h.learn.draft.controls.insert(74, 1);
+            for _ in 0..presses {
+                h.send(&[0xb0, 27, 127]);
+                h.send(&[0xb0, 27, 0]);
+            }
+            if wait_for_right {
+                h.settle();
+            }
+            let original = h.learn.draft().clone();
+            let proof = h.learn.rotary_proof;
+            let state = h.learn.trace_state_name();
+            let feedback = h.learn.feedback().to_owned();
+            for message in [
+                [0xb0, 113, 127],
+                [0xb0, 74, 63],
+                [0xb0, 8, 45],
+                [0xb0, 8, 1],
+            ] {
+                h.send(&message);
+                assert_eq!(h.learn.draft(), &original);
+                assert_eq!(h.learn.rotary_proof, proof);
+                assert_eq!(h.learn.trace_state_name(), state);
+                assert_eq!(h.learn.feedback(), feedback);
+            }
+        }
+    }
+
+    #[test]
+    fn direct_shift_unambiguous_left_proof_ignores_other_rotaries() {
+        for (left, right, settling_value) in [
+            ([63, 63, 63], 65, None),
+            ([127, 125, 127], 1, None),
+            ([127, 127, 127], 1, Some(126)),
+        ] {
+            let mut h = Harness::minilab_mkii_shift();
+            for value in left {
+                h.send(&[0xb0, 7, value]);
+            }
+            if let Some(value) = settling_value {
+                h.send(&[0xb0, 7, value]);
+            }
+            let proof = h.learn.rotary_proof;
+            assert!(!proof.unwrap().button_ambiguous);
+            h.send(&[0xb0, 8, 63]);
+            assert_eq!(h.learn.rotary_proof, proof);
+            h.settle();
+            h.send(&[0xb0, 8, right]);
+            assert_eq!(h.learn.rotary_proof, proof);
+            for _ in 0..3 {
+                h.send(&[0xb0, 7, right]);
+            }
+            assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+        }
+    }
+
+    #[test]
+    fn direct_shift_right_movement_resolves_button_ambiguity() {
+        let mut h = Harness::minilab_mkii_shift();
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 0]);
+            h.send(&[0xb0, 7, 127]);
+        }
+        assert!(h.learn.rotary_proof.unwrap().button_ambiguous);
+        h.settle();
+        h.send(&[0xb0, 7, 1]);
+        let proof = h.learn.rotary_proof;
+        assert!(!proof.unwrap().button_ambiguous);
+        h.send(&[0xb0, 8, 63]);
+        assert_eq!(h.learn.rotary_proof, proof);
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, None);
+        for _ in 0..2 {
+            h.send(&[0xb0, 7, 1]);
+        }
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
     }
 
     #[test]

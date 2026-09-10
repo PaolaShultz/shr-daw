@@ -21,8 +21,9 @@ uses either supported direction convention for relative navigation. Rotaries
 shows or stores an instrument parameter or screen
 action as a controller identity. An optional **ENCODER SHIFT** step learns the
 rotary's Shift-layer turn used for secondary navigation. MiniLab 3 emits a
-standalone modifier plus a shifted turn; MiniLab mkII consumes Shift internally
-and emits the alternate encoder CC documented by Arturia. Each step keeps the
+standalone modifier plus a shifted turn; MiniLab mkII selects an independent
+encoder function in hardware. Its Shift press/release can also emit SysEx,
+which is not itself a rotary turn or a learned modifier. Each step keeps the
 first qualifying gesture. The in-app learner
 visibly keeps `OK` on that role until the physical gesture is finished: a
 button advances on its matching CC-off, Note Off, or velocity-zero Note On,
@@ -39,6 +40,18 @@ learner state, and every received MIDI message as hexadecimal bytes, including
 traffic that is filtered or rejected. It remains after Save or Cancel so the
 last failed physical attempt can be inspected without repeating it first.
 
+At the Shift turn step, `SysEx received; waiting for rotary CC` means messages
+are arriving but no turn has been accepted. Inspect the saved trace before
+repeating setup. SysEx-only traffic does not prove the encoder's mode or
+direction. The MiniLab mkII Shift function has its own mode: repairing ordinary
+rotaries does not configure that function. An Absolute control at its minimum
+may send nothing when turned further left; a short passive right/left capture
+can distinguish that from relative output. Use Relative 1 for this function,
+as described in [Arturia's manual, section 4.8.4.1](https://downloads.arturia.com/products/minilab-mkII/manual/MiniLabmkII_Manual_1_0_7_EN.pdf).
+Cancel preserves the saved controller map. In-app Learn builds a replacement
+map, so do not save a partially repeated setup over existing mappings merely
+to diagnose one failed control.
+
 First turn rotary 1 left and let it settle, turn it right and let it settle,
 then click and release it. At the optional encoder Shift step, press Shift and
 turn rotary 1 left until three left packets are verified, then release Shift.
@@ -46,8 +59,8 @@ Press Shift again, turn right until three right packets are verified on the
 same CC, then release Shift again. Learn waits briefly for the shifted turn so a Shift
 button packet cannot win before the rotary packet arrives. Learn stores
 either an explicit MIDI modifier plus its relative turn CC, or the MK2-style
-alternate relative CC when Shift itself produces no MIDI event. The shifted
-axis learns its own direction encoding; it may be the reverse of the ordinary
+alternate relative CC without requiring a standalone note/CC modifier. The
+shifted axis learns its own direction encoding; it may be the reverse of the ordinary
 rotary. Skipping Shift remains valid. Learn then proceeds literally through
 rotaries 2, 3, 4, and so on to rotary 16 before the PAD positions. Rotary 9's
 click is captured immediately after its turn, just as rotary 1's special click
