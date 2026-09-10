@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -186,6 +186,12 @@ recording, listening, and Raspberry Pi callback/headroom acceptance were not
 part of those passes.
 
 ## Machine and safety state
+
+The checkout directory is now `~/p/shr-daw`. The former `~/p/shsynth` is a
+compatibility symlink for existing processes and saved absolute paths. Local
+launchers, current runtime path settings, sibling-project references, and the
+zk notebook now use the new directory. Keep the compatibility link while old
+processes, build artifacts, or private saved paths still depend on it.
 
 The development machine is a Raspberry Pi 5 Model B Rev 1.1 with 2 GB RAM,
 active cooling, and an NVMe root. The current physical controller is an
