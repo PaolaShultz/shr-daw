@@ -393,6 +393,7 @@ impl LearnSession {
                 }
             ),
             LearnRole::Pad(index) => format!("PAD {}", self.pad_for_step(index).number().unwrap()),
+            LearnRole::Confirm if !self.can_finish() => "REVIEW · SETUP INCOMPLETE".into(),
             role => role.label(),
         }
     }
@@ -472,7 +473,10 @@ impl LearnSession {
                 LearnRole::Pad(index) => {
                     format!("Press PAD {}", self.pad_for_step(index).number().unwrap())
                 }
-                LearnRole::Confirm => "Click rotary 1 to save".into(),
+                LearnRole::Confirm => self.missing_required_control().map_or_else(
+                    || "Click rotary 1 to save".into(),
+                    |control| format!("Missing {control}; turn left to learn"),
+                ),
             },
             LearnState::DirectShiftCandidate { .. } => {
                 "Turn R1 left; release Shift when done".into()
@@ -767,6 +771,19 @@ impl LearnSession {
             self.change_step_with_master(direction, now);
             return LearnAction::None;
         }
+        if self.step >= 2
+            && matches!(self.state, LearnState::Armed)
+            && message.len() >= 3
+            && self
+                .draft
+                .encoder_relative_cc
+                .is_some_and(|cc| cc_message(message, cc))
+        {
+            // The master axis owns its neutral/reset packets as well as its
+            // steps. They must never start remapping the selected role while
+            // another required control is still missing.
+            return LearnAction::None;
+        }
         if self.role() == LearnRole::EncoderModifier
             && matches!(
                 self.state,
@@ -1054,6 +1071,12 @@ impl LearnSession {
         }
 
         let role = self.role();
+        if role == LearnRole::Confirm {
+            if let Some(control) = self.missing_required_control() {
+                self.feedback = format!("Missing {control}; turn left to learn");
+                return LearnAction::None;
+            }
+        }
         if self.can_finish() {
             let action = {
                 let cc_action = self
@@ -1232,7 +1255,10 @@ impl LearnSession {
         self.step_forward();
         self.state = LearnState::Armed;
         self.feedback = if self.role() == LearnRole::Confirm {
-            "Learning complete · click rotary 1 to save".into()
+            self.missing_required_control().map_or_else(
+                || "Learning complete · click rotary 1 to save".into(),
+                |control| format!("Missing {control}; turn left to learn"),
+            )
         } else {
             format!("Ready · {}", self.role_label())
         };
@@ -1494,10 +1520,21 @@ impl LearnSession {
     }
 
     pub fn can_finish(&self) -> bool {
-        self.draft.encoder_relative_cc.is_some()
-            && (self.draft.encoder_press_cc.is_some() || self.draft.encoder_press_note.is_some())
-            && (self.draft.secondary_encoder_press_cc.is_some()
-                || self.draft.secondary_encoder_press_note.is_some())
+        self.missing_required_control().is_none()
+    }
+
+    fn missing_required_control(&self) -> Option<&'static str> {
+        if self.draft.encoder_relative_cc.is_none() {
+            Some("R1 turn")
+        } else if self.draft.encoder_press_cc.is_none() && self.draft.encoder_press_note.is_none() {
+            Some("R1 click")
+        } else if self.draft.secondary_encoder_press_cc.is_none()
+            && self.draft.secondary_encoder_press_note.is_none()
+        {
+            Some("R9 click")
+        } else {
+            None
+        }
     }
 
     pub fn ready_to_save(&self) -> bool {
@@ -3547,6 +3584,95 @@ mod tests {
         h.learn.mark_save_result(true);
         assert_eq!(h.send(&[0xb0, 118, 0]), LearnAction::FinishSaved);
         assert_eq!(h.send(&[0xb0, 118, 0]), LearnAction::None);
+    }
+
+    #[test]
+    fn master_neutral_packets_preserve_learned_roles_before_setup_can_finish() {
+        let mut h = Harness::minilab_mkii_shift();
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 63]);
+        }
+        h.settle();
+        for _ in 0..3 {
+            h.send(&[0xb0, 7, 65]);
+        }
+        h.settle();
+        h.learn_rotary(74);
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+        assert!(!h.learn.can_finish());
+        let captured = h.learn.draft().clone();
+
+        // Each physical master turn first emits its neutral 64. Browsing
+        // across the learned rotary, Shift, and click must preserve them.
+        for direction in [63, 65] {
+            for _ in 0..3 {
+                h.send(&[0xb0, 112, 64]);
+                assert_eq!(h.learn.draft(), &captured);
+                assert!(!h.learn.feedback_is_error());
+                h.send(&[0xb0, 112, direction]);
+                h.settle();
+                assert_eq!(h.learn.draft(), &captured);
+            }
+        }
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+        h.skip_to_confirm();
+        assert!(h.learn.ready_to_save());
+        assert_eq!(h.learn.draft().encoder_press_cc, Some(113));
+        assert_eq!(h.learn.draft().encoder_modified_relative_cc, Some(7));
+        assert_eq!(h.learn.draft().controls.get(&74), Some(&1));
+        assert_eq!(h.send(&[0xb0, 113, 127]), LearnAction::Save);
+        h.learn.mark_save_result(true);
+        assert_eq!(h.send(&[0xb0, 113, 0]), LearnAction::FinishSaved);
+    }
+
+    #[test]
+    fn master_zero_resets_preserve_revisited_relative_two_mapping() {
+        let mut h = Harness::new();
+        h.learn_master(114, 115, true);
+        h.learn_rotary(10);
+        assert!(!h.learn.can_finish());
+        let captured = h.learn.draft().clone();
+        h.send(&[0xb0, 114, 0]);
+        h.send(&[0xb0, 114, 127]);
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(0));
+        h.send(&[0xb0, 114, 0]);
+        assert_eq!(h.learn.draft(), &captured);
+        h.send(&[0xb0, 114, 1]);
+        h.settle();
+        assert_eq!(h.learn.role(), LearnRole::RotaryTurn(1));
+        assert_eq!(h.learn.draft(), &captured);
+    }
+
+    #[test]
+    fn incomplete_review_names_missing_required_control_without_saving() {
+        for (missing_role, name) in [
+            (LearnRole::EncoderCounterClockwise, "R1 turn"),
+            (LearnRole::EncoderClick, "R1 click"),
+            (LearnRole::SecondaryEncoderClick, "R9 click"),
+        ] {
+            let mut h = Harness::new();
+            h.learn_master(28, 118, false);
+            h.skip_to_confirm();
+            h.learn.step = match missing_role {
+                LearnRole::EncoderCounterClockwise => 0,
+                LearnRole::EncoderClick => 2,
+                LearnRole::SecondaryEncoderClick => SECONDARY_CLICK_STEP,
+                _ => unreachable!(),
+            };
+            h.learn.clear_current_mapping();
+            h.learn.step = CONFIRM_STEP;
+            let captured = h.learn.draft().clone();
+            let expected = format!("Missing {name}; turn left to learn");
+            assert_eq!(h.learn.role_label(), "REVIEW · SETUP INCOMPLETE");
+            assert_eq!(h.learn.prompt_line(), expected);
+            assert!(h.learn.prompt_line().chars().count() <= 40);
+            assert!(!h.learn.ready_to_save());
+            assert_eq!(h.send(&[0xb0, 118, 127]), LearnAction::None);
+            assert_eq!(h.send(&[0xb0, 118, 0]), LearnAction::None);
+            assert_eq!(h.learn.feedback(), expected);
+            assert_eq!(h.learn.draft(), &captured);
+        }
     }
 
     #[test]

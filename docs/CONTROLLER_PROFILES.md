@@ -68,8 +68,10 @@ and Shift actions stay with rotary 1.
 As soon as rotary 1's
 left/right axis is learned, turn it left or right to move one Learn step back
 or forward; no click is required. The selected step re-enters the short input
-quarantine, so trailing packets from that turn cannot move twice. For each
-performance rotary, turn left slowly until Learn verifies three left-direction
+quarantine, so trailing packets from that turn cannot move twice. The master's
+neutral/reset packets are consumed as navigation traffic and preserve
+previously learned assignments while browsing. For each performance rotary,
+turn left slowly until Learn verifies three left-direction
 packets, let the gesture settle, then turn the same rotary right until three
 right-direction packets are verified. The MIDI channel and CC must match in
 both directions. Once a candidate rotary has started its proof, traffic from a
@@ -87,6 +89,8 @@ learned PAD advances after release. The
 learner ends at one explicit Review step; only there does a rotary-1 click save
 the mappings under the reviewed controller model, make a backup, activate that
 model, and exit after release. Earlier clicks cannot save or end the session.
+If a required rotary turn or click is missing, Review names that control and
+directs the musician back to learn it; the existing draft is retained.
 The controller workflow requires no computer keyboard. The in-app Learn screen
 shows exactly two rows total and no status footer. The first row starts with
 the complete required action; the second contains only its immediate
