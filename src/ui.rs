@@ -24530,6 +24530,13 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         }
     }
 }
+fn preset_is_monophonic(preset: &Preset) -> bool {
+    matches!(
+        preset.moj_model(),
+        Some(preset::MojModel::PressureChain | preset::MojModel::Open303)
+    )
+}
+
 fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let head = rect(z.x, z.y, z.width, 2);
@@ -24584,17 +24591,25 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
             } else {
                 format!("{:02} {}", i + 1, a.presets[i].display_name())
             };
-            Spans::from(Span::styled(
-                crate::ui_text::fit_line(&format!("{mark} {name}"), usize::from(inner.width)),
-                if i == a.selected {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::Green)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                },
-            ))
+            let style = if i == a.selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Green)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let mono = preset_is_monophonic(&a.presets[i]);
+            let name_width = usize::from(inner.width).saturating_sub(if mono { 2 } else { 0 });
+            let mut spans = vec![Span::styled(
+                crate::ui_text::fit_line(&format!("{mark} {name}"), name_width),
+                style,
+            )];
+            if mono {
+                spans.push(Span::styled(" ", style));
+                spans.push(Span::styled("M", style.add_modifier(Modifier::REVERSED)));
+            }
+            Spans::from(spans)
         })
         .collect::<Vec<_>>();
     f.render_widget(
@@ -24741,10 +24756,7 @@ fn draw_synth_parameters<B: Backend>(
         sound_name
     };
     let title_width = usize::from(header.width.saturating_sub(8));
-    let title = if matches!(
-        a.playing.as_ref().and_then(Preset::moj_model),
-        Some(preset::MojModel::PressureChain | preset::MojModel::Open303)
-    ) {
+    let title = if a.playing.as_ref().is_some_and(preset_is_monophonic) {
         Spans::from(vec![
             Span::raw(truncate(&name, title_width.saturating_sub(2))),
             Span::raw(" "),
@@ -31094,6 +31106,68 @@ release = 0.4
         assert!(!text.contains("08 Six-Op"), "{text}");
         assert!(app.jump_to_letter('P'));
         assert_eq!(app.selected, 2);
+    }
+
+    #[test]
+    fn preset_list_marks_monophonic_models_without_clipping_selection_or_border() {
+        let moj_presets = vec![
+            moj_preset(preset::MojModel::ModelD, "Open303 Is Only This Sound Name"),
+            moj_preset(
+                preset::MojModel::PressureChain,
+                "Pressure Chain A Very Long Sound Name That Exceeds The List Width",
+            ),
+            moj_preset(
+                preset::MojModel::Open303,
+                "Open303 Another Very Long Sound Name That Exceeds The List Width",
+            ),
+            moj_preset(preset::MojModel::SixOpPm, "Bell Metal"),
+        ];
+        let mut app = app(&presets());
+        app.catalogs = vec![Catalog {
+            backend: BackendKind::MojSint,
+            presets: moj_presets.clone(),
+            unavailable: None,
+        }];
+        app.backend_index = 0;
+        app.presets = moj_presets;
+        app.screen = Screen::Presets;
+
+        for selected in 0..app.presets.len() {
+            app.selected = selected;
+            let frame = render_app(&mut app, 40, 13);
+            assert_eq!(app.hits.list, rect(1, 3, 38, 6));
+            for index in 0..app.presets.len() {
+                let row = index as u16 + 3;
+                let marked = (1..39)
+                    .filter(|column| {
+                        buffer_cell(&frame, *column, row)
+                            .modifier
+                            .contains(Modifier::REVERSED)
+                    })
+                    .collect::<Vec<_>>();
+                if matches!(index, 1 | 2) {
+                    assert_eq!(marked, vec![38]);
+                    assert_eq!(buffer_cell(&frame, 38, row).symbol, "M");
+                    assert_eq!(buffer_cell(&frame, 36, row).symbol, "…");
+                } else {
+                    assert!(marked.is_empty());
+                }
+                assert_eq!(buffer_cell(&frame, 39, row).symbol, "│");
+                assert_eq!(
+                    buffer_cell(&frame, 1, row).symbol,
+                    if index == selected { "▶" } else { " " }
+                );
+                if index == selected {
+                    assert_eq!(buffer_cell(&frame, 1, row).fg, Color::Black);
+                    assert_eq!(buffer_cell(&frame, 1, row).bg, Color::Green);
+                    if matches!(index, 1 | 2) {
+                        assert_eq!(buffer_cell(&frame, 38, row).fg, Color::Black);
+                        assert_eq!(buffer_cell(&frame, 38, row).bg, Color::Green);
+                    }
+                }
+            }
+            assert!(row_text(&frame, 12).starts_with('‖'));
+        }
     }
 
     #[test]

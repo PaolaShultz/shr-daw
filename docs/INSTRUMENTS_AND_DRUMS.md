@@ -97,8 +97,9 @@ hierarchy. Changing the model selects that model's first available patch, and
 patch browsing never crosses the selected model boundary. Apply keeps the
 complete live-auditioned route; Cancel restores its opening snapshot.
 
-Playback and FT2 **PARAM** show one inverted `M` cell beside the sound title
-for monophonic Pressure Chain. The other Moj models have no voice marker.
+The Presets list, Playback, and FT2 **PARAM** show one inverted `M` cell beside
+Pressure Chain and Open303 sounds: these models play one note at a time.
+Long names leave room for the marker. The other Moj models have no voice marker.
 
 Playback and FT2 **PARAM** use the same 3×5 control surface. The first five models use the first 12 positions for synthesis and the
 last three for Project aux sends. Their synthesis labels are:
