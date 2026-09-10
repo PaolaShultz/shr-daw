@@ -135,6 +135,13 @@ and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
 
+The September 10 synth follow-up adds the monophonic `M` to Presets, identifies
+changed Project areas in the exit dialog, and protects Home mouse exit. The
+pinned Moj source retriggers live mono envelopes on each press while retaining
+pitch glide and non-retriggering held-note fallback. Source review, formatting,
+and reference checks pass; these follow-up changes and their regressions have
+not yet been compiled or run and are not in the existing DEV/REL binaries.
+
 The September 10 controller Learn pass used exact Rust 1.97.1 on AArch64.
 The locked check, all 57 controller regressions, and the complete normal Rust
 suite passed: 1,153 tests, with 14 historical/rendering/benchmark tests ignored.
