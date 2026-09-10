@@ -138,9 +138,14 @@ and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 The September 10 synth follow-up adds the monophonic `M` to Presets, identifies
 changed Project areas in the exit dialog, and protects Home mouse exit. The
 pinned Moj source retriggers live mono envelopes on each press while retaining
-pitch glide and non-retriggering held-note fallback. Source review, formatting,
-and reference checks pass; these follow-up changes and their regressions have
-not yet been compiled or run and are not in the existing DEV/REL binaries.
+pitch glide and non-retriggering held-note fallback. The combined pass used
+exact Rust 1.97.1 on AArch64: locked checks, 40 focused Project tests, both
+preset-list tests, and the full normal SHR suite pass (1,157 passed, 14 ignored).
+Moj passes 362 normal tests (36 ignored), its focused retrigger/native contracts,
+and warning-denied Clippy. Helpers pass 20 Python tests and 31 audio-policy
+cases. Fresh DEV/REL binaries for both applications build and pass non-audible
+executable checks. Existing SHR compiler warnings remain; no app, host, MIDI,
+or audio was started for acceptance.
 
 The September 10 controller Learn pass used exact Rust 1.97.1 on AArch64.
 The locked check, all 57 controller regressions, and the complete normal Rust
