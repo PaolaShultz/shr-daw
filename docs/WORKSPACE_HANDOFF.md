@@ -135,6 +135,16 @@ and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
 
+The September 10 controller Learn pass used exact Rust 1.97.1 on AArch64.
+The locked check, all 57 controller regressions, and the complete normal Rust
+suite passed: 1,153 tests, with 14 historical/rendering/benchmark tests ignored.
+The helper suites passed 20 Python tests and 31 isolated audio-policy cases.
+DEV and REL application binaries both build with the Shift and navigation/save
+fixes; existing compiler warnings remain. The fresh REL binary successfully
+reads the complete recovered private controller mapping. The running application
+was closed cleanly at the owner's request; JACK was preserved and no synth or
+playback was started.
+
 The September 8 title change marks Moj Sint Pressure Chain with one inverted
 `M` cell in Playback and FT2 PARAM. Other model titles have no voice marker.
 Long names reserve room for the marker inside the existing title area.
