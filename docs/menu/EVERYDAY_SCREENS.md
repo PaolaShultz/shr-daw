@@ -100,9 +100,10 @@ computer-keyboard-only from Home.
 
 Playback appears after a sound is loaded. At native 40×13 the body shows the
 held chord and notes, each note's decimal MIDI strike velocity directly beneath
-it, and the selected backend's 3×5 controls. Synthv1 and the five older Moj
-models use 12 synthesis controls plus three aux sends; Dual Filter uses all 15
-for synthesis. Taller terminals use spare space for a
+it, and the selected backend's 3×5 controls. Every managed backend keeps AUX
+1/2/3 at positions 13–15 (physical rotaries 14–16). The first twelve synthesis
+positions keep their meanings; Dual Filter adds an AMP view for its remaining
+amp-envelope controls. Taller terminals use spare space for a
 continuous two-row keyboard state. The
 aligned velocity row helps with gentle/strong control, consistent chord
 attacks, and bass-plus-chord balance. It is MIDI input data, not an audio
@@ -111,11 +112,11 @@ result.
 On the keyboard, red white-key areas are held natural notes and red upper `└`
 marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
-Moj Sint uses seven model-specific timbre controls plus Volume in the first two
-rows and ADSR in the third; synthv1 retains its own names and indices. Read-only
-managed instruments show Volume at the same physical position. The main encoder
-press resets only these mapped controls; it does
-not restart the synth.
+first five Moj models use seven model-specific timbre controls plus Volume and
+ADSR; synthv1 retains its own names and indices. Yoshimi, FluidSynth, and SHR
+Sampler show Volume at position 5 (physical rotary 6) and the same three AUX
+sends. The main encoder press resets the synthesis controls, including Dual
+Filter parameters outside the current view, without restarting the synth.
 
 ### PLAY — capture a MIDI take
 
@@ -147,10 +148,20 @@ the overlay open for retry. Other backends show SAVE UNAVAILABLE. `N00B`
 toggles the optional scale filter without leaving Playback or hiding any normal
 content.
 `SOUNDS` returns directly to Presets, where `LOAD` starts the highlighted
-sound. While N00B is on, a single compact `SCALE` rotary appears below the 12
+sound. While N00B is on, a single compact `SCALE` rotary appears below the
 controls; turning the master encoder cycles every chromatic root in major and
 natural minor. Pressing N00B again removes only that control and restores
 chromatic play.
+
+### PARAM — Dual Filter amp envelope
+
+For Dual Filter, `AMP` shows amp Attack, Decay, Sustain, and Release at the
+first four parameter positions. The action then reads `FILTER` to return to
+the main twelve controls. AUX 1/2/3 stay on the final three rotaries in either
+view. Switching views changes no sound value and re-arms absolute pickup;
+relative turns continue from each parameter's current value. RESET, SAVE, and
+automation retain all fifteen synthesis parameters. Other models leave this
+page empty.
 
 ### SYS — safety, effects, help, and return
 
@@ -166,7 +177,7 @@ boundaries.
 
 ### N00B-on Playback pages
 
-N00B changes only the scale filter and its compact rotary; the three Playback
+N00B changes only the scale filter and its compact rotary; the Playback
 controller pages keep the same actions and ordering.
 
 ![Playback PLAY page with N00B enabled](../images/menu/playback-noob-play.png)

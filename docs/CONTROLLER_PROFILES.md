@@ -101,12 +101,14 @@ accepted `OK` message with errors from trailing traffic. Relative encoders
 using either the center-64 convention (61–63 left and 65–67 right) or high/low
 values (125–127 left and 1–3 right, with neutral 0) are supported.
 
-The first twelve learned turns, physical rotaries 2–13, control the existing
-twelve-parameter instruments and mixer positions. They add or subtract from
-SHR's value immediately and have no physical position to catch. Dual Filter uses rotaries 2–16 for its
-fifteen parameters and rotary 9's click for its core toggle. On other current
-instruments, turns 14–16 and the second click remain safely consumed without
-leaking their messages to the synth.
+The first twelve learned turns, physical rotaries 2–13, supply synthesis
+controls or mixer positions. They add or subtract from SHR's value immediately
+and have no physical position to catch. On Player and FT2 PARAM, physical
+rotaries 14–16 always control Project AUX 1–3 for every managed backend.
+Dual Filter exposes its remaining amp-envelope controls through AMP/FILTER and
+retains rotary 9's click for its core toggle. On other models that click stays
+consumed. These surface meanings use the existing learned mappings; changing
+models or opening AMP does not require relearning or a controller-memory change.
 
 SHR does not guess how many pads the controller has. The in-app path determines
 an eight-pad layout when any of the first four page-row positions is captured,

@@ -1,6 +1,6 @@
 //! Backend-specific mapped control profiles. Existing Moj Sint models share
-//! the first twelve physical parameter positions, but never synthv1 parameter
-//! indices or XML semantics; model-specific tables may use all fifteen.
+//! twelve physical parameter positions, but never synthv1 parameter indices
+//! or XML semantics. Full model tables also retain controls on other pages.
 
 use std::collections::HashMap;
 
@@ -594,8 +594,8 @@ pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
 
 // The first five Moj Sint models share twelve physical positions. Position
 // five is their universal instrument-volume CC 7. Dual Filter supplies its own
-// 15-position table; meanings always come from the selected synthesis model,
-// not controller.conf.
+// 15-control state table; its MAIN/AMP pages share twelve physical positions.
+// Meanings come from the selected synthesis model, not controller.conf.
 pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
 
 pub const MOJ_OPEN303_CONTROLS: [MojControl; 12] = [
@@ -674,6 +674,20 @@ pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojContro
     }
 }
 
+/// Physical synth controls leave the final three rotaries for Project AUX.
+/// The complete model table remains authoritative for save, reset and automation.
+pub fn moj_surface_controls(
+    model: crate::preset::MojModel,
+    amp_page: bool,
+) -> &'static [MojControl] {
+    let controls = moj_controls(model);
+    if model == crate::preset::MojModel::DualFilter && amp_page {
+        &controls[11..15]
+    } else {
+        &controls[..controls.len().min(LEGACY_SYNTH_CONTROL_COUNT)]
+    }
+}
+
 pub fn moj_by_cc(cc: u8) -> Option<MojControl> {
     MOJ_DUAL_FILTER_CONTROLS
         .iter()
@@ -724,6 +738,40 @@ mod tests {
         assert_eq!(value_to_cc(c, -1.0), 0);
         assert_eq!(value_to_cc(c, 0.0), 64);
         assert_eq!(value_to_cc(c, 1.0), 127);
+    }
+
+    #[test]
+    fn moj_surface_pages_reserve_aux_without_truncating_model_state() {
+        for model in crate::preset::MojModel::ALL {
+            let full = moj_controls(model);
+            for amp_page in [false, true] {
+                let surface = moj_surface_controls(model, amp_page);
+                let expected = if model == crate::preset::MojModel::DualFilter && amp_page {
+                    &full[11..15]
+                } else {
+                    &full[..12]
+                };
+                assert_eq!(surface.as_ptr(), expected.as_ptr());
+                assert_eq!(surface.len(), expected.len());
+            }
+        }
+        let model = crate::preset::MojModel::DualFilter;
+        assert_eq!(
+            moj_surface_controls(model, false)
+                .iter()
+                .map(|c| c.cc)
+                .collect::<Vec<_>>(),
+            (20..=31).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            moj_surface_controls(model, true)
+                .iter()
+                .map(|c| c.cc)
+                .collect::<Vec<_>>(),
+            [31, 32, 33, 34]
+        );
+        assert_eq!(moj_controls(model).len(), 15);
+        assert_eq!(moj_controls(model)[14].macro_id, "amp_release");
     }
 
     #[test]

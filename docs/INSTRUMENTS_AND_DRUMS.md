@@ -16,10 +16,10 @@ audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 | Instrument family | Sounds inside SHR-DAW | Musical role | Editing and saving |
 | --- | --- | --- | --- |
 | synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
-| Yoshimi | `.xiz` sounds and banks | Melodic synth | Read-only catalog and playback |
-| FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, and Pressure Chain sounds | Melodic synth | Model-specific controls; Dual Filter uses 15 controls plus a reversible core click; private Overwrite or Save New |
-| SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments; read-only in SHR |
+| Yoshimi | `.xiz` sounds and banks | Melodic synth | Volume and Project AUX sends; preset files remain read-only |
+| FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection, Volume, and shared stereo AUX sends; SoundFonts remain read-only |
+| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, and Pressure Chain sounds | Melodic synth | Model-specific controls and Project AUX sends; Dual Filter adds an AMP view and reversible core click; private Overwrite or Save New |
+| SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments, Volume, and Project AUX sends; packages remain read-only |
 | SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
 All six families participate in the same Project, routes, effects, transport,
@@ -101,8 +101,11 @@ The Presets list, Playback, and FT2 **PARAM** show one inverted `M` cell beside
 Pressure Chain and Open303 sounds: these models play one note at a time.
 Long names leave room for the marker. The other Moj models have no voice marker.
 
-Playback and FT2 **PARAM** use the same 3×5 control surface. The first five models use the first 12 positions for synthesis and the
-last three for Project aux sends. Their synthesis labels are:
+Playback and FT2 **PARAM** use the same 3×5 control surface. Every managed
+backend, including all eight Moj models, keeps Project AUX 1, AUX 2, and AUX 3
+at positions 13–15: physical rotaries 14–16 after the main rotary. The first
+twelve synthesis positions keep their established meanings. The first five
+models have these synthesis labels:
 
 | Positions | Model D | Six-Op PM | Strange Oscillator | Swarm Machine | Bass Matrix |
 | --- | --- | --- | --- | --- | --- |
@@ -111,13 +114,24 @@ last three for Project aux sends. Their synthesis labels are:
 | 6–8 | Motion, Depth, Space | Key Scale, Velocity, Motion | Chaos, Color, Space | Motion, Color, Space | Drive, Filter, Unstable |
 | 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
 
-Dual Filter uses all 15 positions for synthesis, so it has no aux controls
-on this surface. Pressure Chain uses Source, Shape, Cutoff, Resonance, Sweep,
-F Decay, Pressure, Bite, then amp Attack, Decay, Sustain, Release. Positions
-13–15 remain AUX sends. Its fifth rotary is Sweep; no timbre control is hidden.
+Dual Filter's main view keeps its first twelve synthesis controls. On Player,
+select **PARAM → AMP**; in FT2 **PARAM**, select **SOUND → AMP**. The first four
+positions then control amp Attack, Decay, Sustain, and Release. **FILTER**
+returns to the main view; the final three positions stay AUX in either view.
+Changing views leaves the sound and preset untouched and re-arms absolute
+pickup. Reset, Save, and automation still cover all fifteen native parameters.
+Pressure Chain uses Source, Shape, Cutoff, Resonance, Sweep, F Decay, Pressure,
+Bite, then amp Attack, Decay, Sustain, Release. Its fifth position is Sweep;
+no timbre control is hidden.
+
+Yoshimi, FluidSynth, and SHR Sampler expose Volume at position 5 (physical
+rotary 6) and the same three AUX sends. FluidSynth's sends process its whole
+shared stereo mix. An external MIDI instrument needs a configured audio return
+for SHR effects; MIDI alone does not enter these managed-source sends. The
+surface uses the existing learned controller mapping without another Learn pass.
 
 Moj timbre and ADSR retain their established CCs. For the first five models,
-physical position 5 uses
+parameter position 5 uses
 MIDI CC7 as the shared instrument-volume contract. Position 5 is a mapped
 direction-only rotary. Its smoothed gain runs from
 silence to the preset's normal maximum and does not enter timbre DSP. synthv1

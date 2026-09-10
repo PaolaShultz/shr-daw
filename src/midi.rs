@@ -1,5 +1,5 @@
 use crate::control::{
-    by_cc, moj_controls, normalize, value_from_cc, AUX_SEND_CONTROL_COUNT, CONTROLS,
+    by_cc, moj_surface_controls, normalize, value_from_cc, AUX_SEND_CONTROL_COUNT, CONTROLS,
     INSTRUMENT_VOLUME_CC, LEGACY_SYNTH_CONTROL_COUNT, MOJ_CORE_TOGGLE_CC,
 };
 use crate::pads::{EncoderAction, PadAction, PadConfig};
@@ -115,6 +115,7 @@ pub fn route_with_pad_lock_and_modifier<'a>(
     )
 }
 
+#[cfg(test)]
 pub fn route_with_pad_lock_modifier_and_state<'a>(
     pads: &PadConfig,
     backend: BackendKind,
@@ -122,6 +123,26 @@ pub fn route_with_pad_lock_modifier_and_state<'a>(
     message: &'a [u8],
     pad_locked: bool,
     encoder_modifier_down: bool,
+) -> Routed<'a> {
+    route_with_synth_amp_page(
+        pads,
+        backend,
+        moj_model,
+        message,
+        pad_locked,
+        encoder_modifier_down,
+        false,
+    )
+}
+
+pub fn route_with_synth_amp_page<'a>(
+    pads: &PadConfig,
+    backend: BackendKind,
+    moj_model: Option<MojModel>,
+    message: &'a [u8],
+    pad_locked: bool,
+    encoder_modifier_down: bool,
+    amp_page: bool,
 ) -> Routed<'a> {
     let synth_action = pads.synth_press_action(message);
     let (lock_consumed, _) = pads.lock_action(message);
@@ -153,19 +174,13 @@ pub fn route_with_pad_lock_modifier_and_state<'a>(
     let mapped_position = (!command_consumed && message.len() >= 3 && message[0] & 0xf0 == 0xb0)
         .then(|| pads.rotary_position(message[1]))
         .flatten();
+    let moj_controls = moj_surface_controls(moj_model.unwrap_or(MojModel::ModelD), amp_page);
     let mapped_control_count = if backend == BackendKind::MojSint {
-        moj_controls(moj_model.unwrap_or(MojModel::ModelD)).len()
+        moj_controls.len()
     } else {
         CONTROLS.len()
     };
-    let legacy_aux_surface = match backend {
-        BackendKind::Synthv1 => true,
-        BackendKind::MojSint => moj_model.unwrap_or(MojModel::ModelD) != MojModel::DualFilter,
-        BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => false,
-    };
-    let surface = legacy_aux_surface
-        .then_some(mapped_position)
-        .flatten()
+    let surface = mapped_position
         .filter(|index| {
             (LEGACY_SYNTH_CONTROL_COUNT..LEGACY_SYNTH_CONTROL_COUNT + AUX_SEND_CONTROL_COUNT)
                 .contains(index)
@@ -178,18 +193,15 @@ pub fn route_with_pad_lock_modifier_and_state<'a>(
         .iter()
         .position(|control| control.cc == crate::control::VOLUME_CC);
     let mapped_standard_volume = mapped_position == volume_position;
-    let value = if backend == BackendKind::Synthv1
-        && !command_consumed
-        && message.len() >= 3
-        && message[0] & 0xf0 == 0xb0
-    {
-        pads.rotary_position(message[1])
+    let value = if consumed {
+        None
+    } else if backend == BackendKind::Synthv1 {
+        mapped_position
             .and_then(|position| CONTROLS.get(position).copied())
             .map(|c| (c.cc, value_from_cc(c, message[2])))
     } else if backend == BackendKind::MojSint {
-        let controls = moj_controls(moj_model.unwrap_or(MojModel::ModelD));
         mapped_position
-            .and_then(|index| controls.get(index))
+            .and_then(|index| moj_controls.get(index))
             .map(|control| (control.cc, f32::from(message[2].min(127)) / 127.0))
     } else {
         mapped_standard_volume
@@ -198,10 +210,11 @@ pub fn route_with_pad_lock_modifier_and_state<'a>(
     let translated = if backend == BackendKind::MojSint {
         if synth_action == Some(true) {
             Some([0xb0 | (message[0] & 0x0f), MOJ_CORE_TOGGLE_CC, 127])
+        } else if consumed {
+            None
         } else {
-            let controls = moj_controls(moj_model.unwrap_or(MojModel::ModelD));
             mapped_position.and_then(|index| {
-                controls
+                moj_controls
                     .get(index)
                     .map(|control| [message[0], control.cc, message[2].min(127)])
             })
@@ -536,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn dual_filter_routes_all_fifteen_positions_and_a_press_only_core_click() {
+    fn dual_filter_reserves_aux_and_keeps_a_press_only_core_click() {
         let pads = PadConfig {
             controls: HashMap::from([(99, 15)]),
             secondary_encoder_press_cc: Some(100),
@@ -551,30 +564,128 @@ mod tests {
             false,
             false,
         );
-        assert_eq!(control.value, Some((34, 64.0 / 127.0)));
-        assert_eq!(control.surface, None);
-        assert_eq!(control.translated, Some([0xb0, 34, 64]));
+        assert_eq!(control.value, None);
+        assert_eq!(control.surface, Some((14, 64.0 / 127.0)));
+        assert_eq!(control.translated, None);
+        assert!(control.consumed && control.forward.is_none());
 
-        let press = route_with_pad_lock_and_modifier(
-            &pads,
-            BackendKind::MojSint,
-            Some(MojModel::DualFilter),
-            &[0xb0, 100, 127],
-            false,
-            false,
-        );
-        assert_eq!(press.synth_action, Some(true));
-        assert_eq!(press.translated, Some([0xb0, MOJ_CORE_TOGGLE_CC, 127]));
-        let release = route_with_pad_lock_and_modifier(
-            &pads,
-            BackendKind::MojSint,
-            Some(MojModel::DualFilter),
-            &[0xb0, 100, 0],
-            false,
-            false,
-        );
-        assert_eq!(release.synth_action, Some(false));
-        assert_eq!(release.translated, None);
-        assert!(release.forward.is_none());
+        for amp_page in [false, true] {
+            let press = route_with_synth_amp_page(
+                &pads,
+                BackendKind::MojSint,
+                Some(MojModel::DualFilter),
+                &[0xb0, 100, 127],
+                false,
+                false,
+                amp_page,
+            );
+            assert_eq!(press.synth_action, Some(true));
+            assert_eq!(press.translated, Some([0xb0, MOJ_CORE_TOGGLE_CC, 127]));
+            assert_eq!(press.value, None);
+            assert_eq!(press.surface, None);
+            let release = route_with_synth_amp_page(
+                &pads,
+                BackendKind::MojSint,
+                Some(MojModel::DualFilter),
+                &[0xb0, 100, 0],
+                false,
+                false,
+                amp_page,
+            );
+            assert_eq!(release.synth_action, Some(false));
+            assert_eq!(release.translated, None);
+            assert!(release.forward.is_none());
+        }
+    }
+
+    #[test]
+    fn every_managed_backend_keeps_all_three_aux_positions_out_of_synth_midi() {
+        let pads = PadConfig {
+            controls: HashMap::from([(86, 13), (87, 14), (88, 15)]),
+            ..PadConfig::default()
+        };
+        for backend in BackendKind::ALL {
+            for model in MojModel::ALL {
+                for amp_page in [false, true] {
+                    for (cc, position) in [(86, 12), (87, 13), (88, 14)] {
+                        for value in [0, 1, 64, 127] {
+                            let message = [0xb2, cc, value];
+                            let routed = route_with_synth_amp_page(
+                                &pads,
+                                backend,
+                                Some(model),
+                                &message,
+                                false,
+                                false,
+                                amp_page,
+                            );
+                            assert!(routed.consumed);
+                            assert_eq!(routed.surface, Some((position, f32::from(value) / 127.0)));
+                            assert_eq!(routed.value, None);
+                            assert_eq!(routed.translated, None);
+                            assert_eq!(routed.forward, None);
+                            assert_eq!(routed.synth_action, None);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dual_filter_amp_page_routes_adsr_and_consumes_unused_positions() {
+        let pads = PadConfig {
+            controls: (0..15).map(|index| (40 + index, index + 1)).collect(),
+            ..PadConfig::default()
+        };
+        for amp_page in [false, true] {
+            for position in 0..12 {
+                let message = [0xb2, 40 + position, 81];
+                let routed = route_with_synth_amp_page(
+                    &pads,
+                    BackendKind::MojSint,
+                    Some(MojModel::DualFilter),
+                    &message,
+                    false,
+                    false,
+                    amp_page,
+                );
+                if amp_page && position >= 4 {
+                    assert!(routed.consumed);
+                    assert_eq!(routed.value, None);
+                    assert_eq!(routed.translated, None);
+                } else {
+                    let cc = if amp_page {
+                        31 + position
+                    } else {
+                        20 + position
+                    };
+                    assert_eq!(routed.value, Some((cc, 81.0 / 127.0)));
+                    assert_eq!(routed.translated, Some([0xb2, cc, 81]));
+                }
+                assert_eq!(routed.surface, None);
+                assert_eq!(routed.forward, None);
+            }
+            for message in [
+                [0x92, 60, 96],
+                [0x82, 60, 0],
+                [0xe2, 0, 80],
+                [0xb2, 64, 127],
+            ] {
+                let routed = route_with_synth_amp_page(
+                    &pads,
+                    BackendKind::MojSint,
+                    Some(MojModel::DualFilter),
+                    &message,
+                    false,
+                    false,
+                    amp_page,
+                );
+                assert!(!routed.consumed);
+                assert_eq!(routed.forward, Some(&message[..]));
+                assert_eq!(routed.value, None);
+                assert_eq!(routed.translated, None);
+            }
+        }
     }
 }

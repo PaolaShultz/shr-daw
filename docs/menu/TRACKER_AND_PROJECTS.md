@@ -76,15 +76,19 @@ page. Instrument selection remains in `ROUTE`.
 
 The child reuses Playback's current 3×5 view, including the active synthv1 or
 Moj Sint model labels, live values, relative-to-preset colours, rotary carry, and
-held notes. Older 12-control instruments use the final three slots for Project
-AUX 1/2/3 sends; Dual Filter retains fifteen synth controls. Its SOUND page contains
-`RESET`, `SAVE`, `N00B`, and one empty position. RESET restores the existing
+held notes. Every managed backend keeps Project AUX 1/2/3 at positions 13–15,
+physical rotaries 14–16. Its SOUND page contains `RESET`, `SAVE`, `N00B`, and
+`AMP` for Dual Filter. AMP puts amp ADSR at positions 1–4; the action becomes
+`FILTER` to return to the main twelve controls. Both views retain the final
+three AUX sends. Changing views preserves sound values and re-arms absolute
+pickup. Other models leave SOUND item 4 empty. RESET restores the existing
 baseline in place without restarting the engine or releasing
 notes. SAVE uses the same Overwrite/Save New/Cancel overlay and private preset
 storage as Playback; a successful save becomes the new RESET baseline and
 retargets only the active matching FT2 route. Its SYS page contains `PANIC`, an
-empty position, `HELP`, and `EXIT`. Backends without mapped editable controls
-show parameters and SAVE as unavailable.
+empty position, `HELP`, and `EXIT`. Yoshimi, FluidSynth, and SHR Sampler show
+Volume at position 5 and the same AUX sends; preset SAVE stays unavailable.
+Dual Filter RESET, SAVE, and automation retain all fifteen native parameters.
 
 `MIX` opens the live audio-level mixer described below. Shift-clicking the main
 encoder is the direct controller shortcut in Play, REC, and Edit.

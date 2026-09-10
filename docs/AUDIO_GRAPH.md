@@ -330,7 +330,7 @@ literature.
 | Flanger | J. O. Smith, *Physical Audio Signal Processing*, “Flanging,” Fig. 5.3 and feedback discussion; Disch and Zölzer, DAFx-99, §2.2. Delay/rate ranges and signed-feedback limit are SHR choices. |
 | Phaser | J. O. Smith, *Physical Audio Signal Processing*, “Phasing with First-Order Allpass Filters,” §§9.19–9.20, including the first-order all-pass and bilinear coefficient. Four/six stages, shared stage tuning and sweep maps are SHR choices. |
 | Tremolo/Pan | Disch and Zölzer, DAFx-99, §2.1 Eq. 1, amplitude modulation; W3C *Web Audio API 1.1* §6.3.3, equal-power panning. The unity-center normalization, waveform set and 5 ms square smoothing are SHR choices. |
-| Reverb | J. Stautner and M. Puckette, “Designing Multi-Channel Reverberators,” *Computer Music Journal* 6(1), 1982, pp. 52–55, Eqs. 1–3; J. O. Smith, *Physical Audio Signal Processing*, “FDN Reverberation,” “Hadamard Matrix,” and “Achieving Desired Reverberation Times,” Eqs. 4.5–4.10; J. Dattorro, “Effect Design, Part 1: Reverberator and Other Filters,” *JAES* 45(9), 1997, Fig. 1 and §1.3.3, pp. 662–664, cascaded all-pass input diffusion. The normalized Hadamard matrix, RT60 line-gain equation, and all-pass topology are sourced invariants; the four FDN line sets, four input-diffuser lengths, 0.55 diffusion gain, damping map, and room/plate/hall labels are original SHR tuning. |
+| Reverb | J. Stautner and M. Puckette, “Designing Multi-Channel Reverberators,” *Computer Music Journal* 6(1), 1982, pp. 52–55, Eqs. 1–3; J. O. Smith, *Physical Audio Signal Processing*, “FDN Reverberation,” “Hadamard Matrix,” “Choice of Delay Lengths,” “Time Varying Reverberators,” and “Achieving Desired Reverberation Times,” Eqs. 4.5–4.10; J. Dattorro, “Effect Design, Part 1: Reverberator and Other Filters,” *JAES* 45(9), 1997, Fig. 1 and §1.3.3, pp. 662–664, cascaded all-pass input diffusion. The normalized Hadamard matrix, nominal RT60 line-gain equation, and all-pass topology are sourced invariants; the three eight-line voicings, shallow modulation depths/rates/phases, four input-diffuser lengths, 0.55 diffusion gain, damping map, and room/plate/hall labels are original SHR tuning. |
 | Filter | A. Simper, “Linear Trapezoidal Integrated State Variable Filter With Low Noise Optimisation,” Cytomic, 2013/2016 corrections, pp. 2–7, Eqs. 1–5; Bilbao et al. (2017), §§II–III, first-order ADAA. Resonance mapping and the pre-drive blend are SHR choices. The cubic pre-drive now uses independent per-channel ADAA state before the TPT filter, without oversampling storage or integer-sample latency. |
 | Gate | M. Terrell, J. D. Reiss and M. Sandler, “Automatic Noise Gate Settings for Drum Recordings Containing Bleed from Secondary Sources,” *EURASIP JASP*, 2010/2011, §2.1; Giannoulis et al. (2012), Eqs. 5–8. Detector constants, hysteresis, stereo max link and ranges are SHR choices. |
 | Crusher | S. P. Lipshitz, R. A. Wannamaker and J. Vanderkooy, “Quantization and Dither: A Theoretical Survey,” *JAES* 40(5), 1992; R. A. Wannamaker et al., “A Theory of Non-Subtractive Dither,” *IEEE Transactions on Signal Processing* 48(2), 2000. The two-uniform, 2-LSB peak-to-peak TPDF is source-backed; signed endpoints, LCG seeds and sample-hold range are SHR choices. |
@@ -350,6 +350,8 @@ Direct sources: [Blumlein patent](https://patents.google.com/patent/GB394325A/en
 [Smith phasing](https://www.dsprelated.com/freebooks/pasp/Phasing_First_Order_Allpass_Filters.html),
 [Stautner/Puckette FDN](https://www.ee.columbia.edu/~dpwe/e4896/papers/StautP82-reverb.pdf),
 [Smith FDN](https://www.dsprelated.com/freebooks/pasp/FDN_Reverberation.html),
+[Smith delay lengths and mode density](https://www.dsprelated.com/freebooks/pasp/Choice_Delay_Lengths.html),
+[Smith time-varying reverberators](https://www.dsprelated.com/freebooks/pasp/Time_Varying_Reverberators.html),
 [Dattorro reverb](https://nagasm.org/ASL/Sketch14/fig5/EffectDesignPart1.pdf),
 [Simper SVF](https://www.cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf),
 [Terrell/Reiss/Sandler gate](https://asp-eurasipjournals.springeropen.com/counter/pdf/10.1155/2010/465417.pdf),
@@ -361,6 +363,51 @@ AES Convention 121, paper 6985, 2006: the proportion outside one local standard
 deviation is normalized by the Gaussian expectation. That metric establishes
 density growth, not musical preference. See the
 [AES publication record](https://aes2.org/publications/elibrary-page/?id=13819).
+
+Reverb uses eight feedback delays mixed by a normalized Hadamard transform.
+Two all-pass input diffusers per channel spread the attack; independent slow
+delay movement prevents the tail from repeating the same stationary pattern.
+The internal modulation spans 0.13–0.23 ms at 0.071–0.197 Hz and reserves delay
+headroom at every supported rate and Size setting. Room, Plate, and Hall retain
+their increasing propagation scales and the existing public controls. Reset
+also restores modulation phases, so the same input remains deterministic after
+reset and across processing block sizes. Predelay, damping, width, dry/wet
+levels, AUX wet-only routing, and the bounded tail deadline keep their contracts.
+Output-response tests measure density, modal prominence, decay, and stereo
+behavior; the nominal feedback coefficient alone does not prove the decay of
+a modulated network.
+
+The September 10 offline comparison used identical 48 kHz left impulses,
+1.5 s decay, Size 50%, damping 0%, input low cut 20 Hz, full width, and wet-only
+output. Against the previous diffused four-line tank:
+
+| Voice | Echo density at 250 ms, old → new | Late 500–2,000 Hz peak above band median, old → new |
+| --- | --- | --- |
+| Room | 0.778 → 1.001 | 31.88 → 19.79 dB |
+| Plate | 0.653 → 0.831 | 23.36 → 18.70 dB |
+| Hall | 0.499 → 0.863 | 19.83 → 13.54 dB |
+
+Measured broadband decay stays at 1.32–1.33 s, late stereo correlation is
+approximately −0.016, and mono energy remains within 3.3 dB of stereo energy.
+At the default 50% damping, all three voices also reduce mid-band peak
+prominence by 4.37–11.10 dB. Deterministic Plate/Hall musical excitation changes
+wet RMS by about −1 dB; the Plate impulse changes by +0.95 dB. Thus the spectral
+improvement is not an overall wet-level reduction. An 8 s Hall at both Size
+extremes measures 7.06–7.08 s broadband and 7.86–7.96 s in the 80–500 Hz band,
+with the unchanged bounded cutoff. These are synthetic response measurements;
+musical preference and live callback headroom require their own acceptance.
+
+An independent Pi 5 processor benchmark compiled the exact old/new DSP with
+Rust 1.97.1, optimization level 3, LTO, and one codegen unit. Seven alternating
+million-frame trials after warmup measured median cost at 48 kHz of
+251.3 → 389.2 ns/frame for defaults and 252.9 → 420.0 ns/frame for an 8 s Hall.
+That is 1.55–1.66 times the processor work, equivalent to 1.87–2.02% of one core
+for the new reverb at 48 kHz. At 96 kHz the new processor is equivalent to
+3.74–3.77% of one core. Delay storage rises from 158,172 to 235,004 bytes at
+48 kHz; fixed reverb state rises from 584 to 1,144 bytes. These timings include
+identical input/output checksum overhead and exclude EffectSlot dispatch,
+meters, graph processing, JACK, and scheduling; they are not whole-app CPU or
+callback-deadline measurements.
 
 Deterministic tests cover silence/step/impulse behavior, supported sample-rate
 limits, reset and non-finite recovery, stereo independence, long-running
@@ -417,8 +464,8 @@ reorder these slots. Their bypass states name four unambiguous modes: `OFF`,
 combined mode places the rhythmic echo after the diffuse ambience with
 restrained wet defaults.
 
-Reverb is a four-line Hadamard feedback-delay network with two input all-pass
-diffusers per channel, independent 0–200 ms pre-delay, RT60 decay, acoustic
+Reverb uses the same eight-line modulated Hadamard feedback-delay network with
+two input all-pass diffusers per channel, independent 0–200 ms pre-delay, RT60 decay, acoustic
 line-size scaling, high-frequency damping, input low cut, and stereo width.
 Pre-delay does not alter feedback or decay. Every accepted feedback gain is
 below one. A tail is cleared after 1.5 times its selected RT60 plus 0.4 seconds

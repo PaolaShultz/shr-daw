@@ -101,6 +101,7 @@ pub type SharedPlaybackScale = Arc<Mutex<Option<crate::scale::Scale>>>;
 pub type SharedControllerConfig = Arc<RwLock<PadConfig>>;
 pub type SharedLearnMode = Arc<AtomicBool>;
 pub type SharedFxControlMode = Arc<AtomicBool>;
+pub type SharedSynthAmpPage = Arc<AtomicBool>;
 
 #[derive(Clone, Debug)]
 pub struct MidiLifecycle {
@@ -175,6 +176,7 @@ struct CallbackRouting {
     controller: SharedControllerConfig,
     learn_mode: SharedLearnMode,
     fx_control_mode: SharedFxControlMode,
+    synth_amp_page: SharedSynthAmpPage,
     live_state: Arc<Mutex<LiveMidiState>>,
 }
 
@@ -401,6 +403,7 @@ pub struct MidiRouter {
     controller: SharedControllerConfig,
     learn_mode: SharedLearnMode,
     fx_control_mode: SharedFxControlMode,
+    synth_amp_page: SharedSynthAmpPage,
     live_state: Arc<Mutex<LiveMidiState>>,
     availability: MidiInputAvailability,
     tx: Sender<MidiEvent>,
@@ -423,6 +426,7 @@ impl MidiRouter {
             controller: Arc::new(RwLock::new(pads)),
             learn_mode: Arc::new(AtomicBool::new(false)),
             fx_control_mode: Arc::new(AtomicBool::new(false)),
+            synth_amp_page: Arc::new(AtomicBool::new(false)),
             live_state: Arc::new(Mutex::new(LiveMidiState::default())),
             availability: MidiInputAvailability::default(),
             tx,
@@ -438,6 +442,7 @@ impl MidiRouter {
         let mut pads = PadConfig::load(&state.join("controller.conf"))?;
         let learn_mode = Arc::new(AtomicBool::new(false));
         let fx_control_mode = Arc::new(AtomicBool::new(false));
+        let synth_amp_page = Arc::new(AtomicBool::new(false));
         let output = Arc::new(Mutex::new(None));
         let pickup = Arc::new(Mutex::new(crate::midi::Pickup::default()));
         let backend = Arc::new(Mutex::new(BackendKind::Synthv1));
@@ -475,6 +480,7 @@ impl MidiRouter {
                 controller: Arc::clone(&controller),
                 learn_mode: Arc::clone(&learn_mode),
                 fx_control_mode: Arc::clone(&fx_control_mode),
+                synth_amp_page: Arc::clone(&synth_amp_page),
                 live_state: Arc::clone(&live_state),
             };
             match connect_midi_input(tx.clone(), &planned, config, routing) {
@@ -551,6 +557,7 @@ impl MidiRouter {
             controller,
             learn_mode,
             fx_control_mode,
+            synth_amp_page,
             live_state,
             availability: plan.availability,
             tx,
@@ -597,6 +604,10 @@ impl MidiRouter {
 
     pub fn fx_control_mode(&self) -> SharedFxControlMode {
         Arc::clone(&self.fx_control_mode)
+    }
+
+    pub fn synth_amp_page(&self) -> SharedSynthAmpPage {
+        Arc::clone(&self.synth_amp_page)
     }
 
     pub fn availability(&self) -> &MidiInputAvailability {
@@ -658,6 +669,7 @@ impl MidiRouter {
                 controller: Arc::clone(&self.controller),
                 learn_mode: Arc::clone(&self.learn_mode),
                 fx_control_mode: Arc::clone(&self.fx_control_mode),
+                synth_amp_page: Arc::clone(&self.synth_amp_page),
                 live_state: Arc::clone(&self.live_state),
             };
             match connect_midi_input(self.tx.clone(), &planned, config, routing) {
@@ -2139,6 +2151,7 @@ fn connect_midi_input(
         controller: callback_controller,
         learn_mode,
         fx_control_mode,
+        synth_amp_page,
         live_state,
     } = routing;
     let mut input = MidiInput::new("SHR-DAW MIDI input")?;
@@ -2251,13 +2264,14 @@ fn connect_midi_input(
                             });
                             return;
                         }
-                        let routed = crate::midi::route_with_pad_lock_modifier_and_state(
+                        let routed = crate::midi::route_with_synth_amp_page(
                             &pads,
                             backend,
                             moj_model,
                             message,
                             pad_locked,
                             encoder_modifier_down,
+                            synth_amp_page.load(Ordering::Acquire),
                         );
                         if let Some(pressed) = routed.synth_action {
                             let _ = tx.send(MidiEvent::SynthAction(pressed));
@@ -4305,6 +4319,9 @@ mod tests {
         let pickup = router.pickup();
         let tracker = router.tracker_input();
         let learn = router.learn_mode();
+        let amp_page = router.synth_amp_page();
+        assert!(!amp_page.load(Ordering::Relaxed));
+        amp_page.store(true, Ordering::Relaxed);
         let lifecycle = router.lifecycle();
         let mut config = RuntimeConfig::default();
         config.midi_autoconnect = false;
@@ -4313,6 +4330,8 @@ mod tests {
         assert!(Arc::ptr_eq(&pickup, &router.pickup()));
         assert!(Arc::ptr_eq(&tracker, &router.tracker_input()));
         assert!(Arc::ptr_eq(&learn, &router.learn_mode()));
+        assert!(Arc::ptr_eq(&amp_page, &router.synth_amp_page()));
+        assert!(router.synth_amp_page().load(Ordering::Relaxed));
         assert!(Arc::ptr_eq(&lifecycle.state, &router.lifecycle().state));
     }
 }

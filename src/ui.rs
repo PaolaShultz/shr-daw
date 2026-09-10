@@ -6,8 +6,8 @@ use crate::audio_recorder::{AudioRecorder, RecorderStatus, RecorderTrackStatus};
 use crate::chord::HeldNotes;
 use crate::config::{ExternalMidiConfig, RuntimeConfig};
 use crate::control::{
-    moj_controls, parameter_color, AUX_SEND_CONTROL_COUNT, CONTROLS, LEGACY_SYNTH_CONTROL_COUNT,
-    MOJ_CONTROLS, VOLUME_CC,
+    moj_controls, moj_surface_controls, parameter_color, AUX_SEND_CONTROL_COUNT, CONTROLS,
+    LEGACY_SYNTH_CONTROL_COUNT, MOJ_CONTROLS, VOLUME_CC,
 };
 use crate::device_profile::{DeviceProfile, Registry as DeviceProfiles};
 use crate::drum_pattern::{self, DrumPattern};
@@ -1134,6 +1134,7 @@ struct App {
     controller_config: engine::SharedControllerConfig,
     learn_mode: engine::SharedLearnMode,
     fx_control_mode: engine::SharedFxControlMode,
+    synth_amp_page: engine::SharedSynthAmpPage,
     controller_online: bool,
     performance_inputs: Vec<crate::engine::MidiInputState>,
     external_clock_input: Option<crate::engine::MidiInputState>,
@@ -2356,6 +2357,7 @@ impl App {
             controller_config: Arc::new(std::sync::RwLock::new(crate::pads::PadConfig::default())),
             learn_mode: Arc::new(AtomicBool::new(false)),
             fx_control_mode: Arc::new(AtomicBool::new(false)),
+            synth_amp_page: Arc::new(AtomicBool::new(false)),
             controller_online: false,
             performance_inputs: Vec::new(),
             external_clock_input: None,
@@ -3327,6 +3329,15 @@ impl App {
     fn menu_context(&self) -> MenuContext {
         if self.confirm_routing_defaults {
             MenuContext::RoutingDefaults
+        } else if matches!(self.screen, Screen::Playback | Screen::TrackerParameters)
+            && self.playing.as_ref().and_then(Preset::moj_model)
+                == Some(preset::MojModel::DualFilter)
+        {
+            if self.synth_amp_page.load(Ordering::Relaxed) {
+                MenuContext::SynthAmp
+            } else {
+                MenuContext::SynthMain
+            }
         } else if self.screen == Screen::Tracker && self.pattern_resize_prompt.is_some() {
             MenuContext::TrackerSizeConfirm
         } else if self.screen == Screen::FxRack && self.fx_type_edit.is_some() {
@@ -14132,20 +14143,26 @@ impl App {
         self.last_mapped_volume = Some(value);
     }
 
-    fn legacy_aux_surface_active(&self) -> bool {
-        match self.playing.as_ref().map(|preset| preset.backend) {
-            Some(BackendKind::Synthv1) => true,
-            Some(BackendKind::MojSint) => self
-                .playing
-                .as_ref()
-                .and_then(Preset::moj_model)
-                .is_some_and(|model| model != preset::MojModel::DualFilter),
-            _ => false,
+    fn aux_surface_active(&self) -> bool {
+        self.playing.is_some()
+    }
+
+    fn toggle_synth_amp_page(&mut self) {
+        if !matches!(self.screen, Screen::Playback | Screen::TrackerParameters)
+            || self.playing.as_ref().and_then(Preset::moj_model)
+                != Some(preset::MojModel::DualFilter)
+        {
+            return;
         }
+        let next = !self.synth_amp_page.load(Ordering::Relaxed);
+        // Arm every native parameter before publishing the new physical map.
+        // Parameter IDs, preset baselines and the fixed AUX slots stay intact.
+        self.arm_pickup();
+        self.synth_amp_page.store(next, Ordering::Release);
     }
 
     fn aux_surface_visible(&self) -> bool {
-        self.legacy_aux_surface_active()
+        self.aux_surface_active()
             && matches!(self.screen, Screen::Playback | Screen::TrackerParameters)
     }
 
@@ -14300,7 +14317,7 @@ impl App {
             self.apply_tracker_mixer_delta(position, steps);
             return;
         }
-        if self.legacy_aux_surface_active() && position >= LEGACY_SYNTH_CONTROL_COUNT {
+        if self.aux_surface_active() && position >= LEGACY_SYNTH_CONTROL_COUNT {
             self.apply_aux_surface_delta(position, steps);
             return;
         }
@@ -14324,7 +14341,9 @@ impl App {
                     .playing
                     .as_ref()
                     .and_then(Preset::moj_model)
-                    .map(moj_controls)
+                    .map(|model| {
+                        moj_surface_controls(model, self.synth_amp_page.load(Ordering::Relaxed))
+                    })
                     .unwrap_or(&MOJ_CONTROLS);
                 controls.get(position).map(|control| {
                     let current = self.values.get(&control.cc).copied().unwrap_or_default();
@@ -17012,6 +17031,10 @@ fn app_loop(
         .as_ref()
         .map(engine::MidiRouter::fx_control_mode)
         .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)));
+    let synth_amp_page = router
+        .as_ref()
+        .map(engine::MidiRouter::synth_amp_page)
+        .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)));
     let available_audio_ports = engine::jack_ports();
     let capture_sources = engine::jack_capture_sources();
     let available_midi_outputs =
@@ -17045,6 +17068,7 @@ fn app_loop(
     app.controller_config = controller_config;
     app.learn_mode = learn_mode;
     app.fx_control_mode = fx_control_mode;
+    app.synth_amp_page = synth_amp_page;
     if let Ok(router) = &router {
         app.controller_online = router.availability().controller_available();
         app.performance_inputs = router.availability().performance.clone();
@@ -18662,6 +18686,7 @@ fn perform(
         Action::TrackerRecFeel => a.toggle_tracker_rec_feel(),
         Action::TrackerNoobToggle => a.toggle_tracker_noob(),
         Action::PlaybackNoobToggle => a.toggle_playback_noob(),
+        Action::SynthAmpToggle => a.toggle_synth_amp_page(),
         Action::ConfirmRoutingDefaults => a.finish_routing_defaults_prompt(true),
         Action::CancelRoutingDefaults => a.finish_routing_defaults_prompt(false),
         Action::LoopImport => a.open_overlay(Action::LoopImport),
@@ -24946,7 +24971,7 @@ fn draw_synth_parameters<B: Backend>(
             .playing
             .as_ref()
             .and_then(Preset::moj_model)
-            .map(moj_controls)
+            .map(|model| moj_surface_controls(model, a.synth_amp_page.load(Ordering::Relaxed)))
             .unwrap_or(&MOJ_CONTROLS);
         let columns = 5;
         for (i, control) in controls.iter().enumerate() {
@@ -24979,9 +25004,7 @@ fn draw_synth_parameters<B: Backend>(
                 );
             }
         }
-        if controls.len() == LEGACY_SYNTH_CONTROL_COUNT {
-            draw_aux_surface_slots(f, a, inner);
-        }
+        draw_aux_surface_slots(f, a, inner);
     } else if playing_backend.is_some() {
         let value = a
             .values
@@ -24993,9 +25016,9 @@ fn draw_synth_parameters<B: Backend>(
             .get(&crate::control::INSTRUMENT_VOLUME_CC)
             .copied()
             .unwrap_or(1.0);
-        let width = inner.width / 4;
-        let x = inner.x;
-        let label_y = inner.y + 2;
+        let x = inner.x + 4 * inner.width / 5;
+        let width = inner.right() - x;
+        let label_y = inner.y;
         f.render_widget(
             Paragraph::new("Volume")
                 .alignment(Alignment::Center)
@@ -25013,6 +25036,7 @@ fn draw_synth_parameters<B: Backend>(
                 rect(x, label_y + 1, width, 1),
             );
         }
+        draw_aux_surface_slots(f, a, inner);
     } else {
         f.render_widget(
             Paragraph::new("No active instrument\n\nLoad a sound first.")
@@ -30873,7 +30897,7 @@ release = 0.4
     }
 
     #[test]
-    fn legacy_surface_rotaries_control_three_aux_sends_but_dual_filter_keeps_slot_fifteen() {
+    fn surface_rotaries_keep_three_aux_sends_on_dual_filter_and_legacy_models() {
         assert_eq!(aux_send_normalize_db(-60.0), 1.0 / 127.0);
         assert!((aux_send_denormalize(1.0 / 127.0) + 60.0).abs() < 0.000_01);
         assert_eq!(aux_send_denormalize(1.0), 12.0);
@@ -30910,13 +30934,164 @@ release = 0.4
         app.apply_aux_surface_delta(14, -1);
         assert_eq!(app.song.aux_routing.sends[2].level_db, -21.0);
 
-        let sends = app.song.aux_routing.sends.clone();
         app.playing = Some(moj_preset(preset::MojModel::DualFilter, "Dual Filter"));
         *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
         app.values.insert(34, 0.5);
         app.apply_relative_rotary(Instant::now(), 14, 1);
-        assert!(app.values[&34] > 0.5);
-        assert_eq!(app.song.aux_routing.sends, sends);
+        assert_eq!(app.values[&34], 0.5);
+        assert_eq!(app.song.aux_routing.sends[2].level_db, -18.0);
+    }
+
+    #[test]
+    fn optional_managed_hosts_show_and_edit_the_same_aux_and_volume_positions() {
+        let instruments = [
+            gm_bass_preset(),
+            Preset {
+                backend: BackendKind::Yoshimi,
+                name: "Yoshimi".into(),
+                category: None,
+                id: PresetId::Yoshimi {
+                    path: "sound.xiz".into(),
+                },
+            },
+            Preset {
+                backend: BackendKind::ShrSampler,
+                name: "Sampler".into(),
+                category: None,
+                id: PresetId::ShrSampler {
+                    instrument_id: "sound".into(),
+                    path: "sound.shrinst".into(),
+                },
+            },
+        ];
+        let mut app = app(&presets());
+        for _ in 0..3 {
+            let id = app.song.aux_routing.add_bus().unwrap();
+            app.song
+                .aux_routing
+                .add_effect(&app.song.insert_rack, id, EffectKind::Delay)
+                .unwrap();
+        }
+        for instrument in instruments {
+            *app.midi_backend.lock().unwrap() = instrument.backend;
+            app.playing = Some(instrument);
+            for screen in [Screen::Playback, Screen::TrackerParameters] {
+                app.screen = screen;
+                let before_transport = app.transport_indicator();
+                app.values = HashMap::from([(crate::control::INSTRUMENT_VOLUME_CC, 0.5)]);
+                app.original_values = app.values.clone();
+                for position in 12..15 {
+                    app.apply_aux_surface_control(position, aux_send_normalize_db(-18.0));
+                    app.apply_relative_rotary(Instant::now(), position, 1);
+                    let send = app
+                        .song
+                        .aux_routing
+                        .sends
+                        .iter()
+                        .find(|send| usize::from(send.aux_id) == position - 11)
+                        .unwrap();
+                    assert!((send.level_db + 15.0).abs() < 0.001);
+                }
+                assert_eq!(app.values, app.original_values);
+                let frame = render_app(&mut app, 40, 13);
+                assert!(row_text(&frame, 1)[32..].contains("Volume"));
+                for label in ["Aux 1", "Aux 2", "Aux 3"] {
+                    assert!(row_text(&frame, 5).contains(label));
+                }
+                assert_eq!(app.transport_indicator(), before_transport);
+                assert!(row_text(&frame, 12).starts_with(transport_glyph(before_transport).0));
+                app.apply_relative_rotary(Instant::now(), 4, 1);
+                assert!(app.values[&crate::control::INSTRUMENT_VOLUME_CC] > 0.5);
+            }
+        }
+    }
+
+    #[test]
+    fn dual_filter_amp_view_preserves_project_context_and_edits_native_envelope_ids() {
+        for screen in [Screen::Playback, Screen::TrackerParameters] {
+            let mut app = app(&presets());
+            app.screen = screen;
+            app.playing = Some(moj_preset(preset::MojModel::DualFilter, "Dual Filter"));
+            *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+            app.values = moj_controls(preset::MojModel::DualFilter)
+                .iter()
+                .map(|control| (control.cc, 0.5))
+                .collect();
+            app.original_values = app.values.clone();
+            let before_song = app.song.clone();
+            let before_transport = app.transport_indicator();
+            let before_controller = app.controller_config.read().unwrap().clone();
+            let before_cursor = (
+                app.tracker_order,
+                app.tracker_page,
+                app.tracker_row,
+                app.tracker_track,
+            );
+            let page = if screen == Screen::Playback { 2 } else { 0 };
+            let item = if screen == Screen::Playback { 0 } else { 3 };
+            app.menu_page_by_screen[screen.index()] = page;
+            let toggle = navigation::slot(screen, app.menu_context(), page, item).unwrap();
+            assert_eq!(toggle.label, "AMP");
+            perform(
+                toggle.dispatch().unwrap(),
+                &mut app,
+                Path::new("/none"),
+                None,
+            );
+            assert!(app.synth_amp_page.load(Ordering::Acquire));
+            assert_eq!(app.menu_page(), page);
+            assert_eq!(
+                navigation::slot(screen, app.menu_context(), page, item)
+                    .unwrap()
+                    .label,
+                "FILTER"
+            );
+            let frame = render_app(&mut app, 40, 13);
+            let text = buffer_text(&frame);
+            for label in [
+                "A Attack",
+                "A Decay",
+                "A Sustain",
+                "A Release",
+                "Aux 1",
+                "Aux 2",
+                "Aux 3",
+            ] {
+                assert!(
+                    text.contains(&truncate(label, 8)),
+                    "missing {label} in {text}"
+                );
+            }
+            assert_eq!(app.transport_indicator(), before_transport);
+            assert!(row_text(&frame, 12).starts_with(transport_glyph(before_transport).0));
+            assert!(!app.pickup.lock().unwrap().accept(32, 0.0));
+            for position in 0..4 {
+                app.apply_relative_rotary(Instant::now(), position, 1);
+                assert!(app.values[&(31 + position as u8)] > 0.5);
+            }
+            assert_eq!(app.values[&20], 0.5);
+            let before_reserved = app.values.clone();
+            app.apply_relative_rotary(Instant::now(), 4, 1);
+            app.apply_relative_rotary(Instant::now(), 11, 1);
+            assert_eq!(app.values, before_reserved);
+            perform(Action::SynthAmpToggle, &mut app, Path::new("/none"), None);
+            assert!(!app.synth_amp_page.load(Ordering::Acquire));
+            app.apply_relative_rotary(Instant::now(), 0, 1);
+            assert!(app.values[&20] > 0.5);
+            assert_eq!(app.values.len(), 15);
+            assert!(app.original_values.values().all(|value| *value == 0.5));
+            assert_eq!(app.song, before_song);
+            assert_eq!(*app.controller_config.read().unwrap(), before_controller);
+            assert_eq!(
+                (
+                    app.tracker_order,
+                    app.tracker_page,
+                    app.tracker_row,
+                    app.tracker_track
+                ),
+                before_cursor
+            );
+        }
     }
 
     #[test]
@@ -30946,7 +31121,7 @@ release = 0.4
             let label = truncate(control.name, 8);
             assert!(text.contains(&label), "missing {label} in {text}");
         }
-        assert!(app.legacy_aux_surface_active());
+        assert!(app.aux_surface_active());
         app.apply_relative_rotary(Instant::now(), 4, 1);
         assert!(app.values[&24] > 0.5);
         assert!(!app.values.contains_key(&7));
@@ -31066,7 +31241,7 @@ release = 0.4
             }
             let columns = 5;
             let control_width = 40 / columns;
-            for control in moj_controls(model) {
+            for control in moj_surface_controls(model, false) {
                 let visible_label = truncate(control.name, control_width);
                 assert!(
                     text.contains(&visible_label),

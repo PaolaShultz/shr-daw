@@ -68,8 +68,13 @@ shows `PLAY loads Project sound`. Explicit PLAY then loads the Project route;
 the engine replacement still shuts down the old owned process first.
 
 Playback shows held notes, decimal MIDI strike velocity, chord names, a
-keyboard-state strip when space permits, and 12 controls for the active
-backend. `SAVE` offers Overwrite, Save New, and Cancel for synthv1 and Moj Sint.
+keyboard-state strip when space permits, and a 3×5 control surface. The final
+three controls are always Project AUX 1/2/3 for all five managed backends:
+physical rotaries 14–16 after the main rotary. Dual Filter's **PARAM → AMP**
+action opens its amp ADSR; **FILTER** returns to the main controls, with AUX
+unchanged. In FT2 **PARAM**, that action is on **SOUND**. Existing controller
+mappings need no relearning. `SAVE` offers Overwrite, Save New, and Cancel for
+synthv1 and Moj Sint.
 Factory and system sounds stay read-only; saving them creates the next private
 `User NNN` sound for that engine and Moj model. The saved values become the
 current RESET baseline without restarting the engine. The new sound appears
@@ -77,7 +82,9 @@ immediately in Presets and under its Moj model in FT2 ROUTE. When the running
 sound belongs to an FT2 route, only that active owner is retargeted; saving a
 standalone Player sound never rewrites unrelated Project routes. Cancel or a
 failed save preserves list/cursor state, values, held notes, and the live
-session. Unsupported engines remain visibly read-only. Idea capture and saving
+session. Yoshimi, FluidSynth, and SHR Sampler keep their preset files read-only
+while exposing Volume at position 5 and the same AUX sends. FluidSynth's sends
+affect its shared stereo mix. Idea capture and saving
 remain on the Ideas screen. `SOUNDS` returns to Presets and its visible `LOAD`.
 
 Playback's PLAY page also owns the optional external-sync controller

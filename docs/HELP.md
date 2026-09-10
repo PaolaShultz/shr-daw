@@ -126,13 +126,16 @@ use synthv1 XML names or parameter indices.
 The current catalog has 21 numbered starts: seven Model D, six Six-Op PM, one
 each for Strange Oscillator, Swarm Machine, and Bass Matrix, and five Dual
 Filter starts. The public SHR-DAW installer currently pins the 16-start
-pre-Dual-Filter catalog. Player and FT2 PARAM always use a 3×5 surface. Synthv1 and the five
-older Moj models put their twelve synth controls first and Project AUX 1/2/3
-sends last; `NO FX` means that aux needs an effect before the send can move.
-With the owned graph active, these send levels ramp live without rebuilding the
-graph; recording refuses the change. With it disabled they update Project data.
-Dual Filter uses all fifteen positions for synthesis. Moj routes remain inside their selected
-model in FT2 ROUTE.
+pre-Dual-Filter catalog. Player and FT2 PARAM always use a 3×5 surface.
+Every managed backend puts Project AUX 1/2/3 at positions 13–15 (physical
+rotaries 14–16). The twelve existing synthesis positions keep their meanings;
+Dual Filter adds an AMP/FILTER view for its amp ADSR. Player exposes that action
+on PARAM; FT2 PARAM puts it in SOUND item 4. Changing views keeps the sound
+unchanged, and the last three positions stay AUX. `NO FX` means that aux needs
+an effect before the send can move. A non-OFF send activates the effects bus
+with stopped transport; once active, levels ramp live without rebuilding the
+graph. Recording refuses send changes. Moj routes remain inside their selected
+model in FT2 ROUTE. No controller relearning is needed.
 
 SHR Sampler packages are read-only instruments. LOAD validates the host version
 and complete `.shrinst` package before replacing the current sound. A failure
@@ -335,16 +338,19 @@ Normal FT2 page 3 is `SOUND`, with `PARAM` and `MIX`. PARAM opens a
 tracker-owned view of the current software instrument without entering Player
 or replacing the tracker engine. It uses the same 3×5 labels, values,
 relative-to-preset colours, held-note display, and rotary carry behavior as
-Playback. Synthv1 and the five older Moj models use 12 synthesis positions and
-three aux sends; Dual Filter uses all 15 for synthesis. Instrument choice stays
-in ROUTE; there is no second sound browser.
+Playback. Every managed backend keeps AUX 1/2/3 at positions 13–15. Dual
+Filter's AMP view puts amp ADSR at positions 1–4; FILTER restores the main
+view. Instrument choice stays in ROUTE; there is no second sound browser.
 
-PARAM SOUND provides RESET, SAVE, N00B, and one empty position. RESET restores
+PARAM SOUND provides RESET, SAVE, N00B, and AMP/FILTER for Dual Filter; the
+fourth position is empty on other models. RESET restores
 the existing baseline in place without restarting the engine
 or releasing notes. SAVE uses the normal preset-save overlay; successful save
 becomes the new RESET baseline and changes only the matching active FT2 route.
-PARAM SYS provides PANIC, an empty position, HELP, and EXIT. Unsupported
-backends visibly have no editable or saveable parameters. Back/Esc or EXIT
+PARAM SYS provides PANIC, an empty position, HELP, and EXIT. Yoshimi,
+FluidSynth, and SHR Sampler expose Volume at position 5 plus the three AUX
+sends; preset SAVE remains unavailable. FluidSynth sends its shared stereo
+mix to AUX. Back/Esc or EXIT
 returns to the exact Pattern/order/page/lane/column/row, FT2 mode, transport,
 route, N00B state, live values, and launching SOUND page.
 

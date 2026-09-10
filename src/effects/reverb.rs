@@ -1,6 +1,6 @@
 use super::{smooth, EffectError, PARAMETER_SMOOTH_SAMPLES};
 use crate::audio_graph::EffectInstance;
-use crate::dsp::{FractionalDelayLine, OnePole, OnePoleMode, SmoothedValue, StereoFrame};
+use crate::dsp::{FractionalDelayLine, OnePole, OnePoleMode, SineLfo, SmoothedValue, StereoFrame};
 use crate::effect_schema;
 
 const PREDELAY_CAPACITY_MILLISECONDS: f32 = 200.0;
@@ -8,11 +8,36 @@ const FDN_CAPACITY_MILLISECONDS: f32 = 100.0;
 const EMERGENCY_LEVEL: f32 = 64.0;
 const INPUT_DIFFUSION_GAIN: f32 = 0.55;
 const INPUT_DIFFUSION_MS: [[f32; 2]; 2] = [[4.7, 6.3], [5.3, 7.1]];
-const VOICING_LENGTHS_MS: [[f32; 4]; 3] = [
-    [23.3, 29.7, 31.1, 37.9],
-    [37.1, 41.1, 43.7, 47.9],
-    [53.1, 61.7, 67.3, 71.9],
+const FDN_LINES: usize = 8;
+const VOICING_LENGTHS_MS: [[f32; FDN_LINES]; 3] = [
+    [23.3, 29.7, 31.1, 37.9, 24.9, 33.7, 41.3, 46.7],
+    [37.1, 41.1, 43.7, 47.9, 32.3, 39.7, 49.3, 53.9],
+    [53.1, 61.7, 67.3, 71.9, 43.7, 57.3, 64.9, 73.7],
 ];
+// Slow, shallow independent movement breaks up stationary late resonances.
+// These are original SHR tuning choices, not additional public parameters.
+const MODULATION_HZ: [f32; FDN_LINES] = [0.071, 0.083, 0.097, 0.113, 0.131, 0.151, 0.173, 0.197];
+const MODULATION_MS: [f32; FDN_LINES] = [0.17, 0.21, 0.13, 0.19, 0.23, 0.15, 0.20, 0.16];
+
+/// Three butterfly stages implement a normalized, energy-preserving Hadamard
+/// scatter. Unlike a bank of independent combs, every delay feeds every line.
+#[inline]
+fn scatter(values: [f32; FDN_LINES]) -> [f32; FDN_LINES] {
+    let [a, b, c, d, e, f, g, h] = values;
+    let [a, b, c, d, e, f, g, h] = [a + b, a - b, c + d, c - d, e + f, e - f, g + h, g - h];
+    let [a, b, c, d, e, f, g, h] = [a + c, b + d, a - c, b - d, e + g, f + h, e - g, f - h];
+    let gain = std::f32::consts::FRAC_1_SQRT_2 * 0.5;
+    [
+        (a + e) * gain,
+        (b + f) * gain,
+        (c + g) * gain,
+        (d + h) * gain,
+        (a - e) * gain,
+        (b - f) * gain,
+        (c - g) * gain,
+        (d - h) * gain,
+    ]
+}
 
 struct Diffuser {
     line: FractionalDelayLine,
@@ -66,10 +91,13 @@ pub(super) struct Reverb {
     input_low_cut_right: OnePole,
     input_diffusion_left: [Diffuser; 2],
     input_diffusion_right: [Diffuser; 2],
-    lines: [FractionalDelayLine; 4],
-    damping: [OnePole; 4],
-    lengths: [f32; 4],
-    feedback: [f32; 4],
+    lines: [FractionalDelayLine; FDN_LINES],
+    damping: [OnePole; FDN_LINES],
+    lengths: [f32; FDN_LINES],
+    feedback: [f32; FDN_LINES],
+    modulation: [SineLfo; FDN_LINES],
+    initial_modulation: [SineLfo; FDN_LINES],
+    modulation_depth: [f32; FDN_LINES],
     voicing: usize,
     decay_seconds: f32,
     size_percent: f32,
@@ -100,6 +128,24 @@ impl Reverb {
         let damp = || {
             OnePole::new(OnePoleMode::LowPass, damping_hz, sample_rate).map_err(EffectError::from)
         };
+        let lfo = |index: usize| {
+            SineLfo::new(
+                MODULATION_HZ[index],
+                std::f32::consts::TAU * index as f32 / FDN_LINES as f32,
+                sample_rate,
+            )
+            .map_err(EffectError::from)
+        };
+        let modulation = [
+            lfo(0)?,
+            lfo(1)?,
+            lfo(2)?,
+            lfo(3)?,
+            lfo(4)?,
+            lfo(5)?,
+            lfo(6)?,
+            lfo(7)?,
+        ];
         let mut reverb = Self {
             sample_rate,
             predelay_left: FractionalDelayLine::new(predelay_capacity)?,
@@ -123,10 +169,31 @@ impl Reverb {
                 Diffuser::new(INPUT_DIFFUSION_MS[1][0], sample_rate)?,
                 Diffuser::new(INPUT_DIFFUSION_MS[1][1], sample_rate)?,
             ],
-            lines: [line()?, line()?, line()?, line()?],
-            damping: [damp()?, damp()?, damp()?, damp()?],
-            lengths: [1.0; 4],
-            feedback: [0.0; 4],
+            lines: [
+                line()?,
+                line()?,
+                line()?,
+                line()?,
+                line()?,
+                line()?,
+                line()?,
+                line()?,
+            ],
+            damping: [
+                damp()?,
+                damp()?,
+                damp()?,
+                damp()?,
+                damp()?,
+                damp()?,
+                damp()?,
+                damp()?,
+            ],
+            lengths: [1.0; FDN_LINES],
+            feedback: [0.0; FDN_LINES],
+            modulation,
+            initial_modulation: modulation,
+            modulation_depth: MODULATION_MS.map(|ms| ms * sample_rate / 1_000.0),
             voicing: value("type")? as usize,
             decay_seconds: value("decay_seconds")?,
             size_percent: value("size_percent")?,
@@ -188,21 +255,18 @@ impl Reverb {
         }
         let mono = (input_left + input_right) * 0.25;
         let side = (input_left - input_right) * 0.25;
-        let delayed = [
-            self.lines[0].read(self.lengths[0]),
-            self.lines[1].read(self.lengths[1]),
-            self.lines[2].read(self.lengths[2]),
-            self.lines[3].read(self.lengths[3]),
-        ];
-        let mixed = [
-            (delayed[0] + delayed[1] + delayed[2] + delayed[3]) * 0.5,
-            (delayed[0] - delayed[1] + delayed[2] - delayed[3]) * 0.5,
-            (delayed[0] + delayed[1] - delayed[2] - delayed[3]) * 0.5,
-            (delayed[0] - delayed[1] - delayed[2] + delayed[3]) * 0.5,
-        ];
-        let injection = [mono + side, mono - side, -mono + side, mono + side];
+        let delayed = std::array::from_fn(|index| {
+            self.lines[index].read(
+                self.lengths[index]
+                    + self.modulation[index].next_value() * self.modulation_depth[index],
+            )
+        });
+        let mixed = scatter(delayed);
+        // Orthogonal input projections retain the previous injected energy
+        // across twice as many lines instead of making the wet signal louder.
+        let injection = [mono, side, -mono, side, mono, -side, mono, side];
         let mut poisoned = false;
-        for index in 0..4 {
+        for index in 0..FDN_LINES {
             let feedback = self.damping[index].process(mixed[index]) * self.feedback[index];
             let write = injection[index] + feedback;
             if !write.is_finite() || write.abs() > EMERGENCY_LEVEL {
@@ -216,8 +280,19 @@ impl Reverb {
             return frame.finite_or_silence();
         }
 
-        let wet_left = (delayed[0] + delayed[1] - delayed[2] - delayed[3]) * 0.5;
-        let wet_right = (delayed[0] - delayed[1] + delayed[2] - delayed[3]) * 0.5;
+        // Distinct orthogonal output projections; 0.5 retains the wet energy
+        // scale of the former four-line tank while spreading its resonances.
+        let wet_left =
+            (delayed[0] + delayed[1] - delayed[2] - delayed[3] + delayed[4] + delayed[5]
+                - delayed[6]
+                - delayed[7])
+                * 0.5;
+        let wet_right = (delayed[0] + delayed[1] + delayed[2] + delayed[3]
+            - delayed[4]
+            - delayed[5]
+            - delayed[6]
+            - delayed[7])
+            * 0.5;
         let mid = (wet_left + wet_right) * 0.5;
         let side = (wet_left - wet_right) * 0.5 * self.width.next_value();
         let wet = self.wet.next_value();
@@ -293,7 +368,11 @@ impl Reverb {
         for (index, milliseconds) in VOICING_LENGTHS_MS[self.voicing].iter().enumerate() {
             let milliseconds = milliseconds * size;
             let samples = milliseconds * self.sample_rate / 1_000.0;
-            self.lengths[index] = samples.clamp(1.0, self.lines[index].maximum_delay() as f32);
+            let margin = self.modulation_depth[index];
+            self.lengths[index] = samples.clamp(
+                1.0 + margin,
+                self.lines[index].maximum_delay() as f32 - margin,
+            );
             let delay_seconds = self.lengths[index] / self.sample_rate;
             self.feedback[index] = 10.0_f32
                 .powf(-3.0 * delay_seconds / self.decay_seconds)
@@ -335,6 +414,7 @@ impl Reverb {
         for filter in &mut self.damping {
             filter.reset();
         }
+        self.modulation = self.initial_modulation;
     }
 
     pub(super) fn memory_bytes(&self) -> usize {
@@ -551,7 +631,7 @@ mod tests {
                         48_000,
                     )
                     .unwrap();
-                    for index in 0..4 {
+                    for index in 0..FDN_LINES {
                         assert!((0.0..1.0).contains(&reverb.feedback[index]));
                         let cycles = decay * reverb.sample_rate / reverb.lengths[index];
                         let rt60_gain = reverb.feedback[index].powf(cycles);
@@ -559,6 +639,134 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn eight_line_scatter_preserves_energy_and_modulation_stays_shallow() {
+        let basis: [[f32; FDN_LINES]; FDN_LINES] = std::array::from_fn(|row| {
+            scatter(std::array::from_fn(
+                |column| if row == column { 1.0 } else { 0.0 },
+            ))
+        });
+        for row in 0..FDN_LINES {
+            for other in 0..FDN_LINES {
+                let dot = basis[row]
+                    .iter()
+                    .zip(basis[other])
+                    .map(|(left, right)| left * right)
+                    .sum::<f32>();
+                let expected = if row == other { 1.0 } else { 0.0 };
+                assert!((dot - expected).abs() < 1.0e-6);
+            }
+        }
+        for sample_rate in [8_000, 48_000, 384_000] {
+            for voicing in 0..=2 {
+                for size in [0.0, 100.0] {
+                    let reverb = Reverb::compile(
+                        &effect([("type", voicing as f32), ("size_percent", size)]),
+                        sample_rate,
+                    )
+                    .unwrap();
+                    for index in 0..FDN_LINES {
+                        let depth = reverb.modulation_depth[index];
+                        assert!(reverb.lengths[index] - depth >= 1.0);
+                        assert!(
+                            reverb.lengths[index] + depth
+                                <= reverb.lines[index].maximum_delay() as f32
+                        );
+                        // The peak read-speed deviation is below 0.03%, rather
+                        // than the deep, fast sweep of a chorus effect.
+                        let speed = std::f32::consts::TAU
+                            * MODULATION_HZ[index]
+                            * MODULATION_MS[index]
+                            * 0.001;
+                        assert!(speed < 0.0003);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn modulated_tail_reset_and_processing_chunks_are_deterministic() {
+        let effect = effect([
+            ("type", 2.0),
+            ("predelay_ms", 0.0),
+            ("wet_percent", 100.0),
+            ("dry_percent", 0.0),
+        ]);
+        let mut whole = EffectSlot::compile(&effect, 48_000, 128).unwrap();
+        let mut chunked = EffectSlot::compile(&effect, 48_000, 128).unwrap();
+        let mut stimulus = vec![StereoFrame::SILENCE; 24_000];
+        stimulus[0] = StereoFrame::new(0.5, -0.125);
+        stimulus[1_337] = StereoFrame::new(-0.25, 0.375);
+        let mut first = stimulus.clone();
+        let mut second = stimulus.clone();
+        assert_no_allocations(|| {
+            whole.process(&mut first);
+            for block in second.chunks_mut(73) {
+                chunked.process(block);
+            }
+        });
+        assert_eq!(first, second);
+        whole.reset();
+        assert_no_allocations(|| whole.process(&mut stimulus));
+        assert_eq!(first, stimulus, "reset must reset modulation phase too");
+    }
+
+    #[test]
+    fn late_tail_density_and_modal_prominence_improve_on_four_line_baseline() {
+        // Measured with the same analyzer at c6d4a9a, 48 kHz, 1.5 s decay,
+        // size 50%, damping 0%, wet-only, including the original diffusers.
+        // These ceilings reject the previous sparse, ringing response; they
+        // do not depend on retaining an obsolete DSP implementation or WAV.
+        let previous = [
+            (0.778_023_399, 31.882_838_327),
+            (0.653_277_032, 23.362_757_771),
+            (0.498_985_471, 19.829_570_498),
+        ];
+        for (voicing, (previous_density, previous_peak)) in previous.into_iter().enumerate() {
+            let response = render_response(voicing, 0.0, 0.0, true);
+            let left = channel(&response, true);
+            let right = channel(&response, false);
+            let mono = left
+                .iter()
+                .zip(&right)
+                .map(|(left, right)| (left + right) * 0.5)
+                .collect::<Vec<_>>();
+            let density = normalized_echo_density(&mono, 12_000, 480);
+            let (_, prominence) = modal_prominence(&mono, 500.0, 2_000.0);
+            let (rt60, residual) = rt60_and_smoothness(&mono);
+            let stereo = correlation(&left[24_000..72_000], &right[24_000..72_000]);
+            let stereo_energy = left
+                .iter()
+                .zip(&right)
+                .map(|(left, right)| (f64::from(*left).powi(2) + f64::from(*right).powi(2)) * 0.5)
+                .sum::<f64>();
+            let mono_energy = mono
+                .iter()
+                .map(|sample| f64::from(*sample).powi(2))
+                .sum::<f64>();
+            let mono_delta_db = 10.0 * (mono_energy / stereo_energy).log10();
+            eprintln!(
+                "eight-line voice {voicing}: NED250={density:.4}, mid modal peak={prominence:.3} dB, RT60={rt60:.3}s, EDC residual={residual:.3} dB, late correlation={stereo:.3}"
+            );
+            assert!(
+                density >= previous_density * 1.15,
+                "voice {voicing}: {density}"
+            );
+            assert!(
+                prominence <= previous_peak - 3.0,
+                "voice {voicing}: modal prominence {prominence} dB"
+            );
+            assert!((1.1..=1.9).contains(&rt60));
+            assert!(residual < 1.0);
+            assert!(stereo.abs() < 0.8);
+            assert!(
+                mono_delta_db > -6.0,
+                "voice {voicing}: mono loss {mono_delta_db} dB"
+            );
         }
     }
 
@@ -777,10 +985,9 @@ mod tests {
             .map(|milliseconds| normalized_echo_density(&baseline_mono, milliseconds * 48, 480));
         let improved_density = [100, 250, 500]
             .map(|milliseconds| normalized_echo_density(&improved_mono, milliseconds * 48, 480));
-        assert!(
-            improved_density[1] > baseline_density[1] * 1.5,
-            "baseline {baseline_density:?}, diffused {improved_density:?}"
-        );
+        // The former 1.5x input-diffusion gain characterized a sparse four-line
+        // tank. Absolute response gates now live in the normal eight-line
+        // regression above; keep both input-diffusion measurements as evidence.
 
         let no_predelay = render_response(1, 50.0, 0.0, true);
         let predelayed = render_response(1, 50.0, 20.0, true);
@@ -791,10 +998,53 @@ mod tests {
                 .unwrap()
         };
         let predelay_shift = first(&predelayed) - first(&no_predelay);
-        assert_eq!(predelay_shift, 960);
+        assert!(predelay_shift.abs_diff(960) <= 1);
         eprintln!("reverb characterization rows (voice, damping %, broadband/low/mid/high RT60 s, early/late dB, NED at 50/100/250/500 ms, EDC residual dB, modal peak Hz/dB by band, early/late correlation, mono delta dB): {rows:?}");
         eprintln!("reverb plate NED before/after input diffusion at 100/250/500 ms: {baseline_density:?} / {improved_density:?}");
         eprintln!("reverb measured predelay shift: {predelay_shift} samples / 20.000 ms");
+
+        for size in [0.0, 100.0] {
+            let mut reverb = Reverb::compile(
+                &effect([
+                    ("type", 2.0),
+                    ("predelay_ms", 0.0),
+                    ("decay_seconds", 8.0),
+                    ("size_percent", size),
+                    ("damping_percent", 0.0),
+                    ("input_low_cut_hz", 20.0),
+                    ("wet_percent", 100.0),
+                    ("dry_percent", 0.0),
+                ]),
+                48_000,
+            )
+            .unwrap();
+            let mut response = Vec::with_capacity(48_000 * 13);
+            let mut peak = 0.0_f32;
+            for index in 0..48_000 * 13 {
+                let output = reverb.process(if index == 0 {
+                    StereoFrame::new(1.0, 0.0)
+                } else {
+                    StereoFrame::SILENCE
+                });
+                assert!(output.left.is_finite() && output.right.is_finite());
+                peak = peak.max(output.left.abs()).max(output.right.abs());
+                response.push((output.left + output.right) * 0.5);
+            }
+            let (rt60, residual) = rt60_and_smoothness(&response);
+            let (low_rt60, _) = rt60_and_smoothness(&band_limit(&response, 80.0, 500.0));
+            let (_, prominence) = modal_prominence(&response, 500.0, 2_000.0);
+            let density = normalized_echo_density(&response, 24_000, 480);
+            eprintln!(
+                "reverb long hall: size={size}% RT60={rt60:.3}s low RT60={low_rt60:.3}s residual={residual:.3}dB NED500={density:.4} mid modal peak={prominence:.3}dB peak={peak:.6} memory={} bytes",
+                reverb.memory_bytes()
+            );
+            assert!((4.0..9.0).contains(&rt60));
+            assert!((5.0..9.0).contains(&low_rt60));
+            assert!(peak < EMERGENCY_LEVEL);
+            assert!(response[48_000 * 12 + 20_000..]
+                .iter()
+                .all(|sample| *sample == 0.0));
+        }
 
         let benchmark = |diffuse_input: bool| {
             let mut reverb = Reverb::compile(&effect([]), 48_000).unwrap();
@@ -1064,19 +1314,19 @@ mod tests {
             (
                 "31-plate-impulse-baseline.wav",
                 impulse_baseline,
-                "previous plate impulse response, no input diffusion",
+                "current modulated plate tank, no input diffusion",
                 -50.0,
             ),
             (
                 "32-plate-impulse-diffused.wav",
                 impulse_diffused,
-                "current plate impulse response, two input all-pass stages per channel",
+                "current modulated plate impulse, two input all-pass stages per channel",
                 -50.0,
             ),
             (
                 "33-plate-material-baseline.wav",
                 render(1.0, false),
-                "previous plate response to deterministic excitation",
+                "current modulated plate response without input diffusion",
                 -22.0,
             ),
             (
@@ -1088,7 +1338,7 @@ mod tests {
             (
                 "35-hall-material-diffused.wav",
                 render(2.0, true),
-                "current hall response exposing its slower density build",
+                "current modulated hall response to deterministic excitation",
                 -22.0,
             ),
         ];
