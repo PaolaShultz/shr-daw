@@ -2157,6 +2157,78 @@ mod tests {
     }
 
     #[test]
+    fn replacement_source_without_direct_routes_keeps_its_graph_connections() {
+        #[derive(Default)]
+        struct NativeDisconnectConnections {
+            inner: MockConnections,
+            native_disconnect_calls: usize,
+        }
+        impl BoundaryConnections for NativeDisconnectConnections {
+            fn connect(&mut self, connection: &Connection) -> Result<bool> {
+                self.inner.connect(connection)
+            }
+            fn disconnect(&mut self, connection: &Connection) -> Result<bool> {
+                let pair = (connection.source.clone(), connection.destination.clone());
+                let present = self.inner.connected.contains(&pair);
+                crate::jack::disconnect_if_present(Ok(present), || {
+                    self.native_disconnect_calls += 1;
+                    match self.inner.disconnect(connection) {
+                        Ok(true) => 0,
+                        // Native JACK reports failure for an absent route;
+                        // the exact query must keep that call from happening.
+                        Ok(false) => libc::ENOENT,
+                        Err(_) => -1,
+                    }
+                })
+            }
+        }
+
+        let routes = routes();
+        let source = &routes.optional_sources[0];
+        let available = source.ports.to_vec();
+        let mut connections = NativeDisconnectConnections::default();
+        connections
+            .inner
+            .connected
+            .insert(("unrelated:out".into(), "unrelated:in".into()));
+        apply_transaction(&mut connections, &routes.required_connection_changes()).unwrap();
+        let boundary = connections.inner.connected.clone();
+        for _ in 0..2 {
+            // A replacement host starts without autoconnect. The same names
+            // can reappear after JACK removes the departed host's routes.
+            assert_eq!(connections.inner.connected, boundary);
+            assert!(sync_optional_if_available(&mut connections, source, &available).unwrap());
+            let connected = connections.inner.connected.clone();
+            assert!(source.graph.iter().all(
+                |route| connected.contains(&(route.source.clone(), route.destination.clone()))
+            ));
+            assert!(sync_optional_if_available(&mut connections, source, &available).unwrap());
+            assert_eq!(connections.inner.connected, connected);
+            assert_eq!(connections.native_disconnect_calls, 0);
+            for route in &source.graph {
+                connections
+                    .inner
+                    .connected
+                    .remove(&(route.source.clone(), route.destination.clone()));
+            }
+        }
+
+        // An actual failure removing an existing direct route must still
+        // roll back just the newly created graph links, preserving that route.
+        for route in &source.direct {
+            connections
+                .inner
+                .connected
+                .insert((route.source.clone(), route.destination.clone()));
+        }
+        let before_failure = connections.inner.connected.clone();
+        connections.inner.fail_at = Some(connections.inner.operations + 3);
+        assert!(sync_optional_if_available(&mut connections, source, &available).is_err());
+        assert_eq!(connections.inner.connected, before_failure);
+        assert!(connections.native_disconnect_calls > 0);
+    }
+
+    #[test]
     fn input_monitor_controls_default_off_and_only_deliberate_enable_unmutes() {
         let controls = initial_bus_controls(false);
         assert!(controls.source_muted(BusSource::Input));

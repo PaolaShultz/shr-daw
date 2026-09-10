@@ -54,6 +54,10 @@ type Activate = unsafe extern "C" fn(*mut OpaqueClient) -> c_int;
 type Deactivate = unsafe extern "C" fn(*mut OpaqueClient) -> c_int;
 type Connect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
 type Disconnect = unsafe extern "C" fn(*mut OpaqueClient, *const c_char, *const c_char) -> c_int;
+type PortByName = unsafe extern "C" fn(*mut OpaqueClient, *const c_char) -> *mut Port;
+type PortGetAllConnections =
+    unsafe extern "C" fn(*const OpaqueClient, *const Port) -> *mut *const c_char;
+type JackFree = unsafe extern "C" fn(*mut c_void);
 type PortName = unsafe extern "C" fn(*const Port) -> *const c_char;
 type PortUuid = unsafe extern "C" fn(*const Port) -> u64;
 type UuidToIndex = unsafe extern "C" fn(u64) -> c_uint;
@@ -89,6 +93,9 @@ struct Api {
     deactivate: Deactivate,
     connect: Connect,
     disconnect: Disconnect,
+    port_by_name: PortByName,
+    port_get_all_connections: PortGetAllConnections,
+    free: JackFree,
     port_name: PortName,
     port_uuid: PortUuid,
     uuid_to_index: UuidToIndex,
@@ -371,6 +378,12 @@ impl Client {
                         deactivate: symbol(handle, b"jack_deactivate\0")?,
                         connect: symbol(handle, b"jack_connect\0")?,
                         disconnect: symbol(handle, b"jack_disconnect\0")?,
+                        port_by_name: symbol(handle, b"jack_port_by_name\0")?,
+                        port_get_all_connections: symbol(
+                            handle,
+                            b"jack_port_get_all_connections\0",
+                        )?,
+                        free: symbol(handle, b"jack_free\0")?,
                         port_name: symbol(handle, b"jack_port_name\0")?,
                         port_uuid: symbol(handle, b"jack_port_uuid\0")?,
                         uuid_to_index: symbol(handle, b"jack_uuid_to_index\0")?,
@@ -557,19 +570,36 @@ impl Client {
         }
     }
 
-    /// Remove an exact named connection. JACK does not define a distinct
-    /// already-absent status here, so every non-zero result remains a failure.
+    /// Remove an exact named connection on the owner thread. An exact query
+    /// confirms an already-absent route without treating disconnect errors as
+    /// success. Foreign source ports require the all-connections JACK API.
     pub(crate) fn remove_connection(&self, source: &str, destination: &str) -> Result<bool> {
         let source = CString::new(source).context("JACK port name contains a NUL byte")?;
         let destination =
             CString::new(destination).context("JACK port name contains a NUL byte")?;
-        let status =
-            unsafe { (self.api.disconnect)(self.client, source.as_ptr(), destination.as_ptr()) };
-        if status == 0 {
-            Ok(true)
-        } else {
-            bail!("disconnect JACK ports (status {status})")
-        }
+        disconnect_if_present(
+            (|| {
+                // SAFETY: the open client and NUL-terminated name remain live;
+                // JACK owns the returned port handle.
+                let port = unsafe { (self.api.port_by_name)(self.client, source.as_ptr()) };
+                if port.is_null() {
+                    bail!("JACK source port unavailable during disconnect query");
+                }
+                // SAFETY: unlike jack_port_connected_to, this owner-thread
+                // query supports ports owned by another JACK client.
+                let connections = unsafe { (self.api.port_get_all_connections)(self.client, port) };
+                // SAFETY: JACK returns a null pointer or a null-terminated
+                // array of live, NUL-terminated connection names.
+                let present = unsafe { connection_list_contains(connections, &destination) };
+                if !connections.is_null() {
+                    // SAFETY: release the one array returned by JACK, once,
+                    // after inspecting it; individual names are not freed.
+                    unsafe { (self.api.free)(connections.cast()) };
+                }
+                Ok(present)
+            })(),
+            || unsafe { (self.api.disconnect)(self.client, source.as_ptr(), destination.as_ptr()) },
+        )
     }
 
     pub(crate) fn deactivate(&mut self) {
@@ -628,6 +658,44 @@ unsafe fn symbol<T: Copy>(handle: *mut c_void, name: &[u8]) -> Result<T> {
     Ok(unsafe { std::mem::transmute_copy(&pointer) })
 }
 
+pub(crate) fn disconnect_if_present(
+    present: Result<bool>,
+    disconnect: impl FnOnce() -> c_int,
+) -> Result<bool> {
+    if !present? {
+        return Ok(false);
+    }
+    let status = disconnect();
+    if status == 0 {
+        Ok(true)
+    } else {
+        bail!("disconnect JACK ports (status {status})")
+    }
+}
+
+/// The caller owns a live JACK-style null-terminated array for this inspection.
+unsafe fn connection_list_contains(
+    mut connections: *const *const c_char,
+    destination: &CStr,
+) -> bool {
+    if connections.is_null() {
+        return false;
+    }
+    loop {
+        // SAFETY: the caller supplied a live null-terminated pointer array.
+        let name = unsafe { *connections };
+        if name.is_null() {
+            return false;
+        }
+        // SAFETY: every non-null entry is a live NUL-terminated port name.
+        if unsafe { CStr::from_ptr(name) } == destination {
+            return true;
+        }
+        // SAFETY: the array has another element up to its terminating null.
+        connections = unsafe { connections.add(1) };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -640,6 +708,44 @@ mod tests {
         assert_eq!(JACK_SESSION_SAVE_AND_QUIT, 2);
         assert_eq!(JACK_SESSION_SAVE_ERROR, 1);
         assert_eq!(JACK_DEFAULT_AUDIO_TYPE.last(), Some(&0));
+    }
+
+    #[test]
+    fn disconnect_skips_only_confirmed_absence_and_preserves_real_errors() {
+        assert!(!disconnect_if_present(Ok(false), || {
+            panic!("already-absent routes must not reach native disconnect")
+        })
+        .unwrap());
+        assert!(disconnect_if_present(Ok(true), || 0).unwrap());
+        for status in [libc::EEXIST, libc::ENOENT, -1] {
+            assert!(disconnect_if_present(Ok(true), || status).is_err());
+        }
+        assert!(
+            disconnect_if_present(Err(anyhow::anyhow!("source unavailable")), || {
+                panic!("an unavailable query must not reach native disconnect")
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn connection_query_requires_an_exact_destination_name() {
+        let names = [
+            c"main:left-extra".as_ptr(),
+            c"main:right".as_ptr(),
+            std::ptr::null(),
+        ];
+        // SAFETY: these stack arrays and C literals remain live for each call.
+        unsafe {
+            assert!(!connection_list_contains(std::ptr::null(), c"main:left"));
+            assert!(!connection_list_contains(
+                [std::ptr::null()].as_ptr(),
+                c"main:left"
+            ));
+            assert!(!connection_list_contains(names.as_ptr(), c"main:left"));
+            assert!(connection_list_contains(names.as_ptr(), c"main:left-extra"));
+            assert!(connection_list_contains(names.as_ptr(), c"main:right"));
+        }
     }
 
     #[test]

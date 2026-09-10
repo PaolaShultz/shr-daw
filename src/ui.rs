@@ -11722,7 +11722,11 @@ impl App {
 
     fn retry_final_bus_with_force(&mut self, force: bool) -> bool {
         self.sync_channel_settings();
-        if !force && !self.config.audio_graph.enabled && !self.input_monitoring {
+        if !force
+            && !self.config.audio_graph.enabled
+            && !self.input_monitoring
+            && !self.final_bus.active()
+        {
             return false;
         }
         #[cfg(test)]

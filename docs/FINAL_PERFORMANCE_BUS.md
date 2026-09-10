@@ -94,8 +94,13 @@ complete Loop sum once.
 Before attachment, synth, drums, and Loop may have their ordinary direct stereo
 routes. The graph connects a present source to its fixed input and removes only
 that source's exact owned direct links as one rollback-capable transaction.
+If an exact connection query confirms a direct link is already absent, the
+new graph links remain connected; a real query or disconnect failure still
+triggers rollback. An active bus attaches a replacement host immediately even
+when automatic graph startup is disabled, without changing Input monitoring.
 Optional disappearance is silence, not bus failure; periodic owner-thread
-reconciliation reconnects only the remembered exact names when they return.
+reconciliation reconnects only the remembered exact names when they return,
+including ports recreated under the same names after a host restart.
 Input loss while MON is on faults a final recording and reports the nearby
 recovery state. JACK loss deactivates the callback before restoring available
 owned direct routes. No path invents a replacement or alters an unrelated
