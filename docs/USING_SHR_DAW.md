@@ -227,12 +227,18 @@ tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project se
 require saving even when the Project contains no notes. Synth sound edits use
 Player SAVE; MIDI Learn saves its controller mapping separately.
 
-With the optional graph disabled, ordinary source, aux, and master rack edits
-change Project data but do not process direct audio. The DRUMS rack still
-processes in-process drums on their direct path. With the graph active, stop
-transport and recording before changing graph structure. MASTER STRIP value
-changes can be auditioned during playback but are refused during final
-recording.
+Browsing Effects and editing inactive racks keep the direct audio route. To
+hear an AUX chain, add an effect, then adjust its send above OFF in Player,
+FT2 parameters, or the FX rack. That adjustment activates the effects bus even
+when automatic graph startup is disabled. Stop transport before the first
+activation; once active, send levels can change during playback. Recording
+refuses all send changes. If activation fails, the old send and routes remain;
+`AUX n UNAVAILABLE` asks you to retry the send.
+
+The DRUMS rack still processes in-process drums on their direct path. With the
+graph active, stop transport and recording before changing graph structure.
+MASTER STRIP value changes can be auditioned during playback but are refused
+during final recording.
 
 The exact placement and safety rules live in [How SHR-DAW
 works](HOW_IT_WORKS.md), [Audio graph and DSP contract](AUDIO_GRAPH.md), and

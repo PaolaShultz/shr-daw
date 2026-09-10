@@ -131,9 +131,10 @@ repurposed as an instrument channel strip.
 
 Each arbitrary rack is bounded to eight effects. The rotary selects rows;
 Shift-rotary selects AUX 1, AUX 2, AUX 3, or MASTER. Structural changes retain
-the existing transport/recording guards. With the graph disabled, edits change
-Project data without processing direct audio. The `+ INSERT EFFECT` row is a
-functional selection for adding a processor.
+the existing transport/recording guards. With the graph inactive, rack edits
+change Project data without processing direct audio; adjusting a non-OFF AUX
+send activates it as described below. The `+ INSERT EFFECT` row is a functional
+selection for adding a processor.
 
 The rack/editor screenshots below predate MASTER navigation and may show a
 legacy SOURCE target; they illustrate the retained rack controls.
@@ -163,6 +164,13 @@ Project-global mastering path after this reorderable rack.
 uses that same order in either direction. On an aux target, `SEND-` and `SEND+`
 adjust its send level in dB and `POINT` toggles pre/post source inserts. Those
 three controls report that an aux must be selected when used elsewhere.
+
+A non-OFF send adjustment activates the owned effects bus if needed, even when
+automatic graph startup is disabled. Stop transport before this first
+activation. Once active, send levels change smoothly during playback; recording
+refuses all send-level changes. Failed activation retains the old send and
+routes and reports `AUX n UNAVAILABLE · retry send`. Player and FT2 parameter
+AUX controls use the same path. Browsing and setting a send OFF stay passive.
 
 ### SYS — return level, help, and exit
 

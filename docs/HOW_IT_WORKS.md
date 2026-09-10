@@ -420,8 +420,9 @@ define what is persisted.
 
 Without the owned graph, the managed instrument, SHR Drums, and owned loop use
 their exact configured direct playback routes. `audio.graph.enabled=true`
-starts the bus automatically; MTR Input MON ON can start it explicitly with
-only one exact configured stereo JACK capture pair and the playback pair.
+starts the bus automatically. FT2 MIX and an explicit non-OFF AUX send
+adjustment can also activate it; MTR Input MON ON can start it with only one
+exact configured stereo JACK capture pair and the playback pair.
 Whichever optional sources are present move transactionally into this route:
 
 ```text
@@ -527,9 +528,15 @@ LUFS-M/S/I. The recorder tap and playback receive the same final buffer after
 that meter boundary. Exact strip controls and latency are in
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
 
-The FX rack and parameter editor remain available while the graph is disabled,
+The FX rack and parameter editor remain available while the graph is inactive,
 so a Project can be designed silently without an audio callback to rebuild.
-When the graph is enabled, every FX change that would publish a replacement
+Browsing and rack edits do not activate it. Adjusting a non-OFF AUX send from
+Player, FT2 parameters, or the FX rack explicitly activates the bus if needed,
+with transport stopped and no recording. Failure keeps the old Project send
+and prior routes; retry the send after resolving the unavailable bus. Once
+active, send-level changes use a 10 ms atomic gain ramp during playback without
+rebuilding the graph; recording refuses these changes, including OFF.
+When the graph is active, every FX change that would publish a replacement
 runtime plan requires stopped transport and no active recording. The complete
 plan, coefficients, buffers, ports, and memory are prepared and validated away
 from the real-time callback. Stable instance IDs let compatible effects retain
@@ -541,16 +548,17 @@ they are smoothed atomic updates and may be auditioned during playback. They
 are rejected during a final recording. Whole-strip comparison keeps the same
 delay and true-peak protection, and never overwrites the edited values.
 
-The graph remains opt-in and disabled by default. The managed engine, internal
-drums when active, and loop are connected directly first. The graph is
+Automatic graph startup remains disabled by default. The managed engine,
+internal drums when active, and loop are connected directly first. The graph is
 activated muted, its four stereo inputs plus playback boundary are connected,
 and the owned direct links are removed as one rollback-capable transaction before graph
 output is published at a block boundary. Validation, activation, or connection
 failure leaves or restores the exact prior direct links. Shutdown deactivates
 the callback before restoring them, avoiding a doubled final block.
 
-FX state is saved in the Project while the graph is disabled, but direct
-playback cannot process or meter it. The graph instantiates exactly four
+FX state is saved in the Project while the graph is inactive, but direct
+playback cannot process or meter it. An explicit non-OFF AUX send adjustment
+activates that processing as described above. The graph instantiates exactly four
 source kinds: managed instrument, SHR Drums, owned loop player, and one
 two-port live Input. That Input can preserve stereo or independently pan its
 two ports in dual mono. The graph deliberately has no general strips, pan for

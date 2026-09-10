@@ -1,10 +1,11 @@
 # Audio graph and DSP contract
 
 This document is the current implementation contract for SHR-DAW's owned audio
-graph and effects racks. The graph is implemented and Raspberry Pi measured,
-but remains opt-in and disabled by default. Direct JACK routing is both the
-default and the conservative fallback. The current product compiler instantiates
-four bounded stereo boundaries: the managed software instrument, SHR Drums,
+graph and effects racks. The graph is implemented and Raspberry Pi measured;
+automatic startup remains disabled by default. Direct JACK routing is the
+initial route and the conservative fallback. The current product compiler
+instantiates four bounded stereo boundaries: the managed software instrument,
+SHR Drums,
 the owned WAV loop, and one exact configured JACK capture pair. The capture
 boundary can preserve stereo or explicitly matrix its two ports as separately
 panned mono inputs before the dry sum.
@@ -35,10 +36,18 @@ sum -> MASTER inserts -> live master level
 
 Each of the three bounded aux buses has its own send level, pre/post source-insert tap, forced-wet
 serial rack, return level, and return meter. Each return is mixed exactly once.
-Compiled send taps retain lock-free linear-gain controls. Player/FT2 surface
-changes use a 10 ms ramp during held notes or transport without deactivating or
-recompiling the graph; OFF is a prepared zero-gain route. Recording refuses
-those changes. Tap point, rack, and processor edits remain structural.
+Setting a non-OFF send from Player, FT2 parameters, or the FX rack activates
+the owned bus if needed, even with `audio.graph.enabled=false`. This first
+activation requires stopped transport; failure retains the Project send and
+prior routes and reports `AUX n UNAVAILABLE · retry send`. Browsing, offline
+rack edits, and setting a send OFF do not activate the bus.
+Compiled send taps retain lock-free linear-gain controls. Once active, those
+send controls use a 10 ms ramp during held notes or transport without
+deactivating or recompiling the graph; OFF is a prepared zero-gain route.
+Re-enabling a send retains its currently compiled pre/post tap, so the Project
+and live audio use the same source point after an OFF/ON cycle.
+Recording refuses all send-level changes. Tap point, rack, and processor edits
+remain structural.
 The complete dry-plus-wet sum then passes through the master rack, live master
 level, fixed Project-owned strip, and post-limiter meter immediately before the
 recorder tap and playback. The final WAV and JACK playback buffers contain the
@@ -199,7 +208,8 @@ Validation checks:
 - every non-empty aux rack contains a wet generator; delay, reverb, chorus,
   flanger, and phaser are forced to 100% wet with zero dry signal;
 - runtime plan publication only while transport and recording are stopped;
-  graph-disabled Project edits validate and persist without touching audio; and
+  inactive rack edits validate and persist without touching audio, while an
+  explicit non-OFF AUX send requests activation as described above; and
 - every capacity and memory bound below.
 
 The graph plan, filter coefficients, port resolution, delay memory, and all

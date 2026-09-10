@@ -455,6 +455,14 @@ impl FinalBusOwner {
         Ok(true)
     }
 
+    pub(crate) fn aux_send_point(&self, aux_id: u8) -> Option<SendPoint> {
+        self.graph
+            .as_ref()?
+            .aux_send_controls
+            .get(&aux_id)
+            .map(|control| control.point())
+    }
+
     pub(crate) fn apply_aux_send_level(&self, aux_id: u8, level_db: Option<f32>) -> Result<bool> {
         let Some(graph) = self.graph.as_ref() else {
             return Ok(false);
@@ -1864,6 +1872,157 @@ mod tests {
             .unwrap()
             .aux_send_control(aux)
             .is_some());
+    }
+
+    #[test]
+    fn prepared_aux_send_point_survives_atomic_off_and_reenable() {
+        const FRAMES: usize = 128;
+        for point in [SendPoint::PreInsert, SendPoint::PostInsert] {
+            let mut rack = InsertRack::default();
+            let insert = rack.add(crate::audio_graph::EffectKind::Utility).unwrap();
+            rack.effect_mut(insert)
+                .unwrap()
+                .parameters
+                .insert("trim_db".into(), -6.0206);
+            let mut routing = ProjectAuxRouting::default();
+            let aux = routing.add_bus().unwrap();
+            routing
+                .add_effect(&rack, aux, crate::audio_graph::EffectKind::Delay)
+                .unwrap();
+            routing.set_send(&rack, aux, 0.0, point).unwrap();
+            let graph = managed_graph_definition(
+                48_000,
+                FRAMES as u32,
+                &["main:l".into(), "main:r".into()],
+                &test_live_ports(),
+                test_monitoring(),
+                &rack,
+                &routing,
+            );
+            let mut plan = GraphPlan::compile(&graph).unwrap();
+            let control = plan.aux_send_control(aux).unwrap();
+            let meter = plan.meter(FIRST_SEND_NODE).unwrap();
+            for level in [Some(0.0), None, Some(0.0)] {
+                if let Some(level) = level {
+                    // Re-enabling must save the tap that is still prepared,
+                    // even after OFF removed the Project's send entry.
+                    routing
+                        .set_send(&rack, aux, level, control.point())
+                        .unwrap();
+                    assert_eq!(routing.sends[0].point, point);
+                } else {
+                    routing.clear_send(aux);
+                    assert!(routing.sends.is_empty());
+                }
+                assert_no_allocations(|| {
+                    control.set_level_db(level).unwrap();
+                    assert_eq!(control.point(), point);
+                    // Five blocks exceed the unchanged 10 ms gain ramp.
+                    for _ in 0..5 {
+                        plan.source_buffer_mut(SOURCE_NODE, FRAMES)
+                            .unwrap()
+                            .fill(StereoFrame::new(0.25, -0.25));
+                        assert_eq!(plan.process(FRAMES), ProcessStatus::Complete);
+                    }
+                });
+                let expected = if level.is_none() {
+                    0.0
+                } else if point == SendPoint::PreInsert {
+                    0.25
+                } else {
+                    0.125
+                };
+                let peak = meter.load().peak;
+                assert!((peak.left - expected).abs() < 0.0001);
+                assert!((peak.right - expected).abs() < 0.0001);
+            }
+        }
+    }
+
+    #[test]
+    fn default_serial_aux_chain_becomes_audible_after_live_send_enable() {
+        const FRAMES: usize = 128;
+        const BURST_BLOCKS: usize = 8;
+        const DRAIN_BLOCKS: usize = 48_000 / FRAMES;
+        let rack = InsertRack::default();
+        let mut routing = ProjectAuxRouting::default();
+        let aux = routing.add_bus().unwrap();
+        for kind in [
+            crate::audio_graph::EffectKind::Delay,
+            crate::audio_graph::EffectKind::Chorus,
+            crate::audio_graph::EffectKind::Flanger,
+        ] {
+            routing.add_effect(&rack, aux, kind).unwrap();
+        }
+        let graph = managed_graph_definition(
+            48_000,
+            FRAMES as u32,
+            &["main:l".into(), "main:r".into()],
+            &test_live_ports(),
+            Monitoring {
+                software: false,
+                ..test_monitoring()
+            },
+            &rack,
+            &routing,
+        );
+        assert!(!graph.sends[0].enabled);
+        let mut plan = GraphPlan::compile(&graph).unwrap();
+        let send = plan.aux_send_control(aux).unwrap();
+        let return_meter = plan.meter(FIRST_AUX_RETURN_NODE).unwrap();
+        for enabled in [false, true] {
+            let mut dry_peak = 0.0_f32;
+            let mut delayed_return_peak = 0.0_f32;
+            let mut delayed_main_peak = 0.0_f32;
+            assert_no_allocations(|| {
+                if enabled {
+                    send.set_level_db(Some(12.0)).unwrap();
+                }
+                // A short deterministic burst followed by one second of silence
+                // distinguishes the delayed AUX return from ordinary dry sound.
+                for block in 0..BURST_BLOCKS + DRAIN_BLOCKS {
+                    let source = plan.source_buffer_mut(SOURCE_NODE, FRAMES).unwrap();
+                    for (index, frame) in source.iter_mut().enumerate() {
+                        let value = if block >= BURST_BLOCKS {
+                            0.0
+                        } else if index % 32 < 16 {
+                            0.05
+                        } else {
+                            -0.05
+                        };
+                        *frame = StereoFrame::new(value, value * 0.5);
+                    }
+                    assert_eq!(plan.process(FRAMES), ProcessStatus::Complete);
+                    let wet = return_meter.load().peak;
+                    assert!(wet.left.is_finite() && wet.right.is_finite());
+                    let wet_peak = wet.left.max(wet.right);
+                    // The default delay is 375 ms; no raw send may leak early.
+                    if !enabled || block * FRAMES < 12_000 {
+                        assert_eq!(wet_peak, 0.0);
+                    }
+                    for frame in plan.output_buffer(SINK_NODE, FRAMES).unwrap() {
+                        assert!(frame.left.is_finite() && frame.right.is_finite());
+                        let peak = frame.left.abs().max(frame.right.abs());
+                        if block < BURST_BLOCKS {
+                            dry_peak = dry_peak.max(peak);
+                        } else {
+                            delayed_main_peak = delayed_main_peak.max(peak);
+                        }
+                    }
+                    if block >= BURST_BLOCKS {
+                        delayed_return_peak = delayed_return_peak.max(wet_peak);
+                    }
+                }
+            });
+            assert!(dry_peak > 0.01);
+            if enabled {
+                assert!(delayed_return_peak > 0.0001);
+                assert!(delayed_main_peak > 0.0001);
+            } else {
+                assert_eq!(delayed_return_peak, 0.0);
+                assert_eq!(delayed_main_peak, 0.0);
+            }
+        }
     }
 
     #[test]

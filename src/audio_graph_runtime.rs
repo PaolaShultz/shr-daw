@@ -1,7 +1,8 @@
 //! Preallocated callback plan compiled from a validated audio graph.
 
 use crate::audio_graph::{
-    AuxId, EffectKind, GraphDefinition, NodeId, NodeKind, SourceKind, MAX_CALLBACK_FRAMES,
+    AuxId, EffectKind, GraphDefinition, NodeId, NodeKind, SendPoint, SourceKind,
+    MAX_CALLBACK_FRAMES,
 };
 use crate::dsp::{db_to_gain, AtomicMeter, MeterAccumulator, SmoothedValue, StereoFrame};
 use crate::effects::{BypassMode, EffectControl, EffectSlot, MeterHandles};
@@ -232,10 +233,11 @@ struct RuntimeFader {
 
 pub struct AuxSendControl {
     linear_gain_bits: AtomicU32,
+    point: SendPoint,
 }
 
 impl AuxSendControl {
-    fn new(level_db: Option<f32>) -> Result<Self, PlanError> {
+    fn new(level_db: Option<f32>, point: SendPoint) -> Result<Self, PlanError> {
         let linear = level_db
             .map(db_to_gain)
             .transpose()
@@ -243,7 +245,13 @@ impl AuxSendControl {
             .unwrap_or(0.0);
         Ok(Self {
             linear_gain_bits: AtomicU32::new(linear.to_bits()),
+            point,
         })
+    }
+
+    /// The prepared tap stays in place when its live gain is turned OFF.
+    pub fn point(&self) -> SendPoint {
+        self.point
     }
 
     pub fn set_level_db(&self, level_db: Option<f32>) -> Result<(), PlanError> {
@@ -273,10 +281,11 @@ impl RuntimeFader {
     fn new_aux(
         level_db: f32,
         enabled: bool,
+        point: SendPoint,
         maximum_frames: usize,
         sample_rate: u32,
     ) -> Result<(Self, Arc<AuxSendControl>), PlanError> {
-        let control = Arc::new(AuxSendControl::new(enabled.then_some(level_db))?);
+        let control = Arc::new(AuxSendControl::new(enabled.then_some(level_db), point)?);
         let fader = Self::new_with_control(
             level_db,
             maximum_frames,
@@ -502,6 +511,7 @@ impl GraphPlan {
                     let (fader, control) = RuntimeFader::new_aux(
                         send.level_db,
                         send.enabled,
+                        send.point,
                         maximum_frames,
                         graph.sample_rate,
                     )?;

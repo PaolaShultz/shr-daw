@@ -31,6 +31,15 @@ musician deliberately enables the safe software-monitor path. Failure to
 activate leaves the prior direct routes unchanged and the FT2 editing location
 intact.
 
+Player, FT2 parameter, and FX-rack AUX controls also activate the bus when a
+configured effect chain receives a non-OFF send adjustment. First activation
+requires stopped transport; recording refuses every send-level change. Once
+active, send levels use a 10 ms ramp during playback without rebuilding the
+graph. Activation failure preserves the Project send and prior routes and
+reports `AUX n UNAVAILABLE · retry send`. AUX activation does not enable Input
+monitoring. Browsing Effects, editing inactive racks, and setting a send OFF
+do not activate the bus.
+
 The logical Loop and external-input bus strips do not gain individual insert
 racks, aux sends, solo, automation, or waveform editing. Drums has only
 its fixed Reverb-then-Delay rack before this bus; it does not become a general
@@ -160,8 +169,9 @@ the exact JACK names from the current machine. Choose one stereo capture pair
 that already contains the desired external-gear mix. Keep interface direct
 monitoring off for the normal software-monitored workflow, set conservative
 hardware gains. Leave Input MON off until the hardware direct monitor is
-disabled, then use MTR **MON ON**; `audio.graph.enabled` is needed only for
-automatic final-bus startup, not for that explicit input-only action.
+disabled, then use MTR **MON ON**; `audio.graph.enabled` controls automatic
+final-bus startup. Explicit MON ON, FT2 MIX, and non-OFF AUX send adjustments
+can activate the bus without that setting.
 
 Optional sources reconcile automatically when they appear or return. MTR
 `RESET` remains a manual retry for a stopped or failed bus. Neither path

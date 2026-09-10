@@ -14214,6 +14214,7 @@ impl App {
                 .iter()
                 .find(|send| send.aux_id == aux_id)
                 .map(|send| send.point)
+                .or_else(|| self.final_bus.aux_send_point(aux_id))
                 .unwrap_or(SendPoint::PostInsert);
             if aux
                 .set_send(&self.song.insert_rack, aux_id, level_db, point)
@@ -14227,14 +14228,42 @@ impl App {
                 format!("AUX {aux_id} send · {level_db:+.1} dB"),
             )
         };
-        if self.final_bus.active() {
-            if self.audio_recorder.status().recording
-                || self.recorder.is_recording()
-                || self.final_bus.recording_active()
+        self.commit_aux_send(aux_id, aux, level_db, message);
+    }
+
+    fn commit_aux_send(
+        &mut self,
+        aux_id: u8,
+        aux: ProjectAuxRouting,
+        level_db: Option<f32>,
+        message: String,
+    ) {
+        if self.audio_recorder.status().recording
+            || self.recorder.is_recording()
+            || self.final_bus.recording_active()
+        {
+            self.status = "STOP RECORDING · AUX send unchanged".into();
+            return;
+        }
+        if level_db.is_some() && !self.final_bus.active() {
+            // The first audible send needs an owned audio route. Prepare the
+            // existing rack (including OFF send taps) before accepting a new
+            // level; browsing and offline rack edits do not activate audio.
+            if self.playback.is_some()
+                || self.controller_live_transport
+                || self.sequencer.status().playing
+                || self.loop_player.status().playing
+                || self.song_previewing
             {
-                self.status = "STOP RECORDING · AUX send unchanged".into();
+                self.status = "STOP TRANSPORT · then retry AUX send".into();
                 return;
             }
+            if !self.retry_final_bus_with_force(true) {
+                self.status = format!("AUX {aux_id} UNAVAILABLE · retry send");
+                return;
+            }
+        }
+        if self.final_bus.active() {
             if self
                 .final_bus
                 .apply_aux_send_level(aux_id, level_db)
@@ -15645,16 +15674,12 @@ impl App {
         let existing = aux.sends.iter().find(|send| send.aux_id == aux_id);
         let point = existing
             .map(|send| send.point)
+            .or_else(|| self.final_bus.aux_send_point(aux_id))
             .unwrap_or(SendPoint::PostInsert);
         let current = existing.map(|send| send.level_db).unwrap_or(-27.0);
         if direction < 0 && current <= -60.0 {
             aux.clear_send(aux_id);
-            self.commit_fx_routing(
-                self.song.insert_rack.clone(),
-                aux,
-                self.song.drum_rack.clone(),
-                format!("AUX {aux_id} send · OFF"),
-            );
+            self.commit_aux_send(aux_id, aux, None, format!("AUX {aux_id} send · OFF"));
             return;
         }
         let value = (current + 3.0 * f32::from(direction.signum())).clamp(-60.0, 12.0);
@@ -15662,10 +15687,10 @@ impl App {
             self.status = "FX SEND FAILED · old route kept".into();
             return;
         }
-        self.commit_fx_routing(
-            self.song.insert_rack.clone(),
+        self.commit_aux_send(
+            aux_id,
             aux,
-            self.song.drum_rack.clone(),
+            Some(value),
             format!("AUX {aux_id} send · {value:.0} dB"),
         );
     }
@@ -33481,6 +33506,7 @@ release = 0.4
                     (caller, 2, true, 7, 2)
                 );
                 assert_eq!(a.song, before);
+                assert_eq!(a.final_bus_activation_attempts, 0, "browsing stays passive");
             }
         }
     }
@@ -33704,6 +33730,177 @@ release = 0.4
             a.adjust_effect_parameter(-1);
             assert!(a.selected_effect().unwrap().parameters["dry_percent"] < 100.0);
             a.song.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn aux_send_activates_configured_effects_from_player_ft2_and_fx() {
+        let p = presets();
+        for playing in [
+            p[0].clone(),
+            moj_preset(preset::MojModel::PressureChain, "Bass"),
+        ] {
+            for screen in [Screen::Playback, Screen::TrackerParameters, Screen::FxRack] {
+                for initial_send in [None, Some(-18.0)] {
+                    let mut a = app(&p);
+                    a.playing = Some(playing.clone());
+                    a.screen = screen;
+                    a.fx_target = 1;
+                    a.tracker_row = 7;
+                    a.tracker_track = 2;
+                    let bus = a.song.aux_routing.add_bus().unwrap();
+                    for kind in [EffectKind::Delay, EffectKind::Chorus, EffectKind::Flanger] {
+                        a.song
+                            .aux_routing
+                            .add_effect(&a.song.insert_rack, bus, kind)
+                            .unwrap();
+                    }
+                    if let Some(level) = initial_send {
+                        a.song
+                            .aux_routing
+                            .set_send(&a.song.insert_rack, bus, level, SendPoint::PreInsert)
+                            .unwrap();
+                    }
+                    a.mark_project_clean();
+                    let before = a.song.clone();
+                    assert!(!a.config.audio_graph.enabled);
+                    assert!(!a.input_monitoring);
+
+                    let level = if screen == Screen::FxRack {
+                        a.adjust_aux_send(1);
+                        initial_send.unwrap_or(-27.0) + 3.0
+                    } else {
+                        a.set_aux_surface_level(LEGACY_SYNTH_CONTROL_COUNT, 1.0);
+                        12.0
+                    };
+
+                    assert_eq!(a.final_bus_activation_attempts, 1, "{screen:?}");
+                    let mut expected = before;
+                    expected
+                        .aux_routing
+                        .set_send(
+                            &expected.insert_rack,
+                            bus,
+                            level,
+                            if initial_send.is_some() {
+                                SendPoint::PreInsert
+                            } else {
+                                SendPoint::PostInsert
+                            },
+                        )
+                        .unwrap();
+                    assert_eq!(a.song, expected);
+                    assert!(a.project_is_dirty());
+                    assert_eq!((a.screen, a.tracker_row, a.tracker_track), (screen, 7, 2));
+                    assert!(!a.config.audio_graph.enabled);
+                    assert!(!a.input_monitoring);
+                    assert!(a.status.starts_with("AUX 1 send"));
+                    assert_eq!(
+                        sequencer::decode(&sequencer::encode(&a.song).unwrap()).unwrap(),
+                        expected
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn aux_send_activation_failure_preserves_project_and_allows_retry() {
+        let p = presets();
+        for screen in [Screen::Playback, Screen::FxRack] {
+            let mut a = app(&p);
+            a.screen = screen;
+            a.fx_target = 1;
+            a.playing = Some(p[0].clone());
+            let bus = a.song.aux_routing.add_bus().unwrap();
+            a.song
+                .aux_routing
+                .add_effect(&a.song.insert_rack, bus, EffectKind::Delay)
+                .unwrap();
+            a.mark_project_clean();
+            let before = a.song.clone();
+            a.final_bus_activation_override = Some(Err("injected route failure".into()));
+            if screen == Screen::FxRack {
+                a.adjust_aux_send(1);
+            } else {
+                a.set_aux_surface_level(LEGACY_SYNTH_CONTROL_COUNT, 1.0);
+            }
+            assert_eq!(a.final_bus_activation_attempts, 1);
+            assert_eq!(a.song, before);
+            assert!(!a.project_is_dirty());
+            assert!(!a.input_monitoring);
+            assert!(!a.final_bus.active());
+            assert_eq!(a.status, "AUX 1 UNAVAILABLE · retry send");
+            let frame = render_app(&mut a, 40, 13);
+            assert!(row_text(&frame, 12).contains("AUX 1 UNAVAILABLE"));
+
+            a.final_bus_activation_override = Some(Ok(()));
+            if screen == Screen::FxRack {
+                a.adjust_aux_send(1);
+            } else {
+                a.set_aux_surface_level(LEGACY_SYNTH_CONTROL_COUNT, 1.0);
+            }
+            assert_eq!(a.final_bus_activation_attempts, 2);
+            assert_eq!(a.song.aux_routing.buses, before.aux_routing.buses);
+            assert_eq!(a.song.aux_routing.sends.len(), 1);
+            assert!(a.status.starts_with("AUX 1 send"));
+        }
+    }
+
+    #[test]
+    fn aux_first_activation_preserves_recording_transport_and_offline_off() {
+        let p = presets();
+        for screen in [Screen::Playback, Screen::FxRack] {
+            let mut a = app(&p);
+            a.screen = screen;
+            a.fx_target = 1;
+            let bus = a.song.aux_routing.add_bus().unwrap();
+            a.song
+                .aux_routing
+                .add_effect(&a.song.insert_rack, bus, EffectKind::Delay)
+                .unwrap();
+            a.song
+                .aux_routing
+                .set_send(&a.song.insert_rack, bus, -60.0, SendPoint::PostInsert)
+                .unwrap();
+            a.mark_project_clean();
+            let before = a.song.clone();
+
+            for recording in [true, false] {
+                if recording {
+                    a.recorder.start(Instant::now());
+                } else {
+                    a.controller_live_transport = true;
+                }
+                if screen == Screen::FxRack {
+                    a.adjust_aux_send(1);
+                } else {
+                    a.set_aux_surface_level(LEGACY_SYNTH_CONTROL_COUNT, 1.0);
+                }
+                assert_eq!(a.final_bus_activation_attempts, 0);
+                assert_eq!(a.song, before);
+                assert!(!a.project_is_dirty());
+                assert!(a.status.starts_with(if recording {
+                    "STOP RECORDING"
+                } else {
+                    "STOP TRANSPORT"
+                }));
+                if recording {
+                    assert!(a.recorder.is_recording());
+                    a.recorder.stop(Instant::now());
+                } else {
+                    assert!(a.controller_live_transport);
+                    a.controller_live_transport = false;
+                }
+            }
+            if screen == Screen::FxRack {
+                a.adjust_aux_send(-1);
+            } else {
+                a.set_aux_surface_level(LEGACY_SYNTH_CONTROL_COUNT, 0.0);
+            }
+            assert_eq!(a.final_bus_activation_attempts, 0);
+            assert!(a.song.aux_routing.sends.is_empty());
+            assert_eq!(a.song.aux_routing.buses, before.aux_routing.buses);
         }
     }
 
