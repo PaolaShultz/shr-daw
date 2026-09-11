@@ -7,18 +7,13 @@ encoder, command-pad, screen, and contextual dispatch paths.
 
 ## Navigation encoder sensitivity
 
-The master encoder requires two directional MIDI messages for each navigation
-step, including Shift-turn navigation. The messages must come from the same
-input, channel, CC and modifier state, in the same direction, less than 300 ms
-apart. A direction change starts a new pair; an isolated message expires.
-Clicks act immediately, discard a pending turn, and suppress turn messages for
-120 ms afterward. Modifier, pad, page-chord and lock actions also discard a
-pending turn. This reduces single-message jitter and movement around a click;
-it cannot distinguish two accidental messages before a click from a real turn.
+The master encoder responds to every directional MIDI message, including
+Shift-turn navigation and synth parameter edits. Clicks act immediately and
+suppress turn messages for 120 ms afterward to reduce movement around a click.
+Slow turns and direction reversals do not require a second message.
 
-This filtering applies at navigation dispatch. Controller Learn still observes
-raw messages, and rotaries 2–16, musical MIDI, keyboard and mouse retain
-their own input handling. No controller remapping is required.
+Controller Learn observes raw messages. Rotaries 2–16, musical MIDI, keyboard
+and mouse retain their existing input handling. No remapping is required.
 
 ## Startup splash
 
@@ -503,8 +498,8 @@ and FT2 PARAM it edits the first parameter until clicked: **NAV** replaces its
 cell, turns select available menu pages, and another click resumes editing.
 Pads activate the menu's actions. Overlays keep their ordinary turn/select
 behavior. Leaving the screen or loading a sound resets the rotary to editing.
-The existing two-message confirmation and post-click suppression also apply to
-this encoder's parameter turns. Keyboard navigation remains independent; SOUND
+The same immediate response and post-click suppression apply to this
+encoder's parameter turns. Keyboard navigation remains independent; SOUND
 RESET and keyboard Enter in Player retain explicit in-place reset.
 
 Physical rotaries 1–8 are tone controls, 9–12 are envelopes, and 13–16 are

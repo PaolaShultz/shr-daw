@@ -2209,13 +2209,11 @@ fn connect_midi_input(
                         let (modifier_message, modifier_down) =
                             pads.encoder_modifier_action(message);
                         if modifier_message {
-                            navigation_encoder.clear_pending();
                             encoder_modifier_down = modifier_down;
                         }
                         let (chord_message, chord_action) =
                             pads.page_cycle_chord_action(message, &mut page_cycle_chord);
                         if chord_message {
-                            navigation_encoder.clear_pending();
                             if let Some((action, pressed)) = chord_action {
                                 let _ = tx.send(MidiEvent::Pad(action, pressed));
                             }
@@ -2230,7 +2228,6 @@ fn connect_midi_input(
                             let _ = tx.send(MidiEvent::PadLock(pad_locked));
                         }
                         if lock_message {
-                            navigation_encoder.clear_pending();
                             lock_pressed = lock_down;
                         }
                         let forced_pad_release =
@@ -2273,7 +2270,6 @@ fn connect_midi_input(
                             synth_amp_page.load(Ordering::Acquire),
                         );
                         if let Some(pressed) = routed.synth_action {
-                            navigation_encoder.clear_pending();
                             let _ = tx.send(MidiEvent::SynthAction(pressed));
                         }
                         if let Some((cc, value)) = routed.value {
@@ -2301,18 +2297,13 @@ fn connect_midi_input(
                             .unwrap_or(true);
                         if !pad_locked {
                             if let Some((action, pressed)) = pads.action_state(message) {
-                                navigation_encoder.clear_pending();
                                 let _ = tx.send(MidiEvent::Pad(action, pressed));
                             }
                         }
-                        if let Some(action) = routed.encoder.and_then(|action| {
-                            navigation_encoder.filter(
-                                action,
-                                routed.encoder_modified,
-                                (message[0] & 0x0f, message[1]),
-                                received,
-                            )
-                        }) {
+                        if let Some(action) = routed
+                            .encoder
+                            .and_then(|action| navigation_encoder.filter(action, received))
+                        {
                             let event = if routed.encoder_modified {
                                 MidiEvent::EncoderModified(action)
                             } else {
