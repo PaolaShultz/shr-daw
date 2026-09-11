@@ -4,6 +4,10 @@
 
 use std::collections::HashMap;
 
+/// Five equal parameter columns occupy the native 40-cell display. Static
+/// labels must fit whole; preset/schema IDs are not display labels.
+pub const SYNTH_PARAMETER_LABEL_CELLS: usize = 8;
+
 pub const VOLUME_CC: u8 = 93;
 /// Standard MIDI channel-volume controller used by managed instruments whose
 /// native parameter map is not synthv1's DCA map.
@@ -227,7 +231,7 @@ pub const MOJ_SIX_OP_PM_CONTROLS: [MojControl; 12] = [
     },
     MojControl {
         cc: 25,
-        name: "Key Scale",
+        name: "KeyScale",
         macro_id: "key_scale",
     },
     MojControl {
@@ -469,7 +473,7 @@ pub const MOJ_PRESSURE_CONTROLS: [MojControl; 12] = [
     },
     MojControl {
         cc: 23,
-        name: "Resonance",
+        name: "Res",
         macro_id: "resonance",
     },
     MojControl {
@@ -547,7 +551,7 @@ pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
     },
     MojControl {
         cc: 26,
-        name: "Structure",
+        name: "Struct",
         macro_id: "structure",
     },
     MojControl {
@@ -562,12 +566,12 @@ pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
     },
     MojControl {
         cc: 29,
-        name: "F Sustain",
+        name: "F Sus",
         macro_id: "filter_sustain",
     },
     MojControl {
         cc: 30,
-        name: "F Release",
+        name: "F Rel",
         macro_id: "filter_release",
     },
     MojControl {
@@ -582,12 +586,12 @@ pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
     },
     MojControl {
         cc: 33,
-        name: "A Sustain",
+        name: "A Sus",
         macro_id: "amp_sustain",
     },
     MojControl {
         cc: 34,
-        name: "A Release",
+        name: "A Rel",
         macro_id: "amp_release",
     },
 ];
@@ -646,7 +650,7 @@ pub const MOJ_OPEN303_CONTROLS: [MojControl; 12] = [
     },
     MojControl {
         cc: 29,
-        name: "Ac Attack",
+        name: "Ac Atk",
         macro_id: "accent_attack",
     },
     MojControl {
@@ -729,6 +733,30 @@ pub fn by_cc(cc: u8) -> Option<Control> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_synth_parameter_labels_fit_the_native_cell_budget() {
+        assert_eq!(SYNTH_PARAMETER_LABEL_CELLS, 40 / 5);
+        let check = |name: &str| {
+            assert!(!name.is_empty());
+            assert!(!name.chars().any(char::is_control), "{name:?}");
+            assert!(
+                crate::ui_text::width(name) <= SYNTH_PARAMETER_LABEL_CELLS,
+                "parameter label {name:?} exceeds the eight-cell native slot"
+            );
+        };
+        for control in CONTROLS {
+            check(control.name);
+        }
+        for model in crate::preset::MojModel::ALL {
+            for control in moj_controls(model) {
+                check(control.name);
+            }
+        }
+        for name in ["Volume", "Aux 1", "Aux 2", "Aux 3"] {
+            check(name);
+        }
+    }
 
     #[test]
     fn bipolar_envelope_range_is_exact() {

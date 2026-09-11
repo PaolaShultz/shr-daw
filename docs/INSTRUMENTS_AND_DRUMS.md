@@ -111,7 +111,7 @@ models have these synthesis labels:
 | --- | --- | --- | --- | --- | --- |
 | 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay | Type, Form, Warp, Couple | Mass, Detune, Spread, Shape | Body, Growl, Metal, Punch |
 | 5 | Volume | Volume | Volume | Volume | Volume |
-| 6–8 | Motion, Depth, Space | Key Scale, Velocity, Motion | Chaos, Color, Space | Motion, Color, Space | Drive, Filter, Unstable |
+| 6–8 | Motion, Depth, Space | KeyScale, Velocity, Motion | Chaos, Color, Space | Motion, Color, Space | Drive, Filter, Unstable |
 | 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
 
 Dual Filter's main view keeps its first twelve synthesis controls. On Player,
@@ -120,9 +120,15 @@ positions then control amp Attack, Decay, Sustain, and Release. **FILTER**
 returns to the main view; the final three positions stay AUX in either view.
 Changing views leaves the sound and preset untouched and re-arms absolute
 pickup. Reset, Save, and automation still cover all fifteen native parameters.
-Pressure Chain uses Source, Shape, Cutoff, Resonance, Sweep, F Decay, Pressure,
+Pressure Chain uses Source, Shape, Cutoff, Res, Sweep, F Decay, Pressure,
 Bite, then amp Attack, Decay, Sustain, Release. Its fifth position is Sweep;
 no timbre control is hidden.
+
+Native parameter labels occupy at most eight terminal cells. `KeyScale` means
+key scaling, `Res` resonance, and `Struct` Dual Filter structure. Dual Filter
+uses `F Sus`/`F Rel` for filter sustain/release and `A Sus`/`A Rel` for amp
+sustain/release. Open303 uses `Ac Atk` for accent attack. These are display
+abbreviations; saved parameter names and MIDI mappings keep their existing IDs.
 
 Yoshimi, FluidSynth, and SHR Sampler expose Volume at position 5 (physical
 rotary 6) and the same three AUX sends. FluidSynth's sends process its whole

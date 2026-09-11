@@ -24915,6 +24915,16 @@ fn draw_aux_surface_slots<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
     }
 }
 
+fn synth_parameter_label(name: &str, width: u16) -> String {
+    if usize::from(width) >= crate::control::SYNTH_PARAMETER_LABEL_CELLS {
+        name.to_owned()
+    } else {
+        // Sub-native terminals still need bounded rendering. Native labels
+        // are authored to fit and tested without truncating their expectation.
+        truncate(name, usize::from(width))
+    }
+}
+
 fn draw_synth_parameters<B: Backend>(
     f: &mut Frame<B>,
     a: &mut App,
@@ -25018,7 +25028,7 @@ fn draw_synth_parameters<B: Backend>(
             let w = next_x - x;
             let v = a.values.get(&c.cc).copied().unwrap_or(c.min);
             let original = a.original_values.get(&c.cc).copied().unwrap_or(c.min);
-            let label = truncate(c.name, w as usize);
+            let label = synth_parameter_label(c.name, w);
             f.render_widget(
                 Paragraph::new(label)
                     .alignment(Alignment::Center)
@@ -25060,7 +25070,7 @@ fn draw_synth_parameters<B: Backend>(
             let value = a.values.get(&control.cc).copied().unwrap_or(0.0);
             let original = a.original_values.get(&control.cc).copied().unwrap_or(0.0);
             f.render_widget(
-                Paragraph::new(truncate(control.name, width as usize))
+                Paragraph::new(synth_parameter_label(control.name, width))
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(Color::White)),
                 rect(x, label_y, width, 1),
@@ -31137,18 +31147,9 @@ release = 0.4
             let frame = render_app(&mut app, 40, 13);
             let text = buffer_text(&frame);
             for label in [
-                "A Attack",
-                "A Decay",
-                "A Sustain",
-                "A Release",
-                "Aux 1",
-                "Aux 2",
-                "Aux 3",
+                "A Attack", "A Decay", "A Sus", "A Rel", "Aux 1", "Aux 2", "Aux 3",
             ] {
-                assert!(
-                    text.contains(&truncate(label, 8)),
-                    "missing {label} in {text}"
-                );
+                assert!(text.contains(label), "missing {label} in {text}");
             }
             assert_eq!(app.transport_indicator(), before_transport);
             assert!(row_text(&frame, 12).starts_with(transport_glyph(before_transport).0));
@@ -31206,8 +31207,8 @@ release = 0.4
         assert_eq!(mono_cells.len(), 1);
         assert_eq!(mono_cells[0].symbol, "M");
         for control in moj_controls(preset::MojModel::PressureChain) {
-            let label = truncate(control.name, 8);
-            assert!(text.contains(&label), "missing {label} in {text}");
+            let label = control.name;
+            assert!(text.contains(label), "missing {label} in {text}");
         }
         assert!(app.aux_surface_active());
         app.apply_relative_rotary(Instant::now(), 4, 1);
@@ -31237,15 +31238,58 @@ release = 0.4
             .collect();
         app.original_values = app.values.clone();
         let text = buffer_text(&render_app(&mut app, 40, 13));
-        let control_width = 40 / 5;
         for control in moj_controls(preset::MojModel::SixOpPm) {
-            let visible_label = truncate(control.name, control_width);
+            let visible_label = control.name;
             assert!(
-                text.contains(&visible_label),
+                text.contains(visible_label),
                 "missing {visible_label} in\n{text}"
             );
         }
         assert!(!text.contains("Evolve"));
+    }
+
+    #[test]
+    fn native_parameter_cells_show_complete_labels_on_both_screens_and_pages() {
+        let check_slot = |frame: &Buffer, slot: usize, label: &str| {
+            let x = (slot % 5) as u16 * 8;
+            let y = 1 + (slot / 5) as u16 * 2;
+            let shown: String = (x..x + 8)
+                .map(|column| buffer_cell(frame, column, y).symbol.as_str())
+                .collect();
+            assert_eq!(
+                shown.trim(),
+                label,
+                "slot {slot}: label must be complete in its own eight cells"
+            );
+        };
+        for screen in [Screen::Playback, Screen::TrackerParameters] {
+            let p = presets();
+            let mut synth = app(&p);
+            synth.screen = screen;
+            synth.playing = Some(p[0].clone());
+            let frame = render_app(&mut synth, 40, 13);
+            for (slot, control) in CONTROLS.iter().enumerate() {
+                check_slot(&frame, slot, control.name);
+            }
+            for model in preset::MojModel::ALL {
+                for amp_page in [false, true] {
+                    let mut synth = app(&p);
+                    synth.screen = screen;
+                    synth.playing = Some(moj_preset(model, model.label()));
+                    synth.synth_amp_page.store(amp_page, Ordering::Relaxed);
+                    let frame = render_app(&mut synth, 40, 13);
+                    for (slot, control) in moj_surface_controls(model, amp_page).iter().enumerate()
+                    {
+                        check_slot(&frame, slot, control.name);
+                    }
+                    for (slot, label) in [(12, "Aux 1"), (13, "Aux 2"), (14, "Aux 3")] {
+                        check_slot(&frame, slot, label);
+                    }
+                    assert!(row_text(&frame, 12)
+                        .starts_with(transport_glyph(synth.transport_indicator()).0));
+                }
+            }
+        }
     }
 
     #[test]
@@ -31327,12 +31371,10 @@ release = 0.4
             if let Some(cell) = mono_cells.first() {
                 assert_eq!(cell.symbol, "M");
             }
-            let columns = 5;
-            let control_width = 40 / columns;
             for control in moj_surface_controls(model, false) {
-                let visible_label = truncate(control.name, control_width);
+                let visible_label = control.name;
                 assert!(
-                    text.contains(&visible_label),
+                    text.contains(visible_label),
                     "{model:?} tracker parameter view omitted {}: {text}",
                     control.name
                 );

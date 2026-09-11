@@ -448,6 +448,14 @@ frequency, and output trim. Yellow means selected, green means editing, and a
 bypassed EQ is dim. Knobs 1–4 remain logarithmic band frequencies and knobs
 5–8 their half-decibel gains. Low cut is never misrepresented as knob 1.
 
+Player and FT2 PARAM have five eight-cell parameter columns at native 40×13.
+Every static synth label, including labels on secondary pages, must fit within
+eight terminal cells. `src/control.rs` owns these display labels independently
+of MIDI CCs and preset/schema names. Width contracts cover every model, and
+native render tests compare complete labels inside their individual slots;
+expected labels must never be truncated to make a test pass. Smaller terminals
+retain the compact clipping fallback.
+
 All working-screen single-line regions have explicit terminal-cell budgets.
 Static operational labels are written to fit; unpredictable device/file/user
 names pass through cell-aware fitting; fixed label/value rows reserve the
@@ -544,6 +552,6 @@ not shown on the hardware menu until they actually dispatch a working action.
 ### Open303
 
 Moj Open303 uses twelve controls: Wave, Cutoff, Res, Env Mod, Volume, F Decay,
-Accent, Slide, F Attack, Ac Attack, Ac Decay, Amp Dec. The last four are native
+Accent, Slide, F Attack, Ac Atk, Ac Decay, Amp Dec. The last four are native
 envelope timings, not ADSR. AUX remains at 13–15. A01–A04 are the four factory
 starts; the inverted M marks monophonic operation. Filter identity is preset-owned.

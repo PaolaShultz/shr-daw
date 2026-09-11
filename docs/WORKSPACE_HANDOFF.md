@@ -73,7 +73,7 @@ The existing catalog, Project route, private save/reset, and instrument strip
 retain its identity. It is monophonic and displays the same `M` marker.
 
 Its twelve controls are Wave, Cutoff, Res, Env Mod, Volume, F Decay, Accent,
-Slide, F Attack, Ac Attack, Ac Decay, and Amp Dec. Position 5 is CC7 volume;
+Slide, F Attack, Ac Atk, Ac Decay, and Amp Dec. Position 5 is CC7 volume;
 13–15 stay AUX. Native envelope timings replace generic ADSR labels only for
 Open303. The installer retains the separate Open303 MIT and Ooura FFT notices.
 Companion source owns the native preparation, bounded note stack, and render
