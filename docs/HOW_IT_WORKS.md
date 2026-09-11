@@ -454,9 +454,11 @@ There are four useful placement ideas:
   colour, conservative image width, and protected true-peak output in one
   non-reorderable order. It is Project-global rather than Pattern-owned.
 
-Send and return levels run from -60 to +12 dB. A new aux starts with a
-conservative -18 dB post-insert send. The compact controls use 3 dB steps;
-sends below -60 dB show `OFF`. Each serial rack holds at most eight processors,
+Send and return levels run from -60 to +12 dB. A new aux starts with its
+send OFF. The compact menu controls use 3 dB steps; Player/FT2 PARAM AUX
+rotaries use 1 dB per decoded MIDI step, retaining the encoder's turn-speed
+magnitude. Sends below -60 dB show `OFF`. Each serial rack holds at most eight
+processors,
 the complete graph at most 16, and no more than two reverbs. These limits are
 rejections, not silent truncation.
 

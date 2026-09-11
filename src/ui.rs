@@ -14265,11 +14265,12 @@ impl App {
             .iter()
             .find(|send| send.aux_id == aux_id)
             .map(|send| send.level_db);
+        // Encoder packets already carry turn-speed magnitude: use one dB per unit.
         let next = match (current, steps.signum()) {
             (None, -1) => 0.0,
-            (None, _) => aux_send_normalize_db(-27.0 + 3.0 * f32::from(steps - 1)),
+            (None, _) => aux_send_normalize_db(-27.0 + f32::from(steps - 1)),
             (Some(level), _) => {
-                let level = level + 3.0 * f32::from(steps);
+                let level = level + f32::from(steps);
                 if level < -60.0 {
                     0.0
                 } else {
@@ -31110,16 +31111,61 @@ release = 0.4
         app.apply_aux_surface_control(12, 1.0);
         assert_eq!(app.song.aux_routing.sends[0].level_db, 12.0);
         app.apply_aux_surface_delta(13, 1);
-        assert_eq!(app.song.aux_routing.sends[1].level_db, -15.0);
+        assert!((app.song.aux_routing.sends[1].level_db + 17.0).abs() < 0.001);
         app.apply_aux_surface_delta(14, -1);
-        assert_eq!(app.song.aux_routing.sends[2].level_db, -21.0);
+        assert!((app.song.aux_routing.sends[2].level_db + 19.0).abs() < 0.001);
 
         app.playing = Some(moj_preset(preset::MojModel::DualFilter, "Dual Filter"));
         *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
         app.values.insert(34, 0.5);
         app.apply_relative_rotary(Instant::now(), 14, 1);
         assert_eq!(app.values[&34], 0.5);
-        assert_eq!(app.song.aux_routing.sends[2].level_db, -18.0);
+        assert!((app.song.aux_routing.sends[2].level_db + 18.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn aux_rotary_acceleration_is_fine_grained_and_keeps_full_boost_and_off() {
+        for screen in [Screen::Playback, Screen::TrackerParameters] {
+            let mut a = app(&presets());
+            a.screen = screen;
+            a.playing = Some(moj_preset(preset::MojModel::ModelD, "Model D"));
+            let id = a.song.aux_routing.add_bus().unwrap();
+            a.song
+                .aux_routing
+                .add_effect(&a.song.insert_rack, id, EffectKind::Chorus)
+                .unwrap();
+            a.song.aux_routing.buses[0].return_gain_db = 12.0;
+            a.song
+                .aux_routing
+                .set_send(&a.song.insert_rack, id, 0.0, SendPoint::PreInsert)
+                .unwrap();
+            for (steps, expected) in [
+                (2, 2.0),
+                (2, 4.0),
+                (3, 7.0),
+                (3, 10.0),
+                (3, 12.0),
+                (-2, 10.0),
+                (-1, 9.0),
+                (0, 9.0),
+            ] {
+                a.apply_relative_rotary(Instant::now(), LEGACY_SYNTH_CONTROL_COUNT, steps);
+                let send = &a.song.aux_routing.sends[0];
+                assert!((send.level_db - expected).abs() < 0.001);
+                assert_eq!(send.point, SendPoint::PreInsert);
+                assert_eq!(a.song.aux_routing.buses[0].return_gain_db, 12.0);
+            }
+            a.song
+                .aux_routing
+                .set_send(&a.song.insert_rack, id, -59.0, SendPoint::PreInsert)
+                .unwrap();
+            a.apply_relative_rotary(Instant::now(), LEGACY_SYNTH_CONTROL_COUNT, -1);
+            assert_eq!(a.song.aux_routing.sends[0].level_db, -60.0);
+            a.apply_relative_rotary(Instant::now(), LEGACY_SYNTH_CONTROL_COUNT, -1);
+            assert!(a.song.aux_routing.sends.is_empty());
+            a.apply_relative_rotary(Instant::now(), LEGACY_SYNTH_CONTROL_COUNT, 1);
+            assert!((a.song.aux_routing.sends[0].level_db + 27.0).abs() < 0.001);
+        }
     }
 
     #[test]
@@ -31174,7 +31220,7 @@ release = 0.4
                         .iter()
                         .find(|send| usize::from(send.aux_id) == position - 11)
                         .unwrap();
-                    assert!((send.level_db + 15.0).abs() < 0.001);
+                    assert!((send.level_db + 17.0).abs() < 0.001);
                 }
                 assert_eq!(app.values, app.original_values);
                 let frame = render_app(&mut app, 40, 13);

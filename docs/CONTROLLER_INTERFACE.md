@@ -514,6 +514,10 @@ model positions do nothing. No controller Learn or Project format migration is
 needed. The complete model-by-model surface and audit decisions are in
 [Instruments and drums](INSTRUMENTS_AND_DRUMS.md#moj-sint-sounds).
 
+AUX send rotaries move by 1 dB per decoded MIDI step. Encoder acceleration
+therefore produces 2–3 dB movements instead of 6–9 dB jumps. The full
+−60..+12 dB range remains available; turning below −60 dB switches the send OFF.
+
 The Player information row combines chord, note names and the enabled N00B
 scale. Velocity numbers and the keyboard drawing are removed. Shift-turn in
 Player changes the enabled N00B scale without taking over parameter 1.

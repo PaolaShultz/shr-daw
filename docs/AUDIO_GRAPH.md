@@ -61,9 +61,13 @@ hardware-independent strip evidence and algorithm provenance are in
 remain historical rather than being rewritten.
 
 Send and return gain are each bounded to -60..+12 dB. The compact UI changes
-sends by 3 dB and treats below -60 dB as `OFF`; a newly created aux starts with
-a -18 dB post-insert send. Return changes also use 3 dB steps and wrap from
--60 to +12 dB. These are Project values, not JACK port gains.
+sends by 3 dB and treats below -60 dB as `OFF`. A newly created aux has its
+send OFF; the first positive menu adjustment enables it at -24 dB.
+The Player/FT2 PARAM AUX rotaries instead use 1 dB per decoded MIDI step,
+so accelerated two/three-step packets move 2/3 dB. A single positive rotary
+step from OFF starts at -27 dB.
+Return changes still use 3 dB steps and wrap from -60 to +12 dB. These are
+Project values, not JACK port gains.
 
 ## Ownership boundary
 
