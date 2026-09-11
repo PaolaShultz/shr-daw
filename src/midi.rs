@@ -1,5 +1,5 @@
 use crate::control::{
-    by_cc, moj_surface_controls, normalize, value_from_cc, AUX_SEND_CONTROL_COUNT, CONTROLS,
+    by_cc, moj_surface_controls, normalize, value_from_cc, AUX_SEND_CONTROL_COUNT,
     INSTRUMENT_VOLUME_CC, LEGACY_SYNTH_CONTROL_COUNT, MOJ_CORE_TOGGLE_CC,
 };
 use crate::pads::{EncoderAction, PadAction, PadConfig};
@@ -175,47 +175,66 @@ pub fn route_with_synth_amp_page<'a>(
         .then(|| pads.rotary_position(message[1]))
         .flatten();
     let moj_controls = moj_surface_controls(moj_model.unwrap_or(MojModel::ModelD), amp_page);
-    let mapped_control_count = if backend == BackendKind::MojSint {
-        moj_controls.len()
-    } else {
-        CONTROLS.len()
-    };
+    let mapped_control_count = LEGACY_SYNTH_CONTROL_COUNT;
     let surface = mapped_position
         .filter(|index| {
             (LEGACY_SYNTH_CONTROL_COUNT..LEGACY_SYNTH_CONTROL_COUNT + AUX_SEND_CONTROL_COUNT)
                 .contains(index)
         })
         .map(|index| (index, f32::from(message[2].min(127)) / 127.0));
-    let reserved_rotary =
-        mapped_position.is_some_and(|index| index >= mapped_control_count && surface.is_none());
+    let reserved_rotary = mapped_position.is_some_and(|index| {
+        (index >= mapped_control_count && surface.is_none())
+            || (!matches!(backend, BackendKind::MojSint | BackendKind::Synthv1)
+                && index != crate::control::SYNTH_VOLUME_SLOT - 1
+                && surface.is_none())
+            || (backend == BackendKind::MojSint
+                && crate::control::synth_surface_index(index + 1, moj_controls.len()).is_none()
+                && surface.is_none())
+            || (backend == BackendKind::Synthv1
+                && crate::control::synth_surface_index(
+                    index + 1,
+                    crate::control::SYNTHV1_SURFACE.len(),
+                )
+                .is_none()
+                && surface.is_none())
+    });
     let consumed = command_consumed || surface.is_some() || reserved_rotary;
-    let volume_position = CONTROLS
-        .iter()
-        .position(|control| control.cc == crate::control::VOLUME_CC);
+    let volume_position = Some(crate::control::SYNTH_VOLUME_SLOT - 1);
     let mapped_standard_volume = mapped_position == volume_position;
     let value = if consumed {
         None
     } else if backend == BackendKind::Synthv1 {
         mapped_position
-            .and_then(|position| CONTROLS.get(position).copied())
+            .and_then(|position| {
+                crate::control::synth_surface_index(
+                    position + 1,
+                    crate::control::SYNTHV1_SURFACE.len(),
+                )
+            })
+            .and_then(|index| crate::control::SYNTHV1_SURFACE.get(index).copied())
             .map(|c| (c.cc, value_from_cc(c, message[2])))
     } else if backend == BackendKind::MojSint {
         mapped_position
+            .and_then(|position| {
+                crate::control::synth_surface_index(position + 1, moj_controls.len())
+            })
             .and_then(|index| moj_controls.get(index))
             .map(|control| (control.cc, f32::from(message[2].min(127)) / 127.0))
     } else {
         mapped_standard_volume
             .then(|| (INSTRUMENT_VOLUME_CC, f32::from(message[2].min(127)) / 127.0))
     };
-    let translated = if backend == BackendKind::MojSint {
+    let translated = if backend == BackendKind::Synthv1 {
+        value.map(|(cc, _)| [message[0], cc, message[2].min(127)])
+    } else if backend == BackendKind::MojSint {
         if synth_action == Some(true) {
             Some([0xb0 | (message[0] & 0x0f), MOJ_CORE_TOGGLE_CC, 127])
         } else if consumed {
             None
         } else {
             mapped_position.and_then(|index| {
-                moj_controls
-                    .get(index)
+                crate::control::synth_surface_index(index + 1, moj_controls.len())
+                    .and_then(|index| moj_controls.get(index))
                     .map(|control| [message[0], control.cc, message[2].min(127)])
             })
         }
@@ -488,16 +507,17 @@ mod tests {
             ..PadConfig::default()
         };
         let synthv1 = route(&pads, BackendKind::Synthv1, &[0xb0, 86, 64]);
-        assert_eq!(synthv1.value.map(|value| value.0), Some(74));
+        assert_eq!(synthv1.value.map(|value| value.0), Some(71));
         let fluid = route(&pads, BackendKind::FluidSynth, &[0xb0, 86, 64]);
         assert_eq!(fluid.value, None);
-        assert_eq!(fluid.forward, Some(&[0xb0, 86, 64][..]));
+        assert!(fluid.consumed);
+        assert_eq!(fluid.forward, None);
     }
 
     #[test]
     fn physical_volume_becomes_channel_volume_on_optional_backends() {
         let pads = PadConfig {
-            controls: HashMap::from([(110, 5)]),
+            controls: HashMap::from([(110, 12)]),
             ..PadConfig::default()
         };
         for backend in [
@@ -511,12 +531,15 @@ mod tests {
             assert!(routed.forward.is_none());
         }
         let synthv1 = route(&pads, BackendKind::Synthv1, &[0xb2, 110, 99]);
-        assert_eq!(synthv1.translated, None);
+        assert_eq!(
+            synthv1.translated,
+            Some([0xb2, crate::control::VOLUME_CC, 99])
+        );
         assert_eq!(
             synthv1.value.map(|value| value.0),
             Some(crate::control::VOLUME_CC)
         );
-        assert_eq!(synthv1.forward, Some(&[0xb2, 110, 99][..]));
+        assert_eq!(synthv1.forward, None);
     }
 
     #[test]
@@ -543,18 +566,18 @@ mod tests {
     #[test]
     fn moj_sint_uses_position_matched_ccs_and_normalized_pickup() {
         let pads = PadConfig {
-            controls: HashMap::from([(86, 1), (87, 9)]),
+            controls: HashMap::from([(86, 1), (87, 8)]),
             ..PadConfig::default()
         };
         let color = route(&pads, BackendKind::MojSint, &[0xb0, 86, 64]);
-        assert_eq!(color.value, Some((20, 64.0 / 127.0)));
-        assert_eq!(color.translated, Some([0xb0, 20, 64]));
+        assert_eq!(color.value, Some((21, 64.0 / 127.0)));
+        assert_eq!(color.translated, Some([0xb0, 21, 64]));
         let attack = route(&pads, BackendKind::MojSint, &[0xb0, 87, 32]);
         assert_eq!(attack.value, Some((28, 32.0 / 127.0)));
         assert_eq!(attack.translated, Some([0xb0, 28, 32]));
 
         let volume_pads = PadConfig {
-            controls: HashMap::from([(93, 5)]),
+            controls: HashMap::from([(93, 12)]),
             ..PadConfig::default()
         };
         let volume = route(&volume_pads, BackendKind::MojSint, &[0xb0, 93, 99]);
@@ -652,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn dual_filter_amp_page_routes_adsr_and_consumes_unused_positions() {
+    fn dual_filter_routes_amp_on_row_three_and_volume_on_row_four() {
         let pads = PadConfig {
             controls: (0..15).map(|index| (40 + index, index + 1)).collect(),
             ..PadConfig::default()
@@ -669,19 +692,9 @@ mod tests {
                     false,
                     amp_page,
                 );
-                if amp_page && position >= 4 {
-                    assert!(routed.consumed);
-                    assert_eq!(routed.value, None);
-                    assert_eq!(routed.translated, None);
-                } else {
-                    let cc = if amp_page {
-                        31 + position
-                    } else {
-                        20 + position
-                    };
-                    assert_eq!(routed.value, Some((cc, 81.0 / 127.0)));
-                    assert_eq!(routed.translated, Some([0xb2, cc, 81]));
-                }
+                let cc = [21, 22, 23, 24, 25, 26, 28, 31, 32, 33, 34, 7][usize::from(position)];
+                assert_eq!(routed.value, Some((cc, 81.0 / 127.0)));
+                assert_eq!(routed.translated, Some([0xb2, cc, 81]));
                 assert_eq!(routed.surface, None);
                 assert_eq!(routed.forward, None);
             }

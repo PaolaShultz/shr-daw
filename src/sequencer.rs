@@ -1761,13 +1761,9 @@ fn validate_automation_lane(
                 BackendKind::Synthv1 => crate::control::CONTROLS
                     .iter()
                     .any(|candidate| candidate.xml_name == control),
-                BackendKind::MojSint => crate::control::MOJ_MODEL_D_CONTROLS
-                    .iter()
-                    .chain(crate::control::MOJ_SIX_OP_PM_CONTROLS.iter())
-                    .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
-                    .chain(crate::control::MOJ_SWARM_CONTROLS.iter())
-                    .chain(crate::control::MOJ_BASS_MATRIX_CONTROLS.iter())
-                    .chain(crate::control::MOJ_DUAL_FILTER_CONTROLS.iter())
+                BackendKind::MojSint => crate::preset::MojModel::ALL
+                    .into_iter()
+                    .flat_map(crate::control::moj_controls)
                     .any(|candidate| candidate.macro_id == control),
                 BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
                     control == "instrument_volume"

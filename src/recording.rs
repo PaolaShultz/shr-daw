@@ -1114,7 +1114,7 @@ release = 0.6
         let values = MOJ_CONTROLS
             .iter()
             .enumerate()
-            .map(|(index, control)| (control.cc, index as f32 / 11.0))
+            .map(|(index, control)| (control.cc, index as f32 / (MOJ_CONTROLS.len() - 1) as f32))
             .collect::<HashMap<_, _>>();
         let saved = save(&base, "moj", &preset, &values, &[]).unwrap();
         assert!(saved.join("preset.mojsint").is_file());

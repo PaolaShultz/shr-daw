@@ -1547,12 +1547,11 @@ fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
     let document = read_moj_document(path)?;
     let mut values: HashMap<u8, f32> = crate::control::moj_controls(document.model)
         .iter()
-        .enumerate()
-        .map(|(index, control)| {
+        .map(|control| {
             let value = if control.cc == 7 {
                 document.instrument_volume
             } else {
-                document.values[index]
+                document.values[usize::from(control.cc - 20)]
             };
             (control.cc, value)
         })
@@ -2396,10 +2395,7 @@ fn serialize_moj_sint(
     if !instrument_volume.is_finite() || !(0.0..=1.0).contains(&instrument_volume) {
         bail!("mapped instrument volume is outside 0..=1")
     }
-    for (index, control) in crate::control::moj_controls(expected_model)
-        .iter()
-        .enumerate()
-    {
+    for control in crate::control::moj_controls(expected_model) {
         if control.cc == 7 {
             continue;
         }
@@ -2410,7 +2406,7 @@ fn serialize_moj_sint(
         if !value.is_finite() || !(0.0..=1.0).contains(&value) {
             bail!("mapped Moj Sint CC {} is outside 0..=1", control.cc)
         }
-        values[index] = value;
+        values[usize::from(control.cc - 20)] = value;
     }
     let encoded = match (expected_model, document.patch) {
         (MojModel::ModelD, MojPatch::ModelD(model_d_patch)) => {
@@ -3097,7 +3093,7 @@ release = 0.6
                 .collect::<Vec<_>>(),
             names
         );
-        assert_eq!(values(&presets[0]).unwrap().len(), 12);
+        assert_eq!(values(&presets[0]).unwrap().len(), 13);
         let version_two = base.join("legacy-v2.mojsint");
         fs::write(
             &version_two,
@@ -3109,7 +3105,7 @@ release = 0.6
         .unwrap();
         let (_, model, values) = read_moj_sint(&version_two).unwrap();
         assert_eq!(model, MojModel::ModelD);
-        assert_eq!(values.len(), 12);
+        assert_eq!(values.len(), 13);
         fs::remove_file(version_two).unwrap();
         let version_three = base.join("legacy-v3.mojsint");
         fs::write(
@@ -3159,7 +3155,7 @@ release = 0.25
         let (name, model, values) = read_moj_sint(&path).unwrap();
         assert_eq!(name, "08 Six-Op Bell Metal");
         assert_eq!(model, MojModel::SixOpPm);
-        assert_eq!(values.len(), 12);
+        assert_eq!(values.len(), 13);
         assert_eq!(values.get(&20), Some(&0.5));
 
         fs::write(&path, format!("{source}\nmodel_d_patch = \"bass\"\n")).unwrap();
@@ -3360,6 +3356,41 @@ amp_release = 0.7
 "#
             .into(),
         }
+    }
+
+    #[test]
+    fn moj_reordered_surface_roundtrips_every_native_cc_and_hidden_envelope() {
+        let base =
+            std::env::temp_dir().join(format!("shr-moj-surface-save-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        for model in MojModel::ALL {
+            let path = base.join(format!("{}.mojsint", model.stable_id()));
+            fs::write(&path, moj_source(model)).unwrap();
+            let (_, _, mut current) = read_moj_sint(&path).unwrap();
+            for control in crate::control::moj_controls(model) {
+                current.insert(
+                    control.cc,
+                    if control.cc == 7 {
+                        0.37
+                    } else {
+                        f32::from(control.cc - 19) / 16.0
+                    },
+                );
+            }
+            let encoded = serialize_moj_sint(&path, model, "Roundtrip", &current).unwrap();
+            fs::write(&path, encoded).unwrap();
+            let document = read_moj_document(&path).unwrap();
+            for control in crate::control::moj_controls(model) {
+                let stored = if control.cc == 7 {
+                    document.instrument_volume
+                } else {
+                    document.values[usize::from(control.cc - 20)]
+                };
+                assert_eq!(stored, current[&control.cc], "{model:?} CC {}", control.cc);
+            }
+            assert_eq!(read_moj_sint(&path).unwrap().2, current);
+        }
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

@@ -521,8 +521,12 @@ fn append_runtime_automation(
                     .and_then(|page| page.columns.first())
                     .context("instrument automation page has no lanes")?
                     .channel;
-                let controller = mapped_control_cc(engine, control)
-                    .context("instrument automation control is not mapped")?;
+                let controller = mapped_control_cc_for_page(
+                    engine,
+                    control,
+                    pattern.pages.get(page).map(|page| &page.target),
+                )
+                .context("instrument automation control is not mapped")?;
                 (page, channel, controller)
             }
             AutomationTarget::Effect { .. } | AutomationTarget::EffectBypass { .. } => continue,
@@ -557,6 +561,30 @@ fn append_runtime_automation(
     Ok(())
 }
 
+/// Macro names such as motion/color are shared across models but can have
+/// different CCs. Resolve against the saved page route before the legacy union.
+pub fn mapped_control_cc_for_page(
+    engine: &str,
+    control: &str,
+    target: Option<&PageTarget>,
+) -> Option<u8> {
+    if let Some(PageTarget::Software(route)) = target {
+        if route.engine == crate::preset::BackendKind::MojSint {
+            let id = route.instrument.split('/').next()?;
+            if let Some(model) = crate::preset::MojModel::ALL
+                .into_iter()
+                .find(|model| model.stable_id() == id)
+            {
+                return crate::control::moj_controls(model)
+                    .iter()
+                    .find(|candidate| candidate.macro_id == control)
+                    .map(|candidate| candidate.cc);
+            }
+        }
+    }
+    mapped_control_cc(engine, control)
+}
+
 pub fn mapped_control_cc(engine: &str, control: &str) -> Option<u8> {
     let engine: crate::preset::BackendKind = engine.parse().ok()?;
     match engine {
@@ -564,13 +592,9 @@ pub fn mapped_control_cc(engine: &str, control: &str) -> Option<u8> {
             .iter()
             .find(|candidate| candidate.xml_name == control)
             .map(|candidate| candidate.cc),
-        crate::preset::BackendKind::MojSint => crate::control::MOJ_MODEL_D_CONTROLS
-            .iter()
-            .chain(crate::control::MOJ_SIX_OP_PM_CONTROLS.iter())
-            .chain(crate::control::MOJ_STRANGE_CONTROLS.iter())
-            .chain(crate::control::MOJ_SWARM_CONTROLS.iter())
-            .chain(crate::control::MOJ_BASS_MATRIX_CONTROLS.iter())
-            .chain(crate::control::MOJ_DUAL_FILTER_CONTROLS.iter())
+        crate::preset::BackendKind::MojSint => crate::preset::MojModel::ALL
+            .into_iter()
+            .flat_map(crate::control::moj_controls)
             .find(|candidate| candidate.macro_id == control)
             .map(|candidate| candidate.cc),
         crate::preset::BackendKind::Yoshimi
@@ -721,6 +745,27 @@ mod tests {
         let after = lane.value_at(AUTOMATION_TICKS_PER_ROW / 2, AUTOMATION_TICKS_PER_ROW * 2);
         assert_eq!(before, Some(5_000));
         assert_eq!(after, Some(10_000));
+    }
+
+    #[test]
+    fn moj_automation_resolves_overlapping_names_against_the_actual_model() {
+        for (model, name, expected) in [
+            (crate::preset::MojModel::ModelD, "motion", 25),
+            (crate::preset::MojModel::StrangeOscillator, "motion", 24),
+            (crate::preset::MojModel::SixOpPm, "balance", 24),
+            (crate::preset::MojModel::PressureChain, "sweep", 24),
+            (crate::preset::MojModel::Open303, "amp_decay", 31),
+            (crate::preset::MojModel::DualFilter, "filter_release", 30),
+        ] {
+            let route = PageTarget::Software(crate::sequencer::SoftwareRoute {
+                engine: crate::preset::BackendKind::MojSint,
+                instrument: format!("{}/Test", model.stable_id()),
+            });
+            assert_eq!(
+                mapped_control_cc_for_page("Moj Sint", name, Some(&route)),
+                Some(expected)
+            );
+        }
     }
 
     #[test]

@@ -1013,23 +1013,21 @@ impl Engine {
             state: state.to_path_buf(),
             output,
             control_routes: if preset.backend == BackendKind::Synthv1 {
-                controller
-                    .controls
+                CONTROLS
                     .iter()
-                    .filter_map(|(&incoming, &position)| {
-                        let control = CONTROLS.get(usize::from(position.checked_sub(1)?))?;
-                        Some((incoming, control.cc))
-                    })
+                    .map(|control| (control.cc, control.cc))
                     .collect()
             } else if preset.backend == BackendKind::MojSint {
-                let controls = control::moj_controls(
+                let controls = control::moj_surface_controls(
                     preset.moj_model().context("Moj Sint preset has no model")?,
+                    false,
                 );
                 controller
                     .controls
                     .iter()
                     .filter_map(|(&incoming, &position)| {
-                        let index = usize::from(position.checked_sub(1)?);
+                        let index =
+                            control::synth_surface_index(usize::from(position), controls.len())?;
                         Some((incoming, controls.get(index)?.cc))
                     })
                     .collect()
@@ -1630,19 +1628,15 @@ fn mapped_parameter_messages(
         .collect()
 }
 
-fn write_synthv1_config(home: &Path, controller: &PadConfig) -> Result<()> {
+fn write_synthv1_config(home: &Path, _controller: &PadConfig) -> Result<()> {
     let dir = home.join("rncbc.org");
     fs::create_dir_all(&dir)?;
     let mut file = File::create(dir.join("synthv1.conf"))?;
     writeln!(file, "[Default]\nControlsEnabled=true\n\n[Controllers]")?;
-    for (incoming, position) in &controller.controls {
-        let Some(control) = position
-            .checked_sub(1)
-            .and_then(|position| CONTROLS.get(usize::from(position)))
-        else {
-            continue;
-        };
-        writeln!(file, "Control_0_CC_{incoming}={}, 4", control.index)?;
+    // SHR translates learned physical CCs before forwarding. Canonical CCs
+    // also serve the master rotary, automation, relative edits and reset.
+    for control in CONTROLS {
+        writeln!(file, "Control_0_CC_{}={}, 4", control.cc, control.index)?;
     }
     Ok(())
 }

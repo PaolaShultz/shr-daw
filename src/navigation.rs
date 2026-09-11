@@ -336,7 +336,6 @@ pub enum Action {
     TrackerRecFeel,
     TrackerNoobToggle,
     PlaybackNoobToggle,
-    SynthAmpToggle,
     ConfirmRoutingDefaults,
     CancelRoutingDefaults,
     LoopImport,
@@ -522,8 +521,6 @@ const fn off(label: &'static str) -> MenuSlot {
 pub enum MenuContext {
     #[default]
     Normal,
-    SynthMain,
-    SynthAmp,
     TrackerEdit,
     TrackerSizeConfirm,
     RoutingDefaults,
@@ -584,16 +581,6 @@ const TRACKER_PARAMETERS: [MenuPage; 4] = [
         ],
     ),
 ];
-const TRACKER_PARAMETERS_SYNTH_MAIN: [MenuPage; 4] = {
-    let mut menu = TRACKER_PARAMETERS;
-    menu[0].slots[3] = on("AMP", Action::SynthAmpToggle);
-    menu
-};
-const TRACKER_PARAMETERS_SYNTH_AMP: [MenuPage; 4] = {
-    let mut menu = TRACKER_PARAMETERS;
-    menu[0].slots[3] = on("FILTER", Action::SynthAmpToggle);
-    menu
-};
 const TRACKER_MIXER: [MenuPage; 4] = [
     page(
         "BANK",
@@ -684,27 +671,6 @@ const PLAYBACK: [MenuPage; 4] = [
         ],
     ),
 ];
-const PLAYBACK_SYNTH_MAIN: [MenuPage; 4] = {
-    let mut menu = PLAYBACK;
-    menu[2] = page(
-        "PARAM",
-        [on("AMP", Action::SynthAmpToggle), off(""), off(""), off("")],
-    );
-    menu
-};
-const PLAYBACK_SYNTH_AMP: [MenuPage; 4] = {
-    let mut menu = PLAYBACK;
-    menu[2] = page(
-        "PARAM",
-        [
-            on("FILTER", Action::SynthAmpToggle),
-            off(""),
-            off(""),
-            off(""),
-        ],
-    );
-    menu
-};
 const IDEAS: [MenuPage; 4] = [
     page(
         "PLAY",
@@ -1883,8 +1849,6 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
     match (screen, context) {
         (Screen::Home, _) => &HOME,
         (Screen::Presets, _) => &PRESETS,
-        (Screen::Playback, MenuContext::SynthMain) => &PLAYBACK_SYNTH_MAIN,
-        (Screen::Playback, MenuContext::SynthAmp) => &PLAYBACK_SYNTH_AMP,
         (Screen::Playback, _) => &PLAYBACK,
         (Screen::Ideas, _) => &IDEAS,
         (Screen::Help, _) => &HELP,
@@ -1893,8 +1857,6 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::Tracker, MenuContext::TrackerSizeConfirm) => &TRACKER_SIZE_CONFIRM,
         (Screen::Tracker, MenuContext::TrackerEdit) => &TRACKER_EDIT,
         (Screen::Tracker, _) => &TRACKER,
-        (Screen::TrackerParameters, MenuContext::SynthMain) => &TRACKER_PARAMETERS_SYNTH_MAIN,
-        (Screen::TrackerParameters, MenuContext::SynthAmp) => &TRACKER_PARAMETERS_SYNTH_AMP,
         (Screen::TrackerParameters, _) => &TRACKER_PARAMETERS,
         (Screen::TrackerMixer, _) => &TRACKER_MIXER,
         (Screen::Automation, _) => &AUTOMATION,
@@ -1944,8 +1906,6 @@ mod tests {
         for screen in Screen::ALL {
             for context in [
                 MenuContext::Normal,
-                MenuContext::SynthMain,
-                MenuContext::SynthAmp,
                 MenuContext::TrackerEdit,
                 MenuContext::TrackerSizeConfirm,
                 MenuContext::TrackerRecord,
@@ -2115,8 +2075,6 @@ mod tests {
         for screen in Screen::ALL {
             for context in [
                 MenuContext::Normal,
-                MenuContext::SynthMain,
-                MenuContext::SynthAmp,
                 MenuContext::TrackerEdit,
                 MenuContext::TrackerRecord,
                 MenuContext::TrackerNoteEdit,
@@ -2148,8 +2106,6 @@ mod tests {
             (Screen::Routing, MenuContext::Normal),
             (Screen::Presets, MenuContext::Normal),
             (Screen::Playback, MenuContext::Normal),
-            (Screen::Playback, MenuContext::SynthMain),
-            (Screen::Playback, MenuContext::SynthAmp),
             (Screen::Ideas, MenuContext::Normal),
             (Screen::Help, MenuContext::Normal),
             (Screen::Tracker, MenuContext::Normal),
@@ -2158,8 +2114,6 @@ mod tests {
             (Screen::Tracker, MenuContext::TrackerRecord),
             (Screen::Tracker, MenuContext::TrackerNoteEdit),
             (Screen::TrackerParameters, MenuContext::Normal),
-            (Screen::TrackerParameters, MenuContext::SynthMain),
-            (Screen::TrackerParameters, MenuContext::SynthAmp),
             (Screen::TrackerMixer, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::Normal),
             (Screen::TrackerFiles, MenuContext::PatternClear),

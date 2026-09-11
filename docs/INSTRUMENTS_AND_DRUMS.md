@@ -18,7 +18,7 @@ audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 | synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
 | Yoshimi | `.xiz` sounds and banks | Melodic synth | Volume and Project AUX sends; preset files remain read-only |
 | FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection, Volume, and shared stereo AUX sends; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, and Pressure Chain sounds | Melodic synth | Model-specific controls and Project AUX sends; Dual Filter adds an AMP view and reversible core click; private Overwrite or Save New |
+| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 sounds | Melodic synth | Model-specific controls and Project AUX sends; Dual Filter adds a reversible core click; private Overwrite or Save New |
 | SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments, Volume, and Project AUX sends; packages remain read-only |
 | SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
@@ -62,7 +62,7 @@ Project keeps its stored routes.
 ## Moj Sint sounds
 
 Moj Sint is SHR-DAW's editable in-house synthesis family. The installer pins
-a 24-start catalog with these seven models:
+a 28-start catalog with these eight models:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
   Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
@@ -82,15 +82,18 @@ a 24-start catalog with these seven models:
   one monophonic topology with velocity-coupled pressure and overlapping-note
   slide. Releasing the latest note returns to the most recently held note.
 
-Pressure Chain requires Moj Sint preset schema 9. The installation pin contains
-that engine and all 24 cleared starts. Existing installations need a matching
+- Open303: Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck, with native
+  acid filter and accent/slide envelope controls.
+
+Pressure Chain requires Moj Sint preset schema 9; Open303 requires schema 10. The installation pin contains
+that engine and all 28 cleared starts. Existing installations need a matching
 host binary update before loading the new model; source changes alone do not
 replace a running or installed executable.
 
 Presets groups the available catalog in the fixed model order Model D, Six-Op
-PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, then Pressure Chain. Visible identities use
+PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, then Open303. Visible identities use
 one model letter and a two-digit number local to that model: `D01`, `P01`,
-`O01`, `S01`, `B01`, `F01`, and `C01`. Opening or switching to Moj Sint starts at
+`O01`, `S01`, `B01`, `F01`, `C01`, and `A01`. Opening or switching to Moj Sint starts at
 `D01 Full Bass`; letter-jump follows those visible model letters. In FT2
 **ROUTE**, choosing Moj Sint adds an explicit `ENGINE → MODEL → PATCH`
 hierarchy. Changing the model selects that model's first available patch, and
@@ -101,58 +104,72 @@ The Presets list, Playback, and FT2 **PARAM** show one inverted `M` cell beside
 Pressure Chain and Open303 sounds: these models play one note at a time.
 Long names leave room for the marker. The other Moj models have no voice marker.
 
-Playback and FT2 **PARAM** use the same 3×5 control surface. Every managed
-backend, including all eight Moj models, keeps Project AUX 1, AUX 2, and AUX 3
-at positions 13–15: physical rotaries 14–16 after the main rotary. The first
-twelve synthesis positions keep their established meanings. The first five
-models have these synthesis labels:
+Playback and FT2 **PARAM** share a **4×4** surface matching physical rotaries
+1–16. The first two rows hold tone controls, the third holds envelopes, and
+the last is always **Volume / AUX 1 / AUX 2 / AUX 3**. Rotary 1 normally edits
+the first parameter. Click it to enter visible **NAV**, turn to select a
+controller menu page, and click again to resume editing. Pads still activate
+the visible actions. Leaving the screen or loading a sound returns to editing.
+RESET remains an explicit SOUND action; clicking the rotary no longer resets.
+Existing learned mappings remain valid; no Learn pass is needed.
 
-| Positions | Model D | Six-Op PM | Strange Oscillator | Swarm Machine | Bass Matrix |
-| --- | --- | --- | --- | --- | --- |
-| 1–4 | Evolve, Shape, Color, Edge | Index, Ratio, Feedback, Op Decay | Type, Form, Warp, Couple | Mass, Detune, Spread, Shape | Body, Growl, Metal, Punch |
-| 5 | Volume | Volume | Volume | Volume | Volume |
-| 6–8 | Motion, Depth, Space | KeyScale, Velocity, Motion | Chaos, Color, Space | Motion, Color, Space | Drive, Filter, Unstable |
-| 9–12 | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release | Attack, Decay, Sustain, Release |
+The one information row below the grid shows the chord and held note names,
+plus the selected scale while N00B is enabled. Strike velocities and the
+keyboard graphic no longer compete for space. In Player, Shift-turn changes
+the N00B scale; ordinary turns keep editing the first parameter.
 
-Dual Filter's main view keeps its first twelve synthesis controls. On Player,
-select **PARAM → AMP**; in FT2 **PARAM**, select **SOUND → AMP**. The first four
-positions then control amp Attack, Decay, Sustain, and Release. **FILTER**
-returns to the main view; the final three positions stay AUX in either view.
-Changing views leaves the sound and preset untouched and re-arms absolute
-pickup. Reset, Save, and automation still cover all fifteen native parameters.
-Pressure Chain uses Source, Shape, Cutoff, Res, Sweep, F Decay, Pressure,
-Bite, then amp Attack, Decay, Sustain, Release. Its fifth position is Sweep;
-no timbre control is hidden.
+| Model | Rotaries 1–4 | Rotaries 5–8 | Rotaries 9–12 |
+| --- | --- | --- | --- |
+| Model D | Character, Osc Mix, Cutoff, Drive | Couple, F Env, Ladder, Resonance | Attack, Decay, Sustain, Release |
+| Six-Op PM | Index, Ratio, Feedback, Op Decay | Balance, KeyScale, Velocity, Motion | Attack, Decay, Sustain, Release |
+| Strange Oscillator | Type, Form, Warp, Couple | Motion, Chaos, Color, Space | Attack, Decay, Sustain, Release |
+| Swarm Machine | Mass, Detune, Spread, Shape | Bite, Motion, Color, Space | Attack, Decay, Sustain, Release |
+| Bass Matrix | Body, Growl, Metal, Punch | Drive, Filter, Unstable, — | Attack, Decay, Sustain, Release |
+| Dual Filter | A Cutoff, A Res, A Env, B Cutoff | B Res, B Env, Struct, F Decay | A Attack, A Decay, A Sus, A Rel |
+| Pressure Chain | Source, Shape, Cutoff, Res | Sweep, F Decay, Pressure, Bite | Attack, Decay, Sustain, Release |
+| Open303 | Wave, Cutoff, Res, Env Mod | Accent, Slide, Ac Atk, — | F Attack, F Decay, Ac Decay, Amp Dec |
+| synthv1 | Flt cut, Flt res, Flt env, LFO rate | Dly amt, Dly time, Dly fb, — | Atk, Dec, Sus, Rel |
 
-Native parameter labels occupy at most eight terminal cells. `KeyScale` means
-key scaling, `Res` resonance, and `Struct` Dual Filter structure. Dual Filter
-uses `F Sus`/`F Rel` for filter sustain/release and `A Sus`/`A Rel` for amp
-sustain/release. Open303 uses `Ac Atk` for accent attack. These are display
-abbreviations; saved parameter names and MIDI mappings keep their existing IDs.
+Every row above is followed by **Volume / AUX 1 / AUX 2 / AUX 3** on rotaries
+13–16. Open303 retains its own envelope timings instead of generic ADSR.
+Blank positions do nothing. Static parameter labels must fit nine terminal
+cells within each ten-cell column; saved parameter names and native CCs remain
+independent of display spelling.
 
-Yoshimi, FluidSynth, and SHR Sampler expose Volume at position 5 (physical
-rotary 6) and the same three AUX sends. FluidSynth's sends process its whole
-shared stereo mix. An external MIDI instrument needs a configured audio return
-for SHR effects; MIDI alone does not enter these managed-source sends. The
-surface uses the existing learned controller mapping without another Learn pass.
+The surface audit restored the native controls displaced by Volume: Model D
+feedback (`Couple`), Six-Op balance, Strange motion and Swarm bite. Model D's
+old `Space` label actually controlled resonance; `Character`, `Osc Mix`,
+`Cutoff`, `Drive`, `F Env`, `Ladder` and `Resonance` now describe their DSP roles.
+Bass Matrix's historical CC24 is unused by its live macro path, so no placeholder
+knob is exposed. Open303 and synthv1 likewise leave their spare cell empty.
 
-Moj timbre and ADSR retain their established CCs. For the first five models,
-parameter position 5 uses
-MIDI CC7 as the shared instrument-volume contract. Position 5 is a mapped
-direction-only rotary. Its smoothed gain runs from
-silence to the preset's normal maximum and does not enter timbre DSP. synthv1
-uses its smoothed DCA volume at the same position; Yoshimi, FluidSynth, and SHR
-Sampler receive standard channel volume. Those read-only optional backends do
-not gain an SHR preset-save format: FT2 automation and Project MIDI state own
-their durable volume. After Load, Reset, Project/Idea restore, automation ownership changes,
-or another value-setting transition, physical turns continue from the
-effective value by signed relative steps, preventing jumps after a load or reset.
+Dual Filter needs fifteen native tone/envelope controls plus Volume. Its live
+surface prioritizes both filters' cutoff, resonance and envelope amount,
+structure, filter decay and the complete amp envelope. Filter attack, sustain
+and release are preset-owned detail controls; removing them from the surface
+eliminates the AMP/FILTER page switch. Their loaded values are still retained
+by Save, Reset and automation. This is a performance-surface choice, not deletion
+of the DSP or saved fields. The audit follows each companion model's live
+control mapping and SHR's preset CC-to-field mapping. Automation resolves names
+against the page's model, so shared names such as `motion` reach that model's
+own CC instead of the first similarly named control in another model.
+
+Yoshimi, FluidSynth, and SHR Sampler expose only the final Volume/AUX row.
+FluidSynth's sends process its whole shared stereo mix. External MIDI instruments
+need a configured audio return for SHR effects. AUX sends are consumed inside
+SHR, start OFF, and retain absolute pickup and recording guards.
+
+Volume uses standard CC7 on Moj and the optional managed hosts; synthv1 uses
+its own DCA control. Moj's smoothed volume runs from silence to the preset's
+normal maximum without entering timbre DSP. Optional hosts' preset files remain
+read-only; Project MIDI state and FT2 automation own durable volume. Relative
+turns continue from the effective value after load, reset and automation changes.
 
 **RESET** restores the loaded model values without restarting the synth. Dual
 Filter also restores its saved INDUSTRIAL or COUNTER core.
 **SAVE** offers Overwrite, Save New, and Cancel. Factory/system sounds are
 read-only, so Overwrite redirects to the next private `User NNN` sound. All
-seven Moj models keep separate private namespaces. A successful save becomes the
+eight Moj models keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
 the live sound and any previous file intact. A Moj Sint Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable

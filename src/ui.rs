@@ -1161,6 +1161,7 @@ struct App {
     learn_mode: engine::SharedLearnMode,
     fx_control_mode: engine::SharedFxControlMode,
     synth_amp_page: engine::SharedSynthAmpPage,
+    synth_navigation: bool,
     controller_online: bool,
     performance_inputs: Vec<crate::engine::MidiInputState>,
     external_clock_input: Option<crate::engine::MidiInputState>,
@@ -2385,6 +2386,7 @@ impl App {
             learn_mode: Arc::new(AtomicBool::new(false)),
             fx_control_mode: Arc::new(AtomicBool::new(false)),
             synth_amp_page: Arc::new(AtomicBool::new(false)),
+            synth_navigation: false,
             controller_online: false,
             performance_inputs: Vec::new(),
             external_clock_input: None,
@@ -3356,15 +3358,6 @@ impl App {
     fn menu_context(&self) -> MenuContext {
         if self.confirm_routing_defaults {
             MenuContext::RoutingDefaults
-        } else if matches!(self.screen, Screen::Playback | Screen::TrackerParameters)
-            && self.playing.as_ref().and_then(Preset::moj_model)
-                == Some(preset::MojModel::DualFilter)
-        {
-            if self.synth_amp_page.load(Ordering::Relaxed) {
-                MenuContext::SynthAmp
-            } else {
-                MenuContext::SynthMain
-            }
         } else if self.screen == Screen::Tracker && self.pattern_resize_prompt.is_some() {
             MenuContext::TrackerSizeConfirm
         } else if self.screen == Screen::FxRack && self.fx_type_edit.is_some() {
@@ -4578,6 +4571,9 @@ impl App {
     }
 
     fn set_screen(&mut self, screen: Screen) {
+        if self.screen != screen {
+            self.synth_navigation = false;
+        }
         if screen == Screen::MasterStripAdvanced && self.screen == Screen::MasterStrip {
             self.master_strip_detail_caller = Some((
                 self.master_strip_section,
@@ -10534,7 +10530,14 @@ impl App {
             sequencer::AutomationTarget::Instrument {
                 engine, control, ..
             } => {
-                if crate::timeline::mapped_control_cc(engine, control) != Some(cc) {
+                if crate::timeline::mapped_control_cc_for_page(
+                    engine,
+                    control,
+                    page_index
+                        .and_then(|index| pattern.pages.get(index))
+                        .map(|page| &page.target),
+                ) != Some(cc)
+                {
                     return;
                 }
                 engine
@@ -10751,7 +10754,14 @@ impl App {
                 } if self.screen == Screen::Automation
                     || usize::from(*page) == self.tracker_page =>
                 {
-                    let Some(cc) = crate::timeline::mapped_control_cc(engine, control) else {
+                    let Some(cc) = crate::timeline::mapped_control_cc_for_page(
+                        engine,
+                        control,
+                        pattern
+                            .pages
+                            .get(usize::from(*page))
+                            .map(|page| &page.target),
+                    ) else {
                         continue;
                     };
                     let Some(value) = lane.value_at(tick, pattern_ticks) else {
@@ -14151,6 +14161,7 @@ impl App {
         self.disable_tracker_route();
         self.performance_meter
             .set_audio_unavailable(AudioAvailability::Stopped);
+        self.synth_navigation = false;
         self.playing = Some(preset);
         self.engine_owner = Some(EngineOwner::SoftwareSynth);
         self.original_values = original_values;
@@ -14174,20 +14185,6 @@ impl App {
 
     fn aux_surface_active(&self) -> bool {
         self.playing.is_some()
-    }
-
-    fn toggle_synth_amp_page(&mut self) {
-        if !matches!(self.screen, Screen::Playback | Screen::TrackerParameters)
-            || self.playing.as_ref().and_then(Preset::moj_model)
-                != Some(preset::MojModel::DualFilter)
-        {
-            return;
-        }
-        let next = !self.synth_amp_page.load(Ordering::Relaxed);
-        // Arm every native parameter before publishing the new physical map.
-        // Parameter IDs, preset baselines and the fixed AUX slots stay intact.
-        self.arm_pickup();
-        self.synth_amp_page.store(next, Ordering::Release);
     }
 
     fn aux_surface_visible(&self) -> bool {
@@ -14361,20 +14358,28 @@ impl App {
             return;
         }
 
+        self.apply_synth_slot_delta(received, position + 1, steps);
+    }
+
+    fn apply_synth_slot_delta(&mut self, received: Instant, slot: usize, steps: i8) {
         let backend = self
             .midi_backend
             .lock()
             .map(|backend| *backend)
             .unwrap_or(BackendKind::Synthv1);
         let target = match backend {
-            BackendKind::Synthv1 => CONTROLS.get(position).copied().map(|control| {
-                let current = self.values.get(&control.cc).copied().unwrap_or(control.min);
-                let normalized = (crate::control::normalize(control, current)
-                    + f32::from(steps) / 127.0)
-                    .clamp(0.0, 1.0);
-                let value = control.min + normalized * (control.max - control.min);
-                (control.cc, value, (normalized * 127.0).round() as u8)
-            }),
+            BackendKind::Synthv1 => {
+                crate::control::synth_surface_index(slot, crate::control::SYNTHV1_SURFACE.len())
+                    .and_then(|index| crate::control::SYNTHV1_SURFACE.get(index).copied())
+                    .map(|control| {
+                        let current = self.values.get(&control.cc).copied().unwrap_or(control.min);
+                        let normalized = (crate::control::normalize(control, current)
+                            + f32::from(steps) / 127.0)
+                            .clamp(0.0, 1.0);
+                        let value = control.min + normalized * (control.max - control.min);
+                        (control.cc, value, (normalized * 127.0).round() as u8)
+                    })
+            }
             BackendKind::MojSint => {
                 let controls = self
                     .playing
@@ -14383,23 +14388,25 @@ impl App {
                     .map(|model| {
                         moj_surface_controls(model, self.synth_amp_page.load(Ordering::Relaxed))
                     })
-                    .unwrap_or(&MOJ_CONTROLS);
-                controls.get(position).map(|control| {
-                    let current = self.values.get(&control.cc).copied().unwrap_or_default();
-                    let value = (current + f32::from(steps) / 127.0).clamp(0.0, 1.0);
-                    (control.cc, value, (value * 127.0).round() as u8)
-                })
+                    .unwrap_or_else(|| moj_surface_controls(preset::MojModel::ModelD, false));
+                crate::control::synth_surface_index(slot, controls.len())
+                    .and_then(|index| controls.get(index))
+                    .map(|control| {
+                        let current = self.values.get(&control.cc).copied().unwrap_or_default();
+                        let value = (current + f32::from(steps) / 127.0).clamp(0.0, 1.0);
+                        (control.cc, value, (value * 127.0).round() as u8)
+                    })
             }
-            BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => CONTROLS
-                .iter()
-                .position(|control| control.cc == VOLUME_CC)
-                .filter(|volume_position| *volume_position == position)
-                .map(|_| {
-                    let cc = crate::control::INSTRUMENT_VOLUME_CC;
-                    let current = self.values.get(&cc).copied().unwrap_or_default();
-                    let value = (current + f32::from(steps) / 127.0).clamp(0.0, 1.0);
-                    (cc, value, (value * 127.0).round() as u8)
-                }),
+            BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
+                Some(crate::control::SYNTH_VOLUME_SLOT)
+                    .filter(|volume_slot| *volume_slot == slot)
+                    .map(|_| {
+                        let cc = crate::control::INSTRUMENT_VOLUME_CC;
+                        let current = self.values.get(&cc).copied().unwrap_or_default();
+                        let value = (current + f32::from(steps) / 127.0).clamp(0.0, 1.0);
+                        (cc, value, (value * 127.0).round() as u8)
+                    })
+            }
         };
         let Some((cc, value, raw)) = target else {
             return;
@@ -17495,6 +17502,14 @@ fn dispatch_modified_encoder(
         crate::pads::EncoderAction::Down => 1,
         crate::pads::EncoderAction::Select => unreachable!(),
     };
+    if app.screen == Screen::Playback
+        && app.playback_noob
+        && app.overlay.is_none()
+        && app.pending_project_action.is_none()
+    {
+        app.adjust_playback_noob_scale(direction);
+        return;
+    }
     if let Some(target) = secondary_navigation_for(app) {
         apply_secondary_navigation(target, direction, app, state, tx);
     }
@@ -17583,7 +17598,7 @@ fn dispatch_encoder_input(
     app: &mut App,
     state: &Path,
     tx: &std::sync::mpsc::Sender<MidiEvent>,
-    _physical: bool,
+    physical: bool,
 ) {
     if app.mixed_engine_prompt_active() {
         match action {
@@ -17613,6 +17628,16 @@ fn dispatch_encoder_input(
             crate::pads::EncoderAction::Up => app.move_overlay(-1),
             crate::pads::EncoderAction::Down => app.move_overlay(1),
             crate::pads::EncoderAction::Select => app.activate_overlay(),
+        }
+        return;
+    }
+    if physical && matches!(app.screen, Screen::Playback | Screen::TrackerParameters) {
+        match action {
+            crate::pads::EncoderAction::Select => app.synth_navigation = !app.synth_navigation,
+            crate::pads::EncoderAction::Up if app.synth_navigation => app.cycle_menu_page(-1),
+            crate::pads::EncoderAction::Down if app.synth_navigation => app.cycle_menu_page(1),
+            crate::pads::EncoderAction::Up => app.apply_synth_slot_delta(Instant::now(), 0, -1),
+            crate::pads::EncoderAction::Down => app.apply_synth_slot_delta(Instant::now(), 0, 1),
         }
         return;
     }
@@ -18723,7 +18748,6 @@ fn perform(
         Action::TrackerRecFeel => a.toggle_tracker_rec_feel(),
         Action::TrackerNoobToggle => a.toggle_tracker_noob(),
         Action::PlaybackNoobToggle => a.toggle_playback_noob(),
-        Action::SynthAmpToggle => a.toggle_synth_amp_page(),
         Action::ConfirmRoutingDefaults => a.finish_routing_defaults_prompt(true),
         Action::CancelRoutingDefaults => a.finish_routing_defaults_prompt(false),
         Action::LoopImport => a.open_overlay(Action::LoopImport),
@@ -24879,15 +24903,15 @@ fn aux_send_display(routing: &ProjectAuxRouting, aux_id: u8) -> String {
 
 fn draw_aux_surface_slots<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
     for index in 0..AUX_SEND_CONTROL_COUNT {
-        let surface_index = LEGACY_SYNTH_CONTROL_COUNT + index;
-        let col = (surface_index % 5) as u16;
-        let control_row = (surface_index / 5) as u16;
+        let surface_index = crate::control::SYNTH_SURFACE_CONTROL_COUNT + index;
+        let col = (surface_index % 4) as u16;
+        let control_row = (surface_index / 4) as u16;
         let label_y = area.y + control_row * 2;
         if label_y >= area.y + area.height {
             break;
         }
-        let x = area.x + col * area.width / 5;
-        let next_x = area.x + (col + 1) * area.width / 5;
+        let x = area.x + col * area.width / 4;
+        let next_x = area.x + (col + 1) * area.width / 4;
         let width = next_x - x;
         let aux_id = index as u8 + 1;
         let value = aux_send_normalized(&a.song.aux_routing, aux_id);
@@ -25016,19 +25040,28 @@ fn draw_synth_parameters<B: Backend>(
     let inner = params;
     let playing_backend = a.playing.as_ref().map(|preset| preset.backend);
     if playing_backend == Some(BackendKind::Synthv1) {
-        for (i, c) in CONTROLS.iter().enumerate() {
-            let col = (i % 5) as u16;
-            let control_row = (i / 5) as u16;
+        for (index, c) in crate::control::SYNTHV1_SURFACE.iter().enumerate() {
+            let i =
+                crate::control::synth_surface_slot(index, crate::control::SYNTHV1_SURFACE.len());
+            let col = (i % 4) as u16;
+            let control_row = (i / 4) as u16;
             let label_y = inner.y + control_row * 2;
             if label_y >= inner.y + inner.height {
                 break;
             }
-            let x = inner.x + col * inner.width / 5;
-            let next_x = inner.x + (col + 1) * inner.width / 5;
+            let x = inner.x + col * inner.width / 4;
+            let next_x = inner.x + (col + 1) * inner.width / 4;
             let w = next_x - x;
             let v = a.values.get(&c.cc).copied().unwrap_or(c.min);
             let original = a.original_values.get(&c.cc).copied().unwrap_or(c.min);
-            let label = synth_parameter_label(c.name, w);
+            let label = synth_parameter_label(
+                if i == 0 && a.synth_navigation {
+                    "NAV"
+                } else {
+                    c.name
+                },
+                w,
+            );
             f.render_widget(
                 Paragraph::new(label)
                     .alignment(Alignment::Center)
@@ -25055,9 +25088,10 @@ fn draw_synth_parameters<B: Backend>(
             .as_ref()
             .and_then(Preset::moj_model)
             .map(|model| moj_surface_controls(model, a.synth_amp_page.load(Ordering::Relaxed)))
-            .unwrap_or(&MOJ_CONTROLS);
-        let columns = 5;
-        for (i, control) in controls.iter().enumerate() {
+            .unwrap_or_else(|| moj_surface_controls(preset::MojModel::ModelD, false));
+        let columns = 4;
+        for (index, control) in controls.iter().enumerate() {
+            let i = crate::control::synth_surface_slot(index, controls.len());
             let col = (i % columns) as u16;
             let control_row = (i / columns) as u16;
             let label_y = inner.y + control_row * 2;
@@ -25070,9 +25104,16 @@ fn draw_synth_parameters<B: Backend>(
             let value = a.values.get(&control.cc).copied().unwrap_or(0.0);
             let original = a.original_values.get(&control.cc).copied().unwrap_or(0.0);
             f.render_widget(
-                Paragraph::new(synth_parameter_label(control.name, width))
-                    .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::White)),
+                Paragraph::new(synth_parameter_label(
+                    if i == 0 && a.synth_navigation {
+                        "NAV"
+                    } else {
+                        control.name
+                    },
+                    width,
+                ))
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::White)),
                 rect(x, label_y, width, 1),
             );
             if label_y + 1 < inner.y + inner.height {
@@ -25099,15 +25140,17 @@ fn draw_synth_parameters<B: Backend>(
             .get(&crate::control::INSTRUMENT_VOLUME_CC)
             .copied()
             .unwrap_or(1.0);
-        let x = inner.x + 4 * inner.width / 5;
-        let width = inner.right() - x;
-        let label_y = inner.y;
-        f.render_widget(
-            Paragraph::new("Volume")
-                .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::White)),
-            rect(x, label_y, width, 1),
-        );
+        let x = inner.x;
+        let width = inner.width / 4;
+        let label_y = inner.y + 6;
+        if label_y < inner.bottom() {
+            f.render_widget(
+                Paragraph::new("Volume")
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(Color::White)),
+                rect(x, label_y, width, 1),
+            );
+        }
         if label_y + 1 < inner.y + inner.height {
             f.render_widget(
                 Paragraph::new(Spans::from(vec![
@@ -25128,146 +25171,46 @@ fn draw_synth_parameters<B: Backend>(
             inner,
         );
     }
-    let scale_rows = if noob { 1 } else { 0 };
-    if noob {
+    if a.synth_navigation && inner.height >= 2 {
+        let page = navigation::pages(a.screen, a.menu_context())[a.menu_page()].label;
         f.render_widget(
-            Paragraph::new(Spans::from(vec![
-                Span::styled("SCALE ", Style::default().fg(Color::DarkGray)),
-                Span::styled("● ", Style::default().fg(Color::Yellow)),
-                Span::styled(
-                    format!(
-                        "{} {}",
-                        a.config.note_naming.pitch_name(a.song.project_key.root),
-                        a.song.project_key.kind.label()
-                    ),
-                    Style::default()
-                        .fg(Color::LightYellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]))
-            .alignment(Alignment::Center),
-            rect(z.x, params.y + 6, z.width, 1),
+            Paragraph::new(vec![Spans::from("NAV"), Spans::from(page)])
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::LightCyan)),
+            rect(inner.x, inner.y, inner.width / 4, 2),
         );
     }
-    let chord_area = rect(
-        z.x,
-        params.y + 6 + scale_rows,
-        z.width,
-        actions.y.saturating_sub(params.y + 6 + scale_rows),
-    );
-    let content_height = 5.min(chord_area.height);
-    let top = chord_area.y + chord_area.height.saturating_sub(content_height) / 2;
-    if let Some(display) = a.held_notes.display(a.config.note_naming) {
-        f.render_widget(
-            Paragraph::new(display.chord)
-                .style(
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .alignment(Alignment::Center),
-            rect(chord_area.x, top, chord_area.width, 1),
-        );
-        if chord_area.height >= 2 {
-            let (notes, velocities) = held_note_rows(&display.notes, chord_area.width);
-            f.render_widget(
-                Paragraph::new(notes)
-                    .alignment(Alignment::Center)
-                    .style(Style::default().fg(Color::DarkGray)),
-                rect(chord_area.x, top + 1, chord_area.width, 1),
-            );
-            if chord_area.height >= 3 {
-                f.render_widget(
-                    Paragraph::new(velocities)
-                        .alignment(Alignment::Center)
-                        .style(Style::default().fg(Color::LightYellow)),
-                    rect(chord_area.x, top + 2, chord_area.width, 1),
-                );
+    let info_y = params.y + 8;
+    if info_y < actions.y {
+        let mut pieces = Vec::new();
+        if noob {
+            pieces.push(format!(
+                "{} {}",
+                a.config.note_naming.pitch_name(a.song.project_key.root),
+                a.song.project_key.kind.label()
+            ));
+        }
+        if let Some(display) = a.held_notes.display(a.config.note_naming) {
+            let notes = display
+                .notes
+                .iter()
+                .map(|note| note.name)
+                .collect::<Vec<_>>()
+                .join(" ");
+            pieces.push(display.chord);
+            if !notes.is_empty() && pieces.last() != Some(&notes) {
+                pieces.push(notes);
             }
         }
-    }
-    if chord_area.height >= 5 {
-        draw_playback_keyboard(f, a, rect(chord_area.x, top + 3, chord_area.width, 2));
-    }
-}
-
-fn held_note_rows(notes: &[crate::chord::HeldNoteDisplay], width: u16) -> (String, String) {
-    let visible = notes
-        .iter()
-        .take((usize::from(width) + 1) / 4)
-        .collect::<Vec<_>>();
-    let names = visible
-        .iter()
-        .map(|note| format!("{:^3}", note.name))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let velocities = visible
-        .iter()
-        .map(|note| format!("{:^3}", note.velocity))
-        .collect::<Vec<_>>()
-        .join(" ");
-    (names, velocities)
-}
-
-const PLAYBACK_KEY_TOP_GLYPH: &str = "└";
-const PLAYBACK_KEYBOARD_FIRST_NOTE: u8 = 36;
-const PLAYBACK_NATURAL_PITCHES: [u8; 7] = [0, 2, 4, 5, 7, 9, 11];
-const PLAYBACK_SHARP_PITCHES: [Option<u8>; 7] =
-    [Some(1), Some(3), None, Some(6), Some(8), Some(10), None];
-
-fn draw_playback_keyboard<B: Backend>(f: &mut Frame<B>, a: &App, area: Rect) {
-    if area.width == 0 || area.height < 2 {
-        return;
-    }
-    for column in 0..area.width {
-        let key = usize::from(column % 7);
-        let octave = column / 7;
-        let octave_base = u32::from(PLAYBACK_KEYBOARD_FIRST_NOTE) + u32::from(octave) * 12;
-        let natural = octave_base + u32::from(PLAYBACK_NATURAL_PITCHES[key]);
-        if natural > 127 {
-            break;
-        }
-        let natural = natural as u8;
-        let x = area.x + column;
-        let natural_held = a.held_notes.is_held(natural);
-        let natural_color = if natural_held {
-            Color::Red
-        } else {
-            Color::White
-        };
-        let sharp = PLAYBACK_SHARP_PITCHES[key]
-            .map(|pitch| octave_base + u32::from(pitch))
-            .filter(|note| *note <= 127)
-            .map(|note| note as u8);
-        if let Some(sharp) = sharp {
-            f.render_widget(
-                Paragraph::new(PLAYBACK_KEY_TOP_GLYPH).style(
-                    Style::default()
-                        .fg(if a.held_notes.is_held(sharp) {
-                            Color::Red
-                        } else {
-                            Color::Black
-                        })
-                        .bg(if natural_held {
-                            Color::Red
-                        } else {
-                            Color::White
-                        }),
-                ),
-                rect(x, area.y, 1, 1),
-            );
-        } else {
-            f.render_widget(
-                Paragraph::new("█").style(Style::default().fg(natural_color)),
-                rect(x, area.y, 1, 1),
-            );
-        }
         f.render_widget(
-            Paragraph::new("█").style(Style::default().fg(natural_color)),
-            rect(x, area.y + 1, 1, 1),
+            Paragraph::new(truncate(&pieces.join(" · "), usize::from(z.width)))
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::Green)),
+            rect(z.x, info_y, z.width, 1),
         );
     }
 }
+
 fn draw_ideas<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let list = rect(z.x, z.y + 2, z.width, z.height.saturating_sub(5));
@@ -28750,17 +28693,17 @@ mod tests {
     fn relative_rotary_carries_the_current_parameter_without_pickup() {
         let p = presets();
         let mut a = app(&p);
-        a.values.insert(CONTROLS[0].cc, 0.5);
+        a.values.insert(CONTROLS[1].cc, 0.5);
         a.pickup
             .lock()
             .unwrap()
-            .arm(&HashMap::from([(CONTROLS[0].cc, 0.9)]));
+            .arm(&HashMap::from([(CONTROLS[1].cc, 0.9)]));
 
         a.apply_relative_rotary(Instant::now(), 0, 2);
 
         let expected = 0.5 + 2.0 / 127.0;
-        assert!((a.values[&CONTROLS[0].cc] - expected).abs() < 0.000_1);
-        assert!(!a.pickup.lock().unwrap().accept(CONTROLS[0].cc, 0.5));
+        assert!((a.values[&CONTROLS[1].cc] - expected).abs() < 0.000_1);
+        assert!(!a.pickup.lock().unwrap().accept(CONTROLS[1].cc, 0.5));
     }
 
     #[test]
@@ -30950,7 +30893,7 @@ release = 0.4
     }
 
     #[test]
-    fn moj_sint_playback_uses_three_by_five_surface_with_three_aux_sends() {
+    fn moj_sint_playback_uses_four_by_four_surface_with_three_aux_sends() {
         let presets = presets();
         let mut app = app(&presets);
         app.screen = Screen::Playback;
@@ -30970,8 +30913,22 @@ release = 0.4
         app.original_values = app.values.clone();
         let text = buffer_text(&render_app(&mut app, 40, 13));
         for label in [
-            "Evolve", "Shape", "Color", "Edge", "Volume", "Motion", "Depth", "Space", "Attack",
-            "Decay", "Sustain", "Release", "Aux 1", "Aux 2", "Aux 3",
+            "Character",
+            "Osc Mix",
+            "Cutoff",
+            "Drive",
+            "Volume",
+            "Couple",
+            "F Env",
+            "Ladder",
+            "Resonance",
+            "Attack",
+            "Decay",
+            "Sustain",
+            "Release",
+            "Aux 1",
+            "Aux 2",
+            "Aux 3",
         ] {
             assert!(text.contains(label), "missing {label} in\n{text}");
         }
@@ -31092,20 +31049,112 @@ release = 0.4
                 }
                 assert_eq!(app.values, app.original_values);
                 let frame = render_app(&mut app, 40, 13);
-                assert!(row_text(&frame, 1)[32..].contains("Volume"));
+                assert!(row_text(&frame, 7)[..10].contains("Volume"));
                 for label in ["Aux 1", "Aux 2", "Aux 3"] {
-                    assert!(row_text(&frame, 5).contains(label));
+                    assert!(row_text(&frame, 7).contains(label));
                 }
                 assert_eq!(app.transport_indicator(), before_transport);
                 assert!(row_text(&frame, 12).starts_with(transport_glyph(before_transport).0));
-                app.apply_relative_rotary(Instant::now(), 4, 1);
+                app.apply_relative_rotary(Instant::now(), 11, 1);
                 assert!(app.values[&crate::control::INSTRUMENT_VOLUME_CC] > 0.5);
             }
         }
     }
 
     #[test]
-    fn dual_filter_amp_view_preserves_project_context_and_edits_native_envelope_ids() {
+    fn synth_encoder_click_selects_navigation_without_resetting_or_moving_ft2() {
+        for screen in [Screen::Playback, Screen::TrackerParameters] {
+            for layout in [ControllerLayout::Four, ControllerLayout::Eight] {
+                let mut app = app(&presets());
+                app.screen = screen;
+                app.controller_layout = layout;
+                app.playing = Some(moj_preset(preset::MojModel::SixOpPm, "Bell"));
+                *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+                app.values = moj_controls(preset::MojModel::SixOpPm)
+                    .iter()
+                    .map(|c| (c.cc, 0.5))
+                    .collect();
+                app.original_values = app.values.clone();
+                let song = app.song.clone();
+                let cursor = (
+                    app.tracker_order,
+                    app.tracker_page,
+                    app.tracker_row,
+                    app.tracker_track,
+                );
+                let (tx, _rx) = mpsc::channel();
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Down,
+                    &mut app,
+                    Path::new("/none"),
+                    &tx,
+                );
+                assert!(app.values[&20] > 0.5);
+                let edited = app.values.clone();
+                let page = app.menu_page();
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Select,
+                    &mut app,
+                    Path::new("/none"),
+                    &tx,
+                );
+                assert!(app.synth_navigation);
+                assert_eq!(app.values, edited);
+                assert_eq!(app.menu_page(), page);
+                assert!(row_text(&render_app(&mut app, 40, 13), 1).contains("NAV"));
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Down,
+                    &mut app,
+                    Path::new("/none"),
+                    &tx,
+                );
+                assert_ne!(app.menu_page(), page);
+                assert_eq!(app.values, edited);
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Select,
+                    &mut app,
+                    Path::new("/none"),
+                    &tx,
+                );
+                assert!(!app.synth_navigation);
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Down,
+                    &mut app,
+                    Path::new("/none"),
+                    &tx,
+                );
+                assert!(app.values[&20] > edited[&20]);
+                let before_guard = app.values.clone();
+                app.pending_project_action = Some(PendingProjectAction::Quit);
+                dispatch_encoder(
+                    crate::pads::EncoderAction::Down,
+                    &mut app,
+                    Path::new("/none"),
+                    &tx,
+                );
+                assert_eq!(app.values, before_guard);
+                app.cancel_project_action();
+                assert_eq!(app.song, song);
+                assert_eq!(
+                    (
+                        app.tracker_order,
+                        app.tracker_page,
+                        app.tracker_row,
+                        app.tracker_track
+                    ),
+                    cursor
+                );
+                app.synth_navigation = true;
+                app.set_screen(Screen::Help);
+                app.set_screen(screen);
+                assert!(!app.synth_navigation);
+                assert_eq!(app.values, before_guard);
+            }
+        }
+    }
+
+    #[test]
+    fn dual_filter_edits_all_amp_stages_in_place_and_preserves_hidden_filter_values() {
         for screen in [Screen::Playback, Screen::TrackerParameters] {
             let mut app = app(&presets());
             app.screen = screen;
@@ -31113,64 +31162,31 @@ release = 0.4
             *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
             app.values = moj_controls(preset::MojModel::DualFilter)
                 .iter()
-                .map(|control| (control.cc, 0.5))
+                .map(|c| (c.cc, 0.5))
                 .collect();
             app.original_values = app.values.clone();
-            let before_song = app.song.clone();
-            let before_transport = app.transport_indicator();
-            let before_controller = app.controller_config.read().unwrap().clone();
-            let before_cursor = (
+            let song = app.song.clone();
+            let cursor = (
                 app.tracker_order,
                 app.tracker_page,
                 app.tracker_row,
                 app.tracker_track,
             );
-            let page = if screen == Screen::Playback { 2 } else { 0 };
-            let item = if screen == Screen::Playback { 0 } else { 3 };
-            app.menu_page_by_screen[screen.index()] = page;
-            let toggle = navigation::slot(screen, app.menu_context(), page, item).unwrap();
-            assert_eq!(toggle.label, "AMP");
-            perform(
-                toggle.dispatch().unwrap(),
-                &mut app,
-                Path::new("/none"),
-                None,
-            );
-            assert!(app.synth_amp_page.load(Ordering::Acquire));
-            assert_eq!(app.menu_page(), page);
-            assert_eq!(
-                navigation::slot(screen, app.menu_context(), page, item)
-                    .unwrap()
-                    .label,
-                "FILTER"
-            );
-            let frame = render_app(&mut app, 40, 13);
-            let text = buffer_text(&frame);
-            for label in [
-                "A Attack", "A Decay", "A Sus", "A Rel", "Aux 1", "Aux 2", "Aux 3",
-            ] {
-                assert!(text.contains(label), "missing {label} in {text}");
-            }
-            assert_eq!(app.transport_indicator(), before_transport);
-            assert!(row_text(&frame, 12).starts_with(transport_glyph(before_transport).0));
-            assert!(!app.pickup.lock().unwrap().accept(32, 0.0));
-            for position in 0..4 {
+            for position in 7..11 {
                 app.apply_relative_rotary(Instant::now(), position, 1);
-                assert!(app.values[&(31 + position as u8)] > 0.5);
+                assert!(app.values[&(24 + position as u8)] > 0.5);
             }
-            assert_eq!(app.values[&20], 0.5);
-            let before_reserved = app.values.clone();
-            app.apply_relative_rotary(Instant::now(), 4, 1);
-            app.apply_relative_rotary(Instant::now(), 11, 1);
-            assert_eq!(app.values, before_reserved);
-            perform(Action::SynthAmpToggle, &mut app, Path::new("/none"), None);
-            assert!(!app.synth_amp_page.load(Ordering::Acquire));
-            app.apply_relative_rotary(Instant::now(), 0, 1);
-            assert!(app.values[&20] > 0.5);
-            assert_eq!(app.values.len(), 15);
-            assert!(app.original_values.values().all(|value| *value == 0.5));
-            assert_eq!(app.song, before_song);
-            assert_eq!(*app.controller_config.read().unwrap(), before_controller);
+            app.apply_relative_rotary(Instant::now(), 11, -1);
+            assert!(app.values[&7] < 0.5);
+            for cc in [27, 29, 30] {
+                assert_eq!(app.values[&cc], 0.5);
+            }
+            let frame = render_app(&mut app, 40, 13);
+            for label in ["A Attack", "A Decay", "A Sus", "A Rel"] {
+                assert!(row_text(&frame, 5).contains(label));
+            }
+            assert!(!row_text(&frame, 10).contains("PARAM"));
+            assert_eq!(app.song, song);
             assert_eq!(
                 (
                     app.tracker_order,
@@ -31178,8 +31194,9 @@ release = 0.4
                     app.tracker_row,
                     app.tracker_track
                 ),
-                before_cursor
+                cursor
             );
+            assert!(app.original_values.values().all(|value| *value == 0.5));
         }
     }
 
@@ -31211,9 +31228,9 @@ release = 0.4
             assert!(text.contains(label), "missing {label} in {text}");
         }
         assert!(app.aux_surface_active());
-        app.apply_relative_rotary(Instant::now(), 4, 1);
+        app.apply_relative_rotary(Instant::now(), 3, 1);
         assert!(app.values[&24] > 0.5);
-        assert!(!app.values.contains_key(&7));
+        assert_eq!(app.values[&7], 0.5);
 
         app.playing.as_mut().unwrap().name = "Pressure Chain Very Long Private Sound Name".into();
         app.pad_locked = true;
@@ -31227,7 +31244,7 @@ release = 0.4
     }
 
     #[test]
-    fn six_op_playback_uses_its_model_specific_twelve_controls() {
+    fn six_op_playback_restores_balance_and_keeps_volume() {
         let presets = presets();
         let mut app = app(&presets);
         app.screen = Screen::Playback;
@@ -31251,15 +31268,15 @@ release = 0.4
     #[test]
     fn native_parameter_cells_show_complete_labels_on_both_screens_and_pages() {
         let check_slot = |frame: &Buffer, slot: usize, label: &str| {
-            let x = (slot % 5) as u16 * 8;
-            let y = 1 + (slot / 5) as u16 * 2;
-            let shown: String = (x..x + 8)
+            let x = (slot % 4) as u16 * 10;
+            let y = 1 + (slot / 4) as u16 * 2;
+            let shown: String = (x..x + 10)
                 .map(|column| buffer_cell(frame, column, y).symbol.as_str())
                 .collect();
             assert_eq!(
                 shown.trim(),
                 label,
-                "slot {slot}: label must be complete in its own eight cells"
+                "slot {slot}: label must be complete in its own ten cells"
             );
         };
         for screen in [Screen::Playback, Screen::TrackerParameters] {
@@ -31268,8 +31285,15 @@ release = 0.4
             synth.screen = screen;
             synth.playing = Some(p[0].clone());
             let frame = render_app(&mut synth, 40, 13);
-            for (slot, control) in CONTROLS.iter().enumerate() {
-                check_slot(&frame, slot, control.name);
+            for (index, control) in crate::control::SYNTHV1_SURFACE.iter().enumerate() {
+                check_slot(
+                    &frame,
+                    crate::control::synth_surface_slot(
+                        index,
+                        crate::control::SYNTHV1_SURFACE.len(),
+                    ),
+                    control.name,
+                );
             }
             for model in preset::MojModel::ALL {
                 for amp_page in [false, true] {
@@ -31280,9 +31304,16 @@ release = 0.4
                     let frame = render_app(&mut synth, 40, 13);
                     for (slot, control) in moj_surface_controls(model, amp_page).iter().enumerate()
                     {
-                        check_slot(&frame, slot, control.name);
+                        check_slot(
+                            &frame,
+                            crate::control::synth_surface_slot(
+                                slot,
+                                moj_surface_controls(model, amp_page).len(),
+                            ),
+                            control.name,
+                        );
                     }
-                    for (slot, label) in [(12, "Aux 1"), (13, "Aux 2"), (14, "Aux 3")] {
+                    for (slot, label) in [(13, "Aux 1"), (14, "Aux 2"), (15, "Aux 3")] {
                         check_slot(&frame, slot, label);
                     }
                     assert!(row_text(&frame, 12)
@@ -31343,7 +31374,8 @@ release = 0.4
 
         synthv1.tracker_noob = false;
         let held_notes = render_app(&mut synthv1, 40, 13);
-        assert!(buffer_text(&held_notes).contains("96"));
+        assert!(row_text(&held_notes, 9).contains("C"));
+        assert!(!row_text(&held_notes, 9).contains("96"));
 
         for model in preset::MojModel::ALL {
             let mut moj = app(&presets());
@@ -32434,12 +32466,8 @@ release = 0.4
                 tx.send(MidiEvent::Value(74, 0.75)).unwrap();
                 drain(&rx, &mut a, Path::new("/none"), &tx);
                 let parameter_before = a.values[&first_cc];
-                tx.send(MidiEvent::RelativeRotary {
-                    received: Instant::now(),
-                    position: 0,
-                    steps: -3,
-                })
-                .unwrap();
+                tx.send(MidiEvent::Encoder(crate::pads::EncoderAction::Up))
+                    .unwrap();
                 drain(&rx, &mut a, Path::new("/none"), &tx);
                 assert!(a.values[&first_cc] < parameter_before);
                 perform(Action::Back, &mut a, Path::new("/none"), Some(&tx));
@@ -37626,7 +37654,7 @@ release = 0.4
     }
 
     #[test]
-    fn playback_controls_match_three_physical_rows_of_five() {
+    fn playback_controls_match_four_physical_rows_of_four() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Playback;
@@ -37645,27 +37673,25 @@ release = 0.4
 
         let labels = |y| {
             let row = row_text(y);
-            (0..5)
-                .map(|column| row[column * 8..(column + 1) * 8].trim().to_owned())
+            (0..4)
+                .map(|column| row[column * 10..(column + 1) * 10].trim().to_owned())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(
-            labels(1),
-            ["Flt cut", "Flt res", "Flt env", "LFO rate", "Volume"]
-        );
-        assert_eq!(labels(3), ["Dly amt", "Dly time", "Dly fb", "Atk", "Dec"]);
-        assert_eq!(labels(5), ["Sus", "Rel", "Aux 1", "Aux 2", "Aux 3"]);
+        assert_eq!(labels(1), ["Flt cut", "Flt res", "Flt env", "LFO rate"]);
+        assert_eq!(labels(3), ["Dly amt", "Dly time", "Dly fb", ""]);
+        assert_eq!(labels(5), ["Atk", "Dec", "Sus", "Rel"]);
+        assert_eq!(labels(7), ["Volume", "Aux 1", "Aux 2", "Aux 3"]);
         for y in [1, 3] {
             assert!((0..40)
                 .filter(|x| b.get(*x, y).symbol != " ")
                 .all(|x| b.get(x, y).fg == Color::White));
         }
-        assert!((0..16)
-            .filter(|x| b.get(*x, 5).symbol != " ")
-            .all(|x| b.get(x, 5).fg == Color::White));
-        assert!((16..40)
-            .filter(|x| b.get(*x, 5).symbol != " ")
-            .all(|x| b.get(x, 5).fg == Color::LightCyan));
+        assert!((0..10)
+            .filter(|x| b.get(*x, 7).symbol != " ")
+            .all(|x| b.get(x, 7).fg == Color::White));
+        assert!((10..40)
+            .filter(|x| b.get(*x, 7).symbol != " ")
+            .all(|x| b.get(x, 7).fg == Color::LightCyan));
 
         let indicator_colors = (0..40)
             .filter_map(|x| {
@@ -37679,7 +37705,6 @@ release = 0.4
                 Color::Green,
                 Color::LightYellow,
                 Color::Red,
-                Color::LightYellow,
                 Color::LightYellow
             ]
         );
@@ -37710,34 +37735,18 @@ release = 0.4
     }
 
     #[test]
-    fn playback_aligns_each_held_note_with_its_decimal_velocity_at_40x13() {
-        let p = presets();
-        let mut a = app(&p);
+    fn playback_keeps_chord_and_notes_on_one_row_without_velocity_clutter() {
+        let mut a = app(&presets());
         configure_screenshot(&mut a, Screen::Playback);
-        let b = TestBackend::new(40, 13);
-        let mut t = Terminal::new(b).unwrap();
-        t.draw(|f| draw(f, &mut a)).unwrap();
-        let b = t.backend().buffer();
-        let row = |y| {
-            (0..40)
-                .map(|x| b.get(x, y).symbol.as_str())
-                .collect::<String>()
-        };
-
-        assert_eq!(
-            held_note_rows(
-                &a.held_notes.display(a.config.note_naming).unwrap().notes,
-                40
-            ),
-            (" D  F#   A ".into(), "100 92  104".into(),)
-        );
-        assert!(row(8).contains(" D  F#   A "));
-        assert!(row(9).contains("100 92  104"));
-        assert!(row(12).starts_with('■'));
+        let frame = render_app(&mut a, 40, 13);
+        assert!(row_text(&frame, 9).contains("D F# A"));
+        assert!(!row_text(&frame, 9).contains("100"));
+        assert!(row_text(&frame, 7).contains("Aux 3"));
+        assert!(row_text(&frame, 12).starts_with('■'));
     }
 
     #[test]
-    fn playback_velocity_rows_compact_without_overlapping_controls_or_footer() {
+    fn playback_note_row_compacts_without_overlapping_controls_or_footer() {
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Playback;
@@ -37754,51 +37763,9 @@ release = 0.4
             .iter()
             .map(|cell| cell.symbol.as_str())
             .collect::<String>();
-        for expected in ["C maj", "41", "87", "103", "119", "PLAY"] {
+        for expected in ["C maj", "C C E G", "PLAY"] {
             assert!(text.contains(expected), "missing {expected:?}");
         }
-    }
-
-    #[test]
-    fn playback_keyboard_joins_octaves_and_separates_natural_and_sharp_colors() {
-        let p = presets();
-        let mut a = app(&p);
-        a.screen = Screen::Playback;
-        a.playing = Some(p[0].clone());
-        // C, E, and G exercise natural keys; F# exercises a sharp without F.
-        for note in [60, 64, 66, 67] {
-            a.held_notes.observe(&[0x90, note, 100]);
-        }
-        let b = TestBackend::new(40, 2);
-        let mut t = Terminal::new(b).unwrap();
-        t.draw(|f| {
-            let area = f.size();
-            draw_playback_keyboard(f, &a, area);
-        })
-        .unwrap();
-        let b = t.backend().buffer();
-
-        // Every column is a white-key column; octave boundaries have no gaps.
-        assert!((0..40).all(|x| b.get(x, 1).symbol == "█"));
-        assert_eq!(b.get(6, 0).symbol, "█"); // B2
-        assert_eq!(b.get(7, 0).symbol, "└"); // C3 immediately follows
-
-        // C4: the white natural region and lower block are red, not its └ stroke.
-        assert_eq!(b.get(14, 0).symbol, "└");
-        assert_eq!(b.get(14, 0).fg, Color::Black);
-        assert_eq!(b.get(14, 0).bg, Color::Red);
-        assert_eq!(b.get(14, 1).fg, Color::Red);
-
-        // E4 has no sharp above it, so both complete blocks are red.
-        assert_eq!(b.get(16, 0).symbol, "█");
-        assert_eq!(b.get(16, 0).fg, Color::Red);
-        assert_eq!(b.get(16, 1).fg, Color::Red);
-
-        // F#4 colours only the └ foreground; the unplayed F stays white.
-        assert_eq!(b.get(17, 0).symbol, "└");
-        assert_eq!(b.get(17, 0).fg, Color::Red);
-        assert_eq!(b.get(17, 0).bg, Color::White);
-        assert_eq!(b.get(17, 1).fg, Color::White);
     }
 
     #[test]
@@ -42361,7 +42328,7 @@ release = 0.4
         assert_eq!(*a.playback_scale.lock().unwrap(), Some(a.noob_scale));
         let original = a.noob_scale;
 
-        dispatch_encoder(
+        dispatch_modified_encoder(
             crate::pads::EncoderAction::Down,
             &mut a,
             Path::new("/none"),
@@ -42372,13 +42339,13 @@ release = 0.4
 
         let buffer = render_app(&mut a, 40, 20);
         let text = buffer_text(&buffer);
-        assert!(text.contains("SCALE"));
+        assert!(text.contains(a.song.project_key.kind.label()));
         assert!(text.contains("Flt cut"));
 
         a.toggle_playback_noob();
         assert!(!a.playback_noob);
         assert_eq!(*a.playback_scale.lock().unwrap(), None);
-        assert!(!buffer_text(&render_app(&mut a, 40, 20)).contains("SCALE"));
+        assert!(row_text(&render_app(&mut a, 40, 20), 9).trim().is_empty());
     }
 
     #[test]

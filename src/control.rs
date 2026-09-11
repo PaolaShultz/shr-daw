@@ -1,24 +1,27 @@
 //! Backend-specific mapped control profiles. Existing Moj Sint models share
-//! twelve physical parameter positions, but never synthv1 parameter indices
-//! or XML semantics. Full model tables also retain controls on other pages.
+//! a 4×4 surface, but never synthv1 parameter indices or XML semantics.
+//! Full model tables also retain preset-owned controls outside the surface.
 
 use std::collections::HashMap;
 
-/// Five equal parameter columns occupy the native 40-cell display. Static
+/// Four equal parameter columns occupy the native 40-cell display. Static
 /// labels must fit whole; preset/schema IDs are not display labels.
-pub const SYNTH_PARAMETER_LABEL_CELLS: usize = 8;
+pub const SYNTH_PARAMETER_LABEL_CELLS: usize = 9;
 
 pub const VOLUME_CC: u8 = 93;
 /// Standard MIDI channel-volume controller used by managed instruments whose
 /// native parameter map is not synthv1's DCA map.
 pub const INSTRUMENT_VOLUME_CC: u8 = 7;
 pub const LEGACY_SYNTH_CONTROL_COUNT: usize = 12;
+/// Physical slot 13 is volume; the last three slots are AUX. The master
+/// encoder supplies slot 1, leaving fifteen learned rotaries.
+pub const SYNTH_SURFACE_CONTROL_COUNT: usize = 13;
+pub const SYNTH_VOLUME_SLOT: usize = 12;
 pub const AUX_SEND_CONTROL_COUNT: usize = 3;
 pub const PERFORMANCE_SURFACE_CONTROL_COUNT: usize =
     LEGACY_SYNTH_CONTROL_COUNT + AUX_SEND_CONTROL_COUNT;
 /// The learned performance surface has exactly fifteen rotaries after the
-/// separate master encoder. Synthv1 intentionally populates only twelve synth
-/// parameters; its remaining three positions belong to Project aux sends.
+/// master encoder, which edits the first synth parameter on synth screens.
 pub const MAPPED_CONTROL_CAPACITY: usize = PERFORMANCE_SURFACE_CONTROL_COUNT;
 pub const MOJ_CORE_TOGGLE_CC: u8 = 35;
 pub const MOJ_CORE_STATE_CC: u8 = 36;
@@ -140,25 +143,25 @@ pub struct MojControl {
     pub macro_id: &'static str,
 }
 
-pub const MOJ_MODEL_D_CONTROLS: [MojControl; 12] = [
+pub const MOJ_MODEL_D_CONTROLS: [MojControl; 13] = [
     MojControl {
         cc: 20,
-        name: "Evolve",
+        name: "Character",
         macro_id: "evolve",
     },
     MojControl {
         cc: 21,
-        name: "Shape",
+        name: "Osc Mix",
         macro_id: "shape",
     },
     MojControl {
         cc: 22,
-        name: "Color",
+        name: "Cutoff",
         macro_id: "color",
     },
     MojControl {
         cc: 23,
-        name: "Edge",
+        name: "Drive",
         macro_id: "edge",
     },
     MojControl {
@@ -168,17 +171,17 @@ pub const MOJ_MODEL_D_CONTROLS: [MojControl; 12] = [
     },
     MojControl {
         cc: 25,
-        name: "Motion",
+        name: "F Env",
         macro_id: "motion",
     },
     MojControl {
         cc: 26,
-        name: "Depth",
+        name: "Ladder",
         macro_id: "depth",
     },
     MojControl {
         cc: 27,
-        name: "Space",
+        name: "Resonance",
         macro_id: "space",
     },
     MojControl {
@@ -201,9 +204,14 @@ pub const MOJ_MODEL_D_CONTROLS: [MojControl; 12] = [
         name: "Release",
         macro_id: "release",
     },
+    MojControl {
+        cc: 24,
+        name: "Couple",
+        macro_id: "couple",
+    },
 ];
 
-pub const MOJ_SIX_OP_PM_CONTROLS: [MojControl; 12] = [
+pub const MOJ_SIX_OP_PM_CONTROLS: [MojControl; 13] = [
     MojControl {
         cc: 20,
         name: "Index",
@@ -264,9 +272,14 @@ pub const MOJ_SIX_OP_PM_CONTROLS: [MojControl; 12] = [
         name: "Release",
         macro_id: "release",
     },
+    MojControl {
+        cc: 24,
+        name: "Balance",
+        macro_id: "balance",
+    },
 ];
 
-pub const MOJ_STRANGE_CONTROLS: [MojControl; 12] = [
+pub const MOJ_STRANGE_CONTROLS: [MojControl; 13] = [
     MojControl {
         cc: 20,
         name: "Type",
@@ -327,9 +340,14 @@ pub const MOJ_STRANGE_CONTROLS: [MojControl; 12] = [
         name: "Release",
         macro_id: "release",
     },
+    MojControl {
+        cc: 24,
+        name: "Motion",
+        macro_id: "motion",
+    },
 ];
 
-pub const MOJ_SWARM_CONTROLS: [MojControl; 12] = [
+pub const MOJ_SWARM_CONTROLS: [MojControl; 13] = [
     MojControl {
         cc: 20,
         name: "Mass",
@@ -389,6 +407,11 @@ pub const MOJ_SWARM_CONTROLS: [MojControl; 12] = [
         cc: 31,
         name: "Release",
         macro_id: "release",
+    },
+    MojControl {
+        cc: 24,
+        name: "Bite",
+        macro_id: "bite",
     },
 ];
 
@@ -455,7 +478,7 @@ pub const MOJ_BASS_MATRIX_CONTROLS: [MojControl; 12] = [
     },
 ];
 
-pub const MOJ_PRESSURE_CONTROLS: [MojControl; 12] = [
+pub const MOJ_PRESSURE_CONTROLS: [MojControl; 13] = [
     MojControl {
         cc: 20,
         name: "Source",
@@ -516,9 +539,14 @@ pub const MOJ_PRESSURE_CONTROLS: [MojControl; 12] = [
         name: "Release",
         macro_id: "release",
     },
+    MojControl {
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
+    },
 ];
 
-pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
+pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 16] = [
     MojControl {
         cc: 20,
         name: "A Cutoff",
@@ -594,13 +622,18 @@ pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 15] = [
         name: "A Rel",
         macro_id: "amp_release",
     },
+    MojControl {
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
+    },
 ];
 
 // The first five Moj Sint models share twelve physical positions. Position
 // five is their universal instrument-volume CC 7. Dual Filter supplies its own
 // 15-control state table; its MAIN/AMP pages share twelve physical positions.
 // Meanings come from the selected synthesis model, not controller.conf.
-pub const MOJ_CONTROLS: [MojControl; 12] = MOJ_MODEL_D_CONTROLS;
+pub const MOJ_CONTROLS: [MojControl; 13] = MOJ_MODEL_D_CONTROLS;
 
 pub const MOJ_OPEN303_CONTROLS: [MojControl; 12] = [
     MojControl {
@@ -678,17 +711,177 @@ pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojContro
     }
 }
 
-/// Physical synth controls leave the final three rotaries for Project AUX.
-/// The complete model table remains authoritative for save, reset and automation.
+/// Surface order is independent of native preset order. Short profiles leave
+/// slot 8 empty so envelopes still occupy row 3 and volume starts row 4.
+pub const SYNTHV1_SURFACE: [Control; 12] = [
+    CONTROLS[0],
+    CONTROLS[1],
+    CONTROLS[2],
+    CONTROLS[3],
+    CONTROLS[5],
+    CONTROLS[6],
+    CONTROLS[7],
+    CONTROLS[8],
+    CONTROLS[9],
+    CONTROLS[10],
+    CONTROLS[11],
+    CONTROLS[4],
+];
+
+pub const fn synth_surface_slot(index: usize, count: usize) -> usize {
+    if count == 12 && index >= 7 {
+        index + 1
+    } else {
+        index
+    }
+}
+
+pub fn synth_surface_index(slot: usize, count: usize) -> Option<usize> {
+    if slot >= SYNTH_SURFACE_CONTROL_COUNT || (count == 12 && slot == 7) {
+        None
+    } else {
+        Some(if count == 12 && slot > 7 {
+            slot - 1
+        } else {
+            slot
+        })
+    }
+}
+
+const MODEL_D_SURFACE: [MojControl; 13] = [
+    MOJ_MODEL_D_CONTROLS[0],
+    MOJ_MODEL_D_CONTROLS[1],
+    MOJ_MODEL_D_CONTROLS[2],
+    MOJ_MODEL_D_CONTROLS[3],
+    MOJ_MODEL_D_CONTROLS[12],
+    MOJ_MODEL_D_CONTROLS[5],
+    MOJ_MODEL_D_CONTROLS[6],
+    MOJ_MODEL_D_CONTROLS[7],
+    MOJ_MODEL_D_CONTROLS[8],
+    MOJ_MODEL_D_CONTROLS[9],
+    MOJ_MODEL_D_CONTROLS[10],
+    MOJ_MODEL_D_CONTROLS[11],
+    MOJ_MODEL_D_CONTROLS[4],
+];
+const SIX_OP_PM_SURFACE: [MojControl; 13] = [
+    MOJ_SIX_OP_PM_CONTROLS[0],
+    MOJ_SIX_OP_PM_CONTROLS[1],
+    MOJ_SIX_OP_PM_CONTROLS[2],
+    MOJ_SIX_OP_PM_CONTROLS[3],
+    MOJ_SIX_OP_PM_CONTROLS[12],
+    MOJ_SIX_OP_PM_CONTROLS[5],
+    MOJ_SIX_OP_PM_CONTROLS[6],
+    MOJ_SIX_OP_PM_CONTROLS[7],
+    MOJ_SIX_OP_PM_CONTROLS[8],
+    MOJ_SIX_OP_PM_CONTROLS[9],
+    MOJ_SIX_OP_PM_CONTROLS[10],
+    MOJ_SIX_OP_PM_CONTROLS[11],
+    MOJ_SIX_OP_PM_CONTROLS[4],
+];
+const STRANGE_SURFACE: [MojControl; 13] = [
+    MOJ_STRANGE_CONTROLS[0],
+    MOJ_STRANGE_CONTROLS[1],
+    MOJ_STRANGE_CONTROLS[2],
+    MOJ_STRANGE_CONTROLS[3],
+    MOJ_STRANGE_CONTROLS[12],
+    MOJ_STRANGE_CONTROLS[5],
+    MOJ_STRANGE_CONTROLS[6],
+    MOJ_STRANGE_CONTROLS[7],
+    MOJ_STRANGE_CONTROLS[8],
+    MOJ_STRANGE_CONTROLS[9],
+    MOJ_STRANGE_CONTROLS[10],
+    MOJ_STRANGE_CONTROLS[11],
+    MOJ_STRANGE_CONTROLS[4],
+];
+const SWARM_SURFACE: [MojControl; 13] = [
+    MOJ_SWARM_CONTROLS[0],
+    MOJ_SWARM_CONTROLS[1],
+    MOJ_SWARM_CONTROLS[2],
+    MOJ_SWARM_CONTROLS[3],
+    MOJ_SWARM_CONTROLS[12],
+    MOJ_SWARM_CONTROLS[5],
+    MOJ_SWARM_CONTROLS[6],
+    MOJ_SWARM_CONTROLS[7],
+    MOJ_SWARM_CONTROLS[8],
+    MOJ_SWARM_CONTROLS[9],
+    MOJ_SWARM_CONTROLS[10],
+    MOJ_SWARM_CONTROLS[11],
+    MOJ_SWARM_CONTROLS[4],
+];
+const BASS_MATRIX_SURFACE: [MojControl; 12] = [
+    MOJ_BASS_MATRIX_CONTROLS[0],
+    MOJ_BASS_MATRIX_CONTROLS[1],
+    MOJ_BASS_MATRIX_CONTROLS[2],
+    MOJ_BASS_MATRIX_CONTROLS[3],
+    MOJ_BASS_MATRIX_CONTROLS[5],
+    MOJ_BASS_MATRIX_CONTROLS[6],
+    MOJ_BASS_MATRIX_CONTROLS[7],
+    MOJ_BASS_MATRIX_CONTROLS[8],
+    MOJ_BASS_MATRIX_CONTROLS[9],
+    MOJ_BASS_MATRIX_CONTROLS[10],
+    MOJ_BASS_MATRIX_CONTROLS[11],
+    MOJ_BASS_MATRIX_CONTROLS[4],
+];
+const PRESSURE_SURFACE: [MojControl; 13] = [
+    MOJ_PRESSURE_CONTROLS[0],
+    MOJ_PRESSURE_CONTROLS[1],
+    MOJ_PRESSURE_CONTROLS[2],
+    MOJ_PRESSURE_CONTROLS[3],
+    MOJ_PRESSURE_CONTROLS[4],
+    MOJ_PRESSURE_CONTROLS[5],
+    MOJ_PRESSURE_CONTROLS[6],
+    MOJ_PRESSURE_CONTROLS[7],
+    MOJ_PRESSURE_CONTROLS[8],
+    MOJ_PRESSURE_CONTROLS[9],
+    MOJ_PRESSURE_CONTROLS[10],
+    MOJ_PRESSURE_CONTROLS[11],
+    MOJ_PRESSURE_CONTROLS[12],
+];
+const DUAL_FILTER_SURFACE: [MojControl; 13] = [
+    MOJ_DUAL_FILTER_CONTROLS[0],
+    MOJ_DUAL_FILTER_CONTROLS[1],
+    MOJ_DUAL_FILTER_CONTROLS[2],
+    MOJ_DUAL_FILTER_CONTROLS[3],
+    MOJ_DUAL_FILTER_CONTROLS[4],
+    MOJ_DUAL_FILTER_CONTROLS[5],
+    MOJ_DUAL_FILTER_CONTROLS[6],
+    MOJ_DUAL_FILTER_CONTROLS[8],
+    MOJ_DUAL_FILTER_CONTROLS[11],
+    MOJ_DUAL_FILTER_CONTROLS[12],
+    MOJ_DUAL_FILTER_CONTROLS[13],
+    MOJ_DUAL_FILTER_CONTROLS[14],
+    MOJ_DUAL_FILTER_CONTROLS[15],
+];
+const OPEN303_SURFACE: [MojControl; 12] = [
+    MOJ_OPEN303_CONTROLS[0],
+    MOJ_OPEN303_CONTROLS[1],
+    MOJ_OPEN303_CONTROLS[2],
+    MOJ_OPEN303_CONTROLS[3],
+    MOJ_OPEN303_CONTROLS[6],
+    MOJ_OPEN303_CONTROLS[7],
+    MOJ_OPEN303_CONTROLS[9],
+    MOJ_OPEN303_CONTROLS[8],
+    MOJ_OPEN303_CONTROLS[5],
+    MOJ_OPEN303_CONTROLS[10],
+    MOJ_OPEN303_CONTROLS[11],
+    MOJ_OPEN303_CONTROLS[4],
+];
+
+/// The obsolete amp-page flag is accepted for existing routing callers; every
+/// model now exposes its envelope on the same physical row.
 pub fn moj_surface_controls(
     model: crate::preset::MojModel,
-    amp_page: bool,
+    _amp_page: bool,
 ) -> &'static [MojControl] {
-    let controls = moj_controls(model);
-    if model == crate::preset::MojModel::DualFilter && amp_page {
-        &controls[11..15]
-    } else {
-        &controls[..controls.len().min(LEGACY_SYNTH_CONTROL_COUNT)]
+    match model {
+        crate::preset::MojModel::ModelD => &MODEL_D_SURFACE,
+        crate::preset::MojModel::SixOpPm => &SIX_OP_PM_SURFACE,
+        crate::preset::MojModel::StrangeOscillator => &STRANGE_SURFACE,
+        crate::preset::MojModel::SwarmMachine => &SWARM_SURFACE,
+        crate::preset::MojModel::BassMatrix => &BASS_MATRIX_SURFACE,
+        crate::preset::MojModel::DualFilter => &DUAL_FILTER_SURFACE,
+        crate::preset::MojModel::PressureChain => &PRESSURE_SURFACE,
+        crate::preset::MojModel::Open303 => &OPEN303_SURFACE,
     }
 }
 
@@ -736,13 +929,13 @@ mod tests {
 
     #[test]
     fn all_synth_parameter_labels_fit_the_native_cell_budget() {
-        assert_eq!(SYNTH_PARAMETER_LABEL_CELLS, 40 / 5);
+        assert_eq!(SYNTH_PARAMETER_LABEL_CELLS, 40 / 4 - 1);
         let check = |name: &str| {
             assert!(!name.is_empty());
             assert!(!name.chars().any(char::is_control), "{name:?}");
             assert!(
                 crate::ui_text::width(name) <= SYNTH_PARAMETER_LABEL_CELLS,
-                "parameter label {name:?} exceeds the eight-cell native slot"
+                "parameter label {name:?} exceeds the nine-cell label budget"
             );
         };
         for control in CONTROLS {
@@ -769,37 +962,41 @@ mod tests {
     }
 
     #[test]
-    fn moj_surface_pages_reserve_aux_without_truncating_model_state() {
+    fn surface_keeps_volume_aux_and_envelope_rows_without_losing_preset_state() {
         for model in crate::preset::MojModel::ALL {
             let full = moj_controls(model);
-            for amp_page in [false, true] {
-                let surface = moj_surface_controls(model, amp_page);
-                let expected = if model == crate::preset::MojModel::DualFilter && amp_page {
-                    &full[11..15]
-                } else {
-                    &full[..12]
-                };
-                assert_eq!(surface.as_ptr(), expected.as_ptr());
-                assert_eq!(surface.len(), expected.len());
+            let surface = moj_surface_controls(model, false);
+            let slots: Vec<_> = surface
+                .iter()
+                .enumerate()
+                .map(|(index, c)| {
+                    let slot = synth_surface_slot(index, surface.len());
+                    assert_eq!(synth_surface_index(slot, surface.len()), Some(index));
+                    assert!(full.iter().any(|saved| saved.cc == c.cc));
+                    (slot, c.cc)
+                })
+                .collect();
+            assert_eq!(slots.last(), Some(&(12, 7)));
+            assert_eq!(surface.as_ptr(), moj_surface_controls(model, true).as_ptr());
+            assert!(!full
+                .iter()
+                .enumerate()
+                .any(|(i, c)| full[i + 1..].iter().any(|other| other.cc == c.cc)));
+            for slot in 8..12 {
+                assert!(slots.iter().any(|(s, _)| *s == slot));
             }
         }
-        let model = crate::preset::MojModel::DualFilter;
+        let dual = moj_surface_controls(crate::preset::MojModel::DualFilter, false);
         assert_eq!(
-            moj_surface_controls(model, false)
-                .iter()
-                .map(|c| c.cc)
-                .collect::<Vec<_>>(),
-            (20..=31).collect::<Vec<_>>()
-        );
-        assert_eq!(
-            moj_surface_controls(model, true)
-                .iter()
-                .map(|c| c.cc)
-                .collect::<Vec<_>>(),
+            dual[8..12].iter().map(|c| c.cc).collect::<Vec<_>>(),
             [31, 32, 33, 34]
         );
-        assert_eq!(moj_controls(model).len(), 15);
-        assert_eq!(moj_controls(model)[14].macro_id, "amp_release");
+        for cc in [27, 29, 30] {
+            assert!(moj_controls(crate::preset::MojModel::DualFilter)
+                .iter()
+                .any(|c| c.cc == cc));
+            assert!(!dual.iter().any(|c| c.cc == cc));
+        }
     }
 
     #[test]
@@ -836,49 +1033,23 @@ mod tests {
     }
 
     #[test]
-    fn moj_models_share_positions_but_expose_model_specific_controls() {
-        let model_d = moj_controls(crate::preset::MojModel::ModelD);
-        let six_op = moj_controls(crate::preset::MojModel::SixOpPm);
-        assert_eq!(
-            model_d.iter().map(|control| control.cc).collect::<Vec<_>>(),
-            six_op.iter().map(|control| control.cc).collect::<Vec<_>>()
-        );
-        assert_eq!(
-            six_op
+    fn previously_displaced_native_controls_return_to_the_surface() {
+        for (model, name) in [
+            (crate::preset::MojModel::ModelD, "couple"),
+            (crate::preset::MojModel::SixOpPm, "balance"),
+            (crate::preset::MojModel::StrangeOscillator, "motion"),
+            (crate::preset::MojModel::SwarmMachine, "bite"),
+        ] {
+            let restored = moj_surface_controls(model, false)
                 .iter()
-                .map(|control| control.macro_id)
-                .collect::<Vec<_>>(),
-            vec![
-                "index",
-                "ratio",
-                "feedback",
-                "operator_decay",
-                "instrument_volume",
-                "key_scale",
-                "velocity",
-                "motion",
-                "attack",
-                "decay",
-                "sustain",
-                "release",
-            ]
-        );
-        for model in crate::preset::MojModel::ALL {
-            let controls = moj_controls(model);
-            if model == crate::preset::MojModel::DualFilter {
-                assert_eq!(controls.len(), 15);
-                assert_eq!(controls[6].macro_id, "structure");
-                assert_eq!(controls[14].cc, 34);
-            } else if model == crate::preset::MojModel::PressureChain {
-                assert_eq!(controls.len(), 12);
-                assert_eq!(controls[4].cc, 24);
-                assert_eq!(controls[4].macro_id, "sweep");
-            } else {
-                assert_eq!(controls.len(), 12);
-                assert_eq!(controls[4].cc, 7);
-                assert_eq!(controls[4].name, "Volume");
-                assert_eq!(controls[4].macro_id, "instrument_volume");
-            }
+                .find(|c| c.cc == 24)
+                .unwrap();
+            assert_eq!(restored.macro_id, name);
         }
+        assert_eq!(synth_surface_index(7, SYNTHV1_SURFACE.len()), None);
+        assert_eq!(
+            synth_surface_slot(11, SYNTHV1_SURFACE.len()),
+            SYNTH_VOLUME_SLOT
+        );
     }
 }

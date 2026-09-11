@@ -50,7 +50,7 @@ SHR source supports Moj Sint through schema 10 and eight models, including
 monophonic Pressure Chain and Open303 (28 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
-volume. Both keep AUX at 13–15 and the existing Project instrument strip.
+volume. Both keep AUX on physical rotaries 14–16 and the existing Project instrument strip.
 The authorized September 9 pass refreshed all checkout debug/release targets.
 The configured checkout host/catalog and the normal release launcher now
 provide Open303 after a normal exit/reopen; running processes were preserved.
@@ -72,9 +72,9 @@ Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck (28 total Moj starts).
 The existing catalog, Project route, private save/reset, and instrument strip
 retain its identity. It is monophonic and displays the same `M` marker.
 
-Its twelve controls are Wave, Cutoff, Res, Env Mod, Volume, F Decay, Accent,
-Slide, F Attack, Ac Atk, Ac Decay, and Amp Dec. Position 5 is CC7 volume;
-13–15 stay AUX. Native envelope timings replace generic ADSR labels only for
+Its eleven native controls plus CC7 volume now use the shared 4×4 surface
+documented in [Instruments and drums](INSTRUMENTS_AND_DRUMS.md#moj-sint-sounds).
+Physical rotaries 13–16 hold Volume and three AUX sends. Native envelope timings replace generic ADSR labels only for
 Open303. The installer retains the separate Open303 MIT and Ooura FFT notices.
 Companion source owns the native preparation, bounded note stack, and render
 safety. Existing models and private files are preserved.
@@ -134,6 +134,17 @@ The focused contracts and acceptance matrices live in
 and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
+
+The September 11 source-only synth surface change uses four rows of four in
+Player and FT2 PARAM. Rotary 1 edits the first parameter; click toggles visible
+NAV for menu-page selection, and another click returns to editing. Volume/AUX
+1/AUX 2/AUX 3 occupy physical rotaries 13–16. Previously displaced Moj controls
+return; Dual Filter exposes all amp stages together and retains filter attack,
+sustain and release as preset-owned values. The one information row keeps
+chord/note names and the enabled scale; Player Shift-turn changes that scale.
+The focused instrument/controller guides own the complete mappings. Formatting
+and source checks only: compilation, Rust tests and hardware acceptance await
+the explicitly authorized combined pass; binaries have not been refreshed.
 
 The September 10 synth follow-up adds the monophonic `M` to Presets, identifies
 changed Project areas in the exit dialog, and protects Home mouse exit. The
