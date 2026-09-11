@@ -244,6 +244,25 @@ pub fn route_with_synth_amp_page<'a>(
 mod tests {
     use super::*;
     #[test]
+    fn moj_performance_wheels_pass_through_without_parameter_translation() {
+        let pads = PadConfig::default();
+        for channel in 0..16 {
+            for message in [
+                [0xe0 | channel, 0, 0],
+                [0xe0 | channel, 0, 64],
+                [0xe0 | channel, 127, 127],
+                [0xb0 | channel, 1, 127],
+                [0xb0 | channel, 121, 0],
+            ] {
+                let routed = route(&pads, BackendKind::MojSint, &message);
+                assert_eq!(routed.forward, Some(message.as_slice()));
+                assert_eq!(routed.translated, None);
+                assert!(!routed.consumed);
+            }
+        }
+    }
+
+    #[test]
     fn command_on_and_off_are_consumed_but_notes_pass() {
         let pads = PadConfig {
             pads: HashMap::from([(36, PadAction::Rec)]),

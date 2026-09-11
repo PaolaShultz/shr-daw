@@ -907,6 +907,31 @@ impl ControllerLearnReason {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct AuxPickup {
+    target: Option<f32>,
+    previous: Option<f32>,
+    caught: bool,
+}
+
+impl AuxPickup {
+    fn accept(&mut self, target: f32, current: f32) -> bool {
+        if self.target != Some(target) {
+            *self = Self {
+                target: Some(target),
+                ..Self::default()
+            };
+        }
+        let close = (current - target).abs() <= 1.0 / 127.0 + f32::EPSILON;
+        let crossed = self
+            .previous
+            .is_some_and(|previous| (previous - target) * (current - target) <= 0.0);
+        self.previous = Some(current);
+        self.caught |= close || crossed;
+        self.caught
+    }
+}
+
 struct App {
     catalogs: Vec<Catalog>,
     user_preset_storage: preset::UserPresetStorage,
@@ -973,6 +998,7 @@ struct App {
     test_drum_kit: Option<String>,
     midi_lifecycle: engine::MidiLifecycle,
     pickup: engine::SharedPickup,
+    aux_pickup: [AuxPickup; AUX_SEND_CONTROL_COUNT],
     midi_backend: engine::SharedBackend,
     midi_moj_model: engine::SharedMojModel,
     tracker_route: engine::SharedTrackerRoute,
@@ -2188,6 +2214,7 @@ impl App {
             test_drum_kit: None,
             midi_lifecycle: tracker_io.lifecycle,
             pickup,
+            aux_pickup: [AuxPickup::default(); AUX_SEND_CONTROL_COUNT],
             midi_backend,
             midi_moj_model,
             tracker_route: tracker_io.route,
@@ -5930,6 +5957,7 @@ impl App {
         }
     }
     fn arm_pickup(&mut self) {
+        self.aux_pickup = [AuxPickup::default(); AUX_SEND_CONTROL_COUNT];
         if let Ok(mut pickup) = self.pickup.lock() {
             pickup.arm(&self.values);
         }
@@ -14177,8 +14205,18 @@ impl App {
         if index >= AUX_SEND_CONTROL_COUNT {
             return;
         }
+        if !normalized.is_finite() {
+            return;
+        }
         let normalized = normalized.clamp(0.0, 1.0);
+        let aux_id = index as u8 + 1;
+        let target = aux_send_normalized(&self.song.aux_routing, aux_id);
+        if !self.aux_pickup[index].accept(target, normalized) {
+            return;
+        }
         self.set_aux_surface_level(position, normalized);
+        // Follow only accepted writes; external edits re-arm on the next event.
+        self.aux_pickup[index].target = Some(aux_send_normalized(&self.song.aux_routing, aux_id));
     }
 
     fn apply_aux_surface_delta(&mut self, position: usize, steps: i8) {
@@ -15297,12 +15335,6 @@ impl App {
                     return;
                 }
             };
-            if aux.sends.iter().all(|send| send.aux_id != aux_id) {
-                if let Err(_error) = aux.set_send(&rack, aux_id, -18.0, SendPoint::PostInsert) {
-                    self.status = "FX SEND FAILED · old route kept".into();
-                    return;
-                }
-            }
             Ok(id)
         } else {
             aux.next_effect_id(&rack).and_then(|id| {
@@ -30938,6 +30970,17 @@ release = 0.4
     }
 
     #[test]
+    fn aux_absolute_pickup_rejects_initial_position_and_rearms_after_external_edit() {
+        let mut pickup = AuxPickup::default();
+        assert!(!pickup.accept(0.0, aux_send_normalize_db(-12.0)));
+        assert!(!pickup.accept(0.0, 0.2));
+        assert!(pickup.accept(0.0, 0.0));
+        assert!(pickup.accept(0.0, 0.4));
+        assert!(!pickup.accept(0.7, 0.4));
+        assert!(pickup.accept(0.7, 0.8));
+    }
+
+    #[test]
     fn surface_rotaries_keep_three_aux_sends_on_dual_filter_and_legacy_models() {
         assert_eq!(aux_send_normalize_db(-60.0), 1.0 / 127.0);
         assert!((aux_send_denormalize(1.0 / 127.0) + 60.0).abs() < 0.000_01);
@@ -31022,6 +31065,10 @@ release = 0.4
                 app.values = HashMap::from([(crate::control::INSTRUMENT_VOLUME_CC, 0.5)]);
                 app.original_values = app.values.clone();
                 for position in 12..15 {
+                    app.apply_aux_surface_control(
+                        position,
+                        aux_send_normalized(&app.song.aux_routing, (position - 11) as u8),
+                    );
                     app.apply_aux_surface_control(position, aux_send_normalize_db(-18.0));
                     app.apply_relative_rotary(Instant::now(), position, 1);
                     let send = app
@@ -35958,11 +36005,11 @@ release = 0.4
         let delay = bus.rack.effect(first_aux_effect).unwrap();
         assert_eq!(delay.parameters["dry_percent"], 0.0);
         assert_eq!(delay.parameters["wet_percent"], 100.0);
-        assert_eq!(a.song.aux_routing.sends[0].level_db, -18.0);
+        assert!(a.song.aux_routing.sends.is_empty());
         a.adjust_aux_send(1);
         a.toggle_aux_send_point();
         a.cycle_aux_return();
-        assert_eq!(a.song.aux_routing.sends[0].level_db, -15.0);
+        assert_eq!(a.song.aux_routing.sends[0].level_db, -24.0);
         assert_eq!(a.song.aux_routing.sends[0].point, SendPoint::PreInsert);
         assert_eq!(a.song.aux_routing.buses[0].return_gain_db, -3.0);
 
@@ -35970,10 +36017,8 @@ release = 0.4
         a.fx_add_kind = 8;
         a.add_effect();
         assert_eq!(a.song.aux_routing.buses.len(), 2);
-        assert_ne!(
-            a.song.aux_routing.sends[0].level_db,
-            a.song.aux_routing.sends[1].level_db
-        );
+        assert_eq!(a.song.aux_routing.sends.len(), 1);
+        assert_eq!(aux_send_display(&a.song.aux_routing, 2), "OFF");
         let second_aux_effect = a.selected_effect_id().unwrap();
         a.cycle_fx_target(1);
         a.fx_add_kind = FIRST_AUX_EFFECT_INDEX;

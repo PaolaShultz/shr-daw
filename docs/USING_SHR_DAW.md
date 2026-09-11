@@ -236,9 +236,16 @@ tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project se
 require saving even when the Project contains no notes. Synth sound edits use
 Player SAVE; MIDI Learn saves its controller mapping separately.
 
+All eight Moj Sint models respond to the pitch wheel (±2 semitones) and
+modulation wheel (vibrato depth, up to ±50 cents at 5 Hz). Both work on held
+notes and do not change saved sound controls. A newly loaded engine starts
+with pitch centered and vibrato off.
+
 Browsing Effects and editing inactive racks keep the direct audio route. To
-hear an AUX chain, add an effect, then adjust its send above OFF in Player,
-FT2 parameters, or the FX rack. That adjustment activates the effects bus even
+hear an AUX chain, add an effect (its send starts OFF), then adjust its send above OFF in Player,
+FT2 parameters, or the FX rack. Absolute aux knobs must reach or cross the current
+send value before taking control; relative encoders adjust it directly. Saved
+Project sends survive instrument changes. That adjustment activates the effects bus even
 when automatic graph startup is disabled. Stop transport before the first
 activation; once active, send levels can change during playback. Recording
 refuses all send changes. If activation fails, the old send and routes remain;
