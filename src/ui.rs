@@ -37736,7 +37736,9 @@ release = 0.4
 
     #[test]
     fn playback_keeps_chord_and_notes_on_one_row_without_velocity_clutter() {
-        let mut a = app(&presets());
+        let presets = presets();
+        let mut a = app(&presets);
+        a.playing = Some(presets[0].clone());
         configure_screenshot(&mut a, Screen::Playback);
         let frame = render_app(&mut a, 40, 13);
         assert!(row_text(&frame, 9).contains("D F# A"));

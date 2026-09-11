@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-10
+Updated: 2026-09-11
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -135,16 +135,28 @@ and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
 
-The September 11 source-only synth surface change uses four rows of four in
+The September 11 synth surface change uses four rows of four in
 Player and FT2 PARAM. Rotary 1 edits the first parameter; click toggles visible
 NAV for menu-page selection, and another click returns to editing. Volume/AUX
 1/AUX 2/AUX 3 occupy physical rotaries 13–16. Previously displaced Moj controls
 return; Dual Filter exposes all amp stages together and retains filter attack,
 sustain and release as preset-owned values. The one information row keeps
 chord/note names and the enabled scale; Player Shift-turn changes that scale.
-The focused instrument/controller guides own the complete mappings. Formatting
-and source checks only: compilation, Rust tests and hardware acceptance await
-the explicitly authorized combined pass; binaries have not been refreshed.
+The focused instrument/controller guides own the complete mappings.
+
+The authorized September 11 pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6)
+on AArch64. Locked checking, formatting, all 1,189 normal Rust tests, 20 Python
+helper tests, and 31 isolated audio-policy cases passed. Fourteen historical
+Rust tests remained intentionally ignored. One new render-test fixture needed
+an active instrument before asserting AUX labels; its focused rerun and the
+complete suite pass. DEV and REL builds and their version/help checks pass.
+Existing compiler warnings remain. Moj Sint's matching pass also completed:
+367 normal tests passed with 36 historical cases ignored, warning-denied
+Clippy and audit/deny passed, and DEV/REL host builds pass their help checks.
+All 28 cleared presets validate and produce identical finite paired one-second
+release renders. Moj's handoff owns the exact render probe and hash. No live
+app, synth, JACK, MIDI, playback, recording, private configuration, or hardware
+state was changed by this pass. Normal exit/reopen selects the rebuilt binaries.
 
 The September 10 synth follow-up adds the monophonic `M` to Presets, identifies
 changed Project areas in the exit dialog, and protects Home mouse exit. The
