@@ -136,6 +136,23 @@ and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
 
+The September 11 end-of-day pass used exact rustc 1.97.1 (8bab26f4f, LLVM
+22.1.6), AArch64. Formatting, locked all-target/all-feature checks, all 1,200
+normal tests, 20 Python helper tests and 31 isolated audio-policy cases passed.
+Clippy completed with existing warnings. All DEV/REL targets built and both
+SHR binaries passed version/help checks. Fourteen historical tests stayed
+intentionally ignored.
+
+Moj Sint now reuses idle voices, then the oldest released note, before taking
+a held note when every voice is held. This protects a held Swarm bass from
+high-note release tails without increasing the voice count. Its focused
+regression and 368 normal tests passed (36 historical cases ignored), as did
+warning-denied Clippy, audit/deny, all DEV/REL builds and host help checks. All
+28 cleared presets validate and paired release renders are finite and exact;
+Moj’s handoff owns the probe details. No live app, JACK, synth, MIDI, audio
+playback, recording or hardware was started or changed by this pass. Normal
+exit/reopen selects the rebuilt checkout binaries.
+
 The September 11 recording follow-up keeps Player MIDIREC (lowercase `r`) and
 adds AUDIO → WAVSTOP / DETAILS / WAV REC (Shift-R). MIDI and final stereo
 capture can run together; WAVSTOP affects only audio, while Player STOP ends
