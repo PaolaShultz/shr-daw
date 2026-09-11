@@ -65,7 +65,7 @@ def main() -> int:
             f"shr {system_version}"
         )
         assert run([str(prefix / "bin/shr-sampler"), "--version"], capture=True) == (
-            "shr-sampler 0.1.2"
+            "shr-sampler 0.1.3"
         )
         run(
             [

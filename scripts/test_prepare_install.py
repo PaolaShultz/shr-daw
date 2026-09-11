@@ -18,7 +18,7 @@ class PrepareInstallTests(unittest.TestCase):
     def test_repository_contract_selects_only_exact_public_revisions(self):
         root = MODULE_PATH.parent.parent
         document = prepare.contract(root)
-        self.assertEqual(document["system_version"], "0.4.8")
+        self.assertEqual(document["system_version"], "0.4.9")
         for name in ("moj-sint", "shr-sampler", "shr-drums"):
             record = prepare.component(document, name)
             self.assertTrue(record["repository"].startswith("https://github.com/PaolaShultz/"))

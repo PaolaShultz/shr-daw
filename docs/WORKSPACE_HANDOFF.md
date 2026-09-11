@@ -15,7 +15,7 @@ so inspect live Git state before editing, staging, or committing.
 
 | Owner | Current value |
 | --- | --- |
-| SHR-DAW package | 0.4.8 |
+| SHR-DAW package | 0.4.9 |
 | Rust toolchain | exact 1.97.1 from `rust-toolchain.toml` |
 | Project `.shsong` | format 19 |
 | Reusable drum pattern `.shdrum` | format 4 |
@@ -42,9 +42,9 @@ Machine-readable ownership remains in `Cargo.toml` and
 
 | Component | Relationship |
 | --- | --- |
-| SHR Drums 0.2.0 | exact Git revision compiled into `shr`; no child process |
-| Moj Sint 0.2.3 | exact Git revision installed as a managed external process |
-| SHR Sampler 0.1.2 | exact Git revision installed as a managed external process; accepted runtime range `>=0.1.2,<0.2.0` |
+| SHR Drums 0.2.1 | exact Git revision compiled into `shr`; no child process |
+| Moj Sint 0.2.4 | exact Git revision installed as a managed external process |
+| SHR Sampler 0.1.3 | exact Git revision installed as a managed external process; accepted runtime range `>=0.1.2,<0.2.0` |
 
 SHR source supports Moj Sint through schema 10 and eight models, including
 monophonic Pressure Chain and Open303 (28 cleared companion starts).
