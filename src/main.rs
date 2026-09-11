@@ -44,6 +44,7 @@ mod overlay;
 mod pads;
 mod pattern_history;
 mod performance_meter;
+mod performance_probe;
 mod preset;
 mod recording;
 mod rhythm;
@@ -190,8 +191,36 @@ fn effects_checkpoint(
         bail!("checkpoint duration must be 1..=60 seconds");
     }
     let (rack, aux_routing) = effects_routing(profile)?;
+    let bass = profile.starts_with("bass-");
+    if args.len() > 4 || (bass && args.get(3).is_none()) {
+        bail!("bass profiles require effects-checkpoint PRESET PROFILE SECONDS DEST");
+    }
+    if bass {
+        let ports = engine::jack_ports();
+        for client in [
+            &config.client_name,
+            &config.yoshimi.backend.client_name,
+            &config.fluidsynth.backend.client_name,
+            &config.moj_sint.backend.client_name,
+            &config.shr_sampler.backend.client_name,
+            &config.audio_graph.client_name,
+        ] {
+            if ports
+                .iter()
+                .any(|port| port.starts_with(&format!("{client}:")))
+            {
+                bail!("close the active SHR session before bass testing: {client} is present");
+            }
+        }
+    }
     let mut config = config.clone();
     config.audio_graph.enabled = true;
+    if bass {
+        config.capture.directory = PathBuf::from(&args[3]);
+        if !config.capture.directory.is_absolute() || config.capture.directory.parent().is_none() {
+            bail!("bass capture destination must be an absolute non-root directory");
+        }
+    }
     // The production final bus has a fixed loop-source boundary. A standalone
     // checkpoint has no UI-owned loop client, so provide an owned silent source
     // only when that exact configured client is absent. Its direct links are
@@ -264,19 +293,76 @@ fn effects_checkpoint(
     let synth_start = process_ticks(synth_pid).unwrap_or(0);
     let mut owner_rss_kib = process_rss_kib(owner_pid).unwrap_or(0);
     let mut synth_rss_kib = process_rss_kib(synth_pid).unwrap_or(0);
+    let mut probe = if bass {
+        Some(performance_probe::Probe::new(&format!(
+            "{}-measure",
+            config.audio_graph.client_name
+        ))?)
+    } else {
+        None
+    };
+    let mut stages = performance_probe::Stages::new(&rack, &aux_routing);
+    if bass {
+        final_bus.start_recording(Some("bass-stress"))?;
+    }
     let started = Instant::now();
-    engine.send(&[0x90, 48, 8])?;
+    let notes: &[u8] = if bass { &[36, 40, 43, 47] } else { &[48] };
+    for &note in notes {
+        engine.send(&[0x90, note, if bass { 127 } else { 8 }])?;
+    }
     checkpoint_event("note-on-sent");
+    let mut held = true;
+    let mut cycle = 0;
+    let mut next_rss = Instant::now();
     while started.elapsed() < Duration::from_secs(seconds) {
-        thread::sleep(Duration::from_millis(100));
-        owner_rss_kib = owner_rss_kib.max(process_rss_kib(owner_pid).unwrap_or(0));
-        synth_rss_kib = synth_rss_kib.max(process_rss_kib(synth_pid).unwrap_or(0));
+        thread::sleep(Duration::from_millis(if bass { 1 } else { 100 }));
+        if bass {
+            stages.sample(&final_bus);
+            let ms = started.elapsed().as_millis();
+            let next_cycle = ms / 2000;
+            if held && ms % 2000 >= 1500 {
+                for &note in notes {
+                    engine.send(&[0x80, note, 0])?;
+                }
+                held = false;
+            }
+            if next_cycle > cycle {
+                for &note in notes {
+                    engine.send(&[0x80, note, 0])?;
+                }
+                for &note in notes {
+                    engine.send(&[0x90, note, 127])?;
+                }
+                held = true;
+                cycle = next_cycle;
+            }
+        }
+        if Instant::now() >= next_rss {
+            owner_rss_kib = owner_rss_kib.max(process_rss_kib(owner_pid).unwrap_or(0));
+            synth_rss_kib = synth_rss_kib.max(process_rss_kib(synth_pid).unwrap_or(0));
+            next_rss = Instant::now() + Duration::from_millis(100);
+        }
     }
     let final_meter = final_bus
         .meter()
         .context("owned graph final meter unavailable")?;
     checkpoint_event("measurement-complete");
-    let _ = engine.send(&[0x80, 48, 0]);
+    for &note in notes {
+        let _ = engine.send(&[0x80, note, 0]);
+    }
+    if bass {
+        stages.sample(&final_bus);
+        let stopped = final_bus.stop_recording();
+        println!("BASS STAGES {}", stages.json());
+        println!(
+            "BASS CAPTURE {:?} stop={:?}",
+            final_bus.recording_status(),
+            stopped
+        );
+        if let Some(probe) = probe.as_mut() {
+            println!("BASS JACK {}", probe.finish());
+        }
+    }
     // `Engine::drop` sends the full all-channel panic immediately before it
     // terminates the owned synth. Do not send the same 48-message burst twice
     // during this tightly bounded checkpoint teardown.
@@ -413,6 +499,33 @@ fn effects_routing(
     let mut rack = audio_graph::InsertRack::default();
     let mut aux_routing = audio_graph::ProjectAuxRouting::default();
     match profile {
+        "bass-dry" | "bass-hot" | "bass-unity" | "bass-safe" => {
+            // Bypassed identity EQ supplies source meters without changing samples.
+            add_profile_effect(&mut rack, EffectKind::Eq, &[])?;
+            rack.effects[0].bypass = true;
+            if profile != "bass-dry" {
+                let send = if profile == "bass-safe" {
+                    -12.0
+                } else if profile == "bass-unity" {
+                    0.0
+                } else {
+                    12.0
+                };
+                let ret = if profile == "bass-hot" { 12.0 } else { 0.0 };
+                for kind in [EffectKind::Chorus, EffectKind::Flanger, EffectKind::Phaser] {
+                    let id = aux_routing
+                        .add_bus()
+                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    aux_routing
+                        .add_effect(&rack, id, kind)
+                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                    aux_routing.buses.last_mut().unwrap().return_gain_db = ret;
+                    aux_routing
+                        .set_send(&rack, id, send, audio_graph::SendPoint::PostInsert)
+                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                }
+            }
+        }
         "dry" => {}
         "eq" => add_profile_effect(
             &mut rack,
@@ -740,7 +853,7 @@ fn usage() {
          \n\
          Audio-changing checkpoint (starts a JACK graph, synth, and note;\n\
            requires explicit authorization):\n\
-           effects-checkpoint PRESET [PROFILE] [SECONDS]\n\
+           effects-checkpoint PRESET [PROFILE] [SECONDS] [DEST for bass profiles]\n\
            phase2-checkpoint PRESET [PROFILE] [SECONDS] (compatibility alias)\n\
          \n\
          Version: -V, --version\n\
@@ -1793,6 +1906,10 @@ mod tests {
     #[test]
     fn effects_checkpoint_profiles_are_strict_and_cover_each_topology() {
         for profile in [
+            "bass-dry",
+            "bass-hot",
+            "bass-unity",
+            "bass-safe",
             "dry",
             "eq",
             "compressor",

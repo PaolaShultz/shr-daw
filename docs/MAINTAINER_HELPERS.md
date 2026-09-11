@@ -1065,3 +1065,62 @@ exists only to run identical production boundaries from separately built
 compiler artifacts; it is not a physical-interface, scheduler, listening, or
 JACK-xrun test. The owning result is
 [Rust compiler A/B on Raspberry Pi 5](RUST_COMPILER_AB_2026-07-29.md).
+
+## Four-note live bass checkpoint
+
+```sh
+scripts/local.sh effects-checkpoint 'ENGINE:PRESET' bass-hot 16 /absolute/private/evidence
+```
+
+This opt-in measurement requires explicit audio authorization and an already
+running JACK server. Save and close the interactive app first. Bass profiles
+refuse a present configured synth or final-graph client. Use isolated runtime
+state below ignored `user/`, with physical MIDI inputs and external MIDI
+forwarding disabled, and retain the configured software-engine executables and
+playback destination. No user Project needs to be loaded or changed.
+
+The four MIDI notes are 36, 40, 43 and 47, at velocity 127. Every two seconds the
+chord retriggers, with a 1.5-second gate and 0.5-second release interval.
+Monophonic engines receive the same keys but still sound one voice. The
+existing 1–60-second checkpoint duration bound applies.
+
+| Profile | Three AUX sends | Three AUX returns |
+| --- | --- | --- |
+| `bass-dry` | absent | absent |
+| `bass-hot` | +12 dB each | +12 dB each |
+| `bass-unity` | 0 dB each | 0 dB each |
+| `bass-safe` | −12 dB each | 0 dB each |
+
+The three parallel AUX buses contain chorus, flanger and phaser, respectively,
+at their production default modulation/feedback settings and enforced 100%
+wet/zero dry. `bass-safe` names a comparison setting, not a guarantee for every
+preset. A bypassed identity EQ supplies unmodified synth-output metering. All
+profiles use the production final bus and default MASTER STRIP/limiter.
+
+The required absolute non-root destination receives a uniquely named stereo
+24-bit WAV. The normal recorder reports accepted/written frames, drops,
+overflows and faults; an xrun faults capture and may leave a partial recording.
+An independent JACK notification client counts xruns through capture teardown.
+Graph callback timing measures the SHR graph, not the external engine callback;
+process CPU measures each process separately. All owned clients and notes are
+released through the normal checkpoint cleanup, restoring boundary routes.
+
+`BASS STAGES` reports cumulative sample counts at or above full scale and
+non-finite counts, plus peaks/RMS and limiter reduction sampled approximately
+every millisecond. Sampled peaks are lower bounds on whole-run maxima; the
+cumulative overload counts do not have that polling limitation. Floating-point
+samples above 1 are overload/headroom evidence, not proof of hard clipping.
+The master safety clamp acts at its configured ceiling (−1 dBFS by default),
+so flat tops there do not increment the meter's ≥0 dBFS counter. Inspect the
+recorded WAV for repeated ceiling samples to distinguish that driven sound
+from a dropout. This checkpoint measures that behaviour; it does not change
+the limiter or classify intentional distortion as a defect. `BASS JACK` xruns and recorder dropped frames are different failures
+and must be reported separately. Diagnostic code is absent from ordinary
+playback callbacks.
+
+Focused non-audible validation:
+
+```sh
+cargo test --locked effects_checkpoint_profiles_are_strict_and_cover_each_topology
+cargo test --locked performance_probe::tests::cumulative_counters_are_not_double_counted
+```
