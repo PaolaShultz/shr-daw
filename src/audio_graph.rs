@@ -563,6 +563,9 @@ impl ProjectAuxRouting {
         }
         let mut parameters = crate::effect_schema::defaults(kind);
         force_wet_aux_parameters(kind, &mut parameters);
+        if bus.rack.effects.is_empty() {
+            bus.limiter_enabled = true;
+        }
         bus.rack.effects.push(EffectInstance {
             id: next_id,
             kind,
@@ -1347,6 +1350,25 @@ mod tests {
         rack.order.swap(0, 1);
         rack.effect_mut(51).unwrap().kind = EffectKind::Chorus;
         assert!(validate_drum_rack(&rack).is_err());
+    }
+
+    #[test]
+    fn aux_limiter_auto_enables_on_first_effect_and_preserves_manual_off() {
+        let source = InsertRack::default();
+        let mut routing = ProjectAuxRouting::default();
+        let id = routing.add_bus().unwrap();
+        assert!(!routing.buses[0].limiter_enabled);
+        assert!(routing
+            .add_effect(&source, id, EffectKind::Utility)
+            .is_err());
+        assert!(!routing.buses[0].limiter_enabled);
+        routing.add_effect(&source, id, EffectKind::Chorus).unwrap();
+        assert!(routing.buses[0].limiter_enabled);
+        routing.buses[0].limiter_enabled = false;
+        routing
+            .add_effect(&source, id, EffectKind::Flanger)
+            .unwrap();
+        assert!(!routing.buses[0].limiter_enabled);
     }
 
     #[test]

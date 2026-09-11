@@ -35484,17 +35484,17 @@ release = 0.4
         a.move_fx_rack_selection(1);
         assert_eq!(a.fx_selection, FxRackSelection::Limiter);
         assert_eq!(a.menu_context(), MenuContext::FxLimiter);
-        assert!(!a.song.aux_routing.buses[0].limiter_enabled);
+        assert!(a.song.aux_routing.buses[0].limiter_enabled);
         let before = a.song.aux_routing.buses[0].rack.clone();
         let frame = render_app(&mut a, 40, 13);
-        assert!(buffer_text(&frame).contains("LIMITER OFF"));
-        perform(Action::Activate, &mut a, Path::new("/none"), None);
-        assert!(a.song.aux_routing.buses[0].limiter_enabled);
-        assert_eq!(a.song.aux_routing.buses[0].rack, before);
-        let saved = crate::sequencer::encode(&a.song).unwrap();
-        assert!(crate::sequencer::decode(&saved).unwrap().aux_routing.buses[0].limiter_enabled);
+        assert!(buffer_text(&frame).contains("LIMITER ON"));
         perform(Action::Activate, &mut a, Path::new("/none"), None);
         assert!(!a.song.aux_routing.buses[0].limiter_enabled);
+        assert_eq!(a.song.aux_routing.buses[0].rack, before);
+        let saved = crate::sequencer::encode(&a.song).unwrap();
+        assert!(!crate::sequencer::decode(&saved).unwrap().aux_routing.buses[0].limiter_enabled);
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert!(a.song.aux_routing.buses[0].limiter_enabled);
         a.move_fx_rack_selection(1);
         assert_eq!(a.fx_selection, FxRackSelection::Effect(before.order[0]));
     }

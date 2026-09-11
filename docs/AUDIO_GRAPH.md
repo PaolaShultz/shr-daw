@@ -38,8 +38,10 @@ Each of the three bounded aux buses has its own send level, pre/post source-inse
 serial rack, return level, optional limiter, and return meter. Each return is mixed exactly once.
 
 The final **LIMITER OFF/ON** row in each existing AUX rack controls a fixed
-stereo-linked peak limiter after return gain and before summing. It defaults
-to OFF, preserving the driven mix, and saves independently per bus. ON uses
+stereo-linked peak limiter after return gain and before summing. Adding the first
+effect to an empty AUX chain automatically switches its limiter ON. Adding
+more effects preserves a manual OFF choice. The switch saves independently
+per bus; OFF preserves the driven mix. ON uses
 a continuous approximately 6 dB amplitude-domain soft knee, instantaneous
 attack, 50 ms release and a −1 dBFS sample ceiling. It adds no lookahead or
 latency. The switch crossfades over 5 ms through a prepared atomic control,

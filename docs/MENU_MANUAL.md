@@ -164,8 +164,8 @@ same next-cycle-boundary Fill latch.
   workflow.
 - Each existing AUX rack ends with **LIMITER OFF/ON**. Select that row and
   press Enter/the main encoder, or use the **ON/OFF** pad. This live switch
-  saves per Project, defaults OFF, and limits only that return before the
-  master sum. Use it to choose the effect character you prefer.
+  saves per Project, turns ON when the first effect is added, and limits only
+  that return before the master sum. Use it to choose the effect character you prefer.
 - With the graph active, structural FX edits require stopped transport and no
   active recording. With it disabled, FX edits change saved Project data only.
 
