@@ -135,6 +135,21 @@ and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
 
+The September 11 recording follow-up keeps Player MIDIREC (lowercase `r`) and
+adds AUDIO → WAVSTOP / DETAILS / WAV REC (Shift-R). MIDI and final stereo
+capture can run together; WAVSTOP affects only audio, while Player STOP ends
+its MIDI/arp transport and stereo take. Home RECORDER now opens the simple
+stereo view, with final-output L/R meters, elapsed time, filename and faults.
+DETAILS returns to its caller without ending capture. TOOLS → RAW REC retains
+the old multitrack recorder while standalone `shr-rec` remains a foundation.
+Explicit WAV REC can activate the configured final bus; failed activation
+preserves MIDI capture. Raw recording and stereo recording remain exclusive.
+Formatting, locked checking and all 1,192 normal tests pass on exact Rust
+1.97.1; 14 historical tests remain ignored. The release build and version/help
+checks pass; normal exit/reopen selects the rebuilt binary. Existing compiler
+warnings remain. No hardware/audio session was run.
+
+
 The September 11 synth surface change uses four rows of four in
 Player and FT2 PARAM. Rotary 1 edits the first parameter; click toggles visible
 NAV for menu-page selection, and another click returns to editing. Volume/AUX

@@ -93,7 +93,7 @@ continues to produce two synchronized mono stems in one take directory.
 
 ## The 40×13 workflow
 
-Open **AUDIO**. The selection-following five-row list shows an arm dot, track
+Open Home **RECORDER → TOOLS → RAW REC**. The selection-following five-row list shows an arm dot, track
 number, and label. Healthy routing is silent; an unresolved remembered source
 adds `MISSING`. The selected track has one compact source-and-level row. The
 last two body rows are reserved for recording integrity/recovery and the final

@@ -142,7 +142,11 @@ are in [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
 
 ## Final recording
 
-MTR `REC` arms one final-mix recording. Start and stop are sampled only at
+Home RECORDER, Player AUDIO → WAV REC (Shift-R), and MTR RECORD share one
+final-mix recorder. Player MIDIREC remains independent and may run alongside
+stereo capture. WAVSTOP finalizes audio only; Player STOP ends both its
+MIDI/arp transport and stereo capture. WAV REC explicitly activates the configured
+final bus when needed; failure preserves active MIDI capture. Start and stop are sampled only at
 whole callback boundaries. The callback gives the recorder the same final
 limited `StereoFrame` slice that is then copied to JACK playback. A bounded
 interleaved stereo ring transfers it to a non-real-time writer, which performs

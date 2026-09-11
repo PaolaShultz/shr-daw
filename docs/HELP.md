@@ -160,11 +160,27 @@ following sharp is held. Major triads show `maj` explicitly, such as `C maj`.
 `display.note_names=german` uses B/H spelling; `english` uses A#/B.
 
 Playback PLAY starts a saved MIDI take or, with no take, the configured
-external-sync controller arpeggiator. RECORD starts the same controller clock
+external-sync controller arpeggiator. MIDIREC starts the same controller clock
 before free-time capture. STOP ends the take/arp and sends All Notes Off without
 unloading the sound. TAP changes the current Pattern/controller tempo but never
 starts transport by itself. Player always shows the tempo immediately after
 the transport symbol in the bottom status row, including fractional BPM.
+
+Player also has an **AUDIO** controller page: **WAVSTOP**, **DETAILS**,
+**WAV REC**. WAV REC (keyboard Shift-R) starts/stops one stereo 24-bit WAV
+of SHR's final output, including effects and master processing. **MIDIREC**
+(lowercase `r`) retains MIDI Idea capture; both can run together. WAVSTOP
+only finalizes audio; Player STOP ends its MIDI/arp transport and stereo take.
+PLAY continues to replay MIDI or run the controller clock; it is not a WAV player.
+
+Home **RECORDER** opens the stereo recorder with L/R meters, elapsed time,
+filename and faults. Opening/leaving this view does not start or stop capture;
+Back returns to its caller. Its TAKE page offers WAVSTOP, MIX, WAV REC and EXIT.
+TOOLS → RAW REC retains the old input/stem recorder pending standalone
+`shr-rec` completion. Raw capture and final stereo capture remain exclusive.
+WAV REC connects the configured final bus if needed; failed activation retains
+any MIDI recording. Only inputs already monitored through SHR enter the WAV;
+interface direct monitoring and unrelated applications are excluded.
 
 Playback N00B toggles the filter on the existing Player screen. While on, its
 compact SCALE rotary appears below the normal controls; turn the master encoder

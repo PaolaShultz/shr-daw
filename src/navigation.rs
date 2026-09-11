@@ -21,6 +21,7 @@ pub enum Screen {
     TrackerLoop,
     TrackerLoopAlign,
     AudioRecorder,
+    StereoRecorder,
     MultichannelMonitor,
     FxRack,
     FxEditor,
@@ -39,9 +40,9 @@ pub enum Screen {
 }
 
 impl Screen {
-    pub const COUNT: usize = 31;
+    pub const COUNT: usize = 32;
     #[cfg(test)]
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 32] = [
         Self::Home,
         Self::Master,
         Self::Inserts,
@@ -58,6 +59,7 @@ impl Screen {
         Self::TrackerLoop,
         Self::TrackerLoopAlign,
         Self::AudioRecorder,
+        Self::StereoRecorder,
         Self::MultichannelMonitor,
         Self::FxRack,
         Self::FxEditor,
@@ -93,6 +95,7 @@ impl Screen {
             Self::TrackerLoop => 11,
             Self::TrackerLoopAlign => 12,
             Self::AudioRecorder => 13,
+            Self::StereoRecorder => 31,
             Self::MultichannelMonitor => 14,
             Self::FxRack => 15,
             Self::FxEditor => 16,
@@ -130,6 +133,7 @@ impl Screen {
             Self::TrackerLoop => "LOOP MIX",
             Self::TrackerLoopAlign => "LOOP ALIGN",
             Self::AudioRecorder => "AUDIO",
+            Self::StereoRecorder => "STEREO REC",
             Self::MultichannelMonitor => "18CH MONITOR",
             Self::FxRack => "FX RACK",
             Self::FxEditor => "FX EDIT",
@@ -247,6 +251,8 @@ pub enum Action {
     OpenEntryLayoutOverlay,
     OpenEffectsOverlay,
     OpenAudioRecorder,
+    OpenStereoRecorder,
+    FinalRecordStop,
     OpenMultichannelMonitor,
     OpenFxRack,
     OpenFxEditor,
@@ -647,7 +653,7 @@ const PLAYBACK: [MenuPage; 4] = [
         [
             on("STOP", Action::IdeaStop),
             on("PLAY", Action::IdeaPlayToggle),
-            on("RECORD", Action::IdeaRecordToggle),
+            on("MIDIREC", Action::IdeaRecordToggle),
             on("TAP", Action::TapTempo),
         ],
     ),
@@ -660,7 +666,15 @@ const PLAYBACK: [MenuPage; 4] = [
             on("SOUNDS", Action::OpenPresets),
         ],
     ),
-    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "AUDIO",
+        [
+            on("WAVSTOP", Action::FinalRecordStop),
+            on("DETAILS", Action::OpenStereoRecorder),
+            on("WAV REC", Action::FinalRecordToggle),
+            off(""),
+        ],
+    ),
     page(
         "SYS",
         [
@@ -1750,6 +1764,37 @@ const MASTER_STRIP_ADVANCED: [MenuPage; 4] = [
     ),
 ];
 
+const STEREO_RECORDER: [MenuPage; 4] = [
+    page(
+        "TAKE",
+        [
+            on("WAVSTOP", Action::FinalRecordStop),
+            on("MIX", Action::OpenMeter),
+            on("WAV REC", Action::FinalRecordToggle),
+            on("EXIT", Action::Back),
+        ],
+    ),
+    page(
+        "TOOLS",
+        [
+            on("RAW REC", Action::OpenAudioRecorder),
+            off(""),
+            off(""),
+            off(""),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+
 const METER: [MenuPage; 4] = [
     page(
         "OPS",
@@ -1878,6 +1923,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerLoop, _) => &TRACKER_LOOP,
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
         (Screen::AudioRecorder, _) => &AUDIO,
+        (Screen::StereoRecorder, _) => &STEREO_RECORDER,
         (Screen::MultichannelMonitor, _) => &MULTICHANNEL_MONITOR,
         (Screen::Master, _) => &MASTER,
         (Screen::Inserts, _) => &INSERTS,
@@ -1999,6 +2045,22 @@ mod tests {
         let empty_page = pages(Screen::Help, MenuContext::Normal)[1];
         assert_eq!((empty_slot.label, empty_slot.dispatch()), ("", None));
         assert!(!empty_page.available());
+    }
+
+    #[test]
+    fn stereo_recorder_and_player_have_explicit_audio_controls() {
+        let audio = pages(Screen::Playback, MenuContext::Normal)[2];
+        assert_eq!(audio.slots[2].dispatch(), Some(Action::FinalRecordToggle));
+        assert_eq!(audio.slots[0].dispatch(), Some(Action::FinalRecordStop));
+        assert_eq!(audio.slots[1].dispatch(), Some(Action::OpenStereoRecorder));
+        assert_eq!(
+            pages(Screen::Playback, MenuContext::Normal)[0].slots[2].label,
+            "MIDIREC"
+        );
+        assert_eq!(
+            pages(Screen::StereoRecorder, MenuContext::Normal)[0].slots[2].dispatch(),
+            Some(Action::FinalRecordToggle)
+        );
     }
 
     #[test]
@@ -2288,6 +2350,10 @@ mod tests {
                         (Screen::MultichannelMonitor, Some(Action::OpenAudioRecorder))
                             | (Screen::AudioRecorder, Some(Action::OpenMultichannelMonitor))
                             | (Screen::Playback, Some(Action::OpenPresets))
+                            | (
+                                Screen::StereoRecorder,
+                                Some(Action::OpenMeter | Action::OpenAudioRecorder)
+                            )
                     ) {
                         continue;
                     }
@@ -2331,9 +2397,9 @@ mod tests {
                             {
                                 Some(1)
                             }
-                            "STOP" | "PANIC" => Some(0),
+                            "STOP" | "WAVSTOP" | "PANIC" => Some(0),
                             "PLAY" | "LOAD" | "PREVIEW" => Some(1),
-                            "RECORD" | "REC" => Some(2),
+                            "RECORD" | "REC" | "MIDIREC" | "WAV REC" => Some(2),
                             "TAP" => Some(3),
                             _ => None,
                         };

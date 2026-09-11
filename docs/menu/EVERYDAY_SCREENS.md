@@ -118,18 +118,34 @@ Sampler show Volume at position 5 (physical rotary 6) and the same three AUX
 sends. The main encoder press resets the synthesis controls, including Dual
 Filter parameters outside the current view, without restarting the synth.
 
-### PLAY — capture a MIDI take
+### PLAY — MIDI capture and playback
 
 ![Populated Playback screen with the PLAY controller page](../images/menu/playback-play.png)
 
 `PLAY` plays or stops the captured take. With no take, it still sends a fresh
 Start to the configured controller clock so a controller in external-sync
-arpeggiator mode works with live keys. `RECORD` starts the same transport before
+arpeggiator mode works with live keys. `MIDIREC` starts the same transport before
 free-time MIDI capture. `STOP` sends controller Stop and All Notes Off without
 unloading the sound. `TAP` updates the current Pattern/controller tempo; it does
 not start transport, so PLAY remains the deliberate start gesture. Player's
 bottom status row always shows tempo immediately after the transport symbol,
 including fractional BPM.
+
+Player also has an **AUDIO** controller page: **WAVSTOP**, **DETAILS**,
+**WAV REC**. WAV REC (keyboard Shift-R) starts/stops one stereo 24-bit WAV
+of SHR's final output, including effects and master processing. **MIDIREC**
+(lowercase `r`) retains MIDI Idea capture; both can run together. WAVSTOP
+only finalizes audio; Player STOP ends its MIDI/arp transport and stereo take.
+PLAY continues to replay MIDI or run the controller clock; it is not a WAV player.
+
+Home **RECORDER** opens the stereo recorder with L/R meters, elapsed time,
+filename and faults. Opening/leaving this view does not start or stop capture;
+Back returns to its caller. Its TAKE page offers WAVSTOP, MIX, WAV REC and EXIT.
+TOOLS → RAW REC retains the old input/stem recorder pending standalone
+`shr-rec` completion. Raw capture and final stereo capture remain exclusive.
+WAV REC connects the configured final bus if needed; failed activation retains
+any MIDI recording. Only inputs already monitored through SHR enter the WAV;
+interface direct monitoring and unrelated applications are excluded.
 
 ### SOUND — reset, save sound, scale filter, and sounds
 

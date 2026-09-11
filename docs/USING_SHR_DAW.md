@@ -88,11 +88,27 @@ affect its shared stereo mix. Idea capture and saving
 remain on the Ideas screen. `SOUNDS` returns to Presets and its visible `LOAD`.
 
 Playback's PLAY page also owns the optional external-sync controller
-arpeggiator. `PLAY` sends Start even when no MIDI take exists, `RECORD` starts
+arpeggiator. `PLAY` sends Start even when no MIDI take exists, `MIDIREC` starts
 the same clock before capture, `STOP` ends it without unloading the instrument,
 and `TAP` changes tempo without silently starting transport. The bottom status
 row always shows Player's tempo after the transport symbol, retaining decimal
 BPM when set.
+
+Player also has an **AUDIO** controller page: **WAVSTOP**, **DETAILS**,
+**WAV REC**. WAV REC (keyboard Shift-R) starts/stops one stereo 24-bit WAV
+of SHR's final output, including effects and master processing. **MIDIREC**
+(lowercase `r`) retains MIDI Idea capture; both can run together. WAVSTOP
+only finalizes audio; Player STOP ends its MIDI/arp transport and stereo take.
+PLAY continues to replay MIDI or run the controller clock; it is not a WAV player.
+
+Home **RECORDER** opens the stereo recorder with L/R meters, elapsed time,
+filename and faults. Opening/leaving this view does not start or stop capture;
+Back returns to its caller. Its TAKE page offers WAVSTOP, MIX, WAV REC and EXIT.
+TOOLS → RAW REC retains the old input/stem recorder pending standalone
+`shr-rec` completion. Raw capture and final stereo capture remain exclusive.
+WAV REC connects the configured final bus if needed; failed activation retains
+any MIDI recording. Only inputs already monitored through SHR enter the WAV;
+interface direct monitoring and unrelated applications are excluded.
 
 Moj Sint keeps its own preset format and controls. Its current source catalog
 has 21 authored starts across six editable model families. SHR-DAW's public
@@ -267,12 +283,12 @@ works](HOW_IT_WORKS.md), [Audio graph and DSP contract](AUDIO_GRAPH.md), and
 
 ## Recording and meters
 
-Recorder writes armed exact JACK sources as synchronized mono 24-bit WAV stems
+Recorder TOOLS → RAW REC writes armed exact JACK sources as synchronized mono 24-bit WAV stems
 with one timeline and manifest. **LEVELS** opens the fixed 18-channel overview.
 A missing assigned source blocks take start until it is reassigned or disarmed.
 Interrupted recognized takes remain available for bounded recovery.
 
-Performance owns the optional final bus and one 24-bit stereo recording of the
+Home Recorder, Player AUDIO and Performance share one 24-bit stereo recording of the
 same post-strip samples sent to playback. Input software monitoring starts off
 and uses one `MON ON` or `MON OFF` action. Enable it only after checking for
 direct hardware monitoring, or the input may be heard twice.

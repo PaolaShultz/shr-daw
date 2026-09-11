@@ -834,7 +834,7 @@ const HOME_ENTRIES: [HomeEntry; 9] = [
     },
     HomeEntry {
         label: "RECORDER",
-        action: Action::OpenAudioRecorder,
+        action: Action::OpenStereoRecorder,
     },
     HomeEntry {
         label: "PERFORMANCE",
@@ -942,6 +942,7 @@ struct App {
     home_selected: usize,
     home_offset: usize,
     screen: Screen,
+    stereo_recorder_parent: Screen,
     engine: Option<Engine>,
     final_bus: FinalBusOwner,
     input_monitoring: bool,
@@ -2152,6 +2153,7 @@ impl App {
             home_selected: 0,
             home_offset: 0,
             screen: Screen::Home,
+            stereo_recorder_parent: Screen::Home,
             engine: None,
             final_bus,
             input_monitoring: false,
@@ -6011,6 +6013,7 @@ impl App {
     }
 
     fn stop_idea_transport(&mut self) {
+        let stereo_active = self.final_bus.recording_active();
         let active = self.recorder.is_recording()
             || self.playback.is_some()
             || self.controller_live_transport;
@@ -6021,6 +6024,9 @@ impl App {
         } else {
             "PLAYER already stopped".into()
         };
+        if stereo_active {
+            self.stop_final_recording();
+        }
     }
 
     fn active_recording_owner(&self) -> Option<RecordingOwner> {
@@ -6038,6 +6044,10 @@ impl App {
     }
 
     fn finish_competing_recordings(&mut self, starting: RecordingOwner) {
+        // The stereo output tap is independent of MIDI/pattern capture.
+        if starting == RecordingOwner::Final {
+            return;
+        }
         if starting != RecordingOwner::Tracker {
             self.finish_tracker_recording(false);
         }
@@ -6047,13 +6057,28 @@ impl App {
         if starting != RecordingOwner::Idea {
             self.stop_recording();
         }
-        if starting != RecordingOwner::Final && self.final_bus.recording_active() {
+        if starting == RecordingOwner::Multitrack && self.final_bus.recording_active() {
             let _ = self.final_bus.stop_recording();
             self.final_recording_last = self.final_bus.recording_status();
         }
     }
 
     fn recording_status_message(&self) -> Option<String> {
+        if self.final_bus.recording_active() {
+            if self.final_recording_last.error.is_some()
+                || self.final_recording_last.dropped_frames > 0
+                || self.final_recording_last.overflow_events > 0
+            {
+                return Some("STEREO WAV · FAULT · STOP".into());
+            }
+            if self.recorder.is_recording() {
+                return Some("MIDI + STEREO WAV".into());
+            }
+            if self.tracker_recording.is_some() {
+                return Some("FT2 + STEREO WAV".into());
+            }
+            return Some("STEREO WAV".into());
+        }
         match self.active_recording_owner()? {
             RecordingOwner::Idea => Some("IDEAS · MIDI take".into()),
             RecordingOwner::Tracker => {
@@ -6164,6 +6189,12 @@ impl App {
     }
 
     fn stop_workspace_transport(&mut self) {
+        if self.final_bus.recording_active() {
+            self.stop_final_recording();
+            if self.active_recording_owner().is_none() {
+                return;
+            }
+        }
         match self.active_recording_owner() {
             Some(RecordingOwner::Tracker) => {
                 self.tracker_stop();
@@ -14463,7 +14494,13 @@ impl App {
         if self.audio_recorder.status().recording {
             Some("● REC · RECORDER · raw multitrack")
         } else if self.final_bus.recording_active() {
-            Some("● REC · PERFORMANCE · final stereo")
+            Some(if self.recorder.is_recording() {
+                "● REC · MIDI + STEREO WAV"
+            } else if self.tracker_recording.is_some() {
+                "● REC · FT2 + STEREO WAV"
+            } else {
+                "● REC · RECORDER · stereo WAV"
+            })
         } else if self.tracker_recording.is_some() {
             Some("● REC · FT2 · Pattern capture")
         } else if self.recorder.is_recording() {
@@ -14936,8 +14973,18 @@ impl App {
         }
     }
 
+    fn stop_final_recording(&mut self) {
+        if self.final_bus.recording_active() {
+            self.toggle_final_recording();
+        }
+    }
+
     fn toggle_final_recording(&mut self) {
-        if !self.final_bus.active() {
+        if self.audio_recorder.status().recording {
+            self.status = "STOP raw take before WAV REC".into();
+            return;
+        }
+        if !self.final_bus.active() && !self.retry_final_bus_for_mixer() {
             self.status = "FINAL REC OFFLINE · retry MIX".into();
             return;
         }
@@ -16644,7 +16691,7 @@ impl App {
                     .set_audio_unavailable(AudioAvailability::Stopped);
             }
         }
-        if self.screen == Screen::Meter {
+        if matches!(self.screen, Screen::Meter | Screen::StereoRecorder) {
             self.performance_meter
                 .poll_cpu(now, Path::new("/proc/stat"));
             if self.final_bus.active() {
@@ -18267,6 +18314,7 @@ fn perform(
                 a.set_screen(Screen::TrackerLoop);
                 a.status = "loop alignment set".into();
             }
+            Screen::StereoRecorder => {}
             Screen::AudioRecorder => a.toggle_audio_track_arm(state),
             Screen::MultichannelMonitor => a.toggle_audio_track_arm(state),
             Screen::Meter => a.toggle_bus_mute(),
@@ -18451,6 +18499,14 @@ fn perform(
             unreachable!("preset save actions are handled inside their overlay")
         }
         Action::PreviewRouteDraft => a.preview_route_draft(),
+        Action::OpenStereoRecorder => {
+            if a.screen != Screen::StereoRecorder {
+                a.stereo_recorder_parent = a.screen;
+            }
+            a.set_screen(Screen::StereoRecorder);
+            a.status.clear();
+        }
+        Action::FinalRecordStop => a.stop_final_recording(),
         Action::OpenAudioRecorder => {
             a.set_screen(Screen::AudioRecorder);
             a.status.clear();
@@ -18636,6 +18692,7 @@ fn perform(
                 | Screen::MultichannelMonitor
                 | Screen::Meter
                 | Screen::Routing => Screen::Home,
+                Screen::StereoRecorder => a.stereo_recorder_parent,
                 Screen::Playback => Screen::Presets,
                 Screen::TrackerFiles
                 | Screen::TrackerArrange
@@ -19931,6 +19988,21 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             return perform(action, a, state, Some(tx));
         }
     }
+    if a.screen == Screen::StereoRecorder {
+        let action = match code {
+            KeyCode::Char('r') => Some(Action::FinalRecordToggle),
+            KeyCode::Char('s') | KeyCode::Char('S') | KeyCode::Char(' ') => {
+                Some(Action::FinalRecordStop)
+            }
+            _ => None,
+        };
+        if let Some(action) = action {
+            return perform(action, a, state, Some(tx));
+        }
+    }
+    if a.screen == Screen::Playback && code == KeyCode::Char('R') {
+        return perform(Action::FinalRecordToggle, a, state, Some(tx));
+    }
     if a.screen == Screen::Meter {
         let action = match code {
             KeyCode::Left => Some(Action::BusSelectPrevious),
@@ -20380,6 +20452,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::LivePatterns => draw_live_patterns(f, a),
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
+        Screen::StereoRecorder => draw_stereo_recorder(f, a),
         Screen::AudioRecorder => draw_audio_recorder(f, a),
         Screen::MultichannelMonitor => draw_multichannel_monitor(f, a),
         Screen::Master => draw_master_workspace(f, a),
@@ -26401,6 +26474,62 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     );
 }
 
+fn draw_stereo_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let width = usize::from(body.width.saturating_sub(2));
+    let recording = a.final_bus.recording_status();
+    a.final_recording_last = recording.clone();
+    let levels = if a.final_bus.active() {
+        a.performance_meter.audio_levels()
+    } else {
+        [AudioLevel::default(); 2]
+    };
+    let peaks = a.performance_meter.numeric_peak_dbfs();
+    let mut lines = vec![
+        Spans::from("SHR output · stereo 24-bit WAV"),
+        audio_meter_line('L', levels[0], peaks[0], width),
+        audio_meter_line('R', levels[1], peaks[1], width),
+        Spans::from(format!(
+            "{} {:02}:{:02}:{:02} · {}",
+            if recording.recording { "REC" } else { "TAKE" },
+            recording.elapsed.as_secs() / 3600,
+            (recording.elapsed.as_secs() / 60) % 60,
+            recording.elapsed.as_secs() % 60,
+            format_bytes(recording.bytes)
+        )),
+    ];
+    if let Some(path) = recording.path.as_deref() {
+        lines.push(Spans::from(crate::ui_text::fit_middle(
+            &path.file_name().unwrap_or_default().to_string_lossy(),
+            width,
+        )));
+    }
+    if let Some(error) = recording.error.as_deref() {
+        lines.push(Spans::from(Span::styled(
+            truncate(&format!("FAULT · {error}"), width),
+            Style::default().fg(Color::Red),
+        )));
+    } else if recording.dropped_frames > 0 || recording.overflow_events > 0 {
+        lines.push(Spans::from(Span::styled(
+            "INCOMPLETE · dropped audio",
+            Style::default().fg(Color::Red),
+        )));
+    } else if !a.final_bus.active() {
+        lines.push(Spans::from("WAV REC connects configured mix"));
+    }
+    lines.truncate(usize::from(body.height.saturating_sub(2)));
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(" STEREO RECORDER ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        ),
+        body,
+    );
+}
+
 fn draw_audio_recorder<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let s = a.audio_recorder.status();
@@ -32226,7 +32355,7 @@ release = 0.4
             Path::new("/none"),
             &tx,
         );
-        assert_eq!(rotary.screen, Screen::AudioRecorder);
+        assert_eq!(rotary.screen, Screen::StereoRecorder);
         assert!(!rotary.page_select_mode);
     }
 
@@ -36129,12 +36258,12 @@ release = 0.4
         for label in ["PLAY", "SOUND", "SYS", "RESET", "SAVE", "N00B", "SOUNDS"] {
             assert!(text.contains(label), "missing {label}: {text}");
         }
-        for removed in ["NAV", "IDEAS", "PRESETS", "FT2", "AUDIO"] {
+        for removed in ["NAV", "IDEAS", "PRESETS", "FT2"] {
             assert!(!text.contains(removed), "stale {removed}: {text}");
         }
         assert!(!text.contains("PLY"));
         assert!(row_text(terminal.backend().buffer(), 12).starts_with('■'));
-        assert_eq!(a.hits.menu_pages.len(), 3);
+        assert_eq!(a.hits.menu_pages.len(), 4);
         assert_eq!(a.hits.actions.len(), 4);
     }
 
@@ -36566,6 +36695,7 @@ release = 0.4
             (Screen::TrackerLoop, Some(SecondaryNavigation::LoopSlot)),
             (Screen::TrackerLoopAlign, None),
             (Screen::AudioRecorder, None),
+            (Screen::StereoRecorder, None),
             (Screen::MultichannelMonitor, None),
             (Screen::FxRack, Some(SecondaryNavigation::FxTarget)),
             (Screen::FxEditor, None),
@@ -37016,6 +37146,52 @@ release = 0.4
         assert_eq!(a.screen, Screen::Tracker);
         assert!(a.tracker_recording.is_some());
         assert_eq!(a.tracker_mode, TrackerMode::Rec);
+    }
+
+    #[test]
+    fn stereo_recorder_navigation_preserves_player_midi_capture() {
+        let p = presets();
+        let mut a = app(&p);
+        a.set_screen(Screen::Playback);
+        a.recorder.start(Instant::now());
+        a.recorder.capture(Instant::now(), &[0x90, 60, 100]);
+        a.select_menu_page(2);
+        let page = a.menu_page();
+        perform(Action::OpenStereoRecorder, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::StereoRecorder);
+        assert!(a.recorder.is_recording());
+        let buffer = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&buffer).contains("STEREO RECORDER"));
+        assert!(buffer_text(&buffer).contains("WAV REC"));
+        assert!(row_text(&buffer, 12).starts_with('●'));
+        perform(Action::FinalRecordStop, &mut a, Path::new("/none"), None);
+        assert!(a.recorder.is_recording(), "WAV STOP must not stop MIDI");
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Playback);
+        assert_eq!(a.menu_page(), page);
+        assert_eq!(a.recorder.events.len(), 1);
+        a.finish_competing_recordings(RecordingOwner::Final);
+        assert!(a.recorder.is_recording());
+    }
+
+    #[test]
+    fn stereo_record_failed_start_keeps_midi_and_player_keyboard_routes_separate() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _) = mpsc::channel();
+        a.set_screen(Screen::Playback);
+        a.recorder.start(Instant::now());
+        a.final_bus_activation_override = Some(Err("offline fixture".into()));
+        key(KeyCode::Char('R'), &mut a, Path::new("/none"), &tx);
+        assert!(a.recorder.is_recording());
+        assert!(!a.final_bus.recording_active());
+        assert_eq!(a.final_bus_activation_attempts, 1);
+        assert!(a.status.contains("FINAL REC OFFLINE"));
+        key(KeyCode::Char('r'), &mut a, Path::new("/none"), &tx);
+        assert!(
+            !a.recorder.is_recording(),
+            "lowercase r retains MIDI toggle"
+        );
     }
 
     #[test]
