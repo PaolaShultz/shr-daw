@@ -196,6 +196,54 @@ pub enum EncoderAction {
     Select,
 }
 
+/// Per-input navigation confirmation. Raw decoding and Controller Learn stay
+/// one-message-at-a-time; only dispatched master-encoder actions are filtered.
+#[derive(Debug, Default)]
+pub(crate) struct NavigationEncoderFilter {
+    pending: Option<(EncoderAction, bool, (u8, u8), Instant)>,
+    clicked: Option<Instant>,
+}
+
+impl NavigationEncoderFilter {
+    pub(crate) fn clear_pending(&mut self) {
+        self.pending = None;
+    }
+
+    pub(crate) fn filter(
+        &mut self,
+        action: EncoderAction,
+        modified: bool,
+        source: (u8, u8),
+        received: Instant,
+    ) -> Option<EncoderAction> {
+        if action == EncoderAction::Select {
+            self.pending = None;
+            self.clicked = Some(received);
+            return Some(action);
+        }
+        if self.clicked.is_some_and(|click| {
+            received.saturating_duration_since(click) < Duration::from_millis(120)
+        }) {
+            self.pending = None;
+            return None;
+        }
+        let confirmed =
+            self.pending
+                .is_some_and(|(previous, was_modified, previous_source, at)| {
+                    previous == action
+                        && was_modified == modified
+                        && previous_source == source
+                        && received.saturating_duration_since(at) < Duration::from_millis(300)
+                });
+        self.pending = if confirmed {
+            None
+        } else {
+            Some((action, modified, source, received))
+        };
+        confirmed.then_some(action)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ControllerButton {
     Cc { channel: u8, cc: u8 },
@@ -1635,6 +1683,111 @@ impl TapTempo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn navigation_requires_pairs_and_discards_reversed_stale_or_different_sources() {
+        let now = Instant::now();
+        let mut filter = NavigationEncoderFilter::default();
+        let mut turn = |action, modified, source, ms| {
+            filter.filter(action, modified, source, now + Duration::from_millis(ms))
+        };
+        assert_eq!(turn(EncoderAction::Down, false, (0, 28), 0), None);
+        assert_eq!(
+            turn(EncoderAction::Down, false, (0, 28), 10),
+            Some(EncoderAction::Down)
+        );
+        assert_eq!(turn(EncoderAction::Down, false, (0, 28), 20), None);
+        assert_eq!(turn(EncoderAction::Up, false, (0, 28), 30), None);
+        assert_eq!(
+            turn(EncoderAction::Up, false, (0, 28), 40),
+            Some(EncoderAction::Up)
+        );
+        assert_eq!(turn(EncoderAction::Down, false, (0, 28), 50), None);
+        assert_eq!(turn(EncoderAction::Down, false, (0, 28), 350), None);
+        assert_eq!(turn(EncoderAction::Down, true, (0, 28), 360), None);
+        assert_eq!(turn(EncoderAction::Down, true, (1, 28), 370), None);
+        assert_eq!(turn(EncoderAction::Down, true, (1, 29), 380), None);
+        assert_eq!(
+            turn(EncoderAction::Down, true, (1, 29), 390),
+            Some(EncoderAction::Down)
+        );
+    }
+
+    #[test]
+    fn navigation_click_is_immediate_and_discards_nearby_motion() {
+        let now = Instant::now();
+        let mut filter = NavigationEncoderFilter::default();
+        assert_eq!(
+            filter.filter(EncoderAction::Down, false, (0, 28), now),
+            None
+        );
+        assert_eq!(
+            filter.filter(
+                EncoderAction::Select,
+                false,
+                (0, 27),
+                now + Duration::from_millis(1)
+            ),
+            Some(EncoderAction::Select)
+        );
+        for ms in [2, 20, 100, 120] {
+            assert_eq!(
+                filter.filter(
+                    EncoderAction::Down,
+                    false,
+                    (0, 28),
+                    now + Duration::from_millis(ms)
+                ),
+                None
+            );
+        }
+        assert_eq!(
+            filter.filter(
+                EncoderAction::Down,
+                false,
+                (0, 28),
+                now + Duration::from_millis(121)
+            ),
+            None
+        );
+        assert_eq!(
+            filter.filter(
+                EncoderAction::Down,
+                false,
+                (0, 28),
+                now + Duration::from_millis(130)
+            ),
+            Some(EncoderAction::Down)
+        );
+        assert_eq!(
+            filter.filter(
+                EncoderAction::Up,
+                false,
+                (0, 28),
+                now + Duration::from_millis(140)
+            ),
+            None
+        );
+        filter.clear_pending();
+        assert_eq!(
+            filter.filter(
+                EncoderAction::Up,
+                false,
+                (0, 28),
+                now + Duration::from_millis(150)
+            ),
+            None
+        );
+        assert_eq!(
+            filter.filter(
+                EncoderAction::Up,
+                false,
+                (0, 28),
+                now + Duration::from_millis(160)
+            ),
+            Some(EncoderAction::Up)
+        );
+    }
+
     #[test]
     fn command_note_on_triggers_once_and_note_off_is_consumed() {
         let c = PadConfig {

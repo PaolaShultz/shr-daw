@@ -5,6 +5,21 @@ This document owns the controller action inventory and paging contract. Use the
 guides for task order. The inventory follows the current keyboard, mouse,
 encoder, command-pad, screen, and contextual dispatch paths.
 
+## Navigation encoder sensitivity
+
+The master encoder requires two directional MIDI messages for each navigation
+step, including Shift-turn navigation. The messages must come from the same
+input, channel, CC and modifier state, in the same direction, less than 300 ms
+apart. A direction change starts a new pair; an isolated message expires.
+Clicks act immediately, discard a pending turn, and suppress turn messages for
+120 ms afterward. Modifier, pad, page-chord and lock actions also discard a
+pending turn. This reduces single-message jitter and movement around a click;
+it cannot distinguish two accidental messages before a click from a real turn.
+
+This filtering applies at navigation dispatch. Controller Learn still observes
+raw messages, and performance rotaries, musical MIDI, keyboard and mouse retain
+their own input handling. No controller remapping is required.
+
 ## Startup splash
 
 Startup first shows a 40×13 old-school stereo LED animation using all thirteen
