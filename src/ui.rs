@@ -1224,6 +1224,7 @@ struct FxTypeEdit {
 enum FxRackSelection {
     Effect(EffectId),
     Insert,
+    Limiter,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -3364,6 +3365,8 @@ impl App {
             MenuContext::TrackerSizeConfirm
         } else if self.screen == Screen::FxRack && self.fx_type_edit.is_some() {
             MenuContext::FxType
+        } else if self.screen == Screen::FxRack && self.fx_selection == FxRackSelection::Limiter {
+            MenuContext::FxLimiter
         } else if self.screen == Screen::FxRack && self.selected_effect_id().is_none() {
             MenuContext::FxEmpty
         } else if self.screen == Screen::Tracker && self.note_editor.is_some() {
@@ -15047,6 +15050,7 @@ impl App {
                 .position(|candidate| *candidate == id)
                 .unwrap_or(rack.order.len()),
             FxRackSelection::Insert => rack.order.len(),
+            FxRackSelection::Limiter => rack.order.len() + 1,
         }
     }
 
@@ -15060,10 +15064,14 @@ impl App {
             self.fx_selection = FxRackSelection::Insert;
             return;
         };
-        let length = rack.order.len() + usize::from(!is_drum_fx_target(self.fx_target));
+        let length = rack.order.len()
+            + usize::from(!is_drum_fx_target(self.fx_target))
+            + usize::from(is_aux_target(self.fx_target));
         let index = wrapped_index(self.fx_selection_index(), length, direction);
         self.fx_selection = if is_drum_fx_target(self.fx_target) {
             FxRackSelection::Effect(rack.order[index.min(rack.order.len() - 1)])
+        } else if is_aux_target(self.fx_target) && index == rack.order.len() + 1 {
+            FxRackSelection::Limiter
         } else {
             rack.order
                 .get(index)
@@ -15275,6 +15283,7 @@ impl App {
         .is_some_and(|rack| match self.fx_selection {
             FxRackSelection::Effect(id) => rack.order.contains(&id),
             FxRackSelection::Insert => true,
+            FxRackSelection::Limiter => is_aux_target(self.fx_target),
         });
         if !selected_exists {
             self.fx_selection = FxRackSelection::Insert;
@@ -15518,6 +15527,32 @@ impl App {
             return;
         }
         self.commit_fx_routing(rack, aux, drums, format!("moved FX #{id}"));
+    }
+
+    fn toggle_aux_limiter(&mut self) {
+        if !is_aux_target(self.fx_target) {
+            return;
+        }
+        let id = self.fx_target as u8;
+        let Some(bus) = self.song.aux_routing.buses.iter().find(|bus| bus.id == id) else {
+            return;
+        };
+        let enabled = !bus.limiter_enabled;
+        // An empty bus has no prepared return; its setting takes effect on insertion.
+        if !bus.rack.effects.is_empty() {
+            if let Err(error) = self.final_bus.apply_aux_limiter(id, enabled) {
+                self.status = format!("AUX LIMITER · {error}");
+                return;
+            }
+        }
+        self.song
+            .aux_routing
+            .buses
+            .iter_mut()
+            .find(|bus| bus.id == id)
+            .unwrap()
+            .limiter_enabled = enabled;
+        self.status = format!("AUX {id} limiter {}", if enabled { "ON" } else { "OFF" });
     }
 
     fn toggle_effect_bypass(&mut self) {
@@ -18320,7 +18355,9 @@ fn perform(
             Screen::MultichannelMonitor => a.toggle_audio_track_arm(state),
             Screen::Meter => a.toggle_bus_mute(),
             Screen::FxRack => {
-                if a.fx_type_edit.is_some() {
+                if a.fx_selection == FxRackSelection::Limiter {
+                    a.toggle_aux_limiter();
+                } else if a.fx_type_edit.is_some() {
                     a.confirm_effect_type_edit();
                 } else if a.selected_effect_id().is_some() {
                     a.begin_effect_type_edit();
@@ -21168,6 +21205,34 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 inner_width,
             ),
             if insert_selected {
+                Style::default().fg(Color::Black).bg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::White)
+            },
+        )));
+    }
+    if is_aux_target(a.fx_target) && rack.is_some() {
+        let enabled = a
+            .song
+            .aux_routing
+            .buses
+            .iter()
+            .find(|bus| bus.id == a.fx_target as u8)
+            .is_some_and(|bus| bus.limiter_enabled);
+        let selected = a.fx_selection == FxRackSelection::Limiter;
+        if selected {
+            selected_entry = entries.len();
+        }
+        entries.push(Spans::from(Span::styled(
+            crate::ui_text::fit_line(
+                &format!(
+                    "{}LIMITER {}",
+                    if selected { ">" } else { " " },
+                    if enabled { "ON" } else { "OFF" }
+                ),
+                inner_width,
+            ),
+            if selected {
                 Style::default().fg(Color::Black).bg(Color::Yellow)
             } else {
                 Style::default().fg(Color::White)
@@ -35408,6 +35473,33 @@ release = 0.4
     }
 
     #[test]
+    fn aux_limiter_last_row_toggles_via_canonical_action_and_persists() {
+        let p = presets();
+        let mut a = app(&p);
+        a.fx_target = 1;
+        a.set_screen(Screen::FxRack);
+        a.add_effect();
+        a.confirm_effect_type_edit();
+        a.fx_selection = FxRackSelection::Insert;
+        a.move_fx_rack_selection(1);
+        assert_eq!(a.fx_selection, FxRackSelection::Limiter);
+        assert_eq!(a.menu_context(), MenuContext::FxLimiter);
+        assert!(!a.song.aux_routing.buses[0].limiter_enabled);
+        let before = a.song.aux_routing.buses[0].rack.clone();
+        let frame = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&frame).contains("LIMITER OFF"));
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert!(a.song.aux_routing.buses[0].limiter_enabled);
+        assert_eq!(a.song.aux_routing.buses[0].rack, before);
+        let saved = crate::sequencer::encode(&a.song).unwrap();
+        assert!(crate::sequencer::decode(&saved).unwrap().aux_routing.buses[0].limiter_enabled);
+        perform(Action::Activate, &mut a, Path::new("/none"), None);
+        assert!(!a.song.aux_routing.buses[0].limiter_enabled);
+        a.move_fx_rack_selection(1);
+        assert_eq!(a.fx_selection, FxRackSelection::Effect(before.order[0]));
+    }
+
+    #[test]
     fn fx_insert_is_a_typed_reachable_row_and_parameter_motion_is_single_step() {
         let p = presets();
         let mut a = app(&p);
@@ -43176,7 +43268,7 @@ release = 0.4
 
         assert_eq!(a.song.patterns[&0], expected);
         let encoded = sequencer::encode(&a.song).unwrap();
-        assert!(encoded.starts_with("SHSYNTH-SONG 19\n"));
+        assert!(encoded.starts_with("SHSYNTH-SONG 20\n"));
         assert_eq!(sequencer::decode(&encoded).unwrap(), a.song);
         assert_eq!(a.pattern_history.depths(), (1, 0));
         assert!(a.project_is_dirty());

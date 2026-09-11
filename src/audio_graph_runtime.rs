@@ -1,4 +1,6 @@
 //! Preallocated callback plan compiled from a validated audio graph.
+use crate::aux_limiter::AuxLimiter;
+use std::sync::atomic::AtomicBool;
 
 use crate::audio_graph::{
     AuxId, EffectKind, GraphDefinition, NodeId, NodeKind, SendPoint, SourceKind,
@@ -224,6 +226,7 @@ fn aux_bypass_mode(states: &[RuntimeAuxEffectState], index: usize) -> BypassMode
 
 struct RuntimeFader {
     gain: SmoothedValue,
+    limiter: Option<AuxLimiter>,
     control: Option<Arc<AuxSendControl>>,
     last_target: f32,
     smoothing_samples: u32,
@@ -309,6 +312,7 @@ impl RuntimeFader {
         Ok(Self {
             gain: SmoothedValue::new(initial).map_err(|error| PlanError::new(error.to_string()))?,
             control,
+            limiter: None,
             last_target: initial,
             smoothing_samples: ((sample_rate as f32 * 0.01).round() as u32).max(1),
             meter: MeterAccumulator::new(maximum_frames)
@@ -332,11 +336,16 @@ impl RuntimeFader {
                 self.last_target = target;
             }
         }
+        if let Some(limiter) = &mut self.limiter {
+            limiter.prepare();
+        }
         for frame in frames.iter_mut() {
             let gain = self.gain.next_value();
-            *frame = self
-                .meter
-                .process(StereoFrame::new(frame.left * gain, frame.right * gain));
+            let mut output = StereoFrame::new(frame.left * gain, frame.right * gain);
+            if let Some(limiter) = &mut self.limiter {
+                output = limiter.process(output);
+            }
+            *frame = self.meter.process(output);
         }
         self.published.publish(self.meter.snapshot_and_clear_peak());
     }
@@ -359,6 +368,7 @@ pub struct GraphPlan {
     sink_nodes: Box<[NodeId]>,
     aux_effect_states: Box<[RuntimeAuxEffectState]>,
     aux_send_controls: BTreeMap<AuxId, Arc<AuxSendControl>>,
+    aux_limiter_controls: BTreeMap<AuxId, Arc<AtomicBool>>,
 }
 
 impl GraphPlan {
@@ -452,6 +462,7 @@ impl GraphPlan {
         let mut source_nodes = Vec::new();
         let mut sink_nodes = Vec::new();
         let mut aux_send_controls = BTreeMap::new();
+        let mut aux_limiter_controls = BTreeMap::new();
         for id in order {
             let node = node_by_id[&id];
             let operation = match &node.kind {
@@ -518,13 +529,16 @@ impl GraphPlan {
                     aux_send_controls.insert(*aux_id, control);
                     Operation::Fader(Box::new(fader))
                 }
-                NodeKind::AuxReturn { aux_id } => Operation::Fader(Box::new(RuntimeFader::new(
-                    aux_buses
+                NodeKind::AuxReturn { aux_id } => {
+                    let bus = aux_buses
                         .get(aux_id)
-                        .ok_or_else(|| PlanError::new("aux return bus missing"))?
-                        .return_gain_db,
-                    maximum_frames,
-                )?)),
+                        .ok_or_else(|| PlanError::new("aux return bus missing"))?;
+                    let mut fader = RuntimeFader::new(bus.return_gain_db, maximum_frames)?;
+                    let limiter = AuxLimiter::new(graph.sample_rate, bus.limiter_enabled);
+                    aux_limiter_controls.insert(*aux_id, Arc::clone(&limiter.control));
+                    fader.limiter = Some(limiter);
+                    Operation::Fader(Box::new(fader))
+                }
                 NodeKind::MonoToStereo => Operation::Pass,
             };
             nodes.push(RuntimeNode {
@@ -547,6 +561,7 @@ impl GraphPlan {
             sink_nodes: sink_nodes.into_boxed_slice(),
             aux_effect_states: aux_effect_states.into_boxed_slice(),
             aux_send_controls,
+            aux_limiter_controls,
         })
     }
 
@@ -667,6 +682,10 @@ impl GraphPlan {
             Operation::Effect(slot) if slot.id() == effect_id => Some(slot.control()),
             _ => None,
         })
+    }
+
+    pub fn aux_limiter_control(&self, aux_id: AuxId) -> Option<Arc<AtomicBool>> {
+        self.aux_limiter_controls.get(&aux_id).map(Arc::clone)
     }
 
     pub fn aux_send_control(&self, aux_id: AuxId) -> Option<Arc<AuxSendControl>> {
@@ -1010,6 +1029,7 @@ mod tests {
                 id: 1,
                 effects: effect_ids,
                 return_gain_db: 0.0,
+                limiter_enabled: false,
             }],
             sends: vec![SendRoute {
                 source_node: 1,
@@ -1042,6 +1062,44 @@ mod tests {
             bypass,
             parameters: configured,
             owned_memory_bytes: 0,
+        }
+    }
+
+    #[test]
+    fn aux_limiter_is_post_return_gain_live_and_allocation_free() {
+        let mut graph = aux_chain_graph(vec![configured_effect(
+            10,
+            EffectKind::Delay,
+            false,
+            [
+                ("time_ms", 1.0),
+                ("feedback_percent", 0.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+            ],
+        )]);
+        graph.aux_buses[0].return_gain_db = 12.0;
+        let mut plan = GraphPlan::compile(&graph).unwrap();
+        let control = plan.aux_limiter_control(1).unwrap();
+        let meter = plan.meter(80).unwrap();
+        for enabled in [false, true, false] {
+            control.store(enabled, Ordering::Release);
+            assert_no_allocations(|| {
+                for _ in 0..8 {
+                    plan.source_buffer_mut(1, 64)
+                        .unwrap()
+                        .fill(StereoFrame::new(2.0, 0.5));
+                    assert_eq!(plan.process(64), ProcessStatus::Complete);
+                }
+            });
+            let peak = meter.load().peak.left;
+            if enabled {
+                assert!(peak <= 0.891_252 && peak > 0.89, "return {peak}");
+                // Dry path remains untouched; the sum may exceed the AUX ceiling.
+                assert!(plan.output_buffer(100, 64).unwrap()[63].left > 2.89);
+            } else {
+                assert!((peak - 2.0 * 10.0_f32.powf(12.0 / 20.0)).abs() < 0.00001);
+            }
         }
     }
 
@@ -1150,6 +1208,7 @@ mod tests {
                 id: 1,
                 effects: vec![10],
                 return_gain_db: -6.0206,
+                limiter_enabled: false,
             }],
             sends: vec![SendRoute {
                 source_node: 1,

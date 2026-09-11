@@ -539,6 +539,7 @@ pub enum MenuContext {
     DrumPatterns,
     ArrangementAssistant,
     FxEmpty,
+    FxLimiter,
     FxType,
 }
 
@@ -1654,6 +1655,16 @@ const FX_RACK: [MenuPage; 4] = [
     ),
 ];
 
+const FX_LIMITER: [MenuPage; 4] = [
+    page(
+        "OPS",
+        [on("ON/OFF", Action::Activate), off(""), off(""), off("")],
+    ),
+    FX_RACK_EMPTY[1],
+    FX_RACK[2],
+    FX_RACK[3],
+];
+
 const FX_RACK_EMPTY: [MenuPage; 4] = [
     page("OPS", [on("ADD", Action::FxAdd), off(""), off(""), off("")]),
     page(
@@ -1927,6 +1938,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::MultichannelMonitor, _) => &MULTICHANNEL_MONITOR,
         (Screen::Master, _) => &MASTER,
         (Screen::Inserts, _) => &INSERTS,
+        (Screen::FxRack, MenuContext::FxLimiter) => &FX_LIMITER,
         (Screen::FxRack, MenuContext::FxEmpty) => &FX_RACK_EMPTY,
         (Screen::FxRack, MenuContext::FxType) => &FX_TYPE,
         (Screen::FxRack, _) => &FX_RACK,

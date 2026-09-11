@@ -4,6 +4,7 @@ mod audio_graph_client;
 pub mod audio_graph_runtime;
 mod audio_recorder;
 mod automation;
+mod aux_limiter;
 mod channel_strip;
 mod chord;
 mod compiler_bench;
@@ -499,7 +500,7 @@ fn effects_routing(
     let mut rack = audio_graph::InsertRack::default();
     let mut aux_routing = audio_graph::ProjectAuxRouting::default();
     match profile {
-        "bass-dry" | "bass-hot" | "bass-unity" | "bass-safe" => {
+        "bass-dry" | "bass-hot" | "bass-limited" | "bass-unity" | "bass-safe" => {
             // Bypassed identity EQ supplies source meters without changing samples.
             add_profile_effect(&mut rack, EffectKind::Eq, &[])?;
             rack.effects[0].bypass = true;
@@ -511,7 +512,11 @@ fn effects_routing(
                 } else {
                     12.0
                 };
-                let ret = if profile == "bass-hot" { 12.0 } else { 0.0 };
+                let ret = if matches!(profile, "bass-hot" | "bass-limited") {
+                    12.0
+                } else {
+                    0.0
+                };
                 for kind in [EffectKind::Chorus, EffectKind::Flanger, EffectKind::Phaser] {
                     let id = aux_routing
                         .add_bus()
@@ -520,6 +525,8 @@ fn effects_routing(
                         .add_effect(&rack, id, kind)
                         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
                     aux_routing.buses.last_mut().unwrap().return_gain_db = ret;
+                    aux_routing.buses.last_mut().unwrap().limiter_enabled =
+                        profile == "bass-limited";
                     aux_routing
                         .set_send(&rack, id, send, audio_graph::SendPoint::PostInsert)
                         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -1908,6 +1915,7 @@ mod tests {
         for profile in [
             "bass-dry",
             "bass-hot",
+            "bass-limited",
             "bass-unity",
             "bass-safe",
             "dry",

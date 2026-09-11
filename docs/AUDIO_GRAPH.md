@@ -35,7 +35,32 @@ sum -> MASTER inserts -> live master level
 ```
 
 Each of the three bounded aux buses has its own send level, pre/post source-insert tap, forced-wet
-serial rack, return level, and return meter. Each return is mixed exactly once.
+serial rack, return level, optional limiter, and return meter. Each return is mixed exactly once.
+
+The final **LIMITER OFF/ON** row in each existing AUX rack controls a fixed
+stereo-linked peak limiter after return gain and before summing. It defaults
+to OFF, preserving the driven mix, and saves independently per bus. ON uses
+a continuous approximately 6 dB amplitude-domain soft knee, instantaneous
+attack, 50 ms release and a −1 dBFS sample ceiling. It adds no lookahead or
+latency. The switch crossfades over 5 ms through a prepared atomic control,
+without rebuilding the graph or clearing modulation/delay state. During that
+transition the return can exceed its ceiling. This is a sound choice: the
+combined dry signal and returns can still drive the unchanged master limiter.
+It is not an oversampled true-peak limiter and cannot undo distortion already
+created inside an effect. Project format 20 / graph format 3 stores this
+choice; older Projects load with all three limiters OFF.
+
+A focused Raspberry Pi 5 measurement (Rust 1.97.1 release, 48 kHz/128 frames)
+measured about 3.45 µs for three active limiter processors versus 0.52 µs
+bypassed in an isolated hot-signal probe. Three 30-second live four-key bass
+comparisons with chorus/flanger/phaser sends and returns at +12 dB put the
+complete graph mean at 255–268 µs with all three limiters ON, against a
+2,667 µs cycle. Those ON runs had no callback deadline misses, JACK xruns or
+recording drops. The first OFF baseline had four isolated graph deadline
+overruns; its 60-second repeat had none, and neither reported xruns or drops.
+These are focused measurements, not a bound for every preset
+or workload. The opt-in `bass-limited` checkpoint reproduces the live setup;
+see [Maintainer helper scripts](MAINTAINER_HELPERS.md#four-note-live-bass-checkpoint).
 Setting a non-OFF send from Player, FT2 parameters, or the FX rack activates
 the owned bus if needed, even with `audio.graph.enabled=false`. This first
 activation requires stopped transport; failure retains the Project send and

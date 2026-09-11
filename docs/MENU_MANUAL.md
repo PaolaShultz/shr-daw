@@ -162,8 +162,12 @@ same next-cycle-boundary Fill latch.
   deletes the private WAV. The current loop browser
   imports inbox files or attaches existing private files; it has no deletion
   workflow.
-- With the graph active, FX edits require stopped transport and no active
-  recording. With it disabled, FX edits change saved Project data only.
+- Each existing AUX rack ends with **LIMITER OFF/ON**. Select that row and
+  press Enter/the main encoder, or use the **ON/OFF** pad. This live switch
+  saves per Project, defaults OFF, and limits only that return before the
+  master sum. Use it to choose the effect character you prefer.
+- With the graph active, structural FX edits require stopped transport and no
+  active recording. With it disabled, FX edits change saved Project data only.
 
 For the source-of-truth page/action matrix and controller reachability rules,
 see the [controller interface](CONTROLLER_INTERFACE.md). For computer keyboard

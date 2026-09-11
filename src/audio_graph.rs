@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-pub const GRAPH_FORMAT_VERSION: u32 = 2;
+pub const GRAPH_FORMAT_VERSION: u32 = 3;
 pub const EFFECT_FORMAT_VERSION: u32 = 1;
 pub const MAX_SOURCES: usize = 4;
 pub const MAX_AUX_BUSES: usize = 3;
@@ -403,6 +403,8 @@ pub struct ProjectAuxBus {
     pub id: AuxId,
     pub rack: InsertRack,
     pub return_gain_db: f32,
+    #[serde(default)]
+    pub limiter_enabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -523,6 +525,7 @@ impl ProjectAuxRouting {
             id,
             rack: InsertRack::default(),
             return_gain_db: 0.0,
+            limiter_enabled: false,
         });
         Ok(id)
     }
@@ -665,6 +668,8 @@ pub struct AuxBus {
     #[serde(default)]
     pub effects: Vec<EffectId>,
     pub return_gain_db: f32,
+    #[serde(default)]
+    pub limiter_enabled: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1508,6 +1513,7 @@ mod tests {
             id: 1,
             effects: vec![1],
             return_gain_db: 0.0,
+            limiter_enabled: false,
         });
         assert!(graph
             .validate()

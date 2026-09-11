@@ -17,17 +17,18 @@ so inspect live Git state before editing, staging, or committing.
 | --- | --- |
 | SHR-DAW package | 0.4.9 |
 | Rust toolchain | exact 1.97.1 from `rust-toolchain.toml` |
-| Project `.shsong` | format 19 |
+| Project `.shsong` | format 20 |
 | Reusable drum pattern `.shdrum` | format 4 |
-| Audio graph/effect data | graph format 2, effect format 1 |
+| Audio graph/effect data | graph format 3, effect format 1 |
 | MIDI Idea metadata | format 3 |
 | Multitrack session manifest | format 1 |
 | MASTER STRIP | format 1 |
 | Runtime configuration template | version 6 |
 | Controller configuration | version 9 |
 
-Formats 0 through 18 migrate in memory to Project format 19 with optional
-[instrument channel strips](CHANNEL_INSERTS.md) initially empty/OFF. Loading or
+Formats 0 through 19 migrate in memory to Project format 20 with AUX return
+limiters OFF. Formats before 19 also initialize optional
+[instrument channel strips](CHANNEL_INSERTS.md) empty/OFF. Loading or
 inspection never rewrites a Project. Unknown newer formats and malformed or
 over-limit structures are refused before replacement.
 

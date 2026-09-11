@@ -246,6 +246,8 @@ pub(crate) struct OwnedAudioGraph {
     effect_meters: std::collections::BTreeMap<u32, crate::effects::MeterHandles>,
     effect_controls: std::collections::BTreeMap<u32, std::sync::Arc<crate::effects::EffectControl>>,
     aux_send_controls: std::collections::BTreeMap<u8, std::sync::Arc<AuxSendControl>>,
+    aux_limiter_controls:
+        std::collections::BTreeMap<u8, std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 #[derive(Default)]
@@ -499,6 +501,18 @@ impl FinalBusOwner {
             .map(|control| control.point())
     }
 
+    pub(crate) fn apply_aux_limiter(&self, aux_id: u8, enabled: bool) -> Result<bool> {
+        let Some(graph) = self.graph.as_ref() else {
+            return Ok(false);
+        };
+        graph
+            .aux_limiter_controls
+            .get(&aux_id)
+            .with_context(|| format!("AUX {aux_id} limiter control is unavailable"))?
+            .store(enabled, std::sync::atomic::Ordering::Release);
+        Ok(true)
+    }
+
     pub(crate) fn apply_aux_send_level(&self, aux_id: u8, level_db: Option<f32>) -> Result<bool> {
         let Some(graph) = self.graph.as_ref() else {
             return Ok(false);
@@ -712,6 +726,14 @@ impl OwnedAudioGraph {
                     .map(|control| (aux.id, control))
             })
             .collect();
+        let aux_limiter_controls = definition
+            .aux_buses
+            .iter()
+            .filter_map(|aux| {
+                plan.aux_limiter_control(aux.id)
+                    .map(|control| (aux.id, control))
+            })
+            .collect();
 
         let inputs = [
             jack.register_audio_port("managed_in_l", PortDirection::Input)?,
@@ -872,6 +894,7 @@ impl OwnedAudioGraph {
             effect_meters,
             effect_controls,
             aux_send_controls,
+            aux_limiter_controls,
         })
     }
 
@@ -1065,6 +1088,17 @@ impl OwnedAudioGraph {
                     .plan
                     .get_mut()
                     .aux_send_control(aux.id)
+                    .map(|control| (aux.id, control))
+            })
+            .collect();
+        self.aux_limiter_controls = definition
+            .aux_buses
+            .iter()
+            .filter_map(|aux| {
+                self.callback
+                    .plan
+                    .get_mut()
+                    .aux_limiter_control(aux.id)
                     .map(|control| (aux.id, control))
             })
             .collect();
@@ -1263,6 +1297,7 @@ pub(crate) fn managed_graph_definition(
             id: bus.id,
             effects: bus.rack.order.clone(),
             return_gain_db: bus.return_gain_db,
+            limiter_enabled: bus.limiter_enabled,
         });
         let send = aux_routing.sends.iter().find(|send| send.aux_id == bus.id);
         let mut aux_previous = None;

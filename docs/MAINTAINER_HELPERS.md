@@ -1088,6 +1088,7 @@ existing 1–60-second checkpoint duration bound applies.
 | --- | --- | --- |
 | `bass-dry` | absent | absent |
 | `bass-hot` | +12 dB each | +12 dB each |
+| `bass-limited` | +12 dB each | +12 dB each, return limiters ON |
 | `bass-unity` | 0 dB each | 0 dB each |
 | `bass-safe` | −12 dB each | 0 dB each |
 
@@ -1096,6 +1097,8 @@ at their production default modulation/feedback settings and enforced 100%
 wet/zero dry. `bass-safe` names a comparison setting, not a guarantee for every
 preset. A bypassed identity EQ supplies unmodified synth-output metering. All
 profiles use the production final bus and default MASTER STRIP/limiter.
+`bass-limited` enables all three optional post-return limiters; the other
+profiles leave them OFF, allowing a focused live CPU and sound comparison.
 
 The required absolute non-root destination receives a uniquely named stereo
 24-bit WAV. The normal recorder reports accepted/written frames, drops,
