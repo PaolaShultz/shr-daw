@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-11
+Updated: 2026-09-14
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -135,6 +135,22 @@ The focused contracts and acceptance matrices live in
 and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
+
+The September 14 stuck-note follow-up fixes Player scale changes suppressing
+held-note releases. The reported N00B-off incident led to a separate Moj host
+fix: callback-budget excess now defers MIDI events instead of dropping them,
+and queue loss stops the owned instrument with an explicit fault. Moj's handoff
+owns the failing-before/passing-after overload evidence; the heard incident
+remains unattributed without live event evidence.
+
+Exact rustc 1.97.1 passed both locked checks, 46 focused SHR engine tests and
+18 focused Moj host/engine tests, including allocation and finite-silence checks.
+The owner then authorized rebuilding all: locked all-target/all-feature DEV
+and REL builds pass in both checkouts, as do both SHR version/help and Moj host
+help checks. Existing SHR warnings remain. Full suites, historical tests,
+Clippy and hardware tests were not run in this focused pass. No running app,
+JACK, synth, MIDI, playback or recording was restarted. Normal exit/reopen
+selects the rebuilt checkout binaries.
 
 The September 11 end-of-day pass used exact rustc 1.97.1 (8bab26f4f, LLVM
 22.1.6), AArch64. Formatting, locked all-target/all-feature checks, all 1,200
