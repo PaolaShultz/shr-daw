@@ -374,7 +374,12 @@ fn tracker_route_consumes_note(route: Option<&TrackerRoute>, message: &[u8]) -> 
 }
 
 fn playback_filter_allows(scale: Option<crate::scale::Scale>, message: &[u8]) -> bool {
-    !valid_note_message(message) || scale.is_none_or(|scale| scale.contains(message[1]))
+    // A held note belongs to the scale at its press, not the current scale.
+    // Always let releases reach the source/destination ownership checks.
+    !valid_note_message(message)
+        || message[0] & 0xf0 == 0x80
+        || message[2] == 0
+        || scale.is_none_or(|scale| scale.contains(message[1]))
 }
 
 fn valid_note_message(message: &[u8]) -> bool {
@@ -3175,7 +3180,8 @@ mod tests {
 
         assert!(playback_filter_allows(Some(scale), &[0x90, 61, 100]));
         assert!(!playback_filter_allows(Some(scale), &[0x90, 62, 100]));
-        assert!(!playback_filter_allows(Some(scale), &[0x80, 62, 0]));
+        assert!(playback_filter_allows(Some(scale), &[0x80, 62, 0]));
+        assert!(playback_filter_allows(Some(scale), &[0x90, 62, 0]));
         assert!(playback_filter_allows(Some(scale), &[0xb0, 1, 64]));
         assert!(playback_filter_allows(None, &[0x90, 62, 100]));
     }
@@ -3643,6 +3649,68 @@ mod tests {
             None,
         )
         .is_empty());
+    }
+
+    #[test]
+    fn playback_scale_change_releases_held_notes_in_both_midi_formats() {
+        let scale = crate::scale::Scale {
+            root: 1,
+            kind: crate::scale::ScaleKind::NaturalMinor,
+        };
+        for release in [[0x82, 62, 47], [0x92, 62, 0]] {
+            let mut state = LiveMidiState::default();
+            let source = "keyboard".to_owned();
+            assert_eq!(
+                route_live_message(&mut state, &source, &[0x92, 62, 100], None, None),
+                [
+                    MidiDelivery::Raw(vec![0x92, 62, 100]),
+                    MidiDelivery::Direct(vec![0x92, 62, 100]),
+                ]
+            );
+            assert_eq!(
+                route_live_message(&mut state, &source, &release, None, Some(scale)),
+                [
+                    MidiDelivery::Raw(release.to_vec()),
+                    MidiDelivery::Direct(release.to_vec()),
+                ]
+            );
+            assert!(state.direct_destinations.is_empty());
+            assert!(release_all_inputs(&mut state).is_empty());
+            assert!(
+                route_live_message(&mut state, &source, &[0x92, 62, 100], None, Some(scale))
+                    .is_empty()
+            );
+            assert!(release_all_inputs(&mut state).is_empty());
+        }
+    }
+
+    #[test]
+    fn playback_scale_change_preserves_other_sources_held_note() {
+        let scale = crate::scale::Scale {
+            root: 1,
+            kind: crate::scale::ScaleKind::NaturalMinor,
+        };
+        let mut state = LiveMidiState::default();
+        let first = "first".to_owned();
+        let second = "second".to_owned();
+        let unrelated = "unrelated".to_owned();
+        route_live_message(&mut state, &first, &[0x90, 62, 90], None, None);
+        route_live_message(&mut state, &second, &[0x90, 62, 110], None, None);
+        for source in [&unrelated, &first] {
+            assert!(
+                route_live_message(&mut state, source, &[0x80, 62, 0], None, Some(scale))
+                    .is_empty()
+            );
+        }
+        assert_eq!(
+            route_live_message(&mut state, &second, &[0x90, 62, 0], None, Some(scale)),
+            [
+                MidiDelivery::Raw(vec![0x90, 62, 0]),
+                MidiDelivery::Direct(vec![0x90, 62, 0]),
+            ]
+        );
+        assert!(state.direct_destinations.is_empty());
+        assert!(release_all_inputs(&mut state).is_empty());
     }
 
     #[test]

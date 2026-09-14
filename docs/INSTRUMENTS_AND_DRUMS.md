@@ -117,6 +117,8 @@ The one information row below the grid shows the chord and held note names,
 plus the selected scale while N00B is enabled. Strike velocities and the
 keyboard graphic no longer compete for space. In Player, Shift-turn changes
 the N00B scale; ordinary turns keep editing the first parameter.
+Changing or enabling the Player scale filters new presses; already held notes
+still release when you let go of their keys.
 
 | Model | Rotaries 1–4 | Rotaries 5–8 | Rotaries 9–12 |
 | --- | --- | --- | --- |
