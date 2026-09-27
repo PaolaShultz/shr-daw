@@ -440,8 +440,15 @@ high band. Gain markers snap visually to the nearest labelled row from −18 to
 +18 dB; displayed and editable gain values retain 0.5 dB precision. The master
 rotary browses bypass, each band frequency and gain, low-cut state and
 frequency, and output trim. Yellow means selected, green means editing, and a
-bypassed EQ is dim. Knobs 1–4 remain logarithmic band frequencies and knobs
-5–8 their half-decibel gains. Low cut is never misrepresented as knob 1.
+bypassed EQ is dim. Physical pots **5–8** control gains and **13–16** control
+frequencies, both in low, low-mid, high-mid, high order. Gains use half-decibel steps;
+frequencies use logarithmic steps. These assignments stay fixed while the
+master rotary browses or edits fields. The other performance pots are inert
+in EQ. Relative pots carry the current value; absolute input waits for pickup.
+Live EQ values and bypass retain filter history and use the existing smoothing
+without deactivating JACK or rebuilding the graph, including during recording.
+Adding, removing, retyping, or reordering effects still requires stopped
+transport and recording.
 
 Player and FT2 PARAM have four ten-cell parameter columns at native 40×13.
 Every static synth label, must fit within
@@ -490,6 +497,21 @@ through `PAD 8`; the active screen gives pads 1–4 their page positions and
 pads 5–8 their contextual STOP/PANIC, PLAY/LOAD/PREVIEW, capture, and TAP
 meanings. Older semantic mappings still decode to those physical positions
 without changing note numbers.
+
+## Recorded WAVs
+
+Player AUDIO → FILES and Recorder TAKE → FILES open the saved stereo takes
+in the configured recording folder. Shift-W opens the same browser from either
+screen. Turn or Up/Down selects a file without playing it. PLAY (keyboard P
+or Enter) starts the selected take and toggles pause when it is already loaded;
+its button reads PAUSE while that take plays. Space pauses/resumes the current
+take even if the browse selection has moved. STOP/S rewinds, REFRESH/F rescans,
+and EXIT/Back stops playback and returns to the caller. Four-pad controllers
+retain their existing encoder-click page selection; their PLAY pad starts audio.
+The list shows filenames and durations, with a scrolling selection, elapsed
+time, and the current playback filename. The shared status row retains its
+play, pause, stop, and fault indications. WAV playback requires recording and
+other transports to be stopped. Browsing is available during capture.
 
 ## Parameters, relative turns, and extension points
 

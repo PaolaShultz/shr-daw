@@ -317,6 +317,14 @@ deactivates its old handle. Missing IDs, stale handles, unknown names, invalid
 values, and kind/version mismatches are rejected visibly without changing the
 graph or another effect.
 
+Interactive EQ edits use those same stable runtime handles with exact schema
+values. Only the selected effect's parameter/bypass values may differ; rack
+order, routing, identity, kind, version, and memory ownership must match before
+this live path is used. Validation finishes before publication. The callback
+retains the EQ filters and their existing coefficient crossfades; numerical
+edits no longer deactivate JACK. Structural changes keep the stopped-only
+publication path above.
+
 The final bus also owns the metronome oscillator. Its beat-one accent uses
 precomputed recurrence coefficients and fixed callback state. Clicks are mixed
 inside the final boundary; they have no MIDI destination, synth voice, drum

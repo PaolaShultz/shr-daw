@@ -47,6 +47,7 @@ mod pattern_history;
 mod performance_meter;
 mod performance_probe;
 mod preset;
+mod recorded_wavs;
 mod recording;
 mod rhythm;
 mod scale;

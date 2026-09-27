@@ -22,6 +22,7 @@ pub enum Screen {
     TrackerLoopAlign,
     AudioRecorder,
     StereoRecorder,
+    RecordedWavs,
     MultichannelMonitor,
     FxRack,
     FxEditor,
@@ -40,9 +41,9 @@ pub enum Screen {
 }
 
 impl Screen {
-    pub const COUNT: usize = 32;
+    pub const COUNT: usize = 33;
     #[cfg(test)]
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 33] = [
         Self::Home,
         Self::Master,
         Self::Inserts,
@@ -60,6 +61,7 @@ impl Screen {
         Self::TrackerLoopAlign,
         Self::AudioRecorder,
         Self::StereoRecorder,
+        Self::RecordedWavs,
         Self::MultichannelMonitor,
         Self::FxRack,
         Self::FxEditor,
@@ -96,6 +98,7 @@ impl Screen {
             Self::TrackerLoopAlign => 12,
             Self::AudioRecorder => 13,
             Self::StereoRecorder => 31,
+            Self::RecordedWavs => 32,
             Self::MultichannelMonitor => 14,
             Self::FxRack => 15,
             Self::FxEditor => 16,
@@ -134,6 +137,7 @@ impl Screen {
             Self::TrackerLoopAlign => "LOOP ALIGN",
             Self::AudioRecorder => "AUDIO",
             Self::StereoRecorder => "STEREO REC",
+            Self::RecordedWavs => "RECORDINGS",
             Self::MultichannelMonitor => "18CH MONITOR",
             Self::FxRack => "FX RACK",
             Self::FxEditor => "FX EDIT",
@@ -252,6 +256,10 @@ pub enum Action {
     OpenEffectsOverlay,
     OpenAudioRecorder,
     OpenStereoRecorder,
+    OpenRecordedWavs,
+    WavPlayPause,
+    WavStop,
+    WavRefresh,
     FinalRecordStop,
     OpenMultichannelMonitor,
     OpenFxRack,
@@ -673,7 +681,7 @@ const PLAYBACK: [MenuPage; 4] = [
             on("WAVSTOP", Action::FinalRecordStop),
             on("DETAILS", Action::OpenStereoRecorder),
             on("WAV REC", Action::FinalRecordToggle),
-            off(""),
+            on("FILES", Action::OpenRecordedWavs),
         ],
     ),
     page(
@@ -1775,6 +1783,29 @@ const MASTER_STRIP_ADVANCED: [MenuPage; 4] = [
     ),
 ];
 
+const RECORDED_WAVS: [MenuPage; 4] = [
+    page(
+        "TAKES",
+        [
+            on("STOP", Action::WavStop),
+            on("PLAY", Action::WavPlayPause),
+            on("REFRESH", Action::WavRefresh),
+            on("EXIT", Action::Back),
+        ],
+    ),
+    page("", [off(""), off(""), off(""), off("")]),
+    page("", [off(""), off(""), off(""), off("")]),
+    page(
+        "SYS",
+        [
+            on("PANIC", Action::StopAll),
+            off(""),
+            on("HELP", Action::OpenHelp),
+            on("EXIT", Action::Back),
+        ],
+    ),
+];
+
 const STEREO_RECORDER: [MenuPage; 4] = [
     page(
         "TAKE",
@@ -1782,7 +1813,7 @@ const STEREO_RECORDER: [MenuPage; 4] = [
             on("WAVSTOP", Action::FinalRecordStop),
             on("MIX", Action::OpenMeter),
             on("WAV REC", Action::FinalRecordToggle),
-            on("EXIT", Action::Back),
+            on("FILES", Action::OpenRecordedWavs),
         ],
     ),
     page(
@@ -1935,6 +1966,7 @@ pub fn pages(screen: Screen, context: MenuContext) -> &'static [MenuPage; 4] {
         (Screen::TrackerLoopAlign, _) => &TRACKER_LOOP_ALIGN,
         (Screen::AudioRecorder, _) => &AUDIO,
         (Screen::StereoRecorder, _) => &STEREO_RECORDER,
+        (Screen::RecordedWavs, _) => &RECORDED_WAVS,
         (Screen::MultichannelMonitor, _) => &MULTICHANNEL_MONITOR,
         (Screen::Master, _) => &MASTER,
         (Screen::Inserts, _) => &INSERTS,
@@ -2057,6 +2089,26 @@ mod tests {
         let empty_page = pages(Screen::Help, MenuContext::Normal)[1];
         assert_eq!((empty_slot.label, empty_slot.dispatch()), ("", None));
         assert!(!empty_page.available());
+    }
+
+    #[test]
+    fn recorded_wavs_are_reachable_from_both_capture_views() {
+        assert_eq!(
+            slot(Screen::Playback, MenuContext::Normal, 2, 3).and_then(MenuSlot::dispatch),
+            Some(Action::OpenRecordedWavs)
+        );
+        assert_eq!(
+            slot(Screen::StereoRecorder, MenuContext::Normal, 0, 3).and_then(MenuSlot::dispatch),
+            Some(Action::OpenRecordedWavs)
+        );
+        assert_eq!(
+            slot(Screen::RecordedWavs, MenuContext::Normal, 0, 0).and_then(MenuSlot::dispatch),
+            Some(Action::WavStop)
+        );
+        assert_eq!(
+            slot(Screen::RecordedWavs, MenuContext::Normal, 0, 1).and_then(MenuSlot::dispatch),
+            Some(Action::WavPlayPause)
+        );
     }
 
     #[test]

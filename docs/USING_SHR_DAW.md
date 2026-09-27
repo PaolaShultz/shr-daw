@@ -95,20 +95,30 @@ row always shows Player's tempo after the transport symbol, retaining decimal
 BPM when set.
 
 Player also has an **AUDIO** controller page: **WAVSTOP**, **DETAILS**,
-**WAV REC**. WAV REC (keyboard Shift-R) starts/stops one stereo 24-bit WAV
-of SHR's final output, including effects and master processing. **MIDIREC**
+**WAV REC**, **FILES**. WAV REC (keyboard Shift-R) starts/stops one stereo
+24-bit WAV of SHR's final output, including effects and master processing. **MIDIREC**
 (lowercase `r`) retains MIDI Idea capture; both can run together. WAVSTOP
 only finalizes audio; Player STOP ends its MIDI/arp transport and stereo take.
 PLAY continues to replay MIDI or run the controller clock; it is not a WAV player.
 
 Home **RECORDER** opens the stereo recorder with L/R meters, elapsed time,
 filename and faults. Opening/leaving this view does not start or stop capture;
-Back returns to its caller. Its TAKE page offers WAVSTOP, MIX, WAV REC and EXIT.
+Back returns to its caller. Its TAKE page offers WAVSTOP, MIX, WAV REC and FILES.
 TOOLS → RAW REC retains the old input/stem recorder pending standalone
 `shr-rec` completion. Raw capture and final stereo capture remain exclusive.
 WAV REC connects the configured final bus if needed; failed activation retains
 any MIDI recording. Only inputs already monitored through SHR enter the WAV;
 interface direct monitoring and unrelated applications are excluded.
+
+**Listening to saved recordings:** choose Player AUDIO → FILES or Recorder
+TAKE → FILES (keyboard Shift-W). The list shows saved WAV names and lengths,
+newest first. Turn/Up/Down selects; PLAY/P/Enter starts the selected take and
+pauses/resumes it on another press. Space pauses/resumes the playing take;
+STOP/S rewinds it. REFRESH/F rescans the folder. Back stops playback and
+returns to the caller. Stop capture and other transports before pressing PLAY.
+Playback uses the configured stereo output; the file already contains the
+recorded effects and master processing. Unfinished `.wav.part` files and raw
+multitrack folders do not appear in this stereo list.
 
 Moj Sint keeps its own preset format and controls. Its current source catalog
 has 21 authored starts across six editable model families. SHR-DAW's public
@@ -231,8 +241,8 @@ and SHR-only effect automation are counted as omissions.
 
 ## Effects and final sound
 
-Home EFFECTS, Player FX, FT2 SOUND FX, and Performance FX open one MASTER
-workspace: CHANNEL INSERTS, AUX 1–3, MASTER INSERTS, and MASTER STRIP.
+Home EFFECTS, Player SYS → FX (keyboard F), FT2 SOUND FX, and Performance FX
+open one MASTER workspace: CHANNEL INSERTS, AUX 1–3, MASTER INSERTS, and MASTER STRIP.
 CHANNEL INSERTS opens optional instrument BASS/TREBLE/COMP strips, flat/OFF by
 default. Lanes sharing an instrument share its strip. AUX racks remain parallel
 wet-only sends/returns, MASTER INSERTS processes the whole mix, and MASTER STRIP

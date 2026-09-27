@@ -534,6 +534,21 @@ impl FinalBusOwner {
         true
     }
 
+    pub(crate) fn apply_effect_values(
+        &self,
+        old: &crate::audio_graph::EffectInstance,
+        new: &crate::audio_graph::EffectInstance,
+    ) -> Result<()> {
+        self.graph
+            .as_ref()
+            .context("final bus is offline")?
+            .effect_controls
+            .get(&new.id)
+            .context("effect control is unavailable")?
+            .publish_values(old, new)
+            .map_err(anyhow::Error::msg)
+    }
+
     pub(crate) fn publish_routing(
         &mut self,
         rack: &InsertRack,

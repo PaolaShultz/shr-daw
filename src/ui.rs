@@ -161,6 +161,10 @@ fn fx_hardware_label(index: usize) -> String {
     format!("K{}", index + 1)
 }
 
+fn eq_hardware_label(index: usize) -> String {
+    format!("K{}", if index < 4 { index + 13 } else { index + 1 })
+}
+
 fn fx_target_label(target: usize) -> &'static str {
     match target {
         0 => "LEGACY SOURCE",
@@ -943,6 +947,11 @@ struct App {
     home_offset: usize,
     screen: Screen,
     stereo_recorder_parent: Screen,
+    wav_parent: Screen,
+    wav_entries: Vec<crate::recorded_wavs::Entry>,
+    wav_selected: usize,
+    wav_player: Option<crate::recorded_wavs::Player>,
+    wav_elapsed: Duration,
     engine: Option<Engine>,
     final_bus: FinalBusOwner,
     input_monitoring: bool,
@@ -1135,6 +1144,7 @@ struct App {
     controller_layout: ControllerLayout,
     fx_selection: FxRackSelection,
     fx_parameter: usize,
+    fx_pickup: [AuxPickup; 16],
     eq_editor_field: EqEditorField,
     fx_add_kind: usize,
     fx_target: usize,
@@ -2155,6 +2165,11 @@ impl App {
             home_offset: 0,
             screen: Screen::Home,
             stereo_recorder_parent: Screen::Home,
+            wav_parent: Screen::StereoRecorder,
+            wav_entries: Vec::new(),
+            wav_selected: 0,
+            wav_player: None,
+            wav_elapsed: Duration::ZERO,
             engine: None,
             final_bus,
             input_monitoring: false,
@@ -2362,6 +2377,7 @@ impl App {
             controller_layout: ControllerLayout::Eight,
             fx_selection: FxRackSelection::Insert,
             fx_parameter: 0,
+            fx_pickup: [AuxPickup::default(); 16],
             eq_editor_field: EqEditorField::default(),
             fx_add_kind: 0,
             fx_target: 0,
@@ -4578,6 +4594,7 @@ impl App {
     fn set_screen(&mut self, screen: Screen) {
         if self.screen != screen {
             self.synth_navigation = false;
+            self.fx_pickup = [AuxPickup::default(); 16];
         }
         if screen == Screen::MasterStripAdvanced && self.screen == Screen::MasterStrip {
             self.master_strip_detail_caller = Some((
@@ -4597,6 +4614,12 @@ impl App {
         // Views do not own the session lifetime. Replacement and shutdown
         // explicitly stop transports and release owned resources.
         if self.screen != screen {
+            if (self.screen == Screen::RecordedWavs
+                || (self.screen == Screen::Help && self.help_previous == Screen::RecordedWavs))
+                && !matches!(screen, Screen::RecordedWavs | Screen::Help)
+            {
+                self.stop_wav_playback();
+            }
             // Browser auditions are temporary previews, not session transport.
             if self.screen == Screen::TrackerFiles && self.song_previewing {
                 self.stop_song_preview();
@@ -6169,6 +6192,7 @@ impl App {
     }
 
     fn panic_notes(&mut self) {
+        self.stop_wav_playback();
         let destinations = self
             .tracker_route
             .lock()
@@ -6192,6 +6216,7 @@ impl App {
     }
 
     fn stop_workspace_transport(&mut self) {
+        self.stop_wav_playback();
         if self.final_bus.recording_active() {
             self.stop_final_recording();
             if self.active_recording_owner().is_none() {
@@ -14381,7 +14406,9 @@ impl App {
             return;
         }
         if self.screen == Screen::FxEditor {
-            self.apply_fx_control_delta(position, steps);
+            if let Some(index) = self.fx_surface_index(position) {
+                self.apply_fx_control_delta(index, steps);
+            }
             return;
         }
         if self.screen == Screen::TrackerMixer {
@@ -14475,13 +14502,23 @@ impl App {
             || self.final_bus.recording_active()
         {
             TransportIndicator::Record
-        } else if self.playback.is_some()
+        } else if self
+            .wav_player
+            .as_ref()
+            .is_some_and(|player| !player.paused() && !player.finished())
+            || self.playback.is_some()
             || self.controller_live_transport
             || self.sequencer.status().playing
             || self.loop_player.status().playing
             || self.song_previewing
         {
             TransportIndicator::Play
+        } else if self
+            .wav_player
+            .as_ref()
+            .is_some_and(|player| player.paused() && !player.finished())
+        {
+            TransportIndicator::Pause
         } else if matches!(
             self.screen,
             Screen::Tracker | Screen::TrackerParameters | Screen::TrackerMixer | Screen::Automation
@@ -14977,6 +15014,66 @@ impl App {
         }
     }
 
+    fn refresh_recorded_wavs(&mut self) {
+        let selected = self
+            .wav_entries
+            .get(self.wav_selected)
+            .map(|entry| entry.path.clone());
+        match crate::recorded_wavs::list(&self.config.capture.directory) {
+            Ok(entries) => {
+                self.wav_selected = selected
+                    .and_then(|path| entries.iter().position(|entry| entry.path == path))
+                    .unwrap_or(0);
+                self.wav_entries = entries;
+                self.status.clear();
+            }
+            Err(error) => self.status = format!("WAV LIST · {error}"),
+        }
+    }
+
+    fn stop_wav_playback(&mut self) {
+        self.wav_player = None;
+        self.wav_elapsed = Duration::ZERO;
+    }
+
+    fn toggle_wav_playback(&mut self) {
+        let Some(entry) = self.wav_entries.get(self.wav_selected) else {
+            self.status = "No saved WAVs · record with WAV REC".into();
+            return;
+        };
+        let path = entry.path.clone();
+        if let Some(player) = &self.wav_player {
+            if player.path == path && !player.finished() {
+                player.toggle_pause();
+                self.status.clear();
+                return;
+            }
+        }
+        if self.active_recording_owner().is_some() || self.final_bus.recording_active() {
+            self.status = "STOP recording before WAV playback".into();
+            return;
+        }
+        if self.playback.is_some()
+            || self.controller_live_transport
+            || self.sequencer.status().playing
+            || self.loop_player.status().playing
+            || self.song_previewing
+        {
+            self.status = "STOP transport before WAV playback".into();
+            return;
+        }
+        self.stop_wav_playback();
+        let route = self.config.resolve_audio_route(&self.routing_audio_ports);
+        let client_name = format!("{}-takes", self.config.audio_graph.client_name);
+        match crate::recorded_wavs::Player::start(&path, &client_name, &route.outputs) {
+            Ok(player) => {
+                self.wav_player = Some(player);
+                self.status.clear();
+            }
+            Err(error) => self.status = format!("WAV PLAY · {error}"),
+        }
+    }
+
     fn stop_final_recording(&mut self) {
         if self.final_bus.recording_active() {
             self.toggle_final_recording();
@@ -14984,6 +15081,7 @@ impl App {
     }
 
     fn toggle_final_recording(&mut self) {
+        self.stop_wav_playback();
         if self.audio_recorder.status().recording {
             self.status = "STOP raw take before WAV REC".into();
             return;
@@ -15011,7 +15109,7 @@ impl App {
                         .file_name()
                         .map(|name| name.to_string_lossy())
                         .unwrap_or_default();
-                    format!("Final take · {}", crate::ui_text::fit_middle(&name, 25))
+                    format!("Saved WAV · {}", crate::ui_text::fit_middle(&name, 25))
                 },
             ),
             Ok(()) => String::new(),
@@ -15124,6 +15222,65 @@ impl App {
         }
     }
 
+    // Learned positions are zero-based physical pots 2..16; pot 1 navigates.
+    // EQ gains: pots 5..8. EQ frequencies: pots 13..16.
+    fn fx_surface_index(&self, position: usize) -> Option<usize> {
+        if self.selected_effect_is_eq() {
+            match position {
+                3..=6 => Some(position + 1),
+                11..=14 => Some(position - 11),
+                _ => None,
+            }
+        } else {
+            (position < CONTROLS.len()).then_some(position)
+        }
+    }
+
+    fn apply_fx_surface(&mut self, position: usize, normalized: f32) {
+        let Some(index) = self.fx_surface_index(position) else {
+            return;
+        };
+        let Some(effect) = self.selected_effect() else {
+            return;
+        };
+        let Some(spec) = crate::effect_schema::controlled_parameter(effect.kind, index) else {
+            return;
+        };
+        let current = effect
+            .parameters
+            .get(spec.name)
+            .copied()
+            .unwrap_or(spec.default);
+        let target = if effect.kind == EffectKind::Eq && spec.unit == "Hz" {
+            eq_log_normalize(current, spec.minimum, spec.maximum)
+        } else {
+            (current - spec.minimum) / (spec.maximum - spec.minimum).max(f32::EPSILON)
+        };
+        if !self.fx_pickup[position].accept(target, normalized) {
+            self.status = format!("PICKUP · K{}", position + 2);
+            return;
+        }
+        let control = CONTROLS[index];
+        self.apply_fx_control(
+            control.cc,
+            control.min + normalized * (control.max - control.min),
+        );
+        // Quantization must not re-arm a pot that has already picked up.
+        if let Some(effect) = self.selected_effect() {
+            let value = effect
+                .parameters
+                .get(spec.name)
+                .copied()
+                .unwrap_or(spec.default);
+            self.fx_pickup[position].target =
+                Some(if effect.kind == EffectKind::Eq && spec.unit == "Hz" {
+                    eq_log_normalize(value, spec.minimum, spec.maximum)
+                } else {
+                    (value - spec.minimum) / (spec.maximum - spec.minimum).max(f32::EPSILON)
+                });
+        }
+    }
+
     fn apply_fx_control(&mut self, cc: u8, value: f32) {
         let Some(control_index) = CONTROLS.iter().position(|control| control.cc == cc) else {
             return;
@@ -15189,6 +15346,11 @@ impl App {
                 f32::from(choices[index.min(choices.len() - 1)])
             }
         };
+        let hardware_label = if effect.kind == EffectKind::Eq {
+            eq_hardware_label(control_index)
+        } else {
+            fx_hardware_label(control_index)
+        };
         effect.parameters.insert(spec.name.into(), mapped);
         if effect.kind != EffectKind::Eq {
             self.fx_parameter = control_index;
@@ -15199,9 +15361,7 @@ impl App {
             drums,
             format!(
                 "{} · {} · {mapped:.2} {}",
-                fx_hardware_label(control_index),
-                spec.name,
-                spec.unit
+                hardware_label, spec.name, spec.unit
             ),
         );
     }
@@ -15227,6 +15387,13 @@ impl App {
             .copied()
             .unwrap_or(spec.default);
         let normalized = match spec.value_type {
+            crate::effect_schema::ParameterType::Continuous
+                if effect.kind == EffectKind::Eq && spec.unit == "dB" =>
+            {
+                let value = ((current * 2.0).round() / 2.0 + f32::from(steps) * 0.5)
+                    .clamp(spec.minimum, spec.maximum);
+                (value - spec.minimum) / (spec.maximum - spec.minimum)
+            }
             crate::effect_schema::ParameterType::Continuous => {
                 let current = if effect.kind == EffectKind::Eq && spec.unit == "Hz" {
                     eq_log_normalize(current, spec.minimum, spec.maximum)
@@ -15267,6 +15434,44 @@ impl App {
         drum_rack: InsertRack,
         success: String,
     ) -> bool {
+        let live_eq = self.selected_effect_id().and_then(|id| {
+            if is_drum_fx_target(self.fx_target) {
+                return None;
+            }
+            let old = self.selected_effect()?;
+            let new =
+                project_fx_rack(&rack, &aux_routing, &drum_rack, self.fx_target)?.effect(id)?;
+            if old.kind != EffectKind::Eq || new.kind != old.kind || new.version != old.version {
+                return None;
+            }
+            let mut old_rack = self.song.insert_rack.clone();
+            let mut old_aux = self.song.aux_routing.clone();
+            let mut old_drums = self.song.drum_rack.clone();
+            *project_fx_rack_mut(&mut old_rack, &mut old_aux, &mut old_drums, self.fx_target)?
+                .effect_mut(id)? = new.clone();
+            (old_rack == rack
+                && old_aux == aux_routing
+                && old_drums == drum_rack
+                && old.owned_memory_bytes == new.owned_memory_bytes)
+                .then(|| (old.clone(), new.clone()))
+        });
+        if let Some((old, new)) = live_eq {
+            if let Err(error) = aux_routing.validate(&rack) {
+                self.status = format!("FX INVALID · {error}");
+                return false;
+            }
+            if self.final_bus.active() {
+                if let Err(error) = self.final_bus.apply_effect_values(&old, &new) {
+                    self.status = format!("FX NOT APPLIED · {error}");
+                    return false;
+                }
+            }
+            self.song.insert_rack = rack;
+            self.song.aux_routing = aux_routing;
+            self.song.drum_rack = drum_rack;
+            self.status = success;
+            return true;
+        }
         if let Err(status) = self.publish_fx_routing_runtime(&rack, &aux_routing, &drum_rack) {
             self.status = status;
             return false;
@@ -16685,6 +16890,28 @@ impl App {
         }
     }
     fn tick(&mut self) {
+        // An external clock can start another transport while this view is open.
+        if self.wav_player.is_some()
+            && (self.active_recording_owner().is_some()
+                || self.final_bus.recording_active()
+                || self.playback.is_some()
+                || self.controller_live_transport
+                || self.sequencer.status().playing
+                || self.loop_player.status().playing
+                || self.song_previewing)
+        {
+            self.stop_wav_playback();
+            self.status = "WAV stopped · session transport active".into();
+        }
+        if let Some(player) = &self.wav_player {
+            self.wav_elapsed = player.elapsed();
+            if let Some(fault) = player.fault() {
+                self.status = fault.into();
+            }
+            if player.finished() {
+                self.wav_player = None;
+            }
+        }
         self.final_bus.set_tempo(self.current_tempo());
         if let Some(drums) = self.drum_host.as_ref() {
             drums.set_tempo(self.current_tempo());
@@ -17332,10 +17559,26 @@ fn drain(
                 steps,
             } => app.apply_relative_rotary(received, position, steps),
             MidiEvent::SurfaceControl {
-                received: _,
+                received,
                 position,
                 value,
-            } => app.apply_aux_surface_control(position, value),
+            } => {
+                if app.screen == Screen::FxEditor {
+                    app.apply_fx_surface(position, value);
+                } else if app.fx_control_mode.load(Ordering::Relaxed) {
+                    if let Some(control) = CONTROLS.get(position) {
+                        let mapped = control.min + value * (control.max - control.min);
+                        app.capture_automation_control(received, control.cc, mapped);
+                        if app.screen == Screen::TrackerMixer {
+                            app.apply_tracker_mixer_control(control.cc, mapped);
+                        } else {
+                            app.observe_mapped_control(control.cc, mapped);
+                        }
+                    }
+                } else {
+                    app.apply_aux_surface_control(position, value);
+                }
+            }
             MidiEvent::Value(cc, v) => {
                 app.apply_control_value(cc, v);
             }
@@ -17751,6 +17994,15 @@ fn dispatch_encoder_input(
         || app.screen == Screen::TrackerMixer
         || app.screen == Screen::Routing
         || app.confirm_routing_defaults;
+    if !physical && app.screen == Screen::RecordedWavs {
+        let action = match action {
+            crate::pads::EncoderAction::Up => Action::Up,
+            crate::pads::EncoderAction::Down => Action::Down,
+            crate::pads::EncoderAction::Select => Action::Activate,
+        };
+        perform(action, app, state, Some(tx));
+        return;
+    }
     if app.controller_layout == ControllerLayout::Four && !value_editor_owns_encoder {
         match action {
             crate::pads::EncoderAction::Select => {
@@ -18120,6 +18372,8 @@ fn perform(
                 a.move_tracker_mixer_bank(-1);
             } else if a.screen == Screen::Automation {
                 a.move_automation_lane(-1);
+            } else if a.screen == Screen::RecordedWavs {
+                a.wav_selected = wrapped_index(a.wav_selected, a.wav_entries.len(), -1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(-1);
             } else if a.screen == Screen::MultichannelMonitor {
@@ -18196,6 +18450,8 @@ fn perform(
                 a.move_tracker_mixer_bank(1);
             } else if a.screen == Screen::Automation {
                 a.move_automation_lane(1);
+            } else if a.screen == Screen::RecordedWavs {
+                a.wav_selected = wrapped_index(a.wav_selected, a.wav_entries.len(), 1);
             } else if a.screen == Screen::AudioRecorder {
                 a.move_audio_track(1);
             } else if a.screen == Screen::MultichannelMonitor {
@@ -18244,6 +18500,10 @@ fn perform(
             {
                 a.move_drum_selection(10);
             }
+        }
+        Action::Home if a.screen == Screen::RecordedWavs => a.wav_selected = 0,
+        Action::End if a.screen == Screen::RecordedWavs => {
+            a.wav_selected = a.wav_entries.len().saturating_sub(1)
         }
         Action::Home => {
             if a.screen == Screen::Home {
@@ -18351,6 +18611,7 @@ fn perform(
                 a.status = "loop alignment set".into();
             }
             Screen::StereoRecorder => {}
+            Screen::RecordedWavs => a.toggle_wav_playback(),
             Screen::AudioRecorder => a.toggle_audio_track_arm(state),
             Screen::MultichannelMonitor => a.toggle_audio_track_arm(state),
             Screen::Meter => a.toggle_bus_mute(),
@@ -18537,6 +18798,19 @@ fn perform(
             unreachable!("preset save actions are handled inside their overlay")
         }
         Action::PreviewRouteDraft => a.preview_route_draft(),
+        Action::OpenRecordedWavs => {
+            if a.screen != Screen::RecordedWavs {
+                a.wav_parent = a.screen;
+            }
+            a.refresh_recorded_wavs();
+            a.set_screen(Screen::RecordedWavs);
+        }
+        Action::WavPlayPause => a.toggle_wav_playback(),
+        Action::WavStop => {
+            a.stop_wav_playback();
+            a.status.clear();
+        }
+        Action::WavRefresh => a.refresh_recorded_wavs(),
         Action::OpenStereoRecorder => {
             if a.screen != Screen::StereoRecorder {
                 a.stereo_recorder_parent = a.screen;
@@ -18731,6 +19005,7 @@ fn perform(
                 | Screen::Meter
                 | Screen::Routing => Screen::Home,
                 Screen::StereoRecorder => a.stereo_recorder_parent,
+                Screen::RecordedWavs => a.wav_parent,
                 Screen::Playback => Screen::Presets,
                 Screen::TrackerFiles
                 | Screen::TrackerArrange
@@ -20026,6 +20301,28 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             return perform(action, a, state, Some(tx));
         }
     }
+    if a.screen == Screen::RecordedWavs {
+        let action = match code {
+            KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::WavPlayPause),
+            KeyCode::Char(' ') => {
+                if let Some(player) = &a.wav_player {
+                    player.toggle_pause();
+                    a.status.clear();
+                    return false;
+                }
+                Some(Action::WavPlayPause)
+            }
+            KeyCode::Char('s') | KeyCode::Char('S') => Some(Action::WavStop),
+            KeyCode::Char('f') | KeyCode::Char('F') => Some(Action::WavRefresh),
+            _ => None,
+        };
+        if let Some(action) = action {
+            return perform(action, a, state, Some(tx));
+        }
+    }
+    if matches!(a.screen, Screen::StereoRecorder | Screen::Playback) && code == KeyCode::Char('W') {
+        return perform(Action::OpenRecordedWavs, a, state, Some(tx));
+    }
     if a.screen == Screen::StereoRecorder {
         let action = match code {
             KeyCode::Char('r') => Some(Action::FinalRecordToggle),
@@ -20357,6 +20654,16 @@ fn mouse(
                         a.selected = i;
                     }
                 }
+            } else if a.screen == Screen::RecordedWavs && contains(a.hits.list, m.column, m.row) {
+                let offset = a
+                    .wav_selected
+                    .saturating_add(1)
+                    .saturating_sub(usize::from(a.hits.list.height));
+                if let Some(index) = visible_index(a.hits.list, offset, m.column, m.row) {
+                    if index < a.wav_entries.len() {
+                        a.wav_selected = index;
+                    }
+                }
             } else if a.screen == Screen::Ideas && contains(a.hits.list, m.column, m.row) {
                 a.prepare_confirmation_action(Action::Noop);
                 let i = visible_index(a.hits.list, a.idea_offset, m.column, m.row).unwrap();
@@ -20491,6 +20798,7 @@ fn draw<B: Backend>(f: &mut Frame<B>, a: &mut App) {
         Screen::TrackerLoop => draw_tracker_loop(f, a),
         Screen::TrackerLoopAlign => draw_tracker_loop_align(f, a),
         Screen::StereoRecorder => draw_stereo_recorder(f, a),
+        Screen::RecordedWavs => draw_recorded_wavs(f, a),
         Screen::AudioRecorder => draw_audio_recorder(f, a),
         Screen::MultichannelMonitor => draw_multichannel_monitor(f, a),
         Screen::Master => draw_master_workspace(f, a),
@@ -24837,6 +25145,17 @@ fn draw_pad_buttons<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 continue;
             };
             label
+        } else if slot.dispatch() == Some(Action::WavPlayPause) {
+            if a.wav_player.as_ref().is_some_and(|player| {
+                !player.paused()
+                    && a.wav_entries
+                        .get(a.wav_selected)
+                        .is_some_and(|entry| entry.path == player.path)
+            }) {
+                "PAUSE"
+            } else {
+                "PLAY"
+            }
         } else if slot.dispatch() == Some(Action::BusMute)
             && a.bus_selected < crate::final_bus::SOURCE_COUNT
             && BusSource::ALL[a.bus_selected] == BusSource::Input
@@ -26537,6 +26856,69 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 .border_style(Style::default().fg(Color::Green)),
         ),
         list,
+    );
+}
+
+fn draw_recorded_wavs<B: Backend>(f: &mut Frame<B>, a: &mut App) {
+    let z = f.size();
+    let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
+    let width = usize::from(body.width.saturating_sub(2));
+    let rows = usize::from(body.height.saturating_sub(4));
+    a.hits.list = rect(
+        body.x.saturating_add(1),
+        body.y.saturating_add(3),
+        body.width.saturating_sub(2),
+        rows as u16,
+    );
+    let mut lines = Vec::new();
+    if a.wav_entries.is_empty() {
+        lines.push(Spans::from("No saved WAVs"));
+        lines.push(Spans::from("Player AUDIO → WAV REC"));
+        lines.push(Spans::from("WAVSTOP saves the take here"));
+    } else {
+        let offset = a.wav_selected.saturating_add(1).saturating_sub(rows);
+        lines.push(Spans::from(format!(
+            "{} saved · {}",
+            a.wav_entries.len(),
+            short_time(a.wav_elapsed)
+        )));
+        if let Some(player) = &a.wav_player {
+            let name = player
+                .path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            lines.push(Spans::from(truncate(
+                &format!("{} {name}", if player.paused() { "PAUSE" } else { "PLAY" }),
+                width,
+            )));
+        } else {
+            lines.push(Spans::from("Enter/P play · Space pause · S stop"));
+        }
+        for (index, entry) in a.wav_entries.iter().enumerate().skip(offset).take(rows) {
+            let duration = entry
+                .duration
+                .map(short_time)
+                .unwrap_or_else(|| "INVALID".into());
+            let name = entry.path.file_name().unwrap_or_default().to_string_lossy();
+            let text = crate::ui_text::label_value(&name, &duration, width);
+            lines.push(Spans::from(Span::styled(
+                text,
+                if index == a.wav_selected {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else {
+                    Style::default().fg(Color::White)
+                },
+            )));
+        }
+    }
+    f.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(" RECORDED WAVS ")
+                .borders(Borders::ALL),
+        ),
+        body,
     );
 }
 
@@ -35654,6 +36036,112 @@ release = 0.4
     }
 
     #[test]
+    fn eq_physical_gain_and_frequency_pots_never_edit_other_bands() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song
+            .aux_routing
+            .master_rack
+            .add_with_id(EffectKind::Eq, 1)
+            .unwrap();
+        a.fx_target = MASTER_FX_TARGET;
+        a.fx_selection = FxRackSelection::Effect(1);
+        a.set_screen(Screen::FxEditor);
+        let mapping = [
+            (5, "low_shelf_db"),
+            (6, "low_mid_db"),
+            (7, "high_mid_db"),
+            (8, "high_shelf_db"),
+            (13, "low_shelf_hz"),
+            (14, "low_mid_hz"),
+            (15, "high_mid_hz"),
+            (16, "high_shelf_hz"),
+        ];
+        for (pot, parameter) in mapping {
+            let before = a.selected_effect().unwrap().clone();
+            // The learned zero-based performance positions begin at pot 2.
+            a.apply_relative_rotary(Instant::now(), pot - 2, 1);
+            let after = a.selected_effect().unwrap();
+            assert!(
+                after.parameters[parameter] > before.parameters[parameter],
+                "pot {pot}"
+            );
+            for (name, value) in &before.parameters {
+                if name != parameter {
+                    assert_eq!(after.parameters[name], *value, "pot {pot} changed {name}");
+                }
+            }
+        }
+        let gain = a.selected_effect().unwrap().parameters["low_shelf_db"];
+        a.apply_relative_rotary(Instant::now(), 3, 3);
+        assert_eq!(
+            a.selected_effect().unwrap().parameters["low_shelf_db"],
+            gain + 1.5
+        );
+        let before = a.song.clone();
+        for pot in [2, 3, 4, 9, 10, 11, 12] {
+            a.apply_relative_rotary(Instant::now(), pot - 2, 3);
+        }
+        assert_eq!(a.song, before);
+    }
+
+    #[test]
+    fn eq_absolute_pot_waits_for_pickup_and_rearms_on_editor_entry() {
+        let p = presets();
+        let mut a = app(&p);
+        a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
+        a.fx_selection = FxRackSelection::Effect(1);
+        a.set_screen(Screen::FxEditor);
+        a.apply_fx_surface(3, 0.0); // Physical pot 5: low gain, initially 0 dB.
+        assert_eq!(a.selected_effect().unwrap().parameters["low_shelf_db"], 0.0);
+        assert!(a.status.contains("PICKUP"));
+        a.apply_fx_surface(3, 0.5);
+        a.apply_fx_surface(3, 1.0);
+        assert_eq!(
+            a.selected_effect().unwrap().parameters["low_shelf_db"],
+            18.0
+        );
+        a.set_screen(Screen::FxRack);
+        a.set_screen(Screen::FxEditor);
+        a.apply_fx_surface(3, 0.0);
+        assert_eq!(
+            a.selected_effect().unwrap().parameters["low_shelf_db"],
+            18.0
+        );
+    }
+
+    #[test]
+    fn recorded_wav_browser_preserves_project_and_caller_and_shared_status() {
+        let p = presets();
+        let mut a = app(&p);
+        let (tx, _rx) = mpsc::channel();
+        let original = a.song.clone();
+        a.config.capture.directory = PathBuf::from("/nonexistent/shr-wav-browser");
+        a.set_screen(Screen::Playback);
+        key(KeyCode::Char('W'), &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.screen, Screen::RecordedWavs);
+        assert_eq!(a.wav_parent, Screen::Playback);
+        let buffer = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&buffer).contains("No saved WAVs"));
+        assert!(row_text(&buffer, 12).starts_with('■'));
+        a.wav_entries = (0..8)
+            .map(|index| crate::recorded_wavs::Entry {
+                path: PathBuf::from(format!("take-{index}.wav")),
+                duration: Some(Duration::from_secs(5)),
+            })
+            .collect();
+        key(KeyCode::Down, &mut a, Path::new("/none"), &tx);
+        assert_eq!(a.wav_selected, 1);
+        a.wav_selected = 7;
+        let buffer = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&buffer).contains("take-7.wav"));
+        perform(Action::Back, &mut a, Path::new("/none"), None);
+        assert_eq!(a.screen, Screen::Playback);
+        assert_eq!(a.song, original);
+        assert!(a.wav_player.is_none());
+    }
+
+    #[test]
     fn fullscreen_eq_browses_all_fields_and_enforces_half_db_and_log_knobs() {
         let p = presets();
         let mut a = app(&p);
@@ -36834,6 +37322,7 @@ release = 0.4
             (Screen::TrackerLoopAlign, None),
             (Screen::AudioRecorder, None),
             (Screen::StereoRecorder, None),
+            (Screen::RecordedWavs, None),
             (Screen::MultichannelMonitor, None),
             (Screen::FxRack, Some(SecondaryNavigation::FxTarget)),
             (Screen::FxEditor, None),

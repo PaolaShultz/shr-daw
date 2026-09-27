@@ -131,6 +131,48 @@ impl EffectControl {
         Ok(())
     }
 
+    /// Exact validated values for interactive edits; retain filter history.
+    pub(crate) fn publish_values(
+        &self,
+        old: &EffectInstance,
+        new: &EffectInstance,
+    ) -> Result<(), EffectError> {
+        if !self.active.load(Ordering::Acquire)
+            || self.id != new.id
+            || self.kind != new.kind
+            || self.version != new.version
+            || old.id != new.id
+            || old.kind != new.kind
+            || old.version != new.version
+        {
+            return Err(EffectError::new("effect control target is stale"));
+        }
+        effect_schema::validate(new).map_err(|error| EffectError::new(error.to_string()))?;
+        let mut dirty = 0;
+        for (index, spec) in effect_schema::schema(self.kind).iter().enumerate() {
+            let value = new
+                .parameters
+                .get(spec.name)
+                .copied()
+                .unwrap_or(spec.default);
+            let previous = old
+                .parameters
+                .get(spec.name)
+                .copied()
+                .unwrap_or(spec.default);
+            if value != previous {
+                self.values[index].store(value.to_bits(), Ordering::Release);
+                dirty |= 1u64 << index;
+            }
+        }
+        if old.bypass != new.bypass {
+            self.bypass.store(new.bypass, Ordering::Release);
+            dirty |= BYPASS_DIRTY_BIT;
+        }
+        self.dirty.fetch_or(dirty, Ordering::AcqRel);
+        Ok(())
+    }
+
     pub fn publish_bypass(&self, bypass: bool) -> Result<(), EffectError> {
         if !self.active.load(Ordering::Acquire) {
             return Err(EffectError::new("effect control target is stale"));
@@ -937,6 +979,46 @@ mod tests {
         drop(slot);
         assert!(control.publish_normalized("trim_db", 0).is_err());
         assert!(control.publish_normalized("missing", 0).is_err());
+    }
+
+    #[test]
+    fn live_eq_values_preserve_audio_and_reject_invalid_edits_atomically() {
+        let mut old = utility(BTreeMap::new(), false);
+        old.kind = EffectKind::Eq;
+        let mut slot = EffectSlot::compile(&old, 48_000, 64).unwrap();
+        let control = slot.control();
+        let mut block = [StereoFrame::new(0.1, -0.1); 64];
+        for _ in 0..8 {
+            slot.process(&mut block);
+            block.fill(StereoFrame::new(0.1, -0.1));
+        }
+        let mut new = old.clone();
+        new.parameters.insert("low_shelf_db".into(), 3.5);
+        new.parameters.insert("low_shelf_hz".into(), 247.0);
+        control.publish_values(&old, &new).unwrap();
+        assert_no_allocations(|| slot.process(&mut block));
+        assert!(block
+            .iter()
+            .all(|frame| frame.left > 0.01 && frame.right < -0.01));
+        let index = effect_schema::schema(EffectKind::Eq)
+            .iter()
+            .position(|spec| spec.name == "low_shelf_hz")
+            .unwrap();
+        assert_eq!(
+            f32::from_bits(control.values[index].load(Ordering::Acquire)),
+            247.0
+        );
+        let mut invalid = new.clone();
+        invalid.parameters.insert("low_shelf_hz".into(), 400.0);
+        invalid.parameters.insert("high_shelf_db".into(), f32::NAN);
+        assert!(control.publish_values(&new, &invalid).is_err());
+        assert_eq!(
+            f32::from_bits(control.values[index].load(Ordering::Acquire)),
+            247.0
+        );
+        assert_eq!(control.dirty.load(Ordering::Acquire), 0);
+        drop(slot);
+        assert!(control.publish_values(&old, &new).is_err());
     }
 
     #[test]

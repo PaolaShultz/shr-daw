@@ -2248,22 +2248,18 @@ fn connect_midi_input(
                             }
                             return;
                         }
-                        let fx_value = (fx_control_mode.load(Ordering::Relaxed)
+                        if fx_control_mode.load(Ordering::Relaxed)
                             && message.len() >= 3
-                            && message[0] & 0xf0 == 0xb0)
-                            .then(|| pads.rotary_position(message[1]))
-                            .flatten()
-                            .and_then(|position| CONTROLS.get(position).copied())
-                            .map(|control| {
-                                (control.cc, control::value_from_cc(control, message[2]))
-                            });
-                        if let Some((cc, value)) = fx_value {
-                            let _ = tx.send(MidiEvent::MappedControl {
-                                received,
-                                cc,
-                                value,
-                            });
-                            return;
+                            && message[0] & 0xf0 == 0xb0
+                        {
+                            if let Some(position) = pads.rotary_position(message[1]) {
+                                let _ = tx.send(MidiEvent::SurfaceControl {
+                                    received,
+                                    position,
+                                    value: f32::from(message[2]) / 127.0,
+                                });
+                                return;
+                            }
                         }
                         let routed = crate::midi::route_with_synth_amp_page(
                             &pads,

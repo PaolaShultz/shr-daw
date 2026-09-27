@@ -171,6 +171,27 @@ buffer, or required-source loss stops/faults the take visibly. A faulted
 WAV. Existing raw multitrack sessions and legacy stereo recovery remain
 unchanged.
 
+### Listening to saved takes
+
+Player AUDIO → FILES and Recorder TAKE → FILES browse completed `.wav` files
+in `capture.directory`, newest first, with header-derived duration. The browser
+never deletes or rewrites recordings and excludes symlinks, `.part` files,
+and multitrack directories. Invalid files remain visible as INVALID so the
+failure can be understood; PLAY reports read/format errors and permits retry.
+
+Explicit PLAY streams the selected mono/stereo PCM or 32-bit float WAV through
+an owned JACK client to the currently configured stereo playback destinations.
+It leaves unrelated connections in place and does not run the file through
+SHR effects again. A disk worker decodes and, when needed, linearly resamples
+into a fixed 32,768-frame stereo ring. The callback reads only ring storage and
+atomics, with no file I/O, allocation, or locks. Playback, pause/resume, stop,
+and natural end use short fades. Underruns, read failures, and JACK shutdown
+are visible faults. Stop/Back/Panic and application shutdown release the owned
+client and join the disk worker. Browsing can coexist with recording; playback
+requires capture and other transports to be stopped. An external transport
+start also stops the WAV audition.
+
+
 ## Generic interface setup and future MR18 acceptance
 
 Use the setup wizard or edit private runtime configuration only after obtaining
