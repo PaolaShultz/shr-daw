@@ -27,6 +27,7 @@ impl AllpassState {
 }
 
 pub(super) struct Phaser {
+    pub(super) safety_events: super::SafetyEvents,
     sample_rate: f32,
     left_lfo: SineLfo,
     right_lfo: SineLfo,
@@ -57,6 +58,7 @@ impl Phaser {
         let center_hz = value("center_hz")?;
         let range_octaves = value("range_octaves")?;
         Ok(Self {
+            safety_events: super::SafetyEvents::default(),
             sample_rate,
             left_lfo: SineLfo::new(rate_hz, 0.0, sample_rate)?,
             right_lfo: SineLfo::new(rate_hz, stereo_phase_degrees.to_radians(), sample_rate)?,
@@ -88,6 +90,7 @@ impl Phaser {
             right = self.right_stages[stage].process(right, right_coefficient);
         }
         if !left.is_finite() || !right.is_finite() || left.abs() > 64.0 || right.abs() > 64.0 {
+            self.safety_events.record(left, right);
             self.reset();
             left = 0.0;
             right = 0.0;

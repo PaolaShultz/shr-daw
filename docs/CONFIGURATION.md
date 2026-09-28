@@ -24,6 +24,12 @@ private `config/` directory below that state root. This prevents synthv1 from
 writing into the caller's normal desktop configuration; a caller-supplied
 `XDG_CONFIG_HOME` is not used for that child process.
 
+`audio-diagnostics.log` and its single rotated `audio-diagnostics.log.previous`
+file share that runtime state directory. Each is bounded to 1 MiB; they persist
+across engine loads. The separate `engine.log` is replaced at each managed
+engine start. See [Audio incident diagnostics](HOW_IT_WORKS.md#audio-incident-diagnostics)
+for event coverage and timing limits.
+
 ## Runtime key reference
 
 Repeated `midi.performance_input`, `audio.output`, `audio.internal_output`, `yoshimi.preset_root`,

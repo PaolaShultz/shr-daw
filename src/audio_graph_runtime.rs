@@ -116,6 +116,13 @@ impl CallbackTimingCounters {
         }
     }
 
+    pub(crate) fn incident_counts(&self) -> [u64; 2] {
+        [
+            self.missed_deadlines.load(Ordering::Relaxed),
+            self.oversized_callbacks.load(Ordering::Relaxed),
+        ]
+    }
+
     pub fn snapshot(&self) -> CallbackTimingSnapshot {
         let maximum_nanoseconds = self.maximum_nanoseconds.load(Ordering::Acquire);
         let histogram = self
@@ -271,7 +278,7 @@ impl AuxSendControl {
         Ok(())
     }
 
-    fn linear_gain(&self) -> f32 {
+    pub(crate) fn linear_gain(&self) -> f32 {
         f32::from_bits(self.linear_gain_bits.load(Ordering::Acquire))
     }
 }

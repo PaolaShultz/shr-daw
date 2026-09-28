@@ -79,6 +79,7 @@ impl Mode {
 }
 
 pub(super) struct Delay {
+    pub(super) safety_events: super::SafetyEvents,
     sample_rate: f32,
     left: FractionalDelayLine,
     right: FractionalDelayLine,
@@ -127,6 +128,7 @@ impl Delay {
         );
         let feedback_parameter = value("feedback_percent")? * 0.01;
         Ok(Self {
+            safety_events: super::SafetyEvents::default(),
             sample_rate,
             left: FractionalDelayLine::new(capacity)?,
             right: FractionalDelayLine::new(capacity)?,
@@ -182,6 +184,7 @@ impl Delay {
             || !write_left.is_finite()
             || !write_right.is_finite()
         {
+            self.safety_events.record(write_left, write_right);
             self.reset_lines();
         } else {
             self.left.push(write_left);

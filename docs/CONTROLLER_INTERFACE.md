@@ -5,6 +5,10 @@ This document owns the controller action inventory and paging contract. Use the
 guides for task order. The inventory follows the current keyboard, mouse,
 encoder, command-pad, screen, and contextual dispatch paths.
 
+Controller pad LEDs are not yet driven by SHR. See
+[Controller pad LED feedback](CONTROLLER_LED_FEEDBACK.md) for the researched
+MiniLab mkII protocol and proposed use of this same action table.
+
 ## Navigation encoder sensitivity
 
 The master encoder responds to every directional MIDI message, including

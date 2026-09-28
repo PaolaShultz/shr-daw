@@ -40,6 +40,7 @@ fn scatter(values: [f32; FDN_LINES]) -> [f32; FDN_LINES] {
 }
 
 struct Diffuser {
+    safety_events: super::SafetyEvents,
     line: FractionalDelayLine,
     delay_samples: f32,
 }
@@ -48,6 +49,7 @@ impl Diffuser {
     fn new(milliseconds: f32, sample_rate: f32) -> Result<Self, EffectError> {
         let samples = (milliseconds * sample_rate / 1_000.0).round().max(2.0) as usize;
         Ok(Self {
+            safety_events: super::SafetyEvents::default(),
             line: FractionalDelayLine::new(samples)?,
             delay_samples: samples as f32,
         })
@@ -65,6 +67,7 @@ impl Diffuser {
             || output.abs() > EMERGENCY_LEVEL
             || write.abs() > EMERGENCY_LEVEL
         {
+            self.safety_events.record(output, write);
             self.reset();
             0.0
         } else {
@@ -83,6 +86,7 @@ impl Diffuser {
 }
 
 pub(super) struct Reverb {
+    safety_events: super::SafetyEvents,
     sample_rate: f32,
     predelay_left: FractionalDelayLine,
     predelay_right: FractionalDelayLine,
@@ -147,6 +151,7 @@ impl Reverb {
             lfo(7)?,
         ];
         let mut reverb = Self {
+            safety_events: super::SafetyEvents::default(),
             sample_rate,
             predelay_left: FractionalDelayLine::new(predelay_capacity)?,
             predelay_right: FractionalDelayLine::new(predelay_capacity)?,
@@ -213,6 +218,18 @@ impl Reverb {
         Ok(reverb)
     }
 
+    pub(super) fn take_safety_events(&mut self) -> super::SafetyEvents {
+        let mut events = std::mem::take(&mut self.safety_events);
+        for diffuser in self
+            .input_diffusion_left
+            .iter_mut()
+            .chain(self.input_diffusion_right.iter_mut())
+        {
+            events.merge(std::mem::take(&mut diffuser.safety_events));
+        }
+        events
+    }
+
     #[inline]
     pub(super) fn process(&mut self, frame: StereoFrame) -> StereoFrame {
         self.process_internal(frame, true)
@@ -270,6 +287,7 @@ impl Reverb {
             let feedback = self.damping[index].process(mixed[index]) * self.feedback[index];
             let write = injection[index] + feedback;
             if !write.is_finite() || write.abs() > EMERGENCY_LEVEL {
+                self.safety_events.record(write, write);
                 poisoned = true;
                 break;
             }

@@ -6,6 +6,37 @@ evidence, not the current behavior contract. Source code and machine-readable
 project files take precedence. See [Workspace handoff](WORKSPACE_HANDOFF.md)
 for current state and genuine open work.
 
+
+## 2026-09-28 audio incident diagnostics and controller LED research
+
+The owned effects/final graph now persists grouped JACK xruns, SHR callback
+misses/oversized blocks, and protection resets in delay, reverb, chorus,
+flanger, and phaser. Callback-local counts are published atomically; the
+UI/daemon writes bounded private logs with effect/AUX identity and observed
+control settings. Distortion, bypass, and limiter algorithms are unchanged.
+The original hot-AUX glitch has no captured event and remains unattributed.
+
+The authorized pass used exact rustc 1.97.1 (8bab26f4f, AArch64, LLVM 22.1.6).
+Locked checking, two focused effect-fault/allocation tests, all 1,219 normal
+Rust tests (including six new diagnostic regressions), 20 Python helper tests,
+and 31 isolated audio-policy cases pass. The first full suite encountered an
+existing Git marker in the shared temporary root, correctly triggering the
+private-preset guard. An isolated `TMPDIR` below ignored `user/` resolves that
+fixture collision without changing production guards or the shared root.
+
+The all-target/all-feature DEV build and locked REL application build pass,
+as do both binaries’ version/help checks. Existing compiler warnings remain.
+Fourteen historical/exhaustive tests, Clippy, release stress/benchmark runs,
+image regeneration, and live hardware/audio tests were intentionally skipped.
+Focused guides and the generated documentation site are updated; the older
+code-review finding links now use real Markdown heading anchors.
+
+MiniLab mkII pad LED colour/off SysEx support was researched from vendor and
+protocol sources and documented as an integration proposal. SHR still has no
+LED output driver. No hardware messages, memory writes, audio starts, or
+process restarts were performed. The next explicit hardware trial must verify
+pad release, bank/Shift changes, output ownership, and exit restoration.
+
 ## 2026-09-02 bounded ROLL and A A B A Arrangement assistant validated
 
 The existing FT2 Tools PAGE -> HISTORY -> RHYTHM -> GEN workflow includes the

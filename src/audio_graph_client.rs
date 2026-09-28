@@ -24,7 +24,7 @@ use crate::tempo::Bpm;
 use anyhow::{anyhow, bail, Context, Result};
 use libc::{c_int, c_uint, c_void};
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 const SOURCE_NODE: u32 = 1;
 const LOOP_SOURCE_NODE: u32 = 2;
@@ -225,6 +225,7 @@ struct CallbackData {
     source_lost: AtomicBool,
     input_monitoring: AtomicBool,
     timing: CallbackTimingCounters,
+    xruns: AtomicU64,
     final_bus: UnsafeCell<FinalBusProcessor>,
     final_capture: FinalMixCapture,
     final_buffer: UnsafeCell<Box<[StereoFrame]>>,
@@ -235,6 +236,7 @@ struct CallbackData {
 unsafe impl Send for CallbackData {}
 
 pub(crate) struct OwnedAudioGraph {
+    diagnostics: crate::audio_diagnostics::AudioDiagnostics,
     jack: JackClient,
     callback: Box<CallbackData>,
     routes: BoundaryRoutes,
@@ -604,6 +606,12 @@ impl FinalBusOwner {
         self.graph.as_ref().map(OwnedAudioGraph::sample_rate)
     }
 
+    pub(crate) fn poll_diagnostics(&mut self) -> Option<String> {
+        self.graph
+            .as_mut()
+            .and_then(|graph| graph.poll_diagnostics(false))
+    }
+
     pub(crate) fn poll(&mut self) -> Option<String> {
         if self
             .graph
@@ -652,6 +660,35 @@ impl FinalBusOwner {
 }
 
 impl OwnedAudioGraph {
+    fn poll_diagnostics(&mut self, force: bool) -> Option<String> {
+        let [missed, oversized] = self.callback.timing.incident_counts();
+        let totals = [
+            self.callback.xruns.load(Ordering::Relaxed),
+            missed,
+            oversized,
+        ];
+        let rate = self.callback.sample_rate;
+        let maximum_frames = self.callback.maximum_frames;
+        let sends = &self.aux_send_controls;
+        let limiters = &self.aux_limiter_controls;
+        self.diagnostics.poll(totals, force, || {
+            let aux: Vec<_> = sends
+                .iter()
+                .map(|(id, control)| {
+                    let gain = control.linear_gain();
+                    let limiter = limiters
+                        .get(id)
+                        .is_some_and(|enabled| enabled.load(Ordering::Relaxed));
+                    format!("aux={id} send_linear={gain:.6} limiter={limiter}")
+                })
+                .collect();
+            format!(
+                "context rate={rate} maximum_frames={maximum_frames} {}",
+                aux.join(" ")
+            )
+        })
+    }
+
     pub(crate) fn sample_rate(&self) -> u32 {
         self.callback.sample_rate
     }
@@ -865,6 +902,7 @@ impl OwnedAudioGraph {
             source_lost: AtomicBool::new(false),
             input_monitoring: AtomicBool::new(input_monitoring),
             timing: CallbackTimingCounters::default(),
+            xruns: AtomicU64::new(0),
             final_bus: UnsafeCell::new(final_bus),
             final_capture,
             final_buffer: UnsafeCell::new(
@@ -897,7 +935,12 @@ impl OwnedAudioGraph {
         // ready and every owned direct source link is gone before output is
         // published.
         callback.armed.store(true, Ordering::Release);
+        let mut diagnostics = crate::audio_diagnostics::AudioDiagnostics::new(
+            crate::state_dir().join("audio-diagnostics.log"),
+        );
+        diagnostics.watch(&definition, &effect_controls, false);
         Ok(Self {
+            diagnostics,
             jack,
             callback,
             routes,
@@ -1065,6 +1108,9 @@ impl OwnedAudioGraph {
             .map_err(|error| anyhow!(error.to_string()))?;
         self.callback.armed.store(false, Ordering::Release);
         self.jack.deactivate();
+        if let Some(error) = self.poll_diagnostics(true) {
+            eprintln!("{error}");
+        }
         if let Err(error) = self.callback.plan.get_mut().reconfigure(&definition) {
             if self.jack.activate().is_ok() {
                 self.callback.armed.store(true, Ordering::Release);
@@ -1117,6 +1163,8 @@ impl OwnedAudioGraph {
                     .map(|control| (aux.id, control))
             })
             .collect();
+        self.diagnostics
+            .watch(&definition, &self.effect_controls, true);
         self.callback.final_bus.get_mut().reset();
         if let Err(error) = self.jack.activate() {
             let _ = self.restore_direct();
@@ -1177,6 +1225,9 @@ impl OwnedAudioGraph {
 impl Drop for OwnedAudioGraph {
     fn drop(&mut self) {
         let _ = self.restore_direct();
+        if let Some(error) = self.poll_diagnostics(true) {
+            eprintln!("{error}");
+        }
         // `callback` is still alive here and is dropped only after this method.
     }
 }
@@ -1597,9 +1648,9 @@ unsafe extern "C" fn shutdown_callback(argument: *mut c_void) {
 
 unsafe extern "C" fn xrun_callback(argument: *mut c_void) -> c_int {
     if !argument.is_null() {
-        unsafe { &*argument.cast::<CallbackData>() }
-            .final_capture
-            .xrun();
+        let callback = unsafe { &*argument.cast::<CallbackData>() };
+        callback.xruns.fetch_add(1, Ordering::Relaxed);
+        callback.final_capture.xrun();
     }
     0
 }
@@ -1769,6 +1820,7 @@ mod tests {
             source_lost: AtomicBool::new(false),
             input_monitoring: AtomicBool::new(input_monitoring),
             timing: CallbackTimingCounters::default(),
+            xruns: AtomicU64::new(0),
             final_bus: UnsafeCell::new(
                 FinalBusProcessor::new(
                     48_000,
@@ -2483,6 +2535,17 @@ mod tests {
         assert_eq!(&output_left[..5], &[0.0; 5]);
         assert_eq!(&output_left[5..], &[0.25; 123]);
         assert_eq!(&output_right[5..], &[-0.5; 123]);
+    }
+
+    #[test]
+    fn xrun_diagnostics_count_even_without_recording_and_without_allocating() {
+        let mut callback = callback(128);
+        let pointer = (&mut callback as *mut CallbackData).cast::<c_void>();
+        crate::dsp::allocation_test::assert_no_allocations(|| unsafe {
+            xrun_callback(pointer);
+            xrun_callback(pointer);
+        });
+        assert_eq!(callback.xruns.load(Ordering::Relaxed), 2);
     }
 
     #[test]

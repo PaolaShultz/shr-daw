@@ -1118,8 +1118,9 @@ so flat tops there do not increment the meter's ≥0 dBFS counter. Inspect the
 recorded WAV for repeated ceiling samples to distinguish that driven sound
 from a dropout. This checkpoint measures that behaviour; it does not change
 the limiter or classify intentional distortion as a defect. `BASS JACK` xruns and recorder dropped frames are different failures
-and must be reported separately. Diagnostic code is absent from ordinary
-playback callbacks.
+and must be reported separately. This checkpoint’s independent probe and stage sampling are absent from ordinary
+playback. Normal graph playback has the bounded incident counters described in
+[Audio incident diagnostics](HOW_IT_WORKS.md#audio-incident-diagnostics).
 
 Focused non-audible validation:
 

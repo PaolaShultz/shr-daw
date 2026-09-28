@@ -225,3 +225,12 @@ It uses four distinguishable stereo sources, the production faders/strip,
 bounded callback handoff, stereo writer, and full PCM equality check without
 opening JACK, starting a synth, transmitting MIDI, or producing sound. See
 [maintainer helpers](MAINTAINER_HELPERS.md#synthetic-final-mix-stress).
+
+## Audio incident log
+
+The active final graph counts JACK xruns even without recording. Effect
+protection resets and SHR callback deadline incidents are written outside the
+audio callback to the bounded private
+[audio diagnostics log](HOW_IT_WORKS.md#audio-incident-diagnostics). Recording
+faults retain their existing take-integrity behavior; the incident log does
+not replace recorder status or prove that an audible glitch was captured.

@@ -58,7 +58,8 @@ configuration, or the architecture contracts.
   controls, backend coverage, Project identity, and DSP boundaries.
 - [How SHR-DAW works](HOW_IT_WORKS.md) — end-to-end MIDI/audio routing,
   maintained component boundaries, instrument ownership, Ideas, FT2 Projects,
-  loops, recording, graph safety, persistence, and current limits.
+  loops, recording, graph safety, private audio incident logs, persistence, and
+  current limits.
 - [Audio graph and DSP contract](AUDIO_GRAPH.md) — Project effects data, exact
   parameter schemas, real-time limits, routing publication, meters, bypass,
   tails, topology limits, and curation gates.
@@ -145,6 +146,10 @@ configuration, or the architecture contracts.
 setup guide.
 
 ## Planned work
+
+- [Controller pad LED feedback](CONTROLLER_LED_FEEDBACK.md) — researched MiniLab
+  mkII colour/off protocol, proposed menu-state mapping, and hardware acceptance
+  still required; no LED output driver is enabled.
 
 - [Experimental product direction](EXPERIMENTAL_DIRECTION.md) — beginner-first
   music making, FT2 ownership, open Moj Sint models, low-code micro-machines,

@@ -189,6 +189,15 @@ emit user-programmed messages from several hardware memories. Startup can
 therefore select one connected MK2 automatically, then recommends MIDI Learn;
 it assigns no rotary, PAD, encoder, or command message before direct learning.
 
+## Pad LED output
+
+Profiles and MIDI Learn currently describe controller input only; they do not
+send pad-light feedback. The MiniLab mkII's colour/off SysEx protocol and a
+proposed bounded output integration are documented in
+[Controller pad LED feedback](CONTROLLER_LED_FEEDBACK.md). Device LED addresses
+must be established separately from learned note/CC assignments. No hardware
+memory, backlight preference, or pad mode is changed by profile loading.
+
 ## Upstream mapping sources
 
 There is no universal controller-description standard. These projects provide

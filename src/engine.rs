@@ -3044,6 +3044,9 @@ pub fn daemon(preset: Preset, state: PathBuf, config: RuntimeConfig) -> Result<(
     let mut next_source_scan = Instant::now();
     while !stop.load(std::sync::atomic::Ordering::Relaxed) && engine.alive() {
         thread::sleep(Duration::from_millis(100));
+        if let Some(status) = final_bus.poll_diagnostics() {
+            eprintln!("{status}");
+        }
         if let Some(status) = final_bus.poll() {
             eprintln!("{status}");
         }

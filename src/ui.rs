@@ -17115,6 +17115,9 @@ impl App {
                 crate::ui_text::fit_middle(tracker.error.as_deref().unwrap_or("target"), 18)
             );
         }
+        if let Some(status) = self.final_bus.poll_diagnostics() {
+            self.status = status;
+        }
         if let Some(status) = self.final_bus.poll() {
             self.performance_meter
                 .set_audio_unavailable(AudioAvailability::DirectUnavailable);

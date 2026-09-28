@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-14
+Updated: 2026-09-28
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -135,6 +135,35 @@ The focused contracts and acceptance matrices live in
 and the [Arrangement assistant](ARRANGEMENT_ASSISTANT_ACCEPTANCE.md).
 
 ## Latest software evidence
+
+The September 28 audio follow-up adds a private, bounded
+`audio-diagnostics.log` for graph JACK xruns, SHR callback deadline/size faults,
+and protection resets in the five AUX effect kinds. The callback accumulates
+counters; the UI/daemon owner writes grouped observations and current control
+targets. Normal distortion/bypass is not a fault. See
+[Audio incident diagnostics](HOW_IT_WORKS.md#audio-incident-diagnostics).
+The reported hot-AUX glitch remains unattributed without a captured event.
+
+The owner authorized the full test/build pass. Exact rustc 1.97.1
+(8bab26f4f, AArch64, LLVM 22.1.6) passes the locked check, the focused fault
+allocation checks, all 1,219 normal Rust tests, 20 Python helper tests, and 31
+isolated audio-policy cases. Fourteen historical/exhaustive tests remain
+ignored. The first full run hit the preset guard because the shared temporary
+root contains a `.git` marker; rerunning with `TMPDIR` below ignored `user/`
+passes without weakening that guard or changing the shared temporary root.
+The all-target/all-feature DEV build, locked REL application build, and both
+binaries’ version/help checks pass. Existing compiler warnings remain.
+Normal exit/reopen selects the rebuilt REL binary; no live process was replaced.
+The documentation site is regenerated from the updated focused guides, with
+stable Markdown finding anchors repairing an older review’s broken site links.
+No live app, JACK, synth, MIDI, playback, recording, or controller LED command
+was started.
+
+[Controller pad LED feedback](CONTROLLER_LED_FEEDBACK.md) records the researched
+MiniLab mkII colour/off SysEx protocol and a proposed first integration with
+the canonical menu/action table. No LED driver is enabled. Pad release,
+bank/Shift behaviour, output ownership, and exit restoration still require
+an explicitly authorized hardware trial before enabling that feature.
 
 The September 14 stuck-note follow-up fixes Player scale changes suppressing
 held-note releases. The reported N00B-off incident led to a separate Moj host

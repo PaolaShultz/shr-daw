@@ -56,7 +56,7 @@ in Presets:
 - Yoshimi `.xiz` banks;
 - FluidSynth `.sf2` and `.sf3` SoundFonts;
 - Moj Sint `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine,
-  and Bass Matrix presets;
+  Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets;
 - SHR Sampler `.shrinst` packages.
 
 Browsing is silent. `LOAD` is the only managed start or replacement action.
@@ -68,13 +68,13 @@ shows `PLAY loads Project sound`. Explicit PLAY then loads the Project route;
 the engine replacement still shuts down the old owned process first.
 
 Playback shows held notes, decimal MIDI strike velocity, chord names, a
-keyboard-state strip when space permits, and a 3×5 control surface. The final
-three controls are always Project AUX 1/2/3 for all five managed backends:
-physical rotaries 14–16 after the main rotary. Dual Filter's **PARAM → AMP**
-action opens its amp ADSR; **FILTER** returns to the main controls, with AUX
-unchanged. In FT2 **PARAM**, that action is on **SOUND**. Existing controller
-mappings need no relearning. `SAVE` offers Overwrite, Save New, and Cancel for
-synthv1 and Moj Sint.
+keyboard-state strip when space permits, and a 4×4 control surface. Physical
+rotaries 13–16 are Volume and Project AUX 1/2/3 for all five managed backends.
+The main rotary edits parameter 1; click toggles NAV for menu-page selection.
+Dual Filter shows its amp ADSR in the main surface. See
+[Instruments and drums](INSTRUMENTS_AND_DRUMS.md) for model-specific controls.
+Existing controller mappings need no relearning. `SAVE` offers Overwrite, Save
+New, and Cancel for synthv1 and Moj Sint.
 Factory and system sounds stay read-only; saving them creates the next private
 `User NNN` sound for that engine and Moj model. The saved values become the
 current RESET baseline without restarting the engine. The new sound appears
@@ -290,6 +290,25 @@ during final recording.
 The exact placement and safety rules live in [How SHR-DAW
 works](HOW_IT_WORKS.md), [Audio graph and DSP contract](AUDIO_GRAPH.md), and
 [Fixed stereo MASTER STRIP](MASTER_STRIP_MEASUREMENT.md).
+
+### If you hear a click, dropout, or abruptly cut effect tail
+
+The private `audio-diagnostics.log` records effect protection resets and audio
+deadline incidents while the effects/final graph is active. For a repository-local
+session, inspect it with:
+
+```sh
+tail -n 80 user/state/shsynth/audio-diagnostics.log
+```
+
+Installed sessions use the runtime state directory described in
+[Configuration](CONFIGURATION.md). Note the approximate time, sound, and AUX
+chain when reporting a glitch. `effect_safety_reset` names the affected effect
+and AUX; `jack_xrun` and `shr_callback_deadline` describe different timing
+failures. Several events can share a polling timestamp. An empty log does not
+prove the sound was glitch-free, and intentional distortion is not classified
+as a fault. `shr log` continues to show the separate synth `engine.log`.
+See [diagnostic coverage and limits](HOW_IT_WORKS.md#audio-incident-diagnostics).
 
 ## Recording and meters
 

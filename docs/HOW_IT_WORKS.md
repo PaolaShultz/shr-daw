@@ -596,6 +596,43 @@ See [Live performance](LIVE_PERFORMANCE.md) for launch, preview, capture, and
 boundary controls. See [Audio graph and DSP contract](AUDIO_GRAPH.md) for the
 callback and routing limits.
 
+### Audio incident diagnostics
+
+While the owned audio graph is active, the UI or daemon polls incident counters
+once per second and appends to `audio-diagnostics.log` in the runtime state
+directory (`user/state/shsynth/` for the repository-local setup). The log survives
+engine loads and app restarts. It rotates at 1 MiB, keeping one
+`audio-diagnostics.log.previous` file. The existing `engine.log` still captures
+managed synth stdout/stderr and is replaced on each engine start.
+
+The audio callback only accumulates counters. Effect faults are published once
+per effect block, with no file access, text formatting, allocation, or locks in
+that path. The owner thread writes grouped, timestamped observations for:
+
+- JACK xruns, including when no recording is active;
+- SHR graph callback deadline misses and oversized callbacks;
+- protection resets in delay, reverb (including its input diffusers), chorus,
+  flanger, and phaser, plus non-finite output caught by the effect slot.
+
+Reset entries identify the effect ID, kind and AUX bus or insert/master location,
+count, non-finite reason count, and largest finite fault magnitude over that
+effect instance's lifetime. Entries include observed effect parameter targets,
+AUX send gains in linear units, return gains in dB, limiter switches, and sample
+rate. A send gain near 3.981 is +12 dB; zero means OFF. Ordinary bypass/reset
+and intentional
+clipping are not logged as faults. This does not change effect protection or
+limiter behavior.
+
+Timestamps mark the owner thread's observation, not the precise offending sample;
+several incidents may be grouped, and settings can change before polling. The
+log cannot establish which event caused an audible glitch, detect every glitch,
+or measure an external synth's processing time. SHR deadline counters measure
+its own graph callback; JACK xruns can involve other clients or scheduling.
+Graph replacement and shutdown attempt a final write. Logging failures are
+reported as `AUDIO LOG FAILED` and retried without stopping audio; events from
+removed effects or an abrupt process exit can be lost. No audio or MIDI content
+is recorded. The log remains private runtime state.
+
 ## Note ownership and failure behavior
 
 MIDI notes are owned by physical destination, software route, channel, note,

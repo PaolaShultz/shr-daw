@@ -14,6 +14,7 @@ enum Kind {
 }
 
 pub(super) struct ModulatedDelay {
+    pub(super) safety_events: super::SafetyEvents,
     kind: Kind,
     sample_rate: f32,
     left: FractionalDelayLine,
@@ -49,6 +50,7 @@ impl ModulatedDelay {
         let rate_hz = value("rate_hz")?;
         let stereo_phase_degrees = value("stereo_phase_degrees")?;
         Ok(Self {
+            safety_events: super::SafetyEvents::default(),
             kind,
             sample_rate,
             left: FractionalDelayLine::new(capacity)?,
@@ -83,6 +85,7 @@ impl ModulatedDelay {
             || !write_left.is_finite()
             || !write_right.is_finite()
         {
+            self.safety_events.record(write_left, write_right);
             self.reset();
         } else {
             self.left.push(write_left);

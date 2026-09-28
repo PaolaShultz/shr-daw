@@ -562,9 +562,14 @@ chain also contains one of those wet generators.
 The dry client additionally publishes allocation-free callback count, total,
 mean, maximum, missed-deadline, and oversized-callback counters. One fixed
 one-microsecond histogram increment per callback lets the owner calculate p95
-and p99 outside the callback. The headless daemon records the final timing
-summary in its private engine log during an orderly stop; the full measurement
-report remains owner-thread/Pi checkpoint work.
+and p99 outside the callback. The UI and headless daemon persist grouped JACK
+xruns, SHR deadline misses, oversized callbacks, and effect protection resets
+in a bounded private `audio-diagnostics.log`. Ordinary clipping and bypass are
+not faults. File writes and settings collection stay on the owner thread;
+callback instrumentation uses local counters and atomic publication. See
+[Audio incident diagnostics](HOW_IT_WORKS.md#audio-incident-diagnostics) for
+coverage, timing precision, rotation, and failure limits. Full timing
+percentiles remain available to the explicit measurement checkpoints.
 
 ## Measurement and curation gates
 

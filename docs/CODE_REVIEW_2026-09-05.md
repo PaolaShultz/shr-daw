@@ -86,8 +86,9 @@ describes how the finding was established.
 
 ## Findings
 
-<a id="cr-01"></a>
-### CR-01 — P1 — Renaming a saved Project discards unsaved edits
+### CR-01
+
+**P1 — Renaming a saved Project discards unsaved edits**
 
 **Source:** [ui.rs:12276](../src/ui.rs#L12276), `commit_project_rename`;
 [sequencer.rs:3057](../src/sequencer.rs#L3057), `rename_project`.
@@ -108,8 +109,9 @@ context. Only mark clean after the current contents have actually been saved.
 order, key, and effects; assert all edits survive both in memory and on disk.
 Cover same-stem rename, destination collision, and failed publication.
 
-<a id="cr-02"></a>
-### CR-02 — P1 — Configuration rollback can delete an unreadable original
+### CR-02
+
+**P1 — Configuration rollback can delete an unreadable original**
 
 **Source:** [ui.rs:1883](../src/ui.rs#L1883), `restore_config_file` and
 `persist_routing_transaction`; [controller_learn.rs:1987](../src/controller_learn.rs#L1987),
@@ -131,8 +133,9 @@ failures without claiming the old route was restored.
 absence in routing and learned-profile saves. Original bytes must remain
 unchanged; a failed restore must return a distinguishable recovery error.
 
-<a id="cr-03"></a>
-### CR-03 — P1 — Multitrack recovery cannot resume partially finalized stems
+### CR-03
+
+**P1 — Multitrack recovery cannot resume partially finalized stems**
 
 **Source:** [audio_recorder.rs:1404](../src/audio_recorder.rs#L1404),
 `write_session`; [audio_recorder.rs:2344](../src/audio_recorder.rs#L2344),
@@ -156,8 +159,9 @@ manifest publication, and before directory publication. Retry recovery twice;
 all surviving common frames must remain readable and no failed take may be
 counted as successfully recovered.
 
-<a id="cr-04"></a>
-### CR-04 — P1 — Audio callbacks alias mutable DSP state with owner-thread reads
+### CR-04
+
+**P1 — Audio callbacks alias mutable DSP state with owner-thread reads**
 
 **Source:** [audio_graph_client.rs:1401](../src/audio_graph_client.rs#L1401),
 `process_callback`; [audio_graph_client.rs:900](../src/audio_graph_client.rs#L900),
@@ -189,8 +193,9 @@ Exercise the ownership model in a hardware-free concurrency harness, with an
 appropriate Rust aliasing checker where supported. Preserve callback allocation
 and blocking constraints; ordinary atomic-value tests alone are insufficient.
 
-<a id="cr-05"></a>
-### CR-05 — P1 — Drum and graph effect IDs collide in the automation registry
+### CR-05
+
+**P1 — Drum and graph effect IDs collide in the automation registry**
 
 **Source:** [sequencer.rs:754](../src/sequencer.rs#L754), default drum rack;
 [audio_graph.rs:428](../src/audio_graph.rs#L428), `next_effect_id`;
@@ -215,8 +220,9 @@ a preservation path.
 drum Reverb/Delay. Automate each independently, vary host registration order,
 and clear/restart either host. Values must reach only the specified rack.
 
-<a id="cr-06"></a>
-### CR-06 — P1 — Saved external-MIDI settings never update the sequencer
+### CR-06
+
+**P1 — Saved external-MIDI settings never update the sequencer**
 
 **Source:** [ui.rs:3000](../src/ui.rs#L3000), `confirm_routing_edit`;
 [ui.rs:2003](../src/ui.rs#L2003), sequencer construction;
@@ -240,8 +246,9 @@ then publish the new configuration with rollback or explicit pending state.
 and restart playback in the same App. All subsequent events must use B; old
 notes must be cleaned up. Cover disable/re-enable and activation failure.
 
-<a id="cr-07"></a>
-### CR-07 — P1 — MIDI inputs remain live while their owned notes are released
+### CR-07
+
+**P1 — MIDI inputs remain live while their owned notes are released**
 
 **Source:** [engine.rs:598](../src/engine.rs#L598), `reconfigure_inputs`;
 [engine.rs:723](../src/engine.rs#L723), `Drop for MidiRouter`;
@@ -263,8 +270,9 @@ Account for callbacks already between state calculation and output delivery.
 ownership/delivery while reconfiguration or Drop runs. No note-on may arrive
 after final cleanup; output and tracker note ownership must both end empty.
 
-<a id="cr-08"></a>
-### CR-08 — P1 — Timeline limits are enforced after oversized event expansion
+### CR-08
+
+**P1 — Timeline limits are enforced after oversized event expansion**
 
 **Source:** [sequencer.rs:3222](../src/sequencer.rs#L3222),
 `schedule_elapsed_with_conditions`; [timeline.rs:155](../src/timeline.rs#L155),
@@ -289,8 +297,9 @@ path still needs a bound. Keep refusal before large allocations and sorting.
 and dense automation; assert expansion aborts at the budget. Keep this focused
 test fast. Large memory/time measurements belong in an opt-in benchmark.
 
-<a id="cr-09"></a>
-### CR-09 — P2 — Project and drum-file size checks happen after full reads
+### CR-09
+
+**P2 — Project and drum-file size checks happen after full reads**
 
 **Source:** [sequencer.rs:3045](../src/sequencer.rs#L3045), `load`, and overwrite
 inspection at line 3031; [sequencer.rs:2281](../src/sequencer.rs#L2281), `decode`;
@@ -311,8 +320,9 @@ same boundary for load, rename, and overwrite validation.
 sparse file must produce bounded results without allocating the file's full
 size. Reject inappropriate file types before blocking reads.
 
-<a id="cr-10"></a>
-### CR-10 — P2 — Final-mix startup can re-arm a recorder whose writer failed
+### CR-10
+
+**P2 — Final-mix startup can re-arm a recorder whose writer failed**
 
 **Source:** [audio_recorder.rs:413](../src/audio_recorder.rs#L413),
 `FinalMixRecorder::start`; [audio_recorder.rs:283](../src/audio_recorder.rs#L283),
@@ -335,8 +345,9 @@ recorder with no producer writing into an undrained ring.
 finishes startup. Feed a synthetic callback, inspect terminal state/ring, then
 retry successfully with the same recorder. No JACK client is needed.
 
-<a id="cr-11"></a>
-### CR-11 — P2 — AUX bypass automation can introduce a dry return
+### CR-11
+
+**P2 — AUX bypass automation can introduce a dry return**
 
 **Source:** [audio_graph_runtime.rs:195](../src/audio_graph_runtime.rs#L195),
 `aux_bypass_mode`, and `set_effect_bypass` at line 695;
@@ -358,8 +369,9 @@ control publication must preserve the same bypass semantics as structural edits.
 for a single wet generator, tail on/off, and two-generator AUX chains. After
 the transition, a bypassed wet-only return must not introduce dry source audio.
 
-<a id="cr-12"></a>
-### CR-12 — P2 — Imported in-Pattern tempo changes take effect one row late
+### CR-12
+
+**P2 — Imported in-Pattern tempo changes take effect one row late**
 
 **Source:** [midi_import.rs:1127](../src/midi_import.rs#L1127),
 `place_tempo_commands`; [sequencer.rs:3254](../src/sequencer.rs#L3254), row timing;
@@ -380,8 +392,9 @@ boundary cases. Keep collision handling and the import report truthful.
 row, compile/export it, and compare absolute change ticks and note times with
 the input. Also cover Pattern starts and multiple changes near a boundary.
 
-<a id="cr-13"></a>
-### CR-13 — P2 — An Idea can be saved larger than the loader accepts
+### CR-13
+
+**P2 — An Idea can be saved larger than the loader accepts**
 
 **Source:** [recording.rs:14](../src/recording.rs#L14), `MAX_IDEA_MIDI_BYTES`;
 [recording.rs:59](../src/recording.rs#L59), `Recorder::capture`;
@@ -403,8 +416,9 @@ space for final cleanup messages. Do not silently truncate the performance.
 small injected budget. Every successful save must be loadable, and reaching
 the cap must preserve already-accepted events and report what happened.
 
-<a id="cr-14"></a>
-### CR-14 — P2 — Routing cannot recover when no MIDI router was constructed
+### CR-14
+
+**P2 — Routing cannot recover when no MIDI router was constructed**
 
 **Source:** [engine.rs:412](../src/engine.rs#L412), `MidiRouter::start`;
 [ui.rs:16912](../src/ui.rs#L16912), `app.midi_router = router.ok()`;
@@ -427,8 +441,9 @@ available, and apply Routing. Verify note/controller delivery through the
 existing App owners without restart. Cover another failed attempt followed by
 a successful retry.
 
-<a id="cr-15"></a>
-### CR-15 — P2 — Invalid runtime configuration prevents `shr stop`
+### CR-15
+
+**P2 — Invalid runtime configuration prevents `shr stop`**
 
 **Source:** [main.rs:104](../src/main.rs#L104), `real_main` command dispatch;
 [config.rs:475](../src/config.rs#L475), `RuntimeConfig::load`;
@@ -448,8 +463,9 @@ configuration and catalog loading. Retain exact process-ownership checks.
 daemon, `stop` must reach cleanup; with an unrelated process it must still
 refuse to signal it. Reading logs must not require valid instrument setup.
 
-<a id="cr-16"></a>
-### CR-16 — P1 — Screenshot generation can read private state and transmit MIDI clock
+### CR-16
+
+**P1 — Screenshot generation can read private state and transmit MIDI clock**
 
 **Source:** [main.rs:104](../src/main.rs#L104), configuration/catalog loading;
 [ui.rs:26531](../src/ui.rs#L26531), `readme_screenshots_json`;
@@ -483,8 +499,9 @@ discovery sentinels through the environment, using mock I/O. Rendering must
 perform zero private reads, port opens, or sends and produce identical frames
 across host configurations. Do not verify this by sending to real equipment.
 
-<a id="cr-17"></a>
-### CR-17 — P1 — Installer recovery overwrites intervening repairs
+### CR-17
+
+**P1 — Installer recovery overwrites intervening repairs**
 
 **Source:** [managed_install.py:174](../scripts/managed_install.py#L174),
 `recover`; pending resource construction in `apply` at line 279.
@@ -509,8 +526,9 @@ intervening edits and return an actionable conflict. Integrate with CR-18/19.
 target or remove a backup before recovery. No intervening content may be
 deleted, and failed preflight must leave all current resources unchanged.
 
-<a id="cr-18"></a>
-### CR-18 — P1 — Installer removal follows replaced parent directories
+### CR-18
+
+**P1 — Installer removal follows replaced parent directories**
 
 **Source:** [managed_install.py:320](../scripts/managed_install.py#L320),
 `uninstall`; `recover` at line 174; `_check_ancestors` at line 75.
@@ -536,8 +554,9 @@ directory descriptors so a subsequent parent swap cannot bypass preflight.
 and journal targets; both operations must refuse without touching their
 destinations. Include parent substitution between validation and mutation.
 
-<a id="cr-19"></a>
-### CR-19 — P1 — Overlapping installers corrupt the manifest/file relationship
+### CR-19
+
+**P1 — Overlapping installers corrupt the manifest/file relationship**
 
 **Source:** [managed_install.py:257](../scripts/managed_install.py#L257), `apply`;
 `recover`, `_read_current`, and `uninstall` in the same module.
@@ -563,8 +582,9 @@ and cleanup. Distinguish an active owner from an interrupted transaction.
 barriers. The second operation must wait or refuse before mutation. Also cover
 apply versus uninstall and recovery after a lock-owning process dies.
 
-<a id="cr-20"></a>
-### CR-20 — P2 — Installer recovery lacks durable ordering for power loss
+### CR-20
+
+**P2 — Installer recovery lacks durable ordering for power loss**
 
 **Source:** [managed_install.py:27](../scripts/managed_install.py#L27),
 `_atomic_json`; `_copy_resource` at line 144; journal and commit sequence in
@@ -590,8 +610,9 @@ are ready, and handle fsync failures as transaction failures.
 ordering and errors. Any filesystem crash experiment must use a disposable
 filesystem and remain opt-in; never power-cycle the working machine for this.
 
-<a id="cr-21"></a>
-### CR-21 — P2 — Interrupted JACK-service installation leaves unrecognized owned files
+### CR-21
+
+**P2 — Interrupted JACK-service installation leaves unrecognized owned files**
 
 **Source:** [audio-performance.sh:733](../scripts/audio-performance.sh#L733),
 `install_jack_service`; publication at line 835; `remove_jack_service` at

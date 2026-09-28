@@ -41,6 +41,34 @@ const BYPASS_FADE_MILLISECONDS: f32 = 5.0;
 const MAX_RUNTIME_PARAMETERS: usize = 32;
 const BYPASS_DIRTY_BIT: u64 = 1 << 63;
 
+/// Callback-local fault accumulation; ordinary resets/bypass are not faults.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct SafetyEvents {
+    pub resets: u64,
+    pub non_finite: u64,
+    pub peak: f32,
+}
+
+impl SafetyEvents {
+    fn record(&mut self, left: f32, right: f32) {
+        self.resets = self.resets.saturating_add(1);
+        if !left.is_finite() || !right.is_finite() {
+            self.non_finite = self.non_finite.saturating_add(1);
+        }
+        for value in [left, right] {
+            if value.is_finite() {
+                self.peak = self.peak.max(value.abs());
+            }
+        }
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.resets = self.resets.saturating_add(other.resets);
+        self.non_finite = self.non_finite.saturating_add(other.non_finite);
+        self.peak = self.peak.max(other.peak);
+    }
+}
+
 /// Validated control-thread publisher for one running effect identity. The
 /// callback reads a fixed atomic array and never allocates or locks.
 pub struct EffectControl {
@@ -51,6 +79,9 @@ pub struct EffectControl {
     values: [AtomicU32; MAX_RUNTIME_PARAMETERS],
     bypass: AtomicBool,
     dirty: AtomicU64,
+    safety_resets: AtomicU64,
+    safety_non_finite: AtomicU64,
+    safety_peak: AtomicU32,
 }
 
 impl EffectControl {
@@ -75,7 +106,42 @@ impl EffectControl {
             }),
             bypass: AtomicBool::new(effect.bypass),
             dirty: AtomicU64::new(0),
+            safety_resets: AtomicU64::new(0),
+            safety_non_finite: AtomicU64::new(0),
+            safety_peak: AtomicU32::new(0),
         })
+    }
+
+    fn publish_safety(&self, events: SafetyEvents) {
+        if events.resets > 0 {
+            self.safety_peak
+                .fetch_max(events.peak.to_bits(), Ordering::Relaxed);
+            self.safety_non_finite
+                .fetch_add(events.non_finite, Ordering::Relaxed);
+            self.safety_resets
+                .fetch_add(events.resets, Ordering::Release);
+        }
+    }
+
+    pub(crate) fn safety_events(&self) -> SafetyEvents {
+        SafetyEvents {
+            resets: self.safety_resets.load(Ordering::Acquire),
+            non_finite: self.safety_non_finite.load(Ordering::Relaxed),
+            peak: f32::from_bits(self.safety_peak.load(Ordering::Relaxed)),
+        }
+    }
+
+    pub(crate) fn diagnostic_parameters(&self) -> BTreeMap<&'static str, f32> {
+        effect_schema::schema(self.kind)
+            .iter()
+            .enumerate()
+            .map(|(index, spec)| {
+                (
+                    spec.name,
+                    f32::from_bits(self.values[index].load(Ordering::Relaxed)),
+                )
+            })
+            .collect()
     }
 
     pub const fn id(&self) -> EffectId {
@@ -347,6 +413,18 @@ impl Processor {
                 effect,
                 sample_rate,
             )?))),
+        }
+    }
+
+    fn take_safety_events(&mut self) -> SafetyEvents {
+        match self {
+            Self::Delay(effect) => std::mem::take(&mut effect.safety_events),
+            Self::Chorus(effect) | Self::Flanger(effect) => {
+                std::mem::take(&mut effect.safety_events)
+            }
+            Self::Phaser(effect) => std::mem::take(&mut effect.safety_events),
+            Self::Reverb(effect) => effect.take_safety_events(),
+            _ => SafetyEvents::default(),
         }
     }
 
@@ -630,12 +708,14 @@ impl EffectSlot {
             // restart the delay's bounded 20 ms timing transition.
             let _ = delay.set_parameter("tempo_bpm", tempo.as_f64() as f32);
         }
+        let mut safety_events = SafetyEvents::default();
         for frame in frames.iter_mut() {
             let dry = self.input_meter.process(*frame);
             let processed = self.processor.process(dry);
             let processed = if processed.left.is_finite() && processed.right.is_finite() {
                 processed
             } else {
+                safety_events.record(processed.left, processed.right);
                 self.processor.reset();
                 if self.wet_only {
                     StereoFrame::SILENCE
@@ -665,6 +745,8 @@ impl EffectSlot {
             .publish(self.input_meter.snapshot_and_clear_peak());
         self.published_output
             .publish(self.output_meter.snapshot_and_clear_peak());
+        safety_events.merge(self.processor.take_safety_events());
+        self.control.publish_safety(safety_events);
         self.processor.publish();
     }
 
@@ -832,6 +914,68 @@ mod tests {
             parameters,
             owned_memory_bytes: 0,
         }
+    }
+
+    #[test]
+    fn effect_safety_diagnostics_count_hot_resets_without_allocating() {
+        for kind in [
+            EffectKind::Delay,
+            EffectKind::Reverb,
+            EffectKind::Chorus,
+            EffectKind::Phaser,
+            EffectKind::Flanger,
+        ] {
+            let mut parameters = effect_schema::defaults(kind);
+            if kind == EffectKind::Reverb {
+                parameters.insert("predelay_ms".into(), 0.0);
+            }
+            let effect = EffectInstance {
+                id: 7,
+                kind,
+                version: EFFECT_FORMAT_VERSION,
+                bypass: false,
+                parameters,
+                owned_memory_bytes: 0,
+            };
+            let mut slot = EffectSlot::compile(&effect, 48_000, 128).unwrap();
+            let control = slot.control();
+            let mut quiet = [StereoFrame::SILENCE; 128];
+            assert_no_allocations(|| slot.process(&mut quiet));
+            slot.reset();
+            assert_eq!(
+                control.safety_events(),
+                SafetyEvents::default(),
+                "ordinary reset {kind:?}"
+            );
+            let mut hot = [StereoFrame::new(1.0e8, -1.0e8); 128];
+            assert_no_allocations(|| slot.process(&mut hot));
+            let events = control.safety_events();
+            assert!(
+                events.resets > 0 && events.peak > 64.0,
+                "{kind:?}: {events:?}"
+            );
+            assert_eq!(events.non_finite, 0);
+            slot.reset();
+            assert_no_allocations(|| slot.process(&mut quiet));
+            assert_eq!(control.safety_events(), events, "quiet recovery {kind:?}");
+        }
+    }
+
+    #[test]
+    fn effect_safety_diagnostics_preserve_non_finite_reason() {
+        let control = EffectControl::new(&utility(BTreeMap::new(), false));
+        let mut events = SafetyEvents::default();
+        events.record(f32::NAN, 80.0);
+        events.record(90.0, -70.0);
+        control.publish_safety(events);
+        assert_eq!(
+            control.safety_events(),
+            SafetyEvents {
+                resets: 2,
+                non_finite: 1,
+                peak: 90.0
+            }
+        );
     }
 
     #[test]
