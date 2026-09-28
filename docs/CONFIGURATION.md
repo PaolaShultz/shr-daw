@@ -45,19 +45,19 @@ accepts:
 | synthv1 | `synthv1.command`, `.client`, `.presets`, `.midi_output`; legacy `synth.command`, `synth.client`, `presets.directory`, and `midi.synth_output` remain accepted |
 | Yoshimi | `yoshimi.command`, `.client`, `.midi_output`, repeated `.preset_root` and `.category`, `.presets_per_category` |
 | FluidSynth | `fluidsynth.command`, `.client`, `.midi_output`, `.gain`, repeated `.soundfont` |
-| Moj Sint | `moj_sint.command`, `.client`, `.midi_output`, repeated `.preset_root`, and exactly two `.output` short names |
+| SHR Synth | `shr_synth.command`, `.client`, `.midi_output`, repeated `.preset_root`, and exactly two `.output` short names |
 | SHR Sampler | `shr_sampler.command`, `.client`, `.midi_output`, repeated `.instrument_root`, exactly two `.output` short names, and `.validation_timeout_ms` (1000–600000) |
 | SHR Drums | `drums.client`, `.kit_directory`, and `.maximum_callback_frames` |
 
-Moj Sint defaults to command `moj-sint`, client/MIDI identity
-`shs-moj-sint`, and output short names `out_l` then `out_r`. Discovery indexes
+SHR Synth defaults to command `shr-synth`, client/MIDI identity
+`shs-shr-synth`, and output short names `out_l` then `out_r`. Discovery indexes
 at most 512 regular, non-symlink `.mojsint` files of at most 1 MiB and strictly
 validates schemas 1–8 before showing them. Schema 8 adds the Dual Filter model,
 its exact 15-control fields, and persisted `industrial`/`counter` core state;
 schemas 1–7 remain readable and migrate in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by `LOAD` as
-`moj-sint --client-name NAME --preset FILE`.
-Playback user saves add the private XDG Moj Sint preset root to discovery and
+`shr-synth --client-name NAME --preset FILE`.
+Playback user saves add the private XDG SHR Synth preset root to discovery and
 store all six models beneath separate model directories. Repository-local
 launches keep that root below ignored `user/`. `SHSYNTH_MOJ_PRESET_DIR` may
 select another explicitly private root; public checkout, factory, system, and
@@ -632,7 +632,7 @@ resulting **TRACKS** screen edits pages and columns. Use the main encoder to
 select a page. **ADD** creates
 another four-lane page in that Pattern. **TARGET** chooses `AUTO` (portable
 machine default), an internal software route, or external MIDI. An internal
-route then chooses **ENGINE** before **INSTR**. Moj Sint additionally chooses
+route then chooses **ENGINE** before **INSTR**. SHR Synth additionally chooses
 **MODEL** before **PATCH**; an external route chooses
 **MIDI OUT** before its per-column channel/bank/program values. `AUTO` displays an
 `AUTO` channel and does not permit channel/bank/program editing because those
@@ -646,7 +646,7 @@ controls edit the selected column. In a target/channel chooser, **CONFIRM**
 keeps that field and **EXIT** cancels it.
 
 FT2 **SELECT** → **ROUTE** is the quick route editor. Its 38×9 bordered overlay
-shows `TARGET`, `ENGINE`, Moj Sint `MODEL` and `PATCH`, ordinary `INSTR`, or the
+shows `TARGET`, `ENGINE`, SHR Synth `MODEL` and `PATCH`, ordinary `INSTR`, or the
 SHR Drums `KIT`, plus `MIDI OUT`, optional
 `PROFILE`, and the 16 per-column channel/bank/program rows in a scrolling 36×7
 content area. The overlay begins at `(1,1)`, its content begins at `(2,2)`, and
@@ -664,7 +664,7 @@ The controller action row's direct **CANCEL** action, or Back from the main
 list, restores the complete route snapshot from when ROUTE opened.
 
 An internal melodic route stores the engine identity together with that
-engine's stable instrument identity. Moj Sint identities include their
+engine's stable instrument identity. SHR Synth identities include their
 synthesis model, so equal patch names in different models cannot collide.
 An SHR Drums route instead stores the
 stable kit ID and remains independent of the melodic engine choice. Applying a

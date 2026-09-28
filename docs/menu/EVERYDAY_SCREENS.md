@@ -28,7 +28,7 @@ invoke that page's items wherever a controller strip is present.
 
 **Software Synths** opens Presets. Turn the main encoder, use the arrow keys,
 or use the mouse wheel to choose a sound. Hold the configured encoder Shift
-while turning to move between the synthv1, Yoshimi, FluidSynth, Moj Sint, and
+while turning to move between the synthv1, Yoshimi, FluidSynth, SHR Synth, and
 SHR Sampler catalogs. Loading replaces the one managed software instrument; it
 never layers engines. Within the same SHR-DAW sound system, the Drums
 instrument belongs to its FT2 page and kit route rather than the melodic
@@ -67,18 +67,18 @@ for STOP/PANIC where that direct safety action exists.
 
 ### Change instrument host
 
-Shift-turn the main rotary to move among synthv1, Yoshimi, FluidSynth, Moj
-Sint, and SHR Sampler in either direction. Keyboard `[`/`]` and clicking the
+Shift-turn the main rotary to move among synthv1, Yoshimi, FluidSynth, SHR
+Synth, and SHR Sampler in either direction. Keyboard `[`/`]` and clicking the
 left/right half of the Presets heading remain equivalent. Catalog changes are
 silent: they only change the list and reset its selection according to the
 existing catalog contract. `LOAD` is the sole managed preset start or
 replacement action.
 
-The Moj Sint catalog has 21 ordered starts: seven Model D sounds, six Six-Op PM
+The SHR Synth catalog has 21 ordered starts: seven Model D sounds, six Six-Op PM
 sounds, Strange Oscillator, Swarm Warm Pad, Bass Matrix, and five Dual Filter
 sounds. The list is grouped by model and gives each model one letter plus a
 two-digit number local to that model: `D01`, `P01`, `O01`, `S01`, `B01`, and
-`F01`. Opening or switching to Moj Sint selects `D01 Full Bass`, and typing a
+`F01`. Opening or switching to SHR Synth selects `D01 Full Bass`, and typing a
 model letter jumps to that visible group. Selecting one only browses; `LOAD`
 starts it.
 
@@ -112,7 +112,7 @@ result.
 On the keyboard, red white-key areas are held natural notes and red upper `└`
 marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
-first five Moj models use seven model-specific timbre controls plus Volume and
+first five SHR Synth models use seven model-specific timbre controls plus Volume and
 ADSR; synthv1 retains its own names and indices. Yoshimi, FluidSynth, and SHR
 Sampler show Volume at position 5 (physical rotary 6) and the same three AUX
 sends. The main encoder press resets the synthesis controls, including Dual
@@ -155,10 +155,10 @@ interface direct monitoring and unrelated applications are excluded.
 relative turns continue from those restored values.
 `SAVE` opens `OVERWRITE`, `SAVE NEW`, and `CANCEL`. Factory and system sounds
 are read-only, so their Overwrite row clearly saves a new private `User NNN`
-sound instead. Save New numbers sounds independently for synthv1, Moj Sint
-Model D, and Moj Sint Six-Op PM. A successful save becomes the current sound
+sound instead. Save New numbers sounds independently for synthv1, SHR Synth
+Model D, and SHR Synth Six-Op PM. A successful save becomes the current sound
 and the new RESET baseline immediately; it does not restart the engine, release
-held notes, or change the controls. Presets refreshes immediately, and a Moj
+held notes, or change the controls. Presets refreshes immediately, and a SHR Synth
 sound remains inside its Model D or Six-Op PM hierarchy in FT2 ROUTE. Cancel
 closes only the overlay and preserves cursor/list state, live values, and held
 notes. A failed save preserves that state and any prior user file while keeping
@@ -190,7 +190,7 @@ without restarting the sound. `HELP` opens help and returns here afterward.
 `EXIT` returns to Presets, then Presets `EXIT` returns Home.
 
 See [SHR-DAW instruments and drums](../INSTRUMENTS_AND_DRUMS.md) for the
-complete Moj Sint, SHR Sampler, and SHR Drums workflows and their ownership
+complete SHR Synth, SHR Sampler, and SHR Drums workflows and their ownership
 boundaries.
 
 ### N00B-on Playback pages

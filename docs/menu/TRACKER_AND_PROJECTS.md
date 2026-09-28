@@ -75,7 +75,7 @@ Back/Esc or SYS `EXIT` returns to that exact location and the launching SOUND
 page. Instrument selection remains in `ROUTE`.
 
 The child reuses Playback's current 3×5 view, including the active synthv1 or
-Moj Sint model labels, live values, relative-to-preset colours, rotary carry, and
+SHR Synth model labels, live values, relative-to-preset colours, rotary carry, and
 held notes. Every managed backend keeps Project AUX 1/2/3 at positions 13–15,
 physical rotaries 14–16. Its SOUND page contains `RESET`, `SAVE`, `N00B`, and
 `AMP` for Dual Filter. AMP puts amp ADSR at positions 1–4; the action becomes

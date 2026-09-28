@@ -18,7 +18,7 @@ configuration, or the architecture contracts.
   idea-to-sketch workflow, non-goals, instruments, effects, recording, and
   commands.
 - [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md) — one installed
-  sound system with melodic instruments, Moj models and saves, Sampler, Drums
+  sound system with melodic instruments, SHR Synth models and saves, Sampler, Drums
   kits, routing, ownership, and recovery.
 - [Complete screen and menu manual](MENU_MANUAL.md) — deterministic images
   covering every populated 40×13 screen, contextual editor, visible Levels
@@ -83,7 +83,7 @@ configuration, or the architecture contracts.
   and
   [sample provenance](https://github.com/PaolaShultz/shr-drums/blob/main/SOURCES.md)
   live with that repository.
-- [Moj Sint](https://github.com/PaolaShultz/moj-sint): public managed synth host,
+- [SHR Synth](https://github.com/PaolaShultz/shr-synth): public managed synth host,
   strict preset schema, and current factory catalog. SHR-DAW's installer pin
   currently supplies 16 of those starts.
 - [SHR Sampler](https://github.com/PaolaShultz/shr-sampler): public strict
@@ -152,7 +152,7 @@ setup guide.
   still required; no LED output driver is enabled.
 
 - [Experimental product direction](EXPERIMENTAL_DIRECTION.md) — beginner-first
-  music making, FT2 ownership, open Moj Sint models, low-code micro-machines,
+  music making, FT2 ownership, open SHR Synth models, low-code micro-machines,
   and smart help without feature promises.
 - [Experimental development roadmap](EXPERIMENTAL_ROADMAP.md) — current work
   order, evidence boundaries, and the rule that keeps unrelated ideas out of

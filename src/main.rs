@@ -204,7 +204,7 @@ fn effects_checkpoint(
             &config.client_name,
             &config.yoshimi.backend.client_name,
             &config.fluidsynth.backend.client_name,
-            &config.moj_sint.backend.client_name,
+            &config.shr_synth.backend.client_name,
             &config.shr_sampler.backend.client_name,
             &config.audio_graph.client_name,
         ] {

@@ -824,7 +824,7 @@ impl Engine {
         }
         let mut engine = Self {
             backend,
-            moj_model: (backend == BackendKind::MojSint).then_some(preset::MojModel::ModelD),
+            moj_model: (backend == BackendKind::ShrSynth).then_some(preset::MojModel::ModelD),
             managed_client_name: None,
             child,
             stdin: None,
@@ -945,7 +945,7 @@ impl Engine {
             .stdin(
                 if matches!(
                     preset.backend,
-                    BackendKind::Synthv1 | BackendKind::MojSint | BackendKind::ShrSampler
+                    BackendKind::Synthv1 | BackendKind::ShrSynth | BackendKind::ShrSampler
                 ) {
                     Stdio::null()
                 } else {
@@ -965,7 +965,7 @@ impl Engine {
                 preset.backend,
                 &backend_config.client_name,
                 match preset.backend {
-                    BackendKind::MojSint => Some(&config.moj_sint.output_ports),
+                    BackendKind::ShrSynth => Some(&config.shr_synth.output_ports),
                     BackendKind::ShrSampler => Some(&config.shr_sampler.output_ports),
                     _ => None,
                 },
@@ -1022,9 +1022,11 @@ impl Engine {
                     .iter()
                     .map(|control| (control.cc, control.cc))
                     .collect()
-            } else if preset.backend == BackendKind::MojSint {
+            } else if preset.backend == BackendKind::ShrSynth {
                 let controls = control::moj_surface_controls(
-                    preset.moj_model().context("Moj Sint preset has no model")?,
+                    preset
+                        .moj_model()
+                        .context("SHR Synth preset has no model")?,
                     false,
                 );
                 controller
@@ -1152,8 +1154,8 @@ impl Engine {
                 self.backend.label()
             );
         }
-        if self.backend == BackendKind::MojSint {
-            let model = self.moj_model.context("Moj Sint engine has no model")?;
+        if self.backend == BackendKind::ShrSynth {
+            let model = self.moj_model.context("SHR Synth engine has no model")?;
             for control in control::moj_controls(model) {
                 if let Some(value) = values.get(&control.cc) {
                     self.send(&[
@@ -1401,7 +1403,7 @@ impl Drop for Engine {
                 BackendKind::Yoshimi => writeln!(stdin, "exit y"),
                 BackendKind::FluidSynth => writeln!(stdin, "quit"),
                 BackendKind::Synthv1 => Ok(()),
-                BackendKind::MojSint => Ok(()),
+                BackendKind::ShrSynth => Ok(()),
                 BackendKind::ShrSampler => Ok(()),
             };
             let _ = stdin.flush();
@@ -1434,7 +1436,7 @@ fn backend_config(config: &RuntimeConfig, backend: BackendKind) -> BackendConfig
         },
         BackendKind::Yoshimi => config.yoshimi.backend.clone(),
         BackendKind::FluidSynth => config.fluidsynth.backend.clone(),
-        BackendKind::MojSint => config.moj_sint.backend.clone(),
+        BackendKind::ShrSynth => config.shr_synth.backend.clone(),
         BackendKind::ShrSampler => config.shr_sampler.backend.clone(),
     }
 }
@@ -1473,7 +1475,7 @@ fn backend_command(preset: &Preset, state: &Path, config: &RuntimeConfig) -> Res
                 .arg("--load-config")
                 .arg(state.join("fluidsynth.conf"));
         }
-        PresetId::MojSint { path, .. } => {
+        PresetId::ShrSynth { path, .. } => {
             command
                 .args(["--client-name", &backend.client_name, "--preset"])
                 .arg(safe_command_path(path)?);
@@ -2371,7 +2373,7 @@ fn connect_midi_input(
         &config.client_name,
         &config.yoshimi.backend.client_name,
         &config.fluidsynth.backend.client_name,
-        &config.moj_sint.backend.client_name,
+        &config.shr_synth.backend.client_name,
     ] {
         disconnect_direct_midi(&input_name, client);
     }
@@ -4178,19 +4180,19 @@ mod tests {
     }
 
     #[test]
-    fn managed_moj_sint_uses_the_documented_distinct_host_invocation() {
+    fn managed_shr_synth_uses_the_documented_distinct_host_invocation() {
         let preset = Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: "Model D".into(),
             category: None,
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model: preset::MojModel::ModelD,
                 path: PathBuf::from("/sounds/model-d.mojsint"),
             },
         };
         let config = RuntimeConfig::default();
         let command = backend_command(&preset, Path::new("/tmp/shr-state"), &config).unwrap();
-        assert_eq!(command.get_program(), "moj-sint");
+        assert_eq!(command.get_program(), "shr-synth");
         assert_eq!(
             command
                 .get_args()
@@ -4198,7 +4200,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "--client-name",
-                "shs-moj-sint",
+                "shs-shr-synth",
                 "--preset",
                 "/sounds/model-d.mojsint"
             ]

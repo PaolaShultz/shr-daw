@@ -55,7 +55,7 @@ in Presets:
 - synthv1 presets;
 - Yoshimi `.xiz` banks;
 - FluidSynth `.sf2` and `.sf3` SoundFonts;
-- Moj Sint `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine,
+- SHR Synth `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine,
   Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets;
 - SHR Sampler `.shrinst` packages.
 
@@ -74,11 +74,11 @@ The main rotary edits parameter 1; click toggles NAV for menu-page selection.
 Dual Filter shows its amp ADSR in the main surface. See
 [Instruments and drums](INSTRUMENTS_AND_DRUMS.md) for model-specific controls.
 Existing controller mappings need no relearning. `SAVE` offers Overwrite, Save
-New, and Cancel for synthv1 and Moj Sint.
+New, and Cancel for synthv1 and SHR Synth.
 Factory and system sounds stay read-only; saving them creates the next private
-`User NNN` sound for that engine and Moj model. The saved values become the
+`User NNN` sound for that engine and SHR Synth model. The saved values become the
 current RESET baseline without restarting the engine. The new sound appears
-immediately in Presets and under its Moj model in FT2 ROUTE. When the running
+immediately in Presets and under its SHR Synth model in FT2 ROUTE. When the running
 sound belongs to an FT2 route, only that active owner is retargeted; saving a
 standalone Player sound never rewrites unrelated Project routes. Cancel or a
 failed save preserves list/cursor state, values, held notes, and the live
@@ -120,15 +120,15 @@ Playback uses the configured stereo output; the file already contains the
 recorded effects and master processing. Unfinished `.wav.part` files and raw
 multitrack folders do not appear in this stereo list.
 
-Moj Sint keeps its own preset format and controls. Its current source catalog
+SHR Synth keeps its own preset format and controls. Its current source catalog
 has 21 authored starts across six editable model families. SHR-DAW's public
 installer pin supplies the first 16 through Bass Matrix; the five Dual Filter
-starts require a compatible newer Moj Sint checkout. SHR Sampler packages are
+starts require a compatible newer SHR Synth checkout. SHR Sampler packages are
 read-only and use their own strict format; the installed project-authored
 factory package is a neutral first-load sound. SHR Drums is separate from the
 managed melodic engine and runs in process. See
 [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md)
-for the complete sound-system guide: Moj controls and saves, Sampler
+for the complete sound-system guide: SHR Synth controls and saves, Sampler
 validation, Drums kits, routing, ownership, recovery, and public provenance.
 
 ## Explore with N00B
@@ -212,7 +212,7 @@ Each FT2 Pattern owns up to four private WAV loop references. Loop Mix browsing
 does not launch audio. Arrangement and Live boundaries switch the MIDI and WAV
 owners together. A bad slot is isolated, and SHR does not time-stretch files.
 
-Ideas preserve free-timed MIDI. A synthv1 or Moj Sint Idea includes its private
+Ideas preserve free-timed MIDI. A synthv1 or SHR Synth Idea includes its private
 preset snapshot; other backends keep their instrument reference. SHR Sampler
 stores the package's stable ID and configured path without copying its sample
 data. Loading an Idea restores its sound before playback.
@@ -262,7 +262,7 @@ tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project se
 require saving even when the Project contains no notes. Synth sound edits use
 Player SAVE; MIDI Learn saves its controller mapping separately.
 
-All eight Moj Sint models respond to the pitch wheel (±2 semitones) and
+All eight SHR Synth models respond to the pitch wheel (±2 semitones) and
 modulation wheel (vibrato depth, up to ±50 cents at 5 Hz). Both work on held
 notes and do not change saved sound controls. A newly loaded engine starts
 with pitch centered and vibrato off.

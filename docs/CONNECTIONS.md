@@ -24,7 +24,7 @@ image directly and does not redraw devices, ports, or cables.
 The main paths are:
 
 - controller or computer keyboard → SHR-DAW;
-- SHR-DAW → synthv1, Yoshimi, FluidSynth, or Moj Sint → JACK audio output;
+- SHR-DAW → synthv1, Yoshimi, FluidSynth, or SHR Synth → JACK audio output;
 - tracker pages → optional external MIDI instruments;
 - optional audio inputs → direct monitoring and/or synchronized stem recording.
 
@@ -75,12 +75,12 @@ own configured FluidSynth when selected.
 
 ## Software instruments
 
-SHR-DAW supports synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler as
+SHR-DAW supports synthv1, Yoshimi, FluidSynth, SHR Synth, and SHR Sampler as
 separately installed programs. Only one SHR-DAW-managed software-engine process
 runs at a time.
 synthv1 and Yoshimi provide one current preset; one FluidSynth process may play
 several SoundFont presets on different MIDI channels while retaining one
-stereo JACK source. Moj Sint contributes exactly `out_l` and `out_r` plus one
+stereo JACK source. SHR Synth contributes exactly `out_l` and `out_r` plus one
 ALSA Sequencer input; it creates no JACK connections itself. The standalone
 SHR Sampler likewise contributes the configured `out_l` and `out_r` plus one
 ALSA Sequencer input and creates no JACK connections itself. The standalone

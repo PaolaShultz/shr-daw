@@ -160,7 +160,7 @@ through one SHR-DAW workflow. Their runtime hosts are:
 - [synthv1](https://synthv1.sourceforge.io/) for subtractive synth presets;
 - [Yoshimi](https://yoshimi.github.io/) for `.xiz` instruments and banks;
 - [FluidSynth](https://www.fluidsynth.org/) for `.sf2` and `.sf3` SoundFonts;
-- Moj Sint for strict `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets; and
+- SHR Synth for strict `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets; and
 - SHR Sampler for strict preloaded `.shrinst` sample packages.
 
 Only one SHR-managed software engine process runs at a time. synthv1 and
@@ -171,10 +171,10 @@ stereo source. Loading another standalone sound may reuse or replace the owned
 process; replacement sends All Notes Off, performs a clean shutdown, and
 starts the next configured host. SHR-DAW records enough process identity to
 stop only the engine it started. It neither layers managed backends nor kills
-an unrelated synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler process
+an unrelated synthv1, Yoshimi, FluidSynth, SHR Synth, or SHR Sampler process
 opened by the user.
 
-Moj Sint is started with `--client-name` and `--preset`, publishes exactly
+SHR Synth is started with `--client-name` and `--preset`, publishes exactly
 `out_l`/`out_r`, accepts timbre/ADSR on its established CCs, and accepts shared
 instrument volume on CC 7. SHR verifies the configured port names and owns only
 the child it started. The browser never launches it; LOAD is the transaction
@@ -243,11 +243,11 @@ part of the installation and recovery contract.
 | Component | Runtime boundary | Component ownership | SHR-DAW ownership |
 | --- | --- | --- | --- |
 | [SHR Drums](https://github.com/PaolaShultz/shr-drums) | Rust library compiled into `shr`; there is no drum child process | Format 1 `.shrkit` validation, bounded sample decode, voice rendering, and the offline `shr-kit` compiler | Pattern timing, MIDI note dispatch, JACK publication, effects, kit selection, and public kit allowlists |
-| [Moj Sint](https://github.com/PaolaShultz/moj-sint) | One managed `moj-sint` process with an ALSA input and stereo JACK output | Preset schema, synthesis models, MIDI controls, audio rendering, and the factory preset manifest | Exact command/preset configuration, process identity and shutdown, route connection, replacement rollback, private saves, and Project state |
+| [SHR Synth](https://github.com/PaolaShultz/shr-synth) | One managed `shr-synth` process with an ALSA input and stereo JACK output | Preset schema, synthesis models, MIDI controls, audio rendering, and the factory preset manifest | Exact command/preset configuration, process identity and shutdown, route connection, replacement rollback, private saves, and Project state |
 | [SHR Sampler](https://github.com/PaolaShultz/shr-sampler) | One managed `shr-sampler` process with an ALSA input and stereo JACK output | Format 1 package parsing, integrity checks, decoded samples, voice rendering, live host, and the cleared factory package | Version/package preflight, exact command/instrument configuration, process identity and shutdown, route connection, replacement rollback, and Project state |
 
 The current exact component revisions live in `Cargo.toml` (SHR Drums) and
-`install/compatibility.json` (external engines). Moj Sint's companion catalog
+`install/compatibility.json` (external engines). SHR Synth's companion catalog
 now includes eight models and 28 starts, including monophonic schema-10
 Open303 with four authored starts. Its MIT and separately permitted Ooura FFT
 notices are retained in the installed documentation. Source changes become
@@ -263,7 +263,7 @@ Public installation copies only files named by the relevant cleared manifest.
 Private presets, kits, samples, packages, renders, Projects, and recordings stay
 outside all four repositories. Developers should read the
 [SHR Drums package format](https://github.com/PaolaShultz/shr-drums/blob/main/FORMAT.md),
-[Moj Sint documentation index](https://github.com/PaolaShultz/moj-sint/blob/main/docs/README.md),
+[SHR Synth documentation index](https://github.com/PaolaShultz/shr-synth/blob/main/docs/README.md),
 and [SHR Sampler host architecture](https://github.com/PaolaShultz/shr-sampler/blob/main/docs/HOST_ARCHITECTURE.md).
 Musicians should start with
 [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md), which describes the
@@ -274,7 +274,7 @@ shared load, play, save, and recovery workflow.
 SHR-DAW uses “record” for three intentionally different jobs:
 
 1. An **Idea** captures free-time MIDI while playing a managed sound. It keeps
-   event timing and instrument identity; synthv1 and Moj Sint Ideas also keep
+   event timing and instrument identity; synthv1 and SHR Synth Ideas also keep
    a private preset snapshot and backend-specific mapped control values, while
    SHR Sampler Ideas keep only the stable package ID and configured public path
    without copying sample content. `PLAY`

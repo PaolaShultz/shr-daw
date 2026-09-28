@@ -11,10 +11,10 @@
       "runtime_maximum_exclusive": null
     },
     {
-      "name": "moj-sint",
+      "name": "shr-synth",
       "version": "0.2.4",
-      "repository": "https://github.com/PaolaShultz/moj-sint.git",
-      "revision": "46b3349788269e05b74a531357f5a3de429a08f5",
+      "repository": "https://github.com/PaolaShultz/shr-synth.git",
+      "revision": "b928c556cadc86dc4a2264a3aa2cc0afd6204062",
       "runtime_minimum": null,
       "runtime_maximum_exclusive": null
     },

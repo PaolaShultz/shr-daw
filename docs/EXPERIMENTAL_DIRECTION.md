@@ -28,14 +28,14 @@ help someone reach a result, understand why it works, and choose what to keep;
 they should not silently compose, replace work, or turn uncertainty into a
 false rule.
 
-Moj Sint provides the complementary experimental path: learn synthesis by
-making instruments. People should eventually be able to create Moj Sint models
+SHR Synth provides the complementary experimental path: learn synthesis by
+making instruments. People should eventually be able to create SHR Synth models
 with or without AI assistance. The favored direction is a low-code typed
 micro-machine format that connects bounded oscillators, counters, events,
 shapers, followers, resonators, filters, feedback, and stereo operations while
-Moj Sint retains validation and real-time safety.
+SHR Synth retains validation and real-time safety.
 
-Every Moj Sint model should remain playable through seven meaningful timbre
+Every SHR Synth model should remain playable through seven meaningful timbre
 controls, shared instrument volume at physical position 5, and ADSR. AI can
 help draft a graph, explain mathematics, or propose control mappings, but
 generated work earns inclusion only through the same inspectable tests and
@@ -45,7 +45,7 @@ A fixed swarm/supersaw-like warm pad is now the first live typed-graph model:
 a familiar musical target that makes population, detuning, phase, coupling,
 motion, width, and normalization easy to hear. It is not a promise of arbitrary
 live graphs or a request to copy an existing synthesizer. The point is to learn
-whether Moj Sint's micro-machines can produce a recognisable sound efficiently
+whether SHR Synth's micro-machines can produce a recognisable sound efficiently
 while remaining editable and characteristically strange.
 
 Across these ideas, the preferred motion is consistent: play first, reveal

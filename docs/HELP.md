@@ -119,7 +119,7 @@ Synthv1 controls add or subtract from SHR's current value immediately. The
 direction-only rotaries have no physical position to catch and cannot jump to
 a stale knob value.
 
-Moj Sint uses the same direction-only behavior with seven model-specific timbre
+SHR Synth uses the same direction-only behavior with seven model-specific timbre
 controls, Volume at physical position 5, and ADSR. RESET restores the loaded
 `.mojsint` values in place without restarting the host. Those controls never
 use synthv1 XML names or parameter indices.
@@ -134,7 +134,7 @@ on PARAM; FT2 PARAM puts it in SOUND item 4. Changing views keeps the sound
 unchanged, and the last three positions stay AUX. `NO FX` means that aux needs
 an effect before the send can move. A non-OFF send activates the effects bus
 with stopped transport; once active, levels ramp live without rebuilding the
-graph. Recording refuses send changes. Moj routes remain inside their selected
+graph. Recording refuses send changes. SHR Synth routes remain inside their selected
 model in FT2 ROUTE. No controller relearning is needed.
 
 SHR Sampler packages are read-only instruments. LOAD validates the host version
@@ -190,7 +190,7 @@ Pressing N00B again restores all chromatic notes. Changing or leaving the
 filter releases held notes first.
 
 Playback and FT2 PARAM `SAVE` offer OVERWRITE, SAVE NEW, and CANCEL for
-synthv1 and Moj Sint. Factory or system sounds are read-only, so Overwrite
+synthv1 and SHR Synth. Factory or system sounds are read-only, so Overwrite
 clearly redirects to a new private `User NNN` sound. A saved sound becomes the
 current RESET baseline without restarting the engine or changing its values. Use the overlay
 with the controller, encoder/Enter, or mouse; keyboard `O`, `N`, and `C` select

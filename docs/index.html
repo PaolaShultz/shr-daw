@@ -335,9 +335,9 @@ noscript p { padding: .7rem; border: 1px solid var(--yellow); color: var(--yello
 <main id="main-content">
 <section class="hero" id="top"><div class="hero-copy"><p class="eyebrow">Raspberry Pi terminal groovebox</p><h1>SHR-DAW</h1><p class="intro">A compact Raspberry Pi music workstation written in Rust.</p><p class="status-line"><span class="led" aria-hidden="true"></span><span class="version experimental">Experimental · compatibility 0.4.9</span><span>40×13 terminal TUI · FT2-style tracker · JACK recording</span></p><p class="experimental-note">This is experimental software; hands-on physical acceptance is still in progress. <a class="external" href="https://github.com/PaolaShultz/shr-daw/issues" target="_blank" rel="noopener noreferrer external">Try it and report what you find</a>.</p><div class="button-row"><a class="button" href="#start-here">Start here</a><a class="button secondary external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">View source</a></div></div><img class="hero-image" alt="SHR-DAW Raspberry Pi music workstation" data-source-sha256="0bbf5d1b53493c2d22849093b017590858cdb28ed6df619a20954b810c7f6a26" decoding="async" fetchpriority="high" height="640" id="hero-image" loading="eager" src="images/shr-daw-header.jpg" width="1600"></section>
 <section class="overview-block" id="connections" aria-labelledby="connections-title"><p class="eyebrow">How it connects</p><h2 id="connections-title">One small centre for the whole setup</h2><figure class="connection-figure"><img class="connection-image" alt="Physical SHR-DAW connections: controller, Raspberry Pi, display, USB audio/MIDI interface, chained MIDI instruments, mixer, monitors, and headphones" data-source-sha256="844ecdb765b7703787b885792b1491ad4a4740bf41d5edcc7da46258e62bdda2" decoding="async" height="675" id="connection-diagram" loading="lazy" src="images/shr-daw-physical-connections.jpg" width="1200"><figcaption>An example setup, not a shopping list. Every device is optional.</figcaption></figure><p><a href="#doc-connections">Open the physical connection guide</a> for exact paths and smaller setups.</p></section>
-<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make, arrange, perform, and record on a small screen</h2><div class="feature-grid"><div class="feature-card">Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 24 editable Moj Sint starts, the cleared SHR Sampler instrument, and four bundled SHR Drums kits.</div><div class="feature-card">Play from a controller or keyboard with pickup-protected sound controls, scale filtering, held-note/chord feedback, private sound saves, free-timed MIDI Ideas, and external-sync controller clock.</div><div class="feature-card">Build FT2-style Patterns and Arrangements with software instruments, external MIDI, drums, Pattern-owned loops, note recording/editing, sparse automation, a metronome/count-in, and format-1 MIDI export.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Shape and mix the complete performance through source, aux, drum, and master effects, a fixed mastering strip, final-bus meters, and safe source controls.</div><div class="feature-card">Record the final 24-bit stereo performance or synchronized raw mono stems with manifests and recovery, including the native 18-channel input overview.</div><div class="feature-card">Configure exact MIDI/audio routes and controller profiles with MIDI Learn, startup diagnosis, safe rollback, and owned-process cleanup.</div><div class="feature-card">Navigate every compact workflow with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
+<section class="overview-block" aria-labelledby="features-title"><p class="eyebrow">What it does</p><h2 id="features-title">Make, arrange, perform, and record on a small screen</h2><div class="feature-grid"><div class="feature-card">Use one installed SHR-DAW sound system with synthv1, Yoshimi, FluidSynth, 24 editable SHR Synth starts, the cleared SHR Sampler instrument, and four bundled SHR Drums kits.</div><div class="feature-card">Play from a controller or keyboard with pickup-protected sound controls, scale filtering, held-note/chord feedback, private sound saves, free-timed MIDI Ideas, and external-sync controller clock.</div><div class="feature-card">Build FT2-style Patterns and Arrangements with software instruments, external MIDI, drums, Pattern-owned loops, note recording/editing, sparse automation, a metronome/count-in, and format-1 MIDI export.</div><div class="feature-card">Perform with quantized Live Patterns and a four-slot Loop Mix whose loops belong to each Pattern.</div><div class="feature-card">Shape and mix the complete performance through source, aux, drum, and master effects, a fixed mastering strip, final-bus meters, and safe source controls.</div><div class="feature-card">Record the final 24-bit stereo performance or synchronized raw mono stems with manifests and recovery, including the native 18-channel input overview.</div><div class="feature-card">Configure exact MIDI/audio routes and controller profiles with MIDI Learn, startup diagnosis, safe rollback, and owned-process cleanup.</div><div class="feature-card">Navigate every compact workflow with a MIDI controller, MIDI keyboard, computer keyboard, or terminal mouse input.</div></div></section>
 <section class="overview-block" id="screenshots" aria-labelledby="screenshots-title"><p class="eyebrow">The 40×13 interface</p><h2 id="screenshots-title">A closer look</h2><div class="screenshot-grid"><figure><img alt="FT2 Pattern editor with four lanes of note data" class="tui-shot" data-source-sha256="2880f9a6a28f8eeb835f8420d2a9865b586021eddb4d695038eaa8f19012f792" decoding="async" height="624" id="shot-2880f9a6a28f" loading="lazy" src="images/shr-daw-ft2-pattern.png" width="960"><figcaption>FT2 Pattern editor</figcaption></figure><figure><img alt="Quantized Live Patterns launcher for performance" class="tui-shot" data-source-sha256="0e176304a09f19dae4683f4f20af8023bd1282d8223bd6883c4ced499fe251cc" decoding="async" height="624" id="shot-0e176304a09f" loading="lazy" src="images/shr-daw-live-patterns.png" width="960"><figcaption>Live Patterns</figcaption></figure></div></section>
-<section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover first launch, everyday music making, the complete instrument system, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-instruments_and_drums"><strong>SHR-DAW instruments and drums</strong><span>One installed sound system with melodic instruments, Moj models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
+<section class="overview-block" id="start-here" aria-labelledby="start-title"><p class="eyebrow">Where to begin</p><h2 id="start-title">Pick what you want to do</h2><p>These guides cover first launch, everyday music making, the complete instrument system, installation, and detailed routing.</p><div class="start-grid"><a class="start-card" href="#doc-first_run"><strong>First run</strong><span>Configure hardware and open SHR-DAW.</span></a><a class="start-card" href="#doc-using_shr_daw"><strong>Using SHR-DAW</strong><span>Musical purpose, the realistic idea-to-sketch workflow, non-goals, instruments, effects, recording, and commands.</span></a><a class="start-card" href="#doc-instruments_and_drums"><strong>SHR-DAW instruments and drums</strong><span>One installed sound system with melodic instruments, SHR Synth models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></a><a class="start-card" href="#doc-installation"><strong>Installation</strong><span>Dependencies, install/uninstall boundaries, repository-local evaluation, JACK, and optional CPU tuning.</span></a><a class="start-card" href="#doc-configuration"><strong>Configuration and tracker routing</strong><span>Every runtime setting and persisted route.</span></a></div></section>
 <section class="overview-block install-block" id="install" aria-labelledby="install-title"><p class="eyebrow">Install and run</p><h2 id="install-title">Try SHR-DAW</h2><pre><code>git clone --depth 1 https://github.com/PaolaShultz/shr-daw.git &amp;&amp; cd shr-daw &amp;&amp; ./scripts/install.sh</code></pre><p>After the setup wizard finishes:</p><p class="safety-note"><strong>Before using audio:</strong> SHR-DAW is experimental software, not a production release. Not every feature has completed hands-on physical testing. Back up Projects and user data, and begin audio testing at a low monitoring level.</p><p><a href="#doc-installation">Open the complete installation guide</a></p></section>
 <section class="documentation-library" id="documentation" aria-labelledby="documentation-title"><header class="library-header"><p class="eyebrow">Detailed guides</p><h2 id="documentation-title">The manual, when you need it</h2><p>Choose a subject and open only that guide. Measurements, maintainer records, and future plans stay in a separate archive below.</p></header>
 <section class="library-group" aria-labelledby="group-start-and-use"><header class="group-header"><p class="eyebrow">Current behaviour</p><h3 id="group-start-and-use">Start and use</h3><p>Musician-facing workflows, screens, performance tools, and physical connections.</p></header>
@@ -470,7 +470,7 @@ in Presets:</p>
 <li>synthv1 presets;</li>
 <li>Yoshimi <code>.xiz</code> banks;</li>
 <li>FluidSynth <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
-<li>Moj Sint <code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine,
+<li>SHR Synth <code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine,
 Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets;</li>
 <li>SHR Sampler <code>.shrinst</code> packages.</li>
 </ul>
@@ -488,11 +488,11 @@ The main rotary edits parameter 1; click toggles NAV for menu-page selection.
 Dual Filter shows its amp ADSR in the main surface. See
 <a href="#doc-instruments_and_drums">Instruments and drums</a> for model-specific controls.
 Existing controller mappings need no relearning. <code>SAVE</code> offers Overwrite, Save
-New, and Cancel for synthv1 and Moj Sint.
+New, and Cancel for synthv1 and SHR Synth.
 Factory and system sounds stay read-only; saving them creates the next private
-<code>User NNN</code> sound for that engine and Moj model. The saved values become the
+<code>User NNN</code> sound for that engine and SHR Synth model. The saved values become the
 current RESET baseline without restarting the engine. The new sound appears
-immediately in Presets and under its Moj model in FT2 ROUTE. When the running
+immediately in Presets and under its SHR Synth model in FT2 ROUTE. When the running
 sound belongs to an FT2 route, only that active owner is retargeted; saving a
 standalone Player sound never rewrites unrelated Project routes. Cancel or a
 failed save preserves list/cursor state, values, held notes, and the live
@@ -529,15 +529,15 @@ returns to the caller. Stop capture and other transports before pressing PLAY.
 Playback uses the configured stereo output; the file already contains the
 recorded effects and master processing. Unfinished <code>.wav.part</code> files and raw
 multitrack folders do not appear in this stereo list.</p>
-<p>Moj Sint keeps its own preset format and controls. Its current source catalog
+<p>SHR Synth keeps its own preset format and controls. Its current source catalog
 has 21 authored starts across six editable model families. SHR-DAW's public
 installer pin supplies the first 16 through Bass Matrix; the five Dual Filter
-starts require a compatible newer Moj Sint checkout. SHR Sampler packages are
+starts require a compatible newer SHR Synth checkout. SHR Sampler packages are
 read-only and use their own strict format; the installed project-authored
 factory package is a neutral first-load sound. SHR Drums is separate from the
 managed melodic engine and runs in process. See
 <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>
-for the complete sound-system guide: Moj controls and saves, Sampler
+for the complete sound-system guide: SHR Synth controls and saves, Sampler
 validation, Drums kits, routing, ownership, recovery, and public provenance.</p>
 <h4 id="doc-using_shr_daw--explore-with-n00b" tabindex="-1">Explore with N00B<a class="heading-anchor" href="#doc-using_shr_daw--explore-with-n00b" aria-label="Link to Explore with N00B">#</a></h4>
 <p>Playback N00B filters live melodic input to a selected root plus major or
@@ -604,7 +604,7 @@ transpose controls are temporary and do not rewrite note cells.</p>
 <p>Each FT2 Pattern owns up to four private WAV loop references. Loop Mix browsing
 does not launch audio. Arrangement and Live boundaries switch the MIDI and WAV
 owners together. A bad slot is isolated, and SHR does not time-stretch files.</p>
-<p>Ideas preserve free-timed MIDI. A synthv1 or Moj Sint Idea includes its private
+<p>Ideas preserve free-timed MIDI. A synthv1 or SHR Synth Idea includes its private
 preset snapshot; other backends keep their instrument reference. SHR Sampler
 stores the package's stable ID and configured path without copying its sample
 data. Loading an Idea restores its sound before playback.</p>
@@ -645,7 +645,7 @@ changing the synth's own parameters there do not change the Project. Player TAP
 tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project settings and can
 require saving even when the Project contains no notes. Synth sound edits use
 Player SAVE; MIDI Learn saves its controller mapping separately.</p>
-<p>All eight Moj Sint models respond to the pitch wheel (±2 semitones) and
+<p>All eight SHR Synth models respond to the pitch wheel (±2 semitones) and
 modulation wheel (vibrato depth, up to ±50 cents at 5 Hz). Both work on held
 notes and do not change saved sound controls. A newly loaded engine starts
 with pitch centered and vibrato off.</p>
@@ -723,10 +723,10 @@ sends a low-gain note, and measures a bounded run. Run it only with
 explicit authorization. Its setup contract is in
 <a href="#doc-configuration--owned-audio-graph">Configuration and routing</a>.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-instruments_and_drums" data-source="docs/INSTRUMENTS_AND_DRUMS.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">SHR-DAW instruments and drums</span><span class="document-summary">One installed sound system with melodic instruments, Moj models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/INSTRUMENTS_AND_DRUMS.md" target="_blank" rel="noopener noreferrer external">View docs/INSTRUMENTS_AND_DRUMS.md source</a></div><p>The installed SHR-DAW package is one music workstation with a complete sound
+<details class="document" id="doc-instruments_and_drums" data-source="docs/INSTRUMENTS_AND_DRUMS.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">SHR-DAW instruments and drums</span><span class="document-summary">One installed sound system with melodic instruments, SHR Synth models and saves, Sampler, Drums kits, routing, ownership, and recovery.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/INSTRUMENTS_AND_DRUMS.md" target="_blank" rel="noopener noreferrer external">View docs/INSTRUMENTS_AND_DRUMS.md source</a></div><p>The installed SHR-DAW package is one music workstation with a complete sound
 system: five melodic instrument families, the SHR Drums instrument and kits,
 one controller workflow, one tracker, one effects graph, and one final audio
-bus. Moj Sint, SHR Sampler, and SHR Drums arrive and work together as parts of
+bus. SHR Synth, SHR Sampler, and SHR Drums arrive and work together as parts of
 SHR-DAW. Their names identify kinds of sound available inside the workstation.</p>
 <p>This guide is the musician-facing home for choosing, loading, playing, saving,
 routing, and recovering SHR-DAW sounds. Machine paths and component version
@@ -762,7 +762,7 @@ audio ownership remain in <a href="#doc-how_it_works">How SHR-DAW works</a>.</p>
 <td>Bank/program selection, Volume, and shared stereo AUX sends; SoundFonts remain read-only</td>
 </tr>
 <tr>
-<td>Moj Sint</td>
+<td>SHR Synth</td>
 <td><code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 sounds</td>
 <td>Melodic synth</td>
 <td>Model-specific controls and Project AUX sends; Dual Filter adds a reversible core click; private Overwrite or Save New</td>
@@ -784,7 +784,7 @@ audio ownership remain in <a href="#doc-how_it_works">How SHR-DAW works</a>.</p>
 <p>All six families participate in the same Project, routes, effects, transport,
 recording, controller, and final-bus workflows. At the implementation boundary,
 only one SHR-managed <strong>melodic host process</strong> runs at a time. Loading a new
-synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler sound safely replaces or
+synthv1, Yoshimi, FluidSynth, SHR Synth, or SHR Sampler sound safely replaces or
 reuses that owner. FluidSynth may hold several compatible channel parts inside
 its one process. SHR Drums renders in process and can play beside the selected
 melodic instrument. This arrangement keeps drum audio independent inside the
@@ -813,8 +813,8 @@ musician.</p>
 stop it. A new, empty, unsaved FT2 Project can adopt that exact Player sound on
 its first software page without restarting the host. A saved or already edited
 Project keeps its stored routes.</p>
-<h4 id="doc-instruments_and_drums--moj-sint-sounds" tabindex="-1">Moj Sint sounds<a class="heading-anchor" href="#doc-instruments_and_drums--moj-sint-sounds" aria-label="Link to Moj Sint sounds">#</a></h4>
-<p>Moj Sint is SHR-DAW's editable in-house synthesis family. The installer pins
+<h4 id="doc-instruments_and_drums--shr-synth-sounds" tabindex="-1">SHR Synth sounds<a class="heading-anchor" href="#doc-instruments_and_drums--shr-synth-sounds" aria-label="Link to SHR Synth sounds">#</a></h4>
+<p>SHR Synth is SHR-DAW's editable in-house synthesis family. The installer pins
 a 28-start catalog with these eight models:</p>
 <ul>
 <li>
@@ -852,22 +852,22 @@ slide. Releasing the latest note returns to the most recently held note.</p>
 acid filter and accent/slide envelope controls.</p>
 </li>
 </ul>
-<p>Pressure Chain requires Moj Sint preset schema 9; Open303 requires schema 10. The installation pin contains
+<p>Pressure Chain requires SHR Synth preset schema 9; Open303 requires schema 10. The installation pin contains
 that engine and all 28 cleared starts. Existing installations need a matching
 host binary update before loading the new model; source changes alone do not
 replace a running or installed executable.</p>
 <p>Presets groups the available catalog in the fixed model order Model D, Six-Op
 PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, then Open303. Visible identities use
 one model letter and a two-digit number local to that model: <code>D01</code>, <code>P01</code>,
-<code>O01</code>, <code>S01</code>, <code>B01</code>, <code>F01</code>, <code>C01</code>, and <code>A01</code>. Opening or switching to Moj Sint starts at
+<code>O01</code>, <code>S01</code>, <code>B01</code>, <code>F01</code>, <code>C01</code>, and <code>A01</code>. Opening or switching to SHR Synth starts at
 <code>D01 Full Bass</code>; letter-jump follows those visible model letters. In FT2
-<strong>ROUTE</strong>, choosing Moj Sint adds an explicit <code>ENGINE → MODEL → PATCH</code>
+<strong>ROUTE</strong>, choosing SHR Synth adds an explicit <code>ENGINE → MODEL → PATCH</code>
 hierarchy. Changing the model selects that model's first available patch, and
 patch browsing never crosses the selected model boundary. Apply keeps the
 complete live-auditioned route; Cancel restores its opening snapshot.</p>
 <p>The Presets list, Playback, and FT2 <strong>PARAM</strong> show one inverted <code>M</code> cell beside
 Pressure Chain and Open303 sounds: these models play one note at a time.
-Long names leave room for the marker. The other Moj models have no voice marker.</p>
+Long names leave room for the marker. The other SHR Synth models have no voice marker.</p>
 <p>Playback and FT2 <strong>PARAM</strong> share a <strong>4×4</strong> surface matching physical rotaries
 1–16. The first two rows hold tone controls, the third holds envelopes, and
 the last is always <strong>Volume / AUX 1 / AUX 2 / AUX 3</strong>. Rotary 1 normally edits
@@ -973,8 +973,8 @@ own CC instead of the first similarly named control in another model.</p>
 FluidSynth's sends process its whole shared stereo mix. External MIDI instruments
 need a configured audio return for SHR effects. AUX sends are consumed inside
 SHR, start OFF, and retain absolute pickup and recording guards.</p>
-<p>Volume uses standard CC7 on Moj and the optional managed hosts; synthv1 uses
-its own DCA control. Moj's smoothed volume runs from silence to the preset's
+<p>Volume uses standard CC7 on SHR Synth and the optional managed hosts; synthv1 uses
+its own DCA control. SHR Synth's smoothed volume runs from silence to the preset's
 normal maximum without entering timbre DSP. Optional hosts' preset files remain
 read-only; Project MIDI state and FT2 automation own durable volume. Relative
 turns continue from the effective value after load, reset and automation changes.</p>
@@ -982,9 +982,9 @@ turns continue from the effective value after load, reset and automation changes
 Filter also restores its saved INDUSTRIAL or COUNTER core.
 <strong>SAVE</strong> offers Overwrite, Save New, and Cancel. Factory/system sounds are
 read-only, so Overwrite redirects to the next private <code>User NNN</code> sound. All
-eight Moj models keep separate private namespaces. A successful save becomes the
+eight SHR Synth models keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
-the live sound and any previous file intact. A Moj Sint Idea carries its
+the live sound and any previous file intact. A SHR Synth Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable
 sound identity.</p>
 <h4 id="doc-instruments_and_drums--shr-sampler-instruments" tabindex="-1">SHR Sampler instruments<a class="heading-anchor" href="#doc-instruments_and_drums--shr-sampler-instruments" aria-label="Link to SHR Sampler instruments">#</a></h4>
@@ -1014,8 +1014,8 @@ possible.</p>
 <p>The public installation contains four cleared kits:</p>
 <ul>
 <li>Acid, an original fully modelled CC0 kit;</li>
-<li>Electronic House, original modelled voices plus two deterministic CC0 Moj
-Sint one-shot exports;</li>
+<li>Electronic House, original modelled voices plus two deterministic CC0 SHR
+Synth one-shot exports;</li>
 <li>Big Rock, a curated CC BY 4.0 acoustic kit; and</li>
 <li>Experimental Noise, a curated CC BY 4.0 experimental kit.</li>
 </ul>
@@ -1040,7 +1040,7 @@ borrows a drum voice.</p>
 <thead>
 <tr>
 <th>Context</th>
-<th>Moj Sint</th>
+<th>SHR Synth</th>
 <th>SHR Sampler</th>
 <th>SHR Drums</th>
 </tr>
@@ -1092,7 +1092,7 @@ XDG data roots or ignored <code>$SHSYNTH_USER_DIR/</code>. Public factory materi
 the repository allowlists. SHR-DAW installs and operates the system as one
 workstation, while its component source and sound formats remain public:</p>
 <ul>
-<li><a href="https://github.com/PaolaShultz/moj-sint" class="external" target="_blank" rel="noopener noreferrer external">Moj Sint source and preset format</a>;</li>
+<li><a href="https://github.com/PaolaShultz/shr-synth" class="external" target="_blank" rel="noopener noreferrer external">SHR Synth source and preset format</a>;</li>
 <li><a href="https://github.com/PaolaShultz/shr-sampler" class="external" target="_blank" rel="noopener noreferrer external">SHR Sampler source and instrument format</a>;</li>
 <li><a href="https://github.com/PaolaShultz/shr-drums" class="external" target="_blank" rel="noopener noreferrer external">SHR Drums source, kit format, and provenance</a>.</li>
 </ul>
@@ -1367,7 +1367,7 @@ or replaces the managed preset.</p>
 <p>Synthv1 controls add or subtract from SHR's current value immediately. The
 direction-only rotaries have no physical position to catch and cannot jump to
 a stale knob value.</p>
-<p>Moj Sint uses the same direction-only behavior with seven model-specific timbre
+<p>SHR Synth uses the same direction-only behavior with seven model-specific timbre
 controls, Volume at physical position 5, and ADSR. RESET restores the loaded
 <code>.mojsint</code> values in place without restarting the host. Those controls never
 use synthv1 XML names or parameter indices.
@@ -1382,7 +1382,7 @@ on PARAM; FT2 PARAM puts it in SOUND item 4. Changing views keeps the sound
 unchanged, and the last three positions stay AUX. <code>NO FX</code> means that aux needs
 an effect before the send can move. A non-OFF send activates the effects bus
 with stopped transport; once active, levels ramp live without rebuilding the
-graph. Recording refuses send changes. Moj routes remain inside their selected
+graph. Recording refuses send changes. SHR Synth routes remain inside their selected
 model in FT2 ROUTE. No controller relearning is needed.</p>
 <p>SHR Sampler packages are read-only instruments. LOAD validates the host version
 and complete <code>.shrinst</code> package before replacing the current sound. A failure
@@ -1429,7 +1429,7 @@ scale keep their pitch and sound normally; notes outside it stay silent.
 Pressing N00B again restores all chromatic notes. Changing or leaving the
 filter releases held notes first.</p>
 <p>Playback and FT2 PARAM <code>SAVE</code> offer OVERWRITE, SAVE NEW, and CANCEL for
-synthv1 and Moj Sint. Factory or system sounds are read-only, so Overwrite
+synthv1 and SHR Synth. Factory or system sounds are read-only, so Overwrite
 clearly redirects to a new private <code>User NNN</code> sound. A saved sound becomes the
 current RESET baseline without restarting the engine or changing its values. Use the overlay
 with the controller, encoder/Enter, or mouse; keyboard <code>O</code>, <code>N</code>, and <code>C</code> select
@@ -1890,7 +1890,7 @@ Every musician-facing screen shows channels 1–16 and programs 1–128.</p>
 <p>Each page keeps one MIDI target plus four independent column channel, bank, and
 master-program setups. It also keeps velocity, mute, percussion, optional
 device-profile metadata, and lane settings. A software target stores its engine
-and that engine's stable instrument identity in the Pattern. Moj Sint stable
+and that engine's stable instrument identity in the Pattern. SHR Synth stable
 identities are model-qualified. When page 1 is
 part of a genuinely new, empty, unsaved default Project, entering FT2 may
 replace its factory route with the currently loaded Player engine/instrument.
@@ -1906,7 +1906,7 @@ route/channel. Their four lanes remain independent: two shared pages provide
 eight simultaneous tracker lanes, and further pages extend that pool within
 the Project and synth voice limits. The same route may also be used on several
 channels.</p>
-<p>SHR still owns one synth host at a time. synthv1, Yoshimi, Moj Sint, and SHR
+<p>SHR still owns one synth host at a time. synthv1, Yoshimi, SHR Synth, and SHR
 Sampler expose one current instrument, while one owned FluidSynth process is multitimbral: each distinct
 SoundFont preset/channel pair is selected once without changing other
 channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
@@ -1919,11 +1919,11 @@ MIDI output, or a FluidSynth General MIDI compatibility route. An unavailable
 saved target remains visibly offline and silent; it never falls back to another
 route. SHR Drums is an in-process stereo source and does not consume the one
 managed melodic-synth slot, so it can play beside synthv1, Yoshimi, FluidSynth,
-Moj Sint, or SHR Sampler. Switching targets sends All Notes Off and immediate
+SHR Synth, or SHR Sampler. Switching targets sends All Notes Off and immediate
 drum chokes.
 Loaded Projects keep their saved routes and channels, and loading a reusable
 drum pattern copies cells only.</p>
-<p>The complete musician-facing comparison, including Moj model controls and
+<p>The complete musician-facing comparison, including SHR Synth model controls and
 saves, Sampler package validation, installed drum kits, ownership, and failure
 recovery, is in
 <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>.</p>
@@ -1960,7 +1960,7 @@ or changing its selected column. Its final row opens the full <strong>TRACKS</st
 select a page, choose a column, set its target, channel, bank, and program, and
 open <strong>SYS</strong> → <strong>ENTRY</strong> to choose that page's note-entry layout.
 <strong>DONE</strong> validates shared-channel compatibility and keeps the changes. Internal
-routes use <code>TARGET → ENGINE → INSTR</code>; Moj Sint inserts its explicit <code>MODEL → PATCH</code> hierarchy after <code>ENGINE</code>; external routes use
+routes use <code>TARGET → ENGINE → INSTR</code>; SHR Synth inserts its explicit <code>MODEL → PATCH</code> hierarchy after <code>ENGINE</code>; external routes use
 <code>TARGET → MIDI OUT → CH → INSTR/PROG</code>. <strong>SYS</strong>
 → <strong>EXIT</strong> restores the Project as it was before TRACKS opened. A disconnected
 saved target is marked <code>OFFLINE</code> (or <code>AMBIG</code> for duplicate stable identities);
@@ -1977,7 +1977,7 @@ choices. Applying a different kit must start it before the
 route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.</p>
-<p>For Moj Sint, <strong>ENGINE</strong> stays <code>Moj Sint</code>, <strong>MODEL</strong> cycles Model D, Six-Op PM,
+<p>For SHR Synth, <strong>ENGINE</strong> stays <code>SHR Synth</code>, <strong>MODEL</strong> cycles Model D, Six-Op PM,
 Strange Oscillator, Swarm Machine, and Bass Matrix, and <strong>PATCH</strong> stays inside
 the selected model.
 Changing the model selects its first available patch; changing patches never
@@ -2174,7 +2174,7 @@ tracker page, lane/column, mode, and controller-menu page. Main-encoder click,
 Back, or SYS <code>EXIT</code> returns to that exact editing location.</p>
 <p>The panel shows at most twelve current-Pattern strips in one 4×3 grid. A strip
 is not a MIDI velocity or CC-volume control: it points directly to one existing
-final-bus audio owner. synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler
+final-bus audio owner. synthv1, Yoshimi, FluidSynth, SHR Synth, and SHR Sampler
 pages use <code>SYN</code>; SHR Drums pages use <code>DRM</code>; attached Pattern Loop Mix appears as <code>LOP</code>
 when the twelve-strip cap has room; and an external-MIDI page uses <code>INP</code> only
 when an exact two-port SHR input return is configured. Otherwise it says <code>NO RETURN</code> and has no gain or VU. MTR owns whether that pair is stereo or dual
@@ -2840,7 +2840,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>Presets</td>
-<td>Select previous/next, keyboard page up/down, first/last, Shift-rotary previous/next engine across synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler, and load the selected sound. Moj Sint sounds show their synthesis model separately from the Moj Sint engine; SHR Sampler packages remain read-only. Its physical pages contain only sound browsing, load, panic, contextual help, and Exit to Home; engine browsing remains available from Shift-rotary, <code>[</code>/<code>]</code>, and the two header halves.</td>
+<td>Select previous/next, keyboard page up/down, first/last, Shift-rotary previous/next engine across synthv1, Yoshimi, FluidSynth, SHR Synth, and SHR Sampler, and load the selected sound. SHR Synth sounds show their synthesis model separately from the SHR Synth engine; SHR Sampler packages remain read-only. Its physical pages contain only sound browsing, load, panic, contextual help, and Exit to Home; engine browsing remains available from Shift-rotary, <code>[</code>/<code>]</code>, and the two header halves.</td>
 </tr>
 <tr>
 <td>MTR</td>
@@ -2848,7 +2848,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>Playback</td>
-<td>Inspect held notes/chords and the enabled N00B scale in one row; Shift-turn changes the N00B scale; reset the active synth parameters in place; open and return from the FX rack without stopping the sound; use STOP/PLAY/RECORD/TAP for a free-time take or the dedicated external-sync controller arpeggiator; save the current synthv1 or Moj Sint sound through the explicit Overwrite/Save New/Cancel overlay; use <code>SOUNDS</code> to return directly to the Presets catalog and its visible <code>LOAD</code>; panic; contextual help; return to Presets. PLAY sends a fresh controller Start even with no take, MIDIREC starts the same clock before MIDI capture; AUDIO offers WAVSTOP / DETAILS / WAV REC for independent final stereo capture, and STOP finalizes stereo and sends Stop without unloading the sound, and TAP changes tempo without starting transport. Factory/system sounds are read-only and redirect Overwrite to a private numbered sound. Saving changes neither the running engine nor held notes and makes the values the new RESET baseline. N00B never replaces the Player body. The native parameter surface is four by four, ending in Volume/AUX 1/AUX 2/AUX 3 on physical rotaries 13–16. Rotary 1 edits parameter 1; click toggles NAV for selecting menu pages. Dual Filter exposes its complete amp envelope on row 3. Aux sends use a live 10 ms gain ramp and refuse changes during recording. Direction-only mappings carry current values.</td>
+<td>Inspect held notes/chords and the enabled N00B scale in one row; Shift-turn changes the N00B scale; reset the active synth parameters in place; open and return from the FX rack without stopping the sound; use STOP/PLAY/RECORD/TAP for a free-time take or the dedicated external-sync controller arpeggiator; save the current synthv1 or SHR Synth sound through the explicit Overwrite/Save New/Cancel overlay; use <code>SOUNDS</code> to return directly to the Presets catalog and its visible <code>LOAD</code>; panic; contextual help; return to Presets. PLAY sends a fresh controller Start even with no take, MIDIREC starts the same clock before MIDI capture; AUDIO offers WAVSTOP / DETAILS / WAV REC for independent final stereo capture, and STOP finalizes stereo and sends Stop without unloading the sound, and TAP changes tempo without starting transport. Factory/system sounds are read-only and redirect Overwrite to a private numbered sound. Saving changes neither the running engine nor held notes and makes the values the new RESET baseline. N00B never replaces the Player body. The native parameter surface is four by four, ending in Volume/AUX 1/AUX 2/AUX 3 on physical rotaries 13–16. Rotary 1 edits parameter 1; click toggles NAV for selecting menu pages. Dual Filter exposes its complete amp envelope on row 3. Aux sends use a live 10 ms gain ramp and refuse changes during recording. Direction-only mappings carry current values.</td>
 </tr>
 <tr>
 <td>Ideas</td>
@@ -2856,7 +2856,7 @@ or <code>q</code> can still exit from the splash.</p>
 </tr>
 <tr>
 <td>FT2 normal</td>
-<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries, while Shift-click opens the FT2 live mixer. Keyboard Up/Down also moves rows. PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, SOUND contains PARAM, MIX, AUTO, and FX, and SYS holds panic/N00B/help/Exit. PARAM and AUTO return to the exact cursor, mode, transport, route, and launching page. CLICK toggles the internally owned final-bus metronome from FT2 Tools SYS item 3. With external <code>SYNC</code> selected, local PLAY enters visible clock waiting or performs literal Stop; only an acquired incoming Start launches Arrangement step 1/row 1 or selected Pattern/row 1. In ROUTE, turning an active field validates and applies the choice to the Project and live route. Moj Sint exposes <code>ENGINE → MODEL → PATCH</code>; patch browsing stays within its selected model. <code>APPLY</code> keeps the result; <code>CANCEL</code> restores the route snapshot from when the overlay opened. Back restores the active field first. The physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code> share those actions. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; a successful kit change resets old kit-specific tuning while preserving the Project key and drum effects. Exit navigates Home without a guard and retains all Project work, engine ownership, transport, recording, and cursor/mode/controller context. Quit and Project replacement guard every dirty Project.</td>
+<td>The main rotary always moves rows; holding the configured encoder Shift while turning selects the previous/next column across page boundaries, while Shift-click opens the FT2 live mixer. Keyboard Up/Down also moves rows. PLAY holds cell edit and transport, SELECT opens PAGE/PATTERN/SONG/ROUTE rotary overlays, SOUND contains PARAM, MIX, AUTO, and FX, and SYS holds panic/N00B/help/Exit. PARAM and AUTO return to the exact cursor, mode, transport, route, and launching page. CLICK toggles the internally owned final-bus metronome from FT2 Tools SYS item 3. With external <code>SYNC</code> selected, local PLAY enters visible clock waiting or performs literal Stop; only an acquired incoming Start launches Arrangement step 1/row 1 or selected Pattern/row 1. In ROUTE, turning an active field validates and applies the choice to the Project and live route. SHR Synth exposes <code>ENGINE → MODEL → PATCH</code>; patch browsing stays within its selected model. <code>APPLY</code> keeps the result; <code>CANCEL</code> restores the route snapshot from when the overlay opened. Back restores the active field first. The physical item buttons, mouse, and keyboard <code>A</code>/<code>C</code> share those actions. Its <code>KIT</code> field selects an installed SHR Drums kit when the target is SHR Drums; a successful kit change resets old kit-specific tuning while preserving the Project key and drum effects. Exit navigates Home without a guard and retains all Project work, engine ownership, transport, recording, and cursor/mode/controller context. Quit and Project replacement guard every dirty Project.</td>
 </tr>
 <tr>
 <td>FT2 PARAM</td>
@@ -4344,7 +4344,7 @@ RESET and keyboard Enter in Player retain explicit in-place reset.</p>
 represent rotaries 2–16, so the final three AUX mappings do not move. Empty
 model positions do nothing. No controller Learn or Project format migration is
 needed. The complete model-by-model surface and audit decisions are in
-<a href="#doc-instruments_and_drums--moj-sint-sounds">Instruments and drums</a>.</p>
+<a href="#doc-instruments_and_drums--shr-synth-sounds">Instruments and drums</a>.</p>
 <p>AUX send rotaries move by 1 dB per decoded MIDI step. Encoder acceleration
 therefore produces 2–3 dB movements instead of 6–9 dB jumps. The full
 −60..+12 dB range remains available; turning below −60 dB switches the send OFF.</p>
@@ -4380,7 +4380,7 @@ quiet, the same role automatically re-arms for retry.</p>
 <p><code>Action</code> and the empty menu slots remain extension points. Future features are
 not shown on the hardware menu until they actually dispatch a working action.</p>
 <h5 id="doc-controller_interface--open303" tabindex="-1">Open303<a class="heading-anchor" href="#doc-controller_interface--open303" aria-label="Link to Open303">#</a></h5>
-<p>Moj Open303's native envelope timings occupy row 3; Volume and three AUX sends
+<p>SHR Synth Open303's native envelope timings occupy row 3; Volume and three AUX sends
 occupy row 4. Its complete mapping is in the instrument guide above. A01–A04
 are the four factory starts; the inverted M marks monophonic operation. Filter
 identity is preset-owned.</p>
@@ -4402,7 +4402,7 @@ image directly and does not redraw devices, ports, or cables.</p>
 <p>The main paths are:</p>
 <ul>
 <li>controller or computer keyboard → SHR-DAW;</li>
-<li>SHR-DAW → synthv1, Yoshimi, FluidSynth, or Moj Sint → JACK audio output;</li>
+<li>SHR-DAW → synthv1, Yoshimi, FluidSynth, or SHR Synth → JACK audio output;</li>
 <li>tracker pages → optional external MIDI instruments;</li>
 <li>optional audio inputs → direct monitoring and/or synchronized stem recording.</li>
 </ul>
@@ -4443,12 +4443,12 @@ which connects hardware and application MIDI ports broadly. Accept the
 recommended exclusive-routing cleanup in <code>shr-setup</code>; SHR can still launch its
 own configured FluidSynth when selected.</p>
 <h4 id="doc-connections--software-instruments" tabindex="-1">Software instruments<a class="heading-anchor" href="#doc-connections--software-instruments" aria-label="Link to Software instruments">#</a></h4>
-<p>SHR-DAW supports synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler as
+<p>SHR-DAW supports synthv1, Yoshimi, FluidSynth, SHR Synth, and SHR Sampler as
 separately installed programs. Only one SHR-DAW-managed software-engine process
 runs at a time.
 synthv1 and Yoshimi provide one current preset; one FluidSynth process may play
 several SoundFont presets on different MIDI channels while retaining one
-stereo JACK source. Moj Sint contributes exactly <code>out_l</code> and <code>out_r</code> plus one
+stereo JACK source. SHR Synth contributes exactly <code>out_l</code> and <code>out_r</code> plus one
 ALSA Sequencer input; it creates no JACK connections itself. The standalone
 SHR Sampler likewise contributes the configured <code>out_l</code> and <code>out_r</code> plus one
 ALSA Sequencer input and creates no JACK connections itself. The standalone
@@ -4554,7 +4554,7 @@ invoke that page's items wherever a controller strip is present.</p>
 <h4 id="doc-menu-everyday_screens--presets" tabindex="-1">Presets<a class="heading-anchor" href="#doc-menu-everyday_screens--presets" aria-label="Link to Presets">#</a></h4>
 <p><strong>Software Synths</strong> opens Presets. Turn the main encoder, use the arrow keys,
 or use the mouse wheel to choose a sound. Hold the configured encoder Shift
-while turning to move between the synthv1, Yoshimi, FluidSynth, Moj Sint, and
+while turning to move between the synthv1, Yoshimi, FluidSynth, SHR Synth, and
 SHR Sampler catalogs. Loading replaces the one managed software instrument; it
 never layers engines. Within the same SHR-DAW sound system, the Drums
 instrument belongs to its FT2 page and kit route rather than the melodic
@@ -4586,17 +4586,17 @@ physical command pads deliberately do not duplicate that coarse scrolling.
 On the controller, LOAD uses semantic position 6; position 5 remains available
 for STOP/PANIC where that direct safety action exists.</p>
 <h5 id="doc-menu-everyday_screens--change-instrument-host" tabindex="-1">Change instrument host<a class="heading-anchor" href="#doc-menu-everyday_screens--change-instrument-host" aria-label="Link to Change instrument host">#</a></h5>
-<p>Shift-turn the main rotary to move among synthv1, Yoshimi, FluidSynth, Moj
-Sint, and SHR Sampler in either direction. Keyboard <code>[</code>/<code>]</code> and clicking the
+<p>Shift-turn the main rotary to move among synthv1, Yoshimi, FluidSynth, SHR
+Synth, and SHR Sampler in either direction. Keyboard <code>[</code>/<code>]</code> and clicking the
 left/right half of the Presets heading remain equivalent. Catalog changes are
 silent: they only change the list and reset its selection according to the
 existing catalog contract. <code>LOAD</code> is the sole managed preset start or
 replacement action.</p>
-<p>The Moj Sint catalog has 21 ordered starts: seven Model D sounds, six Six-Op PM
+<p>The SHR Synth catalog has 21 ordered starts: seven Model D sounds, six Six-Op PM
 sounds, Strange Oscillator, Swarm Warm Pad, Bass Matrix, and five Dual Filter
 sounds. The list is grouped by model and gives each model one letter plus a
 two-digit number local to that model: <code>D01</code>, <code>P01</code>, <code>O01</code>, <code>S01</code>, <code>B01</code>, and
-<code>F01</code>. Opening or switching to Moj Sint selects <code>D01 Full Bass</code>, and typing a
+<code>F01</code>. Opening or switching to SHR Synth selects <code>D01 Full Bass</code>, and typing a
 model letter jumps to that visible group. Selecting one only browses; <code>LOAD</code>
 starts it.</p>
 <p>SHR Sampler lists strict read-only <code>.shrinst</code> packages. <code>LOAD</code> validates the
@@ -4624,7 +4624,7 @@ result.
 On the keyboard, red white-key areas are held natural notes and red upper <code>└</code>
 marks are held sharps. Parameter colors are relative to the loaded preset:
 green below the original value, bright yellow near it, and red above it. The
-first five Moj models use seven model-specific timbre controls plus Volume and
+first five SHR Synth models use seven model-specific timbre controls plus Volume and
 ADSR; synthv1 retains its own names and indices. Yoshimi, FluidSynth, and SHR
 Sampler show Volume at position 5 (physical rotary 6) and the same three AUX
 sends. The main encoder press resets the synthesis controls, including Dual
@@ -4659,10 +4659,10 @@ interface direct monitoring and unrelated applications are excluded.</p>
 relative turns continue from those restored values.
 <code>SAVE</code> opens <code>OVERWRITE</code>, <code>SAVE NEW</code>, and <code>CANCEL</code>. Factory and system sounds
 are read-only, so their Overwrite row clearly saves a new private <code>User NNN</code>
-sound instead. Save New numbers sounds independently for synthv1, Moj Sint
-Model D, and Moj Sint Six-Op PM. A successful save becomes the current sound
+sound instead. Save New numbers sounds independently for synthv1, SHR Synth
+Model D, and SHR Synth Six-Op PM. A successful save becomes the current sound
 and the new RESET baseline immediately; it does not restart the engine, release
-held notes, or change the controls. Presets refreshes immediately, and a Moj
+held notes, or change the controls. Presets refreshes immediately, and a SHR Synth
 sound remains inside its Model D or Six-Op PM hierarchy in FT2 ROUTE. Cancel
 closes only the overlay and preserves cursor/list state, live values, and held
 notes. A failed save preserves that state and any prior user file while keeping
@@ -4688,7 +4688,7 @@ page empty.</p>
 without restarting the sound. <code>HELP</code> opens help and returns here afterward.
 <code>EXIT</code> returns to Presets, then Presets <code>EXIT</code> returns Home.</p>
 <p>See <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a> for the
-complete Moj Sint, SHR Sampler, and SHR Drums workflows and their ownership
+complete SHR Synth, SHR Sampler, and SHR Drums workflows and their ownership
 boundaries.</p>
 <h5 id="doc-menu-everyday_screens--n00b-on-playback-pages" tabindex="-1">N00B-on Playback pages<a class="heading-anchor" href="#doc-menu-everyday_screens--n00b-on-playback-pages" aria-label="Link to N00B-on Playback pages">#</a></h5>
 <p>N00B changes only the scale filter and its compact rotary; the Playback
@@ -5142,7 +5142,7 @@ lane, column, cursor row, mode, transport, route, or managed-engine ownership.
 Back/Esc or SYS <code>EXIT</code> returns to that exact location and the launching SOUND
 page. Instrument selection remains in <code>ROUTE</code>.</p>
 <p>The child reuses Playback's current 3×5 view, including the active synthv1 or
-Moj Sint model labels, live values, relative-to-preset colours, rotary carry, and
+SHR Synth model labels, live values, relative-to-preset colours, rotary carry, and
 held notes. Every managed backend keeps Project AUX 1/2/3 at positions 13–15,
 physical rotaries 14–16. Its SOUND page contains <code>RESET</code>, <code>SAVE</code>, <code>N00B</code>, and
 <code>AMP</code> for Dual Filter. AMP puts amp ADSR at positions 1–4; the action becomes
@@ -5599,10 +5599,10 @@ set the project's compiler direction; the installer uses the official per-user
 rustup toolchain. A running JACK server is optional for browsing and editing
 but required for software-instrument audio, WAV-loop playback, and multitrack
 recording.
-synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
+synthv1, Yoshimi, FluidSynth/TimGM, SHR Synth, and SHR Sampler are separate
 optional melodic engines at runtime. The supported installer installs all five
 from distribution packages or the exact public revisions in
-<code>install/compatibility.json</code>. It installs Moj Sint's 16 allowlisted factory
+<code>install/compatibility.json</code>. It installs SHR Synth's 28 allowlisted factory
 presets and SHR Sampler's allowlisted project-authored factory package; it
 never copies private presets, samples, packages, or user data from a checkout.
 SHR Drums remains an exact pinned in-process Rust dependency, so there is no
@@ -5629,18 +5629,18 @@ than production releases.</p>
 </thead>
 <tbody>
 <tr>
-<td>Moj Sint</td>
-<td>0.2.3</td>
-<td>exact public commit, <code>moj-sint</code>, 16 cleared presets</td>
+<td>SHR Synth</td>
+<td>0.2.4</td>
+<td>exact public commit, <code>shr-synth</code>, 28 cleared presets</td>
 </tr>
 <tr>
 <td>SHR Sampler</td>
-<td>0.1.2 (accepted runtime <code>&gt;=0.1.2,&lt;0.2.0</code>)</td>
+<td>0.1.3 (accepted runtime <code>&gt;=0.1.2,&lt;0.2.0</code>)</td>
 <td>exact public commit, <code>shr-sampler</code>, one cleared package</td>
 </tr>
 <tr>
 <td>SHR Drums</td>
-<td>0.2.0 (accepted library <code>&gt;=0.2.0,&lt;0.3.0</code>)</td>
+<td>0.2.1 (accepted library <code>&gt;=0.2.0,&lt;0.3.0</code>)</td>
 <td>exact public Cargo dependency compiled into <code>shr</code></td>
 </tr>
 </tbody>
@@ -5648,11 +5648,14 @@ than production releases.</p>
 <p>The machine-readable source commits and runtime bounds live only in
 <code>install/compatibility.json</code>; documentation summarizes rather than duplicates
 their hashes.</p>
-<p>SHR-DAW source can host the newer Moj Sint preset schema 8 and its Dual Filter
-model, but the current compatibility file still pins the earlier public Moj
-Sint commit whose cleared catalog contains 16 starts. The installer therefore
-does not install the five Dual Filter starts. Treat the compatibility file,
-not the broader host capability, as the installation contract.</p>
+<p>SHR Synth supports preset schema 10 and all eight models, including Dual Filter,
+Pressure Chain and Open303. The pinned source installs all 28 cleared starts.
+The package, command and data directory are <code>shr-synth</code>. The installer also
+provides a <code>moj-sint</code> command alias for existing private configurations.
+<code>.mojsint</code> remains the preset extension; saved Projects and old backend names
+remain readable. Configuration writes use <code>shr_synth.*</code>, while the reader
+accepts legacy <code>moj_sint.*</code> keys. Existing private preset directories remain
+usable; no user sounds are renamed or republished.</p>
 <p>The installer:</p>
 <ul>
 <li>previews its phases, refuses root invocation, and verifies <code>apt-get</code> and
@@ -5668,11 +5671,11 @@ the FluidSynth executable available to SHR;</li>
 a separate default-no prompt can add the user to <code>audio</code> and create a
 helper-owned limits file only when no distribution policy already suffices;</li>
 <li>installs the exact official Rust toolchains selected by each repository,
-fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
+fetches SHR Synth and SHR Sampler by immutable public commit, verifies their
 declared versions, and creates locked release builds;</li>
-<li>builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;</li>
-<li>stages commands, templates, 21 allowlisted synthv1 presets, 16 allowlisted
-Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
+<li>builds SHR-DAW against SHR Drums 0.2.1 from its exact public Git revision;</li>
+<li>stages commands, templates, 21 allowlisted synthv1 presets, 28 allowlisted
+SHR Synth presets, the allowlisted SHR Sampler package, four allowlisted SHR
 Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
 Projects plus MIDI files, profiles, drum data, and documentation;</li>
 <li>preflights the complete payload, refuses a differing unowned destination,
@@ -5731,7 +5734,7 @@ grouped prompts with:</p>
 <li><code>shr</code> opens SHR-DAW and provides its command-line tools.</li>
 <li><code>shr-setup</code> opens the routing wizard.</li>
 <li><code>shr-audio-tune</code> manages optional Raspberry Pi audio CPU tuning.</li>
-<li><code>moj-sint</code> is the pinned managed synthesis host.</li>
+<li><code>shr-synth</code> is the pinned managed synthesis host.</li>
 <li><code>shr-sampler</code> is the pinned managed sample-package host and offline validator.</li>
 <li><code>shs</code> and <code>synth-player</code> are compatibility names for <code>shr</code>. They use the same
 Rust engine ownership, routing, and shutdown path as the main command.</li>
@@ -5776,8 +5779,8 @@ successful payload. It refuses to delete a managed file changed afterward,
 removes owned directories only when empty, and preserves unrelated files in a
 shared directory. It deliberately preserves user data under
 <code>${XDG_STATE_HOME:-~/.local/state}/shsynth/</code> and
-<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/</code>, Moj Sint user sounds under
-<code>${XDG_DATA_HOME:-~/.local/share}/moj-sint/</code>, repository-local <code>$SHSYNTH_USER_DIR/</code>, system
+<code>${XDG_DATA_HOME:-~/.local/share}/shsynth/</code>, SHR Synth user sounds under
+<code>${XDG_DATA_HOME:-~/.local/share}/shr-synth/</code>, repository-local <code>$SHSYNTH_USER_DIR/</code>, system
 packages, JACK policy, and setup backups. Optional CPU/audio tuning is also a
 separate explicit system change; inspect/remove it with <code>shr-audio-tune</code> before
 uninstalling the command if desired. Never delete those retained directories
@@ -6487,8 +6490,8 @@ accepts:</p>
 <td><code>fluidsynth.command</code>, <code>.client</code>, <code>.midi_output</code>, <code>.gain</code>, repeated <code>.soundfont</code></td>
 </tr>
 <tr>
-<td>Moj Sint</td>
-<td><code>moj_sint.command</code>, <code>.client</code>, <code>.midi_output</code>, repeated <code>.preset_root</code>, and exactly two <code>.output</code> short names</td>
+<td>SHR Synth</td>
+<td><code>shr_synth.command</code>, <code>.client</code>, <code>.midi_output</code>, repeated <code>.preset_root</code>, and exactly two <code>.output</code> short names</td>
 </tr>
 <tr>
 <td>SHR Sampler</td>
@@ -6500,15 +6503,15 @@ accepts:</p>
 </tr>
 </tbody>
 </table>
-<p>Moj Sint defaults to command <code>moj-sint</code>, client/MIDI identity
-<code>shs-moj-sint</code>, and output short names <code>out_l</code> then <code>out_r</code>. Discovery indexes
+<p>SHR Synth defaults to command <code>shr-synth</code>, client/MIDI identity
+<code>shs-shr-synth</code>, and output short names <code>out_l</code> then <code>out_r</code>. Discovery indexes
 at most 512 regular, non-symlink <code>.mojsint</code> files of at most 1 MiB and strictly
 validates schemas 1–8 before showing them. Schema 8 adds the Dual Filter model,
 its exact 15-control fields, and persisted <code>industrial</code>/<code>counter</code> core state;
 schemas 1–7 remain readable and migrate in memory.
 Each discovered instrument keeps a model-qualified stable identity. The host is invoked only by <code>LOAD</code> as
-<code>moj-sint --client-name NAME --preset FILE</code>.
-Playback user saves add the private XDG Moj Sint preset root to discovery and
+<code>shr-synth --client-name NAME --preset FILE</code>.
+Playback user saves add the private XDG SHR Synth preset root to discovery and
 store all six models beneath separate model directories. Repository-local
 launches keep that root below ignored <code>$SHSYNTH_USER_DIR/</code>. <code>SHSYNTH_MOJ_PRESET_DIR</code> may
 select another explicitly private root; public checkout, factory, system, and
@@ -6998,7 +7001,7 @@ resulting <strong>TRACKS</strong> screen edits pages and columns. Use the main e
 select a page. <strong>ADD</strong> creates
 another four-lane page in that Pattern. <strong>TARGET</strong> chooses <code>AUTO</code> (portable
 machine default), an internal software route, or external MIDI. An internal
-route then chooses <strong>ENGINE</strong> before <strong>INSTR</strong>. Moj Sint additionally chooses
+route then chooses <strong>ENGINE</strong> before <strong>INSTR</strong>. SHR Synth additionally chooses
 <strong>MODEL</strong> before <strong>PATCH</strong>; an external route chooses
 <strong>MIDI OUT</strong> before its per-column channel/bank/program values. <code>AUTO</code> displays an
 <code>AUTO</code> channel and does not permit channel/bank/program editing because those
@@ -7011,7 +7014,7 @@ opened. On the
 controls edit the selected column. In a target/channel chooser, <strong>CONFIRM</strong>
 keeps that field and <strong>EXIT</strong> cancels it.</p>
 <p>FT2 <strong>SELECT</strong> → <strong>ROUTE</strong> is the quick route editor. Its 38×9 bordered overlay
-shows <code>TARGET</code>, <code>ENGINE</code>, Moj Sint <code>MODEL</code> and <code>PATCH</code>, ordinary <code>INSTR</code>, or the
+shows <code>TARGET</code>, <code>ENGINE</code>, SHR Synth <code>MODEL</code> and <code>PATCH</code>, ordinary <code>INSTR</code>, or the
 SHR Drums <code>KIT</code>, plus <code>MIDI OUT</code>, optional
 <code>PROFILE</code>, and the 16 per-column channel/bank/program rows in a scrolling 36×7
 content area. The overlay begins at <code>(1,1)</code>, its content begins at <code>(2,2)</code>, and
@@ -7027,7 +7030,7 @@ before that field was opened. <strong>APPLY ROUTING</strong> keeps the resulting
 The controller action row's direct <strong>CANCEL</strong> action, or Back from the main
 list, restores the complete route snapshot from when ROUTE opened.</p>
 <p>An internal melodic route stores the engine identity together with that
-engine's stable instrument identity. Moj Sint identities include their
+engine's stable instrument identity. SHR Synth identities include their
 synthesis model, so equal patch names in different models cannot collide.
 An SHR Drums route instead stores the
 stable kit ID and remains independent of the melodic engine choice. Applying a
@@ -7649,7 +7652,7 @@ renderer sources. This is software evidence, not a listening or hardware test.</
 <td>The pinned <code>shr-drums</code> 0.2.0 <code>DrumEngine::process</code> sums voices before its kit bus. Individual kick/snare/etc. outputs are unavailable at that API; piece strips require a change in the <code>shr-drums</code> repository. No duplicate engines are created.</td>
 </tr>
 <tr>
-<td>Moj Sint</td>
+<td>SHR Synth</td>
 <td>The loaded patch</td>
 <td>Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, and Pressure Chain are selectable algorithms within one owned renderer. The loaded patch provides one stereo output; the seven models and Pressure Chain’s three preset topologies are not simultaneous independent outputs.</td>
 </tr>
@@ -7891,7 +7894,7 @@ through one SHR-DAW workflow. Their runtime hosts are:</p>
 <li><a href="https://synthv1.sourceforge.io/" class="external" target="_blank" rel="noopener noreferrer external">synthv1</a> for subtractive synth presets;</li>
 <li><a href="https://yoshimi.github.io/" class="external" target="_blank" rel="noopener noreferrer external">Yoshimi</a> for <code>.xiz</code> instruments and banks;</li>
 <li><a href="https://www.fluidsynth.org/" class="external" target="_blank" rel="noopener noreferrer external">FluidSynth</a> for <code>.sf2</code> and <code>.sf3</code> SoundFonts;</li>
-<li>Moj Sint for strict <code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets; and</li>
+<li>SHR Synth for strict <code>.mojsint</code> Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 presets; and</li>
 <li>SHR Sampler for strict preloaded <code>.shrinst</code> sample packages.</li>
 </ul>
 <p>Only one SHR-managed software engine process runs at a time. synthv1 and
@@ -7902,9 +7905,9 @@ stereo source. Loading another standalone sound may reuse or replace the owned
 process; replacement sends All Notes Off, performs a clean shutdown, and
 starts the next configured host. SHR-DAW records enough process identity to
 stop only the engine it started. It neither layers managed backends nor kills
-an unrelated synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler process
+an unrelated synthv1, Yoshimi, FluidSynth, SHR Synth, or SHR Sampler process
 opened by the user.</p>
-<p>Moj Sint is started with <code>--client-name</code> and <code>--preset</code>, publishes exactly
+<p>SHR Synth is started with <code>--client-name</code> and <code>--preset</code>, publishes exactly
 <code>out_l</code>/<code>out_r</code>, accepts timbre/ADSR on its established CCs, and accepts shared
 instrument volume on CC 7. SHR verifies the configured port names and owns only
 the child it started. The browser never launches it; LOAD is the transaction
@@ -7979,8 +7982,8 @@ part of the installation and recovery contract.</p>
 <td>Pattern timing, MIDI note dispatch, JACK publication, effects, kit selection, and public kit allowlists</td>
 </tr>
 <tr>
-<td><a href="https://github.com/PaolaShultz/moj-sint" class="external" target="_blank" rel="noopener noreferrer external">Moj Sint</a></td>
-<td>One managed <code>moj-sint</code> process with an ALSA input and stereo JACK output</td>
+<td><a href="https://github.com/PaolaShultz/shr-synth" class="external" target="_blank" rel="noopener noreferrer external">SHR Synth</a></td>
+<td>One managed <code>shr-synth</code> process with an ALSA input and stereo JACK output</td>
 <td>Preset schema, synthesis models, MIDI controls, audio rendering, and the factory preset manifest</td>
 <td>Exact command/preset configuration, process identity and shutdown, route connection, replacement rollback, private saves, and Project state</td>
 </tr>
@@ -7993,7 +7996,7 @@ part of the installation and recovery contract.</p>
 </tbody>
 </table>
 <p>The current exact component revisions live in <code>Cargo.toml</code> (SHR Drums) and
-<code>install/compatibility.json</code> (external engines). Moj Sint's companion catalog
+<code>install/compatibility.json</code> (external engines). SHR Synth's companion catalog
 now includes eight models and 28 starts, including monophonic schema-10
 Open303 with four authored starts. Its MIT and separately permitted Ooura FFT
 notices are retained in the installed documentation. Source changes become
@@ -8007,7 +8010,7 @@ matching process it did not start.</p>
 Private presets, kits, samples, packages, renders, Projects, and recordings stay
 outside all four repositories. Developers should read the
 <a href="https://github.com/PaolaShultz/shr-drums/blob/main/FORMAT.md" class="external" target="_blank" rel="noopener noreferrer external">SHR Drums package format</a>,
-<a href="https://github.com/PaolaShultz/moj-sint/blob/main/docs/README.md" class="external" target="_blank" rel="noopener noreferrer external">Moj Sint documentation index</a>,
+<a href="https://github.com/PaolaShultz/shr-synth/blob/main/docs/README.md" class="external" target="_blank" rel="noopener noreferrer external">SHR Synth documentation index</a>,
 and <a href="https://github.com/PaolaShultz/shr-sampler/blob/main/docs/HOST_ARCHITECTURE.md" class="external" target="_blank" rel="noopener noreferrer external">SHR Sampler host architecture</a>.
 Musicians should start with
 <a href="#doc-instruments_and_drums">SHR-DAW instruments and drums</a>, which describes the
@@ -8016,7 +8019,7 @@ shared load, play, save, and recovery workflow.</p>
 <p>SHR-DAW uses “record” for three intentionally different jobs:</p>
 <ol>
 <li>An <strong>Idea</strong> captures free-time MIDI while playing a managed sound. It keeps
-event timing and instrument identity; synthv1 and Moj Sint Ideas also keep
+event timing and instrument identity; synthv1 and SHR Synth Ideas also keep
 a private preset snapshot and backend-specific mapped control values, while
 SHR Sampler Ideas keep only the stable package ID and configured public path
 without copying sample content. <code>PLAY</code>
@@ -10393,7 +10396,7 @@ and <code>install/compatibility.json</code>. Cargo compiles it into <code>shr</c
 does not create a separate executable, service, or runtime source checkout.</p>
 <p>The bundled Acid package is an original fully modeled 27-voice kit. Electronic
 House has its original 27 modeled voices plus deterministic House Impact and
-Long Pressure synthetic one-shot exports authored by the CC0 Moj Sint project;
+Long Pressure synthetic one-shot exports authored by the CC0 SHR Synth project;
 they occupy notes 27 and 28 without replacing its existing note-33 through
 note-36 kicks. Neither package contains recordings or downloaded audio. Their
 manifests release the package content under CC0 1.0.</p>
@@ -10411,11 +10414,11 @@ and <a href="https://drumgizmo.org/wiki/doku.php?id=kits:muldjordkit" class="ext
 bundled. A local package's presence does not grant redistribution rights; add
 one to <code>cleared-kits.txt</code> only after reviewing its complete contents, manifest,
 source record, asset licence, and required notices.</p>
-<h4 id="doc-third-party--moj-sint-and-shr-sampler" tabindex="-1">Moj Sint and SHR Sampler<a class="heading-anchor" href="#doc-third-party--moj-sint-and-shr-sampler" aria-label="Link to Moj Sint and SHR Sampler">#</a></h4>
-<p>The whole-system installer fetches the exact public Moj Sint 0.2.3 and SHR
+<h4 id="doc-third-party--shr-synth-and-shr-sampler" tabindex="-1">SHR Synth and SHR Sampler<a class="heading-anchor" href="#doc-third-party--shr-synth-and-shr-sampler" aria-label="Link to SHR Synth and SHR Sampler">#</a></h4>
+<p>The whole-system installer fetches the exact public SHR Synth 0.2.3 and SHR
 Sampler 0.1.2 revisions recorded in <code>install/compatibility.json</code>. Each
 repository's <code>THIRD_PARTY.md</code> owns its dependency and content provenance. Only
-Moj Sint files named by <code>presets/cleared-presets.txt</code> and SHR Sampler packages
+SHR Synth files named by <code>presets/cleared-presets.txt</code> and SHR Sampler packages
 named by <code>instruments/cleared-instruments.txt</code> enter the payload. The initial
 SHR Sampler package is a project-authored deterministic waveform released as
 CC0-1.0; no private or third-party sample library is copied or converted.</p>
@@ -10447,9 +10450,9 @@ samples, so neither the 78 MB archive nor extracted WAVs may be committed,
 packaged, mirrored, or copied into a public release. Setup asks first, stores a
 source/terms note beside the private files, and downloads from:
 <a href="https://www.musicradar.com/news/sampleradar-free-80s-pop-drums-samples" class="external" target="_blank" rel="noopener noreferrer external">https://www.musicradar.com/news/sampleradar-free-80s-pop-drums-samples</a>.</p>
-<p>Moj's Open303 model incorporates Robin Schmidt's MIT core and Takuya Ooura's
+<p>SHR Synth's Open303 model incorporates Robin Schmidt's MIT core and Takuya Ooura's
 separately permitted FFT. The installer retains both notices under
-<code>share/doc/moj-sint/open303</code>. Its four factory starts are newly authored Moj
+<code>share/doc/shr-synth/open303</code>. Its four factory starts are newly authored SHR Synth
 parameter documents, with no imported factory programs or samples.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-new_patches" data-source="docs/NEW_PATCHES.md" data-kind="Current contracts"><summary><span class="document-title" role="heading" aria-level="4">New patches and sounds</span><span class="document-summary">Synthv1 schema and authoring workflow.</span></summary><div class="document-body"><div class="document-meta"><span>Current contracts</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/NEW_PATCHES.md" target="_blank" rel="noopener noreferrer external">View docs/NEW_PATCHES.md source</a></div><h4 id="doc-new_patches--add-a-patch" tabindex="-1">Add a patch<a class="heading-anchor" href="#doc-new_patches--add-a-patch" aria-label="Link to Add a patch">#</a></h4>
@@ -15135,10 +15138,10 @@ production DSP callbacks.</p>
 <li><code>SHSYNTH_LOOP_INBOX=$SHSYNTH_USER_DIR/data/shsynth/loop-inbox</code>;</li>
 <li><code>SHSYNTH_KIT_DIR=$ROOT/kits</code>, unless explicitly overridden.</li>
 </ul>
-<p>Playback Moj Sint user saves derive their private root from the same isolated
-<code>XDG_DATA_HOME</code> as <code>$XDG_DATA_HOME/moj-sint/presets</code> unless
+<p>Playback SHR Synth user saves derive their private root from the same isolated
+<code>XDG_DATA_HOME</code> as <code>$XDG_DATA_HOME/shr-synth/presets</code> unless
 <code>SHSYNTH_MOJ_PRESET_DIR</code> explicitly selects another private absolute path. The
-launcher does not seed that user-sound tree from the public Moj Sint catalog.
+launcher does not seed that user-sound tree from the public SHR Synth catalog.
 It reads official SHR Drums packages directly from the tracked public kit tree
 instead of copying them below <code>$SHSYNTH_USER_DIR/</code>.</p>
 <p>It requires an executable SHR-DAW binary, creates the private preset directory,
@@ -15357,7 +15360,7 @@ current user with the repository-required rustfmt and Clippy components, and
 runs Cargo through <code>rustup run CHANNEL cargo</code>. A newer stable release is
 adopted by changing the reviewed repository pin; an older distribution
 compiler never redirects development.</p>
-<p>It validates <code>install/compatibility.json</code>, fetches Moj Sint and SHR Sampler from
+<p>It validates <code>install/compatibility.json</code>, fetches SHR Synth and SHR Sampler from
 their exact public commits without GitHub authentication, verifies their
 declared versions and exact toolchain pins, and creates locked release builds.
 SHR-DAW's Cargo manifest fetches SHR Drums at the separate exact public source
@@ -15366,7 +15369,7 @@ directory enters the runtime tree.</p>
 <p><code>prepare_install.py</code> stages the three executables plus only allowlisted public
 presets, instruments, kits, loops, demos, and documentation. Open303
 MIT/Ooura notices and provenance manifests are retained below
-<code>share/doc/moj-sint/open303</code>. It rejects unsafe,
+<code>share/doc/shr-synth/open303</code>. It rejects unsafe,
 missing, linked, duplicated, moving, non-public, or version-mismatched inputs.
 <code>managed_install.py</code> then preflights and applies the payload with <code>sudo</code>. It
 records file hashes/modes and symlink targets, refuses differing unowned or
@@ -16623,24 +16626,24 @@ complete normal suite was intentionally not repeated under the incremental
 debug gate; its preceding run passed 1,092 tests with 13 historical or audition
 tests ignored before this focused interaction change. No connected MIDI/JACK
 test, app restart, or audible test ran.</p>
-<h4 id="doc-development_history--2026-08-28-moj-model-local-catalog-and-stale-host-repair" tabindex="-1">2026-08-28 Moj model-local catalog and stale-host repair<a class="heading-anchor" href="#doc-development_history--2026-08-28-moj-model-local-catalog-and-stale-host-repair" aria-label="Link to 2026-08-28 Moj model-local catalog and stale-host repair">#</a></h4>
-<p>The Moj Presets list no longer sorts by translated category labels or exposes
+<h4 id="doc-development_history--2026-08-28-shr-synth-model-local-catalog-and-stale-host-repair" tabindex="-1">2026-08-28 SHR Synth model-local catalog and stale-host repair<a class="heading-anchor" href="#doc-development_history--2026-08-28-shr-synth-model-local-catalog-and-stale-host-repair" aria-label="Link to 2026-08-28 SHR Synth model-local catalog and stale-host repair">#</a></h4>
+<p>The SHR Synth Presets list no longer sorts by translated category labels or exposes
 the old global factory-file numbers. It uses the fixed model order Model D,
 Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, then Dual Filter.
 Each model has one visible letter and its own two-digit sequence: <code>D01</code>, <code>P01</code>,
 <code>O01</code>, <code>S01</code>, <code>B01</code>, and <code>F01</code>. The visible sound name follows that identity.
-Opening or switching to Moj Sint resets the cursor to <code>D01 Full Bass</code>; visible
+Opening or switching to SHR Synth resets the cursor to <code>D01 Full Bass</code>; visible
 letter-jump uses those same model letters. This removes the misleading initial
 <code>16 Bass Matrix</code> selection caused by alphabetical category sorting.</p>
 <p>The observed Dual Filter <code>START FAILED</code> was a source/artifact compatibility
 failure, not a bad private configuration. SHR discovered schema-8 presets from
-the current Moj source tree but launched a Moj release executable last built
+the current SHR Synth source tree but launched a SHR Synth release executable last built
 before schema 8; that executable rejected the selected preset as unsupported.
-The Moj release executable was rebuilt from current source. All 21 cleared
+The SHR Synth release executable was rebuilt from current source. All 21 cleared
 presets now pass its offline validator, and two production Dual Filter renders
 with identical inputs are byte-identical. The active SHR and synth processes
 were not stopped, restarted, connected, or exercised by the agent.</p>
-<p>Focused Moj catalog, visible-name, letter-jump, route, and engine-replacement
+<p>Focused SHR Synth catalog, visible-name, letter-jump, route, and engine-replacement
 regressions pass. The complete normal SHR suite passes 1,084 tests with 13
 historical/opt-in tests ignored. That pass also exposed and fixed a Project
 format-18 decoder range which still stopped at format 17, plus stale
@@ -16686,9 +16689,9 @@ which plain <code>shr</code> launches. No app launch, MIDI/JACK transmission, sy
 audio, or fresh-binary physical-controller validation ran.</p>
 <h4 id="doc-development_history--2026-08-28-unified-35-synth-and-aux-surface" tabindex="-1">2026-08-28 unified 3×5 synth and aux surface<a class="heading-anchor" href="#doc-development_history--2026-08-28-unified-35-synth-and-aux-surface" aria-label="Link to 2026-08-28 unified 3×5 synth and aux surface">#</a></h4>
 <p>The learned MiniLab mkII performance surface is now one exact 15-rotary
-contract after the separate master encoder. Moj Sint Dual Filter already had
+contract after the separate master encoder. SHR Synth Dual Filter already had
 its complete schema-8/CC20–34 host path and continues to own all fifteen slots
-as synthesis controls. Synthv1 and the five older 12-control Moj models now
+as synthesis controls. Synthv1 and the five older 12-control SHR Synth models now
 use slots 1–12 for their unchanged sound parameters and slots 13–15 for the
 current Project's AUX 1, AUX 2, and AUX 3 send levels. Those last messages are
 consumed as SHR Project controls and are never forwarded into the synth MIDI
@@ -16752,7 +16755,7 @@ observed erroneous <code>CC112</code>/absolute signature; loading never rewrites
 private file. The owner confirmed that this personal MK2 setup uses
 direction-only turns for every rotary. The MK2 mapping therefore retains each
 physical rotary identity but discards its incoming position: left/right and
-turn-speed packets carry SHR's current synth, Moj Sint, FX, automation, or
+turn-speed packets carry SHR's current synth, SHR Synth, FX, automation, or
 mixer value by signed steps. They bypass pickup entirely.</p>
 <p>A passive live capture was opened without transmitting MIDI or starting audio,
 but received no physical turns; the direction-only behavior is owner-provided
@@ -16841,9 +16844,9 @@ release builds passed in 2m08s and 2m51s; plain <code>shr</code> resolves throug
 <code>scripts/local.sh</code> to the new <code>target/release/shr</code>. No app restart, MIDI
 capture/transmission, synth, JACK, playback, recording, audible, or physical-
 controller verification ran.</p>
-<h4 id="doc-development_history--2026-08-27-moj-sint-dual-filter-controller-integration" tabindex="-1">2026-08-27 Moj Sint Dual Filter controller integration<a class="heading-anchor" href="#doc-development_history--2026-08-27-moj-sint-dual-filter-controller-integration" aria-label="Link to 2026-08-27 Moj Sint Dual Filter controller integration">#</a></h4>
-<p>The approved Moj Sint Dual Filter design is implemented across the owning
-repositories. SHR recognizes the sixth Moj model and schema 8, maps its 15
+<h4 id="doc-development_history--2026-08-27-shr-synth-dual-filter-controller-integration" tabindex="-1">2026-08-27 SHR Synth Dual Filter controller integration<a class="heading-anchor" href="#doc-development_history--2026-08-27-shr-synth-dual-filter-controller-integration" aria-label="Link to 2026-08-27 SHR Synth Dual Filter controller integration">#</a></h4>
+<p>The approved SHR Synth Dual Filter design is implemented across the owning
+repositories. SHR recognizes the sixth SHR Synth model and schema 8, maps its 15
 continuous controls to physical rotaries 2–16, uses rotary 9's learned click as
 the synth action, and keeps the master rotary exclusively on navigation. One synth
 click sends the press-only core toggle; held sound is not retriggered, all pot
@@ -16851,7 +16854,7 @@ values remain in place, and the parameter header plus status show
 <code>CORE: INDUSTRIAL</code> or <code>CORE: COUNTER</code>.</p>
 <p>Dual Filter preset load/reset sends exact CC20–34 values followed by persisted
 core state on CC36. Save New/Overwrite writes strict schema 8 with the exact
-dual-filter control names and selected core. Older Moj models retain their
+dual-filter control names and selected core. Older SHR Synth models retain their
 12-position mappings, including shared volume on position 5, and schemas 1–7
 remain readable. Controller profiles/config now accept POT 1–15 and optional
 <code>synth.press_cc</code>, <code>synth.press_note</code>, and <code>synth.press_channel</code>; Learn stores
@@ -17147,24 +17150,24 @@ reran the locked check and complete normal suite, then completed locked debug
 and release builds for the <code>shr</code> binary. No Clippy, screenshot batch, JACK,
 synth, MIDI transmission, recording, audible, or physical-hardware action ran.</p>
 <h4 id="doc-development_history--2026-08-16-swarm-bass-matrix-and-shared-instrument-volume" tabindex="-1">2026-08-16 Swarm, Bass Matrix, and shared instrument volume<a class="heading-anchor" href="#doc-development_history--2026-08-16-swarm-bass-matrix-and-shared-instrument-volume" aria-label="Link to 2026-08-16 Swarm, Bass Matrix, and shared instrument volume">#</a></h4>
-<p>The sibling Moj Sint engine now has five live models and 16 cleared starts.
+<p>The sibling SHR Synth engine now has five live models and 16 cleared starts.
 The earlier typed-graph warm pad is integrated as <code>Swarm Machine</code>; the new
 <code>Bass Matrix</code> is a different split-path bass instrument whose clean
 half-frequency body remains outside its driven PM/metal/filter/feedback branch.
-SHR recognizes strict Moj schema 7, retains schemas 1–6, and owns exact
+SHR recognizes strict SHR Synth schema 7, retains schemas 1–6, and owns exact
 <code>ENGINE → MODEL → PATCH</code> routing, model-qualified private saves, Player/FT2
 labels, Projects, automation, pickup, RESET, failure restoration, panic, and
 shutdown for both additions.</p>
 <p>Physical controller position 5 is instrument volume wherever a managed melodic
 instrument is active. The actual MiniLab profile maps its continuous CC 93 pot
-to that position. synthv1 retains its verified DCA volume parameter; Moj uses
+to that position. synthv1 retains its verified DCA volume parameter; SHR Synth uses
 separate MIDI CC 7 and a tone-neutral 10 ms engine gain; Yoshimi, FluidSynth,
 and SHR Sampler receive standard channel-volume CC 7. Player and FT2 show the
 same control, loading/resetting re-arms pickup, and FT2 instrument automation
 persists the route. Read-only backends cannot save this value into their source
 instrument format, and their own CC smoothing is the documented backend
 exception; their Project automation remains durable.</p>
-<p>Private local configuration already points to the sibling Moj release binary
+<p>Private local configuration already points to the sibling SHR Synth release binary
 and preset root, so no <code>$SHSYNTH_USER_DIR/</code> mutation is required. Musical acceptance and
 native Raspberry Pi callback headroom remain open listening/hardware verdicts.</p>
 <p>The authorized combined pass used exact Rust 1.97.1
@@ -17173,14 +17176,14 @@ normal tests, and locked debug and release builds passed; 13 documented
 research, audition, and performance tests remained ignored. No JACK, synth,
 MIDI, recording, audible, or other hardware-changing test was started.</p>
 <h4 id="doc-development_history--2026-08-05-strange-oscillator-experimental-integration" tabindex="-1">2026-08-05 Strange Oscillator experimental integration<a class="heading-anchor" href="#doc-development_history--2026-08-05-strange-oscillator-experimental-integration" aria-label="Link to 2026-08-05 Strange Oscillator experimental integration">#</a></h4>
-<p>The sibling Moj Sint repository now exposes Strange Oscillator as its third
-live experimental model and cleared start 14. This SHR working tree recognizes Moj
+<p>The sibling SHR Synth repository now exposes Strange Oscillator as its third
+live experimental model and cleared start 14. This SHR working tree recognizes SHR Synth
 preset schema 6, shows the model as <code>S-OSC</code>, routes it through the existing
 <code>ENGINE → MODEL → PATCH</code> hierarchy, maps CC 20–27 to TYPE, FORM, WARP, COUPLE,
 MOTION, CHAOS, COLOR, and SPACE, and preserves ADSR at CC 28–31. Model-specific
 private saves, tracker parameters, automation names, and model-qualified route
-identity all include the third model. Schema 1–5 Moj presets remain readable.
-The local Moj command already points to the sibling optimized binary. Plain
+identity all include the third model. Schema 1–5 SHR Synth presets remain readable.
+The local SHR Synth command already points to the sibling optimized binary. Plain
 <code>shr</code> and tty1 autoload use the optimized SHR release binary; an explicit
 <code>SHSYNTH_BIN=target/debug/shr</code> override remains available for development. The
 owner explicitly authorized committing and publishing both repositories for
@@ -17202,8 +17205,8 @@ not production-release milestones; public installation docs do not pin 0.4.8.</p
 <p><code>docs/EXPERIMENTAL_DIRECTION.md</code> records the unscheduled product direction:
 beginner- and curiosity-first music making, FT2 as the main composition and
 automation workspace, Player as a deliberately simple player, optional theory
-and smart assistance after play, and Moj Sint as an open experimental
-instrument laboratory. The favored Moj authoring direction is a typed low-code
+and smart assistance after play, and SHR Synth as an open experimental
+instrument laboratory. The favored SHR Synth authoring direction is a typed low-code
 micro-machine format usable with or without AI. One fixed swarm graph is now
 live; that does not promise runtime graph editing or a general modular system.</p>
 <p>The current compatibility checkpoint adds SHR Sampler 0.1.2 as the fifth mutually exclusive managed
@@ -17211,7 +17214,7 @@ melodic backend. Its package and executable compatibility are preflighted
 offline before the current owned engine is disturbed; startup, exact stereo
 readiness, routing, failure publication, one-attempt restoration, All Notes
 Off, unexpected exit, and shutdown remain in the shared backend lifecycle.
-The complete public installer now fetches exact Moj Sint and SHR Sampler
+The complete public installer now fetches exact SHR Synth and SHR Sampler
 commits, compiles SHR Drums 0.2.0 in process from its exact public commit, and
 installs one allowlisted manifest-owned payload. The transactional file layer
 refuses foreign collisions or locally modified managed files, rolls an
@@ -17233,9 +17236,9 @@ ignored, and locked debug and release builds passed. The focused MTR NAV
 documentation screenshot was regenerated and visually inspected at its native
 40×13 geometry. No JACK, synth, MIDI, recording, audible, or other physical
 hardware test was started.</p>
-<p>The same 2026-08-03 repository sync fast-forwarded the clean Moj Sint sibling
+<p>The same 2026-08-03 repository sync fast-forwarded the clean SHR Synth sibling
 by four documentation-only commits recording the completed five-kick and
-snare comparison gate; production Moj sound code did not change. Its locked
+snare comparison gate; production SHR Synth sound code did not change. Its locked
 all-target/all-feature normal suite passed 287 tests with 34 development-only
 historical/audition/benchmark tests ignored, and its debug and release
 all-target builds passed with Rust 1.97.1.</p>
@@ -17244,13 +17247,13 @@ the tracked <code>kits/cleared-kits.txt</code> allowlist: Acid, Electronic House
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
 that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
-longer depend on ignored <code>$SHSYNTH_USER_DIR/</code> state. Moj Sint's 16 factory starts remain
+longer depend on ignored <code>$SHSYNTH_USER_DIR/</code> state. SHR Synth's 16 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
 storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
 all-target/all-feature normal suite: 19 tests passed, three opt-in quality
 matrices remained ignored, and its locked debug and release all-target builds
 passed.</p>
-<p>Electronic House now carries the selected Moj Sint House Impact and Long
+<p>Electronic House now carries the selected SHR Synth House Impact and Long
 Pressure kicks as deterministic CC0 synthetic one-shots on free notes 27 and
 28. Notes 33, 34, 35, and the original House Kick on 36 remain unchanged, so
 the kit exposes six kicks without remapping existing material. The two new
@@ -17269,17 +17272,17 @@ kick/snare comparison was regenerated through the existing engine and played
 through the configured soundcard. The owner accepted this revision as a real
 snare, possibly stronger than Big Rock's, and explicitly kept its
 rock/industrial identity out of Electronic House.</p>
-<p>Version <code>0.4.4</code> added Moj Sint 0.2.0 as a real fourth managed backend. Presets
+<p>Version <code>0.4.4</code> added SHR Synth 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict <code>.mojsint</code> catalog without launching sound; LOAD
-alone starts <code>moj-sint --client-name ... --preset ...</code>. Playback renders the
+alone starts <code>shr-synth --client-name ... --preset ...</code>. Playback renders the
 eight Model D controls plus ADSR in the existing three-by-four geometry, with
-Moj-specific CCs, defaults, RESET, pickup, Project/Idea/FT2 identity, and no
+SHR Synth-specific CCs, defaults, RESET, pickup, Project/Idea/FT2 identity, and no
 synthv1 XML or parameter-index reuse. The live SHR Drums sibling is now 0.2.0
 and continues as the in-process fourth final-bus source beside the one managed
 melodic engine. Its public format keeps legacy packages readable and adds the
 optional advanced modeled-voice graph used by the public Acid recipe. This
 states the source capability, not that any private compiled kit is installed.</p>
-<p>Version <code>0.4.5</code> pairs with Moj Sint 0.2.1 and exposes all seven authored Model D
+<p>Version <code>0.4.5</code> pairs with SHR Synth 0.2.1 and exposes all seven authored Model D
 starts instead of only the idealized reference. Strict schema 3 carries bass,
 lead, or filter-articulation patch identity; schemas 1 and 2 remain strict
 in-memory bass migrations. Full Bass, Full Lead, Full Filter Articulation,
@@ -17302,27 +17305,27 @@ AudioBox direct monitor active, so MON ON remains refused until the owner
 physically disables that monitor and deliberately updates the declaration.
 This release has deterministic software verification only; it does not claim
 new JACK, audible, or hardware validation.</p>
-<p>Version <code>0.4.7</code> pairs with Moj Sint 0.2.2 and separates the Moj Sint engine
-from its synthesis model. Strict Moj schema 4 names <code>model_d</code>; schemas 1–3
+<p>Version <code>0.4.7</code> pairs with SHR Synth 0.2.2 and separates the SHR Synth engine
+from its synthesis model. Strict SHR Synth schema 4 names <code>model_d</code>; schemas 1–3
 migrate to it in memory. Discovery and Ideas retain typed model identity,
 Project/FT2 routes use model-qualified stable instrument IDs with legacy
 unqualified Model D lookup, and Playback selects its twelve labels from the
 loaded model while current parameters remain on rotary 2–13 positions.</p>
-<p>The next Moj Sint integration keeps that one managed engine and adds Six-Op PM
+<p>The next SHR Synth integration keeps that one managed engine and adds Six-Op PM
 as its second selectable model. Strict schema 5 has model-specific patch and
 macro fields; schema 4 and older remain Model D migrations. Discovery contains
-seven Model D and six Six-Op PM starts. FT2 ROUTE presents <code>ENGINE → MODEL → PATCH</code> for Moj Sint, constrains patch browsing to the selected model, and keeps
+seven Model D and six Six-Op PM starts. FT2 ROUTE presents <code>ENGINE → MODEL → PATCH</code> for SHR Synth, constrains patch browsing to the selected model, and keeps
 the existing whole-route Apply/Cancel transaction. Playback renders the
 selected model's twelve labels. The first connected audition found
 note-count-dependent artifacts because the private runtime launched an
-unoptimized Moj Sint binary. Native smoke evidence and bounded chord renders
+unoptimized SHR Synth binary. Native smoke evidence and bounded chord renders
 identified callback starvation rather than clipping; the runtime now launches
-<code>target/release/moj-sint</code>, and the user confirmed that the reported two-note
+<code>target/release/shr-synth</code>, and the user confirmed that the reported two-note
 Model D and four-note Six-Op failures are gone. This is acceptance of that
 repair only; broader physical-control, routing, polyphony, and sound acceptance
 remain open.</p>
-<p>The catalog presentation repair places the in-house Moj Sint first in
-Presets and software-engine selection. Moj factory names retain their stable
+<p>The catalog presentation repair places the in-house SHR Synth first in
+Presets and software-engine selection. SHR Synth factory names retain their stable
 preset and Project route identities but display one compact number/model/name:
 for example, <code>01 M-D Full Bass</code> and <code>08 6-OP Bell Metal</code>, without bracketed
 model labels or repeated <code>Six-Op</code> text. The generated 40x13 Presets reference
@@ -17334,22 +17337,22 @@ has no repository policy file so its default configuration rejects every
 dependency license; those broader release-gate debts were not folded into the
 catalog change. Live visual confirmation remains open until the user next
 relaunches SHR.</p>
-<p>The 2026-08-01 locked software gate used Rust 1.97.1 on AArch64. Focused Moj
+<p>The 2026-08-01 locked software gate used Rust 1.97.1 on AArch64. Focused SHR Synth
 schema/control/engine and Route hierarchy tests passed, then the complete
 normal SHR suite passed 892 tests with zero failures and 12 existing ignored
 development/audition tests in 49.07 seconds. Locked check and the explicit
 debug build passed; the build completed in 1 minute 51 seconds at
 <code>target/debug/shr</code>, then a final legacy-route regression refresh completed in
-1 minute 19 seconds. Moj Sint's own all-target/all-feature normal suite passed
+1 minute 19 seconds. SHR Synth's own all-target/all-feature normal suite passed
 273 tests with 34 explicitly ignored historical classes, and its debug binary
 validated all 13 tracked presets. No JACK, synth process, MIDI, playback,
 recording, audible, or hardware action was run.</p>
-<p>Playback <code>SAVE</code> now owns instrument-preset persistence for synthv1 and Moj
-Sint. Its canonical overlay exposes explicit Overwrite, Save New, and Cancel
+<p>Playback <code>SAVE</code> now owns instrument-preset persistence for synthv1 and SHR
+Synth. Its canonical overlay exposes explicit Overwrite, Save New, and Cancel
 through controller, keyboard, encoder, and mouse dispatch. Factory, system,
 public-checkout, unsupported-backend, and symlink-backed sounds remain
 read-only; Overwrite on a read-only supported sound visibly redirects to the
-next private <code>User NNN</code> name. Moj saves use strict schema 5 and separate Model D
+next private <code>User NNN</code> name. SHR Synth saves use strict schema 5 and separate Model D
 and Six-Op PM directories. Synthv1 saves preserve the complete source XML while
 replacing only the preset name and twelve mapped values. A successful save
 refreshes Presets and FT2 ROUTE immediately, becomes the RESET baseline,
@@ -17360,7 +17363,7 @@ values, held notes, and the live session; failure keeps the overlay and prior
 file intact.</p>
 <p>The user-save acceptance gate used exact Rust 1.97.1. Two final locked SHR
 default-suite runs each passed 902 tests with zero failures and 12 intentionally
-ignored development/audition tests. Moj Sint's locked all-target/all-feature
+ignored development/audition tests. SHR Synth's locked all-target/all-feature
 suite passed 276 tests with zero failures and 34 historical render, research,
 publication, and native-benchmark tests ignored. Formatting, locked checks,
 fresh debug builds, and diff checks passed in both repositories. No release
@@ -17419,7 +17422,7 @@ callback was 0.903 ms. The prior unoptimized DEV artifact held about 89% of one
 CPU and produced thousands of <code>shr-drums</code> JACK deadline errors per minute,
 while temperature, throttle, memory, swap, and I/O were healthy.
 Playback keeps MIDI-take persistence on Ideas; its SOUND page uses <code>SAVE</code> for
-the current synthv1 or Moj Sint instrument, and <code>SOUNDS</code> returns directly to
+the current synthv1 or SHR Synth instrument, and <code>SOUNDS</code> returns directly to
 Presets and its visible <code>LOAD</code>. In-app and terminal MIDI Learn now capture the
 complete optional encoder-Shift gesture. Holding Shift, turning left once, then
 releasing records both the modifier and either the ordinary rotary CC or its
@@ -17774,7 +17777,7 @@ canonical collaboration rule in <code>AGENTS.md</code>.</p>
 must not be used. The launcher uses <code>target/release/shr</code> unless <code>SHSYNTH_BIN</code>
 is explicitly set; the release TUI shows <code>REL</code>. The separate private
 <code>shr-release</code> launcher is now only a compatibility alias. Repository-local
-runtime metadata selects the companion Moj Sint checkout's fresh release
+runtime metadata selects the companion SHR Synth checkout's fresh release
 binary and public preset catalog; Playback
 user sounds remain in the separate ignored private data root and were not
 inspected during this configuration check.</p>
@@ -18101,7 +18104,7 @@ are in <code>CONTROLLER_INTERFACE.md</code>.</p>
 <tbody>
 <tr>
 <td>Preset browser and five melodic engine catalogs</td>
-<td>Browse synthv1 files, Yoshimi banks, FluidSynth SoundFont programs, Moj Sint models, or SHR Sampler packages; load one sound</td>
+<td>Browse synthv1 files, Yoshimi banks, FluidSynth SoundFont programs, SHR Synth models, or SHR Sampler packages; load one sound</td>
 <td>K/M/C</td>
 <td>Engine commands, clients, output matches, roots, categories, SoundFonts</td>
 <td>Cleared project sounds plus external banks/packages in place</td>
@@ -21480,7 +21483,7 @@ explicit <code>SHSYNTH_BIN=.../target/debug/shr</code> override; that binary sho
 <td>exact Git revision compiled into <code>shr</code>; no child process</td>
 </tr>
 <tr>
-<td>Moj Sint 0.2.4</td>
+<td>SHR Synth 0.2.4</td>
 <td>exact Git revision installed as a managed external process</td>
 </tr>
 <tr>
@@ -21489,7 +21492,7 @@ explicit <code>SHSYNTH_BIN=.../target/debug/shr</code> override; that binary sho
 </tr>
 </tbody>
 </table>
-<p>SHR source supports Moj Sint through schema 10 and eight models, including
+<p>SHR source supports SHR Synth through schema 10 and eight models, including
 monophonic Pressure Chain and Open303 (28 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
@@ -21498,26 +21501,26 @@ The authorized September 9 pass refreshed all checkout debug/release targets.
 The configured checkout host/catalog and the normal release launcher now
 provide Open303 after a normal exit/reopen; running processes were preserved.</p>
 <p>The non-audible integration pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6)
-on AArch64. Formatting, locked checks, 18 focused Moj regressions, and the
-normal SHR suite passed (1,128 tests, 14 ignored). Moj's normal all-target
+on AArch64. Formatting, locked checks, 18 focused SHR Synth regressions, and the
+normal SHR suite passed (1,128 tests, 14 ignored). SHR Synth's normal all-target
 suite and focused live DSP tests also passed. Controller/listening and
 real-time hardware acceptance remain for the coordinated human session.</p>
 <p><a href="#doc-how_it_works">How SHR-DAW works</a> owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.</p>
 <h4 id="doc-workspace_handoff--open303-integration-2026-09-09" tabindex="-1">Open303 integration, 2026-09-09<a class="heading-anchor" href="#doc-workspace_handoff--open303-integration-2026-09-09" aria-label="Link to Open303 integration, 2026-09-09">#</a></h4>
 <p>The owner requested Open303 and a few presets. Source now supports the eighth
-Moj model, schema-10 Open303, its two preset-owned filter types and A01–A04
-Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck (28 total Moj starts).
+SHR Synth model, schema-10 Open303, its two preset-owned filter types and A01–A04
+Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck (28 total SHR Synth starts).
 The existing catalog, Project route, private save/reset, and instrument strip
 retain its identity. It is monophonic and displays the same <code>M</code> marker.</p>
 <p>Its eleven native controls plus CC7 volume now use the shared 4×4 surface
-documented in <a href="#doc-instruments_and_drums--moj-sint-sounds">Instruments and drums</a>.
+documented in <a href="#doc-instruments_and_drums--shr-synth-sounds">Instruments and drums</a>.
 Physical rotaries 13–16 hold Volume and three AUX sends. Native envelope timings replace generic ADSR labels only for
 Open303. The installer retains the separate Open303 MIT and Ooura FFT notices.
 Companion source owns the native preparation, bounded note stack, and render
 safety. Existing models and private files are preserved.</p>
-<p>The installer now pins the compatible public Moj engine with all 28 starts.
-Moj's normal suite passes 359 tests (36 ignored), focused Open303 release tests
+<p>The installer now pins the compatible public SHR Synth engine with all 28 starts.
+SHR Synth's normal suite passes 359 tests (36 ignored), focused Open303 release tests
 and native sanitizer/allocation/spectral checks pass, and all factory presets
 validate with deterministic paired release renders. SHR formatting, source
 inspection, Python syntax and read-only compatibility checks pass. The owner subsequently authorized the full build. All debug and release
@@ -21526,11 +21529,29 @@ passes its locked check and 1,141 normal tests (14 historical tests ignored).
 A stale routing-recovery test expected obsolete status prose; it now checks
 the current save-error prefix while retaining all direct state assertions.
 Existing compiler warnings remain. The fresh SHR release discovers all four
-Open303 starts in an isolated catalog. All 28 Moj presets validate, and the
+Open303 starts in an isolated catalog. All 28 SHR Synth presets validate, and the
 four new starts produce identical paired release renders. Existing local
 configuration already selects the companion checkout host/catalog; no private
 configuration, presets, or independent installed payloads were changed.
 No running process or hardware was restarted.</p>
+<h4 id="doc-workspace_handoff--2026-09-28-companion-rename" tabindex="-1">2026-09-28 companion rename<a class="heading-anchor" href="#doc-workspace_handoff--2026-09-28-companion-rename" aria-label="Link to 2026-09-28 companion rename">#</a></h4>
+<p>SHR Synth uses repository, checkout, command and install directory <code>shr-synth</code>,
+and current configuration uses <code>shr_synth.*</code>. The reader accepts prior keys,
+backend labels and channel bindings; <code>.mojsint</code> presets and model identities
+remain compatible. The installer pins the renamed source and supplies the old
+command alias for existing private configurations. The local legacy checkout
+link preserves saved absolute paths and the already-running application.
+The running older application retains readable legacy keys in its private
+configuration, with updated executable/catalog paths. A subsequent save by the
+rebuilt application writes the canonical keys.
+The amp and recorder checkouts are <code>shr-tone-over-9000</code> and <code>shr-rec</code>.</p>
+<p>The rename passes all 1,222 normal Rust tests (14 historical tests ignored),
+including legacy configuration/backend and channel-strip identity regressions,
+plus 21 Python helper tests, including payload layout and the compatibility
+command alias. The generated documentation site is deterministic.
+The selected compiler is exact Rust 1.97.1. The REL application builds; existing
+compiler warnings remain. All 28 companion factory presets render byte-identically
+between the old and renamed release hosts, with finite output.</p>
 <h4 id="doc-workspace_handoff--current-sequencer-contracts" tabindex="-1">Current sequencer contracts<a class="heading-anchor" href="#doc-workspace_handoff--current-sequencer-contracts" aria-label="Link to Current sequencer contracts">#</a></h4>
 <h5 id="doc-workspace_handoff--bounded-roll" tabindex="-1">Bounded ROLL<a class="heading-anchor" href="#doc-workspace_handoff--bounded-roll" aria-label="Link to Bounded ROLL">#</a></h5>
 <p>ROLL is a percussion-only draft tool under FT2 Tools <code>PAGE -&gt; HISTORY -&gt; RHYTHM -&gt; GEN</code>. Its cursor-anchored span cannot exceed the Pattern. Amount is
@@ -21587,15 +21608,15 @@ the canonical menu/action table. No LED driver is enabled. Pad release,
 bank/Shift behaviour, output ownership, and exit restoration still require
 an explicitly authorized hardware trial before enabling that feature.</p>
 <p>The September 14 stuck-note follow-up fixes Player scale changes suppressing
-held-note releases. The reported N00B-off incident led to a separate Moj host
+held-note releases. The reported N00B-off incident led to a separate SHR Synth host
 fix: callback-budget excess now defers MIDI events instead of dropping them,
-and queue loss stops the owned instrument with an explicit fault. Moj's handoff
+and queue loss stops the owned instrument with an explicit fault. SHR Synth's handoff
 owns the failing-before/passing-after overload evidence; the heard incident
 remains unattributed without live event evidence.</p>
 <p>Exact rustc 1.97.1 passed both locked checks, 46 focused SHR engine tests and
-18 focused Moj host/engine tests, including allocation and finite-silence checks.
+18 focused SHR Synth host/engine tests, including allocation and finite-silence checks.
 The owner then authorized rebuilding all: locked all-target/all-feature DEV
-and REL builds pass in both checkouts, as do both SHR version/help and Moj host
+and REL builds pass in both checkouts, as do both SHR version/help and SHR Synth host
 help checks. Existing SHR warnings remain. Full suites, historical tests,
 Clippy and hardware tests were not run in this focused pass. No running app,
 JACK, synth, MIDI, playback or recording was restarted. Normal exit/reopen
@@ -21606,13 +21627,13 @@ normal tests, 20 Python helper tests and 31 isolated audio-policy cases passed.
 Clippy completed with existing warnings. All DEV/REL targets built and both
 SHR binaries passed version/help checks. Fourteen historical tests stayed
 intentionally ignored.</p>
-<p>Moj Sint now reuses idle voices, then the oldest released note, before taking
+<p>SHR Synth now reuses idle voices, then the oldest released note, before taking
 a held note when every voice is held. This protects a held Swarm bass from
 high-note release tails without increasing the voice count. Its focused
 regression and 368 normal tests passed (36 historical cases ignored), as did
 warning-denied Clippy, audit/deny, all DEV/REL builds and host help checks. All
 28 cleared presets validate and paired release renders are finite and exact;
-Moj’s handoff owns the probe details. No live app, JACK, synth, MIDI, audio
+SHR Synth’s handoff owns the probe details. No live app, JACK, synth, MIDI, audio
 playback, recording or hardware was started or changed by this pass. Normal
 exit/reopen selects the rebuilt checkout binaries.</p>
 <p>The September 11 recording follow-up keeps Player MIDIREC (lowercase <code>r</code>) and
@@ -21631,7 +21652,7 @@ warnings remain. No hardware/audio session was run.</p>
 <p>The September 11 synth surface change uses four rows of four in
 Player and FT2 PARAM. Rotary 1 edits the first parameter; click toggles visible
 NAV for menu-page selection, and another click returns to editing. Volume/AUX
-1/AUX 2/AUX 3 occupy physical rotaries 13–16. Previously displaced Moj controls
+1/AUX 2/AUX 3 occupy physical rotaries 13–16. Previously displaced SHR Synth controls
 return; Dual Filter exposes all amp stages together and retains filter attack,
 sustain and release as preset-owned values. The one information row keeps
 chord/note names and the enabled scale; Player Shift-turn changes that scale.
@@ -21642,20 +21663,20 @@ helper tests, and 31 isolated audio-policy cases passed. Fourteen historical
 Rust tests remained intentionally ignored. One new render-test fixture needed
 an active instrument before asserting AUX labels; its focused rerun and the
 complete suite pass. DEV and REL builds and their version/help checks pass.
-Existing compiler warnings remain. Moj Sint's matching pass also completed:
+Existing compiler warnings remain. SHR Synth's matching pass also completed:
 367 normal tests passed with 36 historical cases ignored, warning-denied
 Clippy and audit/deny passed, and DEV/REL host builds pass their help checks.
 All 28 cleared presets validate and produce identical finite paired one-second
-release renders. Moj's handoff owns the exact render probe and hash. No live
+release renders. SHR Synth's handoff owns the exact render probe and hash. No live
 app, synth, JACK, MIDI, playback, recording, private configuration, or hardware
 state was changed by this pass. Normal exit/reopen selects the rebuilt binaries.</p>
 <p>The September 10 synth follow-up adds the monophonic <code>M</code> to Presets, identifies
 changed Project areas in the exit dialog, and protects Home mouse exit. The
-pinned Moj source retriggers live mono envelopes on each press while retaining
+pinned SHR Synth source retriggers live mono envelopes on each press while retaining
 pitch glide and non-retriggering held-note fallback. The combined pass used
 exact Rust 1.97.1 on AArch64: locked checks, 40 focused Project tests, both
 preset-list tests, and the full normal SHR suite pass (1,157 passed, 14 ignored).
-Moj passes 362 normal tests (36 ignored), its focused retrigger/native contracts,
+SHR Synth passes 362 normal tests (36 ignored), its focused retrigger/native contracts,
 and warning-denied Clippy. Helpers pass 20 Python tests and 31 audio-policy
 cases. Fresh DEV/REL binaries for both applications build and pass non-audible
 executable checks. Existing SHR compiler warnings remain; no app, host, MIDI,
@@ -21669,18 +21690,18 @@ fixes; existing compiler warnings remain. The fresh REL binary successfully
 reads the complete recovered private controller mapping. The running application
 was closed cleanly at the owner's request; JACK was preserved and no synth or
 playback was started.</p>
-<p>The September 8 title change marks Moj Sint Pressure Chain with one inverted
+<p>The September 8 title change marks SHR Synth Pressure Chain with one inverted
 <code>M</code> cell in Playback and FT2 PARAM. Other model titles have no voice marker.
 Long names reserve room for the marker inside the existing title area.
 Formatting and source/whitespace checks passed. Existing native-size UI tests
-now cover the marker, long-name clipping, and its absence on other Moj models;
+now cover the marker, long-name clipping, and its absence on other SHR Synth models;
 these tests and compilation subsequently passed in the September 9 combined pass.</p>
 <p>The September 5 full pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6) on
 AArch64. Formatting, locked all-target/all-feature checks, 1,128 normal Rust
 tests, 11 Python helper tests, and 29 isolated audio-policy checks passed.
 All debug and release targets build; existing dead-code warnings remain.
 The 14 opt-in historical/exhaustive tests stayed ignored.</p>
-<p>Moj Sint passed 349 normal tests (35 ignored), warning-denied Clippy, audit,
+<p>SHR Synth passed 349 normal tests (35 ignored), warning-denied Clippy, audit,
 and licence/source checks. A release-only test allocator declaration was
 corrected; its five focused regressions pass in debug and release. Both build
 profiles complete. The fresh release host validates all 24 cleared presets,
@@ -21735,7 +21756,7 @@ downloads, loops, routes, learned mappings, presets, kits, and evidence.
 Do not inspect, stage, summarize, or publish them during ordinary repository
 work.</p>
 <p>Public payloads are limited to entries named by the synth preset, kit, loop,
-demo, Moj Sint, and SHR Sampler cleared manifests. <code>THIRD_PARTY.md</code> owns
+demo, SHR Synth, and SHR Sampler cleared manifests. <code>THIRD_PARTY.md</code> owns
 licence, provenance, and redistribution statements. Setup may seed missing
 cleared files but must preserve same-named musician files.</p>
 <h4 id="doc-workspace_handoff--genuine-open-work" tabindex="-1">Genuine open work<a class="heading-anchor" href="#doc-workspace_handoff--genuine-open-work" aria-label="Link to Genuine open work">#</a></h4>
@@ -21911,7 +21932,7 @@ input. The first hardware trial should change one pad and restore it before
 trying a whole-screen update. That trial requires an explicit controller-write
 session; this research did not perform one.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-experimental_direction" data-source="docs/EXPERIMENTAL_DIRECTION.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Experimental product direction</span><span class="document-summary">Beginner-first music making, FT2 ownership, open Moj Sint models, low-code micro-machines, and smart help without feature promises.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/EXPERIMENTAL_DIRECTION.md" target="_blank" rel="noopener noreferrer external">View docs/EXPERIMENTAL_DIRECTION.md source</a></div><p>Status: open direction, not a feature specification, schedule, or production
+<details class="document" id="doc-experimental_direction" data-source="docs/EXPERIMENTAL_DIRECTION.md" data-kind="Future proposals"><summary><span class="document-title" role="heading" aria-level="4">Experimental product direction</span><span class="document-summary">Beginner-first music making, FT2 ownership, open SHR Synth models, low-code micro-machines, and smart help without feature promises.</span></summary><div class="document-body"><div class="document-meta"><span>Future proposals</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/EXPERIMENTAL_DIRECTION.md" target="_blank" rel="noopener noreferrer external">View docs/EXPERIMENTAL_DIRECTION.md source</a></div><p>Status: open direction, not a feature specification, schedule, or production
 promise.</p>
 <p>SHR-DAW is a curiosity-first Raspberry Pi music workstation. Its distinctive
 path is not to compete with large desktop DAWs or hardware ecosystems. It
@@ -21934,13 +21955,13 @@ assistants may explain or extend material already in the Project. They should
 help someone reach a result, understand why it works, and choose what to keep;
 they should not silently compose, replace work, or turn uncertainty into a
 false rule.</p>
-<p>Moj Sint provides the complementary experimental path: learn synthesis by
-making instruments. People should eventually be able to create Moj Sint models
+<p>SHR Synth provides the complementary experimental path: learn synthesis by
+making instruments. People should eventually be able to create SHR Synth models
 with or without AI assistance. The favored direction is a low-code typed
 micro-machine format that connects bounded oscillators, counters, events,
 shapers, followers, resonators, filters, feedback, and stereo operations while
-Moj Sint retains validation and real-time safety.</p>
-<p>Every Moj Sint model should remain playable through seven meaningful timbre
+SHR Synth retains validation and real-time safety.</p>
+<p>Every SHR Synth model should remain playable through seven meaningful timbre
 controls, shared instrument volume at physical position 5, and ADSR. AI can
 help draft a graph, explain mathematics, or propose control mappings, but
 generated work earns inclusion only through the same inspectable tests and
@@ -21949,7 +21970,7 @@ human listening as hand-written work.</p>
 a familiar musical target that makes population, detuning, phase, coupling,
 motion, width, and normalization easy to hear. It is not a promise of arbitrary
 live graphs or a request to copy an existing synthesizer. The point is to learn
-whether Moj Sint's micro-machines can produce a recognisable sound efficiently
+whether SHR Synth's micro-machines can produce a recognisable sound efficiently
 while remaining editable and characteristically strange.</p>
 <p>Across these ideas, the preferred motion is consistent: play first, reveal
 theory and machinery when useful, preserve the musician's work and position,

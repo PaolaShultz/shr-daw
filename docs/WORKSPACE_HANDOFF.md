@@ -44,10 +44,10 @@ Machine-readable ownership remains in `Cargo.toml` and
 | Component | Relationship |
 | --- | --- |
 | SHR Drums 0.2.1 | exact Git revision compiled into `shr`; no child process |
-| Moj Sint 0.2.4 | exact Git revision installed as a managed external process |
+| SHR Synth 0.2.4 | exact Git revision installed as a managed external process |
 | SHR Sampler 0.1.3 | exact Git revision installed as a managed external process; accepted runtime range `>=0.1.2,<0.2.0` |
 
-SHR source supports Moj Sint through schema 10 and eight models, including
+SHR source supports SHR Synth through schema 10 and eight models, including
 monophonic Pressure Chain and Open303 (28 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
@@ -57,8 +57,8 @@ The configured checkout host/catalog and the normal release launcher now
 provide Open303 after a normal exit/reopen; running processes were preserved.
 
 The non-audible integration pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6)
-on AArch64. Formatting, locked checks, 18 focused Moj regressions, and the
-normal SHR suite passed (1,128 tests, 14 ignored). Moj's normal all-target
+on AArch64. Formatting, locked checks, 18 focused SHR Synth regressions, and the
+normal SHR suite passed (1,128 tests, 14 ignored). SHR Synth's normal all-target
 suite and focused live DSP tests also passed. Controller/listening and
 real-time hardware acceptance remain for the coordinated human session.
 
@@ -68,20 +68,20 @@ configuration, lifecycle, validation, failure, and redistribution boundaries.
 ## Open303 integration, 2026-09-09
 
 The owner requested Open303 and a few presets. Source now supports the eighth
-Moj model, schema-10 Open303, its two preset-owned filter types and A01–A04
-Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck (28 total Moj starts).
+SHR Synth model, schema-10 Open303, its two preset-owned filter types and A01–A04
+Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck (28 total SHR Synth starts).
 The existing catalog, Project route, private save/reset, and instrument strip
 retain its identity. It is monophonic and displays the same `M` marker.
 
 Its eleven native controls plus CC7 volume now use the shared 4×4 surface
-documented in [Instruments and drums](INSTRUMENTS_AND_DRUMS.md#moj-sint-sounds).
+documented in [Instruments and drums](INSTRUMENTS_AND_DRUMS.md#shr-synth-sounds).
 Physical rotaries 13–16 hold Volume and three AUX sends. Native envelope timings replace generic ADSR labels only for
 Open303. The installer retains the separate Open303 MIT and Ooura FFT notices.
 Companion source owns the native preparation, bounded note stack, and render
 safety. Existing models and private files are preserved.
 
-The installer now pins the compatible public Moj engine with all 28 starts.
-Moj's normal suite passes 359 tests (36 ignored), focused Open303 release tests
+The installer now pins the compatible public SHR Synth engine with all 28 starts.
+SHR Synth's normal suite passes 359 tests (36 ignored), focused Open303 release tests
 and native sanitizer/allocation/spectral checks pass, and all factory presets
 validate with deterministic paired release renders. SHR formatting, source
 inspection, Python syntax and read-only compatibility checks pass. The owner subsequently authorized the full build. All debug and release
@@ -90,11 +90,32 @@ passes its locked check and 1,141 normal tests (14 historical tests ignored).
 A stale routing-recovery test expected obsolete status prose; it now checks
 the current save-error prefix while retaining all direct state assertions.
 Existing compiler warnings remain. The fresh SHR release discovers all four
-Open303 starts in an isolated catalog. All 28 Moj presets validate, and the
+Open303 starts in an isolated catalog. All 28 SHR Synth presets validate, and the
 four new starts produce identical paired release renders. Existing local
 configuration already selects the companion checkout host/catalog; no private
 configuration, presets, or independent installed payloads were changed.
 No running process or hardware was restarted.
+
+## 2026-09-28 companion rename
+
+SHR Synth uses repository, checkout, command and install directory `shr-synth`,
+and current configuration uses `shr_synth.*`. The reader accepts prior keys,
+backend labels and channel bindings; `.mojsint` presets and model identities
+remain compatible. The installer pins the renamed source and supplies the old
+command alias for existing private configurations. The local legacy checkout
+link preserves saved absolute paths and the already-running application.
+The running older application retains readable legacy keys in its private
+configuration, with updated executable/catalog paths. A subsequent save by the
+rebuilt application writes the canonical keys.
+The amp and recorder checkouts are `shr-tone-over-9000` and `shr-rec`.
+
+The rename passes all 1,222 normal Rust tests (14 historical tests ignored),
+including legacy configuration/backend and channel-strip identity regressions,
+plus 21 Python helper tests, including payload layout and the compatibility
+command alias. The generated documentation site is deterministic.
+The selected compiler is exact Rust 1.97.1. The REL application builds; existing
+compiler warnings remain. All 28 companion factory presets render byte-identically
+between the old and renamed release hosts, with finite output.
 
 ## Current sequencer contracts
 
@@ -166,16 +187,16 @@ bank/Shift behaviour, output ownership, and exit restoration still require
 an explicitly authorized hardware trial before enabling that feature.
 
 The September 14 stuck-note follow-up fixes Player scale changes suppressing
-held-note releases. The reported N00B-off incident led to a separate Moj host
+held-note releases. The reported N00B-off incident led to a separate SHR Synth host
 fix: callback-budget excess now defers MIDI events instead of dropping them,
-and queue loss stops the owned instrument with an explicit fault. Moj's handoff
+and queue loss stops the owned instrument with an explicit fault. SHR Synth's handoff
 owns the failing-before/passing-after overload evidence; the heard incident
 remains unattributed without live event evidence.
 
 Exact rustc 1.97.1 passed both locked checks, 46 focused SHR engine tests and
-18 focused Moj host/engine tests, including allocation and finite-silence checks.
+18 focused SHR Synth host/engine tests, including allocation and finite-silence checks.
 The owner then authorized rebuilding all: locked all-target/all-feature DEV
-and REL builds pass in both checkouts, as do both SHR version/help and Moj host
+and REL builds pass in both checkouts, as do both SHR version/help and SHR Synth host
 help checks. Existing SHR warnings remain. Full suites, historical tests,
 Clippy and hardware tests were not run in this focused pass. No running app,
 JACK, synth, MIDI, playback or recording was restarted. Normal exit/reopen
@@ -188,13 +209,13 @@ Clippy completed with existing warnings. All DEV/REL targets built and both
 SHR binaries passed version/help checks. Fourteen historical tests stayed
 intentionally ignored.
 
-Moj Sint now reuses idle voices, then the oldest released note, before taking
+SHR Synth now reuses idle voices, then the oldest released note, before taking
 a held note when every voice is held. This protects a held Swarm bass from
 high-note release tails without increasing the voice count. Its focused
 regression and 368 normal tests passed (36 historical cases ignored), as did
 warning-denied Clippy, audit/deny, all DEV/REL builds and host help checks. All
 28 cleared presets validate and paired release renders are finite and exact;
-Moj’s handoff owns the probe details. No live app, JACK, synth, MIDI, audio
+SHR Synth’s handoff owns the probe details. No live app, JACK, synth, MIDI, audio
 playback, recording or hardware was started or changed by this pass. Normal
 exit/reopen selects the rebuilt checkout binaries.
 
@@ -216,7 +237,7 @@ warnings remain. No hardware/audio session was run.
 The September 11 synth surface change uses four rows of four in
 Player and FT2 PARAM. Rotary 1 edits the first parameter; click toggles visible
 NAV for menu-page selection, and another click returns to editing. Volume/AUX
-1/AUX 2/AUX 3 occupy physical rotaries 13–16. Previously displaced Moj controls
+1/AUX 2/AUX 3 occupy physical rotaries 13–16. Previously displaced SHR Synth controls
 return; Dual Filter exposes all amp stages together and retains filter attack,
 sustain and release as preset-owned values. The one information row keeps
 chord/note names and the enabled scale; Player Shift-turn changes that scale.
@@ -228,21 +249,21 @@ helper tests, and 31 isolated audio-policy cases passed. Fourteen historical
 Rust tests remained intentionally ignored. One new render-test fixture needed
 an active instrument before asserting AUX labels; its focused rerun and the
 complete suite pass. DEV and REL builds and their version/help checks pass.
-Existing compiler warnings remain. Moj Sint's matching pass also completed:
+Existing compiler warnings remain. SHR Synth's matching pass also completed:
 367 normal tests passed with 36 historical cases ignored, warning-denied
 Clippy and audit/deny passed, and DEV/REL host builds pass their help checks.
 All 28 cleared presets validate and produce identical finite paired one-second
-release renders. Moj's handoff owns the exact render probe and hash. No live
+release renders. SHR Synth's handoff owns the exact render probe and hash. No live
 app, synth, JACK, MIDI, playback, recording, private configuration, or hardware
 state was changed by this pass. Normal exit/reopen selects the rebuilt binaries.
 
 The September 10 synth follow-up adds the monophonic `M` to Presets, identifies
 changed Project areas in the exit dialog, and protects Home mouse exit. The
-pinned Moj source retriggers live mono envelopes on each press while retaining
+pinned SHR Synth source retriggers live mono envelopes on each press while retaining
 pitch glide and non-retriggering held-note fallback. The combined pass used
 exact Rust 1.97.1 on AArch64: locked checks, 40 focused Project tests, both
 preset-list tests, and the full normal SHR suite pass (1,157 passed, 14 ignored).
-Moj passes 362 normal tests (36 ignored), its focused retrigger/native contracts,
+SHR Synth passes 362 normal tests (36 ignored), its focused retrigger/native contracts,
 and warning-denied Clippy. Helpers pass 20 Python tests and 31 audio-policy
 cases. Fresh DEV/REL binaries for both applications build and pass non-audible
 executable checks. Existing SHR compiler warnings remain; no app, host, MIDI,
@@ -258,11 +279,11 @@ reads the complete recovered private controller mapping. The running application
 was closed cleanly at the owner's request; JACK was preserved and no synth or
 playback was started.
 
-The September 8 title change marks Moj Sint Pressure Chain with one inverted
+The September 8 title change marks SHR Synth Pressure Chain with one inverted
 `M` cell in Playback and FT2 PARAM. Other model titles have no voice marker.
 Long names reserve room for the marker inside the existing title area.
 Formatting and source/whitespace checks passed. Existing native-size UI tests
-now cover the marker, long-name clipping, and its absence on other Moj models;
+now cover the marker, long-name clipping, and its absence on other SHR Synth models;
 these tests and compilation subsequently passed in the September 9 combined pass.
 
 The September 5 full pass used rustc 1.97.1 (8bab26f4f, LLVM 22.1.6) on
@@ -271,7 +292,7 @@ tests, 11 Python helper tests, and 29 isolated audio-policy checks passed.
 All debug and release targets build; existing dead-code warnings remain.
 The 14 opt-in historical/exhaustive tests stayed ignored.
 
-Moj Sint passed 349 normal tests (35 ignored), warning-denied Clippy, audit,
+SHR Synth passed 349 normal tests (35 ignored), warning-denied Clippy, audit,
 and licence/source checks. A release-only test allocator declaration was
 corrected; its five focused regressions pass in debug and release. Both build
 profiles complete. The fresh release host validates all 24 cleared presets,
@@ -339,7 +360,7 @@ Do not inspect, stage, summarize, or publish them during ordinary repository
 work.
 
 Public payloads are limited to entries named by the synth preset, kit, loop,
-demo, Moj Sint, and SHR Sampler cleared manifests. `THIRD_PARTY.md` owns
+demo, SHR Synth, and SHR Sampler cleared manifests. `THIRD_PARTY.md` owns
 licence, provenance, and redistribution statements. Setup may seed missing
 cleared files but must preserve same-named musician files.
 

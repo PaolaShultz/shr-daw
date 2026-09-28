@@ -1,4 +1,4 @@
-//! Backend-specific mapped control profiles. Existing Moj Sint models share
+//! Backend-specific mapped control profiles. Existing SHR Synth models share
 //! a 4×4 surface, but never synthv1 parameter indices or XML semantics.
 //! Full model tables also retain preset-owned controls outside the surface.
 
@@ -629,7 +629,7 @@ pub const MOJ_DUAL_FILTER_CONTROLS: [MojControl; 16] = [
     },
 ];
 
-// The first five Moj Sint models share twelve physical positions. Position
+// The first five SHR Synth models share twelve physical positions. Position
 // five is their universal instrument-volume CC 7. Dual Filter supplies its own
 // 15-control state table; its MAIN/AMP pages share twelve physical positions.
 // Meanings come from the selected synthesis model, not controller.conf.

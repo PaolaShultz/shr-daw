@@ -74,7 +74,7 @@ def main() -> int:
                 str(prefix / "share/shr-sampler/instruments/shr-clear-tone.shrinst"),
             ]
         )
-        moj_presets = list((prefix / "share/moj-sint/presets").glob("*.mojsint"))
+        moj_presets = list((prefix / "share/shr-synth/presets").glob("*.mojsint"))
         assert len(moj_presets) == 13
         assert not any(path.name == ".git" for path in payload.rglob(".git"))
         assert not any("user" in path.relative_to(payload).parts for path in payload.rglob("*"))

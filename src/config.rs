@@ -31,7 +31,7 @@ pub struct FluidSynthConfig {
 }
 
 #[derive(Clone, Debug)]
-pub struct MojSintConfig {
+pub struct ShrSynthConfig {
     pub backend: BackendConfig,
     pub output_ports: [String; 2],
 }
@@ -245,7 +245,7 @@ pub struct RuntimeConfig {
     pub midi_output_match: String,
     pub yoshimi: YoshimiConfig,
     pub fluidsynth: FluidSynthConfig,
-    pub moj_sint: MojSintConfig,
+    pub shr_synth: ShrSynthConfig,
     pub shr_sampler: ShrSamplerConfig,
     pub startup_timeout: Duration,
     pub note_naming: NoteNaming,
@@ -382,7 +382,7 @@ impl Default for RuntimeConfig {
                 soundfonts: Vec::new(),
                 gain: 0.4,
             },
-            moj_sint: MojSintConfig {
+            shr_synth: ShrSynthConfig {
                 backend: BackendConfig::default(),
                 output_ports: ["out_l".into(), "out_r".into()],
             },
@@ -593,30 +593,32 @@ impl RuntimeConfig {
                         self.fluidsynth.soundfonts.push(expand_home(value));
                     }
                 }
-                "moj_sint.command" => self.moj_sint.backend.command = required(key, value)?.into(),
-                "moj_sint.client" => {
-                    self.moj_sint.backend.client_name = required(key, value)?.into()
+                "shr_synth.command" | "moj_sint.command" => {
+                    self.shr_synth.backend.command = required(key, value)?.into()
                 }
-                "moj_sint.midi_output" => {
-                    self.moj_sint.backend.midi_output_match = required(key, value)?.into()
+                "shr_synth.client" | "moj_sint.client" => {
+                    self.shr_synth.backend.client_name = required(key, value)?.into()
                 }
-                "moj_sint.preset_root" => {
-                    replace_list_once(&mut self.moj_sint.backend.preset_roots, &mut saw_moj_roots);
+                "shr_synth.midi_output" | "moj_sint.midi_output" => {
+                    self.shr_synth.backend.midi_output_match = required(key, value)?.into()
+                }
+                "shr_synth.preset_root" | "moj_sint.preset_root" => {
+                    replace_list_once(&mut self.shr_synth.backend.preset_roots, &mut saw_moj_roots);
                     if !value.is_empty() {
-                        self.moj_sint.backend.preset_roots.push(expand_home(value));
+                        self.shr_synth.backend.preset_roots.push(expand_home(value));
                     }
                 }
-                "moj_sint.output" => {
+                "shr_synth.output" | "moj_sint.output" => {
                     if !saw_moj_outputs {
-                        self.moj_sint.output_ports = [String::new(), String::new()];
+                        self.shr_synth.output_ports = [String::new(), String::new()];
                         saw_moj_outputs = true;
                     }
-                    if self.moj_sint.output_ports[0].is_empty() {
-                        self.moj_sint.output_ports[0] = required(key, value)?.into();
-                    } else if self.moj_sint.output_ports[1].is_empty() {
-                        self.moj_sint.output_ports[1] = required(key, value)?.into();
+                    if self.shr_synth.output_ports[0].is_empty() {
+                        self.shr_synth.output_ports[0] = required(key, value)?.into();
+                    } else if self.shr_synth.output_ports[1].is_empty() {
+                        self.shr_synth.output_ports[1] = required(key, value)?.into();
                     } else {
-                        bail!("moj_sint.output accepts exactly two entries");
+                        bail!("shr_synth.output accepts exactly two entries");
                     }
                 }
                 "shr_sampler.command" => {
@@ -922,10 +924,10 @@ impl RuntimeConfig {
         if self.audio_graph.enabled && (!self.audio_autoconnect || self.audio_outputs.len() != 2) {
             bail!("audio.graph.enabled requires audio.autoconnect and two audio.output entries");
         }
-        if self.moj_sint.output_ports.iter().any(String::is_empty)
-            || self.moj_sint.output_ports[0] == self.moj_sint.output_ports[1]
+        if self.shr_synth.output_ports.iter().any(String::is_empty)
+            || self.shr_synth.output_ports[0] == self.shr_synth.output_ports[1]
         {
-            bail!("Moj Sint requires exactly two distinct moj_sint.output entries");
+            bail!("SHR Synth requires exactly two distinct shr_synth.output entries");
         }
         if self.shr_sampler.output_ports.iter().any(String::is_empty)
             || self.shr_sampler.output_ports[0] == self.shr_sampler.output_ports[1]
@@ -1077,19 +1079,19 @@ impl RuntimeConfig {
             text.push_str("fluidsynth.soundfont=\n");
         }
         text.push_str(&format!(
-            "moj_sint.command={}\nmoj_sint.client={}\nmoj_sint.midi_output={}\n",
-            self.moj_sint.backend.command,
-            self.moj_sint.backend.client_name,
-            self.moj_sint.backend.midi_output_match
+            "shr_synth.command={}\nshr_synth.client={}\nshr_synth.midi_output={}\n",
+            self.shr_synth.backend.command,
+            self.shr_synth.backend.client_name,
+            self.shr_synth.backend.midi_output_match
         ));
-        for root in &self.moj_sint.backend.preset_roots {
-            text.push_str(&format!("moj_sint.preset_root={}\n", root.display()));
+        for root in &self.shr_synth.backend.preset_roots {
+            text.push_str(&format!("shr_synth.preset_root={}\n", root.display()));
         }
-        if self.moj_sint.backend.preset_roots.is_empty() {
-            text.push_str("moj_sint.preset_root=\n");
+        if self.shr_synth.backend.preset_roots.is_empty() {
+            text.push_str("shr_synth.preset_root=\n");
         }
-        for output in &self.moj_sint.output_ports {
-            text.push_str(&format!("moj_sint.output={output}\n"));
+        for output in &self.shr_synth.output_ports {
+            text.push_str(&format!("shr_synth.output={output}\n"));
         }
         text.push_str(&format!(
             "shr_sampler.command={}\nshr_sampler.client={}\nshr_sampler.midi_output={}\n",
@@ -1918,22 +1920,36 @@ mod tests {
     }
 
     #[test]
-    fn moj_sint_configuration_round_trips_and_requires_two_distinct_outputs() {
+    fn legacy_synth_configuration_is_read_and_written_with_current_keys() {
+        let mut config = RuntimeConfig::default();
+        config.merge("moj_sint.command=custom-host\nmoj_sint.client=custom-client\nmoj_sint.midi_output=custom-midi\nmoj_sint.preset_root=/private/sounds\nmoj_sint.output=left\nmoj_sint.output=right\n", Path::new("legacy.conf")).unwrap();
+        assert_eq!(config.shr_synth.backend.command, "custom-host");
+        assert_eq!(config.shr_synth.backend.client_name, "custom-client");
+        assert_eq!(config.shr_synth.backend.midi_output_match, "custom-midi");
+        assert_eq!(
+            config.shr_synth.backend.preset_roots,
+            [PathBuf::from("/private/sounds")]
+        );
+        assert_eq!(config.shr_synth.output_ports, ["left", "right"]);
+    }
+
+    #[test]
+    fn shr_synth_configuration_round_trips_and_requires_two_distinct_outputs() {
         let path =
             std::env::temp_dir().join(format!("shsynth-moj-config-{}.conf", std::process::id()));
         let mut config = RuntimeConfig::default();
-        config.moj_sint.backend.command = "/opt/moj/bin/moj-sint".into();
-        config.moj_sint.backend.preset_roots = vec![PathBuf::from("/sounds/moj")];
-        config.moj_sint.output_ports = ["out_l".into(), "out_r".into()];
+        config.shr_synth.backend.command = "/opt/moj/bin/shr-synth".into();
+        config.shr_synth.backend.preset_roots = vec![PathBuf::from("/sounds/moj")];
+        config.shr_synth.output_ports = ["out_l".into(), "out_r".into()];
         config.save(&path).unwrap();
         let loaded = RuntimeConfig::load(&path).unwrap();
-        assert_eq!(loaded.moj_sint.backend.command, "/opt/moj/bin/moj-sint");
+        assert_eq!(loaded.shr_synth.backend.command, "/opt/moj/bin/shr-synth");
         assert_eq!(
-            loaded.moj_sint.backend.preset_roots,
+            loaded.shr_synth.backend.preset_roots,
             [PathBuf::from("/sounds/moj")]
         );
-        assert_eq!(loaded.moj_sint.output_ports, ["out_l", "out_r"]);
-        fs::write(&path, "moj_sint.output=only_one\n").unwrap();
+        assert_eq!(loaded.shr_synth.output_ports, ["out_l", "out_r"]);
+        fs::write(&path, "shr_synth.output=only_one\n").unwrap();
         assert!(RuntimeConfig::load(&path).is_err());
         let _ = fs::remove_file(path);
     }

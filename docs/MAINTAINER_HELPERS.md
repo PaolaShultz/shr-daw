@@ -106,10 +106,10 @@ The wrapper exports:
 - `SHSYNTH_LOOP_INBOX=$SHSYNTH_USER_DIR/data/shsynth/loop-inbox`;
 - `SHSYNTH_KIT_DIR=$ROOT/kits`, unless explicitly overridden.
 
-Playback Moj Sint user saves derive their private root from the same isolated
-`XDG_DATA_HOME` as `$XDG_DATA_HOME/moj-sint/presets` unless
+Playback SHR Synth user saves derive their private root from the same isolated
+`XDG_DATA_HOME` as `$XDG_DATA_HOME/shr-synth/presets` unless
 `SHSYNTH_MOJ_PRESET_DIR` explicitly selects another private absolute path. The
-launcher does not seed that user-sound tree from the public Moj Sint catalog.
+launcher does not seed that user-sound tree from the public SHR Synth catalog.
 It reads official SHR Drums packages directly from the tracked public kit tree
 instead of copying them below `user/`.
 
@@ -355,7 +355,7 @@ runs Cargo through `rustup run CHANNEL cargo`. A newer stable release is
 adopted by changing the reviewed repository pin; an older distribution
 compiler never redirects development.
 
-It validates `install/compatibility.json`, fetches Moj Sint and SHR Sampler from
+It validates `install/compatibility.json`, fetches SHR Synth and SHR Sampler from
 their exact public commits without GitHub authentication, verifies their
 declared versions and exact toolchain pins, and creates locked release builds.
 SHR-DAW's Cargo manifest fetches SHR Drums at the separate exact public source
@@ -365,7 +365,7 @@ directory enters the runtime tree.
 `prepare_install.py` stages the three executables plus only allowlisted public
 presets, instruments, kits, loops, demos, and documentation. Open303
 MIT/Ooura notices and provenance manifests are retained below
-`share/doc/moj-sint/open303`. It rejects unsafe,
+`share/doc/shr-synth/open303`. It rejects unsafe,
 missing, linked, duplicated, moving, non-public, or version-mismatched inputs.
 `managed_install.py` then preflights and applies the payload with `sudo`. It
 records file hashes/modes and symlink targets, refuses differing unowned or

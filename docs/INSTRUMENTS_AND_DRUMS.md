@@ -3,7 +3,7 @@
 The installed SHR-DAW package is one music workstation with a complete sound
 system: five melodic instrument families, the SHR Drums instrument and kits,
 one controller workflow, one tracker, one effects graph, and one final audio
-bus. Moj Sint, SHR Sampler, and SHR Drums arrive and work together as parts of
+bus. SHR Synth, SHR Sampler, and SHR Drums arrive and work together as parts of
 SHR-DAW. Their names identify kinds of sound available inside the workstation.
 
 This guide is the musician-facing home for choosing, loading, playing, saving,
@@ -18,14 +18,14 @@ audio ownership remain in [How SHR-DAW works](HOW_IT_WORKS.md).
 | synthv1 | `.synthv1` sounds | Melodic synth | Twelve mapped controls; private Overwrite or Save New |
 | Yoshimi | `.xiz` sounds and banks | Melodic synth | Volume and Project AUX sends; preset files remain read-only |
 | FluidSynth | `.sf2` / `.sf3` SoundFonts | Multitimbral melodic or General MIDI drums | Bank/program selection, Volume, and shared stereo AUX sends; SoundFonts remain read-only |
-| Moj Sint | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 sounds | Melodic synth | Model-specific controls and Project AUX sends; Dual Filter adds a reversible core click; private Overwrite or Save New |
+| SHR Synth | `.mojsint` Model D, Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, and Open303 sounds | Melodic synth | Model-specific controls and Project AUX sends; Dual Filter adds a reversible core click; private Overwrite or Save New |
 | SHR Sampler | `.shrinst` instruments | Melodic sample instrument | Strict preloaded instruments, Volume, and Project AUX sends; packages remain read-only |
 | SHR Drums | `.shrkit` kits | Four-lane drum instrument | Project kit, tuning, drum rack, and tracker notes |
 
 All six families participate in the same Project, routes, effects, transport,
 recording, controller, and final-bus workflows. At the implementation boundary,
 only one SHR-managed **melodic host process** runs at a time. Loading a new
-synthv1, Yoshimi, FluidSynth, Moj Sint, or SHR Sampler sound safely replaces or
+synthv1, Yoshimi, FluidSynth, SHR Synth, or SHR Sampler sound safely replaces or
 reuses that owner. FluidSynth may hold several compatible channel parts inside
 its one process. SHR Drums renders in process and can play beside the selected
 melodic instrument. This arrangement keeps drum audio independent inside the
@@ -59,9 +59,9 @@ stop it. A new, empty, unsaved FT2 Project can adopt that exact Player sound on
 its first software page without restarting the host. A saved or already edited
 Project keeps its stored routes.
 
-## Moj Sint sounds
+## SHR Synth sounds
 
-Moj Sint is SHR-DAW's editable in-house synthesis family. The installer pins
+SHR Synth is SHR-DAW's editable in-house synthesis family. The installer pins
 a 28-start catalog with these eight models:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
@@ -85,7 +85,7 @@ a 28-start catalog with these eight models:
 - Open303: Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck, with native
   acid filter and accent/slide envelope controls.
 
-Pressure Chain requires Moj Sint preset schema 9; Open303 requires schema 10. The installation pin contains
+Pressure Chain requires SHR Synth preset schema 9; Open303 requires schema 10. The installation pin contains
 that engine and all 28 cleared starts. Existing installations need a matching
 host binary update before loading the new model; source changes alone do not
 replace a running or installed executable.
@@ -93,16 +93,16 @@ replace a running or installed executable.
 Presets groups the available catalog in the fixed model order Model D, Six-Op
 PM, Strange Oscillator, Swarm Machine, Bass Matrix, Dual Filter, Pressure Chain, then Open303. Visible identities use
 one model letter and a two-digit number local to that model: `D01`, `P01`,
-`O01`, `S01`, `B01`, `F01`, `C01`, and `A01`. Opening or switching to Moj Sint starts at
+`O01`, `S01`, `B01`, `F01`, `C01`, and `A01`. Opening or switching to SHR Synth starts at
 `D01 Full Bass`; letter-jump follows those visible model letters. In FT2
-**ROUTE**, choosing Moj Sint adds an explicit `ENGINE → MODEL → PATCH`
+**ROUTE**, choosing SHR Synth adds an explicit `ENGINE → MODEL → PATCH`
 hierarchy. Changing the model selects that model's first available patch, and
 patch browsing never crosses the selected model boundary. Apply keeps the
 complete live-auditioned route; Cancel restores its opening snapshot.
 
 The Presets list, Playback, and FT2 **PARAM** show one inverted `M` cell beside
 Pressure Chain and Open303 sounds: these models play one note at a time.
-Long names leave room for the marker. The other Moj models have no voice marker.
+Long names leave room for the marker. The other SHR Synth models have no voice marker.
 
 Playback and FT2 **PARAM** share a **4×4** surface matching physical rotaries
 1–16. The first two rows hold tone controls, the third holds envelopes, and
@@ -161,8 +161,8 @@ FluidSynth's sends process its whole shared stereo mix. External MIDI instrument
 need a configured audio return for SHR effects. AUX sends are consumed inside
 SHR, start OFF, and retain absolute pickup and recording guards.
 
-Volume uses standard CC7 on Moj and the optional managed hosts; synthv1 uses
-its own DCA control. Moj's smoothed volume runs from silence to the preset's
+Volume uses standard CC7 on SHR Synth and the optional managed hosts; synthv1 uses
+its own DCA control. SHR Synth's smoothed volume runs from silence to the preset's
 normal maximum without entering timbre DSP. Optional hosts' preset files remain
 read-only; Project MIDI state and FT2 automation own durable volume. Relative
 turns continue from the effective value after load, reset and automation changes.
@@ -171,9 +171,9 @@ turns continue from the effective value after load, reset and automation changes
 Filter also restores its saved INDUSTRIAL or COUNTER core.
 **SAVE** offers Overwrite, Save New, and Cancel. Factory/system sounds are
 read-only, so Overwrite redirects to the next private `User NNN` sound. All
-eight Moj models keep separate private namespaces. A successful save becomes the
+eight SHR Synth models keep separate private namespaces. A successful save becomes the
 current sound and Reset baseline without releasing held notes; a failure keeps
-the live sound and any previous file intact. A Moj Sint Idea carries its
+the live sound and any previous file intact. A SHR Synth Idea carries its
 private preset snapshot, while an FT2 route stores the model-qualified stable
 sound identity.
 
@@ -210,8 +210,8 @@ possible.
 The public installation contains four cleared kits:
 
 - Acid, an original fully modelled CC0 kit;
-- Electronic House, original modelled voices plus two deterministic CC0 Moj
-  Sint one-shot exports;
+- Electronic House, original modelled voices plus two deterministic CC0 SHR
+  Synth one-shot exports;
 - Big Rock, a curated CC BY 4.0 acoustic kit; and
 - Experimental Noise, a curated CC BY 4.0 experimental kit.
 
@@ -236,7 +236,7 @@ borrows a drum voice.
 
 ## Projects, Ideas, and automation
 
-| Context | Moj Sint | SHR Sampler | SHR Drums |
+| Context | SHR Synth | SHR Sampler | SHR Drums |
 | --- | --- | --- | --- |
 | Player | Load, edit, reset, save | Load and play read-only package | FT2 Drums page |
 | Idea | MIDI plus private preset snapshot | MIDI plus stable package reference | Tracker workflow, not an Idea sound |
@@ -260,7 +260,7 @@ XDG data roots or ignored `user/`. Public factory material is restricted to
 the repository allowlists. SHR-DAW installs and operates the system as one
 workstation, while its component source and sound formats remain public:
 
-- [Moj Sint source and preset format](https://github.com/PaolaShultz/moj-sint);
+- [SHR Synth source and preset format](https://github.com/PaolaShultz/shr-synth);
 - [SHR Sampler source and instrument format](https://github.com/PaolaShultz/shr-sampler);
 - [SHR Drums source, kit format, and provenance](https://github.com/PaolaShultz/shr-drums).
 

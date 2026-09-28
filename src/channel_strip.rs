@@ -45,8 +45,21 @@ impl Settings {
 #[serde(deny_unknown_fields)]
 pub struct Binding {
     /// Backend namespace plus its portable catalog/package identity. Never a lane.
+    #[serde(deserialize_with = "deserialize_backend")]
     pub backend: String,
     pub instrument: String,
+}
+
+// Normalize the former persisted namespace before identity/duplicate checks.
+fn deserialize_backend<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<String, D::Error> {
+    let backend = String::deserialize(deserializer)?;
+    Ok(if backend == "moj-sint" {
+        "shr-synth".into()
+    } else {
+        backend
+    })
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -79,8 +92,14 @@ impl Channels {
                 return Err("duplicate or invalid channel identity".into());
             }
             let binding = &instrument.binding;
-            if !["synthv1", "yoshimi", "moj-sint", "shr-sampler", "shr-drums"]
-                .contains(&binding.backend.as_str())
+            if ![
+                "synthv1",
+                "yoshimi",
+                "shr-synth",
+                "shr-sampler",
+                "shr-drums",
+            ]
+            .contains(&binding.backend.as_str())
             {
                 return Err("unsupported channel backend (independent audio required)".into());
             }
@@ -164,6 +183,22 @@ impl Controls {
 mod tests {
     use super::*;
     #[test]
+    fn legacy_synth_binding_keeps_strip_settings_after_rename() {
+        let old = r#"{"instruments":[{"id":1,"binding":{"backend":"moj-sint","instrument":"factory"},"settings":{"enabled":true,"bass":2,"treble":0,"comp":20}}]}"#;
+        let channels: Channels = serde_json::from_str(old).unwrap();
+        channels.validate().unwrap();
+        let binding = Binding {
+            backend: "shr-synth".into(),
+            instrument: "factory".into(),
+        };
+        assert_eq!(channels.settings(&binding).comp, 20);
+        assert_eq!(channels.settings(&binding).bass, 2);
+        let saved = serde_json::to_string(&channels).unwrap();
+        assert!(saved.contains("shr-synth"));
+        assert!(!saved.contains("moj-sint"));
+    }
+
+    #[test]
     fn channel_over_limit_is_rejected_without_truncation() {
         let mut channels = Channels::default();
         for id in 1..=128 {
@@ -233,7 +268,13 @@ mod tests {
             r#"{"enabled":true,"bass":0,"treble":0,"comp":0,"automatic":true}"#
         )
         .is_err());
-        for backend in ["synthv1", "yoshimi", "moj-sint", "shr-sampler", "shr-drums"] {
+        for backend in [
+            "synthv1",
+            "yoshimi",
+            "shr-synth",
+            "shr-sampler",
+            "shr-drums",
+        ] {
             channels
                 .set(
                     Binding {

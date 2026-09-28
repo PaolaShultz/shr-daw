@@ -184,10 +184,10 @@ pub fn route_with_synth_amp_page<'a>(
         .map(|index| (index, f32::from(message[2].min(127)) / 127.0));
     let reserved_rotary = mapped_position.is_some_and(|index| {
         (index >= mapped_control_count && surface.is_none())
-            || (!matches!(backend, BackendKind::MojSint | BackendKind::Synthv1)
+            || (!matches!(backend, BackendKind::ShrSynth | BackendKind::Synthv1)
                 && index != crate::control::SYNTH_VOLUME_SLOT - 1
                 && surface.is_none())
-            || (backend == BackendKind::MojSint
+            || (backend == BackendKind::ShrSynth
                 && crate::control::synth_surface_index(index + 1, moj_controls.len()).is_none()
                 && surface.is_none())
             || (backend == BackendKind::Synthv1
@@ -213,7 +213,7 @@ pub fn route_with_synth_amp_page<'a>(
             })
             .and_then(|index| crate::control::SYNTHV1_SURFACE.get(index).copied())
             .map(|c| (c.cc, value_from_cc(c, message[2])))
-    } else if backend == BackendKind::MojSint {
+    } else if backend == BackendKind::ShrSynth {
         mapped_position
             .and_then(|position| {
                 crate::control::synth_surface_index(position + 1, moj_controls.len())
@@ -226,7 +226,7 @@ pub fn route_with_synth_amp_page<'a>(
     };
     let translated = if backend == BackendKind::Synthv1 {
         value.map(|(cc, _)| [message[0], cc, message[2].min(127)])
-    } else if backend == BackendKind::MojSint {
+    } else if backend == BackendKind::ShrSynth {
         if synth_action == Some(true) {
             Some([0xb0 | (message[0] & 0x0f), MOJ_CORE_TOGGLE_CC, 127])
         } else if consumed {
@@ -273,7 +273,7 @@ mod tests {
                 [0xb0 | channel, 1, 127],
                 [0xb0 | channel, 121, 0],
             ] {
-                let routed = route(&pads, BackendKind::MojSint, &message);
+                let routed = route(&pads, BackendKind::ShrSynth, &message);
                 assert_eq!(routed.forward, Some(message.as_slice()));
                 assert_eq!(routed.translated, None);
                 assert!(!routed.consumed);
@@ -564,15 +564,15 @@ mod tests {
     }
 
     #[test]
-    fn moj_sint_uses_position_matched_ccs_and_normalized_pickup() {
+    fn shr_synth_uses_position_matched_ccs_and_normalized_pickup() {
         let pads = PadConfig {
             controls: HashMap::from([(86, 1), (87, 8)]),
             ..PadConfig::default()
         };
-        let color = route(&pads, BackendKind::MojSint, &[0xb0, 86, 64]);
+        let color = route(&pads, BackendKind::ShrSynth, &[0xb0, 86, 64]);
         assert_eq!(color.value, Some((21, 64.0 / 127.0)));
         assert_eq!(color.translated, Some([0xb0, 21, 64]));
-        let attack = route(&pads, BackendKind::MojSint, &[0xb0, 87, 32]);
+        let attack = route(&pads, BackendKind::ShrSynth, &[0xb0, 87, 32]);
         assert_eq!(attack.value, Some((28, 32.0 / 127.0)));
         assert_eq!(attack.translated, Some([0xb0, 28, 32]));
 
@@ -580,7 +580,7 @@ mod tests {
             controls: HashMap::from([(93, 12)]),
             ..PadConfig::default()
         };
-        let volume = route(&volume_pads, BackendKind::MojSint, &[0xb0, 93, 99]);
+        let volume = route(&volume_pads, BackendKind::ShrSynth, &[0xb0, 93, 99]);
         assert_eq!(volume.value, Some((7, 99.0 / 127.0)));
         assert_eq!(volume.translated, Some([0xb0, 7, 99]));
 
@@ -600,7 +600,7 @@ mod tests {
         };
         let control = route_with_pad_lock_and_modifier(
             &pads,
-            BackendKind::MojSint,
+            BackendKind::ShrSynth,
             Some(MojModel::DualFilter),
             &[0xb0, 99, 64],
             false,
@@ -614,7 +614,7 @@ mod tests {
         for amp_page in [false, true] {
             let press = route_with_synth_amp_page(
                 &pads,
-                BackendKind::MojSint,
+                BackendKind::ShrSynth,
                 Some(MojModel::DualFilter),
                 &[0xb0, 100, 127],
                 false,
@@ -627,7 +627,7 @@ mod tests {
             assert_eq!(press.surface, None);
             let release = route_with_synth_amp_page(
                 &pads,
-                BackendKind::MojSint,
+                BackendKind::ShrSynth,
                 Some(MojModel::DualFilter),
                 &[0xb0, 100, 0],
                 false,
@@ -685,7 +685,7 @@ mod tests {
                 let message = [0xb2, 40 + position, 81];
                 let routed = route_with_synth_amp_page(
                     &pads,
-                    BackendKind::MojSint,
+                    BackendKind::ShrSynth,
                     Some(MojModel::DualFilter),
                     &message,
                     false,
@@ -706,7 +706,7 @@ mod tests {
             ] {
                 let routed = route_with_synth_amp_page(
                     &pads,
-                    BackendKind::MojSint,
+                    BackendKind::ShrSynth,
                     Some(MojModel::DualFilter),
                     &message,
                     false,

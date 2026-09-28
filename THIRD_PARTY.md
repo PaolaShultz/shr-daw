@@ -138,7 +138,7 @@ does not create a separate executable, service, or runtime source checkout.
 
 The bundled Acid package is an original fully modeled 27-voice kit. Electronic
 House has its original 27 modeled voices plus deterministic House Impact and
-Long Pressure synthetic one-shot exports authored by the CC0 Moj Sint project;
+Long Pressure synthetic one-shot exports authored by the CC0 SHR Synth project;
 they occupy notes 27 and 28 without replacing its existing note-33 through
 note-36 kicks. Neither package contains recordings or downloaded audio. Their
 manifests release the package content under CC0 1.0.
@@ -159,12 +159,12 @@ bundled. A local package's presence does not grant redistribution rights; add
 one to `cleared-kits.txt` only after reviewing its complete contents, manifest,
 source record, asset licence, and required notices.
 
-## Moj Sint and SHR Sampler
+## SHR Synth and SHR Sampler
 
-The whole-system installer fetches the exact public Moj Sint 0.2.3 and SHR
+The whole-system installer fetches the exact public SHR Synth 0.2.3 and SHR
 Sampler 0.1.2 revisions recorded in `install/compatibility.json`. Each
 repository's `THIRD_PARTY.md` owns its dependency and content provenance. Only
-Moj Sint files named by `presets/cleared-presets.txt` and SHR Sampler packages
+SHR Synth files named by `presets/cleared-presets.txt` and SHR Sampler packages
 named by `instruments/cleared-instruments.txt` enter the payload. The initial
 SHR Sampler package is a project-authored deterministic waveform released as
 CC0-1.0; no private or third-party sample library is copied or converted.
@@ -203,7 +203,7 @@ packaged, mirrored, or copied into a public release. Setup asks first, stores a
 source/terms note beside the private files, and downloads from:
 <https://www.musicradar.com/news/sampleradar-free-80s-pop-drums-samples>.
 
-Moj's Open303 model incorporates Robin Schmidt's MIT core and Takuya Ooura's
+SHR Synth's Open303 model incorporates Robin Schmidt's MIT core and Takuya Ooura's
 separately permitted FFT. The installer retains both notices under
-`share/doc/moj-sint/open303`. Its four factory starts are newly authored Moj
+`share/doc/shr-synth/open303`. Its four factory starts are newly authored SHR Synth
 parameter documents, with no imported factory programs or samples.

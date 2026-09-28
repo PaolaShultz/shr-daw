@@ -198,7 +198,7 @@ fn load_core(base: &Path, name: &str) -> Result<(PathBuf, Preset, Vec<TimedEvent
 }
 
 fn read_saved_parameters(path: &Path, preset: &Preset) -> Result<HashMap<u8, f32>> {
-    if !matches!(preset.backend, BackendKind::Synthv1 | BackendKind::MojSint) || !path.is_file() {
+    if !matches!(preset.backend, BackendKind::Synthv1 | BackendKind::ShrSynth) || !path.is_file() {
         return Ok(HashMap::new());
     }
     let metadata: serde_json::Value = serde_json::from_slice(&read_owned_file(
@@ -219,10 +219,10 @@ fn read_saved_parameters(path: &Path, preset: &Preset) -> Result<HashMap<u8, f32
             .iter()
             .map(|control| (control.cc, control.xml_name, control.min, control.max))
             .collect::<Vec<_>>(),
-        BackendKind::MojSint => moj_controls(
+        BackendKind::ShrSynth => moj_controls(
             preset
                 .moj_model()
-                .context("Moj Sint idea preset has no model")?,
+                .context("SHR Synth idea preset has no model")?,
         )
         .iter()
         .map(|control| (control.cc, control.macro_id, 0.0, 1.0))
@@ -309,7 +309,7 @@ pub fn save(
         write_preset_ref(&tmp.join("preset.ref"), preset)?;
         if let PresetId::Synthv1 { path } = &preset.id {
             fs::copy(path, tmp.join("preset.synthv1"))?;
-        } else if let PresetId::MojSint { path, .. } = &preset.id {
+        } else if let PresetId::ShrSynth { path, .. } = &preset.id {
             fs::copy(path, tmp.join("preset.mojsint"))?;
         }
         fs::write(tmp.join("recording.mid"), &encoded)?;
@@ -328,10 +328,10 @@ pub fn save(
                 }
                 parameters.insert(control.xml_name.into(), serde_json::json!(value));
             }
-        } else if preset.backend == BackendKind::MojSint {
+        } else if preset.backend == BackendKind::ShrSynth {
             let model = preset
                 .moj_model()
-                .context("Moj Sint idea preset has no model")?;
+                .context("SHR Synth idea preset has no model")?;
             for control in moj_controls(model) {
                 let value = values.get(&control.cc).copied().unwrap_or(0.0);
                 if !value.is_finite() || !(0.0..=1.0).contains(&value) {
@@ -342,7 +342,7 @@ pub fn save(
         }
         let snapshot = match preset.id {
             PresetId::Synthv1 { .. } => Some("preset.synthv1"),
-            PresetId::MojSint { .. } => Some("preset.mojsint"),
+            PresetId::ShrSynth { .. } => Some("preset.mojsint"),
             _ => None,
         };
         let metadata = serde_json::json!({
@@ -408,7 +408,7 @@ fn write_preset_ref(path: &Path, preset: &Preset) -> Result<()> {
             safe_ref_value(&soundfont.to_string_lossy())?,
             format!("soundfont_index={soundfont_index}\nbank={bank}\nprogram={program}\n"),
         ),
-        PresetId::MojSint { .. } => ("preset.mojsint".to_owned(), String::new()),
+        PresetId::ShrSynth { .. } => ("preset.mojsint".to_owned(), String::new()),
         PresetId::ShrSampler {
             instrument_id,
             path,
@@ -447,7 +447,7 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
     let name = field("name=").context("preset reference has no name")?;
     let mut category = field("category=").filter(|value| !value.is_empty());
     let source = field("path=").context("preset reference has no path")?;
-    let source = if matches!(backend, BackendKind::Synthv1 | BackendKind::MojSint) {
+    let source = if matches!(backend, BackendKind::Synthv1 | BackendKind::ShrSynth) {
         let expected = if backend == BackendKind::Synthv1 {
             "preset.synthv1"
         } else {
@@ -486,10 +486,10 @@ fn read_preset_ref(path: &Path, idea_dir: &Path) -> Result<Preset> {
                 .context("FluidSynth reference has no program")?
                 .parse()?,
         },
-        BackendKind::MojSint => {
+        BackendKind::ShrSynth => {
             let model = crate::preset::moj_model(&source)?;
             category = Some(model.label().into());
-            PresetId::MojSint {
+            PresetId::ShrSynth {
                 model,
                 path: source,
             }
@@ -1073,7 +1073,7 @@ mod tests {
     }
 
     #[test]
-    fn moj_sint_idea_owns_preset_snapshot_and_restores_all_macros() {
+    fn shr_synth_idea_owns_preset_snapshot_and_restores_all_macros() {
         let base = std::env::temp_dir().join(format!("shsynth-moj-idea-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -1103,10 +1103,10 @@ release = 0.6
         )
         .unwrap();
         let preset = Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: "Model D".into(),
             category: Some("Model D".into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model: crate::preset::MojModel::ModelD,
                 path: preset_path,
             },
@@ -1120,9 +1120,9 @@ release = 0.6
         assert!(saved.join("preset.mojsint").is_file());
         assert!(!saved.join("preset.synthv1").exists());
         let (loaded, restored, events) = load_with_parameters(&base, "moj").unwrap();
-        assert_eq!(loaded.backend, BackendKind::MojSint);
+        assert_eq!(loaded.backend, BackendKind::ShrSynth);
         assert_eq!(loaded.moj_model(), Some(crate::preset::MojModel::ModelD));
-        assert!(matches!(loaded.id, PresetId::MojSint { .. }));
+        assert!(matches!(loaded.id, PresetId::ShrSynth { .. }));
         assert_eq!(restored, values);
         assert!(events.is_empty());
         let _ = fs::remove_dir_all(base);

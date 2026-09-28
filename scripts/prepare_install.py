@@ -39,7 +39,7 @@ def contract(root: Path) -> dict[str, object]:
     components = document.get("components")
     if not isinstance(components, list):
         raise PreparationError("compatibility contract has no components")
-    expected = {"shr-daw", "moj-sint", "shr-sampler", "shr-drums"}
+    expected = {"shr-daw", "shr-synth", "shr-sampler", "shr-drums"}
     names = {item.get("name") for item in components if isinstance(item, dict)}
     if names != expected:
         raise PreparationError("compatibility contract component set is incomplete")
@@ -153,14 +153,14 @@ def prepare(root: Path, output: Path, profile: str) -> None:
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="shr-public-sources-") as temporary:
         source_root = Path(temporary)
-        moj_record = component(document, "moj-sint")
+        moj_record = component(document, "shr-synth")
         sampler_record = component(document, "shr-sampler")
-        moj = source_root / "moj-sint"
+        moj = source_root / "shr-synth"
         sampler = source_root / "shr-sampler"
         checkout(moj_record, moj)
         checkout(sampler_record, sampler)
         if package_version(moj) != moj_record["version"]:
-            raise PreparationError("pinned Moj Sint version does not match compatibility contract")
+            raise PreparationError("pinned SHR Synth version does not match compatibility contract")
         if package_version(sampler, workspace=True) != sampler_record["version"]:
             raise PreparationError("pinned SHR Sampler version does not match compatibility contract")
         shr_target = build(root, profile)
@@ -177,12 +177,14 @@ def prepare(root: Path, output: Path, profile: str) -> None:
         )
         binary_dir = output / "usr/local/bin"
         binary_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(moj_target / "moj-sint", binary_dir / "moj-sint")
+        shutil.copy2(moj_target / "shr-synth", binary_dir / "shr-synth")
+        # Existing private configurations may still name the former executable.
+        (binary_dir / "moj-sint").symlink_to("shr-synth")
         shutil.copy2(sampler_target / "shr-sampler", binary_dir / "shr-sampler")
         if not (shr_target / "shr").is_file():
             raise PreparationError("SHR-DAW build did not produce its executable")
         moj_names = checked_allowlist(moj, "presets/cleared-presets.txt", ".mojsint")
-        moj_output = output / "usr/local/share/moj-sint/presets"
+        moj_output = output / "usr/local/share/shr-synth/presets"
         moj_output.mkdir(parents=True)
         for name in moj_names:
             shutil.copy2(moj / "presets" / name, moj_output / name)
@@ -201,12 +203,12 @@ def prepare(root: Path, output: Path, profile: str) -> None:
             sampler / "instruments/cleared-instruments.txt",
             sampler_output / "cleared-instruments.txt",
         )
-        for name, source in (("moj-sint", moj), ("shr-sampler", sampler)):
+        for name, source in (("shr-synth", moj), ("shr-sampler", sampler)):
             doc = output / "usr/local/share/doc" / name
             doc.mkdir(parents=True)
             for filename in ("LICENSE", "README.md", "THIRD_PARTY.md"):
                 shutil.copy2(source / filename, doc / filename)
-            if name == "moj-sint":
+            if name == "shr-synth":
                 notices = doc / "open303"
                 notices.mkdir()
                 for filename in ("LICENSE-MIT", "LICENSE-OOURA", "README.md", "UPSTREAM.sha256", "LOCAL.sha256"):

@@ -18,13 +18,13 @@ pub enum BackendKind {
     Synthv1,
     Yoshimi,
     FluidSynth,
-    MojSint,
+    ShrSynth,
     ShrSampler,
 }
 
 impl BackendKind {
     pub const ALL: [Self; 5] = [
-        Self::MojSint,
+        Self::ShrSynth,
         Self::ShrSampler,
         Self::Synthv1,
         Self::Yoshimi,
@@ -36,7 +36,7 @@ impl BackendKind {
             Self::Synthv1 => "synthv1",
             Self::Yoshimi => "Yoshimi",
             Self::FluidSynth => "FluidSynth",
-            Self::MojSint => "Moj Sint",
+            Self::ShrSynth => "SHR Synth",
             Self::ShrSampler => "SHR Sampler",
         }
     }
@@ -62,7 +62,8 @@ impl std::str::FromStr for BackendKind {
             "synthv1" | "synth" => Ok(Self::Synthv1),
             "yoshimi" => Ok(Self::Yoshimi),
             "fluidsynth" | "fluid" => Ok(Self::FluidSynth),
-            "moj sint" | "moj-sint" | "moj_sint" | "mojsint" => Ok(Self::MojSint),
+            "shr synth" | "shr-synth" | "shr_synth" | "moj sint" | "moj-sint" | "moj_sint"
+            | "mojsint" => Ok(Self::ShrSynth),
             "shr sampler" | "shr-sampler" | "shr_sampler" | "sampler" => Ok(Self::ShrSampler),
             _ => bail!("unknown sound engine {value:?}"),
         }
@@ -83,7 +84,7 @@ pub enum PresetId {
         bank: u16,
         program: u8,
     },
-    MojSint {
+    ShrSynth {
         model: MojModel,
         path: PathBuf,
     },
@@ -177,8 +178,8 @@ impl Preset {
     }
 
     pub fn display_name(&self) -> String {
-        if let PresetId::MojSint { model, .. } = &self.id {
-            return compact_moj_sint_name(*model, &self.name);
+        if let PresetId::ShrSynth { model, .. } = &self.id {
+            return compact_shr_synth_name(*model, &self.name);
         }
         if self.backend == BackendKind::FluidSynth {
             return self.name.clone();
@@ -213,7 +214,7 @@ impl Preset {
                     .unwrap_or("soundfont");
                 format!("sf{soundfont_index}:{soundfont}:{bank}:{program}")
             }
-            PresetId::MojSint { model, .. } => {
+            PresetId::ShrSynth { model, .. } => {
                 format!("{}/{}", model.stable_id(), self.name)
             }
             PresetId::ShrSampler { instrument_id, .. } => instrument_id.clone(),
@@ -234,18 +235,18 @@ impl Preset {
                     .unwrap_or("soundfont");
                 Some(format!("{soundfont}:{bank}:{program}"))
             }
-            PresetId::MojSint {
+            PresetId::ShrSynth {
                 model: MojModel::ModelD,
                 ..
             } => Some(self.name.clone()),
-            PresetId::MojSint { .. } => None,
+            PresetId::ShrSynth { .. } => None,
             _ => None,
         }
     }
 
     pub const fn moj_model(&self) -> Option<MojModel> {
         match &self.id {
-            PresetId::MojSint { model, .. } => Some(*model),
+            PresetId::ShrSynth { model, .. } => Some(*model),
             _ => None,
         }
     }
@@ -265,7 +266,7 @@ impl Preset {
     }
 }
 
-fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
+fn compact_shr_synth_name(model: MojModel, name: &str) -> String {
     let (number, mut sound) = name.split_once(' ').map_or((None, name), |(first, rest)| {
         if !first.is_empty() && first.chars().all(|character| character.is_ascii_digit()) {
             (Some(first), rest)
@@ -303,7 +304,7 @@ fn compact_moj_sint_name(model: MojModel, name: &str) -> String {
     }
 }
 
-/// Presets shows Moj Sint as one model-grouped catalog. Each model owns one
+/// Presets shows SHR Synth as one model-grouped catalog. Each model owns one
 /// stable letter and its own visible 01-based sequence, independent of old
 /// global factory filename numbers.
 pub fn moj_catalog_display_name(presets: &[Preset], index: usize) -> Option<String> {
@@ -313,7 +314,7 @@ pub fn moj_catalog_display_name(presets: &[Preset], index: usize) -> Option<Stri
         .iter()
         .filter(|candidate| candidate.moj_model() == Some(model))
         .count();
-    let compact = compact_moj_sint_name(model, &preset.name);
+    let compact = compact_shr_synth_name(model, &preset.name);
     let without_number = compact
         .split_once(' ')
         .map_or(compact.as_str(), |(first, rest)| {
@@ -355,7 +356,7 @@ pub struct Catalog {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserPresetStorage {
     pub synthv1: PathBuf,
-    pub moj_sint: PathBuf,
+    pub shr_synth: PathBuf,
 }
 
 impl UserPresetStorage {
@@ -370,16 +371,24 @@ impl UserPresetStorage {
             synthv1: env::var_os("SHSYNTH_PRESET_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| data_home.join("shsynth/presets/synthv1")),
-            moj_sint: env::var_os("SHSYNTH_MOJ_PRESET_DIR")
+            shr_synth: env::var_os("SHSYNTH_MOJ_PRESET_DIR")
                 .map(PathBuf::from)
-                .unwrap_or_else(|| data_home.join("moj-sint/presets")),
+                .unwrap_or_else(|| {
+                    let current = data_home.join("shr-synth/presets");
+                    let legacy = data_home.join("moj-sint/presets");
+                    if !current.exists() && legacy.exists() {
+                        legacy
+                    } else {
+                        current
+                    }
+                }),
         }
     }
 
     pub fn root_for(&self, backend: BackendKind) -> Option<&Path> {
         match backend {
             BackendKind::Synthv1 => Some(&self.synthv1),
-            BackendKind::MojSint => Some(&self.moj_sint),
+            BackendKind::ShrSynth => Some(&self.shr_synth),
             BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => None,
         }
     }
@@ -390,16 +399,16 @@ pub fn discover_all(
     synthv1_dir: &Path,
     user_storage: &UserPresetStorage,
 ) -> Vec<Catalog> {
-    let mut moj_roots = config.moj_sint.backend.preset_roots.clone();
-    if !moj_roots.contains(&user_storage.moj_sint) {
-        moj_roots.push(user_storage.moj_sint.clone());
+    let mut moj_roots = config.shr_synth.backend.preset_roots.clone();
+    if !moj_roots.contains(&user_storage.shr_synth) {
+        moj_roots.push(user_storage.shr_synth.clone());
     }
     vec![
         catalog(
-            BackendKind::MojSint,
-            command_exists(&config.moj_sint.backend.command),
-            discover_moj_sint(&moj_roots),
-            &config.moj_sint.backend.command,
+            BackendKind::ShrSynth,
+            command_exists(&config.shr_synth.backend.command),
+            discover_shr_synth(&moj_roots),
+            &config.shr_synth.backend.command,
         ),
         catalog(
             BackendKind::ShrSampler,
@@ -528,7 +537,7 @@ fn valid_package_id(value: &str) -> bool {
 const MAX_MOJ_PRESETS: usize = 512;
 const MAX_MOJ_PRESET_BYTES: u64 = 1_048_576;
 
-pub fn discover_moj_sint(roots: &[PathBuf]) -> Result<Vec<Preset>> {
+pub fn discover_shr_synth(roots: &[PathBuf]) -> Result<Vec<Preset>> {
     let mut presets = Vec::new();
     let mut pending = roots
         .iter()
@@ -537,7 +546,7 @@ pub fn discover_moj_sint(roots: &[PathBuf]) -> Result<Vec<Preset>> {
         .collect::<Vec<_>>();
     while let Some(directory) = pending.pop() {
         for entry in fs::read_dir(&directory)
-            .with_context(|| format!("read Moj Sint preset root {}", directory.display()))?
+            .with_context(|| format!("read SHR Synth preset root {}", directory.display()))?
         {
             let entry = entry?;
             let file_type = entry.file_type()?;
@@ -546,14 +555,14 @@ pub fn discover_moj_sint(roots: &[PathBuf]) -> Result<Vec<Preset>> {
                 pending.push(path);
             } else if file_type.is_file() && extension_is(&path, "mojsint") {
                 if presets.len() == MAX_MOJ_PRESETS {
-                    bail!("Moj Sint catalog exceeds {MAX_MOJ_PRESETS} regular files");
+                    bail!("SHR Synth catalog exceeds {MAX_MOJ_PRESETS} regular files");
                 }
-                let (name, model, _) = read_moj_sint(&path)?;
+                let (name, model, _) = read_shr_synth(&path)?;
                 presets.push(Preset {
-                    backend: BackendKind::MojSint,
+                    backend: BackendKind::ShrSynth,
                     name,
                     category: Some(model.label().into()),
-                    id: PresetId::MojSint { model, path },
+                    id: PresetId::ShrSynth { model, path },
                 });
             }
         }
@@ -1170,11 +1179,11 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)
         .open(path)
-        .with_context(|| format!("open Moj Sint preset {}", path.display()))?;
+        .with_context(|| format!("open SHR Synth preset {}", path.display()))?;
     let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.len() > MAX_MOJ_PRESET_BYTES {
         bail!(
-            "Moj Sint preset must be a regular file no larger than 1 MiB: {}",
+            "SHR Synth preset must be a regular file no larger than 1 MiB: {}",
             path.display()
         );
     }
@@ -1182,21 +1191,21 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
     file.take(MAX_MOJ_PRESET_BYTES + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_MOJ_PRESET_BYTES {
-        bail!("Moj Sint preset exceeds 1 MiB: {}", path.display());
+        bail!("SHR Synth preset exceeds 1 MiB: {}", path.display());
     }
-    let source = String::from_utf8(bytes).context("Moj Sint preset is not UTF-8")?;
+    let source = String::from_utf8(bytes).context("SHR Synth preset is not UTF-8")?;
     let value: toml::Value =
         toml::from_str(&source).with_context(|| format!("parse {}", path.display()))?;
     let version = value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        .context("Moj Sint preset has no numeric schema_version")?;
+        .context("SHR Synth preset has no numeric schema_version")?;
     let (name, model, voices, output_gain, instrument_volume, patch, values) = match version {
         7 | 8 | 9 | 10 => {
             let model = value
                 .get("model")
                 .and_then(toml::Value::as_str)
-                .context("current Moj Sint preset has no model")?;
+                .context("current SHR Synth preset has no model")?;
             match model {
                 "model_d" => {
                     let document: MojPresetV5ModelD = toml::from_str(&source)?;
@@ -1330,14 +1339,14 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.macros.values(),
                     )
                 }
-                _ => bail!("unknown current Moj Sint model"),
+                _ => bail!("unknown current SHR Synth model"),
             }
         }
         6 => {
             let model = value
                 .get("model")
                 .and_then(toml::Value::as_str)
-                .context("schema-6 Moj Sint preset has no model")?;
+                .context("schema-6 SHR Synth preset has no model")?;
             match model {
                 "model_d" => {
                     let document: MojPresetV5ModelD = toml::from_str(&source)?;
@@ -1385,14 +1394,14 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.macros.values(),
                     )
                 }
-                _ => bail!("unknown schema-6 Moj Sint model"),
+                _ => bail!("unknown schema-6 SHR Synth model"),
             }
         }
         5 => {
             let model = value
                 .get("model")
                 .and_then(toml::Value::as_str)
-                .context("schema-5 Moj Sint preset has no model")?;
+                .context("schema-5 SHR Synth preset has no model")?;
             match model {
                 "model_d" => {
                     let document: MojPresetV5ModelD = toml::from_str(&source)?;
@@ -1426,13 +1435,13 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.macros.values(),
                     )
                 }
-                _ => bail!("unknown schema-5 Moj Sint model"),
+                _ => bail!("unknown schema-5 SHR Synth model"),
             }
         }
         4 => {
             let document: MojPresetV4 = toml::from_str(&source)?;
             if document.schema_version != 4 || document.model != MojModel::ModelD {
-                bail!("invalid schema-4 Moj Sint model identity");
+                bail!("invalid schema-4 SHR Synth model identity");
             }
             let _validated_patch = document.model_d_patch;
             (
@@ -1484,7 +1493,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 || !document.envelope.sustain_level.is_finite()
                 || !(0.0..=1.0).contains(&document.envelope.sustain_level)
             {
-                bail!("invalid version-1 Moj Sint envelope");
+                bail!("invalid version-1 SHR Synth envelope");
             }
             let _legacy = (
                 document.envelope.attack_seconds,
@@ -1517,7 +1526,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                 .values(),
             )
         }
-        unsupported => bail!("unsupported Moj Sint preset schema {unsupported}"),
+        unsupported => bail!("unsupported SHR Synth preset schema {unsupported}"),
     };
     let _ = value;
     if name.trim().is_empty()
@@ -1530,7 +1539,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
             .iter()
             .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
     {
-        bail!("invalid bounded Moj Sint preset {}", path.display());
+        bail!("invalid bounded SHR Synth preset {}", path.display());
     }
     Ok(MojDocument {
         name,
@@ -1543,7 +1552,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
     })
 }
 
-fn read_moj_sint(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
+fn read_shr_synth(path: &Path) -> Result<(String, MojModel, HashMap<u8, f32>)> {
     let document = read_moj_document(path)?;
     let mut values: HashMap<u8, f32> = crate::control::moj_controls(document.model)
         .iter()
@@ -1940,8 +1949,8 @@ pub(crate) fn sort_presets(presets: &mut [Preset]) {
 }
 
 pub fn values(preset: &Preset) -> Result<HashMap<u8, f32>> {
-    if let PresetId::MojSint { path, .. } = &preset.id {
-        return read_moj_sint(path).map(|(_, _, values)| values);
+    if let PresetId::ShrSynth { path, .. } = &preset.id {
+        return read_shr_synth(path).map(|(_, _, values)| values);
     }
     if matches!(
         preset.backend,
@@ -2003,7 +2012,7 @@ pub fn values(preset: &Preset) -> Result<HashMap<u8, f32>> {
 }
 
 pub fn moj_model(path: &Path) -> Result<MojModel> {
-    read_moj_sint(path).map(|(_, model, _)| model)
+    read_shr_synth(path).map(|(_, model, _)| model)
 }
 
 const MAX_SYNTHV1_PRESET_BYTES: u64 = 4 * 1_048_576;
@@ -2040,8 +2049,8 @@ pub fn save_new_user_preset(
     current_values: &HashMap<u8, f32>,
     catalog: &[Preset],
 ) -> Result<Preset> {
-    if source.backend == BackendKind::MojSint && catalog.len() >= MAX_MOJ_PRESETS {
-        bail!("Moj Sint private catalog is full")
+    if source.backend == BackendKind::ShrSynth && catalog.len() >= MAX_MOJ_PRESETS {
+        bail!("SHR Synth private catalog is full")
     }
     let directory = user_destination_directory(storage, source)?;
     let root = storage
@@ -2078,7 +2087,7 @@ pub fn overwrite_user_preset(
 fn user_preset_extension(backend: BackendKind) -> Result<&'static str> {
     match backend {
         BackendKind::Synthv1 => Ok("synthv1"),
-        BackendKind::MojSint => Ok("mojsint"),
+        BackendKind::ShrSynth => Ok("mojsint"),
         BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
             bail!("{} presets are not editable", backend.label())
         }
@@ -2159,7 +2168,7 @@ fn user_owned_preset_path(storage: &UserPresetStorage, preset: &Preset) -> Resul
         .context("this preset backend has no private storage")?;
     validate_private_root(root)?;
     let path = match &preset.id {
-        PresetId::Synthv1 { path } | PresetId::MojSint { path, .. } => path,
+        PresetId::Synthv1 { path } | PresetId::ShrSynth { path, .. } => path,
         PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } | PresetId::ShrSampler { .. } => {
             bail!("this preset backend is not editable")
         }
@@ -2210,16 +2219,16 @@ fn saved_preset_from_path(
             values(&preset)?;
             Ok(preset)
         }
-        BackendKind::MojSint => {
-            let (name, model, _) = read_moj_sint(&path)?;
+        BackendKind::ShrSynth => {
+            let (name, model, _) = read_shr_synth(&path)?;
             if Some(model) != expected_model {
-                bail!("saved Moj Sint model identity changed")
+                bail!("saved SHR Synth model identity changed")
             }
             Ok(Preset {
                 backend,
                 name,
                 category: Some(model.label().into()),
-                id: PresetId::MojSint { model, path },
+                id: PresetId::ShrSynth { model, path },
             })
         }
         BackendKind::Yoshimi | BackendKind::FluidSynth | BackendKind::ShrSampler => {
@@ -2235,7 +2244,9 @@ fn serialize_user_preset(
 ) -> Result<Vec<u8>> {
     match &source.id {
         PresetId::Synthv1 { path } => serialize_synthv1(path, name, current_values),
-        PresetId::MojSint { model, path } => serialize_moj_sint(path, *model, name, current_values),
+        PresetId::ShrSynth { model, path } => {
+            serialize_shr_synth(path, *model, name, current_values)
+        }
         PresetId::Yoshimi { .. } | PresetId::FluidSynth { .. } | PresetId::ShrSampler { .. } => {
             bail!("{} presets are not editable", source.backend.label())
         }
@@ -2377,7 +2388,7 @@ fn validate_xml_document(source: &[u8]) -> Result<()> {
     }
 }
 
-fn serialize_moj_sint(
+fn serialize_shr_synth(
     path: &Path,
     expected_model: MojModel,
     name: &str,
@@ -2385,7 +2396,7 @@ fn serialize_moj_sint(
 ) -> Result<Vec<u8>> {
     let document = read_moj_document(path)?;
     if document.model != expected_model {
-        bail!("Moj Sint route model does not match its preset")
+        bail!("SHR Synth route model does not match its preset")
     }
     let mut values = document.values;
     let instrument_volume = current_values
@@ -2402,9 +2413,9 @@ fn serialize_moj_sint(
         let value = current_values
             .get(&control.cc)
             .copied()
-            .with_context(|| format!("missing mapped Moj Sint CC {}", control.cc))?;
+            .with_context(|| format!("missing mapped SHR Synth CC {}", control.cc))?;
         if !value.is_finite() || !(0.0..=1.0).contains(&value) {
-            bail!("mapped Moj Sint CC {} is outside 0..=1", control.cc)
+            bail!("mapped SHR Synth CC {} is outside 0..=1", control.cc)
         }
         values[usize::from(control.cc - 20)] = value;
     }
@@ -2515,7 +2526,7 @@ fn serialize_moj_sint(
                 macros: MojMacrosPressure::from_values(values),
             })?
         }
-        _ => bail!("Moj Sint model and patch identity do not match"),
+        _ => bail!("SHR Synth model and patch identity do not match"),
     };
     // Round-trip through the same strict schema before publication.
     validate_moj_source(&encoded, expected_model)?;
@@ -2652,7 +2663,7 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
             8
         })
     {
-        bail!("saved Moj Sint preset schema does not match its model")
+        bail!("saved SHR Synth preset schema does not match its model")
     }
     match expected_model {
         MojModel::Open303 => {
@@ -2665,43 +2676,43 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
         MojModel::ModelD => {
             let document: MojPresetV5ModelD = toml::from_str(source)?;
             if document.model != MojModel::ModelD {
-                bail!("saved Moj Sint Model D identity is invalid")
+                bail!("saved SHR Synth Model D identity is invalid")
             }
         }
         MojModel::SixOpPm => {
             let document: MojPresetV5SixOp = toml::from_str(source)?;
             if document.model != MojModel::SixOpPm {
-                bail!("saved Moj Sint Six-Op identity is invalid")
+                bail!("saved SHR Synth Six-Op identity is invalid")
             }
         }
         MojModel::StrangeOscillator => {
             let document: MojPresetV6Strange = toml::from_str(source)?;
             if document.model != MojModel::StrangeOscillator {
-                bail!("saved Moj Sint Strange Oscillator identity is invalid")
+                bail!("saved SHR Synth Strange Oscillator identity is invalid")
             }
         }
         MojModel::SwarmMachine => {
             let document: MojPresetV7Swarm = toml::from_str(source)?;
             if document.model != MojModel::SwarmMachine {
-                bail!("saved Moj Sint Swarm identity is invalid")
+                bail!("saved SHR Synth Swarm identity is invalid")
             }
         }
         MojModel::BassMatrix => {
             let document: MojPresetV7BassMatrix = toml::from_str(source)?;
             if document.model != MojModel::BassMatrix {
-                bail!("saved Moj Sint Bass Matrix identity is invalid")
+                bail!("saved SHR Synth Bass Matrix identity is invalid")
             }
         }
         MojModel::PressureChain => {
             let document: MojPresetV9Pressure = toml::from_str(source)?;
             if document.model != MojModel::PressureChain || document.voices != 1 {
-                bail!("saved Moj Sint Pressure Chain identity is invalid")
+                bail!("saved SHR Synth Pressure Chain identity is invalid")
             }
         }
         MojModel::DualFilter => {
             let document: MojPresetV8DualFilter = toml::from_str(source)?;
             if document.model != MojModel::DualFilter {
-                bail!("saved Moj Sint Dual Filter identity is invalid")
+                bail!("saved SHR Synth Dual Filter identity is invalid")
             }
         }
     }
@@ -2742,6 +2753,22 @@ pub fn resolve<'a>(presets: &'a [Preset], arg: &str) -> Option<&'a Preset> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn synth_backend_accepts_saved_names_and_displays_current_name() {
+        for name in [
+            "Moj Sint",
+            "moj-sint",
+            "moj_sint",
+            "mojsint",
+            "SHR Synth",
+            "shr-synth",
+            "shr_synth",
+        ] {
+            assert_eq!(name.parse::<BackendKind>().unwrap(), BackendKind::ShrSynth);
+        }
+        assert_eq!(BackendKind::ShrSynth.label(), "SHR Synth");
+    }
 
     #[test]
     fn reads_legacy_xml_by_name_not_obsolete_index() {
@@ -2792,13 +2819,13 @@ mod tests {
 
     #[test]
     fn engine_cycle_wraps_in_both_directions() {
-        assert_eq!(BackendKind::ALL[0], BackendKind::MojSint);
-        assert_eq!(BackendKind::MojSint.next(-1), BackendKind::FluidSynth);
-        assert_eq!(BackendKind::MojSint.next(1), BackendKind::ShrSampler);
+        assert_eq!(BackendKind::ALL[0], BackendKind::ShrSynth);
+        assert_eq!(BackendKind::ShrSynth.next(-1), BackendKind::FluidSynth);
+        assert_eq!(BackendKind::ShrSynth.next(1), BackendKind::ShrSampler);
         assert_eq!(BackendKind::ShrSampler.next(1), BackendKind::Synthv1);
         assert_eq!(BackendKind::Synthv1.next(1), BackendKind::Yoshimi);
         assert_eq!(BackendKind::Yoshimi.next(1), BackendKind::FluidSynth);
-        assert_eq!(BackendKind::FluidSynth.next(1), BackendKind::MojSint);
+        assert_eq!(BackendKind::FluidSynth.next(1), BackendKind::ShrSynth);
     }
 
     #[test]
@@ -2846,12 +2873,12 @@ mod tests {
     }
 
     #[test]
-    fn moj_sint_display_uses_short_model_codes_without_repeating_the_model() {
+    fn shr_synth_display_uses_short_model_codes_without_repeating_the_model() {
         let preset = |model: MojModel, name: &str| Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: name.into(),
             category: Some(model.label().into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model,
                 path: PathBuf::from("sound.mojsint"),
             },
@@ -2874,10 +2901,10 @@ mod tests {
     #[test]
     fn moj_catalog_is_model_grouped_and_numbered_inside_each_model() {
         let preset = |model: MojModel, name: &str| Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: name.into(),
             category: Some(model.label().into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model,
                 path: PathBuf::from(format!("{name}.mojsint")),
             },
@@ -3029,7 +3056,7 @@ mod tests {
     }
 
     #[test]
-    fn moj_sint_discovery_is_regular_bounded_strict_and_has_twelve_values() {
+    fn shr_synth_discovery_is_regular_bounded_strict_and_has_twelve_values() {
         let base = std::env::temp_dir().join(format!("shsynth-moj-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).unwrap();
@@ -3080,9 +3107,9 @@ release = 0.6
         }
         fs::write(base.join("ignored.txt"), source).unwrap();
         std::os::unix::fs::symlink(base.join("00.mojsint"), base.join("linked.mojsint")).unwrap();
-        let presets = discover_moj_sint(std::slice::from_ref(&base)).unwrap();
+        let presets = discover_shr_synth(std::slice::from_ref(&base)).unwrap();
         assert_eq!(presets.len(), 7);
-        assert_eq!(presets[0].backend, BackendKind::MojSint);
+        assert_eq!(presets[0].backend, BackendKind::ShrSynth);
         assert_eq!(presets[0].moj_model(), Some(MojModel::ModelD));
         assert_eq!(presets[0].category.as_deref(), Some("Model D"));
         assert_eq!(presets[0].route_id(), "model_d/01 Full Bass");
@@ -3103,7 +3130,7 @@ release = 0.6
                 .replace("model_d_patch = \"bass\"\n", ""),
         )
         .unwrap();
-        let (_, model, values) = read_moj_sint(&version_two).unwrap();
+        let (_, model, values) = read_shr_synth(&version_two).unwrap();
         assert_eq!(model, MojModel::ModelD);
         assert_eq!(values.len(), 13);
         fs::remove_file(version_two).unwrap();
@@ -3115,19 +3142,19 @@ release = 0.6
                 .replace("model = \"model_d\"\n", ""),
         )
         .unwrap();
-        assert_eq!(read_moj_sint(&version_three).unwrap().1, MojModel::ModelD);
+        assert_eq!(read_shr_synth(&version_three).unwrap().1, MojModel::ModelD);
         fs::remove_file(version_three).unwrap();
         fs::write(
             base.join("bad.mojsint"),
             source.replace("model_d_patch = \"bass\"", "model_d_patch = \"unknown\""),
         )
         .unwrap();
-        assert!(discover_moj_sint(std::slice::from_ref(&base)).is_err());
+        assert!(discover_shr_synth(std::slice::from_ref(&base)).is_err());
         let _ = fs::remove_dir_all(base);
     }
 
     #[test]
-    fn moj_sint_schema_five_discovers_six_op_model_and_strict_macros() {
+    fn shr_synth_schema_five_discovers_six_op_model_and_strict_macros() {
         let path =
             std::env::temp_dir().join(format!("shsynth-six-op-{}.mojsint", std::process::id()));
         let source = r#"
@@ -3152,21 +3179,21 @@ sustain = 0.8
 release = 0.25
 "#;
         fs::write(&path, source).unwrap();
-        let (name, model, values) = read_moj_sint(&path).unwrap();
+        let (name, model, values) = read_shr_synth(&path).unwrap();
         assert_eq!(name, "08 Six-Op Bell Metal");
         assert_eq!(model, MojModel::SixOpPm);
         assert_eq!(values.len(), 13);
         assert_eq!(values.get(&20), Some(&0.5));
 
         fs::write(&path, format!("{source}\nmodel_d_patch = \"bass\"\n")).unwrap();
-        assert!(read_moj_sint(&path).is_err());
+        assert!(read_shr_synth(&path).is_err());
         let _ = fs::remove_file(path);
     }
 
     fn test_storage(base: &Path) -> UserPresetStorage {
         UserPresetStorage {
             synthv1: base.join("synthv1"),
-            moj_sint: base.join("moj-sint"),
+            shr_synth: base.join("shr-synth"),
         }
     }
 
@@ -3366,7 +3393,7 @@ amp_release = 0.7
         for model in MojModel::ALL {
             let path = base.join(format!("{}.mojsint", model.stable_id()));
             fs::write(&path, moj_source(model)).unwrap();
-            let (_, _, mut current) = read_moj_sint(&path).unwrap();
+            let (_, _, mut current) = read_shr_synth(&path).unwrap();
             for control in crate::control::moj_controls(model) {
                 current.insert(
                     control.cc,
@@ -3377,7 +3404,7 @@ amp_release = 0.7
                     },
                 );
             }
-            let encoded = serialize_moj_sint(&path, model, "Roundtrip", &current).unwrap();
+            let encoded = serialize_shr_synth(&path, model, "Roundtrip", &current).unwrap();
             fs::write(&path, encoded).unwrap();
             let document = read_moj_document(&path).unwrap();
             for control in crate::control::moj_controls(model) {
@@ -3388,7 +3415,7 @@ amp_release = 0.7
                 };
                 assert_eq!(stored, current[&control.cc], "{model:?} CC {}", control.cc);
             }
-            assert_eq!(read_moj_sint(&path).unwrap().2, current);
+            assert_eq!(read_shr_synth(&path).unwrap().2, current);
         }
         fs::remove_dir_all(base).unwrap();
     }
@@ -3404,7 +3431,7 @@ amp_release = 0.7
         for model in MojModel::ALL {
             let path = base.join(format!("factory-{}.mojsint", model.stable_id()));
             fs::write(&path, moj_source(model)).unwrap();
-            let (name, parsed_model, mut current) = read_moj_sint(&path).unwrap();
+            let (name, parsed_model, mut current) = read_shr_synth(&path).unwrap();
             assert_eq!(parsed_model, model);
             current.insert(20, 0.91);
             current.insert(7, 0.37);
@@ -3412,20 +3439,20 @@ amp_release = 0.7
                 current.insert(crate::control::MOJ_CORE_STATE_CC, 1.0);
             }
             let source = Preset {
-                backend: BackendKind::MojSint,
+                backend: BackendKind::ShrSynth,
                 name,
                 category: Some(model.label().into()),
-                id: PresetId::MojSint { model, path },
+                id: PresetId::ShrSynth { model, path },
             };
 
             let saved = save_new_user_preset(&storage, &source, &current, &[]).unwrap();
-            let PresetId::MojSint { path, .. } = &saved.id else {
-                panic!("expected Moj Sint user preset");
+            let PresetId::ShrSynth { path, .. } = &saved.id else {
+                panic!("expected SHR Synth user preset");
             };
             assert_eq!(saved.name, "User 001");
             assert_eq!(
                 path.parent().unwrap(),
-                storage.moj_sint.join(model.stable_id())
+                storage.shr_synth.join(model.stable_id())
             );
             let encoded = fs::read_to_string(path).unwrap();
             assert!(encoded.contains(if model == MojModel::Open303 {
@@ -3479,14 +3506,14 @@ amp_release = 0.7
                     assert!(encoded.contains("filter_a_cutoff = 0.91"));
                     assert!(encoded.contains("amp_release = 0.7"));
                     assert_eq!(
-                        read_moj_sint(path).unwrap().2[&crate::control::MOJ_CORE_STATE_CC],
+                        read_shr_synth(path).unwrap().2[&crate::control::MOJ_CORE_STATE_CC],
                         1.0
                     );
                 }
             }
-            assert_eq!(read_moj_sint(path).unwrap().1, model);
+            assert_eq!(read_shr_synth(path).unwrap().1, model);
         }
-        let discovered = discover_moj_sint(std::slice::from_ref(&storage.moj_sint)).unwrap();
+        let discovered = discover_shr_synth(std::slice::from_ref(&storage.shr_synth)).unwrap();
         assert_eq!(discovered.len(), MojModel::ALL.len());
         assert!(discovered.iter().any(|preset| {
             preset.name == "User 001" && preset.moj_model() == Some(MojModel::ModelD)
@@ -3634,7 +3661,7 @@ amp_release = 0.7
 
         let public_storage = UserPresetStorage {
             synthv1: Path::new(env!("CARGO_MANIFEST_DIR")).join("presets/synthv1"),
-            moj_sint: storage.moj_sint.clone(),
+            shr_synth: storage.shr_synth.clone(),
         };
         assert!(next_user_preset_name(&public_storage, &factory, &[]).is_err());
 
@@ -3643,7 +3670,7 @@ amp_release = 0.7
         std::os::unix::fs::symlink(base.join("real-root"), &linked_root).unwrap();
         let linked_storage = UserPresetStorage {
             synthv1: linked_root,
-            moj_sint: storage.moj_sint.clone(),
+            shr_synth: storage.shr_synth.clone(),
         };
         assert!(next_user_preset_name(&linked_storage, &factory, &[]).is_err());
 
@@ -3651,32 +3678,32 @@ amp_release = 0.7
         std::os::unix::fs::symlink(base.join("real-root"), &linked_parent).unwrap();
         let linked_parent_storage = UserPresetStorage {
             synthv1: linked_parent.join("presets"),
-            moj_sint: storage.moj_sint.clone(),
+            shr_synth: storage.shr_synth.clone(),
         };
         assert!(next_user_preset_name(&linked_parent_storage, &factory, &[]).is_err());
 
         let relative_storage = UserPresetStorage {
             synthv1: PathBuf::from("user/presets/synthv1"),
-            moj_sint: storage.moj_sint.clone(),
+            shr_synth: storage.shr_synth.clone(),
         };
         assert!(next_user_preset_name(&relative_storage, &factory, &[]).is_err());
 
-        fs::create_dir_all(&storage.moj_sint).unwrap();
+        fs::create_dir_all(&storage.shr_synth).unwrap();
         let outside_moj = base.join("outside-moj");
         fs::create_dir_all(&outside_moj).unwrap();
         std::os::unix::fs::symlink(
             &outside_moj,
-            storage.moj_sint.join(MojModel::ModelD.stable_id()),
+            storage.shr_synth.join(MojModel::ModelD.stable_id()),
         )
         .unwrap();
         let moj_path = base.join("factory.mojsint");
         fs::write(&moj_path, moj_source(MojModel::ModelD)).unwrap();
-        let (_, _, moj_values) = read_moj_sint(&moj_path).unwrap();
+        let (_, _, moj_values) = read_shr_synth(&moj_path).unwrap();
         let moj = Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: "Factory Bass".into(),
             category: Some(MojModel::ModelD.label().into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model: MojModel::ModelD,
                 path: moj_path,
             },

@@ -569,7 +569,7 @@ pub fn mapped_control_cc_for_page(
     target: Option<&PageTarget>,
 ) -> Option<u8> {
     if let Some(PageTarget::Software(route)) = target {
-        if route.engine == crate::preset::BackendKind::MojSint {
+        if route.engine == crate::preset::BackendKind::ShrSynth {
             let id = route.instrument.split('/').next()?;
             if let Some(model) = crate::preset::MojModel::ALL
                 .into_iter()
@@ -592,7 +592,7 @@ pub fn mapped_control_cc(engine: &str, control: &str) -> Option<u8> {
             .iter()
             .find(|candidate| candidate.xml_name == control)
             .map(|candidate| candidate.cc),
-        crate::preset::BackendKind::MojSint => crate::preset::MojModel::ALL
+        crate::preset::BackendKind::ShrSynth => crate::preset::MojModel::ALL
             .into_iter()
             .flat_map(crate::control::moj_controls)
             .find(|candidate| candidate.macro_id == control)
@@ -758,11 +758,11 @@ mod tests {
             (crate::preset::MojModel::DualFilter, "filter_release", 30),
         ] {
             let route = PageTarget::Software(crate::sequencer::SoftwareRoute {
-                engine: crate::preset::BackendKind::MojSint,
+                engine: crate::preset::BackendKind::ShrSynth,
                 instrument: format!("{}/Test", model.stable_id()),
             });
             assert_eq!(
-                mapped_control_cc_for_page("Moj Sint", name, Some(&route)),
+                mapped_control_cc_for_page("SHR Synth", name, Some(&route)),
                 Some(expected)
             );
         }
@@ -783,8 +783,8 @@ mod tests {
             };
             assert_eq!(mapped_control_cc(engine.label(), control), Some(expected));
         }
-        assert_eq!(mapped_control_cc("Moj Sint", "mass"), Some(20));
-        assert_eq!(mapped_control_cc("Moj Sint", "unstable"), Some(27));
+        assert_eq!(mapped_control_cc("SHR Synth", "mass"), Some(20));
+        assert_eq!(mapped_control_cc("SHR Synth", "unstable"), Some(27));
     }
     #[test]
     fn effect_expansion_obeys_remaining_shared_budget() {

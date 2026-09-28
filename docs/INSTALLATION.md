@@ -36,10 +36,10 @@ set the project's compiler direction; the installer uses the official per-user
 rustup toolchain. A running JACK server is optional for browsing and editing
 but required for software-instrument audio, WAV-loop playback, and multitrack
 recording.
-synthv1, Yoshimi, FluidSynth/TimGM, Moj Sint, and SHR Sampler are separate
+synthv1, Yoshimi, FluidSynth/TimGM, SHR Synth, and SHR Sampler are separate
 optional melodic engines at runtime. The supported installer installs all five
 from distribution packages or the exact public revisions in
-`install/compatibility.json`. It installs Moj Sint's 16 allowlisted factory
+`install/compatibility.json`. It installs SHR Synth's 28 allowlisted factory
 presets and SHR Sampler's allowlisted project-authored factory package; it
 never copies private presets, samples, packages, or user data from a checkout.
 SHR Drums remains an exact pinned in-process Rust dependency, so there is no
@@ -65,19 +65,22 @@ The current source compatibility set is:
 
 | Component | Required version | Installation form |
 | --- | --- | --- |
-| Moj Sint | 0.2.3 | exact public commit, `moj-sint`, 16 cleared presets |
-| SHR Sampler | 0.1.2 (accepted runtime `>=0.1.2,<0.2.0`) | exact public commit, `shr-sampler`, one cleared package |
-| SHR Drums | 0.2.0 (accepted library `>=0.2.0,<0.3.0`) | exact public Cargo dependency compiled into `shr` |
+| SHR Synth | 0.2.4 | exact public commit, `shr-synth`, 28 cleared presets |
+| SHR Sampler | 0.1.3 (accepted runtime `>=0.1.2,<0.2.0`) | exact public commit, `shr-sampler`, one cleared package |
+| SHR Drums | 0.2.1 (accepted library `>=0.2.0,<0.3.0`) | exact public Cargo dependency compiled into `shr` |
 
 The machine-readable source commits and runtime bounds live only in
 `install/compatibility.json`; documentation summarizes rather than duplicates
 their hashes.
 
-SHR-DAW source can host the newer Moj Sint preset schema 8 and its Dual Filter
-model, but the current compatibility file still pins the earlier public Moj
-Sint commit whose cleared catalog contains 16 starts. The installer therefore
-does not install the five Dual Filter starts. Treat the compatibility file,
-not the broader host capability, as the installation contract.
+SHR Synth supports preset schema 10 and all eight models, including Dual Filter,
+Pressure Chain and Open303. The pinned source installs all 28 cleared starts.
+The package, command and data directory are `shr-synth`. The installer also
+provides a `moj-sint` command alias for existing private configurations.
+`.mojsint` remains the preset extension; saved Projects and old backend names
+remain readable. Configuration writes use `shr_synth.*`, while the reader
+accepts legacy `moj_sint.*` keys. Existing private preset directories remain
+usable; no user sounds are renamed or republished.
 
 The installer:
 
@@ -94,11 +97,11 @@ The installer:
   a separate default-no prompt can add the user to `audio` and create a
   helper-owned limits file only when no distribution policy already suffices;
 - installs the exact official Rust toolchains selected by each repository,
-  fetches Moj Sint and SHR Sampler by immutable public commit, verifies their
+  fetches SHR Synth and SHR Sampler by immutable public commit, verifies their
   declared versions, and creates locked release builds;
-- builds SHR-DAW against SHR Drums 0.2.0 from its exact public Git revision;
-- stages commands, templates, 21 allowlisted synthv1 presets, 16 allowlisted
-  Moj Sint presets, the allowlisted SHR Sampler package, four allowlisted SHR
+- builds SHR-DAW against SHR Drums 0.2.1 from its exact public Git revision;
+- stages commands, templates, 21 allowlisted synthv1 presets, 28 allowlisted
+  SHR Synth presets, the allowlisted SHR Sampler package, four allowlisted SHR
   Drums kits, four allowlisted CC0 48 kHz loops, ten manifest-cleared demo
   Projects plus MIDI files, profiles, drum data, and documentation;
 - preflights the complete payload, refuses a differing unowned destination,
@@ -168,7 +171,7 @@ grouped prompts with:
 - `shr` opens SHR-DAW and provides its command-line tools.
 - `shr-setup` opens the routing wizard.
 - `shr-audio-tune` manages optional Raspberry Pi audio CPU tuning.
-- `moj-sint` is the pinned managed synthesis host.
+- `shr-synth` is the pinned managed synthesis host.
 - `shr-sampler` is the pinned managed sample-package host and offline validator.
 - `shs` and `synth-player` are compatibility names for `shr`. They use the same
   Rust engine ownership, routing, and shutdown path as the main command.
@@ -225,8 +228,8 @@ successful payload. It refuses to delete a managed file changed afterward,
 removes owned directories only when empty, and preserves unrelated files in a
 shared directory. It deliberately preserves user data under
 `${XDG_STATE_HOME:-~/.local/state}/shsynth/` and
-`${XDG_DATA_HOME:-~/.local/share}/shsynth/`, Moj Sint user sounds under
-`${XDG_DATA_HOME:-~/.local/share}/moj-sint/`, repository-local `user/`, system
+`${XDG_DATA_HOME:-~/.local/share}/shsynth/`, SHR Synth user sounds under
+`${XDG_DATA_HOME:-~/.local/share}/shr-synth/`, repository-local `user/`, system
 packages, JACK policy, and setup backups. Optional CPU/audio tuning is also a
 separate explicit system change; inspect/remove it with `shr-audio-tune` before
 uninstalling the command if desired. Never delete those retained directories

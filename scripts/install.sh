@@ -110,7 +110,7 @@ else
 fi
 printf '%s\n' \
   "  3. Exact repository Rust ${TOOLCHAIN} is installed for the current user." \
-  '  4. Moj Sint and SHR Sampler are fetched from exact public Git revisions.' \
+  '  4. SHR Synth and SHR Sampler are fetched from exact public Git revisions.' \
   '  5. locked release builds create one public, allowlisted system payload.' \
   '  6. the transactional installer updates only files recorded in its manifest.'
 if $INIT_CONFIG; then
@@ -241,6 +241,6 @@ if $INIT_CONFIG; then
   shr-setup
 fi
 
-printf '\nInstalled: SHR-DAW, Moj Sint, SHR Sampler, public factory content, and SHR Drums integration/data.\n'
+printf '\nInstalled: SHR-DAW, SHR Synth, SHR Sampler, public factory content, and SHR Drums integration/data.\n'
 printf 'External managed engines installed: synthv1, Yoshimi, FluidSynth, and TimGM.\n'
 printf 'Run shr doctor, then run shr. Reconfigure hardware with shr-setup.\n'

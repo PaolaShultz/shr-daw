@@ -188,7 +188,7 @@ Every musician-facing screen shows channels 1–16 and programs 1–128.
 Each page keeps one MIDI target plus four independent column channel, bank, and
 master-program setups. It also keeps velocity, mute, percussion, optional
 device-profile metadata, and lane settings. A software target stores its engine
-and that engine's stable instrument identity in the Pattern. Moj Sint stable
+and that engine's stable instrument identity in the Pattern. SHR Synth stable
 identities are model-qualified. When page 1 is
 part of a genuinely new, empty, unsaved default Project, entering FT2 may
 replace its factory route with the currently loaded Player engine/instrument.
@@ -206,7 +206,7 @@ eight simultaneous tracker lanes, and further pages extend that pool within
 the Project and synth voice limits. The same route may also be used on several
 channels.
 
-SHR still owns one synth host at a time. synthv1, Yoshimi, Moj Sint, and SHR
+SHR still owns one synth host at a time. synthv1, Yoshimi, SHR Synth, and SHR
 Sampler expose one current instrument, while one owned FluidSynth process is multitimbral: each distinct
 SoundFont preset/channel pair is selected once without changing other
 channels. For example, bass on channel 1, keys on 2, pad on 3, and a drum kit
@@ -220,12 +220,12 @@ MIDI output, or a FluidSynth General MIDI compatibility route. An unavailable
 saved target remains visibly offline and silent; it never falls back to another
 route. SHR Drums is an in-process stereo source and does not consume the one
 managed melodic-synth slot, so it can play beside synthv1, Yoshimi, FluidSynth,
-Moj Sint, or SHR Sampler. Switching targets sends All Notes Off and immediate
+SHR Synth, or SHR Sampler. Switching targets sends All Notes Off and immediate
 drum chokes.
 Loaded Projects keep their saved routes and channels, and loading a reusable
 drum pattern copies cells only.
 
-The complete musician-facing comparison, including Moj model controls and
+The complete musician-facing comparison, including SHR Synth model controls and
 saves, Sampler package validation, installed drum kits, ownership, and failure
 recovery, is in
 [SHR-DAW instruments and drums](INSTRUMENTS_AND_DRUMS.md).
@@ -267,7 +267,7 @@ or changing its selected column. Its final row opens the full **TRACKS** screen.
 select a page, choose a column, set its target, channel, bank, and program, and
 open **SYS** → **ENTRY** to choose that page's note-entry layout.
 **DONE** validates shared-channel compatibility and keeps the changes. Internal
-routes use `TARGET → ENGINE → INSTR`; Moj Sint inserts its explicit `MODEL →
+routes use `TARGET → ENGINE → INSTR`; SHR Synth inserts its explicit `MODEL →
 PATCH` hierarchy after `ENGINE`; external routes use
 `TARGET → MIDI OUT → CH → INSTR/PROG`. **SYS**
 → **EXIT** restores the Project as it was before TRACKS opened. A disconnected
@@ -287,7 +287,7 @@ route change completes and resets the old kit's tuning overrides; the Project
 key and drum effects remain unchanged. A failed load restores the previous kit
 and keeps the editor open with the failure visible.
 
-For Moj Sint, **ENGINE** stays `Moj Sint`, **MODEL** cycles Model D, Six-Op PM,
+For SHR Synth, **ENGINE** stays `SHR Synth`, **MODEL** cycles Model D, Six-Op PM,
 Strange Oscillator, Swarm Machine, and Bass Matrix, and **PATCH** stays inside
 the selected model.
 Changing the model selects its first available patch; changing patches never
@@ -510,7 +510,7 @@ Back, or SYS `EXIT` returns to that exact editing location.
 
 The panel shows at most twelve current-Pattern strips in one 4×3 grid. A strip
 is not a MIDI velocity or CC-volume control: it points directly to one existing
-final-bus audio owner. synthv1, Yoshimi, FluidSynth, Moj Sint, and SHR Sampler
+final-bus audio owner. synthv1, Yoshimi, FluidSynth, SHR Synth, and SHR Sampler
 pages use `SYN`; SHR Drums pages use `DRM`; attached Pattern Loop Mix appears as `LOP`
 when the twelve-strip cap has room; and an external-MIDI page uses `INP` only
 when an exact two-port SHR input return is configured. Otherwise it says `NO

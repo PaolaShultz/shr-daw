@@ -4,7 +4,7 @@
   "display_name": "Electronic House",
   "metadata": {
     "author": "SHR Drums contributors",
-    "source": "Deterministic SHR Drums modeled synthesis plus deterministic CC0 Moj Sint House Impact and Long Pressure one-shot exports; no recorded or downloaded audio",
+    "source": "Deterministic SHR Drums modeled synthesis plus deterministic CC0 SHR Synth House Impact and Long Pressure one-shot exports; no recorded or downloaded audio",
     "licence": "CC0-1.0",
     "attribution": "No attribution required; all voices are synthesized in process",
     "modification_notes": "Rebuilt as 27 distinct modeled voices, then extended with the authored House Impact and Long Pressure kicks on free notes 27 and 28. Existing notes and voice IDs remain compatible. Voice-local click/body/noise/mode layers use deliberate bounded drive, clipping, modulation, deterministic variation, and stereo shaping before the protected kit ceiling.",

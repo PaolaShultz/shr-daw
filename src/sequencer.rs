@@ -1761,7 +1761,7 @@ fn validate_automation_lane(
                 BackendKind::Synthv1 => crate::control::CONTROLS
                     .iter()
                     .any(|candidate| candidate.xml_name == control),
-                BackendKind::MojSint => crate::preset::MojModel::ALL
+                BackendKind::ShrSynth => crate::preset::MojModel::ALL
                     .into_iter()
                     .flat_map(crate::control::moj_controls)
                     .any(|candidate| candidate.macro_id == control),
@@ -7827,12 +7827,12 @@ mod tests {
     }
 
     #[test]
-    fn internal_drums_and_moj_sint_schedule_together_without_duplicate_routes() {
+    fn internal_drums_and_shr_synth_schedule_together_without_duplicate_routes() {
         let cfg = config();
         let mut song = Song::new_with_pages(&cfg, factory_routing_pages("Lead", gm_drums_route()));
         let song_pages = pages_mut(&mut song);
         let moj = SoftwareRoute {
-            engine: BackendKind::MojSint,
+            engine: BackendKind::ShrSynth,
             instrument: "Model D Baseline".into(),
         };
         song_pages[0].target = PageTarget::Software(moj.clone());

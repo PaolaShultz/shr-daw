@@ -1519,7 +1519,7 @@ fn channel_binding(route: &SoftwareRoute) -> crate::channel_strip::Binding {
             BackendKind::Synthv1 => "synthv1",
             BackendKind::Yoshimi => "yoshimi",
             BackendKind::FluidSynth => "fluidsynth",
-            BackendKind::MojSint => "moj-sint",
+            BackendKind::ShrSynth => "shr-synth",
             BackendKind::ShrSampler => "shr-sampler",
         }
         .into(),
@@ -1719,7 +1719,7 @@ fn wrapped_index(current: usize, len: usize, direction: i8) -> usize {
 }
 
 fn moj_model_for_route(presets: &[Preset], route: &SoftwareRoute) -> Option<preset::MojModel> {
-    if route.engine != BackendKind::MojSint {
+    if route.engine != BackendKind::ShrSynth {
         return None;
     }
     presets
@@ -1757,7 +1757,7 @@ fn adjusted_moj_model_route(
         .iter()
         .find(|preset| preset.moj_model() == Some(model))
         .map(|preset| SoftwareRoute {
-            engine: BackendKind::MojSint,
+            engine: BackendKind::ShrSynth,
             instrument: preset.route_id(),
         })
 }
@@ -3512,7 +3512,7 @@ impl App {
         if kind == OverlayKind::PresetSave
             && (self.engine.is_none()
                 || self.playing.as_ref().is_none_or(|preset| {
-                    !matches!(preset.backend, BackendKind::Synthv1 | BackendKind::MojSint)
+                    !matches!(preset.backend, BackendKind::Synthv1 | BackendKind::ShrSynth)
                 }))
         {
             self.status = "SAVE UNAVAILABLE · this sound format is read-only".into();
@@ -3820,11 +3820,11 @@ impl App {
             matches!(
                 page.target,
                 PageTarget::Software(ref route)
-                    if route.engine == preset::BackendKind::MojSint
+                    if route.engine == preset::BackendKind::ShrSynth
             )
         });
         if field == RouteField::Model && !moj_software {
-            self.status = "Select Moj Sint before model".into();
+            self.status = "Select SHR Synth before model".into();
             return;
         }
         if field == RouteField::Instrument && !software && !internal_drums {
@@ -3887,7 +3887,9 @@ impl App {
             }
             RouteField::Model => {
                 let route = match &page.target {
-                    PageTarget::Software(route) if route.engine == preset::BackendKind::MojSint => {
+                    PageTarget::Software(route)
+                        if route.engine == preset::BackendKind::ShrSynth =>
+                    {
                         route
                     }
                     _ => return None,
@@ -3895,7 +3897,7 @@ impl App {
                 let presets = &self
                     .catalogs
                     .iter()
-                    .find(|catalog| catalog.backend == preset::BackendKind::MojSint)?
+                    .find(|catalog| catalog.backend == preset::BackendKind::ShrSynth)?
                     .presets;
                 adjusted_moj_model_route(presets, route, direction).map(PageTarget::Software)
             }
@@ -4764,7 +4766,7 @@ impl App {
                             sequencer::AutomationCurve::Linear,
                         )
                     })),
-                    BackendKind::MojSint => {
+                    BackendKind::ShrSynth => {
                         let controls = self
                             .preset_for_route(route)
                             .and_then(|preset| preset.moj_model())
@@ -10605,7 +10607,7 @@ impl App {
                     .and_then(|engine| match engine {
                         BackendKind::Synthv1 => crate::control::by_cc(cc)
                             .map(|control| crate::control::normalize(control, value)),
-                        BackendKind::MojSint => Some(value.clamp(0.0, 1.0)),
+                        BackendKind::ShrSynth => Some(value.clamp(0.0, 1.0)),
                         _ => None,
                     })
                     .unwrap_or_else(|| value.clamp(0.0, 1.0))
@@ -14442,7 +14444,7 @@ impl App {
                         (control.cc, value, (normalized * 127.0).round() as u8)
                     })
             }
-            BackendKind::MojSint => {
+            BackendKind::ShrSynth => {
                 let controls = self
                     .playing
                     .as_ref()
@@ -16413,7 +16415,7 @@ impl App {
             self.status = "SAVE UNAVAILABLE · reload this sound".into();
             return;
         }
-        if !matches!(source.backend, BackendKind::Synthv1 | BackendKind::MojSint) {
+        if !matches!(source.backend, BackendKind::Synthv1 | BackendKind::ShrSynth) {
             self.status = "SAVE UNAVAILABLE · this sound format is read-only".into();
             return;
         }
@@ -24309,11 +24311,11 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 _ => None,
             };
             let moj_preset = software
-                .filter(|route| route.engine == preset::BackendKind::MojSint)
+                .filter(|route| route.engine == preset::BackendKind::ShrSynth)
                 .and_then(|route| {
                     a.catalogs
                         .iter()
-                        .find(|catalog| catalog.backend == preset::BackendKind::MojSint)
+                        .find(|catalog| catalog.backend == preset::BackendKind::ShrSynth)
                         .and_then(|catalog| {
                             catalog
                                 .presets
@@ -24323,7 +24325,7 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                 });
             let moj_model = moj_preset.and_then(preset::Preset::moj_model).or_else(|| {
                 software
-                    .filter(|route| route.engine == preset::BackendKind::MojSint)
+                    .filter(|route| route.engine == preset::BackendKind::ShrSynth)
                     .and_then(|route| {
                         preset::MojModel::ALL.into_iter().find(|model| {
                             route
@@ -24380,7 +24382,7 @@ fn overlay_rows(a: &App, overlay: &OverlayState) -> Vec<String> {
                     if drum_kit.is_some() {
                         "KIT · "
                     } else if software
-                        .is_some_and(|route| route.engine == preset::BackendKind::MojSint)
+                        .is_some_and(|route| route.engine == preset::BackendKind::ShrSynth)
                     {
                         "PATCH · "
                     } else {
@@ -25266,7 +25268,7 @@ fn draw_list<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let lines = (a.offset..(a.offset + rows).min(a.presets.len()))
         .map(|i| {
             let mark = if i == a.selected { "▶" } else { " " };
-            let name = if a.presets[i].backend == BackendKind::MojSint {
+            let name = if a.presets[i].backend == BackendKind::ShrSynth {
                 preset::moj_catalog_display_name(&a.presets, i)
                     .unwrap_or_else(|| a.presets[i].display_name())
             } else {
@@ -25543,7 +25545,7 @@ fn draw_synth_parameters<B: Backend>(
             );
         }
         draw_aux_surface_slots(f, a, inner);
-    } else if playing_backend == Some(BackendKind::MojSint) {
+    } else if playing_backend == Some(BackendKind::ShrSynth) {
         let controls = a
             .playing
             .as_ref()
@@ -27846,10 +27848,10 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
                 preset::MojModel::StrangeOscillator
             };
             Preset {
-                backend: BackendKind::MojSint,
+                backend: BackendKind::ShrSynth,
                 name: name.into(),
                 category: Some(model.label().into()),
-                id: preset::PresetId::MojSint {
+                id: preset::PresetId::ShrSynth {
                     model,
                     path: format!("demo-{index}.mojsint").into(),
                 },
@@ -27858,7 +27860,7 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         .collect();
     let catalogs = [
         Catalog {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             presets: moj_presets,
             unavailable: None,
         },
@@ -27880,7 +27882,7 @@ fn screenshot_app(mut config: RuntimeConfig) -> App {
         &catalogs,
         preset::UserPresetStorage {
             synthv1: PathBuf::new(),
-            moj_sint: PathBuf::new(),
+            shr_synth: PathBuf::new(),
         },
         Arc::new(std::sync::Mutex::new(None)),
         Arc::new(std::sync::Mutex::new(crate::midi::Pickup::default())),
@@ -28994,10 +28996,10 @@ mod tests {
     }
     fn moj_preset(model: preset::MojModel, name: &str) -> Preset {
         Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: name.into(),
             category: Some(model.label().into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model,
                 path: PathBuf::from(format!("{}.mojsint", name.replace(' ', "-"))),
             },
@@ -29025,7 +29027,7 @@ mod tests {
                     program: 0,
                 },
             },
-            BackendKind::MojSint => moj_preset(preset::MojModel::ModelD, name),
+            BackendKind::ShrSynth => moj_preset(preset::MojModel::ModelD, name),
             BackendKind::ShrSampler => Preset {
                 backend,
                 name: name.into(),
@@ -29114,7 +29116,7 @@ mod tests {
         let mut app = app(std::slice::from_ref(&source));
         app.user_preset_storage = preset::UserPresetStorage {
             synthv1: base.join("synthv1"),
-            moj_sint: base.join("moj-sint"),
+            shr_synth: base.join("shr-synth"),
         };
         app.values = preset::values(&source).unwrap();
         app.original_values = app.values.clone();
@@ -29712,19 +29714,19 @@ release = 0.4
         )
         .unwrap();
         let model_d = Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: "Bass".into(),
             category: Some("Model D".into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model: preset::MojModel::ModelD,
                 path: model_d_path,
             },
         };
         let six_op = Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: "Bell".into(),
             category: Some("Six-Op PM".into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model: preset::MojModel::SixOpPm,
                 path: six_op_path,
             },
@@ -29732,10 +29734,10 @@ release = 0.4
         let mut app = app(&[]);
         app.user_preset_storage = preset::UserPresetStorage {
             synthv1: base.join("private/synthv1"),
-            moj_sint: base.join("private/moj-sint"),
+            shr_synth: base.join("private/shr-synth"),
         };
         app.catalogs = vec![Catalog {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             presets: vec![model_d, six_op.clone()],
             unavailable: None,
         }];
@@ -29746,7 +29748,8 @@ release = 0.4
         app.playing = Some(six_op);
         app.engine_owner = Some(EngineOwner::SoftwareSynth);
         app.engine = Some(
-            Engine::start_test_process(BackendKind::MojSint, Arc::clone(&app.midi_output)).unwrap(),
+            Engine::start_test_process(BackendKind::ShrSynth, Arc::clone(&app.midi_output))
+                .unwrap(),
         );
         app.screen = Screen::Playback;
         app.open_overlay(Action::OpenPresetSaveOverlay);
@@ -29755,15 +29758,15 @@ release = 0.4
         let saved = app.playing.as_ref().unwrap();
         assert_eq!(saved.moj_model(), Some(preset::MojModel::SixOpPm));
         assert_eq!(saved.route_id(), "six_op_pm/User 001");
-        let PresetId::MojSint { path, .. } = &saved.id else {
-            panic!("expected Moj Sint preset");
+        let PresetId::ShrSynth { path, .. } = &saved.id else {
+            panic!("expected SHR Synth preset");
         };
         assert_eq!(
             path.parent().unwrap(),
-            app.user_preset_storage.moj_sint.join("six_op_pm")
+            app.user_preset_storage.shr_synth.join("six_op_pm")
         );
         let route = SoftwareRoute {
-            engine: BackendKind::MojSint,
+            engine: BackendKind::ShrSynth,
             instrument: saved.route_id(),
         };
         let patches = &app.catalogs[0].presets;
@@ -31473,15 +31476,15 @@ release = 0.4
     }
 
     #[test]
-    fn moj_sint_playback_uses_four_by_four_surface_with_three_aux_sends() {
+    fn shr_synth_playback_uses_four_by_four_surface_with_three_aux_sends() {
         let presets = presets();
         let mut app = app(&presets);
         app.screen = Screen::Playback;
         app.playing = Some(Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: "Model D".into(),
             category: None,
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model: crate::preset::MojModel::ModelD,
                 path: PathBuf::from("model-d.mojsint"),
             },
@@ -31566,7 +31569,7 @@ release = 0.4
         assert!((app.song.aux_routing.sends[2].level_db + 19.0).abs() < 0.001);
 
         app.playing = Some(moj_preset(preset::MojModel::DualFilter, "Dual Filter"));
-        *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+        *app.midi_backend.lock().unwrap() = BackendKind::ShrSynth;
         app.values.insert(34, 0.5);
         app.apply_relative_rotary(Instant::now(), 14, 1);
         assert_eq!(app.values[&34], 0.5);
@@ -31694,7 +31697,7 @@ release = 0.4
                 app.screen = screen;
                 app.controller_layout = layout;
                 app.playing = Some(moj_preset(preset::MojModel::SixOpPm, "Bell"));
-                *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+                *app.midi_backend.lock().unwrap() = BackendKind::ShrSynth;
                 app.values = moj_controls(preset::MojModel::SixOpPm)
                     .iter()
                     .map(|c| (c.cc, 0.5))
@@ -31784,7 +31787,7 @@ release = 0.4
             let mut app = app(&presets());
             app.screen = screen;
             app.playing = Some(moj_preset(preset::MojModel::DualFilter, "Dual Filter"));
-            *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+            *app.midi_backend.lock().unwrap() = BackendKind::ShrSynth;
             app.values = moj_controls(preset::MojModel::DualFilter)
                 .iter()
                 .map(|c| (c.cc, 0.5))
@@ -31834,7 +31837,7 @@ release = 0.4
             preset::MojModel::PressureChain,
             "Pressure Chain Deep Cascade",
         ));
-        *app.midi_backend.lock().unwrap() = BackendKind::MojSint;
+        *app.midi_backend.lock().unwrap() = BackendKind::ShrSynth;
         app.values = moj_controls(preset::MojModel::PressureChain)
             .iter()
             .map(|control| (control.cc, 0.5))
@@ -32086,11 +32089,11 @@ release = 0.4
             moj_preset(preset::MojModel::SixOpPm, "Glass Wood"),
         ];
         let model_d = SoftwareRoute {
-            engine: BackendKind::MojSint,
+            engine: BackendKind::ShrSynth,
             instrument: moj_presets[0].route_id(),
         };
         let six_op = adjusted_moj_model_route(&moj_presets, &model_d, 1).unwrap();
-        assert_eq!(six_op.engine, BackendKind::MojSint);
+        assert_eq!(six_op.engine, BackendKind::ShrSynth);
         assert_eq!(six_op.instrument, "six_op_pm/Bell Metal");
         let next_patch = adjusted_patch_route(&moj_presets, &six_op, 1).unwrap();
         assert_eq!(next_patch.instrument, "six_op_pm/Glass Wood");
@@ -32099,7 +32102,7 @@ release = 0.4
             six_op
         );
         let legacy_model_d = SoftwareRoute {
-            engine: BackendKind::MojSint,
+            engine: BackendKind::ShrSynth,
             instrument: "Bass".into(),
         };
         assert_eq!(
@@ -32111,7 +32114,7 @@ release = 0.4
 
         let mut app = app(&presets());
         app.catalogs.push(Catalog {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             presets: moj_presets,
             unavailable: None,
         });
@@ -32119,7 +32122,7 @@ release = 0.4
         app.current_page_mut().unwrap().target = PageTarget::Software(six_op);
         app.open_overlay(Action::OpenRouteOverlay);
         let text = buffer_text(&render_app(&mut app, 40, 13));
-        assert!(text.contains("ENGINE · Moj Sint"), "{text}");
+        assert!(text.contains("ENGINE · SHR Synth"), "{text}");
         assert!(
             text.contains("MODEL") && text.contains("Six-Op PM"),
             "{text}"
@@ -32131,7 +32134,7 @@ release = 0.4
     }
 
     #[test]
-    fn moj_sint_preset_list_starts_at_d01_and_groups_model_local_names() {
+    fn shr_synth_preset_list_starts_at_d01_and_groups_model_local_names() {
         let mut moj_presets = vec![
             moj_preset(
                 preset::MojModel::DualFilter,
@@ -32146,7 +32149,7 @@ release = 0.4
         app.catalogs.insert(
             0,
             Catalog {
-                backend: BackendKind::MojSint,
+                backend: BackendKind::ShrSynth,
                 presets: moj_presets.clone(),
                 unavailable: None,
             },
@@ -32184,7 +32187,7 @@ release = 0.4
         ];
         let mut app = app(&presets());
         app.catalogs = vec![Catalog {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             presets: moj_presets.clone(),
             unavailable: None,
         }];
@@ -32231,29 +32234,29 @@ release = 0.4
     }
 
     #[test]
-    fn moj_sint_legacy_instrument_route_resolves_to_model_qualified_identity() {
+    fn shr_synth_legacy_instrument_route_resolves_to_model_qualified_identity() {
         let presets = presets();
         let mut app = app(&presets);
         let preset = Preset {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             name: "Model D Bass".into(),
             category: Some("Model D".into()),
-            id: PresetId::MojSint {
+            id: PresetId::ShrSynth {
                 model: crate::preset::MojModel::ModelD,
                 path: PathBuf::from("model-d-bass.mojsint"),
             },
         };
         app.catalogs.push(Catalog {
-            backend: BackendKind::MojSint,
+            backend: BackendKind::ShrSynth,
             presets: vec![preset],
             unavailable: None,
         });
         let resolved = app
             .preset_for_route(&SoftwareRoute {
-                engine: BackendKind::MojSint,
+                engine: BackendKind::ShrSynth,
                 instrument: "Model D Bass".into(),
             })
-            .expect("legacy Moj Sint route");
+            .expect("legacy SHR Synth route");
         assert_eq!(resolved.route_id(), "model_d/Model D Bass");
     }
 
@@ -33695,12 +33698,12 @@ release = 0.4
     }
 
     #[test]
-    fn canonical_presets_screenshot_starts_with_model_local_moj_sint_names() {
+    fn canonical_presets_screenshot_starts_with_model_local_shr_synth_names() {
         let mut app = screenshot_app(RuntimeConfig::default());
         configure_screenshot_scenario(&mut app, ScreenshotScenario::Presets);
 
         let text = buffer_text(&render_app(&mut app, 40, 13));
-        assert!(text.contains("PRESETS · Moj Sint"), "{text}");
+        assert!(text.contains("PRESETS · SHR Synth"), "{text}");
         assert!(text.contains("D01 Full Bass"), "{text}");
         assert!(!text.contains("[Model D]"), "{text}");
         assert!(!text.contains("01 M-D"), "{text}");

@@ -122,7 +122,7 @@ impl RouteField {
             if matches!(
                 page.target,
                 PageTarget::Software(ref route)
-                    if route.engine == crate::preset::BackendKind::MojSint
+                    if route.engine == crate::preset::BackendKind::ShrSynth
             ) {
                 rows.push(Self::Model);
             }
@@ -573,10 +573,10 @@ mod tests {
     }
 
     #[test]
-    fn moj_sint_route_exposes_engine_model_and_patch_rows() {
+    fn shr_synth_route_exposes_engine_model_and_patch_rows() {
         let mut page = Page::new("MIDI", 0, false, 0);
         page.target = PageTarget::Software(crate::sequencer::SoftwareRoute {
-            engine: crate::preset::BackendKind::MojSint,
+            engine: crate::preset::BackendKind::ShrSynth,
             instrument: "model_d/01 Full Bass".into(),
         });
 

@@ -324,27 +324,27 @@ debug gate; its preceding run passed 1,092 tests with 13 historical or audition
 tests ignored before this focused interaction change. No connected MIDI/JACK
 test, app restart, or audible test ran.
 
-## 2026-08-28 Moj model-local catalog and stale-host repair
+## 2026-08-28 SHR Synth model-local catalog and stale-host repair
 
-The Moj Presets list no longer sorts by translated category labels or exposes
+The SHR Synth Presets list no longer sorts by translated category labels or exposes
 the old global factory-file numbers. It uses the fixed model order Model D,
 Six-Op PM, Strange Oscillator, Swarm Machine, Bass Matrix, then Dual Filter.
 Each model has one visible letter and its own two-digit sequence: `D01`, `P01`,
 `O01`, `S01`, `B01`, and `F01`. The visible sound name follows that identity.
-Opening or switching to Moj Sint resets the cursor to `D01 Full Bass`; visible
+Opening or switching to SHR Synth resets the cursor to `D01 Full Bass`; visible
 letter-jump uses those same model letters. This removes the misleading initial
 `16 Bass Matrix` selection caused by alphabetical category sorting.
 
 The observed Dual Filter `START FAILED` was a source/artifact compatibility
 failure, not a bad private configuration. SHR discovered schema-8 presets from
-the current Moj source tree but launched a Moj release executable last built
+the current SHR Synth source tree but launched a SHR Synth release executable last built
 before schema 8; that executable rejected the selected preset as unsupported.
-The Moj release executable was rebuilt from current source. All 21 cleared
+The SHR Synth release executable was rebuilt from current source. All 21 cleared
 presets now pass its offline validator, and two production Dual Filter renders
 with identical inputs are byte-identical. The active SHR and synth processes
 were not stopped, restarted, connected, or exercised by the agent.
 
-Focused Moj catalog, visible-name, letter-jump, route, and engine-replacement
+Focused SHR Synth catalog, visible-name, letter-jump, route, and engine-replacement
 regressions pass. The complete normal SHR suite passes 1,084 tests with 13
 historical/opt-in tests ignored. That pass also exposed and fixed a Project
 format-18 decoder range which still stopped at format 17, plus stale
@@ -398,9 +398,9 @@ audio, or fresh-binary physical-controller validation ran.
 ## 2026-08-28 unified 3×5 synth and aux surface
 
 The learned MiniLab mkII performance surface is now one exact 15-rotary
-contract after the separate master encoder. Moj Sint Dual Filter already had
+contract after the separate master encoder. SHR Synth Dual Filter already had
 its complete schema-8/CC20–34 host path and continues to own all fifteen slots
-as synthesis controls. Synthv1 and the five older 12-control Moj models now
+as synthesis controls. Synthv1 and the five older 12-control SHR Synth models now
 use slots 1–12 for their unchanged sound parameters and slots 13–15 for the
 current Project's AUX 1, AUX 2, and AUX 3 send levels. Those last messages are
 consumed as SHR Project controls and are never forwarded into the synth MIDI
@@ -474,7 +474,7 @@ observed erroneous `CC112`/absolute signature; loading never rewrites that
 private file. The owner confirmed that this personal MK2 setup uses
 direction-only turns for every rotary. The MK2 mapping therefore retains each
 physical rotary identity but discards its incoming position: left/right and
-turn-speed packets carry SHR's current synth, Moj Sint, FX, automation, or
+turn-speed packets carry SHR's current synth, SHR Synth, FX, automation, or
 mixer value by signed steps. They bypass pickup entirely.
 
 A passive live capture was opened without transmitting MIDI or starting audio,
@@ -576,10 +576,10 @@ release builds passed in 2m08s and 2m51s; plain `shr` resolves through
 capture/transmission, synth, JACK, playback, recording, audible, or physical-
 controller verification ran.
 
-## 2026-08-27 Moj Sint Dual Filter controller integration
+## 2026-08-27 SHR Synth Dual Filter controller integration
 
-The approved Moj Sint Dual Filter design is implemented across the owning
-repositories. SHR recognizes the sixth Moj model and schema 8, maps its 15
+The approved SHR Synth Dual Filter design is implemented across the owning
+repositories. SHR recognizes the sixth SHR Synth model and schema 8, maps its 15
 continuous controls to physical rotaries 2–16, uses rotary 9's learned click as
 the synth action, and keeps the master rotary exclusively on navigation. One synth
 click sends the press-only core toggle; held sound is not retriggered, all pot
@@ -588,7 +588,7 @@ values remain in place, and the parameter header plus status show
 
 Dual Filter preset load/reset sends exact CC20–34 values followed by persisted
 core state on CC36. Save New/Overwrite writes strict schema 8 with the exact
-dual-filter control names and selected core. Older Moj models retain their
+dual-filter control names and selected core. Older SHR Synth models retain their
 12-position mappings, including shared volume on position 5, and schemas 1–7
 remain readable. Controller profiles/config now accept POT 1–15 and optional
 `synth.press_cc`, `synth.press_note`, and `synth.press_channel`; Learn stores
@@ -937,18 +937,18 @@ synth, MIDI transmission, recording, audible, or physical-hardware action ran.
 
 ## 2026-08-16 Swarm, Bass Matrix, and shared instrument volume
 
-The sibling Moj Sint engine now has five live models and 16 cleared starts.
+The sibling SHR Synth engine now has five live models and 16 cleared starts.
 The earlier typed-graph warm pad is integrated as `Swarm Machine`; the new
 `Bass Matrix` is a different split-path bass instrument whose clean
 half-frequency body remains outside its driven PM/metal/filter/feedback branch.
-SHR recognizes strict Moj schema 7, retains schemas 1–6, and owns exact
+SHR recognizes strict SHR Synth schema 7, retains schemas 1–6, and owns exact
 `ENGINE → MODEL → PATCH` routing, model-qualified private saves, Player/FT2
 labels, Projects, automation, pickup, RESET, failure restoration, panic, and
 shutdown for both additions.
 
 Physical controller position 5 is instrument volume wherever a managed melodic
 instrument is active. The actual MiniLab profile maps its continuous CC 93 pot
-to that position. synthv1 retains its verified DCA volume parameter; Moj uses
+to that position. synthv1 retains its verified DCA volume parameter; SHR Synth uses
 separate MIDI CC 7 and a tone-neutral 10 ms engine gain; Yoshimi, FluidSynth,
 and SHR Sampler receive standard channel-volume CC 7. Player and FT2 show the
 same control, loading/resetting re-arms pickup, and FT2 instrument automation
@@ -956,7 +956,7 @@ persists the route. Read-only backends cannot save this value into their source
 instrument format, and their own CC smoothing is the documented backend
 exception; their Project automation remains durable.
 
-Private local configuration already points to the sibling Moj release binary
+Private local configuration already points to the sibling SHR Synth release binary
 and preset root, so no `user/` mutation is required. Musical acceptance and
 native Raspberry Pi callback headroom remain open listening/hardware verdicts.
 
@@ -968,14 +968,14 @@ MIDI, recording, audible, or other hardware-changing test was started.
 
 ## 2026-08-05 Strange Oscillator experimental integration
 
-The sibling Moj Sint repository now exposes Strange Oscillator as its third
-live experimental model and cleared start 14. This SHR working tree recognizes Moj
+The sibling SHR Synth repository now exposes Strange Oscillator as its third
+live experimental model and cleared start 14. This SHR working tree recognizes SHR Synth
 preset schema 6, shows the model as `S-OSC`, routes it through the existing
 `ENGINE → MODEL → PATCH` hierarchy, maps CC 20–27 to TYPE, FORM, WARP, COUPLE,
 MOTION, CHAOS, COLOR, and SPACE, and preserves ADSR at CC 28–31. Model-specific
 private saves, tracker parameters, automation names, and model-qualified route
-identity all include the third model. Schema 1–5 Moj presets remain readable.
-The local Moj command already points to the sibling optimized binary. Plain
+identity all include the third model. Schema 1–5 SHR Synth presets remain readable.
+The local SHR Synth command already points to the sibling optimized binary. Plain
 `shr` and tty1 autoload use the optimized SHR release binary; an explicit
 `SHSYNTH_BIN=target/debug/shr` override remains available for development. The
 owner explicitly authorized committing and publishing both repositories for
@@ -1001,8 +1001,8 @@ not production-release milestones; public installation docs do not pin 0.4.8.
 `docs/EXPERIMENTAL_DIRECTION.md` records the unscheduled product direction:
 beginner- and curiosity-first music making, FT2 as the main composition and
 automation workspace, Player as a deliberately simple player, optional theory
-and smart assistance after play, and Moj Sint as an open experimental
-instrument laboratory. The favored Moj authoring direction is a typed low-code
+and smart assistance after play, and SHR Synth as an open experimental
+instrument laboratory. The favored SHR Synth authoring direction is a typed low-code
 micro-machine format usable with or without AI. One fixed swarm graph is now
 live; that does not promise runtime graph editing or a general modular system.
 
@@ -1011,7 +1011,7 @@ melodic backend. Its package and executable compatibility are preflighted
 offline before the current owned engine is disturbed; startup, exact stereo
 readiness, routing, failure publication, one-attempt restoration, All Notes
 Off, unexpected exit, and shutdown remain in the shared backend lifecycle.
-The complete public installer now fetches exact Moj Sint and SHR Sampler
+The complete public installer now fetches exact SHR Synth and SHR Sampler
 commits, compiles SHR Drums 0.2.0 in process from its exact public commit, and
 installs one allowlisted manifest-owned payload. The transactional file layer
 refuses foreign collisions or locally modified managed files, rolls an
@@ -1035,9 +1035,9 @@ documentation screenshot was regenerated and visually inspected at its native
 40×13 geometry. No JACK, synth, MIDI, recording, audible, or other physical
 hardware test was started.
 
-The same 2026-08-03 repository sync fast-forwarded the clean Moj Sint sibling
+The same 2026-08-03 repository sync fast-forwarded the clean SHR Synth sibling
 by four documentation-only commits recording the completed five-kick and
-snare comparison gate; production Moj sound code did not change. Its locked
+snare comparison gate; production SHR Synth sound code did not change. Its locked
 all-target/all-feature normal suite passed 287 tests with 34 development-only
 historical/audition/benchmark tests ignored, and its debug and release
 all-target builds passed with Rust 1.97.1.
@@ -1047,14 +1047,14 @@ the tracked `kits/cleared-kits.txt` allowlist: Acid, Electronic House, Big Rock
 (Muldjord), and Experimental Noise (Muldjord). Repository-local launchers read
 that public tree directly, and installed setup selects the packaged shared-data
 root unless the musician configured another kit directory. Factory kits no
-longer depend on ignored `user/` state. Moj Sint's 16 factory starts remain
+longer depend on ignored `user/` state. SHR Synth's 16 factory starts remain
 tracked in its sibling repository; only Playback user saves use private XDG
 storage. The user-authorized 2026-08-03 combined pass ran SHR Drums' complete
 all-target/all-feature normal suite: 19 tests passed, three opt-in quality
 matrices remained ignored, and its locked debug and release all-target builds
 passed.
 
-Electronic House now carries the selected Moj Sint House Impact and Long
+Electronic House now carries the selected SHR Synth House Impact and Long
 Pressure kicks as deterministic CC0 synthetic one-shots on free notes 27 and
 28. Notes 33, 34, 35, and the original House Kick on 36 remain unchanged, so
 the kit exposes six kicks without remapping existing material. The two new
@@ -1075,18 +1075,18 @@ through the configured soundcard. The owner accepted this revision as a real
 snare, possibly stronger than Big Rock's, and explicitly kept its
 rock/industrial identity out of Electronic House.
 
-Version `0.4.4` added Moj Sint 0.2.0 as a real fourth managed backend. Presets
+Version `0.4.4` added SHR Synth 0.2.0 as a real fourth managed backend. Presets
 cycles to its bounded strict `.mojsint` catalog without launching sound; LOAD
-alone starts `moj-sint --client-name ... --preset ...`. Playback renders the
+alone starts `shr-synth --client-name ... --preset ...`. Playback renders the
 eight Model D controls plus ADSR in the existing three-by-four geometry, with
-Moj-specific CCs, defaults, RESET, pickup, Project/Idea/FT2 identity, and no
+SHR Synth-specific CCs, defaults, RESET, pickup, Project/Idea/FT2 identity, and no
 synthv1 XML or parameter-index reuse. The live SHR Drums sibling is now 0.2.0
 and continues as the in-process fourth final-bus source beside the one managed
 melodic engine. Its public format keeps legacy packages readable and adds the
 optional advanced modeled-voice graph used by the public Acid recipe. This
 states the source capability, not that any private compiled kit is installed.
 
-Version `0.4.5` pairs with Moj Sint 0.2.1 and exposes all seven authored Model D
+Version `0.4.5` pairs with SHR Synth 0.2.1 and exposes all seven authored Model D
 starts instead of only the idealized reference. Strict schema 3 carries bass,
 lead, or filter-articulation patch identity; schemas 1 and 2 remain strict
 in-memory bass migrations. Full Bass, Full Lead, Full Filter Articulation,
@@ -1111,30 +1111,30 @@ physically disables that monitor and deliberately updates the declaration.
 This release has deterministic software verification only; it does not claim
 new JACK, audible, or hardware validation.
 
-Version `0.4.7` pairs with Moj Sint 0.2.2 and separates the Moj Sint engine
-from its synthesis model. Strict Moj schema 4 names `model_d`; schemas 1–3
+Version `0.4.7` pairs with SHR Synth 0.2.2 and separates the SHR Synth engine
+from its synthesis model. Strict SHR Synth schema 4 names `model_d`; schemas 1–3
 migrate to it in memory. Discovery and Ideas retain typed model identity,
 Project/FT2 routes use model-qualified stable instrument IDs with legacy
 unqualified Model D lookup, and Playback selects its twelve labels from the
 loaded model while current parameters remain on rotary 2–13 positions.
 
-The next Moj Sint integration keeps that one managed engine and adds Six-Op PM
+The next SHR Synth integration keeps that one managed engine and adds Six-Op PM
 as its second selectable model. Strict schema 5 has model-specific patch and
 macro fields; schema 4 and older remain Model D migrations. Discovery contains
 seven Model D and six Six-Op PM starts. FT2 ROUTE presents `ENGINE → MODEL →
-PATCH` for Moj Sint, constrains patch browsing to the selected model, and keeps
+PATCH` for SHR Synth, constrains patch browsing to the selected model, and keeps
 the existing whole-route Apply/Cancel transaction. Playback renders the
 selected model's twelve labels. The first connected audition found
 note-count-dependent artifacts because the private runtime launched an
-unoptimized Moj Sint binary. Native smoke evidence and bounded chord renders
+unoptimized SHR Synth binary. Native smoke evidence and bounded chord renders
 identified callback starvation rather than clipping; the runtime now launches
-`target/release/moj-sint`, and the user confirmed that the reported two-note
+`target/release/shr-synth`, and the user confirmed that the reported two-note
 Model D and four-note Six-Op failures are gone. This is acceptance of that
 repair only; broader physical-control, routing, polyphony, and sound acceptance
 remain open.
 
-The catalog presentation repair places the in-house Moj Sint first in
-Presets and software-engine selection. Moj factory names retain their stable
+The catalog presentation repair places the in-house SHR Synth first in
+Presets and software-engine selection. SHR Synth factory names retain their stable
 preset and Project route identities but display one compact number/model/name:
 for example, `01 M-D Full Bass` and `08 6-OP Bell Metal`, without bracketed
 model labels or repeated `Six-Op` text. The generated 40x13 Presets reference
@@ -1147,23 +1147,23 @@ dependency license; those broader release-gate debts were not folded into the
 catalog change. Live visual confirmation remains open until the user next
 relaunches SHR.
 
-The 2026-08-01 locked software gate used Rust 1.97.1 on AArch64. Focused Moj
+The 2026-08-01 locked software gate used Rust 1.97.1 on AArch64. Focused SHR Synth
 schema/control/engine and Route hierarchy tests passed, then the complete
 normal SHR suite passed 892 tests with zero failures and 12 existing ignored
 development/audition tests in 49.07 seconds. Locked check and the explicit
 debug build passed; the build completed in 1 minute 51 seconds at
 `target/debug/shr`, then a final legacy-route regression refresh completed in
-1 minute 19 seconds. Moj Sint's own all-target/all-feature normal suite passed
+1 minute 19 seconds. SHR Synth's own all-target/all-feature normal suite passed
 273 tests with 34 explicitly ignored historical classes, and its debug binary
 validated all 13 tracked presets. No JACK, synth process, MIDI, playback,
 recording, audible, or hardware action was run.
 
-Playback `SAVE` now owns instrument-preset persistence for synthv1 and Moj
-Sint. Its canonical overlay exposes explicit Overwrite, Save New, and Cancel
+Playback `SAVE` now owns instrument-preset persistence for synthv1 and SHR
+Synth. Its canonical overlay exposes explicit Overwrite, Save New, and Cancel
 through controller, keyboard, encoder, and mouse dispatch. Factory, system,
 public-checkout, unsupported-backend, and symlink-backed sounds remain
 read-only; Overwrite on a read-only supported sound visibly redirects to the
-next private `User NNN` name. Moj saves use strict schema 5 and separate Model D
+next private `User NNN` name. SHR Synth saves use strict schema 5 and separate Model D
 and Six-Op PM directories. Synthv1 saves preserve the complete source XML while
 replacing only the preset name and twelve mapped values. A successful save
 refreshes Presets and FT2 ROUTE immediately, becomes the RESET baseline,
@@ -1175,7 +1175,7 @@ file intact.
 
 The user-save acceptance gate used exact Rust 1.97.1. Two final locked SHR
 default-suite runs each passed 902 tests with zero failures and 12 intentionally
-ignored development/audition tests. Moj Sint's locked all-target/all-feature
+ignored development/audition tests. SHR Synth's locked all-target/all-feature
 suite passed 276 tests with zero failures and 34 historical render, research,
 publication, and native-benchmark tests ignored. Formatting, locked checks,
 fresh debug builds, and diff checks passed in both repositories. No release
@@ -1238,7 +1238,7 @@ callback was 0.903 ms. The prior unoptimized DEV artifact held about 89% of one
 CPU and produced thousands of `shr-drums` JACK deadline errors per minute,
 while temperature, throttle, memory, swap, and I/O were healthy.
 Playback keeps MIDI-take persistence on Ideas; its SOUND page uses `SAVE` for
-the current synthv1 or Moj Sint instrument, and `SOUNDS` returns directly to
+the current synthv1 or SHR Synth instrument, and `SOUNDS` returns directly to
 Presets and its visible `LOAD`. In-app and terminal MIDI Learn now capture the
 complete optional encoder-Shift gesture. Holding Shift, turning left once, then
 releasing records both the modifier and either the ordinary rotary CC or its
@@ -1630,7 +1630,7 @@ Plain `shr` resolves to this checkout's `scripts/local.sh` through
 must not be used. The launcher uses `target/release/shr` unless `SHSYNTH_BIN`
 is explicitly set; the release TUI shows `REL`. The separate private
 `shr-release` launcher is now only a compatibility alias. Repository-local
-runtime metadata selects the companion Moj Sint checkout's fresh release
+runtime metadata selects the companion SHR Synth checkout's fresh release
 binary and public preset catalog; Playback
 user sounds remain in the separate ignored private data root and were not
 inspected during this configuration check.
