@@ -416,8 +416,13 @@ Confirmation validates the complete runtime and controller candidate, creates
 non-overwriting backups, atomically replaces both files, releases source-owned
 notes/controller state, replaces SHR-owned MIDI inputs without layering, and
 refreshes live discovery. Failure restores the old files and runtime route.
-An audio-output change is saved for the next managed engine start and reported
-as `AUDIO NEXT START` instead of being described as hot/live. Controller-clock
+`AUDIO IN` selects the stereo mixer/effects input (or `NONE`), and `AUDIO OUT`
+selects the stereo playback destination. Both show the JACK client and channel
+pair, retain offline choices, and use actual audio-port direction/type rather
+than guessing from names. Raw-recorder assignments remain separate. Audio
+changes report `Saved · reopen SHR for audio`; exit and reopen to apply them to
+all sources. Devices must already be exposed to JACK, including Bluetooth
+playback bridges. Controller-clock
 enable/output changes likewise report `CLOCK NEXT START`; live MIDI input role/
 source changes activate immediately. Selecting
 or confirming a MIDI output uses discovery only; it never opens an output as a

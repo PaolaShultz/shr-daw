@@ -1384,6 +1384,7 @@ enum RoutingRow {
     SyncOwner,
     SyncInput,
     SyncStart,
+    AudioInput,
     AudioOutput,
 }
 
@@ -1402,7 +1403,8 @@ impl RoutingRow {
             Self::SyncOwner => "SYNC".into(),
             Self::SyncInput => "SYNC IN".into(),
             Self::SyncStart => "SYNC POS".into(),
-            Self::AudioOutput => "AUDIO".into(),
+            Self::AudioInput => "AUDIO IN".into(),
+            Self::AudioOutput => "AUDIO OUT".into(),
         }
     }
 }
@@ -1797,6 +1799,58 @@ fn wrapped_offset(current: usize, len: usize, amount: isize) -> usize {
     }
     let current = current.min(len - 1) as isize;
     (current + amount).rem_euclid(len as isize) as usize
+}
+
+/// Group within each client before pairing, so an odd channel count in one
+/// device cannot shift the next device's stereo pairs. Order numeric channel
+/// suffixes numerically (1, 2, ... 10), rather than lexically (1, 10, 11, 2).
+fn audio_stereo_pairs(ports: &[String]) -> Vec<Vec<String>> {
+    fn channel_key(port: &str) -> (&str, u64, &str) {
+        let prefix = port.trim_end_matches(|c: char| c.is_ascii_digit());
+        let number = port[prefix.len()..].parse().unwrap_or(0);
+        (prefix, number, port)
+    }
+    let mut clients: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for port in ports {
+        if let Some((client, _)) = port.split_once(':') {
+            clients.entry(client).or_default().push(port);
+        }
+    }
+    let mut pairs = Vec::new();
+    for channels in clients.values_mut() {
+        channels.sort_by(|left, right| channel_key(left).cmp(&channel_key(right)));
+        channels.dedup();
+        pairs.extend(
+            channels
+                .chunks_exact(2)
+                .map(|pair| pair.iter().map(|port| (*port).to_owned()).collect()),
+        );
+    }
+    pairs
+}
+
+fn audio_pair_label(pair: &[String]) -> String {
+    let [left, right] = pair else {
+        return "NONE".into();
+    };
+    let Some((client, left)) = left.split_once(':') else {
+        return pair.join(" / ");
+    };
+    let Some((right_client, right)) = right.split_once(':') else {
+        return pair.join(" / ");
+    };
+    if client != right_client {
+        return pair.join(" / ");
+    }
+    let channel = |name: &str| {
+        let prefix = name.trim_end_matches(|c: char| c.is_ascii_digit());
+        if prefix.len() == name.len() {
+            name.to_owned()
+        } else {
+            name[prefix.len()..].to_owned()
+        }
+    };
+    format!("{client} {}/{}", channel(left), channel(right))
 }
 
 fn cycle_text_choice(current: &str, live: &[String], include_none: bool, direction: i8) -> String {
@@ -2930,7 +2984,8 @@ impl App {
             })
             .cloned()
             .collect();
-        self.routing_audio_ports = engine::jack_ports();
+        self.routing_audio_ports = engine::jack_playback_destinations();
+        self.capture_sources = engine::jack_capture_sources();
         self.refresh_live_midi_connections();
         self.refresh_page_targets();
     }
@@ -2954,6 +3009,7 @@ impl App {
             RoutingRow::SyncOwner,
             RoutingRow::SyncInput,
             RoutingRow::SyncStart,
+            RoutingRow::AudioInput,
             RoutingRow::AudioOutput,
         ]);
         rows
@@ -3013,6 +3069,19 @@ impl App {
         let input_choices = self.routing_inputs.clone();
         let output_choices = self.routing_outputs.clone();
         let audio_choices = self.routing_audio_choices();
+        let mut capture_choices = audio_stereo_pairs(&self.capture_sources);
+        capture_choices.retain(|pair| {
+            pair.iter().all(|port| {
+                port.split_once(':').map(|(client, _)| client)
+                    != Some(self.config.audio_graph.client_name.as_str())
+            })
+        });
+        if let Some(input) = &self.config.audio_graph.input {
+            let pair = vec![input.left_port.clone(), input.right_port.clone()];
+            if !capture_choices.contains(&pair) {
+                capture_choices.insert(0, pair);
+            }
+        }
         let profile_choices = self
             .device_profiles
             .profiles()
@@ -3138,6 +3207,28 @@ impl App {
                         }
                     };
             }
+            RoutingRow::AudioInput => {
+                // Zero is the explicit NONE choice. Keep the previous offline
+                // input available, and leave recorder track assignments alone.
+                let current = draft.config.audio_graph.input.as_ref().and_then(|input| {
+                    capture_choices
+                        .iter()
+                        .position(|pair| pair[0] == input.left_port && pair[1] == input.right_port)
+                });
+                let next = wrapped_index(
+                    current.map_or(0, |index| index + 1),
+                    capture_choices.len() + 1,
+                    direction,
+                );
+                draft.config.audio_graph.input = next.checked_sub(1).map(|index| {
+                    let pair = &capture_choices[index];
+                    crate::config::StereoInputConfig {
+                        name: audio_pair_label(pair),
+                        left_port: pair[0].clone(),
+                        right_port: pair[1].clone(),
+                    }
+                });
+            }
             RoutingRow::AudioOutput => {
                 if !audio_choices.is_empty() {
                     let current = audio_choices
@@ -3160,22 +3251,13 @@ impl App {
         if self.config.audio_outputs.len() == 2 {
             choices.push(self.config.audio_outputs.clone());
         }
-        let mut ports = self
-            .routing_audio_ports
-            .iter()
-            .filter(|port| {
-                let lower = port.to_ascii_lowercase();
-                lower.contains("playback") || lower.contains("output") || lower.contains("out_")
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        ports.sort();
-        for pair in ports.chunks_exact(2) {
-            if pair[0].split_once(':').map(|part| part.0)
-                == pair[1].split_once(':').map(|part| part.0)
-                && !choices.iter().any(|choice| choice.as_slice() == pair)
-            {
-                choices.push(pair.to_vec());
+        for pair in audio_stereo_pairs(&self.routing_audio_ports) {
+            let own_graph = pair.iter().any(|port| {
+                port.split_once(':').map(|(client, _)| client)
+                    == Some(self.config.audio_graph.client_name.as_str())
+            });
+            if !own_graph && !choices.contains(&pair) {
+                choices.push(pair);
             }
         }
         choices
@@ -3223,7 +3305,17 @@ impl App {
             .read()
             .map(|controller| controller.clone())
             .unwrap_or_default();
-        let audio_changed = draft.config.audio_outputs != old_config.audio_outputs;
+        let input_ports = |config: &RuntimeConfig| {
+            config.audio_graph.input.as_ref().map(|input| {
+                (
+                    input.name.clone(),
+                    input.left_port.clone(),
+                    input.right_port.clone(),
+                )
+            })
+        };
+        let audio_changed = draft.config.audio_outputs != old_config.audio_outputs
+            || input_ports(&draft.config) != input_ports(&old_config);
         let clock_changed = draft.config.controller_clock != old_config.controller_clock;
 
         let mut activated_availability = None;
@@ -3267,8 +3359,8 @@ impl App {
                     }
                 } else {
                     match (audio_changed, clock_changed) {
-                        (true, true) => "Saved · audio+clock apply next start".into(),
-                        (true, false) => "Saved · audio applies next start".into(),
+                        (true, true) => "Saved · reopen SHR for audio/clock".into(),
+                        (true, false) => "Saved · reopen SHR for audio".into(),
                         (false, true) => "Saved · clock applies next start".into(),
                         (false, false) => String::new(),
                     }
@@ -17394,7 +17486,7 @@ fn app_loop(
         .as_ref()
         .map(engine::MidiRouter::synth_amp_page)
         .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)));
-    let available_audio_ports = engine::jack_ports();
+    let available_audio_ports = engine::jack_playback_destinations();
     let capture_sources = engine::jack_capture_sources();
     let available_midi_outputs =
         sequencer::available_midi_outputs(&config.external_midi.client_name).unwrap_or_default();
@@ -21217,7 +21309,7 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
     let controller_name = controller
         .and_then(|controller| controller.input_match.as_deref())
         .unwrap_or("");
-    const ROUTING_LABEL_CELLS: usize = 9;
+    const ROUTING_LABEL_CELLS: usize = 11;
     let value_width = width.saturating_sub(ROUTING_LABEL_CELLS);
     let endpoint = |name: &str, names: &[String]| {
         if name.is_empty() {
@@ -21249,11 +21341,7 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
             .audio_outputs
             .iter()
             .all(|port| a.routing_audio_ports.iter().any(|live| live == port));
-    let audio_name = config
-        .audio_outputs
-        .first()
-        .and_then(|port| port.split_once(':').map(|parts| parts.0))
-        .unwrap_or("NONE");
+    let audio_name = audio_pair_label(&config.audio_outputs);
     let rows = App::routing_rows_for(config);
     let values = rows
         .iter()
@@ -21300,11 +21388,23 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
                 endpoint(&config.external_clock.input_match, &a.routing_inputs)
             }
             RoutingRow::SyncStart => config.external_clock.start_mode.label().into(),
+            RoutingRow::AudioInput => match &config.audio_graph.input {
+                None => "NONE".into(),
+                Some(input) => {
+                    let pair = vec![input.left_port.clone(), input.right_port.clone()];
+                    let label = audio_pair_label(&pair);
+                    if pair.iter().all(|port| a.capture_sources.contains(port)) {
+                        crate::ui_text::fit_line(&label, value_width)
+                    } else {
+                        crate::ui_text::label_value(&label, "OFFLINE", value_width)
+                    }
+                }
+            },
             RoutingRow::AudioOutput => {
                 if audio_online {
-                    crate::ui_text::fit_line(audio_name, value_width)
+                    crate::ui_text::fit_line(&audio_name, value_width)
                 } else {
-                    crate::ui_text::label_value(audio_name, "OFFLINE", value_width)
+                    crate::ui_text::label_value(&audio_name, "OFFLINE", value_width)
                 }
             }
         })
@@ -35323,6 +35423,100 @@ release = 0.4
         );
         assert!(a.cancel_routing_edit());
         assert_eq!(a.config.midi_controller_musical_input, original);
+    }
+
+    #[test]
+    fn audio_pairs_keep_device_boundaries_and_numeric_channel_order() {
+        let ports = [
+            "A:mono", "B:in_2", "B:in_11", "B:in_10", "B:in_1", "BT:right", "BT:left",
+        ]
+        .map(str::to_owned);
+        assert_eq!(
+            audio_stereo_pairs(&ports),
+            vec![
+                vec!["B:in_1", "B:in_2"],
+                vec!["B:in_10", "B:in_11"],
+                vec!["BT:left", "BT:right"],
+            ]
+        );
+        assert_eq!(audio_pair_label(&ports[1..3]), "B 2/11");
+    }
+
+    #[test]
+    fn routing_audio_rows_scroll_into_view_at_native_size() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Routing;
+        a.routing.selected = a.routing_rows().len() - 1;
+        let text = buffer_text(&render_app(&mut a, 40, 13));
+        assert!(text.contains("AUDIO IN"));
+        assert!(text.contains("AUDIO OUT"));
+    }
+
+    #[test]
+    fn audio_input_draft_selects_cancels_and_disables_without_changing_recorder() {
+        let p = presets();
+        let mut a = app(&p);
+        a.config.audio_graph.input = None;
+        a.capture_sources = vec!["USB:capture_1".into(), "USB:capture_2".into()];
+        let tracks = format!("{:?}", a.config.capture.tracks);
+        a.routing.selected = a
+            .routing_rows()
+            .iter()
+            .position(|row| *row == RoutingRow::AudioInput)
+            .unwrap();
+        a.begin_routing_edit();
+        a.adjust_routing_draft(1);
+        let input = a
+            .routing
+            .draft
+            .as_ref()
+            .unwrap()
+            .config
+            .audio_graph
+            .input
+            .as_ref()
+            .unwrap();
+        assert_eq!(input.left_port, "USB:capture_1");
+        assert_eq!(input.right_port, "USB:capture_2");
+        assert!(a.config.audio_graph.input.is_none());
+        assert_eq!(
+            format!(
+                "{:?}",
+                a.routing.draft.as_ref().unwrap().config.capture.tracks
+            ),
+            tracks
+        );
+        a.adjust_routing_draft(1);
+        assert!(a
+            .routing
+            .draft
+            .as_ref()
+            .unwrap()
+            .config
+            .audio_graph
+            .input
+            .is_none());
+        a.adjust_routing_draft(-1);
+        assert!(a.cancel_routing_edit());
+        assert!(a.config.audio_graph.input.is_none());
+    }
+
+    #[test]
+    fn routing_audio_choices_retain_offline_output_and_accept_arbitrary_sink_names() {
+        let p = presets();
+        let mut a = app(&p);
+        a.config.audio_outputs = vec!["old:L".into(), "old:R".into()];
+        a.routing_audio_ports = vec![
+            "BT:left".into(),
+            "BT:right".into(),
+            format!("{}:input_1", a.config.audio_graph.client_name),
+            format!("{}:input_2", a.config.audio_graph.client_name),
+        ];
+        assert_eq!(
+            a.routing_audio_choices(),
+            vec![vec!["old:L", "old:R"], vec!["BT:left", "BT:right"]]
+        );
     }
 
     #[test]

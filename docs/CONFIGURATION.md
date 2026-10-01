@@ -169,9 +169,15 @@ The Routing screen edits detached drafts. Confirming any row validates the
 whole runtime/controller candidate, creates backups, atomically saves, then
 replaces SHR-owned MIDI inputs without layering them. Activation failure
 restores the previous files and route. Merely browsing, highlighting, or
-confirming an output choice does not open that output or send MIDI. Audio-
-output changes are marked `NEXT START` and take effect on the next managed
-engine start. Controller-clock output changes also take effect on the next SHR
+confirming an output choice does not open that output or send MIDI. `AUDIO IN`
+selects the stereo input for the mixer/effects graph; `NONE` removes that input.
+It preserves the separate raw-recorder track assignments and monitoring policy.
+`AUDIO OUT` selects the stereo destination for instruments, loops and the final
+mix. Both selectors retain remembered offline choices and show channel numbers.
+Audio choices use JACK's audio type and port direction, including bridges with
+arbitrary port names; MIDI ports are excluded. Channels are paired within each
+JACK client in numeric order. Save, then exit and reopen SHR to apply audio
+changes consistently to every source. Controller-clock output changes also take effect on the next SHR
 start; MIDI input, controller-role, and external-transport input changes
 activate immediately while stopped. Startup does not
 silently migrate legacy names; canonical form is written only after a confirmed
@@ -179,6 +185,13 @@ Routing edit. Every configured performance input has its own compact `PERF n`
 row and an explicit add row. Editing or removing one preserves all other
 entries, retained offline identities remain visible, and duplicates are
 refused.
+
+These are JACK route selectors, not operating-system device managers. A USB,
+HDMI or Bluetooth device must first be exposed to JACK. Bluetooth pairing alone
+does not create a JACK audio destination: it also needs an audio-profile service
+and a playback bridge. Selecting a Bluetooth bridge does not remove JACK's
+dependence on whichever physical device currently clocks the server. Operation
+without that device needs a separate server/backend setup.
 
 ## Dedicated controller clock and transport
 

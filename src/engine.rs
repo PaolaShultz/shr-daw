@@ -2671,13 +2671,29 @@ pub(crate) fn jack_capture_sources() -> Vec<String> {
     parse_jack_audio_sources(command_lines("jack_lsp", &["-p", "-t"]))
 }
 
+/// JACK calls a playback destination an input: it receives the application's
+/// audio. Check port metadata, never words in a device's chosen port names.
+pub(crate) fn jack_playback_destinations() -> Vec<String> {
+    parse_jack_audio_ports(command_lines("jack_lsp", &["-p", "-t"]), "input")
+}
+
 fn parse_jack_audio_sources(lines: Vec<String>) -> Vec<String> {
-    fn finish(port: &mut String, properties: &mut String, audio: &mut bool, out: &mut Vec<String>) {
+    parse_jack_audio_ports(lines, "output")
+}
+
+fn parse_jack_audio_ports(lines: Vec<String>, direction: &str) -> Vec<String> {
+    fn finish(
+        port: &mut String,
+        properties: &mut String,
+        audio: &mut bool,
+        out: &mut Vec<String>,
+        direction: &str,
+    ) {
         if !port.is_empty()
             && *audio
             && properties
                 .split(|character: char| character == ',' || character.is_whitespace())
-                .any(|property| property.eq_ignore_ascii_case("output"))
+                .any(|property| property.eq_ignore_ascii_case(direction))
         {
             out.push(std::mem::take(port));
         } else {
@@ -2693,7 +2709,13 @@ fn parse_jack_audio_sources(lines: Vec<String>) -> Vec<String> {
     let mut audio = false;
     for line in lines {
         if !line.starts_with(char::is_whitespace) {
-            finish(&mut port, &mut properties, &mut audio, &mut sources);
+            finish(
+                &mut port,
+                &mut properties,
+                &mut audio,
+                &mut sources,
+                direction,
+            );
             port = line;
         } else {
             let detail = line.trim();
@@ -2704,7 +2726,13 @@ fn parse_jack_audio_sources(lines: Vec<String>) -> Vec<String> {
             }
         }
     }
-    finish(&mut port, &mut properties, &mut audio, &mut sources);
+    finish(
+        &mut port,
+        &mut properties,
+        &mut audio,
+        &mut sources,
+        direction,
+    );
     sources.sort();
     sources.dedup();
     sources
@@ -4377,6 +4405,30 @@ mod tests {
         assert_eq!(
             parse_jack_audio_sources(lines),
             ["source:one", "system:capture_1", "system:capture_2"]
+        );
+    }
+
+    #[test]
+    fn jack_playback_discovery_uses_type_and_direction_not_port_names() {
+        let lines = [
+            "BT:left",
+            "    properties: input,",
+            "    32 bit float mono audio",
+            "BT:right",
+            "    properties: input,",
+            "    32 bit float mono audio",
+            "synth:output_1",
+            "    properties: output,",
+            "    32 bit float mono audio",
+            "system:midi_playback_1",
+            "    properties: input,physical,terminal,",
+            "    8 bit raw midi",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        assert_eq!(
+            parse_jack_audio_ports(lines, "input"),
+            ["BT:left", "BT:right"]
         );
     }
     #[test]

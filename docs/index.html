@@ -4209,8 +4209,13 @@ clean browse state.</p>
 non-overwriting backups, atomically replaces both files, releases source-owned
 notes/controller state, replaces SHR-owned MIDI inputs without layering, and
 refreshes live discovery. Failure restores the old files and runtime route.
-An audio-output change is saved for the next managed engine start and reported
-as <code>AUDIO NEXT START</code> instead of being described as hot/live. Controller-clock
+<code>AUDIO IN</code> selects the stereo mixer/effects input (or <code>NONE</code>), and <code>AUDIO OUT</code>
+selects the stereo playback destination. Both show the JACK client and channel
+pair, retain offline choices, and use actual audio-port direction/type rather
+than guessing from names. Raw-recorder assignments remain separate. Audio
+changes report <code>Saved · reopen SHR for audio</code>; exit and reopen to apply them to
+all sources. Devices must already be exposed to JACK, including Bluetooth
+playback bridges. Controller-clock
 enable/output changes likewise report <code>CLOCK NEXT START</code>; live MIDI input role/
 source changes activate immediately. Selecting
 or confirming a MIDI output uses discovery only; it never opens an output as a
@@ -6608,9 +6613,15 @@ written.</p>
 whole runtime/controller candidate, creates backups, atomically saves, then
 replaces SHR-owned MIDI inputs without layering them. Activation failure
 restores the previous files and route. Merely browsing, highlighting, or
-confirming an output choice does not open that output or send MIDI. Audio-
-output changes are marked <code>NEXT START</code> and take effect on the next managed
-engine start. Controller-clock output changes also take effect on the next SHR
+confirming an output choice does not open that output or send MIDI. <code>AUDIO IN</code>
+selects the stereo input for the mixer/effects graph; <code>NONE</code> removes that input.
+It preserves the separate raw-recorder track assignments and monitoring policy.
+<code>AUDIO OUT</code> selects the stereo destination for instruments, loops and the final
+mix. Both selectors retain remembered offline choices and show channel numbers.
+Audio choices use JACK's audio type and port direction, including bridges with
+arbitrary port names; MIDI ports are excluded. Channels are paired within each
+JACK client in numeric order. Save, then exit and reopen SHR to apply audio
+changes consistently to every source. Controller-clock output changes also take effect on the next SHR
 start; MIDI input, controller-role, and external-transport input changes
 activate immediately while stopped. Startup does not
 silently migrate legacy names; canonical form is written only after a confirmed
@@ -6618,6 +6629,12 @@ Routing edit. Every configured performance input has its own compact <code>PERF 
 row and an explicit add row. Editing or removing one preserves all other
 entries, retained offline identities remain visible, and duplicates are
 refused.</p>
+<p>These are JACK route selectors, not operating-system device managers. A USB,
+HDMI or Bluetooth device must first be exposed to JACK. Bluetooth pairing alone
+does not create a JACK audio destination: it also needs an audio-profile service
+and a playback bridge. Selecting a Bluetooth bridge does not remove JACK's
+dependence on whichever physical device currently clocks the server. Operation
+without that device needs a separate server/backend setup.</p>
 <h4 id="doc-configuration--dedicated-controller-clock-and-transport" tabindex="-1">Dedicated controller clock and transport<a class="heading-anchor" href="#doc-configuration--dedicated-controller-clock-and-transport" aria-label="Link to Dedicated controller clock and transport">#</a></h4>
 <p>The controller sync route is separate from every tracker page and from the
 managed instrument. It opens only the one exact standard-MIDI output selected
