@@ -138,7 +138,7 @@ struct BoundaryRoutes {
     destinations: [String; 2],
     loop_destinations: [String; 2],
     graph_inputs: [String; 8],
-    live_source_ports: [String; 2],
+    live_source_ports: Option<[String; 2]>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -282,7 +282,7 @@ pub(crate) struct PerformanceBusPorts {
     pub synth: Option<[String; 2]>,
     pub loop_player: Option<[String; 2]>,
     pub drums: Option<[String; 2]>,
-    pub live_input: [String; 2],
+    pub live_input: Option<[String; 2]>,
     pub playback: [String; 2],
     pub loop_direct_playback: [String; 2],
 }
@@ -361,7 +361,32 @@ impl FinalBusOwner {
     ) -> Result<bool> {
         if let Some(graph) = self.graph.as_mut() {
             if input_monitoring {
+                if graph.monitoring.direct && !graph.monitoring.doubled_path_confirmed {
+                    bail!(
+                        "disable interface direct monitoring before enabling software monitoring"
+                    );
+                }
                 let available = crate::engine::jack_ports();
+                if graph.routes.live_source_ports.is_none() {
+                    let ports =
+                        resolve_live_input(config.audio_graph.input.as_ref(), &available, true)?
+                            .context("select AUDIO IN before monitoring")?;
+                    let links = vec![
+                        connection(&ports[0], &graph.routes.graph_inputs[4]),
+                        connection(&ports[1], &graph.routes.graph_inputs[5]),
+                    ];
+                    let changes = links
+                        .iter()
+                        .cloned()
+                        .map(|connection| BoundaryChange {
+                            kind: ChangeKind::Connect,
+                            connection,
+                        })
+                        .collect::<Vec<_>>();
+                    apply_transaction(&mut graph.jack, &changes)?;
+                    graph.routes.required_graph.extend(links);
+                    graph.routes.live_source_ports = Some(ports);
+                }
                 if !graph.retry_required_connections(&available)? {
                     bail!("configured final-bus input is offline; MON ON left monitoring off");
                 }
@@ -372,20 +397,11 @@ impl FinalBusOwner {
             return Ok(false);
         }
         let available = crate::engine::jack_ports();
-        let input = config
-            .audio_graph
-            .input
-            .as_ref()
-            .or_else(|| config.capture.inputs.first())
-            .context("final bus needs one configured stereo JACK input")?;
-        let live_input = [input.left_port.clone(), input.right_port.clone()];
-        for port in &live_input {
-            if !available.iter().any(|candidate| candidate == port) {
-                bail!(
-                    "configured final-bus input {port:?} is offline; no nearby JACK port is substituted"
-                );
-            }
-        }
+        let live_input = resolve_live_input(
+            config.audio_graph.input.as_ref(),
+            &available,
+            input_monitoring,
+        )?;
         let resolved_audio = config.resolve_audio_route(&available);
         let playback: [String; 2] = resolved_audio
             .outputs
@@ -726,7 +742,11 @@ impl OwnedAudioGraph {
         if let Some(ports) = drum_source_ports.as_ref() {
             validate_stereo_boundary(ports, "SHR Drums source")?;
         }
-        validate_stereo_boundary(&live_source_ports, "configured stereo input")?;
+        if let Some(ports) = &live_source_ports {
+            validate_stereo_boundary(ports, "configured stereo input")?;
+        } else if input_monitoring {
+            bail!("select an available AUDIO IN before enabling monitoring");
+        }
         validate_stereo_boundary(&destinations, "main output")?;
         validate_stereo_boundary(&loop_destinations, "loop direct output")?;
         if input_monitoring && config.input_direct_monitoring && !config.confirm_doubled_monitoring
@@ -744,11 +764,27 @@ impl OwnedAudioGraph {
             software: input_monitoring,
             doubled_path_confirmed: config.confirm_doubled_monitoring,
         };
+        let inputs = [
+            jack.register_audio_port("managed_in_l", PortDirection::Input)?,
+            jack.register_audio_port("managed_in_r", PortDirection::Input)?,
+            jack.register_audio_port("loop_in_l", PortDirection::Input)?,
+            jack.register_audio_port("loop_in_r", PortDirection::Input)?,
+            jack.register_audio_port("stereo_in_l", PortDirection::Input)?,
+            jack.register_audio_port("stereo_in_r", PortDirection::Input)?,
+            jack.register_audio_port("drums_in_l", PortDirection::Input)?,
+            jack.register_audio_port("drums_in_r", PortDirection::Input)?,
+        ];
+        // An unconnected JACK input reads silence. Use our real input ports in
+        // the graph definition when there is no external capture device.
+        let definition_input = live_source_ports.clone().unwrap_or([
+            jack.port_name_string(inputs[4])?,
+            jack.port_name_string(inputs[5])?,
+        ]);
         let definition = managed_graph_definition(
             sample_rate,
             config.maximum_callback_frames,
             &destinations,
-            &live_source_ports,
+            &definition_input,
             monitoring,
             rack,
             aux_routing,
@@ -787,16 +823,6 @@ impl OwnedAudioGraph {
             })
             .collect();
 
-        let inputs = [
-            jack.register_audio_port("managed_in_l", PortDirection::Input)?,
-            jack.register_audio_port("managed_in_r", PortDirection::Input)?,
-            jack.register_audio_port("loop_in_l", PortDirection::Input)?,
-            jack.register_audio_port("loop_in_r", PortDirection::Input)?,
-            jack.register_audio_port("stereo_in_l", PortDirection::Input)?,
-            jack.register_audio_port("stereo_in_r", PortDirection::Input)?,
-            jack.register_audio_port("drums_in_l", PortDirection::Input)?,
-            jack.register_audio_port("drums_in_r", PortDirection::Input)?,
-        ];
         let input_port_ids = [
             jack.port_id(inputs[0])?,
             jack.port_id(inputs[1])?,
@@ -821,12 +847,16 @@ impl OwnedAudioGraph {
             jack.port_name_string(output_left)?,
             jack.port_name_string(output_right)?,
         ];
-        let required_graph = vec![
-            connection(&live_source_ports[0], &graph_port_names[4]),
-            connection(&live_source_ports[1], &graph_port_names[5]),
+        let mut required_graph = vec![
             connection(&graph_port_names[8], &destinations[0]),
             connection(&graph_port_names[9], &destinations[1]),
         ];
+        if let Some(ports) = &live_source_ports {
+            required_graph.extend([
+                connection(&ports[0], &graph_port_names[4]),
+                connection(&ports[1], &graph_port_names[5]),
+            ]);
+        }
         let mut optional_sources = Vec::new();
         if let Some(source_ports) = source_ports {
             optional_sources.push(optional_source_routes(
@@ -957,6 +987,9 @@ impl OwnedAudioGraph {
     }
 
     pub(crate) fn set_input_monitoring(&mut self, enabled: bool) -> Result<()> {
+        if enabled && self.routes.live_source_ports.is_none() {
+            bail!("select an available AUDIO IN before enabling monitoring");
+        }
         if enabled && self.monitoring.direct && !self.monitoring.doubled_path_confirmed {
             bail!("interface direct monitor is declared active; disable it before SHR software monitoring or deliberately confirm the doubled path");
         }
@@ -1015,9 +1048,10 @@ impl OwnedAudioGraph {
         &mut self,
         available_ports: &[String],
     ) -> Result<bool> {
-        if !self
-            .routes
-            .live_source_ports
+        let Some(ports) = &self.routes.live_source_ports else {
+            return Ok(false);
+        };
+        if !ports
             .iter()
             .all(|port| available_ports.iter().any(|candidate| candidate == port))
         {
@@ -1098,7 +1132,10 @@ impl OwnedAudioGraph {
             self.callback.sample_rate,
             self.callback.maximum_frames as u32,
             &destinations,
-            &self.routes.live_source_ports,
+            self.routes.live_source_ports.as_ref().unwrap_or(&[
+                self.routes.graph_inputs[4].clone(),
+                self.routes.graph_inputs[5].clone(),
+            ]),
             self.monitoring,
             rack,
             aux_routing,
@@ -1263,6 +1300,26 @@ fn initial_bus_controls(input_monitoring: bool) -> std::sync::Arc<BusControls> {
     let controls = std::sync::Arc::new(BusControls::default());
     controls.set_source_muted(BusSource::Input, !input_monitoring);
     controls
+}
+
+fn resolve_live_input(
+    input: Option<&crate::config::StereoInputConfig>,
+    available: &[String],
+    monitoring: bool,
+) -> Result<Option<[String; 2]>> {
+    let ports = input.map(|input| [input.left_port.clone(), input.right_port.clone()]);
+    if let Some(ports) = &ports {
+        validate_stereo_boundary(ports, "configured stereo input")?;
+        if ports.iter().all(|port| available.contains(port)) {
+            return Ok(Some(ports.clone()));
+        }
+    }
+    if monitoring {
+        bail!("selected AUDIO IN is absent; connect it or select another input");
+    }
+    // Remembered but absent capture devices do not prevent software playback.
+    // Never substitute another device or enable its microphone implicitly.
+    Ok(None)
 }
 
 fn validate_stereo_boundary(ports: &[String; 2], description: &str) -> Result<()> {
@@ -1696,6 +1753,28 @@ mod tests {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
+    #[test]
+    fn software_bus_needs_no_capture_device_and_never_substitutes_one() {
+        let input = crate::config::StereoInputConfig {
+            name: "remembered interface".into(),
+            left_port: "wanted:left".into(),
+            right_port: "wanted:right".into(),
+        };
+        let other = ["other:left".into(), "other:right".into()];
+        assert_eq!(resolve_live_input(None, &other, false).unwrap(), None);
+        assert_eq!(
+            resolve_live_input(Some(&input), &other, false).unwrap(),
+            None
+        );
+        assert!(resolve_live_input(None, &other, true).is_err());
+        assert!(resolve_live_input(Some(&input), &other, true).is_err());
+        let exact = [input.left_port.clone(), input.right_port.clone()];
+        assert_eq!(
+            resolve_live_input(Some(&input), &exact, true).unwrap(),
+            Some(exact)
+        );
+    }
+
     #[derive(Default)]
     struct MockConnections {
         connected: BTreeSet<(String, String)>,
@@ -1764,7 +1843,7 @@ mod tests {
             destinations: ["main:l".into(), "main:r".into()],
             loop_destinations: ["loop-playback:l".into(), "loop-playback:r".into()],
             graph_inputs,
-            live_source_ports: ["capture:l".into(), "capture:r".into()],
+            live_source_ports: Some(["capture:l".into(), "capture:r".into()]),
         }
     }
 

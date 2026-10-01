@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-09-28
+Updated: 2026-10-01
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -330,6 +330,26 @@ recording, listening, and Raspberry Pi callback/headroom acceptance were not
 part of those passes.
 
 ## Machine and safety state
+
+The October 1 Bluetooth trial uses PipeWire/WirePlumber with the distribution's
+PipeWire JACK libraries selected system-wide. The old standalone `jack.service`
+and the trial BlueALSA services are disabled; the original JACK service and
+command files remain intact. The musician's PipeWire services start with the
+user manager and support headless Bluetooth. Exact device choices, configuration
+backup and rollback notes remain below ignored `user/audio-bluetooth-20261001/`.
+Do not restart the old JACK service alongside this audio owner.
+
+Routing now discovers typed JACK playback destinations and offers separate
+stereo AUDIO IN / AUDIO OUT choices; saved audio changes require reopening SHR.
+An explicit empty graph input means NONE, while an omitted key retains the
+legacy capture preference. Software playback/effects/final recording no longer
+require a physical capture device. Input monitoring still requires the exact
+chosen pair. Audio-only saves preserve MIDI settings and do not require offline
+MIDI devices to reconnect. Exact Rust 1.97.1 passes the locked check, 1,230 normal tests
+(14 historical tests ignored), and the REL build. A live twelve-second
+Bluetooth synth/final-capture trial with the USB audio profile disabled passes
+with no xruns, dropped frames or callback deadline misses. Reconnection and a
+six-second effects trial also pass. Physical listening remains the user's check.
 
 The checkout directory is now `~/p/shr-daw`. The former `~/p/shsynth` is a
 compatibility symlink for existing processes and saved absolute paths. Local

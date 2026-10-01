@@ -489,6 +489,7 @@ impl RuntimeConfig {
         let mut saw_midi_input = false;
         let mut saw_midi_performance_input = false;
         let mut saw_audio_output = false;
+        let mut saw_graph_input = false;
         let mut saw_audio_internal_output = false;
         let mut saw_yoshimi_roots = false;
         let mut saw_categories = false;
@@ -708,6 +709,7 @@ impl RuntimeConfig {
                         bounded_usize(key, value, 1, 4_096)? as u32
                 }
                 "audio.graph.input" => {
+                    saw_graph_input = true;
                     self.audio_graph.input = if value.is_empty() {
                         None
                     } else {
@@ -915,6 +917,11 @@ impl RuntimeConfig {
                 }
                 _ => bail!("{}:{}: unknown setting {key}", path.display(), line_no + 1),
             }
+        }
+        // Preserve the legacy preference only when the graph input key is
+        // omitted. An explicit empty value means NONE, including after save.
+        if !saw_graph_input && self.audio_graph.input.is_none() {
+            self.audio_graph.input = self.capture.inputs.first().cloned();
         }
         // The controller selector lives in controller.conf, so an empty runtime
         // input list can still be a valid controller-only configuration.
@@ -1682,6 +1689,26 @@ mod tests {
         let _ = fs::remove_file(path);
 
         assert!(!RuntimeConfig::default().audio_graph.enabled);
+    }
+
+    #[test]
+    fn explicit_no_graph_input_overrides_legacy_capture_preference() {
+        let legacy = "capture.input=Legacy|usb:left|usb:right\n";
+        let mut config = RuntimeConfig::default();
+        config.merge(legacy, Path::new("test.conf")).unwrap();
+        assert_eq!(
+            config.audio_graph.input.as_ref().unwrap().left_port,
+            "usb:left"
+        );
+        for text in [
+            format!("{legacy}audio.graph.input=\n"),
+            format!("audio.graph.input=\n{legacy}"),
+        ] {
+            let mut config = RuntimeConfig::default();
+            config.merge(&text, Path::new("test.conf")).unwrap();
+            assert!(config.audio_graph.input.is_none());
+            assert_eq!(config.capture.inputs.len(), 1);
+        }
     }
 
     #[test]

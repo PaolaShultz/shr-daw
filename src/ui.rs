@@ -1980,6 +1980,24 @@ enum RoutingTransactionStage {
     Activate,
 }
 
+fn persist_audio_routing(
+    runtime_path: &Path,
+    config: &RuntimeConfig,
+) -> std::result::Result<(), (RoutingTransactionStage, anyhow::Error)> {
+    let old = crate::fsutil::snapshot(runtime_path)
+        .map_err(|error| (RoutingTransactionStage::Save, error))?;
+    crate::controller_learn::backup(runtime_path)
+        .map_err(|error| (RoutingTransactionStage::Save, error))?;
+    if let Err(error) = config.save(runtime_path) {
+        let error = match crate::fsutil::restore(runtime_path, old.as_deref()) {
+            Ok(()) => error,
+            Err(recovery) => error.context(format!("configuration recovery failed: {recovery:#}")),
+        };
+        return Err((RoutingTransactionStage::Save, error));
+    }
+    Ok(())
+}
+
 fn persist_routing_transaction<F>(
     runtime_path: &Path,
     controller_path: &Path,
@@ -3264,16 +3282,22 @@ impl App {
     }
 
     fn confirm_routing_edit(&mut self, state: &Path) {
+        let audio_edit = matches!(
+            self.routing_row(),
+            RoutingRow::AudioInput | RoutingRow::AudioOutput
+        );
         let Some(mut draft) = self.routing.draft.take() else {
             self.begin_routing_edit();
             return;
         };
-        if let Err(_error) =
-            canonicalize_routing_draft(&mut draft, &self.routing_inputs, &self.routing_outputs)
-        {
-            self.status = "ROUTING INVALID · fix field".into();
-            self.routing.draft = Some(draft);
-            return;
+        if !audio_edit {
+            if let Err(_error) =
+                canonicalize_routing_draft(&mut draft, &self.routing_inputs, &self.routing_outputs)
+            {
+                self.status = "ROUTING INVALID · fix field".into();
+                self.routing.draft = Some(draft);
+                return;
+            }
         }
         if let Err(_error) = validate_routing_draft(&draft, state) {
             self.status = "ROUTING INVALID · fix field".into();
@@ -3319,7 +3343,11 @@ impl App {
         let clock_changed = draft.config.controller_clock != old_config.controller_clock;
 
         let mut activated_availability = None;
-        let transaction =
+        let transaction = if audio_edit {
+            // Saving next-start audio choices does not activate MIDI or need
+            // an unrelated remembered controller/clock device to be present.
+            persist_audio_routing(&runtime_path, &draft.config)
+        } else {
             persist_routing_transaction(&runtime_path, &controller_path, &draft, || {
                 if let Ok(mut controller) = self.controller_config.write() {
                     *controller = draft.controller.clone();
@@ -3334,7 +3362,8 @@ impl App {
                     self.sequencer.reconfigure(&draft.config.external_midi)?;
                 }
                 Ok(())
-            });
+            })
+        };
         match transaction {
             Ok(()) => {
                 if let Some(availability) = activated_availability {
@@ -22509,12 +22538,7 @@ fn draw_final_performance_bus<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     a.final_recording_last = a.final_bus.recording_status();
     let recording = a.final_recording_last.clone();
     let active = controls.is_some() && meter.is_some();
-    let input = a
-        .config
-        .audio_graph
-        .input
-        .as_ref()
-        .or_else(|| a.config.capture.inputs.first());
+    let input = a.config.audio_graph.input.as_ref();
     let input_ready = input.is_some_and(|input| {
         a.capture_sources
             .iter()
@@ -23942,12 +23966,7 @@ fn mixer_owner_ready(a: &App, owner: BusSource) -> bool {
         BusSource::Synth => a.engine.is_some(),
         BusSource::Loop => a.loop_player.status().loaded,
         BusSource::Input => {
-            let input = a
-                .config
-                .audio_graph
-                .input
-                .as_ref()
-                .or_else(|| a.config.capture.inputs.first());
+            let input = a.config.audio_graph.input.as_ref();
             a.input_monitoring
                 && input.is_some_and(|input| {
                     a.capture_sources
@@ -35576,6 +35595,60 @@ release = 0.4
         assert!(save_failure.cancel_routing_edit());
         assert!(save_failure.routing.draft.is_none());
         fs::remove_file(missing_parent).unwrap();
+    }
+
+    #[test]
+    fn routing_audio_save_preserves_offline_midi_and_retries_storage_failure() {
+        let base = std::env::temp_dir().join(format!(
+            "shr-routing-audio-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).unwrap();
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Routing;
+        a.config.controller_clock.enabled = true;
+        a.config.controller_clock.output_match = "Offline clock:out".into();
+        a.config.save(&base.join("shsynth.conf")).unwrap();
+        let controller_path = base.join("controller.conf");
+        a.controller_config
+            .read()
+            .unwrap()
+            .save(&controller_path)
+            .unwrap();
+        let controller_before = fs::read(&controller_path).unwrap();
+        a.routing.selected = a
+            .routing_rows()
+            .iter()
+            .position(|row| *row == RoutingRow::AudioOutput)
+            .unwrap();
+        a.begin_routing_edit();
+        let chosen = vec!["BT:playback_FL".to_string(), "BT:playback_FR".to_string()];
+        a.routing.draft.as_mut().unwrap().config.audio_outputs = chosen.clone();
+        // A storage failure keeps the entered choice available for retry.
+        let blocked = base.join("blocked");
+        fs::write(&blocked, b"not a directory").unwrap();
+        a.confirm_routing_edit(&blocked);
+        assert!(a.status.starts_with("SAVE FAILED"), "{}", a.status);
+        assert_eq!(
+            a.routing.draft.as_ref().unwrap().config.audio_outputs,
+            chosen
+        );
+        assert_eq!(a.routing_row(), RoutingRow::AudioOutput);
+        a.confirm_routing_edit(&base);
+        assert!(a.routing.draft.is_none(), "{}", a.status);
+        assert_eq!(a.status, "Saved · reopen SHR for audio");
+        let saved = RuntimeConfig::load(&base.join("shsynth.conf")).unwrap();
+        assert_eq!(saved.audio_outputs, chosen);
+        assert!(saved.controller_clock.enabled);
+        assert_eq!(saved.controller_clock.output_match, "Offline clock:out");
+        assert_eq!(fs::read(&controller_path).unwrap(), controller_before);
+        assert!(a.midi_router.is_none());
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

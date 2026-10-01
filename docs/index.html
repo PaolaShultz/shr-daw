@@ -6610,9 +6610,11 @@ numeric address is removed; the stable configured value is
 There is no substring/fuzzy fallback, and volatile numeric addresses are never
 written.</p>
 <p>The Routing screen edits detached drafts. Confirming any row validates the
-whole runtime/controller candidate, creates backups, atomically saves, then
-replaces SHR-owned MIDI inputs without layering them. Activation failure
-restores the previous files and route. Merely browsing, highlighting, or
+whole runtime/controller candidate. Audio rows back up and atomically save
+only the runtime configuration, preserving MIDI settings even when remembered
+MIDI devices are offline. Other rows back up and save both files, then replace
+SHR-owned MIDI inputs without layering them. Activation failure restores the
+previous files and route. Merely browsing, highlighting, or
 confirming an output choice does not open that output or send MIDI. <code>AUDIO IN</code>
 selects the stereo input for the mixer/effects graph; <code>NONE</code> removes that input.
 It preserves the separate raw-recorder track assignments and monitoring policy.
@@ -6635,6 +6637,37 @@ does not create a JACK audio destination: it also needs an audio-profile service
 and a playback bridge. Selecting a Bluetooth bridge does not remove JACK's
 dependence on whichever physical device currently clocks the server. Operation
 without that device needs a separate server/backend setup.</p>
+<h5 id="doc-configuration--bluetooth-and-multiple-audio-devices" tabindex="-1">Bluetooth and multiple audio devices<a class="heading-anchor" href="#doc-configuration--bluetooth-and-multiple-audio-devices" aria-label="Link to Bluetooth and multiple audio devices">#</a></h5>
+<p>For Bluetooth playback without a USB sound card, PipeWire with WirePlumber and
+the PipeWire JACK compatibility libraries can provide the audio server. Its
+device manager exposes connected USB, HDMI and Bluetooth audio endpoints to
+SHR's existing Routing screen. The standalone JACK/ALSA setup remains suitable
+for a dedicated interface; installing PipeWire does not automatically migrate
+an existing session.</p>
+<p>On Debian, the relevant packages are <code>pipewire</code>, <code>pipewire-bin</code>,
+<code>pipewire-jack</code>, <code>wireplumber</code>, and <code>libspa-0.2-bluetooth</code>. Before switching,
+save and exit SHR, preserve its private configuration, and stop the old audio
+server and any Bluetooth bridge/profile service. Use one Bluetooth audio owner.
+Run SHR and its JACK tools through <code>pw-jack</code>, or deliberately select the packaged
+PipeWire JACK libraries as the machine's default. All managed instruments must
+use the same provider as SHR. Keep the previous server configuration for rollback.</p>
+<p>Use A2DP for stereo Bluetooth playback and a fixed 48 kHz server rate for SHR's
+native loops. On a dedicated headless musician account, WirePlumber's
+<code>monitor.bluez.seat-monitoring = disabled</code> allows Bluetooth over SSH/tty;
+<code>bluez5.auto-connect = [ a2dp_sink ]</code> can be scoped to an already-paired receiver.
+PipeWire's <code>jack.show-monitor = false</code> hides speaker-loopback ports from normal
+input choices. Device pairing remains an OS operation; Routing selects the
+available stereo audio pairs. A receiver without a microphone supplies only
+an output. Selecting several independent Bluetooth speakers as a synchronized
+multiroom system is outside this stereo route selector.</p>
+<p>In SHR, open <strong>Home → Routing</strong>, choose <strong>AUDIO OUT</strong>, confirm, and reopen SHR.
+Choose <strong>AUDIO IN → NONE</strong> when using only software instruments, drums and loops.
+The final mixer, effects and stereo WAV capture can work without physical audio
+inputs. The raw recorder retains its own exact per-track source assignments.
+If a Bluetooth receiver disconnects, reconnect it and reopen SHR to restore its
+exact route; another speaker is never silently selected in its place.</p>
+<p>Provider references: <a href="https://docs.pipewire.org/page_man_pw-jack_1.html" class="external" target="_blank" rel="noopener noreferrer external">PipeWire JACK launcher</a>
+and <a href="https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/bluetooth.html" class="external" target="_blank" rel="noopener noreferrer external">WirePlumber Bluetooth settings</a>.</p>
 <h4 id="doc-configuration--dedicated-controller-clock-and-transport" tabindex="-1">Dedicated controller clock and transport<a class="heading-anchor" href="#doc-configuration--dedicated-controller-clock-and-transport" aria-label="Link to Dedicated controller clock and transport">#</a></h4>
 <p>The controller sync route is separate from every tracker page and from the
 managed instrument. It opens only the one exact standard-MIDI output selected
@@ -6792,10 +6825,13 @@ The four public package directories are governed by <code>kits/cleared-kits.txt<
 factory kits are never copied into private <code>$SHSYNTH_USER_DIR/</code> storage.</p>
 <p>Exactly two <code>audio.output</code> entries are the preferred direct route and the
 graph's main destinations. <code>audio.graph.input</code> is <code>LABEL|LEFT|RIGHT</code>; both JACK
-capture names are resolved exactly. If it is absent, the first legacy
-<code>capture.input</code> supplies a backward-compatible preference. Missing, ambiguous,
-or identical ports keep the bus visibly unavailable—SHR-DAW never picks a
-nearby name. This key assigns the two ports only: MTR's live Input control
+capture names are resolved exactly. If the key is omitted, the first legacy
+<code>capture.input</code> supplies a backward-compatible preference on load. An explicitly
+empty value means no input, even when raw-recorder sources remain configured.
+With input monitoring OFF, a missing capture pair is silent and does not prevent
+software playback, effects or final stereo recording. <strong>MON ON</strong> requires the
+selected pair to be present; SHR never picks a nearby name. Identical ports
+remain invalid. This key assigns the two ports only: MTR's live Input control
 chooses stereo or dual mono and the two dual-mono pans without rewriting
 configuration or raw recorder tracks. The callback frame bound may be 1–4096
 and must cover the active JACK period; an unexpectedly larger callback faults
@@ -8562,7 +8598,12 @@ Exact JACK and hardware
 names come from configuration, never Rust constants.</p>
 <p>The compiled plan has fixed <code>ManagedEngine</code>, <code>InternalDrums</code>, <code>LoopPlayer</code>,
 and <code>LiveInput</code> nodes, but only the exact configured live input and playback
-pair are required for input monitoring. Optional sources attach silently when
+pair are required for input monitoring. With monitoring OFF, an absent or
+explicitly disabled physical input leaves the graph's input ports unconnected
+and silent. Software instruments, drums, loops, effects and final WAV capture
+can therefore run through Bluetooth with no sound card. An input that returns
+can attach when MON ON is deliberately requested; no other input is substituted.
+Optional sources attach silently when
 their exact ports exist and can disappear or return without stopping the bus
 or creating a duplicate playback path. SHR Drums is a library hosted
 in-process by SHR-DAW, not a second managed synth process. Its fixed Project
@@ -21417,7 +21458,7 @@ real synth chain. Those remain explicit acceptance work; no JACK, ALSA port,
 synth, playback, recording, screenshot, or MIDI transmission was started for
 this development-PC pass.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-workspace_handoff" data-source="docs/WORKSPACE_HANDOFF.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Workspace handoff</span><span class="document-summary">Current checkout, local hardware, private/public boundary, and validation state for maintainers.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/WORKSPACE_HANDOFF.md" target="_blank" rel="noopener noreferrer external">View docs/WORKSPACE_HANDOFF.md source</a></div><p>Updated: 2026-09-28</p>
+<details class="document" id="doc-workspace_handoff" data-source="docs/WORKSPACE_HANDOFF.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Workspace handoff</span><span class="document-summary">Current checkout, local hardware, private/public boundary, and validation state for maintainers.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/WORKSPACE_HANDOFF.md" target="_blank" rel="noopener noreferrer external">View docs/WORKSPACE_HANDOFF.md source</a></div><p>Updated: 2026-10-01</p>
 <p>This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
 <code>AGENTS.md</code>, helper behavior in <a href="#doc-maintainer_helpers">Maintainer helper scripts</a>,
@@ -21750,6 +21791,24 @@ scheduling evidence, not a physical analogue loopback measurement.</p>
 recording, listening, and Raspberry Pi callback/headroom acceptance were not
 part of those passes.</p>
 <h4 id="doc-workspace_handoff--machine-and-safety-state" tabindex="-1">Machine and safety state<a class="heading-anchor" href="#doc-workspace_handoff--machine-and-safety-state" aria-label="Link to Machine and safety state">#</a></h4>
+<p>The October 1 Bluetooth trial uses PipeWire/WirePlumber with the distribution's
+PipeWire JACK libraries selected system-wide. The old standalone <code>jack.service</code>
+and the trial BlueALSA services are disabled; the original JACK service and
+command files remain intact. The musician's PipeWire services start with the
+user manager and support headless Bluetooth. Exact device choices, configuration
+backup and rollback notes remain below ignored <code>$SHSYNTH_USER_DIR/audio-bluetooth-20261001/</code>.
+Do not restart the old JACK service alongside this audio owner.</p>
+<p>Routing now discovers typed JACK playback destinations and offers separate
+stereo AUDIO IN / AUDIO OUT choices; saved audio changes require reopening SHR.
+An explicit empty graph input means NONE, while an omitted key retains the
+legacy capture preference. Software playback/effects/final recording no longer
+require a physical capture device. Input monitoring still requires the exact
+chosen pair. Audio-only saves preserve MIDI settings and do not require offline
+MIDI devices to reconnect. Exact Rust 1.97.1 passes the locked check, 1,230 normal tests
+(14 historical tests ignored), and the REL build. A live twelve-second
+Bluetooth synth/final-capture trial with the USB audio profile disabled passes
+with no xruns, dropped frames or callback deadline misses. Reconnection and a
+six-second effects trial also pass. Physical listening remains the user's check.</p>
 <p>The checkout directory is now <code>~/p/shr-daw</code>. The former <code>~/p/shsynth</code> is a
 compatibility symlink for existing processes and saved absolute paths. Local
 launchers, current runtime path settings, sibling-project references, and the

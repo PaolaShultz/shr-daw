@@ -166,9 +166,11 @@ There is no substring/fuzzy fallback, and volatile numeric addresses are never
 written.
 
 The Routing screen edits detached drafts. Confirming any row validates the
-whole runtime/controller candidate, creates backups, atomically saves, then
-replaces SHR-owned MIDI inputs without layering them. Activation failure
-restores the previous files and route. Merely browsing, highlighting, or
+whole runtime/controller candidate. Audio rows back up and atomically save
+only the runtime configuration, preserving MIDI settings even when remembered
+MIDI devices are offline. Other rows back up and save both files, then replace
+SHR-owned MIDI inputs without layering them. Activation failure restores the
+previous files and route. Merely browsing, highlighting, or
 confirming an output choice does not open that output or send MIDI. `AUDIO IN`
 selects the stereo input for the mixer/effects graph; `NONE` removes that input.
 It preserves the separate raw-recorder track assignments and monitoring policy.
@@ -192,6 +194,43 @@ does not create a JACK audio destination: it also needs an audio-profile service
 and a playback bridge. Selecting a Bluetooth bridge does not remove JACK's
 dependence on whichever physical device currently clocks the server. Operation
 without that device needs a separate server/backend setup.
+
+### Bluetooth and multiple audio devices
+
+For Bluetooth playback without a USB sound card, PipeWire with WirePlumber and
+the PipeWire JACK compatibility libraries can provide the audio server. Its
+device manager exposes connected USB, HDMI and Bluetooth audio endpoints to
+SHR's existing Routing screen. The standalone JACK/ALSA setup remains suitable
+for a dedicated interface; installing PipeWire does not automatically migrate
+an existing session.
+
+On Debian, the relevant packages are `pipewire`, `pipewire-bin`,
+`pipewire-jack`, `wireplumber`, and `libspa-0.2-bluetooth`. Before switching,
+save and exit SHR, preserve its private configuration, and stop the old audio
+server and any Bluetooth bridge/profile service. Use one Bluetooth audio owner.
+Run SHR and its JACK tools through `pw-jack`, or deliberately select the packaged
+PipeWire JACK libraries as the machine's default. All managed instruments must
+use the same provider as SHR. Keep the previous server configuration for rollback.
+
+Use A2DP for stereo Bluetooth playback and a fixed 48 kHz server rate for SHR's
+native loops. On a dedicated headless musician account, WirePlumber's
+`monitor.bluez.seat-monitoring = disabled` allows Bluetooth over SSH/tty;
+`bluez5.auto-connect = [ a2dp_sink ]` can be scoped to an already-paired receiver.
+PipeWire's `jack.show-monitor = false` hides speaker-loopback ports from normal
+input choices. Device pairing remains an OS operation; Routing selects the
+available stereo audio pairs. A receiver without a microphone supplies only
+an output. Selecting several independent Bluetooth speakers as a synchronized
+multiroom system is outside this stereo route selector.
+
+In SHR, open **Home → Routing**, choose **AUDIO OUT**, confirm, and reopen SHR.
+Choose **AUDIO IN → NONE** when using only software instruments, drums and loops.
+The final mixer, effects and stereo WAV capture can work without physical audio
+inputs. The raw recorder retains its own exact per-track source assignments.
+If a Bluetooth receiver disconnects, reconnect it and reopen SHR to restore its
+exact route; another speaker is never silently selected in its place.
+
+Provider references: [PipeWire JACK launcher](https://docs.pipewire.org/page_man_pw-jack_1.html)
+and [WirePlumber Bluetooth settings](https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/bluetooth.html).
 
 ## Dedicated controller clock and transport
 
@@ -372,10 +411,13 @@ factory kits are never copied into private `user/` storage.
 
 Exactly two `audio.output` entries are the preferred direct route and the
 graph's main destinations. `audio.graph.input` is `LABEL|LEFT|RIGHT`; both JACK
-capture names are resolved exactly. If it is absent, the first legacy
-`capture.input` supplies a backward-compatible preference. Missing, ambiguous,
-or identical ports keep the bus visibly unavailable—SHR-DAW never picks a
-nearby name. This key assigns the two ports only: MTR's live Input control
+capture names are resolved exactly. If the key is omitted, the first legacy
+`capture.input` supplies a backward-compatible preference on load. An explicitly
+empty value means no input, even when raw-recorder sources remain configured.
+With input monitoring OFF, a missing capture pair is silent and does not prevent
+software playback, effects or final stereo recording. **MON ON** requires the
+selected pair to be present; SHR never picks a nearby name. Identical ports
+remain invalid. This key assigns the two ports only: MTR's live Input control
 chooses stereo or dual mono and the two dual-mono pans without rewriting
 configuration or raw recorder tracks. The callback frame bound may be 1–4096
 and must cover the active JACK period; an unexpectedly larger callback faults

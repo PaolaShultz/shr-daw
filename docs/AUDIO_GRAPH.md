@@ -118,7 +118,12 @@ names come from configuration, never Rust constants.
 
 The compiled plan has fixed `ManagedEngine`, `InternalDrums`, `LoopPlayer`,
 and `LiveInput` nodes, but only the exact configured live input and playback
-pair are required for input monitoring. Optional sources attach silently when
+pair are required for input monitoring. With monitoring OFF, an absent or
+explicitly disabled physical input leaves the graph's input ports unconnected
+and silent. Software instruments, drums, loops, effects and final WAV capture
+can therefore run through Bluetooth with no sound card. An input that returns
+can attach when MON ON is deliberately requested; no other input is substituted.
+Optional sources attach silently when
 their exact ports exist and can disappear or return without stopping the bus
 or creating a duplicate playback path. SHR Drums is a library hosted
 in-process by SHR-DAW, not a second managed synth process. Its fixed Project
