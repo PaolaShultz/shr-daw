@@ -20,9 +20,6 @@ pub const SYNTH_VOLUME_SLOT: usize = 12;
 pub const AUX_SEND_CONTROL_COUNT: usize = 3;
 pub const PERFORMANCE_SURFACE_CONTROL_COUNT: usize =
     LEGACY_SYNTH_CONTROL_COUNT + AUX_SEND_CONTROL_COUNT;
-/// The learned performance surface has exactly fifteen rotaries after the
-/// master encoder, which edits the first synth parameter on synth screens.
-pub const MAPPED_CONTROL_CAPACITY: usize = PERFORMANCE_SURFACE_CONTROL_COUNT;
 pub const MOJ_CORE_TOGGLE_CC: u8 = 35;
 pub const MOJ_CORE_STATE_CC: u8 = 36;
 
@@ -1004,7 +1001,7 @@ mod tests {
         assert_eq!(CONTROLS.len(), LEGACY_SYNTH_CONTROL_COUNT);
         assert_eq!(
             CONTROLS.len() + AUX_SEND_CONTROL_COUNT,
-            MAPPED_CONTROL_CAPACITY
+            PERFORMANCE_SURFACE_CONTROL_COUNT
         );
         for (i, a) in CONTROLS.iter().enumerate() {
             for b in &CONTROLS[i + 1..] {

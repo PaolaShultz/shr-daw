@@ -711,7 +711,8 @@ mod tests {
             0,
             AUTOMATION_TICKS_PER_ROW,
             AUTOMATION_TICKS_PER_ROW * 4,
-        );
+        )
+        .unwrap();
         assert_eq!(segments[0].start_tick, 0);
         assert_eq!(segments[0].start_value, 32_768);
         assert_eq!(segments[0].end_tick, u64::from(AUTOMATION_TICKS_PER_ROW));

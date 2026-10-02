@@ -51,6 +51,7 @@ impl Default for HeldNotes {
 }
 
 impl HeldNotes {
+    #[cfg(test)]
     pub fn is_held(&self, note: u8) -> bool {
         self.velocities
             .get(usize::from(note))

@@ -286,10 +286,6 @@ impl LearnSession {
         Self::new_for_profile_at(input_name, None, now)
     }
 
-    pub fn new_for_profile(input_name: &str, profile: Option<&str>) -> Self {
-        Self::new_for_profile_at(input_name, profile, Instant::now())
-    }
-
     pub fn new_for_profile_with_trace(
         input_name: &str,
         profile: Option<&str>,
@@ -415,6 +411,7 @@ impl LearnSession {
         PadAction::physical(number).expect("bounded physical PAD")
     }
 
+    #[cfg(test)]
     pub fn feedback(&self) -> &str {
         &self.feedback
     }
@@ -522,6 +519,7 @@ impl LearnSession {
             || feedback.starts_with("save failed")
     }
 
+    #[cfg(test)]
     pub fn draft(&self) -> &PadConfig {
         &self.draft
     }

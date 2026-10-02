@@ -349,8 +349,11 @@ restored when a disconnected output returns. The authorized October 2 build
 passes the locked check and 73 focused routing, Bluetooth, final-bus, loop,
 monitoring and engine-lifecycle regressions with exact rustc 1.97.1 (8bab26f4f,
 AArch64, LLVM 22.1.6). All-target/all-feature DEV and the REL application build,
-formatting, and both binaries' version/help checks pass. Existing compiler
-warnings remain. Full-suite, historical, Clippy and hardware checks were not run
+formatting, and both binaries' version/help checks pass. The subsequent warning
+cleanup removes unused code, limits test helpers to test builds and asserts the
+timeline test's Result. Its all-target/all-feature check, 77 focused tests and
+refreshed DEV/REL application builds pass without compiler warnings; both
+binaries pass version/help checks. Full-suite, historical, Clippy and hardware checks were not run
 in this focused pass. Normal exit/reopen selects the rebuilt REL binary. No live
 app, audio process or connection was restarted or changed.
 An explicit empty graph input means NONE, while an omitted key retains the
