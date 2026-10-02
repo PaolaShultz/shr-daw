@@ -345,9 +345,14 @@ AUDIO OUT live through the shared final bus and adds paired-device BT DEVICE /
 BT LINK controls. AUDIO IN changes still require reopening SHR. Player, drums
 and loops now activate the same final bus under normal audio autoconnection;
 loop replacement retains that bus and final capture. Exact playback links are
-restored when a disconnected output returns. This follow-up has formatting and
-source review only; compilation, focused regressions and binaries await the
-explicit combined build-and-test pass. No live connections were changed.
+restored when a disconnected output returns. The authorized October 2 build
+passes the locked check and 73 focused routing, Bluetooth, final-bus, loop,
+monitoring and engine-lifecycle regressions with exact rustc 1.97.1 (8bab26f4f,
+AArch64, LLVM 22.1.6). All-target/all-feature DEV and the REL application build,
+formatting, and both binaries' version/help checks pass. Existing compiler
+warnings remain. Full-suite, historical, Clippy and hardware checks were not run
+in this focused pass. Normal exit/reopen selects the rebuilt REL binary. No live
+app, audio process or connection was restarted or changed.
 An explicit empty graph input means NONE, while an omitted key retains the
 legacy capture preference. Software playback/effects/final recording no longer
 require a physical capture device. Input monitoring still requires the exact
