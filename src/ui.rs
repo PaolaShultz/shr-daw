@@ -1384,6 +1384,8 @@ enum RoutingRow {
     SyncOwner,
     SyncInput,
     SyncStart,
+    BluetoothDevice,
+    BluetoothLink,
     AudioInput,
     AudioOutput,
 }
@@ -1403,6 +1405,8 @@ impl RoutingRow {
             Self::SyncOwner => "SYNC".into(),
             Self::SyncInput => "SYNC IN".into(),
             Self::SyncStart => "SYNC POS".into(),
+            Self::BluetoothDevice => "BT DEVICE".into(),
+            Self::BluetoothLink => "BT LINK".into(),
             Self::AudioInput => "AUDIO IN".into(),
             Self::AudioOutput => "AUDIO OUT".into(),
         }
@@ -1411,6 +1415,8 @@ impl RoutingRow {
 
 #[derive(Clone)]
 struct RoutingDraft {
+    bluetooth_device: usize,
+    bluetooth_connect: bool,
     config: RuntimeConfig,
     controller: crate::pads::PadConfig,
 }
@@ -1419,6 +1425,10 @@ struct RoutingDraft {
 struct RoutingEditor {
     selected: usize,
     draft: Option<RoutingDraft>,
+    bluetooth_devices: Vec<crate::bluetooth::Device>,
+    bluetooth_selected: usize,
+    bluetooth_pending: Option<std::sync::mpsc::Receiver<crate::bluetooth::Completion>>,
+    bluetooth_error: Option<String>,
 }
 
 fn normalized_physical_control(cc: u8, value: f32) -> Option<(usize, f32)> {
@@ -1980,20 +1990,28 @@ enum RoutingTransactionStage {
     Activate,
 }
 
-fn persist_audio_routing(
+fn persist_audio_routing<F>(
     runtime_path: &Path,
     config: &RuntimeConfig,
-) -> std::result::Result<(), (RoutingTransactionStage, anyhow::Error)> {
+    activate: F,
+) -> std::result::Result<(), (RoutingTransactionStage, anyhow::Error)>
+where
+    F: FnOnce() -> Result<()>,
+{
     let old = crate::fsutil::snapshot(runtime_path)
         .map_err(|error| (RoutingTransactionStage::Save, error))?;
     crate::controller_learn::backup(runtime_path)
         .map_err(|error| (RoutingTransactionStage::Save, error))?;
-    if let Err(error) = config.save(runtime_path) {
+    let result = config
+        .save(runtime_path)
+        .map_err(|error| (RoutingTransactionStage::Save, error))
+        .and_then(|()| activate().map_err(|error| (RoutingTransactionStage::Activate, error)));
+    if let Err((stage, error)) = result {
         let error = match crate::fsutil::restore(runtime_path, old.as_deref()) {
             Ok(()) => error,
             Err(recovery) => error.context(format!("configuration recovery failed: {recovery:#}")),
         };
-        return Err((RoutingTransactionStage::Save, error));
+        return Err((stage, error));
     }
     Ok(())
 }
@@ -2960,7 +2978,12 @@ impl App {
     }
 
     fn open_routing_editor(&mut self) {
-        self.routing = RoutingEditor::default();
+        self.routing.selected = 0;
+        self.routing.draft = None;
+        #[cfg(not(test))]
+        if self.routing.bluetooth_pending.is_none() {
+            self.routing.bluetooth_pending = Some(crate::bluetooth::start(None));
+        }
         self.refresh_routing_discovery();
         self.set_screen(Screen::Routing);
         self.status.clear();
@@ -3027,6 +3050,8 @@ impl App {
             RoutingRow::SyncOwner,
             RoutingRow::SyncInput,
             RoutingRow::SyncStart,
+            RoutingRow::BluetoothDevice,
+            RoutingRow::BluetoothLink,
             RoutingRow::AudioInput,
             RoutingRow::AudioOutput,
         ]);
@@ -3058,8 +3083,20 @@ impl App {
     }
 
     fn begin_routing_edit(&mut self) {
+        if matches!(
+            self.routing_row(),
+            RoutingRow::BluetoothDevice | RoutingRow::BluetoothLink
+        ) && self.routing.bluetooth_pending.is_some()
+        {
+            self.status = "BLUETOOTH BUSY · wait".into();
+            return;
+        }
         if self.routing.draft.is_some() {
             return;
+        }
+        #[cfg(not(test))]
+        if self.routing_row() == RoutingRow::AudioOutput {
+            self.routing_audio_ports = engine::jack_playback_destinations();
         }
         let controller = self
             .controller_config
@@ -3067,6 +3104,12 @@ impl App {
             .map(|controller| controller.clone())
             .unwrap_or_default();
         self.routing.draft = Some(RoutingDraft {
+            bluetooth_device: self.routing.bluetooth_selected,
+            bluetooth_connect: !self
+                .routing
+                .bluetooth_devices
+                .get(self.routing.bluetooth_selected)
+                .is_some_and(|device| device.connected),
             config: self.config.clone(),
             controller,
         });
@@ -3110,6 +3153,14 @@ impl App {
             return;
         };
         match row {
+            RoutingRow::BluetoothDevice => {
+                draft.bluetooth_device = wrapped_index(
+                    draft.bluetooth_device,
+                    self.routing.bluetooth_devices.len(),
+                    direction,
+                );
+            }
+            RoutingRow::BluetoothLink => draft.bluetooth_connect = !draft.bluetooth_connect,
             RoutingRow::Controller => {
                 let current = draft.controller.input_match.as_deref().unwrap_or("");
                 let choice = cycle_text_choice(current, &input_choices, true, direction);
@@ -3281,7 +3332,89 @@ impl App {
         choices
     }
 
+    fn poll_bluetooth(&mut self) {
+        let result = self
+            .routing
+            .bluetooth_pending
+            .as_ref()
+            .map(|rx| rx.try_recv());
+        let Some(result) = result else { return };
+        let completion = match result {
+            Ok(completion) => completion,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(_) => {
+                self.routing.bluetooth_pending = None;
+                self.routing.bluetooth_error = Some("Bluetooth worker stopped".into());
+                self.status = "BLUETOOTH FAILED · reopen ROUTING".into();
+                return;
+            }
+        };
+        self.routing.bluetooth_pending = None;
+        match completion.devices {
+            Ok(devices) => {
+                let selected = self
+                    .routing
+                    .bluetooth_devices
+                    .get(self.routing.bluetooth_selected)
+                    .map(|device| device.address.clone());
+                self.routing.bluetooth_selected = selected
+                    .and_then(|address| devices.iter().position(|device| device.address == address))
+                    .unwrap_or(0);
+                self.routing.bluetooth_devices = devices;
+                self.routing.bluetooth_error = None;
+                self.routing_audio_ports = engine::jack_playback_destinations();
+            }
+            Err(error) => {
+                self.routing.bluetooth_error = Some(error.clone());
+                self.status = error;
+            }
+        }
+        if let Some(result) = completion.action {
+            self.status = match result {
+                Ok(()) => "BT LINK CHANGED · choose AUDIO OUT".into(),
+                Err(error) => format!("BT FAILED · {error}"),
+            };
+        }
+    }
+
+    fn apply_routing_output(&mut self, outputs: &[String]) -> Result<()> {
+        #[cfg(test)]
+        if let Some(result) = self.final_bus_activation_override.as_ref() {
+            return result.clone().map_err(anyhow::Error::msg);
+        }
+        let available = engine::jack_playback_destinations();
+        if outputs.len() != 2 || !outputs.iter().all(|port| available.contains(port)) {
+            bail!("selected audio output is offline");
+        }
+        if !self.final_bus.active() {
+            let previous_route = self.config.resolve_audio_route(&available).outputs;
+            if previous_route.len() == 2
+                && previous_route.iter().all(|port| available.contains(port))
+            {
+                if !self.retry_final_bus_for_mixer() {
+                    bail!("final bus unavailable; previous output kept");
+                }
+            } else {
+                // The previous speaker is absent. Activate the exact new pair,
+                // with fallback disabled for this explicit selection.
+                let previous = self.config.clone();
+                self.config.audio_outputs = outputs.to_vec();
+                self.config.audio_autoconnect = true;
+                self.config.audio_internal_outputs.clear();
+                self.config.audio_headphone_output = None;
+                let activated = self.retry_final_bus_for_mixer();
+                self.config = previous;
+                if !activated {
+                    bail!("final bus unavailable; previous output kept");
+                }
+                return Ok(());
+            }
+        }
+        self.final_bus.set_playback(outputs)
+    }
+
     fn confirm_routing_edit(&mut self, state: &Path) {
+        let output_edit = self.routing_row() == RoutingRow::AudioOutput;
         let audio_edit = matches!(
             self.routing_row(),
             RoutingRow::AudioInput | RoutingRow::AudioOutput
@@ -3290,6 +3423,35 @@ impl App {
             self.begin_routing_edit();
             return;
         };
+        match self.routing_row() {
+            RoutingRow::BluetoothDevice => {
+                self.routing.bluetooth_selected = draft.bluetooth_device;
+                self.status.clear();
+                return;
+            }
+            RoutingRow::BluetoothLink => {
+                if self.routing.bluetooth_pending.is_some() {
+                    self.status = "BLUETOOTH BUSY · wait".into();
+                    self.routing.draft = Some(draft);
+                    return;
+                }
+                if let Some(device) = self.routing.bluetooth_devices.get(draft.bluetooth_device) {
+                    self.routing.bluetooth_pending = Some(crate::bluetooth::start(Some((
+                        device.address.clone(),
+                        draft.bluetooth_connect,
+                    ))));
+                    self.status = "BLUETOOTH · changing link".into();
+                } else {
+                    self.status = "NO PAIRED DEVICE · pair in OS".into();
+                }
+                return;
+            }
+            _ => {}
+        }
+        if output_edit {
+            draft.config.audio_autoconnect = true;
+            draft.config.loop_player.outputs = draft.config.audio_outputs.clone();
+        }
         if !audio_edit {
             if let Err(_error) =
                 canonicalize_routing_draft(&mut draft, &self.routing_inputs, &self.routing_outputs)
@@ -3338,15 +3500,20 @@ impl App {
                 )
             })
         };
-        let audio_changed = draft.config.audio_outputs != old_config.audio_outputs
-            || input_ports(&draft.config) != input_ports(&old_config);
+        let audio_changed = input_ports(&draft.config) != input_ports(&old_config);
         let clock_changed = draft.config.controller_clock != old_config.controller_clock;
 
         let mut activated_availability = None;
         let transaction = if audio_edit {
-            // Saving next-start audio choices does not activate MIDI or need
-            // an unrelated remembered controller/clock device to be present.
-            persist_audio_routing(&runtime_path, &draft.config)
+            // Audio choices do not activate MIDI or require an unrelated
+            // remembered controller/clock device to be present.
+            persist_audio_routing(&runtime_path, &draft.config, || {
+                if output_edit {
+                    self.apply_routing_output(&draft.config.audio_outputs)
+                } else {
+                    Ok(())
+                }
+            })
         } else {
             persist_routing_transaction(&runtime_path, &controller_path, &draft, || {
                 if let Ok(mut controller) = self.controller_config.write() {
@@ -3399,7 +3566,7 @@ impl App {
                 if let Ok(mut controller) = self.controller_config.write() {
                     *controller = old_controller;
                 }
-                if stage == RoutingTransactionStage::Activate {
+                if stage == RoutingTransactionStage::Activate && !audio_edit {
                     if let Some(router) = self.midi_router.as_mut() {
                         if let Err(recovery) = router.reconfigure_inputs(&old_config) {
                             self.status = format!("ROUTE RECOVERY FAILED · {recovery:#}");
@@ -3412,6 +3579,9 @@ impl App {
                 self.refresh_routing_discovery();
                 self.status = match stage {
                     RoutingTransactionStage::Save => format!("SAVE FAILED · {error:#}"),
+                    RoutingTransactionStage::Activate if output_edit => {
+                        format!("OUTPUT FAILED · {error:#}")
+                    }
                     RoutingTransactionStage::Activate => format!("ROUTE FAILED · {error:#}"),
                 };
                 self.routing.draft = Some(draft);
@@ -5797,6 +5967,7 @@ impl App {
                 Some(self.drum_channel_binding()),
             ],
         );
+        self.retry_final_bus();
         let mut engine_config = self.config.clone();
         if self.final_bus.active() {
             // The application-owned final bus already owns playback. A newly
@@ -9974,6 +10145,8 @@ impl App {
         if resolved.outputs.len() != 2 {
             return Err("SHR Drums has no resolved stereo playback route".into());
         }
+        self.retry_final_bus();
+        let destinations = self.final_bus.drum_inputs().unwrap_or(resolved.outputs);
         let host = crate::drums_host::DrumHost::start(
             &self.config.drums,
             &kit,
@@ -9982,7 +10155,7 @@ impl App {
             &self.song.drum_rack,
             tempo,
             Arc::clone(&self.transport_clock),
-            &resolved.outputs,
+            &destinations,
             Arc::clone(&self.drum_output),
             self.final_bus.effect_hub(),
         )
@@ -9990,9 +10163,7 @@ impl App {
         self.config.drums.output_ports = Some(host.output_ports());
         self.song.drum_kit = kit_id.into();
         self.drum_host = Some(host);
-        if self.final_bus.active() {
-            self.retry_final_bus();
-        }
+        self.retry_final_bus();
         Ok(())
     }
 
@@ -11472,7 +11643,7 @@ impl App {
         }
         let slot = self.loop_slot_selected;
         let settings = self.current_loop_settings(slot).cloned();
-        self.suspend_final_bus();
+        self.retry_final_bus();
         let loaded = self.load_loop_settings_for_slot(slot, settings);
         self.retry_final_bus();
         loaded
@@ -11489,7 +11660,7 @@ impl App {
         };
         let stable_route = self.loop_player.backend_active();
         if !stable_route {
-            self.suspend_final_bus();
+            self.retry_final_bus();
         }
         let result = self.loop_player.replace_pattern_slots(
             prepared.slots,
@@ -11516,7 +11687,6 @@ impl App {
 
     #[cfg(test)]
     fn load_current_pattern_loops_with_test_override(&mut self) -> Vec<usize> {
-        self.suspend_final_bus();
         let selected = self.loop_slot_selected;
         let settings = self
             .current_pattern()
@@ -11715,7 +11885,7 @@ impl App {
         let selected = self.loop_slot_selected;
         let stable_route = self.loop_player.backend_active();
         if !stable_route {
-            self.suspend_final_bus();
+            self.retry_final_bus();
         }
         let failed_slots = match self.loop_player.replace_pattern_slots(
             prepared.slots,
@@ -11792,24 +11962,14 @@ impl App {
         if !self.loop_editor_can_touch_runtime() {
             return;
         }
-        self.suspend_final_bus();
         self.loop_player.unload_slot(self.loop_slot_selected);
         let any_loaded = (0..crate::loop_player::LOOP_SLOTS)
             .any(|slot| self.loop_player.slot_status(slot).loaded);
         if !any_loaded {
             self.loop_meter
                 .set_audio_unavailable(AudioAvailability::Stopped);
-        } else {
-            self.retry_final_bus();
         }
-    }
-
-    fn suspend_final_bus(&mut self) {
-        if let Some((_timing, restored)) = self.final_bus.deactivate() {
-            if restored.is_err() {
-                self.status = "FINAL BUS SUSPEND FAILED · retry".into();
-            }
-        }
+        self.retry_final_bus();
     }
 
     fn select_loop_slot(&mut self, direction: i8) {
@@ -11956,6 +12116,7 @@ impl App {
         self.sync_channel_settings();
         if !force
             && !self.config.audio_graph.enabled
+            && !self.config.audio_autoconnect
             && !self.input_monitoring
             && !self.final_bus.active()
         {
@@ -11997,6 +12158,9 @@ impl App {
         ) {
             Ok(_) => {
                 self.audio_fallback = self.final_bus.fallback().map(str::to_owned);
+                if let Some(inputs) = self.final_bus.loop_inputs() {
+                    self.loop_player.set_output_destinations(inputs);
+                }
                 true
             }
             Err(error) => {
@@ -12221,9 +12385,6 @@ impl App {
             filter_x1000: 0,
         };
         let update_runtime = self.loop_editor_can_touch_runtime();
-        if update_runtime {
-            self.suspend_final_bus();
-        }
         let committed = self.commit_loop_candidate(decoded, settings);
         if update_runtime {
             self.retry_final_bus();
@@ -12282,13 +12443,6 @@ impl App {
                 if update_runtime {
                     self.loop_meter
                         .set_audio_unavailable(AudioAvailability::Stopped);
-                    if let Some((_timing, restored)) = self.final_bus.deactivate() {
-                        if restored.is_err() {
-                            let _ = fs::remove_file(&path);
-                            self.status = "FINAL BUS SUSPEND FAILED · retry".into();
-                            return false;
-                        }
-                    }
                 }
                 match self.commit_loop_candidate(decoded, settings) {
                     Ok(tempo) => {
@@ -12344,9 +12498,6 @@ impl App {
                 candidate.length_beats = alignment.length_beats;
                 candidate.offset_beats = 0;
                 let update_runtime = self.loop_editor_can_touch_runtime();
-                if update_runtime {
-                    self.suspend_final_bus();
-                }
                 let committed = self.commit_loop_candidate(decoded, candidate);
                 if update_runtime {
                     self.retry_final_bus();
@@ -17048,6 +17199,10 @@ impl App {
         if let Some(session) = self.controller_learn.as_mut() {
             session.tick(now);
         }
+        self.poll_bluetooth();
+        if self.screen == Screen::Routing && now >= self.next_final_bus_source_scan {
+            self.routing_audio_ports = engine::jack_playback_destinations();
+        }
         if self.final_bus.active() && now >= self.next_final_bus_source_scan {
             let managed_client_name = self
                 .engine
@@ -17060,12 +17215,19 @@ impl App {
                 .as_ref()
                 .filter(|host| !host.lost())
                 .map(crate::drums_host::DrumHost::output_ports);
-            if let Err(_error) =
-                self.final_bus
-                    .sync_sources(managed_client_name.as_deref(), loop_ports, drum_ports)
-            {
-                self.status = "OPTIONAL SOURCE ROUTE FAILED · retry".into();
+            match self.final_bus.sync_sources(
+                managed_client_name.as_deref(),
+                loop_ports,
+                drum_ports,
+            ) {
+                Err(_) => self.status = "AUDIO ROUTE OFFLINE · ROUTING / reconnect".into(),
+                Ok(()) if self.status == "AUDIO ROUTE OFFLINE · ROUTING / reconnect" => {
+                    self.status.clear()
+                }
+                Ok(()) => {}
             }
+        }
+        if now >= self.next_final_bus_source_scan {
             self.next_final_bus_source_scan = now + Duration::from_secs(1);
         }
         self.refresh_cpu_temperature(now);
@@ -17242,6 +17404,10 @@ impl App {
             self.status = status;
         }
         if let Some(status) = self.final_bus.poll() {
+            if !self.final_bus.active() {
+                self.loop_player
+                    .set_output_destinations(self.config.loop_player.outputs.clone());
+            }
             self.performance_meter
                 .set_audio_unavailable(AudioAvailability::DirectUnavailable);
             self.status = status;
@@ -18989,6 +19155,7 @@ fn perform(
         Action::OpenMeter => {
             a.set_screen(Screen::Meter);
             a.status.clear();
+            a.retry_final_bus();
         }
         Action::OpenRouting => {
             a.open_routing_editor();
@@ -18996,7 +19163,7 @@ fn perform(
         Action::ResetMeter => {
             a.performance_meter.clear_holds();
             a.status = "meter MAX, bright peak, and clip holds cleared".into();
-            if (a.config.audio_graph.enabled || a.input_monitoring)
+            if (a.config.audio_graph.enabled || a.config.audio_autoconnect || a.input_monitoring)
                 && a.final_bus.controls().is_none()
             {
                 a.retry_final_bus();
@@ -21417,6 +21584,46 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
                 endpoint(&config.external_clock.input_match, &a.routing_inputs)
             }
             RoutingRow::SyncStart => config.external_clock.start_mode.label().into(),
+            RoutingRow::BluetoothDevice => {
+                let selected = a
+                    .routing
+                    .draft
+                    .as_ref()
+                    .map_or(a.routing.bluetooth_selected, |draft| draft.bluetooth_device);
+                a.routing.bluetooth_devices.get(selected).map_or_else(
+                    || {
+                        if a.routing.bluetooth_pending.is_some() {
+                            "WAIT".into()
+                        } else if a.routing.bluetooth_error.is_some() {
+                            "UNAVAILABLE".into()
+                        } else {
+                            "NONE PAIRED".into()
+                        }
+                    },
+                    |device| crate::ui_text::fit_line(&device.name, value_width),
+                )
+            }
+            RoutingRow::BluetoothLink => {
+                let connect = a
+                    .routing
+                    .draft
+                    .as_ref()
+                    .map(|draft| draft.bluetooth_connect)
+                    .unwrap_or_else(|| {
+                        !a.routing
+                            .bluetooth_devices
+                            .get(a.routing.bluetooth_selected)
+                            .is_some_and(|device| device.connected)
+                    });
+                if a.routing.bluetooth_pending.is_some() {
+                    "WAIT"
+                } else if connect {
+                    "CONNECT"
+                } else {
+                    "DISCONNECT"
+                }
+                .into()
+            }
             RoutingRow::AudioInput => match &config.audio_graph.input {
                 None => "NONE".into(),
                 Some(input) => {
@@ -35598,6 +35805,52 @@ release = 0.4
     }
 
     #[test]
+    fn player_uses_final_bus_even_without_legacy_graph_opt_in() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Playback;
+        a.config.audio_graph.enabled = false;
+        a.config.audio_autoconnect = true;
+        assert!(!a.input_monitoring);
+        assert!(a.retry_final_bus());
+        assert_eq!(a.final_bus_activation_attempts, 1);
+        assert!(!a.input_monitoring);
+
+        a.config.audio_autoconnect = false;
+        assert!(!a.retry_final_bus());
+        assert_eq!(a.final_bus_activation_attempts, 1);
+    }
+
+    #[test]
+    fn bluetooth_selection_and_cancel_never_change_a_link_or_project() {
+        let p = presets();
+        let mut a = app(&p);
+        a.routing.bluetooth_devices = vec![crate::bluetooth::Device {
+            address: "00:11:22:33:44:55".into(),
+            name: "Speaker".into(),
+            connected: true,
+        }];
+        a.routing.selected = a
+            .routing_rows()
+            .iter()
+            .position(|row| *row == RoutingRow::BluetoothLink)
+            .unwrap();
+        let song = a.song.clone();
+        a.begin_routing_edit();
+        assert!(!a.routing.draft.as_ref().unwrap().bluetooth_connect);
+        assert!(a.cancel_routing_edit());
+        assert!(a.routing.bluetooth_pending.is_none());
+        assert!(a.routing.bluetooth_devices[0].connected);
+        assert_eq!(a.song, song);
+        let (tx, rx) = std::sync::mpsc::channel();
+        a.routing.bluetooth_pending = Some(rx);
+        a.begin_routing_edit();
+        assert!(a.routing.draft.is_none());
+        assert!(a.status.contains("BUSY"));
+        drop(tx);
+    }
+
+    #[test]
     fn routing_audio_save_preserves_offline_midi_and_retries_storage_failure() {
         let base = std::env::temp_dir().join(format!(
             "shr-routing-audio-{}-{}",
@@ -35627,6 +35880,7 @@ release = 0.4
             .position(|row| *row == RoutingRow::AudioOutput)
             .unwrap();
         a.begin_routing_edit();
+        a.final_bus_activation_override = Some(Ok(()));
         let chosen = vec!["BT:playback_FL".to_string(), "BT:playback_FR".to_string()];
         a.routing.draft.as_mut().unwrap().config.audio_outputs = chosen.clone();
         // A storage failure keeps the entered choice available for retry.
@@ -35639,9 +35893,21 @@ release = 0.4
             chosen
         );
         assert_eq!(a.routing_row(), RoutingRow::AudioOutput);
+        let before = fs::read(base.join("shsynth.conf")).unwrap();
+        let previous_outputs = a.config.audio_outputs.clone();
+        a.final_bus_activation_override = Some(Err("injected unavailable output".into()));
+        a.confirm_routing_edit(&base);
+        assert!(a.status.starts_with("OUTPUT FAILED"));
+        assert_eq!(fs::read(base.join("shsynth.conf")).unwrap(), before);
+        assert_eq!(a.config.audio_outputs, previous_outputs);
+        assert_eq!(
+            a.routing.draft.as_ref().unwrap().config.audio_outputs,
+            chosen
+        );
+        a.final_bus_activation_override = Some(Ok(()));
         a.confirm_routing_edit(&base);
         assert!(a.routing.draft.is_none(), "{}", a.status);
-        assert_eq!(a.status, "Saved · reopen SHR for audio");
+        assert!(a.status.is_empty(), "{}", a.status);
         let saved = RuntimeConfig::load(&base.join("shsynth.conf")).unwrap();
         assert_eq!(saved.audio_outputs, chosen);
         assert!(saved.controller_clock.enabled);
@@ -35736,6 +36002,8 @@ release = 0.4
         assert_eq!(a.project_is_dirty(), original_dirty);
 
         let mut ambiguous = RoutingDraft {
+            bluetooth_device: 0,
+            bluetooth_connect: false,
             config: a.config.clone(),
             controller: crate::pads::PadConfig::default(),
         };
@@ -35857,6 +36125,8 @@ release = 0.4
         ));
         fs::create_dir_all(&base).unwrap();
         let mut draft = RoutingDraft {
+            bluetooth_device: 0,
+            bluetooth_connect: false,
             config: RuntimeConfig::default(),
             controller: crate::pads::PadConfig::default(),
         };
@@ -35901,6 +36171,8 @@ release = 0.4
         let runtime_bytes = fs::read(&runtime_path).unwrap();
         let controller_bytes = fs::read(&controller_path).unwrap();
         let mut candidate = RoutingDraft {
+            bluetooth_device: 0,
+            bluetooth_connect: false,
             config: old_runtime,
             controller: old_controller,
         };
@@ -36568,6 +36840,8 @@ release = 0.4
         let a = app(&p);
         let controller = a.controller_config.read().unwrap().clone();
         let mut draft = RoutingDraft {
+            bluetooth_device: 0,
+            bluetooth_connect: false,
             config: a.config.clone(),
             controller,
         };

@@ -1,6 +1,6 @@
 # Workspace handoff
 
-Updated: 2026-10-01
+Updated: 2026-10-02
 
 This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
@@ -340,7 +340,14 @@ backup and rollback notes remain below ignored `user/audio-bluetooth-20261001/`.
 Do not restart the old JACK service alongside this audio owner.
 
 Routing now discovers typed JACK playback destinations and offers separate
-stereo AUDIO IN / AUDIO OUT choices; saved audio changes require reopening SHR.
+stereo AUDIO IN / AUDIO OUT choices. The October 2 source follow-up applies
+AUDIO OUT live through the shared final bus and adds paired-device BT DEVICE /
+BT LINK controls. AUDIO IN changes still require reopening SHR. Player, drums
+and loops now activate the same final bus under normal audio autoconnection;
+loop replacement retains that bus and final capture. Exact playback links are
+restored when a disconnected output returns. This follow-up has formatting and
+source review only; compilation, focused regressions and binaries await the
+explicit combined build-and-test pass. No live connections were changed.
 An explicit empty graph input means NONE, while an omitted key retains the
 legacy capture preference. Software playback/effects/final recording no longer
 require a physical capture device. Input monitoring still requires the exact

@@ -412,17 +412,21 @@ only that draft; click/Enter validates and confirms; Back/Esc restores the
 original field. Back/Esc from browse returns Home. Re-entry always starts with
 clean browse state.
 
-Confirmation validates the complete runtime and controller candidate, creates
+MIDI confirmation validates the complete runtime and controller candidate, creates
 non-overwriting backups, atomically replaces both files, releases source-owned
 notes/controller state, replaces SHR-owned MIDI inputs without layering, and
 refreshes live discovery. Failure restores the old files and runtime route.
 `AUDIO IN` selects the stereo mixer/effects input (or `NONE`), and `AUDIO OUT`
 selects the stereo playback destination. Both show the JACK client and channel
 pair, retain offline choices, and use actual audio-port direction/type rather
-than guessing from names. Raw-recorder assignments remain separate. Audio
-changes report `Saved · reopen SHR for audio`; exit and reopen to apply them to
-all sources. Devices must already be exposed to JACK, including Bluetooth
-playback bridges. Controller-clock
+than guessing from names. Raw-recorder assignments remain separate. Confirming
+`AUDIO OUT` switches all shared-bus sources immediately and preserves engines,
+effects and recording. Failed switches keep the previous route and the draft.
+`AUDIO IN` changes still report `Saved · reopen SHR for audio`.
+`BT DEVICE` chooses an already-paired device; `BT LINK` opens a `CONNECT` or
+`DISCONNECT` draft. Confirm executes that action, and Back cancels it. Bluetooth
+work runs asynchronously; `WAIT` prevents overlapping actions. Pair new devices
+in the OS. Available output pairs refresh while Routing is open. Controller-clock
 enable/output changes likewise report `CLOCK NEXT START`; live MIDI input role/
 source changes activate immediately. Selecting
 or confirming a MIDI output uses discovery only; it never opens an output as a

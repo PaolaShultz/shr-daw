@@ -165,21 +165,24 @@ numeric address is removed; the stable configured value is
 There is no substring/fuzzy fallback, and volatile numeric addresses are never
 written.
 
-The Routing screen edits detached drafts. Confirming any row validates the
-whole runtime/controller candidate. Audio rows back up and atomically save
+The Routing screen edits detached drafts. Confirming a configuration row
+validates the whole runtime/controller candidate. Audio rows back up and atomically save
 only the runtime configuration, preserving MIDI settings even when remembered
-MIDI devices are offline. Other rows back up and save both files, then replace
+MIDI devices are offline. MIDI rows back up and save both files, then replace
 SHR-owned MIDI inputs without layering them. Activation failure restores the
-previous files and route. Merely browsing, highlighting, or
-confirming an output choice does not open that output or send MIDI. `AUDIO IN`
+previous files and route. Merely browsing or
+highlighting an output choice does not change connections or send MIDI. `AUDIO IN`
 selects the stereo input for the mixer/effects graph; `NONE` removes that input.
 It preserves the separate raw-recorder track assignments and monitoring policy.
 `AUDIO OUT` selects the stereo destination for instruments, loops and the final
 mix. Both selectors retain remembered offline choices and show channel numbers.
 Audio choices use JACK's audio type and port direction, including bridges with
 arbitrary port names; MIDI ports are excluded. Channels are paired within each
-JACK client in numeric order. Save, then exit and reopen SHR to apply audio
-changes consistently to every source. Controller-clock output changes also take effect on the next SHR
+JACK client in numeric order. Confirming `AUDIO OUT` switches the shared final
+output immediately while keeping engines, effects, meters and recording alive.
+A failed switch restores the previous output links and configuration file and
+keeps the draft for retry. `AUDIO IN` changes still require exiting and reopening
+SHR. Controller-clock output changes also take effect on the next SHR
 start; MIDI input, controller-role, and external-transport input changes
 activate immediately while stopped. Startup does not
 silently migrate legacy names; canonical form is written only after a confirmed
@@ -217,17 +220,25 @@ native loops. On a dedicated headless musician account, WirePlumber's
 `monitor.bluez.seat-monitoring = disabled` allows Bluetooth over SSH/tty;
 `bluez5.auto-connect = [ a2dp_sink ]` can be scoped to an already-paired receiver.
 PipeWire's `jack.show-monitor = false` hides speaker-loopback ports from normal
-input choices. Device pairing remains an OS operation; Routing selects the
-available stereo audio pairs. A receiver without a microphone supplies only
-an output. Selecting several independent Bluetooth speakers as a synchronized
+input choices. Device pairing remains an OS operation. In Routing, select an
+already-paired receiver under `BT DEVICE`, then confirm `BT LINK` → `CONNECT`
+or `DISCONNECT`. These actions run outside the UI thread with bounded command
+timeouts. They neither scan nor pair, forget, or change device trust. The controls
+use [BlueZ bluetoothctl](https://kernel.googlesource.com/pub/scm/bluetooth/bluez.git/+/refs/tags/5.83/client/bluetoothctl.rst)
+and the system `timeout` command. Missing tools or failed operations appear in
+the shared status row. Routing refreshes audio output choices while open.
+A receiver without a microphone supplies only an output. Selecting several independent Bluetooth speakers as a synchronized
 multiroom system is outside this stereo route selector.
 
-In SHR, open **Home → Routing**, choose **AUDIO OUT**, confirm, and reopen SHR.
+In SHR, open **Home → Routing**, choose **AUDIO OUT**, and confirm the desired
+stereo pair. The output switches immediately; no application restart is needed.
 Choose **AUDIO IN → NONE** when using only software instruments, drums and loops.
 The final mixer, effects and stereo WAV capture can work without physical audio
 inputs. The raw recorder retains its own exact per-track source assignments.
-If a Bluetooth receiver disconnects, reconnect it and reopen SHR to restore its
-exact route; another speaker is never silently selected in its place.
+If the selected receiver disconnects, use `BT LINK` → `CONNECT`. The final bus
+restores its exact output links when that receiver's ports return. Sources,
+effects, metering and final recording remain active during the disconnection.
+To use a different speaker or sound card, explicitly select it under `AUDIO OUT`.
 
 Provider references: [PipeWire JACK launcher](https://docs.pipewire.org/page_man_pw-jack_1.html)
 and [WirePlumber Bluetooth settings](https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/bluetooth.html).
@@ -383,8 +394,10 @@ Drums, and Loop sources are present plus one configured stereo capture pair.
 The melodic instrument retains its Project-persisted source insert rack and
 three aux buses. The complete sum then passes through the master rack, live
 master level, fixed Project MASTER STRIP, final meter, final stereo recorder
-tap, and playback. Automatic startup remains disabled by default; MTR Input
-**MON ON** explicitly starts this same bus for input-only monitoring:
+tap, and playback. In the TUI, normal audio autoconnection activates this shared
+bus for Player, drums and loops even when the legacy `audio.graph.enabled` opt-in
+is false. MTR Input **MON ON** uses the same bus for input-only monitoring.
+Monitoring remains off until explicitly enabled:
 
 ```text
 audio.autoconnect=true

@@ -550,16 +550,27 @@ they are smoothed atomic updates and may be auditioned during playback. They
 are rejected during a final recording. Whole-strip comparison keeps the same
 delay and true-peak protection, and never overwrites the edited values.
 
-Automatic graph startup remains disabled by default. The managed engine,
-internal drums when active, and loop are connected directly first. The graph is
-activated muted, its four stereo inputs plus playback boundary are connected,
+In the TUI, normal audio autoconnection activates the shared final bus for
+Player, internal drums and loops, independently of the current screen and the
+legacy graph opt-in. New sources join that bus; replacing or unloading an
+optional loop does not destroy it or stop its final recording. Performance VU
+reads the final stereo sum, including the Player instrument. Physical input
+monitoring remains off until explicitly enabled.
+
+The graph is activated muted, its four stereo inputs plus playback boundary are connected,
 and the owned direct links are removed as one rollback-capable transaction before graph
 output is published at a block boundary. Validation, activation, or connection
 failure leaves or restores the exact prior direct links. Shutdown deactivates
 the callback before restoring them, avoiding a doubled final block.
 
+Routing output changes replace only the final stereo links in a rollback-capable
+transaction. They preserve the running DSP and final capture. Periodic owner-thread
+source maintenance also restores the exact playback links after a device returns;
+missing playback ports do not stop the sources or recording. Bluetooth device
+operations run in a separate worker and never run in an audio callback.
+
 FX state is saved in the Project while the graph is inactive, but direct
-playback cannot process or meter it. An explicit non-OFF AUX send adjustment
+fallback playback cannot process or meter it. An explicit non-OFF AUX send adjustment
 activates that processing as described above. The graph instantiates exactly four
 source kinds: managed instrument, SHR Drums, owned loop player, and one
 two-port live Input. That Input can preserve stereo or independently pan its

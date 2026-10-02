@@ -6,6 +6,7 @@ pub mod audio_graph_runtime;
 mod audio_recorder;
 mod automation;
 mod aux_limiter;
+mod bluetooth;
 mod channel_strip;
 mod chord;
 mod compiler_bench;

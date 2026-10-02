@@ -1043,6 +1043,11 @@ impl LoopPlayer {
         }
     }
 
+    /// Destination for the next backend activation; the final bus owns live links.
+    pub(crate) fn set_output_destinations(&mut self, outputs: Vec<String>) {
+        self.config.outputs = outputs;
+    }
+
     pub fn load(&mut self, decoded: DecodedLoop, settings: &LoopSettings) -> Result<()> {
         self.load_slot(0, decoded, settings, settings.interpreted_bpm(), 4)
     }

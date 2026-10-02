@@ -196,6 +196,42 @@ impl BoundaryRoutes {
             .collect()
     }
 
+    fn playback_changes(&self, destinations: &[String; 2]) -> Vec<BoundaryChange> {
+        // The first two required links are the final stereo outputs. Remove
+        // the old links before adding the new pair; transaction rollback owns
+        // only changes that actually happened.
+        self.required_graph[..2]
+            .iter()
+            .cloned()
+            .map(|connection| BoundaryChange {
+                kind: ChangeKind::Disconnect,
+                connection,
+            })
+            .chain(
+                self.required_graph[..2]
+                    .iter()
+                    .zip(destinations)
+                    .map(|(old, destination)| BoundaryChange {
+                        kind: ChangeKind::Connect,
+                        connection: connection(&old.source, destination),
+                    }),
+            )
+            .collect()
+    }
+
+    fn commit_playback(&mut self, destinations: [String; 2]) {
+        for (link, destination) in self.required_graph[..2].iter_mut().zip(&destinations) {
+            link.destination = destination.clone();
+        }
+        for source in &mut self.optional_sources {
+            for (link, destination) in source.direct.iter_mut().zip(&destinations) {
+                link.destination = destination.clone();
+            }
+        }
+        self.destinations = destinations.clone();
+        self.loop_destinations = destinations;
+    }
+
     fn source_routes(&self, source: BusSource) -> Option<&OptionalSourceRoutes> {
         self.optional_sources
             .iter()
@@ -407,10 +443,13 @@ impl FinalBusOwner {
             .outputs
             .try_into()
             .map_err(|_| anyhow!("owned graph requires exactly two configured main outputs"))?;
-        let loop_direct_playback: [String; 2] =
+        let loop_direct_playback: [String; 2] = if config.loop_player.outputs.is_empty() {
+            playback.clone()
+        } else {
             config.loop_player.outputs.clone().try_into().map_err(|_| {
                 anyhow!("final bus requires exactly two configured loop.output routes")
-            })?;
+            })?
+        };
         let synth = managed_client_name.and_then(|client_name| {
             crate::engine::resolve_managed_audio_outputs(client_name, available.clone()).ok()
         });
@@ -445,6 +484,33 @@ impl FinalBusOwner {
         Ok(true)
     }
 
+    pub(crate) fn loop_inputs(&self) -> Option<Vec<String>> {
+        Some(self.graph.as_ref()?.routes.graph_inputs[2..4].to_vec())
+    }
+
+    pub(crate) fn drum_inputs(&self) -> Option<Vec<String>> {
+        Some(self.graph.as_ref()?.routes.graph_inputs[6..8].to_vec())
+    }
+
+    /// Switch only this application's final output. Keep DSP, meters, effects,
+    /// source ports and recording alive; restore the old links on failure.
+    pub(crate) fn set_playback(&mut self, outputs: &[String]) -> Result<()> {
+        let destinations: [String; 2] = outputs
+            .to_vec()
+            .try_into()
+            .map_err(|_| anyhow!("select exactly two playback ports"))?;
+        validate_stereo_boundary(&destinations, "main output")?;
+        let graph = self.graph.as_mut().context("final bus is unavailable")?;
+        let available = crate::engine::jack_playback_destinations();
+        if !destinations.iter().all(|port| available.contains(port)) {
+            bail!("selected audio output is offline");
+        }
+        let changes = graph.routes.playback_changes(&destinations);
+        apply_transaction(&mut graph.jack, &changes)?;
+        graph.routes.commit_playback(destinations);
+        Ok(())
+    }
+
     pub(crate) fn sync_sources(
         &mut self,
         managed_client_name: Option<&str>,
@@ -458,9 +524,33 @@ impl FinalBusOwner {
         let synth = managed_client_name.and_then(|client_name| {
             crate::engine::resolve_managed_audio_outputs(client_name, available.clone()).ok()
         });
+        if graph
+            .routes
+            .destinations
+            .iter()
+            .all(|port| available.contains(port))
+        {
+            let changes = graph.routes.required_graph[..2]
+                .iter()
+                .cloned()
+                .map(|connection| BoundaryChange {
+                    kind: ChangeKind::Connect,
+                    connection,
+                })
+                .collect::<Vec<_>>();
+            apply_transaction(&mut graph.jack, &changes)?;
+        }
         graph.sync_optional_source(BusSource::Synth, synth, &available)?;
         graph.sync_optional_source(BusSource::Loop, loop_ports, &available)?;
         graph.sync_optional_source(BusSource::Drums, drum_ports, &available)?;
+        if !graph
+            .routes
+            .destinations
+            .iter()
+            .all(|port| available.contains(port))
+        {
+            bail!("selected audio output is offline");
+        }
         Ok(())
     }
 
@@ -1821,10 +1911,10 @@ mod tests {
         .map(str::to_owned);
         BoundaryRoutes {
             required_graph: vec![
-                connection("capture:l", "graph:input_l"),
-                connection("capture:r", "graph:input_r"),
                 connection("graph:out_l", "main:l"),
                 connection("graph:out_r", "main:r"),
+                connection("capture:l", "graph:input_l"),
+                connection("capture:r", "graph:input_r"),
             ],
             optional_sources: vec![
                 optional_source_routes(
@@ -2254,6 +2344,67 @@ mod tests {
                 assert_eq!(delayed_main_peak, 0.0);
             }
         }
+    }
+
+    #[test]
+    fn playback_switch_rolls_back_every_failure_and_preserves_other_links() {
+        let routes = routes();
+        let new_outputs = ["new:left".into(), "new:right".into()];
+        for failure in 1..=4 {
+            let mut links = MockConnections::default();
+            apply_transaction(&mut links, &routes.required_connection_changes()).unwrap();
+            links
+                .connected
+                .insert(("foreign:out".into(), "foreign:in".into()));
+            let before = links.connected.clone();
+            links.fail_at = Some(links.operations + failure);
+            assert!(apply_transaction(&mut links, &routes.playback_changes(&new_outputs)).is_err());
+            assert_eq!(links.connected, before);
+        }
+    }
+
+    #[test]
+    fn playback_switch_retains_input_and_source_routes_and_updates_shutdown_destination() {
+        let mut routes = routes();
+        let mut links = MockConnections::default();
+        apply_transaction(&mut links, &routes.required_connection_changes()).unwrap();
+        for source in &routes.optional_sources {
+            apply_transaction(
+                &mut links,
+                &BoundaryRoutes::source_connection_changes(source),
+            )
+            .unwrap();
+        }
+        let source_links = routes.optional_sources[0].graph.clone();
+        let new_outputs = ["new:left".into(), "new:right".into()];
+        apply_transaction(&mut links, &routes.playback_changes(&new_outputs)).unwrap();
+        routes.commit_playback(new_outputs.clone());
+        assert!(links
+            .connected
+            .contains(&("graph:out_l".into(), "new:left".into())));
+        assert!(!links
+            .connected
+            .contains(&("graph:out_l".into(), "main:l".into())));
+        assert!(links
+            .connected
+            .contains(&("capture:l".into(), "graph:input_l".into())));
+        assert_eq!(routes.optional_sources[0].graph, source_links);
+        for source in &routes.optional_sources {
+            assert_eq!(source.direct[0].destination, new_outputs[0]);
+            assert_eq!(source.direct[1].destination, new_outputs[1]);
+        }
+        // A vanished receiver has already removed the old output links.
+        // Reconnection restores only the remembered exact pair.
+        links
+            .connected
+            .remove(&("graph:out_l".into(), "new:left".into()));
+        links
+            .connected
+            .remove(&("graph:out_r".into(), "new:right".into()));
+        apply_transaction(&mut links, &routes.required_connection_changes()).unwrap();
+        assert!(links
+            .connected
+            .contains(&("graph:out_l".into(), "new:left".into())));
     }
 
     #[test]
