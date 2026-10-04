@@ -174,3 +174,9 @@ setup guide.
 - [Legacy rhythm proposal](POST_COMPETITION_RHYTHM_PLAN.md) — arbitrary Pattern
   length/timing work now implemented elsewhere plus the remaining optional
   formal-meter proposal.
+
+## GigPies integration planning — 2026-10-04
+
+[Owning GigPies plan](GIGPIES_IMPLEMENTATION.md) records scoped tasks, contract dependencies,
+validation and launch instructions. This is planned work; existing implementation
+and hardware status above are unchanged.
