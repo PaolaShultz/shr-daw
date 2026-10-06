@@ -11,6 +11,11 @@ and dated implementation records in
 Do not add branch tips or clean/dirty snapshots here. This checkout is shared,
 so inspect live Git state before editing, staging, or committing.
 
+## CI notifications
+
+[Failure/recovery issue threads](CI.md#failure-and-recovery-notifications) track
+current default-branch CI incidents and explicitly close them after recovery.
+
 ## Current versions and formats
 
 | Owner | Current value |
