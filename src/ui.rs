@@ -3059,11 +3059,11 @@ impl App {
             RoutingRow::SyncOwner,
             RoutingRow::SyncInput,
             RoutingRow::SyncStart,
+            RoutingRow::AudioInput,
+            RoutingRow::AudioOutput,
             RoutingRow::BluetoothScan,
             RoutingRow::BluetoothDevice,
             RoutingRow::BluetoothLink,
-            RoutingRow::AudioInput,
-            RoutingRow::AudioOutput,
         ]);
         rows
     }
@@ -35635,7 +35635,14 @@ release = 0.4
         let text = buffer_text(&render_app(&mut app, 40, 20));
 
         for expected in [
-            "CTRL", "MODE", "PERF", "MIDI OUT", "DEVICE", "CLK OUT", "AUDIO",
+            "CTRL",
+            "MODE",
+            "PERF",
+            "MIDI OUT",
+            "DEVICE",
+            "CLK OUT",
+            "AUDIO IN",
+            "AUDIO OUT",
         ] {
             assert!(
                 text.contains(expected),
@@ -35748,6 +35755,30 @@ release = 0.4
         let text = buffer_text(&render_app(&mut a, 40, 13));
         assert!(text.contains("AUDIO IN"));
         assert!(text.contains("AUDIO OUT"));
+    }
+
+    #[test]
+    fn routing_bluetooth_rows_scroll_into_view_at_native_size() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Routing;
+        for row in [
+            RoutingRow::BluetoothScan,
+            RoutingRow::BluetoothDevice,
+            RoutingRow::BluetoothLink,
+        ] {
+            a.routing.selected = a
+                .routing_rows()
+                .iter()
+                .position(|candidate| *candidate == row)
+                .unwrap();
+            let text = buffer_text(&render_app(&mut a, 40, 13));
+            assert!(
+                text.contains(&format!(">{}", row.label())),
+                "selected {} missing from native Routing",
+                row.label()
+            );
+        }
     }
 
     #[test]
