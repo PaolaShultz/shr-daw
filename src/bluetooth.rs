@@ -105,21 +105,29 @@ fn check_output(success: bool, output: &str) -> Result<()> {
     Ok(())
 }
 
-fn command(args: &[&str], seconds: u32, scanning: bool) -> Result<String> {
-    let output = Command::new("timeout")
-        .args([
-            "--kill-after=1",
-            &(seconds + 2).to_string(),
-            "bluetoothctl",
-            "--agent",
-            "NoInputNoOutput",
-            "--timeout",
-            &seconds.to_string(),
-        ])
+fn command_process(args: &[&str], seconds: u32, scanning: bool) -> Command {
+    let mut process = Command::new("timeout");
+    process.args(["--kill-after=1", &(seconds + 2).to_string(), "bluetoothctl"]);
+    if args.first() == Some(&"pair") {
+        process.args(["--agent", "NoInputNoOutput"]);
+    }
+    // BlueZ suppresses early command completion when --timeout is set:
+    // https://github.com/bluez/bluez/blob/5.82/src/shared/shell.c#L1541
+    // Only discovery needs to stay alive for the full interval. The outer
+    // timeout bounds every command, including a stalled daemon or pairing.
+    if scanning {
+        process.args(["--timeout", &seconds.to_string()]);
+    }
+    process
         .args(args)
         .env("LC_ALL", "C")
         .env("TERM", "dumb")
-        .stdin(Stdio::null())
+        .stdin(Stdio::null());
+    process
+}
+
+fn command(args: &[&str], seconds: u32, scanning: bool) -> Result<String> {
+    let output = command_process(args, seconds, scanning)
         .output()
         .context("Bluetooth needs bluetoothctl and timeout")?;
     let text = clean(&format!(
@@ -127,11 +135,8 @@ fn command(args: &[&str], seconds: u32, scanning: bool) -> Result<String> {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     ));
-    // bluetoothctl scan intentionally runs until its own timeout.
-    check_output(
-        output.status.success() || (scanning && output.status.code() == Some(124)),
-        &text,
-    )?;
+    // Its own scan timer exits successfully; the outer watchdog is a failure.
+    check_output(output.status.success(), &text)?;
     Ok(text)
 }
 
@@ -350,6 +355,44 @@ pub(crate) fn start(action: Action, state: PathBuf) -> Receiver<Completion> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_scan_waits_for_the_full_bluez_interval() {
+        for args in [
+            vec!["devices"],
+            vec!["devices", "Connected"],
+            vec!["pair", "00:11:22:33:44:55"],
+            vec!["connect", "00:11:22:33:44:55"],
+        ] {
+            let process = command_process(&args, 10, false);
+            let options: Vec<_> = process
+                .get_args()
+                .map(|s| s.to_string_lossy().into_owned())
+                .collect();
+            assert_eq!(process.get_program(), "timeout");
+            assert_eq!(&options[..3], &["--kill-after=1", "12", "bluetoothctl"]);
+            assert!(!options.iter().any(|s| s == "--timeout"));
+            assert_eq!(options.iter().any(|s| s == "--agent"), args[0] == "pair");
+        }
+        let process = command_process(&["scan", "on"], 10, true);
+        let options: Vec<_> = process
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            options,
+            [
+                "--kill-after=1",
+                "12",
+                "bluetoothctl",
+                "--timeout",
+                "10",
+                "scan",
+                "on"
+            ]
+        );
+        assert!(check_output(false, "Discovery started").is_err());
+    }
+
     #[test]
     fn discovery_includes_unpaired_and_preserves_exact_identity() {
         let all = "Device 00:11:22:33:44:55 Speaker\nDevice 00:11:22:33:44:66 New headphones\nDevice --bad Broken\nDevice 00:11:22:33:44:55 duplicate\n";

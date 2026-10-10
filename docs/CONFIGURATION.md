@@ -223,18 +223,27 @@ PipeWire's `jack.show-monitor = false` hides speaker-loopback ports from normal
 input choices.
 
 In **Home → Routing**, put the receiver in pairing mode and confirm **BT SCAN**
-for a ten-second scan. Select it under **BT DEVICE**, then confirm **BT LINK →
-PAIR+CONNECT**. This pairs and trusts that exact receiver. Existing bonds are
-preserved. The link action also offers **CONNECT**, **DISCONNECT**, and **FORGET**;
+to edit the scan action, then **APPLY** to run a ten-second scan. The row shows
+elapsed time while Bluetooth work runs. If you remain on BT SCAN when it finishes,
+**BT DEVICE** opens a list of known and discovered receivers (or the status reports
+no devices).
+Turn to choose a receiver and **APPLY** to select it; then confirm **BT LINK →
+PAIR+CONNECT** to pair and trust that exact receiver. Existing bonds are preserved.
+Entering BT LINK before choosing a device opens the chooser first, or the scan
+draft if no devices are known. Choosing a device alone never connects.
+The link action also offers **CONNECT**, **DISCONNECT**, and **FORGET**;
 Back cancels a draft. Choose **AUDIO OUT** after connecting. These controls use
 [BlueZ bluetoothctl](https://kernel.googlesource.com/pub/scm/bluetooth/bluez.git/+/refs/tags/5.83/client/bluetoothctl.rst)
 and coreutils `timeout`, with Bluetooth enabled and an accessible system adapter.
 Scan powers the adapter on; SHR does not change host services. Pairing supports
 speakers/headphones using no PIN entry; devices requiring a PIN or numeric
 confirmation report a pairing failure. Commands run in one background worker,
-with finite timeouts and no UI/audio-thread waits. `WAIT` prevents overlapping
-operations; failures appear in the shared status row. Scan again to refresh a
-device that was not discoverable; reopening Routing also refreshes known devices.
+with finite deadlines and no UI/audio-thread waits. Only discovery waits for its
+whole ten-second interval; other commands return as soon as BlueZ finishes.
+Busy controls prevent overlapping operations; failures appear in the shared status row.
+Automatic reconnect retries pause while Routing is open so they do not interrupt
+manual device selection. Scan again to refresh a device that was not discoverable;
+reopening Routing also refreshes known devices.
 
 A successful explicit connection immediately saves its address in the private
 state directory's `bluetooth-reconnect` file, using atomic replacement and file
