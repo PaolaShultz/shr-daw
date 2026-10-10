@@ -35707,7 +35707,7 @@ release = 0.4
         a.routing_outputs = vec!["AudioBox USB 96:AudioBox USB 96 MIDI 1".into()];
         a.routing.selected = 0;
         a.move_routing(-1);
-        assert_eq!(a.routing_row(), RoutingRow::AudioOutput);
+        assert_eq!(a.routing_row(), RoutingRow::BluetoothLink);
         a.move_routing(1);
         assert_eq!(a.routing_row(), RoutingRow::Controller);
 
