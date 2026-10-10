@@ -423,10 +423,14 @@ than guessing from names. Raw-recorder assignments remain separate. Confirming
 `AUDIO OUT` switches all shared-bus sources immediately and preserves engines,
 effects and recording. Failed switches keep the previous route and the draft.
 `AUDIO IN` changes still report `Saved · reopen SHR for audio`.
-`BT DEVICE` chooses an already-paired device; `BT LINK` opens a `CONNECT` or
-`DISCONNECT` draft. Confirm executes that action, and Back cancels it. Bluetooth
-work runs asynchronously; `WAIT` prevents overlapping actions. Pair new devices
-in the OS. Available output pairs refresh while Routing is open. Controller-clock
+`BT SCAN` discovers receivers in pairing mode for ten seconds. `BT DEVICE`
+selects a known or discovered receiver. `BT LINK` offers `PAIR+CONNECT`, `CONNECT`,
+`DISCONNECT`, and `FORGET`; turn to choose, confirm to execute, or Back to cancel.
+Pairing trusts the chosen receiver and supports devices without PIN entry.
+Bluetooth work runs asynchronously; `WAIT` prevents overlapping actions. A
+successful connection is saved immediately for reconnect after restart or power
+loss; Disconnect/Forget stops retries for that receiver. Available output pairs
+refresh while Routing is open. Controller-clock
 enable/output changes likewise report `CLOCK NEXT START`; live MIDI input role/
 source changes activate immediately. Selecting
 or confirming a MIDI output uses discovery only; it never opens an output as a

@@ -1,0 +1,9 @@
+[note]
+template = "default.md"
+exclude = ["user/**", "target/**", ".git/**", ".cargo-home/**", ".cargo2/**", ".cargo3/**"]
+
+[format.markdown]
+link-format = "markdown"
+
+[tool]
+pager = ""

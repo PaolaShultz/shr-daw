@@ -6,3 +6,6 @@ __pycache__/
 
 # Private runtime state, saves, recordings, and uncleared/local sounds.
 /user/
+
+# Rebuildable project-local knowledge index.
+/.zk/notebook.db*

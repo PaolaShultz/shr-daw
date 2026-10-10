@@ -220,13 +220,33 @@ native loops. On a dedicated headless musician account, WirePlumber's
 `monitor.bluez.seat-monitoring = disabled` allows Bluetooth over SSH/tty;
 `bluez5.auto-connect = [ a2dp_sink ]` can be scoped to an already-paired receiver.
 PipeWire's `jack.show-monitor = false` hides speaker-loopback ports from normal
-input choices. Device pairing remains an OS operation. In Routing, select an
-already-paired receiver under `BT DEVICE`, then confirm `BT LINK` → `CONNECT`
-or `DISCONNECT`. These actions run outside the UI thread with bounded command
-timeouts. They neither scan nor pair, forget, or change device trust. The controls
-use [BlueZ bluetoothctl](https://kernel.googlesource.com/pub/scm/bluetooth/bluez.git/+/refs/tags/5.83/client/bluetoothctl.rst)
-and the system `timeout` command. Missing tools or failed operations appear in
-the shared status row. Routing refreshes audio output choices while open.
+input choices.
+
+In **Home → Routing**, put the receiver in pairing mode and confirm **BT SCAN**
+for a ten-second scan. Select it under **BT DEVICE**, then confirm **BT LINK →
+PAIR+CONNECT**. This pairs and trusts that exact receiver. Existing bonds are
+preserved. The link action also offers **CONNECT**, **DISCONNECT**, and **FORGET**;
+Back cancels a draft. Choose **AUDIO OUT** after connecting. These controls use
+[BlueZ bluetoothctl](https://kernel.googlesource.com/pub/scm/bluetooth/bluez.git/+/refs/tags/5.83/client/bluetoothctl.rst)
+and coreutils `timeout`, with Bluetooth enabled and an accessible system adapter.
+Scan powers the adapter on; SHR does not change host services. Pairing supports
+speakers/headphones using no PIN entry; devices requiring a PIN or numeric
+confirmation report a pairing failure. Commands run in one background worker,
+with finite timeouts and no UI/audio-thread waits. `WAIT` prevents overlapping
+operations; failures appear in the shared status row. Scan again to refresh a
+device that was not discoverable; reopening Routing also refreshes known devices.
+
+A successful explicit connection immediately saves its address in the private
+state directory's `bluetooth-reconnect` file, using atomic replacement and file
+and directory synchronization. The first successful Connect or Pair+Connect in
+this version establishes that preference; older versions did not save it, and
+SHR never guesses from the paired-device list. Reopening SHR reconnects only that saved device;
+while SHR runs it checks/retries every thirty seconds after the previous worker
+finishes. Disconnect or Forget clears that device's saved intent before attempting
+the operation, including if the receiver is already off. Power loss does not
+require a clean application exit to retain the last completed save. Connections
+do not start playback or change software volume. Saved audio routes remain
+separate and resume when their exact ports return.
 A receiver without a microphone supplies only an output. Selecting several independent Bluetooth speakers as a synchronized
 multiroom system is outside this stereo route selector.
 

@@ -1384,6 +1384,7 @@ enum RoutingRow {
     SyncOwner,
     SyncInput,
     SyncStart,
+    BluetoothScan,
     BluetoothDevice,
     BluetoothLink,
     AudioInput,
@@ -1405,6 +1406,7 @@ impl RoutingRow {
             Self::SyncOwner => "SYNC".into(),
             Self::SyncInput => "SYNC IN".into(),
             Self::SyncStart => "SYNC POS".into(),
+            Self::BluetoothScan => "BT SCAN".into(),
             Self::BluetoothDevice => "BT DEVICE".into(),
             Self::BluetoothLink => "BT LINK".into(),
             Self::AudioInput => "AUDIO IN".into(),
@@ -1416,7 +1418,7 @@ impl RoutingRow {
 #[derive(Clone)]
 struct RoutingDraft {
     bluetooth_device: usize,
-    bluetooth_connect: bool,
+    bluetooth_link: crate::bluetooth::Link,
     config: RuntimeConfig,
     controller: crate::pads::PadConfig,
 }
@@ -1429,6 +1431,10 @@ struct RoutingEditor {
     bluetooth_selected: usize,
     bluetooth_pending: Option<std::sync::mpsc::Receiver<crate::bluetooth::Completion>>,
     bluetooth_error: Option<String>,
+    #[cfg(not(test))]
+    bluetooth_initialized: bool,
+    bluetooth_remembered: Option<String>,
+    bluetooth_retry_at: Option<Instant>,
 }
 
 fn normalized_physical_control(cc: u8, value: f32) -> Option<(usize, f32)> {
@@ -2982,7 +2988,10 @@ impl App {
         self.routing.draft = None;
         #[cfg(not(test))]
         if self.routing.bluetooth_pending.is_none() {
-            self.routing.bluetooth_pending = Some(crate::bluetooth::start(None));
+            self.routing.bluetooth_pending = Some(crate::bluetooth::start(
+                crate::bluetooth::Action::Refresh,
+                self.engine_state.clone(),
+            ));
         }
         self.refresh_routing_discovery();
         self.set_screen(Screen::Routing);
@@ -3050,6 +3059,7 @@ impl App {
             RoutingRow::SyncOwner,
             RoutingRow::SyncInput,
             RoutingRow::SyncStart,
+            RoutingRow::BluetoothScan,
             RoutingRow::BluetoothDevice,
             RoutingRow::BluetoothLink,
             RoutingRow::AudioInput,
@@ -3085,7 +3095,7 @@ impl App {
     fn begin_routing_edit(&mut self) {
         if matches!(
             self.routing_row(),
-            RoutingRow::BluetoothDevice | RoutingRow::BluetoothLink
+            RoutingRow::BluetoothScan | RoutingRow::BluetoothDevice | RoutingRow::BluetoothLink
         ) && self.routing.bluetooth_pending.is_some()
         {
             self.status = "BLUETOOTH BUSY · wait".into();
@@ -3105,11 +3115,19 @@ impl App {
             .unwrap_or_default();
         self.routing.draft = Some(RoutingDraft {
             bluetooth_device: self.routing.bluetooth_selected,
-            bluetooth_connect: !self
+            bluetooth_link: self
                 .routing
                 .bluetooth_devices
                 .get(self.routing.bluetooth_selected)
-                .is_some_and(|device| device.connected),
+                .map_or(crate::bluetooth::Link::Pair, |device| {
+                    if device.connected {
+                        crate::bluetooth::Link::Disconnect
+                    } else if device.paired {
+                        crate::bluetooth::Link::Connect
+                    } else {
+                        crate::bluetooth::Link::Pair
+                    }
+                }),
             config: self.config.clone(),
             controller,
         });
@@ -3160,7 +3178,10 @@ impl App {
                     direction,
                 );
             }
-            RoutingRow::BluetoothLink => draft.bluetooth_connect = !draft.bluetooth_connect,
+            RoutingRow::BluetoothScan => {}
+            RoutingRow::BluetoothLink => {
+                draft.bluetooth_link = draft.bluetooth_link.cycle(direction)
+            }
             RoutingRow::Controller => {
                 let current = draft.controller.input_match.as_deref().unwrap_or("");
                 let choice = cycle_text_choice(current, &input_choices, true, direction);
@@ -3333,6 +3354,23 @@ impl App {
     }
 
     fn poll_bluetooth(&mut self) {
+        #[cfg(not(test))]
+        if self.routing.bluetooth_pending.is_none()
+            && self.routing.draft.is_none()
+            && (!self.routing.bluetooth_initialized
+                || (self.routing.bluetooth_remembered.is_some()
+                    && self
+                        .routing
+                        .bluetooth_retry_at
+                        .is_some_and(|at| Instant::now() >= at)))
+        {
+            self.routing.bluetooth_initialized = true;
+            self.routing.bluetooth_pending = Some(crate::bluetooth::start(
+                crate::bluetooth::Action::Restore,
+                self.engine_state.clone(),
+            ));
+        }
+
         let result = self
             .routing
             .bluetooth_pending
@@ -3350,13 +3388,16 @@ impl App {
             }
         };
         self.routing.bluetooth_pending = None;
+        self.routing.bluetooth_remembered = completion.remembered;
+        self.routing.bluetooth_retry_at = Some(Instant::now() + Duration::from_secs(30));
         match completion.devices {
             Ok(devices) => {
                 let selected = self
                     .routing
                     .bluetooth_devices
                     .get(self.routing.bluetooth_selected)
-                    .map(|device| device.address.clone());
+                    .map(|device| device.address.clone())
+                    .or_else(|| self.routing.bluetooth_remembered.clone());
                 self.routing.bluetooth_selected = selected
                     .and_then(|address| devices.iter().position(|device| device.address == address))
                     .unwrap_or(0);
@@ -3366,13 +3407,18 @@ impl App {
             }
             Err(error) => {
                 self.routing.bluetooth_error = Some(error.clone());
-                self.status = error;
+                if !completion.background || self.screen == Screen::Routing {
+                    self.status = error;
+                }
             }
         }
-        if let Some(result) = completion.action {
+        if let Some(result) = completion
+            .action
+            .filter(|_| !completion.background || self.screen == Screen::Routing)
+        {
             self.status = match result {
-                Ok(()) => "BT LINK CHANGED · choose AUDIO OUT".into(),
-                Err(error) => format!("BT FAILED · {error}"),
+                Ok(()) => "BT updated · select DEVICE / AUDIO OUT".into(),
+                Err(error) => format!("BT: {error}"),
             };
         }
     }
@@ -3429,6 +3475,16 @@ impl App {
                 self.status.clear();
                 return;
             }
+            RoutingRow::BluetoothScan => {
+                if self.routing.bluetooth_pending.is_none() {
+                    self.routing.bluetooth_pending = Some(crate::bluetooth::start(
+                        crate::bluetooth::Action::Scan,
+                        self.engine_state.clone(),
+                    ));
+                    self.status = "BT SCANNING · device in pairing mode".into();
+                }
+                return;
+            }
             RoutingRow::BluetoothLink => {
                 if self.routing.bluetooth_pending.is_some() {
                     self.status = "BLUETOOTH BUSY · wait".into();
@@ -3436,13 +3492,16 @@ impl App {
                     return;
                 }
                 if let Some(device) = self.routing.bluetooth_devices.get(draft.bluetooth_device) {
-                    self.routing.bluetooth_pending = Some(crate::bluetooth::start(Some((
-                        device.address.clone(),
-                        draft.bluetooth_connect,
-                    ))));
-                    self.status = "BLUETOOTH · changing link".into();
+                    self.routing.bluetooth_pending = Some(crate::bluetooth::start(
+                        crate::bluetooth::Action::Link(
+                            device.address.clone(),
+                            draft.bluetooth_link,
+                        ),
+                        self.engine_state.clone(),
+                    ));
+                    self.status = format!("BT {} · wait", draft.bluetooth_link.label());
                 } else {
-                    self.status = "NO PAIRED DEVICE · pair in OS".into();
+                    self.status = "NO DEVICE · BT SCAN first".into();
                 }
                 return;
             }
@@ -21597,30 +21656,42 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
                         } else if a.routing.bluetooth_error.is_some() {
                             "UNAVAILABLE".into()
                         } else {
-                            "NONE PAIRED".into()
+                            "NONE · SCAN".into()
                         }
                     },
                     |device| crate::ui_text::fit_line(&device.name, value_width),
                 )
             }
+            RoutingRow::BluetoothScan => if a.routing.bluetooth_pending.is_some() {
+                "WAIT"
+            } else {
+                "SCAN 10s"
+            }
+            .into(),
             RoutingRow::BluetoothLink => {
-                let connect = a
+                let action = a
                     .routing
                     .draft
                     .as_ref()
-                    .map(|draft| draft.bluetooth_connect)
+                    .map(|draft| draft.bluetooth_link)
                     .unwrap_or_else(|| {
-                        !a.routing
+                        a.routing
                             .bluetooth_devices
                             .get(a.routing.bluetooth_selected)
-                            .is_some_and(|device| device.connected)
+                            .map_or(crate::bluetooth::Link::Pair, |device| {
+                                if device.connected {
+                                    crate::bluetooth::Link::Disconnect
+                                } else if device.paired {
+                                    crate::bluetooth::Link::Connect
+                                } else {
+                                    crate::bluetooth::Link::Pair
+                                }
+                            })
                     });
                 if a.routing.bluetooth_pending.is_some() {
                     "WAIT"
-                } else if connect {
-                    "CONNECT"
                 } else {
-                    "DISCONNECT"
+                    action.label()
                 }
                 .into()
             }
@@ -35829,6 +35900,7 @@ release = 0.4
             address: "00:11:22:33:44:55".into(),
             name: "Speaker".into(),
             connected: true,
+            paired: true,
         }];
         a.routing.selected = a
             .routing_rows()
@@ -35837,7 +35909,10 @@ release = 0.4
             .unwrap();
         let song = a.song.clone();
         a.begin_routing_edit();
-        assert!(!a.routing.draft.as_ref().unwrap().bluetooth_connect);
+        assert_eq!(
+            a.routing.draft.as_ref().unwrap().bluetooth_link,
+            crate::bluetooth::Link::Disconnect
+        );
         assert!(a.cancel_routing_edit());
         assert!(a.routing.bluetooth_pending.is_none());
         assert!(a.routing.bluetooth_devices[0].connected);
@@ -35848,6 +35923,42 @@ release = 0.4
         assert!(a.routing.draft.is_none());
         assert!(a.status.contains("BUSY"));
         drop(tx);
+    }
+
+    #[test]
+    fn bluetooth_unpaired_choice_defaults_to_pair_and_scan_can_cancel() {
+        let p = presets();
+        let mut a = app(&p);
+        a.routing.bluetooth_devices = vec![crate::bluetooth::Device {
+            address: "00:11:22:33:44:55".into(),
+            name: "New speaker".into(),
+            connected: false,
+            paired: false,
+        }];
+        a.routing.selected = a
+            .routing_rows()
+            .iter()
+            .position(|row| *row == RoutingRow::BluetoothLink)
+            .unwrap();
+        a.begin_routing_edit();
+        assert_eq!(
+            a.routing.draft.as_ref().unwrap().bluetooth_link,
+            crate::bluetooth::Link::Pair
+        );
+        a.adjust_routing_draft(1);
+        assert_eq!(
+            a.routing.draft.as_ref().unwrap().bluetooth_link,
+            crate::bluetooth::Link::Forget
+        );
+        assert!(a.cancel_routing_edit());
+        a.routing.selected = a
+            .routing_rows()
+            .iter()
+            .position(|row| *row == RoutingRow::BluetoothScan)
+            .unwrap();
+        a.begin_routing_edit();
+        assert!(a.cancel_routing_edit());
+        assert!(a.routing.bluetooth_pending.is_none());
     }
 
     #[test]
@@ -36003,7 +36114,7 @@ release = 0.4
 
         let mut ambiguous = RoutingDraft {
             bluetooth_device: 0,
-            bluetooth_connect: false,
+            bluetooth_link: crate::bluetooth::Link::Disconnect,
             config: a.config.clone(),
             controller: crate::pads::PadConfig::default(),
         };
@@ -36126,7 +36237,7 @@ release = 0.4
         fs::create_dir_all(&base).unwrap();
         let mut draft = RoutingDraft {
             bluetooth_device: 0,
-            bluetooth_connect: false,
+            bluetooth_link: crate::bluetooth::Link::Disconnect,
             config: RuntimeConfig::default(),
             controller: crate::pads::PadConfig::default(),
         };
@@ -36172,7 +36283,7 @@ release = 0.4
         let controller_bytes = fs::read(&controller_path).unwrap();
         let mut candidate = RoutingDraft {
             bluetooth_device: 0,
-            bluetooth_connect: false,
+            bluetooth_link: crate::bluetooth::Link::Disconnect,
             config: old_runtime,
             controller: old_controller,
         };
@@ -36841,7 +36952,7 @@ release = 0.4
         let controller = a.controller_config.read().unwrap().clone();
         let mut draft = RoutingDraft {
             bluetooth_device: 0,
-            bluetooth_connect: false,
+            bluetooth_link: crate::bluetooth::Link::Disconnect,
             config: a.config.clone(),
             controller,
         };
