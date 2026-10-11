@@ -8,6 +8,31 @@ its controller page, selection, FT2 cursor, and editing context. Navigation
 neither loads an engine nor starts or stops transport. STOP ends the relevant
 musical action; PANIC performs the existing bounded note recovery.
 
+**ALL FX** on MASTER's first controller page toggles the complete FX stack.
+The title shows **ALL FX BYPASSED** or **ALL FX ON**. The same action is on
+the rack's SYS page; keyboard Shift-B works in MASTER, the rack, effect editor,
+and master-strip pages. Every application start begins with master bypass ON,
+including after a power cycle. It is a session switch, not a saved Project
+parameter; loading a Project does not turn it off.
+
+Master bypass skips sample processing in the instrument strips, synth/drum
+insert racks, AUX effects and return limiters, master inserts, and optional
+MASTER STRIP sections. AUX returns are silent, including tails. Rack effect histories
+are cleared on entering bypass; parameter values and individual bypass choices
+are retained. The source/master mixer, meters, recording, fixed latency, and
+final output protection remain active. Turning the stack on restores the
+individual enabled/bypassed choices rather than enabling every effect blindly.
+
+Startup and new Projects use the private `fx-defaults.json` alongside
+`ft2-routing-defaults.shsong` in the application data directory. Its version-1
+snapshot contains `insert_rack`, `drum_rack`, `aux_routing`, and `master_strip`.
+Saved Projects retain their own FX when loaded; loading them does not rewrite
+the startup snapshot. Invalid snapshots produce an explicit startup fault.
+Without a snapshot, the fresh rack includes a master compressor at −12 dB
+threshold, 2.5 dB knee, +1.5 dB makeup, 1 ms attack, 100 ms release and 2:1
+ratio, fully wet. It is enabled within the stack but held off by startup master
+bypass, so ALL FX also activates it. No EQ is added.
+
 CHANNEL INSERTS opens **INSERTS**. Up/Down selects an instrument output;
 Enter or FIELD selects BASS, TREBLE, or COMP. VALUE−/VALUE+ (keyboard Left/Right)
 changes that field. BYPASS (keyboard X) explicitly enables/disables the strip.

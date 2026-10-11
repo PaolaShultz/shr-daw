@@ -198,6 +198,9 @@ impl DrumHost {
         ];
         let kit_id = engine.kit_id().to_owned();
         let effect_controls = effects.controls();
+        for (_, control) in &effect_controls {
+            control.set_master_bypass(effect_hub.master_bypassed());
+        }
         let mut callback = Box::new(CallbackData {
             engine: UnsafeCell::new(engine),
             effects: UnsafeCell::new(effects),

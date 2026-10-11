@@ -401,6 +401,7 @@ impl AtomicCoefficients {
 pub struct MasterStripControls {
     sample_rate: f32,
     compare: AtomicBool,
+    master_fx_bypass: AtomicBool,
     input_bypass: AtomicBool,
     input_trim_gain: AtomicF32,
     input_hpf: AtomicCoefficients,
@@ -430,6 +431,10 @@ pub struct MasterStripControls {
 }
 
 impl MasterStripControls {
+    pub(crate) fn set_master_fx_bypass(&self, bypass: bool) {
+        self.master_fx_bypass.store(bypass, Ordering::Release);
+    }
+
     pub fn new(sample_rate: u32, settings: &MasterStripSettings) -> Result<Self, String> {
         if !(8_000..=384_000).contains(&sample_rate) {
             return Err("unsupported MASTER STRIP sample rate".into());
@@ -438,6 +443,7 @@ impl MasterStripControls {
         let controls = Self {
             sample_rate: sample_rate as f32,
             compare: AtomicBool::new(false),
+            master_fx_bypass: AtomicBool::new(false),
             input_bypass: AtomicBool::new(true),
             input_trim_gain: AtomicF32::new(1.0),
             input_hpf: AtomicCoefficients::new(BiquadCoefficients::IDENTITY),
@@ -1701,6 +1707,7 @@ fn energy_to_loudness(energy: f64) -> f32 {
 }
 
 pub struct MasterStripProcessor {
+    master_was_bypassed: bool,
     controls: Arc<MasterStripControls>,
     meters: Arc<MasterStripMeters>,
     input: InputSection,
@@ -1724,6 +1731,7 @@ impl MasterStripProcessor {
         meters: Arc<MasterStripMeters>,
     ) -> Result<Self, String> {
         Ok(Self {
+            master_was_bypassed: false,
             input: InputSection::new(&controls, sample_rate),
             tone: ToneSection::new(&controls, sample_rate),
             glue: GlueSection::new(&controls, sample_rate),
@@ -1766,17 +1774,28 @@ impl MasterStripProcessor {
 
     #[inline]
     pub fn process(&mut self, frames: &mut [StereoFrame]) {
-        let compare = self.controls.compare.load(Ordering::Acquire);
-        self.input.refresh(&self.controls, compare);
-        self.tone.refresh(&self.controls, compare);
-        self.glue.refresh(&self.controls, compare);
-        self.color.refresh(&self.controls, compare);
-        self.image.refresh(&self.controls, compare);
-        self.loud.refresh(if compare {
-            1.0
-        } else {
-            self.controls.loud_gain.load().clamp(1.0, 2.0)
-        });
+        let master_bypass = self.controls.master_fx_bypass.load(Ordering::Acquire);
+        if master_bypass && !self.master_was_bypassed {
+            self.input.reset(&self.controls);
+            self.tone.reset(&self.controls);
+            self.glue.reset(&self.controls);
+            self.color.reset(&self.controls);
+            self.image.reset(&self.controls);
+        }
+        self.master_was_bypassed = master_bypass;
+        if !master_bypass {
+            let compare = self.controls.compare.load(Ordering::Acquire);
+            self.input.refresh(&self.controls, compare);
+            self.tone.refresh(&self.controls, compare);
+            self.glue.refresh(&self.controls, compare);
+            self.color.refresh(&self.controls, compare);
+            self.image.refresh(&self.controls, compare);
+            self.loud.refresh(if compare {
+                1.0
+            } else {
+                self.controls.loud_gain.load().clamp(1.0, 2.0)
+            });
+        }
         self.limiter.begin_block();
         let internal_ceiling = self.controls.internal_ceiling_gain.load().clamp(0.0, 1.0);
         let sample_ceiling = self.controls.sample_ceiling_gain.load().clamp(0.0, 1.0);
@@ -1786,13 +1805,23 @@ impl MasterStripProcessor {
         let mut sum_r2 = 0.0_f64;
         for frame in frames.iter_mut() {
             let input = self.input_meter.process(frame.finite_or_silence());
-            let mut output = self.input.process(input);
-            output = self.tone.process(output);
-            output = self.glue.process(output);
-            output = self.color.process(output);
-            output = self.image.process(output);
-            let loud = self.loud.next();
-            output = StereoFrame::new(output.left * loud, output.right * loud).finite_or_silence();
+            let mut output = if master_bypass {
+                // Preserve the fixed one-sample COLOR alignment without running FX.
+                let dry = StereoFrame::new(self.color.dry_left, self.color.dry_right);
+                self.color.dry_left = input.left;
+                self.color.dry_right = input.right;
+                dry
+            } else {
+                let mut output = self.input.process(input);
+                output = self.tone.process(output);
+                output = self.glue.process(output);
+                output = self.color.process(output);
+                output = self.image.process(output);
+                let loud = self.loud.next();
+                output =
+                    StereoFrame::new(output.left * loud, output.right * loud).finite_or_silence();
+                output
+            };
             output = self
                 .limiter
                 .process(output, internal_ceiling, sample_ceiling)
@@ -2056,6 +2085,28 @@ mod tests {
     use crate::dsp::analysis::{
         coherent_sine, harmonic_alias_ratio, maximum_step, mean, rms, spectral_amplitude,
     };
+
+    #[test]
+    fn master_fx_bypass_is_neutral_with_fixed_latency_and_limiter() {
+        let mut settings = MasterStripSettings::default();
+        settings.input_bypass = false;
+        settings.tone_bypass = false;
+        settings.glue_bypass = false;
+        settings.color_bypass = false;
+        settings.image_bypass = false;
+        let (mut active, controls, _) = processor(48_000, 64, &settings);
+        let (mut neutral, _, _) = processor(48_000, 64, &MasterStripSettings::default());
+        controls.set_master_fx_bypass(true);
+        for _ in 0..8 {
+            let mut bypassed = [StereoFrame::new(0.2, -0.1); 64];
+            let mut expected = bypassed;
+            assert_no_allocations(|| active.process(&mut bypassed));
+            neutral.process(&mut expected);
+            assert_eq!(bypassed, expected);
+        }
+        assert!(!controls.input_bypass.load(Ordering::Acquire));
+        assert!(!controls.compare.load(Ordering::Acquire));
+    }
 
     fn processor(
         rate: u32,

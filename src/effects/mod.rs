@@ -78,6 +78,7 @@ pub struct EffectControl {
     active: AtomicBool,
     values: [AtomicU32; MAX_RUNTIME_PARAMETERS],
     bypass: AtomicBool,
+    master_bypass: AtomicBool,
     dirty: AtomicU64,
     safety_resets: AtomicU64,
     safety_non_finite: AtomicU64,
@@ -105,11 +106,16 @@ impl EffectControl {
                 AtomicU32::new(value.to_bits())
             }),
             bypass: AtomicBool::new(effect.bypass),
+            master_bypass: AtomicBool::new(false),
             dirty: AtomicU64::new(0),
             safety_resets: AtomicU64::new(0),
             safety_non_finite: AtomicU64::new(0),
             safety_peak: AtomicU32::new(0),
         })
+    }
+
+    pub(crate) fn set_master_bypass(&self, bypass: bool) {
+        self.master_bypass.store(bypass, Ordering::Release);
     }
 
     fn publish_safety(&self, events: SafetyEvents) {
@@ -262,10 +268,24 @@ pub enum EffectOwner {
 
 #[derive(Default)]
 pub struct EffectControlHub {
+    master_bypass: AtomicBool,
     controls: RwLock<BTreeMap<(EffectOwner, EffectId), Arc<EffectControl>>>,
 }
 
 impl EffectControlHub {
+    pub(crate) fn master_bypassed(&self) -> bool {
+        self.master_bypass.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_master_bypass(&self, bypass: bool) {
+        if let Ok(controls) = self.controls.write() {
+            self.master_bypass.store(bypass, Ordering::Release);
+            for control in controls.values() {
+                control.set_master_bypass(bypass);
+            }
+        }
+    }
+
     fn replace(
         &self,
         owner: EffectOwner,
@@ -273,11 +293,10 @@ impl EffectControlHub {
     ) {
         if let Ok(mut active) = self.controls.write() {
             active.retain(|(scope, _), _| *scope != owner);
-            active.extend(
-                controls
-                    .into_iter()
-                    .map(|(id, control)| ((owner, id), control)),
-            );
+            active.extend(controls.into_iter().map(|(id, control)| {
+                control.set_master_bypass(self.master_bypassed());
+                ((owner, id), control)
+            }));
         }
     }
     pub fn replace_graph(
@@ -535,6 +554,9 @@ pub struct EffectSlot {
     processed_mix: SmoothedValue,
     bypass_mode: BypassMode,
     graph_owns_bypass: bool,
+    master_was_bypassed: bool,
+    #[cfg(test)]
+    processed_frames: usize,
     wet_only: bool,
     bypass_fade_samples: u32,
     input_meter: MeterAccumulator,
@@ -586,6 +608,9 @@ impl EffectSlot {
             .map_err(|error| EffectError::new(error.to_string()))?,
             bypass_mode,
             graph_owns_bypass: false,
+            master_was_bypassed: false,
+            #[cfg(test)]
+            processed_frames: 0,
             wet_only,
             bypass_fade_samples,
             input_meter: MeterAccumulator::new(meter_window)
@@ -703,6 +728,27 @@ impl EffectSlot {
 
     pub(crate) fn process_with_tempo(&mut self, frames: &mut [StereoFrame], tempo: Option<Bpm>) {
         self.consume_control(tempo);
+        let master_bypass = self.control.master_bypass.load(Ordering::Acquire);
+        if master_bypass {
+            if !self.master_was_bypassed {
+                self.processor.reset();
+            }
+            self.master_was_bypassed = true;
+            for frame in frames.iter_mut() {
+                let dry = self.input_meter.process(*frame);
+                *frame = self.output_meter.process(if self.wet_only {
+                    StereoFrame::SILENCE
+                } else {
+                    dry
+                });
+            }
+            self.published_input
+                .publish(self.input_meter.snapshot_and_clear_peak());
+            self.published_output
+                .publish(self.output_meter.snapshot_and_clear_peak());
+            return;
+        }
+        self.master_was_bypassed = false;
         if let (Some(tempo), Processor::Delay(delay)) = (tempo, &mut self.processor) {
             // Bpm is already validated. Repeating the same tempo does not
             // restart the delay's bounded 20 ms timing transition.
@@ -711,6 +757,10 @@ impl EffectSlot {
         let mut safety_events = SafetyEvents::default();
         for frame in frames.iter_mut() {
             let dry = self.input_meter.process(*frame);
+            #[cfg(test)]
+            {
+                self.processed_frames += 1;
+            }
             let processed = self.processor.process(dry);
             let processed = if processed.left.is_finite() && processed.right.is_finite() {
                 processed
@@ -904,6 +954,45 @@ mod tests {
     use crate::audio_graph::EFFECT_FORMAT_VERSION;
     use crate::dsp::allocation_test::assert_no_allocations;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn master_fx_bypass_suspends_dsp_preserves_parameters_and_silences_aux() {
+        let mut rack = crate::audio_graph::InsertRack::default();
+        let id = rack.add(EffectKind::Compressor).unwrap();
+        let effect = rack.effect(id).unwrap();
+        let mut slot = EffectSlot::compile(effect, 48_000, 64).unwrap();
+        let hub = EffectControlHub::default();
+        hub.set_master_bypass(true);
+        hub.replace_graph([(id, slot.control.clone())]);
+        let input = [StereoFrame::new(0.4, -0.2); 64];
+        let mut frames = input;
+        assert_no_allocations(|| slot.process(&mut frames));
+        assert_eq!(frames, input);
+        assert_eq!(slot.processed_frames, 0);
+        assert!(!slot.control.bypass.load(Ordering::Acquire));
+        hub.set_master_bypass(false);
+        slot.process(&mut frames);
+        assert_eq!(slot.processed_frames, 64);
+        hub.set_master_bypass(true);
+        frames = input;
+        slot.process(&mut frames);
+        assert_eq!(frames, input);
+        assert_eq!(slot.processed_frames, 64);
+
+        let mut aux =
+            EffectSlot::compile_with_placement(effect, 48_000, 64, true, BypassMode::WetTail)
+                .unwrap();
+        hub.replace_drums([(id, aux.control.clone())]);
+        frames = input;
+        aux.process(&mut frames);
+        assert_eq!(frames, [StereoFrame::SILENCE; 64]);
+        assert_eq!(aux.processed_frames, 0);
+        // Automation of a local bypass must not clear the master override.
+        aux.control.publish_bypass(false).unwrap();
+        frames = input;
+        aux.process(&mut frames);
+        assert_eq!(aux.processed_frames, 0);
+    }
 
     fn utility(parameters: BTreeMap<String, f32>, bypass: bool) -> EffectInstance {
         EffectInstance {

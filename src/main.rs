@@ -26,6 +26,7 @@ mod engine;
 mod external_sync;
 mod final_bus;
 mod fsutil;
+mod fx_defaults;
 mod generative;
 mod geometry;
 mod gm;

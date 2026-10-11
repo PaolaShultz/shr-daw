@@ -366,6 +366,7 @@ struct RuntimeNode {
 }
 
 pub struct GraphPlan {
+    master_bypass: bool,
     sample_rate: u32,
     maximum_frames: usize,
     buffers: Vec<Box<[StereoFrame]>>,
@@ -379,6 +380,17 @@ pub struct GraphPlan {
 }
 
 impl GraphPlan {
+    pub(crate) fn set_master_bypass(&mut self, bypass: bool) {
+        if self.master_bypass != bypass {
+            for node in &self.nodes {
+                if let Operation::Effect(slot) = &node.operation {
+                    slot.control().set_master_bypass(bypass);
+                }
+            }
+        }
+        self.master_bypass = bypass;
+    }
+
     pub fn compile(graph: &GraphDefinition) -> Result<Self, PlanError> {
         Self::compile_retaining(graph, None)
     }
@@ -569,6 +581,7 @@ impl GraphPlan {
             aux_effect_states: aux_effect_states.into_boxed_slice(),
             aux_send_controls,
             aux_limiter_controls,
+            master_bypass: false,
         })
     }
 
@@ -813,7 +826,15 @@ impl GraphPlan {
             }
             match &mut self.nodes[node_index].operation {
                 Operation::Source | Operation::Pass | Operation::Sink => {}
-                Operation::Fader(fader) => fader.process(&mut self.buffers[target][..frames]),
+                Operation::Fader(fader) => {
+                    if self.master_bypass && fader.limiter.is_some() {
+                        // AUX returns, including empty racks, are silent. No limiter DSP.
+                        self.buffers[target][..frames].fill(StereoFrame::SILENCE);
+                        fader.published.publish(Default::default());
+                    } else {
+                        fader.process(&mut self.buffers[target][..frames]);
+                    }
+                }
                 Operation::Meter(meter) => meter.process(&mut self.buffers[target][..frames]),
                 Operation::Effect(slot) => {
                     slot.process_with_tempo(&mut self.buffers[target][..frames], tempo)
@@ -1047,6 +1068,59 @@ mod tests {
             }],
             monitoring: Monitoring::default(),
             recording_tap: RecordingTap::PostMaster,
+        }
+    }
+
+    #[test]
+    fn master_fx_bypass_silences_tail_aux_returns() {
+        for effects in [vec![configured_effect(
+            1,
+            EffectKind::Delay,
+            false,
+            [
+                ("time_ms", 1.0),
+                ("tail_on_bypass", 1.0),
+                ("wet_percent", 100.0),
+                ("dry_percent", 0.0),
+            ],
+        )]] {
+            let mut graph = aux_chain_graph(effects);
+            graph.aux_buses[0].limiter_enabled = true;
+            let mut plan = GraphPlan::compile(&graph).unwrap();
+            for _ in 0..8 {
+                plan.source_buffer_mut(1, 64)
+                    .unwrap()
+                    .fill(StereoFrame::new(0.2, 0.1));
+                assert_eq!(plan.process(64), ProcessStatus::Complete);
+            }
+            plan.set_master_bypass(true);
+            assert_no_allocations(|| {
+                for _ in 0..8 {
+                    plan.source_buffer_mut(1, 64)
+                        .unwrap()
+                        .fill(StereoFrame::new(0.2, 0.1));
+                    assert_eq!(plan.process(64), ProcessStatus::Complete);
+                    assert!(plan
+                        .output_buffer(100, 64)
+                        .unwrap()
+                        .iter()
+                        .all(|frame| *frame == StereoFrame::new(0.2, 0.1)));
+                }
+            });
+            assert_eq!(plan.meter(80).unwrap().load().peak, StereoFrame::SILENCE);
+            assert!(plan.aux_limiter_control(1).unwrap().load(Ordering::Acquire));
+            plan.set_master_bypass(false);
+            for _ in 0..8 {
+                plan.source_buffer_mut(1, 64)
+                    .unwrap()
+                    .fill(StereoFrame::new(0.2, 0.1));
+                plan.process(64);
+            }
+            assert!(plan
+                .output_buffer(100, 64)
+                .unwrap()
+                .iter()
+                .any(|frame| frame.left > 0.0));
         }
     }
 

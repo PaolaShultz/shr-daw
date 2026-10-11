@@ -373,6 +373,18 @@ impl FinalBusOwner {
     pub(crate) fn effect_hub(&self) -> std::sync::Arc<crate::effects::EffectControlHub> {
         std::sync::Arc::clone(&self.effect_hub)
     }
+    pub(crate) fn master_fx_bypassed(&self) -> bool {
+        self.effect_hub.master_bypassed()
+    }
+
+    pub(crate) fn set_master_fx_bypass(&self, bypass: bool) {
+        self.effect_hub.set_master_bypass(bypass);
+        if let Some(graph) = &self.graph {
+            graph.controls.set_master_fx_bypass(bypass);
+            graph.master_strip_controls().set_master_fx_bypass(bypass);
+        }
+    }
+
     pub(crate) fn active(&self) -> bool {
         self.graph.is_some()
     }
@@ -468,6 +480,7 @@ impl FinalBusOwner {
             aux_routing,
             master_strip,
             self.channel_settings,
+            self.master_fx_bypassed(),
             self.stopped_tempo,
             self.transport_clock.clone(),
             input_monitoring,
@@ -810,6 +823,7 @@ impl OwnedAudioGraph {
         aux_routing: &ProjectAuxRouting,
         master_strip: &MasterStripSettings,
         channel_settings: [crate::channel_strip::Settings; 2],
+        master_fx_bypass: bool,
         stopped_tempo: Bpm,
         transport_clock: Option<std::sync::Arc<crate::loop_player::TransportClock>>,
         input_monitoring: bool,
@@ -888,7 +902,7 @@ impl OwnedAudioGraph {
                     .map(|meters| (effect.id, meters))
             })
             .collect();
-        let effect_controls = definition
+        let effect_controls: std::collections::BTreeMap<_, _> = definition
             .effects
             .iter()
             .filter_map(|effect| {
@@ -896,6 +910,9 @@ impl OwnedAudioGraph {
                     .map(|control| (effect.id, control))
             })
             .collect();
+        for control in effect_controls.values() {
+            control.set_master_bypass(master_fx_bypass);
+        }
         let aux_send_controls = definition
             .aux_buses
             .iter()
@@ -981,6 +998,7 @@ impl OwnedAudioGraph {
             live_source_ports: live_source_ports.clone(),
         };
         let controls = initial_bus_controls(input_monitoring);
+        controls.set_master_fx_bypass(master_fx_bypass);
         for (control, setting) in controls.channels.iter().zip(channel_settings) {
             control.publish(setting).map_err(anyhow::Error::msg)?;
         }
@@ -989,6 +1007,7 @@ impl OwnedAudioGraph {
                 .map_err(anyhow::Error::msg)
                 .context("prepare MASTER STRIP controls")?,
         );
+        strip_controls.set_master_fx_bypass(master_fx_bypass);
         let meters = std::sync::Arc::new(FinalBusMeters::default());
         let final_bus = FinalBusProcessor::new(
             sample_rate,
@@ -1268,6 +1287,9 @@ impl OwnedAudioGraph {
                     .map(|control| (effect.id, control))
             })
             .collect();
+        for control in self.effect_controls.values() {
+            control.set_master_bypass(self.controls.master_fx_bypassed());
+        }
         self.aux_send_controls = definition
             .aux_buses
             .iter()
@@ -1718,6 +1740,7 @@ unsafe fn process_exclusive(
             Bpm::from_hundredths(callback.stopped_tempo.load(Ordering::Acquire) as u16)
                 .unwrap_or(Bpm::DEFAULT)
         });
+    plan.set_master_bypass(final_bus.master_fx_bypassed());
     let status = plan.process_with_tempo(frames, tempo);
     if !publish || !matches!(status, ProcessStatus::Complete) {
         if publish && !matches!(status, ProcessStatus::Complete) {

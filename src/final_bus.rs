@@ -113,6 +113,7 @@ impl AtomicFader {
 }
 
 pub struct BusControls {
+    master_fx_bypass: AtomicBool,
     pub channels: [Arc<crate::channel_strip::Controls>; 2],
     sources: [AtomicFader; SOURCE_COUNT],
     source_meters: [AtomicSourceMeter; SOURCE_COUNT],
@@ -133,6 +134,7 @@ pub struct BusControls {
 impl Default for BusControls {
     fn default() -> Self {
         Self {
+            master_fx_bypass: AtomicBool::new(false),
             channels: std::array::from_fn(|_| Arc::new(crate::channel_strip::Controls::default())),
             sources: std::array::from_fn(|_| AtomicFader::new(DEFAULT_SOURCE_GAIN_DB)),
             source_meters: std::array::from_fn(|_| AtomicSourceMeter::new()),
@@ -153,6 +155,14 @@ impl Default for BusControls {
 }
 
 impl BusControls {
+    pub(crate) fn master_fx_bypassed(&self) -> bool {
+        self.master_fx_bypass.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_master_fx_bypass(&self, bypass: bool) {
+        self.master_fx_bypass.store(bypass, Ordering::Release);
+    }
+
     pub fn source_gain_db(&self, source: BusSource) -> f32 {
         self.sources[source.index()].gain_db()
     }
@@ -364,6 +374,7 @@ impl RuntimeFader {
 }
 
 pub struct FinalBusProcessor {
+    master_was_bypassed: bool,
     channels: [crate::effects::channel::ChannelProcessor; 2],
     controls: Arc<BusControls>,
     source_faders: [RuntimeFader; SOURCE_COUNT],
@@ -399,6 +410,7 @@ impl FinalBusProcessor {
         };
         let matrix = input_matrix_targets(&controls);
         Ok(Self {
+            master_was_bypassed: false,
             channels: [
                 crate::effects::channel::ChannelProcessor::new(
                     sample_rate,
@@ -473,12 +485,37 @@ impl FinalBusProcessor {
         self.strip.safety_clamp_count()
     }
 
+    pub(crate) fn master_fx_bypassed(&self) -> bool {
+        self.controls.master_fx_bypassed()
+    }
+
     #[inline]
     pub fn process_source(&mut self, source: BusSource, frames: &mut [StereoFrame]) {
-        match source {
-            BusSource::Synth => self.channels[0].process(frames),
-            BusSource::Drums => self.channels[1].process(frames),
-            _ => {}
+        let bypass = self.controls.master_fx_bypassed();
+        if bypass && !self.master_was_bypassed {
+            for channel in &mut self.channels {
+                channel.reset();
+            }
+        }
+        self.master_was_bypassed = bypass;
+        if !bypass {
+            match source {
+                BusSource::Synth => self.channels[0].process(frames),
+                BusSource::Drums => self.channels[1].process(frames),
+                _ => {}
+            }
+        } else if let Some(channel) = match source {
+            BusSource::Synth => Some(&self.controls.channels[0]),
+            BusSource::Drums => Some(&self.controls.channels[1]),
+            _ => None,
+        } {
+            let peak = frames.iter().fold(0.0_f32, |peak, frame| {
+                peak.max(frame.left.abs()).max(frame.right.abs())
+            });
+            channel.peak.store(peak.to_bits(), Ordering::Relaxed);
+            channel
+                .reduction
+                .store(0.0_f32.to_bits(), Ordering::Relaxed);
         }
         let index = source.index();
         self.source_faders[index].refresh(
@@ -636,6 +673,35 @@ fn mono_pan_gains(pan: f32) -> [f32; 2] {
 mod tests {
     use super::*;
     use crate::dsp::allocation_test::assert_no_allocations;
+
+    #[test]
+    fn master_fx_bypass_skips_channel_processing_but_keeps_faders() {
+        let (mut processor, controls) = processor(48_000, 64);
+        controls.channels[0]
+            .publish(crate::channel_strip::Settings {
+                enabled: true,
+                bass: 12,
+                treble: -12,
+                comp: 100,
+            })
+            .unwrap();
+        controls.channels[0]
+            .reduction
+            .store(6.0_f32.to_bits(), Ordering::Relaxed);
+        controls.set_master_fx_bypass(true);
+        let input = [StereoFrame::new(0.2, -0.1); 64];
+        let mut output = input;
+        assert_no_allocations(|| processor.process_source(BusSource::Synth, &mut output));
+        assert_eq!(output, input);
+        assert_eq!(controls.channels[0].meter(), (0.2, 0.0));
+        assert!(controls.channels[0].snapshot().1.enabled);
+        controls.set_master_fx_bypass(false);
+        for _ in 0..20 {
+            output = input;
+            processor.process_source(BusSource::Synth, &mut output);
+        }
+        assert_ne!(output, input);
+    }
 
     fn processor(rate: u32, frames: usize) -> (FinalBusProcessor, Arc<BusControls>) {
         let controls = Arc::new(BusControls::default());

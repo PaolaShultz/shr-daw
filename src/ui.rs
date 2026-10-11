@@ -1082,6 +1082,7 @@ struct App {
     pending_routing_defaults: Option<Vec<sequencer::Page>>,
     routing_defaults: Vec<sequencer::Page>,
     routing_defaults_path: PathBuf,
+    fx_defaults: Option<crate::fx_defaults::FxDefaults>,
     confirm_new_project: bool,
     confirm_loop_remove: bool,
     confirm_song_delete: Option<String>,
@@ -2183,7 +2184,25 @@ impl App {
         let mut defaults_song = Song::new_with_pages(&config.external_midi, routing_defaults);
         sequencer::upgrade_legacy_synth_routes(&mut defaults_song, first_synthv1);
         routing_defaults = defaults_song.patterns.remove(&0).unwrap().pages;
-        let song = Song::new_with_pages(&config.external_midi, routing_defaults.clone());
+        let mut song = Song::new_with_pages(&config.external_midi, routing_defaults.clone());
+        let mut fx_defaults_error = None;
+        let fx_defaults = if discover {
+            match crate::fx_defaults::FxDefaults::load(
+                &routing_defaults_path.with_file_name("fx-defaults.json"),
+                &song,
+            ) {
+                Ok(defaults) => {
+                    defaults.apply(&mut song);
+                    Some(defaults)
+                }
+                Err(error) => {
+                    fx_defaults_error = Some(format!("FX defaults: {error}"));
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let mut live_patterns = crate::live_performance::LivePatternPerformance::default();
         live_patterns.reset_for_project(&song);
         let transport_clock = Arc::new(if discover {
@@ -2197,6 +2216,7 @@ impl App {
         });
         let drum_output = Arc::new(Mutex::new(None));
         let final_bus = FinalBusOwner::with_transport_clock(Arc::clone(&transport_clock));
+        final_bus.set_master_fx_bypass(true);
         let sequencer = sequencer::Sequencer::start_with_clock(
             &config.external_midi,
             Arc::clone(&midi_output),
@@ -2289,7 +2309,7 @@ impl App {
             values: HashMap::new(),
             original_values: HashMap::new(),
             held_notes: HeldNotes::default(),
-            status: "Ready".into(),
+            status: fx_defaults_error.unwrap_or_else(|| "Ready".into()),
             status_clock: RefCell::new(StatusClock {
                 text: "Ready".into(),
                 since: Instant::now(),
@@ -2410,6 +2430,7 @@ impl App {
             pending_routing_defaults: None,
             routing_defaults,
             routing_defaults_path,
+            fx_defaults,
             confirm_new_project: false,
             confirm_loop_remove: false,
             confirm_song_delete: None,
@@ -12927,6 +12948,9 @@ impl App {
         }
         let mut song =
             Song::new_with_pages(&self.config.external_midi, self.routing_defaults.clone());
+        if let Some(defaults) = &self.fx_defaults {
+            defaults.apply(&mut song);
+        }
         song.name = name.clone();
         if let Err(status) = self.publish_project_audio_runtime(
             &song.insert_rack,
@@ -19931,6 +19955,16 @@ fn perform(
         Action::FxRemove => a.remove_effect(),
         Action::FxMoveUp => a.move_effect(-1),
         Action::FxMoveDown => a.move_effect(1),
+        Action::MasterFxBypass => {
+            let bypass = !a.final_bus.master_fx_bypassed();
+            a.final_bus.set_master_fx_bypass(bypass);
+            a.status = if bypass {
+                "ALL FX BYPASSED"
+            } else {
+                "ALL FX ON"
+            }
+            .into();
+        }
         Action::FxBypass => a.toggle_effect_bypass(),
         Action::FxKindPrevious => a.cycle_effect_kind(-1),
         Action::FxKindNext => a.cycle_effect_kind(1),
@@ -20201,6 +20235,19 @@ fn key(code: KeyCode, a: &mut App, state: &Path, tx: &std::sync::mpsc::Sender<Mi
             }
             _ => {}
         }
+        return false;
+    }
+    if code == KeyCode::Char('B')
+        && matches!(
+            a.screen,
+            Screen::Master
+                | Screen::FxRack
+                | Screen::FxEditor
+                | Screen::MasterStrip
+                | Screen::MasterStripAdvanced
+        )
+    {
+        perform(Action::MasterFxBypass, a, state, Some(tx));
         return false;
     }
     if a.screen == Screen::FxEditor {
@@ -22064,7 +22111,14 @@ fn draw_fx_rack<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let mut lines = vec![Spans::from(Span::styled(
         crate::ui_text::label_value(
             &format!("FX {}", fx_target_label(a.fx_target)),
-            &format!("CHAIN {rack_length}/8"),
+            &format!(
+                "{rack_length}/8 {}",
+                if a.final_bus.master_fx_bypassed() {
+                    "ALL BYP"
+                } else {
+                    "FX ON"
+                }
+            ),
             inner_width,
         ),
         Style::default()
@@ -22324,7 +22378,11 @@ fn draw_master_workspace<B: Backend>(f: &mut Frame<B>, a: &mut App) {
     let z = f.size();
     let body = rect(z.x, z.y, z.width, z.height.saturating_sub(3));
     let mut lines = vec![
-        Spans::from("MASTER"),
+        Spans::from(if a.final_bus.master_fx_bypassed() {
+            "MASTER · ALL FX BYPASSED"
+        } else {
+            "MASTER · ALL FX ON"
+        }),
         Spans::from(project_owner_line(a, z.width as usize)),
     ];
     let active = a
@@ -29685,6 +29743,23 @@ mod tests {
             },
         }
     }
+    #[test]
+    fn master_fx_bypass_starts_on_and_toggle_preserves_project_settings() {
+        let p = presets();
+        let mut a = app(&p);
+        assert!(a.final_bus.master_fx_bypassed());
+        let before = serde_json::to_string(&a.song.aux_routing).unwrap();
+        a.screen = Screen::Master;
+        let screen = render_app(&mut a, 40, 13);
+        assert!(buffer_text(&screen).contains("ALL FX BYPASSED"));
+        perform(Action::MasterFxBypass, &mut a, Path::new("/none"), None);
+        assert!(!a.final_bus.master_fx_bypassed());
+        assert!(buffer_text(&render_app(&mut a, 40, 13)).contains("ALL FX ON"));
+        perform(Action::MasterFxBypass, &mut a, Path::new("/none"), None);
+        assert!(a.final_bus.master_fx_bypassed());
+        assert_eq!(serde_json::to_string(&a.song.aux_routing).unwrap(), before);
+    }
+
     fn app(presets: &[Preset]) -> App {
         app_with_routing_defaults(presets, PathBuf::from("/none"))
     }
@@ -35272,7 +35347,15 @@ release = 0.4
         let p = presets();
         let mut a = app(&p);
         a.screen = Screen::Tracker;
-        let source = a.song.insert_rack.add(EffectKind::Delay).unwrap();
+        let source = a
+            .song
+            .aux_routing
+            .next_effect_id(&a.song.insert_rack)
+            .unwrap();
+        a.song
+            .insert_rack
+            .add_with_id(EffectKind::Delay, source)
+            .unwrap();
         a.current_pattern_mut()
             .unwrap()
             .automation
