@@ -255,16 +255,12 @@ fn link_with(
                 run(&["pair", address], 45, false)?;
             }
             run(&["trust", address], 10, false)?;
-            // Recent BlueZ pair already connects; avoid treating AlreadyConnected as failure.
-            if !discover_with(run)?
-                .iter()
-                .any(|d| d.address == address && d.connected)
-            {
-                run(&["connect", address], 15, false)?;
-            }
+            // Pair establishes a transport and discovers services, not necessarily
+            // the audio profile. Connected alone must not skip profile connection.
+            connect_with(address, run)?;
         }
         Link::Connect => {
-            run(&["connect", address], 15, false)?;
+            connect_with(address, run)?;
             run(&["trust", address], 10, false)?;
         }
         Link::Disconnect => {
@@ -291,6 +287,24 @@ fn link_with(
     Ok(())
 }
 
+fn connect_with(
+    address: &str,
+    run: &mut impl FnMut(&[&str], u32, bool) -> Result<String>,
+) -> Result<()> {
+    match run(&["connect", address], 15, false) {
+        Ok(_) => Ok(()),
+        Err(error)
+            if error
+                .to_string()
+                .split_whitespace()
+                .any(|word| word == "org.bluez.Error.AlreadyConnected") =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
+}
+
 fn restore_with(
     path: &Path,
     run: &mut impl FnMut(&[&str], u32, bool) -> Result<String>,
@@ -299,11 +313,13 @@ fn restore_with(
         return Ok(());
     };
     let devices = discover_with(run)?;
-    let Some(device) = devices.iter().find(|d| d.address == address && d.paired) else {
-        bail!("Saved device unpaired; select and pair");
+    // Some receivers do not retain a bond and report unpaired after disconnect.
+    // The saved explicit choice authorizes reconnecting that exact known address.
+    let Some(device) = devices.iter().find(|d| d.address == address) else {
+        bail!("Saved device unknown; scan and select");
     };
     if !device.connected {
-        run(&["connect", &address], 15, false)?;
+        connect_with(&address, run)?;
     }
     Ok(())
 }
@@ -485,6 +501,24 @@ mod tests {
     }
 
     #[test]
+    fn connect_accepts_only_the_explicit_already_connected_error() {
+        for (message, succeeds) in [
+            ("Failed to connect: org.bluez.Error.AlreadyConnected", true),
+            (
+                "Failed to connect: org.bluez.Error.Failed br-connection-page-timeout",
+                false,
+            ),
+            ("Bluetooth timed out or failed", false),
+        ] {
+            let result = connect_with("00:11:22:33:44:55", &mut |args, _, _| {
+                assert_eq!(args, &["connect", "00:11:22:33:44:55"]);
+                bail!("{message}")
+            });
+            assert_eq!(result.is_ok(), succeeds);
+        }
+    }
+
+    #[test]
     fn startup_without_saved_choice_does_no_device_work() {
         let root = std::env::temp_dir().join(format!("shr-bt-absent-{}", std::process::id()));
         let completion = start(Action::Restore, root)
@@ -495,7 +529,7 @@ mod tests {
         assert!(completion.remembered.is_none());
     }
     #[test]
-    fn restore_requires_exact_still_paired_identity() {
+    fn restore_requires_exact_known_identity_but_not_a_persistent_bond() {
         let root = std::env::temp_dir().join(format!(
             "shr-bt-restore-{}-{}",
             std::process::id(),
@@ -516,7 +550,7 @@ mod tests {
                 0,
                 false,
             ),
-            ("Device 00:11:22:33:44:55 Speaker", "", "", 0, false),
+            ("Device 00:11:22:33:44:55 Speaker", "", "", 1, true),
             (
                 "Device 00:11:22:33:44:55 Speaker",
                 "Device 00:11:22:33:44:55 Speaker",
@@ -552,7 +586,7 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
-    fn new_device_pairs_trusts_and_remembers_without_duplicate_connect() {
+    fn pairing_transport_connection_still_requires_profile_connect() {
         let root = std::env::temp_dir().join(format!(
             "shr-bt-pair-{}-{}",
             std::process::id(),
@@ -566,6 +600,7 @@ mod tests {
         let line = format!("Device {address} New speaker");
         let mut paired = false;
         let mut trusted = false;
+        let mut profile_connected = false;
         link_with(address, Link::Pair, &path, &mut |args, _, _| {
             Ok(match args {
                 ["devices"] => line.clone(),
@@ -588,11 +623,17 @@ mod tests {
                     trusted = true;
                     String::new()
                 }
+                ["connect", target] => {
+                    assert_eq!(*target, address);
+                    assert!(paired && trusted);
+                    profile_connected = true;
+                    String::new()
+                }
                 _ => panic!("unexpected action {args:?}"),
             })
         })
         .unwrap();
-        assert!(paired && trusted);
+        assert!(paired && trusted && profile_connected);
         assert_eq!(remembered(&path).unwrap().as_deref(), Some(address));
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -228,7 +228,10 @@ elapsed time while Bluetooth work runs. If you remain on BT SCAN when it finishe
 **BT DEVICE** opens a list of known and discovered receivers (or the status reports
 no devices).
 Turn to choose a receiver and **APPLY** to select it; then confirm **BT ACTION →
-PAIR+CONNECT** to pair and trust that exact receiver. Existing bonds are preserved.
+PAIR+CONNECT** to pair, trust, and explicitly connect that exact receiver's
+profiles. Existing bonds are preserved. A temporary connection during pairing
+is not treated as a completed audio connection; BlueZ separates
+[Pair from profile Connect](https://manpages.debian.org/trixie/bluez/org.bluez.Device.5.en.html).
 Entering BT ACTION before choosing a device opens the chooser first, or the scan
 draft if no devices are known. Choosing a device alone never connects.
 The link action also offers **CONNECT**, **DISCONNECT**, and **FORGET**;
@@ -261,8 +264,10 @@ A successful explicit connection immediately saves its address in the private
 state directory's `bluetooth-reconnect` file, using atomic replacement and file
 and directory synchronization. The first successful Connect or Pair+Connect in
 this version establishes that preference; older versions did not save it, and
-SHR never guesses from the paired-device list. Reopening SHR reconnects only that saved device;
-while SHR runs it checks/retries every thirty seconds after the previous worker
+SHR never guesses from the paired-device list. Reopening SHR reconnects only that
+saved known device, including receivers that do not retain a bond and therefore
+report unpaired after disconnect; it does not automatically re-pair or recreate
+a forgotten device. While SHR runs it checks/retries every thirty seconds after the previous worker
 finishes. Disconnect or Forget clears that device's saved intent before attempting
 the operation, including if the receiver is already off. Power loss does not
 require a clean application exit to retain the last completed save. Connections
