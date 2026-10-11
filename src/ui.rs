@@ -21963,6 +21963,7 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
         "SELECTED"
     };
     if body.height >= 7 {
+        lines.clear();
         lines.push(Spans::from(crate::ui_text::fit_line(&bt_summary, width)));
         lines.push(Spans::from(crate::ui_text::label_value(
             &format!("OUT {output_name}"),
@@ -22004,6 +22005,11 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
     f.render_widget(
         Paragraph::new(lines).block(
             Block::default()
+                .title(if editing {
+                    "ROUTING · EDIT"
+                } else {
+                    "ROUTING"
+                })
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Green)),
         ),
@@ -36244,16 +36250,16 @@ release = 0.4
         a.begin_routing_edit();
         a.routing.draft.as_mut().unwrap().config.audio_outputs = a.routing_audio_ports.clone();
         let buffer = render_app(&mut a, 40, 13);
-        assert!(row_text(&buffer, 2).contains("Speaker"));
-        assert!(row_text(&buffer, 2).contains("CONNECTED"));
-        assert!(row_text(&buffer, 3).contains("OUT Old"));
-        assert!(row_text(&buffer, 3).contains("OFFLINE"));
+        assert!(row_text(&buffer, 1).contains("Speaker"));
+        assert!(row_text(&buffer, 1).contains("CONNECTED"));
+        assert!(row_text(&buffer, 2).contains("OUT Old"));
+        assert!(row_text(&buffer, 2).contains("OFFLINE"));
         assert!(row_text(&buffer, 12).starts_with("■ "));
         a.routing.bluetooth_error = Some("Adapter unavailable".into());
-        assert!(row_text(&render_app(&mut a, 40, 13), 2).contains("UNKNOWN"));
+        assert!(row_text(&render_app(&mut a, 40, 13), 1).contains("UNKNOWN"));
         a.routing.bluetooth_error = None;
         a.routing.bluetooth_devices[0].connected = false;
-        assert!(row_text(&render_app(&mut a, 40, 13), 2).contains("DISCONNECTED"));
+        assert!(row_text(&render_app(&mut a, 40, 13), 1).contains("DISCONNECTED"));
     }
 
     #[test]
@@ -36299,7 +36305,7 @@ release = 0.4
                 assert_eq!(draft.bluetooth_device, 1);
                 assert_eq!(draft.bluetooth_link, crate::bluetooth::Link::Connect);
                 assert!(a.routing.bluetooth_devices[draft.bluetooth_device].connected);
-                assert!(row_text(&render_app(&mut a, 40, 13), 2).contains("CONNECTED"));
+                assert!(row_text(&render_app(&mut a, 40, 13), 1).contains("CONNECTED"));
             } else {
                 assert!(a.routing.draft.is_none());
                 assert!(!a.routing.bluetooth_choice_confirmed);
