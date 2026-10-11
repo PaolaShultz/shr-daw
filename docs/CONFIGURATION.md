@@ -200,6 +200,20 @@ without that device needs a separate server/backend setup.
 
 ### Bluetooth and multiple audio devices
 
+Use Bluetooth for listening to music, not live instrument playing or microphone
+monitoring. In the October 11, 2026 listening trial, stereo Bluetooth playback
+worked, but the musician reported enough delay to make live playing unusable.
+This is a listening result, not a measured round-trip latency figure; a
+successful connection and an error-free stream do not establish playability.
+
+For live use, choose a wired USB audio interface. A USB microphone with its own
+headphone playback output can serve as the input and output device: connect its
+USB cable to the Pi running SHR and headphones to the microphone. Select its
+capture ports under **AUDIO IN** and its headphone playback pair under
+**AUDIO OUT**. Input changes require reopening SHR. When listening level is
+controlled on the analogue output, keep the system playback volume at 100%
+(0 dB); check this separately from SHR's instrument and mix controls.
+
 For Bluetooth playback without a USB sound card, PipeWire with WirePlumber and
 the PipeWire JACK compatibility libraries can provide the audio server. Its
 device manager exposes connected USB, HDMI and Bluetooth audio endpoints to
