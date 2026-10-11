@@ -1408,7 +1408,7 @@ impl RoutingRow {
             Self::SyncStart => "SYNC POS".into(),
             Self::BluetoothScan => "BT SCAN".into(),
             Self::BluetoothDevice => "BT DEVICE".into(),
-            Self::BluetoothLink => "BT LINK".into(),
+            Self::BluetoothLink => "BT ACTION".into(),
             Self::AudioInput => "AUDIO IN".into(),
             Self::AudioOutput => "AUDIO OUT".into(),
         }
@@ -1437,6 +1437,7 @@ struct RoutingEditor {
     bluetooth_initialized: bool,
     bluetooth_remembered: Option<String>,
     bluetooth_retry_at: Option<Instant>,
+    bluetooth_refresh_at: Option<Instant>,
 }
 
 fn normalized_physical_control(cc: u8, value: f32) -> Option<(usize, f32)> {
@@ -3373,6 +3374,20 @@ impl App {
     }
 
     fn poll_bluetooth(&mut self) {
+        // Refresh observations even while editing; do not reconnect from this poll.
+        #[cfg(not(test))]
+        if self.screen == Screen::Routing
+            && self.routing.bluetooth_pending.is_none()
+            && self
+                .routing
+                .bluetooth_refresh_at
+                .is_none_or(|at| Instant::now() >= at)
+        {
+            self.routing.bluetooth_pending = Some(crate::bluetooth::start(
+                crate::bluetooth::Action::Refresh,
+                self.engine_state.clone(),
+            ));
+        }
         #[cfg(not(test))]
         if self.routing.bluetooth_pending.is_none()
             && self.screen != Screen::Routing
@@ -3403,12 +3418,14 @@ impl App {
             Err(_) => {
                 self.routing.bluetooth_pending = None;
                 self.routing.bluetooth_progress = None;
+                self.routing.bluetooth_refresh_at = Some(Instant::now() + Duration::from_secs(3));
                 self.routing.bluetooth_error = Some("Bluetooth worker stopped".into());
                 self.status = "BLUETOOTH FAILED · reopen ROUTING".into();
                 return;
             }
         };
         self.routing.bluetooth_pending = None;
+        self.routing.bluetooth_refresh_at = Some(Instant::now() + Duration::from_secs(3));
         let scanned = self
             .routing
             .bluetooth_progress
@@ -3418,6 +3435,26 @@ impl App {
         self.routing.bluetooth_retry_at = Some(Instant::now() + Duration::from_secs(30));
         match completion.devices {
             Ok(devices) => {
+                // A discovery can reorder/remove devices while an action is drafted.
+                // Keep its exact address, never transfer an action to another row.
+                if let Some(draft) = self.routing.draft.as_mut() {
+                    let address = self
+                        .routing
+                        .bluetooth_devices
+                        .get(draft.bluetooth_device)
+                        .map(|device| &device.address);
+                    if let Some(index) = address
+                        .and_then(|address| devices.iter().position(|d| &d.address == address))
+                    {
+                        draft.bluetooth_device = index;
+                    } else if matches!(
+                        self.routing_row(),
+                        RoutingRow::BluetoothDevice | RoutingRow::BluetoothLink
+                    ) {
+                        self.routing.draft = None;
+                        self.status = "BT device disappeared · choose again".into();
+                    }
+                }
                 let selected = self
                     .routing
                     .bluetooth_devices
@@ -3473,7 +3510,19 @@ impl App {
                         self.routing.bluetooth_devices.len()
                     )
                 }
-                Ok(()) => "BT done · choose AUDIO OUT if needed".into(),
+                Ok(()) => {
+                    let online = self.config.audio_outputs.len() == 2
+                        && self
+                            .config
+                            .audio_outputs
+                            .iter()
+                            .all(|port| self.routing_audio_ports.contains(port));
+                    if online {
+                        "BT updated · see connection state".into()
+                    } else {
+                        "Audio output offline · select AUDIO OUT".into()
+                    }
+                }
                 Err(error) => format!("BT: {error}"),
             };
         }
@@ -16778,10 +16827,18 @@ impl App {
                 };
             }
             Err(error) => {
-                self.status = if error.contains("restored") {
-                    "START FAILED · old sound restored".into()
+                let _ = std::fs::write(state.join("engine-start-error.log"), format!("{error}\n"));
+                #[cfg(not(test))]
+                let available = engine::jack_playback_destinations();
+                #[cfg(test)]
+                let available = self.routing_audio_ports.clone();
+                self.status = if self.config.audio_autoconnect
+                    && self.config.resolve_audio_route(&available).state
+                        == crate::config::AudioRouteState::Unavailable
+                {
+                    "AUDIO OUT offline · select in ROUTING".into()
                 } else {
-                    "START FAILED · retry LOAD".into()
+                    format!("START FAILED · {error}")
                 };
             }
         }
@@ -21653,7 +21710,7 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
             {
                 let selected = index == draft.bluetooth_device;
                 let state = if device.connected {
-                    "LINKED"
+                    "CONNECTED"
                 } else if device.paired {
                     "PAIRED"
                 } else {
@@ -21864,7 +21921,56 @@ fn draw_routing<B: Backend>(f: &mut Frame<B>, a: &App) {
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD),
     ))];
-    let visible_rows = usize::from(body.height.saturating_sub(3));
+    let selected_device = a
+        .routing
+        .draft
+        .as_ref()
+        .map_or(a.routing.bluetooth_selected, |draft| draft.bluetooth_device);
+    let bt_summary = a
+        .routing
+        .bluetooth_devices
+        .get(selected_device)
+        .map_or_else(
+            || "BT: no device selected".to_string(),
+            |device| {
+                let state = if a.routing.bluetooth_error.is_some() {
+                    "UNKNOWN"
+                } else if device.connected {
+                    "CONNECTED"
+                } else {
+                    "DISCONNECTED"
+                };
+                crate::ui_text::label_value(&format!("BT {}", device.name), state, width)
+            },
+        );
+    let output_name = a
+        .config
+        .audio_outputs
+        .first()
+        .and_then(|port| port.split_once(':'))
+        .map_or("NONE", |(client, _)| client);
+    let output_state = if !a.config.audio_autoconnect {
+        "DISABLED"
+    } else if a.config.audio_outputs.len() != 2
+        || !a
+            .config
+            .audio_outputs
+            .iter()
+            .all(|port| a.routing_audio_ports.contains(port))
+    {
+        "OFFLINE"
+    } else {
+        "SELECTED"
+    };
+    if body.height >= 7 {
+        lines.push(Spans::from(crate::ui_text::fit_line(&bt_summary, width)));
+        lines.push(Spans::from(crate::ui_text::label_value(
+            &format!("OUT {output_name}"),
+            output_state,
+            width,
+        )));
+    }
+    let visible_rows = usize::from(body.height.saturating_sub(2)).saturating_sub(lines.len());
     let start = a
         .routing
         .selected
@@ -36114,6 +36220,92 @@ release = 0.4
         assert!(a.routing.bluetooth_pending.is_none());
         assert!(a.cancel_routing_edit());
         assert!(a.routing.bluetooth_pending.is_none());
+    }
+
+    #[test]
+    fn routing_shows_connection_and_saved_output_while_editing() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Routing;
+        a.routing.bluetooth_devices = vec![crate::bluetooth::Device {
+            address: "00:11:22:33:44:55".into(),
+            name: "Speaker".into(),
+            connected: true,
+            paired: true,
+        }];
+        a.config.audio_autoconnect = true;
+        a.config.audio_outputs = vec!["Old:playback_FL".into(), "Old:playback_FR".into()];
+        a.routing_audio_ports = vec!["Speaker:playback_FL".into(), "Speaker:playback_FR".into()];
+        a.routing.selected = a
+            .routing_rows()
+            .iter()
+            .position(|row| *row == RoutingRow::AudioOutput)
+            .unwrap();
+        a.begin_routing_edit();
+        a.routing.draft.as_mut().unwrap().config.audio_outputs = a.routing_audio_ports.clone();
+        let buffer = render_app(&mut a, 40, 13);
+        assert!(row_text(&buffer, 2).contains("Speaker"));
+        assert!(row_text(&buffer, 2).contains("CONNECTED"));
+        assert!(row_text(&buffer, 3).contains("OUT Old"));
+        assert!(row_text(&buffer, 3).contains("OFFLINE"));
+        assert!(row_text(&buffer, 12).starts_with("■ "));
+        a.routing.bluetooth_error = Some("Adapter unavailable".into());
+        assert!(row_text(&render_app(&mut a, 40, 13), 2).contains("UNKNOWN"));
+        a.routing.bluetooth_error = None;
+        a.routing.bluetooth_devices[0].connected = false;
+        assert!(row_text(&render_app(&mut a, 40, 13), 2).contains("DISCONNECTED"));
+    }
+
+    #[test]
+    fn bluetooth_refresh_preserves_action_identity_and_cancels_removed_target() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::Routing;
+        let speaker = crate::bluetooth::Device {
+            address: "00:11:22:33:44:55".into(),
+            name: "Speaker".into(),
+            connected: false,
+            paired: true,
+        };
+        let other = crate::bluetooth::Device {
+            address: "00:11:22:33:44:66".into(),
+            name: "Other".into(),
+            connected: false,
+            paired: true,
+        };
+        a.routing.bluetooth_devices = vec![speaker.clone(), other.clone()];
+        a.routing.bluetooth_choice_confirmed = true;
+        a.routing.selected = a
+            .routing_rows()
+            .iter()
+            .position(|row| *row == RoutingRow::BluetoothLink)
+            .unwrap();
+        a.begin_routing_edit();
+        let mut linked = speaker;
+        linked.connected = true;
+        for devices in [vec![other.clone(), linked], vec![other]] {
+            let (tx, rx) = std::sync::mpsc::channel();
+            a.routing.bluetooth_pending = Some(rx);
+            tx.send(crate::bluetooth::Completion {
+                devices: Ok(devices),
+                action: None,
+                remembered: None,
+                background: false,
+            })
+            .unwrap();
+            a.poll_bluetooth();
+            if a.routing.bluetooth_devices.len() == 2 {
+                let draft = a.routing.draft.as_ref().unwrap();
+                assert_eq!(draft.bluetooth_device, 1);
+                assert_eq!(draft.bluetooth_link, crate::bluetooth::Link::Connect);
+                assert!(a.routing.bluetooth_devices[draft.bluetooth_device].connected);
+                assert!(row_text(&render_app(&mut a, 40, 13), 2).contains("CONNECTED"));
+            } else {
+                assert!(a.routing.draft.is_none());
+                assert!(!a.routing.bluetooth_choice_confirmed);
+                assert!(a.status.contains("disappeared"));
+            }
+        }
     }
 
     #[test]

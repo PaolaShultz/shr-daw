@@ -427,13 +427,15 @@ effects and recording. Failed switches keep the previous route and the draft.
 Elapsed time appears while work runs. Completion opens the `BT DEVICE` list if
 you remain on BT SCAN and devices were found;
 turn to choose and APPLY to select a receiver, then separately apply its link action.
-Entering `BT LINK` without a device choice opens that list (or the scan draft
-when no devices are known). `BT LINK` offers `PAIR+CONNECT`, `CONNECT`,
+Entering `BT ACTION` without a device choice opens that list (or the scan draft
+when no devices are known). `BT ACTION` offers `PAIR+CONNECT`, `CONNECT`,
 `DISCONNECT`, and `FORGET`; turn to choose, confirm to execute, or Back to cancel.
 Pairing trusts the chosen receiver and supports devices without PIN entry.
 Bluetooth work runs asynchronously; busy controls prevent overlapping actions.
-Automatic reconnect retries pause while Routing is open. A
-successful connection is saved immediately for reconnect after restart or power
+The Routing header shows current Bluetooth connection state and the saved audio
+output independently of the action being edited. Read-only Bluetooth refreshes
+run every three seconds and preserve draft device identity. Automatic reconnect
+retries pause while Routing is open. A successful connection is saved immediately for reconnect after restart or power
 loss; Disconnect/Forget stops retries for that receiver. Available output pairs
 refresh while Routing is open. Controller-clock
 enable/output changes likewise report `CLOCK NEXT START`; live MIDI input role/

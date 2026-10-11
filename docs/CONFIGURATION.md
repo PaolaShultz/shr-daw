@@ -227,9 +227,9 @@ to edit the scan action, then **APPLY** to run a ten-second scan. The row shows
 elapsed time while Bluetooth work runs. If you remain on BT SCAN when it finishes,
 **BT DEVICE** opens a list of known and discovered receivers (or the status reports
 no devices).
-Turn to choose a receiver and **APPLY** to select it; then confirm **BT LINK →
+Turn to choose a receiver and **APPLY** to select it; then confirm **BT ACTION →
 PAIR+CONNECT** to pair and trust that exact receiver. Existing bonds are preserved.
-Entering BT LINK before choosing a device opens the chooser first, or the scan
+Entering BT ACTION before choosing a device opens the chooser first, or the scan
 draft if no devices are known. Choosing a device alone never connects.
 The link action also offers **CONNECT**, **DISCONNECT**, and **FORGET**;
 Back cancels a draft. Choose **AUDIO OUT** after connecting. These controls use
@@ -243,7 +243,19 @@ whole ten-second interval; other commands return as soon as BlueZ finishes.
 Busy controls prevent overlapping operations; failures appear in the shared status row.
 Automatic reconnect retries pause while Routing is open so they do not interrupt
 manual device selection. Scan again to refresh a device that was not discoverable;
-reopening Routing also refreshes known devices.
+Routing refreshes known devices every three seconds, including while a draft is
+open. A refresh preserves the draft's exact device address; losing that device
+cancels the draft. The native-size Routing header keeps the selected Bluetooth
+device's CONNECTED/DISCONNECTED state and the saved OUT destination visible.
+UNKNOWN means discovery failed. OUT shows OFFLINE when its exact ports are
+absent, SELECTED when present, or DISABLED when autoconnection is off. This is
+separate from the proposed output in an unsaved draft and does not claim that a
+synth is running.
+A successful Bluetooth link does not itself change the audio destination.
+
+Player startup failures retain their full reason in private
+`engine-start-error.log`; a missing output is identified in the status row as
+`AUDIO OUT offline` instead of a generic retry message.
 
 A successful explicit connection immediately saves its address in the private
 state directory's `bluetooth-reconnect` file, using atomic replacement and file
@@ -264,7 +276,7 @@ stereo pair. The output switches immediately; no application restart is needed.
 Choose **AUDIO IN → NONE** when using only software instruments, drums and loops.
 The final mixer, effects and stereo WAV capture can work without physical audio
 inputs. The raw recorder retains its own exact per-track source assignments.
-If the selected receiver disconnects, use `BT LINK` → `CONNECT`. The final bus
+If the selected receiver disconnects, use `BT ACTION` → `CONNECT`. The final bus
 restores its exact output links when that receiver's ports return. Sources,
 effects, metering and final recording remain active during the disconnection.
 To use a different speaker or sound card, explicitly select it under `AUDIO OUT`.
