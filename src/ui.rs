@@ -2763,8 +2763,28 @@ impl App {
         self.project_clean_baseline = self.song.clone();
     }
 
+    fn is_untitled_fx_only_session(&self) -> bool {
+        if self.song_file_stem.is_some() {
+            return false;
+        }
+        let mut untouched =
+            Song::new_with_pages(&self.config.external_midi, self.routing_defaults.clone());
+        if let Some(defaults) = &self.fx_defaults {
+            defaults.apply(&mut untouched);
+        }
+        // Player shares the live racks with Project. Auditioning those racks
+        // alone need not turn the untouched startup session into a saved song.
+        // Compare every other field, including the original untitled name.
+        untouched.insert_rack = self.song.insert_rack.clone();
+        untouched.aux_routing = self.song.aux_routing.clone();
+        untouched.drum_rack = self.song.drum_rack.clone();
+        self.song == untouched
+    }
+
     fn begin_project_action(&mut self, action: PendingProjectAction) {
-        if action == PendingProjectAction::ExitTracker {
+        if action == PendingProjectAction::ExitTracker
+            || (action == PendingProjectAction::Quit && self.is_untitled_fx_only_session())
+        {
             self.complete_project_action(action);
             return;
         }
@@ -33816,6 +33836,7 @@ release = 0.4
                 p[0].clone(),
                 moj_preset(preset::MojModel::PressureChain, "Pressure Chain Bass"),
                 moj_preset(preset::MojModel::Open303, "Open303 Bass"),
+                moj_preset(preset::MojModel::Perceptual, "Perceptual Swirl"),
             ] {
                 *a.midi_backend.lock().unwrap() = sound.backend;
                 *a.midi_moj_model.lock().unwrap() = sound.moj_model();
@@ -33851,6 +33872,74 @@ release = 0.4
             }
             assert_eq!(a.request_quit(), !edited_project);
             assert_eq!(a.pending_project_action.is_some(), edited_project);
+        }
+    }
+
+    #[test]
+    fn player_fx_only_session_exits_without_project_save_but_keeps_real_projects_guarded() {
+        for protected in 0..8 {
+            let mut a = app(&presets());
+            a.screen = Screen::Playback;
+            let id = a
+                .song
+                .aux_routing
+                .next_effect_id(&a.song.insert_rack)
+                .unwrap();
+            a.song
+                .insert_rack
+                .add_with_id(EffectKind::Delay, id)
+                .unwrap();
+            match protected {
+                1 => a.song_file_stem = Some("saved-empty-project".into()),
+                2 => a.song.name = "My Project".into(),
+                3 => a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60),
+                4 => a.song.order.push(0),
+                5 => a.song.master_strip.input_trim_db = 3.0,
+                6 => {
+                    a.song.patterns.get_mut(&0).unwrap().tempo =
+                        Bpm::from_hundredths_clamped(12_345)
+                }
+                7 => {
+                    a.song.patterns.get_mut(&0).unwrap().pages[0].target =
+                        PageTarget::Software(SoftwareRoute::synthv1("Different route"))
+                }
+                _ => {}
+            }
+            let before = a.song.clone();
+            let baseline = a.project_clean_baseline.clone();
+            assert!(a.project_is_dirty());
+            assert_eq!(a.request_quit(), protected == 0, "case {protected}");
+            assert_eq!(a.pending_project_action.is_some(), protected != 0);
+            assert_eq!(a.song, before);
+            assert_eq!(a.project_clean_baseline, baseline);
+        }
+    }
+
+    #[test]
+    fn player_aux_and_drum_fx_only_quit_preserves_state_and_replacement_guard() {
+        for drums in [false, true] {
+            let mut a = app(&presets());
+            if drums {
+                a.song.drum_rack.effects[0].bypass = !a.song.drum_rack.effects[0].bypass;
+            } else {
+                let bus = a.song.aux_routing.add_bus().unwrap();
+                a.song
+                    .aux_routing
+                    .add_effect(&a.song.insert_rack, bus, EffectKind::Reverb)
+                    .unwrap();
+                a.song
+                    .aux_routing
+                    .set_send(&a.song.insert_rack, bus, -18.0, SendPoint::PostInsert)
+                    .unwrap();
+            }
+            let before = a.song.clone();
+            a.begin_project_action(PendingProjectAction::Load("other".into()));
+            assert!(a.pending_project_action.is_some());
+            a.cancel_project_action();
+            assert!(a.request_quit());
+            assert_eq!(a.song, before);
+            assert!(a.project_is_dirty());
+            assert!(a.pending_project_action.is_none());
         }
     }
 

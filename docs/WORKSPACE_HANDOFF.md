@@ -70,6 +70,32 @@ real-time hardware acceptance remain for the coordinated human session.
 [How SHR-DAW works](HOW_IT_WORKS.md) owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.
 
+## Player-only FX/AUX exit, 2026-11-07
+
+The owner reported a Project-save prompt labeled FX/AUX after playing synths in
+Player, with no Project to save. Player's live racks share Song storage; rack
+or send edits therefore previously guarded exit even in the untouched startup
+session. The offline regression reproduces that FX-only case. Ordinary note,
+sound-selection and synth-control events have no Project-write path in the
+checked flow; the exact input responsible for the reported rack difference is
+not established.
+
+Quit now permits an otherwise untouched, untitled, never-saved startup session
+to exit with FX/AUX-only changes. Comparison against the complete startup Song
+(with configured routing/FX defaults) ignores only insert rack, AUX routing and
+drum rack. Name, notes, tempo, routing, arrangement, master strip and other
+Project fields still protect exit; any loaded/saved Project also stays guarded.
+The normal dirty flag and in-memory settings are preserved. Project replacement
+still guards FX edits, and nothing is automatically saved. The Player-only
+no-write regression now includes Perceptual. No audio or running app is touched.
+On exact Rust 1.97.1/AArch64, the new regression failed before the fix; all 14
+focused Player tests and all 1,261 normal tests pass afterward (14 historical
+cases intentionally ignored). Locked checking, formatting and deterministic
+documentation generation pass. Agent builds use `CARGO_INCREMENTAL=0` and the
+normal target directory; test temporary paths stay in a task-owned ignored area.
+The release executable is refreshed for normal exit/reopen; the running app is
+preserved. No private configuration or saved Project is rewritten.
+
 ## Perceptual saw-source rework, 2026-11-07
 
 The owner resumed the musical task after the note-interaction fix. The companion

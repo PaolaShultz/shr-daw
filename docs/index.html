@@ -642,9 +642,13 @@ Save before quitting or replacing a Project to retain it across restarts.
 The exit dialog identifies the Project and shows which areas changed, such as
 TEMPO, KEY/SCALE, or FX/AUX. Auditioning notes in Player, browsing sounds, and
 changing the synth's own parameters there do not change the Project. Player TAP
-tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project settings and can
-require saving even when the Project contains no notes. Synth sound edits use
-Player SAVE; MIDI Learn saves its controller mapping separately.</p>
+tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project settings.
+When quitting an otherwise untouched, untitled startup session, FX/AUX-only
+changes do not trigger a Project save prompt. Those audition settings are not
+saved automatically. Named or loaded Projects, and sessions with notes, tempo,
+routing or other Project edits, retain the save guard—even with no notes.
+Replacing a Project still guards FX/AUX changes. Synth sound edits use Player
+SAVE; MIDI Learn saves its controller mapping separately.</p>
 <p>All eight SHR Synth models respond to the pitch wheel (±2 semitones) and
 modulation wheel (vibrato depth, up to ±50 cents at 5 Hz). Both work on held
 notes and do not change saved sound controls. A newly loaded engine starts
@@ -21756,6 +21760,29 @@ suite and focused live DSP tests also passed. Controller/listening and
 real-time hardware acceptance remain for the coordinated human session.</p>
 <p><a href="#doc-how_it_works">How SHR-DAW works</a> owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.</p>
+<h4 id="doc-workspace_handoff--player-only-fxaux-exit-2026-11-07" tabindex="-1">Player-only FX/AUX exit, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--player-only-fxaux-exit-2026-11-07" aria-label="Link to Player-only FX/AUX exit, 2026-11-07">#</a></h4>
+<p>The owner reported a Project-save prompt labeled FX/AUX after playing synths in
+Player, with no Project to save. Player's live racks share Song storage; rack
+or send edits therefore previously guarded exit even in the untouched startup
+session. The offline regression reproduces that FX-only case. Ordinary note,
+sound-selection and synth-control events have no Project-write path in the
+checked flow; the exact input responsible for the reported rack difference is
+not established.</p>
+<p>Quit now permits an otherwise untouched, untitled, never-saved startup session
+to exit with FX/AUX-only changes. Comparison against the complete startup Song
+(with configured routing/FX defaults) ignores only insert rack, AUX routing and
+drum rack. Name, notes, tempo, routing, arrangement, master strip and other
+Project fields still protect exit; any loaded/saved Project also stays guarded.
+The normal dirty flag and in-memory settings are preserved. Project replacement
+still guards FX edits, and nothing is automatically saved. The Player-only
+no-write regression now includes Perceptual. No audio or running app is touched.
+On exact Rust 1.97.1/AArch64, the new regression failed before the fix; all 14
+focused Player tests and all 1,261 normal tests pass afterward (14 historical
+cases intentionally ignored). Locked checking, formatting and deterministic
+documentation generation pass. Agent builds use <code>CARGO_INCREMENTAL=0</code> and the
+normal target directory; test temporary paths stay in a task-owned ignored area.
+The release executable is refreshed for normal exit/reopen; the running app is
+preserved. No private configuration or saved Project is rewritten.</p>
 <h4 id="doc-workspace_handoff--perceptual-saw-source-rework-2026-11-07" tabindex="-1">Perceptual saw-source rework, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--perceptual-saw-source-rework-2026-11-07" aria-label="Link to Perceptual saw-source rework, 2026-11-07">#</a></h4>
 <p>The owner resumed the musical task after the note-interaction fix. The companion
 revoices all ten Perceptual starts: detuned saw pairs, saw/pulse, an octave-pulse

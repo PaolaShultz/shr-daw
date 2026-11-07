@@ -258,9 +258,13 @@ Save before quitting or replacing a Project to retain it across restarts.
 The exit dialog identifies the Project and shows which areas changed, such as
 TEMPO, KEY/SCALE, or FX/AUX. Auditioning notes in Player, browsing sounds, and
 changing the synth's own parameters there do not change the Project. Player TAP
-tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project settings and can
-require saving even when the Project contains no notes. Synth sound edits use
-Player SAVE; MIDI Learn saves its controller mapping separately.
+tempo, N00B scale, AUX sends, channel inserts, and effects are shared Project settings.
+When quitting an otherwise untouched, untitled startup session, FX/AUX-only
+changes do not trigger a Project save prompt. Those audition settings are not
+saved automatically. Named or loaded Projects, and sessions with notes, tempo,
+routing or other Project edits, retain the save guard—even with no notes.
+Replacing a Project still guards FX/AUX changes. Synth sound edits use Player
+SAVE; MIDI Learn saves its controller mapping separately.
 
 All eight SHR Synth models respond to the pitch wheel (±2 semitones) and
 modulation wheel (vibrato depth, up to ±50 cents at 5 Hz). Both work on held
