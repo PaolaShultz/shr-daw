@@ -272,3 +272,19 @@ redistribution evidence is in
 For step-by-step screens, continue with the
 [screen and menu manual](MENU_MANUAL.md). For Pattern pages, route fields,
 recording, and Arrangement behavior, use the [tracker guide](TRACKER.md).
+
+### Perceptual synthesis
+
+The SHR Synth **Perceptual** model adds E01 Micro Delay, E02 Spectral Split,
+E03 Dispersion, E04 Notch Motion and E05 Virtual Pitch. Select a start and hold
+a note while moving Position or Env Depth. These control unequal short delays,
+complementary bands, all-pass phase paths, subtractive notches or a harmonic
+cluster, respectively. They are five preset-owned wirings with live controls.
+
+The 4×4 rows are Position/Focus/Bright/Body, Env Depth/Rate/Motion/Width,
+Attack/Decay/Sustain/Release, then Volume/AUX 1/AUX 2/AUX 3. The envelope controls
+both amplitude and the modulation excursion. NAV, pickup, reset, save and
+Project routing retain their existing behavior. Four voices are a trial
+setting, not a native Pi performance claim. See the companion
+[Perceptual guide](https://github.com/PaolaShultz/shr-synth/blob/main/docs/PERCEPTUAL.md)
+for topology-specific behavior and listening limits.

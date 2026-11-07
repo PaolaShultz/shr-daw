@@ -52,8 +52,8 @@ Machine-readable ownership remains in `Cargo.toml` and
 | SHR Synth 0.2.4 | exact Git revision installed as a managed external process |
 | SHR Sampler 0.1.3 | exact Git revision installed as a managed external process; accepted runtime range `>=0.1.2,<0.2.0` |
 
-SHR source supports SHR Synth through schema 10 and eight models, including
-monophonic Pressure Chain and Open303 (28 cleared companion starts).
+SHR source supports SHR Synth through schema 11 and nine models, including
+monophonic Pressure Chain and Open303, plus Perceptual (33 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
 volume. Both keep AUX on physical rotaries 14–16 and the existing Project instrument strip.
@@ -69,6 +69,34 @@ real-time hardware acceptance remain for the coordinated human session.
 
 [How SHR-DAW works](HOW_IT_WORKS.md) owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.
+
+## Perceptual integration, 2026-11-07
+
+The owner authorized a new engine and full builds. SHR Synth's Perceptual model
+adds E01–E05 Micro Delay, Spectral Split, Dispersion, Notch Motion and Virtual
+Pitch. Schema 11 retains topology on load/save; native CC20–31 map to eight
+tone controls plus ADSR, with CC7 volume and the existing three AUX slots.
+Held-note control, pickup/reset and Project identity use the ordinary SHR Synth
+path. The [instrument guide](INSTRUMENTS_AND_DRUMS.md#perceptual-synthesis)
+owns the control layout; companion `docs/PERCEPTUAL.md` owns DSP and listening
+limits. The installer manifest pins the matching companion source.
+
+Validation is on x86_64 with exact rustc 1.97.1. Locked checking, formatting,
+all-target/all-feature DEV and REL builds, both binary version checks and REL
+help pass. The final REL catalog discovers all five new starts through the
+checkout-local launcher. All seven model/surface integration tests, the new
+five-topology save/load test and four installer contracts pass. The full normal DAW suite has
+eight existing EQ/effect/FT2 failures, reproduced on unchanged source; all new
+Perceptual and existing model save/surface contracts pass. These baseline
+failures are not repaired by this focused instrument change. No native Pi
+performance, physical-controller acceptance or listening claim is made.
+The documentation-site generator remains blocked by a pre-existing machine-local
+path in the GigPies implementation document; the same rejection reproduces
+from unchanged source. The focused Markdown guide is updated; generated HTML
+was not bypassed or manually edited.
+The new checkout-local runtime configuration selects the companion release
+host and factory catalog. No existing private configuration was overwritten,
+and no live app, JACK, MIDI, playback or hardware was started.
 
 ## Open303 integration, 2026-09-09
 

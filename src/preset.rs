@@ -105,10 +105,11 @@ pub enum MojModel {
     DualFilter,
     PressureChain,
     Open303,
+    Perceptual,
 }
 
 impl MojModel {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::ModelD,
         Self::SixOpPm,
         Self::StrangeOscillator,
@@ -117,6 +118,7 @@ impl MojModel {
         Self::DualFilter,
         Self::PressureChain,
         Self::Open303,
+        Self::Perceptual,
     ];
 
     pub const fn stable_id(self) -> &'static str {
@@ -129,6 +131,7 @@ impl MojModel {
             Self::DualFilter => "dual_filter",
             Self::PressureChain => "pressure_chain",
             Self::Open303 => "open303",
+            Self::Perceptual => "perceptual",
         }
     }
 
@@ -142,6 +145,7 @@ impl MojModel {
             Self::DualFilter => "Dual Filter",
             Self::PressureChain => "Pressure Chain",
             Self::Open303 => "Open303",
+            Self::Perceptual => "Perceptual",
         }
     }
 
@@ -155,6 +159,7 @@ impl MojModel {
             Self::DualFilter => 'F',
             Self::PressureChain => 'C',
             Self::Open303 => 'A',
+            Self::Perceptual => 'E',
         }
     }
 }
@@ -283,6 +288,7 @@ fn compact_shr_synth_name(model: MojModel, name: &str) -> String {
         MojModel::DualFilter => ("D-FLT", &["Dual Filter", "D-FLT"]),
         MojModel::PressureChain => ("P-CHN", &["Pressure Chain", "P-CHN"]),
         MojModel::Open303 => ("Open303", &["Open303"]),
+        MojModel::Perceptual => ("PERCEPT", &["Perceptual", "PERCEPT"]),
     };
     for prefix in redundant_prefixes {
         if sound
@@ -333,6 +339,7 @@ pub fn moj_catalog_display_name(presets: &[Preset], index: usize) -> Option<Stri
         MojModel::DualFilter => "D-FLT",
         MojModel::PressureChain => "P-CHN",
         MojModel::Open303 => "Open303",
+        MojModel::Perceptual => "PERCEPT",
     };
     let sound = without_number
         .strip_prefix(old_code)
@@ -1161,6 +1168,7 @@ enum MojPatch {
     DualFilter(MojDualFilterCore),
     PressureChain(MojPressureTopology),
     Open303(MojOpen303Filter),
+    Perceptual(MojPerceptualTopology),
 }
 
 #[derive(Debug)]
@@ -1201,7 +1209,7 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
         .and_then(toml::Value::as_integer)
         .context("SHR Synth preset has no numeric schema_version")?;
     let (name, model, voices, output_gain, instrument_volume, patch, values) = match version {
-        7 | 8 | 9 | 10 => {
+        7 | 8 | 9 | 10 | 11 => {
             let model = value
                 .get("model")
                 .and_then(toml::Value::as_str)
@@ -1309,7 +1317,22 @@ fn read_moj_document(path: &Path) -> Result<MojDocument> {
                         document.controls.values(),
                     )
                 }
-                "open303" if version == 10 => {
+                "perceptual" if version == 11 => {
+                    let document: MojPresetV11Perceptual = toml::from_str(&source)?;
+                    if document.model != MojModel::Perceptual {
+                        bail!("invalid Perceptual identity");
+                    }
+                    (
+                        document.name,
+                        document.model,
+                        document.voices,
+                        document.output_gain,
+                        document.instrument_volume,
+                        MojPatch::Perceptual(document.perceptual_topology),
+                        document.macros.values(),
+                    )
+                }
+                "open303" if version >= 10 => {
                     let document: MojPresetV10Open303 = toml::from_str(&source)?;
                     if document.model != MojModel::Open303 || document.voices != 1 {
                         bail!("invalid monophonic Open303 identity");
@@ -2502,6 +2525,18 @@ fn serialize_shr_synth(
                 controls: MojDualFilterControls::from_values(values),
             })?
         }
+        (MojModel::Perceptual, MojPatch::Perceptual(perceptual_topology)) => {
+            toml::to_string_pretty(&MojPresetV11Perceptual {
+                schema_version: 11,
+                name: name.to_string(),
+                voices: document.voices,
+                output_gain: document.output_gain,
+                instrument_volume,
+                model: MojModel::Perceptual,
+                perceptual_topology,
+                macros: MojMacrosPerceptual::from_values(values),
+            })?
+        }
         (MojModel::Open303, MojPatch::Open303(open303_filter)) => {
             toml::to_string_pretty(&MojPresetV10Open303 {
                 schema_version: 10,
@@ -2655,7 +2690,9 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
     if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        != Some(if expected_model == MojModel::Open303 {
+        != Some(if expected_model == MojModel::Perceptual {
+            11
+        } else if expected_model == MojModel::Open303 {
             10
         } else if expected_model == MojModel::PressureChain {
             9
@@ -2666,6 +2703,12 @@ fn validate_moj_source(source: &str, expected_model: MojModel) -> Result<()> {
         bail!("saved SHR Synth preset schema does not match its model")
     }
     match expected_model {
+        MojModel::Perceptual => {
+            let document: MojPresetV11Perceptual = toml::from_str(source)?;
+            if document.model != MojModel::Perceptual {
+                bail!("saved Perceptual identity is invalid");
+            }
+        }
         MojModel::Open303 => {
             let document: MojPresetV10Open303 = toml::from_str(source)?;
             if document.model != MojModel::Open303 || document.voices != 1 {
@@ -3311,6 +3354,29 @@ sustain = 0.7
 release = 0.4
 "#
             .into(),
+            MojModel::Perceptual => r#"schema_version = 11
+name = "29 Perceptual Micro Delay"
+voices = 4
+output_gain = 0.65
+instrument_volume = 1.0
+model = "perceptual"
+perceptual_topology = "micro_delay"
+
+[macros]
+position = 0.35
+focus = 0.65
+brightness = 0.75
+body = 0.65
+env_depth = 0.65
+rate = 0.3
+motion = 0.35
+width = 0.7
+attack = 0.16
+decay = 0.4
+sustain = 0.65
+release = 0.25
+"#
+            .into(),
             MojModel::Open303 => r#"schema_version = 10
 name = "Open303 Rubber Bass"
 voices = 1
@@ -3386,6 +3452,46 @@ amp_release = 0.7
     }
 
     #[test]
+    fn perceptual_topologies_keep_identity_through_save_and_surface_mapping() {
+        let dir = std::env::temp_dir().join(format!("shr-perceptual-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let model = MojModel::Perceptual;
+        for topology in [
+            "micro_delay",
+            "spectral_split",
+            "dispersion",
+            "notch_motion",
+            "virtual_pitch",
+        ] {
+            let source = moj_source(model).replace("micro_delay", topology);
+            let path = dir.join(format!("{topology}.mojsint"));
+            fs::write(&path, &source).unwrap();
+            let (_, found, mut values) = read_shr_synth(&path).unwrap();
+            assert_eq!(found, model);
+            for cc in 20..=31 {
+                values.insert(cc, 0.73);
+            }
+            values.insert(7, 0.41);
+            let saved =
+                String::from_utf8(serialize_shr_synth(&path, model, "Saved", &values).unwrap())
+                    .unwrap();
+            validate_moj_source(&saved, model).unwrap();
+            assert!(saved.contains(&format!("perceptual_topology = \"{topology}\"")));
+            fs::write(&path, saved).unwrap();
+            assert_eq!(read_shr_synth(&path).unwrap().2, values);
+            fs::write(&path, source.replace(topology, "unknown_topology")).unwrap();
+            assert!(read_shr_synth(&path).is_err());
+        }
+        let surface = crate::control::moj_surface_controls(model, false);
+        assert_eq!(surface.len(), 13);
+        for (slot, control) in surface[..12].iter().enumerate() {
+            assert_eq!(control.cc, 20 + slot as u8);
+        }
+        assert_eq!(surface[12].cc, 7);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn moj_reordered_surface_roundtrips_every_native_cc_and_hidden_envelope() {
         let base =
             std::env::temp_dir().join(format!("shr-moj-surface-save-{}", std::process::id()));
@@ -3455,7 +3561,9 @@ amp_release = 0.7
                 storage.shr_synth.join(model.stable_id())
             );
             let encoded = fs::read_to_string(path).unwrap();
-            assert!(encoded.contains(if model == MojModel::Open303 {
+            assert!(encoded.contains(if model == MojModel::Perceptual {
+                "schema_version = 11"
+            } else if model == MojModel::Open303 {
                 "schema_version = 10"
             } else if model == MojModel::PressureChain {
                 "schema_version = 9"
@@ -3491,6 +3599,10 @@ amp_release = 0.7
                     assert!(encoded.contains("bass_matrix_patch = \"transformer\""));
                     assert!(encoded.contains("body = 0.91"));
                     assert!(encoded.contains("character = 0.5"));
+                }
+                MojModel::Perceptual => {
+                    assert!(encoded.contains("perceptual_topology = \"micro_delay\""));
+                    assert!(encoded.contains("position = 0.91"));
                 }
                 MojModel::Open303 => {
                     assert!(encoded.contains("open303_filter = \"tb303\""));
@@ -3821,5 +3933,80 @@ amp_release = 0.7
         }
         schema.sort();
         schema
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum MojPerceptualTopology {
+    MicroDelay,
+    SpectralSplit,
+    Dispersion,
+    NotchMotion,
+    VirtualPitch,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojPresetV11Perceptual {
+    schema_version: u32,
+    name: String,
+    voices: usize,
+    output_gain: f32,
+    instrument_volume: f32,
+    model: MojModel,
+    perceptual_topology: MojPerceptualTopology,
+    macros: MojMacrosPerceptual,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct MojMacrosPerceptual {
+    position: f32,
+    focus: f32,
+    brightness: f32,
+    body: f32,
+    env_depth: f32,
+    rate: f32,
+    motion: f32,
+    width: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+impl MojMacrosPerceptual {
+    fn values(self) -> [f32; 15] {
+        [
+            self.position,
+            self.focus,
+            self.brightness,
+            self.body,
+            self.env_depth,
+            self.rate,
+            self.motion,
+            self.width,
+            self.attack,
+            self.decay,
+            self.sustain,
+            self.release,
+            0.5,
+            0.5,
+            0.5,
+        ]
+    }
+    fn from_values(v: [f32; 15]) -> Self {
+        Self {
+            position: v[0],
+            focus: v[1],
+            brightness: v[2],
+            body: v[3],
+            env_depth: v[4],
+            rate: v[5],
+            motion: v[6],
+            width: v[7],
+            attack: v[8],
+            decay: v[9],
+            sustain: v[10],
+            release: v[11],
+        }
     }
 }

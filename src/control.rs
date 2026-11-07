@@ -705,6 +705,7 @@ pub const fn moj_controls(model: crate::preset::MojModel) -> &'static [MojContro
         crate::preset::MojModel::DualFilter => &MOJ_DUAL_FILTER_CONTROLS,
         crate::preset::MojModel::PressureChain => &MOJ_PRESSURE_CONTROLS,
         crate::preset::MojModel::Open303 => &MOJ_OPEN303_CONTROLS,
+        crate::preset::MojModel::Perceptual => &MOJ_PERCEPTUAL_CONTROLS,
     }
 }
 
@@ -879,6 +880,7 @@ pub fn moj_surface_controls(
         crate::preset::MojModel::DualFilter => &DUAL_FILTER_SURFACE,
         crate::preset::MojModel::PressureChain => &PRESSURE_SURFACE,
         crate::preset::MojModel::Open303 => &OPEN303_SURFACE,
+        crate::preset::MojModel::Perceptual => &MOJ_PERCEPTUAL_CONTROLS,
     }
 }
 
@@ -1050,3 +1052,71 @@ mod tests {
         );
     }
 }
+
+const MOJ_PERCEPTUAL_CONTROLS: [MojControl; 13] = [
+    MojControl {
+        cc: 20,
+        name: "Position",
+        macro_id: "position",
+    },
+    MojControl {
+        cc: 21,
+        name: "Focus",
+        macro_id: "focus",
+    },
+    MojControl {
+        cc: 22,
+        name: "Bright",
+        macro_id: "brightness",
+    },
+    MojControl {
+        cc: 23,
+        name: "Body",
+        macro_id: "body",
+    },
+    MojControl {
+        cc: 24,
+        name: "Env Depth",
+        macro_id: "env_depth",
+    },
+    MojControl {
+        cc: 25,
+        name: "Rate",
+        macro_id: "rate",
+    },
+    MojControl {
+        cc: 26,
+        name: "Motion",
+        macro_id: "motion",
+    },
+    MojControl {
+        cc: 27,
+        name: "Width",
+        macro_id: "width",
+    },
+    MojControl {
+        cc: 28,
+        name: "Attack",
+        macro_id: "attack",
+    },
+    MojControl {
+        cc: 29,
+        name: "Decay",
+        macro_id: "decay",
+    },
+    MojControl {
+        cc: 30,
+        name: "Sustain",
+        macro_id: "sustain",
+    },
+    MojControl {
+        cc: 31,
+        name: "Release",
+        macro_id: "release",
+    },
+    MojControl {
+        cc: 7,
+        name: "Volume",
+        macro_id: "instrument_volume",
+    },
+];
