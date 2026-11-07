@@ -21752,6 +21752,19 @@ suite and focused live DSP tests also passed. Controller/listening and
 real-time hardware acceptance remain for the coordinated human session.</p>
 <p><a href="#doc-how_it_works">How SHR-DAW works</a> owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.</p>
+<h4 id="doc-workspace_handoff--overlapping-note-parameter-investigation-2026-11-07" tabindex="-1">Overlapping-note parameter investigation, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--overlapping-note-parameter-investigation-2026-11-07" aria-label="Link to Overlapping-note parameter investigation, 2026-11-07">#</a></h4>
+<p>The companion pin includes the focused SHR Synth correction: starting a second
+note no longer restarts the shared pitch-update clock of held voices. Offline
+regressions preserve the first voice's complete state in all ten Perceptual
+starts, including wheels and moving controls. No filter/envelope reset was
+found, and the tiny reproduced pitch change is not a confirmed explanation for
+the user's audible click. The user declined recording; no audio or running
+process was changed. Factory tones remain unchanged; the requested saw/rough-saw
+character is still unresolved. Synth DEV/REL hosts were rebuilt and its normal
+suite, strict Clippy, audit/deny and all-38 deterministic render comparison pass.
+This metadata-only SHR change needs no app rebuild; the checkout configuration
+already selects the rebuilt companion release host. The synth handoff owns the
+diagnostic details and remaining acceptance boundary.</p>
 <h4 id="doc-workspace_handoff--slow-perceptual-swirls-2026-11-07" tabindex="-1">Slow Perceptual swirls, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--slow-perceptual-swirls-2026-11-07" aria-label="Link to Slow Perceptual swirls, 2026-11-07">#</a></h4>
 <p>The owner authorized five playable sounds, integration, full builds and checks,
 without audio/hardware operation. The Perceptual reader/writer now retains

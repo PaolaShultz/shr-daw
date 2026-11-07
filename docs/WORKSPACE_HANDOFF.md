@@ -70,6 +70,21 @@ real-time hardware acceptance remain for the coordinated human session.
 [How SHR-DAW works](HOW_IT_WORKS.md) owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.
 
+## Overlapping-note parameter investigation, 2026-11-07
+
+The companion pin includes the focused SHR Synth correction: starting a second
+note no longer restarts the shared pitch-update clock of held voices. Offline
+regressions preserve the first voice's complete state in all ten Perceptual
+starts, including wheels and moving controls. No filter/envelope reset was
+found, and the tiny reproduced pitch change is not a confirmed explanation for
+the user's audible click. The user declined recording; no audio or running
+process was changed. Factory tones remain unchanged; the requested saw/rough-saw
+character is still unresolved. Synth DEV/REL hosts were rebuilt and its normal
+suite, strict Clippy, audit/deny and all-38 deterministic render comparison pass.
+This metadata-only SHR change needs no app rebuild; the checkout configuration
+already selects the rebuilt companion release host. The synth handoff owns the
+diagnostic details and remaining acceptance boundary.
+
 ## Slow Perceptual swirls, 2026-11-07
 
 The owner authorized five playable sounds, integration, full builds and checks,
