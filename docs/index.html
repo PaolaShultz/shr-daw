@@ -1121,46 +1121,50 @@ Project routing retain their existing behavior. Four voices are a trial
 setting, not a native Pi performance claim. See the companion
 <a href="https://github.com/PaolaShultz/shr-synth/blob/main/docs/PERCEPTUAL.md" class="external" target="_blank" rel="noopener noreferrer external">Perceptual guide</a>
 for topology-specific behavior and listening limits.</p>
-<p>The five slow swirls add distinct wirings on that same surface:</p>
+<p>All ten starts now have richer saw-based sources. E01/E03 use detuned saw
+pairs, E02 uses saw/pulse, E04 uses a rough stepped saw, and E05 retains a
+missing-fundamental saw cluster. Existing saved Perceptual sounds inherit the
+new source character; model identity and controls stay compatible.</p>
+<p>The five slow swirls use distinct wirings on that same surface:</p>
 <table>
 <thead>
 <tr>
-<th>Sound</th>
+<th>Sound / source</th>
 <th>What moves</th>
 <th>Body pot</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>E06 Counter Tide</strong></td>
+<td><strong>E06 Counter Tide</strong> — detuned saw pair</td>
 <td>Opposing resonant low/high filter sweeps</td>
 <td>Low/high balance</td>
 </tr>
 <tr>
-<td><strong>E07 Vowel Orbit</strong></td>
+<td><strong>E07 Vowel Orbit</strong> — saw/asymmetric pulse</td>
 <td>Three resonant peaks with different LFO phases</td>
 <td>Peak spacing</td>
 </tr>
 <tr>
-<td><strong>E08 Phase Bloom</strong></td>
+<td><strong>E08 Phase Bloom</strong> — gently detuned saw pair</td>
 <td>Resonant low-pass into direct/all-pass interference</td>
 <td>Phase mix and stage spacing</td>
 </tr>
 <tr>
-<td><strong>E09 Spectral Carousel</strong></td>
+<td><strong>E09 Spectral Carousel</strong> — saw/octave pulse</td>
 <td>Filtered low/band/high energy rotating in stereo</td>
 <td>Secondary rotation and middle band</td>
 </tr>
 <tr>
-<td><strong>E10 Tidal Memory</strong></td>
+<td><strong>E10 Tidal Memory</strong> — rough stepped saw</td>
 <td>Unequal comb delays into moving resonant filters</td>
 <td>Delay spacing</td>
 </tr>
 </tbody>
 </table>
 <p>For E06–E10, <strong>Position</strong> (pot 1) is filter center, <strong>Focus</strong> (2) is resonance,
-<strong>Bright</strong> (3) is harmonic balance, and <strong>Body</strong> (4) combines the table's behavior
-with fundamental level. <strong>Env Depth</strong> (5) is the note contour's filter amount;
+<strong>Bright</strong> (3) opens the source tone filter (and rough edge in Tidal Memory),
+and <strong>Body</strong> (4) controls the behavior in the table. <strong>Env Depth</strong> (5) is the note contour's filter amount;
 <strong>Rate</strong> (6) is dedicated LFO speed; <strong>Motion</strong> (7) is cyclic depth; <strong>Width</strong> (8)
 sets stereo spread. ADSR (9–12), Volume (13), AUX (14–16), and rotary-1 NAV
 click remain unchanged. Controls affect held notes through smoothing.</p>
@@ -21752,6 +21756,22 @@ suite and focused live DSP tests also passed. Controller/listening and
 real-time hardware acceptance remain for the coordinated human session.</p>
 <p><a href="#doc-how_it_works">How SHR-DAW works</a> owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.</p>
+<h4 id="doc-workspace_handoff--perceptual-saw-source-rework-2026-11-07" tabindex="-1">Perceptual saw-source rework, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--perceptual-saw-source-rework-2026-11-07" aria-label="Link to Perceptual saw-source rework, 2026-11-07">#</a></h4>
+<p>The owner resumed the musical task after the note-interaction fix. The companion
+revoices all ten Perceptual starts: detuned saw pairs, saw/pulse, an octave-pulse
+blend, rough stepped ramps, and a broader missing-fundamental cluster. E06–E10
+retain their five different swirl graphs and slow Rate law, with distinct
+factory envelopes. Body on those five now controls topology behavior only;
+Bright opens the source tone filter. No schema, host protocol, UI code or control
+surface change is needed. Existing private Perceptual sounds inherit the source
+change. The instrument guide describes sources, pot meanings and loading.</p>
+<p>The checkout configuration already loads the companion release host/presets;
+the installer pin is advanced with this change. App code is unchanged, so no
+SHR app rebuild is necessary. Synth validation and native offline timing belong
+in its handoff. Four installer-helper tests and deterministic documentation
+generation passed for this metadata/documentation update. No running app,
+audio, MIDI, hardware or recording was started
+or reconfigured. Listening acceptance remains with the owner.</p>
 <h4 id="doc-workspace_handoff--overlapping-note-parameter-investigation-2026-11-07" tabindex="-1">Overlapping-note parameter investigation, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--overlapping-note-parameter-investigation-2026-11-07" aria-label="Link to Overlapping-note parameter investigation, 2026-11-07">#</a></h4>
 <p>The companion pin includes the focused SHR Synth correction: starting a second
 note no longer restarts the shared pitch-update clock of held voices. Offline

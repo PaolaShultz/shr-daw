@@ -70,6 +70,25 @@ real-time hardware acceptance remain for the coordinated human session.
 [How SHR-DAW works](HOW_IT_WORKS.md) owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.
 
+## Perceptual saw-source rework, 2026-11-07
+
+The owner resumed the musical task after the note-interaction fix. The companion
+revoices all ten Perceptual starts: detuned saw pairs, saw/pulse, an octave-pulse
+blend, rough stepped ramps, and a broader missing-fundamental cluster. E06–E10
+retain their five different swirl graphs and slow Rate law, with distinct
+factory envelopes. Body on those five now controls topology behavior only;
+Bright opens the source tone filter. No schema, host protocol, UI code or control
+surface change is needed. Existing private Perceptual sounds inherit the source
+change. The instrument guide describes sources, pot meanings and loading.
+
+The checkout configuration already loads the companion release host/presets;
+the installer pin is advanced with this change. App code is unchanged, so no
+SHR app rebuild is necessary. Synth validation and native offline timing belong
+in its handoff. Four installer-helper tests and deterministic documentation
+generation passed for this metadata/documentation update. No running app,
+audio, MIDI, hardware or recording was started
+or reconfigured. Listening acceptance remains with the owner.
+
 ## Overlapping-note parameter investigation, 2026-11-07
 
 The companion pin includes the focused SHR Synth correction: starting a second

@@ -292,19 +292,24 @@ setting, not a native Pi performance claim. See the companion
 [Perceptual guide](https://github.com/PaolaShultz/shr-synth/blob/main/docs/PERCEPTUAL.md)
 for topology-specific behavior and listening limits.
 
-The five slow swirls add distinct wirings on that same surface:
+All ten starts now have richer saw-based sources. E01/E03 use detuned saw
+pairs, E02 uses saw/pulse, E04 uses a rough stepped saw, and E05 retains a
+missing-fundamental saw cluster. Existing saved Perceptual sounds inherit the
+new source character; model identity and controls stay compatible.
 
-| Sound | What moves | Body pot |
+The five slow swirls use distinct wirings on that same surface:
+
+| Sound / source | What moves | Body pot |
 | --- | --- | --- |
-| **E06 Counter Tide** | Opposing resonant low/high filter sweeps | Low/high balance |
-| **E07 Vowel Orbit** | Three resonant peaks with different LFO phases | Peak spacing |
-| **E08 Phase Bloom** | Resonant low-pass into direct/all-pass interference | Phase mix and stage spacing |
-| **E09 Spectral Carousel** | Filtered low/band/high energy rotating in stereo | Secondary rotation and middle band |
-| **E10 Tidal Memory** | Unequal comb delays into moving resonant filters | Delay spacing |
+| **E06 Counter Tide** — detuned saw pair | Opposing resonant low/high filter sweeps | Low/high balance |
+| **E07 Vowel Orbit** — saw/asymmetric pulse | Three resonant peaks with different LFO phases | Peak spacing |
+| **E08 Phase Bloom** — gently detuned saw pair | Resonant low-pass into direct/all-pass interference | Phase mix and stage spacing |
+| **E09 Spectral Carousel** — saw/octave pulse | Filtered low/band/high energy rotating in stereo | Secondary rotation and middle band |
+| **E10 Tidal Memory** — rough stepped saw | Unequal comb delays into moving resonant filters | Delay spacing |
 
 For E06–E10, **Position** (pot 1) is filter center, **Focus** (2) is resonance,
-**Bright** (3) is harmonic balance, and **Body** (4) combines the table's behavior
-with fundamental level. **Env Depth** (5) is the note contour's filter amount;
+**Bright** (3) opens the source tone filter (and rough edge in Tidal Memory),
+and **Body** (4) controls the behavior in the table. **Env Depth** (5) is the note contour's filter amount;
 **Rate** (6) is dedicated LFO speed; **Motion** (7) is cyclic depth; **Width** (8)
 sets stereo spread. ADSR (9–12), Volume (13), AUX (14–16), and rotary-1 NAV
 click remain unchanged. Controls affect held notes through smoothing.
