@@ -85,18 +85,38 @@ Validation is on x86_64 with exact rustc 1.97.1. Locked checking, formatting,
 all-target/all-feature DEV and REL builds, both binary version checks and REL
 help pass. The final REL catalog discovers all five new starts through the
 checkout-local launcher. All seven model/surface integration tests, the new
-five-topology save/load test and four installer contracts pass. The full normal DAW suite has
-eight existing EQ/effect/FT2 failures, reproduced on unchanged source; all new
-Perceptual and existing model save/surface contracts pass. These baseline
-failures are not repaired by this focused instrument change. No native Pi
-performance, physical-controller acceptance or listening claim is made.
-The documentation-site generator remains blocked by a pre-existing machine-local
-path in the GigPies implementation document; the same rejection reproduces
-from unchanged source. The focused Markdown guide is updated; generated HTML
-was not bypassed or manually edited.
+five-topology save/load test and four installer contracts pass. The initial pass
+found eight pre-existing EQ/effect/FT2 failures; the follow-up repair below
+resolves them. No native Pi performance, physical-controller acceptance or
+listening claim is made.
 The new checkout-local runtime configuration selects the companion release
 host and factory catalog. No existing private configuration was overwritten,
 and no live app, JACK, MIDI, playback or hardware was started.
+
+## Startup FX regression repair, 2026-11-07
+
+Startup FX defaults are now included in the exact untouched-Project comparison.
+A fresh FT2 Project can adopt the Player instrument without restarting it even
+when the default master compressor or a restored FX snapshot is present.
+Saved Projects and subsequent FX, note, Arrangement or routing edits still
+prevent automatic retargeting. See [the tracker contract](TRACKER.md).
+
+Six older EQ/effect tests assumed an empty master rack and/or reused its effect
+ID. Their fixtures now allocate globally unique IDs and assert that existing
+startup effects survive adding a master effect. The default compressor and
+production graph validation are preserved. A new failing-before/passing-after
+regression covers both built-in and restored FX defaults and seven protected
+edit/save cases; the original eight failures and all 429 UI tests pass.
+
+The locked full all-target/all-feature suite passes 1,259 tests with zero
+failures and 14 historical tests intentionally ignored on exact Rust 1.97.1,
+x86_64. Locked checking, formatting and all-target/all-feature DEV/REL builds
+pass; both binaries report their version and the REL catalog retains all five
+Perceptual sounds. The documentation generator's
+existing local-path rejection was fixed by replacing the GigPies plan's
+machine-specific checkout path with its public repository URL; generation and
+both URL-policy tests pass without relaxing the security checks.
+No audio, MIDI, hardware or live process was started or replaced.
 
 ## Open303 integration, 2026-09-09
 

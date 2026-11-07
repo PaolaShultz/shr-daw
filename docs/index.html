@@ -1103,6 +1103,19 @@ redistribution evidence is in
 <p>For step-by-step screens, continue with the
 <a href="#doc-menu_manual">screen and menu manual</a>. For Pattern pages, route fields,
 recording, and Arrangement behavior, use the <a href="#doc-tracker">tracker guide</a>.</p>
+<h5 id="doc-instruments_and_drums--perceptual-synthesis" tabindex="-1">Perceptual synthesis<a class="heading-anchor" href="#doc-instruments_and_drums--perceptual-synthesis" aria-label="Link to Perceptual synthesis">#</a></h5>
+<p>The SHR Synth <strong>Perceptual</strong> model adds E01 Micro Delay, E02 Spectral Split,
+E03 Dispersion, E04 Notch Motion and E05 Virtual Pitch. Select a start and hold
+a note while moving Position or Env Depth. These control unequal short delays,
+complementary bands, all-pass phase paths, subtractive notches or a harmonic
+cluster, respectively. They are five preset-owned wirings with live controls.</p>
+<p>The 4×4 rows are Position/Focus/Bright/Body, Env Depth/Rate/Motion/Width,
+Attack/Decay/Sustain/Release, then Volume/AUX 1/AUX 2/AUX 3. The envelope controls
+both amplitude and the modulation excursion. NAV, pickup, reset, save and
+Project routing retain their existing behavior. Four voices are a trial
+setting, not a native Pi performance claim. See the companion
+<a href="https://github.com/PaolaShultz/shr-synth/blob/main/docs/PERCEPTUAL.md" class="external" target="_blank" rel="noopener noreferrer external">Perceptual guide</a>
+for topology-specific behavior and listening limits.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-menu_manual" data-source="docs/MENU_MANUAL.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Screen and menu manual</span><span class="document-summary">Deterministic images covering every populated 40×13 screen, contextual editor, visible Levels command page, and controller menu page, with explanations.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/MENU_MANUAL.md" target="_blank" rel="noopener noreferrer external">View docs/MENU_MANUAL.md source</a></div><p>This is the visual guide to SHR-DAW's current 40×13 workspaces, contextual
 screens, editors, and master overlays. The current controller map is
@@ -1894,6 +1907,9 @@ and that engine's stable instrument identity in the Pattern. SHR Synth stable
 identities are model-qualified. When page 1 is
 part of a genuinely new, empty, unsaved default Project, entering FT2 may
 replace its factory route with the currently loaded Player engine/instrument.
+The untouched baseline includes startup FX defaults, including the default
+master compressor or a restored FX snapshot. Editing those effects afterward
+counts as a Project change and prevents automatic retargeting.
 A loaded/saved Project or an unsaved Project with any explicit change is never
 retargeted, even when its Pattern has no notes.
 For external MIDI, columns may share a destination/channel only when their
@@ -4205,17 +4221,32 @@ row and wraps; click/Enter opens a detached field draft; rotary/Up/Down changes
 only that draft; click/Enter validates and confirms; Back/Esc restores the
 original field. Back/Esc from browse returns Home. Re-entry always starts with
 clean browse state.</p>
-<p>Confirmation validates the complete runtime and controller candidate, creates
+<p>MIDI confirmation validates the complete runtime and controller candidate, creates
 non-overwriting backups, atomically replaces both files, releases source-owned
 notes/controller state, replaces SHR-owned MIDI inputs without layering, and
 refreshes live discovery. Failure restores the old files and runtime route.
 <code>AUDIO IN</code> selects the stereo mixer/effects input (or <code>NONE</code>), and <code>AUDIO OUT</code>
 selects the stereo playback destination. Both show the JACK client and channel
 pair, retain offline choices, and use actual audio-port direction/type rather
-than guessing from names. Raw-recorder assignments remain separate. Audio
-changes report <code>Saved · reopen SHR for audio</code>; exit and reopen to apply them to
-all sources. Devices must already be exposed to JACK, including Bluetooth
-playback bridges. Controller-clock
+than guessing from names. Raw-recorder assignments remain separate. Confirming
+<code>AUDIO OUT</code> switches all shared-bus sources immediately and preserves engines,
+effects and recording. Failed switches keep the previous route and the draft.
+<code>AUDIO IN</code> changes still report <code>Saved · reopen SHR for audio</code>.
+<code>BT SCAN</code> opens a draft; APPLY discovers receivers in pairing mode for ten seconds.
+Elapsed time appears while work runs. Completion opens the <code>BT DEVICE</code> list if
+you remain on BT SCAN and devices were found;
+turn to choose and APPLY to select a receiver, then separately apply its link action.
+Entering <code>BT ACTION</code> without a device choice opens that list (or the scan draft
+when no devices are known). <code>BT ACTION</code> offers <code>PAIR+CONNECT</code>, <code>CONNECT</code>,
+<code>DISCONNECT</code>, and <code>FORGET</code>; turn to choose, confirm to execute, or Back to cancel.
+Pairing trusts the chosen receiver and supports devices without PIN entry.
+Bluetooth work runs asynchronously; busy controls prevent overlapping actions.
+The Routing header shows current Bluetooth connection state and the saved audio
+output independently of the action being edited. Read-only Bluetooth refreshes
+run every three seconds and preserve draft device identity. Automatic reconnect
+retries pause while Routing is open. A successful connection is saved immediately for reconnect after restart or power
+loss; Disconnect/Forget stops retries for that receiver. Available output pairs
+refresh while Routing is open. Controller-clock
 enable/output changes likewise report <code>CLOCK NEXT START</code>; live MIDI input role/
 source changes activate immediately. Selecting
 or confirming a MIDI output uses discovery only; it never opens an output as a
@@ -6609,21 +6640,24 @@ numeric address is removed; the stable configured value is
 <code>AudioBox USB 96 AudioBox USB 96 MIDI 1</code> remains compatible only when unique.
 There is no substring/fuzzy fallback, and volatile numeric addresses are never
 written.</p>
-<p>The Routing screen edits detached drafts. Confirming any row validates the
-whole runtime/controller candidate. Audio rows back up and atomically save
+<p>The Routing screen edits detached drafts. Confirming a configuration row
+validates the whole runtime/controller candidate. Audio rows back up and atomically save
 only the runtime configuration, preserving MIDI settings even when remembered
-MIDI devices are offline. Other rows back up and save both files, then replace
+MIDI devices are offline. MIDI rows back up and save both files, then replace
 SHR-owned MIDI inputs without layering them. Activation failure restores the
-previous files and route. Merely browsing, highlighting, or
-confirming an output choice does not open that output or send MIDI. <code>AUDIO IN</code>
+previous files and route. Merely browsing or
+highlighting an output choice does not change connections or send MIDI. <code>AUDIO IN</code>
 selects the stereo input for the mixer/effects graph; <code>NONE</code> removes that input.
 It preserves the separate raw-recorder track assignments and monitoring policy.
 <code>AUDIO OUT</code> selects the stereo destination for instruments, loops and the final
 mix. Both selectors retain remembered offline choices and show channel numbers.
 Audio choices use JACK's audio type and port direction, including bridges with
 arbitrary port names; MIDI ports are excluded. Channels are paired within each
-JACK client in numeric order. Save, then exit and reopen SHR to apply audio
-changes consistently to every source. Controller-clock output changes also take effect on the next SHR
+JACK client in numeric order. Confirming <code>AUDIO OUT</code> switches the shared final
+output immediately while keeping engines, effects, meters and recording alive.
+A failed switch restores the previous output links and configuration file and
+keeps the draft for retry. <code>AUDIO IN</code> changes still require exiting and reopening
+SHR. Controller-clock output changes also take effect on the next SHR
 start; MIDI input, controller-role, and external-transport input changes
 activate immediately while stopped. Startup does not
 silently migrate legacy names; canonical form is written only after a confirmed
@@ -6638,6 +6672,18 @@ and a playback bridge. Selecting a Bluetooth bridge does not remove JACK's
 dependence on whichever physical device currently clocks the server. Operation
 without that device needs a separate server/backend setup.</p>
 <h5 id="doc-configuration--bluetooth-and-multiple-audio-devices" tabindex="-1">Bluetooth and multiple audio devices<a class="heading-anchor" href="#doc-configuration--bluetooth-and-multiple-audio-devices" aria-label="Link to Bluetooth and multiple audio devices">#</a></h5>
+<p>Use Bluetooth for listening to music, not live instrument playing or microphone
+monitoring. In the October 11, 2026 listening trial, stereo Bluetooth playback
+worked, but the musician reported enough delay to make live playing unusable.
+This is a listening result, not a measured round-trip latency figure; a
+successful connection and an error-free stream do not establish playability.</p>
+<p>For live use, choose a wired USB audio interface. A USB microphone with its own
+headphone playback output can serve as the input and output device: connect its
+USB cable to the Pi running SHR and headphones to the microphone. Select its
+capture ports under <strong>AUDIO IN</strong> and its headphone playback pair under
+<strong>AUDIO OUT</strong>. Input changes require reopening SHR. When listening level is
+controlled on the analogue output, keep the system playback volume at 100%
+(0 dB); check this separately from SHR's instrument and mix controls.</p>
 <p>For Bluetooth playback without a USB sound card, PipeWire with WirePlumber and
 the PipeWire JACK compatibility libraries can provide the audio server. Its
 device manager exposes connected USB, HDMI and Bluetooth audio endpoints to
@@ -6656,16 +6702,67 @@ native loops. On a dedicated headless musician account, WirePlumber's
 <code>monitor.bluez.seat-monitoring = disabled</code> allows Bluetooth over SSH/tty;
 <code>bluez5.auto-connect = [ a2dp_sink ]</code> can be scoped to an already-paired receiver.
 PipeWire's <code>jack.show-monitor = false</code> hides speaker-loopback ports from normal
-input choices. Device pairing remains an OS operation; Routing selects the
-available stereo audio pairs. A receiver without a microphone supplies only
-an output. Selecting several independent Bluetooth speakers as a synchronized
+input choices.</p>
+<p>In <strong>Home → Routing</strong>, put the receiver in pairing mode and confirm <strong>BT SCAN</strong>
+to edit the scan action, then <strong>APPLY</strong> to run a ten-second scan. The row shows
+elapsed time while Bluetooth work runs. If you remain on BT SCAN when it finishes,
+<strong>BT DEVICE</strong> opens a list of known and discovered receivers (or the status reports
+no devices).
+Turn to choose a receiver and <strong>APPLY</strong> to select it; then confirm <strong>BT ACTION →
+PAIR+CONNECT</strong> to pair, trust, and explicitly connect that exact receiver's
+profiles. Existing bonds are preserved. A temporary connection during pairing
+is not treated as a completed audio connection; BlueZ separates
+<a href="https://manpages.debian.org/trixie/bluez/org.bluez.Device.5.en.html" class="external" target="_blank" rel="noopener noreferrer external">Pair from profile Connect</a>.
+Entering BT ACTION before choosing a device opens the chooser first, or the scan
+draft if no devices are known. Choosing a device alone never connects.
+The link action also offers <strong>CONNECT</strong>, <strong>DISCONNECT</strong>, and <strong>FORGET</strong>;
+Back cancels a draft. Choose <strong>AUDIO OUT</strong> after connecting. These controls use
+<a href="https://kernel.googlesource.com/pub/scm/bluetooth/bluez.git/+/refs/tags/5.83/client/bluetoothctl.rst" class="external" target="_blank" rel="noopener noreferrer external">BlueZ bluetoothctl</a>
+and coreutils <code>timeout</code>, with Bluetooth enabled and an accessible system adapter.
+Scan powers the adapter on; SHR does not change host services. Pairing supports
+speakers/headphones using no PIN entry; devices requiring a PIN or numeric
+confirmation report a pairing failure. Commands run in one background worker,
+with finite deadlines and no UI/audio-thread waits. Only discovery waits for its
+whole ten-second interval; other commands return as soon as BlueZ finishes.
+Busy controls prevent overlapping operations; failures appear in the shared status row.
+Automatic reconnect retries pause while Routing is open so they do not interrupt
+manual device selection. Scan again to refresh a device that was not discoverable;
+Routing refreshes known devices every three seconds, including while a draft is
+open. A refresh preserves the draft's exact device address; losing that device
+cancels the draft. The native-size Routing header keeps the selected Bluetooth
+device's CONNECTED/DISCONNECTED state and the saved OUT destination visible.
+UNKNOWN means discovery failed. OUT shows OFFLINE when its exact ports are
+absent, SELECTED when present, or DISABLED when autoconnection is off. This is
+separate from the proposed output in an unsaved draft and does not claim that a
+synth is running.
+A successful Bluetooth link does not itself change the audio destination.</p>
+<p>Player startup failures retain their full reason in private
+<code>engine-start-error.log</code>; a missing output is identified in the status row as
+<code>AUDIO OUT offline</code> instead of a generic retry message.</p>
+<p>A successful explicit connection immediately saves its address in the private
+state directory's <code>bluetooth-reconnect</code> file, using atomic replacement and file
+and directory synchronization. The first successful Connect or Pair+Connect in
+this version establishes that preference; older versions did not save it, and
+SHR never guesses from the paired-device list. Reopening SHR reconnects only that
+saved known device, including receivers that do not retain a bond and therefore
+report unpaired after disconnect; it does not automatically re-pair or recreate
+a forgotten device. While SHR runs it checks/retries every thirty seconds after the previous worker
+finishes. Disconnect or Forget clears that device's saved intent before attempting
+the operation, including if the receiver is already off. Power loss does not
+require a clean application exit to retain the last completed save. Connections
+do not start playback or change software volume. Saved audio routes remain
+separate and resume when their exact ports return.
+A receiver without a microphone supplies only an output. Selecting several independent Bluetooth speakers as a synchronized
 multiroom system is outside this stereo route selector.</p>
-<p>In SHR, open <strong>Home → Routing</strong>, choose <strong>AUDIO OUT</strong>, confirm, and reopen SHR.
+<p>In SHR, open <strong>Home → Routing</strong>, choose <strong>AUDIO OUT</strong>, and confirm the desired
+stereo pair. The output switches immediately; no application restart is needed.
 Choose <strong>AUDIO IN → NONE</strong> when using only software instruments, drums and loops.
 The final mixer, effects and stereo WAV capture can work without physical audio
 inputs. The raw recorder retains its own exact per-track source assignments.
-If a Bluetooth receiver disconnects, reconnect it and reopen SHR to restore its
-exact route; another speaker is never silently selected in its place.</p>
+If the selected receiver disconnects, use <code>BT ACTION</code> → <code>CONNECT</code>. The final bus
+restores its exact output links when that receiver's ports return. Sources,
+effects, metering and final recording remain active during the disconnection.
+To use a different speaker or sound card, explicitly select it under <code>AUDIO OUT</code>.</p>
 <p>Provider references: <a href="https://docs.pipewire.org/page_man_pw-jack_1.html" class="external" target="_blank" rel="noopener noreferrer external">PipeWire JACK launcher</a>
 and <a href="https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/bluetooth.html" class="external" target="_blank" rel="noopener noreferrer external">WirePlumber Bluetooth settings</a>.</p>
 <h4 id="doc-configuration--dedicated-controller-clock-and-transport" tabindex="-1">Dedicated controller clock and transport<a class="heading-anchor" href="#doc-configuration--dedicated-controller-clock-and-transport" aria-label="Link to Dedicated controller clock and transport">#</a></h4>
@@ -6801,8 +6898,10 @@ Drums, and Loop sources are present plus one configured stereo capture pair.
 The melodic instrument retains its Project-persisted source insert rack and
 three aux buses. The complete sum then passes through the master rack, live
 master level, fixed Project MASTER STRIP, final meter, final stereo recorder
-tap, and playback. Automatic startup remains disabled by default; MTR Input
-<strong>MON ON</strong> explicitly starts this same bus for input-only monitoring:</p>
+tap, and playback. In the TUI, normal audio autoconnection activates this shared
+bus for Player, drums and loops even when the legacy <code>audio.graph.enabled</code> opt-in
+is false. MTR Input <strong>MON ON</strong> uses the same bus for input-only monitoring.
+Monitoring remains off until explicitly enabled:</p>
 <pre><code class="language-text">audio.autoconnect=true
 audio.output=system:playback_1
 audio.output=system:playback_2
@@ -7674,6 +7773,28 @@ encoder/Enter. Back returns through MASTER to the original caller, retaining
 its controller page, selection, FT2 cursor, and editing context. Navigation
 neither loads an engine nor starts or stops transport. STOP ends the relevant
 musical action; PANIC performs the existing bounded note recovery.</p>
+<p><strong>ALL FX</strong> on MASTER's first controller page toggles the complete FX stack.
+The title shows <strong>ALL FX BYPASSED</strong> or <strong>ALL FX ON</strong>. The same action is on
+the rack's SYS page; keyboard Shift-B works in MASTER, the rack, effect editor,
+and master-strip pages. Every application start begins with master bypass ON,
+including after a power cycle. It is a session switch, not a saved Project
+parameter; loading a Project does not turn it off.</p>
+<p>Master bypass skips sample processing in the instrument strips, synth/drum
+insert racks, AUX effects and return limiters, master inserts, and optional
+MASTER STRIP sections. AUX returns are silent, including tails. Rack effect histories
+are cleared on entering bypass; parameter values and individual bypass choices
+are retained. The source/master mixer, meters, recording, fixed latency, and
+final output protection remain active. Turning the stack on restores the
+individual enabled/bypassed choices rather than enabling every effect blindly.</p>
+<p>Startup and new Projects use the private <code>fx-defaults.json</code> alongside
+<code>ft2-routing-defaults.shsong</code> in the application data directory. Its version-1
+snapshot contains <code>insert_rack</code>, <code>drum_rack</code>, <code>aux_routing</code>, and <code>master_strip</code>.
+Saved Projects retain their own FX when loaded; loading them does not rewrite
+the startup snapshot. Invalid snapshots produce an explicit startup fault.
+Without a snapshot, the fresh rack includes a master compressor at −12 dB
+threshold, 2.5 dB knee, +1.5 dB makeup, 1 ms attack, 100 ms release and 2:1
+ratio, fully wet. It is enabled within the stack but held off by startup master
+bypass, so ALL FX also activates it. No EQ is added.</p>
 <p>CHANNEL INSERTS opens <strong>INSERTS</strong>. Up/Down selects an instrument output;
 Enter or FIELD selects BASS, TREBLE, or COMP. VALUE−/VALUE+ (keyboard Left/Right)
 changes that field. BYPASS (keyboard X) explicitly enables/disables the strip.
@@ -8319,15 +8440,24 @@ access, subprocess, logging, allocation, or locks.</p>
 they are smoothed atomic updates and may be auditioned during playback. They
 are rejected during a final recording. Whole-strip comparison keeps the same
 delay and true-peak protection, and never overwrites the edited values.</p>
-<p>Automatic graph startup remains disabled by default. The managed engine,
-internal drums when active, and loop are connected directly first. The graph is
-activated muted, its four stereo inputs plus playback boundary are connected,
+<p>In the TUI, normal audio autoconnection activates the shared final bus for
+Player, internal drums and loops, independently of the current screen and the
+legacy graph opt-in. New sources join that bus; replacing or unloading an
+optional loop does not destroy it or stop its final recording. Performance VU
+reads the final stereo sum, including the Player instrument. Physical input
+monitoring remains off until explicitly enabled.</p>
+<p>The graph is activated muted, its four stereo inputs plus playback boundary are connected,
 and the owned direct links are removed as one rollback-capable transaction before graph
 output is published at a block boundary. Validation, activation, or connection
 failure leaves or restores the exact prior direct links. Shutdown deactivates
 the callback before restoring them, avoiding a doubled final block.</p>
+<p>Routing output changes replace only the final stereo links in a rollback-capable
+transaction. They preserve the running DSP and final capture. Periodic owner-thread
+source maintenance also restores the exact playback links after a device returns;
+missing playback ports do not stop the sources or recording. Bluetooth device
+operations run in a separate worker and never run in an audio callback.</p>
 <p>FX state is saved in the Project while the graph is inactive, but direct
-playback cannot process or meter it. An explicit non-OFF AUX send adjustment
+fallback playback cannot process or meter it. An explicit non-OFF AUX send adjustment
 activates that processing as described above. The graph instantiates exactly four
 source kinds: managed instrument, SHR Drums, owned loop player, and one
 two-port live Input. That Input can preserve stereo or independently pan its
@@ -21458,7 +21588,7 @@ real synth chain. Those remain explicit acceptance work; no JACK, ALSA port,
 synth, playback, recording, screenshot, or MIDI transmission was started for
 this development-PC pass.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
-<details class="document" id="doc-workspace_handoff" data-source="docs/WORKSPACE_HANDOFF.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Workspace handoff</span><span class="document-summary">Current checkout, local hardware, private/public boundary, and validation state for maintainers.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/WORKSPACE_HANDOFF.md" target="_blank" rel="noopener noreferrer external">View docs/WORKSPACE_HANDOFF.md source</a></div><p>Updated: 2026-10-01</p>
+<details class="document" id="doc-workspace_handoff" data-source="docs/WORKSPACE_HANDOFF.md" data-kind="Technical archive"><summary><span class="document-title" role="heading" aria-level="4">Workspace handoff</span><span class="document-summary">Current checkout, local hardware, private/public boundary, and validation state for maintainers.</span></summary><div class="document-body"><div class="document-meta"><span>Technical archive</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/WORKSPACE_HANDOFF.md" target="_blank" rel="noopener noreferrer external">View docs/WORKSPACE_HANDOFF.md source</a></div><p>Updated: 2026-10-02</p>
 <p>This is the short current-state record for work in this checkout. Source code
 and machine-readable files are authoritative. Durable policy lives in
 <code>AGENTS.md</code>, helper behavior in <a href="#doc-maintainer_helpers">Maintainer helper scripts</a>,
@@ -21466,6 +21596,9 @@ and dated implementation records in
 <a href="#doc-development_history">Development history</a>.</p>
 <p>Do not add branch tips or clean/dirty snapshots here. This checkout is shared,
 so inspect live Git state before editing, staging, or committing.</p>
+<h4 id="doc-workspace_handoff--ci-notifications" tabindex="-1">CI notifications<a class="heading-anchor" href="#doc-workspace_handoff--ci-notifications" aria-label="Link to CI notifications">#</a></h4>
+<p><a href="#doc-ci--failure-and-recovery-notifications">Failure/recovery issue threads</a> track
+current default-branch CI incidents and explicitly close them after recovery.</p>
 <h4 id="doc-workspace_handoff--current-versions-and-formats" tabindex="-1">Current versions and formats<a class="heading-anchor" href="#doc-workspace_handoff--current-versions-and-formats" aria-label="Link to Current versions and formats">#</a></h4>
 <table>
 <thead>
@@ -21550,8 +21683,8 @@ explicit <code>SHSYNTH_BIN=.../target/debug/shr</code> override; that binary sho
 </tr>
 </tbody>
 </table>
-<p>SHR source supports SHR Synth through schema 10 and eight models, including
-monophonic Pressure Chain and Open303 (28 cleared companion starts).
+<p>SHR source supports SHR Synth through schema 11 and nine models, including
+monophonic Pressure Chain and Open303, plus Perceptual (33 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
 volume. Both keep AUX on physical rotaries 14–16 and the existing Project instrument strip.
@@ -21565,6 +21698,47 @@ suite and focused live DSP tests also passed. Controller/listening and
 real-time hardware acceptance remain for the coordinated human session.</p>
 <p><a href="#doc-how_it_works">How SHR-DAW works</a> owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.</p>
+<h4 id="doc-workspace_handoff--perceptual-integration-2026-11-07" tabindex="-1">Perceptual integration, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--perceptual-integration-2026-11-07" aria-label="Link to Perceptual integration, 2026-11-07">#</a></h4>
+<p>The owner authorized a new engine and full builds. SHR Synth's Perceptual model
+adds E01–E05 Micro Delay, Spectral Split, Dispersion, Notch Motion and Virtual
+Pitch. Schema 11 retains topology on load/save; native CC20–31 map to eight
+tone controls plus ADSR, with CC7 volume and the existing three AUX slots.
+Held-note control, pickup/reset and Project identity use the ordinary SHR Synth
+path. The <a href="#doc-instruments_and_drums--perceptual-synthesis">instrument guide</a>
+owns the control layout; companion <code>docs/PERCEPTUAL.md</code> owns DSP and listening
+limits. The installer manifest pins the matching companion source.</p>
+<p>Validation is on x86_64 with exact rustc 1.97.1. Locked checking, formatting,
+all-target/all-feature DEV and REL builds, both binary version checks and REL
+help pass. The final REL catalog discovers all five new starts through the
+checkout-local launcher. All seven model/surface integration tests, the new
+five-topology save/load test and four installer contracts pass. The initial pass
+found eight pre-existing EQ/effect/FT2 failures; the follow-up repair below
+resolves them. No native Pi performance, physical-controller acceptance or
+listening claim is made.
+The new checkout-local runtime configuration selects the companion release
+host and factory catalog. No existing private configuration was overwritten,
+and no live app, JACK, MIDI, playback or hardware was started.</p>
+<h4 id="doc-workspace_handoff--startup-fx-regression-repair-2026-11-07" tabindex="-1">Startup FX regression repair, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--startup-fx-regression-repair-2026-11-07" aria-label="Link to Startup FX regression repair, 2026-11-07">#</a></h4>
+<p>Startup FX defaults are now included in the exact untouched-Project comparison.
+A fresh FT2 Project can adopt the Player instrument without restarting it even
+when the default master compressor or a restored FX snapshot is present.
+Saved Projects and subsequent FX, note, Arrangement or routing edits still
+prevent automatic retargeting. See <a href="#doc-tracker">the tracker contract</a>.</p>
+<p>Six older EQ/effect tests assumed an empty master rack and/or reused its effect
+ID. Their fixtures now allocate globally unique IDs and assert that existing
+startup effects survive adding a master effect. The default compressor and
+production graph validation are preserved. A new failing-before/passing-after
+regression covers both built-in and restored FX defaults and seven protected
+edit/save cases; the original eight failures and all 429 UI tests pass.</p>
+<p>The locked full all-target/all-feature suite passes 1,259 tests with zero
+failures and 14 historical tests intentionally ignored on exact Rust 1.97.1,
+x86_64. Locked checking, formatting and all-target/all-feature DEV/REL builds
+pass; both binaries report their version and the REL catalog retains all five
+Perceptual sounds. The documentation generator's
+existing local-path rejection was fixed by replacing the GigPies plan's
+machine-specific checkout path with its public repository URL; generation and
+both URL-policy tests pass without relaxing the security checks.
+No audio, MIDI, hardware or live process was started or replaced.</p>
 <h4 id="doc-workspace_handoff--open303-integration-2026-09-09" tabindex="-1">Open303 integration, 2026-09-09<a class="heading-anchor" href="#doc-workspace_handoff--open303-integration-2026-09-09" aria-label="Link to Open303 integration, 2026-09-09">#</a></h4>
 <p>The owner requested Open303 and a few presets. Source now supports the eighth
 SHR Synth model, schema-10 Open303, its two preset-owned filter types and A01–A04
@@ -21799,7 +21973,22 @@ user manager and support headless Bluetooth. Exact device choices, configuration
 backup and rollback notes remain below ignored <code>$SHSYNTH_USER_DIR/audio-bluetooth-20261001/</code>.
 Do not restart the old JACK service alongside this audio owner.</p>
 <p>Routing now discovers typed JACK playback destinations and offers separate
-stereo AUDIO IN / AUDIO OUT choices; saved audio changes require reopening SHR.
+stereo AUDIO IN / AUDIO OUT choices. The October 2 source follow-up applies
+AUDIO OUT live through the shared final bus and adds paired-device BT DEVICE /
+BT LINK controls. AUDIO IN changes still require reopening SHR. Player, drums
+and loops now activate the same final bus under normal audio autoconnection;
+loop replacement retains that bus and final capture. Exact playback links are
+restored when a disconnected output returns. The authorized October 2 build
+passes the locked check and 73 focused routing, Bluetooth, final-bus, loop,
+monitoring and engine-lifecycle regressions with exact rustc 1.97.1 (8bab26f4f,
+AArch64, LLVM 22.1.6). All-target/all-feature DEV and the REL application build,
+formatting, and both binaries' version/help checks pass. The subsequent warning
+cleanup removes unused code, limits test helpers to test builds and asserts the
+timeline test's Result. Its all-target/all-feature check, 77 focused tests and
+refreshed DEV/REL application builds pass without compiler warnings; both
+binaries pass version/help checks. Full-suite, historical, Clippy and hardware checks were not run
+in this focused pass. Normal exit/reopen selects the rebuilt REL binary. No live
+app, audio process or connection was restarted or changed.
 An explicit empty graph input means NONE, while an omitted key retains the
 legacy capture preference. Software playback/effects/final recording no longer
 require a physical capture device. Input monitoring still requires the exact
@@ -24282,6 +24471,118 @@ cargo build --release --locked
 <p>Release-mode Pi checks should record timing results and hardware configuration.
 Static tests can prove boundaries and ownership, but only the user can approve
 whether a swing amount or groove feels musically right.</p>
+<p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
+</section>
+<section class="library-group" aria-labelledby="group-technical-archive"><header class="group-header"><p class="eyebrow">Supporting record</p><h3 id="group-technical-archive">Technical archive</h3><p>Public supporting material not listed as a primary route in the documentation index.</p></header>
+<details class="document" id="doc-ci" data-source="docs/CI.md" data-kind="Supporting record"><summary><span class="document-title" role="heading" aria-level="4">Continuous integration</span><span class="document-summary">The workflow runs on pushes to main, pull requests and manual dispatch. It uses read-only repository permissions, cancels superseded runs and selects exact Rust 1.97.1 with locked Cargo dependencies.</span></summary><div class="document-body"><div class="document-meta"><span>Supporting record</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/CI.md" target="_blank" rel="noopener noreferrer external">View docs/CI.md source</a></div><p><a href="https://github.com/PaolaShultz/shr-daw/blob/main/.github/workflows/ci.yml" class="external" target="_blank" rel="noopener noreferrer external">The workflow</a> runs on pushes to <code>main</code>, pull
+requests and manual dispatch. It uses read-only repository permissions, cancels
+superseded runs and selects exact Rust 1.97.1 with locked Cargo dependencies.</p>
+<p>The explicit request to add CI authorizes hosted locked checking and focused configuration contracts, not a local combined build pass. In accordance with AGENTS.md temporary restrictions, CI uses only config::tests:: on the shr binary plus existing isolated Python helper contracts. Complete Rust suites, Clippy and debug/release build campaigns are deliberately excluded. No local compilation was performed when adding this workflow.</p>
+<p>The workflow contains the exact reproducible commands. Historical/exhaustive
+auditions and benchmarks remain opt-in. No physical audio, MIDI, DMX, playback,
+service activation, media download or deployment is part of these checks.
+Compilation and synthetic tests do not establish Raspberry Pi hardware acceptance.
+Clippy with warnings denied and release builds are not added as new CI gates.</p>
+<h4 id="doc-ci--failure-and-recovery-notifications" tabindex="-1">Failure and recovery notifications<a class="heading-anchor" href="#doc-ci--failure-and-recovery-notifications" aria-label="Link to Failure and recovery notifications">#</a></h4>
+<p><a href="https://github.com/PaolaShultz/shr-daw/blob/main/.github/workflows/ci-alerts.yml" class="external" target="_blank" rel="noopener noreferrer external">CI alerts</a> opens one GitHub issue when CI
+fails on the current <code>main</code> commit, mentions <code>PaolaShultz</code>, and keeps repeated
+failures in that thread. A passing run for the current commit posts <strong>Recovered</strong>,
+renames and closes the issue. Ordinary successes and already-fixed historical
+failures create no alerts. Cancelled or pending runs never count as recovery.</p>
+<p>Email delivery follows GitHub's participating/@mention notification settings.
+Native Actions emails remain a separate account preference; disabling those
+avoids duplicate failure messages while retaining the incident thread.
+The notifier uses a pinned shared action with <code>actions: read</code>, <code>contents: read</code>
+and <code>issues: write</code>; it never runs the triggering code or accesses hardware.
+See the <a href="https://github.com/PaolaShultz/gigpies/blob/main/docs/CI_ALERTS.md" class="external" target="_blank" rel="noopener noreferrer external">shared notification contract</a>
+for retry behavior, tests and manual reconciliation. Existing CI checks are unchanged.</p>
+<p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
+<details class="document" id="doc-gigpies_implementation" data-source="docs/GIGPIES_IMPLEMENTATION.md" data-kind="Supporting record"><summary><span class="document-title" role="heading" aria-level="4">shr-daw in GigPies: activation plan</span><span class="document-summary">Planning baseline 2026-10-04 / GP-2026-10-04.1. All new tasks below are planned, not implemented by this document. Central inventory · Agreed contracts. Existing product roadmaps remain authoritative for unrelated work; this plan owns only the GigPies integration increments below.</span></summary><div class="document-body"><div class="document-meta"><span>Supporting record</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/GIGPIES_IMPLEMENTATION.md" target="_blank" rel="noopener noreferrer external">View docs/GIGPIES_IMPLEMENTATION.md source</a></div><p>Planning baseline <strong>2026-10-04 / GP-2026-10-04.1</strong>. All new tasks below are
+<strong>planned</strong>, not implemented by this document. <a href="https://github.com/PaolaShultz/gigpies/blob/main/docs/MODULE_IMPLEMENTATION_MAP.md" class="external" target="_blank" rel="noopener noreferrer external">Central inventory</a> ·
+<a href="https://github.com/PaolaShultz/gigpies/blob/main/docs/MODULE_CONTRACTS.md" class="external" target="_blank" rel="noopener noreferrer external">Agreed contracts</a>. Existing product roadmaps remain authoritative for
+unrelated work; this plan owns only the GigPies integration increments below.</p>
+<h4 id="doc-gigpies_implementation--objective-and-boundary" tabindex="-1">Objective and boundary<a class="heading-anchor" href="#doc-gigpies_implementation--objective-and-boundary" aria-label="Link to Objective and boundary">#</a></h4>
+<p>Own workstation/tracker/instrument graph and its existing recorder. GigPies may inspect narrow DSP/controller patterns with provenance; do not migrate the band mixer into DAW or remove its recorder as part of this plan.</p>
+<h4 id="doc-gigpies_implementation--source-and-evidence-reviewed" tabindex="-1">Source and evidence reviewed<a class="heading-anchor" href="#doc-gigpies_implementation--source-and-evidence-reviewed" aria-label="Link to Source and evidence reviewed">#</a></h4>
+<p>Repository: <a href="https://github.com/PaolaShultz/shr-daw" class="external" target="_blank" rel="noopener noreferrer external">SHR-DAW</a>. Inspected HEAD: <code>d93447d1ae391e7910c54965f886ed39baedab1c</code>.
+Clean at inspection; recheck before editing. This dated observation is not a future ownership claim.</p>
+<p>Owning documents: README.md, AGENTS.md, docs/WORKSPACE_HANDOFF.md, AUDIO_GRAPH.md, CONTROLLER_INTERFACE.md, MULTITRACK_RECORDING.md.</p>
+<p>Source inspected: <code>src/audio_graph.rs::{GraphDefinition,RecordingTap}</code>, <code>src/audio_recorder.rs::{AudioRecorder,recover_interrupted}</code>, <code>src/controller*.rs</code>, Cargo.toml and install/compatibility.json.</p>
+<p>Implemented workstation graph and raw/final recording, exact Git-pinned SHR Drums library and managed Synth/Sampler processes. The graph depends on workstation state and is not a drop-in GigPies mixer. No mocks are being adopted as product engines.</p>
+<p>These are source inspection and previously recorded results, not fresh builds or
+physical acceptance. The planning session runs documentation checks only.</p>
+<h4 id="doc-gigpies_implementation--milestones-and-tasks" tabindex="-1">Milestones and tasks<a class="heading-anchor" href="#doc-gigpies_implementation--milestones-and-tasks" aria-label="Link to Milestones and tasks">#</a></h4>
+<p>Reference only; no GigPies runtime dependency. First useful milestone is intentionally deferred. Only an explicit GP-07 extraction/reference request naming a concrete missing function and provenance may activate DAW-01. Existing GigPies adapted equations already have attribution; avoid new work unless a real consumer needs it.</p>
+<p>Task states are execution dependencies: READY has no missing software provider;
+WAITING names its precise prerequisite; DEFERRED has an activation condition.
+Source delivery and build reservation are additional launch prerequisites on a
+peer. Every row has one owner, the repository named in its Owner column. A later
+task starts only after the previous artifact is reviewed, never merely delivered.</p>
+<table>
+<thead>
+<tr>
+<th>Task / priority / state</th>
+<th>Owner</th>
+<th>Work area, inputs and required artifact</th>
+<th>Output and measurable acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DAW-01 / P3 / DEFERRED</td>
+<td>shr-daw</td>
+<td>Only an explicit GP-07 extraction/reference request naming a concrete missing function and provenance may activate DAW-01. Existing GigPies adapted equations already have attribution; avoid new work unless a real consumer needs it. Existing named source files only after activation; provider contract must be accepted first.</td>
+<td>When activated, read named existing source/contracts, provide a narrow ownership/licence/behavior mapping and synthetic vectors to GigPies. Any requested DAW change must have its own bounded scope; do not remove standalone features.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="doc-gigpies_implementation--validation-and-failure-behavior" tabindex="-1">Validation and failure behavior<a class="heading-anchor" href="#doc-gigpies_implementation--validation-and-failure-behavior" aria-label="Link to Validation and failure behavior">#</a></h4>
+<p>Documentation/format/source checks only under current AGENTS build restriction. Build-producing commands require a later explicit combined-build/test authorization; then use the exact focused commands selected by that authorized task. Do not run full suite/Clippy/release from this plan. This exception overrides the generic build example in the launch card.</p>
+<p>Preserve exact routes, recorder readiness/recovery and All Notes Off in owner code; no new cross-show connection or process lifecycle is activated. Failed reference fit stays reference-only.</p>
+<p>Historical research, auditions, exhaustive matrices, long soaks, full-show renders
+and physical/combined-load checks are intentionally outside the normal software
+milestones unless their protected behavior changes. Retain their owning documented
+on-demand commands; no private media download or test hardware side effect.
+Independent builds retain lockfiles and existing repository editions; this plan
+does not upgrade dependencies/editions or replace existing intra-repository workspace
+paths. The ban is on new sibling-repository path dependencies.</p>
+<h4 id="doc-gigpies_implementation--resources-review-and-recovery-of-work" tabindex="-1">Resources, review and recovery of work<a class="heading-anchor" href="#doc-gigpies_implementation--resources-review-and-recovery-of-work" aria-label="Link to Resources, review and recovery of work">#</a></h4>
+<p>No initial node/build reservation. On activation use a freed software lane with one jobs=1 build slot and exact reviewed source pin. Provisional first-harness budget ≤1 GiB compiler RSS and ≤512 MiB new output; native DSP builds need fresh inventory. No cache/media mirroring or background bench.</p>
+<p>Independent fallback: none; leave deferred until a real consumer and scoped authorization exist. No unbounded render or research assignment.
+Before builds check free space and target size; below 20 GiB free or above 5 GiB
+output is a review, not permission to delete another task's cache. No reduced
+coverage/debug information to make a budget appear to pass.</p>
+<p>Handoff: exact changed files, commit plus patch hashes or bounded source manifest
+if uncommitted, contract IDs/versions and provider-fixture hashes, commands/results,
+intentional skipped classes, remaining limits and next task/owner. Stage only named
+owned changes if a later implementation session commits; no public push is implied.
+Receiving owner reviews independently and writes an immutable private-ledger
+acknowledgement. Interrupted work stays visible with last completed acceptance
+criterion; never reset/stash/clean another session or replay an uncertain mutation.</p>
+<h4 id="doc-gigpies_implementation--activation-boundary" tabindex="-1">Activation boundary<a class="heading-anchor" href="#doc-gigpies_implementation--activation-boundary" aria-label="Link to Activation boundary">#</a></h4>
+<p>Only an explicit GP-07 extraction/reference request naming a concrete missing function and provenance may activate DAW-01. Existing GigPies adapted equations already have attribution; avoid new work unless a real consumer needs it. No runtime change or compatibility claim is made by writing this plan.</p>
+<h4 id="doc-gigpies_implementation--implementation-launch-prompt" tabindex="-1">Implementation launch prompt<a class="heading-anchor" href="#doc-gigpies_implementation--implementation-launch-prompt" aria-label="Link to Implementation launch prompt">#</a></h4>
+<p>Host/cwd assignments and source preparation are in GigPies PARALLEL_WORK_PLAN.md.
+This is a prompt for a later user-started session; no implementation worker has
+been started by the planning pass.</p>
+<pre><code class="language-text">Read docs/GIGPIES_IMPLEMENTATION.md in shr-daw, check current source and owning instructions,
+and verify whether its activation condition is satisfied. There is no READY
+implementation task for this repository in the initial GigPies wave. Do not
+invent one. If still deferred, report that fact and stop. If activated by an
+explicit later GigPies task, implement only the named bounded task after its
+contract/ownership review; preserve other sessions and unrelated work. No sibling
+writes, unilateral contract changes or sibling path dependencies. Use Rust 1.97.1,
+Cargo.lock and CARGO_INCREMENTAL=0 with the shared build slot and cargo -j 1;
+respect any stricter owning build restriction. No physical audio/MIDI/DMX,
+playback, devices, services, shared load, publication or deployment. Never mark
+mocked/incomplete work done; report exact dependency mismatches and keep progress
+in this plan. There is no busywork fallback; remain deferred.
+</code></pre>
+<h4 id="doc-gigpies_implementation--progress" tabindex="-1">Progress<a class="heading-anchor" href="#doc-gigpies_implementation--progress" aria-label="Link to Progress">#</a></h4>
+<ul>
+<li>2026-10-04: source and owner documents inspected; plan written. Implementation
+tasks remain in the states above. Physical evidence retains its original limits.</li>
+</ul>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 </section>
 </div></details></section><footer class="page-footer"><p>The page is generated from public SHR-DAW sources. <a href="#doc-license">MIT licence</a> · <a href="#doc-third-party">Third-party provenance</a> · <a class="external" href="https://github.com/PaolaShultz/shr-daw" target="_blank" rel="noopener noreferrer external">Repository source</a></p></footer></main>

@@ -1065,15 +1065,10 @@ pub fn pattern_has_note_events(pattern: &Pattern) -> bool {
         .any(|cell| cell.note != Note::Empty)
 }
 
-/// True only while a Project still has the exact unsaved structure created
-/// from the current FT2 routing defaults. The display name is deliberately
-/// ignored because naming a new Project does not make it musically non-empty.
-pub fn matches_new_empty_default_project(
-    song: &Song,
-    config: &ExternalMidiConfig,
-    routing_defaults: &[Page],
-) -> bool {
-    let mut expected = Song::new_with_pages(config, routing_defaults.to_vec());
+/// True only while a Project still matches its complete startup baseline,
+/// including routing and FX defaults. Naming alone does not make it edited.
+pub fn matches_new_empty_default_project(song: &Song, baseline: &Song) -> bool {
+    let mut expected = baseline.clone();
     expected.name = song.name.clone();
     song == &expected
 }
@@ -7427,27 +7422,28 @@ mod tests {
         let cfg = config();
         let defaults = factory_routing_pages("First Sound", gm_drums_route());
         let mut song = Song::new_with_pages(&cfg, defaults.clone());
+        let baseline = song.clone();
         song.name = "project 7".into();
-        assert!(matches_new_empty_default_project(&song, &cfg, &defaults));
+        assert!(matches_new_empty_default_project(&song, &baseline));
 
         song.patterns.get_mut(&0).unwrap().pages[0].target =
             PageTarget::Software(SoftwareRoute::synthv1("Explicit Sound"));
-        assert!(!matches_new_empty_default_project(&song, &cfg, &defaults));
+        assert!(!matches_new_empty_default_project(&song, &baseline));
         assert!(!pattern_has_note_events(&song.patterns[&0]));
 
         let mut song = Song::new_with_pages(&cfg, defaults.clone());
         song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
-        assert!(!matches_new_empty_default_project(&song, &cfg, &defaults));
+        assert!(!matches_new_empty_default_project(&song, &baseline));
 
         let mut song = Song::new_with_pages(&cfg, defaults.clone());
         song.order.push(0);
-        assert!(!matches_new_empty_default_project(&song, &cfg, &defaults));
+        assert!(!matches_new_empty_default_project(&song, &baseline));
 
         let mut song = Song::new_with_pages(&cfg, defaults.clone());
         song.insert_rack
             .add(crate::audio_graph::EffectKind::Compressor)
             .unwrap();
-        assert!(!matches_new_empty_default_project(&song, &cfg, &defaults));
+        assert!(!matches_new_empty_default_project(&song, &baseline));
     }
 
     #[test]

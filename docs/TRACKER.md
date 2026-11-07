@@ -192,6 +192,9 @@ and that engine's stable instrument identity in the Pattern. SHR Synth stable
 identities are model-qualified. When page 1 is
 part of a genuinely new, empty, unsaved default Project, entering FT2 may
 replace its factory route with the currently loaded Player engine/instrument.
+The untouched baseline includes startup FX defaults, including the default
+master compressor or a restored FX snapshot. Editing those effects afterward
+counts as a Project change and prevents automatic retargeting.
 A loaded/saved Project or an unsaved Project with any explicit change is never
 retargeted, even when its Pattern has no notes.
 For external MIDI, columns may share a destination/channel only when their

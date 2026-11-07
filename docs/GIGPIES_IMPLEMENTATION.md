@@ -11,7 +11,7 @@ Own workstation/tracker/instrument graph and its existing recorder. GigPies may 
 
 ## Source and evidence reviewed
 
-Repository: `/home/shome/p/shr-daw`. Inspected HEAD: `d93447d1ae391e7910c54965f886ed39baedab1c`.
+Repository: [SHR-DAW](https://github.com/PaolaShultz/shr-daw). Inspected HEAD: `d93447d1ae391e7910c54965f886ed39baedab1c`.
 Clean at inspection; recheck before editing. This dated observation is not a future ownership claim.
 
 Owning documents: README.md, AGENTS.md, docs/WORKSPACE_HANDOFF.md, AUDIO_GRAPH.md, CONTROLLER_INTERFACE.md, MULTITRACK_RECORDING.md.

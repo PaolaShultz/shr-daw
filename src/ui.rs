@@ -5749,12 +5749,15 @@ impl App {
     }
 
     fn genuinely_new_empty_default_project(&self) -> bool {
-        self.song_file_stem.is_none()
-            && sequencer::matches_new_empty_default_project(
-                &self.song,
-                &self.config.external_midi,
-                &self.routing_defaults,
-            )
+        if self.song_file_stem.is_some() {
+            return false;
+        }
+        let mut expected =
+            Song::new_with_pages(&self.config.external_midi, self.routing_defaults.clone());
+        if let Some(defaults) = &self.fx_defaults {
+            defaults.apply(&mut expected);
+        }
+        sequencer::matches_new_empty_default_project(&self.song, &expected)
     }
 
     fn prepare_first_tracker_instrument(&mut self) -> TrackerEntryInstrument {
@@ -29760,6 +29763,27 @@ mod tests {
         assert_eq!(serde_json::to_string(&a.song.aux_routing).unwrap(), before);
     }
 
+    fn add_selected_test_effect(a: &mut App, target: usize, kind: EffectKind) -> EffectId {
+        let id = a
+            .song
+            .aux_routing
+            .next_effect_id(&a.song.insert_rack)
+            .unwrap();
+        project_fx_rack_mut(
+            &mut a.song.insert_rack,
+            &mut a.song.aux_routing,
+            &mut a.song.drum_rack,
+            target,
+        )
+        .unwrap()
+        .add_with_id(kind, id)
+        .unwrap();
+        a.song.validate().unwrap();
+        a.fx_target = target;
+        a.fx_selection = FxRackSelection::Effect(id);
+        id
+    }
+
     fn app(presets: &[Preset]) -> App {
         app_with_routing_defaults(presets, PathBuf::from("/none"))
     }
@@ -37266,13 +37290,7 @@ release = 0.4
     fn eq_physical_gain_and_frequency_pots_never_edit_other_bands() {
         let p = presets();
         let mut a = app(&p);
-        a.song
-            .aux_routing
-            .master_rack
-            .add_with_id(EffectKind::Eq, 1)
-            .unwrap();
-        a.fx_target = MASTER_FX_TARGET;
-        a.fx_selection = FxRackSelection::Effect(1);
+        add_selected_test_effect(&mut a, MASTER_FX_TARGET, EffectKind::Eq);
         a.set_screen(Screen::FxEditor);
         let mapping = [
             (5, "low_shelf_db"),
@@ -37316,8 +37334,7 @@ release = 0.4
     fn eq_absolute_pot_waits_for_pickup_and_rearms_on_editor_entry() {
         let p = presets();
         let mut a = app(&p);
-        a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
-        a.fx_selection = FxRackSelection::Effect(1);
+        add_selected_test_effect(&mut a, 0, EffectKind::Eq);
         a.set_screen(Screen::FxEditor);
         a.apply_fx_surface(3, 0.0); // Physical pot 5: low gain, initially 0 dB.
         assert_eq!(a.selected_effect().unwrap().parameters["low_shelf_db"], 0.0);
@@ -37372,8 +37389,7 @@ release = 0.4
     fn fullscreen_eq_browses_all_fields_and_enforces_half_db_and_log_knobs() {
         let p = presets();
         let mut a = app(&p);
-        a.song.insert_rack.add_with_id(EffectKind::Eq, 1).unwrap();
-        a.fx_selection = FxRackSelection::Effect(1);
+        add_selected_test_effect(&mut a, 0, EffectKind::Eq);
         a.screen = Screen::FxEditor;
         let id = a.selected_effect_id().unwrap();
 
@@ -38047,6 +38063,7 @@ release = 0.4
     fn fx_aux_workflow_forces_wet_and_keeps_independent_send_return_state() {
         let p = presets();
         let mut a = app(&p);
+        let initial_master = a.song.aux_routing.master_rack.clone();
         a.fx_add_kind = 0;
         a.add_effect();
         let source_id = a.selected_effect_id().unwrap();
@@ -38090,7 +38107,15 @@ release = 0.4
         a.add_effect();
         let master_effect = a.selected_effect_id().unwrap();
         assert!(master_effect > third_aux_effect);
-        assert_eq!(a.song.aux_routing.master_rack.order, [master_effect]);
+        let mut expected_order = initial_master.order.clone();
+        expected_order.push(master_effect);
+        assert_eq!(a.song.aux_routing.master_rack.order, expected_order);
+        for effect in &initial_master.effects {
+            assert_eq!(
+                a.song.aux_routing.master_rack.effect(effect.id),
+                Some(effect)
+            );
+        }
         a.song.aux_routing.validate(&a.song.insert_rack).unwrap();
     }
 
@@ -43401,6 +43426,65 @@ release = 0.4
     }
 
     #[test]
+    fn fresh_project_recognizes_fx_defaults_but_preserves_subsequent_edits() {
+        let p = presets();
+        for custom in [false, true] {
+            let mut a = app(&p);
+            if custom {
+                let mut snapshot = serde_json::to_value(a.fx_defaults.as_ref().unwrap()).unwrap();
+                snapshot["aux_routing"]["master_rack"]["effects"][0]["parameters"]
+                    ["threshold_db"] = (-18.0).into();
+                let path =
+                    std::env::temp_dir().join(format!("shr-fresh-fx-{}.json", std::process::id()));
+                fs::write(&path, serde_json::to_vec(&snapshot).unwrap()).unwrap();
+                let defaults = crate::fx_defaults::FxDefaults::load(&path, &a.song).unwrap();
+                fs::remove_file(&path).unwrap();
+                defaults.apply(&mut a.song);
+                a.fx_defaults = Some(defaults);
+            }
+            a.song.name = "Named but untouched".into();
+            assert!(a.genuinely_new_empty_default_project(), "custom={custom}");
+            let baseline = a.song.clone();
+            for edit in 0..7 {
+                a.song = baseline.clone();
+                match edit {
+                    0 => {
+                        a.song.aux_routing.master_rack.effects[0]
+                            .parameters
+                            .insert("threshold_db".into(), -24.0);
+                    }
+                    1 => {
+                        a.song.aux_routing.master_rack = InsertRack::default();
+                    }
+                    2 => {
+                        a.song.aux_routing.master_rack.effects[0].bypass = true;
+                    }
+                    3 => {
+                        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(60);
+                    }
+                    4 => {
+                        a.song.order.push(0);
+                    }
+                    5 => {
+                        a.song.patterns.get_mut(&0).unwrap().pages[0].target =
+                            PageTarget::Software(SoftwareRoute::synthv1("Preset 17"));
+                    }
+                    _ => {
+                        a.song_file_stem = Some("saved-empty".into());
+                    }
+                }
+                let before = a.song.clone();
+                assert_eq!(
+                    a.prepare_first_tracker_instrument(),
+                    TrackerEntryInstrument::ExistingProject,
+                    "custom={custom} edit={edit}"
+                );
+                assert_eq!(a.song, before);
+            }
+        }
+    }
+
+    #[test]
     fn fresh_ft2_adopts_the_player_instrument_without_restarting_its_engine() {
         let p = presets();
         let mut a = app(&p);
@@ -44608,10 +44692,7 @@ release = 0.4
     fn effect_removal_clears_dependent_automation_and_keeps_project_valid() {
         let p = presets();
         let mut a = app(&p);
-        a.song
-            .insert_rack
-            .add_with_id(EffectKind::Utility, 1)
-            .unwrap();
+        let id = add_selected_test_effect(&mut a, 0, EffectKind::Utility);
         a.current_pattern_mut()
             .unwrap()
             .automation
@@ -44619,7 +44700,7 @@ release = 0.4
                 id: 1,
                 target: sequencer::AutomationTarget::Effect {
                     rack: sequencer::EffectRackTarget::Source,
-                    effect_id: 1,
+                    effect_id: id,
                     effect_kind: EffectKind::Utility,
                     effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
                     parameter: "trim_db".into(),
@@ -44629,7 +44710,7 @@ release = 0.4
             });
         a.song.validate().unwrap();
         a.fx_target = 0;
-        a.fx_selection = FxRackSelection::Effect(1);
+        a.fx_selection = FxRackSelection::Effect(id);
 
         a.remove_effect();
 
@@ -44643,10 +44724,7 @@ release = 0.4
     fn effect_type_cancel_keeps_automation_but_confirm_clears_it() {
         let p = presets();
         let mut a = app(&p);
-        a.song
-            .insert_rack
-            .add_with_id(EffectKind::Utility, 1)
-            .unwrap();
+        let id = add_selected_test_effect(&mut a, 0, EffectKind::Utility);
         a.current_pattern_mut()
             .unwrap()
             .automation
@@ -44654,7 +44732,7 @@ release = 0.4
                 id: 1,
                 target: sequencer::AutomationTarget::Effect {
                     rack: sequencer::EffectRackTarget::Source,
-                    effect_id: 1,
+                    effect_id: id,
                     effect_kind: EffectKind::Utility,
                     effect_version: crate::audio_graph::EFFECT_FORMAT_VERSION,
                     parameter: "trim_db".into(),
@@ -44663,12 +44741,12 @@ release = 0.4
                 points: vec![sequencer::AutomationPoint { tick: 0, value: 1 }],
             });
         a.fx_target = 0;
-        a.fx_selection = FxRackSelection::Effect(1);
+        a.fx_selection = FxRackSelection::Effect(id);
         a.begin_effect_type_edit();
         a.set_selected_effect_kind(EffectKind::Eq);
         a.cancel_effect_type_edit();
         assert_eq!(
-            a.song.insert_rack.effect(1).unwrap().kind,
+            a.song.insert_rack.effect(id).unwrap().kind,
             EffectKind::Utility
         );
         assert_eq!(a.current_pattern().unwrap().automation.len(), 1);
@@ -44678,7 +44756,7 @@ release = 0.4
         a.set_selected_effect_kind(EffectKind::Eq);
         a.confirm_effect_type_edit();
 
-        assert_eq!(a.song.insert_rack.effect(1).unwrap().kind, EffectKind::Eq);
+        assert_eq!(a.song.insert_rack.effect(id).unwrap().kind, EffectKind::Eq);
         assert!(a.current_pattern().unwrap().automation.is_empty());
         a.song.validate().unwrap();
         assert!(a.status.contains("cleared 1 AUTO lane(s) / 1 point(s)"));
