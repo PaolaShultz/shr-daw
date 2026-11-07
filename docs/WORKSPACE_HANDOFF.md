@@ -53,7 +53,7 @@ Machine-readable ownership remains in `Cargo.toml` and
 | SHR Sampler 0.1.3 | exact Git revision installed as a managed external process; accepted runtime range `>=0.1.2,<0.2.0` |
 
 SHR source supports SHR Synth through schema 11 and nine models, including
-monophonic Pressure Chain and Open303, plus Perceptual (33 cleared companion starts).
+monophonic Pressure Chain and Open303, plus Perceptual (38 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
 volume. Both keep AUX on physical rotaries 14–16 and the existing Project instrument strip.
@@ -69,6 +69,48 @@ real-time hardware acceptance remain for the coordinated human session.
 
 [How SHR-DAW works](HOW_IT_WORKS.md) owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.
+
+## Slow Perceptual swirls, 2026-11-07
+
+The owner authorized five playable sounds, integration, full builds and checks,
+without audio/hardware operation. The Perceptual reader/writer now retains
+Counter Tide, Vowel Orbit, Phase Bloom, Spectral Carousel and Tidal Memory.
+They extend the schema-11 topology vocabulary, with unchanged macro fields,
+model identity, pickup/reset, Project route and physical mapping. Older readers
+reject the new IDs; the installer pins the matching companion revision.
+
+E06–E10 use pot 6 Rate for logarithmic 0.005–2 Hz filter movement, pot 7 Motion
+for depth, Position for cutoff and Focus for resonance. Body changes each
+wiring. ADSR stays on row 3; Volume/AUX 1–3 stay on row 4. The instrument guide
+owns the mapping and companion `docs/PERCEPTUAL.md` owns DSP behavior.
+The local configuration already points to the companion checkout host/catalog;
+normal exit/reopen loads the rebuilt binaries and refreshes the preset list.
+
+Exact Rust 1.97.1 on AArch64 passes the full normal all-target/all-feature
+suite: 1,259 tests, zero failures, 14 historical tests intentionally skipped.
+The topology regression first failed on the unknown IDs, then passed for all
+ten identities, including live values, volume, save/load and physical CC order.
+The locked check and formatting pass. Four Python installer contracts and
+two documentation-generator policy tests pass. The companion handoff records
+372 passing synth tests, strict Clippy, audit/deny and exact paired renders of
+all 38 presets, including unchanged output for the earlier 33.
+
+Warning-denied DAW Clippy reports 26 existing lints in unchanged code (recorder,
+sequencer, UI and older tests, plus the existing schema-range expression).
+No lint suppression or unrelated refactor was added. The synth's strict
+Clippy passes. This is a documented validation limitation, not a clean DAW
+Clippy result. Both DEV and REL application builds pass against the final
+companion pin, as do their version/help checks and the focused Rust installer
+contract. The configured REL catalog discovers all five new factory starts.
+Builds used `CARGO_INCREMENTAL=0` and normal target directories; optimized DAW
+test-harness builds were discontinued after the normal suite had passed, with
+application binaries built directly using `cargo build --locked --bin shr`
+and its `--release` equivalent. No running process was replaced.
+Temporary renders/scratch and redundant test-build output are removed at
+closeout; maintained factory presets, source/tests/docs and DEV/REL binaries
+are retained.
+No audio process, JACK, MIDI, controller, playback or hardware test is part
+of this task.
 
 ## Perceptual integration, 2026-11-07
 

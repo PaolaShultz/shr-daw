@@ -62,7 +62,7 @@ Project keeps its stored routes.
 ## SHR Synth sounds
 
 SHR Synth is SHR-DAW's editable in-house synthesis family. The installer pins
-a 28-start catalog with these eight models:
+a 38-start catalog with these nine models:
 
 - Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
   Matched Linear Mixer, Matched Linear Ladder, and Matched No Drift or
@@ -83,10 +83,13 @@ a 28-start catalog with these eight models:
   slide. Releasing the latest note returns to the most recently held note.
 
 - Open303: Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck, with native
-  acid filter and accent/slide envelope controls.
+  acid filter and accent/slide envelope controls;
+- Perceptual: five envelope-driven starts plus five slow filter swirls, with
+  distinct preset-owned wirings and the shared live 4×4 control surface.
 
-Pressure Chain requires SHR Synth preset schema 9; Open303 requires schema 10. The installation pin contains
-that engine and all 28 cleared starts. Existing installations need a matching
+Pressure Chain requires SHR Synth preset schema 9; Open303 requires schema 10
+and Perceptual requires schema 11. The installation pin contains the matching
+engine and all 38 cleared starts. Existing installations need a matching
 host binary update before loading the new model; source changes alone do not
 replace a running or installed executable.
 
@@ -288,3 +291,27 @@ Project routing retain their existing behavior. Four voices are a trial
 setting, not a native Pi performance claim. See the companion
 [Perceptual guide](https://github.com/PaolaShultz/shr-synth/blob/main/docs/PERCEPTUAL.md)
 for topology-specific behavior and listening limits.
+
+The five slow swirls add distinct wirings on that same surface:
+
+| Sound | What moves | Body pot |
+| --- | --- | --- |
+| **E06 Counter Tide** | Opposing resonant low/high filter sweeps | Low/high balance |
+| **E07 Vowel Orbit** | Three resonant peaks with different LFO phases | Peak spacing |
+| **E08 Phase Bloom** | Resonant low-pass into direct/all-pass interference | Phase mix and stage spacing |
+| **E09 Spectral Carousel** | Filtered low/band/high energy rotating in stereo | Secondary rotation and middle band |
+| **E10 Tidal Memory** | Unequal comb delays into moving resonant filters | Delay spacing |
+
+For E06–E10, **Position** (pot 1) is filter center, **Focus** (2) is resonance,
+**Bright** (3) is harmonic balance, and **Body** (4) combines the table's behavior
+with fundamental level. **Env Depth** (5) is the note contour's filter amount;
+**Rate** (6) is dedicated LFO speed; **Motion** (7) is cyclic depth; **Width** (8)
+sets stereo spread. ADSR (9–12), Volume (13), AUX (14–16), and rotary-1 NAV
+click remain unchanged. Controls affect held notes through smoothing.
+
+Rate's 0/25/50/75/100% positions give approximately **200/44.7/10/2.24/0.5
+seconds per cycle**. The secondary motion runs more slowly without restarting
+at primary-cycle boundaries. Original E01–E05 retain their previous rate law.
+Exit/reopen the rebuilt SHR normally, choose **SHR Synth → Perceptual**, and
+select **E06–E10**, then press **LOAD**. Hold a middle-register note for 20 seconds to explore the
+motion; no AUX effect is needed. Listening acceptance remains with the musician.

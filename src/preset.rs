@@ -3462,6 +3462,11 @@ amp_release = 0.7
             "dispersion",
             "notch_motion",
             "virtual_pitch",
+            "counter_tide",
+            "vowel_orbit",
+            "phase_bloom",
+            "spectral_carousel",
+            "tidal_memory",
         ] {
             let source = moj_source(model).replace("micro_delay", topology);
             let path = dir.join(format!("{topology}.mojsint"));
@@ -3944,6 +3949,11 @@ enum MojPerceptualTopology {
     Dispersion,
     NotchMotion,
     VirtualPitch,
+    CounterTide,
+    VowelOrbit,
+    PhaseBloom,
+    SpectralCarousel,
+    TidalMemory,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

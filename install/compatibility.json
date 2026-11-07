@@ -14,7 +14,7 @@
       "name": "shr-synth",
       "version": "0.2.4",
       "repository": "https://github.com/PaolaShultz/shr-synth.git",
-      "revision": "13bb8f3ff5c614f63b163577579a7f33c7a0c3d6",
+      "revision": "5969d60c66706f07ef757e66cbc598bdaabb9be5",
       "runtime_minimum": null,
       "runtime_maximum_exclusive": null
     },

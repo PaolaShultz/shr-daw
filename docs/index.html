@@ -815,7 +815,7 @@ its first software page without restarting the host. A saved or already edited
 Project keeps its stored routes.</p>
 <h4 id="doc-instruments_and_drums--shr-synth-sounds" tabindex="-1">SHR Synth sounds<a class="heading-anchor" href="#doc-instruments_and_drums--shr-synth-sounds" aria-label="Link to SHR Synth sounds">#</a></h4>
 <p>SHR Synth is SHR-DAW's editable in-house synthesis family. The installer pins
-a 28-start catalog with these eight models:</p>
+a 38-start catalog with these nine models:</p>
 <ul>
 <li>
 <p>Model D: Full Bass, Full Lead, Full Filter Articulation, Matched Idealized,
@@ -849,11 +849,16 @@ slide. Releasing the latest note returns to the most recently held note.</p>
 </li>
 <li>
 <p>Open303: Rubber Bass, Accent Wire, Hollow Slide, and Soft Pluck, with native
-acid filter and accent/slide envelope controls.</p>
+acid filter and accent/slide envelope controls;</p>
+</li>
+<li>
+<p>Perceptual: five envelope-driven starts plus five slow filter swirls, with
+distinct preset-owned wirings and the shared live 4×4 control surface.</p>
 </li>
 </ul>
-<p>Pressure Chain requires SHR Synth preset schema 9; Open303 requires schema 10. The installation pin contains
-that engine and all 28 cleared starts. Existing installations need a matching
+<p>Pressure Chain requires SHR Synth preset schema 9; Open303 requires schema 10
+and Perceptual requires schema 11. The installation pin contains the matching
+engine and all 38 cleared starts. Existing installations need a matching
 host binary update before loading the new model; source changes alone do not
 replace a running or installed executable.</p>
 <p>Presets groups the available catalog in the fixed model order Model D, Six-Op
@@ -1116,6 +1121,55 @@ Project routing retain their existing behavior. Four voices are a trial
 setting, not a native Pi performance claim. See the companion
 <a href="https://github.com/PaolaShultz/shr-synth/blob/main/docs/PERCEPTUAL.md" class="external" target="_blank" rel="noopener noreferrer external">Perceptual guide</a>
 for topology-specific behavior and listening limits.</p>
+<p>The five slow swirls add distinct wirings on that same surface:</p>
+<table>
+<thead>
+<tr>
+<th>Sound</th>
+<th>What moves</th>
+<th>Body pot</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>E06 Counter Tide</strong></td>
+<td>Opposing resonant low/high filter sweeps</td>
+<td>Low/high balance</td>
+</tr>
+<tr>
+<td><strong>E07 Vowel Orbit</strong></td>
+<td>Three resonant peaks with different LFO phases</td>
+<td>Peak spacing</td>
+</tr>
+<tr>
+<td><strong>E08 Phase Bloom</strong></td>
+<td>Resonant low-pass into direct/all-pass interference</td>
+<td>Phase mix and stage spacing</td>
+</tr>
+<tr>
+<td><strong>E09 Spectral Carousel</strong></td>
+<td>Filtered low/band/high energy rotating in stereo</td>
+<td>Secondary rotation and middle band</td>
+</tr>
+<tr>
+<td><strong>E10 Tidal Memory</strong></td>
+<td>Unequal comb delays into moving resonant filters</td>
+<td>Delay spacing</td>
+</tr>
+</tbody>
+</table>
+<p>For E06–E10, <strong>Position</strong> (pot 1) is filter center, <strong>Focus</strong> (2) is resonance,
+<strong>Bright</strong> (3) is harmonic balance, and <strong>Body</strong> (4) combines the table's behavior
+with fundamental level. <strong>Env Depth</strong> (5) is the note contour's filter amount;
+<strong>Rate</strong> (6) is dedicated LFO speed; <strong>Motion</strong> (7) is cyclic depth; <strong>Width</strong> (8)
+sets stereo spread. ADSR (9–12), Volume (13), AUX (14–16), and rotary-1 NAV
+click remain unchanged. Controls affect held notes through smoothing.</p>
+<p>Rate's 0/25/50/75/100% positions give approximately <strong>200/44.7/10/2.24/0.5
+seconds per cycle</strong>. The secondary motion runs more slowly without restarting
+at primary-cycle boundaries. Original E01–E05 retain their previous rate law.
+Exit/reopen the rebuilt SHR normally, choose <strong>SHR Synth → Perceptual</strong>, and
+select <strong>E06–E10</strong>, then press <strong>LOAD</strong>. Hold a middle-register note for 20 seconds to explore the
+motion; no AUX effect is needed. Listening acceptance remains with the musician.</p>
 <p class="back-top"><a href="#documentation">Back to detailed guides</a></p></div></details>
 <details class="document" id="doc-menu_manual" data-source="docs/MENU_MANUAL.md" data-kind="Current behaviour"><summary><span class="document-title" role="heading" aria-level="4">Screen and menu manual</span><span class="document-summary">Deterministic images covering every populated 40×13 screen, contextual editor, visible Levels command page, and controller menu page, with explanations.</span></summary><div class="document-body"><div class="document-meta"><span>Current behaviour</span><a class="external source-link" href="https://github.com/PaolaShultz/shr-daw/blob/main/docs/MENU_MANUAL.md" target="_blank" rel="noopener noreferrer external">View docs/MENU_MANUAL.md source</a></div><p>This is the visual guide to SHR-DAW's current 40×13 workspaces, contextual
 screens, editors, and master overlays. The current controller map is
@@ -21684,7 +21738,7 @@ explicit <code>SHSYNTH_BIN=.../target/debug/shr</code> override; that binary sho
 </tbody>
 </table>
 <p>SHR source supports SHR Synth through schema 11 and nine models, including
-monophonic Pressure Chain and Open303, plus Perceptual (33 cleared companion starts).
+monophonic Pressure Chain and Open303, plus Perceptual (38 cleared companion starts).
 Open303 adds its own native envelope controls and four starts. Pressure Chain
 retains eight timbre values plus ADSR; Open303 uses eleven native controls and
 volume. Both keep AUX on physical rotaries 14–16 and the existing Project instrument strip.
@@ -21698,6 +21752,43 @@ suite and focused live DSP tests also passed. Controller/listening and
 real-time hardware acceptance remain for the coordinated human session.</p>
 <p><a href="#doc-how_it_works">How SHR-DAW works</a> owns the component process, MIDI, audio,
 configuration, lifecycle, validation, failure, and redistribution boundaries.</p>
+<h4 id="doc-workspace_handoff--slow-perceptual-swirls-2026-11-07" tabindex="-1">Slow Perceptual swirls, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--slow-perceptual-swirls-2026-11-07" aria-label="Link to Slow Perceptual swirls, 2026-11-07">#</a></h4>
+<p>The owner authorized five playable sounds, integration, full builds and checks,
+without audio/hardware operation. The Perceptual reader/writer now retains
+Counter Tide, Vowel Orbit, Phase Bloom, Spectral Carousel and Tidal Memory.
+They extend the schema-11 topology vocabulary, with unchanged macro fields,
+model identity, pickup/reset, Project route and physical mapping. Older readers
+reject the new IDs; the installer pins the matching companion revision.</p>
+<p>E06–E10 use pot 6 Rate for logarithmic 0.005–2 Hz filter movement, pot 7 Motion
+for depth, Position for cutoff and Focus for resonance. Body changes each
+wiring. ADSR stays on row 3; Volume/AUX 1–3 stay on row 4. The instrument guide
+owns the mapping and companion <code>docs/PERCEPTUAL.md</code> owns DSP behavior.
+The local configuration already points to the companion checkout host/catalog;
+normal exit/reopen loads the rebuilt binaries and refreshes the preset list.</p>
+<p>Exact Rust 1.97.1 on AArch64 passes the full normal all-target/all-feature
+suite: 1,259 tests, zero failures, 14 historical tests intentionally skipped.
+The topology regression first failed on the unknown IDs, then passed for all
+ten identities, including live values, volume, save/load and physical CC order.
+The locked check and formatting pass. Four Python installer contracts and
+two documentation-generator policy tests pass. The companion handoff records
+372 passing synth tests, strict Clippy, audit/deny and exact paired renders of
+all 38 presets, including unchanged output for the earlier 33.</p>
+<p>Warning-denied DAW Clippy reports 26 existing lints in unchanged code (recorder,
+sequencer, UI and older tests, plus the existing schema-range expression).
+No lint suppression or unrelated refactor was added. The synth's strict
+Clippy passes. This is a documented validation limitation, not a clean DAW
+Clippy result. Both DEV and REL application builds pass against the final
+companion pin, as do their version/help checks and the focused Rust installer
+contract. The configured REL catalog discovers all five new factory starts.
+Builds used <code>CARGO_INCREMENTAL=0</code> and normal target directories; optimized DAW
+test-harness builds were discontinued after the normal suite had passed, with
+application binaries built directly using <code>cargo build --locked --bin shr</code>
+and its <code>--release</code> equivalent. No running process was replaced.
+Temporary renders/scratch and redundant test-build output are removed at
+closeout; maintained factory presets, source/tests/docs and DEV/REL binaries
+are retained.
+No audio process, JACK, MIDI, controller, playback or hardware test is part
+of this task.</p>
 <h4 id="doc-workspace_handoff--perceptual-integration-2026-11-07" tabindex="-1">Perceptual integration, 2026-11-07<a class="heading-anchor" href="#doc-workspace_handoff--perceptual-integration-2026-11-07" aria-label="Link to Perceptual integration, 2026-11-07">#</a></h4>
 <p>The owner authorized a new engine and full builds. SHR Synth's Perceptual model
 adds E01–E05 Micro Delay, Spectral Split, Dispersion, Notch Motion and Virtual
