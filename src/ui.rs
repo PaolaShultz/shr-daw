@@ -1136,6 +1136,7 @@ struct App {
     drum_genre_selected: usize,
     drum_meter: u8,
     drum_target_rows: usize,
+    drum_fill_rows: usize,
     confirm_drum_pattern_delete: Option<PathBuf>,
     loop_library: Vec<crate::loop_player::LibraryEntry>,
     arrange_selected: usize,
@@ -2488,6 +2489,7 @@ impl App {
             drum_genre_selected: 0,
             drum_meter: 4,
             drum_target_rows: 32,
+            drum_fill_rows: 4,
             confirm_drum_pattern_delete: None,
             loop_library: Vec::new(),
             arrange_selected: 0,
@@ -13730,7 +13732,28 @@ impl App {
             .position(|rows| *rows == self.drum_target_rows)
             .unwrap_or(0);
         self.drum_target_rows = sizes[(tier + 1) % sizes.len()];
+        self.clamp_drum_selection();
         self.drum_filter_status();
+    }
+    fn cycle_drum_fill(&mut self) {
+        self.drum_fill_rows = match self.drum_fill_rows {
+            0 => 4,
+            4 => 8,
+            8 => 16,
+            _ => 0,
+        };
+        self.status = format!("{} · LOAD to apply", self.drum_fill_label());
+    }
+    fn drum_fill_label(&self) -> String {
+        if self.drum_fill_rows == 0 {
+            "FILL OFF".into()
+        } else {
+            format!(
+                "FILL {}>{}",
+                self.drum_target_rows.saturating_sub(self.drum_fill_rows),
+                self.drum_target_rows
+            )
+        }
     }
     fn drum_filter_status(&mut self) {
         self.status = format!(
@@ -13767,9 +13790,9 @@ impl App {
             self.status = "no drum pattern selected".into();
             return;
         };
-        let pattern = match drum_pattern::load(&entry)
-            .and_then(|pattern| drum_pattern::arrange(&pattern, self.drum_target_rows))
-        {
+        let pattern = match drum_pattern::load(&entry).and_then(|pattern| {
+            drum_pattern::arrange(&pattern, self.drum_target_rows, self.drum_fill_rows)
+        }) {
             Ok(pattern) => pattern,
             Err(_error) => {
                 self.status = "DRUM LOAD FAILED · notes kept".into();
@@ -19832,6 +19855,7 @@ fn perform(
         Action::DrumGenreUp => a.cycle_drum_genre(1),
         Action::DrumMeter => a.toggle_drum_meter(),
         Action::DrumSize => a.cycle_drum_size(),
+        Action::DrumFill => a.cycle_drum_fill(),
         Action::CopyLane => a.copy_lane(),
         Action::PasteLane => {
             a.with_pattern_history("LANE PASTE", None, |app| app.paste_lane());
@@ -27528,11 +27552,11 @@ fn draw_tracker_files<B: Backend>(f: &mut Frame<B>, a: &mut App) {
                 })
                 .collect::<Vec<_>>(),
             format!(
-                " {} · {}/4 · {} · {} ",
-                genre,
+                " {} {}/4 {} {} ",
+                truncate(&genre, 8),
                 a.drum_meter,
                 a.drum_target_rows,
-                filtered.len()
+                a.drum_fill_label()
             ),
         )
     } else if a.tracker_files_mode == TrackerFilesMode::Midi {
@@ -41821,6 +41845,40 @@ release = 0.4
         assert_eq!(pattern.pages[percussion].lanes[0].playback, drum.lanes[0]);
         assert!(a.status.contains("routing unchanged"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn drum_fill_choice_is_nonwriting_and_load_is_undoable() {
+        let p = presets();
+        let mut a = app(&p);
+        a.screen = Screen::TrackerFiles;
+        a.open_drum_patterns();
+        a.drum_target_rows = 32;
+        a.clamp_drum_selection();
+        let before = a.song.clone();
+        let context = (a.tracker_row, a.tracker_track, a.tracker_page);
+        for (length, label) in [
+            (8, "FILL 24>32"),
+            (16, "FILL 16>32"),
+            (0, "FILL OFF"),
+            (4, "FILL 28>32"),
+        ] {
+            perform(Action::DrumFill, &mut a, Path::new("/none"), None);
+            assert_eq!(a.drum_fill_rows, length);
+            assert_eq!(a.drum_fill_label(), label);
+            assert_eq!(a.song, before);
+            assert_eq!((a.tracker_row, a.tracker_track, a.tracker_page), context);
+        }
+        a.drum_fill_rows = 8;
+        let selected = drum_pattern::load(&a.drum_patterns[a.drum_pattern_selected]).unwrap();
+        let expected = drum_pattern::arrange(&selected, 32, 8).unwrap();
+        perform(Action::LoadDrumPattern, &mut a, Path::new("/none"), None);
+        let page = a.percussion_page_index().unwrap() * LANES_PER_PAGE;
+        for (row, cells) in a.current_pattern().unwrap().rows.iter().enumerate() {
+            assert_eq!(&cells[page..page + LANES_PER_PAGE], &expected.rows[row]);
+        }
+        a.pattern_undo();
+        assert_eq!(a.song.patterns, before.patterns);
     }
 
     #[test]

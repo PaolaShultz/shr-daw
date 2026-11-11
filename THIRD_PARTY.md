@@ -111,7 +111,7 @@ this set.
 
 ## Original drum patterns
 
-The 60 compact catalog entries and 12 standalone `.shdrum` files in
+The 108 compact catalog entries and 12 standalone `.shdrum` files in
 `drum-patterns/` were authored as editable SHR-DAW MIDI data and are released
 under MIT. They use conventional General MIDI-style drum-note assignments, but
 they do not copy or transcribe third-party MIDI files or protected recordings.

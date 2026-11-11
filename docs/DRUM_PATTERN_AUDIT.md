@@ -1,13 +1,13 @@
 # Drum-pattern musical data audit
 
 This audit treats the bundled rhythms as editable musical data, not just parser
-fixtures. It covers 60 one-bar catalog entries and 12 standalone `.shdrum`
-files: 72 patterns across ten label groups, 51 in 4/4 and 21 in 3/4.
+fixtures. It covers 108 one-bar catalog entries and 12 standalone `.shdrum`
+files: 120 patterns across twelve label groups, 94 in 4/4 and 26 in 3/4.
 
 ## Proven structure
 
 - The Rust decoder and arranger load every entry, and the discovery test now
-  requires exactly 72 unique visible bundled names.
+  requires exactly 120 unique visible bundled names.
 - Rows are 16 for a catalog 4/4 bar and 12 for 3/4. The arranger expands them
   evenly to 2, 4, or 8 bars (32/64/128 or 24/48/96 rows).
 - Bundled notes use only 36, 37, 38, 39, 42, and 46: the project's kick,
@@ -22,8 +22,21 @@ files: 72 patterns across ten label groups, 51 in 4/4 and 21 in 3/4.
 - No bundled cell has an explicit long gate or overlapping note. It inherits
   the Project gate (80% by default), so the next row is normally clear.
 - Alternating expanded bars receive a restrained pickup when that position is
-  empty. Multi-bar phrases receive a final four-row fill selected by broad
-  label group.
+  empty. The selected final 4/8/16 rows receive a fill chosen by broad
+  label group, or OFF omits the added fill. Longer fills start with spaced hits.
+  Prefix preservation and file round trips are checked for every catalog entry,
+  phrase length, and fill length.
+
+## Library-extension software validation, 2026-11-11
+
+On x86_64 with exact Rust 1.97.1, locked checking and all-target/all-feature
+DEV and REL builds pass. Both profiles pass all 1,264 normal tests; the 14
+opt-in offline tests also pass in the development test profile. The fill
+regressions cover all 108 catalog seeds at all three phrase lengths and fill
+lengths, unchanged prefixes, serialization, invalid bounds, non-writing UI
+choices, and undo. All 21 Python helper tests, 31 isolated audio-policy cases,
+and ten cleared demo arrangements pass. Formatting and whitespace checks pass.
+No audio/hardware playback or physical-controller/listening acceptance was run.
 
 ## Findings and curation
 
@@ -82,7 +95,8 @@ authoritative examples of a tradition.
 
 ## Every-pattern evidence ledger
 
-This ledger accounts for all 72 visible entries. `K` is kick-row placement;
+The original ledger below covers the first 72 entries; the extension covers
+the additional 48. `K` is kick-row placement;
 `B` is snare/clap backbeat placement; `H/O/R` counts hat/open-hat/rim events.
 For compact catalog patterns, `A/G` counts explicitly marked accent/ghost
 events. Standalone files show their actual velocity range. Row 0 is the
@@ -164,6 +178,65 @@ gate checks; every row still needs listening.
 | Drum and Bass Break | Breaks 4/4 | 0,6,10,15 | 4,12 | H8/O1/R0; velocity 58–122 |
 | Bossa Side-Stick | Latin 4/4 | 0,4,8,12 | — | H8/O0/R5; velocity 54–104 |
 | Waltz 3/4 | Jazz 3/4 | 0 | 4,8 | H3/O1/R0; velocity 68–112 |
+
+## Library extension
+
+These 48 original additions include sparse verses, fuller choruses, ghost-note
+pockets, and broken dance grooves. Garage and Electro add navigation groups.
+They use the same on-grid catalog format; shuffle-oriented names describe
+starting points for the existing swing/groove controls, not baked-in triplets.
+No listening acceptance is claimed.
+
+| Pattern | Label / meter | K rows | B rows | Texture / dynamics |
+|---|---|---|---|---|
+| Tight Verse | Rock 4/4 | 0,8,10 | 4,12 | H8/O0/R0; A3/G4 |
+| Punk Eighths | Rock 4/4 | 0,2,6,8,10,14 | 4,12 | H8/O0/R0; A8/G0 |
+| Stadium Stomp | Rock 4/4 | 0,2,8,10 | 4,12 | H0/O0/R1; A4/G0 |
+| Offbeat Push | Rock 4/4 | 0,3,6,8,11,15 | 4,12 | H8/O2/R1; A4/G0 |
+| Quiet Verse | Pop 4/4 | 0,8 | 4,12 | H8/O0/R0; A1/G4 |
+| Clap Chorus | Pop 4/4 | 0,4,8,12,15 | 4,12 | H8/O2/R1; A2/G0 |
+| Half Time Ballad | Pop 4/4 | 0,7,10 | 8 | H8/O1/R1; A2/G3 |
+| Waltz Lift | Pop 3/4 | 0,3,8 | 4,8,11 | H6/O2/R0; A3/G1 |
+| Organ Pocket | House 4/4 | 0,4,8,12 | 4,12,15 | H4/O4/R4; A4/G1 |
+| Disco Sixteenths | House 4/4 | 0,4,8,12 | 4,12 | H16/O4/R0; A4/G8 |
+| Dub House Space | House 4/4 | 0,4,8,12 | 12 | H4/O2/R2; A4/G2 |
+| Percussive Floor | House 4/4 | 0,4,8,12 | 4,12 | H4/O4/R7; A6/G2 |
+| Minimal Tick | Techno 4/4 | 0,4,8,12 | — | H4/O0/R2; A4/G0 |
+| Offbeat Machinery | Techno 4/4 | 0,4,8,12 | 4,12 | H8/O4/R4; A8/G4 |
+| Broken Warehouse | Techno 4/4 | 0,3,6,9,12,14 | 4,12 | H8/O2/R2; A4/G0 |
+| Tomless Rumble | Techno 4/4 | 0,4,8,12 | 7,15 | H8/O4/R4; A6/G6 |
+| Sparse Head Nod | Hip-Hop 4/4 | 0,7,10 | 4,12 | H6/O0/R0; A3/G2 |
+| Ghost Pocket | Hip-Hop 4/4 | 0,3,8,14 | 4,6,11,12,15 | H8/O1/R0; A4/G4 |
+| Half Time Skitter | Hip-Hop 4/4 | 0,5,11,14 | 8,15 | H11/O0/R1; A1/G4 |
+| Rim And Space | Hip-Hop 4/4 | 0,6,9,15 | 4,12 | H4/O1/R1; A1/G2 |
+| Ghost Sixteenths | Funk 4/4 | 0,3,8,10,14 | 2,4,7,11,12,15 | H14/O2/R0; A4/G10 |
+| Linear Conversation | Funk 4/4 | 0,6,10 | 4,12 | H5/O0/R4; A3/G0 |
+| Deep Pocket | Funk 4/4 | 0,7,8,11 | 4,10,12,14 | H8/O1/R1; A4/G4 |
+| Three Beat Ghosts | Funk 3/4 | 0,3,7,10 | 4,6,8,11 | H6/O1/R0; A3/G2 |
+| Dub Space | Reggae 4/4 | 8 | 8 | H4/O4/R2; A1/G2 |
+| Steppers Rim | Reggae 4/4 | 0,4,8,12 | 8 | H8/O4/R2; A4/G4 |
+| Rockers Pickup | Reggae 4/4 | 0,6,8,11,14 | 8,15 | H8/O2/R2; A3/G1 |
+| Dancehall Bounce | Reggae 4/4 | 0,6,8,14 | 3,7,11,15 | H8/O1/R0; A2/G3 |
+| Rolling Ghost Break | Breaks 4/4 | 0,6,10 | 4,7,9,12,15 | H8/O1/R1; A4/G3 |
+| Half Time Break | Breaks 4/4 | 0,3,10,14 | 8,11,15 | H8/O2/R1; A2/G2 |
+| Snare Displacement | Breaks 4/4 | 0,6,8,14 | 4,11,15 | H8/O0/R2; A4/G1 |
+| Syncopated Breakbeat | Breaks 4/4 | 0,3,7,10,14 | 4,12 | H8/O2/R2; A3/G0 |
+| Soft Bossa Pocket | Latin 4/4 | 0,6,8,14 | 4,12 | H8/O0/R5; A2/G6 |
+| Rim Dance | Latin 4/4 | 0,8 | 4,12 | H8/O0/R6; A4/G0 |
+| Cumbia Space | Latin 4/4 | 0,8 | 4,12 | H4/O4/R6; A4/G0 |
+| Three Beat Percussion | Latin 3/4 | 0,6,10 | 4,8 | H6/O1/R6; A4/G3 |
+| Light Comping | Jazz 4/4 | 0,8 | 3,10,14 | H8/O0/R0; A2/G9 |
+| Broken Brush Pocket | Jazz 4/4 | 0,7,10 | 4,12,15 | H8/O0/R1; A0/G11 |
+| Sparse Jazz Waltz | Jazz 3/4 | 0 | 4,9 | H6/O0/R1; A2/G6 |
+| Three Beat Comping | Jazz 3/4 | 0,7 | 3,8,11 | H6/O0/R1; A1/G8 |
+| Two Step Pocket | Garage 4/4 | 0,6,10,15 | 4,12 | H8/O2/R1; A1/G2 |
+| Skipping Hats | Garage 4/4 | 0,7,10,14 | 4,12 | H10/O2/R2; A1/G4 |
+| Four Floor Shuffle | Garage 4/4 | 0,4,8,12 | 4,12 | H8/O4/R2; A4/G4 |
+| Rim Step | Garage 4/4 | 0,3,10,14 | 4,12 | H8/O2/R2; A1/G4 |
+| Robot Break | Electro 4/4 | 0,3,6,10,14 | 4,12 | H8/O2/R2; A1/G0 |
+| Sparse Circuit | Electro 4/4 | 0,6,11 | 4,12 | H4/O2/R3; A3/G0 |
+| Machine Funk | Electro 4/4 | 0,3,8,10,15 | 4,12 | H10/O2/R1; A2/G2 |
+| Half Time Voltage | Electro 4/4 | 0,6,10,13 | 8 | H9/O2/R2; A1/G1 |
 
 ## Demo shortlist
 

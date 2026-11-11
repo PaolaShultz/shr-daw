@@ -623,13 +623,26 @@ and cross-Pattern Page operations are recorded under
 ## Drum pattern library and transpose
 
 Open **FILES** → **PATTERN** → **DRUMS** for reusable rhythms stored separately
-from Projects. The bundled library has 72 authored grooves across
-Rock, Pop, House, Techno, Hip-Hop, Funk, Reggae, Breaks, Latin, and Jazz. The
-**FILTER** page selects genre, 3/4 or 4/4 meter, and phrase length. 4/4 offers
+from Projects. The bundled library has 120 authored grooves across
+Rock, Pop, House, Techno, Hip-Hop, Funk, Reggae, Breaks, Latin, Jazz, Garage,
+and Electro. The **FILTER** page selects genre, 3/4 or 4/4 meter, and phrase
+length. 4/4 offers
 32/64/128 rows (2/4/8 bars at the default four steps per beat); 3/4 offers the
 matching 24/48/96 rows. Longer choices add alternating-bar changes and
-genre-aware phrase-end fills rather than merely duplicating a filename. Genre
-names are compact creative labels for editable starting points, not claims of
+genre-aware phrase-end fills rather than merely duplicating a filename.
+On **OPS**, **FILL** cycles 4, 8, 16 rows, then OFF. The list border shows
+the selected range before **LOAD** applies it: on a 32-row phrase, `FILL 28>32`,
+`FILL 24>32`, or `FILL 16>32`. These are zero-based start rows with an exclusive
+end: `28>32` changes rows 28–31. Four rows is the default; OFF keeps the groove
+and alternating-bar variations without an added ending fill. Earlier rows are
+identical for every fill-length choice. Longer fills build from spaced hits
+into a final flourish; kick pulse and genre-specific backbeats remain underneath.
+Changing FILL only changes the pending load, never the current Pattern. Loaded
+fills are ordinary editable notes and play every time; this is separate from
+the live FILL latch for conditional cells. **LOAD** remains one undoable Pattern
+edit. To preserve a saved groove exactly at its original length, choose OFF.
+
+Genre names are compact creative labels for editable starting points, not claims of
 an authoritative historical transcription.
 
 **LOAD** replaces only the current Pattern's first percussion page. Its

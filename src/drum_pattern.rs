@@ -489,13 +489,19 @@ fn catalog_hit(lane: usize, kind: &str) -> Result<(u8, u8)> {
 
 /// Expand a one-bar authored groove into a 2/4/8-bar phrase. Alternating bars
 /// gain a restrained variation, while phrase ends get a genre-aware fill.
-pub fn arrange(pattern: &DrumPattern, target_rows: usize) -> Result<DrumPattern> {
+pub fn arrange(pattern: &DrumPattern, target_rows: usize, fill_rows: usize) -> Result<DrumPattern> {
     validate(pattern)?;
-    if target_rows < pattern.rows.len() || !target_rows.is_multiple_of(pattern.rows.len()) {
+    if target_rows > 256
+        || target_rows < pattern.rows.len()
+        || !target_rows.is_multiple_of(pattern.rows.len())
+    {
         bail!(
             "{} rows do not expand evenly into {target_rows}",
             pattern.rows.len()
         );
+    }
+    if !matches!(fill_rows, 0 | 4 | 8 | 16) || fill_rows > target_rows {
+        bail!("fill needs 0, 4, 8 or 16 rows within the phrase");
     }
     let bar_rows = pattern.rows.len();
     let bars = target_rows / bar_rows;
@@ -515,45 +521,61 @@ pub fn arrange(pattern: &DrumPattern, target_rows: usize) -> Result<DrumPattern>
             arranged.rows[open_hat][2] = note_cell(46, 72);
         }
     }
-    if bars > 1 {
-        add_phrase_fill(&mut arranged);
+    if fill_rows > 0 {
+        add_phrase_fill(&mut arranged, fill_rows);
     }
     validate(&arranged)?;
     Ok(arranged)
 }
 
-fn add_phrase_fill(pattern: &mut DrumPattern) {
+/// Only the selected tail is changed; fills are ordinary, always-played cells.
+fn add_phrase_fill(pattern: &mut DrumPattern, fill_rows: usize) {
     let end = pattern.rows.len();
-    let start = end.saturating_sub(4);
-    match pattern.genre.as_str() {
-        "House" | "Techno" => {
-            for row in start..end {
-                pattern.rows[row][1] = note_cell(38, 58 + ((row - start) as u8 * 12));
-            }
-        }
-        "Hip-Hop" | "Funk" => {
-            for row in (start..end).step_by(2) {
-                if pattern.rows[row][1] == Cell::default() {
-                    pattern.rows[row][1] = note_cell(38, 52);
+    let start = end - fill_rows;
+    for row in start..end {
+        let offset = row - start;
+        // Longer fills leave breathing room before the final four-row flourish.
+        let closing = row >= end - 4;
+        let velocity = 58 + (offset * 48 / (fill_rows - 1)) as u8;
+        match pattern.genre.as_str() {
+            "House" | "Techno" | "Electro" => {
+                if (closing || offset.is_multiple_of(2)) && pattern.rows[row][1] == Cell::default()
+                {
+                    pattern.rows[row][1] = note_cell(38, velocity);
                 }
             }
-        }
-        "Latin" => {
-            for row in start..end {
-                if pattern.rows[row][3] == Cell::default() {
-                    pattern.rows[row][3] = note_cell(37, 64 + ((row - start) as u8 * 8));
+            "Hip-Hop" | "Funk" | "Garage" | "Breaks" => {
+                if (offset.is_multiple_of(2) || row == end - 1)
+                    && pattern.rows[row][1] == Cell::default()
+                {
+                    pattern.rows[row][1] = note_cell(38, velocity.saturating_sub(16));
                 }
             }
-        }
-        "Jazz" => {
-            pattern.rows[start][1] = note_cell(38, 48);
-            pattern.rows[end - 2][1] = note_cell(38, 62);
-            pattern.rows[end - 1][2] = note_cell(51, 88);
-        }
-        _ => {
-            for (offset, note) in [45, 47, 50, 47].into_iter().enumerate() {
-                pattern.rows[start + offset][3] = note_cell(note, 72 + offset as u8 * 10);
-                pattern.rows[start + offset][2] = Cell::default();
+            "Latin" => {
+                if closing || offset.is_multiple_of(2) {
+                    if pattern.rows[row][3] == Cell::default() {
+                        pattern.rows[row][3] = note_cell(37, velocity);
+                    } else if matches!(pattern.rows[row][3].note, Note::On(_)) {
+                        pattern.rows[row][3].velocity = Some(velocity);
+                    }
+                }
+            }
+            "Jazz" | "Reggae" => {
+                if (offset.is_multiple_of(4) || row == end - 2)
+                    && pattern.rows[row][1] == Cell::default()
+                {
+                    pattern.rows[row][1] = note_cell(38, velocity.saturating_sub(18));
+                }
+                if row == end - 1 {
+                    pattern.rows[row][2] = note_cell(51, 88);
+                }
+            }
+            _ => {
+                if closing || offset.is_multiple_of(2) {
+                    let note = [50, 47, 45, 43][offset * 4 / fill_rows];
+                    pattern.rows[row][3] = note_cell(note, velocity);
+                    pattern.rows[row][2] = Cell::default();
+                }
             }
         }
     }
@@ -647,7 +669,7 @@ mod tests {
             .into_iter()
             .filter(|entry| !entry.user)
             .collect::<Vec<_>>();
-        assert_eq!(bundled.len(), 72);
+        assert_eq!(bundled.len(), 120);
         assert!(bundled.iter().any(|entry| entry.name.contains("Rock")));
         assert!(bundled.iter().any(|entry| entry.name.contains("House")));
         assert!(bundled.iter().any(|entry| entry.name.contains("Waltz")));
@@ -665,15 +687,60 @@ mod tests {
     }
 
     #[test]
+    fn every_catalog_fill_preserves_prefix_and_round_trips() {
+        let patterns = decode_catalog(include_str!("../drum-patterns/catalog.shrdrums")).unwrap();
+        assert_eq!(patterns.len(), 108);
+        for seed in patterns {
+            for bars in [2, 4, 8] {
+                let end = seed.rows.len() * bars;
+                let plain = arrange(&seed, end, 0).unwrap();
+                for length in [4, 8, 16] {
+                    let filled = arrange(&seed, end, length).unwrap();
+                    assert_eq!(filled.rows[..end - length], plain.rows[..end - length]);
+                    assert_ne!(filled.rows[end - length..], plain.rows[end - length..]);
+                    assert_eq!(filled.lanes, seed.lanes);
+                    assert_eq!(decode(&encode(&filled).unwrap()).unwrap(), filled);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fill_ranges_are_exact_and_invalid_lengths_are_refused() {
+        let seed = DrumPattern {
+            name: "Empty base".into(),
+            genre: "Rock".into(),
+            meter: 4,
+            lanes: [LanePlayback::default(); LANES_PER_PAGE],
+            rows: vec![[Cell::default(); LANES_PER_PAGE]; 16],
+        };
+        let plain = arrange(&seed, 32, 0).unwrap();
+        for (length, start) in [(16, 16), (8, 24), (4, 28)] {
+            let filled = arrange(&seed, 32, length).unwrap();
+            assert_eq!(filled.rows[..start], plain.rows[..start]);
+            assert_ne!(filled.rows[start][3], Cell::default());
+            assert_ne!(filled.rows[31][3], Cell::default());
+        }
+        assert_eq!(arrange(&seed, 16, 0).unwrap().rows, seed.rows);
+        for (rows, fill) in [(32, 1), (32, 32), (16, 17), (0, 0), (512, 4), (31, 4)] {
+            assert!(arrange(&seed, rows, fill).is_err());
+        }
+        let mut tiny = seed.clone();
+        tiny.rows.truncate(1);
+        assert!(arrange(&tiny, 2, 4).is_err());
+        assert_eq!(arrange(&tiny, 2, 0).unwrap().rows.len(), 2);
+    }
+
+    #[test]
     fn arrangement_builds_distinct_supported_phrase_lengths() {
         let seed = discover()
             .into_iter()
             .find(|entry| !entry.user && entry.meter == 4 && entry.genre == "Rock")
             .unwrap();
         let seed = load(&seed).unwrap();
-        let short = arrange(&seed, 32).unwrap();
-        let medium = arrange(&seed, 64).unwrap();
-        let long = arrange(&seed, 128).unwrap();
+        let short = arrange(&seed, 32, 4).unwrap();
+        let medium = arrange(&seed, 64, 4).unwrap();
+        let long = arrange(&seed, 128, 4).unwrap();
         assert_eq!(
             (short.rows.len(), medium.rows.len(), long.rows.len()),
             (32, 64, 128)

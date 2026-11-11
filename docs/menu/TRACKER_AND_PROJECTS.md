@@ -490,6 +490,9 @@ shape change once melody exists.
 `LOAD` writes the selected rhythm into the percussion page without changing
 its route. `SAVE` stores the current percussion page as a user rhythm.
 `DELETE` can remove only a user save and requires confirmation.
+`FILL` cycles the last 4, 8, or 16 rows, then OFF. The border shows the pending
+range (for example `24>32` means rows 24–31); only `LOAD` applies it.
+The earlier groove is preserved, and loaded fill notes remain editable.
 
 ### FILTER — narrow the library
 

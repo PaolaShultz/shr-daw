@@ -437,6 +437,7 @@ pub enum Action {
     DrumGenreUp,
     DrumMeter,
     DrumSize,
+    DrumFill,
     CopyLane,
     PasteLane,
     CopyPage,
@@ -1375,7 +1376,7 @@ const DRUM_PATTERNS: [MenuPage; 4] = [
             on("SAVE", Action::SaveDrumPattern),
             on("LOAD", Action::LoadDrumPattern),
             on("DELETE", Action::DeleteDrumPattern),
-            off(""),
+            on("FILL", Action::DrumFill),
         ],
     ),
     page(
